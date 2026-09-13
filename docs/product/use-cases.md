@@ -55,8 +55,8 @@ Status is taken from the plan's Delivery status table, which is authoritative.
 | 32 | Keep comments attached after an outside edit | Writer | Signed in, internal | M4 | Planned | `comments.spec.ts` |
 | 33 | Connect a workspace to a repository | Workspace lead | Signed in, internal | M4 | Planned | `sync.spec.ts` |
 | 34 | Attach a repository as a read-only source | Workspace lead | Signed in, internal | Idea | Not scheduled | `external-sources.spec.ts` |
-| 35 | Give the organisation its identity | Instance admin | Signed in, internal | M3 | Planned | `theme.spec.ts` |
-| 36 | Choose a workspace's layout | Workspace lead | Signed in, internal | M3 | Planned | `theme.spec.ts` |
+| 35 | Give the organisation its identity | Instance admin | Signed in, internal | M3 | In progress | `settings.spec.ts` |
+| 36 | Choose a workspace's layout | Workspace lead | Signed in, internal | M3 | In progress | `settings.spec.ts` |
 | 37 | Set personal reading preferences | Reader | Signed in, internal | M2 / M3 | Partly built | `design.spec.ts` |
 | 38 | Sign in with the organisation's provider | Any member | Signed in, internal | M3 | Built (API); journey to follow | `sso.spec.ts` |
 | 39 | Manage sessions and sign out everywhere | Any member | Signed in, internal | M1 | Built (API) | `administer.spec.ts` |
@@ -1177,10 +1177,14 @@ contrast, and size to the person.
 - **Situation:** first run, or a rebrand
 - **Job:** make the product look like this organisation, in a few minutes,
   without producing something ugly.
-- **Milestone:** M3 — **Planned** (the token system and the three built-in
-  themes exist; the onboarding flow does not)
-- **Surfaces:** signed-in app, settings
-- **Journey:** `e2e/theme.spec.ts` (planned)
+- **Milestone:** M3 — **In progress.** The theme editor is built: the layer-2
+  levers over a live preview of a real document in light and dark, with the
+  doctor's report beside the form, fork and reset-to-built-in, and the save
+  through the organisation settings API. The guided onboarding flow — logo,
+  three questions, suggestion — is a later branch, with its entry point left
+  in the editor.
+- **Surfaces:** signed-in app, settings (`/admin/settings/theme`)
+- **Journey:** `e2e/settings.spec.ts`
 
 **Flow**
 
@@ -1216,11 +1220,15 @@ contrast, and size to the person.
   arrangements of the same identity
 - **Job:** choose how this workspace is arranged, without changing how the
   organisation looks.
-- **Milestone:** M3 — **Planned** (ADR-028 amendment; until then the attributes
-  come from the theme, which is indistinguishable while every workspace uses
-  the default)
+- **Milestone:** M3 — **In progress.** The screens are built: the organisation's
+  default and its lock at `/admin/settings/layout`, and a workspace's own
+  choice at `/w/:slug/settings`, reached from the workspace overflow, with the
+  locked case shown and refused rather than hidden. The app shell still reads
+  the attributes from the theme (ADR-028's `variants` to `layout` rename,
+  tracked as a `TODO(M3)` in `workspace-layout.tsx`), which is
+  indistinguishable while every workspace uses the default.
 - **Surfaces:** signed-in app, workspace settings
-- **Journey:** `e2e/theme.spec.ts` (planned)
+- **Journey:** `e2e/settings.spec.ts`
 
 **Flow**
 
@@ -1247,7 +1255,12 @@ contrast, and size to the person.
 - **Situation:** anybody, at any time
 - **Job:** read the way they need to, everywhere, permanently.
 - **Milestone:** M2 for scheme; the rest with personal preferences in M3 —
-  **Partly built**
+  **Partly built.** The tenant side of the boundary now exists to be tested
+  against: an organisation's theme and policies are saved through
+  `/admin/settings`, and none of them touches the reader's colour scheme,
+  which stays in the browser and is applied over whatever the tenant chose
+  (ADR-028, layer 3). Text size, reduced motion, high contrast and the tone
+  preference are still to come.
 - **Surfaces:** every signed-in surface
 - **Journey:** `e2e/design.spec.ts` (scheme today), extended later
 

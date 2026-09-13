@@ -3,11 +3,16 @@ import { type Static, Type } from '@sinclair/typebox'
 
 import { BRAND } from '@quill/brand'
 import { workspaceId } from '@quill/domain'
-import { DEFAULT_THEME, ThemeDocumentSchema, validateThemeDocument } from '@quill/theme'
+import {
+  DEFAULT_THEME,
+  recommendedLayout,
+  ThemeDocumentSchema,
+  validateThemeDocument,
+} from '@quill/theme'
 import type { ThemeDocument } from '@quill/theme'
 
 import { createVersionedReader } from '../use-cases/versioned-reader.ts'
-import { LayoutSchema, type Layout } from './layout.ts'
+import { LayoutSchema } from './layout.ts'
 
 /**
  * The settings documents an administrator edits in the product and the
@@ -297,17 +302,11 @@ export function defaultOrganisationSettings(
 }
 
 /**
- * The layout a theme recommends (ADR-028's `recommendedLayout`).
- *
- * The theme document still spells this block `variants`, which is what every
- * built-in theme, the token map, and the web shell read today. Renaming it is
- * part of the same amendment and is deliberately not done here: this function
- * is the one place that reads a theme's recommendation as a layout, so the
- * rename is a change to this line rather than to every caller.
+ * The layout a theme recommends, re-exported from `@quill/theme` so this
+ * module's callers keep their import while there is only one definition.
+ * ADR-028's `variants` → `layout` rename lands on that one line.
  */
-export function recommendedLayout(theme: ThemeDocument): Layout {
-  return theme.variants
-}
+export { recommendedLayout }
 
 export function defaultWorkspaceSettings(id: string): WorkspaceSettings {
   return { version: SETTINGS_VERSION, workspaceId: id }

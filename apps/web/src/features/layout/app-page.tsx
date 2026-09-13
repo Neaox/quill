@@ -1,13 +1,12 @@
 import { Link } from '@tanstack/react-router'
 import type { ReactNode } from 'react'
 
-import { BRAND } from '@quill/brand'
-
 import { tv } from '@quill/ui'
 
 import { SignedInHeader } from '../auth/signed-in-header.tsx'
 import { SearchField } from '../search/search-field.tsx'
 import { SearchProvider } from '../search/search-provider.tsx'
+import { useOrganisationName } from '../settings/use-organisation-name.ts'
 import { ThemeToggle } from '../theme/theme-toggle.tsx'
 import { useThemePreference } from '../theme/use-theme-preference.ts'
 
@@ -21,13 +20,30 @@ export const appPageStyles = tv({
     brand: 'font-semibold tracking-tight',
     spacer: 'grow',
     main: 'layout-grid py-12',
-    content: 'layout-content flex flex-col gap-8',
+    content: 'flex flex-col gap-8',
   },
+  variants: {
+    /**
+     * Which line of the reading grid the page sits on (ADR-027). `content` is
+     * the reading measure and the default, because most of these pages are
+     * prose with controls in it. `full` is for a surface that is an
+     * application rather than a document — the settings screens, whose theme
+     * editor puts a live preview and the doctor's report beside the form, and
+     * cannot do that inside a measure meant for a paragraph.
+     */
+    width: {
+      content: { content: 'layout-content' },
+      full: { content: 'layout-full' },
+    },
+  },
+  defaultVariants: { width: 'content' },
 })
 
 export interface AppPageProps {
-  /** The page's own content, rendered at the reading grid's `content` width. */
+  /** The page's own content, on the reading grid's `content` line by default. */
   readonly children: ReactNode
+  /** `full` for an application surface that needs more than the reading measure. */
+  readonly width?: 'content' | 'full'
   /** Controls that belong to this page, shown before the theme and account controls. */
   readonly actions?: ReactNode | undefined
   /** `false` on the home page itself, which the mark would otherwise link to. */
@@ -51,9 +67,18 @@ export interface AppPageProps {
  * grid with a rail, a tree and a complementary column, and it belongs to
  * `@quill/ui`. This is a page with a bar.
  */
-export function AppPage({ children, actions, brandLinksHome = true }: AppPageProps) {
+export function AppPage({
+  children,
+  actions,
+  width = 'content',
+  brandLinksHome = true,
+}: AppPageProps) {
   const { preference, setPreference } = useThemePreference()
-  const styles = appPageStyles()
+  // The organisation's own name, which `/admin/settings/organisation` is where
+  // somebody changes (ADR-034). Not `BRAND.name`: the product is the software,
+  // and the bar belongs to whoever is running it.
+  const organisationName = useOrganisationName()
+  const styles = appPageStyles({ width })
 
   return (
     // The palette's host, for the home page, which sits outside the
@@ -65,10 +90,10 @@ export function AppPage({ children, actions, brandLinksHome = true }: AppPagePro
         <header className={styles.header()}>
           {brandLinksHome ? (
             <Link to="/" className={styles.brand({ className: 'focus-ring rounded-sm' })}>
-              {BRAND.name}
+              {organisationName}
             </Link>
           ) : (
-            <span className={styles.brand()}>{BRAND.name}</span>
+            <span className={styles.brand()}>{organisationName}</span>
           )}
           <span className={styles.spacer()} />
           {/* The same field the workspace shell carries, so search is in the

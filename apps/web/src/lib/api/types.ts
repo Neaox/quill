@@ -209,6 +209,44 @@ export type MergeRequired = Json<PublishResponses[409]>
 
 export type MergeConflict = MergeRequired['conflicts'][number]
 
+/* --- Settings and secrets (`docs/architecture/api-contract-settings.md`) --- */
+
+/**
+ * The organisation's settings document: name, logo, theme, the default
+ * layout, the public site's navigation, and the policies (ADR-034). Derived
+ * from the generated client, so a server change that is not additive fails to
+ * type-check here before it can reach a settings screen.
+ */
+export type OrganisationSettings = components['schemas']['OrganisationSettings']
+
+/** `GET /settings/organisation`: the document, and the revision it was read at. */
+export type OrganisationSettingsResponse = GetBody<'/api/settings/organisation'>
+
+type OrganisationPutResponses = NonNullable<paths['/api/settings/organisation']['put']>['responses']
+
+/** `PUT /settings/organisation`: the saved document, its new revision, and the doctor's verdict. */
+export type SavedOrganisationSettings = Json<OrganisationPutResponses[200]>
+
+/** The theme document as the wire carries it; `@quill/theme`'s `ThemeDocument` is the same shape. */
+export type ThemeSettings = OrganisationSettings['theme']
+
+/** One link beside the public site's name. At most eight, `href` rooted or absolute http(s). */
+export type PublicNavigationLink = OrganisationSettings['publicNavigation'][number]
+
+/** ADR-028's bounded set of signature variants, chosen per workspace. */
+export type LayoutSettings = OrganisationSettings['layout']['default']
+
+/** `GET /workspaces/:idOrSlug/settings`: the workspace's own settings and what they resolve to. */
+export type WorkspaceSettingsResponse = GetBody<'/api/workspaces/{id}/settings'>
+
+export type WorkspaceSettingsDocument = WorkspaceSettingsResponse['settings']
+
+/**
+ * A secret's metadata. There is deliberately no shape with a value in it: the
+ * API never answers with one (`docs/architecture/api-contract-settings.md`).
+ */
+export type SecretDto = components['schemas']['Secret']
+
 /**
  * `GET /auth/oidc/providers`: what the sign-in page may offer (ADR-011).
  * Deliberately only an id and a label — it is read before anybody has signed

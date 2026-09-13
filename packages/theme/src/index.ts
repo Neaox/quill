@@ -82,7 +82,7 @@ export {
 } from './schema/theme-document.ts'
 export { validateThemeDocument, type ThemeIssue, type ValidationResult } from './schema/validate.ts'
 
-export { BUILTIN_THEMES, DEFAULT_THEME, builtinTheme } from './builtin/themes.ts'
+export { BUILTIN_THEMES, DEFAULT_THEME, builtinTheme, recommendedLayout } from './builtin/themes.ts'
 export { atelier } from './builtin/atelier.ts'
 export { instrument } from './builtin/instrument.ts'
 export { press } from './builtin/press.ts'

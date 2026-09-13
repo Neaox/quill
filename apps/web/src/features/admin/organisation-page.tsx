@@ -1,7 +1,7 @@
 import { Link } from '@tanstack/react-router'
 import { useState } from 'react'
 
-import { Button, Callout, Menu, Spinner, tv } from '@quill/ui'
+import { Button, buttonClassName, Callout, Menu, Spinner, tv } from '@quill/ui'
 
 import {
   useUnits,
@@ -194,14 +194,25 @@ export function OrganisationPage() {
   return (
     <AppPage
       actions={
-        <Button
-          size="sm"
-          onClick={() => {
-            setDialog({ kind: 'new-unit' })
-          }}
-        >
-          New unit
-        </Button>
+        <>
+          {/*
+           * The other half of instance administration. Units and workspaces
+           * are *what* the organisation is; settings are what it looks like
+           * and what it allows (ADR-034), and both are reached from the same
+           * bar rather than from two places that do not know about each other.
+           */}
+          <Link to="/admin/settings" className={buttonClassName({ size: 'sm', variant: 'ghost' })}>
+            Settings
+          </Link>
+          <Button
+            size="sm"
+            onClick={() => {
+              setDialog({ kind: 'new-unit' })
+            }}
+          >
+            New unit
+          </Button>
+        </>
       }
     >
       <div>
