@@ -1,6 +1,7 @@
 import type { DocumentId, ShortId } from '@quill/domain'
 
 import type {
+  AuditEventRow,
   AuditWriter,
   CollectionRepository,
   CollectionRow,
@@ -29,6 +30,8 @@ import type {
   RevisionsIndexRepository,
   SessionRepository,
   SessionRow,
+  ShareLinkRepository,
+  ShareLinkRow,
   UnitOfWork,
   UnitRepository,
   UnitRow,
@@ -53,6 +56,14 @@ import { LOCK_TTL_MS } from '../ports/index.ts'
 export interface InMemoryUnitOfWork extends UnitOfWork {
   /** Every outbox event written, in order, so a test can assert what a use case emitted. */
   readonly events: readonly OutboxEventRow[]
+  /**
+   * Every audit row written, in order.
+   *
+   * ADR-011 asks for an audit trail without secrets in it, which is only a
+   * rule if something checks: a test asserts both that the row is there and
+   * that nothing sensitive is in it.
+   */
+  readonly auditEvents: readonly AuditEventRow[]
 }
 
 export function createInMemoryUnitOfWork(): InMemoryUnitOfWork {
@@ -69,6 +80,7 @@ export function createInMemoryUnitOfWork(): InMemoryUnitOfWork {
   const drafts = new Map<string, DraftRow>()
   const locks = new Map<string, DocumentLockRow>()
   const grants = new Map<string, GrantRow>()
+  const shareLinks = new Map<string, ShareLinkRow>()
   const groups = new Map<string, GroupRow>()
   const memberships = new Map<string, Set<string>>()
   const collections = new Map<string, CollectionRow>()
@@ -76,6 +88,7 @@ export function createInMemoryUnitOfWork(): InMemoryUnitOfWork {
   const renders = new Map<string, RenderCacheRow>()
   const links = new Map<string, DocumentLinkRow[]>()
   const events: OutboxEventRow[] = []
+  const auditEvents: AuditEventRow[] = []
 
   const userRepository: UserRepository = {
     async create(input) {
@@ -706,9 +719,60 @@ export function createInMemoryUnitOfWork(): InMemoryUnitOfWork {
     },
   }
 
+  const shareLinkRepository: ShareLinkRepository = {
+    async create(input) {
+      const row: ShareLinkRow = {
+        id: input.id,
+        documentId: input.documentId,
+        tokenHash: input.tokenHash,
+        scope: input.scope,
+        role: input.role,
+        expiresAt: input.expiresAt,
+        createdBy: input.createdBy,
+        revokedAt: null,
+        createdAt: input.now,
+        lastUsedAt: null,
+      }
+      shareLinks.set(row.id, row)
+      return row
+    },
+    async findByTokenHash(tokenHash) {
+      return [...shareLinks.values()].find((row) => row.tokenHash === tokenHash) ?? null
+    },
+    async findById(id) {
+      return shareLinks.get(id) ?? null
+    },
+    async listForDocument(documentId) {
+      return [...shareLinks.values()]
+        .filter((row) => row.documentId === documentId)
+        .toSorted((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
+    },
+    async revoke(id, now) {
+      const existing = shareLinks.get(id)
+      if (existing === undefined) return null
+      // Idempotent, exactly as the SQL is: the first revocation is the one
+      // that counts, so revoking twice does not move the instant.
+      const revoked = { ...existing, revokedAt: existing.revokedAt ?? now }
+      shareLinks.set(id, revoked)
+      return revoked
+    },
+    async markUsed(id, now) {
+      const existing = shareLinks.get(id)
+      if (existing !== undefined) shareLinks.set(id, { ...existing, lastUsedAt: now })
+    },
+  }
+
   const auditWriter: AuditWriter = {
-    async write() {
-      // See outboxWriter above.
+    async write({ id, type, actorUserId, targetType, targetId, metadata, now }) {
+      auditEvents.push({
+        id,
+        type,
+        actorUserId,
+        targetType,
+        targetId,
+        metadata,
+        createdAt: now,
+      })
     },
   }
 
@@ -726,6 +790,7 @@ export function createInMemoryUnitOfWork(): InMemoryUnitOfWork {
     drafts: draftRepository,
     locks: lockRepository,
     grants: grantRepository,
+    shareLinks: shareLinkRepository,
     revisions: revisionsRepository,
     renderCache: renderCacheRepository,
     documentLinks: documentLinksRepository,
@@ -736,6 +801,7 @@ export function createInMemoryUnitOfWork(): InMemoryUnitOfWork {
   return {
     repos,
     events,
+    auditEvents,
     async run(fn) {
       return fn(repos)
     },

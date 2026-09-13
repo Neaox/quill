@@ -8,7 +8,7 @@ import type {
   RequestPrincipal,
   WorkspaceAccess,
 } from '@quill/application'
-import type { Capabilities, DocumentId, Result, ShareLinkId, WorkspaceId } from '@quill/domain'
+import type { Capabilities, DocumentId, Result, WorkspaceId } from '@quill/domain'
 import type { FastifyRequest } from 'fastify'
 
 import type { AppDependencies } from '../dependencies.ts'
@@ -24,18 +24,26 @@ import { AppError, forbidden, notFound } from '../errors.ts'
 
 export type Capability = keyof Capabilities
 
-/** A request acts as its signed-in user, or as the public principal. */
-export function requestPrincipal(request: FastifyRequest): RequestPrincipal {
-  return {
-    userId: request.session?.userId ?? null,
-    // Share links reach the reading path in M3; the principal already carries
-    // them so nothing in resolution has to change when they do.
-    shareLinkId: null as ShareLinkId | null,
-  }
+/**
+ * A request acts as its signed-in user, as the public principal, and — on the
+ * share routes — as whatever link it presented.
+ *
+ * The *token* travels, never an id: the token is the capability, and deciding
+ * what it is worth is the authorizer's job, not a route's (ADR-012).
+ */
+export function requestPrincipal(
+  request: FastifyRequest,
+  shareLinkToken: string | null = null,
+): RequestPrincipal {
+  return { userId: request.session?.userId ?? null, shareLinkToken }
 }
 
-export function authorizerFor(deps: AppDependencies, request: FastifyRequest): Authorizer {
-  return createAuthorizer(deps.uow.repos, requestPrincipal(request))
+export function authorizerFor(
+  deps: AppDependencies,
+  request: FastifyRequest,
+  shareLinkToken: string | null = null,
+): Authorizer {
+  return createAuthorizer(deps.uow.repos, requestPrincipal(request, shareLinkToken), deps)
 }
 
 /**
@@ -107,6 +115,32 @@ export async function requireCollectionAccess(
     throw notFound('Collection not found')
   }
   return granted(access, capability)
+}
+
+/**
+ * A document reached through a share link, or a `404`.
+ *
+ * Every refusal on a share route is the same `404` with the same body: a
+ * reader holding a link must not be able to tell a document that is outside
+ * the link's scope from one that does not exist, or a revoked link from a
+ * token nobody ever issued (ADR-011, use case 25). That is the whole
+ * difference from `requireDocumentAccess`, which is free to answer `403`
+ * because the caller is already known.
+ */
+export const SHARE_REFUSAL = 'This link is not valid'
+
+export async function requireSharedDocument(
+  authorizer: Authorizer,
+  documentId: DocumentId,
+  capability: Capability = 'view',
+): Promise<DocumentAccess> {
+  const access = await authorizer.document(documentId)
+  if (!access.ok) {
+    if (access.error.kind === 'document-not-found') throw notFound(SHARE_REFUSAL)
+    throw toAppError(access.error)
+  }
+  if (!access.value.capabilities[capability]) throw notFound(SHARE_REFUSAL)
+  return access.value
 }
 
 /**

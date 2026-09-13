@@ -4,6 +4,7 @@ import type { FastifyInstance } from 'fastify'
 import { buildApp } from '../app.ts'
 import { createPasswordHasher } from '../auth/password.ts'
 import { createRateLimiter } from '../auth/rate-limit.ts'
+import { createTokenService } from '../auth/tokens.ts'
 import { MAIL_REQUESTED } from '@quill/application'
 
 import { hashSessionToken } from '../auth/session-token.ts'
@@ -47,6 +48,8 @@ beforeAll(async () => {
     clock,
     ids: createFakeIdGenerator(),
     hasher: createHasher(),
+    tokens: createTokenService(),
+    shareLinkPolicy: { allowed: () => true },
     contentStore: createContentStore({ driver: 'memory' }, clock),
     format: createDocumentFormat(),
     mailer: createRecordingMailer(),

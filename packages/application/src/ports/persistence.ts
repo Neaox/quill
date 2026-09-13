@@ -3,6 +3,8 @@ import type {
   DocumentStatus,
   Role,
   RevisionId,
+  ShareLinkId as DomainShareLinkId,
+  ShareLinkScope,
   ShortId,
   UserId,
   WorkspaceId,
@@ -30,7 +32,12 @@ export type CollectionId = string
 export type SessionId = string
 export type MagicLinkId = string
 export type GrantId = string
-export type ShareLinkId = string
+/**
+ * Already branded in the domain, which owns share links as principals
+ * (ADR-012), so this is the re-export the note above anticipates rather than
+ * a second, weaker alias.
+ */
+export type ShareLinkId = DomainShareLinkId
 
 // ---------------------------------------------------------------------------
 // Users, credentials, sessions, magic links
@@ -623,6 +630,63 @@ export interface GrantRepository {
 }
 
 // ---------------------------------------------------------------------------
+// Share links (plan section 14; ADR-011 hashed tokens; ADR-012 principals)
+// ---------------------------------------------------------------------------
+
+/**
+ * One share link.
+ *
+ * `tokenHash` is the SHA-256 of the token the link carries, and is the only
+ * form of it that exists anywhere after the response that created it: a
+ * database read yields nothing replayable (ADR-011). The raw token is
+ * returned once, by `createShareLink`, and never again.
+ */
+export interface ShareLinkRow {
+  readonly id: ShareLinkId
+  readonly documentId: DocumentId
+  readonly tokenHash: string
+  readonly scope: ShareLinkScope
+  readonly role: Role
+  /** Null for a link that never expires. */
+  readonly expiresAt: Date | null
+  readonly createdBy: UserId
+  readonly revokedAt: Date | null
+  readonly createdAt: Date
+  /** When the link was last followed, so a list can show it (use case 26). */
+  readonly lastUsedAt: Date | null
+}
+
+export interface CreateShareLinkInput {
+  readonly id: ShareLinkId
+  readonly documentId: DocumentId
+  readonly tokenHash: string
+  readonly scope: ShareLinkScope
+  readonly role: Role
+  readonly expiresAt: Date | null
+  readonly createdBy: UserId
+  readonly now: Date
+}
+
+export interface ShareLinkRepository {
+  create(input: CreateShareLinkInput): Promise<ShareLinkRow>
+  /**
+   * The link a presented token names, whatever state it is in.
+   *
+   * Expiry and revocation are decided above this port, by the domain against
+   * an injected clock, so that a refusal is a rule rather than a query a
+   * caller might forget to write.
+   */
+  findByTokenHash(tokenHash: string): Promise<ShareLinkRow | null>
+  findById(id: ShareLinkId): Promise<ShareLinkRow | null>
+  /** Newest first: a list of links is read as a history of who shared what. */
+  listForDocument(documentId: DocumentId): Promise<readonly ShareLinkRow[]>
+  /** Idempotent: a link already revoked keeps the instant it was first revoked. */
+  revoke(id: ShareLinkId, now: Date): Promise<ShareLinkRow | null>
+  /** Records that the link was followed. Never fails a read that has already succeeded. */
+  markUsed(id: ShareLinkId, now: Date): Promise<void>
+}
+
+// ---------------------------------------------------------------------------
 // Revisions index (ADR-014: the fast path for history, not a cache)
 // ---------------------------------------------------------------------------
 
@@ -807,6 +871,7 @@ export interface RepositoryBundle {
   readonly drafts: DraftRepository
   readonly locks: LockRepository
   readonly grants: GrantRepository
+  readonly shareLinks: ShareLinkRepository
   readonly revisions: RevisionsIndexRepository
   readonly renderCache: RenderCacheRepository
   readonly documentLinks: DocumentLinksRepository

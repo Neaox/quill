@@ -16,6 +16,7 @@ import { createOutboxWriter } from './outbox-writer.ts'
 import { createRenderCacheRepository } from './render-cache-repository.ts'
 import { createRevisionsIndexRepository } from './revisions-index-repository.ts'
 import { createSessionRepository } from './session-repository.ts'
+import { createShareLinkRepository } from './share-link-repository.ts'
 import { createUnitRepository } from './unit-repository.ts'
 import { createUserRepository } from './user-repository.ts'
 import { createWorkspaceRepository } from './workspace-repository.ts'
@@ -46,6 +47,7 @@ function buildBundle(db: DrizzleClient, pool: pg.Pool, ids: IdGenerator): Reposi
     drafts: createDraftRepository(db, pool),
     locks: createLockRepository(pool),
     grants: createGrantRepository(db, ids),
+    shareLinks: createShareLinkRepository(db),
     revisions: createRevisionsIndexRepository(db),
     renderCache: createRenderCacheRepository(db),
     documentLinks: createDocumentLinksRepository(db),

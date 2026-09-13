@@ -1249,6 +1249,80 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/documents/{id}/share-links": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            links: components["schemas"]["ShareLink"][];
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        expiresAt?: string | null;
+                        /** @enum {string} */
+                        role?: "viewer" | "contributor" | "editor" | "admin" | "owner";
+                        /** @enum {string} */
+                        scope: "document" | "subtree";
+                    };
+                };
+            };
+            responses: {
+                /** @description Default Response */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            link: components["schemas"]["ShareLink"];
+                            token: string;
+                            url: string;
+                        };
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/me": {
         parameters: {
             query?: never;
@@ -1271,6 +1345,154 @@ export interface paths {
                         [name: string]: unknown;
                     };
                     content?: never;
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/share-links/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/share/{token}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    token: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            children: components["schemas"]["SharedNode"][];
+                            document: {
+                                id: string;
+                                shortId: string;
+                                slug: string;
+                                title: string;
+                                /** Format: date-time */
+                                updatedAt: string;
+                            };
+                            link: {
+                                expiresAt: string | null;
+                                /** @enum {string} */
+                                role: "viewer";
+                                /** @enum {string} */
+                                scope: "document" | "subtree";
+                            };
+                            rendered: {
+                                html: string;
+                                outline: components["schemas"]["OutlineEntry"][];
+                                revision: string;
+                                slots: string[];
+                            };
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/share/{token}/documents/{id}/rendered": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                    token: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            document: {
+                                id: string;
+                                shortId: string;
+                                slug: string;
+                                title: string;
+                                /** Format: date-time */
+                                updatedAt: string;
+                            };
+                            rendered: {
+                                html: string;
+                                outline: components["schemas"]["OutlineEntry"][];
+                                revision: string;
+                                slots: string[];
+                            };
+                        };
+                    };
                 };
             };
         };
@@ -1936,6 +2158,27 @@ export interface components {
             id: string;
             lastSeenAt: string | null;
         };
+        SharedNode: {
+            children: components["schemas"]["SharedNode"][];
+            id: string;
+            shortId: string;
+            slug: string;
+            title: string;
+        };
+        ShareLink: {
+            /** Format: date-time */
+            createdAt: string;
+            createdBy: string;
+            documentId: string;
+            expiresAt: string | null;
+            id: string;
+            lastUsedAt: string | null;
+            revokedAt: string | null;
+            /** @enum {string} */
+            role: "viewer";
+            /** @enum {string} */
+            scope: "document" | "subtree";
+        };
         TreeNode: {
             children: components["schemas"]["TreeNode"][];
             id: string;
@@ -1955,6 +2198,8 @@ export interface components {
 export type SchemaCollection = components['schemas']['Collection'];
 export type SchemaOutlineEntry = components['schemas']['OutlineEntry'];
 export type SchemaSessionSummary = components['schemas']['SessionSummary'];
+export type SchemaSharedNode = components['schemas']['SharedNode'];
+export type SchemaShareLink = components['schemas']['ShareLink'];
 export type SchemaTreeNode = components['schemas']['TreeNode'];
 export type $defs = Record<string, never>;
 export type operations = Record<string, never>;

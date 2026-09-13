@@ -37,6 +37,10 @@ describe('buildOpenApiDocument', () => {
         '/api/documents/{id}/diff',
         '/api/documents/{id}/draft',
         '/api/documents/{id}/lock/acquire',
+        '/api/documents/{id}/share-links',
+        '/api/share-links/{id}',
+        '/api/share/{token}',
+        '/api/share/{token}/documents/{id}/rendered',
       ]),
     )
     expect(countOperations(description)).toBeGreaterThanOrEqual(paths.length)
@@ -47,7 +51,7 @@ describe('buildOpenApiDocument', () => {
       components: { schemas: Record<string, unknown> }
     }
     expect(Object.keys(description.components.schemas)).toEqual(
-      expect.arrayContaining(['OutlineEntry', 'TreeNode']),
+      expect.arrayContaining(['OutlineEntry', 'TreeNode', 'ShareLink', 'SharedNode']),
     )
   })
 })

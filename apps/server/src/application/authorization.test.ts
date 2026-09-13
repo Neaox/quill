@@ -10,8 +10,10 @@ import {
   authorizerFor,
   requireDocumentAccess,
   requireInstanceAdmin,
+  requireSharedDocument,
   requireWorkspaceAccess,
   requestPrincipal,
+  SHARE_REFUSAL,
 } from './authorization.ts'
 
 /**
@@ -24,6 +26,8 @@ const USER = userId('00000000-0000-4000-8000-000000000001')
 const ADMIN = userId('00000000-0000-4000-8000-0000000000ad')
 const WORKSPACE = workspaceId('00000000-0000-4000-8000-000000000101')
 const DOC = documentId('00000000-0000-4000-8000-000000000201')
+/** Properly placed, and granted to nobody: the shape a share link must refuse. */
+const PLACED = documentId('00000000-0000-4000-8000-000000000202')
 const MISSING = documentId('00000000-0000-4000-8000-0000000002ff')
 
 let uow: InMemoryUnitOfWork
@@ -63,6 +67,27 @@ beforeEach(async () => {
     slug: 'engineering',
     now: NOW,
   })
+  await uow.repos.collections.create({
+    id: 'architecture',
+    workspaceId: WORKSPACE,
+    name: 'Architecture',
+    slug: 'architecture',
+    now: NOW,
+  })
+  await uow.repos.documents.create({
+    id: PLACED,
+    shortId: aShortId(2),
+    workspaceId: WORKSPACE,
+    collectionId: 'architecture',
+    parentId: null,
+    slug: 'placed',
+    path: 'architecture/placed.md',
+    title: 'Placed',
+    status: 'published',
+    templateId: null,
+    templateVersion: null,
+    now: NOW,
+  })
   await uow.repos.documents.create({
     id: DOC,
     shortId: aShortId(),
@@ -81,8 +106,19 @@ beforeEach(async () => {
 
 describe('requestPrincipal', () => {
   it('is the signed-in user, or nobody at all', () => {
-    expect(requestPrincipal(request(USER))).toEqual({ userId: USER, shareLinkId: null })
-    expect(requestPrincipal(request(null))).toEqual({ userId: null, shareLinkId: null })
+    expect(requestPrincipal(request(USER))).toEqual({ userId: USER, shareLinkToken: null })
+    expect(requestPrincipal(request(null))).toEqual({ userId: null, shareLinkToken: null })
+  })
+
+  it('carries the share-link token a request presented, whoever is signed in', () => {
+    expect(requestPrincipal(request(USER), 'secret')).toEqual({
+      userId: USER,
+      shareLinkToken: 'secret',
+    })
+    expect(requestPrincipal(request(null), 'secret')).toEqual({
+      userId: null,
+      shareLinkToken: 'secret',
+    })
   })
 })
 
@@ -160,5 +196,42 @@ describe('requireInstanceAdmin', () => {
       status: 403,
       code: 'forbidden',
     })
+  })
+})
+
+/**
+ * The share surface answers one thing, however it is refused: a reader
+ * holding a link must not be able to tell a document outside its scope from a
+ * document that does not exist (ADR-011, `docs/product/surfaces.md`).
+ */
+describe('requireSharedDocument', () => {
+  const anonymous = (): ReturnType<typeof authorizerFor> => authorizerFor(deps, request(null))
+
+  it('answers a document that does not exist, and one the link does not reach, alike', async () => {
+    const missing = await statusOf(() => requireSharedDocument(anonymous(), MISSING))
+    const unreachable = await statusOf(() => requireSharedDocument(anonymous(), PLACED))
+    expect(missing).toEqual({ status: 404, code: 'not_found' })
+    expect(unreachable).toEqual(missing)
+  })
+
+  it('says the same thing when the capability asked for is one the reader lacks', async () => {
+    expect(await statusOf(() => requireSharedDocument(anonymous(), PLACED, 'edit'))).toEqual({
+      status: 404,
+      code: 'not_found',
+    })
+  })
+
+  it('still reports a tenancy tree that contradicts itself as a server fault', async () => {
+    // A broken tree is not a refusal at all: the request was well formed and
+    // the platform cannot answer it, so hiding it behind the share surface's
+    // `404` would hide a defect.
+    expect(await statusOf(() => requireSharedDocument(anonymous(), DOC))).toEqual({
+      status: 500,
+      code: 'broken_tenancy_tree',
+    })
+  })
+
+  it('refuses in the reader’s words, not the application’s', async () => {
+    await expect(requireSharedDocument(anonymous(), MISSING)).rejects.toThrow(SHARE_REFUSAL)
   })
 })

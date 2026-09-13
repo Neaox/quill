@@ -73,6 +73,111 @@
           }
         }
       },
+      "ShareLink": {
+        "type": "object",
+        "required": [
+          "id",
+          "documentId",
+          "scope",
+          "role",
+          "expiresAt",
+          "createdBy",
+          "createdAt",
+          "revokedAt",
+          "lastUsedAt"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "documentId": {
+            "type": "string"
+          },
+          "scope": {
+            "type": "string",
+            "enum": [
+              "document",
+              "subtree"
+            ]
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "viewer"
+            ]
+          },
+          "expiresAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "createdBy": {
+            "type": "string"
+          },
+          "createdAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "revokedAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "lastUsedAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        }
+      },
+      "SharedNode": {
+        "type": "object",
+        "required": [
+          "id",
+          "shortId",
+          "title",
+          "slug",
+          "children"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "shortId": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "slug": {
+            "type": "string"
+          },
+          "children": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SharedNode"
+            }
+          }
+        }
+      },
       "SessionSummary": {
         "type": "object",
         "required": [
@@ -2774,6 +2879,379 @@
         "responses": {
           "200": {
             "description": "Default Response"
+          }
+        }
+      }
+    },
+    "/api/documents/{id}/share-links": {
+      "post": {
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "scope"
+                ],
+                "properties": {
+                  "scope": {
+                    "type": "string",
+                    "enum": [
+                      "document",
+                      "subtree"
+                    ]
+                  },
+                  "role": {
+                    "type": "string",
+                    "enum": [
+                      "viewer",
+                      "contributor",
+                      "editor",
+                      "admin",
+                      "owner"
+                    ]
+                  },
+                  "expiresAt": {
+                    "anyOf": [
+                      {
+                        "format": "date-time",
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "link",
+                    "token",
+                    "url"
+                  ],
+                  "properties": {
+                    "link": {
+                      "$ref": "#/components/schemas/ShareLink"
+                    },
+                    "token": {
+                      "type": "string"
+                    },
+                    "url": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "links"
+                  ],
+                  "properties": {
+                    "links": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/ShareLink"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/share-links/{id}": {
+      "delete": {
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
+    "/api/share/{token}": {
+      "get": {
+        "parameters": [
+          {
+            "schema": {
+              "minLength": 1,
+              "maxLength": 200,
+              "type": "string"
+            },
+            "in": "path",
+            "name": "token",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "link",
+                    "document",
+                    "rendered",
+                    "children"
+                  ],
+                  "properties": {
+                    "link": {
+                      "type": "object",
+                      "required": [
+                        "scope",
+                        "role",
+                        "expiresAt"
+                      ],
+                      "properties": {
+                        "scope": {
+                          "type": "string",
+                          "enum": [
+                            "document",
+                            "subtree"
+                          ]
+                        },
+                        "role": {
+                          "type": "string",
+                          "enum": [
+                            "viewer"
+                          ]
+                        },
+                        "expiresAt": {
+                          "anyOf": [
+                            {
+                              "format": "date-time",
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        }
+                      }
+                    },
+                    "document": {
+                      "type": "object",
+                      "required": [
+                        "id",
+                        "shortId",
+                        "title",
+                        "slug",
+                        "updatedAt"
+                      ],
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "shortId": {
+                          "type": "string"
+                        },
+                        "title": {
+                          "type": "string"
+                        },
+                        "slug": {
+                          "type": "string"
+                        },
+                        "updatedAt": {
+                          "format": "date-time",
+                          "type": "string"
+                        }
+                      }
+                    },
+                    "rendered": {
+                      "type": "object",
+                      "required": [
+                        "revision",
+                        "html",
+                        "outline",
+                        "slots"
+                      ],
+                      "properties": {
+                        "revision": {
+                          "pattern": "^[0-9a-f]{40}$",
+                          "type": "string"
+                        },
+                        "html": {
+                          "type": "string"
+                        },
+                        "outline": {
+                          "type": "array",
+                          "items": {
+                            "$ref": "#/components/schemas/OutlineEntry"
+                          }
+                        },
+                        "slots": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    },
+                    "children": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/SharedNode"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/share/{token}/documents/{id}/rendered": {
+      "get": {
+        "parameters": [
+          {
+            "schema": {
+              "minLength": 1,
+              "maxLength": 200,
+              "type": "string"
+            },
+            "in": "path",
+            "name": "token",
+            "required": true
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "document",
+                    "rendered"
+                  ],
+                  "properties": {
+                    "document": {
+                      "type": "object",
+                      "required": [
+                        "id",
+                        "shortId",
+                        "title",
+                        "slug",
+                        "updatedAt"
+                      ],
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "shortId": {
+                          "type": "string"
+                        },
+                        "title": {
+                          "type": "string"
+                        },
+                        "slug": {
+                          "type": "string"
+                        },
+                        "updatedAt": {
+                          "format": "date-time",
+                          "type": "string"
+                        }
+                      }
+                    },
+                    "rendered": {
+                      "type": "object",
+                      "required": [
+                        "revision",
+                        "html",
+                        "outline",
+                        "slots"
+                      ],
+                      "properties": {
+                        "revision": {
+                          "pattern": "^[0-9a-f]{40}$",
+                          "type": "string"
+                        },
+                        "html": {
+                          "type": "string"
+                        },
+                        "outline": {
+                          "type": "array",
+                          "items": {
+                            "$ref": "#/components/schemas/OutlineEntry"
+                          }
+                        },
+                        "slots": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
           }
         }
       }

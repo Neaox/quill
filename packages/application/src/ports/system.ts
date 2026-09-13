@@ -31,3 +31,27 @@ export interface Hasher {
   /** Lower-case hex digest of the UTF-8 bytes of `text`. */
   contentHash(text: string): string
 }
+
+/**
+ * Capability tokens: share links today, and anything else ADR-011 asks to be
+ * random, stored hashed, and compared without leaking timing.
+ *
+ * It is a port for the same reason `IdGenerator` is: the randomness is the
+ * part a test has to be able to fix, and the application layer imports no
+ * Node built-ins. The server's adapter is `crypto.randomBytes`, SHA-256, and
+ * `crypto.timingSafeEqual`.
+ */
+export interface TokenService {
+  /** A fresh 256-bit token, URL-safe, to be shown to its creator once. */
+  issue(): string
+
+  /** Lower-case hex SHA-256 of a raw token. The only form that is ever stored. */
+  hash(token: string): string
+
+  /**
+   * Whether two digests are equal, in time that does not depend on where they
+   * first differ. Digests, never raw tokens: by the time anything is compared
+   * the secret has already been hashed.
+   */
+  matches(left: string, right: string): boolean
+}
