@@ -9,6 +9,10 @@ export type { FakeContentStore, FakeContentStoreOptions } from './fake-content-s
 export { createFakeContentStore } from './fake-content-store.ts'
 export type { FakeDocumentFormatOptions } from './fake-document-format.ts'
 export { createFakeDocumentFormat, serialise } from './fake-document-format.ts'
+export type { FakeSettings } from './fake-settings.ts'
+export { createFakeSettings } from './fake-settings.ts'
+export type { FakeSecretCipher } from './fake-secret-cipher.ts'
+export { createFakeSecretCipher } from './fake-secret-cipher.ts'
 export type { FakeClock } from './fakes.ts'
 export {
   aShortId,

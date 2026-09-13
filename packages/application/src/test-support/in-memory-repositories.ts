@@ -28,6 +28,9 @@ import type {
   RepositoryBundle,
   RevisionIndexRow,
   RevisionsIndexRepository,
+  SecretCursor,
+  SecretRow,
+  SecretsRepository,
   SessionRepository,
   SessionRow,
   ShareLinkRepository,
@@ -66,6 +69,10 @@ export interface InMemoryUnitOfWork extends UnitOfWork {
   readonly auditEvents: readonly AuditEventRow[]
 }
 
+/** The `(created_at, name)` order the secrets rotation pages by. */
+const compareSecretCursors = (left: SecretCursor, right: SecretCursor): number =>
+  left.createdAt.getTime() - right.createdAt.getTime() || left.name.localeCompare(right.name)
+
 export function createInMemoryUnitOfWork(): InMemoryUnitOfWork {
   const users = new Map<string, UserRow>()
   const usersByEmail = new Map<string, string>()
@@ -89,6 +96,7 @@ export function createInMemoryUnitOfWork(): InMemoryUnitOfWork {
   const links = new Map<string, DocumentLinkRow[]>()
   const events: OutboxEventRow[] = []
   const auditEvents: AuditEventRow[] = []
+  const secrets = new Map<string, SecretRow>()
 
   const userRepository: UserRepository = {
     async create(input) {
@@ -785,6 +793,69 @@ export function createInMemoryUnitOfWork(): InMemoryUnitOfWork {
     },
   }
 
+  /**
+   * Secrets as they are stored: ciphertext and a wrapped key, never a value
+   * (ADR-034). The fake keeps exactly the columns the table has, so a test of
+   * rotation exercises the real "which key is this wrapped with" question.
+   */
+  const secretsRepository: SecretsRepository = {
+    async find(name) {
+      return secrets.get(name) ?? null
+    },
+    async list() {
+      return [...secrets.values()]
+        .map(({ name, keyId, createdAt, rotatedAt, rewrappedAt }) => ({
+          name,
+          keyId,
+          createdAt,
+          rotatedAt,
+          rewrappedAt,
+        }))
+        .toSorted((left, right) => left.name.localeCompare(right.name))
+    },
+    async put({ name, ciphertext, wrappedKey, keyId, now }) {
+      const existing = secrets.get(name)
+      const row: SecretRow = {
+        name,
+        ciphertext,
+        wrappedKey,
+        keyId,
+        createdAt: existing?.createdAt ?? now,
+        rotatedAt: existing === undefined ? null : now,
+        rewrappedAt: null,
+      }
+      secrets.set(name, row)
+      return row
+    },
+    async rewrap({ name, fromKeyId, fromWrappedKey, wrappedKey, keyId, now }) {
+      const existing = secrets.get(name)
+      // The same compare-and-swap the real repository performs, so a test of
+      // a rotation racing a replacement behaves the same here.
+      if (
+        existing === undefined ||
+        existing.keyId !== fromKeyId ||
+        existing.wrappedKey !== fromWrappedKey
+      ) {
+        return false
+      }
+      secrets.set(name, { ...existing, wrappedKey, keyId, rewrappedAt: now })
+      return true
+    },
+    async delete(name) {
+      return secrets.delete(name)
+    },
+    async listWrappedWithOther({ keyId, limit, after }) {
+      const ordered = [...secrets.values()]
+        .filter((row) => row.keyId !== keyId)
+        .toSorted(compareSecretCursors)
+      const beyond =
+        after === undefined
+          ? ordered
+          : ordered.filter((row) => compareSecretCursors(row, after) > 0)
+      return beyond.slice(0, limit)
+    },
+  }
+
   const repos: RepositoryBundle = {
     users: userRepository,
     sessions: sessionRepository,
@@ -803,6 +874,7 @@ export function createInMemoryUnitOfWork(): InMemoryUnitOfWork {
     revisions: revisionsRepository,
     renderCache: renderCacheRepository,
     documentLinks: documentLinksRepository,
+    secrets: secretsRepository,
     outbox: outboxWriter,
     audit: auditWriter,
   }

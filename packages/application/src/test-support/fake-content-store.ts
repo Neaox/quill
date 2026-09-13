@@ -3,12 +3,15 @@ import type { DocumentId, RevisionId, WorkspaceId } from '@quill/domain'
 
 import type {
   ContentDiff,
+  ContentFile,
   ContentStore,
   DocumentSource,
   MergeConflict,
   Page,
   PublishRequest,
   PublishResult,
+  PutFileRequest,
+  PutFileResult,
   RevisionSummary,
   TreeEntry,
 } from '../ports/content-store.ts'
@@ -33,6 +36,8 @@ interface StoredDocument {
 interface StoredRevision {
   readonly revision: RevisionId
   readonly documents: ReadonlyMap<DocumentId, StoredDocument>
+  /** Non-document files by path (ADR-034 settings). */
+  readonly files: ReadonlyMap<string, string>
   readonly changed: readonly DocumentId[]
   readonly author: { readonly name: string; readonly email: string }
   readonly summary: string
@@ -43,6 +48,8 @@ interface StoredRevision {
 export interface FakeContentStore extends ContentStore {
   /** Every publish this store accepted, in order. */
   readonly requests: readonly PublishRequest[]
+  /** Every file write this store accepted, in order. */
+  readonly writtenFiles: readonly PutFileRequest[]
 }
 
 export interface FakeContentStoreOptions {
@@ -53,6 +60,7 @@ export function createFakeContentStore(options: FakeContentStoreOptions = {}): F
   const now = options.now ?? ((): Date => new Date('2026-01-01T00:00:00.000Z'))
   const workspaces = new Map<WorkspaceId, StoredRevision[]>()
   const requests: PublishRequest[] = []
+  const writtenFiles: PutFileRequest[] = []
   let counter = 0
 
   const revisionsOf = (workspaceId: WorkspaceId): StoredRevision[] => {
@@ -71,6 +79,7 @@ export function createFakeContentStore(options: FakeContentStoreOptions = {}): F
 
   return {
     requests,
+    writtenFiles,
 
     async head(workspaceId) {
       return at(workspaceId)?.revision ?? null
@@ -115,6 +124,7 @@ export function createFakeContentStore(options: FakeContentStoreOptions = {}): F
       revisions.push({
         revision,
         documents,
+        files: current?.files ?? new Map(),
         changed,
         author: request.author,
         summary: request.summary ?? 'Publish',
@@ -169,11 +179,53 @@ export function createFakeContentStore(options: FakeContentStoreOptions = {}): F
     async listTree(workspaceId, revision) {
       const snapshot = at(workspaceId, revision)
       if (snapshot === null) return []
-      return [...snapshot.documents].map(([documentId, document]): TreeEntry => ({
-        path: document.path,
-        kind: 'document',
-        documentId,
-      }))
+      return [
+        ...[...snapshot.documents].map(([documentId, document]): TreeEntry => ({
+          path: document.path,
+          kind: 'document',
+          documentId,
+        })),
+        ...[...snapshot.files.keys()].map((path): TreeEntry => ({ path, kind: 'other' })),
+      ]
+    },
+
+    async readFile(workspaceId, path, revision) {
+      const snapshot = at(workspaceId, revision)
+      const text = snapshot?.files.get(path)
+      if (snapshot === null || text === undefined) return null
+      return { path, text, revision: snapshot.revision } satisfies ContentFile
+    },
+
+    async putFile(request) {
+      const revisions = revisionsOf(request.workspaceId)
+      const current = revisions.at(-1) ?? null
+      const existing = current?.files.get(request.path) ?? null
+      if (existing !== request.expected) {
+        return {
+          kind: 'stale',
+          current:
+            existing === null || current === null
+              ? null
+              : { path: request.path, text: existing, revision: current.revision },
+        }
+      }
+
+      counter += 1
+      const files = new Map(current?.files ?? [])
+      files.set(request.path, request.text)
+      const revision = revisionId(counter.toString(16).padStart(40, '0'))
+      revisions.push({
+        revision,
+        documents: current?.documents ?? new Map(),
+        files,
+        changed: [],
+        author: request.author,
+        summary: request.summary ?? `Update ${request.path}`,
+        changeNote: request.changeNote,
+        timestamp: now(),
+      })
+      writtenFiles.push(request)
+      return { kind: 'published', revision } satisfies PutFileResult
     },
   }
 }

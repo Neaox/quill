@@ -113,6 +113,43 @@ export interface TreeEntry {
   readonly documentId?: DocumentId
 }
 
+/**
+ * A file in the tree that is not a document: `.quill/organisation.yaml` and
+ * the workspace settings beside it (ADR-034), and the `.quill/` files
+ * ADR-014's on-disk layout already shows.
+ *
+ * These are addressed by path rather than by id, which is not a breach of
+ * rule 8: a *document* is its id, and these are not documents. They carry no
+ * front matter, so the store cannot find them by identity at all.
+ */
+export interface ContentFile {
+  readonly path: string
+  readonly text: string
+  readonly revision: RevisionId
+}
+
+export interface PutFileRequest {
+  readonly workspaceId: WorkspaceId
+  readonly path: string
+  readonly text: string
+  /**
+   * The exact text the caller read, or null when it expects no file there.
+   * This is the compare-and-swap: the write lands only while the file still
+   * says what the caller based it on.
+   */
+  readonly expected: string | null
+  readonly author: ContentAuthor
+  /** Generated from the path when absent. */
+  readonly summary?: string
+  /** Single line; newlines are folded to spaces before it becomes a trailer. */
+  readonly changeNote?: string
+}
+
+export type PutFileResult =
+  | { readonly kind: 'published'; readonly revision: RevisionId }
+  /** Somebody else wrote this file first; `current` is what it says now. */
+  | { readonly kind: 'stale'; readonly current: ContentFile | null }
+
 export interface ContentStore {
   read(
     workspaceId: WorkspaceId,
@@ -134,4 +171,22 @@ export interface ContentStore {
   listTree(workspaceId: WorkspaceId, revision?: RevisionId): Promise<readonly TreeEntry[]>
   /** The current revision of a workspace, or null before its first publish. */
   head(workspaceId: WorkspaceId): Promise<RevisionId | null>
+  /** One non-document file by path, or null when the tree has none there. */
+  readFile(
+    workspaceId: WorkspaceId,
+    path: string,
+    revision?: RevisionId,
+  ): Promise<ContentFile | null>
+  /**
+   * Write one non-document file, refusing rather than merging when it has
+   * changed underneath (ADR-034).
+   *
+   * `publish` is the write for documents, and it three-way merges a stale
+   * base because two authors editing one document usually mean to keep both
+   * edits. A settings file is not that: it is written whole, by a form, and
+   * blending two administrators' versions of it would produce a policy
+   * neither of them chose. So this is the same commit and the same ref
+   * compare-and-swap, with the file's own contents as the expected value.
+   */
+  putFile(request: PutFileRequest): Promise<PutFileResult>
 }

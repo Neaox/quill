@@ -17,6 +17,9 @@ import { createTokenService } from '../auth/tokens.ts'
 import { createFakeBreachedPasswordChecker, createRecordingMailer } from '../test-support/fakes.ts'
 import { createContentStore } from '../infrastructure/content-store.ts'
 import { createDocumentFormat } from '../infrastructure/markdown/document-format.ts'
+import { createEnvelopeCipher } from '../infrastructure/secrets/envelope-cipher.ts'
+import { createKeyProvider } from '../infrastructure/secrets/key-provider.ts'
+import { createSettingsStore } from '../infrastructure/settings-store.ts'
 
 /**
  * The OpenAPI description of the API, written from the routes themselves.
@@ -45,11 +48,16 @@ async function describableDependencies(): Promise<AppDependencies> {
   // Describing the API searches nothing, so the core's own in-memory index is
   // the honest choice rather than one bound to a database that is not there.
   const searchIndex = createInMemorySearchIndex()
+  const contentStore = createContentStore({ driver: 'memory' }, clock)
   return {
     uow: createInMemoryUnitOfWork(),
     searchIndex,
     search: createSearchService(searchIndex),
-    contentStore: createContentStore({ driver: 'memory' }, clock),
+    contentStore,
+    settings: createSettingsStore(contentStore),
+    // Describing the API encrypts nothing; the development key is present
+    // because the routes ask for the port, not because it is used.
+    secrets: createEnvelopeCipher(await createKeyProvider(config.masterKey)),
     format: createDocumentFormat(),
     clock,
     hasher: createHasher(),

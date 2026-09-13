@@ -14,8 +14,13 @@
     "typecheck": "tsc -p tsconfig.json"
   },
   "dependencies": {
+    "@quill/brand": "workspace:*",
     "@quill/domain": "workspace:*",
-    "remeda": "^2.48.0"
+    "@quill/theme": "workspace:*",
+    "@sinclair/typebox": "^0.34.52",
+    "ajv": "^8.20.0",
+    "remeda": "^2.48.0",
+    "yaml": "^2.9.0"
   },
   "devDependencies": {
     "@quill/config": "workspace:*"

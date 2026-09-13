@@ -7,6 +7,8 @@ import type {
   SearchIndex,
   ShareLinkPolicy,
   TokenService,
+  SecretCipher,
+  Settings,
   UnitOfWork,
 } from '@quill/application'
 import type { SearchService } from '@quill/search'
@@ -29,6 +31,14 @@ import type { ServerConfig } from './config.ts'
 export interface AppDependencies {
   readonly uow: UnitOfWork
   readonly contentStore: ContentStore
+  /** Organisation and workspace settings, as files in the content store (ADR-034). */
+  readonly settings: Settings
+  /**
+   * Envelope encryption for secrets entered in the product (ADR-034), over
+   * whichever `KeyProvider` the configuration chose. A port, because the
+   * master key may live somewhere that never hands it over.
+   */
+  readonly secrets: SecretCipher
   /** The Markdown pipeline, with the syntax highlighter already bound in (ADR-030). */
   readonly format: DocumentFormat
   readonly clock: Clock

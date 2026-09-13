@@ -2,6 +2,8 @@ import {
   COLLECTION_AUDIT_EVENTS,
   DOCUMENT_AUDIT_EVENTS,
   SHARE_LINK_AUDIT_EVENTS,
+  SECRET_AUDIT_EVENTS,
+  SETTINGS_AUDIT_EVENTS,
   TENANCY_AUDIT_EVENTS,
 } from '@quill/application'
 import type { Clock, IdGenerator, UnitOfWork } from '@quill/application'
@@ -52,6 +54,13 @@ export const AUDIT_EVENTS = {
   shareLinkCreated: SHARE_LINK_AUDIT_EVENTS.created,
   shareLinkRevoked: SHARE_LINK_AUDIT_EVENTS.revoked,
   shareLinkUsed: SHARE_LINK_AUDIT_EVENTS.used,
+  // Configuration and secrets (ADR-034). A secret's row names it and the key
+  // that wraps it; its value is never written here or anywhere else.
+  organisationSettingsUpdated: SETTINGS_AUDIT_EVENTS.organisationUpdated,
+  workspaceSettingsUpdated: SETTINGS_AUDIT_EVENTS.workspaceUpdated,
+  secretSet: SECRET_AUDIT_EVENTS.set,
+  secretDeleted: SECRET_AUDIT_EVENTS.deleted,
+  masterKeyRotated: SECRET_AUDIT_EVENTS.masterKeyRotated,
 } as const
 
 export interface AuditEvent {

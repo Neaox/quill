@@ -26,6 +26,9 @@ import { createPostgresSearchIndex } from '../infrastructure/search/postgres-sea
 import { createVisibleDocumentResolver } from '../infrastructure/search/visible-documents.ts'
 import { createSendMailConsumer } from '../infrastructure/outbox/send-mail.ts'
 import { createUnitOfWork } from '../infrastructure/repositories/unit-of-work.ts'
+import { createEnvelopeCipher } from '../infrastructure/secrets/envelope-cipher.ts'
+import { createKeyProvider } from '../infrastructure/secrets/key-provider.ts'
+import { createSettingsStore } from '../infrastructure/settings-store.ts'
 import { createJobRunner } from '../jobs/job-runner.ts'
 import type { JobRunner } from '../jobs/job-runner.ts'
 import { createSweepJob } from '../jobs/sweep-expired.ts'
@@ -72,6 +75,9 @@ export interface ServerHarness {
 
 export const HARNESS_NOW = new Date('2026-01-01T00:00:00.000Z')
 
+/** Thirty-two fixed bytes: a real key, and obviously a test's. */
+export const HARNESS_MASTER_KEY = Buffer.alloc(32, 7).toString('base64')
+
 export interface HarnessOptions {
   /**
    * Overrides the deliberately enormous default budget, for a test that is
@@ -100,6 +106,10 @@ export async function createServerHarness(options: HarnessOptions = {}): Promise
     // trip it. The limits themselves are tested in `auth.integration.test.ts`
     // and `plugins/rate-limit.test.ts`, against their own configuration.
     AUTH_RATE_LIMIT_MAX: '1000',
+    // A real key rather than the development fallback, so an integration test
+    // exercises the wrapping an operator's instance does — and so the
+    // fallback's warning is not printed once per suite.
+    QUILL_MASTER_KEY: HARNESS_MASTER_KEY,
   })
   const config =
     options.rateLimit === undefined ? loaded : { ...loaded, rateLimit: options.rateLimit }
@@ -113,11 +123,17 @@ export async function createServerHarness(options: HarnessOptions = {}): Promise
     visibility: createVisibleDocumentResolver({ uow }),
     clock,
   })
+  const contentStore = createContentStore({ driver: 'memory' }, clock)
   const deps: AppDependencies = {
     uow,
     searchIndex,
     search: createSearchService(searchIndex),
-    contentStore: createContentStore({ driver: 'memory' }, clock),
+    contentStore,
+    // The real settings adapter over the real content store: an integration
+    // test of a settings write exercises the publish path and its
+    // compare-and-swap, not a fake of them (ADR-034).
+    settings: createSettingsStore(contentStore),
+    secrets: createEnvelopeCipher(await createKeyProvider(config.masterKey)),
     format: createDocumentFormat(),
     clock,
     ids,

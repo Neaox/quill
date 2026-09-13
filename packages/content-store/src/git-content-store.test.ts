@@ -1,4 +1,4 @@
-import type { ContentChange, PublishResult } from '@quill/application'
+import type { ContentChange, PublishResult, PutFileResult } from '@quill/application'
 import { revisionId, type DocumentId, type RevisionId, type WorkspaceId } from '@quill/domain'
 import { beforeEach, describe, expect, it } from 'vitest'
 
@@ -31,6 +31,11 @@ beforeEach(() => {
 })
 
 function published(result: PublishResult): RevisionId {
+  if (result.kind !== 'published') throw new Error(`Expected a revision, got ${result.kind}`)
+  return result.revision
+}
+
+function writtenRevision(result: PutFileResult): RevisionId {
   if (result.kind !== 'published') throw new Error(`Expected a revision, got ${result.kind}`)
   return result.revision
 }
@@ -842,3 +847,161 @@ async function commitMessage(objects: ObjectStore, revision: RevisionId): Promis
 function decodeTreeOid(commit: string): string {
   return commit.slice(commit.indexOf('tree ') + 5, commit.indexOf('tree ') + 45)
 }
+
+describe('non-document files', () => {
+  const SETTINGS = '.quill/organisation.yaml'
+
+  async function putSettings(
+    text: string,
+    expected: string | null,
+    extra: { summary?: string; changeNote?: string } = {},
+  ): Promise<PutFileResult> {
+    return await store.putFile({
+      workspaceId: workspace,
+      path: SETTINGS,
+      text,
+      expected,
+      author: AUTHOR,
+      ...extra,
+    })
+  }
+
+  it('is null before the file exists', async () => {
+    expect(await store.readFile(workspace, SETTINGS)).toBeNull()
+  })
+
+  it('writes a file into an unborn workspace and reads it back', async () => {
+    const result = await putSettings('version: 1\n', null)
+    expect(result.kind).toBe('published')
+    expect(await store.readFile(workspace, SETTINGS)).toMatchObject({
+      path: SETTINGS,
+      text: 'version: 1\n',
+    })
+  })
+
+  it('is null for a path the tree does not hold', async () => {
+    await putSettings('version: 1\n', null)
+    expect(await store.readFile(workspace, '.quill/nothing.yaml')).toBeNull()
+  })
+
+  it('is null for a workspace that has revisions but no such file', async () => {
+    await publishDocument(ONBOARDING, 'a.md', 'Onboarding', 'One.', null)
+    expect(await store.readFile(workspace, SETTINGS)).toBeNull()
+  })
+
+  it('reads the file as it stood at an earlier revision', async () => {
+    const first = writtenRevision(await putSettings('version: 1\n', null))
+    await putSettings('version: 2\n', 'version: 1\n')
+    expect(await store.readFile(workspace, SETTINGS, first)).toMatchObject({ text: 'version: 1\n' })
+    expect(await store.readFile(workspace, SETTINGS)).toMatchObject({ text: 'version: 2\n' })
+  })
+
+  it('is null at a revision the store does not hold', async () => {
+    await putSettings('version: 1\n', null)
+    expect(await store.readFile(workspace, SETTINGS, revisionId('a'.repeat(40)))).toBeNull()
+  })
+
+  it('refuses a write whose expectation no longer holds, and says what it says now', async () => {
+    await putSettings('version: 1\n', null)
+    const result = await putSettings('version: 3\n', 'version: 2\n')
+    expect(result).toEqual({
+      kind: 'stale',
+      current: { path: SETTINGS, text: 'version: 1\n', revision: await store.head(workspace) },
+    })
+  })
+
+  it('refuses a create when the file is already there', async () => {
+    await putSettings('version: 1\n', null)
+    expect((await putSettings('version: 2\n', null)).kind).toBe('stale')
+  })
+
+  it('refuses a replacement when the file has gone', async () => {
+    expect(await putSettings('version: 2\n', 'version: 1\n')).toEqual({
+      kind: 'stale',
+      current: null,
+    })
+  })
+
+  it('leaves the documents beside it untouched', async () => {
+    const first = await publishDocument(ONBOARDING, 'a.md', 'Onboarding', 'One.', null)
+    await putSettings('version: 1\n', null)
+    expect(await store.read(workspace, ONBOARDING)).toMatchObject({ path: 'a.md' })
+    expect(await store.head(workspace)).not.toBe(first)
+  })
+
+  it('commits with a subject and the change note, and no document trailer', async () => {
+    const revision = writtenRevision(
+      await putSettings('version: 1\n', null, {
+        summary: 'Set the organisation theme',
+        changeNote: 'Brand refresh',
+      }),
+    )
+    const message = await commitMessage(await provider.forWorkspace(workspace), revision)
+    expect(message).toBe(`Set the organisation theme\n\n${CHANGE_NOTE_TRAILER}: Brand refresh\n`)
+    expect(message).not.toContain(DOCUMENT_ID_TRAILER)
+  })
+
+  it('names the path when no summary is given, and adds no trailers at all', async () => {
+    const revision = writtenRevision(await putSettings('version: 1\n', null))
+    const message = await commitMessage(await provider.forWorkspace(workspace), revision)
+    expect(message).toBe(`Update ${SETTINGS}\n`)
+  })
+
+  it('normalises the path it is given', async () => {
+    await store.putFile({
+      workspaceId: workspace,
+      path: '.quill/café.yaml',
+      text: 'version: 1\n',
+      expected: null,
+      author: AUTHOR,
+    })
+    expect(await store.readFile(workspace, '.quill/café.yaml')).not.toBeNull()
+  })
+
+  it('re-checks the expectation after losing a compare-and-swap race', async () => {
+    const slept: number[] = []
+    const retrying = new GitContentStore({
+      provider: new ContendedProvider(2),
+      now: NOW,
+      sleep: async (ms) => void slept.push(ms),
+      random: () => 0.5,
+    })
+    const result = await retrying.putFile({
+      workspaceId: workspace,
+      path: SETTINGS,
+      text: 'version: 1\n',
+      expected: null,
+      author: AUTHOR,
+    })
+    expect(result.kind).toBe('published')
+    expect(slept).toEqual([2, 3])
+  })
+
+  it('gives up after the attempt limit rather than spinning', async () => {
+    const retrying = new GitContentStore({
+      provider: new ContendedProvider(Number.POSITIVE_INFINITY),
+      now: NOW,
+      random: JITTER,
+      sleep: async () => undefined,
+      maxPublishAttempts: 3,
+    })
+    await expect(
+      retrying.putFile({
+        workspaceId: workspace,
+        path: SETTINGS,
+        text: 'version: 1\n',
+        expected: null,
+        author: AUTHOR,
+      }),
+    ).rejects.toThrow(/lost 3 compare-and-swap races/)
+  })
+
+  it('lets only one of two concurrent writers of the same expectation through', async () => {
+    await putSettings('version: 1\n', null)
+    const [first, second] = await Promise.all([
+      putSettings('version: 2\n', 'version: 1\n'),
+      putSettings('version: 3\n', 'version: 1\n'),
+    ])
+    expect([first.kind, second.kind].toSorted()).toEqual(['published', 'stale'])
+  })
+})

@@ -3,7 +3,6 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { BRAND } from '@quill/brand'
 
 import { buildApp } from './app.ts'
-import { createContentStore } from './infrastructure/content-store.ts'
 import { createHasher } from './infrastructure/hasher.ts'
 import { createDocumentFormat } from './infrastructure/markdown/document-format.ts'
 import { createTokenService } from './auth/tokens.ts'
@@ -21,6 +20,7 @@ import {
   createFakeClock,
   createFakeIdGenerator,
   createRecordingMailer,
+  inMemorySettings,
 } from './test-support/fakes.ts'
 
 /** Nothing in these tests searches; the engine is present because `AppDependencies` is one shape. */
@@ -83,7 +83,7 @@ describe('server with dependencies', () => {
       hasher: createHasher(),
       tokens: createTokenService(),
       shareLinkPolicy: { allowed: () => true },
-      contentStore: createContentStore({ driver: 'memory' }, clock),
+      ...(await inMemorySettings(clock, config)),
       format: createDocumentFormat(),
       searchIndex: SEARCH_INDEX,
       search: createSearchService(SEARCH_INDEX),
@@ -149,7 +149,7 @@ describe('trusting what is in front of the server', () => {
       hasher: createHasher(),
       tokens: createTokenService(),
       shareLinkPolicy: { allowed: () => true },
-      contentStore: createContentStore({ driver: 'memory' }, clock),
+      ...(await inMemorySettings(clock, config)),
       format: createDocumentFormat(),
       searchIndex: SEARCH_INDEX,
       search: createSearchService(SEARCH_INDEX),

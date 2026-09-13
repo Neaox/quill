@@ -10,17 +10,21 @@ import { loadConfig } from './config.ts'
  * for the last two under `NODE_ENV=production` (review finding M12), so every
  * production-shaped test starts from here.
  */
+const A_KEY = Buffer.alloc(32, 1).toString('base64')
+const ANOTHER_KEY = Buffer.alloc(32, 2).toString('base64')
+
 const PRODUCTION = {
   NODE_ENV: 'production',
   DATABASE_URL: 'postgres://x:y@db:5432/quill',
   MAIL_DRIVER: 'smtp',
   SMTP_HOST: 'smtp.example.com',
   SMTP_FROM: 'noreply@example.com',
+  QUILL_MASTER_KEY: A_KEY,
 }
 
 describe('loadConfig', () => {
   it('applies defaults when the environment is empty', () => {
-    expect(loadConfig({})).toEqual({
+    expect(loadConfig({}, () => undefined)).toEqual({
       host: '0.0.0.0',
       port: 3000,
       logLevel: 'info',
@@ -46,6 +50,7 @@ describe('loadConfig', () => {
       mailer: { driver: 'dev' },
       contentStore: { driver: 'filesystem', path: './data/content' },
       shareLinks: { enabled: true },
+      masterKey: { driver: 'environment', keys: [Buffer.alloc(32).toString('base64')] },
     })
   })
 
@@ -66,6 +71,7 @@ describe('loadConfig', () => {
       DATABASE_URL: 'postgres://x:y@db:5432/quill',
       SESSION_COOKIE_NAME: '__Host-custom_session',
       SESSION_TTL_MS: '1000',
+      QUILL_MASTER_KEY: A_KEY,
     })
     expect(config.appUrl).toBe('https://docs.example.com')
     expect(config.databaseUrl).toBe('postgres://x:y@db:5432/quill')
@@ -84,7 +90,7 @@ describe('loadConfig', () => {
   // the clear.
   describe('cookie security', () => {
     it('derives Secure and the __Host- prefix from an https APP_URL', () => {
-      const config = loadConfig({ APP_URL: 'https://app.example.com' })
+      const config = loadConfig({ APP_URL: 'https://app.example.com', QUILL_MASTER_KEY: A_KEY })
       expect(config.session.secureCookie).toBe(true)
       expect(config.session.cookieName).toBe(`__Host-${BRAND.slug}_session`)
       expect(config.https).toBe(true)
@@ -108,14 +114,19 @@ describe('loadConfig', () => {
 
     it('ignores NODE_ENV entirely', () => {
       expect(loadConfig(PRODUCTION).session.secureCookie).toBe(false)
-      expect(loadConfig({ APP_URL: 'https://app.example.com' }).session.secureCookie).toBe(true)
+      expect(
+        loadConfig({ APP_URL: 'https://app.example.com', QUILL_MASTER_KEY: A_KEY }).session
+          .secureCookie,
+      ).toBe(true)
     })
 
     it('still honours the deprecated SECURE_COOKIES, with a warning', () => {
       const warnings: string[] = []
       const warn = (message: string): void => void warnings.push(message)
 
-      expect(loadConfig({ SECURE_COOKIES: 'true' }, warn).session.secureCookie).toBe(true)
+      expect(
+        loadConfig({ SECURE_COOKIES: 'true', QUILL_MASTER_KEY: A_KEY }, warn).session.secureCookie,
+      ).toBe(true)
       expect(warnings).toHaveLength(1)
       expect(warnings[0]).toMatch(/SECURE_COOKIES is deprecated/)
     })
@@ -130,7 +141,7 @@ describe('loadConfig', () => {
       const warnings: string[] = []
       const warn = (message: string): void => void warnings.push(message)
       const config = loadConfig(
-        { APP_URL: 'https://app.example.com', SECURE_COOKIES: 'false' },
+        { APP_URL: 'https://app.example.com', SECURE_COOKIES: 'false', QUILL_MASTER_KEY: A_KEY },
         warn,
       )
 
@@ -142,7 +153,11 @@ describe('loadConfig', () => {
     /** Likewise M14: the prefix is a promise the browser enforces. */
     it('refuses a cookie name without the __Host- prefix on a secure instance', () => {
       expect(() =>
-        loadConfig({ APP_URL: 'https://app.example.com', SESSION_COOKIE_NAME: 'custom_session' }),
+        loadConfig({
+          APP_URL: 'https://app.example.com',
+          SESSION_COOKIE_NAME: 'custom_session',
+          QUILL_MASTER_KEY: A_KEY,
+        }),
       ).toThrow(/must start with "__Host-"/)
       // On a plain-http localhost instance there is no promise to break.
       expect(loadConfig({ SESSION_COOKIE_NAME: 'custom_session' }).session.cookieName).toBe(
@@ -151,10 +166,18 @@ describe('loadConfig', () => {
     })
 
     it('warns through process.emitWarning when no sink is given', async () => {
+      // Warnings are delivered on the next tick and this process emits more
+      // than one of them, so wait for the one this test is about rather than
+      // for whichever arrives first.
       const emitted = new Promise<string>((resolve) => {
-        process.once('warning', (warning: Error) => resolve(warning.message))
+        const listener = (warning: Error): void => {
+          if (!/SECURE_COOKIES is deprecated/.test(warning.message)) return
+          process.off('warning', listener)
+          resolve(warning.message)
+        }
+        process.on('warning', listener)
       })
-      loadConfig({ SECURE_COOKIES: 'true' })
+      loadConfig({ SECURE_COOKIES: 'true', QUILL_MASTER_KEY: A_KEY })
       expect(await emitted).toMatch(/SECURE_COOKIES is deprecated/)
     })
 
@@ -164,7 +187,7 @@ describe('loadConfig', () => {
   })
 
   it('serves the API docs everywhere but production', () => {
-    expect(loadConfig({}).serveApiDocs).toBe(true)
+    expect(loadConfig({}, () => undefined).serveApiDocs).toBe(true)
     expect(loadConfig(PRODUCTION).serveApiDocs).toBe(false)
   })
 
@@ -189,8 +212,98 @@ describe('loadConfig', () => {
       expect(() => loadConfig(withoutMailer)).toThrow(/MAIL_DRIVER=dev logs sign-in/)
     })
 
+    it('requires QUILL_MASTER_KEY under NODE_ENV=production', () => {
+      const { QUILL_MASTER_KEY: _key, ...withoutKey } = PRODUCTION
+      expect(() => loadConfig(withoutKey)).toThrow(/QUILL_MASTER_KEY is required/)
+    })
+
     it('boots when both are set properly', () => {
       expect(loadConfig(PRODUCTION).mailer).toMatchObject({ driver: 'smtp' })
+    })
+  })
+
+  /**
+   * The master key wraps every secret entered in the product (ADR-034). It is
+   * the one thing a restore cannot rebuild from the content store, so
+   * production states it or refuses to start, and a laptop gets an obviously
+   * worthless key and a warning.
+   */
+  describe('QUILL_MASTER_KEY', () => {
+    it('falls back to the all-zero development key, loudly', () => {
+      const warnings: string[] = []
+      const config = loadConfig({}, (message) => void warnings.push(message))
+      expect(config.masterKey).toEqual({
+        driver: 'environment',
+        keys: [Buffer.alloc(32).toString('base64')],
+      })
+      expect(warnings.some((message) => /QUILL_MASTER_KEY is unset/.test(message))).toBe(true)
+    })
+
+    it('reads the current key and says nothing', () => {
+      const warnings: string[] = []
+      const config = loadConfig(
+        { QUILL_MASTER_KEY: A_KEY },
+        (message) => void warnings.push(message),
+      )
+      expect(config.masterKey).toEqual({ driver: 'environment', keys: [A_KEY] })
+      expect(warnings).toEqual([])
+    })
+
+    it('keeps retired keys after the current one, so a rotation can unwrap', () => {
+      const config = loadConfig({
+        QUILL_MASTER_KEY: A_KEY,
+        QUILL_MASTER_KEY_PREVIOUS: ` ${ANOTHER_KEY} , `,
+      })
+      expect(config.masterKey).toEqual({ driver: 'environment', keys: [A_KEY, ANOTHER_KEY] })
+    })
+
+    /**
+     * The "real deployment" signal is the app's own URL, not `NODE_ENV`: the
+     * same source the session cookie takes its `Secure` flag from (ADR-011),
+     * so an instance cannot be strict about its cookies and lax about the key
+     * that wraps every secret in it.
+     */
+    it('requires a key on any instance that is not loopback, whatever NODE_ENV says', () => {
+      expect(() => loadConfig({ APP_URL: 'https://docs.example.com' })).toThrow(
+        /required on an instance serving "docs.example.com"/,
+      )
+      // No NODE_ENV at all: the URL is the whole signal.
+      expect(() =>
+        loadConfig({ APP_URL: 'https://docs.example.com', QUILL_MASTER_KEY: A_KEY }),
+      ).not.toThrow()
+    })
+
+    it('refuses the published development key by value on a real deployment', () => {
+      const developmentKey = Buffer.alloc(32).toString('base64')
+      expect(() =>
+        loadConfig({ APP_URL: 'https://docs.example.com', QUILL_MASTER_KEY: developmentKey }),
+      ).toThrow(/all-zero development key/)
+      expect(() => loadConfig({ ...PRODUCTION, QUILL_MASTER_KEY: developmentKey })).toThrow(
+        /all-zero development key/,
+      )
+      // On a laptop it is exactly what is expected, stated or not.
+      expect(() => loadConfig({ QUILL_MASTER_KEY: developmentKey }, () => undefined)).not.toThrow()
+    })
+
+    it('reads a key file instead when the driver says so', () => {
+      expect(
+        loadConfig({ MASTER_KEY_DRIVER: 'file', QUILL_MASTER_KEY_FILE: '/run/secrets/key' }),
+      ).toMatchObject({ masterKey: { driver: 'file', path: '/run/secrets/key' } })
+    })
+
+    it('refuses a file driver with no file', () => {
+      expect(() => loadConfig({ MASTER_KEY_DRIVER: 'file' })).toThrow(
+        /QUILL_MASTER_KEY_FILE is required/,
+      )
+      expect(() => loadConfig({ MASTER_KEY_DRIVER: 'file', QUILL_MASTER_KEY_FILE: '' })).toThrow(
+        /QUILL_MASTER_KEY_FILE is required/,
+      )
+    })
+
+    it('refuses a driver it does not have', () => {
+      expect(() => loadConfig({ MASTER_KEY_DRIVER: 'kms' })).toThrow(
+        /MASTER_KEY_DRIVER must be "environment" or "file"/,
+      )
     })
   })
 

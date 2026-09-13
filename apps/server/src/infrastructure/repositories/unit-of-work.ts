@@ -15,6 +15,7 @@ import { createMagicLinkRepository } from './magic-link-repository.ts'
 import { createOutboxWriter } from './outbox-writer.ts'
 import { createRenderCacheRepository } from './render-cache-repository.ts'
 import { createRevisionsIndexRepository } from './revisions-index-repository.ts'
+import { createSecretRepository } from './secret-repository.ts'
 import { createSessionRepository } from './session-repository.ts'
 import { createShareLinkRepository } from './share-link-repository.ts'
 import { createUnitRepository } from './unit-repository.ts'
@@ -51,6 +52,7 @@ function buildBundle(db: DrizzleClient, pool: pg.Pool, ids: IdGenerator): Reposi
     revisions: createRevisionsIndexRepository(db),
     renderCache: createRenderCacheRepository(db),
     documentLinks: createDocumentLinksRepository(db),
+    secrets: createSecretRepository(db),
     outbox: createOutboxWriter(db),
     audit: createAuditWriter(db),
   }

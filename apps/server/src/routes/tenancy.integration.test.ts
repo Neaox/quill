@@ -3,7 +3,6 @@ import { userId } from '@quill/domain'
 import type { FastifyInstance } from 'fastify'
 
 import { buildApp } from '../app.ts'
-import { createContentStore } from '../infrastructure/content-store.ts'
 import { createHasher } from '../infrastructure/hasher.ts'
 import { createDocumentFormat } from '../infrastructure/markdown/document-format.ts'
 import { createTokenService } from '../auth/tokens.ts'
@@ -23,6 +22,7 @@ import {
   createFakeClock,
   createFakeIdGenerator,
   createRecordingMailer,
+  inMemorySettings,
 } from '../test-support/fakes.ts'
 
 /** Nothing in these tests searches; the engine is present because `AppDependencies` is one shape. */
@@ -61,7 +61,7 @@ beforeAll(async () => {
     hasher: createHasher(),
     tokens: createTokenService(),
     shareLinkPolicy: { allowed: () => true },
-    contentStore: createContentStore({ driver: 'memory' }, clock),
+    ...(await inMemorySettings(clock, config)),
     format: createDocumentFormat(),
     searchIndex: SEARCH_INDEX,
     search: createSearchService(SEARCH_INDEX),

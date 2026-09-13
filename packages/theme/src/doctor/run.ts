@@ -11,8 +11,10 @@ export type RuleResult = {
   readonly status: RuleStatus
   readonly detail: string
   /**
-   * True for the one rule ADR-028 enforces by default. An enforced rule that
-   * fails is a blocking problem; everything else is advice a tenant may keep.
+   * True for the one rule ADR-028 enforces by default, on an instance that
+   * has not switched that enforcement to advisory. It marks the finding a
+   * tenant is expected to act on rather than keep; it does not mean anything
+   * refuses to save, because the doctor advises and never blocks.
    */
   readonly enforced: boolean
 }
@@ -24,7 +26,15 @@ export type ThemeReport = {
   readonly warnings: readonly RuleResult[]
   /** Every place the generator changed what the seeds asked for. */
   readonly adjustments: readonly Adjustment[]
-  /** True when no enforced rule failed, so the theme may be saved. */
+  /**
+   * True when no enforced rule warned.
+   *
+   * It used to say "so the theme may be saved", which is not what happens:
+   * ADR-028 is explicit that the doctor advises and does not block, and
+   * `updateOrganisationSettings` saves a theme whether this holds or not. It
+   * is what the theme editor puts in front of the administrator — beside the
+   * reason, and beside the instance switch that makes the rule advisory.
+   */
   readonly enforcedRulesHold: boolean
 }
 

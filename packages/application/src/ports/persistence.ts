@@ -11,6 +11,7 @@ import type {
 } from '@quill/domain'
 
 import type { RenderedContent } from './document-format.ts'
+import type { SecretsRepository } from './secrets.ts'
 
 /**
  * Repository ports for everything the server persists in Postgres (plan
@@ -884,6 +885,7 @@ export interface RepositoryBundle {
   readonly revisions: RevisionsIndexRepository
   readonly renderCache: RenderCacheRepository
   readonly documentLinks: DocumentLinksRepository
+  readonly secrets: SecretsRepository
   readonly outbox: OutboxWriter
   readonly audit: AuditWriter
 }

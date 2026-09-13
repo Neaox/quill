@@ -14,6 +14,7 @@ import { lockRoutes } from './routes/locks.ts'
 import { meRoutes } from './routes/me.ts'
 import { searchRoutes } from './routes/search.ts'
 import { shareLinkRoutes, SHARE_SCHEMAS } from './routes/share-links.ts'
+import { settingsRoutes } from './routes/settings.ts'
 import { unitRoutes } from './routes/units.ts'
 import { workspaceRoutes } from './routes/workspaces.ts'
 import { registerCsrfProtection } from './plugins/csrf.ts'
@@ -152,6 +153,7 @@ export function buildApp(options: AppOptions = {}): FastifyInstance {
     app.register(lockRoutes(deps))
     app.register(searchRoutes(deps))
     app.register(shareLinkRoutes(deps))
+    app.register(settingsRoutes(deps))
   }
 
   return app

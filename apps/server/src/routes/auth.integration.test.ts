@@ -10,7 +10,6 @@ import { MAIL_REQUESTED } from '@quill/application'
 import { hashSessionToken } from '../auth/session-token.ts'
 import { createSendMailConsumer } from '../infrastructure/outbox/send-mail.ts'
 import { pollOutboxOnce } from '../infrastructure/outbox/poller.ts'
-import { createContentStore } from '../infrastructure/content-store.ts'
 import { createHasher } from '../infrastructure/hasher.ts'
 import { createDocumentFormat } from '../infrastructure/markdown/document-format.ts'
 import { loadConfig } from '../config.ts'
@@ -26,6 +25,7 @@ import {
   createFakeClock,
   createFakeIdGenerator,
   createRecordingMailer,
+  inMemorySettings,
 } from '../test-support/fakes.ts'
 import type { FakeBreachedPasswordChecker, FakeClock } from '../test-support/fakes.ts'
 
@@ -56,7 +56,7 @@ beforeAll(async () => {
     hasher: createHasher(),
     tokens: createTokenService(),
     shareLinkPolicy: { allowed: () => true },
-    contentStore: createContentStore({ driver: 'memory' }, clock),
+    ...(await inMemorySettings(clock, config)),
     format: createDocumentFormat(),
     searchIndex: SEARCH_INDEX,
     search: createSearchService(SEARCH_INDEX),

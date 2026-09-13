@@ -114,7 +114,11 @@ describe('a workspace on disk', () => {
     expect(results.every((result) => result.kind === 'published')).toBe(true)
     expect(await store.listTree(workspace)).toHaveLength(9)
     for (const id of ids) expect(await store.read(workspace, id)).not.toBeNull()
-  })
+    // Nine publishes against a real lock file, each losing races and backing
+    // off: the slowest test in the suite, and the one most at the mercy of a
+    // loaded machine. Its own budget, so it fails when it deadlocks and not
+    // when it is unlucky.
+  }, 60_000)
 })
 
 /**
@@ -151,7 +155,9 @@ describe('two publishers that share nothing but the repository', () => {
     )
     expect(await two.listTree(workspace)).toHaveLength(9)
     for (const id of ids) expect(await one.read(workspace, id)).not.toBeNull()
-  })
+    // Two stores with no shared queue, contending one lock file: the same
+    // reason as above for a budget of its own.
+  }, 60_000)
 
   it('tells a leaked lock apart from a publisher that is merely slow', async () => {
     const directory = join(root, `leaked-${roots}`)

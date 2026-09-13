@@ -96,6 +96,13 @@ function editorRoutes(overrides: FakeRoutes = {}): FakeRoutes {
     'GET /api/documents/{id}': document,
     'GET /api/workspaces/{workspaceId}/documents': () => jsonResponse(200, []),
     'GET /api/documents/{id}/draft': draft(),
+    // Typing schedules an autosave, and a test that finishes before the
+    // debounce fires would otherwise leave the save rejecting against a route
+    // that is not there — an unhandled rejection that fails the whole run.
+    // The tests that are *about* autosave override this and watch what it
+    // receives.
+    'PUT /api/documents/{id}/draft': () =>
+      jsonResponse(200, { draftVersion: 4, updatedAt: '2026-02-03T00:05:00.000Z' }),
     'GET /api/documents/{id}/envelope': envelope(),
     'POST /api/documents/{id}/lock/acquire': () => jsonResponse(200, { lock: LOCK }),
     'DELETE /api/documents/{id}/lock': () => new Response(null, { status: 204 }),
