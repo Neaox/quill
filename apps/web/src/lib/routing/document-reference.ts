@@ -166,3 +166,45 @@ export function documentLink(
     search: search.rev === undefined ? {} : { rev: search.rev },
   }
 }
+
+/**
+ * Where the target of a share link is read: the token, and nothing else.
+ *
+ * The token *is* the capability, so it is the only segment the address needs,
+ * and neither of the two share addresses carries a workspace or a collection
+ * — a reader holding a link can reach exactly what it opens and nothing
+ * around it (`docs/product/surfaces.md`).
+ */
+export type ShareLinkTargetTarget = {
+  readonly to: '/share/$token'
+  readonly params: { readonly token: string }
+}
+
+export function shareLinkTargetLink(token: string): ShareLinkTargetTarget {
+  return { to: '/share/$token', params: { token } }
+}
+
+/**
+ * Where a document *inside* a subtree share link is read.
+ *
+ * The reference is built the same way every other address is — the current
+ * title's slug and the document's short key (ADR-035) — so a shared page
+ * reads like an internal one and the API resolves it by the same rule. It is
+ * spelled here rather than concatenated at the call site for the reason the
+ * rest of this module exists: a link is a route and its parameters, and the
+ * router encodes it.
+ */
+export type SharedDocumentLinkTarget = {
+  readonly to: '/share/$token/d/$documentRef'
+  readonly params: { readonly token: string; readonly documentRef: string }
+}
+
+export function sharedDocumentLink(
+  token: string,
+  document: ReferencableDocument,
+): SharedDocumentLinkTarget {
+  return {
+    to: '/share/$token/d/$documentRef',
+    params: { token, documentRef: documentReference(document) },
+  }
+}
