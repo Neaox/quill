@@ -175,4 +175,19 @@ describe('Dialog', () => {
     expect(within(dialog).getByRole('button', { name: 'Dismiss' })).toBeInTheDocument()
     expect(dialog).toHaveClass('max-w-sm')
   })
+
+  it('raises a dialog opened from inside another one above it', async () => {
+    render(
+      <Dialog open title="Revoke this link?" elevation="nested">
+        Body.
+      </Dialog>,
+    )
+
+    // A modal earns its press by suspending what is behind it, and the
+    // dimming is how that is said — so a second dialog's overlay has to paint
+    // above the first one's panel, not beneath it.
+    const dialog = await screen.findByRole('dialog')
+    expect(dialog).toHaveClass('z-70')
+    expect(document.querySelector('.dialog-overlay')).toHaveClass('z-60')
+  })
 })

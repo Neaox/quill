@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react'
 
-import { Button, Callout, Dialog, Spinner } from '@quill/ui'
+import { Button, Callout, Dialog, Spinner, type DialogElevation } from '@quill/ui'
 
 import { FormError } from '../../lib/forms/form-error.tsx'
 
@@ -16,11 +16,28 @@ export interface DeleteObstacle {
   readonly action: string
 }
 
-export interface ConfirmDeleteDialogProps {
+/**
+ * How the dialog is headed, and it is one or the other.
+ *
+ * Almost every use deletes a thing that has a name, and says so: `Delete
+ * “Guides”?`. An act with its own word — revoking a share link is not
+ * deleting a thing called something — gives the whole title instead, and
+ * then there is no name to pass. Expressed as a pair so that neither can be
+ * supplied pointlessly, which is what passing a `name` nothing renders was.
+ */
+export type ConfirmDeleteNaming =
+  | { readonly name: string; readonly title?: undefined }
+  | { readonly title: string; readonly name?: undefined }
+
+export type ConfirmDeleteDialogProps = ConfirmDeleteDialogFields & ConfirmDeleteNaming
+
+interface ConfirmDeleteDialogFields {
   readonly open: boolean
   readonly onOpenChange: (open: boolean) => void
-  /** The thing's name, for the title: `Delete “Guides”?` */
-  readonly name: string
+  /** The destructive button's label, when "Delete" is not the word for it. */
+  readonly confirmLabel?: string
+  /** `nested` when this confirmation is opened from inside another dialog. */
+  readonly elevation?: DialogElevation
   /** The rule, stated before the button is pressed rather than after. */
   readonly description: string
   /**
@@ -48,28 +65,33 @@ export interface ConfirmDeleteDialogProps {
  * count, and the write; everything else, including "a refused delete is not a
  * Delete button", is here.
  */
-export function ConfirmDeleteDialog({
-  open,
-  onOpenChange,
-  name,
-  description,
-  obstacle,
-  checking = false,
-  children,
-  isPending,
-  error,
-  onConfirm,
-}: ConfirmDeleteDialogProps) {
+export function ConfirmDeleteDialog(props: ConfirmDeleteDialogProps) {
+  const {
+    open,
+    onOpenChange,
+    confirmLabel = 'Delete',
+    elevation,
+    description,
+    obstacle,
+    checking = false,
+    children,
+    isPending,
+    error,
+    onConfirm,
+  } = props
+
   function close() {
     onOpenChange(false)
   }
 
+  const heading = props.title ?? `Delete “${props.name}”?`
   const blocked = checking || obstacle !== undefined
 
   return (
     <Dialog
-      title={`Delete “${name}”?`}
+      title={heading}
       description={description}
+      {...(elevation === undefined ? {} : { elevation })}
       open={open}
       onOpenChange={(next) => {
         if (!next) close()
@@ -83,7 +105,7 @@ export function ConfirmDeleteDialog({
               Cancel
             </Button>
             <Button variant="danger" loading={isPending} onClick={onConfirm}>
-              Delete
+              {confirmLabel}
             </Button>
           </>
         )

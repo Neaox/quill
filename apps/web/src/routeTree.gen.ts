@@ -17,10 +17,13 @@ import { Route as ResetPasswordRouteImport } from './routes/reset-password'
 import { Route as SignInRouteImport } from './routes/sign-in'
 import { Route as SignUpRouteImport } from './routes/sign-up'
 import { Route as VerifyEmailRouteImport } from './routes/verify-email'
+import { Route as ShareTokenRouteRouteImport } from './routes/share/$token/route'
 import { Route as AuthenticatedAdminOrganisationRouteImport } from './routes/_authenticated/admin/organisation'
 import { Route as AuthenticatedWWorkspaceSlugRouteRouteImport } from './routes/_authenticated/w/$workspaceSlug/route'
+import { Route as ShareTokenIndexRouteImport } from './routes/share/$token/index'
 import { Route as AuthenticatedWWorkspaceSlugIndexRouteImport } from './routes/_authenticated/w/$workspaceSlug/index'
 import { Route as AuthenticatedWWorkspaceSlugSearchRouteImport } from './routes/_authenticated/w/$workspaceSlug/search'
+import { Route as ShareTokenDDocumentRefIndexRouteImport } from './routes/share/$token/d/$documentRef/index'
 import { Route as AuthenticatedWWorkspaceSlugDDocumentIdIndexRouteImport } from './routes/_authenticated/w/$workspaceSlug/d/$documentId/index'
 import { Route as AuthenticatedWWorkspaceSlugDDocumentIdEditRouteImport } from './routes/_authenticated/w/$workspaceSlug/d/$documentId/edit'
 import { Route as AuthenticatedWWorkspaceSlugDDocumentIdPresentRouteImport } from './routes/_authenticated/w/$workspaceSlug_/d/$documentId/present'
@@ -64,6 +67,11 @@ const VerifyEmailRoute = VerifyEmailRouteImport.update({
   path: '/verify-email',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ShareTokenRouteRoute = ShareTokenRouteRouteImport.update({
+  id: '/share/$token',
+  path: '/share/$token',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const AuthenticatedAdminOrganisationRoute =
   AuthenticatedAdminOrganisationRouteImport.update({
     id: '/admin/organisation',
@@ -76,6 +84,11 @@ const AuthenticatedWWorkspaceSlugRouteRoute =
     path: '/w/$workspaceSlug',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
+const ShareTokenIndexRoute = ShareTokenIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => ShareTokenRouteRoute,
+} as any)
 const AuthenticatedWWorkspaceSlugIndexRoute =
   AuthenticatedWWorkspaceSlugIndexRouteImport.update({
     id: '/',
@@ -87,6 +100,12 @@ const AuthenticatedWWorkspaceSlugSearchRoute =
     id: '/search',
     path: '/search',
     getParentRoute: () => AuthenticatedWWorkspaceSlugRouteRoute,
+  } as any)
+const ShareTokenDDocumentRefIndexRoute =
+  ShareTokenDDocumentRefIndexRouteImport.update({
+    id: '/d/$documentRef/',
+    path: '/d/$documentRef/',
+    getParentRoute: () => ShareTokenRouteRoute,
   } as any)
 const AuthenticatedWWorkspaceSlugDDocumentIdIndexRoute =
   AuthenticatedWWorkspaceSlugDDocumentIdIndexRouteImport.update({
@@ -115,10 +134,13 @@ export interface FileRoutesByFullPath {
   '/sign-in': typeof SignInRoute
   '/sign-up': typeof SignUpRoute
   '/verify-email': typeof VerifyEmailRoute
+  '/share/$token': typeof ShareTokenRouteRouteWithChildren
   '/w/$workspaceSlug': typeof AuthenticatedWWorkspaceSlugRouteRouteWithChildren
   '/admin/organisation': typeof AuthenticatedAdminOrganisationRoute
+  '/share/$token/': typeof ShareTokenIndexRoute
   '/w/$workspaceSlug/search': typeof AuthenticatedWWorkspaceSlugSearchRoute
   '/w/$workspaceSlug/': typeof AuthenticatedWWorkspaceSlugIndexRoute
+  '/share/$token/d/$documentRef/': typeof ShareTokenDDocumentRefIndexRoute
   '/w/$workspaceSlug/d/$documentId/edit': typeof AuthenticatedWWorkspaceSlugDDocumentIdEditRoute
   '/w/$workspaceSlug/d/$documentId/present': typeof AuthenticatedWWorkspaceSlugDDocumentIdPresentRoute
   '/w/$workspaceSlug/d/$documentId/': typeof AuthenticatedWWorkspaceSlugDDocumentIdIndexRoute
@@ -132,8 +154,10 @@ export interface FileRoutesByTo {
   '/sign-up': typeof SignUpRoute
   '/verify-email': typeof VerifyEmailRoute
   '/admin/organisation': typeof AuthenticatedAdminOrganisationRoute
+  '/share/$token': typeof ShareTokenIndexRoute
   '/w/$workspaceSlug/search': typeof AuthenticatedWWorkspaceSlugSearchRoute
   '/w/$workspaceSlug': typeof AuthenticatedWWorkspaceSlugIndexRoute
+  '/share/$token/d/$documentRef': typeof ShareTokenDDocumentRefIndexRoute
   '/w/$workspaceSlug/d/$documentId/edit': typeof AuthenticatedWWorkspaceSlugDDocumentIdEditRoute
   '/w/$workspaceSlug/d/$documentId/present': typeof AuthenticatedWWorkspaceSlugDDocumentIdPresentRoute
   '/w/$workspaceSlug/d/$documentId': typeof AuthenticatedWWorkspaceSlugDDocumentIdIndexRoute
@@ -148,10 +172,13 @@ export interface FileRoutesById {
   '/sign-in': typeof SignInRoute
   '/sign-up': typeof SignUpRoute
   '/verify-email': typeof VerifyEmailRoute
+  '/share/$token': typeof ShareTokenRouteRouteWithChildren
   '/_authenticated/w/$workspaceSlug': typeof AuthenticatedWWorkspaceSlugRouteRouteWithChildren
   '/_authenticated/admin/organisation': typeof AuthenticatedAdminOrganisationRoute
+  '/share/$token/': typeof ShareTokenIndexRoute
   '/_authenticated/w/$workspaceSlug/search': typeof AuthenticatedWWorkspaceSlugSearchRoute
   '/_authenticated/w/$workspaceSlug/': typeof AuthenticatedWWorkspaceSlugIndexRoute
+  '/share/$token/d/$documentRef/': typeof ShareTokenDDocumentRefIndexRoute
   '/_authenticated/w/$workspaceSlug/d/$documentId/edit': typeof AuthenticatedWWorkspaceSlugDDocumentIdEditRoute
   '/_authenticated/w/$workspaceSlug_/d/$documentId/present': typeof AuthenticatedWWorkspaceSlugDDocumentIdPresentRoute
   '/_authenticated/w/$workspaceSlug/d/$documentId/': typeof AuthenticatedWWorkspaceSlugDDocumentIdIndexRoute
@@ -166,10 +193,13 @@ export interface FileRouteTypes {
     | '/sign-in'
     | '/sign-up'
     | '/verify-email'
+    | '/share/$token'
     | '/w/$workspaceSlug'
     | '/admin/organisation'
+    | '/share/$token/'
     | '/w/$workspaceSlug/search'
     | '/w/$workspaceSlug/'
+    | '/share/$token/d/$documentRef/'
     | '/w/$workspaceSlug/d/$documentId/edit'
     | '/w/$workspaceSlug/d/$documentId/present'
     | '/w/$workspaceSlug/d/$documentId/'
@@ -183,8 +213,10 @@ export interface FileRouteTypes {
     | '/sign-up'
     | '/verify-email'
     | '/admin/organisation'
+    | '/share/$token'
     | '/w/$workspaceSlug/search'
     | '/w/$workspaceSlug'
+    | '/share/$token/d/$documentRef'
     | '/w/$workspaceSlug/d/$documentId/edit'
     | '/w/$workspaceSlug/d/$documentId/present'
     | '/w/$workspaceSlug/d/$documentId'
@@ -198,10 +230,13 @@ export interface FileRouteTypes {
     | '/sign-in'
     | '/sign-up'
     | '/verify-email'
+    | '/share/$token'
     | '/_authenticated/w/$workspaceSlug'
     | '/_authenticated/admin/organisation'
+    | '/share/$token/'
     | '/_authenticated/w/$workspaceSlug/search'
     | '/_authenticated/w/$workspaceSlug/'
+    | '/share/$token/d/$documentRef/'
     | '/_authenticated/w/$workspaceSlug/d/$documentId/edit'
     | '/_authenticated/w/$workspaceSlug_/d/$documentId/present'
     | '/_authenticated/w/$workspaceSlug/d/$documentId/'
@@ -216,6 +251,7 @@ export interface RootRouteChildren {
   SignInRoute: typeof SignInRoute
   SignUpRoute: typeof SignUpRoute
   VerifyEmailRoute: typeof VerifyEmailRoute
+  ShareTokenRouteRoute: typeof ShareTokenRouteRouteWithChildren
 }
 
 declare module '@tanstack/react-router' {
@@ -276,6 +312,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof VerifyEmailRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/share/$token': {
+      id: '/share/$token'
+      path: '/share/$token'
+      fullPath: '/share/$token'
+      preLoaderRoute: typeof ShareTokenRouteRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/_authenticated/admin/organisation': {
       id: '/_authenticated/admin/organisation'
       path: '/admin/organisation'
@@ -290,6 +333,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedWWorkspaceSlugRouteRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/share/$token/': {
+      id: '/share/$token/'
+      path: '/'
+      fullPath: '/share/$token/'
+      preLoaderRoute: typeof ShareTokenIndexRouteImport
+      parentRoute: typeof ShareTokenRouteRoute
+    }
     '/_authenticated/w/$workspaceSlug/': {
       id: '/_authenticated/w/$workspaceSlug/'
       path: '/'
@@ -303,6 +353,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/w/$workspaceSlug/search'
       preLoaderRoute: typeof AuthenticatedWWorkspaceSlugSearchRouteImport
       parentRoute: typeof AuthenticatedWWorkspaceSlugRouteRoute
+    }
+    '/share/$token/d/$documentRef/': {
+      id: '/share/$token/d/$documentRef/'
+      path: '/d/$documentRef'
+      fullPath: '/share/$token/d/$documentRef/'
+      preLoaderRoute: typeof ShareTokenDDocumentRefIndexRouteImport
+      parentRoute: typeof ShareTokenRouteRoute
     }
     '/_authenticated/w/$workspaceSlug/d/$documentId/': {
       id: '/_authenticated/w/$workspaceSlug/d/$documentId/'
@@ -369,6 +426,20 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
 const AuthenticatedRouteRouteWithChildren =
   AuthenticatedRouteRoute._addFileChildren(AuthenticatedRouteRouteChildren)
 
+interface ShareTokenRouteRouteChildren {
+  ShareTokenIndexRoute: typeof ShareTokenIndexRoute
+  ShareTokenDDocumentRefIndexRoute: typeof ShareTokenDDocumentRefIndexRoute
+}
+
+const ShareTokenRouteRouteChildren: ShareTokenRouteRouteChildren = {
+  ShareTokenIndexRoute: ShareTokenIndexRoute,
+  ShareTokenDDocumentRefIndexRoute: ShareTokenDDocumentRefIndexRoute,
+}
+
+const ShareTokenRouteRouteWithChildren = ShareTokenRouteRoute._addFileChildren(
+  ShareTokenRouteRouteChildren,
+)
+
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AuthenticatedRouteRoute: AuthenticatedRouteRouteWithChildren,
@@ -378,6 +449,7 @@ const rootRouteChildren: RootRouteChildren = {
   SignInRoute: SignInRoute,
   SignUpRoute: SignUpRoute,
   VerifyEmailRoute: VerifyEmailRoute,
+  ShareTokenRouteRoute: ShareTokenRouteRouteWithChildren,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

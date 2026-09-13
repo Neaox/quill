@@ -242,3 +242,39 @@ export type SearchGroup = SearchResults['elsewhere'][number]
  * HTML (ADR-010). Turning it into marks is `features/search/snippet.ts`'s job.
  */
 export type SearchSnippet = SearchHit['snippet']
+
+/* --- Share links (`docs/architecture/api-contract-share-links.md`) --------- */
+
+/**
+ * One link on a document, as the management list reports it. Its `role` is
+ * every role the platform has rather than the one role a link may carry
+ * today, because an administrator must be able to see — and revoke — a link
+ * written by a newer release (ADR-033).
+ */
+export type ShareLinkDto = components['schemas']['ShareLink']
+
+export type ShareLinkScope = ShareLinkDto['scope']
+
+type ShareLinkResponses = NonNullable<paths['/api/documents/{id}/share-links']['post']>['responses']
+
+/**
+ * `POST /documents/:id/share-links`: the link, **the raw token, once**, and
+ * the address it makes. Only the token's SHA-256 is stored, so nothing can
+ * produce it a second time — which is why the dialog says so beside it.
+ */
+export type CreatedShareLink = Json<ShareLinkResponses[201]>
+
+/** `GET /documents/:id/share-links`: every link on the document, newest first. */
+export type ShareLinkList = GetBody<'/api/documents/{id}/share-links'>
+
+/** `GET /share/:token`: the link, its target, the published body, and the navigation. */
+export type SharedDocument = GetBody<'/api/share/{token}'>
+
+/** `GET /share/:token/documents/:id/rendered`: one document inside a subtree link. */
+export type SharedBody = GetBody<'/api/share/{token}/documents/{id}/rendered'>
+
+/** A document a share-link reader may move to, and the ones below it. */
+export type SharedNode = components['schemas']['SharedNode']
+
+/** What a reader is told about the link they are holding: nothing about who made it. */
+export type SharedLink = SharedDocument['link']

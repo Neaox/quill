@@ -1,7 +1,7 @@
 import { getRouteApi, Link } from '@tanstack/react-router'
 import { useState } from 'react'
 
-import { buttonClassName, Menu, type MenuItem } from '@quill/ui'
+import { Button, buttonClassName, Menu, type MenuItem } from '@quill/ui'
 
 import {
   useDocumentEnvelope,
@@ -118,6 +118,22 @@ export function DocumentPage() {
             Present
           </Link>
         )}
+        {/*
+          Sharing is granting access, so it is offered to whoever may grant it
+          — `manage`, the same permission the API's three link routes require
+          (`docs/architecture/api-contract-share-links.md`) — and beside Edit,
+          where the canvas puts it.
+        */}
+        {actions.canManage ? (
+          <Button
+            variant="secondary"
+            size="sm"
+            loading={actions.isOpeningShare}
+            onClick={actions.openShare}
+          >
+            Share
+          </Button>
+        ) : undefined}
         {permissions?.edit === true ? (
           <Link
             to="/w/$workspaceSlug/d/$documentId/edit"

@@ -116,6 +116,22 @@ const ROUTES: readonly RouteConfig[] = [
     budgetBytes: undefined,
   },
   {
+    // The external reader's page. Informational like the rows around it —
+    // quill-plan.md section 31 states one bundle figure and it is the reading
+    // route's — but worth measuring, because this is the surface a stranger
+    // with no cache and no account meets first.
+    name: 'share link',
+    entries: [
+      'index.html',
+      routeComponent('share/$token/route.tsx'),
+      routeComponent('share/$token/index.tsx'),
+      // A subtree link's reader loads this one too, and it is the same set of
+      // files either way, so the row measures the whole surface.
+      routeComponent('share/$token/d/$documentRef/index.tsx'),
+    ],
+    budgetBytes: undefined,
+  },
+  {
     name: 'presentation',
     entries: [routeComponent('_authenticated/w/$workspaceSlug_/d/$documentId/present.tsx')],
     budgetBytes: undefined,

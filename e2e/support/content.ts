@@ -82,6 +82,8 @@ export async function publishDocument(
     readonly collectionId: string
     readonly title: string
     readonly blocks: readonly MdastNode[]
+    /** Nests the new document under an existing one, for a journey that needs a subtree. */
+    readonly parentId?: string
   },
 ): Promise<PublishedFixture> {
   const created = await json<{
@@ -90,7 +92,11 @@ export async function publishDocument(
   }>(
     await request.post(`/api/workspaces/${input.workspaceId}/documents`, {
       headers: BROWSER_HEADERS,
-      data: { collectionId: input.collectionId, title: input.title },
+      data: {
+        collectionId: input.collectionId,
+        title: input.title,
+        ...(input.parentId === undefined ? {} : { parentId: input.parentId }),
+      },
     }),
   )
 

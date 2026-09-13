@@ -44,9 +44,9 @@ Status is taken from the plan's Delivery status table, which is authoritative.
 | 21 | Present to a room | Writer, reader | Signed in, internal | M2 | In progress | `present.spec.ts` |
 | 22 | Capture a note for later while presenting | Writer | Signed in, internal | M4 | Planned | `present.spec.ts` |
 | 23 | Compare two revisions and restore one | Writer, workspace lead | Signed in, internal | M2 | Built | `journey.spec.ts` |
-| 24 | Share a document outside the organisation | Writer, workspace lead | Signed in, outbound | M3 | In progress | `share.spec.ts` |
-| 25 | Open a share link with no account | External reader | Not signed in, external | M3 | In progress | `share.spec.ts` |
-| 26 | Revoke a share link | Workspace lead | Signed in, internal | M3 | In progress | `share.spec.ts` |
+| 24 | Share a document outside the organisation | Writer, workspace lead | Signed in, outbound | M3 | Built | `share.spec.ts` |
+| 25 | Open a share link with no account | External reader | Not signed in, external | M3 | Built | `share.spec.ts` |
+| 26 | Revoke a share link | Workspace lead | Signed in, internal | M3 | Built | `share.spec.ts` |
 | 27 | Publish a collection to the public web | Workspace lead, unit admin | Signed in, outbound | M3 | Planned | `publish-public.spec.ts` |
 | 28 | Read the public site with no account | External reader | Not signed in, public | M3 | Planned | `publish-public.spec.ts` |
 | 29 | Index and unfurl the public site | Crawler | Not signed in, public | M3 | Planned | `crawler.spec.ts` |
@@ -819,11 +819,14 @@ Outbound: a person outside the organisation, reached by a link.
 - **Situation:** a supplier or a customer needs to read one document
 - **Job:** give one person access to one document, for a bounded time, without
   creating an account for them.
-- **Milestone:** M3 — **In progress.** The API is built and proved
+- **Milestone:** M3 — **Built.** The API is proved
   (`docs/architecture/api-contract-share-links.md`): scope, view role, expiry,
-  policy, the hashed token, and the audit row. The Share dialog is not.
+  policy, the hashed token, and the audit row. The Share dialog lists a
+  document's links, creates one, shows its address once, and revokes one; an
+  organisation that forbids links is told so in place. A link's optional
+  password waits for M7, with the comment and edit roles.
 - **Surfaces:** signed-in app
-- **Journey:** `e2e/share.spec.ts` (planned)
+- **Journey:** `e2e/share.spec.ts`, green on all four browser profiles
 
 **Flow**
 
@@ -850,13 +853,18 @@ Outbound: a person outside the organisation, reached by a link.
 - **Persona:** external reader
 - **Situation:** the link arrived by email; they have never heard of us
 - **Job:** read the document.
-- **Milestone:** M3 — **In progress.** `GET /api/share/:token` answers a
-  stranger with the published body and nothing else, `noindex` and rate
-  limited, and refuses an expired, revoked or out-of-scope request
-  identically. The page that renders it is not built. A link's optional
-  password waits for M7, with the comment and edit roles.
+- **Milestone:** M3 — **Built.** `GET /api/share/:token` answers a stranger
+  with the published body and nothing else, `noindex` and rate limited, and
+  refuses an expired, revoked or out-of-scope request identically. `/share/
+  <token>` renders it: the site's name, the document on the same reading
+  surface the application uses, its contents, and the link's term — no
+  session, no cookie, and one identical answer for every refusal. A subtree
+  link also lists what it opens and reads each document at its own address —
+  and nothing on the page preloads, because on this surface a fetch is an
+  audited use of the link. A link's optional password waits for M7, with the
+  comment and edit roles.
 - **Surfaces:** share-link page
-- **Journey:** `e2e/share.spec.ts` (planned)
+- **Journey:** `e2e/share.spec.ts`, green on all four browser profiles
 
 **Flow**
 
@@ -882,12 +890,14 @@ Outbound: a person outside the organisation, reached by a link.
 - **Persona:** workspace lead
 - **Situation:** the engagement ended, or the link went somewhere it should not
 - **Job:** close the link immediately.
-- **Milestone:** M3 — **In progress.** `DELETE /api/share-links/:id` closes a
-  link on the next request and audits who closed it; `GET
+- **Milestone:** M3 — **Built.** `DELETE /api/share-links/:id` closes a link
+  on the next request and audits who closed it; `GET
   /api/documents/:id/share-links` lists every link with its creator, scope,
-  expiry and last use. The settings panel that shows them is not built.
+  expiry and last use. The Share dialog is where both happen: the list shows
+  each link's term, whether it has been used, and whether it has already been
+  revoked, and Revoke asks before it closes one.
 - **Surfaces:** signed-in app
-- **Journey:** `e2e/share.spec.ts` (planned)
+- **Journey:** `e2e/share.spec.ts`, green on all four browser profiles
 
 **Flow**
 

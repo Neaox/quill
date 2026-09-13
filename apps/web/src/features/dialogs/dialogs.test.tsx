@@ -32,7 +32,13 @@ function renderRename(overrides: Partial<Parameters<typeof RenameDialog>[0]> = {
   return { ...view, onRename, onOpenChange }
 }
 
-function renderDelete(overrides: Partial<Parameters<typeof ConfirmDeleteDialog>[0]> = {}) {
+/**
+ * Everything but the heading, which is a discriminated pair — a name *or* a
+ * whole title — and so cannot be spread over as a partial.
+ */
+type DeleteOverrides = Partial<Omit<Parameters<typeof ConfirmDeleteDialog>[0], 'name' | 'title'>>
+
+function renderDelete(overrides: DeleteOverrides = {}) {
   const onConfirm = vi.fn<() => void>()
   const onOpenChange = vi.fn<(open: boolean) => void>()
   const view = render(

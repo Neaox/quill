@@ -139,4 +139,11 @@ Metadata carries the document that was actually read — which for a subtree lin
 
 - **A password on a link** (plan section 14, use case 25). The column the first migration shipped is unused; a password arrives with the comment and edit roles in M7 and will be hashed by the current password scheme.
 - **Comment and edit links** (M7).
-- **The web surface**: the share dialog, the link list, and the share-link page itself.
+
+The web surface is built (13 September): the Share dialog in the document
+header (`apps/web/src/features/share/share-dialog.tsx`), and the reader's page
+at the root-level route `/share/$token`, with a subtree link's documents at
+`/share/$token/d/<title-slug>-<key>`. Both talk to these routes through
+`apps/web/src/lib/api/share-links.ts` and `share-reading.ts`, and the reading
+pair is the only place in the application that sends `credentials: 'omit'` —
+the session cookie has no business on a surface that does not read it.
