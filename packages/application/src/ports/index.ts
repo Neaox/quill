@@ -2,12 +2,15 @@ export type {
   ContentAuthor,
   ContentChange,
   ContentDiff,
+  ContentFile,
   ContentStore,
   DocumentSource,
   MergeConflict,
   Page,
   PublishRequest,
   PublishResult,
+  PutFileRequest,
+  PutFileResult,
   RevisionSummary,
   TreeEntry,
 } from './content-store.ts'
@@ -33,6 +36,19 @@ export type {
   WorkspaceAffinity,
 } from './search-index.ts'
 export type { Clock, Hasher, IdGenerator, TokenService } from './system.ts'
+
+export type {
+  KeyProvider,
+  SealedSecret,
+  SecretCipher,
+  SecretCursor,
+  SecretRow,
+  SecretSummary,
+  SecretsRepository,
+  WrappedKey,
+} from './secrets.ts'
+
+export type { Settings, SettingsRead, SettingsWrite, WriteSettingsInput } from './settings.ts'
 
 export type {
   CreateDocumentContentInput,

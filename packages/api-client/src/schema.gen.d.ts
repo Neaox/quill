@@ -1440,6 +1440,218 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/settings/organisation": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            /** @description The revision the settings were read at; null before anything is saved. */
+                            revision: string | null;
+                            settings: components["schemas"]["OrganisationSettings"];
+                        };
+                    };
+                };
+            };
+        };
+        put: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        changeNote?: string;
+                        /** @description The revision the settings were read at; null before anything is saved. */
+                        expectedRevision: string | null;
+                        settings: components["schemas"]["OrganisationSettings"];
+                    };
+                };
+            };
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            report: {
+                                adjustments: {
+                                    from: number;
+                                    property: string;
+                                    reason: string;
+                                    role: string;
+                                    to: number;
+                                }[];
+                                enforcedRulesHold: boolean;
+                                results: {
+                                    detail: string;
+                                    enforced: boolean;
+                                    id: string;
+                                    section: number;
+                                    status: "pass" | "adjusted" | "warn";
+                                    title: string;
+                                }[];
+                                summary: {
+                                    adjusted: number;
+                                    pass: number;
+                                    warn: number;
+                                };
+                                themeId: string;
+                            };
+                            revision: string;
+                            settings: components["schemas"]["OrganisationSettings"];
+                        };
+                    };
+                };
+            };
+        };
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/settings/secrets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Secret"][];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/settings/secrets/{name}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    name: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Secret"];
+                    };
+                };
+            };
+        };
+        put: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    name: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        value: string;
+                    };
+                };
+            };
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Secret"];
+                    };
+                };
+            };
+        };
+        post?: never;
+        delete: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    name: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/share-links/{id}": {
         parameters: {
             query?: never;
@@ -1971,6 +2183,124 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/workspaces/{id}/settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            effective: {
+                                layout: {
+                                    comments: "sidenotes" | "panel";
+                                    header: "readout" | "breadcrumb";
+                                    history: "timeline" | "menu";
+                                    navigation: "tabs" | "tree";
+                                    rules: "double" | "hairline" | "cards";
+                                };
+                                layoutLocked: boolean;
+                                layoutSource: "workspace" | "organisation";
+                            };
+                            /** @description The revision the settings were read at; null before anything is saved. */
+                            revision: string | null;
+                            settings: {
+                                layout?: {
+                                    comments: "sidenotes" | "panel";
+                                    header: "readout" | "breadcrumb";
+                                    history: "timeline" | "menu";
+                                    navigation: "tabs" | "tree";
+                                    rules: "double" | "hairline" | "cards";
+                                };
+                                /** @enum {number} */
+                                version: 1;
+                                workspaceId: string;
+                            };
+                        };
+                    };
+                };
+            };
+        };
+        put: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        changeNote?: string;
+                        /** @description The revision the settings were read at; null before anything is saved. */
+                        expectedRevision: string | null;
+                        settings: {
+                            layout?: {
+                                comments: "sidenotes" | "panel";
+                                header: "readout" | "breadcrumb";
+                                history: "timeline" | "menu";
+                                navigation: "tabs" | "tree";
+                                rules: "double" | "hairline" | "cards";
+                            };
+                            /** @enum {number} */
+                            version: 1;
+                            workspaceId: string;
+                        };
+                    };
+                };
+            };
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            revision: string;
+                            settings: {
+                                layout?: {
+                                    comments: "sidenotes" | "panel";
+                                    header: "readout" | "breadcrumb";
+                                    history: "timeline" | "menu";
+                                    navigation: "tabs" | "tree";
+                                    rules: "double" | "hairline" | "cards";
+                                };
+                                /** @enum {number} */
+                                version: 1;
+                                workspaceId: string;
+                            };
+                        };
+                    };
+                };
+            };
+        };
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/workspaces/{id}/tree": {
         parameters: {
             query?: never;
@@ -2227,11 +2557,368 @@ export interface components {
             slug: string;
             workspaceId: string;
         };
+        OrganisationSettings: {
+            layout: {
+                default: {
+                    comments: "sidenotes" | "panel";
+                    header: "readout" | "breadcrumb";
+                    history: "timeline" | "menu";
+                    navigation: "tabs" | "tree";
+                    rules: "double" | "hairline" | "cards";
+                };
+                locked: boolean;
+            };
+            logo?: {
+                alt: string;
+                hash: string;
+                mediaType: "image/svg+xml" | "image/png";
+            };
+            name: string;
+            policies: {
+                contrastEnforcement: "enforced" | "advisory";
+                publicPublishingAllowed: boolean;
+                shareLinksAllowed: boolean;
+            };
+            publicNavigation: {
+                href: string;
+                label: string;
+            }[];
+            theme: {
+                base?: "press" | "instrument" | "atelier";
+                collections?: {
+                    [key: string]: {
+                        chroma: number;
+                        hue: number;
+                    };
+                };
+                id: string;
+                levers: ("accent" | "tone" | "logo" | "reading-face" | "radius" | "density" | "collection-colours")[];
+                name: string;
+                overrides?: {
+                    dark?: {
+                        "--density-scale"?: string;
+                        "--font-display"?: string;
+                        "--font-mono"?: string;
+                        "--font-reading"?: string;
+                        "--font-sans"?: string;
+                        "--layout-content"?: string;
+                        "--layout-gutter"?: string;
+                        "--layout-max"?: string;
+                        "--layout-wide"?: string;
+                        "--palette-accent"?: string;
+                        "--palette-accent-foreground"?: string;
+                        "--palette-accent-hover"?: string;
+                        "--palette-accent-subtle"?: string;
+                        "--palette-background"?: string;
+                        "--palette-border"?: string;
+                        "--palette-border-strong"?: string;
+                        "--palette-code-background"?: string;
+                        "--palette-danger"?: string;
+                        "--palette-danger-hover"?: string;
+                        "--palette-danger-subtle"?: string;
+                        "--palette-foreground"?: string;
+                        "--palette-muted"?: string;
+                        "--palette-overlay"?: string;
+                        "--palette-selection"?: string;
+                        "--palette-shadow-ambient"?: string;
+                        "--palette-shadow-direct"?: string;
+                        "--palette-success"?: string;
+                        "--palette-success-subtle"?: string;
+                        "--palette-surface"?: string;
+                        "--palette-surface-raised"?: string;
+                        "--palette-warning"?: string;
+                        "--palette-warning-subtle"?: string;
+                        "--radius-2xl"?: string;
+                        "--radius-lg"?: string;
+                        "--radius-md"?: string;
+                        "--radius-sm"?: string;
+                        "--radius-xl"?: string;
+                        "--token-attr-name"?: string;
+                        "--token-attr-value"?: string;
+                        "--token-bold"?: string;
+                        "--token-boolean"?: string;
+                        "--token-builtin"?: string;
+                        "--token-class-name"?: string;
+                        "--token-comment"?: string;
+                        "--token-constant"?: string;
+                        "--token-deleted"?: string;
+                        "--token-function"?: string;
+                        "--token-important"?: string;
+                        "--token-inserted"?: string;
+                        "--token-interpolation"?: string;
+                        "--token-italic"?: string;
+                        "--token-keyword"?: string;
+                        "--token-null"?: string;
+                        "--token-number"?: string;
+                        "--token-operator"?: string;
+                        "--token-property"?: string;
+                        "--token-punctuation"?: string;
+                        "--token-regex"?: string;
+                        "--token-selector"?: string;
+                        "--token-string"?: string;
+                        "--token-symbol"?: string;
+                        "--token-tag"?: string;
+                        "--token-template-string"?: string;
+                        "--token-title"?: string;
+                        "--token-url"?: string;
+                        "--token-variable"?: string;
+                    };
+                    light?: {
+                        "--density-scale"?: string;
+                        "--font-display"?: string;
+                        "--font-mono"?: string;
+                        "--font-reading"?: string;
+                        "--font-sans"?: string;
+                        "--layout-content"?: string;
+                        "--layout-gutter"?: string;
+                        "--layout-max"?: string;
+                        "--layout-wide"?: string;
+                        "--palette-accent"?: string;
+                        "--palette-accent-foreground"?: string;
+                        "--palette-accent-hover"?: string;
+                        "--palette-accent-subtle"?: string;
+                        "--palette-background"?: string;
+                        "--palette-border"?: string;
+                        "--palette-border-strong"?: string;
+                        "--palette-code-background"?: string;
+                        "--palette-danger"?: string;
+                        "--palette-danger-hover"?: string;
+                        "--palette-danger-subtle"?: string;
+                        "--palette-foreground"?: string;
+                        "--palette-muted"?: string;
+                        "--palette-overlay"?: string;
+                        "--palette-selection"?: string;
+                        "--palette-shadow-ambient"?: string;
+                        "--palette-shadow-direct"?: string;
+                        "--palette-success"?: string;
+                        "--palette-success-subtle"?: string;
+                        "--palette-surface"?: string;
+                        "--palette-surface-raised"?: string;
+                        "--palette-warning"?: string;
+                        "--palette-warning-subtle"?: string;
+                        "--radius-2xl"?: string;
+                        "--radius-lg"?: string;
+                        "--radius-md"?: string;
+                        "--radius-sm"?: string;
+                        "--radius-xl"?: string;
+                        "--token-attr-name"?: string;
+                        "--token-attr-value"?: string;
+                        "--token-bold"?: string;
+                        "--token-boolean"?: string;
+                        "--token-builtin"?: string;
+                        "--token-class-name"?: string;
+                        "--token-comment"?: string;
+                        "--token-constant"?: string;
+                        "--token-deleted"?: string;
+                        "--token-function"?: string;
+                        "--token-important"?: string;
+                        "--token-inserted"?: string;
+                        "--token-interpolation"?: string;
+                        "--token-italic"?: string;
+                        "--token-keyword"?: string;
+                        "--token-null"?: string;
+                        "--token-number"?: string;
+                        "--token-operator"?: string;
+                        "--token-property"?: string;
+                        "--token-punctuation"?: string;
+                        "--token-regex"?: string;
+                        "--token-selector"?: string;
+                        "--token-string"?: string;
+                        "--token-symbol"?: string;
+                        "--token-tag"?: string;
+                        "--token-template-string"?: string;
+                        "--token-title"?: string;
+                        "--token-url"?: string;
+                        "--token-variable"?: string;
+                    };
+                    shared?: {
+                        "--density-scale"?: string;
+                        "--font-display"?: string;
+                        "--font-mono"?: string;
+                        "--font-reading"?: string;
+                        "--font-sans"?: string;
+                        "--layout-content"?: string;
+                        "--layout-gutter"?: string;
+                        "--layout-max"?: string;
+                        "--layout-wide"?: string;
+                        "--palette-accent"?: string;
+                        "--palette-accent-foreground"?: string;
+                        "--palette-accent-hover"?: string;
+                        "--palette-accent-subtle"?: string;
+                        "--palette-background"?: string;
+                        "--palette-border"?: string;
+                        "--palette-border-strong"?: string;
+                        "--palette-code-background"?: string;
+                        "--palette-danger"?: string;
+                        "--palette-danger-hover"?: string;
+                        "--palette-danger-subtle"?: string;
+                        "--palette-foreground"?: string;
+                        "--palette-muted"?: string;
+                        "--palette-overlay"?: string;
+                        "--palette-selection"?: string;
+                        "--palette-shadow-ambient"?: string;
+                        "--palette-shadow-direct"?: string;
+                        "--palette-success"?: string;
+                        "--palette-success-subtle"?: string;
+                        "--palette-surface"?: string;
+                        "--palette-surface-raised"?: string;
+                        "--palette-warning"?: string;
+                        "--palette-warning-subtle"?: string;
+                        "--radius-2xl"?: string;
+                        "--radius-lg"?: string;
+                        "--radius-md"?: string;
+                        "--radius-sm"?: string;
+                        "--radius-xl"?: string;
+                        "--token-attr-name"?: string;
+                        "--token-attr-value"?: string;
+                        "--token-bold"?: string;
+                        "--token-boolean"?: string;
+                        "--token-builtin"?: string;
+                        "--token-class-name"?: string;
+                        "--token-comment"?: string;
+                        "--token-constant"?: string;
+                        "--token-deleted"?: string;
+                        "--token-function"?: string;
+                        "--token-important"?: string;
+                        "--token-inserted"?: string;
+                        "--token-interpolation"?: string;
+                        "--token-italic"?: string;
+                        "--token-keyword"?: string;
+                        "--token-null"?: string;
+                        "--token-number"?: string;
+                        "--token-operator"?: string;
+                        "--token-property"?: string;
+                        "--token-punctuation"?: string;
+                        "--token-regex"?: string;
+                        "--token-selector"?: string;
+                        "--token-string"?: string;
+                        "--token-symbol"?: string;
+                        "--token-tag"?: string;
+                        "--token-template-string"?: string;
+                        "--token-title"?: string;
+                        "--token-url"?: string;
+                        "--token-variable"?: string;
+                    };
+                };
+                seeds: {
+                    accent: {
+                        chroma: number;
+                        hue: number;
+                        lightness?: number;
+                    };
+                    statusOverrides?: {
+                        danger?: {
+                            chroma?: number;
+                            hue: number;
+                        };
+                        success?: {
+                            chroma?: number;
+                            hue: number;
+                        };
+                        warning?: {
+                            chroma?: number;
+                            hue: number;
+                        };
+                    };
+                    tone: {
+                        chroma: number;
+                        hue: number;
+                    };
+                };
+                shape: {
+                    density: "comfortable" | "compact";
+                    radiusStep: number;
+                };
+                type: {
+                    display: {
+                        id: "inter" | "source-serif-4" | "jetbrains-mono" | "ibm-plex-sans" | "ibm-plex-serif" | "ibm-plex-mono" | "newsreader" | "instrument-sans" | "instrument-serif";
+                        /** @enum {string} */
+                        source: "curated";
+                    } | {
+                        family: string;
+                        generic: "serif" | "sans-serif" | "monospace";
+                        licence: {
+                            holder?: string;
+                            name: string;
+                            url?: string;
+                        };
+                        /** @enum {string} */
+                        source: "uploaded";
+                        url: string;
+                    };
+                    interface: {
+                        id: "inter" | "source-serif-4" | "jetbrains-mono" | "ibm-plex-sans" | "ibm-plex-serif" | "ibm-plex-mono" | "newsreader" | "instrument-sans" | "instrument-serif";
+                        /** @enum {string} */
+                        source: "curated";
+                    } | {
+                        family: string;
+                        generic: "serif" | "sans-serif" | "monospace";
+                        licence: {
+                            holder?: string;
+                            name: string;
+                            url?: string;
+                        };
+                        /** @enum {string} */
+                        source: "uploaded";
+                        url: string;
+                    };
+                    mono: {
+                        id: "inter" | "source-serif-4" | "jetbrains-mono" | "ibm-plex-sans" | "ibm-plex-serif" | "ibm-plex-mono" | "newsreader" | "instrument-sans" | "instrument-serif";
+                        /** @enum {string} */
+                        source: "curated";
+                    } | {
+                        family: string;
+                        generic: "serif" | "sans-serif" | "monospace";
+                        licence: {
+                            holder?: string;
+                            name: string;
+                            url?: string;
+                        };
+                        /** @enum {string} */
+                        source: "uploaded";
+                        url: string;
+                    };
+                    reading: {
+                        id: "inter" | "source-serif-4" | "jetbrains-mono" | "ibm-plex-sans" | "ibm-plex-serif" | "ibm-plex-mono" | "newsreader" | "instrument-sans" | "instrument-serif";
+                        /** @enum {string} */
+                        source: "curated";
+                    } | {
+                        family: string;
+                        generic: "serif" | "sans-serif" | "monospace";
+                        licence: {
+                            holder?: string;
+                            name: string;
+                            url?: string;
+                        };
+                        /** @enum {string} */
+                        source: "uploaded";
+                        url: string;
+                    };
+                };
+                variants: {
+                    comments: "sidenotes" | "panel";
+                    header: "readout" | "breadcrumb";
+                    history: "timeline" | "menu";
+                    navigation: "tabs" | "tree";
+                    rules: "double" | "hairline" | "cards";
+                };
+            };
+            /** @enum {number} */
+            version: 1;
+        };
         OutlineEntry: {
             children: components["schemas"]["OutlineEntry"][];
             depth: number;
             id: string;
             text: string;
+        };
+        Secret: {
+            /** Format: date-time */
+            createdAt: string;
+            keyId: string;
+            name: string;
+            rewrappedAt: string | null;
+            rotatedAt: string | null;
         };
         SessionSummary: {
             /** Format: date-time */
@@ -2272,6 +2959,326 @@ export interface components {
             status: "draft" | "published" | "archived";
             title: string;
         };
+        "urn:quill:schema:theme-document": {
+            base?: "press" | "instrument" | "atelier";
+            collections?: {
+                [key: string]: {
+                    chroma: number;
+                    hue: number;
+                };
+            };
+            id: string;
+            levers: ("accent" | "tone" | "logo" | "reading-face" | "radius" | "density" | "collection-colours")[];
+            name: string;
+            overrides?: {
+                dark?: {
+                    "--density-scale"?: string;
+                    "--font-display"?: string;
+                    "--font-mono"?: string;
+                    "--font-reading"?: string;
+                    "--font-sans"?: string;
+                    "--layout-content"?: string;
+                    "--layout-gutter"?: string;
+                    "--layout-max"?: string;
+                    "--layout-wide"?: string;
+                    "--palette-accent"?: string;
+                    "--palette-accent-foreground"?: string;
+                    "--palette-accent-hover"?: string;
+                    "--palette-accent-subtle"?: string;
+                    "--palette-background"?: string;
+                    "--palette-border"?: string;
+                    "--palette-border-strong"?: string;
+                    "--palette-code-background"?: string;
+                    "--palette-danger"?: string;
+                    "--palette-danger-hover"?: string;
+                    "--palette-danger-subtle"?: string;
+                    "--palette-foreground"?: string;
+                    "--palette-muted"?: string;
+                    "--palette-overlay"?: string;
+                    "--palette-selection"?: string;
+                    "--palette-shadow-ambient"?: string;
+                    "--palette-shadow-direct"?: string;
+                    "--palette-success"?: string;
+                    "--palette-success-subtle"?: string;
+                    "--palette-surface"?: string;
+                    "--palette-surface-raised"?: string;
+                    "--palette-warning"?: string;
+                    "--palette-warning-subtle"?: string;
+                    "--radius-2xl"?: string;
+                    "--radius-lg"?: string;
+                    "--radius-md"?: string;
+                    "--radius-sm"?: string;
+                    "--radius-xl"?: string;
+                    "--token-attr-name"?: string;
+                    "--token-attr-value"?: string;
+                    "--token-bold"?: string;
+                    "--token-boolean"?: string;
+                    "--token-builtin"?: string;
+                    "--token-class-name"?: string;
+                    "--token-comment"?: string;
+                    "--token-constant"?: string;
+                    "--token-deleted"?: string;
+                    "--token-function"?: string;
+                    "--token-important"?: string;
+                    "--token-inserted"?: string;
+                    "--token-interpolation"?: string;
+                    "--token-italic"?: string;
+                    "--token-keyword"?: string;
+                    "--token-null"?: string;
+                    "--token-number"?: string;
+                    "--token-operator"?: string;
+                    "--token-property"?: string;
+                    "--token-punctuation"?: string;
+                    "--token-regex"?: string;
+                    "--token-selector"?: string;
+                    "--token-string"?: string;
+                    "--token-symbol"?: string;
+                    "--token-tag"?: string;
+                    "--token-template-string"?: string;
+                    "--token-title"?: string;
+                    "--token-url"?: string;
+                    "--token-variable"?: string;
+                };
+                light?: {
+                    "--density-scale"?: string;
+                    "--font-display"?: string;
+                    "--font-mono"?: string;
+                    "--font-reading"?: string;
+                    "--font-sans"?: string;
+                    "--layout-content"?: string;
+                    "--layout-gutter"?: string;
+                    "--layout-max"?: string;
+                    "--layout-wide"?: string;
+                    "--palette-accent"?: string;
+                    "--palette-accent-foreground"?: string;
+                    "--palette-accent-hover"?: string;
+                    "--palette-accent-subtle"?: string;
+                    "--palette-background"?: string;
+                    "--palette-border"?: string;
+                    "--palette-border-strong"?: string;
+                    "--palette-code-background"?: string;
+                    "--palette-danger"?: string;
+                    "--palette-danger-hover"?: string;
+                    "--palette-danger-subtle"?: string;
+                    "--palette-foreground"?: string;
+                    "--palette-muted"?: string;
+                    "--palette-overlay"?: string;
+                    "--palette-selection"?: string;
+                    "--palette-shadow-ambient"?: string;
+                    "--palette-shadow-direct"?: string;
+                    "--palette-success"?: string;
+                    "--palette-success-subtle"?: string;
+                    "--palette-surface"?: string;
+                    "--palette-surface-raised"?: string;
+                    "--palette-warning"?: string;
+                    "--palette-warning-subtle"?: string;
+                    "--radius-2xl"?: string;
+                    "--radius-lg"?: string;
+                    "--radius-md"?: string;
+                    "--radius-sm"?: string;
+                    "--radius-xl"?: string;
+                    "--token-attr-name"?: string;
+                    "--token-attr-value"?: string;
+                    "--token-bold"?: string;
+                    "--token-boolean"?: string;
+                    "--token-builtin"?: string;
+                    "--token-class-name"?: string;
+                    "--token-comment"?: string;
+                    "--token-constant"?: string;
+                    "--token-deleted"?: string;
+                    "--token-function"?: string;
+                    "--token-important"?: string;
+                    "--token-inserted"?: string;
+                    "--token-interpolation"?: string;
+                    "--token-italic"?: string;
+                    "--token-keyword"?: string;
+                    "--token-null"?: string;
+                    "--token-number"?: string;
+                    "--token-operator"?: string;
+                    "--token-property"?: string;
+                    "--token-punctuation"?: string;
+                    "--token-regex"?: string;
+                    "--token-selector"?: string;
+                    "--token-string"?: string;
+                    "--token-symbol"?: string;
+                    "--token-tag"?: string;
+                    "--token-template-string"?: string;
+                    "--token-title"?: string;
+                    "--token-url"?: string;
+                    "--token-variable"?: string;
+                };
+                shared?: {
+                    "--density-scale"?: string;
+                    "--font-display"?: string;
+                    "--font-mono"?: string;
+                    "--font-reading"?: string;
+                    "--font-sans"?: string;
+                    "--layout-content"?: string;
+                    "--layout-gutter"?: string;
+                    "--layout-max"?: string;
+                    "--layout-wide"?: string;
+                    "--palette-accent"?: string;
+                    "--palette-accent-foreground"?: string;
+                    "--palette-accent-hover"?: string;
+                    "--palette-accent-subtle"?: string;
+                    "--palette-background"?: string;
+                    "--palette-border"?: string;
+                    "--palette-border-strong"?: string;
+                    "--palette-code-background"?: string;
+                    "--palette-danger"?: string;
+                    "--palette-danger-hover"?: string;
+                    "--palette-danger-subtle"?: string;
+                    "--palette-foreground"?: string;
+                    "--palette-muted"?: string;
+                    "--palette-overlay"?: string;
+                    "--palette-selection"?: string;
+                    "--palette-shadow-ambient"?: string;
+                    "--palette-shadow-direct"?: string;
+                    "--palette-success"?: string;
+                    "--palette-success-subtle"?: string;
+                    "--palette-surface"?: string;
+                    "--palette-surface-raised"?: string;
+                    "--palette-warning"?: string;
+                    "--palette-warning-subtle"?: string;
+                    "--radius-2xl"?: string;
+                    "--radius-lg"?: string;
+                    "--radius-md"?: string;
+                    "--radius-sm"?: string;
+                    "--radius-xl"?: string;
+                    "--token-attr-name"?: string;
+                    "--token-attr-value"?: string;
+                    "--token-bold"?: string;
+                    "--token-boolean"?: string;
+                    "--token-builtin"?: string;
+                    "--token-class-name"?: string;
+                    "--token-comment"?: string;
+                    "--token-constant"?: string;
+                    "--token-deleted"?: string;
+                    "--token-function"?: string;
+                    "--token-important"?: string;
+                    "--token-inserted"?: string;
+                    "--token-interpolation"?: string;
+                    "--token-italic"?: string;
+                    "--token-keyword"?: string;
+                    "--token-null"?: string;
+                    "--token-number"?: string;
+                    "--token-operator"?: string;
+                    "--token-property"?: string;
+                    "--token-punctuation"?: string;
+                    "--token-regex"?: string;
+                    "--token-selector"?: string;
+                    "--token-string"?: string;
+                    "--token-symbol"?: string;
+                    "--token-tag"?: string;
+                    "--token-template-string"?: string;
+                    "--token-title"?: string;
+                    "--token-url"?: string;
+                    "--token-variable"?: string;
+                };
+            };
+            seeds: {
+                accent: {
+                    chroma: number;
+                    hue: number;
+                    lightness?: number;
+                };
+                statusOverrides?: {
+                    danger?: {
+                        chroma?: number;
+                        hue: number;
+                    };
+                    success?: {
+                        chroma?: number;
+                        hue: number;
+                    };
+                    warning?: {
+                        chroma?: number;
+                        hue: number;
+                    };
+                };
+                tone: {
+                    chroma: number;
+                    hue: number;
+                };
+            };
+            shape: {
+                density: "comfortable" | "compact";
+                radiusStep: number;
+            };
+            type: {
+                display: {
+                    id: "inter" | "source-serif-4" | "jetbrains-mono" | "ibm-plex-sans" | "ibm-plex-serif" | "ibm-plex-mono" | "newsreader" | "instrument-sans" | "instrument-serif";
+                    /** @enum {string} */
+                    source: "curated";
+                } | {
+                    family: string;
+                    generic: "serif" | "sans-serif" | "monospace";
+                    licence: {
+                        holder?: string;
+                        name: string;
+                        url?: string;
+                    };
+                    /** @enum {string} */
+                    source: "uploaded";
+                    url: string;
+                };
+                interface: {
+                    id: "inter" | "source-serif-4" | "jetbrains-mono" | "ibm-plex-sans" | "ibm-plex-serif" | "ibm-plex-mono" | "newsreader" | "instrument-sans" | "instrument-serif";
+                    /** @enum {string} */
+                    source: "curated";
+                } | {
+                    family: string;
+                    generic: "serif" | "sans-serif" | "monospace";
+                    licence: {
+                        holder?: string;
+                        name: string;
+                        url?: string;
+                    };
+                    /** @enum {string} */
+                    source: "uploaded";
+                    url: string;
+                };
+                mono: {
+                    id: "inter" | "source-serif-4" | "jetbrains-mono" | "ibm-plex-sans" | "ibm-plex-serif" | "ibm-plex-mono" | "newsreader" | "instrument-sans" | "instrument-serif";
+                    /** @enum {string} */
+                    source: "curated";
+                } | {
+                    family: string;
+                    generic: "serif" | "sans-serif" | "monospace";
+                    licence: {
+                        holder?: string;
+                        name: string;
+                        url?: string;
+                    };
+                    /** @enum {string} */
+                    source: "uploaded";
+                    url: string;
+                };
+                reading: {
+                    id: "inter" | "source-serif-4" | "jetbrains-mono" | "ibm-plex-sans" | "ibm-plex-serif" | "ibm-plex-mono" | "newsreader" | "instrument-sans" | "instrument-serif";
+                    /** @enum {string} */
+                    source: "curated";
+                } | {
+                    family: string;
+                    generic: "serif" | "sans-serif" | "monospace";
+                    licence: {
+                        holder?: string;
+                        name: string;
+                        url?: string;
+                    };
+                    /** @enum {string} */
+                    source: "uploaded";
+                    url: string;
+                };
+            };
+            variants: {
+                comments: "sidenotes" | "panel";
+                header: "readout" | "breadcrumb";
+                history: "timeline" | "menu";
+                navigation: "tabs" | "tree";
+                rules: "double" | "hairline" | "cards";
+            };
+        };
     };
     responses: never;
     parameters: never;
@@ -2280,10 +3287,13 @@ export interface components {
     pathItems: never;
 }
 export type SchemaCollection = components['schemas']['Collection'];
+export type SchemaOrganisationSettings = components['schemas']['OrganisationSettings'];
 export type SchemaOutlineEntry = components['schemas']['OutlineEntry'];
+export type SchemaSecret = components['schemas']['Secret'];
 export type SchemaSessionSummary = components['schemas']['SessionSummary'];
 export type SchemaSharedNode = components['schemas']['SharedNode'];
 export type SchemaShareLink = components['schemas']['ShareLink'];
 export type SchemaTreeNode = components['schemas']['TreeNode'];
+export type SchemaUrnQuillSchemaThemeDocument = components['schemas']['urn:quill:schema:theme-document'];
 export type $defs = Record<string, never>;
 export type operations = Record<string, never>;

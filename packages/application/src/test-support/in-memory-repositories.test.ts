@@ -1064,3 +1064,142 @@ describe('agreeing with the schema, continued', () => {
     ).toEqual(['first', 'second'])
   })
 })
+
+const SECRET_NOW = new Date('2026-01-01T00:00:00.000Z')
+
+const aSecret = (name: string, keyId = 'key-1', at = SECRET_NOW) => ({
+  name,
+  ciphertext: `sealed-${name}`,
+  wrappedKey: `wrapped-${keyId}`,
+  keyId,
+  now: at,
+})
+
+describe('secrets', () => {
+  const now = SECRET_NOW
+  const put = aSecret
+
+  it('is empty until something is stored', async () => {
+    const uow = createInMemoryUnitOfWork()
+    expect(await uow.repos.secrets.find('nothing')).toBeNull()
+    expect(await uow.repos.secrets.list()).toEqual([])
+  })
+
+  it('stores a secret and lists it by name, without its ciphertext', async () => {
+    const uow = createInMemoryUnitOfWork()
+    await uow.repos.secrets.put(put('smtp/password'))
+    await uow.repos.secrets.put(put('oidc/secret'))
+    expect(await uow.repos.secrets.list()).toEqual([
+      { name: 'oidc/secret', keyId: 'key-1', createdAt: now, rotatedAt: null, rewrappedAt: null },
+      {
+        name: 'smtp/password',
+        keyId: 'key-1',
+        createdAt: now,
+        rotatedAt: null,
+        rewrappedAt: null,
+      },
+    ])
+  })
+
+  it('keeps the creation date and stamps a rotation when a value is replaced', async () => {
+    const uow = createInMemoryUnitOfWork()
+    const later = new Date(now.getTime() + 1000)
+    await uow.repos.secrets.put(put('smtp/password'))
+    const replaced = await uow.repos.secrets.put({ ...put('smtp/password'), now: later })
+    expect(replaced).toMatchObject({ createdAt: now, rotatedAt: later })
+  })
+
+  it('re-wraps a data key and leaves the ciphertext and the value stamp alone', async () => {
+    const uow = createInMemoryUnitOfWork()
+    const later = new Date(now.getTime() + 1000)
+    await uow.repos.secrets.put(put('smtp/password'))
+    expect(
+      await uow.repos.secrets.rewrap({
+        name: 'smtp/password',
+        fromKeyId: 'key-1',
+        fromWrappedKey: 'wrapped-key-1',
+        wrappedKey: 'wrapped-key-2',
+        keyId: 'key-2',
+        now: later,
+      }),
+    ).toBe(true)
+    expect(await uow.repos.secrets.find('smtp/password')).toMatchObject({
+      keyId: 'key-2',
+      wrappedKey: 'wrapped-key-2',
+      ciphertext: 'sealed-smtp/password',
+      rotatedAt: null,
+      rewrappedAt: later,
+    })
+  })
+
+  it('refuses a re-wrap of an envelope the row no longer carries', async () => {
+    const uow = createInMemoryUnitOfWork()
+    await uow.repos.secrets.put(put('smtp/password'))
+    expect(
+      await uow.repos.secrets.rewrap({
+        name: 'smtp/password',
+        fromKeyId: 'key-1',
+        fromWrappedKey: 'somebody-elses-wrapped-key',
+        wrappedKey: 'wrapped-key-2',
+        keyId: 'key-2',
+        now,
+      }),
+    ).toBe(false)
+    expect(await uow.repos.secrets.find('smtp/password')).toMatchObject({ keyId: 'key-1' })
+  })
+
+  it('refuses a re-wrap of a secret that has gone', async () => {
+    const uow = createInMemoryUnitOfWork()
+    expect(
+      await uow.repos.secrets.rewrap({
+        name: 'gone',
+        fromKeyId: 'key-1',
+        fromWrappedKey: 'w',
+        wrappedKey: 'w2',
+        keyId: 'key-2',
+        now,
+      }),
+    ).toBe(false)
+    expect(await uow.repos.secrets.find('gone')).toBeNull()
+  })
+
+  it('reports whether a delete removed anything', async () => {
+    const uow = createInMemoryUnitOfWork()
+    await uow.repos.secrets.put(put('smtp/password'))
+    expect(await uow.repos.secrets.delete('smtp/password')).toBe(true)
+    expect(await uow.repos.secrets.delete('smtp/password')).toBe(false)
+  })
+
+  it('finds the secrets still wrapped with an older key, oldest first', async () => {
+    const uow = createInMemoryUnitOfWork()
+    const later = new Date(now.getTime() + 1000)
+    await uow.repos.secrets.put(put('old', 'key-1'))
+    await uow.repos.secrets.put({ ...put('newer', 'key-1'), now: later })
+    await uow.repos.secrets.put(put('current', 'key-2'))
+    expect(
+      (await uow.repos.secrets.listWrappedWithOther({ keyId: 'key-2', limit: 10 })).map(
+        (row) => row.name,
+      ),
+    ).toEqual(['old', 'newer'])
+    expect(await uow.repos.secrets.listWrappedWithOther({ keyId: 'key-2', limit: 1 })).toHaveLength(
+      1,
+    )
+  })
+
+  it('resumes a walk after a cursor rather than from the start', async () => {
+    const uow = createInMemoryUnitOfWork()
+    const later = new Date(now.getTime() + 1000)
+    await uow.repos.secrets.put(put('a', 'key-1'))
+    await uow.repos.secrets.put(put('b', 'key-1'))
+    await uow.repos.secrets.put({ ...put('c', 'key-1'), now: later })
+    expect(
+      (
+        await uow.repos.secrets.listWrappedWithOther({
+          keyId: 'key-2',
+          limit: 10,
+          after: { createdAt: now, name: 'a' },
+        })
+      ).map((row) => row.name),
+    ).toEqual(['b', 'c'])
+  })
+})

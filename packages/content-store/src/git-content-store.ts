@@ -14,17 +14,20 @@ import type {
   ContentAuthor,
   ContentChange,
   ContentDiff,
+  ContentFile,
   ContentStore,
   DocumentSource,
   MergeConflict,
   Page,
   PublishResult,
+  PutFileRequest,
+  PutFileResult,
   RevisionSummary,
   TreeEntry,
 } from '@quill/application'
 import { revisionId, type DocumentId, type RevisionId, type WorkspaceId } from '@quill/domain'
 import { PRODUCT_EMAIL, PRODUCT_NAME } from './branding.ts'
-import { buildCommitMessage } from './commit-message.ts'
+import { buildCommitMessage, buildFileCommitMessage } from './commit-message.ts'
 import { changedDocumentIds, toRevisionSummary, walkCommits } from './commit-walk.ts'
 import type { WalkedCommit } from './commit-walk.ts'
 import { DocumentIndex, type TreeDocuments } from './document-index.ts'
@@ -149,6 +152,34 @@ export class GitContentStore implements ContentStore {
     return await this.#publishes.run(request.workspaceId, () => this.#publish(request, changes))
   }
 
+  async readFile(
+    workspaceId: WorkspaceId,
+    path: string,
+    revision?: RevisionId,
+  ): Promise<ContentFile | null> {
+    const store = await this.#provider.forWorkspace(workspaceId)
+    const repository = new GitRepository(store)
+    const at = await this.#resolveRevision(store, revision)
+    if (at === null) return null
+    const tree = (await repository.findCommit(at))?.tree
+    if (tree === undefined) return null
+    return await readFileAt(repository, tree, path, revisionId(at))
+  }
+
+  /**
+   * Compare-and-swap on a file's own contents (ADR-034).
+   *
+   * The expectation is re-read inside the same loop as the ref
+   * compare-and-swap, so losing the ref race re-checks the file rather than
+   * writing over whatever landed in between. Publishes for one workspace are
+   * serialised by the same mutex `publish` takes, so a settings write and a
+   * document publish never build trees from the same head.
+   */
+  async putFile(request: PutFileRequest): Promise<PutFileResult> {
+    const path = parseContentPath(request.path).normalised
+    return await this.#publishes.run(request.workspaceId, () => this.#putFile(request, path))
+  }
+
   async history(
     workspaceId: WorkspaceId,
     id: DocumentId,
@@ -260,6 +291,39 @@ export class GitContentStore implements ContentStore {
         throw new ContentStoreError(
           `Publish lost ${attempt} compare-and-swap races on ${this.#ref}`,
         )
+      }
+      await this.#sleep(1 + Math.floor(this.#random() * Math.min(2 ** attempt, 64)))
+    }
+  }
+
+  async #putFile(request: PutFileRequest, path: string): Promise<PutFileResult> {
+    const store = await this.#provider.forWorkspace(request.workspaceId)
+    for (let attempt = 1; ; attempt++) {
+      const repository = new GitRepository(store)
+      const head = await store.readRef(this.#ref)
+      const tree = head === null ? null : (await repository.readCommit(head)).tree
+      const current =
+        head === null || tree === null
+          ? null
+          : await readFileAt(repository, tree, path, revisionId(head))
+      if ((current?.text ?? null) !== request.expected) return { kind: 'stale', current }
+
+      const revision = repository.stageCommit({
+        tree: await setPath(repository, tree, path, repository.stageBlob(request.text)),
+        parents: head === null ? [] : [head],
+        ...this.#identities(request.author),
+        message: buildFileCommitMessage({
+          path,
+          ...(request.summary === undefined ? {} : { summary: request.summary }),
+          ...(request.changeNote === undefined ? {} : { changeNote: request.changeNote }),
+        }),
+      })
+      await repository.flush()
+      if (await store.casRef(this.#ref, head, revision)) {
+        return { kind: 'published', revision: revisionId(revision) }
+      }
+      if (attempt >= this.#maxPublishAttempts) {
+        throw new ContentStoreError(`Write lost ${attempt} compare-and-swap races on ${this.#ref}`)
       }
       await this.#sleep(1 + Math.floor(this.#random() * Math.min(2 ** attempt, 64)))
     }
@@ -396,6 +460,17 @@ function positive(value: number, what: string): number {
     throw new ContentStoreError(`A history ${what} must be a positive whole number, not ${value}`)
   }
   return value
+}
+
+/** One file by path, as it stands in one tree. */
+async function readFileAt(
+  repository: GitRepository,
+  treeOid: string,
+  path: string,
+  revision: RevisionId,
+): Promise<ContentFile | null> {
+  const oid = await resolvePath(repository, treeOid, path)
+  return oid === null ? null : { path, text: await repository.readBlobText(oid), revision }
 }
 
 async function readDocument(

@@ -2,7 +2,7 @@ import type { ContentChange } from '@quill/application'
 import { describe, expect, it } from 'vitest'
 
 import { CHANGE_NOTE_TRAILER, DOCUMENT_ID_TRAILER } from './branding.ts'
-import { buildCommitMessage } from './commit-message.ts'
+import { buildCommitMessage, buildFileCommitMessage } from './commit-message.ts'
 import { parseTrailers, trailerValues } from './git/trailers.ts'
 import { markdown, newDocument, write } from './test-fixtures.ts'
 
@@ -93,5 +93,27 @@ describe('buildCommitMessage trailers', () => {
   it('separates the subject from the trailers with a blank line', () => {
     const message = buildCommitMessage({ changes: [write(ID, 'a.md', TITLED)] })
     expect(message).toBe(`Update Onboarding\n\n${DOCUMENT_ID_TRAILER}: ${ID}\n`)
+  })
+})
+
+describe('buildFileCommitMessage', () => {
+  it('names the path when the caller gives no summary, and adds no trailers', () => {
+    expect(buildFileCommitMessage({ path: '.quill/organisation.yaml' })).toBe(
+      'Update .quill/organisation.yaml\n',
+    )
+  })
+
+  it('carries the summary and the change note, and never a document trailer', () => {
+    const message = buildFileCommitMessage({
+      path: '.quill/organisation.yaml',
+      summary: 'Update organisation settings',
+      changeNote: 'Brand refresh',
+    })
+    expect(message).toBe(`Update organisation settings\n\n${CHANGE_NOTE_TRAILER}: Brand refresh\n`)
+    expect(trailerValues(parseTrailers(message), DOCUMENT_ID_TRAILER)).toEqual([])
+  })
+
+  it('folds a multi-line summary, as a subject line must be one line', () => {
+    expect(subject(buildFileCommitMessage({ path: 'x.yaml', summary: 'One\nTwo' }))).toBe('One Two')
   })
 })

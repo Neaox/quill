@@ -7,6 +7,23 @@ import { defineConfig } from 'vitest/config'
  * the domain, application, markdown, content-store, search, and server
  * packages; UI packages are measured but gated on behaviour, not lines.
  */
+
+/**
+ * What a test and a hook are given before they are called failures, stated
+ * once and shared by every project, because a project does not inherit the
+ * root's test options.
+ *
+ * Vitest's defaults are five seconds and ten. Several hundred files run in
+ * parallel here, under v8 coverage, against a real Postgres, a real
+ * filesystem, and jsdom: property tests and the content store's contention
+ * tests are I/O-bound, every integration suite migrates a fresh schema behind
+ * one advisory lock, and a web route test renders a code-split chunk and then
+ * drives a form a keystroke at a time. On a loaded machine or a two-core CI
+ * runner the defaults report those as failures rather than as slow. These
+ * budgets still catch a test that has actually hung.
+ */
+const BUDGET = { testTimeout: 30_000, hookTimeout: 60_000 } as const
+
 export default defineConfig({
   test: {
     globals: true,
@@ -16,11 +33,8 @@ export default defineConfig({
           name: 'packages',
           environment: 'node',
           include: ['packages/*/src/**/*.test.ts'],
-          // Property tests and the content store's real-filesystem contention
-          // tests are I/O-bound; on a loaded machine or a two-core CI runner
-          // the 5 s default reports them as failures rather than slow.
-          testTimeout: 30_000,
           exclude: ['packages/ui/**', 'packages/editor/**'],
+          ...BUDGET,
         },
       },
       {
@@ -30,6 +44,7 @@ export default defineConfig({
           environment: 'jsdom',
           setupFiles: ['./packages/editor/vitest.setup.ts'],
           include: ['packages/editor/src/**/*.test.{ts,tsx}'],
+          ...BUDGET,
         },
       },
       {
@@ -39,6 +54,7 @@ export default defineConfig({
           environment: 'jsdom',
           setupFiles: ['./packages/ui/vitest.setup.ts'],
           include: ['packages/ui/src/**/*.test.{ts,tsx}'],
+          ...BUDGET,
         },
       },
       {
@@ -46,9 +62,7 @@ export default defineConfig({
           name: 'server',
           environment: 'node',
           include: ['apps/server/src/**/*.test.ts'],
-          // Integration tests migrate a fresh schema each behind one advisory
-          // lock; under a full parallel run that queue alone can pass 5 s.
-          testTimeout: 30_000,
+          ...BUDGET,
         },
       },
       {
@@ -58,6 +72,7 @@ export default defineConfig({
           environment: 'jsdom',
           setupFiles: ['./apps/web/vitest.setup.ts'],
           include: ['apps/web/src/**/*.test.{ts,tsx}'],
+          ...BUDGET,
         },
       },
       {
@@ -65,6 +80,7 @@ export default defineConfig({
           name: 'tools',
           environment: 'node',
           include: ['tools/**/*.test.ts'],
+          ...BUDGET,
         },
       },
       {
@@ -72,6 +88,7 @@ export default defineConfig({
           name: 'scripts',
           environment: 'node',
           include: ['scripts/**/*.test.ts'],
+          ...BUDGET,
         },
       },
     ],

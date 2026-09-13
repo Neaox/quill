@@ -171,3 +171,59 @@ describe('createFakeContentStore', () => {
     expect(await store.diff(WORKSPACE, DOC, NO_SUCH_REVISION, second)).toMatchObject({ removed: 0 })
   })
 })
+
+describe('non-document files', () => {
+  const SETTINGS = '.quill/organisation.yaml'
+
+  const put = async (text: string, expected: string | null) =>
+    await store.putFile({
+      workspaceId: WORKSPACE,
+      path: SETTINGS,
+      text,
+      expected,
+      author,
+    })
+
+  it('is null before anything has been written there', async () => {
+    expect(await store.readFile(WORKSPACE, SETTINGS)).toBeNull()
+    await write('one', null)
+    expect(await store.readFile(WORKSPACE, SETTINGS)).toBeNull()
+  })
+
+  it('writes a file and reads it back, recording the request', async () => {
+    expect(await put('version: 1\n', null)).toMatchObject({ kind: 'published' })
+    expect(await store.readFile(WORKSPACE, SETTINGS)).toMatchObject({ text: 'version: 1\n' })
+    expect(store.writtenFiles).toHaveLength(1)
+  })
+
+  it('keeps earlier revisions of the file', async () => {
+    const first = await put('version: 1\n', null)
+    if (first.kind !== 'published') throw new Error('expected the first write to land')
+    await put('version: 2\n', 'version: 1\n')
+    expect(await store.readFile(WORKSPACE, SETTINGS, first.revision)).toMatchObject({
+      text: 'version: 1\n',
+    })
+  })
+
+  it('refuses a write whose expectation no longer holds', async () => {
+    await put('version: 1\n', null)
+    expect(await put('version: 3\n', 'version: 2\n')).toMatchObject({
+      kind: 'stale',
+      current: { text: 'version: 1\n' },
+    })
+  })
+
+  it('refuses a replacement when there is nothing there', async () => {
+    expect(await put('version: 1\n', 'version: 0\n')).toEqual({ kind: 'stale', current: null })
+  })
+
+  it('keeps the documents beside it, and lists both', async () => {
+    await write('one', null)
+    await put('version: 1\n', null)
+    expect(await store.read(WORKSPACE, DOC)).toMatchObject({ markdown: 'one' })
+    expect(await store.listTree(WORKSPACE)).toEqual([
+      { path: 'a.md', kind: 'document', documentId: DOC },
+      { path: SETTINGS, kind: 'other' },
+    ])
+  })
+})

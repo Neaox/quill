@@ -507,6 +507,39 @@ export const comments = pgTable('comments', {
   editedAt: timestamp('edited_at', { withTimezone: true }),
 })
 
+/**
+ * Secrets entered in the product, under envelope encryption (ADR-034).
+ *
+ * `ciphertext` is the value sealed with a data key of its own, and
+ * `wrapped_key` is that data key sealed with the instance's master key, which
+ * is never in this database. Rotating the master key rewrites `wrapped_key`
+ * and `key_id` and never touches `ciphertext`, so a rotation costs the same
+ * whatever the secrets are. The name is the primary key because a settings
+ * file refers to a secret by name and by nothing else.
+ */
+export const secrets = pgTable(
+  'secrets',
+  {
+    name: text('name').primaryKey(),
+    ciphertext: text('ciphertext').notNull(),
+    wrappedKey: text('wrapped_key').notNull(),
+    /** Which master key wrapped it, so an older one can still be unwrapped. */
+    keyId: text('key_id').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull(),
+    /** Set when an administrator replaced the value. */
+    rotatedAt: timestamp('rotated_at', { withTimezone: true }),
+    /** Set when a master-key rotation re-wrapped the data key. */
+    rewrappedAt: timestamp('rewrapped_at', { withTimezone: true }),
+  },
+  (table) => [
+    // A rotation asks for the secrets not yet on the current key, and walks
+    // them in `(created_at, name)` order; both are index scans rather than a
+    // sort of the whole table.
+    index('secrets_key_id_idx').on(table.keyId),
+    index('secrets_created_at_name_idx').on(table.createdAt, table.name),
+  ],
+)
+
 export const auditEvents = pgTable('audit_events', {
   id: text('id').primaryKey(),
   type: text('type').notNull(),
