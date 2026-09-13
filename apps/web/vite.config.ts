@@ -58,10 +58,23 @@ export default defineConfig({
     // first Edit or Present of a session opens as fast as the second — for a
     // developer, and for a Playwright journey that would otherwise measure a
     // cold transform under four browsers against a ten-second expectation.
+    // Absolute, like the router plugin's paths above: Vitest extends this
+    // config from the repository root, where a path relative to this file
+    // resolves to nothing and is reported as a failed pre-transform.
     warmup: {
       clientFiles: [
-        './src/routes/_authenticated/w/$workspaceSlug/d/$documentId/edit.tsx',
-        './src/routes/_authenticated/w/$workspaceSlug_/d/$documentId/present.tsx',
+        fileURLToPath(
+          new URL(
+            'src/routes/_authenticated/w/$workspaceSlug/d/$documentId/edit.tsx',
+            import.meta.url,
+          ),
+        ),
+        fileURLToPath(
+          new URL(
+            'src/routes/_authenticated/w/$workspaceSlug_/d/$documentId/present.tsx',
+            import.meta.url,
+          ),
+        ),
       ],
     },
     proxy: {
