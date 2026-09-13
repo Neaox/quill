@@ -38,11 +38,12 @@ pnpm test:e2e                     # starts the API and web dev servers, and seed
 ```
 
 `pnpm db:up` still needs to be running first; from there `pnpm test:e2e`
-needs nothing else done by hand. Playwright's `globalSetup`
-(`e2e/support/global-setup.ts`) seeds a fresh database before any test
-runs, and its `webServer` config starts the API server (`:3000`) and the
-web app (`:5173`) for the run — there is no need to also have `pnpm dev`
-running.
+needs nothing else done by hand. The run is its own instance beside
+`pnpm dev`, never on top of it: its `webServer` config starts an API server
+on `:3100` against its own database (`quill_e2e`, emptied first) and
+content store, and a web app on `:5174`, and its `globalSetup`
+(`e2e/support/global-setup.ts`) seeds them before any test runs. A
+development database is never touched, and can keep running throughout.
 
 ## Commands
 
@@ -55,7 +56,7 @@ running.
 | `pnpm lint:deps`                                       | Architectural dependency rules (dependency-cruiser)  |
 | `pnpm typecheck`                                       | TypeScript across all packages                       |
 | `pnpm test` / `pnpm test:watch` / `pnpm test:coverage` | Vitest                                               |
-| `pnpm test:e2e`                                        | Playwright; seeds the database and starts both servers itself (run `pnpm exec playwright install` once) |
+| `pnpm test:e2e`                                        | Playwright; starts its own servers on `:3100`/`:5174` against its own database (run `pnpm exec playwright install` once) |
 | `pnpm build`                                           | Production build of the apps                         |
 | `pnpm rename`                                          | Rewrite the product name/slug/scope in one pass; see [`docs/operations/renaming.md`](docs/operations/renaming.md) |
 | `pnpm --filter @quill/server seed`                     | Fill a local database: an admin and a writer, two units, two workspaces, twelve documents, three templates |

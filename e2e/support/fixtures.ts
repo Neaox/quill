@@ -2,6 +2,8 @@ import { randomUUID } from 'node:crypto'
 
 import type { APIRequestContext } from '@playwright/test'
 
+import { WEB_ORIGIN } from './env.ts'
+
 /**
  * What a browser sends on a state-changing request, and what the server's
  * CSRF defence requires of one that carries a session cookie (ADR-011,
@@ -13,7 +15,7 @@ import type { APIRequestContext } from '@playwright/test'
  * web application's, because that is where the session was issued.
  */
 export const BROWSER_HEADERS: Readonly<Record<string, string>> = {
-  origin: 'http://localhost:5173',
+  origin: WEB_ORIGIN,
   'sec-fetch-site': 'same-origin',
 }
 
