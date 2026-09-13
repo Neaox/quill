@@ -1,6 +1,6 @@
 import { defineConfig, devices } from '@playwright/test'
 
-import { apiServerEnv } from './e2e/support/env.ts'
+import { API_ORIGIN, WEB_ORIGIN, WEB_PORT, apiServerEnv, webServerEnv } from './e2e/support/env.ts'
 
 const isCI = process.env['CI'] !== undefined
 
@@ -10,8 +10,12 @@ const isCI = process.env['CI'] !== undefined
  * *before* any `globalSetup` file runs, not after):
  *
  * 1. `webServer` starts the API server and the Vite dev server, in the
- *    array order below, both left running for every test. The API server
- *    migrates its own database on boot (`main.ts`).
+ *    array order below, both left running for every test. The API server's
+ *    command first empties the run's own database (`db:reset`), and the
+ *    server then migrates it on boot (`main.ts`), so every run starts from
+ *    nothing. Both servers are the run's own, on their own ports and
+ *    against their own database and content store (`e2e/support/env.ts`),
+ *    never a developer's `pnpm dev`.
  * 2. `globalSetup` (`e2e/support/global-setup.ts`) seeds that now-migrated
  *    database and content store, with the exact same env the API server
  *    just booted with (`apiServerEnv()`), so what it writes is what the
@@ -47,7 +51,7 @@ export default defineConfig({
   expect: { timeout: 10_000 },
   globalSetup: './e2e/support/global-setup.ts',
   use: {
-    baseURL: 'http://localhost:5173',
+    baseURL: WEB_ORIGIN,
     trace: 'on-first-retry',
   },
   projects: [
@@ -58,17 +62,18 @@ export default defineConfig({
   ],
   webServer: [
     {
-      command: 'pnpm --filter @quill/server start',
-      url: 'http://localhost:3000/healthz',
+      command: 'pnpm --filter @quill/server e2e:serve',
+      url: `${API_ORIGIN}/healthz`,
       reuseExistingServer: !isCI,
       timeout: 60_000,
       env: apiServerEnv(),
     },
     {
-      command: 'pnpm --filter @quill/web dev',
-      url: 'http://localhost:5173',
+      command: `pnpm --filter @quill/web dev --port ${WEB_PORT}`,
+      url: WEB_ORIGIN,
       reuseExistingServer: !isCI,
       timeout: 60_000,
+      env: webServerEnv(),
     },
   ],
 })

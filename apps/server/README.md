@@ -219,6 +219,7 @@ test proves each of its requirements.
 | `TRUST_PROXY` | — | A hop count, or the proxy addresses and CIDR ranges to believe. Unset, `X-Forwarded-For` and a supplied `X-Request-Id` are ignored |
 | `NODE_ENV` | — | `production` stops the API description and Swagger UI being served, requires `DATABASE_URL`, and refuses `MAIL_DRIVER=dev` |
 | `SEED_ALLOW_PRODUCTION` | — | `1` lets `pnpm seed` run under `NODE_ENV=production`, which it otherwise refuses |
+| `DATABASE_RESET_ALLOW` | — | `1` lets `pnpm db:reset` empty a database whose name does not end in `_e2e` or `_test`; it never runs under `NODE_ENV=production` |
 
 ## Single sign-on (ADR-011)
 
@@ -456,3 +457,13 @@ It creates the unit "Acme" with the workspace "Engineering", and a second unit "
 Platform docs holds one short published document, "Platform team charter".
 
 Every published document is created and published through the same use cases the API calls, so the revisions index, the render cache, and the link index end up exactly as a person doing the same work would leave them. Running the seed again changes nothing.
+
+To start over, empty the database and the content store first:
+
+```bash
+DATABASE_RESET_ALLOW=1 pnpm --filter @quill/server db:reset   # drops everything in DATABASE_URL
+rm -rf apps/server/data/content
+pnpm --filter @quill/server seed                              # the next start migrates from nothing
+```
+
+`db:reset` creates the database if it does not exist and refuses one whose name does not end in `_e2e` or `_test` unless `DATABASE_RESET_ALLOW=1` says so. The Playwright run (`e2e/support/env.ts`) uses it on its own `quill_e2e` database before every run, which is why a development database never accumulates test workspaces.
