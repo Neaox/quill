@@ -868,6 +868,77 @@ export interface DocumentLinksRepository {
   listForDocument(documentId: DocumentId): Promise<readonly DocumentLinkRow[]>
   /** The documents whose bodies point at this one: backlinks, and rename invalidation. */
   listSourcesTargeting(documentId: DocumentId): Promise<readonly DocumentId[]>
+  /**
+   * The documents in one workspace whose published bodies carry this exact URL.
+   *
+   * The index holds the links of published heads only (`render-document.ts`),
+   * so an empty answer means no reader can currently meet this URL — which is
+   * what makes it the right question to ask before removing an attachment.
+   *
+   * Scoped to a workspace deliberately. An unscoped answer would let a
+   * document in a workspace the caller cannot see decide whether they may
+   * delete their own file, and would name that document in the refusal; an
+   * attachment belongs to one workspace, so that is the only place a reference
+   * to it can matter.
+   */
+  listSourcesReferencing(url: string, workspaceId: WorkspaceId): Promise<readonly DocumentId[]>
+}
+
+// ---------------------------------------------------------------------------
+// Attachments
+// ---------------------------------------------------------------------------
+
+export type AttachmentId = string
+
+/**
+ * One uploaded file, owned by the document it was uploaded to (plan §11).
+ *
+ * The bytes are in the blob store under `sha256`, which is their address, so
+ * two documents that carry the same picture carry one object between them.
+ * That is also why removal is a `deletedAt` on this row and never a delete of
+ * the object: the blob store is a system of record (ADR-034) and the bytes
+ * under a hash may be another attachment's too.
+ */
+export interface AttachmentRow {
+  readonly id: AttachmentId
+  readonly documentId: DocumentId
+  readonly workspaceId: WorkspaceId
+  /** Null once the uploader's account is gone; the attachment is the document's. */
+  readonly uploadedBy: UserId | null
+  /** What the uploader called it, for `Content-Disposition` and for the list. */
+  readonly filename: string
+  /** Sniffed from the bytes, never the uploader's claim (ADR-011). */
+  readonly contentType: string
+  readonly size: number
+  readonly sha256: string
+  readonly createdAt: Date
+  readonly deletedAt: Date | null
+}
+
+export interface CreateAttachmentInput {
+  readonly id: AttachmentId
+  readonly documentId: DocumentId
+  readonly workspaceId: WorkspaceId
+  readonly uploadedBy: UserId
+  readonly filename: string
+  readonly contentType: string
+  readonly size: number
+  readonly sha256: string
+  readonly now: Date
+}
+
+export interface AttachmentRepository {
+  create(input: CreateAttachmentInput): Promise<AttachmentRow>
+  /** The row whatever its state; whether a deleted one may be served is the use case's decision. */
+  findById(id: AttachmentId): Promise<AttachmentRow | null>
+  /**
+   * What a document currently carries, oldest first. Removed attachments are
+   * left out here rather than filtered afterwards: a document edited over
+   * years may have shed many, and none of them is ever an answer.
+   */
+  listForDocument(documentId: DocumentId): Promise<readonly AttachmentRow[]>
+  /** Marks the row removed. Removing an already-removed attachment is not an error. */
+  softDelete(id: AttachmentId, now: Date): Promise<void>
 }
 
 // ---------------------------------------------------------------------------
@@ -941,6 +1012,7 @@ export interface RepositoryBundle {
   readonly renderCache: RenderCacheRepository
   readonly documentLinks: DocumentLinksRepository
   readonly secrets: SecretsRepository
+  readonly attachments: AttachmentRepository
   readonly outbox: OutboxWriter
   readonly audit: AuditWriter
 }

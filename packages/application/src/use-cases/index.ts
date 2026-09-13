@@ -49,6 +49,42 @@ export {
 
 export { canonicaliseLinks } from './canonical-links.ts'
 
+export type { AllowedMediaType, ImageMediaType, SniffedMediaType } from './media-types.ts'
+export {
+  ALLOWED_MEDIA_TYPES,
+  IMAGE_MEDIA_TYPES,
+  isAllowedMediaType,
+  isImageMediaType,
+  isInlineMediaType,
+  looksLikeSvg,
+  normaliseMediaType,
+  SNIFF_BYTES,
+  sniffMediaType,
+} from './media-types.ts'
+
+export { MalformedImage, stripImageMetadata } from './image-metadata.ts'
+
+export type {
+  AttachmentDependencies,
+  DeleteAttachmentCommand,
+  DeleteAttachmentResult,
+  GetAttachmentCommand,
+  GetAttachmentResult,
+  ServedAttachment,
+  UploadAttachmentCommand,
+  UploadAttachmentResult,
+} from './attachments.ts'
+export {
+  ATTACHMENT_AUDIT_EVENTS,
+  ATTACHMENT_URL_PREFIX,
+  attachmentUrl,
+  deleteAttachment,
+  getAttachment,
+  listAttachments,
+  safeFilename,
+  uploadAttachment,
+} from './attachments.ts'
+
 export type {
   DocumentReferenceMatch,
   ResolveDocumentReferenceCommand,

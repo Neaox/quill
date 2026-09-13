@@ -1030,6 +1030,63 @@ describe('createInMemoryUnitOfWork: drafts, grants, revisions, renders, and link
     expect(await uow.repos.documentLinks.listForDocument(NOPE_DOC)).toEqual([])
     expect(await uow.repos.documentLinks.listSourcesTargeting(NO_LOCK_DOC)).toEqual([DOC_1])
     expect(await uow.repos.documentLinks.listSourcesTargeting(NOPE_DOC)).toEqual([])
+    // The source document was never created in this fake, so it belongs to no
+    // workspace and a scoped question finds nothing — which is the behaviour
+    // that keeps one workspace's references out of another's answer.
+    expect(
+      await uow.repos.documentLinks.listSourcesReferencing(`/d/${NO_LOCK_DOC}`, WORKSPACE_1),
+    ).toEqual([])
+    expect(
+      await uow.repos.documentLinks.listSourcesReferencing('/api/attachments/x', WORKSPACE_1),
+    ).toEqual([])
+  })
+
+  it('keeps the attachments of a document, and marks one removed exactly once', async () => {
+    const uow = createInMemoryUnitOfWork()
+    const first = await uow.repos.attachments.create({
+      id: 'attachment-1',
+      documentId: DOC_1,
+      workspaceId: WORKSPACE_1,
+      uploadedBy: USER_1,
+      filename: 'a.png',
+      contentType: 'image/png',
+      size: 3,
+      sha256: 'a'.repeat(64),
+      now: NOW,
+    })
+    const later = new Date(NOW.getTime() + 1000)
+    await uow.repos.attachments.create({
+      id: 'attachment-2',
+      documentId: DOC_1,
+      workspaceId: WORKSPACE_1,
+      uploadedBy: USER_1,
+      filename: 'b.png',
+      contentType: 'image/png',
+      size: 4,
+      sha256: 'b'.repeat(64),
+      now: later,
+    })
+
+    expect(first).toMatchObject({ id: 'attachment-1', deletedAt: null })
+    expect((await uow.repos.attachments.listForDocument(DOC_1)).map((row) => row.id)).toEqual([
+      'attachment-1',
+      'attachment-2',
+    ])
+    expect(await uow.repos.attachments.listForDocument(NOPE_DOC)).toEqual([])
+    expect(await uow.repos.attachments.findById('nothing')).toBeNull()
+
+    await uow.repos.attachments.softDelete('attachment-1', later)
+    expect(await uow.repos.attachments.findById('attachment-1')).toMatchObject({
+      deletedAt: later,
+    })
+    // A second removal keeps the first one's timestamp, and removing a row
+    // that is not there is not an error.
+    const evenLater = new Date(later.getTime() + 1000)
+    await uow.repos.attachments.softDelete('attachment-1', evenLater)
+    await uow.repos.attachments.softDelete('nothing', evenLater)
+    expect(await uow.repos.attachments.findById('attachment-1')).toMatchObject({
+      deletedAt: later,
+    })
   })
 })
 
