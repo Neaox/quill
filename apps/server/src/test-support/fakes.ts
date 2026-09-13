@@ -86,17 +86,6 @@ export interface FakePasswordHasher extends PasswordHasher {
   useWeakParameters(): void
 }
 
-export interface FakePasswordHasherOptions {
-  /**
-   * Milliseconds each hash and verify should take.
-   *
-   * Zero by default, because the counting assertions are what prove the
-   * policy and a suite should not sleep for them. A timing test sets a real
-   * cost so that a branch which skipped its hash shows up on the clock.
-   */
-  readonly costMs?: number
-}
-
 /**
  * Argon2id, without Argon2id.
  *
@@ -107,18 +96,10 @@ export interface FakePasswordHasherOptions {
  * is where the real one is exercised. The fake still produces a PHC-shaped
  * string, so `needsRehash` is the production rule, not a stub.
  */
-export function createFakePasswordHasher(
-  options: FakePasswordHasherOptions = {},
-): FakePasswordHasher {
+export function createFakePasswordHasher(): FakePasswordHasher {
   const verifies: string[] = []
   const hashes: string[] = []
-  const costMs = options.costMs ?? 0
   let weak = false
-
-  const spend = async (): Promise<void> => {
-    if (costMs === 0) return
-    await new Promise((resolve) => setTimeout(resolve, costMs))
-  }
 
   const phc = (plainText: string): string => {
     const { memoryCost, timeCost, parallelism } = weak
@@ -139,14 +120,12 @@ export function createFakePasswordHasher(
     },
     async hash(plainText: string): Promise<string> {
       hashes.push(plainText)
-      await spend()
       const hashed = phc(plainText)
       weak = false
       return hashed
     },
     async verify(passwordHash: string, plainText: string): Promise<boolean> {
       verifies.push(plainText)
-      await spend()
       return passwordHash.endsWith(`$${plainText}`)
     },
     // The real rule: it is pure, and a fake that reimplemented it would be
@@ -154,7 +133,6 @@ export function createFakePasswordHasher(
     needsRehash,
     async verifyDummy(plainText: string): Promise<void> {
       verifies.push(plainText)
-      await spend()
     },
   }
 }

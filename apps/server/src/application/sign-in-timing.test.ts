@@ -40,8 +40,8 @@ interface Harness {
   readonly uow: ReturnType<typeof createInMemoryUnitOfWork>
 }
 
-function setUp(costMs = 0): Harness {
-  const passwords = createFakePasswordHasher({ costMs })
+function setUp(): Harness {
+  const passwords = createFakePasswordHasher()
   const uow = createInMemoryUnitOfWork()
   const authService = createAuthService({
     uow,
