@@ -192,7 +192,10 @@ test('a unit, a workspace, collections, documents, nesting, moving and deleting'
   // The shell keeps the page it is leaving on screen until the next one's
   // loader resolves (a progress bar, not a blank), so the header — and its
   // Edit link — is still "Quarterly plan 2026"'s until this has landed.
-  await expect(page.getByRole('article', { name: 'Appendix A' })).toBeVisible()
+  // Never published yet, so what lands is the page's own title, not an article.
+  await expect(
+    page.getByRole('main').getByRole('heading', { level: 1, name: 'Appendix A' }),
+  ).toBeVisible()
   await header(page).getByRole('link', { name: 'Edit' }).click()
   const surface = page.getByRole('textbox', { name: 'Appendix A' })
   await expect(surface).toBeVisible()
