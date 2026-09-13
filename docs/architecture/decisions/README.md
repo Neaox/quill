@@ -28,7 +28,7 @@ Status values: `Proposed` (awaiting a spike or review), `Accepted`, `Superseded 
 | 020                                                   | Browser support policy                        | Not written (R13)      |
 | [021](0021-draft-and-locking-model.md)                | Draft and locking model                       | Accepted               |
 | [022](0022-comment-anchoring-model.md)                | Comment anchoring model                       | Proposed (R7)          |
-| [023](0023-public-publishing-and-server-rendering.md) | Public publishing and server rendering        | Proposed (R8)          |
+| [023](0023-public-publishing-and-server-rendering.md) | Public publishing and server rendering        | Accepted               |
 | 024                                                   | Backup, restore, and upgrade policy           | Not written (R12)      |
 | [025](0025-backend-runtime-and-http-framework.md)     | Backend runtime and HTTP framework            | Accepted               |
 | [026](0026-licence-and-naming.md)                     | Licence and naming                            | Accepted (naming open) |

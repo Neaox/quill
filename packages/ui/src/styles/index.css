@@ -6,8 +6,8 @@
  */
 @import './fonts.css';
 @import './tokens.css';
-@import './layout.css';
-@import './prose.css';
+@import '@quill/design-css/layout.css';
+@import '@quill/design-css/prose.css';
 @import './components.css';
 @import './present.css';
 @import './editor.css';

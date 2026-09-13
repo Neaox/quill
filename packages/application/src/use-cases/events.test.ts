@@ -3,6 +3,7 @@ import { documentId, revisionId, userId, workspaceId } from '@quill/domain'
 
 import {
   EVENT_PAYLOAD_VERSION,
+  parseDocumentMoved,
   parseDocumentPublished,
   parseDocumentRenamed,
   parseMailRequested,
@@ -101,5 +102,43 @@ describe('parseMailRequested', () => {
 
   it('refuses a version nothing shipped can read', () => {
     expect(parseMailRequested({ ...magicLink, version: 99 })).toBeNull()
+  })
+})
+
+/**
+ * A move between collections changes a public address (ADR-035), so its event
+ * is read the same guarded way every other persisted format is.
+ */
+describe('parseDocumentMoved', () => {
+  const moved = {
+    version: EVENT_PAYLOAD_VERSION,
+    documentId: DOC,
+    workspaceId: WORKSPACE,
+    fromCollectionId: 'guides',
+    toCollectionId: 'runbooks',
+  }
+
+  it('reads a move', () => {
+    expect(parseDocumentMoved(moved)).toEqual(moved)
+  })
+
+  it('reads a move out of, or into, no collection at all', () => {
+    expect(parseDocumentMoved({ ...moved, fromCollectionId: null })).toEqual({
+      ...moved,
+      fromCollectionId: null,
+    })
+    expect(parseDocumentMoved({ ...moved, toCollectionId: null })).toEqual({
+      ...moved,
+      toCollectionId: null,
+    })
+  })
+
+  it('refuses a payload that names no document or no workspace', () => {
+    expect(parseDocumentMoved({ ...moved, documentId: '' })).toBeNull()
+    expect(parseDocumentMoved({ ...moved, workspaceId: '' })).toBeNull()
+  })
+
+  it('refuses a version nothing shipped can read', () => {
+    expect(parseDocumentMoved({ ...moved, version: 99 })).toBeNull()
   })
 })

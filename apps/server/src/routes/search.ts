@@ -12,9 +12,10 @@ import type { AppDependencies } from '../dependencies.ts'
 import { notFound, unprocessable } from '../errors.ts'
 import { decodeSearchCursor } from '../infrastructure/search/cursor.ts'
 import { sessionRateLimit } from '../plugins/rate-limit.ts'
+import { unsearchable } from './search-query.ts'
 import { SearchResultsSchema, toSearchResponse } from './search-response.ts'
 import type { SearchContext } from './search-response.ts'
-import { parseQuery, visibilityFilter } from '@quill/search'
+import { visibilityFilter } from '@quill/search'
 
 /**
  * `GET /api/search` (ADR-010, quill-plan.md §15;
@@ -120,26 +121,21 @@ export function searchRoutes(deps: AppDependencies): FastifyPluginAsync {
 /**
  * Refuses a query that asks for everything.
  *
- * A query is a search when it names something to find: a word, a phrase, or a
- * field filter. One that names only exclusions — `-draft` — is an enumeration
- * of everything the caller may read with a few things missing, and so is one
- * whose every clause the parser dropped. Both are refused here rather than
- * answered, for the same reason `q` may not be empty.
- *
- * The parse itself is the core's, and runs again inside the service a moment
- * later. That is a few microseconds spent to keep one grammar: the route
- * decides what it will accept, `createSearchService` owns the pipeline, and
- * neither has a second reading of the language.
+ * The rule is `unsearchable` in `search-query.ts`, which the public site reads
+ * too; what differs is the answer, and that is this route's to give. The parse
+ * runs again inside the service a moment later — a few microseconds spent to
+ * keep one grammar: the route decides what it will accept, `createSearchService`
+ * owns the pipeline, and neither has a second reading of the language.
  */
 function refuseUnsearchableQuery(queryText: string): void {
-  const parsed = parseQuery(queryText)
-  if (!parsed.ok) {
-    throw unprocessable('invalid_query', parsed.error.message, {
-      kind: parsed.error.kind,
-      position: parsed.error.position,
+  const refusal = unsearchable(queryText)
+  if (refusal === null) return
+  if (refusal.kind === 'unparsed') {
+    throw unprocessable('invalid_query', refusal.error.message, {
+      kind: refusal.error.kind,
+      position: refusal.error.position,
     })
   }
-  if (parsed.value.clauses.some((clause) => !clause.negated)) return
   throw unprocessable(
     'invalid_query',
     'A search needs something to look for, not only things to leave out',

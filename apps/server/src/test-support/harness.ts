@@ -2,7 +2,12 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { DOCUMENT_CREATED, DOCUMENT_PUBLISHED } from '@quill/application'
+import {
+  DOCUMENT_CREATED,
+  DOCUMENT_MOVED,
+  DOCUMENT_PUBLISHED,
+  DOCUMENT_RENAMED,
+} from '@quill/application'
 import { createSearchService } from '@quill/search'
 import { BRAND } from '@quill/brand'
 import { createFakeClock, createFakeIdGenerator } from '@quill/application/test-support'
@@ -27,6 +32,11 @@ import {
   createIndexOnPublishConsumer,
   createIndexOnRenameConsumer,
 } from '../infrastructure/outbox/index-on-publish.ts'
+import {
+  createRecordMoveRedirectConsumer,
+  createRecordRenameRedirectConsumer,
+} from '../infrastructure/outbox/record-public-redirect.ts'
+import { createInvalidatePublicSiteConsumers } from '../infrastructure/outbox/invalidate-public-site.ts'
 import { createRenderOnPublishConsumer } from '../infrastructure/outbox/render-on-publish.ts'
 import { createPostgresSearchIndex } from '../infrastructure/search/postgres-search-index.ts'
 import { createVisibleDocumentResolver } from '../infrastructure/search/visible-documents.ts'
@@ -36,6 +46,8 @@ import { createEnvelopeCipher } from '../infrastructure/secrets/envelope-cipher.
 import { createKeyProvider } from '../infrastructure/secrets/key-provider.ts'
 import { createSecretResolver } from '../infrastructure/secrets/resolve-secret.ts'
 import { createSettingsStore } from '../infrastructure/settings-store.ts'
+import { createPublicSiteCache, PUBLIC_SITE_CACHE_TTL_MS } from '../public-site/cache.ts'
+import { createPublicStylesheets, loadDesignSystemCss } from '../public-site/stylesheet.ts'
 import { createJobRunner } from '../jobs/job-runner.ts'
 import type { JobRunner } from '../jobs/job-runner.ts'
 import { createSweepJob } from '../jobs/sweep-expired.ts'
@@ -112,6 +124,10 @@ export interface HarnessOptions {
    * instance. Defaults to a fresh one at `HARNESS_NOW`.
    */
   readonly clock?: FakeClock
+  /** Zero disables the public site's page cache, for a test about what is behind it. */
+  readonly publicSiteCacheTtlMs?: number
+  /** Shrunk by a test that wants to see a sitemap index without a thousand documents. */
+  readonly publicSitemapPageSize?: number
   readonly oidcProviders?: readonly OidcProviderConfig[]
   readonly createOidcClient?: OutboundClientFactory
   /**
@@ -157,6 +173,9 @@ export async function createServerHarness(options: HarnessOptions = {}): Promise
   const config = {
     ...loaded,
     ...(options.rateLimit === undefined ? {} : { rateLimit: options.rateLimit }),
+    ...(options.publicSitemapPageSize === undefined
+      ? {}
+      : { publicSitemapPageSize: options.publicSitemapPageSize }),
     oidcProviders: options.oidcProviders ?? [],
   }
   const breachedPasswords = createFakeBreachedPasswordChecker()
@@ -176,10 +195,25 @@ export async function createServerHarness(options: HarnessOptions = {}): Promise
   // before driving the flow; every existing test proves the environment
   // fallback simply by never doing so (ADR-034).
   const secretResolver = createSecretResolver({ uow, secrets, clock, ids }, options.env ?? {})
+  const hasher = createHasher()
+  // On the fake clock, so a test that is about the cache advances time and a
+  // test that is not never meets a stale page: nothing here moves the clock by
+  // accident (`public-site/cache.ts`).
+  const publicSiteCache = createPublicSiteCache({
+    clock,
+    ttlMs: options.publicSiteCacheTtlMs ?? PUBLIC_SITE_CACHE_TTL_MS,
+  })
   const deps: AppDependencies = {
     uow,
     searchIndex,
     search: createSearchService(searchIndex),
+    // The real design-system CSS, read once per process, so a public page in a
+    // test is styled by the same bytes a deployment serves (ADR-023).
+    publicStylesheets: createPublicStylesheets({
+      hasher,
+      designSystemCss: await loadDesignSystemCss(),
+    }),
+    publicSiteCache,
     contentStore,
     // The real settings adapter over the real content store: an integration
     // test of a settings write exercises the publish path and its
@@ -190,7 +224,7 @@ export async function createServerHarness(options: HarnessOptions = {}): Promise
     format: createDocumentFormat(),
     clock,
     ids,
-    hasher: createHasher(),
+    hasher,
     tokens: createTokenService(),
     shareLinkPolicy: { allowed: () => shareLinksAllowed },
     mailer,
@@ -219,14 +253,42 @@ export async function createServerHarness(options: HarnessOptions = {}): Promise
   })
   // The same consumers the composition root registers, so an integration test
   // exercises the real delivery path rather than a shortcut (ADR-011).
+  const invalidate = new Map(
+    createInvalidatePublicSiteConsumers(publicSiteCache).map((consumer) => [
+      consumer.eventType,
+      consumer,
+    ]),
+  )
+  /* v8 ignore next 3 -- one consumer per event type, by construction. */
+  const invalidationOf = (eventType: string) => {
+    const consumer = invalidate.get(eventType)
+    if (consumer === undefined) throw new Error(`no public-site invalidation for ${eventType}`)
+    return consumer
+  }
+
   jobRunner.register(
     combineConsumers(
       DOCUMENT_PUBLISHED,
       createRenderOnPublishConsumer(deps),
       createIndexOnPublishConsumer(deps),
+      invalidationOf(DOCUMENT_PUBLISHED),
     ),
   )
-  jobRunner.register(createIndexOnRenameConsumer(deps))
+  jobRunner.register(
+    combineConsumers(
+      DOCUMENT_RENAMED,
+      createIndexOnRenameConsumer(deps),
+      createRecordRenameRedirectConsumer(deps),
+      invalidationOf(DOCUMENT_RENAMED),
+    ),
+  )
+  jobRunner.register(
+    combineConsumers(
+      DOCUMENT_MOVED,
+      createRecordMoveRedirectConsumer(deps),
+      invalidationOf(DOCUMENT_MOVED),
+    ),
+  )
   jobRunner.register(createSendMailConsumer(mailer))
   jobRunner.register(
     createAcknowledgingConsumer(DOCUMENT_CREATED, 'Nothing acts on a creation yet.'),

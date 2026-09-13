@@ -20,6 +20,8 @@ import type { Mailer } from './auth/mailer.ts'
 import type { PasswordHasher } from './auth/password.ts'
 import type { RateLimiter } from './auth/rate-limit.ts'
 import type { ServerConfig } from './config.ts'
+import type { PublicSiteCache } from './public-site/cache.ts'
+import type { PublicStylesheets } from './public-site/stylesheet.ts'
 
 /**
  * Everything a route or a use case needs that isn't pure business logic.
@@ -69,6 +71,20 @@ export interface AppDependencies {
    */
   readonly searchIndex: SearchIndex
   readonly search: SearchService
+  /**
+   * The public site's stylesheet, generated from the organisation's theme and
+   * kept by its hash (ADR-023, ADR-028). Built at the composition root because
+   * it reads the design system's CSS off disk once, which is not something a
+   * page view should ever do.
+   */
+  readonly publicStylesheets: PublicStylesheets
+  /**
+   * What the public site remembers between requests (ADR-023): the resolved
+   * site and the finished page. In this process only, bounded by size and by a
+   * short clock, and invalidated by the outbox events and by the writes that
+   * change what a site shows.
+   */
+  readonly publicSiteCache: PublicSiteCache
   readonly mailer: Mailer
   /** The breached-password corpus (ADR-011). Fails open, and says so in the audit log. */
   readonly breachedPasswords: BreachedPasswordChecker

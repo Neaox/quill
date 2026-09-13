@@ -42,6 +42,25 @@ export interface ServerConfig {
    * signing in and useless for a search box somebody types into.
    */
   readonly searchRateLimitMax: number
+  /**
+   * The public site's own budget, per source address, counted in the same
+   * window `rateLimit.windowMs` sets (ADR-023: "public search is scoped to
+   * public content and rate limited"; `docs/product/personas.md`: a crawler
+   * must not cost the instance more than it is worth).
+   *
+   * Separate, and far larger, because one page view is several requests and a
+   * whole office — or a whole crawler fleet — arrives from one address.
+   */
+  readonly publicSiteRateLimitMax: number
+  /**
+   * How many addresses one sitemap lists before a site answers with an index
+   * of sitemaps instead (ADR-023).
+   *
+   * Far below the protocol's fifty thousand, because the number that matters
+   * is not the limit but the work: one unauthenticated request should never
+   * walk an unbounded number of documents.
+   */
+  readonly publicSitemapPageSize: number
   readonly breachedPasswords: BreachedPasswordConfig
   readonly mailer: MailerConfig
   readonly contentStore: ContentStoreConfig
@@ -427,6 +446,10 @@ const DEFAULT_RATE_LIMIT: RateLimitConfig = {
 
 /** Enough for a search box that answers as somebody types, and far short of a scraper. */
 const DEFAULT_SEARCH_RATE_LIMIT_MAX = 60
+/** Enough for a crawler working through a site at a civil pace, per address, per minute. */
+const DEFAULT_PUBLIC_SITE_RATE_LIMIT_MAX = 600
+/** A thousand addresses is a large sitemap and a small amount of work. */
+const DEFAULT_PUBLIC_SITEMAP_PAGE_SIZE = 1_000
 /** Per source address, per minute, across both OIDC endpoints. */
 const DEFAULT_OIDC_RATE_LIMIT_MAX = 300
 
@@ -811,6 +834,16 @@ export function loadConfig(
       env['SEARCH_RATE_LIMIT_MAX'],
       'SEARCH_RATE_LIMIT_MAX',
       DEFAULT_SEARCH_RATE_LIMIT_MAX,
+    ),
+    publicSiteRateLimitMax: parseCount(
+      env['PUBLIC_SITE_RATE_LIMIT_MAX'],
+      'PUBLIC_SITE_RATE_LIMIT_MAX',
+      DEFAULT_PUBLIC_SITE_RATE_LIMIT_MAX,
+    ),
+    publicSitemapPageSize: parseCount(
+      env['PUBLIC_SITEMAP_PAGE_SIZE'],
+      'PUBLIC_SITEMAP_PAGE_SIZE',
+      DEFAULT_PUBLIC_SITEMAP_PAGE_SIZE,
     ),
     breachedPasswords: {
       enabled: env['BREACHED_PASSWORD_CHECK'] !== 'false',

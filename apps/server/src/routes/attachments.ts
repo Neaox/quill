@@ -20,7 +20,11 @@ import type {
 import type { DocumentId } from '@quill/domain'
 import type { FastifyPluginAsync, FastifyReply, FastifyRequest } from 'fastify'
 
-import { authorizerFor, requireDocumentAccess } from '../application/authorization.ts'
+import {
+  authorizerFor,
+  requireDocumentAccess,
+  requireSharedDocument,
+} from '../application/authorization.ts'
 import { resolveDocumentId } from '../application/references.ts'
 import type { AppDependencies } from '../dependencies.ts'
 import {
@@ -33,23 +37,46 @@ import {
 } from '../errors.ts'
 import { requireAuthenticatedSession } from '../plugins/session.ts'
 import { contentDisposition } from './content-disposition.ts'
+import { addressRateLimit } from '../plugins/rate-limit.ts'
 import { IdParamsSchema } from './document-schemas.ts'
+import { PUBLIC_SITE_BUCKET } from './public-site.ts'
 
 /**
  * Attachments (ADR-011 uploads, ADR-034, plan §11).
  *
  * Three routes and one rule: an attachment belongs to its document, so every
  * decision about it is a decision about that document. Uploading needs `edit`,
- * reading needs `view`, removing needs `edit`; a share link or the public
- * principal will reach the read route through the same resolver when they
- * arrive in M3 (ADR-012), with nothing here to change.
+ * reading needs `view`, removing needs `edit`.
  *
- * The read route is deliberately plain: a `GET` with a session cookie and
- * nothing else, because that is all a browser sends for `<img src="/api/…">`
+ * The read route is deliberately plain: a `GET` with a session cookie *or
+ * none at all*, because that is all a browser sends for `<img src="/api/…">`
  * on the app's own origin. No custom header, no preflight, no fetch wrapper —
  * so the CSP can stay `img-src 'self'` and a picture in a document is just a
  * picture (`plugins/security-headers.ts`).
+ *
+ * **Reading takes no session.** The Markdown sanitiser admits
+ * `/api/attachments/<id>` as an image source, so this is the URL every picture
+ * in every document carries — including the ones on a published public page
+ * (ADR-023). Requiring a session here would have made every figure on the
+ * public web a `401`: publishing a collection would have published its text
+ * and not its pictures. So the route authorises the way every other route
+ * does, through the resolver, and an anonymous request simply arrives holding
+ * the public principal (ADR-012) — which means an attachment is served
+ * anonymously exactly when its own document is publicly visible, and a
+ * document carved out with a deny takes its pictures off the web with it.
+ *
+ * An anonymous refusal is the **one `404`** the share-link surface uses rather
+ * than the `403` a member gets: a caller the platform does not know must not
+ * learn which ids exist (ADR-011). A member still gets `403`, because they are
+ * already known and there is nothing to enumerate.
  */
+
+/**
+ * The one answer every refusal on the anonymous read path gives: an id that
+ * never existed, one that has been deleted, one whose document is private, and
+ * one whose document has been carved off the public web are indistinguishable.
+ */
+const ATTACHMENT_REFUSAL = 'That attachment does not exist'
 
 export const AttachmentSchema = Type.Object(
   {
@@ -157,9 +184,36 @@ export function attachmentRoutes(deps: AppDependencies): FastifyPluginAsync {
       // id that never existed gets: "deleted" must not be a way to learn that
       // something was once here.
       if (row === null || row.deletedAt !== null) {
-        throw notFound('That attachment does not exist')
+        throw notFound(ATTACHMENT_REFUSAL)
       }
       await requireDocumentAccess(authorizerFor(deps, request), row.documentId, capability)
+      return row
+    }
+
+    /**
+     * The attachment behind a read, for a caller who may or may not have a
+     * session.
+     *
+     * A member is answered as they are everywhere else — `403` when they may
+     * not read the document, because they are known and there is nothing to
+     * enumerate. A caller with no session gets the one `404` that an unknown
+     * id, a private document and a document taken off the public web all share
+     * (ADR-011, and the same shape `routes/share-links.ts` uses).
+     */
+    async function readableAttachment(
+      request: FastifyRequest<{ Params: { id: string } }>,
+    ): Promise<AttachmentRow> {
+      if (request.session !== undefined) return authorisedAttachment(request, 'view')
+
+      const row = await deps.uow.repos.attachments.findById(request.params.id)
+      if (row === null || row.deletedAt !== null) throw notFound(ATTACHMENT_REFUSAL)
+      await requireSharedDocument(
+        authorizerFor(deps, request),
+        row.documentId,
+        request.log,
+        'view',
+        ATTACHMENT_REFUSAL,
+      )
       return row
     }
 
@@ -286,14 +340,23 @@ export function attachmentRoutes(deps: AppDependencies): FastifyPluginAsync {
     app.get(
       '/api/attachments/:id',
       {
-        preHandler: app.requireSession,
+        // The session is read when there is one and not required: see the
+        // note at the top of this file. The resolver decides, and a request
+        // with no session simply holds the public principal.
+        preHandler: app.optionalSession,
+        //
+        // The budget is the public site's, keyed by source address, because
+        // that is who this route now answers to: a page view is a page plus a
+        // stylesheet plus however many pictures the page carries, and a
+        // per-session budget would be no budget at all for a stranger.
+        config: addressRateLimit(PUBLIC_SITE_BUCKET, deps.config.publicSiteRateLimitMax),
         // No response schema: the body is bytes, and declaring one would put
         // the JSON serialiser in front of them. What a caller needs to know is
         // the headers, which `docs/architecture/api-contract-m2.md` states.
         schema: { params: IdParamsSchema },
       },
       async (request, reply) => {
-        const row = await authorisedAttachment(request, 'view')
+        const row = await readableAttachment(request)
 
         // The tag is the hash, so it is known before the object is opened —
         // and the conditional is answered *after* the authorizer has run, so
@@ -308,7 +371,7 @@ export function attachmentRoutes(deps: AppDependencies): FastifyPluginAsync {
         // A row whose object has gone is a miss to the reader: the file is not
         // there, which is what a 404 says, and claiming a server fault would
         // send them looking in the wrong place.
-        if (served.kind !== 'found') throw notFound('That attachment does not exist')
+        if (served.kind !== 'found') throw notFound(ATTACHMENT_REFUSAL)
         return serve(reply, served)
       },
     )

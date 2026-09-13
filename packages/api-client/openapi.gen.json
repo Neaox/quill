@@ -234,6 +234,44 @@
           }
         }
       },
+      "PublicSite": {
+        "anyOf": [
+          {
+            "additionalProperties": false,
+            "type": "object",
+            "required": [
+              "enabled",
+              "siteSlug",
+              "homeDocumentId",
+              "url"
+            ],
+            "properties": {
+              "enabled": {
+                "type": "boolean"
+              },
+              "siteSlug": {
+                "type": "string"
+              },
+              "homeDocumentId": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "url": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
       "Collection": {
         "type": "object",
         "required": [
@@ -241,7 +279,8 @@
           "workspaceId",
           "name",
           "slug",
-          "createdAt"
+          "createdAt",
+          "public"
         ],
         "properties": {
           "id": {
@@ -259,6 +298,9 @@
           "createdAt": {
             "format": "date-time",
             "type": "string"
+          },
+          "public": {
+            "$ref": "#/components/schemas/PublicSite"
           }
         }
       },
@@ -5658,6 +5700,83 @@
         "responses": {
           "200": {
             "description": "Default Response"
+          }
+        }
+      }
+    },
+    "/api/collections/{id}/public": {
+      "post": {
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "siteSlug": {
+                    "minLength": 1,
+                    "maxLength": 200,
+                    "type": "string"
+                  },
+                  "homeDocumentId": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Collection"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Collection"
+                }
+              }
+            }
           }
         }
       }

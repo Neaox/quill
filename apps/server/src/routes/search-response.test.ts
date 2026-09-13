@@ -52,7 +52,14 @@ function workspace(id: WorkspaceId, name: string, slug: string): WorkspaceRow {
 }
 
 function collection(id: CollectionId, inWorkspace: WorkspaceId, name: string): CollectionRow {
-  return { id, workspaceId: inWorkspace, name, slug: name.toLowerCase(), createdAt: NOW }
+  return {
+    id,
+    workspaceId: inWorkspace,
+    name,
+    slug: name.toLowerCase(),
+    createdAt: NOW,
+    publicSite: null,
+  }
 }
 
 function context(overrides: Partial<SearchContext> = {}): SearchContext {

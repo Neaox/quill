@@ -11,8 +11,8 @@ import type {
   UpdateDocumentPatch,
 } from '../ports/persistence.ts'
 import type { Clock, IdGenerator } from '../ports/system.ts'
-import { DOCUMENT_RENAMED, EVENT_PAYLOAD_VERSION } from './events.ts'
-import type { DocumentRenamedPayload } from './events.ts'
+import { DOCUMENT_MOVED, DOCUMENT_RENAMED, EVENT_PAYLOAD_VERSION } from './events.ts'
+import type { DocumentMovedPayload, DocumentRenamedPayload } from './events.ts'
 import { heldByAnother, readDraftContent } from './publish-document.ts'
 
 /**
@@ -63,6 +63,13 @@ import { heldByAnother, readDraftContent } from './publish-document.ts'
 
 export const DOCUMENT_AUDIT_EVENTS = {
   deleted: 'document.deleted',
+  /**
+   * A move between collections, which is a change of *access* and not only of
+   * filing: public reading is a collection-scope grant (ADR-012), so moving a
+   * document into a published collection publishes it to the anonymous web.
+   * ADR-011 asks for permission changes to be audited, and that is one.
+   */
+  moved: 'document.moved',
 } as const
 
 export interface UpdateDocumentDependencies {
@@ -159,14 +166,76 @@ export async function updateDocument(
       })
       if (refused !== null) return refused
     }
-    return {
-      kind: 'updated',
-      document: await tx.documents.update(
-        command.documentId,
-        toPatch(lift ? { ...patch, parentId: null } : patch),
-        now,
-      ),
+    const updated = await tx.documents.update(
+      command.documentId,
+      toPatch(lift ? { ...patch, parentId: null } : patch),
+      now,
+    )
+    // Only a change of collection is announced. A public address is the
+    // collection's slug and the document's title (ADR-035), so re-nesting a
+    // page under a sibling moves nothing on the web and an event saying it
+    // had would make the redirect table describe addresses that never existed.
+    if (movingCollection) {
+      const payload: DocumentMovedPayload = {
+        version: EVENT_PAYLOAD_VERSION,
+        documentId: document.id,
+        workspaceId: document.workspaceId,
+        fromCollectionId: document.collectionId,
+        toCollectionId: updated.collectionId,
+      }
+      await tx.outbox.write({ id: deps.ids.uuid(), type: DOCUMENT_MOVED, payload, now })
+      await auditMove(deps, tx, { document, updated, now, sessionId: command.sessionId })
     }
+    return { kind: 'updated', document: updated }
+  })
+}
+
+/**
+ * Records a move between collections, with what a reader of the log needs to
+ * judge it: where it came from, where it went, and whether either of those is
+ * published to the web.
+ *
+ * The actor is the session's, because a move is a route the session made; the
+ * row is written in the same transaction as the change, so a move that is
+ * rolled back leaves no claim that it happened.
+ */
+async function auditMove(
+  deps: UpdateDocumentDependencies,
+  tx: RepositoryBundle,
+  input: {
+    readonly document: DocumentRow
+    readonly updated: DocumentRow
+    readonly now: Date
+    readonly sessionId: SessionId
+  },
+): Promise<void> {
+  /** The address a collection publishes at, or null when it publishes nothing. */
+  const siteOf = async (collectionId: CollectionId | null): Promise<string | null> => {
+    if (collectionId === null) return null
+    const collection = await tx.collections.findById(collectionId)
+    return collection?.publicSite?.enabled === true ? collection.publicSite.siteSlug : null
+  }
+
+  const [fromPublicSite, toPublicSite, session] = await Promise.all([
+    siteOf(input.document.collectionId),
+    siteOf(input.updated.collectionId),
+    tx.sessions.findById(input.sessionId),
+  ])
+  await tx.audit.write({
+    id: deps.ids.uuid(),
+    type: DOCUMENT_AUDIT_EVENTS.moved,
+    actorUserId: session?.userId ?? null,
+    targetType: 'document',
+    targetId: input.document.id,
+    metadata: {
+      workspaceId: input.document.workspaceId,
+      from: input.document.collectionId,
+      to: input.updated.collectionId,
+      /** Whether this move put the document on the public web, or took it off. */
+      fromPublicSite,
+      toPublicSite,
+    },
+    now: input.now,
   })
 }
 

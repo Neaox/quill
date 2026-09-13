@@ -209,6 +209,24 @@ describe('renderDocument', () => {
     expect(await uow.repos.documentLinks.listForDocument(id)).toHaveLength(1)
   })
 
+  /**
+   * The public site renders on an anonymous `GET` (ADR-023), and an
+   * unauthenticated read must not make the server write — however cheap and
+   * however idempotent the write is. The index is maintained by the publish
+   * path and by the authenticated reading path, so declining to touch it here
+   * never leaves it behind.
+   */
+  it('leaves the link index alone when the caller says not to touch it', async () => {
+    const id = await publish('Overview', '# Overview\n\n[a](https://example.com)')
+    const rendered = await renderDocument(deps, { documentId: id, indexLinks: false })
+    expect(rendered.kind).toBe('rendered')
+    expect(await uow.repos.documentLinks.listForDocument(id)).toEqual([])
+
+    // And the ordinary read still records them.
+    await renderDocument(deps, { documentId: id })
+    expect(await uow.repos.documentLinks.listForDocument(id)).toHaveLength(1)
+  })
+
   it('reads an entry an older renderer wrote, and renders again rather than serving it', async () => {
     const id = await publish('Overview', '# Overview')
     const first = await renderDocument(deps, { documentId: id })

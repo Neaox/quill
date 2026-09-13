@@ -13,6 +13,7 @@ import {
   unique,
   uniqueIndex,
 } from 'drizzle-orm/pg-core'
+import type { AnyPgColumn } from 'drizzle-orm/pg-core'
 
 /**
  * Drizzle schema for all system data (plan §11; ADR-012 tenancy; ADR-021
@@ -307,8 +308,63 @@ export const collections = pgTable(
     name: text('name').notNull(),
     slug: text('slug').notNull(),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull(),
+    /**
+     * What this collection publishes to the web (ADR-023).
+     *
+     * Three columns rather than one document, because the address has to be
+     * unique across the instance and a unique index is the only thing that can
+     * promise that. `public_site_slug` survives an unpublish — the switch is
+     * `public_enabled` — so a site taken down keeps its address and nobody else
+     * can claim it while it is off.
+     */
+    publicEnabled: boolean('public_enabled').notNull().default(false),
+    publicSiteSlug: text('public_site_slug'),
+    /**
+     * The page the site's home shows; null means an index of the collection.
+     * Deleting that document clears the setting rather than the site, so the
+     * home falls back to the index instead of naming a page that is gone.
+     */
+    publicHomeDocumentId: text('public_home_document_id').references(
+      // The annotation is what stops the two tables' types chasing each other:
+      // `documents` already references `collections`, so without it Drizzle
+      // infers each table from the other and gives up on both.
+      (): AnyPgColumn => documents.id,
+      { onDelete: 'set null' },
+    ),
   },
-  (table) => [unique('collections_workspace_id_slug_key').on(table.workspaceId, table.slug)],
+  (table) => [
+    unique('collections_workspace_id_slug_key').on(table.workspaceId, table.slug),
+    unique('collections_public_site_slug_key').on(table.publicSiteSlug),
+  ],
+)
+
+/**
+ * An address a public page used to answer at (ADR-035).
+ *
+ * A public URL carries the collection's slug and the document's current title,
+ * so a rename or a move changes it; a row here is what keeps the old address
+ * working, as a `301` to wherever the document lives now. The row never says
+ * where a document *is* — only where it *was* — so it cannot become a second,
+ * stale opinion about a page's address.
+ */
+export const publicRedirects = pgTable(
+  'public_redirects',
+  {
+    id: text('id').primaryKey(),
+    siteSlug: text('site_slug').notNull(),
+    /** The path under the site, with no leading slash: `guides/old-name`. */
+    path: text('path').notNull(),
+    documentId: text('document_id')
+      .notNull()
+      .references(() => documents.id, { onDelete: 'cascade' }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull(),
+  },
+  (table) => [
+    // One row per address: a document renamed back and forth keeps one entry
+    // per address, pointing wherever that address leads today.
+    unique('public_redirects_site_slug_path_key').on(table.siteSlug, table.path),
+    index('public_redirects_document_idx').on(table.documentId),
+  ],
 )
 
 export const documents = pgTable(

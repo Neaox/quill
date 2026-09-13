@@ -102,6 +102,8 @@ export default defineConfig({
       ],
       exclude: [
         '**/*.test.{ts,tsx}',
+        // A snapshot is the *output* of a test, not code that runs.
+        '**/__snapshots__/**',
         // Benchmarks measure; they are not behaviour to cover.
         '**/*.bench.ts',
         '**/*.d.ts',

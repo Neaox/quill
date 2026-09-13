@@ -26,6 +26,8 @@ import { createEnvelopeCipher } from '../infrastructure/secrets/envelope-cipher.
 import { createKeyProvider } from '../infrastructure/secrets/key-provider.ts'
 import { createSecretResolver } from '../infrastructure/secrets/resolve-secret.ts'
 import { createSettingsStore } from '../infrastructure/settings-store.ts'
+import { createPublicSiteCache } from '../public-site/cache.ts'
+import { createPublicStylesheets } from '../public-site/stylesheet.ts'
 
 /**
  * The OpenAPI description of the API, written from the routes themselves.
@@ -51,6 +53,7 @@ export interface OpenApiDocument {
 async function describableDependencies(): Promise<AppDependencies> {
   const clock = createFakeClock(new Date('2026-01-01T00:00:00.000Z'))
   const config = loadConfig({ CONTENT_STORE: 'memory' })
+  const hasher = createHasher()
   // Describing the API searches nothing, so the core's own in-memory index is
   // the honest choice rather than one bound to a database that is not there.
   const searchIndex = createInMemorySearchIndex()
@@ -64,13 +67,17 @@ async function describableDependencies(): Promise<AppDependencies> {
     uow,
     searchIndex,
     search: createSearchService(searchIndex),
+    // Describing the API styles nothing: the public site's pages are HTML
+    // routes that are not part of the description at all.
+    publicStylesheets: createPublicStylesheets({ hasher, designSystemCss: '' }),
+    publicSiteCache: createPublicSiteCache({ clock, ttlMs: 0 }),
     contentStore,
     settings: createSettingsStore(contentStore),
     secrets,
     blobStore: createInMemoryBlobStore(),
     format: createDocumentFormat(),
     clock,
-    hasher: createHasher(),
+    hasher,
     tokens: createTokenService(),
     shareLinkPolicy: createShareLinkPolicy(config),
     ids,

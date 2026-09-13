@@ -1,0 +1,23 @@
+{
+  "name": "@quill/design-css",
+  "version": "0.0.0",
+  "private": true,
+  "description": "The plain-CSS half of the design system: the reading grid, reading typography, and the public site's own furniture. No dependencies, so a server can serve it without installing a component library.",
+  "license": "MIT",
+  "type": "module",
+  "sideEffects": [
+    "**/*.css"
+  ],
+  "exports": {
+    ".": "./src/index.ts",
+    "./layout.css": "./src/layout.css",
+    "./prose.css": "./src/prose.css",
+    "./public-site.css": "./src/public-site.css"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "devDependencies": {
+    "@quill/config": "workspace:*"
+  }
+}

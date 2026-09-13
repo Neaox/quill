@@ -9,27 +9,47 @@ import type { AppDependencies } from '../dependencies.ts'
 import { createContentStore } from '../infrastructure/content-store.ts'
 import { createEnvelopeCipher } from '../infrastructure/secrets/envelope-cipher.ts'
 import { createKeyProvider } from '../infrastructure/secrets/key-provider.ts'
+import { createHasher } from '../infrastructure/hasher.ts'
 import { createSettingsStore } from '../infrastructure/settings-store.ts'
+import { createPublicSiteCache } from '../public-site/cache.ts'
+import { createPublicStylesheets } from '../public-site/stylesheet.ts'
 
 /**
- * The content store, the settings store, and the secret cipher, wired the way
- * a running server wires them but entirely in memory.
+ * The content store, the settings store, the secret cipher, and the public
+ * site's stylesheets, wired the way a running server wires them but entirely
+ * in memory.
  *
  * The settings store is the *real* adapter over the *real* content store, so
  * a test that writes settings exercises the publish path and its
  * compare-and-swap rather than a fake of them (ADR-034). One helper, because
- * three ports that are always built together should not be assembled by hand
- * in every test that stands a server up.
+ * ports that are always built together should not be assembled by hand in
+ * every test that stands a server up.
+ *
+ * The design system's CSS is left empty: a test that is not about the
+ * stylesheet does not need three files read off disk, and the harness — which
+ * is what the public-site tests use — supplies the real bytes.
  */
 export async function inMemorySettings(
   clock: Clock,
   config: ServerConfig,
-): Promise<Pick<AppDependencies, 'contentStore' | 'settings' | 'secrets'>> {
+): Promise<
+  Pick<
+    AppDependencies,
+    'contentStore' | 'settings' | 'secrets' | 'publicStylesheets' | 'publicSiteCache'
+  >
+> {
   const contentStore = createContentStore({ driver: 'memory' }, clock)
   return {
     contentStore,
     settings: createSettingsStore(contentStore),
     secrets: createEnvelopeCipher(await createKeyProvider(config.masterKey)),
+    publicStylesheets: createPublicStylesheets({
+      hasher: createHasher(),
+      designSystemCss: '',
+    }),
+    // Off: a test that is not about the public site should never be answered
+    // from a page it rendered earlier.
+    publicSiteCache: createPublicSiteCache({ clock, ttlMs: 0 }),
   }
 }
 
