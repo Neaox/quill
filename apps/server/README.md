@@ -305,7 +305,7 @@ says why: a provider's redirect is a top-level cross-site navigation, so there i
 | `OIDC_PROVIDERS` | — | Comma-separated provider ids, in the order the sign-in page shows them |
 | `OIDC_<ID>_PRESET` | `generic` | `entra`, `google-workspace`, `cognito`, `auth0`, `generic` |
 | `OIDC_<ID>_CLIENT_ID` | — | Required |
-| `OIDC_<ID>_CLIENT_SECRET` | — | Required. **TODO(M3)**: becomes a secret *name*, written with `setSecret` and read with `getSecret` from the settings store's secrets API (envelope-encrypted under the instance master key); the value is read from the environment until an administrator has entered it there |
+| `OIDC_<ID>_CLIENT_SECRET` | — | The value, as a deprecated fallback. Stored as the secret `oidc/<id>/client-secret` (`setSecret`/`getSecret`, envelope-encrypted under the instance master key, ADR-034), resolved at the moment of use — the token exchange. Boot warns, naming the secret to set, when only this variable is present, and refuses to start when neither is |
 | `OIDC_<ID>_DISPLAY_NAME` | the preset's | What the button says after "Continue with" |
 | `OIDC_<ID>_SCOPES` | `openid email profile` | Space- or comma-separated; must include `openid` |
 | `OIDC_<ID>_ALLOW_SIGN_UP` | `true` | `false` refuses a person with no account here instead of creating one |
@@ -319,6 +319,22 @@ says why: a provider's redirect is a top-level cross-site navigation, so there i
 | `OIDC_<ID>_ISSUER` | — | `generic`; must be `https`, with no query or fragment |
 
 The redirect URI to register with each provider is `<APP_URL>/api/auth/oidc/<id>/callback`.
+
+**`OIDC_DEV_LOOPBACK=true`** lets this process reach a provider that is really listening on
+loopback — the in-process fake `e2e/sso.spec.ts` drives as its own process
+(`scripts/fake-oidc-server-cli.ts`), or the same fake run by hand — despite the SSRF-safe
+outbound client's blanket refusal of loopback and private addresses
+(`auth/oidc/dev-loopback-client.ts`). Refused outright once `APP_URL` names anything but
+loopback *or* under `NODE_ENV=production` — two independent signals, matching
+`loadMasterKeyConfig`'s refusal of the all-zero master key rather than either alone — and
+`e2e/sso.spec.ts` and `FAKE_OIDC_CLIENT_ID`/`FAKE_OIDC_CLIENT_SECRET` are the only things that
+need it: those two are fixed, public, test-only values (`e2e/support/env.ts`), confined to
+`e2e/**` and the fake provider's own process, never a real credential. It also lifts the generic
+preset's issuer off `https` for exactly the same reason (`provider-config.ts`'s `checkIssuer`) —
+nothing else does. The diversion itself is scoped to a provider whose own issuer is plain http
+(`registry.ts`'s `isInsecureIssuer`): a real provider — Entra, Google, an on-prem Okta — is
+always `https:` and is never diverted, even on a developer machine that also has one of those
+configured.
 
 ## Outbound requests
 
@@ -384,6 +400,7 @@ A repository the platform writes is readable by the `git` command line: `git log
 - **`logo` does not render yet.** `BlobStore` has no implementation on `AppDependencies` until the attachments work merges, so a saved hash resolves to nothing. The field is in the document from the start because adding it later would be a version bump for every instance.
 - **Concurrent writes are refused, not merged.** A read answers with the revision it read at; a write states the revision it was based on. The adapter recovers the file's bytes at that revision and hands them to the content store as the expected value, so the compare-and-swap is over the file itself: two administrators configuring two different workspaces never collide, and two changing the same file get `409 settings_conflict` rather than a blend of both.
 - **Secrets are rows, encrypted.** A secret entered in the product gets a data key of its own (AES-256-GCM), and that data key is wrapped by the instance master key, which is never in the database. Settings files reference a secret by name — `oidc/entra/client-secret` — and never by value, which is what makes a copied settings file complete and harmless. No route answers with a value; the audit trail records the name and the key id.
+- **The environment is a one-release fallback, not a second source of truth.** `OIDC_<ID>_CLIENT_SECRET` and `SMTP_PASS` are resolved from the secrets store first, at the moment of use — the token exchange, an outbox mail send — falling back to the environment variable only when the store holds nothing for that name. Boot checks that *something* names a value, without ever opening a ciphertext to do it (`infrastructure/secrets/boot-validation.ts`), and warns once, naming the secret to set, whenever the fallback is what made the check pass.
 
 | Variable | Default | Meaning |
 | --- | --- | --- |
@@ -392,6 +409,27 @@ A repository the platform writes is readable by the `git` command line: `git log
 | `MASTER_KEY_DRIVER` | `environment` | `environment` or `file` |
 | `QUILL_MASTER_KEY_FILE` | — | Required with the `file` driver: one base64 key per line, current first. Must not be readable by anyone but its owner |
 | `SECRETS_ROTATE_ACTOR` | — | The administrator a scripted rotation is audited against |
+
+Entering a secret an administrator would otherwise type into the environment — the value comes
+from a file or a variable already in the shell's memory, never typed or pasted onto the command
+line itself, which is what would put it in `~/.bash_history`:
+
+```bash
+pnpm --filter @quill/server secrets:set oidc/entra/client-secret < /path/to/secret-file
+# or, without a file:
+read -rs SECRET && printf '%s' "$SECRET" | pnpm --filter @quill/server secrets:set oidc/entra/client-secret
+```
+
+The command refuses a second argument (the value must never be typed there) and refuses a
+terminal stdin (it will not wait for you to type the value at a prompt it never offered), so
+either mistake is a readable error rather than a hang or a silent leak. The value is read from
+stdin, never from `argv` and never printed back — a command-line argument sits in shell history
+and in this or any other process's list of running commands for as long as it runs, which is
+exactly what a secret must not do, and `< file` or `read -rs` (its value never touches this
+command's own argument list) are how the recipe above avoids that rather than merely asserting
+it. Setting a name that already has a value replaces it, so rotating a client secret at the
+provider is the same command run again; `SECRETS_SET_ACTOR` names the administrator it is
+audited against, the same way `SECRETS_ROTATE_ACTOR` does for a rotation.
 
 Rotating the master key: add the new key, keep the old one in `QUILL_MASTER_KEY_PREVIOUS`, restart, then
 

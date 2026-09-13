@@ -31,6 +31,9 @@ export function createFakeSecretCipher(initialKeyId = 'key-1'): FakeSecretCipher
     get currentKeyId() {
       return current
     },
+    get keyIds() {
+      return [...known]
+    },
     rotateTo(keyId) {
       known.add(keyId)
       current = keyId

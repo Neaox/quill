@@ -64,6 +64,8 @@ The system workspace is a workspace to the content store and to nothing else: it
 
 There is no route that rotates the master key. That is an operator's action tied to an environment change, on an instance just restarted with a key it did not have before, so it is a command: `pnpm --filter @quill/server secrets:rotate`.
 
+`PUT /settings/secrets/:name` is how an instance administrator enters a secret from inside the product; `pnpm --filter @quill/server secrets:set <name>` is the same write from an operator's shell, for a secret an administrator cannot yet reach through the UI (an OIDC provider's own client secret, entered before anyone can sign in to reach a settings screen at all) or a deployment script. Both call the same `setSecret` use case, and the value is read from stdin on the command line — never `argv` — so it never appears in shell history or a process listing. `OIDC_<ID>_CLIENT_SECRET` and `SMTP_PASS` name the two secrets this exists for today (`oidc/<id>/client-secret`, `smtp/password`): each is read from the environment only as a fallback for one release, resolved through `getSecret` at the moment of use rather than held anywhere in `ServerConfig`.
+
 Reading the organisation's settings needs only a session, because every screen renders with the theme, the navigation and the policies in them. Changing them is instance administration. A workspace's settings follow the workspace: `view` to read, `manage` to change.
 
 ## The documents

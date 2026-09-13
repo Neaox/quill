@@ -1278,16 +1278,19 @@ contrast, and size to the person.
 - **Situation:** the organisation uses Microsoft Entra ID, Google Workspace,
   Okta, Auth0, or Cognito
 - **Job:** sign in with the account they already have.
-- **Milestone:** M3 — **Built (API)** for OIDC on 13 September (ADR-011; SAML
-  and SCIM are M8), and proved end to end by an in-process OpenID Connect
-  provider in `apps/server/src/routes/auth-oidc.integration.test.ts`. The
-  browser journey `e2e/sso.spec.ts` is still to follow, driving that same
-  in-process provider through a real browser. Providers are configured per
-  instance from the environment today; the administration screen, "require
-  SSO for this domain", home-realm discovery by email domain, group mapping,
-  and back-channel logout are still to come.
+- **Milestone:** M3 — **Built** for OIDC on 13 September (ADR-011; SAML and
+  SCIM are M8), proved end to end by an in-process OpenID Connect provider in
+  `apps/server/src/routes/auth-oidc.integration.test.ts`, and now also by a
+  real browser driving that same provider — run as its own process,
+  `apps/server/src/scripts/fake-oidc-server-cli.ts` — in `e2e/sso.spec.ts`.
+  The client secret is a name resolved from the settings store's secrets at
+  the moment of use, falling back to the environment for one release
+  (ADR-034); providers are otherwise still configured per instance from the
+  environment. The administration screen, "require SSO for this domain",
+  home-realm discovery by email domain, group mapping, and back-channel
+  logout are still to come.
 - **Surfaces:** signed-in app
-- **Journey:** `e2e/sso.spec.ts` (to follow, against the in-process provider)
+- **Journey:** `e2e/sso.spec.ts`
 
 **Flow**
 

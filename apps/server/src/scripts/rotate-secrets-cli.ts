@@ -16,6 +16,7 @@ import { createPostgresSearchIndex } from '../infrastructure/search/postgres-sea
 import { createVisibleDocumentResolver } from '../infrastructure/search/visible-documents.ts'
 import { createEnvelopeCipher } from '../infrastructure/secrets/envelope-cipher.ts'
 import { createKeyProvider } from '../infrastructure/secrets/key-provider.ts'
+import { createSecretResolver } from '../infrastructure/secrets/resolve-secret.ts'
 import { createSettingsStore } from '../infrastructure/settings-store.ts'
 import { createHasher } from '../infrastructure/hasher.ts'
 import { createSystemClock } from '../infrastructure/system-clock.ts'
@@ -46,9 +47,10 @@ const searchIndex = createPostgresSearchIndex({
   visibility: createVisibleDocumentResolver({ uow }),
   clock,
 })
-
 const warn = (details: object, message: string): void =>
   void process.stderr.write(`${message} ${JSON.stringify(details)}\n`)
+const secrets = createEnvelopeCipher(await createKeyProvider(config.masterKey, { warn }))
+const secretResolver = createSecretResolver({ uow, secrets, clock, ids })
 
 try {
   const result = await rotateSecrets(
@@ -58,7 +60,7 @@ try {
       search: createSearchService(searchIndex),
       contentStore,
       settings: createSettingsStore(contentStore),
-      secrets: createEnvelopeCipher(await createKeyProvider(config.masterKey, { warn })),
+      secrets,
       blobStore: createBlobStore(config.blobStore),
       format: createDocumentFormat(),
       clock,
@@ -79,6 +81,7 @@ try {
         appUrl: config.appUrl,
         createClient: outboundClientFactory,
         clock,
+        secretResolver,
       }),
       config,
     },

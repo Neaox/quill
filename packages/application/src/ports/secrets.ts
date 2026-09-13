@@ -31,6 +31,12 @@ export interface WrappedKey {
 export interface KeyProvider {
   /** The id of the key new secrets are wrapped with. */
   readonly currentKeyId: string
+  /**
+   * Every key id this provider holds, current and retired — what boot
+   * validation checks a stored secret's `keyId` against without opening its
+   * ciphertext (ADR-034: "fail closed", not "find out at the moment of use").
+   */
+  readonly keyIds: readonly string[]
   wrap(dataKey: Uint8Array): Promise<WrappedKey>
   /** Null when this provider does not hold the key that wrapped it. */
   unwrap(key: WrappedKey): Promise<Uint8Array | null>
@@ -50,6 +56,8 @@ export interface SealedSecret {
 export interface SecretCipher {
   /** The key id new secrets are wrapped with; a rotation targets it. */
   readonly currentKeyId: string
+  /** Every key id this cipher can unwrap — see {@link KeyProvider.keyIds}. */
+  readonly keyIds: readonly string[]
   /**
    * `name` is not stored with the ciphertext; it is *authenticated* with it.
    * Opening the row demands the same name, so a row cannot be moved to

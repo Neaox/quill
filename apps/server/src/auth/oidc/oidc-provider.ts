@@ -19,7 +19,9 @@ import type { DiscoveryDocument, MetadataCache, OutboundClientFactory } from './
 import { verifyIdToken } from './id-token.ts'
 import type { IdTokenClaims } from './id-token.ts'
 import { CODE_CHALLENGE_METHOD, codeChallenge, createCodeVerifier } from './pkce.ts'
+import { providerVariablePrefix } from './provider-config.ts'
 import type { OidcProviderConfig } from './provider-config.ts'
+import type { SecretResolver } from '../../infrastructure/secrets/resolve-secret.ts'
 
 /**
  * The one OpenID Connect implementation (ADR-011). Every provider in the
@@ -46,6 +48,13 @@ export interface OidcProviderDeps {
   readonly redirectUri: string
   readonly createClient: OutboundClientFactory
   readonly clock: Clock
+  /**
+   * Resolves `config.clientSecretName` at the moment of use — the token
+   * exchange, and only then (ADR-034) — falling back to
+   * `OIDC_<ID>_CLIENT_SECRET`, read fresh from the environment, for one
+   * release when nothing is stored.
+   */
+  readonly secretResolver: SecretResolver
   readonly metadataTtlMs?: number
   readonly minKeyRefreshIntervalMs?: number
   readonly clockSkewMs?: number
@@ -155,6 +164,26 @@ export function createOidcIdentityProvider(deps: OidcProviderDeps): IdentityProv
     code: string,
     codeVerifier: string,
   ): Promise<TokenExchange> {
+    const resolved = await deps.secretResolver.resolve({
+      name: config.clientSecretName,
+      envVarName: `${providerVariablePrefix(config.id)}CLIENT_SECRET`,
+    })
+    if (!resolved.ok) {
+      // Different operator actions: re-enter the value, versus restore the
+      // master key that used to wrap it or run `secrets:rotate` — the
+      // browser sees the same failure either way (ADR-011's no-oracle rule),
+      // but the audit detail is what an operator actually acts on.
+      const why =
+        resolved.reason === 'unreadable'
+          ? 'no master key held by this instance can open it'
+          : 'nothing names a value for it'
+      return {
+        ok: false,
+        detail: `the client secret (${config.clientSecretName}) is not usable: ${why}`,
+      }
+    }
+    const clientSecret = resolved.value
+
     const form = new URLSearchParams({
       grant_type: 'authorization_code',
       code,
@@ -164,9 +193,9 @@ export function createOidcIdentityProvider(deps: OidcProviderDeps): IdentityProv
     })
     const headers: Record<string, string> = { accept: 'application/json' }
     if (usesBasicAuth(discovery)) {
-      headers['authorization'] = `Basic ${basicCredentials(config.clientId, config.clientSecret)}`
+      headers['authorization'] = `Basic ${basicCredentials(config.clientId, clientSecret)}`
     } else {
-      form.set('client_secret', config.clientSecret)
+      form.set('client_secret', clientSecret)
     }
 
     let response

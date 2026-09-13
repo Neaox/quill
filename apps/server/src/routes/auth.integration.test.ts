@@ -4,6 +4,7 @@ import type { FastifyInstance } from 'fastify'
 import { buildApp } from '../app.ts'
 import { createPasswordHasher } from '../auth/password.ts'
 import { createIdentityProviderRegistry, outboundClientFactory } from '../auth/oidc/registry.ts'
+import type { SecretResolver } from '../infrastructure/secrets/resolve-secret.ts'
 import { createRateLimiter } from '../auth/rate-limit.ts'
 import { createTokenService } from '../auth/tokens.ts'
 import { MAIL_REQUESTED } from '@quill/application'
@@ -33,6 +34,13 @@ import type { FakeBreachedPasswordChecker, FakeClock } from '../test-support/fak
 
 /** Nothing in these tests searches; the engine is present because `AppDependencies` is one shape. */
 const SEARCH_INDEX = createInMemorySearchIndex()
+
+/** No test in this file configures a provider, so nothing here ever resolves a secret. */
+const UNUSED_SECRET_RESOLVER: SecretResolver = {
+  async resolve() {
+    throw new Error('not exercised: no OIDC provider is configured in this file')
+  },
+}
 
 let database: TestDatabase
 let app: FastifyInstance
@@ -76,6 +84,7 @@ beforeAll(async () => {
       appUrl: config.appUrl,
       createClient: outboundClientFactory,
       clock,
+      secretResolver: UNUSED_SECRET_RESOLVER,
     }),
     config,
   }
