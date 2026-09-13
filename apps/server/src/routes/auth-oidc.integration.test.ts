@@ -4,6 +4,7 @@ import type { FakeClock } from '@quill/application/test-support'
 import { userId } from '@quill/domain'
 import type { UserId } from '@quill/domain'
 
+import { oidcClientSecretName } from '../auth/oidc/provider-config.ts'
 import type { OidcProviderConfig } from '../auth/oidc/provider-config.ts'
 import { HARNESS_NOW, createServerHarness } from '../test-support/harness.ts'
 import type { ServerHarness } from '../test-support/harness.ts'
@@ -116,7 +117,11 @@ beforeAll(async () => {
     preset: 'generic',
     issuer: provider.issuer,
     clientId: CLIENT_ID,
-    clientSecret: CLIENT_SECRET,
+    // The secrets store holds nothing in this harness, so every test proves
+    // the environment fallback (given to `createServerHarness` as `env`
+    // below, never the real `process.env`); `resolve-secret.test.ts` and
+    // `boot-validation.test.ts` prove the store path.
+    clientSecretName: oidcClientSecretName('acme'),
     scopes: ['openid', 'email', 'profile'],
     claims: {
       email: 'email',
@@ -149,6 +154,13 @@ beforeAll(async () => {
     clock,
     oidcProviders: [config, unreachable, noLinking],
     createOidcClient: provider.createClient,
+    // One name per provider id (`providerVariablePrefix`), all the same
+    // value: the fallback path every test in this file exercises.
+    env: {
+      OIDC_ACME_CLIENT_SECRET: CLIENT_SECRET,
+      OIDC_UNREACHABLE_CLIENT_SECRET: CLIENT_SECRET,
+      OIDC_NOLINK_CLIENT_SECRET: CLIENT_SECRET,
+    },
   })
 }, 60_000)
 
@@ -189,7 +201,14 @@ describe('GET /api/auth/oidc/:id/start', () => {
 
     expect(reply.statusCode).toBe(302)
     const url = new URL(reply.headers['location'] as string)
-    expect(url.origin + url.pathname).toBe(`${provider.issuer}/authorize`)
+    // The authorization endpoint alone is a literal `127.0.0.1`, not the
+    // fake issuer hostname: it is the one endpoint a real browser requests
+    // directly, in `e2e/sso.spec.ts`, and only the pinned outbound client
+    // below can resolve `sso.provider.test` (`fake-oidc-provider.ts`'s doc
+    // comment). The server never fetches this endpoint itself.
+    expect(url.origin + url.pathname).toBe(
+      `http://127.0.0.1:${new URL(provider.issuer).port}/authorize`,
+    )
     expect(url.searchParams.get('response_type')).toBe('code')
     expect(url.searchParams.get('client_id')).toBe(CLIENT_ID)
     expect(url.searchParams.get('scope')).toBe('openid email profile')

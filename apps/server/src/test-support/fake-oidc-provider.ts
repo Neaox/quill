@@ -26,6 +26,19 @@ import type { OutboundClientFactory } from '../auth/oidc/discovery.ts'
  * redirect cap, the timeout, the size cap, and the real `node:http` transport
  * in place. The DNS-pinning layer that is bypassed has its own decision-table
  * tests in `outbound-client.test.ts`.
+ *
+ * **What `/authorize` deliberately does not check.** It mints a code for any
+ * caller and redirects wherever `redirect_uri` says, without validating
+ * either against a value it registered anywhere — there is nothing to
+ * register against, since this fake never sees the platform's configuration.
+ * `/token`'s own `redirect_uri` equality check (below) is therefore
+ * tautological here: it compares against the value `/authorize` itself just
+ * recorded, not an independent registration. Both properties are genuinely
+ * proved, just not by this file: `auth-oidc.integration.test.ts` drives the
+ * platform's own redirect-URI handling, and `oidc-provider.test.ts` its
+ * client-id handling. A browser journey against this fake
+ * (`e2e/sso.spec.ts`) should be read as proving the sign-in flow, not these
+ * two checks.
  */
 
 /** RFC 5737 TEST-NET-3: never routed, and public as far as the SSRF checks are concerned. */
@@ -43,6 +56,13 @@ export interface FakeOidcOptions {
   readonly now: () => Date
   /** Defaults to the standard set; a test overrides it to exercise `client_secret_post`. */
   readonly tokenEndpointAuthMethods?: readonly string[]
+  /**
+   * Fixed rather than ephemeral, for `e2e/sso.spec.ts`: a real server process
+   * boots with `OIDC_FAKE_ISSUER` naming this provider, so the port has to be
+   * known before this function is called rather than discovered after.
+   * Defaults to `0` (ephemeral), which is every vitest caller.
+   */
+  readonly port?: number
 }
 
 /** What the provider will put in the next id token it signs. */
@@ -135,6 +155,72 @@ interface PendingAuthorization {
   readonly challenge: string
   readonly redirectUri: string
   readonly nonce: string
+  /**
+   * Claims this one authorization attempt asserts, read from the
+   * `quill_e2e_claims` cookie a real browser carried to `/authorize`
+   * (`readClaimsCookie`) — never from the shared `overrides` variable below,
+   * which several browsers hitting one fake provider process concurrently
+   * (`e2e/sso.spec.ts`'s four profiles) would race on. `undefined` for the
+   * in-process `authorize()` helper vitest uses, which falls back to
+   * `overrides` exactly as it always has.
+   */
+  readonly claims?: FakeIdTokenOverrides
+  /** Wall-clock `Date.now()`, for `sweepPending` — never the test's fake clock. */
+  readonly issuedAt: number
+}
+
+/**
+ * A code nobody exchanged within five minutes never will be: a real
+ * authorization code lives for a browser round trip, not a test suite's
+ * lifetime. Bounds `pending`, which otherwise grows for as long as this
+ * process runs — a vitest file lives for one run, but `e2e/sso.spec.ts` now
+ * runs this as a real process for a whole Playwright suite.
+ */
+const PENDING_TTL_MS = 5 * 60_000
+
+/** `requests` is diagnostic, not protocol state — capped so a long-running process's memory does not grow with it. */
+const MAX_REQUESTS_LOGGED = 1000
+
+/**
+ * The cookie a real browser carries to `/authorize`, set on this provider's
+ * own origin before the browser ever navigates there
+ * (`e2e/support/oidc.ts`'s `claimsCookie`), so that two browsers driving this
+ * one shared fake-provider process concurrently — the four profiles
+ * `e2e/sso.spec.ts` runs under — never share, and never race on, the same
+ * mutable identity. Each browser context's cookie jar is its own; nothing
+ * server-side is keyed by it.
+ */
+export const CLAIMS_COOKIE_NAME = 'quill_e2e_claims'
+
+/**
+ * The exact inverse of `readClaimsCookie` above.
+ *
+ * `e2e/**` imports no server code (`e2e/support/seed.ts`'s doc comment) — a
+ * Playwright spec talks to a real process, started from
+ * `fake-oidc-server-cli.ts`, over HTTP — so `e2e/support/oidc.ts` restates
+ * this one-line encoding rather than importing it, with a comment pointing
+ * back here. Exported all the same, so this module's own tests exercise the
+ * identical encoding a spec produces.
+ */
+export function encodeClaimsCookie(overrides: FakeIdTokenOverrides): string {
+  return Buffer.from(JSON.stringify(overrides), 'utf8').toString('base64url')
+}
+
+/** The exact encoding `e2e/support/oidc.ts` produces; decoded, never trusted beyond `JSON.parse`. */
+function readClaimsCookie(header: string | undefined): FakeIdTokenOverrides | undefined {
+  if (header === undefined) return undefined
+  for (const part of header.split(';')) {
+    const separator = part.indexOf('=')
+    if (separator === -1) continue
+    if (part.slice(0, separator).trim() !== CLAIMS_COOKIE_NAME) continue
+    try {
+      const decoded = Buffer.from(part.slice(separator + 1).trim(), 'base64url').toString('utf8')
+      return JSON.parse(decoded) as FakeIdTokenOverrides
+    } catch {
+      return undefined
+    }
+  }
+  return undefined
 }
 
 export async function startFakeOidcProvider(options: FakeOidcOptions): Promise<FakeOidcProvider> {
@@ -146,19 +232,40 @@ export async function startFakeOidcProvider(options: FakeOidcOptions): Promise<F
   const requests: string[] = []
   let issued = 0
 
+  /** Drops any authorization code older than `PENDING_TTL_MS`, on the way into every new one. */
+  function sweepPending(): void {
+    const cutoff = Date.now() - PENDING_TTL_MS
+    for (const [code, authorization] of pending) {
+      if (authorization.issuedAt < cutoff) pending.delete(code)
+    }
+  }
+
+  function logRequest(pathname: string): void {
+    requests.push(pathname)
+    if (requests.length > MAX_REQUESTS_LOGGED) requests.shift()
+  }
+
   const server: Server = createServer((request, response) => {
     void handle(request, response)
   })
   await new Promise<void>((resolve) => {
-    server.listen(0, '127.0.0.1', resolve)
+    server.listen(options.port ?? 0, '127.0.0.1', resolve)
   })
   const port = (server.address() as AddressInfo).port
   const issuer = `http://${hostname}:${String(port)}`
+  // A real browser cannot resolve `sso.provider.test` the way the pinned
+  // outbound client does (see the module doc comment): it has to be handed
+  // an endpoint it can actually dial. `127.0.0.1` on the same port this
+  // process is really listening on does that with no DNS involved at all,
+  // and discovery.ts allows an endpoint to live on a different host from the
+  // issuer's as long as it shares its scheme, which loopback http does. The
+  // server itself never fetches this endpoint, only the browser does.
+  const browserAuthorizationEndpoint = `http://127.0.0.1:${String(port)}/authorize`
 
   function discoveryDocument(): Record<string, unknown> {
     return {
       issuer,
-      authorization_endpoint: `${issuer}/authorize`,
+      authorization_endpoint: browserAuthorizationEndpoint,
       token_endpoint: `${issuer}/token`,
       jwks_uri: `${issuer}/jwks`,
       token_endpoint_auth_methods_supported: options.tokenEndpointAuthMethods ?? [
@@ -185,19 +292,24 @@ export async function startFakeOidcProvider(options: FakeOidcOptions): Promise<F
   }
 
   function idTokenFor(authorization: PendingAuthorization): string {
+    // The per-attempt cookie wins when a real browser carried one; the
+    // shared `overrides` variable is what the in-process `authorize()`
+    // helper and every vitest `nextToken()` call have always used, and stays
+    // exactly as it was for them.
+    const effective = { ...overrides, ...authorization.claims }
     const nowSeconds = Math.floor(options.now().getTime() / 1000)
-    const email = overrides.email === undefined ? 'ada@example.com' : overrides.email
+    const email = effective.email === undefined ? 'ada@example.com' : effective.email
     const claims: Record<string, unknown> = {
-      iss: overrides.issuer ?? issuer,
-      aud: overrides.audience ?? options.clientId,
-      sub: overrides.subject ?? 'provider-subject-1',
+      iss: effective.issuer ?? issuer,
+      aud: effective.audience ?? options.clientId,
+      sub: effective.subject ?? 'provider-subject-1',
       nonce: authorization.nonce,
       iat: nowSeconds,
-      exp: nowSeconds + (overrides.expiresInSeconds ?? 300),
-      email_verified: overrides.emailVerified ?? true,
-      name: overrides.name ?? 'Ada Lovelace',
+      exp: nowSeconds + (effective.expiresInSeconds ?? 300),
+      email_verified: effective.emailVerified ?? true,
+      name: effective.name ?? 'Ada Lovelace',
       ...(email === null ? {} : { email }),
-      ...overrides.extraClaims,
+      ...effective.extraClaims,
     }
     return sign(keys, claims)
   }
@@ -205,7 +317,7 @@ export async function startFakeOidcProvider(options: FakeOidcOptions): Promise<F
   async function handle(request: IncomingMessage, response: ServerResponse): Promise<void> {
     /* v8 ignore next -- `url` is set on every request Node hands to a handler. */
     const url = new URL(request.url ?? '/', issuer)
-    requests.push(url.pathname)
+    logRequest(url.pathname)
 
     if (url.pathname === '/.well-known/openid-configuration') {
       json(response, 200, discoveryDocument())
@@ -213,6 +325,31 @@ export async function startFakeOidcProvider(options: FakeOidcOptions): Promise<F
     }
     if (url.pathname === '/jwks') {
       json(response, 200, { keys: [keys.publicJwk] })
+      return
+    }
+    if (url.pathname === '/authorize') {
+      // What a real browser hits, having followed the platform's redirect
+      // (`e2e/sso.spec.ts`). There is no login form: this fake signs in
+      // immediately, which is the browser-visible "the provider signs the
+      // person in" step, and mints a code exactly as the in-process
+      // `authorize()` helper below does, plus this request's own claims
+      // cookie, so the two never drift apart.
+      sweepPending()
+      issued += 1
+      const code = `code-${String(issued)}`
+      const claims = readClaimsCookie(request.headers.cookie)
+      pending.set(code, {
+        challenge: parameter(url.searchParams, 'code_challenge'),
+        redirectUri: parameter(url.searchParams, 'redirect_uri'),
+        nonce: parameter(url.searchParams, 'nonce'),
+        issuedAt: Date.now(),
+        ...(claims === undefined ? {} : { claims }),
+      })
+      const location = new URL(parameter(url.searchParams, 'redirect_uri'))
+      location.searchParams.set('code', code)
+      location.searchParams.set('state', parameter(url.searchParams, 'state'))
+      response.writeHead(302, { location: location.href })
+      response.end()
       return
     }
     if (url.pathname === '/token') {
@@ -270,6 +407,7 @@ export async function startFakeOidcProvider(options: FakeOidcOptions): Promise<F
       }),
 
     authorize(authorizationUrl) {
+      sweepPending()
       const query = new URL(authorizationUrl).searchParams
       issued += 1
       const code = `code-${String(issued)}`
@@ -277,6 +415,7 @@ export async function startFakeOidcProvider(options: FakeOidcOptions): Promise<F
         challenge: parameter(query, 'code_challenge'),
         redirectUri: parameter(query, 'redirect_uri'),
         nonce: parameter(query, 'nonce'),
+        issuedAt: Date.now(),
       })
       return { code, state: parameter(query, 'state') }
     },

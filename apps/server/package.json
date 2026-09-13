@@ -13,9 +13,11 @@
     "export-openapi": "node src/scripts/export-openapi-cli.ts",
     "seed": "node --env-file-if-exists=../../.env src/scripts/seed-cli.ts",
     "db:reset": "node --env-file-if-exists=../../.env src/scripts/reset-database-cli.ts",
-    "e2e:serve": "node src/scripts/reset-database-cli.ts && node src/main.ts",
+    "e2e:serve": "node src/scripts/reset-database-cli.ts && node src/scripts/seed-oidc-fake-secret-cli.ts && node src/main.ts",
     "reindex": "node --env-file-if-exists=../../.env src/scripts/reindex-cli.ts",
     "secrets:rotate": "node --env-file-if-exists=../../.env src/scripts/rotate-secrets-cli.ts",
+    "secrets:set": "node --env-file-if-exists=../../.env src/scripts/secrets-set-cli.ts",
+    "e2e:fake-oidc": "node src/scripts/fake-oidc-server-cli.ts",
     "bench:search": "node --env-file-if-exists=../../.env src/infrastructure/search/search.bench.ts"
   },
   "dependencies": {

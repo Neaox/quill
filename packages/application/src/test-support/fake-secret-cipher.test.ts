@@ -43,4 +43,13 @@ describe('the fake envelope cipher', () => {
   it('starts on whichever key it was given', async () => {
     expect(createFakeSecretCipher('key-9').currentKeyId).toBe('key-9')
   })
+
+  it('lists every key it holds, current and retired, and drops one that is forgotten', () => {
+    const cipher = createFakeSecretCipher('key-1')
+    cipher.rotateTo('key-2')
+    expect(cipher.keyIds).toEqual(['key-1', 'key-2'])
+
+    cipher.forget('key-1')
+    expect(cipher.keyIds).toEqual(['key-2'])
+  })
 })

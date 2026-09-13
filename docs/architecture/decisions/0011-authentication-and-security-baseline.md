@@ -126,19 +126,46 @@ tokens, and every failure answers the browser identically. Configuration is
 per instance through `OIDC_PROVIDERS` and `OIDC_<ID>_*`, validated at boot,
 with the two endpoints on their own flat per-address budget.
 
-**Still to come on this ADR:** passkeys (WebAuthn), the client secret moving
-from the environment into the settings store's secrets (`setSecret` /
-`getSecret`, envelope-encrypted under the `KeyProvider`'s instance master key,
-ADR-034) — which now exists, so what remains is the migration: an
-administrator enters each secret once, and only then does the environment
-variable stop being read — moving provider configuration from the environment
-to per-organisation settings an administrator edits, "require SSO for this verified email domain", routing an
-entered email to its organisation's provider, group mapping at sign-in,
-RP-initiated and back-channel logout, and SAML 2.0 with SCIM in the
-enterprise phase. (Microsoft Entra ID emits no `email_verified` claim, so an
-Entra identity never links into an account that already exists; whether a
-tenant-pinned Entra token's `email` may be trusted without one is a decision
-for an administrator, and the configuration does not make it by accident.)
+**The client secret migration — 13 September 2026.** `OIDC_<ID>_CLIENT_SECRET`
+is resolved from the settings store's secrets (`setSecret` / `getSecret`,
+envelope-encrypted under the `KeyProvider`'s instance master key, ADR-034) at
+the moment of use — the token exchange — falling back to the environment
+variable, read fresh at that same moment rather than held anywhere for the
+length of the deprecation window, when the store holds nothing under
+`oidc/<id>/client-secret`. An administrator runs
+`pnpm --filter @quill/server secrets:set oidc/<id>/client-secret < /path/to/secret-file`
+once — the command refuses a value given as a second argument rather than
+accepting it, which is what would put it in shell history; boot then warns,
+naming that command, for as long as the fallback is what makes a provider
+work, and refuses to start when neither names a *readable* value: a row
+whose master key this instance no longer holds is caught here too, not left
+to fail at the next sign-in. `SMTP_PASS` moved the same way, to
+`smtp/password`, resolved on each outbox send rather than once at process
+start. The end of the fallback — when `OIDC_<ID>_CLIENT_SECRET` and
+`SMTP_PASS` stop being read at all — is a later, separate change.
+
+**A discovery document may move an endpoint to another host, on the issuer's
+own scheme.** `auth/oidc/discovery.ts` requires every endpoint a discovery
+document names to share the issuer's scheme but never required it to share
+the issuer's *host* — Amazon Cognito really does host its token endpoint on a
+different name from its issuer, which is why the check was written that way.
+`e2e/sso.spec.ts`'s fake provider is the first thing to exercise that: its
+`authorization_endpoint` is a literal `127.0.0.1` address, browser-reachable
+with no DNS involved, while its issuer, token endpoint and key set stay on
+its own fake hostname, reachable only through the loopback-aware client a
+real browser never needs. This was already true of the implementation; it is
+recorded here because this PR is the first thing to rely on it.
+
+**Still to come on this ADR:** passkeys (WebAuthn), moving provider
+configuration itself — not just its secret — from the environment to
+per-organisation settings an administrator edits, "require SSO for this
+verified email domain", routing an entered email to its organisation's
+provider, group mapping at sign-in, RP-initiated and back-channel logout, and
+SAML 2.0 with SCIM in the enterprise phase. (Microsoft Entra ID emits no
+`email_verified` claim, so an Entra identity never links into an account that
+already exists; whether a tenant-pinned Entra token's `email` may be trusted
+without one is a decision for an administrator, and the configuration does
+not make it by accident.)
 
 ## Consequences
 

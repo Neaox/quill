@@ -76,6 +76,20 @@ export interface ServerConfig {
   readonly oidcRateLimit: RateLimitConfig
   readonly blobStore: BlobStoreConfig
   readonly attachments: AttachmentConfig
+  /**
+   * Lets the OIDC identity-provider registry reach a provider that is really
+   * listening on loopback — the in-process fake `e2e/sso.spec.ts` and manual
+   * local testing run — despite the SSRF-safe outbound client's blanket
+   * refusal of loopback and private addresses
+   * (`infrastructure/http/outbound-client.ts`), which stays exactly as strict
+   * for every provider that is not this one.
+   *
+   * `OIDC_DEV_LOOPBACK=true`, refused outright once `appUrl` names anything
+   * but loopback (`isRealDeployment`) — the same "convenience that
+   * hard-refuses outside development" shape as `DEVELOPMENT_MASTER_KEY` and
+   * `MAIL_DRIVER=dev` above. Default `false`.
+   */
+  readonly oidcDevLoopback: boolean
 }
 
 /**
@@ -243,8 +257,19 @@ export type MailerConfig =
       readonly secure: boolean
       readonly from: string
       readonly user?: string
-      readonly pass?: string
+      /**
+       * The secret name the SMTP password is stored under (ADR-034),
+       * resolved at the moment of use — an outbox send, in
+       * `auth/smtp-mailer.ts`. `SMTP_PASS` is the fallback for one release,
+       * read fresh from the environment at that same moment
+       * (`infrastructure/secrets/resolve-secret.ts`) rather than snapshotted
+       * here — this field never holds the password's value.
+       */
+      readonly passwordSecretName: string
     }
+
+/** Always this: one name, not an administrator's choice, like every OIDC client secret. */
+export const SMTP_PASSWORD_SECRET_NAME = 'smtp/password'
 
 /** Where a configuration warning goes. Injected so a test can capture it. */
 export interface ConfigWarn {
@@ -672,6 +697,30 @@ function loadMasterKeyConfig(
   return { driver: 'environment', keys: [key ?? DEVELOPMENT_MASTER_KEY, ...previous] }
 }
 
+/**
+ * Refused on `isRealDeployment(appUrl) || production` — two independent
+ * signals, not one, matching `loadMasterKeyConfig`'s refusal of the
+ * development master key below: an instance whose `APP_URL` is merely
+ * misconfigured back to loopback (a proxy-fronted instance behind a
+ * forgotten default, say) is still caught by `NODE_ENV=production`, and one
+ * that forgets to set `NODE_ENV` is still caught by its own public address.
+ */
+function loadOidcDevLoopback(env: NodeJS.ProcessEnv, appUrl: URL, production: boolean): boolean {
+  const raw = env['OIDC_DEV_LOOPBACK']
+  if (raw === undefined || raw === 'false') return false
+  if (raw !== 'true') {
+    throw new Error(`OIDC_DEV_LOOPBACK must be "true" or "false", received "${raw}"`)
+  }
+  if (isRealDeployment(appUrl) || production) {
+    throw new Error(
+      'OIDC_DEV_LOOPBACK is refused once APP_URL names anything but loopback, or under ' +
+        'NODE_ENV=production: it exists only so a local OIDC provider can sit on loopback for ' +
+        'development and end-to-end tests.',
+    )
+  }
+  return true
+}
+
 function loadMailerConfig(env: NodeJS.ProcessEnv): MailerConfig {
   const driver = env['MAIL_DRIVER'] ?? 'dev'
   if (driver === 'dev') {
@@ -691,7 +740,11 @@ function loadMailerConfig(env: NodeJS.ProcessEnv): MailerConfig {
   }
 
   const user = env['SMTP_USER']
-  const pass = env['SMTP_PASS']
+  // `SMTP_PASS` itself is deliberately not read here: its value is read
+  // fresh from the environment at the moment of use
+  // (`infrastructure/secrets/resolve-secret.ts`), never snapshotted onto
+  // this object, which is reachable from every route handler for the whole
+  // deprecation window (`AppDependencies.config`).
   return {
     driver: 'smtp',
     host,
@@ -699,7 +752,7 @@ function loadMailerConfig(env: NodeJS.ProcessEnv): MailerConfig {
     secure: env['SMTP_SECURE'] === 'true',
     from,
     ...(user === undefined ? {} : { user }),
-    ...(pass === undefined ? {} : { pass }),
+    passwordSecretName: SMTP_PASSWORD_SECRET_NAME,
   }
 }
 
@@ -717,8 +770,11 @@ export function loadConfig(
   }
 
   const appUrl = parseAppUrl(env['APP_URL'] ?? `http://localhost:${port}`)
-
   const production = env['NODE_ENV'] === 'production'
+  // Computed before `oidcProviders` below, which needs it to decide whether
+  // an issuer may be plain http (`loadOidcProviders`'s `allowInsecureIssuer`).
+  const oidcDevLoopback = loadOidcDevLoopback(env, appUrl, production)
+
   const databaseUrl = env['DATABASE_URL']
   // Two defaults that are right on a laptop and dangerous anywhere else. A
   // production instance that silently pointed at a local database, or logged
@@ -764,9 +820,10 @@ export function loadConfig(
     contentStore: loadContentStoreConfig(env),
     shareLinks: loadShareLinkConfig(env),
     masterKey: loadMasterKeyConfig(env, appUrl, production, warn),
-    oidcProviders: loadOidcProviders(env),
+    oidcProviders: loadOidcProviders(env, oidcDevLoopback),
     oidcRateLimit: loadOidcRateLimitConfig(env),
     blobStore: loadBlobStoreConfig(env),
     attachments: loadAttachmentConfig(env),
+    oidcDevLoopback,
   }
 }

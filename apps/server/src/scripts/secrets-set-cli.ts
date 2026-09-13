@@ -22,18 +22,40 @@ import { createHasher } from '../infrastructure/hasher.ts'
 import { createSystemClock } from '../infrastructure/system-clock.ts'
 import { createUuidGenerator } from '../infrastructure/uuid-generator.ts'
 import { createSearchService } from '@quill/search'
-import { rotateSecrets } from './rotate-secrets.ts'
+import { parseSecretsSetArgv, readSecretValue, setSecretValue } from './secrets-set.ts'
 import type { UserId } from '@quill/domain'
 
 /**
- * `pnpm --filter @quill/server secrets:rotate` — the rotation's composition
- * root: the same wiring `main.ts` does, without an HTTP server. The work
- * itself is in `rotate-secrets.ts`, which is where its tests point.
+ * `pnpm --filter @quill/server secrets:set <name>` — the composition root for
+ * `secrets-set.ts`: the same wiring `main.ts` does, without an HTTP server.
+ * The argument-count guard, the terminal-stdin refusal, and the trailing-
+ * newline rule are `secrets-set.ts`'s own logic (`parseSecretsSetArgv`,
+ * `readSecretValue`) and are covered by its tests; this file is wiring only.
  *
- * `SECRETS_ROTATE_ACTOR` names the instance administrator who asked for it, so
- * the audit row has somebody in it; without it the row is attributed to nobody,
- * which is the honest record of a rotation run from a deployment script.
+ * The value is read from stdin, never from `argv`, and never typed at a
+ * prompt this command does not offer:
+ *
+ *   pnpm --filter @quill/server secrets:set oidc/acme/client-secret < /path/to/secret-file
+ *
+ * `SECRETS_SET_ACTOR` names the instance administrator entering it, the same
+ * way `SECRETS_ROTATE_ACTOR` does for a rotation; without it the audit row is
+ * attributed to nobody, which is the honest record of a value entered by a
+ * deployment script rather than somebody at a keyboard.
  */
+
+const parsedArgv = parseSecretsSetArgv(process.argv.slice(2))
+if (!parsedArgv.ok) {
+  process.stderr.write(`${parsedArgv.message}\n`)
+  process.exit(1)
+}
+const { name } = parsedArgv
+
+const readValue = await readSecretValue(process.stdin)
+if (!readValue.ok) {
+  process.stderr.write(`${readValue.message}\n`)
+  process.exit(1)
+}
+const { value } = readValue
 
 const config = loadConfig()
 const clock = createSystemClock()
@@ -47,13 +69,15 @@ const searchIndex = createPostgresSearchIndex({
   visibility: createVisibleDocumentResolver({ uow }),
   clock,
 })
+// Surfaced to the operator entering the secret, the same way
+// `rotate-secrets-cli.ts` surfaces it: a key-file warning is exactly the
+// kind of thing somebody entering a secret right now needs to see.
 const warn = (details: object, message: string): void =>
   void process.stderr.write(`${message} ${JSON.stringify(details)}\n`)
 const secrets = createEnvelopeCipher(await createKeyProvider(config.masterKey, { warn }))
-const secretResolver = createSecretResolver({ uow, secrets, clock, ids })
 
 try {
-  const result = await rotateSecrets(
+  const outcome = await setSecretValue(
     {
       uow,
       searchIndex,
@@ -69,8 +93,9 @@ try {
       tokens: createTokenService(),
       shareLinkPolicy: createShareLinkPolicy(config),
       mailer: createDevMailer(() => undefined),
-      // A rotation sends no mail, reaches no network and limits nothing; the
-      // ports are here because `AppDependencies` is one shape.
+      // No secret set here reaches mail, an identity provider or an
+      // attachment; the ports are present only because `AppDependencies` is
+      // one shape.
       breachedPasswords: createDisabledBreachedPasswordChecker(),
       rateLimiter: createRateLimiter({ clock, config: config.rateLimit }),
       oidcRateLimiter: createRateLimiter({ clock, config: config.oidcRateLimit }),
@@ -81,14 +106,16 @@ try {
         appUrl: config.appUrl,
         createClient: outboundClientFactory,
         clock,
-        secretResolver,
+        secretResolver: createSecretResolver({ uow, secrets, clock, ids }),
       }),
       config,
     },
-    (process.env['SECRETS_ROTATE_ACTOR'] ?? null) as UserId,
+    name,
+    value,
+    (process.env['SECRETS_SET_ACTOR'] ?? null) as UserId,
     (line) => process.stdout.write(`${line}\n`),
   )
-  if (result.unreadable.length > 0) process.exitCode = 1
+  if (outcome !== 'set') process.exitCode = 1
 } finally {
   await database.close()
 }

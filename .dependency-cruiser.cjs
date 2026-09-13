@@ -63,6 +63,21 @@ module.exports = {
       to: { path: '^packages/(content-store|search|providers)/' },
     },
     {
+      name: 'fake-oidc-provider-is-test-only',
+      comment:
+        'The in-process fake OpenID Connect provider (test-support/fake-oidc-provider.ts) — a real socket that signs tokens and authorises anyone who asks — exists for tests. The one deliberate exception is fake-oidc-server-cli.ts, which wraps it in a real process for e2e/sso.spec.ts; the next importer of it should be a considered exception too, not an accident. (Other files in test-support, such as fakes.ts, have long had non-test importers, e.g. export-openapi.ts, and are not restricted by this rule.)',
+      severity: 'error',
+      from: {
+        path: '^apps/server/src',
+        pathNot: [
+          '\\.test\\.tsx?$',
+          '^apps/server/src/test-support/fake-oidc-provider\\.ts$',
+          '^apps/server/src/scripts/fake-oidc-server-cli\\.ts$',
+        ],
+      },
+      to: { path: '^apps/server/src/test-support/fake-oidc-provider\\.ts$' },
+    },
+    {
       name: 'no-circular',
       severity: 'error',
       from: {},

@@ -24,6 +24,7 @@ import { createContentStore } from '../infrastructure/content-store.ts'
 import { createDocumentFormat } from '../infrastructure/markdown/document-format.ts'
 import { createEnvelopeCipher } from '../infrastructure/secrets/envelope-cipher.ts'
 import { createKeyProvider } from '../infrastructure/secrets/key-provider.ts'
+import { createSecretResolver } from '../infrastructure/secrets/resolve-secret.ts'
 import { createSettingsStore } from '../infrastructure/settings-store.ts'
 
 /**
@@ -54,22 +55,25 @@ async function describableDependencies(): Promise<AppDependencies> {
   // the honest choice rather than one bound to a database that is not there.
   const searchIndex = createInMemorySearchIndex()
   const contentStore = createContentStore({ driver: 'memory' }, clock)
+  const uow = createInMemoryUnitOfWork()
+  // Describing the API encrypts nothing; the development key is present
+  // because the routes ask for the port, not because it is used.
+  const secrets = createEnvelopeCipher(await createKeyProvider(config.masterKey))
+  const ids = createFakeIdGenerator()
   return {
-    uow: createInMemoryUnitOfWork(),
+    uow,
     searchIndex,
     search: createSearchService(searchIndex),
     contentStore,
     settings: createSettingsStore(contentStore),
-    // Describing the API encrypts nothing; the development key is present
-    // because the routes ask for the port, not because it is used.
-    secrets: createEnvelopeCipher(await createKeyProvider(config.masterKey)),
+    secrets,
     blobStore: createInMemoryBlobStore(),
     format: createDocumentFormat(),
     clock,
     hasher: createHasher(),
     tokens: createTokenService(),
     shareLinkPolicy: createShareLinkPolicy(config),
-    ids: createFakeIdGenerator(),
+    ids,
     // Describing the API sends no mail, so the recording mailer is the
     // honest choice rather than one configured to reach a server.
     mailer: createRecordingMailer(),
@@ -87,6 +91,7 @@ async function describableDependencies(): Promise<AppDependencies> {
       appUrl: config.appUrl,
       createClient: outboundClientFactory,
       clock,
+      secretResolver: createSecretResolver({ uow, secrets, clock, ids }),
     }),
     config,
   }
