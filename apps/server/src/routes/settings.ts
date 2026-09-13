@@ -107,6 +107,11 @@ export function settingsRoutes(deps: AppDependencies): FastifyPluginAsync {
         })
         if (result.kind === 'invalid') throw invalid(result.issues)
         if (result.kind === 'conflict') throw settingsConflict(result.current.revision)
+        // The organisation's name, theme, navigation and policies are on every
+        // public page, and the public site holds finished pages between
+        // requests — including, in the case of the publishing policy, whether
+        // there is a site there at all (ADR-023).
+        deps.publicSiteCache.invalidate()
         return {
           revision: result.revision,
           settings: result.document,

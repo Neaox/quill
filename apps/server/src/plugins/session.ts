@@ -21,6 +21,18 @@ declare module 'fastify' {
     /** Attach as a route's `preHandler` to require a valid session; populates `request.session`. */
     requireSession(request: FastifyRequest, reply: FastifyReply): Promise<void>
     /**
+     * `requireSession` without the requirement: populates `request.session`
+     * when the request carries a valid one, and otherwise leaves it undefined
+     * and lets the route carry on.
+     *
+     * For a route that answers both a member and a stranger, and lets the
+     * resolver tell them apart — the attachment read path, which serves the
+     * pictures on a published public page (ADR-023). A route that needs a
+     * session uses `requireSession`; a route that *offers* one uses this, and
+     * must then decide for itself what a caller with none may do.
+     */
+    optionalSession(request: FastifyRequest): Promise<void>
+    /**
      * `requireSession` plus ADR-011's "email verification is required before
      * a user can be granted anything beyond their own profile". Everything
      * that creates or changes tenancy, documents, drafts, or grants uses
@@ -89,6 +101,20 @@ export function registerSessionSupport(app: FastifyInstance, options: SessionSup
         throw result.reason === 'expired' ? sessionExpired() : unauthenticated()
       }
       request.session = { sessionId: result.session.id, userId: result.session.userId }
+    },
+  )
+
+  app.decorate(
+    'optionalSession',
+    async function optionalSession(request: FastifyRequest): Promise<void> {
+      const token = readSessionCookie(request, options.session)
+      if (token === undefined) return
+      const result = await sessions.authenticate(token)
+      // A lapsed or unknown cookie is not an error here, it is simply nobody:
+      // the route has an answer for a caller with no session, and refusing
+      // would make an expired cookie worse than none at all.
+      if (result.ok)
+        request.session = { sessionId: result.session.id, userId: result.session.userId }
     },
   )
 

@@ -1,0 +1,80 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`the public page > renders the whole page, and this is what it looks like 1`] = `
+"<!doctype html>
+<html lang="en">
+    <head>
+      <meta charset="utf-8" />
+      <meta name="viewport" content="width=device-width, initial-scale=1" />
+      <title>Overview · Acme</title>
+      
+      <meta name="description" content="What this is." />
+      <link rel="canonical" href="https://docs.example.com/s/acme-docs/guides/overview" />
+      <meta property="og:type" content="article" />
+      <meta property="og:site_name" content="Acme" />
+      <meta property="og:title" content="Overview" />
+      <meta property="og:description" content="What this is." />
+      <meta property="og:url" content="https://docs.example.com/s/acme-docs/guides/overview" />
+      <meta name="twitter:card" content="summary" />
+      <link rel="preload" as="style" href="/s/_assets/theme-0123456789abcdef0123456789abcdef.css" />
+      <link rel="stylesheet" href="/s/_assets/theme-0123456789abcdef0123456789abcdef.css" />
+      
+    </head>
+    <body>
+      <a class="skip-link" href="#site-main">Skip to content</a>
+      <header class="site-header">
+        <div class="site-header-inner">
+          <a class="site-brand" href="/s/acme-docs">Acme</a>
+          <ul class="site-links">
+                  <li><a href="https://status.example.com">Status</a></li>
+                </ul>
+          <form class="site-search" role="search" action="/s/acme-docs/search" method="get">
+            <label class="visually-hidden" for="site-search-input">Search Acme</label>
+            <input
+              id="site-search-input"
+              type="search"
+              name="q"
+              placeholder="Search the docs"
+              value=""
+            />
+            <button type="submit">Search</button>
+          </form>
+        </div>
+      </header>
+      <div class="site-body">
+         <nav class="site-nav" aria-labelledby="site-nav-heading">
+    <h2 class="site-nav-heading" id="site-nav-heading">On this site</h2>
+    <ul>
+    <li>
+    <a
+      href="/s/acme-docs/guides/overview"
+      aria-current="page"
+      >Overview</a
+    >
+    
+  </li>
+  </ul>
+  </nav>
+        <main class="site-main" id="site-main"><article class="layout-grid prose"><h1>Overview</h1></article></main>
+         <nav class="site-toc" aria-labelledby="site-toc-heading">
+    <h2 class="site-toc-heading" id="site-toc-heading">On this page</h2>
+    <ul>
+      <li class="toc-depth-2">
+          <a href="#user-content-why">Why</a>
+        </li>
+    </ul>
+  </nav>
+      </div>
+      <footer class="site-footer">
+    <span>Acme</span>
+    <span
+            >Updated
+            <time datetime="2026-08-15T10:00:00.000Z"
+              >15 August 2026</time
+            ></span
+          >
+  </footer>
+    </body>
+  </html>
+"
+`;

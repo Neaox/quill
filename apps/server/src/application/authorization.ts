@@ -147,6 +147,7 @@ export async function requireSharedDocument(
   documentId: DocumentId,
   log: SharedAccessLog,
   capability: Capability = 'view',
+  refusal: string = SHARE_REFUSAL,
 ): Promise<DocumentAccess> {
   const access = await authorizer.document(documentId)
   if (!access.ok) {
@@ -160,9 +161,9 @@ export async function requireSharedDocument(
         'share link: a document could not be placed in the tenancy tree; refused as not found',
       )
     }
-    throw notFound(SHARE_REFUSAL)
+    throw notFound(refusal)
   }
-  if (!access.value.capabilities[capability]) throw notFound(SHARE_REFUSAL)
+  if (!access.value.capabilities[capability]) throw notFound(refusal)
   return access.value
 }
 

@@ -371,6 +371,31 @@ export interface CollectionRow {
   readonly name: string
   readonly slug: string
   readonly createdAt: Date
+  /**
+   * What this collection publishes to the web, or null until it has ever been
+   * published (ADR-023).
+   */
+  readonly publicSite: PublicSiteSettings | null
+}
+
+/**
+ * A collection's publish settings (ADR-023, ADR-035).
+ *
+ * `enabled` and `siteSlug` are separate because unpublishing must not lose the
+ * address: a site taken down and put back up answers at the same place, and
+ * every link anybody kept still works. The slug is claimed across the instance
+ * the moment it is first used, so a second collection cannot take it while the
+ * first is down.
+ */
+export interface PublicSiteSettings {
+  readonly enabled: boolean
+  /** The one segment a public address is built on: `/s/<siteSlug>`. */
+  readonly siteSlug: string
+  /**
+   * The document the site's home shows. Null means the home is an index of the
+   * collection, which is what a site with no written front page gets.
+   */
+  readonly homeDocumentId: DocumentId | null
 }
 
 /**
@@ -387,7 +412,29 @@ export interface CollectionRepository {
   }): Promise<CollectionRow>
   findById(id: CollectionId): Promise<CollectionRow | null>
   findBySlug(workspaceId: WorkspaceId, slug: string): Promise<CollectionRow | null>
+  /**
+   * The collection published at this site slug, whether or not it is currently
+   * enabled (ADR-023). A disabled site still holds its address, so the lookup
+   * is what stops a second collection claiming it, and the caller decides what
+   * a disabled one means.
+   */
+  findBySiteSlug(siteSlug: string): Promise<CollectionRow | null>
   listByWorkspace(workspaceId: WorkspaceId): Promise<readonly CollectionRow[]>
+  /**
+   * Every collection whose site is switched on, for `robots.txt` — which names
+   * a sitemap per site — and for an administrator's list of what is public.
+   */
+  listPublicSites(): Promise<readonly CollectionRow[]>
+  /**
+   * Writes the publish settings whole; `publishCollection` is the only caller.
+   *
+   * The address is claimed by the unique index rather than by the read that
+   * precedes it, so two administrators publishing the same slug at the same
+   * moment do not both pass a check and then have one of them fail as a server
+   * fault: the loser is told the slug is taken, in the same shape as the
+   * caller who lost the race by a second.
+   */
+  setPublicSite(id: CollectionId, settings: PublicSiteSettings): Promise<SetPublicSiteOutcome>
   /**
    * Renames a collection. The slug is deliberately not touched: documents are
    * addressed by id (AGENTS.md rule 8), so a rename is a display change and
@@ -751,6 +798,61 @@ export interface ShareLinkRepository {
 }
 
 // ---------------------------------------------------------------------------
+// Public redirects (ADR-035: a public address is a promise)
+// ---------------------------------------------------------------------------
+
+/**
+ * One address a public page used to answer at.
+ *
+ * Public URLs are path-shaped and built from the current title, so a rename or
+ * a move changes them — which is exactly what rule 8 exists to avoid for
+ * internal links, and why ADR-035 adopts the redirect table only here, where a
+ * readable address earns its cost. A row is the old path and the document it
+ * named; the current path is always recomputed from the document, so a row can
+ * never be the second place a page's address is decided.
+ */
+export interface PublicRedirectRow {
+  readonly id: string
+  readonly siteSlug: string
+  /** The path under the site, with no leading slash: `guides/old-name`. */
+  readonly path: string
+  readonly documentId: DocumentId
+  readonly createdAt: Date
+}
+
+export type SetPublicSiteOutcome =
+  | { readonly kind: 'written'; readonly collection: CollectionRow }
+  | { readonly kind: 'slug-taken' }
+
+export interface PublicRedirectRepository {
+  /**
+   * Records that `path` used to name this document. Idempotent on
+   * `(siteSlug, path)`: a document renamed back and forth keeps one row per
+   * address, pointing at wherever that address leads today.
+   */
+  record(input: {
+    readonly id: string
+    readonly siteSlug: string
+    readonly path: string
+    readonly documentId: DocumentId
+    readonly now: Date
+  }): Promise<void>
+  find(siteSlug: string, path: string): Promise<PublicRedirectRow | null>
+  /**
+   * Removes the row at an address, for when a document moves *into* one a
+   * redirect already claims: a page must never redirect to itself.
+   */
+  deleteAt(siteSlug: string, path: string): Promise<void>
+  /**
+   * Removes every row for a site, for when a collection is republished at a
+   * different address. The old slug's rows describe paths under a site that no
+   * longer exists, and leaving them would hand them to whichever collection
+   * claims that slug next.
+   */
+  deleteForSite(siteSlug: string): Promise<void>
+}
+
+// ---------------------------------------------------------------------------
 // Revisions index (ADR-014: the fast path for history, not a cache)
 // ---------------------------------------------------------------------------
 
@@ -792,6 +894,15 @@ export interface RevisionsIndexRepository {
   /** Newest first. */
   listForDocument(documentId: DocumentId, page: HistoryPage): Promise<readonly RevisionIndexRow[]>
   latestForDocument(documentId: DocumentId): Promise<RevisionIndexRow | null>
+  /**
+   * The newest revision of each of these documents, in one query.
+   *
+   * A public site stamps every page and every sitemap entry with when its head
+   * revision was published (ADR-023), so a hundred pages must not cost a
+   * hundred round trips (AGENTS.md rule 13). Documents with no revision are
+   * simply absent from the answer.
+   */
+  listHeads(documentIds: readonly DocumentId[]): Promise<readonly RevisionIndexRow[]>
   /**
    * One revision of one document, or null when this document never had it.
    *
@@ -1008,6 +1119,7 @@ export interface RepositoryBundle {
   readonly locks: LockRepository
   readonly grants: GrantRepository
   readonly shareLinks: ShareLinkRepository
+  readonly publicRedirects: PublicRedirectRepository
   readonly revisions: RevisionsIndexRepository
   readonly renderCache: RenderCacheRepository
   readonly documentLinks: DocumentLinksRepository

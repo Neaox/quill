@@ -1,6 +1,6 @@
 import type { DocumentId, RevisionId, UserId, WorkspaceId } from '@quill/domain'
 
-import type { MagicLinkPurpose } from '../ports/persistence.ts'
+import type { CollectionId, MagicLinkPurpose } from '../ports/persistence.ts'
 import { createVersionedReader } from './versioned-reader.ts'
 
 /**
@@ -22,6 +22,12 @@ export const MAIL_REQUESTED = 'MailRequested'
 export const DOCUMENT_CREATED = 'DocumentCreated'
 export const DOCUMENT_PUBLISHED = 'DocumentPublished'
 export const DOCUMENT_RENAMED = 'DocumentRenamed'
+/**
+ * A document changed collection (ADR-023). A move inside one collection is not
+ * one: the public address is the collection's slug and the document's title,
+ * so nesting a page under another does not move it on the web.
+ */
+export const DOCUMENT_MOVED = 'DocumentMoved'
 
 export const EVENT_PAYLOAD_VERSION = 1
 
@@ -47,6 +53,15 @@ export interface DocumentRenamedPayload {
   readonly workspaceId: WorkspaceId
   readonly from: string
   readonly to: string
+}
+
+export interface DocumentMovedPayload {
+  readonly version: number
+  readonly documentId: DocumentId
+  readonly workspaceId: WorkspaceId
+  /** Null when the document was in no collection, which is a tree the resolver refuses anyway. */
+  readonly fromCollectionId: CollectionId | null
+  readonly toCollectionId: CollectionId | null
 }
 
 /**
@@ -115,6 +130,21 @@ const renamedReader = createVersionedReader<DocumentRenamedPayload>({
   },
 })
 
+const movedReader = createVersionedReader<DocumentMovedPayload>({
+  [EVENT_PAYLOAD_VERSION]: (payload) => {
+    const documentId = readString(payload, 'documentId')
+    const workspaceId = readString(payload, 'workspaceId')
+    if (documentId === null || workspaceId === null) return null
+    return {
+      version: EVENT_PAYLOAD_VERSION,
+      documentId: documentId as DocumentId,
+      workspaceId: workspaceId as WorkspaceId,
+      fromCollectionId: readString(payload, 'fromCollectionId'),
+      toCollectionId: readString(payload, 'toCollectionId'),
+    }
+  },
+})
+
 const mailReader = createVersionedReader<MailRequestedPayload>({
   [EVENT_PAYLOAD_VERSION]: (payload) => {
     const to = readString(payload, 'to')
@@ -155,4 +185,9 @@ export function parseDocumentPublished(payload: unknown): DocumentPublishedPaylo
 /** A `DocumentRenamed` payload, or null when it is not one this release can read. */
 export function parseDocumentRenamed(payload: unknown): DocumentRenamedPayload | null {
   return renamedReader.read(payload)
+}
+
+/** A `DocumentMoved` payload, or null when it is not one this release can read. */
+export function parseDocumentMoved(payload: unknown): DocumentMovedPayload | null {
+  return movedReader.read(payload)
 }
