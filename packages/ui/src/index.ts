@@ -70,7 +70,13 @@ export {
   type DocumentComment,
 } from './components/comments-panel.tsx'
 export { DataTable, type DataTableProps } from './components/data-table.tsx'
-export { Dialog, DialogClose, type DialogProps } from './components/dialog.tsx'
+export {
+  Dialog,
+  DialogClose,
+  dialogStyles,
+  type DialogElevation,
+  type DialogProps,
+} from './components/dialog.tsx'
 export {
   DocumentHeader,
   type DocumentHeaderProps,

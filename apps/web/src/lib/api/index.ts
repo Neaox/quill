@@ -117,6 +117,20 @@ export {
   type InvalidQueryKind,
   type SearchInput,
 } from './search.ts'
+export {
+  shareLinksQueryOptions,
+  useShareLinks,
+  useCreateShareLink,
+  useRevokeShareLink,
+  type CreateShareLinkInput,
+  type RevokeShareLinkInput,
+} from './share-links.ts'
+export {
+  sharedBodyQueryOptions,
+  sharedDocumentQueryOptions,
+  useLoadedSharedBody,
+  useLoadedSharedDocument,
+} from './share-reading.ts'
 
 export type {
   CollectionDto,
@@ -156,4 +170,12 @@ export type {
   SearchResults,
   SearchHit,
   SearchSnippet,
+  ShareLinkDto,
+  ShareLinkScope,
+  ShareLinkList,
+  CreatedShareLink,
+  SharedDocument,
+  SharedBody,
+  SharedLink,
+  SharedNode,
 } from './types.ts'

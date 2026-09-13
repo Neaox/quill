@@ -111,6 +111,7 @@
         "apps/server/src/infrastructure/db/test-database.ts",
         "apps/server/src/plugins/request-id.ts",
         "packages/editor/src/drafts/clock.ts",
+        "apps/web/src/lib/time/clock.ts",
         "**/test-fixtures.ts",
         "scripts/**",
         "e2e/**"

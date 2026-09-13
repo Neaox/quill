@@ -43,6 +43,17 @@ export const queryKeys = {
   rendered: (documentId: string, revision?: string) =>
     ['rendered', documentId, revision ?? null] as const,
   envelope: (documentId: string) => ['envelope', documentId] as const,
+  /** Every share link on one document, as the share dialog lists them. */
+  shareLinks: (documentId: string) => ['share-links', documentId] as const,
+  /**
+   * The anonymous reading surface, keyed by the token that is the whole of
+   * the capability. Its own top-level segments, sharing nothing with the
+   * signed-in world's entries: a share-link page is a different reader
+   * looking at a different thing, and an invalidation on either side must
+   * never reach across.
+   */
+  sharedDocument: (token: string) => ['shared-document', token] as const,
+  sharedBody: (token: string, reference: string) => ['shared-body', token, reference] as const,
   publishedContent: (documentId: string) => ['published-content', documentId] as const,
   history: (documentId: string) => ['history', documentId] as const,
   diff: (documentId: string, from: string | null, to: string) =>

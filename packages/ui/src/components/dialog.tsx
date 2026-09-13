@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react'
 import { Dialog as Primitive } from 'radix-ui'
+import type { VariantProps } from 'tailwind-variants'
 
 import { tv } from '../lib/class-names.ts'
 import { CloseIcon } from './icons.tsx'
@@ -13,9 +14,9 @@ import { CloseIcon } from './icons.tsx'
  */
 export const dialogStyles = tv({
   slots: {
-    overlay: 'dialog-overlay fixed inset-0 z-40 bg-overlay',
+    overlay: 'dialog-overlay fixed inset-0 bg-overlay',
     panel: [
-      'dialog-panel fixed top-1/2 left-1/2 z-50 w-[min(32rem,calc(100vw-2rem))]',
+      'dialog-panel fixed top-1/2 left-1/2 w-[min(32rem,calc(100vw-2rem))]',
       'rounded-lg border border-border bg-surface-raised p-5 shadow-dialog',
       // A dialog never grows past the viewport: its body scrolls instead, so
       // the actions in the footer are always reachable however long the form
@@ -34,7 +35,26 @@ export const dialogStyles = tv({
     body: 'mt-4 min-h-0 grow overflow-y-auto text-xs leading-relaxed text-foreground [&>*+*]:mt-3',
     footer: 'mt-6 flex shrink-0 flex-wrap justify-end gap-2 border-t border-border pt-4',
   },
+  variants: {
+    /**
+     * Which layer a dialog sits on.
+     *
+     * A modal earns its press by suspending everything behind it, and the
+     * dimming is how that is said. A second dialog opened *from* a dialog —
+     * a destructive confirmation over the panel that offered it — therefore
+     * needs its own overlay to paint above the first panel rather than
+     * beneath it, or the two read as one confused surface with the question
+     * floating on it. `nested` is that step up; nothing needs a third.
+     */
+    elevation: {
+      base: { overlay: 'z-40', panel: 'z-50' },
+      nested: { overlay: 'z-60', panel: 'z-70' },
+    },
+  },
+  defaultVariants: { elevation: 'base' },
 })
+
+export type DialogElevation = NonNullable<VariantProps<typeof dialogStyles>['elevation']>
 
 export interface DialogProps {
   /** Controlled open state. Omit to let the dialog own it. */
@@ -49,6 +69,8 @@ export interface DialogProps {
   /** Actions, laid out end-aligned under a divider. */
   readonly footer?: ReactNode
   readonly closeLabel?: string
+  /** `nested` for a dialog opened from inside another one. */
+  readonly elevation?: DialogElevation
   readonly className?: string | undefined
 }
 
@@ -69,9 +91,10 @@ export function Dialog({
   children,
   footer,
   closeLabel = 'Close',
+  elevation,
   className,
 }: DialogProps) {
-  const styles = dialogStyles()
+  const styles = dialogStyles({ elevation })
 
   return (
     <Primitive.Root
