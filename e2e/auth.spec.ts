@@ -54,6 +54,11 @@ test.describe('authentication', () => {
     await signInAsAdmin(request)
     const workspace = await createWorkspace(request, 'Auth Spec Workspace')
     await page.goto(`/w/${workspace.id}`)
+    // The refusal itself, not merely the absence of the workspace: a heading
+    // is also hidden while the route is still loading, and moving on then
+    // lets the in-flight navigation overtake the next `goto` (Firefox
+    // `NS_ERROR_FAILURE`, WebKit "interrupted by another navigation").
+    await expect(page.getByText("We couldn't find that workspace")).toBeVisible()
     await expect(page.getByRole('heading', { level: 1, name: workspace.name })).toBeHidden()
 
     await page.goto('/')
