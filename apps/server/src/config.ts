@@ -31,6 +31,14 @@ export interface ServerConfig {
   readonly trustProxy: TrustProxyConfig
   readonly session: SessionConfig
   readonly rateLimit: RateLimitConfig
+  /**
+   * Search's own budget, per session, counted in the same window
+   * `rateLimit.windowMs` sets (ADR-010: "public search is scoped to public
+   * content and rate limited"). It is separate because the authentication
+   * budget is deliberately tiny — ten attempts a minute is generous for
+   * signing in and useless for a search box somebody types into.
+   */
+  readonly searchRateLimitMax: number
   readonly breachedPasswords: BreachedPasswordConfig
   readonly mailer: MailerConfig
   readonly contentStore: ContentStoreConfig
@@ -156,6 +164,9 @@ const DEFAULT_RATE_LIMIT: RateLimitConfig = {
   maxWindowMs: 60 * 60_000,
 }
 
+/** Enough for a search box that answers as somebody types, and far short of a scraper. */
+const DEFAULT_SEARCH_RATE_LIMIT_MAX = 60
+
 const HIBP_RANGE_API_URL = 'https://api.pwnedpasswords.com/range'
 
 /**
@@ -172,12 +183,23 @@ function parsePort(raw: string | undefined, variable: string, fallback: number):
   return port
 }
 
-function parseDuration(raw: string | undefined, variable: string, fallback: number): number {
+/** A positive integer setting, whatever it counts. Both readers below are this, named for what they read. */
+function parsePositiveInteger(raw: string | undefined, variable: string, fallback: number): number {
   const value = Number(raw ?? String(fallback))
   if (!Number.isInteger(value) || value < 1) {
     throw new Error(`${variable} must be a positive integer, received "${raw}"`)
   }
   return value
+}
+
+/** A duration in milliseconds. */
+function parseDuration(raw: string | undefined, variable: string, fallback: number): number {
+  return parsePositiveInteger(raw, variable, fallback)
+}
+
+/** A count of things — requests in a window, say — which is not a duration however alike they read. */
+function parseCount(raw: string | undefined, variable: string, fallback: number): number {
+  return parsePositiveInteger(raw, variable, fallback)
 }
 
 function parseAppUrl(raw: string): URL {
@@ -248,7 +270,7 @@ function loadSessionConfig(env: NodeJS.ProcessEnv, appUrl: URL, warn: ConfigWarn
 
 function loadRateLimitConfig(env: NodeJS.ProcessEnv): RateLimitConfig {
   return {
-    max: parseDuration(env['AUTH_RATE_LIMIT_MAX'], 'AUTH_RATE_LIMIT_MAX', DEFAULT_RATE_LIMIT.max),
+    max: parseCount(env['AUTH_RATE_LIMIT_MAX'], 'AUTH_RATE_LIMIT_MAX', DEFAULT_RATE_LIMIT.max),
     windowMs: parseDuration(
       env['AUTH_RATE_LIMIT_WINDOW_MS'],
       'AUTH_RATE_LIMIT_WINDOW_MS',
@@ -385,6 +407,11 @@ export function loadConfig(
     trustProxy: loadTrustProxyConfig(env),
     session: loadSessionConfig(env, appUrl, warn),
     rateLimit: loadRateLimitConfig(env),
+    searchRateLimitMax: parseCount(
+      env['SEARCH_RATE_LIMIT_MAX'],
+      'SEARCH_RATE_LIMIT_MAX',
+      DEFAULT_SEARCH_RATE_LIMIT_MAX,
+    ),
     breachedPasswords: {
       enabled: env['BREACHED_PASSWORD_CHECK'] !== 'false',
       rangeApiUrl: env['BREACHED_PASSWORD_RANGE_URL'] ?? HIBP_RANGE_API_URL,

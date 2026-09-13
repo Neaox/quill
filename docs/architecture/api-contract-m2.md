@@ -63,6 +63,51 @@ Renaming a *workspace* leaves its slug alone unless the request names a new one.
 
 A rename of a *collection* changes the name and nothing else: the slug is left exactly as it was, because documents are addressed by id and nothing points at a collection by its slug, so a rename can never break a link or a published path. A collection that still holds documents is not deleted — `collection_id` is nullable, and removing the row would take every document it held out of the permission tree — so the client moves or deletes them first and retries.
 
+## Search (M3)
+
+| Method and path | Purpose | Response |
+|---|---|---|
+| `GET /search?q=&workspace=&limit=&cursor=` | Find a document across every workspace the caller may read | `SearchResults` |
+
+`q` is the query language `@quill/search` parses (ADR-010): bare words, `"quoted phrases"`, `-exclusions`, and the field filters `title:`, `tag:`, `owner:`, `status:`, `collection:` and `in:`. A filter value with spaces is quoted (`owner:"Ada Lovelace"`). A colon the language does not reserve is read as part of a term, so a query is never refused for using one. It must be at least one character, and three things are refused with `422 invalid_query` and `details: { kind, position }`, so a search box can underline the character: a quote that never closes (`unterminated-quote`), a filter with no value (`empty-filter-value`), and a query that names nothing to look for — only exclusions — which would be an endpoint for enumerating everything the caller may read rather than a search (`nothing-to-search-for`).
+
+**How the words are matched.** Every word has to appear. When that finds fewer than twenty documents — one screenful — the search runs again with the words matched as alternatives and answers with that instead, so a half-remembered phrase still finds its document rather than returning an almost-empty page. A quoted phrase is exact and never widened, and neither is the typo tolerance that otherwise brings in titles close to what was typed. Which of the two matchings a page came from travels in its cursor, because the two score the same document differently and a page-through must not change matching half way down.
+
+`workspace` is the workspace the caller is *in*, by id or slug (ADR-035). It changes what is preferred, not what is visible: matches there come back in `current`, and every other workspace the caller may read is grouped under `elsewhere`, each group ordered by its own best match, groups ordered by theirs (quill-plan.md §15 — search is the one surface that crosses workspaces). Omitted, `current` is empty and every match is a grouped suggestion. A workspace the caller cannot read answers `404`, exactly as a direct read of it would.
+
+`limit` is 1–50 and defaults to 20. `cursor` is the opaque `nextCursor` of a previous page and nothing else; one this server did not write answers `422 invalid_cursor`. Paging is keyset, and a cursor pins the instant the first page was ranked at, so the recency boost cannot shuffle later pages.
+
+A `nextCursor` also appears when a page has exhausted the workspaces it searched but not the workspaces the caller can read: permissions are resolved for a bounded number of workspaces per request (five), the workspace named by `workspace` always among them, and the pages after carry the rest. Results are therefore ordered by relevance *within* the workspaces a page covered, and a later page may hold a group whose best match outscores one already shown. Nothing is hidden by this — only deferred.
+
+`breadcrumb` names the workspace and the collection a hit sits in. That is deliberate: somebody allowed to see a document is allowed to see where it lives, and a result with no location is a title with nowhere to put it.
+
+A search never returns a document the caller may not read: the permission filter is applied inside the engine's query (ADR-012), so a denied document is not merely absent from the results but is never scored, counted, or paged past. Searches are rate limited per session on their own budget (`SEARCH_RATE_LIMIT_MAX`, 60 a minute by default) and are deliberately not audited.
+
+```ts
+interface SearchResults {
+  /** The query as it was asked, so a client can show what was actually searched. */
+  query: string
+  current: SearchHit[]
+  elsewhere: { workspace: { id: string; slug: string; name: string }; hits: SearchHit[] }[]
+  nextCursor?: string
+}
+
+interface SearchHit {
+  documentId: string
+  /** With `slug`, the whole readable address (ADR-035). */
+  shortId: string
+  slug: string
+  title: string
+  path: string
+  workspaceId: string
+  /** Workspace, then collection. */
+  breadcrumb: string[]
+  /** Plain text plus the matched spans as offsets into it — never HTML (ADR-010). */
+  snippet: { text: string; ranges: { start: number; end: number }[] }
+  score: number
+}
+```
+
 ## Drafts and locks
 
 Already implemented in M1 and unchanged: `GET /documents/:id/draft`, `PUT /documents/:id/draft` (`423 lock_lost`, `409 stale_version`, `401 session_expired`), and `/documents/:id/lock/{acquire,heartbeat,release,takeover}` per ADR-021.

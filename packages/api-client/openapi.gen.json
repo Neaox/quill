@@ -2887,6 +2887,262 @@
         }
       }
     },
+    "/api/search": {
+      "get": {
+        "parameters": [
+          {
+            "schema": {
+              "minLength": 1,
+              "maxLength": 512,
+              "type": "string"
+            },
+            "in": "query",
+            "name": "q",
+            "required": true
+          },
+          {
+            "schema": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "in": "query",
+            "name": "workspace",
+            "required": false
+          },
+          {
+            "schema": {
+              "minimum": 1,
+              "maximum": 50,
+              "type": "integer"
+            },
+            "in": "query",
+            "name": "limit",
+            "required": false
+          },
+          {
+            "schema": {
+              "maxLength": 1024,
+              "type": "string"
+            },
+            "in": "query",
+            "name": "cursor",
+            "required": false
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "query",
+                    "current",
+                    "elsewhere"
+                  ],
+                  "properties": {
+                    "query": {
+                      "type": "string"
+                    },
+                    "current": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "documentId",
+                          "shortId",
+                          "slug",
+                          "title",
+                          "path",
+                          "workspaceId",
+                          "breadcrumb",
+                          "snippet",
+                          "score"
+                        ],
+                        "properties": {
+                          "documentId": {
+                            "type": "string"
+                          },
+                          "shortId": {
+                            "type": "string"
+                          },
+                          "slug": {
+                            "type": "string"
+                          },
+                          "title": {
+                            "type": "string"
+                          },
+                          "path": {
+                            "type": "string"
+                          },
+                          "workspaceId": {
+                            "type": "string"
+                          },
+                          "breadcrumb": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          },
+                          "snippet": {
+                            "type": "object",
+                            "required": [
+                              "text",
+                              "ranges"
+                            ],
+                            "properties": {
+                              "text": {
+                                "type": "string"
+                              },
+                              "ranges": {
+                                "type": "array",
+                                "items": {
+                                  "type": "object",
+                                  "required": [
+                                    "start",
+                                    "end"
+                                  ],
+                                  "properties": {
+                                    "start": {
+                                      "minimum": 0,
+                                      "type": "integer"
+                                    },
+                                    "end": {
+                                      "minimum": 0,
+                                      "type": "integer"
+                                    }
+                                  }
+                                }
+                              }
+                            }
+                          },
+                          "score": {
+                            "type": "number"
+                          }
+                        }
+                      }
+                    },
+                    "elsewhere": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "workspace",
+                          "hits"
+                        ],
+                        "properties": {
+                          "workspace": {
+                            "type": "object",
+                            "required": [
+                              "id",
+                              "slug",
+                              "name"
+                            ],
+                            "properties": {
+                              "id": {
+                                "type": "string"
+                              },
+                              "slug": {
+                                "type": "string"
+                              },
+                              "name": {
+                                "type": "string"
+                              }
+                            }
+                          },
+                          "hits": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "required": [
+                                "documentId",
+                                "shortId",
+                                "slug",
+                                "title",
+                                "path",
+                                "workspaceId",
+                                "breadcrumb",
+                                "snippet",
+                                "score"
+                              ],
+                              "properties": {
+                                "documentId": {
+                                  "type": "string"
+                                },
+                                "shortId": {
+                                  "type": "string"
+                                },
+                                "slug": {
+                                  "type": "string"
+                                },
+                                "title": {
+                                  "type": "string"
+                                },
+                                "path": {
+                                  "type": "string"
+                                },
+                                "workspaceId": {
+                                  "type": "string"
+                                },
+                                "breadcrumb": {
+                                  "type": "array",
+                                  "items": {
+                                    "type": "string"
+                                  }
+                                },
+                                "snippet": {
+                                  "type": "object",
+                                  "required": [
+                                    "text",
+                                    "ranges"
+                                  ],
+                                  "properties": {
+                                    "text": {
+                                      "type": "string"
+                                    },
+                                    "ranges": {
+                                      "type": "array",
+                                      "items": {
+                                        "type": "object",
+                                        "required": [
+                                          "start",
+                                          "end"
+                                        ],
+                                        "properties": {
+                                          "start": {
+                                            "minimum": 0,
+                                            "type": "integer"
+                                          },
+                                          "end": {
+                                            "minimum": 0,
+                                            "type": "integer"
+                                          }
+                                        }
+                                      }
+                                    }
+                                  }
+                                },
+                                "score": {
+                                  "type": "number"
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    },
+                    "nextCursor": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/documents/{id}/share-links": {
       "post": {
         "requestBody": {

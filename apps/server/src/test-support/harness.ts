@@ -1,4 +1,5 @@
-import { DOCUMENT_CREATED, DOCUMENT_RENAMED } from '@quill/application'
+import { DOCUMENT_CREATED, DOCUMENT_PUBLISHED } from '@quill/application'
+import { createSearchService } from '@quill/search'
 import { createFakeClock, createFakeIdGenerator } from '@quill/application/test-support'
 import type { FakeClock } from '@quill/application/test-support'
 import type { UserId } from '@quill/domain'
@@ -15,7 +16,14 @@ import { createHasher } from '../infrastructure/hasher.ts'
 import { createDocumentFormat } from '../infrastructure/markdown/document-format.ts'
 import { createAcknowledgingConsumer } from '../infrastructure/outbox/acknowledge.ts'
 import { pollOutboxOnce } from '../infrastructure/outbox/poller.ts'
+import { combineConsumers } from '../infrastructure/outbox/combine.ts'
+import {
+  createIndexOnPublishConsumer,
+  createIndexOnRenameConsumer,
+} from '../infrastructure/outbox/index-on-publish.ts'
 import { createRenderOnPublishConsumer } from '../infrastructure/outbox/render-on-publish.ts'
+import { createPostgresSearchIndex } from '../infrastructure/search/postgres-search-index.ts'
+import { createVisibleDocumentResolver } from '../infrastructure/search/visible-documents.ts'
 import { createSendMailConsumer } from '../infrastructure/outbox/send-mail.ts'
 import { createUnitOfWork } from '../infrastructure/repositories/unit-of-work.ts'
 import { createJobRunner } from '../jobs/job-runner.ts'
@@ -98,8 +106,17 @@ export async function createServerHarness(options: HarnessOptions = {}): Promise
   const breachedPasswords = createFakeBreachedPasswordChecker()
   const mailer = createRecordingMailer()
   let shareLinksAllowed = options.shareLinksAllowed ?? true
+  // The real PostgreSQL adapter, against the test schema: an integration test
+  // that searches exercises the SQL a deployment runs (ADR-010).
+  const searchIndex = createPostgresSearchIndex({
+    db: database.db,
+    visibility: createVisibleDocumentResolver({ uow }),
+    clock,
+  })
   const deps: AppDependencies = {
     uow,
+    searchIndex,
+    search: createSearchService(searchIndex),
     contentStore: createContentStore({ driver: 'memory' }, clock),
     format: createDocumentFormat(),
     clock,
@@ -122,14 +139,20 @@ export async function createServerHarness(options: HarnessOptions = {}): Promise
     clock,
     poll: (consumers, now) => pollOutboxOnce(database.pool, consumers, { now }),
   })
-  jobRunner.register(createRenderOnPublishConsumer(deps))
-  // The same four the composition root registers, so an integration test
+  // The same consumers the composition root registers, so an integration test
   // exercises the real delivery path rather than a shortcut (ADR-011).
+  jobRunner.register(
+    combineConsumers(
+      DOCUMENT_PUBLISHED,
+      createRenderOnPublishConsumer(deps),
+      createIndexOnPublishConsumer(deps),
+    ),
+  )
+  jobRunner.register(createIndexOnRenameConsumer(deps))
   jobRunner.register(createSendMailConsumer(mailer))
   jobRunner.register(
     createAcknowledgingConsumer(DOCUMENT_CREATED, 'Nothing acts on a creation yet.'),
   )
-  jobRunner.register(createAcknowledgingConsumer(DOCUMENT_RENAMED, 'Nothing acts on a rename.'))
   jobRunner.schedule(createSweepJob({ uow, clock, session: config.session }))
 
   let sessions = 0

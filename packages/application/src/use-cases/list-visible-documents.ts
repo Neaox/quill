@@ -1,8 +1,7 @@
-import { combineContributions, materialiseEffectivePermissions, principalKey } from '@quill/domain'
+import { combineContributions, materialiseEffectivePermissions } from '@quill/domain'
 import type {
   CollectionNode,
   DocumentId,
-  Grant,
   Principal,
   ScopeChainFailure,
   WorkspaceId,
@@ -12,9 +11,9 @@ import type {
   CollectionId,
   CollectionRow,
   DocumentRow,
-  ScopeSelector,
+  GrantRepository,
+  GrantRow,
   UnitOfWork,
-  UnitRow,
   WorkspaceRow,
 } from '../ports/persistence.ts'
 import { toGrants } from './authorizer.ts'
@@ -110,7 +109,6 @@ export async function visibleDocumentIds(
   input: VisibilityInput,
 ): Promise<VisibilityOutcome> {
   const { repos } = deps.uow
-  const held = new Set(input.identities.map(principalKey))
   const units = await repos.units.listAncestors(input.workspace.unitId)
 
   const nodes = input.collections.map((collection): CollectionNode => ({
@@ -120,7 +118,7 @@ export async function visibleDocumentIds(
     ),
   }))
 
-  const grants = await repos.grants.listForScopes(scopeSelectors(input.workspace, units, nodes))
+  const grants = await grantsHeldBy(repos.grants, input.identities)
 
   const rows = materialiseEffectivePermissions({
     tree: {
@@ -128,7 +126,7 @@ export async function visibleDocumentIds(
       unitsById: unitsById(units),
       collections: nodes,
     },
-    grants: heldGrants(toGrants(grants), held),
+    grants: toGrants(grants),
   })
   if (!rows.ok) return { ok: false, failure: rows.error }
 
@@ -140,30 +138,42 @@ export async function visibleDocumentIds(
 }
 
 /**
- * Only the grants that can decide this request.
+ * Only the grants that can decide this request: the ones its own principals
+ * hold, wherever they are attached.
  *
- * Resolution is per principal, so a grant to somebody else cannot change the
- * answer; dropping them before the walk keeps the materialised rows to the
- * handful of principals the reader actually holds.
+ * Asked by principal rather than by scope, which is the same answer by a far
+ * cheaper route. Resolution is per principal (ADR-012), so a grant to somebody
+ * else cannot change what this request sees; and
+ * `materialiseEffectivePermissions` looks grants up by the scopes it walks, so
+ * one attached somewhere else in the instance is never consulted. Asking by
+ * scope meant naming every document in the workspace — thousands of selectors,
+ * two bound parameters each — to find the handful of grants that a reader
+ * actually holds.
+ *
+ * A request holds a few principals: its user, the groups that user is in, the
+ * public principal, and at most one share link. They are asked for
+ * concurrently, so the whole step is one round trip deep however many there
+ * are.
  */
-function* heldGrants(grants: Iterable<Grant>, held: ReadonlySet<string>): Generator<Grant> {
-  for (const grant of grants) {
-    if (held.has(principalKey(grant.principal))) yield grant
-  }
+async function grantsHeldBy(
+  grants: GrantRepository,
+  identities: readonly Principal[],
+): Promise<readonly GrantRow[]> {
+  const held = await Promise.all(identities.map((principal) => forPrincipal(grants, principal)))
+  return held.flat()
 }
 
-function scopeSelectors(
-  workspace: WorkspaceRow,
-  units: readonly UnitRow[],
-  nodes: readonly CollectionNode[],
-): readonly ScopeSelector[] {
-  return [
-    { kind: 'instance', id: null },
-    ...units.map((unit): ScopeSelector => ({ kind: 'unit', id: unit.id })),
-    { kind: 'workspace', id: workspace.id },
-    ...nodes.flatMap((node): readonly ScopeSelector[] => [
-      { kind: 'collection', id: node.collection.id },
-      ...node.documents.map((document): ScopeSelector => ({ kind: 'document', id: document.id })),
-    ]),
-  ]
+function forPrincipal(grants: GrantRepository, principal: Principal): Promise<readonly GrantRow[]> {
+  switch (principal.kind) {
+    case 'user':
+      return grants.listForPrincipal('user', principal.userId)
+    case 'group':
+      return grants.listForPrincipal('group', principal.groupId)
+    case 'share-link':
+      // The stored kind spells it with an underscore; the domain's principal
+      // spells it with a hyphen.
+      return grants.listForPrincipal('share_link', principal.shareLinkId)
+    case 'public':
+      return grants.listForPrincipal('public', null)
+  }
 }

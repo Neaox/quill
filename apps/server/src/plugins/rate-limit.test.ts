@@ -10,6 +10,7 @@ import { registerErrorHandler } from './error-handler.ts'
 import {
   accountKeyFromEmail,
   accountKeyFromSession,
+  sessionKey,
   accountRateLimit,
   addressRateLimit,
   registerRateLimiting,
@@ -224,6 +225,18 @@ describe('registerRateLimiting', () => {
         accountKeyFromSession({ session: { userId: 'ada', sessionId: 's' } } as FastifyRequest),
       ).toBe('ada')
       expect(accountKeyFromSession({} as FastifyRequest)).toBeUndefined()
+    })
+
+    it('keys a signed-in endpoint on the person, falling back to the address', () => {
+      expect(
+        sessionKey('search', {
+          session: { userId: 'ada', sessionId: 's' },
+          ip: '203.0.113.1',
+        } as FastifyRequest),
+      ).toBe('search:session:ada')
+      expect(sessionKey('search', { ip: '203.0.113.1' } as FastifyRequest)).toBe(
+        'search:session:203.0.113.1',
+      )
     })
   })
 })

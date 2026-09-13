@@ -11,7 +11,9 @@
     "typecheck": "tsc -p tsconfig.json",
     "build": "tsc -p tsconfig.json",
     "export-openapi": "node src/scripts/export-openapi-cli.ts",
-    "seed": "node --env-file-if-exists=../../.env src/scripts/seed-cli.ts"
+    "seed": "node --env-file-if-exists=../../.env src/scripts/seed-cli.ts",
+    "reindex": "node --env-file-if-exists=../../.env src/scripts/reindex-cli.ts",
+    "bench:search": "node --env-file-if-exists=../../.env src/infrastructure/search/search.bench.ts"
   },
   "dependencies": {
     "@fastify/cookie": "^11.1.2",
@@ -27,6 +29,7 @@
     "@quill/domain": "workspace:*",
     "@quill/highlight": "workspace:*",
     "@quill/markdown": "workspace:*",
+    "@quill/search": "workspace:*",
     "@quill/theme": "workspace:*",
     "@sinclair/typebox": "^0.34.52",
     "drizzle-orm": "^0.45.2",

@@ -3,11 +3,12 @@ import {
   documentId,
   groupPrincipal,
   PUBLIC_PRINCIPAL,
+  shareLinkPrincipal,
   userPrincipal,
   userId,
   workspaceId,
 } from '@quill/domain'
-import type { GroupId, Principal } from '@quill/domain'
+import type { GroupId, Principal, ShareLinkId } from '@quill/domain'
 
 import { createInMemoryUnitOfWork } from '../test-support/in-memory-repositories.ts'
 import type { InMemoryUnitOfWork } from '../test-support/in-memory-repositories.ts'
@@ -225,5 +226,28 @@ describe('listVisibleDocuments', () => {
         { workspaceId: looping, identities, seesEverything: false },
       ),
     ).toEqual({ kind: 'broken-tree', failure: { kind: 'unit-cycle', unitId: 'loop' } })
+  })
+
+  it('sees what a share link opens, and nothing else it was not given', async () => {
+    const link = shareLinkPrincipal('00000000-0000-4000-8000-000000000601' as ShareLinkId)
+    await grant({
+      principalKind: 'share_link',
+      principalId: '00000000-0000-4000-8000-000000000601',
+      scopeKind: 'document',
+      scopeId: PARENT,
+      role: 'viewer',
+      effect: 'allow',
+      createdBy: null,
+    })
+
+    const result = await listVisibleDocuments(
+      { uow },
+      { workspaceId: WORKSPACE, identities: [link, PUBLIC_PRINCIPAL], seesEverything: false },
+    )
+    expect(result.kind).toBe('documents')
+    expect(result.kind === 'documents' ? result.documents.map((row) => row.id) : []).toEqual([
+      PARENT,
+      CHILD,
+    ])
   })
 })

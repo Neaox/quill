@@ -82,6 +82,9 @@ importers:
       '@quill/markdown':
         specifier: workspace:*
         version: link:../../packages/markdown
+      '@quill/search':
+        specifier: workspace:*
+        version: link:../../packages/search
       '@quill/theme':
         specifier: workspace:*
         version: link:../../packages/theme
