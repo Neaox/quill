@@ -1,4 +1,4 @@
-import { cleanup } from '@testing-library/react'
+import { cleanup, configure } from '@testing-library/react'
 import { afterEach } from 'vitest'
 
 import '@testing-library/jest-dom/vitest'
@@ -52,3 +52,13 @@ for (const name of ['hasPointerCapture', 'setPointerCapture', 'releasePointerCap
 if (!('scrollIntoView' in Element.prototype)) {
   Object.defineProperty(Element.prototype, 'scrollIntoView', { value: () => {}, writable: true })
 }
+
+/**
+ * `findBy*` and `waitFor` run on Testing Library's own clock, not Vitest's,
+ * and its default is one second — comfortable on an idle machine, and not
+ * enough when every jsdom project is rendering at once on a loaded one or a
+ * small CI runner. The per-test timeout in `vitest.config.ts` is what
+ * actually bounds a test that has hung; this only stops a slow render being
+ * reported as a missing element.
+ */
+configure({ asyncUtilTimeout: 5_000 })

@@ -57,6 +57,15 @@ src/
     breached-password.ts    the BreachedPasswordChecker port + the HIBP k-anonymity implementation
     mailer.ts               the Mailer port; dev-mailer.ts and smtp-mailer.ts implement it
     session-cookie.ts       httpOnly, SameSite=Lax cookie helpers
+    oidc/
+      presets.ts             the provider preset registry: issuer templates, claim checks, group claims
+      provider-config.ts     OIDC_* -> OidcProviderConfig, validated at boot
+      discovery.ts           discovery + JWKS through the outbound client, cached with a TTL
+      id-token.ts            JWS verification (node:crypto) and every claim check
+      pkce.ts                S256 code verifier and challenge
+      oidc-provider.ts       the one IdentityProvider implementation
+      registry.ts            the configured providers, built once per process
+      state-cookie.ts        the ten-minute __Host- cookie one round trip is bound to
     rate-limit.ts           the backing-off limiter behind @fastify/rate-limit
 
   application/
@@ -66,6 +75,8 @@ src/
     authorization.ts        how a route asks the ADR-012 resolver what a request may do
     editing-service.ts      lock and draft operations, with `edit` re-resolved on every
                             heartbeat and every write
+    federated-sign-in-service.ts  matching by subject, linking on a verified email,
+                            just-in-time provisioning, session rotation, audit
 
   infrastructure/http/
     outbound-client.ts      the one SSRF-safe client every server-side fetch goes through
@@ -79,7 +90,7 @@ src/
     rate-limit.ts            wires @fastify/rate-limit to the limiter, per address and per account
     openapi.ts                @fastify/swagger + swagger-ui (development only)
 
-  routes/                  auth, me, units, workspaces, collections, documents, drafts, locks
+  routes/                  auth, auth-oidc, me, units, workspaces, collections, documents, drafts, locks
                            (+ health.ts)
                            document-schemas.ts holds the TypeBox shapes of the M2 content API
   test-support/             harness.ts (a whole server against a real database), tenancy-fixture.ts,
@@ -179,6 +190,12 @@ test proves each of its requirements.
   token, password, or password hash. Privilege changes go through
   `application/auth-service.ts`'s `grantInstanceAdmin`, never `users.setInstanceAdmin`
   directly, because the repository call alone rotates nothing and audits nothing.
+- **Single sign-on (OpenID Connect)**: `GET /api/auth/oidc/providers` lists what the sign-in page
+  may offer, `GET /api/auth/oidc/:id/start` redirects to the provider, and
+  `GET /api/auth/oidc/:id/callback` completes the round trip. Authorization Code with PKCE
+  (`S256`) only, `state` and `nonce` minted per attempt and kept in a ten-minute `__Host-` cookie,
+  the id token verified against the provider's published keys (RS256 or ES256) with issuer,
+  audience, `azp`, expiry, `nbf`, `iat` and nonce all checked. See "Single sign-on" below.
 - **Password schemes**: hashing is a registry keyed by the PHC identifier a stored hash already
   carries (`auth/password-scheme.ts`), with exactly one scheme current. Adding one is a file in
   `auth/password-schemes/` and an entry in the registry; retiring one is an operational step
@@ -202,6 +219,105 @@ test proves each of its requirements.
 | `TRUST_PROXY` | — | A hop count, or the proxy addresses and CIDR ranges to believe. Unset, `X-Forwarded-For` and a supplied `X-Request-Id` are ignored |
 | `NODE_ENV` | — | `production` stops the API description and Swagger UI being served, requires `DATABASE_URL`, and refuses `MAIL_DRIVER=dev` |
 | `SEED_ALLOW_PRODUCTION` | — | `1` lets `pnpm seed` run under `NODE_ENV=production`, which it otherwise refuses |
+
+## Single sign-on (ADR-011)
+
+One OpenID Connect implementation; a provider is a **data preset**, never a code path
+(`auth/oidc/presets.ts`). Presets ship for Microsoft Entra ID, Google Workspace, Amazon Cognito,
+Auth0, and a generic provider for anything discovery can describe. Adding one is adding an entry
+to that registry and its row in the table-driven test.
+
+**The flow.** `start` fetches the provider's discovery document through the SSRF-safe outbound
+client, mints a `state`, a `nonce` and a PKCE verifier, leaves all three plus the return path in a
+ten-minute `HttpOnly`, `SameSite=Lax`, `__Host-` cookie, and redirects with
+`response_type=code`, `code_challenge_method=S256`, and the preset's own parameters. `callback`
+compares the query's `state` with the cookie's in constant time, exchanges the code at the token
+endpoint (`client_secret_basic` unless the provider publishes only `client_secret_post`), and
+verifies the id token against the provider's JWKS. A token naming a `kid` the cached key set does
+not hold triggers **one** re-read of the key set — key rotation — no more often than once a minute,
+so invented key ids cannot be turned into outbound traffic.
+
+**What is checked before a claim is believed** (`auth/oidc/id-token.ts`): the algorithm is chosen
+from an allowlist of `RS256` and `ES256` rather than from the token, the key type must match the
+algorithm, `iss` must equal the configured issuer exactly, `aud` must contain the client id (and
+`azp` must name it when there are several), `exp`/`nbf`/`iat` are checked with a minute of skew,
+and `nonce` must be this attempt's. Then the preset's own checks run as data: Entra's pinned `tid`,
+Google's `hd`.
+
+**Identity, not email, is the key.** A returning person is matched on `(issuer, subject)` in
+`identities`, so changing their address at the provider moves nothing.
+
+**Linking needs a verified address on both sides.** A first sign-in attaches the identity to an
+account that already exists here only when the provider asserts a verified email *and* that account
+has already verified the same address for itself. Without the second half, anybody could sign up as
+`cto@acme.example`, never open the mail, and be handed the account the first time the real owner
+pressed "Continue with Microsoft" — with their password still on it. An unverified local account is
+therefore refused, not linked; its owner verifies their email the ordinary way and then the link is
+safe. `OIDC_<ID>_ALLOW_LINKING=false` turns linking off entirely for a provider, which is ADR-011's
+linking policy: that provider then signs in only identities it has already been linked to, and
+provisions new accounts. A successful link **revokes every other session that account holds** —
+attaching a second way in is a privilege change. Where no account exists, one is provisioned,
+subject to `OIDC_<ID>_ALLOW_SIGN_UP`. The session is issued through the same session service as
+every other sign-in and rotates whatever the browser already held.
+
+**Microsoft Entra ID does not emit `email_verified`.** That is Entra's choice, not a gap here: with
+no such claim the platform reads "not verified", so an Entra sign-in never links into an account
+that already exists — it matches by subject, or it provisions a new account, or it is refused when
+`ALLOW_SIGN_UP` is off. Somebody who already has a password account on the same address and wants
+to keep it should verify that address here first and then sign in with Entra, which links. The
+alternative — trusting a tenant-pinned Entra token's `email` without a verification claim — is a
+decision for an administrator to make explicitly, and there is nothing in the configuration that
+makes it by accident today.
+
+**Every failure looks identical from the browser**: `302` to `/sign-in?error=sso`, no session, no
+distinction between a bad state, a refused token, an unverified address and an instance that will
+not provision. The reason is in `audit_events` (`auth.sso.started`, `auth.sso.succeeded`,
+`auth.sso.failed`, `auth.sso.linked`, `auth.sso.provisioned`), and no row carries a code, a state,
+a nonce or any part of a token. A failure row's `reason` says which check refused it —
+`email_not_verified`, `unverified_local_account`, `linking_not_allowed`, `sign_up_not_allowed`,
+`state_mismatch`, `token_exchange_failed`, and the rest.
+
+**The two endpoints have their own budget**, `OIDC_RATE_LIMIT_MAX` (default 300 per minute per
+source address), counted on their own limiter and **flat** — it never doubles the way the password
+endpoints' window does. They are keyed only by source address, so an office, a school or a
+carrier-grade-NAT customer is one key, and ten a minute between all of them would lock the building
+out of single sign-on on a Monday morning. They also cannot be usefully brute-forced: `start` mints
+a fresh secret every time and `callback` needs the state cookie this browser was given, so a flood
+buys an attacker nothing but their own traffic. The budget exists to bound the outbound traffic a
+stranger can make this server produce, and a completed sign-in clears it.
+
+**No JWT library.** Verification is `node:crypto`: `createPublicKey({ format: 'jwk' })` plus
+`crypto.verify`, with `dsaEncoding: 'ieee-p1363'` for ECDSA because JWS carries `r || s` where
+Node defaults to DER. The mistakes a library exists to prevent — algorithm confusion, `alg: none`,
+a public key used as an HMAC secret — are closed by construction here (there is no symmetric
+branch at all) and each has its own test, which a dependency's internals would not have had in
+this repository. See the module's doc comment.
+
+**The callback is exempt from the fetch-metadata CSRF check by design**, and `plugins/csrf.ts`
+says why: a provider's redirect is a top-level cross-site navigation, so there is no same-origin
+`Sec-Fetch-Site` and no `Origin` to match. The state cookie takes its place.
+
+### Configuration for single sign-on
+
+| Variable | Default | Meaning |
+| --- | --- | --- |
+| `OIDC_PROVIDERS` | — | Comma-separated provider ids, in the order the sign-in page shows them |
+| `OIDC_<ID>_PRESET` | `generic` | `entra`, `google-workspace`, `cognito`, `auth0`, `generic` |
+| `OIDC_<ID>_CLIENT_ID` | — | Required |
+| `OIDC_<ID>_CLIENT_SECRET` | — | Required. **TODO(M3)**: becomes a secret *name*, written with `setSecret` and read with `getSecret` from the settings store's secrets API (envelope-encrypted under the instance master key); the value is read from the environment until an administrator has entered it there |
+| `OIDC_<ID>_DISPLAY_NAME` | the preset's | What the button says after "Continue with" |
+| `OIDC_<ID>_SCOPES` | `openid email profile` | Space- or comma-separated; must include `openid` |
+| `OIDC_<ID>_ALLOW_SIGN_UP` | `true` | `false` refuses a person with no account here instead of creating one |
+| `OIDC_<ID>_ALLOW_LINKING` | `true` | `false` refuses to attach an identity to an account that already exists. Even when true, linking requires that account to have verified the address itself |
+| `OIDC_RATE_LIMIT_MAX` | `300` | Requests per minute per source address, across both endpoints. Flat: the window never doubles |
+| `OIDC_<ID>_EMAIL_CLAIM` / `_EMAIL_VERIFIED_CLAIM` / `_NAME_CLAIM` / `_GROUPS_CLAIM` | the preset's | Claim mapping overrides |
+| `OIDC_<ID>_TENANT_ID` | — | `entra`: the directory the issuer and `tid` are pinned to |
+| `OIDC_<ID>_HOSTED_DOMAIN` | — | `google-workspace`: sent as `hd` and checked on the token |
+| `OIDC_<ID>_REGION`, `OIDC_<ID>_USER_POOL_ID` | — | `cognito` |
+| `OIDC_<ID>_DOMAIN` | — | `auth0`, for example `acme.eu.auth0.com` |
+| `OIDC_<ID>_ISSUER` | — | `generic`; must be `https`, with no query or fragment |
+
+The redirect URI to register with each provider is `<APP_URL>/api/auth/oidc/<id>/callback`.
 
 ## Outbound requests
 

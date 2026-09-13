@@ -1,6 +1,7 @@
 import { createShareLinkPolicy } from '../application/share-link-policy.ts'
 import { createDisabledBreachedPasswordChecker } from '../auth/breached-password.ts'
 import { createDevMailer } from '../auth/dev-mailer.ts'
+import { createIdentityProviderRegistry, outboundClientFactory } from '../auth/oidc/registry.ts'
 import { createPasswordHasher } from '../auth/password.ts'
 import { createRateLimiter } from '../auth/rate-limit.ts'
 import { createTokenService } from '../auth/tokens.ts'
@@ -77,7 +78,14 @@ try {
     // because `AppDependencies` is one shape, not because seeding uses them.
     breachedPasswords: createDisabledBreachedPasswordChecker(),
     rateLimiter: createRateLimiter({ clock, config: config.rateLimit }),
+    oidcRateLimiter: createRateLimiter({ clock, config: config.oidcRateLimit }),
     passwords: await createPasswordHasher(),
+    identityProviders: createIdentityProviderRegistry({
+      providers: config.oidcProviders,
+      appUrl: config.appUrl,
+      createClient: outboundClientFactory,
+      clock,
+    }),
     config,
   })
   process.stdout.write(

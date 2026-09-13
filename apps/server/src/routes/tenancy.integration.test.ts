@@ -14,6 +14,7 @@ import { createInMemorySearchIndex } from '@quill/search/test-support'
 
 import { createUnitOfWork } from '../infrastructure/repositories/unit-of-work.ts'
 import { createPasswordHasher } from '../auth/password.ts'
+import { createIdentityProviderRegistry, outboundClientFactory } from '../auth/oidc/registry.ts'
 import { createRateLimiter } from '../auth/rate-limit.ts'
 import { generateSessionToken, hashSessionToken } from '../auth/session-token.ts'
 import { injectAsBrowser } from '../test-support/browser-client.ts'
@@ -68,7 +69,14 @@ beforeAll(async () => {
     mailer: createRecordingMailer(),
     breachedPasswords: createFakeBreachedPasswordChecker(),
     rateLimiter: createRateLimiter({ clock, config: config.rateLimit }),
+    oidcRateLimiter: createRateLimiter({ clock, config: config.oidcRateLimit }),
     passwords: await createPasswordHasher(),
+    identityProviders: createIdentityProviderRegistry({
+      providers: config.oidcProviders,
+      appUrl: config.appUrl,
+      createClient: outboundClientFactory,
+      clock,
+    }),
     config,
   }
   app = buildApp({ logLevel: 'silent', deps, serveApiDocs: false })

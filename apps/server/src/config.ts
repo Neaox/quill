@@ -1,5 +1,8 @@
 import { BRAND } from '@quill/brand'
 
+import { loadOidcProviders } from './auth/oidc/provider-config.ts'
+import type { OidcProviderConfig } from './auth/oidc/provider-config.ts'
+
 /**
  * Server configuration, read once from the environment.
  *
@@ -44,6 +47,33 @@ export interface ServerConfig {
   readonly contentStore: ContentStoreConfig
   readonly shareLinks: ShareLinkConfig
   readonly masterKey: MasterKeyConfig
+  /**
+   * The configured OpenID Connect providers (ADR-011), empty on an instance
+   * that has none. Validated here, at boot, so a misconfigured provider is a
+   * server that refuses to start rather than a button that fails when
+   * somebody presses it.
+   */
+  readonly oidcProviders: readonly OidcProviderConfig[]
+  /**
+   * The budget for the two OIDC browser endpoints, which is its own because
+   * what they cost and who shares a key are both different (ADR-011).
+   *
+   * The auth endpoints' backing-off window is right for a password guess: a
+   * wrong answer is cheap to repeat and the budget is per account as well as
+   * per address. A sign-in redirect is neither. It is keyed only by source
+   * address, and a whole office behind one NAT — or a school, or a customer
+   * on carrier-grade NAT — is one key, so ten a minute between all of them
+   * would lock the building out of single sign-on on a Monday morning. It
+   * also cannot be brute-forced usefully: `start` mints a fresh secret and
+   * `callback` needs the state cookie this browser was given, so a flood buys
+   * an attacker nothing but their own traffic.
+   *
+   * So the budget is large and **flat** — `windowMs` and `maxWindowMs` are
+   * equal, which makes the doubling in `auth/rate-limit.ts` a no-op — and it
+   * exists to bound the outbound traffic a stranger can make this server
+   * produce, not to slow a guess down.
+   */
+  readonly oidcRateLimit: RateLimitConfig
 }
 
 /**
@@ -106,6 +136,12 @@ export interface SessionConfig {
    * that carries the `__Host-` prefix on one carries it on both.
    */
   readonly linkCookieName: string
+  /**
+   * The cookie one OIDC round trip is bound to: state, nonce, and the PKCE
+   * verifier (ADR-011). Named from the session cookie in the same way, so an
+   * instance that carries the `__Host-` prefix on one carries it on all three.
+   */
+  readonly oidcCookieName: string
   /**
    * Absolute lifetime: a session dies this long after it was issued however
    * busy it has been (ADR-011: 30 days).
@@ -189,6 +225,8 @@ const DEFAULT_RATE_LIMIT: RateLimitConfig = {
 
 /** Enough for a search box that answers as somebody types, and far short of a scraper. */
 const DEFAULT_SEARCH_RATE_LIMIT_MAX = 60
+/** Per source address, per minute, across both OIDC endpoints. */
+const DEFAULT_OIDC_RATE_LIMIT_MAX = 300
 
 const HIBP_RANGE_API_URL = 'https://api.pwnedpasswords.com/range'
 
@@ -281,6 +319,7 @@ function loadSessionConfig(env: NodeJS.ProcessEnv, appUrl: URL, warn: ConfigWarn
     cookieName:
       cookieName ?? (secureCookie ? `__Host-${BRAND.slug}_session` : `${BRAND.slug}_session`),
     linkCookieName: secureCookie ? `__Host-${BRAND.slug}_link` : `${BRAND.slug}_link`,
+    oidcCookieName: secureCookie ? `__Host-${BRAND.slug}_oidc` : `${BRAND.slug}_oidc`,
     ttlMs: parseDuration(env['SESSION_TTL_MS'], 'SESSION_TTL_MS', DEFAULT_SESSION_TTL_MS),
     idleTtlMs: parseDuration(
       env['SESSION_IDLE_TTL_MS'],
@@ -316,6 +355,24 @@ function loadRateLimitConfig(env: NodeJS.ProcessEnv): RateLimitConfig {
  * believed from an untrusted peer is not a logging nicety — it is a way to
  * spend an unlimited budget from one host.
  */
+/**
+ * Flat by construction: the window never grows, because `maxWindowMs` is the
+ * window. See `ServerConfig.oidcRateLimit` for why this budget is not the
+ * backing-off one.
+ */
+function loadOidcRateLimitConfig(env: NodeJS.ProcessEnv): RateLimitConfig {
+  const windowMs = 60_000
+  return {
+    max: parseDuration(
+      env['OIDC_RATE_LIMIT_MAX'],
+      'OIDC_RATE_LIMIT_MAX',
+      DEFAULT_OIDC_RATE_LIMIT_MAX,
+    ),
+    windowMs,
+    maxWindowMs: windowMs,
+  }
+}
+
 function loadTrustProxyConfig(env: NodeJS.ProcessEnv): TrustProxyConfig {
   const raw = env['TRUST_PROXY']
   if (raw === undefined || raw.length === 0 || raw === 'false') return false
@@ -525,5 +582,7 @@ export function loadConfig(
     contentStore: loadContentStoreConfig(env),
     shareLinks: loadShareLinkConfig(env),
     masterKey: loadMasterKeyConfig(env, appUrl, production, warn),
+    oidcProviders: loadOidcProviders(env),
+    oidcRateLimit: loadOidcRateLimitConfig(env),
   }
 }

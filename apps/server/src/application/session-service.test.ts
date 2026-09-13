@@ -18,6 +18,7 @@ import { createSessionService } from './session-service.ts'
 const CONFIG = {
   cookieName: 'quill_session',
   linkCookieName: 'quill_link',
+  oidcCookieName: 'quill_oidc',
   ttlMs: 600_000,
   idleTtlMs: 300_000,
   secureCookie: false,

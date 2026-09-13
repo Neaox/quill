@@ -18,6 +18,8 @@ import type {
   GrantRow,
   GroupRepository,
   GroupRow,
+  IdentityRepository,
+  IdentityRow,
   LockRepository,
   MagicLinkRepository,
   MagicLinkTokenRow,
@@ -73,6 +75,11 @@ export interface InMemoryUnitOfWork extends UnitOfWork {
 const compareSecretCursors = (left: SecretCursor, right: SecretCursor): number =>
   left.createdAt.getTime() - right.createdAt.getTime() || left.name.localeCompare(right.name)
 
+/** The key the unique index on `(issuer, subject)` makes, as one string. */
+function identityKey(issuer: string, subject: string): string {
+  return JSON.stringify([issuer, subject])
+}
+
 export function createInMemoryUnitOfWork(): InMemoryUnitOfWork {
   const users = new Map<string, UserRow>()
   const usersByEmail = new Map<string, string>()
@@ -80,6 +87,8 @@ export function createInMemoryUnitOfWork(): InMemoryUnitOfWork {
   const sessions = new Map<string, SessionRow>()
   const magicLinks = new Map<string, MagicLinkTokenRow>()
   const magicLinksByHash = new Map<string, string>()
+  /** Keyed by `(issuer, subject)`, which is what the unique index enforces. */
+  const identities = new Map<string, IdentityRow>()
   const units = new Map<string, UnitRow>()
   const workspaces = new Map<string, WorkspaceRow>()
   const retiredSlugs = new Map<string, WorkspaceSlugHistoryRow>()
@@ -280,6 +289,37 @@ export function createInMemoryUnitOfWork(): InMemoryUnitOfWork {
         }
       }
       return removed
+    },
+  }
+
+  const identityRepository: IdentityRepository = {
+    async findBySubject(issuer, subject) {
+      return identities.get(identityKey(issuer, subject)) ?? null
+    },
+    async listForUser(userId) {
+      return [...identities.values()].filter((row) => row.userId === userId)
+    },
+    async link(input) {
+      const key = identityKey(input.issuer, input.subject)
+      const existing = identities.get(key)
+      // First writer wins, as the unique index makes it in Postgres.
+      if (existing !== undefined) return existing
+      const row: IdentityRow = {
+        id: input.id,
+        userId: input.userId,
+        providerId: input.providerId,
+        issuer: input.issuer,
+        subject: input.subject,
+        createdAt: input.now,
+        lastSignInAt: null,
+      }
+      identities.set(key, row)
+      return row
+    },
+    async touch(id, now) {
+      for (const [key, row] of identities) {
+        if (row.id === id) identities.set(key, { ...row, lastSignInAt: now })
+      }
     },
   }
 
@@ -861,6 +901,7 @@ export function createInMemoryUnitOfWork(): InMemoryUnitOfWork {
     sessions: sessionRepository,
     credentials: credentialRepository,
     magicLinks: magicLinkRepository,
+    identities: identityRepository,
     units: unitRepository,
     groups: groupRepository,
     workspaces: workspaceRepository,

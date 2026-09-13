@@ -14,6 +14,7 @@ import {
 const session = {
   cookieName: 'quill_session',
   linkCookieName: 'quill_link',
+  oidcCookieName: 'quill_oidc',
   ttlMs: 60_000,
   idleTtlMs: 60_000,
   secureCookie: false,

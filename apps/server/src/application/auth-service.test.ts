@@ -21,6 +21,7 @@ import { AUDIT_EVENTS } from './audit.ts'
 const SESSION = {
   cookieName: 'quill_session',
   linkCookieName: 'quill_link',
+  oidcCookieName: 'quill_oidc',
   ttlMs: 30 * 24 * 60 * 60 * 1000,
   idleTtlMs: 7 * 24 * 60 * 60 * 1000,
   secureCookie: false,
