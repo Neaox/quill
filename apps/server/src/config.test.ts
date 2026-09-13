@@ -57,6 +57,12 @@ describe('loadConfig', () => {
       contentStore: { driver: 'filesystem', path: './data/content' },
       shareLinks: { enabled: true },
       masterKey: { driver: 'environment', keys: [Buffer.alloc(32).toString('base64')] },
+      blobStore: { driver: 'filesystem', path: './data/blobs' },
+      attachments: {
+        maxBytes: 25 * 1024 * 1024,
+        // Flat, which is what the same window twice says.
+        rateLimit: { max: 60, windowMs: 60_000, maxWindowMs: 60_000 },
+      },
     })
   })
 
@@ -495,5 +501,109 @@ describe('loadConfig: share links', () => {
 
   it('refuses a value that is neither, rather than guessing which was meant', () => {
     expect(() => loadConfig({ SHARE_LINKS: 'false' })).toThrow(/SHARE_LINKS must be/)
+  })
+})
+
+describe('loadConfig: the blob store', () => {
+  const S3 = {
+    BLOB_STORE: 's3',
+    S3_BUCKET: 'quill',
+    S3_ACCESS_KEY_ID: 'key',
+    S3_SECRET_ACCESS_KEY: 'secret',
+  }
+
+  it('keeps attachments in a directory by default', () => {
+    expect(loadConfig({}).blobStore).toEqual({ driver: 'filesystem', path: './data/blobs' })
+    expect(loadConfig({ BLOB_STORE_PATH: '/srv/blobs' }).blobStore).toEqual({
+      driver: 'filesystem',
+      path: '/srv/blobs',
+    })
+  })
+
+  it('refuses a backend it does not have, and a filesystem backend with nowhere to write', () => {
+    expect(() => loadConfig({ BLOB_STORE: 'gcs' })).toThrow(/BLOB_STORE must be/)
+    expect(() => loadConfig({ BLOB_STORE_PATH: '' })).toThrow(/BLOB_STORE_PATH/)
+  })
+
+  it('takes an S3 bucket, and defaults the region every service still wants', () => {
+    expect(loadConfig(S3).blobStore).toEqual({
+      driver: 's3',
+      bucket: 'quill',
+      region: 'us-east-1',
+      endpoint: undefined,
+      accessKeyId: 'key',
+      secretAccessKey: 'secret',
+      forcePathStyle: false,
+      prefix: '',
+    })
+  })
+
+  it('assumes path style behind a custom endpoint, which is what MinIO speaks', () => {
+    expect(loadConfig({ ...S3, S3_ENDPOINT: 'http://localhost:9000' }).blobStore).toMatchObject({
+      endpoint: 'http://localhost:9000',
+      forcePathStyle: true,
+    })
+    expect(
+      loadConfig({ ...S3, S3_ENDPOINT: 'http://localhost:9000', S3_FORCE_PATH_STYLE: 'false' })
+        .blobStore,
+    ).toMatchObject({ forcePathStyle: false })
+    expect(loadConfig({ ...S3, S3_FORCE_PATH_STYLE: 'true' }).blobStore).toMatchObject({
+      forcePathStyle: true,
+    })
+  })
+
+  it('normalises a prefix to a key prefix rather than a path', () => {
+    expect(loadConfig({ ...S3, S3_PREFIX: '/instances/one/' }).blobStore).toMatchObject({
+      prefix: 'instances/one/',
+    })
+    expect(loadConfig({ ...S3, S3_PREFIX: '' }).blobStore).toMatchObject({ prefix: '' })
+  })
+
+  it('refuses S3 configuration that would silently lose every attachment', () => {
+    expect(() => loadConfig({ BLOB_STORE: 's3' })).toThrow(/S3_BUCKET is required/)
+    expect(() => loadConfig({ ...S3, S3_ACCESS_KEY_ID: '' })).toThrow(/S3_ACCESS_KEY_ID/)
+    expect(() => loadConfig({ ...S3, S3_SECRET_ACCESS_KEY: '' })).toThrow(/S3_SECRET_ACCESS_KEY/)
+    // Two shapes of the same mistake: one that parses as a URL with the wrong
+    // scheme (`localhost:` is a scheme), and one that parses as nothing at all.
+    expect(() => loadConfig({ ...S3, S3_ENDPOINT: 'localhost:9000' })).toThrow(
+      /S3_ENDPOINT must be an absolute http\(s\) URL/,
+    )
+    expect(() => loadConfig({ ...S3, S3_ENDPOINT: 'not a url at all' })).toThrow(
+      /S3_ENDPOINT must be an absolute http\(s\) URL/,
+    )
+  })
+})
+
+describe('loadConfig: attachments', () => {
+  it('caps an upload at 25 MiB unless the operator says otherwise', () => {
+    expect(loadConfig({}).attachments.maxBytes).toBe(25 * 1024 * 1024)
+    expect(loadConfig({ ATTACHMENT_MAX_BYTES: '1048576' }).attachments.maxBytes).toBe(1_048_576)
+  })
+
+  it('refuses a cap larger than the S3 backend could hold in memory', () => {
+    const ceiling = 256 * 1024 * 1024
+    expect(loadConfig({ ATTACHMENT_MAX_BYTES: String(ceiling) }).attachments.maxBytes).toBe(ceiling)
+    expect(() => loadConfig({ ATTACHMENT_MAX_BYTES: String(ceiling + 1) })).toThrow(
+      /ATTACHMENT_MAX_BYTES must be at most/,
+    )
+  })
+
+  it('takes an upload budget from the environment, and keeps it flat', () => {
+    expect(loadConfig({ ATTACHMENT_RATE_LIMIT_MAX: '5' }).attachments.rateLimit).toEqual({
+      max: 5,
+      windowMs: 60_000,
+      // The same as the window: `createRateLimiter` only lengthens a window
+      // when there is a longer one to reach for, so this is how "no backoff"
+      // is spelled.
+      maxWindowMs: 60_000,
+    })
+    expect(() => loadConfig({ ATTACHMENT_RATE_LIMIT_MAX: '0' })).toThrow(
+      /ATTACHMENT_RATE_LIMIT_MAX/,
+    )
+  })
+
+  it('refuses a cap that is not a positive whole number of bytes', () => {
+    expect(() => loadConfig({ ATTACHMENT_MAX_BYTES: '0' })).toThrow(/ATTACHMENT_MAX_BYTES/)
+    expect(() => loadConfig({ ATTACHMENT_MAX_BYTES: 'lots' })).toThrow(/ATTACHMENT_MAX_BYTES/)
   })
 })

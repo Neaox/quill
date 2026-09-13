@@ -38,8 +38,12 @@ export async function inMemorySettings(
  * server's unit tests and the use-case tests behave identically. Only the
  * mailer, which is a server-side port, is faked here.
  */
-export type { FakeClock } from '@quill/application/test-support'
-export { createFakeClock, createFakeIdGenerator } from '@quill/application/test-support'
+export type { FakeClock, InMemoryBlobStore } from '@quill/application/test-support'
+export {
+  createFakeClock,
+  createFakeIdGenerator,
+  createInMemoryBlobStore,
+} from '@quill/application/test-support'
 
 export interface RecordingMailer extends Mailer {
   readonly sent: MagicLinkEmail[]

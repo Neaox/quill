@@ -71,6 +71,13 @@
       "when": 1789278439806,
       "tag": "0009_identities",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1789279216473,
+      "tag": "0010_attachments",
+      "breakpoints": true
     }
   ]
 }

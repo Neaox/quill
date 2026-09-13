@@ -313,3 +313,51 @@ describe('renderHtml: directive attribute injection', () => {
     expect(html).toContain('<p>Body.</p>')
   })
 })
+
+/**
+ * Attachments are served from `/api/attachments/<id>` on the app's own origin,
+ * so a document that shows one carries a relative URL and nothing else
+ * (`packages/application/src/use-cases/attachments.ts`). The sanitiser has to
+ * let that shape through, and the CSP that meets it in a browser is
+ * `img-src 'self'` (`apps/server/src/plugins/security-headers.ts`), so these
+ * two have to agree: anything the sanitiser lets through that is not
+ * same-origin would be blocked at render time instead, which is a picture that
+ * silently does not appear.
+ */
+describe('renderHtml: attachment images', () => {
+  it('renders an attachment reference as a relative, same-origin image', () => {
+    const html = render('![Architecture](/api/attachments/7f3a-42)\n')
+
+    expect(html).toContain('<img src="/api/attachments/7f3a-42" alt="Architecture">')
+  })
+
+  it('keeps the alternative text, which is what makes the picture readable', () => {
+    const html = render('![A sequence diagram of the sign-in flow](/api/attachments/abc)\n')
+
+    expect(html).toContain('alt="A sequence diagram of the sign-in flow"')
+  })
+
+  it('renders one with a caption as a figure', () => {
+    const html = render('![Diagram](/api/attachments/abc "How sign-in works")\n')
+
+    expect(html).toContain('<figure>')
+    expect(html).toContain('<img src="/api/attachments/abc" alt="Diagram">')
+    expect(html).toContain('<figcaption>How sign-in works</figcaption>')
+  })
+
+  it('keeps an attachment link as well as an attachment image', () => {
+    const html = render('[The runbook](/api/attachments/abc)\n')
+
+    expect(html).toContain('<a href="/api/attachments/abc">The runbook</a>')
+  })
+
+  it('does not let the shape be a way past the rules that already hold', () => {
+    // A scheme is still a scheme, whatever the path after it looks like.
+    expect(render('![no](javascript:alert(1)/api/attachments/abc)\n')).not.toContain('javascript:')
+    // And a protocol-relative URL still leaves the origin, which `img-src
+    // 'self'` would block anyway; the link rule refuses it outright.
+    expect(render('[no](//evil.example/api/attachments/abc)\n')).not.toContain(
+      'href="//evil.example',
+    )
+  })
+})

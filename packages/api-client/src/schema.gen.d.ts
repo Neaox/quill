@@ -4,6 +4,60 @@
  */
 
 export interface paths {
+    "/api/attachments/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/auth/magic-link": {
         parameters: {
             query?: never;
@@ -752,6 +806,71 @@ export interface paths {
                 };
             };
         };
+        trace?: never;
+    };
+    "/api/documents/{id}/attachments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["AttachmentList"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "multipart/form-data": {
+                        /** Format: binary */
+                        file: string;
+                    };
+                };
+            };
+            responses: {
+                /** @description Default Response */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Attachment"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/api/documents/{id}/content": {
@@ -2662,6 +2781,22 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        Attachment: {
+            /** @enum {string} */
+            contentType: "image/png" | "image/jpeg" | "image/gif" | "image/webp" | "image/avif" | "application/pdf";
+            /** Format: date-time */
+            createdAt: string;
+            documentId: string;
+            filename: string;
+            id: string;
+            sha256: string;
+            size: number;
+            uploadedBy: string | null;
+            url: string;
+        };
+        AttachmentList: {
+            attachments: components["schemas"]["Attachment"][];
+        };
         Collection: {
             /** Format: date-time */
             createdAt: string;
@@ -3403,6 +3538,8 @@ export interface components {
     headers: never;
     pathItems: never;
 }
+export type SchemaAttachment = components['schemas']['Attachment'];
+export type SchemaAttachmentList = components['schemas']['AttachmentList'];
 export type SchemaCollection = components['schemas']['Collection'];
 export type SchemaOidcProviderSummary = components['schemas']['OidcProviderSummary'];
 export type SchemaOrganisationSettings = components['schemas']['OrganisationSettings'];

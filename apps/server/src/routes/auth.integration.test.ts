@@ -25,6 +25,7 @@ import {
   createFakeBreachedPasswordChecker,
   createFakeClock,
   createFakeIdGenerator,
+  createInMemoryBlobStore,
   createRecordingMailer,
   inMemorySettings,
 } from '../test-support/fakes.ts'
@@ -58,6 +59,7 @@ beforeAll(async () => {
     tokens: createTokenService(),
     shareLinkPolicy: { allowed: () => true },
     ...(await inMemorySettings(clock, config)),
+    blobStore: createInMemoryBlobStore(),
     format: createDocumentFormat(),
     searchIndex: SEARCH_INDEX,
     search: createSearchService(SEARCH_INDEX),
@@ -65,6 +67,7 @@ beforeAll(async () => {
     breachedPasswords,
     rateLimiter: createRateLimiter({ clock, config: RATE_LIMIT }),
     oidcRateLimiter: createRateLimiter({ clock, config: config.oidcRateLimit }),
+    attachmentRateLimiter: createRateLimiter({ clock, config: config.attachments.rateLimit }),
     // The real Argon2id here: this file is the end-to-end journey, and the
     // dummy hash it builds at startup is part of what is being closed.
     passwords: await createPasswordHasher(),

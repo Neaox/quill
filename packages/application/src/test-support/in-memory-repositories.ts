@@ -1,6 +1,8 @@
 import type { DocumentId, ShortId } from '@quill/domain'
 
 import type {
+  AttachmentRepository,
+  AttachmentRow,
   AuditEventRow,
   AuditWriter,
   CollectionRepository,
@@ -68,6 +70,7 @@ export interface InMemoryUnitOfWork extends UnitOfWork {
    * rule if something checks: a test asserts both that the row is there and
    * that nothing sensitive is in it.
    */
+  /** Every audit row written, in order, for the use cases whose trail is part of their behaviour (ADR-011). */
   readonly auditEvents: readonly AuditEventRow[]
 }
 
@@ -103,6 +106,7 @@ export function createInMemoryUnitOfWork(): InMemoryUnitOfWork {
   const revisions: RevisionIndexRow[] = []
   const renders = new Map<string, RenderCacheRow>()
   const links = new Map<string, DocumentLinkRow[]>()
+  const attachments = new Map<string, AttachmentRow>()
   const events: OutboxEventRow[] = []
   const auditEvents: AuditEventRow[] = []
   const secrets = new Map<string, SecretRow>()
@@ -753,6 +757,46 @@ export function createInMemoryUnitOfWork(): InMemoryUnitOfWork {
         .filter(([, rows]) => rows.some((row) => row.targetDocumentId === documentId))
         .map(([source]) => source as DocumentId)
     },
+    async listSourcesReferencing(url, workspaceId) {
+      return [...links.entries()]
+        .filter(([source, rows]) => {
+          if (!rows.some((row) => row.url === url)) return false
+          return documents.get(source)?.workspaceId === workspaceId
+        })
+        .map(([source]) => source as DocumentId)
+    },
+  }
+
+  const attachmentRepository: AttachmentRepository = {
+    async create(input) {
+      const row: AttachmentRow = {
+        id: input.id,
+        documentId: input.documentId,
+        workspaceId: input.workspaceId,
+        uploadedBy: input.uploadedBy,
+        filename: input.filename,
+        contentType: input.contentType,
+        size: input.size,
+        sha256: input.sha256,
+        createdAt: input.now,
+        deletedAt: null,
+      }
+      attachments.set(row.id, row)
+      return row
+    },
+    async findById(id) {
+      return attachments.get(id) ?? null
+    },
+    async listForDocument(documentId) {
+      return [...attachments.values()]
+        .filter((row) => row.documentId === documentId && row.deletedAt === null)
+        .toSorted((left, right) => left.createdAt.getTime() - right.createdAt.getTime())
+    },
+    async softDelete(id, now) {
+      const row = attachments.get(id)
+      if (row !== undefined && row.deletedAt === null)
+        attachments.set(id, { ...row, deletedAt: now })
+    },
   }
 
   const outboxWriter: OutboxWriter = {
@@ -916,6 +960,7 @@ export function createInMemoryUnitOfWork(): InMemoryUnitOfWork {
     renderCache: renderCacheRepository,
     documentLinks: documentLinksRepository,
     secrets: secretsRepository,
+    attachments: attachmentRepository,
     outbox: outboxWriter,
     audit: auditWriter,
   }

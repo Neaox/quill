@@ -31,6 +31,15 @@ export interface RateLimitDecision {
 export interface RateLimiter {
   /** Counts one request against a key and answers where that leaves it. */
   hit(key: string): RateLimitDecision
+  /**
+   * Where a key stands, without spending anything.
+   *
+   * For a budget that only accepted work consumes: the uploads limit is
+   * checked before a file is read and counted only once one has been stored,
+   * so a refused upload — which costs a few hundred bytes and no storage —
+   * leaves an honest person's budget where it was.
+   */
+  peek(key: string): RateLimitDecision
   /** The window a key is currently serving, in milliseconds. */
   windowFor(key: string): number
   /**
@@ -131,6 +140,18 @@ export function createRateLimiter({ clock, config }: RateLimiterOptions): RateLi
       sweep(now)
       const bucket = bucketFor(key, now)
       bucket.count += 1
+      return { current: bucket.count, ttl: bucket.windowEndsAt - now }
+    },
+
+    peek(key: string): RateLimitDecision {
+      const now = clock.now().getTime()
+      const bucket = buckets.get(key)
+      // A key nobody has spent anything on, or one whose window has lapsed,
+      // has a full budget; neither creates a bucket, because asking is not
+      // using and a question should not be a way to fill the map.
+      if (bucket === undefined || now >= bucket.windowEndsAt) {
+        return { current: 0, ttl: config.windowMs }
+      }
       return { current: bucket.count, ttl: bucket.windowEndsAt - now }
     },
 

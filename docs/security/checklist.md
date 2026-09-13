@@ -26,7 +26,10 @@ Part of the definition of done for any change that touches authentication, sessi
 - [ ] All inputs schema-validated; unknown fields rejected.
 - [ ] Rendered Markdown sanitised on the server before caching; external links `rel="noopener noreferrer"`.
 - [ ] Outbound requests through the shared client: host allowlist, private-range DNS check, redirect limits, timeouts, size caps.
-- [ ] Uploads: size limits, sniffed content type, image re-encoding, SVG sanitised, non-executing serving origin.
+- [ ] Uploads: size limits, sniffed content type, images stripped to what displays them and refused when unreadable (no decoder on the server; ADR-011, amendment of 2026-09-13), SVG refused, non-executing serving origin.
+- [ ] `Content-Disposition` per RFC 6266: an ASCII fallback and `filename*=UTF-8''…`, with the quote, backslash and semicolon removed from the fallback, and truncation by code point.
+- [ ] Anything cached under a session revalidates rather than being immutable, and the conditional is answered **after** the authorizer runs, so a withdrawn grant is not a `304`.
+- [ ] A refusal names only what the caller may see; what they may not is counted, never named.
 
 ## Abuse and observability
 - [ ] Rate limits with backoff on auth and share-link endpoints.

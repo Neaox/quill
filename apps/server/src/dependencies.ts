@@ -1,4 +1,5 @@
 import type {
+  BlobStore,
   Clock,
   ContentStore,
   DocumentFormat,
@@ -40,6 +41,8 @@ export interface AppDependencies {
    * master key may live somewhere that never hands it over.
    */
   readonly secrets: SecretCipher
+  /** Where attachments live (ADR-034, D16): a directory, or an S3-compatible bucket. */
+  readonly blobStore: BlobStore
   /** The Markdown pipeline, with the syntax highlighter already bound in (ADR-030). */
   readonly format: DocumentFormat
   readonly clock: Clock
@@ -81,6 +84,16 @@ export interface AppDependencies {
    * shared store would apply the auth endpoints' backoff to it.
    */
   readonly oidcRateLimiter: RateLimiter
+  /**
+   * Uploads, on their own budget and their own clock (ADR-011).
+   *
+   * A separate limiter rather than a separate bucket in the one above, because
+   * the two have different shapes: the auth limiter doubles a failing key's
+   * window, and uploading a picture is ordinary work that should meet a
+   * ceiling rather than a penalty. `config.attachments.rateLimit` expresses
+   * the difference by making the maximum window the same as the first one.
+   */
+  readonly attachmentRateLimiter: RateLimiter
   /**
    * Argon2id, with the dummy hash sign-in needs already computed. Built by
    * `createPasswordHasher` in the composition root, never lazily on a request.

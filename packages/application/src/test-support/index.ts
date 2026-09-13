@@ -21,3 +21,7 @@ export {
   createFakeIdGenerator,
   createFakeTokenService,
 } from './fakes.ts'
+export type { InMemoryBlobStore } from './in-memory-blob-store.ts'
+export { createInMemoryBlobStore } from './in-memory-blob-store.ts'
+export type { ImageFixtureName, PngFileOptions } from './image-fixtures.ts'
+export { chunked, imageFixture, PNG_SIGNATURE, pngChunk, pngFile } from './image-fixtures.ts'

@@ -1,4 +1,4 @@
-import { screen, waitFor, within } from '@testing-library/react'
+import { act, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it } from 'vitest'
 
@@ -108,6 +108,15 @@ function editorRoutes(overrides: FakeRoutes = {}): FakeRoutes {
     'DELETE /api/documents/{id}/lock': () => new Response(null, { status: 204 }),
     ...overrides,
   }
+}
+
+/** The image dialog, opened the way a writer opens it: the slash menu. */
+async function openImageDialog(): Promise<HTMLElement> {
+  const surface = screen.getByRole('textbox', { name: 'Regional failover' })
+  await userEvent.click(surface)
+  await userEvent.keyboard('/image')
+  await userEvent.click(await screen.findByRole('option', { name: /Image/ }))
+  return screen.findByRole('dialog', { name: 'Insert an image' })
 }
 
 async function openEditor(routes: FakeRoutes = editorRoutes()) {
@@ -355,25 +364,199 @@ describe('the editor route', () => {
   /*
    * Review 2026-09-13, M8: this used `window.prompt` — unlabelled, unstyled,
    * outside the focus model, and suppressed outright by some browsers. It is a
-   * real dialog now, so the address is asked for the way every other value is.
+   * real dialog now, so the address is asked for the way every other value is,
+   * and it gained an Upload panel with attachments (ADR-011).
    */
   it('asks for an address in a labelled dialog rather than inserting a broken image', async () => {
     await openEditor()
     const surface = screen.getByRole('textbox', { name: 'Regional failover' })
 
-    await userEvent.click(surface)
-    await userEvent.keyboard('/image')
-    await userEvent.click(await screen.findByRole('option', { name: /Image/ }))
-
-    const dialog = await screen.findByRole('dialog', { name: 'Insert an image' })
+    const dialog = await openImageDialog()
     const field = within(dialog).getByLabelText('Image address', { exact: false })
     expect(within(dialog).getByRole('button', { name: 'Insert' })).toBeDisabled()
 
     await userEvent.type(field, 'https://example.com/map.png')
+    // An address alone is not enough: a picture nobody can read is not a
+    // document, so Insert stays unavailable until it is described.
+    expect(within(dialog).getByRole('button', { name: 'Insert' })).toBeDisabled()
+
+    await userEvent.type(
+      within(dialog).getByLabelText('Alternative text', { exact: false }),
+      'A map of the regions',
+    )
     await userEvent.click(within(dialog).getByRole('button', { name: 'Insert' }))
 
     expect(screen.queryByRole('dialog', { name: 'Insert an image' })).not.toBeInTheDocument()
-    expect(surface.querySelector('img')).toHaveAttribute('src', 'https://example.com/map.png')
+    const image = surface.querySelector('img')
+    expect(image).toHaveAttribute('src', 'https://example.com/map.png')
+    expect(image).toHaveAttribute('alt', 'A map of the regions')
+  })
+
+  it('uploads a chosen file and inserts the attachment it became', async () => {
+    await openEditor(
+      editorRoutes({
+        'POST /api/documents/{id}/attachments': () =>
+          jsonResponse(201, {
+            id: 'attachment-1',
+            documentId: 'doc-1',
+            url: '/api/attachments/attachment-1',
+            filename: 'diagram.png',
+            contentType: 'image/png',
+            size: 12,
+            sha256: 'a'.repeat(64),
+            uploadedBy: 'user-1',
+            createdAt: '2026-02-03T00:00:00.000Z',
+          }),
+      }),
+    )
+    const surface = screen.getByRole('textbox', { name: 'Regional failover' })
+
+    const dialog = await openImageDialog()
+    await userEvent.upload(
+      within(dialog).getByLabelText('Image file', { exact: false }),
+      new File([new Uint8Array([0x89, 0x50, 0x4e, 0x47])], 'diagram.png', { type: 'image/png' }),
+    )
+    await userEvent.type(
+      within(dialog).getByLabelText('Alternative text', { exact: false }),
+      'The failover sequence',
+    )
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Insert' }))
+
+    await waitFor(() => {
+      expect(screen.queryByRole('dialog', { name: 'Insert an image' })).not.toBeInTheDocument()
+    })
+    const image = surface.querySelector('img')
+    expect(image).toHaveAttribute('src', '/api/attachments/attachment-1')
+    expect(image).toHaveAttribute('alt', 'The failover sequence')
+  })
+
+  it('inserts a link, not an image, for a file that is not a picture', async () => {
+    await openEditor(
+      editorRoutes({
+        'POST /api/documents/{id}/attachments': () =>
+          jsonResponse(201, {
+            id: 'attachment-2',
+            documentId: 'doc-1',
+            url: '/api/attachments/attachment-2',
+            filename: 'runbook.pdf',
+            contentType: 'application/pdf',
+            size: 4096,
+            sha256: 'b'.repeat(64),
+            uploadedBy: 'user-1',
+            createdAt: '2026-02-03T00:00:00.000Z',
+          }),
+      }),
+    )
+    const surface = screen.getByRole('textbox', { name: 'Regional failover' })
+
+    const dialog = await openImageDialog()
+    await userEvent.upload(
+      within(dialog).getByLabelText('Image file', { exact: false }),
+      new File(['%PDF-1.7'], 'runbook.pdf', { type: 'application/pdf' }),
+    )
+    // The field asks for link text rather than alternative text, because what
+    // is being inserted is a link.
+    await userEvent.type(
+      within(dialog).getByLabelText('Link text', { exact: false }),
+      'The failover runbook',
+    )
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Insert' }))
+
+    await waitFor(() => {
+      expect(screen.queryByRole('dialog', { name: 'Insert an image' })).not.toBeInTheDocument()
+    })
+    // An `<img>` pointing at a PDF is a broken image; a link is what this is.
+    expect(surface.querySelector('img')).toBeNull()
+    const link = surface.querySelector('a')
+    expect(link).toHaveAttribute('href', '/api/attachments/attachment-2')
+    expect(link).toHaveTextContent('The failover runbook')
+  })
+
+  it('refuses a file over the cap before sending it, and says why', async () => {
+    let attempted = 0
+    await openEditor(
+      editorRoutes({
+        'POST /api/documents/{id}/attachments': () => {
+          attempted += 1
+          return jsonResponse(201, {})
+        },
+      }),
+    )
+
+    const dialog = await openImageDialog()
+    const enormous = new File([new Uint8Array(16)], 'enormous.png', { type: 'image/png' })
+    Object.defineProperty(enormous, 'size', { value: 40 * 1024 * 1024 })
+    await userEvent.upload(within(dialog).getByLabelText('Image file', { exact: false }), enormous)
+
+    expect(await within(dialog).findByRole('alert')).toHaveTextContent(/over the 25 MB limit/)
+    expect(within(dialog).getByRole('button', { name: 'Insert' })).toBeDisabled()
+    expect(attempted).toBe(0)
+  })
+
+  it('keeps the dialog open with the reason when the server refuses the file', async () => {
+    await openEditor(
+      editorRoutes({
+        'POST /api/documents/{id}/attachments': () =>
+          errorResponse(
+            422,
+            'file_type_not_allowed',
+            'SVG files are not accepted: an SVG is a document that can carry scripts.',
+          ),
+      }),
+    )
+    const surface = screen.getByRole('textbox', { name: 'Regional failover' })
+
+    const dialog = await openImageDialog()
+    await userEvent.upload(
+      within(dialog).getByLabelText('Image file', { exact: false }),
+      // What the person actually chose: an SVG renamed `.png`, which the
+      // browser declares as `image/png` and only the server can see through.
+      new File(['<svg xmlns="http://www.w3.org/2000/svg"/>'], 'logo.png', { type: 'image/png' }),
+    )
+    await userEvent.type(
+      within(dialog).getByLabelText('Alternative text', { exact: false }),
+      'A logo',
+    )
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Insert' }))
+
+    expect(await within(dialog).findByRole('alert')).toHaveTextContent(/SVG files are not accepted/)
+    expect(screen.getByRole('dialog', { name: 'Insert an image' })).toBeInTheDocument()
+    expect(surface.querySelector('img')).toBeNull()
+  })
+
+  it('opens the dialog on a file dropped onto the document', async () => {
+    await openEditor()
+    const surface = screen.getByRole('textbox', { name: 'Regional failover' })
+    const file = new File([new Uint8Array([0x89, 0x50, 0x4e, 0x47])], 'pasted.png', {
+      type: 'image/png',
+    })
+
+    const event = new Event('paste', { bubbles: true, cancelable: true })
+    Object.defineProperty(event, 'clipboardData', {
+      value: {
+        files: Object.assign([file], { item: () => file }),
+        getData: () => '',
+        types: ['Files'],
+      },
+    })
+    await act(async () => {
+      surface.dispatchEvent(event)
+    })
+
+    const dialog = await screen.findByRole('dialog', { name: 'Insert an image' })
+    expect(within(dialog).getByText(/Ready to upload: pasted.png/)).toBeInTheDocument()
+    // The file is there; the description is not, so nothing can be inserted yet.
+    expect(within(dialog).getByRole('button', { name: 'Insert' })).toBeDisabled()
+  })
+
+  it('has no axe violations with the image dialog open', async () => {
+    await openEditor()
+    const dialog = await openImageDialog()
+
+    // The dialog rather than the page: Radix marks everything behind a modal
+    // `aria-hidden`, and axe reports that background — correctly inert, and
+    // not what this test is about — as focusable hidden content.
+    await expectNoAccessibilityViolations(dialog)
   })
 
   it('has no axe violations', async () => {

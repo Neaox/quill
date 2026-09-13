@@ -107,6 +107,36 @@ interface SearchHit {
   score: number
 }
 ```
+## Attachments
+
+| Method and path | Purpose | Response |
+|---|---|---|
+| `POST /documents/:id/attachments` | Upload a file (`multipart/form-data`, one field called `file`). Needs `edit` | `201 Attachment`; `413 payload_too_large`; `422 file_missing` / `file_empty` / `file_type_not_allowed` / `file_type_mismatch` / `file_malformed`; `429 rate_limited` |
+| `GET /documents/:id/attachments` | What this document carries, oldest first. Needs `view` | `{ attachments: Attachment[] }` |
+| `GET /attachments/:id` | The bytes. Needs `view` on the owning document | the file, with the headers below; `404` once it is deleted or if it never existed |
+| `DELETE /attachments/:id` | Take it down. Needs `edit` | `204`; `409 attachment_in_use` with `details.documents` |
+
+An attachment belongs to its document, so every decision about it is a decision about that document: `view` to read, `edit` to add or remove. A share link or the public principal will reach the read route through the same resolver when they arrive in M3 (ADR-012), with nothing in the route to change.
+
+**What the server decides, and what it refuses.** The declared content type is a claim: the type is read from the file's own first bytes and a mismatch is refused (`file_type_mismatch`, with `declared` and `sniffed` in `details`). The allowlist is `image/png`, `image/jpeg`, `image/gif`, `image/webp`, `image/avif` and `application/pdf`. **SVG is refused** — `file_type_not_allowed` with `details.sniffed` of `image/svg+xml` — because an SVG is a document that can carry script and fetch external references, which is the same reason the renderer's sanitiser will not accept one. The size cap (`ATTACHMENT_MAX_BYTES`, 25 MiB by default) is counted as the bytes arrive, so an oversized upload is refused rather than received; `details.maxBytes` carries the cap.
+
+**What the server keeps.** An image is stored without what it carried besides its pixels (ADR-011, amendment of 2026-09-13): EXIF, XMP, IPTC, comments, text chunks and anything after the end of the picture are removed at the level of the file's container, with no decoder involved, and the colour profile, transparency, and animation are kept. `size` and `sha256` describe the file as stored, so they can differ from the file that was sent; a picture with nothing to remove is stored byte for byte. An image whose container cannot be read — cut short, framed wrongly — is refused with `file_malformed`, `details.contentType` naming the format and `details.reason` what stopped the reader. A PDF is stored exactly as sent. Because the hash is taken after the walk, the same photograph uploaded with and without its metadata is one object.
+
+**What `GET /attachments/:id` answers with.** `Content-Type` is the *sniffed* type and never the uploader's claim. `Content-Disposition` is `inline` for an image and `attachment` for anything else, per RFC 6266: an ASCII fallback in `filename=` and the real name in `filename*=UTF-8''…`, so a name in any script survives the header. `X-Content-Type-Options: nosniff` stops a browser deciding for itself that a file the server called `image/png` is really HTML. `Content-Security-Policy: default-src 'none'; img-src 'self' data:; object-src 'none'; sandbox` is the second belt beside it. The `ETag` is the SHA-256, and `If-None-Match` answers `304`.
+
+`Cache-Control` is `private, max-age=300, must-revalidate` rather than immutable. The bytes behind an id never change — but the *permission* to see them does, and a grant withdrawn this afternoon has to take effect this afternoon. The conditional request is answered **after** the authorizer runs, so a reader whose access has gone receives the refusal rather than a cheap `304` telling them their copy is still good.
+
+The request itself is a plain `GET` with the session cookie and nothing else, which is all a browser sends for `<img src="/api/attachments/…">` on the app's own origin; the application's CSP stays `img-src 'self'`.
+
+**What an upload is checked for.** The size is counted as the bytes arrive against `ATTACHMENT_MAX_BYTES`; the type is read from the first bytes and must be on the allowlist and must match what the request declared; JPEG and PNG metadata is stripped before the content hash is taken, so re-uploading the same photograph with and without its coordinates gives one object. Uploads are limited to `ATTACHMENT_RATE_LIMIT_MAX` per person per minute — flat, and spent only by an accepted upload.
+
+**Where a document points at one.** `Attachment.url` is `/api/attachments/<id>` — relative, same-origin — and that is what the document's Markdown carries: `![Alt text](/api/attachments/<id>)`. The sanitiser admits that shape as an ordinary relative path. Export will rewrite it to a path inside the exported bundle (M4).
+
+**Deleting.** The row is marked removed and the object is left where it is: the bytes are addressed by their hash and may be another attachment's, and the blob store is a system of record (ADR-034). A delete is refused with `409 attachment_in_use` while any published document still shows the attachment, which the link index answers — `/rendered` indexes the links of a document's published head — so the client takes the image out of the document, publishes, and deletes.
+
+The question is asked only of the attachment's **own workspace**, and `details` carries `{ documents, hidden }`: the documents the caller may `view`, and a count of the ones they may not. A document somebody cannot open never blocks their delete by name.
+
+**A draft's reference does not block a delete.** The link index holds the links of *published heads* only, so an attachment a writer has placed in a draft but not yet published can still be deleted — which is the right answer, because nobody is reading that draft but its author, and the alternative would make a picture undeleteable by having once been typed. The author's own draft then points at a file that is gone, which the editor shows as a broken image; publishing it is what would have made the reference real.
 
 ## Drafts and locks
 
@@ -129,4 +159,17 @@ interface TreeNode { id: string; shortId: string; title: string; slug: string; s
 interface OutlineEntry { id: string; depth: 1 | 2 | 3 | 4 | 5 | 6; text: string; children: OutlineEntry[] }
 interface RevisionSummary { revision: string; author: { name: string; email: string }; timestamp: string; summary: string; changeNote?: string }
 interface HealthSignal { kind: 'no-owner' | 'review-overdue' | 'required-section-empty' | 'broken-link'; detail?: string }
+interface Attachment {
+  id: string
+  documentId: string
+  /** Where the document's Markdown points at it: relative and same-origin. */
+  url: string
+  filename: string
+  /** Sniffed from the bytes, never the uploader's claim. */
+  contentType: 'image/png' | 'image/jpeg' | 'image/gif' | 'image/webp' | 'image/avif' | 'application/pdf'
+  size: number
+  sha256: string
+  uploadedBy: string | null
+  createdAt: string
+}
 ```

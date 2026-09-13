@@ -20,16 +20,25 @@ export type { EditorExtensionOptions } from './document/extensions.ts'
 export { keyboardShortcuts } from './document/keymap.ts'
 export { choosePaste } from './document/paste.ts'
 export type { PasteAction, PasteInput } from './document/paste.ts'
+export { chooseFiles, fileDrop } from './document/files.ts'
+export type {
+  DroppedFile,
+  FileAction,
+  FileDropInput,
+  FileDropOptions,
+  FileRequest,
+} from './document/files.ts'
 export {
   insertHardBreak,
   insertImage,
+  insertLink,
   insertMarkdown,
   insertNode,
   markdownFragment,
   removeLink,
   setLink,
 } from './document/commands.ts'
-export type { ImageAttributes } from './document/commands.ts'
+export type { ImageAttributes, LinkAttributes } from './document/commands.ts'
 
 // Blocks, widths, and the block menu
 export { BlockMenu } from './block/block-menu.tsx'

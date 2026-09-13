@@ -8,6 +8,7 @@ import { documentToMdast } from './ast.ts'
 import {
   insertHardBreak,
   insertImage,
+  insertLink,
   insertMarkdown,
   insertNode,
   markdownFragment,
@@ -66,6 +67,15 @@ describe('the shared editing commands', () => {
     expect(written(apply(caret('\n', 1), insertImage({ src: '/a.png' })))).toContain('![](/a.png)')
     const described = insertImage({ src: '/b.png', alt: 'A chart', title: 'Q3' })
     expect(written(apply(caret('\n', 1), described))).toContain('![A chart](/b.png "Q3")')
+  })
+
+  it('inserts a link, text and all, for a thing that has just come into existence', () => {
+    const link = insertLink({ href: '/api/attachments/abc', text: 'The runbook' })
+    expect(written(apply(caret('\n', 1), link))).toContain('[The runbook](/api/attachments/abc)')
+  })
+
+  it('declines a link with nothing to read, rather than inserting one nobody can see', () => {
+    expect(apply(caret('\n', 1), insertLink({ href: '/a.pdf', text: '' }))).toBeNull()
   })
 
   it('inserts a node it is handed', () => {

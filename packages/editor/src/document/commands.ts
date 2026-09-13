@@ -38,6 +38,33 @@ export const removeLink: Command = (state, dispatch) => {
   return true
 }
 
+export interface LinkAttributes {
+  readonly href: string
+  /** What the link reads as. An empty one would be a link nobody can see. */
+  readonly text: string
+  readonly title?: string | null
+}
+
+/**
+ * Inserts a link, text and all.
+ *
+ * Distinct from `setLink`, which marks a selection that already says
+ * something: this is for a link to a thing that has just come into existence
+ * — an uploaded PDF, say — where there is no text yet and the document needs
+ * both. A file that is not a picture becomes one of these rather than an
+ * image, because an `<img>` pointing at a PDF is a broken image.
+ */
+export function insertLink({ href, text, title = null }: LinkAttributes): Command {
+  return (state, dispatch) => {
+    if (text === '') return false
+    const mark = markType(state.schema, 'link').create({ href, title })
+    dispatch?.(
+      state.tr.replaceSelectionWith(state.schema.text(text, [mark]), false).scrollIntoView(),
+    )
+    return true
+  }
+}
+
 export interface ImageAttributes {
   readonly src: string
   readonly alt?: string | null

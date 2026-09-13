@@ -63,6 +63,7 @@ Status is taken from the plan's Delivery status table, which is authoritative.
 | 40 | Review the audit log | Instance admin | Signed in, internal | M1 / M8 | Events built, UI planned | `administer.spec.ts` |
 | 41 | Export a workspace as Markdown | Workspace lead | Signed in, outbound | M4 | Planned | `export.spec.ts` |
 | 42 | Publish from CI | Integrator | Token, internal | M8 | Planned | `api.spec.ts` |
+| 43 | Put a picture in a document | Writer | Signed in, internal | M2 | Built | `journey.spec.ts` |
 
 ---
 
@@ -373,9 +374,11 @@ Signed in, internal. The editor is the surface the product is judged on.
 
 1. Open a document and start typing. The lock is acquired silently.
 2. Use slash commands for headings, code, tables, callouts, and images.
-3. Set a block to content, wide, or full width from its menu, and see it at that
+3. Drag a picture onto the document, paste one from the clipboard, or choose a
+   file — see use case 43.
+4. Set a block to content, wide, or full width from its menu, and see it at that
    width while writing.
-4. Leave. The draft is there on return, at the same point.
+5. Leave. The draft is there on return, at the same point.
 
 **Acceptance**
 
@@ -540,6 +543,47 @@ Signed in, internal. The editor is the surface the product is judged on.
   Edit control is not rendered at all.
 - Given the document is locked by someone else, when Edit is pressed, then the
   reason is on screen before any typing happens.
+
+### 43. Put a picture in a document
+
+- **Persona:** writer
+- **Situation:** writing something that needs a diagram, a screenshot, or a PDF
+- **Job:** get the picture into the document without leaving it, and without
+  anyone later meeting an image they cannot read.
+- **Milestone:** M2 — **Built**
+- **Surfaces:** editor, reading view
+- **Journey:** `e2e/journey.spec.ts`
+
+**Flow**
+
+1. Drag a file onto the document, paste one from the clipboard, or open the
+   image dialog from the slash menu and choose a file.
+2. Describe the picture. The dialog will not insert one without alternative
+   text, whichever way the file arrived.
+3. Press Insert. The button carries the spinner while the file uploads, and the
+   image appears at the caret when the server has accepted it.
+4. An address on the web is still an option, on the dialog's other panel.
+5. Publish. Readers see the picture; it is served from this instance, not from
+   wherever it came from.
+
+**Acceptance**
+
+- Given a file the platform does not accept — an SVG, a program renamed `.png` —
+  when it is uploaded, then the dialog says what was wrong and the document is
+  left as it was, with no broken image in it.
+- Given a file larger than the instance's cap, when it is uploaded, then it is
+  refused while it is still arriving rather than after it has all been received.
+- Given an uploaded picture, when a reader opens the published document, then
+  the image loads with no extra sign-in step, and nothing about it can execute.
+- Given a photograph carrying where and on what it was taken, when it is
+  uploaded, then what readers receive carries neither: the picture is stored
+  without its metadata, and the size the platform reports is of what it stored.
+- Given a picture whose file is damaged, when it is uploaded, then it is
+  refused with what was wrong with it rather than stored unread.
+- Given a picture a published document still shows, when someone deletes the
+  attachment, then they are told which document shows it and nothing is removed.
+- Given a picture two documents happen to share, when one of them deletes it,
+  then the other still shows it.
 
 ---
 

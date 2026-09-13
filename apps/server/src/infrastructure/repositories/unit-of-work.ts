@@ -2,6 +2,7 @@ import type pg from 'pg'
 import type { IdGenerator, RepositoryBundle, UnitOfWork } from '@quill/application'
 
 import type { DrizzleClient } from '../db/types.ts'
+import { createAttachmentRepository } from './attachment-repository.ts'
 import { createAuditWriter } from './audit-writer.ts'
 import { createCollectionRepository } from './collection-repository.ts'
 import { createCredentialRepository } from './credential-repository.ts'
@@ -55,6 +56,7 @@ function buildBundle(db: DrizzleClient, pool: pg.Pool, ids: IdGenerator): Reposi
     renderCache: createRenderCacheRepository(db),
     documentLinks: createDocumentLinksRepository(db),
     secrets: createSecretRepository(db),
+    attachments: createAttachmentRepository(db),
     outbox: createOutboxWriter(db),
     audit: createAuditWriter(db),
   }

@@ -1,4 +1,5 @@
 import { getRouteApi, Link } from '@tanstack/react-router'
+import { useState } from 'react'
 
 import { buttonClassName, Menu, type MenuItem } from '@quill/ui'
 
@@ -14,6 +15,7 @@ import { labelRevisions } from '../../lib/documents/revision-labels.ts'
 import { useDocumentActions } from '../workspaces/document-actions.tsx'
 import { RenameDocumentControl } from '../workspaces/rename-document-control.tsx'
 import { ShellActions, ShellAside } from '../workspaces/shell-slots.tsx'
+import { AttachmentsPanel } from './attachments-panel.tsx'
 import { DocumentReader } from './document-reader.tsx'
 import { HealthSignals } from './health-signals.tsx'
 import { RevisionPanel } from './revision-panel.tsx'
@@ -52,6 +54,7 @@ export function DocumentPage() {
   const history = useDocumentHistory(documentId)
   const rendered = useRenderedDocument(documentId, rev)
   const actions = useDocumentActions()
+  const [showingAttachments, setShowingAttachments] = useState(false)
 
   const revisions = labelRevisions(history.data?.revisions ?? [], {
     complete: history.data?.nextCursor === undefined,
@@ -71,12 +74,23 @@ export function DocumentPage() {
    */
   const onScreen = rev ?? revisions[0]?.revision ?? rendered.data?.body.revision ?? ''
 
-  const menuItems: readonly MenuItem[] = actions.canManage
-    ? [
-        { label: 'Move to…', onSelect: actions.openMove },
-        { label: 'Delete…', onSelect: actions.openDelete },
-      ]
-    : []
+  // Reachable by anyone who may read the document: the list is what it
+  // carries, which is part of reading it. Deleting from the panel needs
+  // `edit`, which the panel asks about itself.
+  const menuItems: readonly MenuItem[] = [
+    {
+      label: 'Attachments…',
+      onSelect: () => {
+        setShowingAttachments(true)
+      },
+    },
+    ...(actions.canManage
+      ? [
+          { label: 'Move to…', onSelect: actions.openMove },
+          { label: 'Delete…', onSelect: actions.openDelete },
+        ]
+      : []),
+  ]
 
   return (
     <>
@@ -114,6 +128,13 @@ export function DocumentPage() {
           </Link>
         ) : undefined}
       </ShellActions>
+
+      <AttachmentsPanel
+        documentId={documentId}
+        open={showingAttachments}
+        onOpenChange={setShowingAttachments}
+        canEdit={permissions?.edit === true}
+      />
 
       <DocumentReader
         documentId={documentId}

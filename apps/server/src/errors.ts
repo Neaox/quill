@@ -55,6 +55,16 @@ export function lockLost(holder: unknown): AppError {
   })
 }
 
+/**
+ * The body is larger than this route accepts (ADR-011: uploads have size
+ * limits). Distinct from `422` because the caller can act on it without
+ * reading the message — send less — and because a proxy in front understands
+ * the status.
+ */
+export function payloadTooLarge(message: string, details?: unknown): AppError {
+  return new AppError(413, 'payload_too_large', message, details)
+}
+
 /** The request was well formed, but what it names cannot be processed as it stands. */
 export function unprocessable(code: string, message: string, details?: unknown): AppError {
   return new AppError(422, code, message, details)

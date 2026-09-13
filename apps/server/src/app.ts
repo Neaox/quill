@@ -5,6 +5,7 @@ import { AUDIT_EVENTS, createAuditRecorder, recordInBackground } from './applica
 import type { ServerConfig, TrustProxyConfig } from './config.ts'
 import type { AppDependencies } from './dependencies.ts'
 import { serialiseRequest } from './plugins/logging.ts'
+import { attachmentRoutes } from './routes/attachments.ts'
 import { authRoutes } from './routes/auth.ts'
 import { oidcAuthRoutes } from './routes/auth-oidc.ts'
 import { collectionRoutes } from './routes/collections.ts'
@@ -151,6 +152,7 @@ export function buildApp(options: AppOptions = {}): FastifyInstance {
     app.register(workspaceRoutes(deps))
     app.register(collectionRoutes(deps))
     app.register(documentRoutes(deps))
+    app.register(attachmentRoutes(deps))
     app.register(draftRoutes(deps))
     app.register(lockRoutes(deps))
     app.register(searchRoutes(deps))
