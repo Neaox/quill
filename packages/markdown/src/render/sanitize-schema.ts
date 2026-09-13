@@ -155,6 +155,19 @@ const attributes: Schema['attributes'] = {
   // case-insensitive, so `data:image/PNG` is a `data:image/png` — and the
   // exclusion stays case-insensitive too, so neither pattern is the only thing
   // standing between an uppercased scheme and the allowlist.
+  //
+  // The second pattern is also what lets an attachment through: a document
+  // that shows an uploaded file carries `/api/attachments/<id>`, a relative
+  // same-origin path with no scheme, which hast-util-sanitize treats as
+  // relative and this pattern admits. It has to keep working, and it has to
+  // keep agreeing with the CSP that meets it in a browser — `img-src 'self'`
+  // (`apps/server/src/plugins/security-headers.ts`) — which is what
+  // `render.security.test.ts`'s "attachment images" cases hold in place.
+  //
+  // TODO(M4): export rewrites `/api/attachments/<id>` to a path inside the
+  // exported bundle so a downloaded document is self-contained (quill-plan.md
+  // section 24). It is a substitution over the emitted `src`, not a change
+  // here: this schema admits relative paths of every shape already.
   img: [...ARIA, 'longDesc', ['src', DATA_IMAGE, NOT_DATA]],
 }
 

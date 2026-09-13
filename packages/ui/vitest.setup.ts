@@ -9,6 +9,16 @@ import '@testing-library/jest-dom/vitest'
 afterEach(cleanup)
 
 /*
+ * Testing Library's own waiting, raised from its 1 s default.
+ *
+ * `testTimeout` in `vitest.config.ts` does not govern it: a `findBy*` or a
+ * `waitFor` gives up on its own clock and reports "unable to find", which reads
+ * as a broken assertion rather than as a slow machine. A test that is genuinely
+ * wrong still fails; it just takes longer to say so.
+ */
+configure({ asyncUtilTimeout: 10_000 })
+
+/*
  * jsdom does not implement the layout and pointer APIs that floating and
  * focus-managing primitives rely on. These are the smallest shims that let the
  * real components run unmodified under test; production code never sees them.

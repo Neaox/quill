@@ -10,6 +10,7 @@ import type { CommentRequest } from '../block/block-menu.tsx'
 import { SlashMenu } from '../slash/slash-menu.tsx'
 import { createSlashStore } from '../slash/slash-store.ts'
 import type { SlashItem, SlashRequest } from '../slash/slash-items.ts'
+import type { FileRequest } from './files.ts'
 import type { DocumentAst } from '../document-ast.ts'
 import { documentFromMdast, documentToMdast } from './ast.ts'
 import type { LoadedDocument } from './ast.ts'
@@ -55,6 +56,12 @@ export interface DocumentEditorProps {
   onComment?(request: CommentRequest): void
   /** The slash menu needs something the editor cannot invent, such as an address. */
   onRequest?(request: SlashRequest): void
+  /**
+   * Files were dragged onto the document or pasted into it. Uploading them is
+   * the application's, which is what holds the attachment client; omitted, a
+   * dropped file is left to the browser.
+   */
+  onFiles?(request: FileRequest): void
 }
 
 function handleFor(editor: Editor, warnings: readonly Warning[]): DocumentEditorHandle {
@@ -73,18 +80,19 @@ export function DocumentEditor({
   onChange,
   onComment,
   onRequest,
+  onFiles,
 }: DocumentEditorProps) {
   const store = useMemo(() => createSlashStore(), [])
 
   // The extension list is built once with the editor, so it reads the current
   // callbacks through a box rather than closing over the first ones it saw.
-  const latest = useRef({ onChange, onRequest })
+  const latest = useRef({ onChange, onRequest, onFiles })
   // Keeps that box in sync with the latest onChange/onRequest for the ProseMirror
   // extensions built once below (useEditor), which read it instead of closing
   // over stale props.
   useEffect(() => {
-    latest.current = { onChange, onRequest }
-  }, [onChange, onRequest])
+    latest.current = { onChange, onRequest, onFiles }
+  }, [onChange, onRequest, onFiles])
 
   // Converted once, by a lazy initial state rather than a memo: the AST is the
   // initial content, and a later value must not re-open the document under the
@@ -101,6 +109,11 @@ export function DocumentEditor({
   const editor = useEditor({
     extensions: buildExtensions({
       ...(placeholder === undefined ? {} : { placeholder }),
+      files: {
+        onFiles: (request) => {
+          latest.current.onFiles?.(request)
+        },
+      },
       slash: {
         store,
         ...(slashItems === undefined ? {} : { items: slashItems }),
