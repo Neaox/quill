@@ -401,6 +401,33 @@ pnpm --filter @quill/server secrets:rotate
 and drop the old key. It re-wraps every data key and never touches a ciphertext, so it costs the same whatever the secrets are; it is safe to run twice, because a secret already on the current key is not in the query; and each write is a compare-and-swap on the envelope it read, so a rotation running beside an administrator replacing a secret cannot leave the new value unopenable. A secret whose old key has gone is reported by name, and the command exits non-zero — that secret has to be entered again.
 
 **Both layers of the envelope are bound to where they sit.** The value is sealed against `secret:v1:<name>` and the wrapped data key against `wrap:v1:<key id>`, as authenticated associated data. Somebody who can write the table but cannot read the master key therefore cannot move the SMTP password's row into the OIDC client secret's name and have the application use it as one.
+## Attachments (ADR-011, ADR-034)
+
+An attachment is a row in Postgres pointing at bytes in the blob store. The row says who uploaded what, to which document, under what name; the object is the bytes, addressed by their own SHA-256, so two documents carrying the same picture carry one object between them.
+
+- **Upload** (`POST /api/documents/:id/attachments`, multipart, field `file` — any other field name is refused) needs `edit` on the document. The body is streamed: the size is counted as the bytes arrive and the type is read from the first bytes, so an oversized or unacceptable file is refused before the rest of it is worth receiving. The declared content type is checked against what the bytes actually are and a mismatch is refused; the allowlist is PNG, JPEG, GIF, WebP, AVIF and PDF. **SVG is refused**, and says so: an SVG is a document that can carry script, which is also why the renderer's sanitiser will not accept one. **Metadata is stripped** from JPEG and PNG uploads — the EXIF block a camera writes, with the coordinates and serial number in it — by a structural byte walk, before the hash, so the address is the address of what is served (ADR-011 amended 2026-09-13; `docs/security/review-2026-09-13-attachments.md`).
+- **Read** (`GET /api/attachments/:id`) needs `view` on the document that owns it — the only thing that governs an attachment — and is a plain `GET` with the session cookie and nothing else, which is all a browser sends for `<img src="/api/attachments/…">` on the app's own origin. It answers with the sniffed content type, `Content-Disposition` per RFC 6266 (`inline` for an image, `attachment` for anything else, with both the ASCII fallback and the UTF-8 form of the name), `X-Content-Type-Options: nosniff`, a `Content-Security-Policy` of `default-src 'none'; sandbox`, and an `ETag` of the hash. Caching is `private, max-age=300, must-revalidate` rather than immutable: the bytes behind an id never change, but the permission to see them does, and the conditional request is answered *after* the authorizer runs, so a reader whose grant was withdrawn gets the refusal rather than a `304`.
+- **Delete** (`DELETE /api/attachments/:id`) needs `edit`, marks the row removed, and leaves the object alone: the bytes may be another attachment's, and the blob store is a system of record (ADR-034). It is refused with `409 attachment_in_use` while any published document **in the attachment's own workspace** still points at its URL, which the link index answers (`render-document.ts` indexes the links of published heads). The refusal names only the documents the caller may `view` and counts the rest, so a workspace they have no grant on is never revealed by a delete.
+
+Uploads are rate limited per signed-in person — 60 a minute by default, flat rather than backing off, and spent only by an accepted upload, because a refusal costs a few hundred bytes and no storage. Both writes are audited.
+
+## Configuration for attachments
+
+| Variable | Default | Meaning |
+| --- | --- | --- |
+| `BLOB_STORE` | `filesystem` | `filesystem` or `s3` (ADR-034) |
+| `BLOB_STORE_PATH` | `./data/blobs` | Where the filesystem backend keeps one content-addressed file per object |
+| `S3_BUCKET` | — | Required when `BLOB_STORE=s3` |
+| `S3_REGION` | `us-east-1` | AWS needs one in the signature; MinIO wants one and ignores it |
+| `S3_ENDPOINT` | — | Set for MinIO and every other non-AWS service (`http://localhost:9000`) |
+| `S3_ACCESS_KEY_ID` | — | Required when `BLOB_STORE=s3` |
+| `S3_SECRET_ACCESS_KEY` | — | Required when `BLOB_STORE=s3` |
+| `S3_FORCE_PATH_STYLE` | true with an endpoint | `host/bucket` rather than `bucket.host` |
+| `S3_PREFIX` | — | A key prefix, so one bucket can hold more than one instance |
+| `ATTACHMENT_MAX_BYTES` | `26214400` | 25 MiB; counted as the bytes arrive, and capped at 256 MiB |
+| `ATTACHMENT_RATE_LIMIT_MAX` | `60` | Uploads per person per minute, flat |
+
+The filesystem backend fans out on the first four characters of the hash — `ab/cd/abcd…` — writes through a temporary file, and renames into place, so a crash mid-write leaves no truncated object under a hash that claims to be complete. The temporary file such a crash *does* leave is swept at startup, by age: anything in `tmp/` older than an hour, which is far longer than any upload the cap allows can take. The S3 backend speaks plain signed REST (`PUT`, `GET`, `HEAD`, `DELETE`) over `aws4fetch` rather than the AWS SDK; see `infrastructure/blob/s3-blob-store.ts` for why.
 
 ## The API description and the client
 

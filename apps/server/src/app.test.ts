@@ -20,6 +20,7 @@ import {
   createFakeBreachedPasswordChecker,
   createFakeClock,
   createFakeIdGenerator,
+  createInMemoryBlobStore,
   createRecordingMailer,
   inMemorySettings,
 } from './test-support/fakes.ts'
@@ -85,6 +86,7 @@ describe('server with dependencies', () => {
       tokens: createTokenService(),
       shareLinkPolicy: { allowed: () => true },
       ...(await inMemorySettings(clock, config)),
+      blobStore: createInMemoryBlobStore(),
       format: createDocumentFormat(),
       searchIndex: SEARCH_INDEX,
       search: createSearchService(SEARCH_INDEX),
@@ -92,6 +94,7 @@ describe('server with dependencies', () => {
       breachedPasswords: createFakeBreachedPasswordChecker(),
       rateLimiter: createRateLimiter({ clock, config: config.rateLimit }),
       oidcRateLimiter: createRateLimiter({ clock, config: config.oidcRateLimit }),
+      attachmentRateLimiter: createRateLimiter({ clock, config: config.attachments.rateLimit }),
       passwords: await createPasswordHasher(),
       identityProviders: createIdentityProviderRegistry({
         providers: config.oidcProviders,
@@ -158,6 +161,7 @@ describe('trusting what is in front of the server', () => {
       tokens: createTokenService(),
       shareLinkPolicy: { allowed: () => true },
       ...(await inMemorySettings(clock, config)),
+      blobStore: createInMemoryBlobStore(),
       format: createDocumentFormat(),
       searchIndex: SEARCH_INDEX,
       search: createSearchService(SEARCH_INDEX),
@@ -165,6 +169,7 @@ describe('trusting what is in front of the server', () => {
       breachedPasswords: createFakeBreachedPasswordChecker(),
       rateLimiter: createRateLimiter({ clock, config: config.rateLimit }),
       oidcRateLimiter: createRateLimiter({ clock, config: config.oidcRateLimit }),
+      attachmentRateLimiter: createRateLimiter({ clock, config: config.attachments.rateLimit }),
       passwords: await createPasswordHasher(),
       identityProviders: createIdentityProviderRegistry({
         providers: config.oidcProviders,

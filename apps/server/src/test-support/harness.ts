@@ -1,5 +1,10 @@
+import { mkdtemp, rm } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+
 import { DOCUMENT_CREATED, DOCUMENT_PUBLISHED } from '@quill/application'
 import { createSearchService } from '@quill/search'
+import { BRAND } from '@quill/brand'
 import { createFakeClock, createFakeIdGenerator } from '@quill/application/test-support'
 import type { FakeClock } from '@quill/application/test-support'
 import type { UserId } from '@quill/domain'
@@ -9,6 +14,7 @@ import { buildApp } from '../app.ts'
 import { loadConfig } from '../config.ts'
 import type { RateLimitConfig } from '../config.ts'
 import type { AppDependencies } from '../dependencies.ts'
+import { FilesystemBlobStore } from '../infrastructure/blob/create-blob-store.ts'
 import { createContentStore } from '../infrastructure/content-store.ts'
 import { createTestDatabase } from '../infrastructure/db/test-database.ts'
 import type { TestDatabase } from '../infrastructure/db/test-database.ts'
@@ -51,7 +57,9 @@ import type { FakeBreachedPasswordChecker, RecordingMailer } from './fakes.ts'
  * The content store is the in-memory object store, which is the same Git
  * object model as the filesystem backend at about a hundredth of the cost
  * (ADR-014), so an integration test exercises the real publish path without
- * touching a disk.
+ * touching a disk. The blob store has no such equivalent and needs none: it
+ * is the real `FilesystemBlobStore` over a temporary directory, so an
+ * attachment test exercises the adapter a self-host deployment actually runs.
  */
 
 export interface ServerHarness {
@@ -63,6 +71,8 @@ export interface ServerHarness {
   /** Every message the outbox has actually delivered, once `drainOutbox` has run. */
   readonly mailer: RecordingMailer
   readonly database: TestDatabase
+  /** Where the harness's attachments landed, so a test can look at the files. */
+  readonly blobRoot: string
   readonly jobRunner: JobRunner
   /** A session cookie header for a user, ready to pass to `app.inject`. */
   cookiesFor(userId: UserId): Promise<Record<string, string>>
@@ -107,6 +117,7 @@ export interface HarnessOptions {
 
 export async function createServerHarness(options: HarnessOptions = {}): Promise<ServerHarness> {
   const database = await createTestDatabase()
+  const blobRoot = await mkdtemp(join(tmpdir(), `${BRAND.slug}-blobs-`))
   const clock = options.clock ?? createFakeClock(HARNESS_NOW)
   const ids = createFakeIdGenerator()
   const uow = createUnitOfWork(database.db, database.pool, ids)
@@ -158,6 +169,7 @@ export async function createServerHarness(options: HarnessOptions = {}): Promise
     // compare-and-swap, not a fake of them (ADR-034).
     settings: createSettingsStore(contentStore),
     secrets: createEnvelopeCipher(await createKeyProvider(config.masterKey)),
+    blobStore: new FilesystemBlobStore(blobRoot),
     format: createDocumentFormat(),
     clock,
     ids,
@@ -168,6 +180,7 @@ export async function createServerHarness(options: HarnessOptions = {}): Promise
     breachedPasswords,
     rateLimiter: createRateLimiter({ clock, config: config.rateLimit }),
     oidcRateLimiter: createRateLimiter({ clock, config: config.oidcRateLimit }),
+    attachmentRateLimiter: createRateLimiter({ clock, config: config.attachments.rateLimit }),
     passwords: await createPasswordHasher(),
     identityProviders: createIdentityProviderRegistry({
       providers: config.oidcProviders,
@@ -210,6 +223,7 @@ export async function createServerHarness(options: HarnessOptions = {}): Promise
     breachedPasswords,
     mailer,
     database,
+    blobRoot,
     jobRunner,
 
     async cookiesFor(userId: UserId): Promise<Record<string, string>> {
@@ -244,6 +258,7 @@ export async function createServerHarness(options: HarnessOptions = {}): Promise
       await jobRunner.stop()
       await app.close()
       await database.drop()
+      await rm(blobRoot, { recursive: true, force: true })
     },
   }
 }
