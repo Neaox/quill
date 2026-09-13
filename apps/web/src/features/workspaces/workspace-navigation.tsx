@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useId, useState } from 'react'
 
 import {
   Button,
@@ -153,6 +153,7 @@ export function WorkspaceTree({
   const [preset, setPreset] = useState<NewDocumentPreset | undefined>(undefined)
   const [collectionDialog, setCollectionDialog] = useState<CollectionDialog | undefined>(undefined)
   const styles = workspaceNavigationStyles()
+  const headingId = useId()
 
   // Subscribes to the window's keydown stream — an external system — for the
   // `c` "new document" shortcut, so it fires from wherever focus is on the
@@ -230,11 +231,17 @@ export function WorkspaceTree({
   }))
 
   return (
-    <div className={styles.root()}>
+    // A region named by its own heading, so the column's chrome — the
+    // switcher and the New control — sits inside a landmark like the tree
+    // below it (WCAG 1.3.6; axe's `region` rule), rather than in the gap
+    // between the rail and the document.
+    <section className={styles.root()} aria-labelledby={headingId}>
       {workspaceId === undefined ? undefined : (
         <>
           <div className={styles.header()}>
-            <h2 className="sr-only">{workspaceName ?? 'Documents'}</h2>
+            <h2 id={headingId} className="sr-only">
+              {workspaceName ?? 'Documents'}
+            </h2>
             <WorkspaceSwitcher
               activeWorkspaceId={workspaceId}
               activeWorkspaceName={workspaceName ?? 'Workspace'}
@@ -351,6 +358,6 @@ export function WorkspaceTree({
           {...(currentDocumentId === undefined ? {} : { currentId: currentDocumentId })}
         />
       )}
-    </div>
+    </section>
   )
 }
