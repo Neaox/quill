@@ -15,6 +15,7 @@ export type {
   TreeEntry,
 } from './content-store.ts'
 export type { BlobRef, BlobStore } from './blob-store.ts'
+export { concatChunks, readBlob } from './blob-store.ts'
 export type {
   FieldFilterKey,
   FieldWeights,
@@ -84,11 +85,15 @@ export { DRAFT_CONTENT_VERSION, RENDERED_CONTENT_VERSION } from './document-form
 export type {
   AcquireLockResult,
   AppendRevisionInput,
+  AttachmentId,
+  AttachmentRepository,
+  AttachmentRow,
   AuditEventRow,
   AuditWriter,
   CollectionId,
   CollectionRepository,
   CollectionRow,
+  CreateAttachmentInput,
   CreateDocumentInput,
   CreateDocumentOutcome,
   CreateGrantInput,
