@@ -189,6 +189,10 @@ test('a unit, a workspace, collections, documents, nesting, moving and deleting'
   // After the renames, where use case 8 puts it: a publish carries the name
   // the document has now, rather than restoring the one it was created with.
   await tree(page).getByRole('link', { name: 'Appendix A' }).click()
+  // The shell keeps the page it is leaving on screen until the next one's
+  // loader resolves (a progress bar, not a blank), so the header — and its
+  // Edit link — is still "Quarterly plan 2026"'s until this has landed.
+  await expect(page.getByRole('article', { name: 'Appendix A' })).toBeVisible()
   await header(page).getByRole('link', { name: 'Edit' }).click()
   const surface = page.getByRole('textbox', { name: 'Appendix A' })
   await expect(surface).toBeVisible()
