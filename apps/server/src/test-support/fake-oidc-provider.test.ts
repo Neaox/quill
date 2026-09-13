@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { codeChallenge, createCodeVerifier } from '../auth/oidc/pkce.ts'
 import {
@@ -150,4 +150,80 @@ describe('the browser-facing /authorize endpoint', () => {
       await provider.close()
     }
   })
+})
+
+/**
+ * L7 of the PR #13 review: `pending` and `requests` are unbounded in a
+ * vitest file that lives for one run, but not in the real process
+ * `e2e/sso.spec.ts` now starts for a whole Playwright suite.
+ */
+describe('bounding a long-running process (PR #13 review, L7)', () => {
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it('drops a pending authorization older than five minutes once a new one sweeps it', async () => {
+    const provider = await startFakeOidcProvider({
+      clientId: 'client',
+      clientSecret: 'secret',
+      now: () => NOW,
+    })
+    try {
+      const authorize = new URL(`http://127.0.0.1:${new URL(provider.issuer).port}/authorize`)
+      authorize.searchParams.set('code_challenge', 'a-challenge')
+      authorize.searchParams.set('redirect_uri', 'https://app.example/callback')
+      authorize.searchParams.set('nonce', 'a-nonce')
+      authorize.searchParams.set('state', 'a-state')
+
+      // Only `Date` is faked: `startFakeOidcProvider`'s real socket and this
+      // test's real `fetch` still run on real timers and real I/O.
+      vi.useFakeTimers({ toFake: ['Date'] })
+      const first = await fetch(authorize, { redirect: 'manual' })
+      const firstCode = new URL(first.headers.get('location') ?? '').searchParams.get('code') ?? ''
+
+      vi.setSystemTime(Date.now() + 6 * 60_000) // past the five-minute TTL
+      // A second authorization sweeps the first one out, on its way in.
+      await fetch(authorize, { redirect: 'manual' })
+
+      const tokenResponse = await provider.createClient([provider.host]).post({
+        url: `${provider.issuer}/token`,
+        headers: {
+          authorization: `Basic ${Buffer.from('client:secret', 'utf8').toString('base64')}`,
+        },
+        contentType: 'application/x-www-form-urlencoded',
+        body: new URLSearchParams({
+          grant_type: 'authorization_code',
+          code: firstCode,
+          redirect_uri: 'https://app.example/callback',
+          code_verifier: 'whatever-the-verifier-was',
+        }).toString(),
+      })
+
+      // Swept, not merely spent: the code is gone, not just already used.
+      expect(tokenResponse.status).toBe(400)
+      expect(JSON.parse(tokenResponse.body)).toEqual({ error: 'invalid_grant' })
+    } finally {
+      await provider.close()
+    }
+  })
+
+  it('caps the requests it remembers, so a long-running process’s memory does not grow with them', async () => {
+    const provider = await startFakeOidcProvider({
+      clientId: 'client',
+      clientSecret: 'secret',
+      now: () => NOW,
+    })
+    try {
+      const base = `http://127.0.0.1:${new URL(provider.issuer).port}`
+      for (let index = 0; index < 1001; index += 1) {
+        await fetch(`${base}/nothing-here`)
+      }
+
+      expect(provider.requests.length).toBe(1000)
+      // The oldest entry was the one dropped, not the newest.
+      expect(provider.requests.at(-1)).toBe('/nothing-here')
+    } finally {
+      await provider.close()
+    }
+  }, 30_000)
 })
