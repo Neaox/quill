@@ -40,8 +40,8 @@ interface Harness {
   readonly uow: ReturnType<typeof createInMemoryUnitOfWork>
 }
 
-function setUp(costMs = 0): Harness {
-  const passwords = createFakePasswordHasher({ costMs })
+function setUp(): Harness {
+  const passwords = createFakePasswordHasher()
   const uow = createInMemoryUnitOfWork()
   const authService = createAuthService({
     uow,
@@ -158,72 +158,62 @@ describe('link requests', () => {
 })
 
 /**
- * The wall-clock half.
+ * The work-parity half.
  *
- * `HASH_COST_MS` is what one Argon2id hash costs on a laptop, near enough;
- * `TOLERANCE_MS` is the largest difference two branches are allowed to show.
- * It is set below the cost of a single hash on purpose: if either branch
- * skipped its hash the gap would be about `HASH_COST_MS` and the assertion
- * would fail, while ordinary scheduling noise on a loaded machine is an order
- * of magnitude smaller than the tolerance. It is not a proof of
- * indistinguishability — no wall-clock test in a test runner could be — it is
- * a smoke alarm for the counting assertions above.
+ * An earlier version measured the two branches against the wall clock with a
+ * 40 ms tolerance. The fake hasher's cost is a timer, so that difference was
+ * never the work: it was scheduling noise, and under a full parallel run the
+ * noise alone exceeded the tolerance. What ADR-011 needs proven is that the
+ * known and unknown branches perform the same expensive operations, and the
+ * fakes can state that exactly: the same number of hashes, the same number of
+ * verifies, and the same audit rows. Real timing parity is measured against
+ * the running server in the security checklist, not here.
  */
-const HASH_COST_MS = 50
-const TOLERANCE_MS = 40
+describe('work parity', () => {
+  it('sign-up does the same hashing work for a known and an unknown address', async () => {
+    const unknown = setUp()
+    await withAccount(unknown)
+    await unknown.authService.signUp({
+      email: 'nobody@example.com',
+      password: PASSWORD,
+      displayName: 'Nobody',
+    })
 
-async function elapsed(work: () => Promise<unknown>): Promise<number> {
-  const started = performance.now()
-  await work()
-  return performance.now() - started
-}
+    const known = setUp()
+    await withAccount(known)
+    await known.authService.signUp({
+      email: 'ada@example.com',
+      password: PASSWORD,
+      displayName: 'Ada again',
+    })
 
-describe('wall-clock parity', () => {
-  it('answers sign-up in a similar time for a known and an unknown address', async () => {
-    const harness = setUp(HASH_COST_MS)
-    await withAccount(harness)
-
-    const unknown = await elapsed(() =>
-      harness.authService.signUp({
-        email: 'nobody@example.com',
-        password: PASSWORD,
-        displayName: 'Nobody',
-      }),
-    )
-    const known = await elapsed(() =>
-      harness.authService.signUp({
-        email: 'ada@example.com',
-        password: PASSWORD,
-        displayName: 'Ada again',
-      }),
-    )
-
-    expect(Math.abs(known - unknown)).toBeLessThan(TOLERANCE_MS)
+    expect(known.passwords.hashes.length).toBe(unknown.passwords.hashes.length)
+    expect(known.passwords.verifies.length).toBe(unknown.passwords.verifies.length)
   })
 
-  it('answers a reset request in a similar time for a known and an unknown address', async () => {
-    const harness = setUp(HASH_COST_MS)
-    await withAccount(harness)
+  for (const [name, request] of [
+    [
+      'a magic-link request',
+      (h: Harness, email: string) => h.authService.requestMagicLink(email, 'sign-in'),
+    ],
+    ['a reset request', (h: Harness, email: string) => h.authService.requestPasswordReset(email)],
+  ] as const) {
+    it(`${name} leaves the same audit shape and does the same password work either way`, async () => {
+      const unknown = setUp()
+      await withAccount(unknown)
+      const unknownBefore = unknown.uow.auditEvents.length
+      await request(unknown, 'nobody@example.com')
 
-    const unknown = await elapsed(() =>
-      harness.authService.requestPasswordReset('nobody@example.com'),
-    )
-    const known = await elapsed(() => harness.authService.requestPasswordReset('ada@example.com'))
+      const known = setUp()
+      await withAccount(known)
+      const knownBefore = known.uow.auditEvents.length
+      await request(known, 'ada@example.com')
 
-    expect(Math.abs(known - unknown)).toBeLessThan(TOLERANCE_MS)
-  })
-
-  it('answers a magic-link request in a similar time for a known and an unknown address', async () => {
-    const harness = setUp(HASH_COST_MS)
-    await withAccount(harness)
-
-    const unknown = await elapsed(() =>
-      harness.authService.requestMagicLink('nobody@example.com', 'sign-in'),
-    )
-    const known = await elapsed(() =>
-      harness.authService.requestMagicLink('ada@example.com', 'sign-in'),
-    )
-
-    expect(Math.abs(known - unknown)).toBeLessThan(TOLERANCE_MS)
-  })
+      const unknownRows = unknown.uow.auditEvents.slice(unknownBefore)
+      const knownRows = known.uow.auditEvents.slice(knownBefore)
+      expect(unknownRows.map((row) => row.type)).toEqual(knownRows.map((row) => row.type))
+      expect(known.passwords.hashes.length).toBe(unknown.passwords.hashes.length)
+      expect(known.passwords.verifies.length).toBe(unknown.passwords.verifies.length)
+    })
+  }
 })

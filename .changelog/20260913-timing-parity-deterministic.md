@@ -1,0 +1,1 @@
+Changed: The sign-in timing-parity tests assert equal hashing, verifying, and audit work for known and unknown addresses instead of comparing wall-clock durations, so the enumeration guard is proven exactly and no longer flakes under a loaded test run.
