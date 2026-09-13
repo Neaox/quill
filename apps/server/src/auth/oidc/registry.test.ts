@@ -7,8 +7,17 @@ import {
   outboundClientFactory,
 } from './registry.ts'
 import type { OidcProviderConfig } from './provider-config.ts'
+import type { SecretResolver } from '../../infrastructure/secrets/resolve-secret.ts'
 
 const CLOCK = createFakeClock(new Date('2026-01-01T00:00:00.000Z'))
+
+/** Never actually resolved in this file: nothing here drives a token exchange. */
+const UNUSED_SECRET_RESOLVER: SecretResolver = {
+  /* v8 ignore next 3 */
+  async resolve() {
+    throw new Error('not exercised by registry.test.ts')
+  },
+}
 
 function provider(id: string, displayName: string): OidcProviderConfig {
   return {
@@ -17,7 +26,8 @@ function provider(id: string, displayName: string): OidcProviderConfig {
     preset: 'generic',
     issuer: `https://${id}.example.com`,
     clientId: 'client',
-    clientSecret: 'secret',
+    clientSecretName: `oidc/${id}/client-secret`,
+    clientSecretEnvValue: 'secret',
     scopes: ['openid'],
     claims: { email: 'email', emailVerified: 'email_verified', displayName: 'name', groups: null },
     authorizationParameters: {},
@@ -33,6 +43,7 @@ function registryOf(...providers: readonly OidcProviderConfig[]) {
     appUrl: 'https://docs.example.com',
     createClient: outboundClientFactory,
     clock: CLOCK,
+    secretResolver: UNUSED_SECRET_RESOLVER,
   })
 }
 

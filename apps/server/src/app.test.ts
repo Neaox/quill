@@ -14,6 +14,7 @@ import { createInMemorySearchIndex } from '@quill/search/test-support'
 
 import { createUnitOfWork } from './infrastructure/repositories/unit-of-work.ts'
 import { createIdentityProviderRegistry, outboundClientFactory } from './auth/oidc/registry.ts'
+import type { SecretResolver } from './infrastructure/secrets/resolve-secret.ts'
 import { createPasswordHasher } from './auth/password.ts'
 import { createRateLimiter } from './auth/rate-limit.ts'
 import {
@@ -27,6 +28,14 @@ import {
 
 /** Nothing in these tests searches; the engine is present because `AppDependencies` is one shape. */
 const SEARCH_INDEX = createInMemorySearchIndex()
+
+/** No test in this file configures a provider, so nothing here ever resolves a secret. */
+const UNUSED_SECRET_RESOLVER: SecretResolver = {
+  /* v8 ignore next 3 */
+  async resolve() {
+    throw new Error('not exercised: no OIDC provider is configured in this file')
+  },
+}
 
 describe('server', () => {
   const app = buildApp({ logLevel: 'silent' })
@@ -101,6 +110,7 @@ describe('server with dependencies', () => {
         appUrl: config.appUrl,
         createClient: outboundClientFactory,
         clock,
+        secretResolver: UNUSED_SECRET_RESOLVER,
       }),
       config,
     }
@@ -176,6 +186,7 @@ describe('trusting what is in front of the server', () => {
         appUrl: config.appUrl,
         createClient: outboundClientFactory,
         clock,
+        secretResolver: UNUSED_SECRET_RESOLVER,
       }),
       config,
     }

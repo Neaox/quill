@@ -126,19 +126,30 @@ tokens, and every failure answers the browser identically. Configuration is
 per instance through `OIDC_PROVIDERS` and `OIDC_<ID>_*`, validated at boot,
 with the two endpoints on their own flat per-address budget.
 
-**Still to come on this ADR:** passkeys (WebAuthn), the client secret moving
-from the environment into the settings store's secrets (`setSecret` /
-`getSecret`, envelope-encrypted under the `KeyProvider`'s instance master key,
-ADR-034) — which now exists, so what remains is the migration: an
-administrator enters each secret once, and only then does the environment
-variable stop being read — moving provider configuration from the environment
-to per-organisation settings an administrator edits, "require SSO for this verified email domain", routing an
-entered email to its organisation's provider, group mapping at sign-in,
-RP-initiated and back-channel logout, and SAML 2.0 with SCIM in the
-enterprise phase. (Microsoft Entra ID emits no `email_verified` claim, so an
-Entra identity never links into an account that already exists; whether a
-tenant-pinned Entra token's `email` may be trusted without one is a decision
-for an administrator, and the configuration does not make it by accident.)
+**The client secret migration — 13 September 2026.** `OIDC_<ID>_CLIENT_SECRET`
+is resolved from the settings store's secrets (`setSecret` / `getSecret`,
+envelope-encrypted under the `KeyProvider`'s instance master key, ADR-034) at
+the moment of use — the token exchange — falling back to the environment
+variable for one release when the store holds nothing under
+`oidc/<id>/client-secret`. An administrator runs
+`printf '%s' '…' | pnpm --filter @quill/server secrets:set oidc/<id>/client-secret`
+once; boot then warns, naming that command, for as long as the fallback is
+what makes a provider work, and refuses to start when neither names a value.
+`SMTP_PASS` moved the same way, to `smtp/password`, resolved on each outbox
+send rather than once at process start. The end of the fallback — when
+`OIDC_<ID>_CLIENT_SECRET` and `SMTP_PASS` stop being read at all — is a
+later, separate change.
+
+**Still to come on this ADR:** passkeys (WebAuthn), moving provider
+configuration itself — not just its secret — from the environment to
+per-organisation settings an administrator edits, "require SSO for this
+verified email domain", routing an entered email to its organisation's
+provider, group mapping at sign-in, RP-initiated and back-channel logout, and
+SAML 2.0 with SCIM in the enterprise phase. (Microsoft Entra ID emits no
+`email_verified` claim, so an Entra identity never links into an account that
+already exists; whether a tenant-pinned Entra token's `email` may be trusted
+without one is a decision for an administrator, and the configuration does
+not make it by accident.)
 
 ## Consequences
 

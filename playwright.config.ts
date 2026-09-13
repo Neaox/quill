@@ -1,6 +1,14 @@
 import { defineConfig, devices } from '@playwright/test'
 
-import { API_ORIGIN, WEB_ORIGIN, WEB_PORT, apiServerEnv, webServerEnv } from './e2e/support/env.ts'
+import {
+  API_ORIGIN,
+  WEB_ORIGIN,
+  WEB_PORT,
+  apiServerEnv,
+  e2eFakeOidcPort,
+  fakeOidcServerEnv,
+  webServerEnv,
+} from './e2e/support/env.ts'
 
 const isCI = process.env['CI'] !== undefined
 
@@ -9,13 +17,14 @@ const isCI = process.env['CI'] !== undefined
  * `webServer` is started and waited on to answer its health/url check
  * *before* any `globalSetup` file runs, not after):
  *
- * 1. `webServer` starts the API server and the Vite dev server, in the
- *    array order below, both left running for every test. The API server's
- *    command first empties the run's own database (`db:reset`), and the
- *    server then migrates it on boot (`main.ts`), so every run starts from
- *    nothing. Both servers are the run's own, on their own ports and
- *    against their own database and content store (`e2e/support/env.ts`),
- *    never a developer's `pnpm dev`.
+ * 1. `webServer` starts the API server, the Vite dev server, and the
+ *    in-process fake OpenID Connect provider `e2e/sso.spec.ts` drives, in
+ *    the array order below, all three left running for every test. The API
+ *    server's command first empties the run's own database (`db:reset`),
+ *    and the server then migrates it on boot (`main.ts`), so every run
+ *    starts from nothing. All three are the run's own, on their own ports
+ *    and against their own database and content store
+ *    (`e2e/support/env.ts`), never a developer's `pnpm dev`.
  * 2. `globalSetup` (`e2e/support/global-setup.ts`) seeds that now-migrated
  *    database and content store, with the exact same env the API server
  *    just booted with (`apiServerEnv()`), so what it writes is what the
@@ -74,6 +83,17 @@ export default defineConfig({
       reuseExistingServer: !isCI,
       timeout: 60_000,
       env: webServerEnv(),
+    },
+    {
+      // The fake OpenID Connect provider `e2e/sso.spec.ts` drives
+      // (`apps/server/src/scripts/fake-oidc-server-cli.ts`), reused by every
+      // other spec's run too since a `webServer` with nothing pointed at it
+      // costs nothing beyond the one process.
+      command: 'pnpm --filter @quill/server e2e:fake-oidc',
+      url: `http://127.0.0.1:${String(e2eFakeOidcPort())}/.well-known/openid-configuration`,
+      reuseExistingServer: !isCI,
+      timeout: 60_000,
+      env: fakeOidcServerEnv(),
     },
   ],
 })

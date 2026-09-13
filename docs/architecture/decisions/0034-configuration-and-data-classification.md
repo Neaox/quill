@@ -72,6 +72,7 @@ Every index table carries the content hash or revision it was derived from, so `
 - `reindex` is a first-class command built with the read path in M2 and exercised in tests after every publish path change.
 - `.env.example` is the complete list of process configuration, and the operations guide names which environment variables are secrets.
 - The workspace file settings (`.quill/workspaces/<id>.yaml`) get a versioned schema like every other persisted format (ADR-033).
+- **The first two environment-variable secrets moved — 13 September 2026.** `OIDC_<ID>_CLIENT_SECRET` and `SMTP_PASS` are now names resolved through `getSecret` at the moment of use (the token exchange; an outbox mail send), with the environment variable read only as a fallback for one release, warned about once at boot. `quill secrets:set <name>` (beside `secrets:rotate`) is how an administrator enters one: the value is read from stdin, never from `argv`, so it never sits in shell history or in a process listing. Boot validation checks that a secret's name resolves to *something* — the store or the fallback — without ever opening a ciphertext to find out (`describeSecret`, not `getSecret`), so a missing secret is a boot failure in the same shape as a misconfigured provider, not a sign-in or a mail send that fails on whoever triggers it first. This is the template the remaining environment-variable secrets follow when their turn comes.
 
 ### Decided while building the settings store (13 September 2026)
 

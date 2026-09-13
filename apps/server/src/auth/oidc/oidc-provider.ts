@@ -19,7 +19,9 @@ import type { DiscoveryDocument, MetadataCache, OutboundClientFactory } from './
 import { verifyIdToken } from './id-token.ts'
 import type { IdTokenClaims } from './id-token.ts'
 import { CODE_CHALLENGE_METHOD, codeChallenge, createCodeVerifier } from './pkce.ts'
+import { providerVariablePrefix } from './provider-config.ts'
 import type { OidcProviderConfig } from './provider-config.ts'
+import type { SecretResolver } from '../../infrastructure/secrets/resolve-secret.ts'
 
 /**
  * The one OpenID Connect implementation (ADR-011). Every provider in the
@@ -46,6 +48,12 @@ export interface OidcProviderDeps {
   readonly redirectUri: string
   readonly createClient: OutboundClientFactory
   readonly clock: Clock
+  /**
+   * Resolves `config.clientSecretName` at the moment of use — the token
+   * exchange, and only then (ADR-034) — falling back to
+   * `config.clientSecretEnvValue` for one release when nothing is stored.
+   */
+  readonly secretResolver: SecretResolver
   readonly metadataTtlMs?: number
   readonly minKeyRefreshIntervalMs?: number
   readonly clockSkewMs?: number
@@ -155,6 +163,19 @@ export function createOidcIdentityProvider(deps: OidcProviderDeps): IdentityProv
     code: string,
     codeVerifier: string,
   ): Promise<TokenExchange> {
+    const resolved = await deps.secretResolver.resolve({
+      name: config.clientSecretName,
+      envVarName: `${providerVariablePrefix(config.id)}CLIENT_SECRET`,
+      envValue: config.clientSecretEnvValue,
+    })
+    if (!resolved.ok) {
+      return {
+        ok: false,
+        detail: `the client secret is not configured (${config.clientSecretName})`,
+      }
+    }
+    const clientSecret = resolved.value
+
     const form = new URLSearchParams({
       grant_type: 'authorization_code',
       code,
@@ -164,9 +185,9 @@ export function createOidcIdentityProvider(deps: OidcProviderDeps): IdentityProv
     })
     const headers: Record<string, string> = { accept: 'application/json' }
     if (usesBasicAuth(discovery)) {
-      headers['authorization'] = `Basic ${basicCredentials(config.clientId, config.clientSecret)}`
+      headers['authorization'] = `Basic ${basicCredentials(config.clientId, clientSecret)}`
     } else {
-      form.set('client_secret', config.clientSecret)
+      form.set('client_secret', clientSecret)
     }
 
     let response

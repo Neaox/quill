@@ -54,6 +54,8 @@ describe('loadConfig', () => {
       // Large, flat, per address: the window is its own maximum, so it never
       // doubles (see `ServerConfig.oidcRateLimit`).
       oidcRateLimit: { max: 300, windowMs: 60_000, maxWindowMs: 60_000 },
+      // Off by default; a real deployment can never turn it on (see below).
+      oidcDevLoopback: false,
       contentStore: { driver: 'filesystem', path: './data/content' },
       shareLinks: { enabled: true },
       masterKey: { driver: 'environment', keys: [Buffer.alloc(32).toString('base64')] },
@@ -451,7 +453,8 @@ describe('loadConfig', () => {
         secure: true,
         from: 'docs@example.com',
         user: 'user',
-        pass: 'pass',
+        passwordSecretName: 'smtp/password',
+        passwordEnvValue: 'pass',
       })
     })
 
@@ -467,8 +470,45 @@ describe('loadConfig', () => {
         port: 587,
         secure: false,
         from: 'docs@example.com',
+        passwordSecretName: 'smtp/password',
       })
     })
+  })
+})
+
+describe('loadConfig: OIDC_DEV_LOOPBACK', () => {
+  it('is off by default', () => {
+    expect(loadConfig({}).oidcDevLoopback).toBe(false)
+  })
+
+  it('turns on for a loopback APP_URL', () => {
+    expect(loadConfig({ OIDC_DEV_LOOPBACK: 'true' }).oidcDevLoopback).toBe(true)
+  })
+
+  it('rejects anything but "true" or "false"', () => {
+    expect(() => loadConfig({ OIDC_DEV_LOOPBACK: 'yes' })).toThrow(
+      /OIDC_DEV_LOOPBACK must be "true" or "false"/,
+    )
+  })
+
+  it('is refused once APP_URL names anything but loopback', () => {
+    expect(() =>
+      loadConfig({ OIDC_DEV_LOOPBACK: 'true', APP_URL: 'https://docs.example.com' }),
+    ).toThrow(/OIDC_DEV_LOOPBACK is refused/)
+  })
+
+  it('lets a configured provider use a plain http issuer once it is on', () => {
+    const provider = {
+      OIDC_PROVIDERS: 'fake',
+      OIDC_FAKE_ISSUER: 'http://oidc-fake.e2e.quill.test:3197',
+      OIDC_FAKE_CLIENT_ID: 'c',
+      OIDC_FAKE_CLIENT_SECRET: 's',
+    }
+
+    expect(() => loadConfig(provider)).toThrow(/must use https/)
+    expect(loadConfig({ ...provider, OIDC_DEV_LOOPBACK: 'true' }).oidcProviders[0]?.issuer).toBe(
+      'http://oidc-fake.e2e.quill.test:3197',
+    )
   })
 })
 

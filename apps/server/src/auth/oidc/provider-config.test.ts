@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest'
 
-import { loadOidcProviders, providerVariablePrefix } from './provider-config.ts'
+import {
+  loadOidcProviders,
+  oidcClientSecretName,
+  providerVariablePrefix,
+} from './provider-config.ts'
 
 /**
  * A misconfigured provider is a server that refuses to start (ADR-011), so
@@ -31,7 +35,8 @@ describe('loadOidcProviders', () => {
       preset: 'entra',
       issuer: 'https://login.microsoftonline.com/tenant-1/v2.0',
       clientId: 'client-1',
-      clientSecret: 'secret-1',
+      clientSecretName: 'oidc/entra/client-secret',
+      clientSecretEnvValue: 'secret-1',
       scopes: ['openid', 'email', 'profile'],
       claims: {
         email: 'email',
@@ -56,6 +61,36 @@ describe('loadOidcProviders', () => {
       OIDC_PROVIDERS: 'google, entra',
     })
     expect(providers.map((provider) => provider.id)).toEqual(['google', 'entra'])
+  })
+
+  it('leaves the client secret to the secrets store when no environment fallback is set', () => {
+    // No `OIDC_ENTRA_CLIENT_SECRET` at all: valid at config-load time, because
+    // the secrets store (ADR-034) may hold `oidc/entra/client-secret`
+    // instead. Whether *something* names a value is checked once the
+    // database is reachable (`infrastructure/secrets/boot-validation.ts`).
+    const { OIDC_ENTRA_CLIENT_SECRET: _omitted, ...withoutSecret } = ENTRA
+    const [provider] = loadOidcProviders(withoutSecret)
+
+    expect(provider?.clientSecretName).toBe('oidc/entra/client-secret')
+    expect(provider?.clientSecretEnvValue).toBeUndefined()
+  })
+
+  it('allows a plain http issuer only when told to (OIDC_DEV_LOOPBACK, config.ts)', () => {
+    const env = {
+      OIDC_PROVIDERS: 'fake',
+      OIDC_FAKE_ISSUER: 'http://oidc-fake.e2e.quill.test:3197',
+      OIDC_FAKE_CLIENT_ID: 'c',
+      OIDC_FAKE_CLIENT_SECRET: 's',
+    }
+
+    expect(() => loadOidcProviders(env)).toThrow(/must use https/)
+    const [provider] = loadOidcProviders(env, true)
+    expect(provider?.issuer).toBe('http://oidc-fake.e2e.quill.test:3197')
+  })
+
+  it('computes the secret name from the provider id', () => {
+    expect(oidcClientSecretName('entra')).toBe('oidc/entra/client-secret')
+    expect(oidcClientSecretName('acme-corp')).toBe('oidc/acme-corp/client-secret')
   })
 
   it('turns a hyphen in the id into an underscore in the variable names', () => {
@@ -127,11 +162,6 @@ describe('loadOidcProviders', () => {
       'no client id',
       { ...ENTRA, OIDC_ENTRA_CLIENT_ID: '' },
       /OIDC_ENTRA_CLIENT_ID is required: "entra" is named in OIDC_PROVIDERS/,
-    ],
-    [
-      'no client secret',
-      { ...ENTRA, OIDC_ENTRA_CLIENT_SECRET: undefined },
-      /OIDC_ENTRA_CLIENT_SECRET is required/,
     ],
     [
       'scopes without openid',

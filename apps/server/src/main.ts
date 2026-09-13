@@ -10,6 +10,8 @@ import { createDevMailer } from './auth/dev-mailer.ts'
 import type { Mailer } from './auth/mailer.ts'
 import { createPasswordHasher } from './auth/password.ts'
 import { createIdentityProviderRegistry, outboundClientFactory } from './auth/oidc/registry.ts'
+import { createDevLoopbackOutboundClientFactory } from './auth/oidc/dev-loopback-client.ts'
+import { providerVariablePrefix } from './auth/oidc/provider-config.ts'
 import { createRateLimiter } from './auth/rate-limit.ts'
 import { createTokenService } from './auth/tokens.ts'
 import { createSmtpMailer } from './auth/smtp-mailer.ts'
@@ -35,6 +37,9 @@ import { pollOutboxOnce } from './infrastructure/outbox/poller.ts'
 import { createUnitOfWork } from './infrastructure/repositories/unit-of-work.ts'
 import { createEnvelopeCipher } from './infrastructure/secrets/envelope-cipher.ts'
 import { createKeyProvider } from './infrastructure/secrets/key-provider.ts'
+import { createSecretResolver } from './infrastructure/secrets/resolve-secret.ts'
+import { validateSecretsConfigured } from './infrastructure/secrets/boot-validation.ts'
+import type { SecretExistenceCheck } from './infrastructure/secrets/boot-validation.ts'
 import { createSettingsStore } from './infrastructure/settings-store.ts'
 import { createSystemClock } from './infrastructure/system-clock.ts'
 import { createUuidGenerator } from './infrastructure/uuid-generator.ts'
@@ -67,9 +72,22 @@ const tokens = createTokenService()
 const database = createDatabase({ connectionString: config.databaseUrl })
 await runMigrations(database.pool)
 
+const uow = createUnitOfWork(database.db, database.pool, ids)
+const contentStore = createContentStore(config.contentStore, clock)
+// Settings are files in a system workspace of that same content store, and
+// secrets are envelope-encrypted rows under the instance master key (ADR-034).
+const settings = createSettingsStore(contentStore)
+const secrets = createEnvelopeCipher(
+  await createKeyProvider(config.masterKey, { warn: warnAtStartup }),
+)
+// Resolves a provider's client secret or the SMTP password at the moment of
+// use, from the secrets store, falling back to the environment variable this
+// migration is retiring (ADR-034). Built once so every caller shares it.
+const secretResolver = createSecretResolver({ uow, secrets, clock, ids })
+
 const mailer: Mailer =
   config.mailer.driver === 'smtp'
-    ? createSmtpMailer(config.mailer)
+    ? createSmtpMailer(config.mailer, secretResolver)
     : createDevMailer((message) => process.stdout.write(`${message}\n`))
 
 // Every server-side fetch goes through the one SSRF-safe client, with the
@@ -90,21 +108,42 @@ const breachedPasswords: BreachedPasswordChecker = withLocalFallback(
 // One registry for the process, so a provider's discovery document and key
 // set are fetched once rather than on every sign-in (ADR-011). Every outbound
 // call it makes goes through the SSRF-safe client, on an allowlist built from
-// the issuer and the endpoints its own discovery document names.
+// the issuer and the endpoints its own discovery document names — unless
+// `OIDC_DEV_LOOPBACK` says this instance is signing in against a provider on
+// its own loopback (`auth/oidc/dev-loopback-client.ts`), which `config.ts`
+// refuses to allow anywhere but a loopback `APP_URL`.
 const identityProviders = createIdentityProviderRegistry({
   providers: config.oidcProviders,
   appUrl: config.appUrl,
-  createClient: outboundClientFactory,
+  createClient: config.oidcDevLoopback
+    ? createDevLoopbackOutboundClientFactory()
+    : outboundClientFactory,
   clock,
+  secretResolver,
 })
 
-const uow = createUnitOfWork(database.db, database.pool, ids)
-const contentStore = createContentStore(config.contentStore, clock)
-// Settings are files in a system workspace of that same content store, and
-// secrets are envelope-encrypted rows under the instance master key (ADR-034).
-const settings = createSettingsStore(contentStore)
-const secrets = createEnvelopeCipher(
-  await createKeyProvider(config.masterKey, { warn: warnAtStartup }),
+// Every secret a provider or the mailer might read at the moment of use has
+// to name a value *somewhere* before this instance takes traffic — checked
+// without opening a single ciphertext (`describeSecret`, not `getSecret`), so
+// a missing secret is a boot failure in the same shape as a misconfigured
+// provider or a missing master key, not a sign-in or a mail send that fails
+// on whoever happens to trigger it first.
+const secretChecks: SecretExistenceCheck[] = config.oidcProviders.map((provider) => ({
+  name: provider.clientSecretName,
+  envVarName: `${providerVariablePrefix(provider.id)}CLIENT_SECRET`,
+  envValue: provider.clientSecretEnvValue,
+  description: `the "${provider.id}" OIDC provider's client secret`,
+}))
+if (config.mailer.driver === 'smtp' && config.mailer.user !== undefined) {
+  secretChecks.push({
+    name: config.mailer.passwordSecretName,
+    envVarName: 'SMTP_PASS',
+    envValue: config.mailer.passwordEnvValue,
+    description: 'the SMTP password',
+  })
+}
+await validateSecretsConfigured({ uow, secrets, clock, ids }, secretChecks, (message) =>
+  warnAtStartup({ source: 'secrets' }, message),
 )
 const blobStore = createBlobStore(config.blobStore)
 // A server killed mid-upload leaves a half-written temporary file behind; on

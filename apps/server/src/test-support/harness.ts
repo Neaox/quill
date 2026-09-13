@@ -34,6 +34,7 @@ import { createSendMailConsumer } from '../infrastructure/outbox/send-mail.ts'
 import { createUnitOfWork } from '../infrastructure/repositories/unit-of-work.ts'
 import { createEnvelopeCipher } from '../infrastructure/secrets/envelope-cipher.ts'
 import { createKeyProvider } from '../infrastructure/secrets/key-provider.ts'
+import { createSecretResolver } from '../infrastructure/secrets/resolve-secret.ts'
 import { createSettingsStore } from '../infrastructure/settings-store.ts'
 import { createJobRunner } from '../jobs/job-runner.ts'
 import type { JobRunner } from '../jobs/job-runner.ts'
@@ -159,6 +160,12 @@ export async function createServerHarness(options: HarnessOptions = {}): Promise
     clock,
   })
   const contentStore = createContentStore({ driver: 'memory' }, clock)
+  const secrets = createEnvelopeCipher(await createKeyProvider(config.masterKey))
+  // A test that wants a provider's secret resolved from the store rather
+  // than from `clientSecretEnvValue` calls `setSecret` against `deps` itself
+  // before driving the flow; every existing test proves the environment
+  // fallback simply by never doing so (ADR-034).
+  const secretResolver = createSecretResolver({ uow, secrets, clock, ids })
   const deps: AppDependencies = {
     uow,
     searchIndex,
@@ -168,7 +175,7 @@ export async function createServerHarness(options: HarnessOptions = {}): Promise
     // test of a settings write exercises the publish path and its
     // compare-and-swap, not a fake of them (ADR-034).
     settings: createSettingsStore(contentStore),
-    secrets: createEnvelopeCipher(await createKeyProvider(config.masterKey)),
+    secrets,
     blobStore: new FilesystemBlobStore(blobRoot),
     format: createDocumentFormat(),
     clock,
@@ -187,6 +194,7 @@ export async function createServerHarness(options: HarnessOptions = {}): Promise
       appUrl: config.appUrl,
       createClient: options.createOidcClient ?? outboundClientFactory,
       clock,
+      secretResolver,
     }),
     config,
   }

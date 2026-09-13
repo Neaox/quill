@@ -22,18 +22,40 @@ import { createHasher } from '../infrastructure/hasher.ts'
 import { createSystemClock } from '../infrastructure/system-clock.ts'
 import { createUuidGenerator } from '../infrastructure/uuid-generator.ts'
 import { createSearchService } from '@quill/search'
-import { rotateSecrets } from './rotate-secrets.ts'
+import { setSecretValue } from './secrets-set.ts'
 import type { UserId } from '@quill/domain'
 
 /**
- * `pnpm --filter @quill/server secrets:rotate` — the rotation's composition
- * root: the same wiring `main.ts` does, without an HTTP server. The work
- * itself is in `rotate-secrets.ts`, which is where its tests point.
+ * `pnpm --filter @quill/server secrets:set <name>` — the composition root for
+ * `secrets-set.ts`: the same wiring `main.ts` does, without an HTTP server.
  *
- * `SECRETS_ROTATE_ACTOR` names the instance administrator who asked for it, so
- * the audit row has somebody in it; without it the row is attributed to nobody,
- * which is the honest record of a rotation run from a deployment script.
+ * The value is read from stdin, never from `argv`:
+ *
+ *   printf '%s' 'the-client-secret' | pnpm --filter @quill/server secrets:set oidc/acme/client-secret
+ *
+ * `SECRETS_SET_ACTOR` names the instance administrator entering it, the same
+ * way `SECRETS_ROTATE_ACTOR` does for a rotation; without it the audit row is
+ * attributed to nobody, which is the honest record of a value entered by a
+ * deployment script rather than somebody at a keyboard.
  */
+
+async function readStdin(): Promise<string> {
+  const chunks: Buffer[] = []
+  for await (const chunk of process.stdin) chunks.push(chunk as Buffer)
+  // A single trailing newline is the shell's, not the secret's — `echo` and
+  // most editors add exactly one. Anything else in the value is kept as read.
+  return Buffer.concat(chunks)
+    .toString('utf8')
+    .replace(/\r?\n$/, '')
+}
+
+const name = process.argv[2]
+if (name === undefined || name.length === 0) {
+  process.stderr.write(
+    'Usage: pnpm --filter @quill/server secrets:set <name>, with the value piped to stdin.\n',
+  )
+  process.exit(1)
+}
 
 const config = loadConfig()
 const clock = createSystemClock()
@@ -47,13 +69,13 @@ const searchIndex = createPostgresSearchIndex({
   visibility: createVisibleDocumentResolver({ uow }),
   clock,
 })
-const warn = (details: object, message: string): void =>
-  void process.stderr.write(`${message} ${JSON.stringify(details)}\n`)
-const secrets = createEnvelopeCipher(await createKeyProvider(config.masterKey, { warn }))
-const secretResolver = createSecretResolver({ uow, secrets, clock, ids })
+const secrets = createEnvelopeCipher(
+  await createKeyProvider(config.masterKey, { warn: () => undefined }),
+)
 
 try {
-  const result = await rotateSecrets(
+  const value = await readStdin()
+  const outcome = await setSecretValue(
     {
       uow,
       searchIndex,
@@ -69,8 +91,9 @@ try {
       tokens: createTokenService(),
       shareLinkPolicy: createShareLinkPolicy(config),
       mailer: createDevMailer(() => undefined),
-      // A rotation sends no mail, reaches no network and limits nothing; the
-      // ports are here because `AppDependencies` is one shape.
+      // No secret set here reaches mail, an identity provider or an
+      // attachment; the ports are present only because `AppDependencies` is
+      // one shape.
       breachedPasswords: createDisabledBreachedPasswordChecker(),
       rateLimiter: createRateLimiter({ clock, config: config.rateLimit }),
       oidcRateLimiter: createRateLimiter({ clock, config: config.oidcRateLimit }),
@@ -81,14 +104,16 @@ try {
         appUrl: config.appUrl,
         createClient: outboundClientFactory,
         clock,
-        secretResolver,
+        secretResolver: createSecretResolver({ uow, secrets, clock, ids }),
       }),
       config,
     },
-    (process.env['SECRETS_ROTATE_ACTOR'] ?? null) as UserId,
+    name,
+    value,
+    (process.env['SECRETS_SET_ACTOR'] ?? null) as UserId,
     (line) => process.stdout.write(`${line}\n`),
   )
-  if (result.unreadable.length > 0) process.exitCode = 1
+  if (outcome !== 'set') process.exitCode = 1
 } finally {
   await database.close()
 }

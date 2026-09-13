@@ -2,6 +2,7 @@ import type { Clock, IdentityProvider } from '@quill/application'
 
 import { createOutboundClient } from '../../infrastructure/http/outbound-client.ts'
 import type { OutboundClient } from '../../infrastructure/http/outbound-client.ts'
+import type { SecretResolver } from '../../infrastructure/secrets/resolve-secret.ts'
 import type { OutboundClientFactory } from './discovery.ts'
 import { createOidcIdentityProvider } from './oidc-provider.ts'
 import type { OidcProviderConfig } from './provider-config.ts'
@@ -32,6 +33,8 @@ export interface IdentityProviderRegistryDeps {
   readonly appUrl: string
   readonly createClient: OutboundClientFactory
   readonly clock: Clock
+  /** Resolves a provider's client secret at the moment of use (ADR-034). */
+  readonly secretResolver: SecretResolver
 }
 
 /**
@@ -58,6 +61,7 @@ export function createIdentityProviderRegistry(
       redirectUri: oidcCallbackUrl(deps.appUrl, config.id),
       createClient: deps.createClient,
       clock: deps.clock,
+      secretResolver: deps.secretResolver,
     }),
   )
   const byId = new Map(providers.map((provider) => [provider.id, provider]))
