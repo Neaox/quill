@@ -106,6 +106,18 @@ export {
  * bundle gate is what notices if it moves.
  */
 export { useDraftClient, useLockClient } from './editor-clients.ts'
+export {
+  PALETTE_LIMIT,
+  RESULTS_LIMIT,
+  readInvalidQuery,
+  searchQueryOptions,
+  searchResultsQueryOptions,
+  useSearch,
+  useSearchResults,
+  type InvalidQuery,
+  type InvalidQueryKind,
+  type SearchInput,
+} from './search.ts'
 
 export type {
   CollectionDto,
@@ -142,4 +154,8 @@ export type {
   PublishedResult,
   MergeRequired,
   MergeConflict,
+  SearchResults,
+  SearchHit,
+  SearchGroup,
+  SearchSnippet,
 } from './types.ts'

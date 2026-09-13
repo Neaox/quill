@@ -47,4 +47,19 @@ export const queryKeys = {
   history: (documentId: string) => ['history', documentId] as const,
   diff: (documentId: string, from: string | null, to: string) =>
     ['diff', documentId, from, to] as const,
+  /**
+   * One page of search results, keyed by the workspace the search was run
+   * *from*, the query, and the cursor — the three things that decide what
+   * comes back. The workspace is part of the key even though search crosses
+   * workspaces (quill-plan.md §15), because it is what puts a hit in `current`
+   * rather than in `elsewhere`; `null` is a search with no workspace in scope.
+   *
+   * The palette asks for one page at a time (`search`); the results page pages
+   * through with `useInfiniteQuery`, whose cursors are page params rather than
+   * part of the key, and so has its own segment.
+   */
+  search: (workspaceId: string | null, query: string, cursor: string | null) =>
+    ['search', workspaceId, query, cursor] as const,
+  searchResults: (workspaceId: string | null, query: string) =>
+    ['search-results', workspaceId, query] as const,
 }
