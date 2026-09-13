@@ -14,8 +14,13 @@ export interface TestDatabase extends DatabaseHandle {
 /** Same default as `config.ts` — the one `docker compose up -d postgres` and `.env.example` agree on. */
 const DEFAULT_CONNECTION_STRING = `postgres://${BRAND.slug}:${BRAND.slug}@localhost:5432/${BRAND.slug}`
 
-function readConnectionString(): string {
-  const value = process.env['DATABASE_URL']
+/**
+ * The connection string integration tests use: `DATABASE_URL` when it is set
+ * and non-empty, else the local Compose default. The environment is a
+ * parameter so every branch is exercised the same way on every platform.
+ */
+export function readConnectionString(env: NodeJS.ProcessEnv = process.env): string {
+  const value = env['DATABASE_URL']
   return value === undefined || value.length === 0 ? DEFAULT_CONNECTION_STRING : value
 }
 
