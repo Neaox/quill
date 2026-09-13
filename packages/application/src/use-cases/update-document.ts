@@ -26,20 +26,29 @@ import { heldByAnother, readDraftContent } from './publish-document.ts'
  * document failed with a 500, *including the PATCH that would have undone
  * it*. One typo and the document was unreachable for good.
  *
- * Three rules make the destination real, and they are here rather than in the
+ * Four rules make the destination real, and they are here rather than in the
  * route because they are business rules about the tree, not about HTTP:
  *
  * - a collection must exist and belong to this document's workspace;
  * - a parent must exist and sit in the destination collection, so a document
  *   and its parent are always governed by the same chain;
  * - a document may not become its own ancestor, which would make the chain a
- *   cycle and hang or fail every resolution through it.
+ *   cycle and hang or fail every resolution through it;
+ * - **a move between collections that names no parent lifts the document to
+ *   the top of the destination.** Keeping the old parent would leave a
+ *   document whose parent is in another collection, which is a state the
+ *   scope chain refuses outright (`document-ancestor-outside-collection`):
+ *   every resolution for that document then fails, *including the PATCH that
+ *   would put it back*, in exactly the way the missing foreign key above
+ *   used to. Lifting is the same answer `deleteDocument` gives a subtree
+ *   whose parent goes away, and a caller that wants a parent in the
+ *   destination says so in the same request.
  *
  * Whether the *caller* may put a document there is the route's question, and
  * it asks the authorizer for `manage` at the destination as well as at the
  * source (`routes/documents.ts`).
  *
- * A **rename** is the fourth rule, and it is about content rather than about
+ * A **rename** is the fifth rule, and it is about content rather than about
  * the tree. A document's title lives in the document — its front matter
  * `title`, and its first heading when that is what names it (ADR-005) — and
  * `documents.title` is an index of that, rebuildable from the content
@@ -109,6 +118,12 @@ export async function updateDocument(
 
   const { patch } = command
   const destinationCollection = patch.collectionId ?? document.collectionId
+  // See the fourth rule above: a move that names no parent lands at the top
+  // of the destination rather than dragging a parent across a boundary the
+  // permission tree does not allow it to cross.
+  const movingCollection =
+    patch.collectionId !== undefined && patch.collectionId !== document.collectionId
+  const lift = movingCollection && patch.parentId === undefined && document.parentId !== null
 
   if (patch.collectionId !== undefined) {
     const collection = await repos.collections.findById(patch.collectionId)
@@ -146,7 +161,11 @@ export async function updateDocument(
     }
     return {
       kind: 'updated',
-      document: await tx.documents.update(command.documentId, toPatch(patch), now),
+      document: await tx.documents.update(
+        command.documentId,
+        toPatch(lift ? { ...patch, parentId: null } : patch),
+        now,
+      ),
     }
   })
 }

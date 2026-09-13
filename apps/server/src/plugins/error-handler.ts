@@ -1,6 +1,7 @@
 import type { FastifyError, FastifyInstance } from 'fastify'
 
 import { AppError } from '../errors.ts'
+import { redactShareToken } from './logging.ts'
 
 interface ErrorBody {
   readonly error: {
@@ -45,9 +46,18 @@ export function registerErrorHandler(app: FastifyInstance): void {
     reply.status(500).send({ error: { code: 'internal_error', message: 'Internal Server Error' } })
   })
 
+  // The URL is echoed so a caller can see which route it missed — and a
+  // share link carries its token *in* the URL, so the token is taken out
+  // first. A trailing slash or a page address is enough to miss every route
+  // and land here, which is precisely how an unredacted message would put a
+  // live capability into a response, a proxy log, and a bug report
+  // (ADR-011; `plugins/logging.ts`).
   app.setNotFoundHandler((request, reply) => {
     reply.status(404).send({
-      error: { code: 'not_found', message: `Route ${request.method}:${request.url} not found` },
+      error: {
+        code: 'not_found',
+        message: `Route ${request.method}:${redactShareToken(request.url)} not found`,
+      },
     })
   })
 }

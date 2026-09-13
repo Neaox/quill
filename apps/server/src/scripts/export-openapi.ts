@@ -4,12 +4,14 @@ import { fileURLToPath } from 'node:url'
 import { createFakeClock, createFakeIdGenerator } from '@quill/application/test-support'
 import { createInMemoryUnitOfWork } from '@quill/application/test-support'
 
+import { createShareLinkPolicy } from '../application/share-link-policy.ts'
 import { buildApp } from '../app.ts'
 import { createHasher } from '../infrastructure/hasher.ts'
 import { loadConfig } from '../config.ts'
 import type { AppDependencies } from '../dependencies.ts'
 import { createPasswordHasher } from '../auth/password.ts'
 import { createRateLimiter } from '../auth/rate-limit.ts'
+import { createTokenService } from '../auth/tokens.ts'
 import { createFakeBreachedPasswordChecker, createRecordingMailer } from '../test-support/fakes.ts'
 import { createContentStore } from '../infrastructure/content-store.ts'
 import { createDocumentFormat } from '../infrastructure/markdown/document-format.ts'
@@ -44,6 +46,8 @@ async function describableDependencies(): Promise<AppDependencies> {
     format: createDocumentFormat(),
     clock,
     hasher: createHasher(),
+    tokens: createTokenService(),
+    shareLinkPolicy: createShareLinkPolicy(config),
     ids: createFakeIdGenerator(),
     // Describing the API sends no mail, so the recording mailer is the
     // honest choice rather than one configured to reach a server.

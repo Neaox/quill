@@ -66,4 +66,21 @@ describe('registerErrorHandler', () => {
       error: { code: 'not_found', message: 'Route GET:/nope not found' },
     })
   })
+
+  /**
+   * The 404 message echoes the URL, and a share link carries its token in
+   * the URL — so the two spellings that miss every route, a trailing slash
+   * on the API route and the page address the browser asks for, must not
+   * hand the token back in a response body (ADR-011).
+   */
+  it('takes a share-link token out of the URL it echoes', async () => {
+    const token = 'Yb3nXq7Tz9LmK0aQw2Rd4Ef6Gh8Jk1Np3Sv5Uz7Wx9'
+
+    for (const url of [`/api/share/${token}/`, `/share/${token}`]) {
+      const response = await app.inject({ method: 'GET', url })
+      expect(response.statusCode).toBe(404)
+      expect(response.body).not.toContain(token)
+      expect(response.json().error.message).toContain('[redacted]')
+    }
+  })
 })

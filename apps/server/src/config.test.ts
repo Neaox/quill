@@ -44,6 +44,7 @@ describe('loadConfig', () => {
       },
       mailer: { driver: 'dev' },
       contentStore: { driver: 'filesystem', path: './data/content' },
+      shareLinks: { enabled: true },
     })
   })
 
@@ -344,5 +345,20 @@ describe('loadConfig: the content store', () => {
   it('refuses a backend it does not have, and a filesystem backend with nowhere to write', () => {
     expect(() => loadConfig({ CONTENT_STORE: 's3' })).toThrow(/CONTENT_STORE must be/)
     expect(() => loadConfig({ CONTENT_STORE_PATH: '' })).toThrow(/CONTENT_STORE_PATH/)
+  })
+})
+
+describe('loadConfig: share links', () => {
+  it('allows share links unless the deployment says otherwise', () => {
+    expect(loadConfig({}).shareLinks).toEqual({ enabled: true })
+    expect(loadConfig({ SHARE_LINKS: 'on' }).shareLinks).toEqual({ enabled: true })
+  })
+
+  it('closes them for an organisation that does not want them', () => {
+    expect(loadConfig({ SHARE_LINKS: 'off' }).shareLinks).toEqual({ enabled: false })
+  })
+
+  it('refuses a value that is neither, rather than guessing which was meant', () => {
+    expect(() => loadConfig({ SHARE_LINKS: 'false' })).toThrow(/SHARE_LINKS must be/)
   })
 })

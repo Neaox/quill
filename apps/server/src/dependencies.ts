@@ -4,6 +4,8 @@ import type {
   DocumentFormat,
   Hasher,
   IdGenerator,
+  ShareLinkPolicy,
+  TokenService,
   UnitOfWork,
 } from '@quill/application'
 
@@ -31,6 +33,16 @@ export interface AppDependencies {
   readonly ids: IdGenerator
   /** Content addressing for the render cache (ADR-031): SHA-256 in this process. */
   readonly hasher: Hasher
+  /** Capability tokens (ADR-011): share links today. Random, stored hashed, compared safely. */
+  readonly tokens: TokenService
+  /**
+   * Whether this organisation allows share links (plan section 14).
+   *
+   * TODO(M3): a thin wrapper over `config.shareLinks` until the settings
+   * store lands, at which point the same port reads the organisation's own
+   * setting and nothing above it changes.
+   */
+  readonly shareLinkPolicy: ShareLinkPolicy
   readonly mailer: Mailer
   /** The breached-password corpus (ADR-011). Fails open, and says so in the audit log. */
   readonly breachedPasswords: BreachedPasswordChecker

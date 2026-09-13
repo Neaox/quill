@@ -20,7 +20,7 @@ export type {
   SearchResult,
   SearchResults,
 } from './search-index.ts'
-export type { Clock, Hasher, IdGenerator } from './system.ts'
+export type { Clock, Hasher, IdGenerator, TokenService } from './system.ts'
 
 export type {
   CreateDocumentContentInput,
@@ -54,6 +54,7 @@ export type {
   CreateDocumentInput,
   CreateDocumentOutcome,
   CreateGrantInput,
+  CreateShareLinkInput,
   CreateUserInput,
   CredentialRepository,
   CredentialRow,
@@ -96,6 +97,8 @@ export type {
   SessionRepository,
   SessionRow,
   ShareLinkId,
+  ShareLinkRepository,
+  ShareLinkRow,
   TakeoverResult,
   UnitId,
   UnitOfWork,

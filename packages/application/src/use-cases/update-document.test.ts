@@ -171,6 +171,43 @@ describe('updateDocument', () => {
     expect(result.document).toMatchObject({ collectionId: ARCHITECTURE, parentId: PARENT })
   })
 
+  /**
+   * The parent may not cross a collection boundary with the document, and a
+   * move that names no parent must not drag one across it either: a document
+   * whose parent is in another collection has no scope chain at all
+   * (`document-ancestor-outside-collection`), so every resolution for it
+   * fails — including the PATCH that would put it back.
+   */
+  it('lifts a moved document to the top of its destination when no parent is named', async () => {
+    const result = await updateDocument(deps, {
+      documentId: CHILD,
+      sessionId: SESSION,
+      patch: { collectionId: RUNBOOKS },
+    })
+    if (result.kind !== 'updated') throw new Error(`unexpected result: ${result.kind}`)
+    expect(result.document).toMatchObject({ collectionId: RUNBOOKS, parentId: null })
+  })
+
+  it('leaves the parent alone when the collection is not the one being changed', async () => {
+    // Same collection named again, and a patch about something else: neither
+    // is a move, so neither lifts anything.
+    for (const patch of [{ collectionId: ARCHITECTURE }, { status: 'published' as const }]) {
+      const result = await updateDocument(deps, { documentId: CHILD, sessionId: SESSION, patch })
+      if (result.kind !== 'updated') throw new Error(`unexpected result: ${result.kind}`)
+      expect(result.document.parentId).toBe(PARENT)
+    }
+  })
+
+  it('lifts nothing when the document was already at the top of its collection', async () => {
+    const result = await updateDocument(deps, {
+      documentId: PARENT,
+      sessionId: SESSION,
+      patch: { collectionId: RUNBOOKS },
+    })
+    if (result.kind !== 'updated') throw new Error(`unexpected result: ${result.kind}`)
+    expect(result.document).toMatchObject({ collectionId: RUNBOOKS, parentId: null })
+  })
+
   describe('refusing a destination that does not exist', () => {
     it('refuses a collection that is not there', async () => {
       expect(
