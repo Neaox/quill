@@ -126,18 +126,41 @@ export async function requireCollectionAccess(
  * token nobody ever issued (ADR-011, use case 25). That is the whole
  * difference from `requireDocumentAccess`, which is free to answer `403`
  * because the caller is already known.
+ *
+ * **Including a broken tenancy tree.** `toAppError` turns one into a `500`
+ * carrying `details` — the failure kind, the ids on the chain — which is the
+ * right answer to a member and exactly the wrong one here: it tells an
+ * anonymous holder that the document exists, and tells them something about
+ * how it is filed. So every `AccessFailure` kind answers the one `404`, and
+ * the ones that are platform defects rather than ordinary misses are written
+ * to the server log instead, where a defect belongs.
  */
 export const SHARE_REFUSAL = 'This link is not valid'
+
+/** Somewhere a refused share-link read can be reported. `FastifyBaseLogger` satisfies it. */
+export interface SharedAccessLog {
+  error(details: object, message: string): void
+}
 
 export async function requireSharedDocument(
   authorizer: Authorizer,
   documentId: DocumentId,
+  log: SharedAccessLog,
   capability: Capability = 'view',
 ): Promise<DocumentAccess> {
   const access = await authorizer.document(documentId)
   if (!access.ok) {
-    if (access.error.kind === 'document-not-found') throw notFound(SHARE_REFUSAL)
-    throw toAppError(access.error)
+    // A document that is simply not there is the ordinary answer on a
+    // surface whose whole job is to refuse, and anybody holding a link can
+    // ask for one: logging it at `error` would hand them the log as well as
+    // the 404. Every other kind is the platform contradicting itself.
+    if (access.error.kind !== 'document-not-found') {
+      log.error(
+        { documentId, failure: access.error },
+        'share link: a document could not be placed in the tenancy tree; refused as not found',
+      )
+    }
+    throw notFound(SHARE_REFUSAL)
   }
   if (!access.value.capabilities[capability]) throw notFound(SHARE_REFUSAL)
   return access.value

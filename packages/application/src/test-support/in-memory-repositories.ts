@@ -396,6 +396,9 @@ export function createInMemoryUnitOfWork(): InMemoryUnitOfWork {
     async listByWorkspace(workspaceId) {
       return [...documents.values()].filter((doc) => doc.workspaceId === workspaceId)
     },
+    async listByCollection(collectionId) {
+      return [...documents.values()].filter((doc) => doc.collectionId === collectionId)
+    },
     async listByIds(ids) {
       return ids.flatMap((id) => {
         const row = documents.get(id)
@@ -743,9 +746,15 @@ export function createInMemoryUnitOfWork(): InMemoryUnitOfWork {
       return shareLinks.get(id) ?? null
     },
     async listForDocument(documentId) {
+      // `created_at DESC, id DESC`, exactly as the SQL orders it, so two
+      // links created in the same instant come back the same way here as
+      // they do from Postgres. Ids are UUIDs, so comparing them as strings
+      // and comparing them as bytes agree.
       return [...shareLinks.values()]
         .filter((row) => row.documentId === documentId)
-        .toSorted((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
+        .toSorted(
+          (a, b) => b.createdAt.getTime() - a.createdAt.getTime() || b.id.localeCompare(a.id),
+        )
     },
     async revoke(id, now) {
       const existing = shareLinks.get(id)

@@ -324,6 +324,8 @@ describe('listing and revoking share links', () => {
     })
     expect(revoked.statusCode).toBe(204)
     expect((await follow(created.token)).statusCode).toBe(404)
+    // The read that was refused writes nothing: a use is a use of a link
+    // that worked.
     expect(await auditTypes()).toEqual([
       'share_link.created',
       'share_link.used',
@@ -417,6 +419,15 @@ describe('reading through a share link', () => {
 
     const again = await followChild(subtree.token, child, { 'if-none-match': String(etag) })
     expect(again.statusCode).toBe(304)
+    expect(again.body).toBe('')
+
+    // An exact match, and only that. A weak validator and a list of tags are
+    // not honoured — the body is re-sent, which is correct if wasteful — and
+    // a tag from another body is not a match at all.
+    for (const header of [`W/${String(etag)}`, `"nonsense", ${String(etag)}`, '"nonsense"']) {
+      const resent = await followChild(subtree.token, child, { 'if-none-match': header })
+      expect(resent.statusCode).toBe(200)
+    }
   })
 
   it('takes the document’s short key as readily as its id (ADR-035)', async () => {
@@ -492,20 +503,31 @@ describe('reading through a share link', () => {
     expect(closed.json()).toEqual((await follow(UNKNOWN_TOKEN)).json())
   })
 
-  it('audits the first use, stamps every one, and never records the token', async () => {
+  it('audits every use, naming the document read, and never the token or the address', async () => {
     const created = await createLink(parent, { scope: 'subtree' })
 
     expect((await follow(created.token)).statusCode).toBe(200)
     harness.clock.advance(5000)
     expect((await followChild(created.token, child)).statusCode).toBe(200)
 
-    expect(await auditTypes()).toEqual(['share_link.created', 'share_link.used'])
+    // One row per use — the plan's "every use is audited" (section 14), and
+    // use case 25's "given any use, when the audit log is read, then that use
+    // is recorded". The rate limit is what bounds how many there can be.
+    expect(await auditTypes()).toEqual(['share_link.created', 'share_link.used', 'share_link.used'])
     const { rows } = await harness.database.pool.query(
-      'SELECT * FROM audit_events WHERE type = $1',
+      'SELECT * FROM audit_events WHERE type = $1 ORDER BY created_at, id',
       ['share_link.used'],
     )
-    expect(rows[0].target_id).toBe(created.id)
+    expect(rows.map((row) => row.target_id)).toEqual([created.id, created.id])
+    expect(rows.map((row) => row.metadata.documentId)).toEqual([parent, child])
+
+    // The address is a SHA-256 digest, so an audit export is not a list of
+    // who read what from where — and the token is nowhere at all.
+    for (const row of rows) {
+      expect(row.metadata.address).toMatch(/^[0-9a-f]{64}$/)
+    }
     expect(JSON.stringify(rows)).not.toContain(created.token)
+    expect(JSON.stringify(rows)).not.toContain('127.0.0.1')
 
     const listed = await harness.app.inject({
       method: 'GET',
@@ -514,6 +536,33 @@ describe('reading through a share link', () => {
     })
     const link = listed.json().links.find((entry: { id: string }) => entry.id === created.id)
     expect(new Date(link.lastUsedAt).getTime()).toBe(harness.clock.now().getTime())
+  })
+
+  /**
+   * The reading routes never look at the session cookie. The instance
+   * administrator can read every document in the instance through the
+   * application — and through a document-scoped link they get the one
+   * document that link names, and the same `404` as a stranger for anything
+   * else.
+   */
+  it('does not consult the session: an administrator gets the link’s answer, not their own', async () => {
+    const single = await createLink(parent, { scope: 'document' })
+
+    const asAdmin = await harness.app.inject({
+      method: 'GET',
+      url: `/api/share/${single.token}/documents/${sibling}/rendered`,
+      cookies: admin,
+    })
+    expect(asAdmin.statusCode).toBe(404)
+    expect(asAdmin.json()).toEqual((await follow(UNKNOWN_TOKEN)).json())
+
+    // And the administrator can plainly read that same document as themselves.
+    const throughTheApp = await harness.app.inject({
+      method: 'GET',
+      url: `/api/documents/${sibling}/rendered`,
+      cookies: admin,
+    })
+    expect(throughTheApp.statusCode).toBe(200)
   })
 
   it('reads without a session, and reads the same way with one', async () => {
@@ -526,6 +575,45 @@ describe('reading through a share link', () => {
     })
     expect(signedIn.statusCode).toBe(200)
     expect(signedIn.json()).toEqual(anonymous.json())
+  })
+
+  /**
+   * A subtree link grants what is under its target *now*, not what was under
+   * it when the link was made: the scope is resolved against the tree on
+   * every request, so moving a document out closes it to that link at once.
+   */
+  it('stops reaching a document that has been moved out of the subtree', async () => {
+    const subtree = await createLink(parent, { scope: 'subtree' })
+    expect((await followChild(subtree.token, child)).statusCode).toBe(200)
+
+    const moved = await harness.app.inject({
+      method: 'PATCH',
+      url: `/api/documents/${child}`,
+      cookies: admin,
+      payload: { parentId: null },
+    })
+    expect(moved.statusCode).toBe(200)
+
+    const refused = await followChild(subtree.token, child)
+    expect(refused.statusCode).toBe(404)
+    expect(refused.json()).toEqual((await follow(UNKNOWN_TOKEN)).json())
+
+    // Put it back, so the rest of the file sees the tree it was built with.
+    const restored = await harness.app.inject({
+      method: 'PATCH',
+      url: `/api/documents/${child}`,
+      cookies: admin,
+      payload: { parentId: parent },
+    })
+    expect(restored.statusCode).toBe(200)
+  })
+
+  /** The target itself can be a document with nothing published. */
+  it('refuses the root route when the link’s own target has never been published', async () => {
+    const created = await createLink(unpublished, { scope: 'subtree' })
+    const response = await follow(created.token)
+    expect(response.statusCode).toBe(404)
+    expect(response.json()).toEqual((await follow(UNKNOWN_TOKEN)).json())
   })
 })
 

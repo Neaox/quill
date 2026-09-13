@@ -429,6 +429,15 @@ export interface DocumentRepository {
   listByShortIds(shortIds: readonly ShortId[]): Promise<readonly DocumentRow[]>
   findByPath(workspaceId: WorkspaceId, path: string): Promise<DocumentRow | null>
   listByWorkspace(workspaceId: WorkspaceId): Promise<readonly DocumentRow[]>
+  /**
+   * Every document in one collection.
+   *
+   * A collection is the boundary a document subtree stops at (ADR-012, and
+   * `buildDocumentAncestorChain`), so anything that walks a subtree wants
+   * exactly this set — never the whole workspace filtered down afterwards,
+   * which reads rows the caller has already decided it cannot use.
+   */
+  listByCollection(collectionId: CollectionId): Promise<readonly DocumentRow[]>
   /** Resolving a body's outgoing links must cost one query, not one per link. */
   listByIds(ids: readonly DocumentId[]): Promise<readonly DocumentRow[]>
   /**

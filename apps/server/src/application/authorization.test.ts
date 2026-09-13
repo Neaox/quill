@@ -15,6 +15,7 @@ import {
   requestPrincipal,
   SHARE_REFUSAL,
 } from './authorization.ts'
+import type { SharedAccessLog } from './authorization.ts'
 
 /**
  * How a route asks what a request may do, and what it answers when the
@@ -28,6 +29,10 @@ const WORKSPACE = workspaceId('00000000-0000-4000-8000-000000000101')
 const DOC = documentId('00000000-0000-4000-8000-000000000201')
 /** Properly placed, and granted to nobody: the shape a share link must refuse. */
 const PLACED = documentId('00000000-0000-4000-8000-000000000202')
+/** Filed in no collection, so it has no scope chain at all (ADR-012). */
+const NO_COLLECTION = documentId('00000000-0000-4000-8000-000000000203')
+/** Nested under a document in another collection, which the chain refuses. */
+const PARENT_ELSEWHERE = documentId('00000000-0000-4000-8000-000000000204')
 const MISSING = documentId('00000000-0000-4000-8000-0000000002ff')
 
 let uow: InMemoryUnitOfWork
@@ -83,6 +88,41 @@ beforeEach(async () => {
     slug: 'placed',
     path: 'architecture/placed.md',
     title: 'Placed',
+    status: 'published',
+    templateId: null,
+    templateVersion: null,
+    now: NOW,
+  })
+  await uow.repos.collections.create({
+    id: 'runbooks',
+    workspaceId: WORKSPACE,
+    name: 'Runbooks',
+    slug: 'runbooks',
+    now: NOW,
+  })
+  await uow.repos.documents.create({
+    id: NO_COLLECTION,
+    shortId: aShortId(3),
+    workspaceId: WORKSPACE,
+    collectionId: null,
+    parentId: null,
+    slug: 'unfiled',
+    path: 'unfiled.md',
+    title: 'Unfiled',
+    status: 'published',
+    templateId: null,
+    templateVersion: null,
+    now: NOW,
+  })
+  await uow.repos.documents.create({
+    id: PARENT_ELSEWHERE,
+    shortId: aShortId(4),
+    workspaceId: WORKSPACE,
+    collectionId: 'runbooks',
+    parentId: PLACED,
+    slug: 'across-a-boundary',
+    path: 'runbooks/across-a-boundary.md',
+    title: 'Across a boundary',
     status: 'published',
     templateId: null,
     templateVersion: null,
@@ -205,33 +245,66 @@ describe('requireInstanceAdmin', () => {
  * document that does not exist (ADR-011, `docs/product/surfaces.md`).
  */
 describe('requireSharedDocument', () => {
+  let logged: { details: object; message: string }[]
+
+  const log = (): SharedAccessLog => ({
+    error: (details, message) => void logged.push({ details, message }),
+  })
+
   const anonymous = (): ReturnType<typeof authorizerFor> => authorizerFor(deps, request(null))
 
-  it('answers a document that does not exist, and one the link does not reach, alike', async () => {
-    const missing = await statusOf(() => requireSharedDocument(anonymous(), MISSING))
-    const unreachable = await statusOf(() => requireSharedDocument(anonymous(), PLACED))
-    expect(missing).toEqual({ status: 404, code: 'not_found' })
-    expect(unreachable).toEqual(missing)
+  const refusalOf = async (
+    target: typeof DOC,
+    capability?: 'view' | 'edit',
+  ): Promise<{ status: number; code: string; message: string }> => {
+    try {
+      await requireSharedDocument(anonymous(), target, log(), capability)
+    } catch (error) {
+      if (error instanceof AppError) {
+        return { status: error.statusCode, code: error.code, message: error.message }
+      }
+    }
+    throw new Error('expected the call to be refused')
+  }
+
+  beforeEach(() => {
+    logged = []
   })
 
-  it('says the same thing when the capability asked for is one the reader lacks', async () => {
-    expect(await statusOf(() => requireSharedDocument(anonymous(), PLACED, 'edit'))).toEqual({
-      status: 404,
-      code: 'not_found',
-    })
+  it('answers every failure with one refusal, byte for byte', async () => {
+    const missing = await refusalOf(MISSING)
+    expect(missing).toEqual({ status: 404, code: 'not_found', message: SHARE_REFUSAL })
+
+    // A document the link does not reach; one filed in no collection at all;
+    // one whose parent is in another collection; and one the reader may see
+    // but not edit. The first two of those are `broken-tree` and
+    // `document-without-collection` inside the authorizer, which
+    // `toAppError` would answer as a `500` carrying `details` — telling an
+    // anonymous holder both that the document exists and how it is filed.
+    for (const refusal of [
+      await refusalOf(PLACED),
+      await refusalOf(NO_COLLECTION),
+      await refusalOf(PARENT_ELSEWHERE),
+      await refusalOf(PLACED, 'edit'),
+    ]) {
+      expect(refusal).toEqual(missing)
+    }
   })
 
-  it('still reports a tenancy tree that contradicts itself as a server fault', async () => {
-    // A broken tree is not a refusal at all: the request was well formed and
-    // the platform cannot answer it, so hiding it behind the share surface's
-    // `404` would hide a defect.
-    expect(await statusOf(() => requireSharedDocument(anonymous(), DOC))).toEqual({
-      status: 500,
-      code: 'broken_tenancy_tree',
-    })
-  })
+  it('writes the platform’s own faults to the log, and an ordinary miss to nobody', async () => {
+    await refusalOf(NO_COLLECTION)
+    await refusalOf(PARENT_ELSEWHERE)
+    expect(
+      logged.map((entry) => (entry.details as { failure: { kind: string } }).failure.kind),
+    ).toEqual(['document-without-collection', 'broken-tree'])
 
-  it('refuses in the reader’s words, not the application’s', async () => {
-    await expect(requireSharedDocument(anonymous(), MISSING)).rejects.toThrow(SHARE_REFUSAL)
+    // A document that is not there, and a capability the reader lacks, are
+    // the ordinary answers on a surface whose job is to refuse — and anybody
+    // holding a link can ask for either, so logging them at `error` would
+    // hand them the log along with the 404.
+    logged = []
+    await refusalOf(MISSING)
+    await refusalOf(PLACED, 'edit')
+    expect(logged).toEqual([])
   })
 })

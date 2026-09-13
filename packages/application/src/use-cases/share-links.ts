@@ -5,12 +5,18 @@ import type {
   Role,
   ShareLink,
   ShareLinkId,
+  ShareLinkRole,
   ShareLinkScope,
   ShortId,
   UserId,
 } from '@quill/domain'
 
-import type { DocumentRow, ShareLinkRow, UnitOfWork } from '../ports/persistence.ts'
+import type {
+  DocumentRow,
+  RepositoryBundle,
+  ShareLinkRow,
+  UnitOfWork,
+} from '../ports/persistence.ts'
 import type { Clock, IdGenerator, TokenService } from '../ports/system.ts'
 
 /**
@@ -29,13 +35,13 @@ import type { Clock, IdGenerator, TokenService } from '../ports/system.ts'
  *   three, which is what makes the tokens unguessable in practice as well as
  *   in principle.
  * - **The audit row names the link, never the token.** Creation, revocation
- *   and the first use each write one, keyed by the link's id.
- *
- * The audit records the *first* use rather than every one: an anonymous read
- * must not cost a row per request, which is a log nobody can read and a write
- * amplifier pointed at the database by anyone holding a link. Every use still
- * stamps `last_used_at`, which is what "when was this link last used" is
- * actually asking (use case 26).
+ *   and *every* use write one, keyed by the link's id (plan section 14,
+ *   ADR-011, use case 25: "given any use, when the audit log is read, then
+ *   that use is recorded"). A use records the link, the document, and the
+ *   source address as a digest — enough to answer "who has been reading
+ *   this, and from how many places", and nothing that is a credential or an
+ *   address. What bounds the volume of those rows is the rate limit on the
+ *   reading surface, not a rule about which uses count.
  *
  * Authorisation is the caller's, as it is for every other use case here
  * (AGENTS.md rule 3): a route asks the authorizer for `manage` on the
@@ -220,6 +226,13 @@ export interface ResolveShareLinkCommand {
 export interface ResolvedShareLink {
   readonly link: ShareLinkRow
   readonly document: DocumentRow
+  /**
+   * The link's role, narrowed to one this release carries.
+   *
+   * It is on the result rather than read off the row again so that nothing
+   * above has to assert what `resolveShareLink` has already checked.
+   */
+  readonly role: ShareLinkRole
 }
 
 /**
@@ -252,41 +265,72 @@ export async function resolveShareLink(
   const state = shareLinkState(toShareLink(row), deps.clock.now())
   if (state !== 'valid') return err(state)
 
+  // A role this release does not carry is refused rather than read down to
+  // one it does. Comment and edit links arrive in M7; a build that met one
+  // and served it as a view link would be guessing at what an administrator
+  // meant, so it fails closed — the same choice `password-scheme.ts` makes
+  // for a hash written by a scheme this build no longer has (ADR-033).
+  if (!isShareLinkRole(row.role)) return err('unknown')
+
   const document = await deps.uow.repos.documents.findById(row.documentId)
   // `share_links.document_id` cascades, so a live link always has its
   // document in the database; a link that somehow outlives it grants nothing
   // and is refused as if the token had never existed.
   if (document === null) return err('unknown')
 
-  return ok({ link: row, document })
+  return ok({ link: row, document, role: row.role })
 }
 
 export interface RecordShareLinkUseCommand {
   readonly link: ShareLinkRow
+  /** The document that was actually read, which for a subtree link is not the target. */
+  readonly documentId: DocumentId
   /** A member who followed the link, when there was a session behind it. */
   readonly actorUserId: UserId | null
+  /**
+   * The source address of the request, or null when the caller has none to
+   * give. Hashed before it is written; see `recordShareLinkUse`.
+   */
+  readonly address: string | null
 }
 
 /**
- * Stamps the use, and audits the first one.
+ * Records a use: one audit row, and the stamp the link list reads.
  *
- * See the module doc: an audit row per anonymous read would be a log nobody
- * reads and a write anybody holding a link can make the database do.
+ * Both in one transaction, because they are one fact. A stamp without a row
+ * loses the use; a row without a stamp shows an administrator a link that
+ * nobody has followed while the log says otherwise.
+ *
+ * The address is written as a **digest**, never in the clear: it is there to
+ * answer "how many places is this link being read from", which a pseudonym
+ * answers, and an audit export is then not a list of who was where. It is a
+ * pseudonym and not a secret — an IPv4 space is small enough to walk — so it
+ * narrows what an export discloses rather than making disclosure impossible.
  */
 export async function recordShareLinkUse(
   deps: ShareLinkDependencies,
   command: RecordShareLinkUseCommand,
 ): Promise<void> {
   const { link } = command
-  if (link.lastUsedAt === null) {
-    await audit(deps, {
-      type: SHARE_LINK_AUDIT_EVENTS.used,
-      actorUserId: command.actorUserId,
-      targetId: link.id,
-      metadata: { documentId: link.documentId, scope: link.scope, role: link.role },
-    })
-  }
-  await deps.uow.repos.shareLinks.markUsed(link.id, deps.clock.now())
+  const now = deps.clock.now()
+  await deps.uow.run(async (tx) => {
+    await audit(
+      deps,
+      {
+        type: SHARE_LINK_AUDIT_EVENTS.used,
+        actorUserId: command.actorUserId,
+        targetId: link.id,
+        metadata: {
+          documentId: command.documentId,
+          scope: link.scope,
+          role: link.role,
+          address: command.address === null ? null : deps.tokens.hash(command.address),
+        },
+      },
+      tx,
+    )
+    await tx.shareLinks.markUsed(link.id, now)
+  })
 }
 
 // ---------------------------------------------------------------------------
@@ -323,28 +367,48 @@ export async function shareLinkNavigation(
   resolved: ResolvedShareLink,
 ): Promise<readonly SharedNavigationNode[]> {
   const { link, document } = resolved
-  if (link.scope === 'document') return []
+  // A document outside any collection has no scope chain and cannot be
+  // resolved at all (ADR-012), so a link on one is refused before this is
+  // reached; there is nothing to walk either way.
+  if (link.scope === 'document' || document.collectionId === null) return []
 
-  const inWorkspace = await deps.uow.repos.documents.listByWorkspace(document.workspaceId)
-  const eligible = inWorkspace.filter(
-    (row) => row.collectionId === document.collectionId && row.headRevision !== null,
+  // The collection, not the workspace: it is the boundary the subtree stops
+  // at, so reading the workspace would be reading rows this can never offer.
+  const inCollection = await deps.uow.repos.documents.listByCollection(document.collectionId)
+  const byParent = Map.groupBy(
+    inCollection.filter((row) => row.headRevision !== null),
+    (row) => row.parentId,
   )
-  const byParent = Map.groupBy(eligible, (row) => row.parentId)
+
+  // A parent pointer that loops would otherwise recurse until the stack ran
+  // out. The tree is kept honest elsewhere (`updateDocument` refuses a
+  // cycle), so this is a guard rather than a policy: a document already
+  // visited is not visited again, which trims the loop instead of hanging an
+  // anonymous request.
+  const visited = new Set<DocumentId>([document.id])
 
   const build = (parentId: DocumentId): readonly SharedNavigationNode[] =>
     (byParent.get(parentId) ?? [])
+      .filter((row) => !visited.has(row.id))
       .toSorted((a, b) => (a.title < b.title ? -1 : a.title > b.title ? 1 : 0))
-      .map((row) => ({
-        id: row.id,
-        shortId: row.shortId,
-        title: row.title,
-        slug: row.slug,
-        children: build(row.id),
-      }))
+      .map((row) => {
+        visited.add(row.id)
+        return {
+          id: row.id,
+          shortId: row.shortId,
+          title: row.title,
+          slug: row.slug,
+          children: build(row.id),
+        }
+      })
 
   return build(document.id)
 }
 
+/**
+ * One audit row. `repos` is the transaction to write through when the row and
+ * the change it reports have to land together; it defaults to the pool.
+ */
 async function audit(
   deps: ShareLinkDependencies,
   event: {
@@ -353,8 +417,9 @@ async function audit(
     readonly targetId: string
     readonly metadata: Readonly<Record<string, unknown>>
   },
+  repos: RepositoryBundle = deps.uow.repos,
 ): Promise<void> {
-  await deps.uow.repos.audit.write({
+  await repos.audit.write({
     id: deps.ids.uuid(),
     type: event.type,
     actorUserId: event.actorUserId,

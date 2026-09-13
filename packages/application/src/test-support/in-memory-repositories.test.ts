@@ -677,6 +677,26 @@ describe('createInMemoryUnitOfWork: share links', () => {
     expect(await uow.repos.shareLinks.listForDocument(NOPE_DOC)).toEqual([])
   })
 
+  it('breaks a tie on the id, descending, exactly as the SQL does', async () => {
+    const uow = createInMemoryUnitOfWork()
+    for (const id of [LINK_1, LINK_2]) {
+      await uow.repos.shareLinks.create({
+        id,
+        documentId: DOC_1,
+        tokenHash: `hash-${id}`,
+        scope: 'document',
+        role: 'viewer',
+        expiresAt: null,
+        createdBy: USER_1,
+        now: NOW,
+      })
+    }
+    expect((await uow.repos.shareLinks.listForDocument(DOC_1)).map((row) => row.id)).toEqual([
+      LINK_2,
+      LINK_1,
+    ])
+  })
+
   it('revokes once and keeps the instant, and reports null for a link that is not there', async () => {
     const uow = await seed()
     expect((await uow.repos.shareLinks.revoke(LINK_1, NOW))?.revokedAt).toEqual(NOW)
@@ -821,6 +841,10 @@ describe('createInMemoryUnitOfWork: documents by id and by ancestry', () => {
     expect((await uow.repos.documents.listByIds([DOC_1, NOPE_DOC])).map((row) => row.id)).toEqual([
       DOC_1,
     ])
+    expect(
+      (await uow.repos.documents.listByCollection('collection-1')).map((row) => row.id),
+    ).toEqual([DOC_1, NO_LOCK_DOC])
+    expect(await uow.repos.documents.listByCollection('collection-none')).toEqual([])
     expect((await uow.repos.documents.listAncestors(NO_LOCK_DOC)).map((row) => row.id)).toEqual([
       NO_LOCK_DOC,
       DOC_1,

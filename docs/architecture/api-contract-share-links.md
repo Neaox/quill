@@ -17,12 +17,14 @@ There are two surfaces here, and they have almost nothing in common.
 
 All three need **`manage` on the document** — whoever may grant access there may open and close a door into it. `POST` and `DELETE` additionally need a verified email address, like every other write (ADR-011).
 
+`DELETE` answers `404` only when there is no such link. A link that exists and whose document the caller may not manage answers **`403`**, consistent with the rest of the authenticated document surface: the caller is already known, so there is nothing to enumerate. The identical `404`s belong to the anonymous surface below, where the caller is not.
+
 ```ts
 ShareLink = {
   id: string
   documentId: string
   scope: 'document' | 'subtree'
-  role: 'viewer'
+  role: Role                    // today always 'viewer'
   expiresAt: string | null      // ISO date-time
   createdBy: string
   createdAt: string
@@ -58,7 +60,9 @@ SharedNode = { id, shortId, title, slug, children: SharedNode[] }
 
 `:id` takes a document's UUID or its short key, with or without the title words in front of it (ADR-035), exactly as `/api/documents/:id` does.
 
-`GET /api/share/:token/documents/:id/rendered` sets an `ETag` of the render-cache key and honours `If-None-Match` (ADR-031). `GET /api/share/:token` does not: its body also carries the link and the navigation, neither of which is part of that key.
+`GET /api/share/:token/documents/:id/rendered` sets an `ETag` of the render-cache key and honours `If-None-Match` (ADR-031) on an **exact match**, which is what a client that was handed the tag sends back. A weak validator (`W/"..."`) and a comma-separated list of tags are not honoured: the body is re-sent, which is correct if wasteful, and no client of this API produces either. `GET /api/share/:token` sets no tag: its body also carries the link and the navigation, neither of which is part of that key.
+
+A subtree link's scope is resolved against the tree **on every request**, never against the tree as it was when the link was made — so moving a document out from under the target closes it to that link at once, with the same `404` as everything else.
 
 ### What is not there
 
@@ -76,10 +80,12 @@ Per `docs/product/surfaces.md`:
 - a token nobody ever issued;
 - an expired link;
 - a revoked link;
+- a link carrying a role this release does not have — a comment or edit link written by a newer one is refused rather than read down to a view link;
 - a link on an instance where share links have been turned off;
 - a document outside the link's scope;
 - a document with nothing published;
-- a document reference that names nothing.
+- a document reference that names nothing;
+- **a document the platform cannot place in the tenancy tree at all.** Through the application that is a `500` carrying `details`, which is the right answer to a member and exactly the wrong one here: it would confirm the document exists and say something about how it is filed. On this surface it is the same `404`, and the failure is written to the server log instead, where a defect belongs.
 
 This is what makes a 256-bit token unguessable in practice as well as in principle (ADR-011: no enumeration). The reasons are told apart inside the application layer, where the audit log reads them, and never on the wire.
 
@@ -91,14 +97,23 @@ Both reading routes share one bucket keyed by source address (`share:read`), wit
 
 The token is a path segment, because that is what makes a link a link. Two things follow:
 
-- It never reaches a log. `apps/server/src/plugins/logging.ts` redacts `/share/<token>` and `/api/share/<token>` from every request line Fastify writes.
+- It never reaches a log, and never reaches a response body that echoes a URL. `apps/server/src/plugins/logging.ts` redacts `/share/<token>` and `/api/share/<token>`, and that redaction is applied both to every request line Fastify writes and to the not-found handler's message — a trailing slash, or the page address itself, is enough to miss every route and land there.
+- It remains visible to whatever sits in **front** of the application: a reverse proxy, a CDN, an egress log. That is a property of putting a capability in a URL rather than something the application can take back, which is why a link is expirable, revocable, and audited on every use (ADR-011).
 - It never reaches an audit row. Audit records name the link's **id**.
 
 `Referrer-Policy: strict-origin-when-cross-origin` (ADR-011) already keeps the path out of a cross-origin `Referer`.
 
 ### Signing in changes nothing
 
-These routes do not read the session cookie at all, so a member who opens a share link sees the share-link page, exactly as a stranger does — the same rule the public site follows.
+These routes do not read the session cookie at all, so a member who opens a share link sees the share-link page, exactly as a stranger does — the same rule the public site follows. An instance administrator holding a document-scoped link gets that one document, and the same `404` as a stranger for anything else, even though the same request through `/api/documents/:id` would succeed.
+
+### Denies, and which door they close
+
+ADR-012's amendment makes a deny on a **channel** close that channel and nothing else, and a deny on a **person** hold whichever door they came through. Both show up here:
+
+- A document carved out of a public collection by a deny on the `public` principal is **still readable through a subtree share link**. That deny closed the public web, which is what an administrator asked for; it says nothing about a link somebody was deliberately given.
+- A deny on a **user or a group** does protect a document from that person however they reach it — but a share link is not a person, so a link handed to somebody outside the organisation is unaffected by it.
+- To take one document off a share link, deny **that link** at that document. It closes that link and leaves every member who reaches the document through their own grant untouched.
 
 ## Audit
 
@@ -106,9 +121,13 @@ These routes do not read the session cookie at all, so a member who opens a shar
 |---|---|---|
 | `share_link.created` | A link is created | the link's id |
 | `share_link.revoked` | A link is revoked (once; a second revocation writes nothing) | the link's id |
-| `share_link.used` | A link is followed for the **first** time | the link's id |
+| `share_link.used` | A link is followed — **every** time, on either reading route | the link's id |
 
-Every use stamps `last_used_at`, which is what "when was this link last used" is actually asking (use case 26). Only the first use writes a row: a row per anonymous read is a log nobody can read and a database write anyone holding a link can make the server do. Metadata carries the document id, the scope, the role, and the expiry — never the token.
+"Every use is audited" is the registered decision (plan section 14; ADR-011; use case 25: *given any use, when the audit log is read, then that use is recorded*), so there is a row per read rather than a row per link. What bounds how many rows a link can produce is the **rate limit on the reading surface** — one bucket per source address, with the same backing-off window as the authentication endpoints — not a rule about which uses count. A read that is refused writes nothing: a use is a use of a link that worked.
+
+A `used` row and the link's `last_used_at` stamp are written in **one transaction**. They are one fact: a stamp without a row loses the use, and a row without a stamp shows an administrator a link nobody has followed.
+
+Metadata carries the document that was actually read — which for a subtree link is not the link's target — the scope, the role, and the source address **as a SHA-256 digest**. The digest answers "how many places is this being read from" without an export being a list of who was where. It is a pseudonym and not a secret: an IPv4 space is small enough to walk, so it narrows what an export discloses rather than making disclosure impossible. The token is in no row.
 
 ## Policy
 

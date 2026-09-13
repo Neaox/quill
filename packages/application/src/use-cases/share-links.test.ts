@@ -243,6 +243,31 @@ describe('resolveShareLink', () => {
     expect(await resolveShareLink(deps, { token })).toEqual({ ok: false, error: 'not-allowed' })
   })
 
+  it('narrows the role, so nothing above has to assert what it carries', async () => {
+    const { token } = await create()
+    const resolved = await resolveShareLink(deps, { token })
+    expect(resolved.ok && resolved.value.role).toBe('viewer')
+  })
+
+  it('refuses a role this release does not carry, rather than reading it down', async () => {
+    // A link a newer release wrote: comment and edit arrive in M7. Serving it
+    // as a view link would be guessing at what an administrator meant.
+    await uow.repos.shareLinks.create({
+      id: '00000000-0000-4000-8000-000000000401' as ShareLinkId,
+      documentId: DOCUMENT,
+      tokenHash: deps.tokens.hash('from-the-future'),
+      scope: 'document',
+      role: 'editor',
+      expiresAt: null,
+      createdBy: AUTHOR,
+      now: NOW,
+    })
+    expect(await resolveShareLink(deps, { token: 'from-the-future' })).toEqual({
+      ok: false,
+      error: 'unknown',
+    })
+  })
+
   it('refuses a link whose document has gone, as if the token had never existed', async () => {
     const { token } = await create()
     await uow.repos.documents.delete(DOCUMENT)
@@ -251,31 +276,55 @@ describe('resolveShareLink', () => {
 })
 
 describe('recordShareLinkUse', () => {
-  it('audits the first use only, and stamps every one', async () => {
-    const { id, token } = await create()
-    const first = await resolveShareLink(deps, { token })
-    expect(first.ok).toBe(true)
-    if (!first.ok) return
+  async function use(token: string, read: typeof DOCUMENT, address: string | null): Promise<void> {
+    const resolved = await resolveShareLink(deps, { token })
+    if (!resolved.ok) throw new Error(`expected a resolved link, got ${resolved.error}`)
+    await recordShareLinkUse(deps, {
+      link: resolved.value.link,
+      documentId: read,
+      actorUserId: null,
+      address,
+    })
+  }
 
-    await recordShareLinkUse(deps, { link: first.value.link, actorUserId: null })
-    expect(uow.auditEvents.map((event) => event.type)).toEqual([
-      SHARE_LINK_AUDIT_EVENTS.created,
-      SHARE_LINK_AUDIT_EVENTS.used,
-    ])
-    expect((await uow.repos.shareLinks.findById(id))?.lastUsedAt).toEqual(NOW)
+  it('audits every use, naming the link and the document that was read', async () => {
+    const { id, token } = await create({ scope: 'subtree' })
 
+    await use(token, DOCUMENT, '203.0.113.7')
     clock.advance(HOUR)
-    const second = await resolveShareLink(deps, { token })
-    expect(second.ok).toBe(true)
-    if (!second.ok) return
-    await recordShareLinkUse(deps, { link: second.value.link, actorUserId: AUTHOR })
+    await use(token, CHILD, '203.0.113.7')
 
-    // One `used` row for the link, and the stamp moved: "when was this last
-    // followed" is answered without a row per anonymous read.
-    expect(
-      uow.auditEvents.filter((event) => event.type === SHARE_LINK_AUDIT_EVENTS.used),
-    ).toHaveLength(1)
+    // Every use, not the first: "given any use, when the audit log is read,
+    // then that use is recorded" (use case 25).
+    const uses = uow.auditEvents.filter((event) => event.type === SHARE_LINK_AUDIT_EVENTS.used)
+    expect(uses).toHaveLength(2)
+    expect(uses.map((event) => event.targetId)).toEqual([id, id])
+    expect(uses.map((event) => (event.metadata as { documentId: string }).documentId)).toEqual([
+      DOCUMENT,
+      CHILD,
+    ])
     expect((await uow.repos.shareLinks.findById(id))?.lastUsedAt).toEqual(clock.now())
+  })
+
+  it('writes the source address as a digest, and nothing at all when there is none', async () => {
+    const { token } = await create()
+    await use(token, DOCUMENT, '203.0.113.7')
+    await use(token, DOCUMENT, null)
+
+    const addresses = uow.auditEvents
+      .filter((event) => event.type === SHARE_LINK_AUDIT_EVENTS.used)
+      .map((event) => (event.metadata as { address: string | null }).address)
+    // The digest, never the address. That the digest is SHA-256 and gives
+    // nothing straightforward away is the real adapter's property, asserted
+    // where SHA-256 actually runs (`routes/share-links.integration.test.ts`);
+    // the fake here hashes by prefixing so a failure names what it meant.
+    expect(addresses).toEqual([deps.tokens.hash('203.0.113.7'), null])
+  })
+
+  it('never records the token', async () => {
+    const { token } = await create()
+    await use(token, DOCUMENT, '203.0.113.7')
+    expect(JSON.stringify(uow.auditEvents)).not.toContain(token)
   })
 })
 
@@ -351,6 +400,27 @@ describe('shareLinkNavigation', () => {
     const navigation = await shareLinkNavigation(deps, await resolved('subtree'))
     expect(navigation.filter((node) => node.title === 'Runbook')).toHaveLength(2)
     expect(await shareLinkNavigation(deps, await resolved('subtree'))).toEqual(navigation)
+  })
+
+  it('trims a parent loop instead of recursing into it for ever', async () => {
+    // A pair of documents that are each other's parent. `updateDocument`
+    // refuses to write this, so it can only arrive from outside — and an
+    // anonymous request must not be the thing that discovers it.
+    await place(TWIN, GRANDCHILD, { title: 'Alpha' })
+    await place(GRANDCHILD, DOCUMENT, { title: 'Beta' })
+    await uow.repos.documents.update(GRANDCHILD, { parentId: TWIN }, NOW)
+
+    // It terminates, and offers only what really hangs below the target: the
+    // pair that points at each other is reachable from neither.
+    const navigation = await shareLinkNavigation(deps, await resolved('subtree'))
+    expect(navigation.map((node) => node.id)).toEqual([CHILD])
+    expect(navigation[0]?.children).toEqual([])
+  })
+
+  it('offers nothing for a document that is in no collection at all', async () => {
+    const link = await resolved('subtree')
+    const outsideAnyCollection = { ...link, document: { ...link.document, collectionId: null } }
+    expect(await shareLinkNavigation(deps, outsideAnyCollection)).toEqual([])
   })
 })
 

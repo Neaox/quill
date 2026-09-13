@@ -2175,7 +2175,7 @@ export interface components {
             lastUsedAt: string | null;
             revokedAt: string | null;
             /** @enum {string} */
-            role: "viewer";
+            role: "viewer" | "contributor" | "editor" | "admin" | "owner";
             /** @enum {string} */
             scope: "document" | "subtree";
         };

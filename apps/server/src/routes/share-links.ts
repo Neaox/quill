@@ -68,8 +68,10 @@ const ShareLinkScopeSchema = Type.Unsafe<ShareLinkScope>({
 })
 
 /**
- * What a *stored* link carries: view only in the first release; comment and
- * edit arrive in M7 (plan section 14).
+ * What a link a *reader* is holding carries: view only in the first release;
+ * comment and edit arrive in M7 (plan section 14). `resolveShareLink`
+ * refuses a link carrying anything else rather than reading it down, so this
+ * is what the reading surface can ever answer.
  */
 const ShareLinkRoleSchema = Type.Unsafe<ShareLinkRole>({
   type: 'string',
@@ -77,15 +79,18 @@ const ShareLinkRoleSchema = Type.Unsafe<ShareLinkRole>({
 })
 
 /**
- * What a request may *ask* for: any of the platform's roles.
+ * Any of the platform's roles: what a request may *ask* for, and what a
+ * listed link may turn out to carry.
  *
- * Wider than what is stored on purpose. A schema rejection says only that a
- * value was not in a list; `422 share_link_role_unavailable` says which role
- * was asked for and that this release does not carry it, which is what the
- * share dialog shows — and when M7 widens the answer, it widens in the use
- * case rather than in the wire format.
+ * Wider than the reading surface on purpose, in both directions. A schema
+ * rejection says only that a value was not in a list; `422
+ * share_link_role_unavailable` says which role was asked for and that this
+ * release does not carry it, which is what the share dialog shows. And an
+ * administrator must be able to see, and revoke, a link written by a newer
+ * release — so the listing reports what is stored rather than asserting what
+ * it hopes is stored.
  */
-const RequestedRoleSchema = Type.Unsafe<Role>({ type: 'string', enum: [...ROLES] })
+const RoleSchema = Type.Unsafe<Role>({ type: 'string', enum: [...ROLES] })
 
 const NullableDateTime = Type.Union([Type.String({ format: 'date-time' }), Type.Null()])
 
@@ -94,7 +99,8 @@ export const ShareLinkSchema = Type.Object(
     id: Type.String(),
     documentId: Type.String(),
     scope: ShareLinkScopeSchema,
-    role: ShareLinkRoleSchema,
+    /** Today always `viewer`; see `RoleSchema`. */
+    role: RoleSchema,
     expiresAt: NullableDateTime,
     createdBy: Type.String(),
     createdAt: Type.String({ format: 'date-time' }),
@@ -109,7 +115,7 @@ export const ShareLinkListSchema = Type.Object({ links: Type.Array(Type.Ref(Shar
 
 export const CreateShareLinkBodySchema = Type.Object({
   scope: ShareLinkScopeSchema,
-  role: Type.Optional(RequestedRoleSchema),
+  role: Type.Optional(RoleSchema),
   /** Omitted for a link that never expires; a JSON `null` means the same. */
   expiresAt: Type.Optional(Type.Union([Type.String({ format: 'date-time' }), Type.Null()])),
 })
@@ -187,7 +193,7 @@ export function shareLinkResponse(row: ShareLinkRow): Static<typeof ShareLinkSch
     id: row.id,
     documentId: row.documentId,
     scope: row.scope,
-    role: row.role as ShareLinkRole,
+    role: row.role,
     expiresAt: row.expiresAt?.toISOString() ?? null,
     createdBy: row.createdBy,
     createdAt: row.createdAt.toISOString(),
@@ -381,14 +387,20 @@ export function shareLinkRoutes(deps: AppDependencies): FastifyPluginAsync {
         const resolved = await authorizer.shareLink()
         if (resolved === null) throw notFound(SHARE_REFUSAL)
 
-        const access = await requireSharedDocument(authorizer, resolved.document.id)
+        const access = await requireSharedDocument(authorizer, resolved.document.id, request.log)
         const { body } = await publishedBody(access.document)
-        await recordShareLinkUse(deps, { link: resolved.link, actorUserId: null })
+        await recordShareLinkUse(deps, {
+          link: resolved.link,
+          documentId: access.document.id,
+          actorUserId: null,
+          address: request.ip,
+        })
 
         return {
           link: {
             scope: resolved.link.scope,
-            role: resolved.link.role as ShareLinkRole,
+            // Narrowed by `resolveShareLink`, so nothing here has to assert it.
+            role: resolved.role,
             expiresAt: resolved.link.expiresAt?.toISOString() ?? null,
           },
           ...body,
@@ -414,12 +426,21 @@ export function shareLinkRoutes(deps: AppDependencies): FastifyPluginAsync {
         // by asking for them (ADR-011).
         const documentId = await sharedDocumentId(request.params.id)
         if (documentId === null) throw notFound(SHARE_REFUSAL)
-        const access = await requireSharedDocument(authorizer, documentId)
+        const access = await requireSharedDocument(authorizer, documentId, request.log)
         const { body, etag } = await publishedBody(access.document)
-        await recordShareLinkUse(deps, { link: resolved.link, actorUserId: null })
+        await recordShareLinkUse(deps, {
+          link: resolved.link,
+          documentId: access.document.id,
+          actorUserId: null,
+          address: request.ip,
+        })
 
         reply.header('etag', etag)
         reply.header('cache-control', 'private, no-cache')
+        // An exact match, which is what a client that was handed this tag
+        // sends back. A weak validator (`W/"…"`) and a list of tags are not
+        // honoured: the body is then re-sent, which is correct if wasteful,
+        // and no client of this API produces either.
         if (request.headers['if-none-match'] === etag) throw notModified()
         return body
       },

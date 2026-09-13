@@ -61,6 +61,7 @@ Authentication and security have to meet current practice, not the practice of t
 
 - Rate limits on sign-in, sign-up, magic link, reset, and share-link use, per account and per source address, with exponential backoff rather than hard lockout so an attacker cannot lock a victim out.
 - Audit events for authentication outcomes, permission changes, share-link creation and use, exports, and administrative actions, without secrets or full tokens in any log line.
+- **No full token appears in any log line the application writes**, including the URL a request line echoes and the URL a not-found response repeats back: a capability URL carries its token in the path, so it is redacted before either is written. A capability URL remains visible to whatever sits in front of the application — a reverse proxy, a CDN, a corporate egress log — which is a property of putting a capability in a URL rather than something the application can take back, so a share link is short-lived, revocable, and audited on every use instead.
 - Secrets come from the environment or a mounted file, never from the repository; the container image holds none.
 
 ### Supply chain and process

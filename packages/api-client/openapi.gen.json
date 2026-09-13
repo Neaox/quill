@@ -103,7 +103,11 @@
           "role": {
             "type": "string",
             "enum": [
-              "viewer"
+              "viewer",
+              "contributor",
+              "editor",
+              "admin",
+              "owner"
             ]
           },
           "expiresAt": {
