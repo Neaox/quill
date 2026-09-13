@@ -476,6 +476,9 @@ importers:
 
   packages/search:
     dependencies:
+      '@quill/application':
+        specifier: workspace:*
+        version: link:../application
       '@quill/domain':
         specifier: workspace:*
         version: link:../domain
