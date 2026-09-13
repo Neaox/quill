@@ -1,0 +1,1 @@
+Fixed: The sidebar's workspace name, switcher and New control now sit inside a landmark named after the workspace, so a screen reader's landmark list reaches them and nothing on the page is outside a region.
