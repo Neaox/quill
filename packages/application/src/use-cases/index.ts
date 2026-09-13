@@ -12,16 +12,19 @@ export { createAuthorizer, toGrants } from './authorizer.ts'
 
 export type {
   DocumentCreatedPayload,
+  DocumentMovedPayload,
   DocumentPublishedPayload,
   DocumentRenamedPayload,
   MailRequestedPayload,
 } from './events.ts'
 export {
   DOCUMENT_CREATED,
+  DOCUMENT_MOVED,
   DOCUMENT_PUBLISHED,
   DOCUMENT_RENAMED,
   EVENT_PAYLOAD_VERSION,
   MAIL_REQUESTED,
+  parseDocumentMoved,
   parseDocumentPublished,
   parseDocumentRenamed,
   parseMailRequested,
@@ -332,3 +335,39 @@ export {
   toWorkspaceEntity,
   unitsById,
 } from './tenancy-entities.ts'
+
+export type {
+  AddressableDocument,
+  LoadPublicSiteResult,
+  PublicNavigationNode,
+  PublicSite,
+  PublicSiteDependencies,
+} from './public-site.ts'
+export {
+  loadPublicSite,
+  publicDocumentPaths,
+  publicPageHref,
+  publicSiteHref,
+  publishedAt,
+  PUBLIC_SITE_PREFIX,
+} from './public-site.ts'
+
+export type {
+  PublishCollectionCommand,
+  PublishCollectionDependencies,
+  PublishCollectionResult,
+  UnpublishCollectionCommand,
+  UnpublishCollectionResult,
+} from './publish-collection.ts'
+export {
+  publishCollection,
+  PUBLIC_PUBLISHING_AUDIT_EVENTS,
+  unpublishCollection,
+} from './publish-collection.ts'
+
+export type {
+  PublicRedirectDependencies,
+  RecordMoveRedirectCommand,
+  RecordRenameRedirectCommand,
+} from './record-public-redirect.ts'
+export { recordMoveRedirect, recordRenameRedirect } from './record-public-redirect.ts'

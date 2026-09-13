@@ -859,6 +859,39 @@ describe('createInMemoryUnitOfWork: collections', () => {
     expect(await uow.repos.collections.listByWorkspace(WORKSPACE_1)).toEqual([collection])
     expect(await uow.repos.collections.listByWorkspace(NOPE_WORKSPACE)).toEqual([])
   })
+
+  it('finds and lists published sites, by the address rather than by the switch', async () => {
+    const uow = createInMemoryUnitOfWork()
+    for (const [id, site] of [
+      ['guides', 'zeta-docs'],
+      ['runbooks', 'alpha-docs'],
+      ['internal', null],
+      ['retired', 'retired-docs'],
+    ] as const) {
+      await uow.repos.collections.create({
+        id,
+        workspaceId: WORKSPACE_1,
+        name: id,
+        slug: id,
+        now: NOW,
+      })
+      if (site !== null) {
+        await uow.repos.collections.setPublicSite(id, {
+          enabled: id !== 'retired',
+          siteSlug: site,
+          homeDocumentId: null,
+        })
+      }
+    }
+    expect((await uow.repos.collections.findBySiteSlug('zeta-docs'))?.id).toBe('guides')
+    expect(await uow.repos.collections.findBySiteSlug('nobody')).toBeNull()
+    // A site that is switched off keeps its address and is not listed.
+    expect((await uow.repos.collections.findBySiteSlug('retired-docs'))?.id).toBe('retired')
+    expect((await uow.repos.collections.listPublicSites()).map((row) => row.id)).toEqual([
+      'runbooks',
+      'guides',
+    ])
+  })
 })
 
 describe('createInMemoryUnitOfWork: documents by id and by ancestry', () => {

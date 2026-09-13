@@ -47,10 +47,10 @@ Status is taken from the plan's Delivery status table, which is authoritative.
 | 24 | Share a document outside the organisation | Writer, workspace lead | Signed in, outbound | M3 | Built | `share.spec.ts` |
 | 25 | Open a share link with no account | External reader | Not signed in, external | M3 | Built | `share.spec.ts` |
 | 26 | Revoke a share link | Workspace lead | Signed in, internal | M3 | Built | `share.spec.ts` |
-| 27 | Publish a collection to the public web | Workspace lead, unit admin | Signed in, outbound | M3 | Planned | `publish-public.spec.ts` |
-| 28 | Read the public site with no account | External reader | Not signed in, public | M3 | Planned | `publish-public.spec.ts` |
-| 29 | Index and unfurl the public site | Crawler | Not signed in, public | M3 | Planned | `crawler.spec.ts` |
-| 30 | Take one document off the public web | Workspace lead | Signed in, internal | M3 | Planned | `publish-public.spec.ts` |
+| 27 | Publish a collection to the public web | Workspace lead, unit admin | Signed in, outbound | M3 | Built (server) | `publish-public.spec.ts` |
+| 28 | Read the public site with no account | External reader | Not signed in, public | M3 | Built (server) | `publish-public.spec.ts` |
+| 29 | Index and unfurl the public site | Crawler | Not signed in, public | M3 | Built (server) | `crawler.spec.ts` |
+| 30 | Take one document off the public web | Workspace lead | Signed in, internal | M3 | Built (server) | `publish-public.spec.ts` |
 | 31 | Comment inline and resolve | Reader, writer | Signed in, internal | M4 | Planned | `comments.spec.ts` |
 | 32 | Keep comments attached after an outside edit | Writer | Signed in, internal | M4 | Planned | `comments.spec.ts` |
 | 33 | Connect a workspace to a repository | Workspace lead | Signed in, internal | M4 | Planned | `sync.spec.ts` |
@@ -924,9 +924,14 @@ Outbound: a person outside the organisation, reached by a link.
 - **Persona:** workspace lead, unit administrator
 - **Situation:** the team ships a product and documents it in the open
 - **Job:** turn a collection into a public documentation site.
-- **Milestone:** M3 — **Planned** (ADR-023)
+- **Milestone:** M3 — **Built, server side** (ADR-023,
+  `docs/architecture/public-site.md`). `POST`/`DELETE
+  /api/collections/:id/public` set the address and the public grant, and the
+  site answers at `/s/<site>`. The publish switch in the collection's settings
+  is the web half and is not built.
 - **Surfaces:** signed-in app, public site
-- **Journey:** `e2e/publish-public.spec.ts` (planned)
+- **Journey:** `e2e/publish-public.spec.ts` (planned; the server half is proved
+  by `apps/server/src/routes/public-site.integration.test.ts`)
 
 **Flow**
 
@@ -951,9 +956,13 @@ Outbound: a person outside the organisation, reached by a link.
 - **Persona:** external reader
 - **Situation:** a customer looking for how something works
 - **Job:** find and read the documentation.
-- **Milestone:** M3 — **Planned**
+- **Milestone:** M3 — **Built, server side.** Every acceptance below holds
+  except the "Open in the app" affordance, which cannot be decided on the
+  server: the page is cached for everyone, and varying it by who is reading
+  would give up the shared cache. It arrives with the web half.
 - **Surfaces:** public site
-- **Journey:** `e2e/publish-public.spec.ts` (planned)
+- **Journey:** `e2e/publish-public.spec.ts` (planned; the server half is proved
+  by `apps/server/src/routes/public-site.integration.test.ts`)
 
 **Flow**
 
@@ -979,9 +988,10 @@ Outbound: a person outside the organisation, reached by a link.
 - **Persona:** crawler or indexer
 - **Situation:** a search engine, an LLM crawler, or a chat client's unfurler
 - **Job:** fetch, understand, and link to public documentation reliably.
-- **Milestone:** M3 — **Planned**
+- **Milestone:** M3 — **Built, server side**
 - **Surfaces:** public site
-- **Journey:** `e2e/crawler.spec.ts` (planned)
+- **Journey:** `e2e/crawler.spec.ts` (planned; the server half is proved by
+  `apps/server/src/routes/public-site.integration.test.ts`)
 
 **Flow**
 
@@ -1010,10 +1020,12 @@ Outbound: a person outside the organisation, reached by a link.
 - **Situation:** one page in a public collection should not be public
 - **Job:** unpublish exactly that page, without hiding it from the people who
   maintain it.
-- **Milestone:** M3 — **Planned** (the resolution rule is built; ADR-012
-  amendment)
+- **Milestone:** M3 — **Built, server side** (ADR-012's amendment is the rule;
+  the public site honours it). Writing the deny is `createGrant`; the access
+  screen that calls it is the web half and is not built.
 - **Surfaces:** signed-in app, public site
-- **Journey:** `e2e/publish-public.spec.ts` (planned)
+- **Journey:** `e2e/publish-public.spec.ts` (planned; the server half is proved
+  by `apps/server/src/routes/public-site.integration.test.ts`)
 
 **Flow**
 

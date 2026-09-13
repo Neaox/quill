@@ -27,6 +27,8 @@ import type {
   MagicLinkTokenRow,
   OutboxEventRow,
   OutboxWriter,
+  PublicRedirectRepository,
+  PublicRedirectRow,
   RenderCacheRepository,
   RenderCacheRow,
   RepositoryBundle,
@@ -78,6 +80,9 @@ export interface InMemoryUnitOfWork extends UnitOfWork {
 const compareSecretCursors = (left: SecretCursor, right: SecretCursor): number =>
   left.createdAt.getTime() - right.createdAt.getTime() || left.name.localeCompare(right.name)
 
+/** The key the unique index on `(site_slug, path)` makes, as one string. */
+const redirectKey = (siteSlug: string, path: string): string => JSON.stringify([siteSlug, path])
+
 /** The key the unique index on `(issuer, subject)` makes, as one string. */
 function identityKey(issuer: string, subject: string): string {
   return JSON.stringify([issuer, subject])
@@ -105,6 +110,8 @@ export function createInMemoryUnitOfWork(): InMemoryUnitOfWork {
   const collections = new Map<string, CollectionRow>()
   const revisions: RevisionIndexRow[] = []
   const renders = new Map<string, RenderCacheRow>()
+  /** Keyed by `(siteSlug, path)`, which is what the unique index enforces. */
+  const publicRedirects = new Map<string, PublicRedirectRow>()
   const links = new Map<string, DocumentLinkRow[]>()
   const attachments = new Map<string, AttachmentRow>()
   const events: OutboxEventRow[] = []
@@ -659,7 +666,14 @@ export function createInMemoryUnitOfWork(): InMemoryUnitOfWork {
 
   const collectionRepository: CollectionRepository = {
     async create({ id, workspaceId, name, slug, now }) {
-      const row: CollectionRow = { id, workspaceId, name, slug, createdAt: now }
+      const row: CollectionRow = {
+        id,
+        workspaceId,
+        name,
+        slug,
+        createdAt: now,
+        publicSite: null,
+      }
       collections.set(id, row)
       return row
     },
@@ -673,10 +687,35 @@ export function createInMemoryUnitOfWork(): InMemoryUnitOfWork {
         ) ?? null
       )
     },
+    async findBySiteSlug(siteSlug) {
+      return [...collections.values()].find((row) => row.publicSite?.siteSlug === siteSlug) ?? null
+    },
     async listByWorkspace(workspaceId) {
       return [...collections.values()]
         .filter((row) => row.workspaceId === workspaceId)
         .toSorted((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0))
+    },
+    async listPublicSites() {
+      const sites = [...collections.values()].flatMap((row) =>
+        row.publicSite?.enabled === true ? [{ row, slug: row.publicSite.siteSlug }] : [],
+      )
+      return sites.toSorted((a, b) => a.slug.localeCompare(b.slug)).map((site) => site.row)
+    },
+    async setPublicSite(id, publicSite) {
+      const existing = collections.get(id)
+      /* v8 ignore next 3 -- every caller has just read the row it is updating. */
+      if (existing === undefined) {
+        throw new Error(`setPublicSite: collection ${id} not found`)
+      }
+      // The unique index on the address, as the database enforces it.
+      for (const row of collections.values()) {
+        if (row.id !== id && row.publicSite?.siteSlug === publicSite.siteSlug) {
+          return { kind: 'slug-taken' }
+        }
+      }
+      const updated = { ...existing, publicSite }
+      collections.set(id, updated)
+      return { kind: 'written', collection: updated }
     },
     async rename(id, name) {
       const existing = collections.get(id)
@@ -695,6 +734,29 @@ export function createInMemoryUnitOfWork(): InMemoryUnitOfWork {
     },
   }
 
+  const publicRedirectRepository: PublicRedirectRepository = {
+    async record({ id, siteSlug, path, documentId, now }) {
+      publicRedirects.set(redirectKey(siteSlug, path), {
+        id,
+        siteSlug,
+        path,
+        documentId,
+        createdAt: now,
+      })
+    },
+    async find(siteSlug, path) {
+      return publicRedirects.get(redirectKey(siteSlug, path)) ?? null
+    },
+    async deleteAt(siteSlug, path) {
+      publicRedirects.delete(redirectKey(siteSlug, path))
+    },
+    async deleteForSite(siteSlug) {
+      for (const [key, row] of publicRedirects) {
+        if (row.siteSlug === siteSlug) publicRedirects.delete(key)
+      }
+    },
+  }
+
   const revisionsRepository: RevisionsIndexRepository = {
     async append(input) {
       const row: RevisionIndexRow = { ...input, createdAt: input.now }
@@ -709,6 +771,16 @@ export function createInMemoryUnitOfWork(): InMemoryUnitOfWork {
     },
     async latestForDocument(documentId) {
       return revisions.find((row) => row.documentId === documentId) ?? null
+    },
+    async listHeads(documentIds) {
+      const wanted = new Set<string>(documentIds)
+      const heads = new Map<string, RevisionIndexRow>()
+      // `revisions` is newest first, so the first row seen for a document is
+      // its head — which is what the adapter's `DISTINCT ON` produces too.
+      for (const row of revisions) {
+        if (wanted.has(row.documentId) && !heads.has(row.documentId)) heads.set(row.documentId, row)
+      }
+      return [...heads.values()]
     },
     async findForDocument(documentId, revision) {
       return (
@@ -956,6 +1028,7 @@ export function createInMemoryUnitOfWork(): InMemoryUnitOfWork {
     locks: lockRepository,
     grants: grantRepository,
     shareLinks: shareLinkRepository,
+    publicRedirects: publicRedirectRepository,
     revisions: revisionsRepository,
     renderCache: renderCacheRepository,
     documentLinks: documentLinksRepository,

@@ -198,6 +198,109 @@ describe('updateDocument', () => {
     }
   })
 
+  /**
+   * A public address is the collection's slug and the document's title
+   * (ADR-035), so a change of collection moves the page on the web and a
+   * change of parent does not. The event says exactly that much.
+   */
+  it('announces a change of collection, and says nothing about a change of parent', async () => {
+    await updateDocument(deps, {
+      documentId: CHILD,
+      sessionId: SESSION,
+      patch: { parentId: null },
+    })
+    expect(uow.events.filter((event) => event.type === 'DocumentMoved')).toEqual([])
+
+    await updateDocument(deps, {
+      documentId: CHILD,
+      sessionId: SESSION,
+      patch: { collectionId: RUNBOOKS },
+    })
+    expect(uow.events.filter((event) => event.type === 'DocumentMoved')).toMatchObject([
+      {
+        payload: {
+          documentId: CHILD,
+          workspaceId: WORKSPACE,
+          fromCollectionId: ARCHITECTURE,
+          toCollectionId: RUNBOOKS,
+        },
+      },
+    ])
+  })
+
+  /**
+   * Public reading *is* a collection-scope grant (ADR-012), so moving a
+   * document into a published collection publishes it to the anonymous web.
+   * ADR-011 asks for permission changes to be audited, and that is one.
+   */
+  it('audits a move, naming the collections and whether either is on the web', async () => {
+    await uow.repos.users.create({
+      id: ACTOR,
+      email: 'ada@example.com',
+      displayName: 'Ada',
+      now: NOW,
+    })
+    await uow.repos.sessions.create({
+      id: SESSION,
+      userId: ACTOR,
+      tokenHash: 'hash',
+      now: NOW,
+      expiresAt: new Date(NOW.getTime() + 1000),
+    })
+    await uow.repos.collections.setPublicSite(RUNBOOKS, {
+      enabled: true,
+      siteSlug: 'acme-docs',
+      homeDocumentId: null,
+    })
+
+    await updateDocument(deps, {
+      documentId: CHILD,
+      sessionId: SESSION,
+      patch: { collectionId: RUNBOOKS },
+    })
+    expect(uow.auditEvents).toContainEqual(
+      expect.objectContaining({
+        type: DOCUMENT_AUDIT_EVENTS.moved,
+        actorUserId: ACTOR,
+        targetId: CHILD,
+        metadata: expect.objectContaining({
+          from: ARCHITECTURE,
+          to: RUNBOOKS,
+          fromPublicSite: null,
+          toPublicSite: 'acme-docs',
+        }),
+      }),
+    )
+
+    // And the other way: a move *off* the public web is the same record read
+    // in the other direction.
+    await updateDocument(deps, {
+      documentId: CHILD,
+      sessionId: SESSION,
+      patch: { collectionId: ARCHITECTURE },
+    })
+    expect(uow.auditEvents.at(-1)).toMatchObject({
+      type: DOCUMENT_AUDIT_EVENTS.moved,
+      metadata: { fromPublicSite: 'acme-docs', toPublicSite: null },
+    })
+  })
+
+  it('audits a move out of no collection at all, with nobody behind the session', async () => {
+    await uow.repos.documents.update(CHILD, { collectionId: null }, NOW)
+    await updateDocument(deps, {
+      documentId: CHILD,
+      sessionId: SESSION,
+      patch: { collectionId: RUNBOOKS },
+    })
+    expect(uow.auditEvents).toContainEqual(
+      expect.objectContaining({
+        type: DOCUMENT_AUDIT_EVENTS.moved,
+        actorUserId: null,
+        metadata: expect.objectContaining({ from: null, fromPublicSite: null }),
+      }),
+    )
+  })
+
   it('lifts nothing when the document was already at the top of its collection', async () => {
     const result = await updateDocument(deps, {
       documentId: PARENT,

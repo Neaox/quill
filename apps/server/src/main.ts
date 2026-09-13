@@ -29,6 +29,11 @@ import {
   createIndexOnPublishConsumer,
   createIndexOnRenameConsumer,
 } from './infrastructure/outbox/index-on-publish.ts'
+import {
+  createRecordMoveRedirectConsumer,
+  createRecordRenameRedirectConsumer,
+} from './infrastructure/outbox/record-public-redirect.ts'
+import { createInvalidatePublicSiteConsumers } from './infrastructure/outbox/invalidate-public-site.ts'
 import { createRenderOnPublishConsumer } from './infrastructure/outbox/render-on-publish.ts'
 import { createPostgresSearchIndex } from './infrastructure/search/postgres-search-index.ts'
 import { createVisibleDocumentResolver } from './infrastructure/search/visible-documents.ts'
@@ -41,12 +46,19 @@ import { createSecretResolver } from './infrastructure/secrets/resolve-secret.ts
 import { validateSecretsConfigured } from './infrastructure/secrets/boot-validation.ts'
 import type { SecretExistenceCheck } from './infrastructure/secrets/boot-validation.ts'
 import { createSettingsStore } from './infrastructure/settings-store.ts'
+import { createPublicSiteCache, PUBLIC_SITE_CACHE_TTL_MS } from './public-site/cache.ts'
+import { createPublicStylesheets, loadDesignSystemCss } from './public-site/stylesheet.ts'
 import { createSystemClock } from './infrastructure/system-clock.ts'
 import { createUuidGenerator } from './infrastructure/uuid-generator.ts'
 import { createJobRunner } from './jobs/job-runner.ts'
 import { createShutdown } from './shutdown.ts'
 import { createSweepJob } from './jobs/sweep-expired.ts'
-import { DOCUMENT_CREATED, DOCUMENT_PUBLISHED } from '@quill/application'
+import {
+  DOCUMENT_CREATED,
+  DOCUMENT_MOVED,
+  DOCUMENT_PUBLISHED,
+  DOCUMENT_RENAMED,
+} from '@quill/application'
 import { createSearchService } from '@quill/search'
 
 /**
@@ -175,6 +187,7 @@ const oidcRateLimiter = createRateLimiter({ clock, config: config.oidcRateLimit 
 const attachmentRateLimiter = createRateLimiter({ clock, config: config.attachments.rateLimit })
 // One Argon2id hash at startup, so no request ever pays for the dummy.
 const passwords = await createPasswordHasher()
+const publicSiteCache = createPublicSiteCache({ clock, ttlMs: PUBLIC_SITE_CACHE_TTL_MS })
 const searchIndex = createPostgresSearchIndex({
   db: database.db,
   visibility: createVisibleDocumentResolver({ uow }),
@@ -184,6 +197,13 @@ const deps = {
   uow,
   searchIndex,
   search: createSearchService(searchIndex),
+  // The design system's plain CSS is read once, here, so that serving a public
+  // page never touches the filesystem (ADR-023).
+  publicStylesheets: createPublicStylesheets({
+    hasher,
+    designSystemCss: await loadDesignSystemCss(),
+  }),
+  publicSiteCache,
   contentStore,
   settings,
   secrets,
@@ -215,18 +235,52 @@ const jobRunner = createJobRunner({
 // indexed, so it is findable (ADR-010). The runner holds one consumer per
 // event type, so they are combined rather than one silently replacing the
 // other.
+// A fourth consumer of the same three events throws the public site's page
+// cache away, because all three change what a published page says (ADR-023).
+const invalidatePublicSite = new Map(
+  createInvalidatePublicSiteConsumers(publicSiteCache).map((consumer) => [
+    consumer.eventType,
+    consumer,
+  ]),
+)
+/* v8 ignore next 3 -- `createInvalidatePublicSiteConsumers` answers for each of the three. */
+const invalidationOf = (eventType: string) => {
+  const consumer = invalidatePublicSite.get(eventType)
+  if (consumer === undefined) throw new Error(`no public-site invalidation for ${eventType}`)
+  return consumer
+}
+
 jobRunner.register(
   combineConsumers(
     DOCUMENT_PUBLISHED,
     createRenderOnPublishConsumer(deps),
     createIndexOnPublishConsumer(deps),
+    invalidationOf(DOCUMENT_PUBLISHED),
   ),
 )
 // A rename writes the new title into the document itself, and the title is
 // the most heavily weighted field in the index (ADR-010). Nothing else acts
 // on it: a body that links to the renamed document simply renders under a new
 // cache key (ADR-031).
-jobRunner.register(createIndexOnRenameConsumer(deps))
+jobRunner.register(
+  combineConsumers(
+    DOCUMENT_RENAMED,
+    createIndexOnRenameConsumer(deps),
+    // A rename changes a public address, so the old one is recorded and
+    // answered with a 301 (ADR-035).
+    createRecordRenameRedirectConsumer(deps),
+    invalidationOf(DOCUMENT_RENAMED),
+  ),
+)
+// A move between collections changes the collection segment of a public
+// address in the same way, and may change which site the page is on at all.
+jobRunner.register(
+  combineConsumers(
+    DOCUMENT_MOVED,
+    createRecordMoveRedirectConsumer(deps),
+    invalidationOf(DOCUMENT_MOVED),
+  ),
+)
 // Delivery happens here rather than on the request path, so an address that
 // has an account costs no more than one that does not (ADR-011).
 jobRunner.register(createSendMailConsumer(mailer))

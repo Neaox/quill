@@ -30,7 +30,15 @@ src/
     outbox/                consumer.ts (the interface), poller.ts (one FOR UPDATE SKIP LOCKED poll),
                            render-on-publish.ts (render on DocumentPublished), send-mail.ts
                            (deliver a queued message, then redact the row), acknowledge.ts
-                           (a deliberate no-op for a type nothing acts on yet)
+                           (a deliberate no-op for a type nothing acts on yet),
+                           record-public-redirect.ts (an old public address, on rename and move)
+
+  public-site/          the published site's HTML (ADR-023), served by routes/public-site.ts
+    html.ts               the escaping `html` tag every page is built with
+    stylesheet.ts         the one stylesheet a page loads, generated per theme and kept by its hash
+    pages.ts              the middles: a document, an index, search results, not found
+    sitemap.ts            sitemap.xml and robots.txt
+    templates/            one template per concept: page, navigation, table of contents, footer
 
   jobs/
     job-runner.ts         schedules poller.pollOutboxOnce and the periodic jobs on one interval
@@ -467,6 +475,23 @@ Uploads are rate limited per signed-in person — 60 a minute by default, flat r
 | `ATTACHMENT_RATE_LIMIT_MAX` | `60` | Uploads per person per minute, flat |
 
 The filesystem backend fans out on the first four characters of the hash — `ab/cd/abcd…` — writes through a temporary file, and renames into place, so a crash mid-write leaves no truncated object under a hash that claims to be complete. The temporary file such a crash *does* leave is swept at startup, by age: anything in `tmp/` older than an hour, which is far longer than any upload the cap allows can take. The S3 backend speaks plain signed REST (`PUT`, `GET`, `HEAD`, `DELETE`) over `aws4fetch` rather than the AWS SDK; see `infrastructure/blob/s3-blob-store.ts` for why.
+
+## The public site (ADR-023)
+
+`docs/architecture/public-site.md` is the contract. It is the one surface that answers with HTML rather than JSON, so none of its addresses are in the OpenAPI description — a page is not an endpoint.
+
+- **`/s/<site>`, `/s/<site>/<collection>/<title>`, `/s/<site>/search`, `/s/<site>/sitemap.xml`, `/robots.txt`**, plus the stylesheet at `/s/_assets/theme-<hash>.css`, which is immutable because its address is its content.
+- **No session is read on any of them.** A public page is the same page for everyone who asks for it, which is what lets it be cached for everyone who asks for it.
+- **The reader is the public principal**, so a draft, a document denied to `public` at document scope, and anything in an unpublished collection are absent from the navigation, the sitemap and every address alike (ADR-012, use case 30).
+- **An address that has moved keeps working**: `public_redirects` holds the old path, two outbox consumers write it on `DocumentRenamed` and `DocumentMoved`, and the route answers `301` to wherever the document lives now (ADR-035). The sitemap lists current paths only.
+- **Publishing is `POST`/`DELETE /api/collections/:id/public`**, behind `manage` on the collection, governed by `policies.publicPublishingAllowed`. It writes the address on the collection and a `(public, collection, viewer, allow)` grant in one transaction; unpublishing removes the grant and keeps the address.
+- **The pictures come too.** `GET /api/attachments/:id` takes an *optional* session — the sanitiser admits that URL as an image source, so it is what every picture in every document points at — and the resolver decides, which means an attachment is served anonymously exactly when its own document is publicly visible.
+- **Answered from an in-process cache** of the resolved site and the finished page, emptied by the outbox events the server already consumes and by its own writes, and expiring on a clock in any case (`public-site/cache.ts`). The plain CSS it serves is `@quill/design-css`, a package with no dependencies; the server never depends on `@quill/ui`.
+
+| Variable | Default | Meaning |
+| --- | --- | --- |
+| `PUBLIC_SITE_RATE_LIMIT_MAX` | `600` | Requests a minute per source address across the whole public surface |
+| `PUBLIC_SITEMAP_PAGE_SIZE` | `1000` | Addresses per sitemap before a site answers with an index of sitemaps |
 
 ## The API description and the client
 

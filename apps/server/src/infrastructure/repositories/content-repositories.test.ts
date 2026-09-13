@@ -171,6 +171,68 @@ describe('CollectionRepository', () => {
       'Runbooks',
     ])
   })
+
+  it('publishes a collection, finds it by its address, and lists the ones that are on', async () => {
+    await collections.create({
+      id: COLLECTION,
+      workspaceId: WORKSPACE,
+      name: 'Architecture',
+      slug: 'architecture',
+      now: NOW,
+    })
+    const retired = '00000000-0000-4000-8000-000000000303' as CollectionId
+    await collections.create({
+      id: retired,
+      workspaceId: WORKSPACE,
+      name: 'Retired',
+      slug: 'retired',
+      now: NOW,
+    })
+
+    expect((await collections.findById(COLLECTION))?.publicSite).toBeNull()
+    const published = await collections.setPublicSite(COLLECTION, {
+      enabled: true,
+      siteSlug: 'acme-docs',
+      homeDocumentId: null,
+    })
+    expect(published).toEqual({
+      kind: 'written',
+      collection: expect.objectContaining({
+        publicSite: { enabled: true, siteSlug: 'acme-docs', homeDocumentId: null },
+      }),
+    })
+    await collections.setPublicSite(retired, {
+      enabled: false,
+      siteSlug: 'retired-docs',
+      homeDocumentId: null,
+    })
+
+    expect((await collections.findBySiteSlug('acme-docs'))?.id).toBe(COLLECTION)
+    expect(await collections.findBySiteSlug('nobody')).toBeNull()
+    // A site that is off keeps its address, and is not offered to a crawler.
+    expect((await collections.findBySiteSlug('retired-docs'))?.id).toBe(retired)
+    expect((await collections.listPublicSites()).map((row) => row.id)).toEqual([COLLECTION])
+
+    // The address is claimed by the index, so a second collection asking for
+    // it is told so rather than failing as a server fault.
+    expect(
+      await collections.setPublicSite(retired, {
+        enabled: true,
+        siteSlug: 'acme-docs',
+        homeDocumentId: null,
+      }),
+    ).toEqual({ kind: 'slug-taken' })
+
+    // Any other refusal is the database saying something this code has no
+    // answer for, and is raised rather than reported as a taken address.
+    await expect(
+      collections.setPublicSite(retired, {
+        enabled: true,
+        siteSlug: 'retired-docs',
+        homeDocumentId: documentId('00000000-0000-4000-8000-0000000002ff'),
+      }),
+    ).rejects.toThrow(/Failed query/u)
+  })
 })
 
 describe('GroupRepository', () => {
@@ -268,6 +330,15 @@ describe('RevisionsIndexRepository', () => {
     expect(second.map((row) => row.summary)).toEqual(['Revision 1', 'Revision 0'])
     expect((await revisions.latestForDocument(DOC))?.summary).toBe('Revision 3')
     expect(await revisions.latestForDocument(CHILD)).toBeNull()
+
+    // The head of several documents in one query, for a public site that
+    // stamps every page and every sitemap entry (ADR-023).
+    const heads = await revisions.listHeads([DOC, OTHER, CHILD])
+    expect(Object.fromEntries(heads.map((row) => [row.documentId, row.summary]))).toEqual({
+      [DOC]: 'Revision 3',
+      [OTHER]: 'Elsewhere',
+    })
+    expect(await revisions.listHeads([])).toEqual([])
   })
 
   it('records one row per revision however often a publish is retried', async () => {

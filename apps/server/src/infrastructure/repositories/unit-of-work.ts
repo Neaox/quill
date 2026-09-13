@@ -15,6 +15,7 @@ import { createIdentityRepository } from './identity-repository.ts'
 import { createLockRepository } from './lock-repository.ts'
 import { createMagicLinkRepository } from './magic-link-repository.ts'
 import { createOutboxWriter } from './outbox-writer.ts'
+import { createPublicRedirectRepository } from './public-redirect-repository.ts'
 import { createRenderCacheRepository } from './render-cache-repository.ts'
 import { createRevisionsIndexRepository } from './revisions-index-repository.ts'
 import { createSecretRepository } from './secret-repository.ts'
@@ -52,6 +53,7 @@ function buildBundle(db: DrizzleClient, pool: pg.Pool, ids: IdGenerator): Reposi
     locks: createLockRepository(pool),
     grants: createGrantRepository(db, ids),
     shareLinks: createShareLinkRepository(db),
+    publicRedirects: createPublicRedirectRepository(db),
     revisions: createRevisionsIndexRepository(db),
     renderCache: createRenderCacheRepository(db),
     documentLinks: createDocumentLinksRepository(db),

@@ -683,6 +683,71 @@ export interface paths {
         };
         trace?: never;
     };
+    "/api/collections/{id}/public": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        homeDocumentId?: string | null;
+                        siteSlug?: string;
+                    };
+                };
+            };
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Collection"];
+                    };
+                };
+            };
+        };
+        delete: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Collection"];
+                    };
+                };
+            };
+        };
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/documents/{id}": {
         parameters: {
             query?: never;
@@ -2802,6 +2867,7 @@ export interface components {
             createdAt: string;
             id: string;
             name: string;
+            public: components["schemas"]["PublicSite"];
             slug: string;
             workspaceId: string;
         };
@@ -3164,6 +3230,12 @@ export interface components {
             id: string;
             text: string;
         };
+        PublicSite: {
+            enabled: boolean;
+            homeDocumentId: string | null;
+            siteSlug: string;
+            url: string;
+        } | null;
         Secret: {
             /** Format: date-time */
             createdAt: string;
@@ -3544,6 +3616,7 @@ export type SchemaCollection = components['schemas']['Collection'];
 export type SchemaOidcProviderSummary = components['schemas']['OidcProviderSummary'];
 export type SchemaOrganisationSettings = components['schemas']['OrganisationSettings'];
 export type SchemaOutlineEntry = components['schemas']['OutlineEntry'];
+export type SchemaPublicSite = components['schemas']['PublicSite'];
 export type SchemaSecret = components['schemas']['Secret'];
 export type SchemaSessionSummary = components['schemas']['SessionSummary'];
 export type SchemaSharedNode = components['schemas']['SharedNode'];

@@ -17,6 +17,8 @@ import { createKeyProvider } from '../infrastructure/secrets/key-provider.ts'
 import { createSecretResolver } from '../infrastructure/secrets/resolve-secret.ts'
 import { createSettingsStore } from '../infrastructure/settings-store.ts'
 import { createHasher } from '../infrastructure/hasher.ts'
+import { createPublicSiteCache } from '../public-site/cache.ts'
+import { createPublicStylesheets } from '../public-site/stylesheet.ts'
 import { createSystemClock } from '../infrastructure/system-clock.ts'
 import { createUuidGenerator } from '../infrastructure/uuid-generator.ts'
 import { createPostgresSearchIndex } from '../infrastructure/search/postgres-search-index.ts'
@@ -53,6 +55,7 @@ const ids = createUuidGenerator()
 const database = createDatabase({ connectionString: config.databaseUrl })
 await runMigrations(database.pool)
 const contentStore = createContentStore(config.contentStore, clock)
+const hasher = createHasher()
 
 const uow = createUnitOfWork(database.db, database.pool, ids)
 const searchIndex = createPostgresSearchIndex({
@@ -74,7 +77,11 @@ try {
     format: createDocumentFormat(),
     clock,
     ids,
-    hasher: createHasher(),
+    hasher,
+    // Nothing here serves a page; the port is present because
+    // `AppDependencies` is one shape.
+    publicStylesheets: createPublicStylesheets({ hasher, designSystemCss: '' }),
+    publicSiteCache: createPublicSiteCache({ clock, ttlMs: 0 }),
     tokens: createTokenService(),
     shareLinkPolicy: createShareLinkPolicy(config),
     mailer: createDevMailer((message) => process.stdout.write(`${message}\n`)),

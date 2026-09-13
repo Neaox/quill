@@ -1,0 +1,496 @@
+/*
+ * The public site's stylesheet (ADR-023, `docs/design/canvas/Presenting.dc.html`).
+ *
+ * A published page is server-rendered HTML with no application behind it, so
+ * it ships plain CSS: no Tailwind build runs over it, and nothing on the page
+ * carries a utility class. What it does carry is the design system's own
+ * markup — `.prose`, `.layout-grid`, `.callout`, `.heading-anchor` — because
+ * the body comes out of the same renderer the reading view uses, so
+ * `prose.css` and `layout.css` are served beside this file and a block is the
+ * same width and the same type on the web as it is in the app (AGENTS.md rule
+ * 16).
+ *
+ * This file is therefore two things.
+ *
+ * **The semantic layer, as plain CSS.** `tokens.css` declares the `--color-*`
+ * names, the type scale and the motion tokens inside Tailwind's `@theme`,
+ * which only a Tailwind build can resolve. The public site has no such build,
+ * so the same declarations are written here as ordinary custom properties.
+ * They are not allowed to drift: `public-site.test.ts` reads both files and
+ * fails when a value differs, in the same spirit as `generated-css.test.ts`.
+ * Colour itself is never written in either place — the `--palette-*` values
+ * come from the organisation's own generated theme (ADR-028), which the server
+ * prepends to this file.
+ *
+ * **The site's own furniture**: the header, the section navigation, the table
+ * of contents, the footer and the search page. These exist nowhere else, so
+ * they are written once, here.
+ */
+
+:root {
+  /* --- Colour: semantic names only, exactly as `tokens.css` maps them. --- */
+  --color-background: var(--palette-background);
+  --color-surface: var(--palette-surface);
+  --color-surface-raised: var(--palette-surface-raised);
+  --color-foreground: var(--palette-foreground);
+  --color-muted: var(--palette-muted);
+  --color-border: var(--palette-border);
+  --color-border-strong: var(--palette-border-strong);
+
+  --color-accent: var(--palette-accent);
+  --color-accent-hover: var(--palette-accent-hover);
+  --color-accent-foreground: var(--palette-accent-foreground);
+  --color-accent-subtle: var(--palette-accent-subtle);
+
+  --color-success: var(--palette-success);
+  --color-success-subtle: var(--palette-success-subtle);
+  --color-warning: var(--palette-warning);
+  --color-warning-subtle: var(--palette-warning-subtle);
+  --color-danger: var(--palette-danger);
+  --color-danger-hover: var(--palette-danger-hover);
+  --color-danger-subtle: var(--palette-danger-subtle);
+
+  --color-focus-ring: var(--palette-accent);
+  --color-selection: var(--palette-selection);
+  --color-code-background: var(--palette-code-background);
+  --color-overlay: var(--palette-overlay);
+
+  /* --- Type scale: one modular scale, ratio 1.2, anchored at 1rem. --- */
+  --text-2xs: 0.694rem;
+  --text-xs: 0.833rem;
+  --text-sm: 0.875rem;
+  --text-base: 1rem;
+  --text-lg: 1.2rem;
+  --text-xl: 1.44rem;
+  --text-2xl: 1.728rem;
+  --text-3xl: 2.074rem;
+  --text-4xl: 2.488rem;
+  --text-reading: 1.0625rem;
+
+  --leading-tight: 1.2;
+  --leading-snug: 1.35;
+  --leading-normal: 1.5;
+  --leading-relaxed: 1.65;
+  --leading-reading: 1.7;
+
+  --tracking-tight: -0.015em;
+  --tracking-normal: 0em;
+  --tracking-wide: 0.02em;
+  --tracking-caps: 0.06em;
+
+  --duration-instant: 80ms;
+  --duration-fast: 140ms;
+  --duration-base: 220ms;
+  --duration-slow: 360ms;
+  --ease-standard: cubic-bezier(0.2, 0, 0, 1);
+  --ease-emphasised: cubic-bezier(0.3, 0, 0, 1);
+  --ease-exit: cubic-bezier(0.4, 0, 1, 1);
+
+  --spacing-shell-header: 2.5rem;
+  --density-baseline: 0.875;
+  --spacing: calc(
+    0.25rem * var(--density-scale, var(--density-baseline)) / var(--density-baseline)
+  );
+
+  /* The site header is sticky, so an anchor has to clear it plus a little air. */
+  --anchor-offset: calc(4rem + var(--spacing) * 4);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --duration-instant: 1ms;
+    --duration-fast: 1ms;
+    --duration-base: 1ms;
+    --duration-slow: 1ms;
+  }
+
+  *,
+  *::before,
+  *::after {
+    animation-duration: 1ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 1ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* --- Base ---------------------------------------------------------------- */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  background-color: var(--color-background);
+  color: var(--color-foreground);
+  font-family: var(--font-sans);
+  font-size: var(--text-sm);
+  line-height: var(--leading-normal);
+  font-synthesis-weight: none;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+::selection {
+  background-color: var(--color-selection);
+  color: var(--color-foreground);
+}
+
+a {
+  color: inherit;
+}
+
+:where(a, button, input, summary, [tabindex]):focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 2px;
+}
+
+/*
+ * Present to a screen reader, absent from the page: the search box's label,
+ * which the design shows as a magnifying glass and a placeholder.
+ */
+.visually-hidden {
+  position: absolute;
+  inline-size: 1px;
+  block-size: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/*
+ * The first thing in the tab order, and the first thing a screen reader meets:
+ * a way past the header and the navigation straight to the page.
+ */
+.skip-link {
+  position: absolute;
+  inset-inline-start: calc(var(--spacing) * 4);
+  inset-block-start: calc(var(--spacing) * -20);
+  z-index: 2;
+  padding: calc(var(--spacing) * 2) calc(var(--spacing) * 4);
+  border-radius: var(--radius-md);
+  background-color: var(--color-accent);
+  color: var(--color-accent-foreground);
+  font-weight: 500;
+  text-decoration: none;
+  transition: inset-block-start var(--duration-fast) var(--ease-standard);
+}
+
+.skip-link:focus-visible {
+  inset-block-start: calc(var(--spacing) * 2);
+}
+
+/* --- Header -------------------------------------------------------------- */
+
+.site-header {
+  position: sticky;
+  inset-block-start: 0;
+  z-index: 1;
+  border-block-end: 1px solid var(--color-border);
+  background-color: var(--color-background);
+}
+
+.site-header-inner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: calc(var(--spacing) * 6);
+  max-width: var(--layout-max);
+  margin-inline: auto;
+  padding: calc(var(--spacing) * 3) calc(var(--spacing) * 8);
+}
+
+.site-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: calc(var(--spacing) * 3);
+  font-family: var(--font-display);
+  font-size: var(--text-lg);
+  font-weight: 600;
+  letter-spacing: var(--tracking-tight);
+  text-decoration: none;
+}
+
+.site-links {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: calc(var(--spacing) * 5);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.site-links a {
+  color: var(--color-muted);
+  font-weight: 500;
+  text-decoration: none;
+}
+
+.site-links a:hover {
+  color: var(--color-foreground);
+}
+
+.site-search {
+  display: flex;
+  gap: calc(var(--spacing) * 2);
+  margin-inline-start: auto;
+}
+
+.site-search input {
+  inline-size: 16rem;
+  max-inline-size: 100%;
+  padding: calc(var(--spacing) * 2) calc(var(--spacing) * 3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background-color: var(--color-surface);
+  color: inherit;
+  font: inherit;
+}
+
+.site-search button {
+  padding: calc(var(--spacing) * 2) calc(var(--spacing) * 4);
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  background-color: var(--color-accent);
+  color: var(--color-accent-foreground);
+  font: inherit;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+/* --- The three columns --------------------------------------------------- */
+
+/*
+ * Flex rather than a three-column grid, because two of the three columns are
+ * conditional: a site with nothing published yet has no section navigation,
+ * and a page with no headings has no table of contents. Fixed grid columns
+ * would then put the page itself in the navigation's column; flex simply
+ * gives the page the room the missing column was holding.
+ */
+.site-body {
+  display: flex;
+  align-items: flex-start;
+  gap: calc(var(--spacing) * 8);
+  max-width: var(--layout-max);
+  margin-inline: auto;
+  padding: calc(var(--spacing) * 8);
+}
+
+.site-nav {
+  flex: 0 0 15rem;
+}
+
+.site-toc {
+  flex: 0 0 13rem;
+}
+
+.site-main {
+  flex: 1 1 auto;
+  min-inline-size: 0;
+}
+
+/*
+ * The navigation and the contents are their own landmarks and each says what
+ * it is, because a page with two `nav` elements and no labels reads as two
+ * anonymous lists.
+ */
+.site-nav,
+.site-toc {
+  align-self: start;
+  position: sticky;
+  inset-block-start: 5rem;
+  max-block-size: calc(100dvh - 6rem);
+  overflow-y: auto;
+}
+
+.site-nav-heading,
+.site-toc-heading {
+  margin: 0 0 calc(var(--spacing) * 2);
+  color: var(--color-muted);
+  font-size: var(--text-2xs);
+  font-weight: 600;
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+}
+
+.site-nav ul,
+.site-toc ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.site-nav li ul {
+  margin-inline-start: calc(var(--spacing) * 3);
+  border-inline-start: 1px solid var(--color-border);
+  padding-inline-start: calc(var(--spacing) * 2);
+}
+
+.site-nav a {
+  display: block;
+  padding: calc(var(--spacing) * 1.5) calc(var(--spacing) * 3);
+  border-radius: var(--radius-md);
+  color: var(--color-foreground);
+  text-decoration: none;
+}
+
+.site-nav a:hover {
+  background-color: var(--color-surface);
+}
+
+.site-nav a[aria-current='page'] {
+  background-color: var(--color-accent-subtle);
+  color: var(--color-accent);
+  font-weight: 500;
+}
+
+.site-toc a {
+  display: block;
+  padding: calc(var(--spacing) * 1.25) 0 calc(var(--spacing) * 1.25) calc(var(--spacing) * 3);
+  border-inline-start: 2px solid transparent;
+  color: var(--color-muted);
+  font-size: var(--text-xs);
+  text-decoration: none;
+}
+
+.site-toc a:hover {
+  color: var(--color-foreground);
+}
+
+.site-toc .toc-depth-3 a {
+  padding-inline-start: calc(var(--spacing) * 6);
+}
+
+/* --- The page itself ----------------------------------------------------- */
+
+.site-eyebrow {
+  color: var(--color-accent);
+  font-size: var(--text-xs);
+  font-weight: 500;
+  letter-spacing: var(--tracking-wide);
+}
+
+.site-index {
+  margin: calc(var(--spacing) * 6) 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.site-index li + li {
+  margin-block-start: calc(var(--spacing) * 3);
+}
+
+.site-index a {
+  font-family: var(--font-display);
+  font-size: var(--text-lg);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.site-index a:hover {
+  color: var(--color-accent);
+}
+
+.site-footer {
+  max-width: var(--layout-max);
+  margin-inline: auto;
+  padding-inline: calc(var(--spacing) * 8);
+  padding-block-end: calc(var(--spacing) * 8);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: calc(var(--spacing) * 4);
+  margin-block-start: calc(var(--spacing) * 12);
+  padding-block-start: calc(var(--spacing) * 5);
+  border-block-start: 1px solid var(--color-border);
+  color: var(--color-muted);
+  font-size: var(--text-xs);
+}
+
+.site-footer a {
+  color: var(--color-accent);
+}
+
+/* --- Search results ------------------------------------------------------ */
+
+.site-results {
+  margin: calc(var(--spacing) * 6) 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.site-results li + li {
+  margin-block-start: calc(var(--spacing) * 6);
+}
+
+.site-result-title {
+  font-family: var(--font-display);
+  font-size: var(--text-lg);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.site-result-snippet {
+  margin: calc(var(--spacing) * 1) 0 0;
+  color: var(--color-muted);
+}
+
+.site-result-snippet mark {
+  background-color: var(--color-warning-subtle);
+  color: var(--color-foreground);
+}
+
+/* --- Narrow screens ------------------------------------------------------ */
+
+/*
+ * The columns fold rather than disappearing: the contents move above the page
+ * and the section navigation below it, so a phone reaches everything a laptop
+ * does (`docs/product/surfaces.md`: read on a laptop or a phone).
+ */
+@media (width < 64rem) {
+  .site-body {
+    flex-direction: column;
+    gap: calc(var(--spacing) * 6);
+  }
+
+  .site-nav,
+  .site-toc {
+    position: static;
+    flex: 0 0 auto;
+    inline-size: 100%;
+    max-block-size: none;
+  }
+
+  /*
+   * The columns fold in reading order rather than in source order: the
+   * contents first, then the page, then the site's other sections.
+   */
+  .site-toc {
+    order: -1;
+    padding-block-end: calc(var(--spacing) * 4);
+    border-block-end: 1px solid var(--color-border);
+  }
+
+  .site-nav {
+    order: 1;
+    padding-block-start: calc(var(--spacing) * 4);
+    border-block-start: 1px solid var(--color-border);
+  }
+
+  .site-search {
+    inline-size: 100%;
+    margin-inline-start: 0;
+  }
+}

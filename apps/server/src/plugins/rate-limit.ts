@@ -73,10 +73,20 @@ export function accountKey(bucket: string, account: string): string {
   return `${bucket}:account:${account.toLowerCase()}`
 }
 
-/** Route-level `config.rateLimit`: one bucket per endpoint, keyed by source address. */
-export function addressRateLimit(bucket: string): { readonly rateLimit: object } {
+/**
+ * Route-level `config.rateLimit`: one bucket per endpoint, keyed by source
+ * address.
+ *
+ * `max` overrides the plugin's default for this route only, the way
+ * `sessionRateLimit` does. The anonymous *reading* surfaces need it: the
+ * authentication budget is ten a minute, which is right for a password guess
+ * and absurd for a documentation site, where one page view is a page, a
+ * stylesheet and whatever a crawler asks for next.
+ */
+export function addressRateLimit(bucket: string, max?: number): { readonly rateLimit: object } {
   return {
     rateLimit: {
+      ...(max === undefined ? {} : { max }),
       keyGenerator: (request: FastifyRequest) => addressKey(bucket, request),
     },
   }

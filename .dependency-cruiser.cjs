@@ -50,6 +50,16 @@ module.exports = {
       to: { path: '^apps/server' },
     },
     {
+      name: 'server-does-not-import-ui',
+      comment:
+        'The server renders HTML from plain functions and plain CSS; it must never install the ' +
+        'component library to do it. The plain-CSS half of the design system is @quill/design-css, ' +
+        'which has no dependencies of its own.',
+      severity: 'error',
+      from: { path: '^apps/server' },
+      to: { path: '^packages/ui' },
+    },
+    {
       name: 'server-does-not-import-web',
       severity: 'error',
       from: { path: '^apps/server' },

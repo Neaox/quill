@@ -1,4 +1,4 @@
-import { and, desc, eq, lt, or, sql } from 'drizzle-orm'
+import { and, desc, eq, inArray, lt, or, sql } from 'drizzle-orm'
 
 import type {
   AppendRevisionInput,
@@ -135,6 +135,24 @@ export function createRevisionsIndexRepository(db: DrizzleClient): RevisionsInde
         .limit(1)
       const row = rows[0]
       return row === undefined ? null : toRevisionRow(row)
+    },
+
+    /**
+     * The newest revision of each document, in one query.
+     *
+     * `DISTINCT ON` with the same order `latestForDocument` uses, so a page of
+     * a hundred public documents costs one round trip rather than a hundred
+     * (AGENTS.md rule 13). An empty request is answered without asking the
+     * database, because `IN ()` is not valid SQL.
+     */
+    async listHeads(documentIds: readonly DocumentId[]): Promise<readonly RevisionIndexRow[]> {
+      if (documentIds.length === 0) return []
+      const rows = await db
+        .selectDistinctOn([revisionsIndex.documentId])
+        .from(revisionsIndex)
+        .where(inArray(revisionsIndex.documentId, [...documentIds]))
+        .orderBy(revisionsIndex.documentId, desc(revisionsIndex.timestamp), desc(revisionsIndex.id))
+      return rows.map(toRevisionRow)
     },
 
     async latestForDocument(documentId: DocumentId): Promise<RevisionIndexRow | null> {
