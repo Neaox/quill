@@ -1,4 +1,10 @@
-import type { CollectionId, DocumentId, DocumentStatus, WorkspaceId } from '@quill/domain'
+import type {
+  CollectionId,
+  DocumentId,
+  DocumentStatus,
+  RevisionId,
+  WorkspaceId,
+} from '@quill/domain'
 import { extractOutline, extractText } from '@quill/markdown'
 import type { CoreFrontMatter, OutlineEntry } from '@quill/markdown'
 import type { Root } from 'mdast'
@@ -13,6 +19,8 @@ import {
 /** A document's identity and placement, which the AST and front matter do not carry themselves. */
 export interface DocumentLocation {
   readonly documentId: DocumentId
+  /** The revision the Markdown came from, recorded on the index entry (ADR-034). */
+  readonly revision: RevisionId
   readonly workspaceId: WorkspaceId
   readonly collectionId: CollectionId | null
   readonly path: string
@@ -42,6 +50,7 @@ export function projectIndexableDocument(input: ProjectIndexableDocumentInput): 
   return {
     version: INDEXABLE_DOCUMENT_VERSION,
     documentId: input.documentId,
+    revision: input.revision,
     workspaceId: input.workspaceId,
     collectionId: input.collectionId,
     path: input.path,

@@ -40,7 +40,7 @@ Status is taken from the plan's Delivery status table, which is authoritative.
 | 17 | Pick up where I left off | Reader, writer | Signed in, internal | M2 | Built | `home.spec.ts` |
 | 18 | Start from a workspace's front page | Reader | Signed in, internal | M2 | Built | `home.spec.ts` |
 | 19 | Read a long document | Reader | Signed in, internal | M2 | Built | `journey.spec.ts`, `design.spec.ts` |
-| 20 | Find the runbook during an incident | Reader | Signed in, internal | M3 | Planned | `search.spec.ts` |
+| 20 | Find the runbook during an incident | Reader | Signed in, internal | M3 | Built (API) | `search.spec.ts` |
 | 21 | Present to a room | Writer, reader | Signed in, internal | M2 | In progress | `present.spec.ts` |
 | 22 | Capture a note for later while presenting | Writer | Signed in, internal | M4 | Planned | `present.spec.ts` |
 | 23 | Compare two revisions and restore one | Writer, workspace lead | Signed in, internal | M2 | Built | `journey.spec.ts` |
@@ -638,9 +638,11 @@ Signed in, internal. The largest group of people, and most of the traffic.
 - **Persona:** reader, occasional contributor
 - **Situation:** three in the morning, something is down
 - **Job:** find the right runbook from a half-remembered phrase, fast.
-- **Milestone:** M3 — **Planned** (the `search` package is a placeholder)
+- **Milestone:** M3 — **Built (API)**; no search surface yet
 - **Surfaces:** search
-- **Journey:** `e2e/search.spec.ts` (planned)
+- **Journey:** `e2e/search.spec.ts` (planned);
+  `apps/server/src/routes/search.integration.test.ts` proves every acceptance
+  below through `GET /api/search` today
 
 **Flow**
 

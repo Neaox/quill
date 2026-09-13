@@ -1,4 +1,4 @@
-import { collectionId, documentId, workspaceId } from '@quill/domain'
+import { collectionId, documentId, revisionId, workspaceId } from '@quill/domain'
 import type { DocumentId, WorkspaceId } from '@quill/domain'
 import { describe, expect, it } from 'vitest'
 
@@ -11,6 +11,7 @@ const WORKSPACE_A = workspaceId('11111111-1111-4111-8111-111111111111')
 const WORKSPACE_B = workspaceId('22222222-2222-4222-8222-222222222222')
 const COLLECTION = collectionId('33333333-3333-4333-8333-333333333333')
 const NOW = new Date('2026-01-01T00:00:00.000Z')
+const REVISION = revisionId('a'.repeat(40))
 
 let idCounter = 0
 function nextDocumentId(): DocumentId {
@@ -22,6 +23,7 @@ function aDocument(overrides: Partial<IndexableDocument> = {}): IndexableDocumen
   return {
     version: 1,
     documentId: nextDocumentId(),
+    revision: REVISION,
     workspaceId: WORKSPACE_A,
     collectionId: COLLECTION,
     path: 'doc.md',

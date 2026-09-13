@@ -1,4 +1,4 @@
-import { collectionId, documentId, workspaceId } from '@quill/domain'
+import { collectionId, documentId, revisionId, workspaceId } from '@quill/domain'
 import { parseMarkdown } from '@quill/markdown'
 import type { CoreFrontMatter } from '@quill/markdown'
 import { describe, expect, it } from 'vitest'
@@ -9,12 +9,14 @@ const DOCUMENT_ID = documentId('11111111-1111-4111-8111-111111111111')
 const WORKSPACE_ID = workspaceId('22222222-2222-4222-8222-222222222222')
 const COLLECTION_ID = collectionId('33333333-3333-4333-8333-333333333333')
 const UPDATED_AT = new Date('2026-01-01T00:00:00.000Z')
+const REVISION = revisionId('a'.repeat(40))
 
 const MINIMAL_FRONT_MATTER: CoreFrontMatter = { id: DOCUMENT_ID }
 
 function location() {
   return {
     documentId: DOCUMENT_ID,
+    revision: REVISION,
     workspaceId: WORKSPACE_ID,
     collectionId: COLLECTION_ID,
     path: 'guides/getting-started.md',

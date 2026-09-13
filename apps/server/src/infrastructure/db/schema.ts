@@ -2,6 +2,7 @@ import { sql } from 'drizzle-orm'
 import {
   boolean,
   check,
+  customType,
   foreignKey,
   index,
   integer,
@@ -212,6 +213,10 @@ export const grants = pgTable(
   (table) => [
     // Every request resolves a whole scope chain at once.
     index('grants_scope_idx').on(table.scopeKind, table.scopeId),
+    // And every permission walk asks for the grants its own principals hold,
+    // wherever they are attached (`listVisibleDocuments`), which is the far
+    // cheaper way to ask the same question of a whole workspace.
+    index('grants_principal_idx').on(table.principalId),
     check(
       'grants_deny_is_document_scoped',
       sql`${table.effect} <> 'deny' OR ${table.scopeKind} = 'document'`,
@@ -530,3 +535,88 @@ export const outboxEvents = pgTable('outbox_events', {
    */
   deadLetteredAt: timestamp('dead_lettered_at', { withTimezone: true }),
 })
+
+/**
+ * A `tsvector`, which Postgres has and Drizzle does not name.
+ *
+ * Declared here rather than reached for with raw SQL at every use so the
+ * generated column below, the GIN index on it, and the query that reads it
+ * all agree on one type.
+ */
+const tsvector = customType<{ data: string; driverData: string }>({
+  dataType() {
+    return 'tsvector'
+  },
+})
+
+/**
+ * The search index (ADR-010, plan §15): one row per published document,
+ * derived from its published Markdown and rebuildable from the content store
+ * by `quill reindex`, which is what makes it an index and not a system of
+ * record (ADR-034).
+ *
+ * `document_id` is both the primary key and a cascading foreign key, which is
+ * how a deleted document leaves the index: there is no `DocumentDeleted`
+ * event to consume, and adding one to do what the database already does on
+ * the same transaction would be a second, slower way to be wrong.
+ *
+ * The three weighted columns are ADR-010's: the title is weight A, the
+ * headings B, the body C, combined into one stored `tsvector` so the GIN
+ * index covers all three and a query ranks across them in one pass. Weighting
+ * happens in the generated expression rather than in the query, because a
+ * generated column is recomputed by Postgres on every write and can never
+ * fall out of step with the text it was built from. `headings` holds each
+ * heading repeated by its depth weight (`headingWeight`), which is how the
+ * per-heading weighting `IndexableHeading` carries reaches a `tsvector` that
+ * only has one weight letter for the whole column.
+ *
+ * `revision` and `index_version` record what the row was derived from
+ * (ADR-034), so a partial rebuild is always safe and a later projection
+ * version can be told from this one.
+ */
+export const documentSearch = pgTable(
+  'document_search',
+  {
+    documentId: text('document_id')
+      .primaryKey()
+      .references(() => documents.id, { onDelete: 'cascade' }),
+    workspaceId: text('workspace_id')
+      .notNull()
+      .references(() => workspaces.id, { onDelete: 'cascade' }),
+    collectionId: text('collection_id').references(() => collections.id, { onDelete: 'set null' }),
+    path: text('path').notNull(),
+    title: text('title').notNull(),
+    /** Each heading repeated by its depth weight, so an `h1` outranks an `h6` within weight B. */
+    headings: text('headings').notNull(),
+    body: text('body').notNull(),
+    tags: text('tags')
+      .array()
+      .notNull()
+      .default(sql`'{}'::text[]`),
+    owners: text('owners')
+      .array()
+      .notNull()
+      .default(sql`'{}'::text[]`),
+    status: text('status').notNull(),
+    /** The document's own last update, which the recency boost decays from. */
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull(),
+    /** The revision this row was projected from (ADR-034). Null for a row rebuilt from a workspace with no revision recorded. */
+    revision: text('revision'),
+    /** `INDEXABLE_DOCUMENT_VERSION` at the time of writing (ADR-033). */
+    indexVersion: integer('index_version').notNull().default(1),
+    indexedAt: timestamp('indexed_at', { withTimezone: true }).notNull(),
+    searchVector: tsvector('search_vector').generatedAlwaysAs(
+      sql`setweight(to_tsvector('english', coalesce("title", '')), 'A') || setweight(to_tsvector('english', coalesce("headings", '')), 'B') || setweight(to_tsvector('english', coalesce("body", '')), 'C')`,
+    ),
+  },
+  (table) => [
+    index('document_search_vector_idx').using('gin', table.searchVector),
+    // Every query is scoped to the workspaces a caller may read (ADR-012).
+    index('document_search_workspace_idx').on(table.workspaceId),
+    // `collection:` filters, and the rebuild of one collection.
+    index('document_search_collection_idx').on(table.collectionId),
+    // `tag:` and `owner:` filters are array containment, which GIN answers.
+    index('document_search_tags_idx').using('gin', table.tags),
+    index('document_search_owners_idx').using('gin', table.owners),
+  ],
+)

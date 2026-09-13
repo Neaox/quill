@@ -1,40 +1,22 @@
-import type { CollectionId, DocumentId, DocumentStatus, WorkspaceId } from '@quill/domain'
 import type { Result } from '@quill/domain'
 import { err, ok } from '@quill/domain'
 
-/** The version {@link projectIndexableDocument} writes today. */
-export const INDEXABLE_DOCUMENT_VERSION = 1
-
-/** One heading, weighted by depth so a title outranks a subsection (ADR-010). */
-export interface IndexableHeading {
-  readonly text: string
-  readonly depth: number
-  readonly weight: number
-}
-
 /**
  * What a search engine adapter indexes for one published document (ADR-010,
- * quill-plan.md §15). `version` follows rule 17: a value this shape ever
- * writes carries it, and {@link assertSupportedIndexableDocumentVersion} is
- * where a reader dispatches on it, the same discipline `@quill/highlight`'s
- * `unpackRanges` applies to a packed token range.
+ * quill-plan.md §15). The shapes belong to the search port
+ * (`@quill/application`'s `ports/search-index.ts`) and are re-exported here;
+ * the version constant, the heading weighting, and the version check are this
+ * package's, because they are behaviour rather than contract.
  */
-export interface IndexableDocumentV1 {
-  readonly version: 1
-  readonly documentId: DocumentId
-  readonly workspaceId: WorkspaceId
-  readonly collectionId: CollectionId | null
-  readonly path: string
-  readonly title: string
-  readonly headings: readonly IndexableHeading[]
-  readonly body: string
-  readonly tags: readonly string[]
-  readonly owners: readonly string[]
-  readonly status: DocumentStatus
-  readonly updatedAt: Date
-}
 
-export type IndexableDocument = IndexableDocumentV1
+export type {
+  IndexableDocument,
+  IndexableDocumentV1,
+  IndexableHeading,
+} from '@quill/application/ports'
+
+/** The version {@link projectIndexableDocument} writes today. */
+export const INDEXABLE_DOCUMENT_VERSION = 1
 
 const MAX_HEADING_DEPTH = 6
 

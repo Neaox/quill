@@ -16,6 +16,15 @@ import { grants, principals } from '../db/schema.ts'
 import type { DrizzleClient } from '../db/types.ts'
 import { requireRow } from '../db/rows.ts'
 
+/**
+ * How many scope selectors travel in one statement.
+ *
+ * PostgreSQL's wire protocol allows 65,535 bound parameters per statement and
+ * each selector spends two of them, so 16,000 leaves room to spare and keeps
+ * the number of round trips low for the sizes that actually occur.
+ */
+const SCOPES_PER_QUERY = 16_000
+
 interface PrincipalRow {
   id: string
   kind: PrincipalKind
@@ -134,22 +143,44 @@ export function createGrantRepository(db: DrizzleClient, ids: IdGenerator): Gran
     },
 
     /**
-     * Every grant on a whole scope chain in one query: resolution reads the
-     * document, its ancestors, its collection, its workspace, its units, and
-     * the instance, and must not pay a round trip per level.
+     * Every grant on a whole scope chain, in as few queries as the wire
+     * protocol allows: resolution reads the document, its ancestors, its
+     * collection, its workspace, its units, and the instance, and must not pay
+     * a round trip per level.
+     *
+     * "As few as the protocol allows" and not "one", because materialising a
+     * workspace's permissions asks about every document in it at once
+     * (`visibleDocumentIds`), and each scope costs two bound parameters
+     * against a hard ceiling of 65,535 per statement. A workspace of more than
+     * about thirty-three thousand documents used to fail outright — the flat
+     * document list as surely as search — so the selectors are asked in
+     * chunks and the answers concatenated. A grant matches at most one scope,
+     * so no row can come back twice.
      */
     async listForScopes(scopes): Promise<readonly GrantRow[]> {
       if (scopes.length === 0) return []
-      const conditions = scopes.map((scope): SQL | undefined =>
-        scope.id === null
-          ? and(eq(grants.scopeKind, scope.kind), isNull(grants.scopeId))
-          : and(eq(grants.scopeKind, scope.kind), eq(grants.scopeId, scope.id)),
-      )
-      const rows = await db
-        .select({ grant: grants, principal: principals })
-        .from(grants)
-        .innerJoin(principals, eq(grants.principalId, principals.id))
-        .where(or(...conditions))
+
+      const rows: {
+        grant: typeof grants.$inferSelect
+        principal: typeof principals.$inferSelect
+      }[] = []
+      for (let from = 0; from < scopes.length; from += SCOPES_PER_QUERY) {
+        const conditions = scopes
+          .slice(from, from + SCOPES_PER_QUERY)
+          .map((scope): SQL | undefined =>
+            scope.id === null
+              ? and(eq(grants.scopeKind, scope.kind), isNull(grants.scopeId))
+              : and(eq(grants.scopeKind, scope.kind), eq(grants.scopeId, scope.id)),
+          )
+        rows.push(
+          ...(await db
+            .select({ grant: grants, principal: principals })
+            .from(grants)
+            .innerJoin(principals, eq(grants.principalId, principals.id))
+            .where(or(...conditions))),
+        )
+      }
+
       return rows.map(({ grant, principal }) =>
         toGrantRow(grant, {
           id: principal.id,

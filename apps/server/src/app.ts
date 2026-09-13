@@ -12,6 +12,7 @@ import { draftRoutes } from './routes/drafts.ts'
 import { healthRoutes } from './routes/health.ts'
 import { lockRoutes } from './routes/locks.ts'
 import { meRoutes } from './routes/me.ts'
+import { searchRoutes } from './routes/search.ts'
 import { shareLinkRoutes, SHARE_SCHEMAS } from './routes/share-links.ts'
 import { unitRoutes } from './routes/units.ts'
 import { workspaceRoutes } from './routes/workspaces.ts'
@@ -149,6 +150,7 @@ export function buildApp(options: AppOptions = {}): FastifyInstance {
     app.register(documentRoutes(deps))
     app.register(draftRoutes(deps))
     app.register(lockRoutes(deps))
+    app.register(searchRoutes(deps))
     app.register(shareLinkRoutes(deps))
   }
 

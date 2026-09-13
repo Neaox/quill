@@ -55,54 +55,44 @@ later ones, sharing this package rather than duplicating it.
 ## What an adapter owns
 
 Everything engine-specific: the actual storage and query execution, turning
-a `RankingProfile` into real scoring, turning `VisibilityFilter` into a join
-against the materialised permission table (ADR-012), and applying
-`SearchIndex.remove`/`index` to keep the store in sync with
-`DocumentPublished` outbox events. An adapter lives outside this package
-(the PostgreSQL adapter is expected in `apps/server`'s infrastructure, per
-`ARCHITECTURE.md`'s layering table) and implements `SearchIndex`
-(`service/search-index.ts`).
+a `RankingProfile` into real scoring, turning `VisibilityFilter` into a
+restriction applied inside the engine's own query (ADR-012), and applying
+`SearchIndex.remove`/`index` to keep the store in step with
+`DocumentPublished` outbox events. An adapter lives outside this package:
+the PostgreSQL one is `apps/server/src/infrastructure/search`, per
+`ARCHITECTURE.md`'s layering table, and its README explains how it answers
+each of those.
 
-## `SearchIndex` here versus `@quill/application`'s port
+## One port, declared with the other ports
 
-This package deliberately does not depend on `@quill/application` — only on
-`@quill/domain` and `@quill/markdown`, so the query language, ranking data,
-snippet builder, and visibility contract can be tested without pulling in
-the application layer. That means `service/search-index.ts` declares its
-*own* `SearchIndex` interface, richer than
-`packages/application/src/ports/search-index.ts`'s: it takes the parsed
-`SearchQuery`, the mandatory `VisibilityFilter`, and the full
-`RankingProfile`, and returns hits that still carry their body text so a
-snippet can be built from the real match.
+There is one `SearchIndex` in the platform, and it is declared in
+`packages/application/src/ports/search-index.ts`, beside the content store
+and the blob store, because a port belongs to the layer that depends on it
+(`ARCHITECTURE.md`: the application layer may depend on "the interfaces it
+declares"). This package re-exports it, together with `SearchQuery`,
+`IndexableDocument`, `RankingProfile`, and `VisibilityFilter`, so an adapter
+implements one interface and two shapes can no longer drift apart.
 
-The two are not yet the same interface, and a server-side adapter bridging
-them today would lose information in both directions:
+Every *value* stays here: `parseQuery`, `serializeQuery`,
+`projectIndexableDocument`, `headingWeight`,
+`assertSupportedIndexableDocumentVersion`, `DEFAULT_RANKING_PROFILE`,
+`recencyMultiplier`, `buildSnippet`, `visibilityFilter`,
+`groupByWorkspaceAffinity`, and `createSearchService`. The imports from
+`@quill/application` are type-only and therefore erased, so this package
+still pulls in nothing of the application layer at runtime and its tests
+still run without standing one up.
 
-- `@quill/application`'s `IndexableDocument` has no `collectionId`, `path`,
-  per-heading weight, `owners`, or `status` — an adapter would have nowhere
-  to put what `projectIndexableDocument` produces.
-- `@quill/application`'s `SearchQuery` takes one optional `workspaceId`, not
-  the set `VisibilityFilter.workspaceIds` carries — it cannot express "every
-  workspace this caller may read", which is what makes the cross-workspace
-  ranking quill-plan.md §15 describes possible in the first place. It also
-  has no room for the `title:`/`owner:`/`status:`/`collection:` filters this
-  package parses, for an exclusion, or for a `RankingProfile` (workspace
-  affinity included) to travel to the adapter's scoring.
-- `@quill/application`'s `SearchResult.snippet` is already a rendered HTML
-  string; there is nowhere for the raw body text or match offsets
-  `buildSnippet` needs, so the port's shape assumes the adapter builds its
-  own snippet rather than reusing this package's.
-- `@quill/application`'s `SearchPrincipal` (`{ principalIds }`) already
-  matches `VisibilityFilter.principalKeys` well; no change needed there.
+Reconciling the two widened the port rather than narrowing this package, as
+the note that used to stand here proposed: it was the application port that
+had no `collectionId`, `path`, per-heading weight, `owners`, or `status` on
+an indexed document; that took one optional `workspaceId` instead of the set
+of workspaces a caller may read, with no room for field filters, exclusions,
+or a ranking profile; and that returned a pre-rendered HTML snippet where
+`buildSnippet` needs the matched body text to compute offsets from. Nothing
+implemented it, so nothing had to change to meet the wider shape.
 
-(The method is also named `search` here, not `query` as ADR-010's interface
-sketch shows, because it returns already-scored hits rather than a bag of
-results to score — a naming choice, not a contradiction of the decision:
-both interfaces route every search through `packages/search`, and
-application code still never writes SQL.)
-
-No adapter implements `@quill/application`'s `SearchIndex` yet, so widening
-it is low-risk. Reconciling the two — most likely by growing the
-application port additively to match this package's shapes, since ADR-033
-requires API changes within a version to be additive — is future work for
-whoever builds the first adapter, tracked here rather than guessed at.
+(The method is named `search`, not `query` as ADR-010's interface sketch
+shows, because it returns already-scored hits rather than a bag of results
+to score — a naming choice, not a contradiction of the decision: every
+search still routes through this package, and application code still never
+writes SQL.)

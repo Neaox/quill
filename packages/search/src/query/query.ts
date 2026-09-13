@@ -3,48 +3,48 @@
  * field filters (`title:`, `tag:`, `owner:`, `status:`, `collection:`,
  * `in:workspace`). This is the structured form both {@link parseQuery} and
  * {@link serializeQuery} agree on; nothing downstream reads query text again.
+ *
+ * The shapes themselves belong to the search port
+ * (`@quill/application`'s `ports/search-index.ts`) and are re-exported here,
+ * so this package reads as one module while an adapter still implements a
+ * single interface. The import is type-only, so no part of the application
+ * layer reaches this package at runtime.
  */
 
-/** The field names a filter clause may name. `in` currently only takes `workspace`. */
-export const FIELD_FILTER_KEYS = ['title', 'tag', 'owner', 'status', 'collection', 'in'] as const
+import type {
+  FieldFilterKey,
+  FilterClause,
+  PhraseClause,
+  TermClause,
+} from '@quill/application/ports'
 
-export type FieldFilterKey = (typeof FIELD_FILTER_KEYS)[number]
+export type {
+  FieldFilterKey,
+  FilterClause,
+  PhraseClause,
+  QueryClause,
+  SearchQuery,
+  TermClause,
+} from '@quill/application/ports'
+
+/**
+ * The field names a filter clause may name, as data.
+ *
+ * `satisfies` pins the two together in both directions: a key added to
+ * {@link FieldFilterKey} and not listed here would parse as a plain term, and
+ * a key listed here that the type does not have fails to compile.
+ */
+export const FIELD_FILTER_KEYS = [
+  'title',
+  'tag',
+  'owner',
+  'status',
+  'collection',
+  'in',
+] as const satisfies readonly FieldFilterKey[]
 
 export function isFieldFilterKey(value: string): value is FieldFilterKey {
   return (FIELD_FILTER_KEYS as readonly string[]).includes(value)
-}
-
-/** A bare word, unquoted, matched against any indexed field. */
-export interface TermClause {
-  readonly kind: 'term'
-  readonly value: string
-  readonly negated: boolean
-}
-
-/** A quoted span, matched as one exact phrase rather than loose words. */
-export interface PhraseClause {
-  readonly kind: 'phrase'
-  readonly value: string
-  readonly negated: boolean
-}
-
-/** A `field:value` pair, restricting the match to one indexed property. */
-export interface FilterClause {
-  readonly kind: 'filter'
-  readonly key: FieldFilterKey
-  readonly value: string
-  readonly negated: boolean
-}
-
-export type QueryClause = TermClause | PhraseClause | FilterClause
-
-/**
- * A parsed query, in the order its clauses appeared. Order is kept, not
- * because ranking depends on it, but because it is what {@link serializeQuery}
- * needs to reproduce the author's input byte for byte.
- */
-export interface SearchQuery {
-  readonly clauses: readonly QueryClause[]
 }
 
 export function term(value: string, negated = false): TermClause {

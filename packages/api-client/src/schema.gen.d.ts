@@ -1356,6 +1356,90 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/search": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query: {
+                    cursor?: string;
+                    limit?: number;
+                    q: string;
+                    workspace?: string;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            current: {
+                                breadcrumb: string[];
+                                documentId: string;
+                                path: string;
+                                score: number;
+                                shortId: string;
+                                slug: string;
+                                snippet: {
+                                    ranges: {
+                                        end: number;
+                                        start: number;
+                                    }[];
+                                    text: string;
+                                };
+                                title: string;
+                                workspaceId: string;
+                            }[];
+                            elsewhere: {
+                                hits: {
+                                    breadcrumb: string[];
+                                    documentId: string;
+                                    path: string;
+                                    score: number;
+                                    shortId: string;
+                                    slug: string;
+                                    snippet: {
+                                        ranges: {
+                                            end: number;
+                                            start: number;
+                                        }[];
+                                        text: string;
+                                    };
+                                    title: string;
+                                    workspaceId: string;
+                                }[];
+                                workspace: {
+                                    id: string;
+                                    name: string;
+                                    slug: string;
+                                };
+                            }[];
+                            nextCursor?: string;
+                            query: string;
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/share-links/{id}": {
         parameters: {
             query?: never;
