@@ -1,6 +1,7 @@
 import {
   COLLECTION_AUDIT_EVENTS,
   DOCUMENT_AUDIT_EVENTS,
+  SHARE_LINK_AUDIT_EVENTS,
   TENANCY_AUDIT_EVENTS,
 } from '@quill/application'
 import type { Clock, IdGenerator, UnitOfWork } from '@quill/application'
@@ -47,6 +48,10 @@ export const AUDIT_EVENTS = {
   workspaceRenamed: TENANCY_AUDIT_EVENTS.workspaceRenamed,
   workspaceDeleted: TENANCY_AUDIT_EVENTS.workspaceDeleted,
   documentDeleted: DOCUMENT_AUDIT_EVENTS.deleted,
+  // Share links (plan section 14). The row names the link, never its token.
+  shareLinkCreated: SHARE_LINK_AUDIT_EVENTS.created,
+  shareLinkRevoked: SHARE_LINK_AUDIT_EVENTS.revoked,
+  shareLinkUsed: SHARE_LINK_AUDIT_EVENTS.used,
 } as const
 
 export interface AuditEvent {

@@ -1,7 +1,7 @@
 import { SHORT_ID_ALPHABET, SHORT_ID_LENGTH, shortId } from '@quill/domain'
 import type { ShortId } from '@quill/domain'
 
-import type { Clock, Hasher, IdGenerator } from '../ports/system.ts'
+import type { Clock, Hasher, IdGenerator, TokenService } from '../ports/system.ts'
 
 /** Time and identity the test controls outright, so nothing here reads a wall clock. */
 
@@ -37,6 +37,30 @@ export function createFakeHasher(): Hasher {
         hash = Math.imul(hash ^ code, 0x01_00_01_93) >>> 0
       }
       return hash.toString(16).padStart(8, '0')
+    },
+  }
+}
+
+/**
+ * Tokens a test can name, hashed by something reversible enough to assert on.
+ *
+ * The point of the fake is the same as `createFakeIdGenerator`'s: the
+ * randomness is what a test has to control, so `issue` counts rather than
+ * draws. The hash is a prefix rather than SHA-256 so that a failure message
+ * says which token it was — the real adapter's own test covers the digest.
+ */
+export function createFakeTokenService(): TokenService {
+  let issued = 0
+  return {
+    issue(): string {
+      issued += 1
+      return `token-${issued}`
+    },
+    hash(token: string): string {
+      return `sha256:${token}`
+    },
+    matches(left: string, right: string): boolean {
+      return left === right
     },
   }
 }

@@ -103,6 +103,22 @@ export {
   buildUnitChain,
 } from './permissions/scope-chain.ts'
 
+export type {
+  ShareLink,
+  ShareLinkRole,
+  ShareLinkScope,
+  ShareLinkState,
+} from './permissions/share-link.ts'
+export {
+  SHARE_LINK_ROLES,
+  SHARE_LINK_SCOPES,
+  isShareLinkRole,
+  isShareLinkScope,
+  shareLinkCovers,
+  shareLinkGrants,
+  shareLinkState,
+} from './permissions/share-link.ts'
+
 export type { RequestIdentity } from './permissions/identities.ts'
 export { principalIdentities } from './permissions/identities.ts'
 

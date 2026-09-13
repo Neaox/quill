@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { documentId, revisionId, userId, workspaceId } from '@quill/domain'
+import { documentId, revisionId, shareLinkId, userId, workspaceId } from '@quill/domain'
 
 import { createInMemoryUnitOfWork } from './in-memory-repositories.ts'
 import { aShortId } from './fakes.ts'
@@ -629,6 +629,90 @@ describe('createInMemoryUnitOfWork: grants', () => {
   })
 })
 
+describe('createInMemoryUnitOfWork: share links', () => {
+  const LINK_1 = shareLinkId('00000000-0000-4000-8000-000000000301')
+  const LINK_2 = shareLinkId('00000000-0000-4000-8000-000000000302')
+  const NOPE_LINK = shareLinkId('00000000-0000-4000-8000-0000000003ff')
+  const LATER = new Date(NOW.getTime() + 60_000)
+
+  async function seed(): Promise<ReturnType<typeof createInMemoryUnitOfWork>> {
+    const uow = createInMemoryUnitOfWork()
+    await uow.repos.shareLinks.create({
+      id: LINK_1,
+      documentId: DOC_1,
+      tokenHash: 'hash-1',
+      scope: 'document',
+      role: 'viewer',
+      expiresAt: null,
+      createdBy: USER_1,
+      now: NOW,
+    })
+    await uow.repos.shareLinks.create({
+      id: LINK_2,
+      documentId: DOC_1,
+      tokenHash: 'hash-2',
+      scope: 'subtree',
+      role: 'viewer',
+      expiresAt: LATER,
+      createdBy: USER_1,
+      now: LATER,
+    })
+    return uow
+  }
+
+  it('finds a link by id and by token hash, and misses report null', async () => {
+    const uow = await seed()
+    expect((await uow.repos.shareLinks.findById(LINK_1))?.tokenHash).toBe('hash-1')
+    expect(await uow.repos.shareLinks.findById(NOPE_LINK)).toBeNull()
+    expect((await uow.repos.shareLinks.findByTokenHash('hash-2'))?.id).toBe(LINK_2)
+    expect(await uow.repos.shareLinks.findByTokenHash('hash-none')).toBeNull()
+  })
+
+  it('lists a document links newest first, and nothing for another document', async () => {
+    const uow = await seed()
+    expect((await uow.repos.shareLinks.listForDocument(DOC_1)).map((row) => row.id)).toEqual([
+      LINK_2,
+      LINK_1,
+    ])
+    expect(await uow.repos.shareLinks.listForDocument(NOPE_DOC)).toEqual([])
+  })
+
+  it('breaks a tie on the id, descending, exactly as the SQL does', async () => {
+    const uow = createInMemoryUnitOfWork()
+    for (const id of [LINK_1, LINK_2]) {
+      await uow.repos.shareLinks.create({
+        id,
+        documentId: DOC_1,
+        tokenHash: `hash-${id}`,
+        scope: 'document',
+        role: 'viewer',
+        expiresAt: null,
+        createdBy: USER_1,
+        now: NOW,
+      })
+    }
+    expect((await uow.repos.shareLinks.listForDocument(DOC_1)).map((row) => row.id)).toEqual([
+      LINK_2,
+      LINK_1,
+    ])
+  })
+
+  it('revokes once and keeps the instant, and reports null for a link that is not there', async () => {
+    const uow = await seed()
+    expect((await uow.repos.shareLinks.revoke(LINK_1, NOW))?.revokedAt).toEqual(NOW)
+    expect((await uow.repos.shareLinks.revoke(LINK_1, LATER))?.revokedAt).toEqual(NOW)
+    expect(await uow.repos.shareLinks.revoke(NOPE_LINK, NOW)).toBeNull()
+  })
+
+  it('records a use, and marking one that is not there changes nothing', async () => {
+    const uow = await seed()
+    expect((await uow.repos.shareLinks.findById(LINK_1))?.lastUsedAt).toBeNull()
+    await uow.repos.shareLinks.markUsed(LINK_1, LATER)
+    expect((await uow.repos.shareLinks.findById(LINK_1))?.lastUsedAt).toEqual(LATER)
+    await expect(uow.repos.shareLinks.markUsed(NOPE_LINK, LATER)).resolves.toBeUndefined()
+  })
+})
+
 describe('createInMemoryUnitOfWork: outbox, audit, and run', () => {
   it('records outbox writes and accepts audit writes', async () => {
     const uow = createInMemoryUnitOfWork()
@@ -647,6 +731,17 @@ describe('createInMemoryUnitOfWork: outbox, audit, and run', () => {
         now: NOW,
       }),
     ).resolves.toBeUndefined()
+    expect(uow.auditEvents).toEqual([
+      {
+        id: 'audit-1',
+        type: 'GrantChanged',
+        actorUserId: null,
+        targetType: 'workspace',
+        targetId: 'ws-1',
+        metadata: {},
+        createdAt: NOW,
+      },
+    ])
   })
 
   it('runs a callback against the same repository bundle', async () => {
@@ -746,6 +841,10 @@ describe('createInMemoryUnitOfWork: documents by id and by ancestry', () => {
     expect((await uow.repos.documents.listByIds([DOC_1, NOPE_DOC])).map((row) => row.id)).toEqual([
       DOC_1,
     ])
+    expect(
+      (await uow.repos.documents.listByCollection('collection-1')).map((row) => row.id),
+    ).toEqual([DOC_1, NO_LOCK_DOC])
+    expect(await uow.repos.documents.listByCollection('collection-none')).toEqual([])
     expect((await uow.repos.documents.listAncestors(NO_LOCK_DOC)).map((row) => row.id)).toEqual([
       NO_LOCK_DOC,
       DOC_1,

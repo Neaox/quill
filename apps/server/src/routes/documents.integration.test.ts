@@ -752,6 +752,45 @@ describe('moving a document', () => {
     expect(lifted.json().parentId).toBeNull()
   })
 
+  /**
+   * A move between collections that names no parent lands at the top of the
+   * destination. Keeping the old parent would put the document's parent in
+   * another collection, and a document whose parent is outside its own
+   * collection has no scope chain at all — so every request for it, this one
+   * included, would answer `500` from then on.
+   */
+  it('lifts a moved document to the top of its destination, and it stays readable', async () => {
+    const second = await harness.app.inject({
+      method: 'POST',
+      url: `/api/workspaces/${tenancy.workspaceId}/collections`,
+      cookies: admin,
+      payload: { name: `Destination ${Date.now()}` },
+    })
+    expect(second.statusCode).toBe(201)
+    const destination = second.json().id as string
+
+    const parent = await createDocument('A parent that stays put')
+    const child = await createDocument('A child that moves', { parentId: parent })
+
+    const moved = await harness.app.inject({
+      method: 'PATCH',
+      url: `/api/documents/${child}`,
+      cookies: admin,
+      payload: { collectionId: destination },
+    })
+    expect(moved.statusCode).toBe(200)
+    expect(moved.json()).toMatchObject({ collectionId: destination, parentId: null })
+
+    // The proof that the chain is intact: reading it still works, rather
+    // than failing as a tenancy tree that contradicts itself.
+    const read = await harness.app.inject({
+      method: 'GET',
+      url: `/api/documents/${child}/envelope`,
+      cookies: admin,
+    })
+    expect(read.statusCode).toBe(200)
+  })
+
   it('refuses a collection that does not exist at all', async () => {
     const id = await createDocument('Going nowhere')
     const response = await harness.app.inject({

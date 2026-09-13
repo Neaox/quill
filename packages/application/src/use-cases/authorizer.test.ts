@@ -7,7 +7,9 @@ import type { InMemoryUnitOfWork } from '../test-support/in-memory-repositories.
 import type { CreateGrantInput, GrantRow, PrincipalKind, ScopeKind } from '../ports/persistence.ts'
 import { createAuthorizer, toGrants } from './authorizer.ts'
 import type { AuthorizerRepositories } from './authorizer.ts'
-import { aShortId } from '../test-support/fakes.ts'
+import type { ShareLinkDependencies } from './share-links.ts'
+import { aShortId, createFakeClock, createFakeIdGenerator } from '../test-support/fakes.ts'
+import { createFakeTokenService } from '../test-support/fakes.ts'
 
 const NOW = new Date('2026-01-01T00:00:00.000Z')
 
@@ -25,6 +27,44 @@ const SHARE_LINK = shareLinkId('00000000-0000-4000-8000-000000000301')
 
 let uow: InMemoryUnitOfWork
 let grantCounter = 0
+let shareLinks: ShareLinkDependencies
+let linksAllowed = true
+
+/**
+ * Everything resolving a presented token needs. The fake token service hashes
+ * `x` to `sha256:x`, so a test can plant a link whose token it knows.
+ */
+function shareLinkDependencies(): ShareLinkDependencies {
+  return {
+    uow,
+    clock: createFakeClock(NOW),
+    ids: createFakeIdGenerator('1111'),
+    tokens: createFakeTokenService(),
+    shareLinkPolicy: { allowed: () => linksAllowed },
+  }
+}
+
+async function plantLink(
+  token: string,
+  overrides: {
+    readonly documentId?: typeof PARENT
+    readonly scope?: 'document' | 'subtree'
+    readonly expiresAt?: Date | null
+    readonly revokedAt?: Date | null
+  } = {},
+): Promise<void> {
+  const link = await uow.repos.shareLinks.create({
+    id: SHARE_LINK,
+    documentId: overrides.documentId ?? PARENT,
+    tokenHash: `sha256:${token}`,
+    scope: overrides.scope ?? 'document',
+    role: 'viewer',
+    expiresAt: overrides.expiresAt ?? null,
+    createdBy: EDITOR,
+    now: NOW,
+  })
+  if (overrides.revokedAt != null) await uow.repos.shareLinks.revoke(link.id, overrides.revokedAt)
+}
 
 async function grant(
   input: Partial<CreateGrantInput> & { role: Role; scopeKind: ScopeKind; scopeId: string | null },
@@ -44,6 +84,8 @@ async function grant(
 beforeEach(async () => {
   uow = createInMemoryUnitOfWork()
   grantCounter = 0
+  linksAllowed = true
+  shareLinks = shareLinkDependencies()
   await uow.repos.units.create({
     id: 'acme',
     parentId: null,
@@ -115,8 +157,8 @@ beforeEach(async () => {
   })
 })
 
-const forUser = (id: typeof EDITOR | null, shareLink: typeof SHARE_LINK | null = null) =>
-  createAuthorizer(uow.repos, { userId: id, shareLinkId: shareLink })
+const forUser = (id: typeof EDITOR | null, shareLinkToken: string | null = null) =>
+  createAuthorizer(uow.repos, { userId: id, shareLinkToken }, shareLinks)
 
 /** The kind of failure an access result carries, or `null` when it succeeded. */
 function failureOf(access: { ok: boolean; error?: { kind: string } }): string | null {
@@ -198,22 +240,86 @@ describe('createAuthorizer: documents', () => {
     expect(access.ok && access.value.role).toBe('viewer')
   })
 
-  it('ignores a share link the reader claims, because nothing can check it yet', async () => {
+  it('grants what a share link carries, and nothing beyond its scope', async () => {
+    await plantLink('secret')
+    const anonymous = forUser(null, 'secret')
+
+    const target = await anonymous.document(PARENT)
+    expect(target.ok && target.value.role).toBe('viewer')
+    expect(target.ok && target.value.capabilities.edit).toBe(false)
+    const child = await anonymous.document(CHILD)
+    expect(child.ok && child.value.role).toBeNull()
+    // The link says nothing about the workspace it happens to live in.
+    const workspace = await anonymous.workspace(WORKSPACE)
+    expect(workspace.ok && workspace.value.role).toBeNull()
+  })
+
+  it('reaches every document under the target when the link is a subtree', async () => {
+    await plantLink('secret', { scope: 'subtree' })
+    const reader = forUser(null, 'secret')
+    expect((await reader.document(PARENT)).ok).toBe(true)
+    const child = await reader.document(CHILD)
+    expect(child.ok && child.value.role).toBe('viewer')
+    const orphan = await reader.document(ORPHAN)
+    expect(failureOf(orphan)).toBe('document-without-collection')
+  })
+
+  it('grants nothing for a token no link has ever carried', async () => {
+    await plantLink('secret')
+    const access = await forUser(null, 'not-a-token').document(PARENT)
+    expect(access.ok && access.value.role).toBeNull()
+  })
+
+  it('refuses a link whose document has gone', async () => {
+    await plantLink('secret')
+    await uow.repos.documents.delete(PARENT)
+    expect(await forUser(null, 'secret').shareLink()).toBeNull()
+  })
+
+  it('refuses a link once it has expired', async () => {
+    await plantLink('secret', { expiresAt: NOW })
+    const access = await forUser(null, 'secret').document(PARENT)
+    expect(access.ok && access.value.role).toBeNull()
+  })
+
+  it('refuses a link once it has been revoked', async () => {
+    await plantLink('secret', { revokedAt: NOW })
+    const access = await forUser(null, 'secret').document(PARENT)
+    expect(access.ok && access.value.role).toBeNull()
+  })
+
+  it('refuses every link when the organisation does not allow them', async () => {
+    await plantLink('secret')
+    linksAllowed = false
+    const access = await forUser(null, 'secret').document(PARENT)
+    expect(access.ok && access.value.role).toBeNull()
+  })
+
+  it('closes only the link when the link itself is denied (ADR-012 amendment)', async () => {
+    await plantLink('secret', { scope: 'subtree' })
+    await grant({ scopeKind: 'workspace', scopeId: WORKSPACE, role: 'editor' })
     await grant({
       principalKind: 'share_link',
       principalId: SHARE_LINK,
       scopeKind: 'document',
-      scopeId: PARENT,
+      scopeId: CHILD,
+      effect: 'deny',
       role: 'viewer',
     })
-    // TODO(M3): share links arrive with M3 and with the repository that can
-    // say whether one exists, has been revoked, or has expired. Until then an
-    // id on a request is an unvalidated claim and grants nothing — to an
-    // anonymous reader or to a signed-in one.
-    const anonymous = await forUser(null, SHARE_LINK).document(PARENT)
-    expect(anonymous.ok && anonymous.value.role).toBeNull()
-    const signedIn = await forUser(OUTSIDER, SHARE_LINK).document(PARENT)
-    expect(signedIn.ok && signedIn.value.role).toBeNull()
+
+    const throughTheLink = await forUser(null, 'secret').document(CHILD)
+    expect(throughTheLink.ok && throughTheLink.value.role).toBeNull()
+    // The member who writes the document still reaches it, through the door
+    // that is theirs: denying a channel is not denying a person.
+    const member = await forUser(EDITOR, 'secret').document(CHILD)
+    expect(member.ok && member.value.role).toBe('editor')
+  })
+
+  it('reports the link a request presented, and null when it presented none or a bad one', async () => {
+    await plantLink('secret')
+    expect((await forUser(null, 'secret').shareLink())?.link.id).toBe(SHARE_LINK)
+    expect(await forUser(null).shareLink()).toBeNull()
+    expect(await forUser(null, 'wrong').shareLink()).toBeNull()
   })
 
   it('grants nothing when no grant on the chain matches', async () => {
@@ -303,7 +409,7 @@ describe('createAuthorizer: documents', () => {
   it('loads a document, its chain, and its grants once however many times a request asks', async () => {
     await grant({ scopeKind: 'workspace', scopeId: WORKSPACE, role: 'viewer' })
     const { calls, repos } = counting()
-    const authorizer = createAuthorizer(repos, { userId: EDITOR, shareLinkId: null })
+    const authorizer = createAuthorizer(repos, { userId: EDITOR, shareLinkToken: null }, shareLinks)
 
     await authorizer.document(PARENT)
     await authorizer.document(PARENT)
@@ -328,7 +434,7 @@ describe('createAuthorizer: documents', () => {
 
   it('shares one lookup between checks that start together', async () => {
     const { calls, repos } = counting()
-    const authorizer = createAuthorizer(repos, { userId: EDITOR, shareLinkId: null })
+    const authorizer = createAuthorizer(repos, { userId: EDITOR, shareLinkToken: null }, shareLinks)
     await Promise.all([authorizer.document(PARENT), authorizer.document(PARENT)])
     expect(calls.filter((call) => call === 'documents.findById')).toHaveLength(1)
   })

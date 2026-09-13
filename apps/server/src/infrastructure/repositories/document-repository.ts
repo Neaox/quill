@@ -169,6 +169,11 @@ export function createDocumentRepository(db: DrizzleClient): DocumentRepository 
       return rows.map(toDocumentRow)
     },
 
+    async listByCollection(collectionId: CollectionId): Promise<readonly DocumentRow[]> {
+      const rows = await db.select().from(documents).where(eq(documents.collectionId, collectionId))
+      return rows.map(toDocumentRow)
+    },
+
     async listByIds(ids: readonly DocumentId[]): Promise<readonly DocumentRow[]> {
       if (ids.length === 0) return []
       const rows = await db

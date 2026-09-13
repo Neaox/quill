@@ -14,7 +14,7 @@ Status is taken from the plan's Delivery status table, which is authoritative.
 | Mark | Meaning |
 | --- | --- |
 | **Built** | Working through the interface today |
-| **In progress** | Partly built; named in the M2 remainder |
+| **In progress** | Partly built; named in its milestone's remainder in the plan |
 | **Planned** | Designed and decided, not started |
 
 ## Index
@@ -44,9 +44,9 @@ Status is taken from the plan's Delivery status table, which is authoritative.
 | 21 | Present to a room | Writer, reader | Signed in, internal | M2 | In progress | `present.spec.ts` |
 | 22 | Capture a note for later while presenting | Writer | Signed in, internal | M4 | Planned | `present.spec.ts` |
 | 23 | Compare two revisions and restore one | Writer, workspace lead | Signed in, internal | M2 | Built | `journey.spec.ts` |
-| 24 | Share a document outside the organisation | Writer, workspace lead | Signed in, outbound | M3 | Planned | `share.spec.ts` |
-| 25 | Open a share link with no account | External reader | Not signed in, external | M3 | Planned | `share.spec.ts` |
-| 26 | Revoke a share link | Workspace lead | Signed in, internal | M3 | Planned | `share.spec.ts` |
+| 24 | Share a document outside the organisation | Writer, workspace lead | Signed in, outbound | M3 | In progress | `share.spec.ts` |
+| 25 | Open a share link with no account | External reader | Not signed in, external | M3 | In progress | `share.spec.ts` |
+| 26 | Revoke a share link | Workspace lead | Signed in, internal | M3 | In progress | `share.spec.ts` |
 | 27 | Publish a collection to the public web | Workspace lead, unit admin | Signed in, outbound | M3 | Planned | `publish-public.spec.ts` |
 | 28 | Read the public site with no account | External reader | Not signed in, public | M3 | Planned | `publish-public.spec.ts` |
 | 29 | Index and unfurl the public site | Crawler | Not signed in, public | M3 | Planned | `crawler.spec.ts` |
@@ -771,7 +771,9 @@ Outbound: a person outside the organisation, reached by a link.
 - **Situation:** a supplier or a customer needs to read one document
 - **Job:** give one person access to one document, for a bounded time, without
   creating an account for them.
-- **Milestone:** M3 — **Planned**
+- **Milestone:** M3 — **In progress.** The API is built and proved
+  (`docs/architecture/api-contract-share-links.md`): scope, view role, expiry,
+  policy, the hashed token, and the audit row. The Share dialog is not.
 - **Surfaces:** signed-in app
 - **Journey:** `e2e/share.spec.ts` (planned)
 
@@ -800,7 +802,11 @@ Outbound: a person outside the organisation, reached by a link.
 - **Persona:** external reader
 - **Situation:** the link arrived by email; they have never heard of us
 - **Job:** read the document.
-- **Milestone:** M3 — **Planned**
+- **Milestone:** M3 — **In progress.** `GET /api/share/:token` answers a
+  stranger with the published body and nothing else, `noindex` and rate
+  limited, and refuses an expired, revoked or out-of-scope request
+  identically. The page that renders it is not built. A link's optional
+  password waits for M7, with the comment and edit roles.
 - **Surfaces:** share-link page
 - **Journey:** `e2e/share.spec.ts` (planned)
 
@@ -828,7 +834,10 @@ Outbound: a person outside the organisation, reached by a link.
 - **Persona:** workspace lead
 - **Situation:** the engagement ended, or the link went somewhere it should not
 - **Job:** close the link immediately.
-- **Milestone:** M3 — **Planned**
+- **Milestone:** M3 — **In progress.** `DELETE /api/share-links/:id` closes a
+  link on the next request and audits who closed it; `GET
+  /api/documents/:id/share-links` lists every link with its creator, scope,
+  expiry and last use. The settings panel that shows them is not built.
 - **Surfaces:** signed-in app
 - **Journey:** `e2e/share.spec.ts` (planned)
 

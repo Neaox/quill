@@ -4,6 +4,7 @@ import fastify, { type FastifyInstance } from 'fastify'
 import { AUDIT_EVENTS, createAuditRecorder, recordInBackground } from './application/audit.ts'
 import type { ServerConfig, TrustProxyConfig } from './config.ts'
 import type { AppDependencies } from './dependencies.ts'
+import { serialiseRequest } from './plugins/logging.ts'
 import { authRoutes } from './routes/auth.ts'
 import { collectionRoutes } from './routes/collections.ts'
 import { documentRoutes } from './routes/documents.ts'
@@ -11,6 +12,7 @@ import { draftRoutes } from './routes/drafts.ts'
 import { healthRoutes } from './routes/health.ts'
 import { lockRoutes } from './routes/locks.ts'
 import { meRoutes } from './routes/me.ts'
+import { shareLinkRoutes, SHARE_SCHEMAS } from './routes/share-links.ts'
 import { unitRoutes } from './routes/units.ts'
 import { workspaceRoutes } from './routes/workspaces.ts'
 import { registerCsrfProtection } from './plugins/csrf.ts'
@@ -73,7 +75,16 @@ export function buildApp(options: AppOptions = {}): FastifyInstance {
   // believed `X-Forwarded-For` from an untrusted peer is an unlimited budget.
   const trustProxy = deps?.config.trustProxy ?? false
   const app = fastify({
-    logger: options.logLevel === 'silent' ? false : { level: options.logLevel ?? 'info' },
+    logger:
+      options.logLevel === 'silent'
+        ? false
+        : {
+            level: options.logLevel ?? 'info',
+            // A share link carries its token in the path, and Fastify logs
+            // every request's URL: the serialiser redacts it, so a live
+            // capability never reaches a log line (ADR-011, `plugins/logging.ts`).
+            serializers: { req: serialiseRequest },
+          },
     genReqId: createRequestIdGenerator({ trustProxy: trustProxy !== false }),
     trustProxy: toFastifyTrustProxy(trustProxy),
   })
@@ -96,7 +107,7 @@ export function buildApp(options: AppOptions = {}): FastifyInstance {
   app.register(healthRoutes)
 
   if (deps !== undefined) {
-    for (const schema of SHARED_SCHEMAS) app.addSchema(schema)
+    for (const schema of [...SHARED_SCHEMAS, ...SHARE_SCHEMAS]) app.addSchema(schema)
     app.register(fastifyCookie)
     registerCsrfProtection(app, {
       appOrigin: deps.config.appOrigin,
@@ -138,6 +149,7 @@ export function buildApp(options: AppOptions = {}): FastifyInstance {
     app.register(documentRoutes(deps))
     app.register(draftRoutes(deps))
     app.register(lockRoutes(deps))
+    app.register(shareLinkRoutes(deps))
   }
 
   return app

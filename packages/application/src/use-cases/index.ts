@@ -90,6 +90,32 @@ export {
 } from './collections.ts'
 
 export type {
+  CreateShareLinkCommand,
+  CreateShareLinkResult,
+  ListShareLinksCommand,
+  RecordShareLinkUseCommand,
+  ResolveShareLinkCommand,
+  ResolvedShareLink,
+  RevokeShareLinkCommand,
+  RevokeShareLinkResult,
+  ShareLinkDependencies,
+  ShareLinkPolicy,
+  ShareLinkRefusal,
+  SharedNavigationNode,
+} from './share-links.ts'
+export {
+  SHARE_LINK_AUDIT_EVENTS,
+  createShareLink,
+  findShareLink,
+  listShareLinks,
+  recordShareLinkUse,
+  resolveShareLink,
+  revokeShareLink,
+  shareLinkNavigation,
+  toShareLink,
+} from './share-links.ts'
+
+export type {
   CreateGrantCommand,
   CreateGrantDependencies,
   CreateGrantResult,

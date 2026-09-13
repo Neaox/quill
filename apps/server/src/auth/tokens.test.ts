@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { generateToken, hashToken } from './tokens.ts'
+import { createTokenService, generateToken, hashToken, tokenHashesMatch } from './tokens.ts'
 
 describe('tokens', () => {
   it('generates distinct, URL-safe tokens', () => {
@@ -22,6 +22,29 @@ describe('tokens', () => {
 
   it('never stores the raw token as its own hash', () => {
     const token = generateToken()
-    expect(hashToken(token)).not.toBe(token)
+    const hash = hashToken(token)
+    expect(hash).not.toBe(token)
+    // A database leak yields the digest and nothing replayable: the token is
+    // nowhere inside it (ADR-011).
+    expect(hash).not.toContain(token)
+    expect(hash).toMatch(/^[0-9a-f]{64}$/)
+  })
+
+  it('compares digests for equality, and refuses ones of different lengths', () => {
+    const hash = hashToken(generateToken())
+    expect(tokenHashesMatch(hash, hash)).toBe(true)
+    expect(tokenHashesMatch(hash, hashToken(generateToken()))).toBe(false)
+    expect(tokenHashesMatch(hash, `${hash}0`)).toBe(false)
+  })
+})
+
+describe('createTokenService', () => {
+  it('is the same three functions behind the port', () => {
+    const tokens = createTokenService()
+    const token = tokens.issue()
+    expect(token).toMatch(/^[A-Za-z0-9_-]+$/)
+    expect(tokens.hash(token)).toBe(hashToken(token))
+    expect(tokens.matches(tokens.hash(token), hashToken(token))).toBe(true)
+    expect(tokens.matches(tokens.hash(token), hashToken(tokens.issue()))).toBe(false)
   })
 })

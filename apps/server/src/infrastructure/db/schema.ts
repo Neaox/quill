@@ -432,20 +432,48 @@ export const documentLinks = pgTable(
   ],
 )
 
-export const shareLinks = pgTable('share_links', {
-  id: text('id').primaryKey(),
-  tokenHash: text('token_hash').notNull().unique(),
-  scopeKind: text('scope_kind').notNull(),
-  scopeId: text('scope_id').notNull(),
-  role: text('role').notNull(),
-  expiresAt: timestamp('expires_at', { withTimezone: true }),
-  passwordHash: text('password_hash'),
-  createdBy: text('created_by')
-    .notNull()
-    .references(() => users.id, { onDelete: 'cascade' }),
-  revokedAt: timestamp('revoked_at', { withTimezone: true }),
-  createdAt: timestamp('created_at', { withTimezone: true }).notNull(),
-})
+/**
+ * A token mapped to a grant (plan section 14; ADR-011).
+ *
+ * Only `token_hash` is ever stored, so a database read yields nothing a
+ * browser can replay, and it is unique because the hash is how a presented
+ * token is looked up. `scope` is `document` or `subtree` — what the link
+ * reaches below `document_id` — which is why the link is not simply a row in
+ * `grants`: a grant at a document is inherited by everything under it, and a
+ * document-scoped link must not be.
+ *
+ * `scope_kind`, `scope_id` and `password_hash` are the placeholder columns
+ * the first migration shipped before share links were built. They are no
+ * longer written or read; they go in the contract step after this release,
+ * exactly as `render_cache.stale` does (ADR-033). A link's optional password
+ * arrives with the comment and edit roles in M7 and will use a fresh column
+ * hashed by the current password scheme.
+ */
+export const shareLinks = pgTable(
+  'share_links',
+  {
+    id: text('id').primaryKey(),
+    tokenHash: text('token_hash').notNull().unique(),
+    documentId: text('document_id')
+      .notNull()
+      .references(() => documents.id, { onDelete: 'cascade' }),
+    scope: text('scope').notNull(),
+    role: text('role').notNull(),
+    expiresAt: timestamp('expires_at', { withTimezone: true }),
+    createdBy: text('created_by')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    revokedAt: timestamp('revoked_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull(),
+    /** Stamped on every use, so "when was this last followed" costs no audit scan. */
+    lastUsedAt: timestamp('last_used_at', { withTimezone: true }),
+    scopeKind: text('scope_kind'),
+    scopeId: text('scope_id'),
+    passwordHash: text('password_hash'),
+  },
+  // Listing the links on a document is what the share dialog opens with.
+  (table) => [index('share_links_document_idx').on(table.documentId)],
+)
 
 export const commentThreads = pgTable('comment_threads', {
   id: text('id').primaryKey(),

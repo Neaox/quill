@@ -1,3 +1,4 @@
+import { createShareLinkPolicy } from './application/share-link-policy.ts'
 import { buildApp } from './app.ts'
 import {
   createDisabledBreachedPasswordChecker,
@@ -9,6 +10,7 @@ import { createDevMailer } from './auth/dev-mailer.ts'
 import type { Mailer } from './auth/mailer.ts'
 import { createPasswordHasher } from './auth/password.ts'
 import { createRateLimiter } from './auth/rate-limit.ts'
+import { createTokenService } from './auth/tokens.ts'
 import { createSmtpMailer } from './auth/smtp-mailer.ts'
 import { loadConfig } from './config.ts'
 import { createContentStore } from './infrastructure/content-store.ts'
@@ -33,6 +35,7 @@ const config = loadConfig()
 const clock = createSystemClock()
 const ids = createUuidGenerator()
 const hasher = createHasher()
+const tokens = createTokenService()
 
 const database = createDatabase({ connectionString: config.databaseUrl })
 await runMigrations(database.pool)
@@ -70,6 +73,8 @@ const deps = {
   clock,
   ids,
   hasher,
+  tokens,
+  shareLinkPolicy: createShareLinkPolicy(config),
   mailer,
   breachedPasswords,
   rateLimiter,

@@ -6,6 +6,7 @@ import { buildApp } from '../app.ts'
 import { createContentStore } from '../infrastructure/content-store.ts'
 import { createHasher } from '../infrastructure/hasher.ts'
 import { createDocumentFormat } from '../infrastructure/markdown/document-format.ts'
+import { createTokenService } from '../auth/tokens.ts'
 import { loadConfig } from '../config.ts'
 import type { AppDependencies } from '../dependencies.ts'
 import { createTestDatabase, type TestDatabase } from '../infrastructure/db/test-database.ts'
@@ -52,6 +53,8 @@ beforeAll(async () => {
     clock: createFakeClock(NOW),
     ids: createFakeIdGenerator(),
     hasher: createHasher(),
+    tokens: createTokenService(),
+    shareLinkPolicy: { allowed: () => true },
     contentStore: createContentStore({ driver: 'memory' }, clock),
     format: createDocumentFormat(),
     mailer: createRecordingMailer(),

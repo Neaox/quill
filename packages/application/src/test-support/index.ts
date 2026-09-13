@@ -10,4 +10,10 @@ export { createFakeContentStore } from './fake-content-store.ts'
 export type { FakeDocumentFormatOptions } from './fake-document-format.ts'
 export { createFakeDocumentFormat, serialise } from './fake-document-format.ts'
 export type { FakeClock } from './fakes.ts'
-export { aShortId, createFakeClock, createFakeHasher, createFakeIdGenerator } from './fakes.ts'
+export {
+  aShortId,
+  createFakeClock,
+  createFakeHasher,
+  createFakeIdGenerator,
+  createFakeTokenService,
+} from './fakes.ts'

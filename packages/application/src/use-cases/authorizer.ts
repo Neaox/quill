@@ -11,6 +11,7 @@ import {
   principalIdentities,
   PUBLIC_PRINCIPAL,
   resolvePermission,
+  shareLinkGrants,
   shareLinkPrincipal,
   unitScope,
   userPrincipal,
@@ -35,6 +36,8 @@ import type {
   WorkspaceId,
 } from '@quill/domain'
 
+import type { ResolvedShareLink, ShareLinkDependencies } from './share-links.ts'
+import { resolveShareLink, toShareLink } from './share-links.ts'
 import type {
   CollectionId,
   CollectionRepository,
@@ -44,9 +47,11 @@ import type {
   GrantRepository,
   GrantRow,
   GroupRepository,
+  GroupRow,
   ScopeSelector,
   UnitRepository,
   UserRepository,
+  UserRow,
   WorkspaceRepository,
   WorkspaceRow,
 } from '../ports/persistence.ts'
@@ -75,10 +80,17 @@ import {
  * document cost one query between them rather than one each.
  */
 
-/** Who is asking. A request with no user is the public principal, plus a share link if it followed one. */
+/**
+ * Who is asking.
+ *
+ * A request with no user is the public principal. A request that arrived
+ * through a share link also presents that link's *token* — the capability
+ * itself, never an id — because an id in a request is a claim nobody has
+ * checked, and checking it is this module's job (ADR-012).
+ */
 export interface RequestPrincipal {
   readonly userId: UserId | null
-  readonly shareLinkId: ShareLinkId | null
+  readonly shareLinkToken: string | null
 }
 
 export interface Access {
@@ -126,6 +138,17 @@ export interface Authorizer {
   collection(collectionId: CollectionId): Promise<Result<CollectionAccess, AccessFailure>>
   /** Every principal this request holds, for filtering a list in one pass. */
   identities(): Promise<readonly Principal[]>
+  /**
+   * The share link this request presented, once it has been found and checked
+   * against the clock, against revocation, and against policy — or null for
+   * every reason it might not have been, which a caller answers identically
+   * (ADR-011).
+   *
+   * It is here rather than beside the routes because this is where a
+   * presented token is already resolved, and resolving it twice would be a
+   * second lookup and a second chance for the two answers to differ.
+   */
+  shareLink(): Promise<ResolvedShareLink | null>
 }
 
 export interface AuthorizerRepositories {
@@ -147,12 +170,22 @@ const OWNER_ACCESS: Access = {
 /** The identity of one request, resolved once and reused for every check it makes. */
 interface ResolvedIdentity {
   readonly identity: RequestIdentity
+  /** The valid link behind `identity.shareLinkId`, for the scope it carries. */
+  readonly shareLink: ResolvedShareLink | null
   readonly isInstanceAdmin: boolean
 }
 
+/**
+ * @param shareLinks what resolving a presented share-link token needs: the
+ * clock it is checked against, the token service that hashes it, and the
+ * policy that may forbid links altogether. Required rather than optional, so
+ * that no composition root can quietly build an authorizer which ignores the
+ * link a reader followed.
+ */
 export function createAuthorizer(
   repos: AuthorizerRepositories,
   principal: RequestPrincipal,
+  shareLinks: ShareLinkDependencies,
 ): Authorizer {
   let resolved: Promise<ResolvedIdentity> | null = null
   const chains = new Map<string, ScopeChain>()
@@ -162,7 +195,7 @@ export function createAuthorizer(
   const grantsByChain = new Map<string, Promise<readonly GrantRow[]>>()
 
   function requestIdentity(): Promise<ResolvedIdentity> {
-    resolved ??= loadIdentity(repos, principal)
+    resolved ??= loadIdentity(repos, principal, shareLinks)
     return resolved
   }
 
@@ -177,7 +210,16 @@ export function createAuthorizer(
     const permission = resolvePermission({
       chain,
       identities: principalIdentities(who.identity),
-      grants: toGrants(grants),
+      // A share link's allow is synthesised from the link rather than stored,
+      // because the grants table cannot tell its two scopes apart: a stored
+      // grant at a document is inherited by everything beneath it, which is
+      // what `subtree` means and exactly what `document` must not do. Stored
+      // grants still have the last word — a *deny* written against the link
+      // closes that channel, and only that channel (ADR-012's amendment).
+      grants: [
+        ...toGrants(grants),
+        ...(who.shareLink === null ? [] : shareLinkGrants(toShareLink(who.shareLink.link), chain)),
+      ],
     })
     return {
       role: permission.role,
@@ -255,6 +297,10 @@ export function createAuthorizer(
     async identities() {
       return principalIdentities((await requestIdentity()).identity)
     },
+
+    async shareLink() {
+      return (await requestIdentity()).shareLink
+    },
   }
 }
 
@@ -280,38 +326,67 @@ function chainKey(selectors: readonly ScopeSelector[]): string {
 async function loadIdentity(
   repos: AuthorizerRepositories,
   principal: RequestPrincipal,
+  shareLinks: ShareLinkDependencies,
 ): Promise<ResolvedIdentity> {
-  // TODO(M3): share links arrive with M3 and bring a `ShareLinkRepository`
-  // with them. Until a presented link can be looked up — does it exist, has it
-  // been revoked, has it expired, does its scope cover what is being asked —
-  // an id from the request is an unvalidated claim, and honouring it would
-  // hand a role to anybody who can spell one. So it is dropped here rather
-  // than carried into the identity, which narrows access and never widens it.
-  const anonymous: ResolvedIdentity = {
-    identity: { isAnonymous: true, shareLinkId: null },
-    isInstanceAdmin: false,
-  }
-  if (principal.userId === null) return anonymous
-
-  const [row, groups] = await Promise.all([
-    repos.users.findById(principal.userId),
-    repos.groups.listForUser(principal.userId),
+  const [shareLink, account] = await Promise.all([
+    loadShareLink(shareLinks, principal.shareLinkToken),
+    loadAccount(repos, principal.userId),
   ])
-  // A session that outlived its user falls back to the anonymous identity,
-  // which narrows access rather than widening it: the safe direction.
-  if (row === null) return anonymous
-  const groupsById = new Map(groups.map((group) => [group.id as GroupId, toGroupEntity(group)]))
+  const shareLinkId = shareLink === null ? null : (shareLink.link.id as ShareLinkId)
+
+  // A request with no user, and one whose session outlived its user, both
+  // still hold the public principal and whatever link they followed. Falling
+  // back to the anonymous identity narrows access rather than widening it:
+  // the safe direction.
+  if (account === null) {
+    return { identity: { isAnonymous: true, shareLinkId }, shareLink, isInstanceAdmin: false }
+  }
+
+  const groupsById = new Map(
+    account.groups.map((group) => [group.id as GroupId, toGroupEntity(group)]),
+  )
   return {
     identity: {
       isAnonymous: false,
-      user: { id: row.id, name: row.displayName, email: row.email },
+      user: { id: account.row.id, name: account.row.displayName, email: account.row.email },
       groupIds: groupsById.keys(),
       groupsById,
-      // See the note above: unvalidated until M3, so never honoured.
-      shareLinkId: null,
+      shareLinkId,
     },
-    isInstanceAdmin: row.isInstanceAdmin,
+    shareLink,
+    isInstanceAdmin: account.row.isInstanceAdmin,
   }
+}
+
+/**
+ * The link a presented token names, or null.
+ *
+ * Every reason a token grants nothing — no such link, expired, revoked, or an
+ * organisation that does not allow links at all — collapses to null here.
+ * `resolveShareLink` tells them apart, which is what the audit log and an
+ * administrator's list read; an identity has no use for the difference, and a
+ * reader is answered identically for all four (ADR-011: no enumeration).
+ */
+async function loadShareLink(
+  shareLinks: ShareLinkDependencies,
+  token: string | null,
+): Promise<ResolvedShareLink | null> {
+  if (token === null) return null
+  const resolved = await resolveShareLink(shareLinks, { token })
+  return resolved.ok ? resolved.value : null
+}
+
+/** The signed-in user and the groups they are in, or null when there is no session. */
+async function loadAccount(
+  repos: AuthorizerRepositories,
+  userId: UserId | null,
+): Promise<{ readonly row: UserRow; readonly groups: readonly GroupRow[] } | null> {
+  if (userId === null) return null
+  const [row, groups] = await Promise.all([
+    repos.users.findById(userId),
+    repos.groups.listForUser(userId),
+  ])
+  return row === null ? null : { row, groups }
 }
 
 /** The document, its ancestors, its collection, its workspace, its units, the instance. */

@@ -6,6 +6,7 @@ import type { FastifyInstance } from 'fastify'
 
 import { buildApp } from '../app.ts'
 import { loadConfig } from '../config.ts'
+import type { RateLimitConfig } from '../config.ts'
 import type { AppDependencies } from '../dependencies.ts'
 import { createContentStore } from '../infrastructure/content-store.ts'
 import { createTestDatabase } from '../infrastructure/db/test-database.ts'
@@ -23,6 +24,7 @@ import { createSweepJob } from '../jobs/sweep-expired.ts'
 import { createPasswordHasher } from '../auth/password.ts'
 import { createRateLimiter } from '../auth/rate-limit.ts'
 import { generateSessionToken, hashSessionToken } from '../auth/session-token.ts'
+import { createTokenService } from '../auth/tokens.ts'
 import { injectAsBrowser } from './browser-client.ts'
 import { createFakeBreachedPasswordChecker, createRecordingMailer } from './fakes.ts'
 import type { FakeBreachedPasswordChecker, RecordingMailer } from './fakes.ts'
@@ -52,12 +54,27 @@ export interface ServerHarness {
   cookiesFor(userId: UserId): Promise<Record<string, string>>
   /** Runs the outbox consumers once, as the job runner would on its next tick. */
   drainOutbox(): Promise<void>
+  /**
+   * Turns the share-link policy on and off mid-test, which is what the
+   * settings store will do at runtime once it replaces `SHARE_LINKS`.
+   */
+  setShareLinksAllowed(allowed: boolean): void
   close(): Promise<void>
 }
 
 export const HARNESS_NOW = new Date('2026-01-01T00:00:00.000Z')
 
-export async function createServerHarness(): Promise<ServerHarness> {
+export interface HarnessOptions {
+  /**
+   * Overrides the deliberately enormous default budget, for a test that is
+   * *about* the rate limit rather than merely subject to it.
+   */
+  readonly rateLimit?: RateLimitConfig
+  /** `SHARE_LINKS=off`, for the tests that check the policy closes the door. */
+  readonly shareLinksAllowed?: boolean
+}
+
+export async function createServerHarness(options: HarnessOptions = {}): Promise<ServerHarness> {
   const database = await createTestDatabase()
   const clock = createFakeClock(HARNESS_NOW)
   const ids = createFakeIdGenerator()
@@ -67,7 +84,7 @@ export async function createServerHarness(): Promise<ServerHarness> {
   // incidentally signed out while doing it. The timeouts themselves are
   // tested against their own configuration in `plugins/session.test.ts`.
   const ONE_YEAR_MS = 365 * 24 * 60 * 60 * 1000
-  const config = loadConfig({
+  const loaded = loadConfig({
     CONTENT_STORE: 'memory',
     SESSION_TTL_MS: String(ONE_YEAR_MS),
     SESSION_IDLE_TTL_MS: String(ONE_YEAR_MS),
@@ -76,8 +93,11 @@ export async function createServerHarness(): Promise<ServerHarness> {
     // and `plugins/rate-limit.test.ts`, against their own configuration.
     AUTH_RATE_LIMIT_MAX: '1000',
   })
+  const config =
+    options.rateLimit === undefined ? loaded : { ...loaded, rateLimit: options.rateLimit }
   const breachedPasswords = createFakeBreachedPasswordChecker()
   const mailer = createRecordingMailer()
+  let shareLinksAllowed = options.shareLinksAllowed ?? true
   const deps: AppDependencies = {
     uow,
     contentStore: createContentStore({ driver: 'memory' }, clock),
@@ -85,6 +105,8 @@ export async function createServerHarness(): Promise<ServerHarness> {
     clock,
     ids,
     hasher: createHasher(),
+    tokens: createTokenService(),
+    shareLinkPolicy: { allowed: () => shareLinksAllowed },
     mailer,
     breachedPasswords,
     rateLimiter: createRateLimiter({ clock, config: config.rateLimit }),
@@ -133,6 +155,10 @@ export async function createServerHarness(): Promise<ServerHarness> {
         expiresAt: new Date(clock.now().getTime() + config.session.ttlMs),
       })
       return { [deps.config.session.cookieName]: token }
+    },
+
+    setShareLinksAllowed(allowed: boolean): void {
+      shareLinksAllowed = allowed
     },
 
     async drainOutbox(): Promise<void> {

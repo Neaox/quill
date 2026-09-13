@@ -34,6 +34,20 @@ export interface ServerConfig {
   readonly breachedPasswords: BreachedPasswordConfig
   readonly mailer: MailerConfig
   readonly contentStore: ContentStoreConfig
+  readonly shareLinks: ShareLinkConfig
+}
+
+/**
+ * Whether this organisation allows share links at all (plan section 14).
+ *
+ * TODO(M3): this belongs to the organisation's settings, where an
+ * administrator can change it — along with the maximum role a link may carry
+ * — without a restart. It is an environment variable until the settings store
+ * lands, so that the policy exists and is enforced from the first release
+ * rather than being retrofitted onto links people already hold.
+ */
+export interface ShareLinkConfig {
+  readonly enabled: boolean
 }
 
 /**
@@ -283,6 +297,15 @@ function loadTrustProxyConfig(env: NodeJS.ProcessEnv): TrustProxyConfig {
   return addresses
 }
 
+/** `SHARE_LINKS=on|off`, defaulting to on. Anything else is a typo worth refusing. */
+function loadShareLinkConfig(env: NodeJS.ProcessEnv): ShareLinkConfig {
+  const value = env['SHARE_LINKS'] ?? 'on'
+  if (value !== 'on' && value !== 'off') {
+    throw new Error(`SHARE_LINKS must be "on" or "off", received "${value}"`)
+  }
+  return { enabled: value === 'on' }
+}
+
 function loadMailerConfig(env: NodeJS.ProcessEnv): MailerConfig {
   const driver = env['MAIL_DRIVER'] ?? 'dev'
   if (driver === 'dev') {
@@ -368,5 +391,6 @@ export function loadConfig(
     },
     mailer,
     contentStore: loadContentStoreConfig(env),
+    shareLinks: loadShareLinkConfig(env),
   }
 }

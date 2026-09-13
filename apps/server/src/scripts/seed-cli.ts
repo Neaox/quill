@@ -1,7 +1,9 @@
+import { createShareLinkPolicy } from '../application/share-link-policy.ts'
 import { createDisabledBreachedPasswordChecker } from '../auth/breached-password.ts'
 import { createDevMailer } from '../auth/dev-mailer.ts'
 import { createPasswordHasher } from '../auth/password.ts'
 import { createRateLimiter } from '../auth/rate-limit.ts'
+import { createTokenService } from '../auth/tokens.ts'
 import { loadConfig } from '../config.ts'
 import { createContentStore } from '../infrastructure/content-store.ts'
 import { createDatabase } from '../infrastructure/db/connection.ts'
@@ -50,6 +52,8 @@ try {
     clock,
     ids,
     hasher: createHasher(),
+    tokens: createTokenService(),
+    shareLinkPolicy: createShareLinkPolicy(config),
     mailer: createDevMailer((message) => process.stdout.write(`${message}\n`)),
     // Seeding runs no HTTP and asks nothing of a corpus; both ports exist
     // because `AppDependencies` is one shape, not because seeding uses them.

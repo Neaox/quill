@@ -163,6 +163,30 @@ describe('DocumentRepository', () => {
     expect(list.map((doc) => doc.id)).toEqual([DOC])
   })
 
+  /**
+   * A collection is the boundary a document subtree stops at (ADR-012), so
+   * anything walking a subtree asks for exactly one collection rather than
+   * for a workspace it then throws most of away.
+   */
+  it('lists documents by collection, and nothing for a collection with none', async () => {
+    await database.pool.query(
+      "INSERT INTO collections (id, workspace_id, name, slug, created_at) VALUES ('architecture', $1, 'Architecture', 'architecture', now()), ('runbooks', $1, 'Runbooks', 'runbooks', now())",
+      [WORKSPACE],
+    )
+    await documents.create({ ...baseInput(now), collectionId: 'architecture' })
+    await documents.create({
+      ...baseInput(now),
+      id: documentId('00000000-0000-4000-8000-0000000000d2'),
+      shortId: aShortId(2),
+      collectionId: 'runbooks',
+      slug: 'elsewhere',
+      path: '/elsewhere',
+    })
+
+    expect((await documents.listByCollection('architecture')).map((doc) => doc.id)).toEqual([DOC])
+    expect(await documents.listByCollection('empty')).toEqual([])
+  })
+
   it('updates a partial patch and bumps updatedAt', async () => {
     await documents.create(baseInput(now))
     const later = new Date('2026-01-02T00:00:00.000Z')
