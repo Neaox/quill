@@ -48,7 +48,10 @@ jobs:
           # Two-dot: a shallow checkout has no merge base for the three-dot form,
           # and the PR checkout's HEAD is the merge commit whose parent is the base.
           changed=$(git diff --name-only "$BASE_SHA" HEAD)
-          if echo "$changed" | grep -qE '^(apps|packages)/' \
+          # Test files are exempt, as .changelog/README.md says: a test-only
+          # change under apps/ or packages/ changes nothing anyone ships.
+          shipped=$(echo "$changed" | grep -vE '\.(test|spec)\.[cm]?[jt]sx?$' || true)
+          if echo "$shipped" | grep -qE '^(apps|packages)/' \
             && ! echo "$changed" | grep -qE '^\.changelog/[0-9]{8}-.*\.md$'; then
             echo "This PR changes apps/ or packages/ but adds no .changelog/ fragment." >&2
             echo "Add one (see .changelog/README.md), or split out the unrelated change." >&2

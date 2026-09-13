@@ -26,9 +26,17 @@ async function withClient<T>(database: string, work: (client: Client) => Promise
 }
 
 describe('resetDatabase', () => {
+  /*
+   * `DROP DATABASE` forces a checkpoint, so it waits on every dirty page the
+   * instance holds — a second on an idle Postgres, and close to three minutes
+   * on this one while parallel integration runs are creating and dropping
+   * schemas around it. The assertions above it are done by then; this hook
+   * only tidies up, so it gets the time rather than leaving a
+   * `reset_*_test` database behind on a busy machine.
+   */
   afterAll(async () => {
     await withClient('postgres', (client) => client.query(`DROP DATABASE IF EXISTS "${NAME}"`))
-  })
+  }, 300_000)
 
   it('creates a missing disposable database, then empties an existing one', async () => {
     const connectionString = connectionStringFor(NAME)
