@@ -1,7 +1,7 @@
 import { Pool } from 'pg'
 import { afterEach, describe, expect, it } from 'vitest'
 
-import { createTestDatabase } from './test-database.ts'
+import { createTestDatabase, readConnectionString } from './test-database.ts'
 
 const originalDatabaseUrl = process.env['DATABASE_URL']
 
@@ -52,4 +52,17 @@ describe('createTestDatabase', () => {
     process.env['DATABASE_URL'] = 'postgres://quill:quill@127.0.0.1:1/quill'
     await expect(createTestDatabase()).rejects.toThrow(/Could not reach Postgres/)
   }, 10_000)
+})
+
+describe('readConnectionString', () => {
+  it('uses DATABASE_URL when it is set', () => {
+    expect(readConnectionString({ DATABASE_URL: 'postgres://u:p@db:5432/x' })).toBe(
+      'postgres://u:p@db:5432/x',
+    )
+  })
+
+  it('falls back to the Compose default when it is unset or empty', () => {
+    expect(readConnectionString({})).toContain('@localhost:5432/')
+    expect(readConnectionString({ DATABASE_URL: '' })).toContain('@localhost:5432/')
+  })
 })

@@ -45,7 +45,9 @@ jobs:
         run: |
           pnpm changelog:check
           git fetch --depth=1 origin "$BASE_SHA"
-          changed=$(git diff --name-only "$BASE_SHA"...HEAD)
+          # Two-dot: a shallow checkout has no merge base for the three-dot form,
+          # and the PR checkout's HEAD is the merge commit whose parent is the base.
+          changed=$(git diff --name-only "$BASE_SHA" HEAD)
           if echo "$changed" | grep -qE '^(apps|packages)/' \
             && ! echo "$changed" | grep -qE '^\.changelog/[0-9]{8}-.*\.md$'; then
             echo "This PR changes apps/ or packages/ but adds no .changelog/ fragment." >&2
