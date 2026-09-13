@@ -118,6 +118,22 @@ export function workspaceLink(workspaceSlug: string): LinkTarget {
   return { to: '/w/$workspaceSlug', params: { workspaceSlug } }
 }
 
+/**
+ * The search results route, spelled the same way: a pattern, its one segment,
+ * and the query as a search param rather than a string anybody assembled
+ * (ADR-013 — the query is URL state, so it is linkable and shareable).
+ */
+export type SearchLinkTarget = {
+  readonly to: '/w/$workspaceSlug/search'
+  readonly params: { readonly workspaceSlug: string }
+  readonly search: { readonly q: string }
+}
+
+/** Where a workspace's full search results are, for a given query. */
+export function searchLink(workspaceSlug: string, query: string): SearchLinkTarget {
+  return { to: '/w/$workspaceSlug/search', params: { workspaceSlug }, search: { q: query } }
+}
+
 /** The search params a reading link may carry (`routes/.../$documentId/index.tsx`). */
 export interface DocumentLinkSearch {
   /** A revision to read instead of the head. */

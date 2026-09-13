@@ -1,10 +1,11 @@
-import { useState } from 'react'
+import { useState, type ReactNode } from 'react'
 
 import {
   Badge,
   Breadcrumb,
   Button,
   Callout,
+  CommandPalette,
   Dialog,
   DialogClose,
   Input,
@@ -258,5 +259,80 @@ export function NavigationSpecimens() {
         </Dialog>
       </Specimen>
     </>
+  )
+}
+
+/** The three groups the palette specimen offers, so the grouping is what is shown. */
+const PALETTE_GROUPS = [
+  {
+    id: 'current',
+    label: 'In this workspace',
+    options: [
+      {
+        id: 'failover',
+        label: 'Regional failover',
+        detail: <PaletteTrail>Engineering / Runbooks</PaletteTrail>,
+      },
+      {
+        id: 'auth',
+        label: 'Authentication architecture',
+        detail: <PaletteTrail>Engineering / Architecture</PaletteTrail>,
+      },
+    ],
+  },
+  {
+    id: 'platform',
+    label: 'Platform docs',
+    options: [
+      {
+        id: 'charter',
+        label: 'Platform team charter',
+        detail: <PaletteTrail>Platform docs / Docs</PaletteTrail>,
+      },
+    ],
+  },
+]
+
+function PaletteTrail({ children }: { readonly children: ReactNode }) {
+  return <span className="text-2xs text-muted">{children}</span>
+}
+
+/**
+ * The command palette: a field over a grouped list, driven entirely from the
+ * keyboard. The rows here are fixed, because what the specimen is for is the
+ * shape and the keys — arrows move the active option without moving focus,
+ * Enter chooses, Escape closes.
+ */
+export function CommandPaletteSpecimen() {
+  const [open, setOpen] = useState(false)
+  const [query, setQuery] = useState('')
+
+  return (
+    <Specimen
+      label="Command palette"
+      note="Arrows move the active row; focus never leaves the field"
+      bodyClassName="flex flex-wrap items-center gap-2.5"
+    >
+      <Button
+        variant="secondary"
+        onClick={() => {
+          setOpen(true)
+        }}
+      >
+        Open the palette
+      </Button>
+      <CommandPalette
+        open={open}
+        onOpenChange={setOpen}
+        title="Search documentation"
+        inputLabel="Search documentation"
+        placeholder="Search documentation"
+        value={query}
+        onValueChange={setQuery}
+        groups={PALETTE_GROUPS}
+        onSelect={specimenAction('This shows the palette; the working one is in the app shell.')}
+        footer={<p className="text-2xs text-muted">A specimen: nothing here opens a document.</p>}
+      />
+    </Specimen>
   )
 }

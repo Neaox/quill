@@ -411,6 +411,26 @@
   animation: dialog-in var(--duration-base) var(--ease-emphasised);
 }
 
+/*
+ * The command palette sits near the top of the viewport rather than at its
+ * centre, so it has its own resting transform and its own entrance: it drops
+ * the last few pixels into place instead of scaling up from the middle.
+ */
+.command-palette-panel {
+  transform: translateX(-50%);
+}
+
+.command-palette-panel[data-state='open'] {
+  animation: command-palette-in var(--duration-base) var(--ease-emphasised);
+}
+
+@keyframes command-palette-in {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(-0.5rem);
+  }
+}
+
 .tooltip-panel[data-state='delayed-open'],
 .tooltip-panel[data-state='instant-open'] {
   animation: tooltip-in var(--duration-instant) var(--ease-standard);

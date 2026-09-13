@@ -80,6 +80,11 @@ const ROUTES: readonly RouteConfig[] = [
     name: 'reading',
     entries: [
       'index.html',
+      // The authentication gate is a layout route with a component of its own
+      // (it hosts the search palette), so opening a document loads its chunk
+      // too, and a budget that left it out would under-report what a reader
+      // actually pays for.
+      routeComponent('_authenticated/route.tsx'),
       routeComponent('_authenticated/w/$workspaceSlug/route.tsx'),
       routeComponent('_authenticated/w/$workspaceSlug/d/$documentId/index.tsx'),
     ],
@@ -89,8 +94,19 @@ const ROUTES: readonly RouteConfig[] = [
     name: 'workspace home',
     entries: [
       'index.html',
+      routeComponent('_authenticated/route.tsx'),
       routeComponent('_authenticated/w/$workspaceSlug/route.tsx'),
       routeComponent('_authenticated/w/$workspaceSlug/index.tsx'),
+    ],
+    budgetBytes: undefined,
+  },
+  {
+    name: 'search results',
+    entries: [
+      'index.html',
+      routeComponent('_authenticated/route.tsx'),
+      routeComponent('_authenticated/w/$workspaceSlug/route.tsx'),
+      routeComponent('_authenticated/w/$workspaceSlug/search.tsx'),
     ],
     budgetBytes: undefined,
   },

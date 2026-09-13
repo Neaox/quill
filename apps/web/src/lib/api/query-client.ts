@@ -1,7 +1,6 @@
 import { MutationCache, QueryCache, QueryClient } from '@tanstack/react-query'
 
 import { ApiError } from './errors.ts'
-import { queryKeys } from './query-keys.ts'
 
 /**
  * `invalid_credentials` is `useSignIn` rejecting the password someone just
@@ -69,7 +68,23 @@ export function createQueryClient({ onUnauthorized }: QueryClientOptions = {}): 
   })
 }
 
-/** Removes everything that depends on who is signed in. Called on sign-out. */
+/**
+ * Empties the cache on sign-out.
+ *
+ * **Everything**, not just `me`. The `QueryClient` lives for the life of the
+ * page (`app/app.tsx`) and signing out is an in-page transition, so whatever
+ * the previous account read is still in memory when the next one signs in;
+ * with the default `staleTime` of zero a screen renders that cached answer
+ * first and refetches after, which is long enough to show one person another
+ * person's document titles. Every entry here is something the server decided
+ * that principal could see, so none of it outlives the session.
+ *
+ * Search is what makes this urgent rather than tidy: it is the one surface
+ * that deliberately spans every workspace the principal could read
+ * (quill-plan.md §15), so its entries are the broadest disclosure in the
+ * cache. Clearing the lot is also the idiomatic answer — a signed-out client
+ * has no data — and needs no list of keys to keep up to date.
+ */
 export function clearSessionState(queryClient: QueryClient): void {
-  queryClient.removeQueries({ queryKey: queryKeys.me })
+  queryClient.clear()
 }

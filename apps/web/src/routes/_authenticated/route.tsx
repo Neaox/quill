@@ -1,5 +1,6 @@
-import { createFileRoute, redirect } from '@tanstack/react-router'
+import { Outlet, createFileRoute, redirect } from '@tanstack/react-router'
 
+import { SearchProvider } from '../../features/search/search-provider.tsx'
 import { ApiError, meQueryOptions } from '../../lib/api/index.ts'
 
 /**
@@ -28,6 +29,25 @@ export const Route = createFileRoute('/_authenticated')({
       throw error
     }
   },
-  // No component: a layout route with none renders its `<Outlet />`, and this
-  // one adds no chrome — the shells are the workspace layout and the pages.
+  /**
+   * The one thing this layout renders around every signed-in page: the search
+   * palette's host.
+   *
+   * It is here, and not in the workspace shell, because Ctrl+K works anywhere
+   * somebody is signed in — the workspace, the home page, the organisation
+   * page — and this route is the only ancestor all three share. It adds no
+   * chrome of its own: the shells are still the workspace layout and
+   * `AppPage`, and the palette itself is a chunk fetched on demand
+   * (`features/search/search-provider.tsx`), so a reader who never searches
+   * pays for a context and a key listener.
+   */
+  component: AuthenticatedLayout,
 })
+
+function AuthenticatedLayout() {
+  return (
+    <SearchProvider>
+      <Outlet />
+    </SearchProvider>
+  )
+}
