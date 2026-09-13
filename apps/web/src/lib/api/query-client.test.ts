@@ -1,7 +1,8 @@
 import { afterEach, describe, expect, it } from 'vitest'
 
 import { ApiError } from './errors.ts'
-import { createQueryClient } from './query-client.ts'
+import { clearSessionState, createQueryClient } from './query-client.ts'
+import { queryKeys } from './query-keys.ts'
 
 /**
  * The task's "401 handling that redirects to sign-in and preserves the
@@ -114,5 +115,29 @@ describe('createQueryClient 401 handling', () => {
         },
       }),
     ).rejects.toBeInstanceOf(ApiError)
+  })
+})
+
+describe('clearSessionState', () => {
+  it('leaves nothing of the signed-out account behind, search results included', () => {
+    const queryClient = createQueryClient()
+    queryClient.setQueryData(queryKeys.me, { id: 'user-1' })
+    // The broadest thing in the cache: search deliberately spans every
+    // workspace the principal could read (quill-plan.md section 15), so a hit
+    // surviving sign-out would show the next account the previous one's
+    // document titles and snippets.
+    queryClient.setQueryData(queryKeys.search('ws-1', 'failover', null), {
+      query: 'failover',
+      current: [{ title: 'Regional failover' }],
+      elsewhere: [],
+    })
+    queryClient.setQueryData(queryKeys.workspaceTree('ws-1'), { collections: [] })
+
+    clearSessionState(queryClient)
+
+    expect(queryClient.getQueryData(queryKeys.me)).toBeUndefined()
+    expect(queryClient.getQueryData(queryKeys.search('ws-1', 'failover', null))).toBeUndefined()
+    expect(queryClient.getQueryData(queryKeys.workspaceTree('ws-1'))).toBeUndefined()
+    expect(queryClient.getQueryCache().getAll()).toEqual([])
   })
 })

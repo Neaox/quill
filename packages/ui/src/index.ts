@@ -58,6 +58,13 @@ export {
 export { Callout, type CalloutProps, type CalloutTone } from './components/callout.tsx'
 export { CodeBlock, codeBlockStyles, type CodeBlockProps } from './components/code-block.tsx'
 export {
+  CommandPalette,
+  commandPaletteStyles,
+  type CommandPaletteGroup,
+  type CommandPaletteOption,
+  type CommandPaletteProps,
+} from './components/command-palette.tsx'
+export {
   CommentsPanel,
   type CommentsPanelProps,
   type DocumentComment,

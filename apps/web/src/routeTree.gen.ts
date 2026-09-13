@@ -20,6 +20,7 @@ import { Route as VerifyEmailRouteImport } from './routes/verify-email'
 import { Route as AuthenticatedAdminOrganisationRouteImport } from './routes/_authenticated/admin/organisation'
 import { Route as AuthenticatedWWorkspaceSlugRouteRouteImport } from './routes/_authenticated/w/$workspaceSlug/route'
 import { Route as AuthenticatedWWorkspaceSlugIndexRouteImport } from './routes/_authenticated/w/$workspaceSlug/index'
+import { Route as AuthenticatedWWorkspaceSlugSearchRouteImport } from './routes/_authenticated/w/$workspaceSlug/search'
 import { Route as AuthenticatedWWorkspaceSlugDDocumentIdIndexRouteImport } from './routes/_authenticated/w/$workspaceSlug/d/$documentId/index'
 import { Route as AuthenticatedWWorkspaceSlugDDocumentIdEditRouteImport } from './routes/_authenticated/w/$workspaceSlug/d/$documentId/edit'
 import { Route as AuthenticatedWWorkspaceSlugDDocumentIdPresentRouteImport } from './routes/_authenticated/w/$workspaceSlug_/d/$documentId/present'
@@ -81,6 +82,12 @@ const AuthenticatedWWorkspaceSlugIndexRoute =
     path: '/',
     getParentRoute: () => AuthenticatedWWorkspaceSlugRouteRoute,
   } as any)
+const AuthenticatedWWorkspaceSlugSearchRoute =
+  AuthenticatedWWorkspaceSlugSearchRouteImport.update({
+    id: '/search',
+    path: '/search',
+    getParentRoute: () => AuthenticatedWWorkspaceSlugRouteRoute,
+  } as any)
 const AuthenticatedWWorkspaceSlugDDocumentIdIndexRoute =
   AuthenticatedWWorkspaceSlugDDocumentIdIndexRouteImport.update({
     id: '/d/$documentId/',
@@ -110,6 +117,7 @@ export interface FileRoutesByFullPath {
   '/verify-email': typeof VerifyEmailRoute
   '/w/$workspaceSlug': typeof AuthenticatedWWorkspaceSlugRouteRouteWithChildren
   '/admin/organisation': typeof AuthenticatedAdminOrganisationRoute
+  '/w/$workspaceSlug/search': typeof AuthenticatedWWorkspaceSlugSearchRoute
   '/w/$workspaceSlug/': typeof AuthenticatedWWorkspaceSlugIndexRoute
   '/w/$workspaceSlug/d/$documentId/edit': typeof AuthenticatedWWorkspaceSlugDDocumentIdEditRoute
   '/w/$workspaceSlug/d/$documentId/present': typeof AuthenticatedWWorkspaceSlugDDocumentIdPresentRoute
@@ -124,6 +132,7 @@ export interface FileRoutesByTo {
   '/sign-up': typeof SignUpRoute
   '/verify-email': typeof VerifyEmailRoute
   '/admin/organisation': typeof AuthenticatedAdminOrganisationRoute
+  '/w/$workspaceSlug/search': typeof AuthenticatedWWorkspaceSlugSearchRoute
   '/w/$workspaceSlug': typeof AuthenticatedWWorkspaceSlugIndexRoute
   '/w/$workspaceSlug/d/$documentId/edit': typeof AuthenticatedWWorkspaceSlugDDocumentIdEditRoute
   '/w/$workspaceSlug/d/$documentId/present': typeof AuthenticatedWWorkspaceSlugDDocumentIdPresentRoute
@@ -141,6 +150,7 @@ export interface FileRoutesById {
   '/verify-email': typeof VerifyEmailRoute
   '/_authenticated/w/$workspaceSlug': typeof AuthenticatedWWorkspaceSlugRouteRouteWithChildren
   '/_authenticated/admin/organisation': typeof AuthenticatedAdminOrganisationRoute
+  '/_authenticated/w/$workspaceSlug/search': typeof AuthenticatedWWorkspaceSlugSearchRoute
   '/_authenticated/w/$workspaceSlug/': typeof AuthenticatedWWorkspaceSlugIndexRoute
   '/_authenticated/w/$workspaceSlug/d/$documentId/edit': typeof AuthenticatedWWorkspaceSlugDDocumentIdEditRoute
   '/_authenticated/w/$workspaceSlug_/d/$documentId/present': typeof AuthenticatedWWorkspaceSlugDDocumentIdPresentRoute
@@ -158,6 +168,7 @@ export interface FileRouteTypes {
     | '/verify-email'
     | '/w/$workspaceSlug'
     | '/admin/organisation'
+    | '/w/$workspaceSlug/search'
     | '/w/$workspaceSlug/'
     | '/w/$workspaceSlug/d/$documentId/edit'
     | '/w/$workspaceSlug/d/$documentId/present'
@@ -172,6 +183,7 @@ export interface FileRouteTypes {
     | '/sign-up'
     | '/verify-email'
     | '/admin/organisation'
+    | '/w/$workspaceSlug/search'
     | '/w/$workspaceSlug'
     | '/w/$workspaceSlug/d/$documentId/edit'
     | '/w/$workspaceSlug/d/$documentId/present'
@@ -188,6 +200,7 @@ export interface FileRouteTypes {
     | '/verify-email'
     | '/_authenticated/w/$workspaceSlug'
     | '/_authenticated/admin/organisation'
+    | '/_authenticated/w/$workspaceSlug/search'
     | '/_authenticated/w/$workspaceSlug/'
     | '/_authenticated/w/$workspaceSlug/d/$documentId/edit'
     | '/_authenticated/w/$workspaceSlug_/d/$documentId/present'
@@ -284,6 +297,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedWWorkspaceSlugIndexRouteImport
       parentRoute: typeof AuthenticatedWWorkspaceSlugRouteRoute
     }
+    '/_authenticated/w/$workspaceSlug/search': {
+      id: '/_authenticated/w/$workspaceSlug/search'
+      path: '/search'
+      fullPath: '/w/$workspaceSlug/search'
+      preLoaderRoute: typeof AuthenticatedWWorkspaceSlugSearchRouteImport
+      parentRoute: typeof AuthenticatedWWorkspaceSlugRouteRoute
+    }
     '/_authenticated/w/$workspaceSlug/d/$documentId/': {
       id: '/_authenticated/w/$workspaceSlug/d/$documentId/'
       path: '/d/$documentId'
@@ -309,6 +329,7 @@ declare module '@tanstack/react-router' {
 }
 
 interface AuthenticatedWWorkspaceSlugRouteRouteChildren {
+  AuthenticatedWWorkspaceSlugSearchRoute: typeof AuthenticatedWWorkspaceSlugSearchRoute
   AuthenticatedWWorkspaceSlugIndexRoute: typeof AuthenticatedWWorkspaceSlugIndexRoute
   AuthenticatedWWorkspaceSlugDDocumentIdEditRoute: typeof AuthenticatedWWorkspaceSlugDDocumentIdEditRoute
   AuthenticatedWWorkspaceSlugDDocumentIdIndexRoute: typeof AuthenticatedWWorkspaceSlugDDocumentIdIndexRoute
@@ -316,6 +337,8 @@ interface AuthenticatedWWorkspaceSlugRouteRouteChildren {
 
 const AuthenticatedWWorkspaceSlugRouteRouteChildren: AuthenticatedWWorkspaceSlugRouteRouteChildren =
   {
+    AuthenticatedWWorkspaceSlugSearchRoute:
+      AuthenticatedWWorkspaceSlugSearchRoute,
     AuthenticatedWWorkspaceSlugIndexRoute:
       AuthenticatedWWorkspaceSlugIndexRoute,
     AuthenticatedWWorkspaceSlugDDocumentIdEditRoute:

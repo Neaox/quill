@@ -8,6 +8,7 @@ import { revisionDate } from '../../lib/documents/revision-labels.ts'
 import { workspaceLink } from '../../lib/routing/document-reference.ts'
 import { RouterLink } from '../../lib/routing/router-link.tsx'
 import { SignedInHeader } from '../auth/signed-in-header.tsx'
+import { SearchField } from '../search/search-field.tsx'
 import { ThemeToggle } from '../theme/theme-toggle.tsx'
 import { useThemePreference } from '../theme/use-theme-preference.ts'
 import { DocumentActionsProvider } from './document-actions.tsx'
@@ -114,6 +115,10 @@ export function WorkspaceLayout() {
       }
       actions={
         <>
+          {/* Before the page's own controls: the design puts search in the
+              bar itself (`docs/design/canvas/Main.dc.html`), and it belongs to
+              the whole shell rather than to whatever is open in it. */}
+          <SearchField />
           <div ref={setActionsNode} className="contents" />
           <ThemeToggle
             preference={preference}

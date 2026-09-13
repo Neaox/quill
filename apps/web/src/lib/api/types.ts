@@ -217,3 +217,28 @@ export type MergeConflict = MergeRequired['conflicts'][number]
 export type OidcProviderList = GetBody<'/api/auth/oidc/providers'>
 
 export type OidcProviderSummary = OidcProviderList['providers'][number]
+
+/* --- Search (M3, ADR-010; `docs/architecture/api-contract-m2.md`) ---------- */
+
+/**
+ * `GET /search?q=&workspace=&limit=&cursor=`.
+ *
+ * Search is the one surface that crosses workspaces (quill-plan.md §15), so
+ * the answer is shaped that way rather than as one flat list: `current` is
+ * what matched in the workspace the caller is in, and `elsewhere` is every
+ * other workspace they may read, grouped, each group ordered by its own best
+ * match.
+ */
+export type SearchResults = GetBody<'/api/search'>
+
+/** One matching document, wherever it lives. */
+export type SearchHit = SearchResults['current'][number]
+
+/** One other workspace's matches, with the workspace they are in. */
+export type SearchGroup = SearchResults['elsewhere'][number]
+
+/**
+ * A hit's snippet: plain text plus the matched spans as offsets into it, never
+ * HTML (ADR-010). Turning it into marks is `features/search/snippet.ts`'s job.
+ */
+export type SearchSnippet = SearchHit['snippet']

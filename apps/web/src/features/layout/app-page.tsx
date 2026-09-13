@@ -6,6 +6,8 @@ import { BRAND } from '@quill/brand'
 import { tv } from '@quill/ui'
 
 import { SignedInHeader } from '../auth/signed-in-header.tsx'
+import { SearchField } from '../search/search-field.tsx'
+import { SearchProvider } from '../search/search-provider.tsx'
 import { ThemeToggle } from '../theme/theme-toggle.tsx'
 import { useThemePreference } from '../theme/use-theme-preference.ts'
 
@@ -54,28 +56,37 @@ export function AppPage({ children, actions, brandLinksHome = true }: AppPagePro
   const styles = appPageStyles()
 
   return (
-    <div className={styles.root()}>
-      <header className={styles.header()}>
-        {brandLinksHome ? (
-          <Link to="/" className={styles.brand({ className: 'focus-ring rounded-sm' })}>
-            {BRAND.name}
-          </Link>
-        ) : (
-          <span className={styles.brand()}>{BRAND.name}</span>
-        )}
-        <span className={styles.spacer()} />
-        {actions}
-        <ThemeToggle
-          preference={preference}
-          onPreferenceChange={setPreference}
-          className="hidden sm:flex"
-        />
-        <SignedInHeader />
-      </header>
+    // The palette's host, for the home page, which sits outside the
+    // authenticated layout route that hosts it everywhere else. On the
+    // organisation page, which is inside that layout, this defers to the one
+    // already above it rather than opening a second.
+    <SearchProvider>
+      <div className={styles.root()}>
+        <header className={styles.header()}>
+          {brandLinksHome ? (
+            <Link to="/" className={styles.brand({ className: 'focus-ring rounded-sm' })}>
+              {BRAND.name}
+            </Link>
+          ) : (
+            <span className={styles.brand()}>{BRAND.name}</span>
+          )}
+          <span className={styles.spacer()} />
+          {/* The same field the workspace shell carries, so search is in the
+            same place wherever somebody is signed in. */}
+          <SearchField />
+          {actions}
+          <ThemeToggle
+            preference={preference}
+            onPreferenceChange={setPreference}
+            className="hidden sm:flex"
+          />
+          <SignedInHeader />
+        </header>
 
-      <main className={styles.main()}>
-        <div className={styles.content()}>{children}</div>
-      </main>
-    </div>
+        <main className={styles.main()}>
+          <div className={styles.content()}>{children}</div>
+        </main>
+      </div>
+    </SearchProvider>
   )
 }

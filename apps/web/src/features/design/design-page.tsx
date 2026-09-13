@@ -21,6 +21,7 @@ import {
   BadgeSpecimens,
   ButtonSpecimens,
   CalloutSpecimens,
+  CommandPaletteSpecimen,
   InputSpecimens,
   NavigationSpecimens,
 } from './component-specimens.tsx'
@@ -183,6 +184,7 @@ export function DesignPage() {
               description="Everything here is reachable and dismissible from the keyboard alone. Tab into the tab list and use the arrow keys; open the dialog and try to tab out of it."
             >
               <NavigationSpecimens />
+              <CommandPaletteSpecimen />
             </Section>
 
             <Section
