@@ -6,6 +6,7 @@ import {
   DocumentEditor,
   applyFrontMatter,
   insertImage,
+  insertLink,
   useAutosave,
   useDocumentLock,
   useUnsavedChangesGuard,
@@ -24,6 +25,10 @@ import {
   type DocumentPermissions,
   type MergeRequired,
 } from '../../lib/api/index.ts'
+// By its own path rather than through `lib/api`'s barrel: see the note there.
+// Uploading is the editor's alone, and the reading route pays for whatever the
+// barrel reaches.
+import { ATTACHMENT_MAX_BYTES, useUploadAttachment } from '../../lib/api/attachments.ts'
 import { isDocumentTree, readDraftContent } from '../../lib/documents/draft-content.ts'
 import { FormError } from '../../lib/forms/form-error.tsx'
 import type { PersistentRecoveryStore } from '../../lib/recovery/indexeddb-recovery-store.ts'
@@ -32,7 +37,8 @@ import { documentLink } from '../../lib/routing/document-reference.ts'
 import { RouteNotice } from '../workspaces/route-notice.tsx'
 import { ShellActions } from '../workspaces/shell-slots.tsx'
 import { EditorStatus } from './editor-status.tsx'
-import { ImageUrlDialog } from './image-url-dialog.tsx'
+import { ImageDialog } from './image-dialog.tsx'
+import type { ImageRequest } from './image-dialog.tsx'
 import { MergeDialog } from './merge-dialog.tsx'
 import { DocumentPropertiesPanel } from './properties/document-properties-panel.tsx'
 
@@ -181,6 +187,10 @@ function EditingSession({
   const publish = usePublishDocument()
   const [merge, setMerge] = useState<MergeRequired | undefined>(undefined)
   const [insertingImage, setInsertingImage] = useState(false)
+  // The file a drag or a paste brought in, waiting for the alternative text
+  // the dialog asks for before anything is uploaded.
+  const [droppedFile, setDroppedFile] = useState<File | undefined>(undefined)
+  const upload = useUploadAttachment()
   // One promise toast per publish (`docs/design/feedback.md`): a retry passes
   // the previous id back so it replaces that toast rather than stacking one.
   const publishToastId = useRef<ToastId | undefined>(undefined)
@@ -271,6 +281,59 @@ function EditingSession({
     lockLost ||
     autosave.status === 'stale' ||
     initialAst === undefined
+
+  /**
+   * An image was asked for, from a file or from an address.
+   *
+   * A link is inserted as it stands. A file is uploaded first, and only lands
+   * in the document once the server has accepted it — so a refusal (too large,
+   * the wrong type, an SVG) leaves the dialog open with the reason in it rather
+   * than a broken picture in the document.
+   */
+  function handleInsertImage(request: ImageRequest) {
+    if (request.kind === 'link') {
+      placeImage(request.url, request.alt)
+      setInsertingImage(false)
+      setDroppedFile(undefined)
+      return
+    }
+    upload.mutate(
+      { documentId, file: request.file },
+      {
+        onSuccess: (attachment) => {
+          // What it *is*, not what the file was called: a PDF becomes a link,
+          // because an `<img>` pointing at one is a broken image. The server's
+          // sniffed type is the only trustworthy answer to that question.
+          if (attachment.contentType.startsWith('image/')) {
+            placeImage(attachment.url, request.alt)
+          } else {
+            place((editor) =>
+              insertLink({ href: attachment.url, text: request.alt })(
+                editor.state,
+                editor.view.dispatch,
+              ),
+            )
+          }
+          setInsertingImage(false)
+          setDroppedFile(undefined)
+        },
+      },
+    )
+  }
+
+  /** Puts the image where the caret is, and queues the save any other edit would. */
+  function placeImage(src: string, alt: string) {
+    place((editor) => insertImage({ src, alt })(editor.state, editor.view.dispatch))
+  }
+
+  /** Runs a command against the live editor and queues the save every edit queues. */
+  function place(command: (editor: NonNullable<DocumentEditorHandle['editor']>) => void) {
+    const handle = editorRef.current
+    const editor = handle?.editor
+    if (handle == null || editor == null) return
+    command(editor)
+    autosave.change(handle.toMdast())
+  }
 
   /**
    * A property changed. The draft envelope has the new record by the time this
@@ -430,6 +493,18 @@ function EditingSession({
           }}
           onRequest={(request) => {
             if (request.kind !== 'image') return
+            setDroppedFile(undefined)
+            upload.reset()
+            setInsertingImage(true)
+          }}
+          onFiles={({ files }) => {
+            // One file, one image: the dialog asks for the alternative text
+            // each one needs, so a drop of several opens on the first and the
+            // rest are dropped rather than inserted undescribed.
+            const [first] = files
+            if (first === undefined) return
+            upload.reset()
+            setDroppedFile(first)
             setInsertingImage(true)
           }}
         />
@@ -452,14 +527,20 @@ function EditingSession({
         }}
       />
 
-      <ImageUrlDialog
+      <ImageDialog
+        maxBytes={ATTACHMENT_MAX_BYTES}
         open={insertingImage}
-        onOpenChange={setInsertingImage}
-        onSubmit={(src) => {
-          const editor = editorRef.current?.editor
-          if (editor == null) return
-          insertImage({ src })(editor.state, editor.view.dispatch)
+        onOpenChange={(next) => {
+          setInsertingImage(next)
+          if (!next) {
+            setDroppedFile(undefined)
+            upload.reset()
+          }
         }}
+        file={droppedFile}
+        uploading={upload.isPending}
+        error={upload.error}
+        onSubmit={handleInsertImage}
       />
     </>
   )

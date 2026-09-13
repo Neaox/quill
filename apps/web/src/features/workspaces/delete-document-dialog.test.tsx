@@ -102,13 +102,19 @@ function routes(overrides: FakeRoutes = {}): FakeRoutes {
   }
 }
 
+/** The document's own menu in the header, as distinct from its tree row's. */
+async function openHeaderMenu(): Promise<void> {
+  const header = await screen.findByRole('banner')
+  await userEvent.click(
+    within(header).getByRole('button', { name: 'More actions for Quarterly plan' }),
+  )
+}
+
 describe('deleting a document', () => {
   it('is offered from the document header, names the document, and says what happens to its children', async () => {
     renderApp(PLAN_PATH, routes())
 
-    await userEvent.click(
-      await screen.findByRole('button', { name: 'More actions for Quarterly plan' }),
-    )
+    await openHeaderMenu()
     await userEvent.click(await screen.findByRole('menuitem', { name: 'Delete…' }))
 
     const dialog = await screen.findByRole('dialog', { name: /Delete .Quarterly plan/ })
@@ -143,9 +149,7 @@ describe('deleting a document', () => {
       }),
     )
 
-    await userEvent.click(
-      await screen.findByRole('button', { name: 'More actions for Quarterly plan' }),
-    )
+    await openHeaderMenu()
     await userEvent.click(await screen.findByRole('menuitem', { name: 'Delete…' }))
     const dialog = await screen.findByRole('dialog', { name: /Delete/ })
     await userEvent.click(within(dialog).getByRole('button', { name: 'Delete' }))
@@ -172,9 +176,7 @@ describe('deleting a document', () => {
       }),
     )
 
-    await userEvent.click(
-      await screen.findByRole('button', { name: 'More actions for Quarterly plan' }),
-    )
+    await openHeaderMenu()
     await userEvent.click(await screen.findByRole('menuitem', { name: 'Delete…' }))
     const dialog = await screen.findByRole('dialog', { name: /Delete/ })
     await userEvent.click(within(dialog).getByRole('button', { name: 'Delete' }))
