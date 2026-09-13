@@ -22,3 +22,8 @@ Copy `0000-template.md` to start a write-up.
 | R14 | Interactive documents and source artifacts                                          | `r14-interactive-artifacts.md` | 006, 007      | Not started |
 
 Critical path: R3, R4, R5. Time box for R1 to R9: four weeks.
+
+## Where the spike code went
+
+The spikes these write-ups came from (`spikes/r3-editor-converter`, `spikes/r4-content-store`, and the rest) were throw-away by design and were removed once their ADRs were accepted, as the contributing guide requires. They are kept in history for the record: commit `10f0339` ("Bootstrap Quill: plan, foundation, and the first writing and reading surfaces") carries the full `spikes/` directory, and `git show 10f0339:spikes/r4-content-store/README.md` (or a checkout of that commit) brings any of them back.
+
