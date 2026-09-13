@@ -31,6 +31,9 @@ test.describe('the design system page', () => {
     await page.setViewportSize({ width: 1440, height: 900 })
     await page.goto('/design')
     await expect(heading(page)).toBeVisible()
+    // Every measurement below is of a settled page. The self-hosted faces
+    // arrive after `load`, and a swap from the fallback face moves lines.
+    await page.evaluate(() => document.fonts.ready)
   })
 
   test('the scheme toggle sets data-theme and moves nothing', async ({ page }) => {

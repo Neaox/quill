@@ -52,8 +52,21 @@ export default defineConfig({
   server: {
     port: 5173,
     strictPort: true,
+    // The editor and the presentation are the two heavy route chunks
+    // (quill-plan.md section 31), and a dev server transforms a chunk the
+    // first time a browser asks for it. Warmed at start-up instead, so the
+    // first Edit or Present of a session opens as fast as the second — for a
+    // developer, and for a Playwright journey that would otherwise measure a
+    // cold transform under four browsers against a ten-second expectation.
+    warmup: {
+      clientFiles: [
+        './src/routes/_authenticated/w/$workspaceSlug/d/$documentId/edit.tsx',
+        './src/routes/_authenticated/w/$workspaceSlug_/d/$documentId/present.tsx',
+      ],
+    },
     proxy: {
-      '/api': { target: 'http://localhost:3000', changeOrigin: true },
+      // A Playwright run points this at its own API server (`e2e/support/env.ts`).
+      '/api': { target: process.env['API_URL'] ?? 'http://localhost:3000', changeOrigin: true },
     },
   },
 })
