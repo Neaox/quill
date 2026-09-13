@@ -141,6 +141,18 @@ const ROUTES: readonly RouteConfig[] = [
     entries: [routeComponent('_authenticated/admin/organisation.tsx')],
     budgetBytes: undefined,
   },
+  {
+    // The one route that pulls `@quill/theme`'s palette generator, colour
+    // rules and doctor. It is listed so a regression there is visible, and it
+    // is listed *separately* so the reading route's budget above stays the
+    // proof that none of it reaches a reader (review 2026-09-13, H1).
+    name: 'settings theme',
+    entries: [
+      routeComponent('_authenticated/admin/settings/route.tsx'),
+      routeComponent('_authenticated/admin/settings/theme.tsx'),
+    ],
+    budgetBytes: undefined,
+  },
 ]
 
 const DEFAULT_DIST_DIR = 'apps/web/dist'

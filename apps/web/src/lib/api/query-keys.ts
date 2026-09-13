@@ -12,6 +12,21 @@ export const queryKeys = {
   /** The sign-in page's provider buttons (ADR-011). One list per instance. */
   oidcProviders: ['oidc-providers'] as const,
   units: (parentId?: string) => ['units', parentId ?? null] as const,
+  /**
+   * The organisation's settings (ADR-034). One entry for the instance: every
+   * screen that renders with the theme, the navigation or the policies reads
+   * it, and a save replaces it with what the server answered rather than
+   * invalidating, because the response *is* the new state plus its revision.
+   */
+  organisationSettings: () => ['organisation-settings'] as const,
+  /**
+   * A workspace's settings, keyed by the spelling that asked for them — the
+   * route carries a slug, a write carries the id — exactly as `workspace`
+   * above is. `workspace-settings` is the prefix they share.
+   */
+  workspaceSettings: (idOrSlug: string) => ['workspace-settings', idOrSlug] as const,
+  /** Every secret's name and key id. Never a value: none is ever sent. */
+  secrets: () => ['secrets'] as const,
   workspaceList: () => ['workspace-list'] as const,
   /**
    * A workspace is addressable two ways — its id and its slug (ADR-035) — and

@@ -1,8 +1,10 @@
+import { useNavigate } from '@tanstack/react-router'
 import { useEffect, useId, useState } from 'react'
 
 import {
   Button,
   Callout,
+  Menu,
   OutlineIcon,
   Spinner,
   Tooltip,
@@ -15,7 +17,7 @@ import {
   type TreeSection,
 } from '@quill/ui'
 
-import { useWorkspaceTree, type TreeCollectionDto } from '../../lib/api/index.ts'
+import { useMe, useWorkspaceTree, type TreeCollectionDto } from '../../lib/api/index.ts'
 import {
   documentLink,
   documentReference,
@@ -258,6 +260,10 @@ export function WorkspaceTree({
               >
                 <span aria-hidden="true">+</span>
               </button>
+              <WorkspaceOverflow
+                workspaceSlug={workspaceSlug}
+                workspaceName={workspaceName ?? 'this workspace'}
+              />
             </div>
           </div>
 
@@ -359,5 +365,56 @@ export function WorkspaceTree({
         />
       )}
     </section>
+  )
+}
+
+interface WorkspaceOverflowProps {
+  readonly workspaceSlug: string
+  readonly workspaceName: string
+}
+
+/**
+ * The workspace's own overflow menu, beside the control that adds a
+ * collection: where something that is about *this workspace* rather than
+ * about a document in it is reached.
+ *
+ * Today that is one entry, its settings (ADR-028's amendment: layout is the
+ * workspace's). It is rendered only for somebody who can open that page, so
+ * the menu is absent rather than offering an entry that answers "not found" —
+ * a menu with nothing in it is not a menu (`docs/design/feedback.md`).
+ *
+ * TODO(M3): the check is instance administration, which is narrower than the
+ * rule. Changing a workspace's layout needs `manage` on it, and no route
+ * answers what this person may do with a workspace yet — see the route's own
+ * note in `routes/_authenticated/w/$workspaceSlug/settings.tsx`.
+ */
+function WorkspaceOverflow({ workspaceSlug, workspaceName }: WorkspaceOverflowProps) {
+  const me = useMe()
+  const navigate = useNavigate()
+
+  if (me.data?.isInstanceAdmin !== true) return undefined
+
+  return (
+    <Menu
+      /*
+       * "More actions for **the Engineering workspace**", not "for
+       * Engineering". `Menu` builds its trigger's accessible name from this,
+       * and the tree below it gives every document row a menu named the same
+       * way — so a bare workspace name is one of twenty near-identical
+       * controls, and is indistinguishable from a document that happens to
+       * share the name. The noun is what separates them, for a screen reader
+       * and for anything else reading the page.
+       */
+      label={`the ${workspaceName} workspace`}
+      align="end"
+      items={[
+        {
+          label: 'Workspace settings',
+          onSelect: () => {
+            void navigate({ to: '/w/$workspaceSlug/settings', params: { workspaceSlug } })
+          },
+        },
+      ]}
+    />
   )
 }
