@@ -22,6 +22,7 @@ import {
   createFakeBreachedPasswordChecker,
   createFakeClock,
   createFakeIdGenerator,
+  createInMemoryBlobStore,
   createRecordingMailer,
   inMemorySettings,
 } from '../test-support/fakes.ts'
@@ -63,6 +64,7 @@ beforeAll(async () => {
     tokens: createTokenService(),
     shareLinkPolicy: { allowed: () => true },
     ...(await inMemorySettings(clock, config)),
+    blobStore: createInMemoryBlobStore(),
     format: createDocumentFormat(),
     searchIndex: SEARCH_INDEX,
     search: createSearchService(SEARCH_INDEX),
@@ -70,6 +72,7 @@ beforeAll(async () => {
     breachedPasswords: createFakeBreachedPasswordChecker(),
     rateLimiter: createRateLimiter({ clock, config: config.rateLimit }),
     oidcRateLimiter: createRateLimiter({ clock, config: config.oidcRateLimit }),
+    attachmentRateLimiter: createRateLimiter({ clock, config: config.attachments.rateLimit }),
     passwords: await createPasswordHasher(),
     identityProviders: createIdentityProviderRegistry({
       providers: config.oidcProviders,

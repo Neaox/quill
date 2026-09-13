@@ -14,6 +14,7 @@ import { createRateLimiter } from './auth/rate-limit.ts'
 import { createTokenService } from './auth/tokens.ts'
 import { createSmtpMailer } from './auth/smtp-mailer.ts'
 import { loadConfig } from './config.ts'
+import { createBlobStore, FilesystemBlobStore } from './infrastructure/blob/create-blob-store.ts'
 import { createContentStore } from './infrastructure/content-store.ts'
 import { createDatabase } from './infrastructure/db/connection.ts'
 import { createHasher } from './infrastructure/hasher.ts'
@@ -53,6 +54,9 @@ import { createSearchService } from '@quill/search'
 const startupWarnings: Array<{ details: object; message: string }> = []
 const warnAtStartup = (details: object, message: string): void =>
   void startupWarnings.push({ details, message })
+
+/** How long a half-written upload has to sit before it is somebody's crash rather than somebody's work. */
+const STALE_UPLOAD_MS = 60 * 60 * 1000
 
 const config = loadConfig(process.env, (message) => warnAtStartup({ source: 'config' }, message))
 const clock = createSystemClock()
@@ -102,9 +106,19 @@ const settings = createSettingsStore(contentStore)
 const secrets = createEnvelopeCipher(
   await createKeyProvider(config.masterKey, { warn: warnAtStartup }),
 )
+const blobStore = createBlobStore(config.blobStore)
+// A server killed mid-upload leaves a half-written temporary file behind; on
+// disk they would accumulate for ever. An hour is far longer than any upload
+// the cap allows can take, so nothing in flight is ever swept.
+if (blobStore instanceof FilesystemBlobStore) {
+  const swept = await blobStore.sweepTemporary(STALE_UPLOAD_MS, clock.now())
+  if (swept > 0) process.stdout.write(`Swept ${swept} abandoned upload(s) from the blob store\n`)
+}
 const format = createDocumentFormat()
 const rateLimiter = createRateLimiter({ clock, config: config.rateLimit })
 const oidcRateLimiter = createRateLimiter({ clock, config: config.oidcRateLimit })
+// Its own budget, flat rather than backing off: see `config.attachments`.
+const attachmentRateLimiter = createRateLimiter({ clock, config: config.attachments.rateLimit })
 // One Argon2id hash at startup, so no request ever pays for the dummy.
 const passwords = await createPasswordHasher()
 const searchIndex = createPostgresSearchIndex({
@@ -119,6 +133,7 @@ const deps = {
   contentStore,
   settings,
   secrets,
+  blobStore,
   format,
   clock,
   ids,
@@ -129,6 +144,7 @@ const deps = {
   breachedPasswords,
   rateLimiter,
   oidcRateLimiter,
+  attachmentRateLimiter,
   passwords,
   identityProviders,
   config,

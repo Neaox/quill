@@ -470,6 +470,9 @@ export const documentLinks = pgTable(
     index('document_links_source_idx').on(table.sourceDocumentId),
     // Backlinks, and the documents a rename must mark for re-render.
     index('document_links_target_idx').on(table.targetDocumentId),
+    // "Which documents show this attachment?", which every delete asks and
+    // which would otherwise scan every link in the instance.
+    index('document_links_url_idx').on(table.url),
   ],
 )
 
@@ -687,5 +690,46 @@ export const documentSearch = pgTable(
     // `tag:` and `owner:` filters are array containment, which GIN answers.
     index('document_search_tags_idx').using('gin', table.tags),
     index('document_search_owners_idx').using('gin', table.owners),
+  ],
+)
+
+/**
+ * One uploaded file, owned by the document it was uploaded to (plan §11,
+ * ADR-011 uploads, ADR-034 the blob store as a system of record).
+ *
+ * The bytes are not here: `sha256` is their address in the blob store, and two
+ * attachments that are the same picture share one object. That is why removal
+ * is `deleted_at` and never a delete — the row can go without the bytes going
+ * with it, which is the only safe order when the bytes may be somebody else's
+ * and when a restore is expected to yield every attachment a revision ever
+ * referenced.
+ *
+ * `content_type` is what the server sniffed from the bytes, never what the
+ * uploader declared, and is what `GET /api/attachments/:id` serves under.
+ */
+export const attachments = pgTable(
+  'attachments',
+  {
+    id: text('id').primaryKey(),
+    documentId: text('document_id')
+      .notNull()
+      .references(() => documents.id, { onDelete: 'cascade' }),
+    workspaceId: text('workspace_id')
+      .notNull()
+      .references(() => workspaces.id, { onDelete: 'cascade' }),
+    /** Null once the uploader's account is gone: the attachment is the document's, not theirs. */
+    uploadedBy: text('uploaded_by').references(() => users.id, { onDelete: 'set null' }),
+    filename: text('filename').notNull(),
+    contentType: text('content_type').notNull(),
+    size: integer('size').notNull(),
+    sha256: text('sha256').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull(),
+    deletedAt: timestamp('deleted_at', { withTimezone: true }),
+  },
+  (table) => [
+    index('attachments_document_idx').on(table.documentId),
+    // Which rows still need an object, for the sweep that will one day collect
+    // the objects nothing points at any more.
+    index('attachments_sha256_idx').on(table.sha256),
   ],
 )

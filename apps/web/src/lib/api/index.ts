@@ -95,6 +95,16 @@ export {
   type PublishOutcome,
   type RestoreInput,
 } from './publishing.ts'
+/*
+ * `attachments.ts` is deliberately *not* re-exported here.
+ *
+ * This barrel is what every route reads the API through, so a module reachable
+ * from it is in the chunk every route loads — including the reading route,
+ * which has a byte budget (quill-plan.md section 31) and no use for uploading.
+ * The editor imports `lib/api/attachments.ts` by its own path, which is what
+ * keeps the upload client in the editor's chunk. Please leave it that way; the
+ * bundle gate is what notices if it moves.
+ */
 export { useDraftClient, useLockClient } from './editor-clients.ts'
 
 export type {

@@ -74,6 +74,8 @@ export interface ServerConfig {
    * produce, not to slow a guess down.
    */
   readonly oidcRateLimit: RateLimitConfig
+  readonly blobStore: BlobStoreConfig
+  readonly attachments: AttachmentConfig
 }
 
 /**
@@ -120,6 +122,60 @@ export type MasterKeyConfig =
 export type ContentStoreConfig =
   | { readonly driver: 'filesystem'; readonly path: string }
   | { readonly driver: 'memory' }
+
+/**
+ * Where attachments live (ADR-034: the blob store is a system of record).
+ *
+ * `filesystem` is the self-host default: content-addressed files under
+ * `BLOB_STORE_PATH`, which a backup can copy wholesale. `s3` is any
+ * S3-compatible service, which for local development is the MinIO in
+ * `docker-compose.yml`.
+ *
+ * There is no in-process driver, deliberately. The content store has one
+ * because a Git object model in memory is a hundredth of the cost of the same
+ * model on disk (ADR-014); a blob is a file, and a file in a temporary
+ * directory costs so little that a second implementation would buy nothing and
+ * would let an integration test agree with an adapter nobody deploys.
+ */
+export type BlobStoreConfig =
+  | { readonly driver: 'filesystem'; readonly path: string }
+  | {
+      readonly driver: 's3'
+      readonly bucket: string
+      readonly region: string
+      /** Set for MinIO and every other non-AWS service; omitted, the AWS endpoint for the region. */
+      readonly endpoint: string | undefined
+      readonly accessKeyId: string
+      readonly secretAccessKey: string
+      /**
+       * `bucket.host` (virtual-hosted) or `host/bucket` (path). MinIO and most
+       * self-hosted gateways only do the latter, so an explicit endpoint
+       * defaults to path style and AWS defaults to virtual-hosted.
+       */
+      readonly forcePathStyle: boolean
+      /** A prefix inside the bucket, so one bucket can hold more than one instance. */
+      readonly prefix: string
+    }
+
+export interface AttachmentConfig {
+  /**
+   * The largest file the platform accepts, counted as the bytes arrive
+   * (ADR-011: uploads have size limits). It bounds both the multipart parser
+   * and the use case, so neither can be the only thing enforcing it.
+   */
+  readonly maxBytes: number
+  /**
+   * Uploads per person per minute (ADR-011 abuse resistance).
+   *
+   * Flat, not backing off, which is what `maxWindowMs === windowMs` expresses:
+   * the auth endpoints double a failing key's window because a wrong password
+   * is evidence of an attack, and a budget that keeps halving is the point
+   * there. Uploading a picture is ordinary work. A writer adding screenshots
+   * to a runbook should meet a ceiling and then carry on a minute later, not a
+   * penalty that grows while they work.
+   */
+  readonly rateLimit: RateLimitConfig
+}
 
 /**
  * `false` (trust nothing), a hop count from the socket inwards, or the exact
@@ -198,6 +254,25 @@ export interface ConfigWarn {
 const LOG_LEVELS = new Set(['fatal', 'error', 'warn', 'info', 'debug', 'trace'])
 
 const DEFAULT_CONTENT_STORE_PATH = './data/content'
+const DEFAULT_BLOB_STORE_PATH = './data/blobs'
+/** 25 MiB: enough for a page of screenshots, far short of anything a document needs. */
+const DEFAULT_ATTACHMENT_MAX_BYTES = 25 * 1024 * 1024
+
+/**
+ * The ceiling on the cap an operator may set.
+ *
+ * The S3 adapter holds an upload in memory while it computes the hash that
+ * becomes the key (`infrastructure/blob/s3-blob-store.ts` explains why it
+ * cannot do otherwise), so this number is also the most memory one request can
+ * take there. 256 MiB is far above any document's needs and far below anything
+ * that would put a server at risk; raising it is a decision about that
+ * coupling, which is why the limit exists rather than being left open.
+ */
+const MAX_ATTACHMENT_MAX_BYTES = 256 * 1024 * 1024
+
+/** Uploads a person may make in a minute. */
+const DEFAULT_ATTACHMENT_RATE_LIMIT_MAX = 60
+const ATTACHMENT_RATE_LIMIT_WINDOW_MS = 60_000
 
 function loadContentStoreConfig(env: NodeJS.ProcessEnv): ContentStoreConfig {
   const driver = env['CONTENT_STORE'] ?? 'filesystem'
@@ -210,6 +285,108 @@ function loadContentStoreConfig(env: NodeJS.ProcessEnv): ContentStoreConfig {
     throw new Error('CONTENT_STORE_PATH must not be empty when CONTENT_STORE=filesystem')
   }
   return { driver: 'filesystem', path }
+}
+
+/**
+ * `BLOB_STORE`, and the variables each driver needs.
+ *
+ * The S3 credentials are required rather than defaulted: a blob store that
+ * silently pointed at an anonymous bucket would lose every attachment written
+ * to it, and finding that out at the first upload is better than finding it
+ * out at the first restore.
+ */
+function loadBlobStoreConfig(env: NodeJS.ProcessEnv): BlobStoreConfig {
+  const driver = env['BLOB_STORE'] ?? 'filesystem'
+  if (driver === 's3') return loadS3Config(env)
+  if (driver !== 'filesystem') {
+    throw new Error(`BLOB_STORE must be "filesystem" or "s3", received "${driver}"`)
+  }
+  const path = env['BLOB_STORE_PATH'] ?? DEFAULT_BLOB_STORE_PATH
+  if (path.length === 0) {
+    throw new Error('BLOB_STORE_PATH must not be empty when BLOB_STORE=filesystem')
+  }
+  return { driver: 'filesystem', path }
+}
+
+function required(env: NodeJS.ProcessEnv, variable: string): string {
+  const value = env[variable]
+  if (value === undefined || value.length === 0) {
+    throw new Error(`${variable} is required when BLOB_STORE=s3`)
+  }
+  return value
+}
+
+function loadS3Config(env: NodeJS.ProcessEnv): BlobStoreConfig {
+  const endpoint = env['S3_ENDPOINT']
+  const hasEndpoint = endpoint !== undefined && endpoint.length > 0
+  if (hasEndpoint && !isHttpUrl(endpoint)) {
+    // `new URL` alone would accept `localhost:9000`, reading `localhost:` as
+    // the scheme — which is exactly the typo an operator makes here, and which
+    // would otherwise fail at the first upload rather than at boot.
+    throw new Error(
+      `S3_ENDPOINT must be an absolute http(s) URL, received "${endpoint}". ` +
+        'For the MinIO in docker-compose.yml that is http://localhost:9000.',
+    )
+  }
+  const pathStyle = env['S3_FORCE_PATH_STYLE']
+  return {
+    driver: 's3',
+    bucket: required(env, 'S3_BUCKET'),
+    // AWS requires a region in the signature; MinIO ignores it but still
+    // wants one, so this has a default that is correct for both.
+    region: env['S3_REGION'] ?? 'us-east-1',
+    endpoint: hasEndpoint ? endpoint : undefined,
+    accessKeyId: required(env, 'S3_ACCESS_KEY_ID'),
+    secretAccessKey: required(env, 'S3_SECRET_ACCESS_KEY'),
+    forcePathStyle: pathStyle === undefined ? hasEndpoint : pathStyle !== 'false',
+    prefix: normalisePrefix(env['S3_PREFIX'] ?? ''),
+  }
+}
+
+function isHttpUrl(value: string): boolean {
+  try {
+    const url = new URL(value)
+    return url.protocol === 'http:' || url.protocol === 'https:'
+  } catch {
+    return false
+  }
+}
+
+/** A prefix is a key prefix, not a path: no leading slash, one trailing slash when it is set at all. */
+function normalisePrefix(raw: string): string {
+  const trimmed = raw.replaceAll(/^\/+|\/+$/gu, '')
+  return trimmed === '' ? '' : `${trimmed}/`
+}
+
+function loadAttachmentConfig(env: NodeJS.ProcessEnv): AttachmentConfig {
+  const maxBytes = parseCount(
+    env['ATTACHMENT_MAX_BYTES'],
+    'ATTACHMENT_MAX_BYTES',
+    DEFAULT_ATTACHMENT_MAX_BYTES,
+  )
+  if (maxBytes > MAX_ATTACHMENT_MAX_BYTES) {
+    throw new Error(
+      `ATTACHMENT_MAX_BYTES must be at most ${MAX_ATTACHMENT_MAX_BYTES} (256 MiB), received ` +
+        `${maxBytes}. The S3 backend holds one upload in memory while it computes the hash ` +
+        'that becomes its key, so this is also the memory one request can take.',
+    )
+  }
+  const max = parseCount(
+    env['ATTACHMENT_RATE_LIMIT_MAX'],
+    'ATTACHMENT_RATE_LIMIT_MAX',
+    DEFAULT_ATTACHMENT_RATE_LIMIT_MAX,
+  )
+  return {
+    maxBytes,
+    // The same window for the cap as for the maximum is what makes it flat:
+    // `createRateLimiter` only lengthens a window when there is a longer one
+    // to reach for.
+    rateLimit: {
+      max,
+      windowMs: ATTACHMENT_RATE_LIMIT_WINDOW_MS,
+      maxWindowMs: ATTACHMENT_RATE_LIMIT_WINDOW_MS,
+    },
+  }
 }
 
 const DEFAULT_SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000
@@ -245,6 +422,11 @@ function parsePort(raw: string | undefined, variable: string, fallback: number):
 }
 
 /** A positive integer setting, whatever it counts. Both readers below are this, named for what they read. */
+/**
+ * A positive whole number from the environment: a count, a byte size, or a
+ * duration in milliseconds. Named for what it checks rather than for the first
+ * thing that needed it — the same rule reads every one of them.
+ */
 function parsePositiveInteger(raw: string | undefined, variable: string, fallback: number): number {
   const value = Number(raw ?? String(fallback))
   if (!Number.isInteger(value) || value < 1) {
@@ -584,5 +766,7 @@ export function loadConfig(
     masterKey: loadMasterKeyConfig(env, appUrl, production, warn),
     oidcProviders: loadOidcProviders(env),
     oidcRateLimit: loadOidcRateLimitConfig(env),
+    blobStore: loadBlobStoreConfig(env),
+    attachments: loadAttachmentConfig(env),
   }
 }

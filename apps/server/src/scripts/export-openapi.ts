@@ -1,8 +1,12 @@
 import { writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { createFakeClock, createFakeIdGenerator } from '@quill/application/test-support'
-import { createInMemoryUnitOfWork } from '@quill/application/test-support'
+import {
+  createFakeClock,
+  createFakeIdGenerator,
+  createInMemoryBlobStore,
+  createInMemoryUnitOfWork,
+} from '@quill/application/test-support'
 import { createSearchService } from '@quill/search'
 import { createInMemorySearchIndex } from '@quill/search/test-support'
 
@@ -59,6 +63,7 @@ async function describableDependencies(): Promise<AppDependencies> {
     // Describing the API encrypts nothing; the development key is present
     // because the routes ask for the port, not because it is used.
     secrets: createEnvelopeCipher(await createKeyProvider(config.masterKey)),
+    blobStore: createInMemoryBlobStore(),
     format: createDocumentFormat(),
     clock,
     hasher: createHasher(),
@@ -73,6 +78,7 @@ async function describableDependencies(): Promise<AppDependencies> {
     breachedPasswords: createFakeBreachedPasswordChecker(),
     rateLimiter: createRateLimiter({ clock, config: config.rateLimit }),
     oidcRateLimiter: createRateLimiter({ clock, config: config.oidcRateLimit }),
+    attachmentRateLimiter: createRateLimiter({ clock, config: config.attachments.rateLimit }),
     passwords: await createPasswordHasher(),
     // Describing the API talks to no provider; the registry is present
     // because the routes read it at registration, and it is empty.

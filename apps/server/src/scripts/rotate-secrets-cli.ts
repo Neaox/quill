@@ -6,6 +6,7 @@ import { createRateLimiter } from '../auth/rate-limit.ts'
 import { createIdentityProviderRegistry, outboundClientFactory } from '../auth/oidc/registry.ts'
 import { createTokenService } from '../auth/tokens.ts'
 import { loadConfig } from '../config.ts'
+import { createBlobStore } from '../infrastructure/blob/create-blob-store.ts'
 import { createContentStore } from '../infrastructure/content-store.ts'
 import { createDatabase } from '../infrastructure/db/connection.ts'
 import { runMigrations } from '../infrastructure/db/migrator.ts'
@@ -58,6 +59,7 @@ try {
       contentStore,
       settings: createSettingsStore(contentStore),
       secrets: createEnvelopeCipher(await createKeyProvider(config.masterKey, { warn })),
+      blobStore: createBlobStore(config.blobStore),
       format: createDocumentFormat(),
       clock,
       ids,
@@ -70,6 +72,7 @@ try {
       breachedPasswords: createDisabledBreachedPasswordChecker(),
       rateLimiter: createRateLimiter({ clock, config: config.rateLimit }),
       oidcRateLimiter: createRateLimiter({ clock, config: config.oidcRateLimit }),
+      attachmentRateLimiter: createRateLimiter({ clock, config: config.attachments.rateLimit }),
       passwords: await createPasswordHasher(),
       identityProviders: createIdentityProviderRegistry({
         providers: config.oidcProviders,

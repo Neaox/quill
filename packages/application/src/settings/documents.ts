@@ -63,12 +63,22 @@ export type SecretReference = Static<typeof SecretReferenceSchema>
 /**
  * The organisation's logo, kept in the blob store and referenced by hash.
  *
- * TODO(M3): nothing can store or serve one yet. `BlobStore` is a declared
- * port with no implementation on `AppDependencies`, so a hash saved here
- * resolves to nothing until the attachments work merges; the field is in the
- * document now because onboarding's first step is "upload a logo" (ADR-028)
- * and a settings file that gained it later would be a version bump (see
- * ADR-034's consequences on that trade).
+ * The bytes can now be stored: `BlobStore` is implemented and on
+ * `AppDependencies` (filesystem and S3 adapters), and a hash saved here is a
+ * `BlobRef.hash` that store can open.
+ *
+ * TODO(M3): nothing can *upload* or *serve* one yet, and the two remaining
+ * pieces are decisions rather than plumbing. A logo belongs to no document,
+ * so it cannot go through `POST /api/documents/:id/attachments` or be read
+ * back through `GET /api/attachments/:id`, both of which authorise against a
+ * document (ADR-012); and the public site renders the mark for anonymous
+ * readers, so its route is unauthenticated where every attachment route is
+ * not. `image/svg+xml` is also in this schema and is refused by the
+ * attachment allowlist (ADR-011), so a logo upload needs either a sanitiser
+ * or a narrower media type. The field is in the document now because
+ * onboarding's first step is "upload a logo" (ADR-028) and a settings file
+ * that gained it later would be a version bump (see ADR-034's consequences
+ * on that trade).
  */
 const LogoSchema = Type.Object(
   {

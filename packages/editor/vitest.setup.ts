@@ -9,6 +9,18 @@ import '@testing-library/jest-dom/vitest'
 afterEach(cleanup)
 
 /*
+ * Testing Library's own waiting, raised from its 1 s default.
+ *
+ * `testTimeout` in `vitest.config.ts` does not govern it: a `findBy*` or a
+ * `waitFor` gives up on its own clock and reports "unable to find", which reads
+ * as a broken assertion rather than as a slow machine. A full parallel run on a
+ * loaded box regularly passes a second mounting a route, so the two clocks are
+ * brought into line here. A test that is genuinely wrong still fails; it just
+ * takes longer to say so.
+ */
+configure({ asyncUtilTimeout: 10_000 })
+
+/*
  * ProseMirror and CodeMirror measure the document to place the caret, the
  * selection, and every floating surface. jsdom implements none of that: it has
  * no layout, so ranges and elements report no geometry at all. These are the

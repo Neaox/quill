@@ -32,6 +32,7 @@ export const queryKeys = {
   documents: () => ['document'] as const,
   document: (id: string) => ['document', id] as const,
   draft: (documentId: string) => ['draft', documentId] as const,
+  attachments: (documentId: string) => ['attachments', documentId] as const,
   lock: (documentId: string) => ['lock', documentId] as const,
   /**
    * The rendered body is content-addressed (ADR-031), so the revision is part

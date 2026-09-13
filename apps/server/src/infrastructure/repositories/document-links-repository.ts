@@ -1,9 +1,9 @@
-import { eq } from 'drizzle-orm'
+import { and, eq } from 'drizzle-orm'
 
 import type { DocumentLinkKind, DocumentLinkRow, DocumentLinksRepository } from '@quill/application'
 import type { DocumentId } from '@quill/domain'
 
-import { documentLinks } from '../db/schema.ts'
+import { documentLinks, documents } from '../db/schema.ts'
 import type { DrizzleClient } from '../db/types.ts'
 
 function toLinkRow(row: typeof documentLinks.$inferSelect): DocumentLinkRow {
@@ -48,6 +48,18 @@ export function createDocumentLinksRepository(db: DrizzleClient): DocumentLinksR
         .selectDistinct({ sourceDocumentId: documentLinks.sourceDocumentId })
         .from(documentLinks)
         .where(eq(documentLinks.targetDocumentId, documentId))
+      return rows.map((row) => row.sourceDocumentId as DocumentId)
+    },
+
+    async listSourcesReferencing(url, workspaceId): Promise<readonly DocumentId[]> {
+      // Joined rather than filtered afterwards: the workspace is what bounds
+      // the answer, and a document outside it must not reach the caller even
+      // to be counted.
+      const rows = await db
+        .selectDistinct({ sourceDocumentId: documentLinks.sourceDocumentId })
+        .from(documentLinks)
+        .innerJoin(documents, eq(documents.id, documentLinks.sourceDocumentId))
+        .where(and(eq(documentLinks.url, url), eq(documents.workspaceId, workspaceId)))
       return rows.map((row) => row.sourceDocumentId as DocumentId)
     },
   }
