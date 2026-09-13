@@ -1,0 +1,156 @@
+/*
+ * Presentation mode (quill-plan.md section 14).
+ *
+ * Presenting is a *reading* mode, not a second artefact: the body on screen is
+ * the same cached HTML the reading view mounts (ADR-031), on the same grid
+ * (ADR-027), with the same token ranges painted over its code (ADR-030). What
+ * changes is the layer-0 measurements a projector needs, and they change in
+ * one place — the tokens on `[data-surface='present']` — rather than in any
+ * component. Nothing below re-specifies a colour, a family, or a rule; a
+ * theme reaches the projector exactly as it reaches the page.
+ */
+
+/*
+ * The projector scale.
+ *
+ * `--text-reading` is the one type token that has to move, because reading
+ * typography is expressed in `em` of it (`prose.css`): raising it rescales
+ * every heading, table, caption, and code block in the document together,
+ * which is what "type scales for a projector" means and what keeps the
+ * proportions of the scale intact. 27px over the ~58rem measure below is the
+ * Present artboard's setting, and lands in the same 65–75 character band the
+ * reading measure is tuned to.
+ *
+ * `--density-scale` is the theme's density lever (`tokens.css`). `--spacing`
+ * has to be restated beside it because the root already substituted the
+ * baseline into its own `calc`, and a custom property redeclared further down
+ * the tree does not retroactively re-evaluate the one that read it.
+ */
+[data-surface='present'] {
+  --density-scale: 1.4;
+  --spacing: calc(0.25rem * var(--density-scale) / var(--density-baseline));
+
+  --text-reading: 1.6875rem;
+  --text-reading--line-height: 1.45;
+  --leading-reading: 1.45;
+}
+
+/*
+ * The grid on a screen the size of a wall.
+ *
+ * `--layout-max` is dropped so the grid is the projector rather than the 84rem
+ * page, and the measure and both breakout widths grow with the type. Nothing
+ * here changes which lines a block spans: ADR-027's `full` is already the
+ * whole grid, which is now the whole screen, and `wide` is the whole screen
+ * but for the gutter — wide enough that a table meant to break out takes the
+ * room, close enough to the edge that it reads as breaking out, and not so
+ * close that its first column starts against the bezel. A tenth of the screen
+ * of air is the difference between a projected table and a spreadsheet.
+ */
+[data-surface='present'] .layout-grid {
+  --layout-content: 58rem;
+  --layout-wide: 96rem;
+  --layout-gutter: 4rem;
+  --layout-max: none;
+}
+
+/*
+ * One section, centred on the screen it owns. Only the current step is shown;
+ * the rest stay in the document, `hidden`, so the presentation is one page a
+ * browser can find text in rather than a sequence of remounts.
+ */
+[data-surface='present'] {
+  min-height: 100dvh;
+  background-color: var(--color-background);
+}
+
+.present-step {
+  display: flex;
+  min-height: 100dvh;
+  flex-direction: column;
+  justify-content: center;
+  padding-block: calc(var(--spacing) * 12) calc(var(--spacing) * 20);
+}
+
+/*
+ * A step opens with the section's own heading, and on a projector that
+ * heading is the title of what the room is looking at, so it takes the
+ * display size rather than the in-document one. The size comes from the same
+ * `em` scale as every other heading, so it moves with `--text-reading` and
+ * carries the theme's display face untouched.
+ */
+.present-step .prose > h2:first-child {
+  font-size: 2.074em;
+  line-height: 1.1;
+  letter-spacing: -0.022em;
+}
+
+/*
+ * Permalink hashes are for a reader with a URL bar, and in presentation they
+ * are only tab stops between a presenter and the next section.
+ */
+.present-step .heading-anchor {
+  display: none;
+}
+
+/*
+ * The progress bar is a real `<progress>`, so its fill is drawn by the
+ * browser from `value` and `max` and there is no width in any class string.
+ * Each engine exposes the two parts under its own pseudo-element, and a
+ * selector list containing an unknown one is dropped whole, so they are
+ * written as separate rules.
+ */
+.present-progress {
+  appearance: none;
+  border: 0;
+  background-color: var(--color-border);
+}
+
+.present-progress::-webkit-progress-bar {
+  background-color: var(--color-border);
+}
+
+.present-progress::-webkit-progress-value {
+  background-color: var(--color-accent);
+  transition: inline-size var(--duration-base) var(--ease-standard);
+}
+
+.present-progress::-moz-progress-bar {
+  background-color: var(--color-accent);
+}
+
+/*
+ * The rail's marks. The button is the hit area — comfortably past the 24px
+ * floor of WCAG 2.2 SC 2.5.8 — and the dot inside it is generated content, so
+ * nothing in the mark reaches the accessibility tree twice: the button is
+ * already named for the section it goes to.
+ */
+.present-rail-step::before {
+  content: '';
+  display: block;
+  inline-size: 0.5rem;
+  block-size: 0.5rem;
+  border-radius: 9999px;
+  background-color: var(--color-border-strong);
+  transition:
+    transform var(--duration-fast) var(--ease-standard),
+    background-color var(--duration-fast) var(--ease-standard);
+}
+
+.present-rail-step:hover::before {
+  background-color: var(--color-muted);
+}
+
+.present-rail-step[aria-current='true']::before {
+  background-color: var(--color-accent);
+  transform: scale(1.4);
+}
+
+/*
+ * The presenter bar fades into the background it sits on rather than onto a
+ * panel of its own, so the document keeps the whole screen. The gradient is
+ * the only thing that separates it, and it is the page's own background.
+ */
+.present-bar {
+  background-image: linear-gradient(to top, var(--color-background), transparent);
+}

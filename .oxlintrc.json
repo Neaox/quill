@@ -1,0 +1,202 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "plugins": ["typescript", "unicorn", "import", "react", "jsx-a11y", "vitest"],
+  "jsPlugins": ["./tools/oxlint-plugin/index.js"],
+  "categories": {
+    "correctness": "error",
+    "suspicious": "error",
+    "perf": "warn"
+  },
+  "rules": {
+    "no-console": "error",
+    "no-debugger": "error",
+    "typescript/no-explicit-any": "error",
+    "typescript/no-non-null-assertion": "error",
+    "typescript/consistent-type-imports": "error",
+    "import/no-cycle": "error",
+    "import/no-default-export": "off",
+    "import/no-unassigned-import": [
+      "error",
+      { "allow": ["**/*.css", "@testing-library/jest-dom/vitest"] }
+    ],
+    "react/react-in-jsx-scope": "off",
+    "react/rules-of-hooks": "error",
+    "react/exhaustive-deps": "error",
+    "vitest/no-focused-tests": "error",
+    "vitest/no-disabled-tests": "error",
+    "unicorn/filename-case": ["error", { "case": "kebabCase" }],
+    "unicorn/prefer-node-protocol": "error",
+    "no-restricted-imports": [
+      "error",
+      {
+        "paths": [
+          { "name": "lodash", "message": "Use remeda for data utilities." },
+          { "name": "lodash-es", "message": "Use remeda for data utilities." },
+          { "name": "underscore", "message": "Use remeda for data utilities." },
+          { "name": "ramda", "message": "Use remeda for data utilities." },
+          { "name": "moment", "message": "Use Temporal or date-fns; moment is deprecated." }
+        ],
+        "patterns": [
+          {
+            "group": ["lodash/*", "lodash-es/*", "lodash.*"],
+            "message": "Use remeda for data utilities."
+          }
+        ]
+      }
+    ],
+    "quill/no-brand-literal": "error",
+    "quill/tailwind-v4": "error",
+    "quill/classname-discipline": "error",
+    "quill/prefer-variant-classname": "error",
+    "quill/no-style-prop": "error",
+    "quill/effect-needs-reason": "error",
+    "quill/no-set-state-in-effect": "error",
+    "quill/inject-system-dependencies": "error",
+    "quill/no-pattern-suffix": "error",
+    "quill/tagged-todo": "error",
+    "quill/no-secret-in-log": "error",
+    "quill/no-relative-import-without-extension": "error"
+  },
+  "overrides": [
+    {
+      // apps/web only: packages/ui is exempt because a primitive's own tests
+      // and specimens render Button bare, with no action to give it
+      // (docs/design/feedback.md, "Nothing interactive is inert").
+      "files": ["apps/web/**"],
+      "rules": {
+        "quill/no-inert-control": "error"
+      }
+    },
+    {
+      "files": ["**/*.test.ts", "**/*.test.tsx", "e2e/**"],
+      "rules": {
+        "typescript/no-non-null-assertion": "off"
+      }
+    },
+    {
+      "files": ["**/*.test.ts", "**/*.test.tsx"],
+      "rules": {
+        "vitest/expect-expect": [
+          "error",
+          { "assertFunctionNames": ["expect", "expectNoAccessibilityViolations"] }
+        ],
+        "quill/no-secret-in-log": "off"
+      }
+    },
+    {
+      "files": ["packages/ui/**/*.tsx", "apps/web/**/*.tsx", "packages/editor/**/*.tsx"],
+      "rules": {
+        "jsx-a11y/prefer-tag-over-role": "off"
+      }
+    },
+    {
+      "files": ["packages/ui/**/*.tsx", "apps/web/**/*.tsx"],
+      "rules": {
+        "jsx-a11y/no-noninteractive-tabindex": ["error", { "roles": ["group", "tabpanel"] }]
+      }
+    },
+    {
+      "files": ["scripts/**"],
+      "rules": {
+        "no-console": "off"
+      }
+    },
+    {
+      "files": [
+        "**/*.test.*",
+        "**/test-support/**",
+        "**/testing/**",
+        "apps/server/src/infrastructure/system-clock.ts",
+        "apps/server/src/infrastructure/uuid-generator.ts",
+        "apps/server/src/infrastructure/db/test-database.ts",
+        "apps/server/src/plugins/request-id.ts",
+        "packages/editor/src/drafts/clock.ts",
+        "**/test-fixtures.ts",
+        "scripts/**",
+        "e2e/**"
+      ],
+      "rules": {
+        "quill/inject-system-dependencies": "off"
+      }
+    },
+    {
+      "files": ["packages/brand/**", "scripts/rename.ts"],
+      "rules": {
+        "quill/no-brand-literal": "off"
+      }
+    },
+    {
+      // Tests and e2e support code legitimately use "quill" as a Postgres
+      // user/database name, a temp-directory prefix, and similar
+      // fixture-only technical identifiers; scripts/check-brand.ts, which
+      // this rule replaces, never scanned test files for exactly that
+      // reason.
+      "files": ["**/*.test.ts", "**/*.test.tsx", "e2e/**"],
+      "rules": {
+        "quill/no-brand-literal": "off"
+      }
+    },
+    {
+      // The plugin's own namespace is the string "quill" (`quill/<rule>`
+      // rule ids, `meta.name`, and the test harness that builds those ids
+      // and rule-id strings and test descriptions from it) — that is the
+      // plugin declaring what it is, not the brand name leaking into
+      // content, so it is exempt from its own rule.
+      "files": ["tools/oxlint-plugin/**"],
+      "rules": {
+        "quill/no-brand-literal": "off"
+      }
+    },
+    {
+      // This file's doc comment has to use the bare words TODO and FIXME
+      // to describe what the rule looks for; that is not an untracked
+      // to-do left in the codebase.
+      "files": ["tools/oxlint-plugin/rules/tagged-todo.js"],
+      "rules": {
+        "quill/tagged-todo": "off"
+      }
+    },
+    {
+      "files": ["packages/domain/**"],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "paths": [
+              { "name": "lodash", "message": "Use remeda for data utilities." },
+              { "name": "lodash-es", "message": "Use remeda for data utilities." },
+              { "name": "underscore", "message": "Use remeda for data utilities." },
+              { "name": "ramda", "message": "Use remeda for data utilities." },
+              { "name": "moment", "message": "Use Temporal or date-fns; moment is deprecated." },
+              { "name": "node:fs", "message": "packages/domain is pure; no I/O modules." },
+              { "name": "node:http", "message": "packages/domain is pure; no I/O modules." },
+              { "name": "node:https", "message": "packages/domain is pure; no I/O modules." },
+              { "name": "node:net", "message": "packages/domain is pure; no I/O modules." },
+              {
+                "name": "node:child_process",
+                "message": "packages/domain is pure; no I/O modules."
+              },
+              { "name": "pg", "message": "packages/domain is pure; no I/O modules." },
+              { "name": "fastify", "message": "packages/domain is pure; no I/O modules." },
+              { "name": "react", "message": "packages/domain is pure; no framework dependencies." }
+            ],
+            "patterns": [
+              {
+                "group": ["lodash/*", "lodash-es/*", "lodash.*"],
+                "message": "Use remeda for data utilities."
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ],
+  "ignorePatterns": [
+    "**/dist/**",
+    "**/coverage/**",
+    "**/node_modules/**",
+    "spikes/**",
+    "**/*.gen.*",
+    "tools/oxlint-plugin/fixtures/**"
+  ]
+}

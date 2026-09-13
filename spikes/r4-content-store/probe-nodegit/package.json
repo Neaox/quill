@@ -1,0 +1,9 @@
+{
+  "name": "probe-nodegit",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "nodegit": "^0.28.0-alpha.31"
+  }
+}

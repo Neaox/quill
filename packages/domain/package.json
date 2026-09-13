@@ -1,0 +1,18 @@
+{
+  "name": "@quill/domain",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Quill domain model: entities, value objects, and rules. Pure TypeScript, no framework dependencies.",
+  "license": "MIT",
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "devDependencies": {
+    "@quill/config": "workspace:*"
+  }
+}

@@ -1,0 +1,23 @@
+{
+  "name": "@quill/application",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Quill application layer: use cases and the ports infrastructure implements. Depends on the domain only.",
+  "license": "MIT",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./ports": "./src/ports/index.ts",
+    "./test-support": "./src/test-support/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@quill/domain": "workspace:*",
+    "remeda": "^2.48.0"
+  },
+  "devDependencies": {
+    "@quill/config": "workspace:*"
+  }
+}

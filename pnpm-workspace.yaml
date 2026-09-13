@@ -1,0 +1,17 @@
+packages:
+  - apps/*
+  - packages/*
+
+# dependency-cruiser does not yet support the TypeScript 7 compiler API and
+# declares no TypeScript dependency of its own, so it resolves the root
+# TypeScript 7. Give it a private TypeScript 6 until it supports >= 7.
+packageExtensions:
+  dependency-cruiser:
+    dependencies:
+      typescript: ^6
+
+# Dependencies allowed to run their build scripts. pnpm skips every other
+# package's scripts, and its pre-run dependency check refuses to run until
+# each skipped build is explicitly allowed or denied here.
+allowBuilds:
+  esbuild: true

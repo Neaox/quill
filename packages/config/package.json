@@ -1,0 +1,16 @@
+{
+  "name": "@quill/config",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Shared TypeScript, lint, and format configuration for the Quill monorepo.",
+  "license": "MIT",
+  "files": [
+    "tsconfig.base.json",
+    "tsconfig.node.json",
+    "tsconfig.web.json"
+  ],
+  "type": "module",
+  "scripts": {
+    "typecheck": "echo \"@quill/config: nothing to typecheck\""
+  }
+}

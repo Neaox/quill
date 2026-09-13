@@ -1,0 +1,165 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,600;1,8..60,400&family=JetBrains+Mono:wght@400;500&display=swap">
+  <style>
+    body { margin: 0; background: var(--paper); color: var(--ink); font-family: 'Inter', ui-sans-serif, system-ui, sans-serif; font-size: 14px; line-height: 1.5; -webkit-font-smoothing: antialiased; }
+    a { color: var(--accent); text-decoration: none; }
+    a:hover { color: color-mix(in oklch, var(--accent), black 14%); }
+    .serif { font-family: var(--font-display); }
+    .mono { font-family: 'JetBrains Mono', ui-monospace, Menlo, monospace; }
+    .btn { display: inline-flex; align-items: center; gap: 8px; height: 36px; padding: 0 14px; border-radius: 6px; font-weight: 500; font-size: 14px; border: 1px solid transparent; white-space: nowrap; }
+    .btn-primary { background: var(--accent); color: oklch(99% 0 0); }
+    .btn-secondary { background: oklch(100% 0 0); border-color: var(--border-strong); box-shadow: 0 1px 2px color-mix(in oklch, var(--ink) 6%, transparent); }
+    .btn-ghost { color: var(--muted); }
+    .nav-item { display: flex; align-items: center; gap: 8px; height: 32px; padding: 0 10px; border-radius: 6px; color: var(--ink); }
+    .nav-item.active { background: color-mix(in oklch, var(--accent) 10%, var(--paper)); color: color-mix(in oklch, var(--accent), var(--ink) 35%); font-weight: 500; }
+    .nav-group { display: flex; align-items: center; gap: 6px; height: 30px; padding: 0 6px; font-size: 12px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
+    .prose { font-family: var(--font-reading); font-size: 17px; line-height: 1.7; }
+    .prose p { margin: 0; }
+    .prose h2 { font-family: 'Inter', sans-serif; font-size: 24px; line-height: 1.25; font-weight: 600; letter-spacing: -0.016em; margin: 0; display: flex; align-items: center; gap: 10px; }
+    .placeholder { font-family: var(--font-reading); font-size: 17px; line-height: 1.7; font-style: italic; color: color-mix(in oklch, var(--muted) 80%, var(--paper)); }
+    .pill { display: inline-flex; align-items: center; gap: 6px; height: 24px; padding: 0 9px; border-radius: 999px; font-size: 12px; font-weight: 500; }
+    .check { display: flex; align-items: flex-start; gap: 10px; padding: 8px 0; font-size: 13.5px; }
+    .check .ic { width: 18px; height: 18px; border-radius: 999px; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; margin-top: 1px; }
+    .check .ic.done { background: var(--accent); }
+    .check .ic.todo { border: 1.5px solid var(--border-strong); }
+    .check .ic.opt { border: 1.5px dashed var(--border-strong); }
+    .lab { font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
+  </style>
+</helmet>
+<div style="--paper: {{t.paper}}; --surface: {{t.surface}}; --ink: {{t.ink}}; --muted: {{t.muted}}; --border: {{t.border}}; --border-strong: {{t.borderStrong}}; --accent: {{accent}}; --font-reading: {{t.fontReading}}; --font-display: {{t.fontDisplay}}; width: 1440px; min-height: 900px; display: flex; flex-direction: column; background: var(--paper);">
+
+  <!-- Top bar: editing a fresh template draft -->
+  <div style="display: flex; align-items: center; gap: 16px; height: 52px; padding: 0 16px 0 20px; border-bottom: 1px solid var(--border);">
+    <div style="display: flex; align-items: center; gap: 10px; min-width: 240px;">
+      <div style="width: 26px; height: 26px; border-radius: 7px; background: var(--accent); display: flex; align-items: center; justify-content: center;">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="oklch(99% 0 0)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20l4-1 11-11-3-3L5 16z"></path><path d="M13 7l3 3"></path></svg>
+      </div>
+      <span style="font-weight: 600; font-size: 14px;">Acme Engineering</span>
+    </div>
+    <div style="flex: 1; display: flex; justify-content: center; align-items: center; gap: 10px; font-size: 13px; color: var(--muted);">
+      <span style="display: inline-flex; align-items: center; gap: 6px;"><span style="width: 7px; height: 7px; border-radius: 999px; background: oklch(60% 0.12 152);"></span>Draft saved just now</span>
+      <span style="color: var(--border-strong);">|</span>
+      <span>From template: Architecture decision record v3</span>
+    </div>
+    <div style="display: flex; align-items: center; gap: 8px; min-width: 240px; justify-content: flex-end;">
+      <button class="btn btn-ghost" type="button">Preview</button>
+      <button class="btn btn-secondary" type="button">Done</button>
+      <button class="btn btn-primary" type="button">Publish</button>
+    </div>
+  </div>
+
+  <div style="display: flex; flex: 1; min-height: 0;">
+
+    <!-- Left navigation -->
+    <div style="width: 272px; flex-shrink: 0; padding: 16px 12px; border-right: 1px solid var(--border); background: var(--surface); display: flex; flex-direction: column; gap: 2px;">
+      <div class="nav-group">Engineering</div>
+      <div class="nav-item"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"></path></svg>Architecture</div>
+      <div class="nav-item"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"></path></svg>Runbooks</div>
+      <div class="nav-item"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"></path></svg>Incident management</div>
+      <div class="nav-item"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"></path></svg>Decisions</div>
+      <div style="display: flex; flex-direction: column; gap: 2px; padding-left: 22px;">
+        <div class="nav-item">Session storage in Redis</div>
+        <div class="nav-item">Event schema versioning</div>
+        <div class="nav-item active">Move session storage to Postgres</div>
+      </div>
+      <div class="nav-group" style="margin-top: 14px;">Product</div>
+      <div class="nav-item"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"></path></svg>Specifications</div>
+      <div class="nav-item"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"></path></svg>Release notes</div>
+    </div>
+
+    <!-- Editor region -->
+    <div style="flex: 1; min-width: 0; display: grid; grid-template-columns: [full-start] 40px [wide-start] 1fr [content-start] 608px [content-end] 1fr [wide-end] 40px [full-end]; align-content: start; padding: 32px 0 64px;">
+
+      <div style="grid-column: content; display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--muted);">
+        <span>Engineering</span>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"></path></svg>
+        <span>Decisions</span>
+      </div>
+
+      <h1 class="serif" style="grid-column: content; margin: 14px 0 0; font-size: 40px; line-height: 1.12; font-weight: 600; letter-spacing: -0.02em;">Move session storage to Postgres</h1>
+      <div style="grid-column: content; display: flex; align-items: center; gap: 10px; margin-top: 14px; font-size: 13px; color: var(--muted);">
+        <span class="pill" style="background: var(--surface); border: 1px solid var(--border); color: var(--ink);">ADR</span>
+        <span class="pill" style="background: oklch(96% 0.03 82); color: oklch(45% 0.1 72);">Proposed</span>
+        <span>Supersedes <a href="#">Session storage in Redis</a></span>
+      </div>
+
+      <!-- Guidance: author-facing, dismissible, removed at publish -->
+      <div style="grid-column: content; margin-top: 26px; display: flex; gap: 12px; padding: 12px 14px; border-radius: 8px; background: var(--surface); border: 1px dashed var(--border-strong); color: var(--muted);">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink: 0; margin-top: 2px;"><circle cx="12" cy="12" r="9"></circle><path d="M12 11v5M12 8h.01"></path></svg>
+        <div style="flex: 1; font-size: 13.5px; line-height: 1.5;"><span class="lab" style="display: block; margin-bottom: 2px;">Guidance</span>Keep the context to what a reader in a year needs: the situation, the constraints, and why now. Two paragraphs is usually enough.</div>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink: 0;"><path d="M6 6l12 12M18 6L6 18"></path></svg>
+      </div>
+
+      <div class="prose" style="grid-column: content; margin-top: 32px;"><h2>Context <span title="Required by this template" style="width: 7px; height: 7px; border-radius: 999px; background: var(--accent); display: inline-block;"></span></h2></div>
+      <div class="prose" style="grid-column: content; margin-top: 12px;">
+        <p>Sessions live in a Redis cluster that was sized for the 2023 traffic profile. It now holds three times that, its failover takes forty seconds, and it is the only stateful service the platform team operates outside Postgres.</p>
+      </div>
+      <div class="placeholder" style="grid-column: content; margin-top: 12px;">What constraints shaped the decision? Latency, cost, team familiarity, compliance.</div>
+
+      <div class="prose" style="grid-column: content; margin-top: 36px;"><h2>Decision <span title="Required by this template" style="width: 7px; height: 7px; border-radius: 999px; background: var(--accent); display: inline-block;"></span></h2></div>
+      <div class="placeholder" style="grid-column: content; margin-top: 12px;">State the decision in one or two declarative sentences.</div>
+
+      <div class="prose" style="grid-column: content; margin-top: 36px;"><h2>Security considerations <span class="pill" style="background: color-mix(in oklch, var(--accent) 12%, var(--paper)); color: color-mix(in oklch, var(--accent), var(--ink) 35%); font-family: 'Inter', sans-serif; font-weight: 500;">Added by your answer</span></h2></div>
+      <div class="placeholder" style="grid-column: content; margin-top: 12px;">Which data moves, who can read it, and what changes for secrets or access control.</div>
+
+      <!-- Optional section affordance: visibly not content -->
+      <div style="grid-column: content; margin-top: 36px; display: flex; align-items: center; gap: 10px; height: 44px; padding: 0 14px; border-radius: 8px; border: 1px dashed var(--border-strong); color: var(--muted); font-size: 13.5px;">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"></path></svg>
+        <span><span style="font-weight: 500;">Optional</span> &middot; Add section: Alternatives considered</span>
+      </div>
+    </div>
+
+    <!-- Right: the template panel -->
+    <div style="width: 300px; flex-shrink: 0; padding: 32px 20px 0 8px; display: flex; flex-direction: column; gap: 18px;">
+      <div style="display: flex; align-items: center; justify-content: space-between; padding: 0 4px;">
+        <span class="lab">Template</span>
+        <span style="font-size: 12px; color: var(--muted);">2 of 4 sections started</span>
+      </div>
+      <div style="padding: 6px 14px; border-radius: 10px; background: var(--surface); border: 1px solid var(--border);">
+        <div class="check"><span class="ic done"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="oklch(99% 0 0)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 13l4 4L19 7"></path></svg></span><span>Context<span style="display: block; font-size: 12px; color: var(--muted);">Started</span></span></div>
+        <div class="check"><span class="ic todo"></span><span>Decision<span style="display: block; font-size: 12px; color: var(--muted);">Placeholder</span></span></div>
+        <div class="check"><span class="ic todo"></span><span>Security considerations<span style="display: block; font-size: 12px; color: var(--muted);">Placeholder &middot; required by your answer</span></span></div>
+        <div class="check"><span class="ic opt"></span><span style="color: var(--muted);">Alternatives considered<span style="display: block; font-size: 12px;">Optional &middot; <a href="#">Add</a></span></span></div>
+      </div>
+      <div>
+        <div class="lab" style="padding: 0 4px 8px;">Questions</div>
+        <div style="display: flex; flex-direction: column; gap: 10px; padding: 12px 14px; border-radius: 10px; background: var(--surface); border: 1px solid var(--border); font-size: 13px;">
+          <div style="display: flex; justify-content: space-between; gap: 10px;"><span><span style="color: var(--muted);">Initial status</span><br>Proposed</span><a href="#">Change</a></div>
+          <div style="display: flex; justify-content: space-between; gap: 10px;"><span><span style="color: var(--muted);">Supersedes</span><br>Session storage in Redis</span><a href="#">Change</a></div>
+          <div style="display: flex; justify-content: space-between; gap: 10px;"><span><span style="color: var(--muted);">Touches auth, data access, or secrets</span><br>Yes</span><a href="#">Change</a></div>
+        </div>
+      </div>
+      <div style="font-size: 12.5px; color: var(--muted); line-height: 1.5; padding: 0 4px;">Guidance and placeholders are removed when you publish. Required sections are marked with a dot; you can publish without them, and the document will show what is still missing.</div>
+    </div>
+
+  </div>
+</div>
+</x-dc>
+<script data-dc-script data-props='{"tone":{"editor":"enum","options":["Warm","Neutral","Cool"],"default":"Warm","section":"Theme"},"accent":{"editor":"color","options":["#1f6f6b","#4353c9","#8a3b2e","#4a6b3a"],"default":"#1f6f6b","section":"Theme"},"reading":{"editor":"enum","options":["Serif","Sans"],"default":"Serif","section":"Theme"}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const tones = {
+      Warm: { paper: 'oklch(98.5% 0.006 80)', surface: 'oklch(97.2% 0.008 80)', ink: 'oklch(24% 0.02 60)', muted: 'oklch(50% 0.02 60)', border: 'oklch(91% 0.01 80)', borderStrong: 'oklch(84% 0.012 80)' },
+      Neutral: { paper: 'oklch(99% 0.001 80)', surface: 'oklch(97.3% 0.002 80)', ink: 'oklch(22% 0.005 60)', muted: 'oklch(49% 0.006 60)', border: 'oklch(91% 0.003 80)', borderStrong: 'oklch(84% 0.004 80)' },
+      Cool: { paper: 'oklch(99% 0.002 264)', surface: 'oklch(97.2% 0.004 264)', ink: 'oklch(24% 0.02 264)', muted: 'oklch(48% 0.015 264)', border: 'oklch(91% 0.006 264)', borderStrong: 'oklch(84% 0.008 264)' },
+    }
+    const faces = {
+      Serif: { fontReading: "'Source Serif 4', Georgia, serif", fontDisplay: "'Source Serif 4', Georgia, serif" },
+      Sans: { fontReading: "'Inter', ui-sans-serif, system-ui, sans-serif", fontDisplay: "'Inter', ui-sans-serif, system-ui, sans-serif" },
+    }
+    const tone = tones[this.props.tone] ?? tones.Warm
+    const face = faces[this.props.reading] ?? faces.Serif
+    return { t: { ...tone, ...face }, accent: this.props.accent ?? '#1f6f6b' }
+  }
+}
+</script>
+</body>
+</html>

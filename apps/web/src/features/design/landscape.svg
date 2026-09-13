@@ -1,0 +1,74 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 520" role="img" aria-label="System landscape">
+  <title>System landscape</title>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#1c2438" />
+      <stop offset="55%" stop-color="#22304f" />
+      <stop offset="100%" stop-color="#2b2f52" />
+    </linearGradient>
+    <linearGradient id="edge" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#7aa2fb" stop-opacity="0.15" />
+      <stop offset="100%" stop-color="#7aa2fb" stop-opacity="0.6" />
+    </linearGradient>
+  </defs>
+
+  <rect width="1200" height="520" fill="url(#bg)" />
+
+  <g stroke="#7aa2fb" stroke-opacity="0.09" stroke-width="1">
+    <path d="M0 130h1200M0 260h1200M0 390h1200" />
+    <path d="M200 0v520M400 0v520M600 0v520M800 0v520M1000 0v520" />
+  </g>
+
+  <g font-family="Inter Variable, system-ui, sans-serif" font-size="15" fill="#cfd9f0">
+    <g stroke="url(#edge)" stroke-width="2" fill="none">
+      <path d="M300 150h0c90 0 130 40 190 65l110 45" />
+      <path d="M300 380h0c90 0 130-40 190-65l110-45" />
+      <path d="M760 260h150" />
+      <path d="M760 260c60 0 90 60 150 60" />
+      <path d="M760 260c60 0 90-60 150-60" />
+    </g>
+
+    <g>
+      <rect x="80" y="108" width="220" height="84" rx="14" fill="#111a2e" stroke="#7aa2fb"
+        stroke-opacity="0.35" />
+      <text x="104" y="140" fill="#f2f5fc" font-weight="600">Reading surface</text>
+      <text x="104" y="164" fill="#9fb0d0" font-size="13">Server rendered</text>
+    </g>
+
+    <g>
+      <rect x="80" y="338" width="220" height="84" rx="14" fill="#111a2e" stroke="#7aa2fb"
+        stroke-opacity="0.35" />
+      <text x="104" y="370" fill="#f2f5fc" font-weight="600">Editor</text>
+      <text x="104" y="394" fill="#9fb0d0" font-size="13">Single page application</text>
+    </g>
+
+    <g>
+      <rect x="560" y="210" width="200" height="100" rx="16" fill="#16233d" stroke="#8fb2ff"
+        stroke-opacity="0.5" />
+      <text x="584" y="248" fill="#f2f5fc" font-weight="600">Application</text>
+      <text x="584" y="272" fill="#9fb0d0" font-size="13">Domain rules,</text>
+      <text x="584" y="290" fill="#9fb0d0" font-size="13">publish commands</text>
+    </g>
+
+    <g>
+      <rect x="910" y="168" width="210" height="76" rx="14" fill="#111a2e" stroke="#7aa2fb"
+        stroke-opacity="0.3" />
+      <text x="934" y="198" fill="#f2f5fc" font-weight="600">Content store</text>
+      <text x="934" y="220" fill="#9fb0d0" font-size="13">Revisions</text>
+    </g>
+
+    <g>
+      <rect x="910" y="222" width="210" height="76" rx="14" fill="#111a2e" stroke="#7aa2fb"
+        stroke-opacity="0.3" transform="translate(0 40)" />
+      <text x="934" y="292" fill="#f2f5fc" font-weight="600">Postgres</text>
+      <text x="934" y="314" fill="#9fb0d0" font-size="13">Units, grants, drafts</text>
+    </g>
+
+    <g>
+      <rect x="910" y="358" width="210" height="76" rx="14" fill="#111a2e" stroke="#7aa2fb"
+        stroke-opacity="0.3" />
+      <text x="934" y="388" fill="#f2f5fc" font-weight="600">Search index</text>
+      <text x="934" y="410" fill="#9fb0d0" font-size="13">Outbox consumer</text>
+    </g>
+  </g>
+</svg>

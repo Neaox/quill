@@ -1,0 +1,159 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Serif:ital,wght@0,400;0,500;1,400&family=IBM+Plex+Mono:wght@400;500&display=swap">
+  <style>
+    body { margin: 0; background: oklch(98.2% 0.003 250); color: oklch(21% 0.012 250); font-family: 'IBM Plex Sans', ui-sans-serif, system-ui, sans-serif; font-size: 13.5px; line-height: 1.5; -webkit-font-smoothing: antialiased; }
+    a { color: oklch(21% 0.012 250); text-decoration: underline; text-decoration-color: oklch(70% 0.01 250); text-underline-offset: 3px; }
+    a:hover { text-decoration-color: oklch(62% 0.2 45); }
+    .mono { font-family: 'IBM Plex Mono', ui-monospace, monospace; }
+    .lab { font-family: 'IBM Plex Mono', monospace; font-size: 11px; letter-spacing: 0.04em; text-transform: uppercase; color: oklch(52% 0.012 250); }
+    .rail-btn { width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; border-radius: 6px; color: oklch(45% 0.012 250); }
+    .rail-btn.on { background: oklch(21% 0.012 250); color: oklch(98% 0 0); }
+    .tree { font-size: 13px; }
+    .tree .row { display: flex; align-items: center; height: 28px; padding-left: 12px; color: oklch(32% 0.012 250); }
+    .tree .row.on { color: oklch(21% 0.012 250); font-weight: 500; box-shadow: inset 2px 0 0 oklch(62% 0.2 45); }
+    .tree .sub { margin-left: 21px; border-left: 1px solid oklch(88% 0.008 250); }
+    .prose { font-family: 'IBM Plex Serif', Georgia, serif; font-size: 16.5px; line-height: 1.65; }
+    .prose p { margin: 0; }
+    .prose code { font-family: 'IBM Plex Mono', monospace; font-size: 0.85em; background: oklch(94.5% 0.006 250); padding: 0.1em 0.35em; border-radius: 3px; }
+    .h2 { font-family: 'IBM Plex Sans', sans-serif; font-size: 22px; font-weight: 600; letter-spacing: -0.01em; line-height: 1.3; display: flex; align-items: baseline; gap: 10px; }
+    .h2 .hash { font-family: 'IBM Plex Mono', monospace; font-weight: 400; color: oklch(70% 0.01 250); font-size: 18px; }
+    table { border-collapse: collapse; width: 100%; font-size: 13.5px; font-variant-numeric: tabular-nums; }
+    th { text-align: left; font-family: 'IBM Plex Mono', monospace; font-size: 11px; letter-spacing: 0.04em; text-transform: uppercase; color: oklch(52% 0.012 250); padding: 8px 12px; border-bottom: 2px solid oklch(21% 0.012 250); }
+    td { padding: 9px 12px; border-bottom: 1px solid oklch(90% 0.006 250); vertical-align: top; }
+    td.mono { white-space: nowrap; }
+    .tick { display: flex; align-items: center; gap: 10px; height: 26px; font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: oklch(52% 0.012 250); }
+    .tick .dot { width: 7px; height: 7px; border-radius: 999px; border: 1.5px solid oklch(60% 0.012 250); background: oklch(98.2% 0.003 250); margin-left: -4px; }
+    .tick.on { color: oklch(21% 0.012 250); }
+    .tick.on .dot { background: oklch(62% 0.2 45); border-color: oklch(62% 0.2 45); }
+  </style>
+</helmet>
+<div style="width: 1440px; min-height: 900px; background: oklch(98.2% 0.003 250); display: flex; flex-direction: column;">
+
+  <!-- Status bar: path, revision, state. Monospace, like an instrument readout. -->
+  <div style="display: flex; align-items: center; height: 40px; padding: 0 16px 0 0; border-bottom: 1px solid oklch(88% 0.008 250); background: oklch(100% 0 0);">
+    <div style="width: 56px; height: 40px; display: flex; align-items: center; justify-content: center; border-right: 1px solid oklch(88% 0.008 250);">
+      <div style="width: 22px; height: 22px; background: oklch(21% 0.012 250); border-radius: 4px; position: relative;"><div style="position: absolute; left: 5px; top: 5px; width: 12px; height: 12px; border: 2px solid oklch(62% 0.2 45); border-radius: 2px;"></div></div>
+    </div>
+    <div class="mono" style="padding: 0 16px; font-size: 12.5px; color: oklch(35% 0.012 250);">acme / engineering / architecture / <span style="color: oklch(21% 0.012 250); font-weight: 500;">authentication</span></div>
+    <div style="flex: 1;"></div>
+    <div class="mono" style="display: flex; align-items: center; gap: 18px; font-size: 12px; color: oklch(45% 0.012 250);">
+      <span><span style="color: oklch(62% 0.2 45);">&#9679;</span> published</span>
+      <span>v12 &middot; 2026-08-15</span>
+      <span>owner: platform</span>
+      <span style="padding: 3px 8px; border: 1px solid oklch(85% 0.008 250); border-radius: 4px; color: oklch(35% 0.012 250);">&#8984;K</span>
+    </div>
+  </div>
+
+  <div style="display: flex; flex: 1; min-height: 0;">
+    <!-- Icon rail -->
+    <div style="width: 56px; border-right: 1px solid oklch(88% 0.008 250); background: oklch(100% 0 0); display: flex; flex-direction: column; align-items: center; gap: 6px; padding-top: 10px;">
+      <div class="rail-btn on"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5h16M4 12h10M4 19h13"></path></svg></div>
+      <div class="rail-btn"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"></circle><path d="M20 20l-3.5-3.5"></path></svg></div>
+      <div class="rail-btn"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"></circle><path d="M12 7v5l3 2"></path></svg></div>
+      <div class="rail-btn"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a8 8 0 0 1-11.5 7.2L4 21l1.8-5.5A8 8 0 1 1 21 12z"></path></svg></div>
+      <div style="flex: 1;"></div>
+      <div class="rail-btn" style="margin-bottom: 10px;"><span style="width: 26px; height: 26px; border-radius: 999px; background: oklch(90% 0.006 250); display: inline-flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 600;">MR</span></div>
+    </div>
+
+    <!-- Tree -->
+    <div style="width: 248px; border-right: 1px solid oklch(88% 0.008 250); padding: 14px 10px 14px 6px; display: flex; flex-direction: column; gap: 14px;">
+      <div>
+        <div class="lab" style="padding-left: 12px; margin-bottom: 6px;">engineering</div>
+        <div class="tree">
+          <div class="row">architecture</div>
+          <div class="sub">
+            <div class="row">system-overview</div>
+            <div class="row on">authentication</div>
+            <div class="row">data-model</div>
+            <div class="row">event-pipeline</div>
+          </div>
+          <div class="row">runbooks</div>
+          <div class="row">incidents</div>
+          <div class="row">decisions</div>
+        </div>
+      </div>
+      <div>
+        <div class="lab" style="padding-left: 12px; margin-bottom: 6px;">product</div>
+        <div class="tree"><div class="row">specifications</div><div class="row">release-notes</div></div>
+      </div>
+      <div>
+        <div class="lab" style="padding-left: 12px; margin-bottom: 6px;">operations</div>
+        <div class="tree"><div class="row">on-call</div></div>
+      </div>
+    </div>
+
+    <!-- Document -->
+    <div style="flex: 1; min-width: 0; padding: 40px 56px 64px 64px;">
+      <div style="max-width: 640px;">
+        <h1 style="margin: 0; font-size: 36px; line-height: 1.15; font-weight: 600; letter-spacing: -0.02em;">Authentication architecture</h1>
+        <p class="prose" style="margin: 12px 0 0; font-size: 18px; color: oklch(42% 0.012 250);">How platform APIs issue, verify, and revoke access tokens, and what every service must do with them.</p>
+        <div class="mono" style="display: flex; gap: 22px; margin-top: 18px; font-size: 11.5px; color: oklch(52% 0.012 250);">
+          <span>type=technical-design</span><span>review=180d</span><span>last-reviewed=2026-08-15</span>
+        </div>
+
+        <div class="prose" style="margin-top: 34px;"><p>Every request to a platform API carries a short-lived access token. Services never validate tokens themselves; they call the gateway, which holds the signing keys and the revocation list.</p></div>
+
+        <div class="h2" style="margin-top: 40px;"><span class="hash">#</span>Token flow</div>
+        <div class="prose" style="margin-top: 12px;"><p>A client exchanges credentials for a token pair at <code>POST /auth/token</code>. The access token lives for fifteen minutes; the refresh token for thirty days and is rotated on every use.</p></div>
+
+        <div style="margin-top: 20px; padding: 12px 16px 12px 14px; border-left: 2px solid oklch(62% 0.2 45); background: oklch(96.5% 0.004 250);">
+          <div class="lab" style="color: oklch(62% 0.2 45); margin-bottom: 4px;">note</div>
+          <div class="prose" style="font-size: 15px; line-height: 1.55;">Tokens issued before a key rotation stay valid until they expire. Services must accept two signing keys during the overlap.</div>
+        </div>
+
+        <div class="h2" style="margin-top: 40px;"><span class="hash">#</span>Endpoints</div>
+      </div>
+
+      <!-- Wide table -->
+      <div style="margin-top: 16px; max-width: 960px;">
+        <table>
+          <thead><tr><th>endpoint</th><th>method</th><th>purpose</th><th>auth</th><th>budget</th><th>owner</th></tr></thead>
+          <tbody>
+            <tr><td class="mono">/auth/token</td><td class="mono">POST</td><td>Exchange credentials for an access and refresh token pair</td><td>Client secret</td><td class="mono">120 ms</td><td>Identity</td></tr>
+            <tr><td class="mono">/auth/refresh</td><td class="mono">POST</td><td>Rotate a refresh token and issue a new pair</td><td>Refresh token</td><td class="mono">80 ms</td><td>Identity</td></tr>
+            <tr><td class="mono">/auth/introspect</td><td class="mono">POST</td><td>Verify a token and return its claims</td><td>Service mTLS</td><td class="mono">15 ms</td><td>Gateway</td></tr>
+            <tr><td class="mono">/auth/revoke</td><td class="mono">POST</td><td>Revoke a token family after a compromise</td><td>Client secret</td><td class="mono">200 ms</td><td>Identity</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div style="max-width: 640px; margin-top: 28px; background: oklch(20% 0.02 250); color: oklch(92% 0.005 250); border-radius: 4px; overflow: hidden;">
+        <div class="mono" style="display: flex; justify-content: space-between; padding: 7px 12px; font-size: 11.5px; color: oklch(65% 0.01 250); border-bottom: 1px solid oklch(30% 0.02 250);"><span>src/auth/verify.ts @ 8f31c72 &nbsp;L42-71</span><span>copy &middot; open</span></div>
+        <pre class="mono" style="margin: 0; padding: 12px 14px; font-size: 12.5px; line-height: 1.6; white-space: pre;">export async function verify(token: string): Promise&lt;Claims&gt; {
+  const result = await gateway.introspect({ token })
+  if (!result.active) throw new TokenRevoked(result.reason)
+  return result.claims
+}</pre>
+      </div>
+    </div>
+
+    <!-- Revision timeline: history at a glance -->
+    <div style="width: 220px; border-left: 1px solid oklch(88% 0.008 250); padding: 40px 20px 0 24px;">
+      <div class="lab" style="margin-bottom: 12px;">revisions</div>
+      <div style="border-left: 1px solid oklch(85% 0.008 250); padding-left: 12px; display: flex; flex-direction: column;">
+        <div class="tick on"><span class="dot"></span>v12 &nbsp;2026-08-15</div>
+        <div class="tick"><span class="dot"></span>v11 &nbsp;2026-07-02</div>
+        <div class="tick"><span class="dot"></span>v10 &nbsp;2026-06-19</div>
+        <div class="tick"><span class="dot"></span>v9 &nbsp;&nbsp;2026-05-30</div>
+        <div class="tick"><span class="dot"></span>v8 &nbsp;&nbsp;2026-04-11</div>
+      </div>
+      <div class="lab" style="margin: 26px 0 12px;">on this page</div>
+      <div style="display: flex; flex-direction: column; gap: 6px; font-size: 13px;">
+        <span style="font-weight: 500;">Token flow</span><span style="color: oklch(45% 0.012 250);">Endpoints</span><span style="color: oklch(45% 0.012 250);">Verifying a token</span><span style="color: oklch(45% 0.012 250);">Key rotation</span>
+      </div>
+      <div class="lab" style="margin: 26px 0 12px;">comments &nbsp;3</div>
+      <div style="font-size: 12.5px; color: oklch(45% 0.012 250); line-height: 1.5;"><span class="mono" style="font-size: 11px;">L18</span> Sam: cache lifetime?</div>
+    </div>
+  </div>
+</div>
+</x-dc>
+</body>
+</html>

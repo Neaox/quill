@@ -1,0 +1,129 @@
+/*
+ * The reading grid (ADR-027).
+ *
+ * One grid with named lines is shared by the reading surface, the editor,
+ * server-rendered public pages, and HTML export, so a block is the same width
+ * everywhere it is shown:
+ *
+ *   [full-start] gutter [wide-start] 1fr [content-start] measure [content-end] 1fr [wide-end] gutter [full-end]
+ *
+ * Because CSS derives an implicit named area from any `*-start`/`*-end` line
+ * pair, a block asks for its width by name: `grid-column: content | wide |
+ * full`. Nothing uses negative margins, so a full-width block cannot escape
+ * the main region and collide with a sidebar.
+ *
+ * The grid collapses on its own **container**, not on the viewport. What
+ * decides whether `wide` and `full` are distinct is the room left beside the
+ * rail, the tree, and a comments panel — not how big the window is — so the
+ * grid is its own container and the thresholds are `@container` queries. A
+ * document rendered in a narrow column collapses correctly on a wide screen,
+ * and the same stylesheet is right in the reader, the editor, an export, and
+ * a preview pane.
+ *
+ * Viewport breakpoints are kept for the page shell alone, where the question
+ * really is how big the window is.
+ */
+
+.page-shell {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: start;
+  min-height: 100dvh;
+}
+
+/*
+ * The main region is a named container so a feature inside it can adapt to the
+ * space it was given with `@sm/main:` and `@md/main:` rather than to the
+ * window. `.shell-main` is the document shell's equivalent.
+ */
+.page-main {
+  grid-column: 2;
+  min-width: 0;
+}
+
+.page-main,
+.shell-main {
+  container-type: inline-size;
+  container-name: main;
+}
+
+.layout-grid,
+.document-editor-content {
+  display: grid;
+  width: 100%;
+  max-width: var(--layout-max);
+  margin-inline: auto;
+  container-type: inline-size;
+  container-name: grid;
+  grid-template-columns:
+    [full-start] minmax(var(--layout-gutter), 1fr)
+    [wide-start] minmax(0, calc((var(--layout-wide) - var(--layout-content)) / 2))
+    [content-start] min(var(--layout-content), 100% - var(--layout-gutter) * 2)
+    [content-end] minmax(0, calc((var(--layout-wide) - var(--layout-content)) / 2))
+    [wide-end] minmax(var(--layout-gutter), 1fr)
+    [full-end];
+}
+
+/* The reading measure is the default; a block opts out explicitly. */
+.layout-grid > *,
+.document-editor-content > * {
+  grid-column: content;
+  min-width: 0;
+}
+
+.layout-grid > .layout-content,
+.document-editor-content > [data-layout='content'] {
+  grid-column: content;
+}
+
+.layout-grid > .layout-wide,
+.document-editor-content > [data-layout='wide'] {
+  grid-column: wide;
+}
+
+.layout-grid > .layout-full,
+.document-editor-content > [data-layout='full'] {
+  grid-column: full;
+}
+
+/*
+ * Below the medium threshold every width collapses to the single column so
+ * nothing is clipped. Between medium and large, `wide` and `full` are both the
+ * whole region. At large and above the three are distinct. Measured on the
+ * grid's own inline size.
+ */
+@container grid (width < 48rem) {
+  .layout-grid,
+  .document-editor-content {
+    --layout-gutter: 1.25rem;
+  }
+
+  .layout-grid > .layout-wide,
+  .layout-grid > .layout-full,
+  .document-editor-content > [data-layout='wide'],
+  .document-editor-content > [data-layout='full'] {
+    grid-column: content;
+  }
+}
+
+@container grid (48rem <= width < 64rem) {
+  .layout-grid > .layout-wide,
+  .document-editor-content > [data-layout='wide'] {
+    grid-column: full;
+  }
+}
+
+/* Print and PDF export use the page width for every block. */
+@media print {
+  .layout-grid {
+    --layout-gutter: 0rem;
+    max-width: none;
+  }
+
+  .layout-grid > .layout-content,
+  .layout-grid > .layout-wide,
+  .layout-grid > .layout-full,
+  .layout-grid > * {
+    grid-column: full;
+  }
+}

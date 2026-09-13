@@ -1,0 +1,26 @@
+{
+  "name": "@quill/highlight",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Quill syntax highlighting: one tokenizer, token ranges, markup and CSS Custom Highlight API presentations (ADR-030).",
+  "license": "MIT",
+  "type": "module",
+  "sideEffects": [
+    "./src/grammars.ts"
+  ],
+  "exports": {
+    ".": "./src/index.ts",
+    "./client": "./src/client/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@quill/brand": "workspace:*",
+    "prismjs": "^1.30.0"
+  },
+  "devDependencies": {
+    "@quill/config": "workspace:*",
+    "@types/prismjs": "^1.26.6"
+  }
+}

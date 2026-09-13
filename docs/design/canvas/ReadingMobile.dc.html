@@ -1,0 +1,115 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,600;1,8..60,400&family=JetBrains+Mono:wght@400;500&display=swap">
+  <style>
+    body { margin: 0; background: var(--paper); color: var(--ink); font-family: 'Inter', ui-sans-serif, system-ui, sans-serif; font-size: 15px; line-height: 1.5; -webkit-font-smoothing: antialiased; }
+    a { color: var(--accent); text-decoration: none; }
+    a:hover { color: color-mix(in oklch, var(--accent), black 14%); }
+    .serif { font-family: var(--font-display); }
+    .mono { font-family: 'JetBrains Mono', ui-monospace, Menlo, monospace; }
+    .prose { font-family: var(--font-reading); font-size: 17px; line-height: 1.65; }
+    .prose p { margin: 0; }
+    .prose h2 { font-family: 'Inter', sans-serif; font-size: 21px; line-height: 1.25; font-weight: 600; letter-spacing: -0.014em; margin: 0; }
+    .prose code { font-family: 'JetBrains Mono', monospace; font-size: 0.86em; background: var(--surface); border-radius: 4px; padding: 0.1em 0.35em; }
+    table { border-collapse: collapse; width: 640px; font-family: 'Inter', sans-serif; font-size: 13px; font-variant-numeric: tabular-nums; }
+    th { text-align: left; font-weight: 600; font-size: 11px; letter-spacing: 0.04em; text-transform: uppercase; color: var(--muted); padding: 10px 12px; border-bottom: 1px solid var(--border-strong); white-space: nowrap; }
+    td { padding: 10px 12px; border-bottom: 1px solid var(--border); vertical-align: top; white-space: nowrap; }
+    .pill { display: inline-flex; align-items: center; gap: 6px; height: 24px; padding: 0 9px; border-radius: 999px; font-size: 12px; font-weight: 500; }
+  </style>
+</helmet>
+<div style="--paper: {{t.paper}}; --surface: {{t.surface}}; --ink: {{t.ink}}; --muted: {{t.muted}}; --border: {{t.border}}; --border-strong: {{t.borderStrong}}; --accent: {{accent}}; --font-reading: {{t.fontReading}}; --font-display: {{t.fontDisplay}}; width: 390px; min-height: 844px; display: flex; flex-direction: column; background: var(--paper); position: relative;">
+
+  <!-- Compact top bar: menu, workspace, search. No fake status bar. -->
+  <div style="display: flex; align-items: center; gap: 12px; height: 52px; padding: 0 12px 0 8px; border-bottom: 1px solid var(--border); position: sticky; top: 0; background: var(--paper);">
+    <button type="button" style="width: 44px; height: 44px; border: 0; background: transparent; color: var(--ink); display: flex; align-items: center; justify-content: center; border-radius: 8px;">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M4 12h16M4 17h16"></path></svg>
+    </button>
+    <span style="flex: 1; font-weight: 600; font-size: 15px;">Acme Engineering</span>
+    <button type="button" style="width: 44px; height: 44px; border: 0; background: transparent; color: var(--ink); display: flex; align-items: center; justify-content: center; border-radius: 8px;">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"></circle><path d="M20 20l-3.5-3.5"></path></svg>
+    </button>
+  </div>
+
+  <div style="padding: 22px 20px 96px; display: flex; flex-direction: column;">
+    <div style="display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--muted);">
+      <a href="#" style="display: inline-flex; align-items: center; min-height: 44px; margin: -14px 0;">Architecture</a>
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"></path></svg>
+    </div>
+    <h1 class="serif" style="margin: 10px 0 0; font-size: 30px; line-height: 1.15; font-weight: 600; letter-spacing: -0.018em; text-wrap: balance;">Authentication architecture</h1>
+    <p class="serif" style="margin: 10px 0 0; font-size: 17px; line-height: 1.45; color: var(--muted);">How platform APIs issue, verify, and revoke access tokens.</p>
+
+    <div style="display: flex; align-items: center; flex-wrap: wrap; gap: 8px 14px; margin-top: 16px; padding: 12px 0; border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); font-size: 12.5px; color: var(--muted);">
+      <span class="pill" style="background: oklch(94% 0.03 152); color: oklch(38% 0.09 152);"><span style="width: 6px; height: 6px; border-radius: 999px; background: currentColor;"></span>Published</span>
+      <span>Platform team</span>
+      <span>15 Aug 2026</span>
+    </div>
+
+    <div class="prose" style="margin-top: 22px;">
+      <p>Every request to a platform API carries a short-lived access token. Services never validate tokens themselves; they call the gateway, which holds the signing keys and the revocation list.</p>
+    </div>
+
+    <div class="prose" style="margin-top: 32px;"><h2>Endpoints</h2></div>
+    <div class="prose" style="margin-top: 10px;"><p>Latency budgets are measured at the gateway, p95 over a rolling hour.</p></div>
+
+    <!-- On a phone every width collapses; the table scrolls inside its frame -->
+    <div style="margin: 16px -20px 0; position: relative;">
+      <div style="border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); background: var(--paper);">
+        <div style="width: 350px; overflow-x: auto; -webkit-overflow-scrolling: touch; margin: 0 20px;">
+          <table>
+            <thead><tr><th>Endpoint</th><th>Method</th><th>Purpose</th><th>Auth</th><th>Budget</th></tr></thead>
+            <tbody>
+              <tr><td class="mono">/auth/token</td><td>POST</td><td>Exchange credentials for a token pair</td><td>Client secret</td><td>120 ms</td></tr>
+              <tr><td class="mono">/auth/refresh</td><td>POST</td><td>Rotate a refresh token</td><td>Refresh token</td><td>80 ms</td></tr>
+              <tr><td class="mono">/auth/introspect</td><td>POST</td><td>Verify a token for a service</td><td>Service mTLS</td><td>15 ms</td></tr>
+              <tr><td class="mono">/auth/revoke</td><td>POST</td><td>Revoke a token family</td><td>Client secret</td><td>200 ms</td></tr>
+              <tr><td class="mono">/auth/keys</td><td>GET</td><td>Publish the signing keys</td><td>Public</td><td>10 ms</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <div style="position: absolute; right: 20px; top: 0; bottom: 0; width: 48px; background: linear-gradient(to right, transparent, var(--paper));"></div>
+      <div style="display: flex; justify-content: flex-end; padding: 8px 20px 0; font-size: 12px; color: var(--muted);">Scroll for more</div>
+    </div>
+
+    <div class="prose" style="margin-top: 32px;"><h2>Verifying a token</h2></div>
+    <div class="prose" style="margin-top: 10px;"><p>Services call introspection with the raw token and trust the answer. Never decode a token locally.</p></div>
+  </div>
+
+  <!-- Floating "On this page" control, thumb-reachable -->
+  <div style="position: absolute; left: 0; right: 0; bottom: 0; padding: 12px 20px 20px; background: linear-gradient(to top, var(--paper) 70%, transparent);">
+    <div style="display: flex; align-items: center; gap: 10px; height: 48px; padding: 0 16px; border-radius: 12px; background: var(--surface); border: 1px solid var(--border-strong); box-shadow: 0 8px 24px -8px color-mix(in oklch, var(--ink) 25%, transparent);">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16M4 12h10M4 18h13"></path></svg>
+      <span style="flex: 1; font-size: 14px; font-weight: 500;">Endpoints</span>
+      <span style="font-size: 12.5px; color: var(--muted);">2 of 5</span>
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--muted)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 15l6-6 6 6"></path></svg>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script data-dc-script data-props='{"tone":{"editor":"enum","options":["Warm","Neutral","Cool"],"default":"Warm","section":"Theme"},"accent":{"editor":"color","options":["#1f6f6b","#4353c9","#8a3b2e","#4a6b3a"],"default":"#1f6f6b","section":"Theme"},"reading":{"editor":"enum","options":["Serif","Sans"],"default":"Serif","section":"Theme"}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const tones = {
+      Warm: { paper: 'oklch(98.5% 0.006 80)', surface: 'oklch(97.2% 0.008 80)', ink: 'oklch(24% 0.02 60)', muted: 'oklch(50% 0.02 60)', border: 'oklch(91% 0.01 80)', borderStrong: 'oklch(84% 0.012 80)' },
+      Neutral: { paper: 'oklch(99% 0.001 80)', surface: 'oklch(97.3% 0.002 80)', ink: 'oklch(22% 0.005 60)', muted: 'oklch(49% 0.006 60)', border: 'oklch(91% 0.003 80)', borderStrong: 'oklch(84% 0.004 80)' },
+      Cool: { paper: 'oklch(99% 0.002 264)', surface: 'oklch(97.2% 0.004 264)', ink: 'oklch(24% 0.02 264)', muted: 'oklch(48% 0.015 264)', border: 'oklch(91% 0.006 264)', borderStrong: 'oklch(84% 0.008 264)' },
+    }
+    const faces = {
+      Serif: { fontReading: "'Source Serif 4', Georgia, serif", fontDisplay: "'Source Serif 4', Georgia, serif" },
+      Sans: { fontReading: "'Inter', ui-sans-serif, system-ui, sans-serif", fontDisplay: "'Inter', ui-sans-serif, system-ui, sans-serif" },
+    }
+    const tone = tones[this.props.tone] ?? tones.Warm
+    const face = faces[this.props.reading] ?? faces.Serif
+    return { t: { ...tone, ...face }, accent: this.props.accent ?? '#1f6f6b' }
+  }
+}
+</script>
+</body>
+</html>

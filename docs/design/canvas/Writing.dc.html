@@ -1,0 +1,201 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,600;1,8..60,400&family=JetBrains+Mono:wght@400;500&display=swap">
+  <style>
+    body { margin: 0; background: var(--paper); color: var(--ink); font-family: 'Inter', ui-sans-serif, system-ui, sans-serif; font-size: 14px; line-height: 1.5; -webkit-font-smoothing: antialiased; }
+    a { color: var(--accent); text-decoration: none; }
+    a:hover { color: color-mix(in oklch, var(--accent), black 14%); }
+    .serif { font-family: var(--font-display); }
+    .mono { font-family: 'JetBrains Mono', ui-monospace, Menlo, monospace; }
+    .btn { display: inline-flex; align-items: center; gap: 8px; height: 36px; padding: 0 14px; border-radius: 6px; font-weight: 500; font-size: 14px; border: 1px solid transparent; white-space: nowrap; }
+    .btn-primary { background: var(--accent); color: oklch(99% 0 0); }
+    .btn-secondary { background: oklch(100% 0 0); border-color: var(--border-strong); box-shadow: 0 1px 2px color-mix(in oklch, var(--ink) 6%, transparent); }
+    .btn-ghost { color: var(--muted); }
+    .nav-item { display: flex; align-items: center; gap: 8px; height: 32px; padding: 0 10px; border-radius: 6px; color: var(--ink); }
+    .nav-item.active { background: color-mix(in oklch, var(--accent) 10%, var(--paper)); color: color-mix(in oklch, var(--accent), var(--ink) 35%); font-weight: 500; }
+    .nav-group { display: flex; align-items: center; gap: 6px; height: 30px; padding: 0 6px; font-size: 12px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
+    .prose { font-family: var(--font-reading); font-size: 17px; line-height: 1.7; }
+    .prose p { margin: 0; }
+    .prose h2 { font-family: 'Inter', sans-serif; font-size: 24px; line-height: 1.25; font-weight: 600; letter-spacing: -0.016em; margin: 0; }
+    .prose code { font-family: 'JetBrains Mono', monospace; font-size: 0.86em; background: var(--surface); border-radius: 4px; padding: 0.1em 0.35em; }
+    table { border-collapse: collapse; width: 100%; font-family: 'Inter', sans-serif; font-size: 13.5px; font-variant-numeric: tabular-nums; }
+    th { text-align: left; font-weight: 600; font-size: 12px; letter-spacing: 0.04em; text-transform: uppercase; color: var(--muted); padding: 10px 12px; border-bottom: 1px solid var(--border-strong); }
+    td { padding: 11px 12px; border-bottom: 1px solid var(--border); vertical-align: top; }
+    .menu-item { display: flex; align-items: center; gap: 10px; height: 32px; padding: 0 10px; border-radius: 6px; font-size: 13.5px; color: var(--ink); }
+    .menu-item.hover { background: var(--surface); }
+    .seg { display: inline-flex; align-items: center; height: 28px; padding: 0 10px; font-size: 12.5px; font-weight: 500; color: var(--muted); border-radius: 5px; }
+    .seg.on { background: oklch(100% 0 0); color: var(--ink); box-shadow: 0 1px 2px color-mix(in oklch, var(--ink) 10%, transparent); }
+    .pill { display: inline-flex; align-items: center; gap: 6px; height: 24px; padding: 0 9px; border-radius: 999px; font-size: 12px; font-weight: 500; }
+  </style>
+</helmet>
+<div style="--paper: {{t.paper}}; --surface: {{t.surface}}; --ink: {{t.ink}}; --muted: {{t.muted}}; --border: {{t.border}}; --border-strong: {{t.borderStrong}}; --accent: {{accent}}; --font-reading: {{t.fontReading}}; --font-display: {{t.fontDisplay}}; width: 1440px; min-height: 900px; display: flex; flex-direction: column; background: var(--paper);">
+
+  <!-- Top bar: editing state -->
+  <div style="display: flex; align-items: center; gap: 16px; height: 52px; padding: 0 16px 0 20px; border-bottom: 1px solid var(--border);">
+    <div style="display: flex; align-items: center; gap: 10px; min-width: 240px;">
+      <div style="width: 26px; height: 26px; border-radius: 7px; background: var(--accent); display: flex; align-items: center; justify-content: center;">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="oklch(99% 0 0)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20l4-1 11-11-3-3L5 16z"></path><path d="M13 7l3 3"></path></svg>
+      </div>
+      <span style="font-weight: 600; font-size: 14px;">Acme Engineering</span>
+    </div>
+    <div style="flex: 1; display: flex; justify-content: center; align-items: center; gap: 10px; font-size: 13px; color: var(--muted);">
+      <span style="display: inline-flex; align-items: center; gap: 6px;"><span style="width: 7px; height: 7px; border-radius: 999px; background: oklch(60% 0.12 152);"></span>Draft saved just now</span>
+      <span style="color: var(--border-strong);">|</span>
+      <span>Based on the version published 15 Aug 2026</span>
+    </div>
+    <div style="display: flex; align-items: center; gap: 8px; min-width: 240px; justify-content: flex-end;">
+      <button class="btn btn-ghost" type="button">Preview</button>
+      <button class="btn btn-secondary" type="button">Done</button>
+      <button class="btn btn-primary" type="button">Publish</button>
+    </div>
+  </div>
+
+  <div style="display: flex; flex: 1; min-height: 0;">
+
+    <!-- Left navigation (quieter while editing) -->
+    <div style="width: 272px; flex-shrink: 0; padding: 16px 12px; border-right: 1px solid var(--border); background: var(--surface); display: flex; flex-direction: column; gap: 2px;">
+      <div class="nav-group">Engineering</div>
+      <div class="nav-item"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"></path></svg>Architecture</div>
+      <div style="display: flex; flex-direction: column; gap: 2px; padding-left: 22px;">
+        <div class="nav-item">System overview</div>
+        <div class="nav-item active">Authentication</div>
+        <div class="nav-item">Data model</div>
+        <div class="nav-item">Event pipeline</div>
+      </div>
+      <div class="nav-item"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"></path></svg>Runbooks</div>
+      <div class="nav-item"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"></path></svg>Incident management</div>
+      <div class="nav-item"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"></path></svg>Decisions</div>
+      <div class="nav-group" style="margin-top: 14px;">Product</div>
+      <div class="nav-item"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"></path></svg>Specifications</div>
+      <div class="nav-item"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"></path></svg>Release notes</div>
+    </div>
+
+    <!-- Editor region -->
+    <div style="flex: 1; min-width: 0; display: grid; grid-template-columns: [full-start] 40px [wide-start] 1fr [content-start] 608px [content-end] 1fr [wide-end] 40px [full-end]; align-content: start; padding: 32px 0 64px;">
+
+      <div style="grid-column: content; display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--muted);">
+        <span>Engineering</span>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"></path></svg>
+        <span>Architecture</span>
+      </div>
+
+      <h1 class="serif" style="grid-column: content; margin: 14px 0 0; font-size: 40px; line-height: 1.12; font-weight: 600; letter-spacing: -0.02em;">Authentication architecture</h1>
+      <p class="serif" style="grid-column: content; margin: 10px 0 0; font-size: 19px; line-height: 1.5; color: var(--muted);">How platform APIs issue, verify, and revoke access tokens, and what every service must do with them.</p>
+
+      <div class="prose" style="grid-column: content; margin-top: 32px;">
+        <p>Every request to a platform API carries a short-lived access token. Services never validate tokens themselves; they call the gateway, which holds the signing keys and the revocation list. <span style="background: oklch(93% 0.06 82); border-bottom: 2px solid oklch(75% 0.12 72); padding: 0 1px;">This document is the contract between the identity service and everyone who depends on it.</span></p>
+      </div>
+
+      <div class="prose" style="grid-column: content; margin-top: 40px;"><h2>Endpoints</h2></div>
+      <div class="prose" style="grid-column: content; margin-top: 12px;">
+        <p>Latency budgets are measured at the gateway, p95 over a rolling hour.</p>
+      </div>
+
+      <!-- Wide table with its block handle and the width menu open -->
+      <div style="grid-column: wide; margin-top: 20px; position: relative;">
+        <div style="position: absolute; left: -34px; top: 10px; display: flex; flex-direction: column; gap: 4px;">
+          <div style="width: 26px; height: 26px; border-radius: 6px; background: oklch(100% 0 0); border: 1px solid var(--border-strong); box-shadow: 0 1px 2px color-mix(in oklch, var(--ink) 8%, transparent); display: flex; align-items: center; justify-content: center;">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="var(--muted)"><circle cx="9" cy="6" r="1.6"></circle><circle cx="15" cy="6" r="1.6"></circle><circle cx="9" cy="12" r="1.6"></circle><circle cx="15" cy="12" r="1.6"></circle><circle cx="9" cy="18" r="1.6"></circle><circle cx="15" cy="18" r="1.6"></circle></svg>
+          </div>
+        </div>
+        <div style="background: oklch(100% 0 0); border: 1px solid color-mix(in oklch, var(--accent) 55%, var(--paper)); border-radius: 8px; overflow: hidden; box-shadow: 0 0 0 3px color-mix(in oklch, var(--accent) 18%, var(--paper));">
+          <table>
+            <thead>
+              <tr><th>Endpoint</th><th>Method</th><th>Purpose</th><th>Auth</th><th>Latency budget</th><th>Owner</th></tr>
+            </thead>
+            <tbody>
+              <tr><td class="mono">/auth/token</td><td>POST</td><td>Exchange credentials for an access and refresh token pair</td><td>Client secret</td><td>120 ms</td><td>Identity</td></tr>
+              <tr><td class="mono">/auth/refresh</td><td>POST</td><td>Rotate a refresh token and issue a new pair</td><td>Refresh token</td><td>80 ms</td><td>Identity</td></tr>
+              <tr><td class="mono">/auth/introspect</td><td>POST</td><td>Verify a token and return its claims to a service</td><td>Service mTLS</td><td>15 ms</td><td>Gateway</td></tr>
+              <tr><td class="mono">/auth/revoke</td><td>POST</td><td>Revoke a token family after a compromise</td><td>Client secret</td><td>200 ms</td><td>Identity</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <!-- Block menu popover -->
+        <div style="position: absolute; left: -34px; top: 46px; width: 248px; padding: 8px; border-radius: 10px; background: oklch(100% 0 0); border: 1px solid var(--border-strong); box-shadow: 0 2px 4px color-mix(in oklch, var(--ink) 6%, transparent), 0 16px 40px -12px color-mix(in oklch, var(--ink) 22%, transparent); display: flex; flex-direction: column; gap: 6px; z-index: 2;">
+          <div style="padding: 4px 10px 2px; font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted);">Width</div>
+          <div style="display: flex; gap: 2px; padding: 3px; border-radius: 7px; background: var(--surface); margin: 0 6px;">
+            <span class="seg">Content</span>
+            <span class="seg on">Wide</span>
+            <span class="seg">Full</span>
+          </div>
+          <div style="height: 1px; background: var(--border); margin: 4px 6px;"></div>
+          <div class="menu-item"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a8 8 0 0 1-11.5 7.2L4 21l1.8-5.5A8 8 0 1 1 21 12z"></path></svg>Comment</div>
+          <div class="menu-item"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="11" height="11" rx="2"></rect><path d="M5 15V5a2 2 0 0 1 2-2h10"></path></svg>Duplicate</div>
+          <div class="menu-item"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12l7-7 7 7"></path></svg>Move up</div>
+          <div class="menu-item" style="color: oklch(50% 0.2 27);"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"></path></svg>Delete</div>
+        </div>
+      </div>
+
+      <div class="prose" style="grid-column: content; margin-top: 40px;"><h2>Verifying a token</h2></div>
+      <div class="prose" style="grid-column: content; margin-top: 12px;">
+        <p>Services call introspection with the raw token and trust the answer.</p>
+      </div>
+
+      <!-- Empty paragraph with the slash menu open -->
+      <div style="grid-column: content; margin-top: 20px; position: relative;">
+        <div class="serif" style="font-size: 17px; line-height: 1.7; color: var(--ink); display: flex; align-items: center;"><span>/</span><span style="width: 2px; height: 22px; background: var(--ink); margin-left: 1px;"></span></div>
+        <div style="position: absolute; left: 0; top: 34px; width: 300px; padding: 8px; border-radius: 10px; background: oklch(100% 0 0); border: 1px solid var(--border-strong); box-shadow: 0 2px 4px color-mix(in oklch, var(--ink) 6%, transparent), 0 16px 40px -12px color-mix(in oklch, var(--ink) 22%, transparent); display: flex; flex-direction: column; gap: 2px; z-index: 2;">
+          <div style="padding: 4px 10px 6px; font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted);">Insert</div>
+          <div class="menu-item hover"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"></rect><path d="M3 10h18M9 4v16"></path></svg>Table<span style="flex: 1;"></span><span class="mono" style="font-size: 11px; color: var(--muted);">/table</span></div>
+          <div class="menu-item"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M8 6l-5 6 5 6M16 6l5 6-5 6"></path></svg>Code block</div>
+          <div class="menu-item"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"></circle><path d="M12 11v5M12 8h.01"></path></svg>Callout</div>
+          <div class="menu-item"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"></rect><path d="M3 15l5-5 4 4 3-3 6 6"></path><circle cx="16" cy="9" r="1.5"></circle></svg>Image</div>
+          <div class="menu-item"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="7" height="6" rx="1"></rect><rect x="14" y="14" width="7" height="6" rx="1"></rect><path d="M10 7h4v10"></path></svg>Diagram</div>
+          <div class="menu-item"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v6M12 9l-6 6M12 9l6 6M6 15v6M18 15v6"></path></svg>Decision</div>
+          <div class="menu-item"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M4 12h10M4 17h13"></path><path d="M20 4l-5 5"></path></svg>Code from repository</div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- Right: comments beside the prose -->
+    <div style="width: 300px; flex-shrink: 0; padding: 32px 20px 0 8px; display: flex; flex-direction: column; gap: 12px;">
+      <div style="display: flex; align-items: center; justify-content: space-between; padding: 0 4px 4px;">
+        <span style="font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted);">Comments</span>
+        <span style="font-size: 12px; color: var(--muted);">1 open</span>
+      </div>
+      <div style="margin-top: 160px; padding: 14px; border-radius: 10px; background: oklch(100% 0 0); border: 1px solid var(--border-strong); box-shadow: 0 1px 2px color-mix(in oklch, var(--ink) 6%, transparent); display: flex; flex-direction: column; gap: 10px;">
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <span style="width: 22px; height: 22px; border-radius: 999px; background: color-mix(in oklch, var(--accent) 25%, var(--paper)); display: inline-flex; align-items: center; justify-content: center; font-size: 9px; font-weight: 600; color: color-mix(in oklch, var(--accent), var(--ink) 35%);">SO</span>
+          <span style="font-size: 13px; font-weight: 500;">Sam Okafor</span>
+          <span style="font-size: 12px; color: var(--muted);">2h ago</span>
+        </div>
+        <p style="margin: 0; font-size: 13.5px; line-height: 1.55; color: var(--ink);">Should this also say that a service must never cache an introspection result for longer than the token lifetime?</p>
+        <div style="display: flex; align-items: center; gap: 8px; height: 34px; padding: 0 10px; border-radius: 6px; border: 1px solid var(--border-strong); background: var(--paper); font-size: 13px; color: var(--muted);">Reply</div>
+        <div style="display: flex; gap: 12px; font-size: 12.5px;">
+          <a href="#">Resolve</a>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+</x-dc>
+<script data-dc-script data-props='{"tone":{"editor":"enum","options":["Warm","Neutral","Cool"],"default":"Warm","section":"Theme"},"accent":{"editor":"color","options":["#1f6f6b","#4353c9","#8a3b2e","#4a6b3a"],"default":"#1f6f6b","section":"Theme"},"reading":{"editor":"enum","options":["Serif","Sans"],"default":"Serif","section":"Theme"}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const tones = {
+      Warm: { paper: 'oklch(98.5% 0.006 80)', surface: 'oklch(97.2% 0.008 80)', ink: 'oklch(24% 0.02 60)', muted: 'oklch(50% 0.02 60)', border: 'oklch(91% 0.01 80)', borderStrong: 'oklch(84% 0.012 80)' },
+      Neutral: { paper: 'oklch(99% 0.001 80)', surface: 'oklch(97.3% 0.002 80)', ink: 'oklch(22% 0.005 60)', muted: 'oklch(49% 0.006 60)', border: 'oklch(91% 0.003 80)', borderStrong: 'oklch(84% 0.004 80)' },
+      Cool: { paper: 'oklch(99% 0.002 264)', surface: 'oklch(97.2% 0.004 264)', ink: 'oklch(24% 0.02 264)', muted: 'oklch(48% 0.015 264)', border: 'oklch(91% 0.006 264)', borderStrong: 'oklch(84% 0.008 264)' },
+    }
+    const faces = {
+      Serif: { fontReading: "'Source Serif 4', Georgia, serif", fontDisplay: "'Source Serif 4', Georgia, serif" },
+      Sans: { fontReading: "'Inter', ui-sans-serif, system-ui, sans-serif", fontDisplay: "'Inter', ui-sans-serif, system-ui, sans-serif" },
+    }
+    const tone = tones[this.props.tone] ?? tones.Warm
+    const face = faces[this.props.reading] ?? faces.Serif
+    return { t: { ...tone, ...face }, accent: this.props.accent ?? '#1f6f6b' }
+  }
+}
+</script>
+</body>
+</html>

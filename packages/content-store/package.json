@@ -1,0 +1,24 @@
+{
+  "name": "@quill/content-store",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Quill content store: a Git object model over an ObjectStore port, with filesystem and in-memory backends (ADR-014).",
+  "license": "MIT",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./internal": "./src/internal.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@quill/application": "workspace:*",
+    "@quill/brand": "workspace:*",
+    "@quill/domain": "workspace:*",
+    "node-diff3": "^3.2.1"
+  },
+  "devDependencies": {
+    "@quill/config": "workspace:*"
+  }
+}

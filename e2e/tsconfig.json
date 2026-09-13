@@ -1,0 +1,11 @@
+{
+  "$schema": "https://json.schemastore.org/tsconfig",
+  "extends": "../packages/config/tsconfig.node.json",
+  "compilerOptions": {
+    // The specs run in Node, but every `page.evaluate` callback runs in the
+    // browser, so both sets of ambient types are needed here and nowhere else.
+    "lib": ["ES2024", "DOM", "DOM.Iterable"],
+    "types": ["node"]
+  },
+  "include": ["**/*.ts", "../playwright.config.ts"]
+}

@@ -1,0 +1,41 @@
+# Local infrastructure for development and integration tests.
+# Postgres holds system data; MinIO stands in for S3-compatible blob storage.
+# Nothing else is required to run Quill locally (quill-plan.md, section 28).
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: quill
+      POSTGRES_PASSWORD: quill
+      POSTGRES_DB: quill
+    ports:
+      - '5432:5432'
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U quill -d quill']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  minio:
+    image: minio/minio:latest
+    command: server /data --console-address ':9001'
+    environment:
+      MINIO_ROOT_USER: quill
+      MINIO_ROOT_PASSWORD: quillquill
+    ports:
+      - '9000:9000'
+      - '9001:9001'
+    volumes:
+      - minio-data:/data
+    healthcheck:
+      test: ['CMD', 'mc', 'ready', 'local']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  postgres-data:
+  minio-data:

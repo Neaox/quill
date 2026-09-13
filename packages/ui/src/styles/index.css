@@ -1,0 +1,19 @@
+/*
+ * The design system stylesheet. An application imports this once, after
+ * `@import 'tailwindcss'`, and gets the type set, the generated palettes for
+ * every identity, the syntax token colours, the layout grid, the reading
+ * typography, and the structure behind the signature components.
+ */
+@import './fonts.css';
+@import './tokens.css';
+@import './layout.css';
+@import './prose.css';
+@import './components.css';
+@import './present.css';
+@import './editor.css';
+
+/*
+ * Tailwind's automatic source detection stops at the consuming application, so
+ * the design system declares its own sources. Paths are relative to this file.
+ */
+@source '../../src';

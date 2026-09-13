@@ -1,0 +1,18 @@
+{
+  "name": "@quill/brand",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Quill brand constants: product name, slug, and package scope. The only place these are written in application or package source.",
+  "license": "MIT",
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "devDependencies": {
+    "@quill/config": "workspace:*"
+  }
+}

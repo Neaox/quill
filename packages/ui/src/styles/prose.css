@@ -1,0 +1,481 @@
+/*
+ * Reading typography.
+ *
+ * The faces are the theme's: `--font-reading` for the body, `--font-sans` for
+ * the headings and every piece of furniture around them, `--font-mono` for
+ * code. The sizes and the rhythm are not a theme's to choose (ADR-028, layer
+ * 0), so they are written once here and scale from `--text-reading`.
+ *
+ * `.prose` is applied to the layout grid itself, so every block of a document
+ * is a grid item and asks for `content`, `wide`, or `full` by name. Vertical
+ * rhythm is expressed as top margins only (grid items do not collapse
+ * margins), which keeps the space between any two blocks a single number
+ * rather than the sum of two.
+ *
+ * Sizes are in `em` of the prose root, so changing `--text-reading` rescales
+ * the whole document proportionally.
+ */
+
+.prose {
+  font-family: var(--font-reading);
+  font-size: var(--text-reading);
+  line-height: var(--leading-reading);
+  color: var(--color-foreground);
+  font-variant-numeric: lining-nums tabular-nums;
+  hanging-punctuation: first last;
+}
+
+.prose > * + * {
+  margin-top: 1.15em;
+}
+
+/* --- Headings ------------------------------------------------------------ */
+
+/*
+ * Headings take the theme's *display* face, not its interface face. For
+ * Instrument the two are the same, which is the point: a document's structure
+ * should read in the identity's own voice, so Press sets its headings in
+ * Newsreader over a Newsreader body and Atelier in Instrument Serif over a
+ * sans one, with no rule of their own.
+ */
+.prose h1,
+.prose h2,
+.prose h3,
+.prose h4,
+.prose h5,
+.prose h6 {
+  font-family: var(--font-display);
+  color: var(--color-foreground);
+  text-wrap: balance;
+}
+
+.prose h1 {
+  font-size: 2.074em;
+  line-height: 1.15;
+  font-weight: 600;
+  letter-spacing: -0.022em;
+}
+
+.prose h2 {
+  font-size: 1.33em;
+  line-height: 1.25;
+  font-weight: 600;
+  letter-spacing: -0.014em;
+}
+
+/*
+ * How a section is separated is the theme's `rules` variant (ADR-028), and a
+ * heading is where a reader meets it first:
+ *
+ *   hairline  a quiet monospace hash before the heading, so a section reads as
+ *             something addressable rather than as a bigger sentence
+ *   double    the printed double rule under the heading
+ *   cards     nothing: the card around the section is the separation
+ *
+ * All three are generated content or a border, so none of them reaches a
+ * screen reader, and the heading text is unchanged in every one.
+ */
+[data-rules='hairline'] .prose h2::before {
+  content: '#';
+  font-family: var(--font-mono);
+  font-weight: 400;
+  color: var(--color-border-strong);
+  margin-inline-end: 0.4em;
+}
+
+[data-rules='double'] .prose h2 {
+  border-bottom: 3px double var(--color-foreground);
+  padding-bottom: 0.25em;
+}
+
+.prose h3 {
+  font-size: 1.14em;
+  line-height: 1.35;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.prose h4 {
+  font-size: 1em;
+  line-height: 1.45;
+  font-weight: 600;
+  letter-spacing: 0;
+}
+
+.prose > * + h2 {
+  margin-top: 2.6em;
+}
+
+.prose > * + h3 {
+  margin-top: 2em;
+}
+
+.prose > * + h4 {
+  margin-top: 1.6em;
+}
+
+/* A heading and the block it introduces belong together. */
+.prose > h1 + *,
+.prose > h2 + *,
+.prose > h3 + *,
+.prose > h4 + * {
+  margin-top: 0.75em;
+}
+
+.prose > h1 {
+  margin-bottom: 0;
+}
+
+.prose > h1 + p {
+  font-size: 1.1em;
+  color: var(--color-muted);
+  line-height: 1.6;
+}
+
+/* Front matter: type, review cadence, last review. Facts, so monospace. */
+.prose .front-matter {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35em 1.35em;
+  font-family: var(--font-mono);
+  font-size: 0.67em;
+  letter-spacing: var(--tracking-caps);
+  color: var(--color-muted);
+}
+
+/*
+ * Every heading the Markdown renderer emits ends with a permalink anchor
+ * (`<a class="heading-anchor" aria-label="Permalink: …">#</a>`), so a section
+ * can be linked to. It is always in the layout and never announced as
+ * decoration — a screen reader meets it by its label — but it only *shows*
+ * when the heading is hovered or the anchor itself is focused, because a
+ * column of hashes down the margin is furniture, not content. Opacity rather
+ * than `display`, so nothing reflows when it appears.
+ */
+.prose .heading-anchor {
+  font-family: var(--font-mono);
+  font-weight: 400;
+  font-size: 0.8em;
+  color: var(--color-border-strong);
+  text-decoration: none;
+  margin-inline-start: 0.4em;
+  opacity: 0;
+  transition:
+    opacity var(--duration-fast) var(--ease-standard),
+    color var(--duration-fast) var(--ease-standard);
+}
+
+.prose :is(h1, h2, h3, h4, h5, h6):hover .heading-anchor,
+.prose .heading-anchor:focus-visible {
+  opacity: 1;
+}
+
+.prose .heading-anchor:hover {
+  color: var(--color-accent);
+}
+
+.prose .heading-anchor:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+
+/* --- Inline -------------------------------------------------------------- */
+
+/*
+ * A link is ink with a quiet underline rather than a second colour: the accent
+ * is the product's one signal, and a paragraph of blue links would spend it.
+ * The underline thickens and takes the accent on hover, so the affordance is
+ * carried by more than colour either way.
+ */
+.prose a {
+  color: var(--color-foreground);
+  text-decoration: underline;
+  text-decoration-color: var(--color-border-strong);
+  text-decoration-thickness: from-font;
+  text-underline-offset: 0.16em;
+  transition:
+    color var(--duration-fast) var(--ease-standard),
+    text-decoration-color var(--duration-fast) var(--ease-standard);
+}
+
+.prose a:hover {
+  color: var(--color-accent);
+  text-decoration-color: var(--color-accent);
+}
+
+.prose strong {
+  font-weight: 600;
+}
+
+.prose abbr[title] {
+  text-decoration: underline dotted;
+  text-underline-offset: 0.2em;
+  cursor: help;
+}
+
+.prose mark {
+  background-color: var(--color-warning-subtle);
+  color: var(--color-foreground);
+  padding-inline: 0.15em;
+  border-radius: var(--radius-sm);
+}
+
+.prose kbd {
+  font-family: var(--font-mono);
+  font-size: 0.8em;
+  font-weight: 550;
+  line-height: 1;
+  padding: 0.28em 0.45em;
+  border: 1px solid var(--color-border-strong);
+  border-bottom-width: 2px;
+  border-radius: var(--radius-sm);
+  background-color: var(--color-surface-raised);
+  color: var(--color-foreground);
+  white-space: nowrap;
+}
+
+/* --- Lists --------------------------------------------------------------- */
+
+.prose ul,
+.prose ol {
+  padding-inline-start: 1.5em;
+}
+
+.prose ul {
+  list-style: disc;
+}
+
+.prose ol {
+  list-style: decimal;
+}
+
+.prose ul ul {
+  list-style: circle;
+}
+
+.prose li::marker {
+  color: var(--color-muted);
+}
+
+.prose li + li {
+  margin-top: 0.4em;
+}
+
+.prose li > ul,
+.prose li > ol {
+  margin-top: 0.4em;
+}
+
+.prose dl {
+  display: grid;
+  grid-template-columns: minmax(0, auto) minmax(0, 1fr);
+  column-gap: 1.25em;
+  row-gap: 0.4em;
+}
+
+.prose dt {
+  font-family: var(--font-mono);
+  font-size: 0.72em;
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  color: var(--color-muted);
+  padding-top: 0.35em;
+}
+
+/* --- Quotes -------------------------------------------------------------- */
+
+.prose blockquote {
+  border-inline-start: 2px solid var(--color-border-strong);
+  padding-inline-start: 1.15em;
+  color: var(--color-muted);
+}
+
+.prose blockquote cite {
+  display: block;
+  margin-top: 0.6em;
+  font-family: var(--font-sans);
+  font-size: 0.8em;
+  font-style: normal;
+  letter-spacing: var(--tracking-wide);
+  color: var(--color-muted);
+}
+
+/* --- Code ---------------------------------------------------------------- */
+
+.prose code {
+  font-family: var(--font-mono);
+  font-size: 0.85em;
+  font-variant-ligatures: none;
+}
+
+.prose :not(pre) > code {
+  background-color: var(--color-code-background);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  padding: 0.1em 0.35em;
+  /* A long identifier wraps rather than pushing the measure out on a phone. */
+  overflow-wrap: break-word;
+}
+
+.prose pre {
+  background-color: var(--color-code-background);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: 0.85rem 1rem;
+  overflow-x: auto;
+  line-height: 1.6;
+  tab-size: 2;
+  color: var(--color-foreground);
+}
+
+.prose pre code {
+  font-size: var(--text-xs);
+  white-space: pre;
+}
+
+/*
+ * A code block scrolls, so it must be reachable without a pointer. The
+ * Markdown renderer gives every `pre` a tabindex; this is the ring it gets.
+ */
+.prose pre:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 2px;
+}
+
+/* --- Tables -------------------------------------------------------------- */
+
+/*
+ * A table is always inside a scroll container, at whatever width its block
+ * was given; `wide` and `full` simply give the columns room before scrolling
+ * is needed. The container is focusable so a keyboard user can scroll it.
+ */
+.table-scroll {
+  background-color: var(--color-surface-raised);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+}
+
+.prose table {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: var(--font-sans);
+  font-size: 0.88rem;
+  line-height: 1.5;
+  font-variant-numeric: lining-nums tabular-nums;
+}
+
+.prose thead th {
+  font-family: var(--font-mono);
+  font-size: var(--text-2xs);
+  font-weight: 400;
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  text-align: start;
+  color: var(--color-muted);
+  background-color: var(--color-surface);
+  white-space: nowrap;
+  padding: 0.5rem 0.9rem;
+  border-bottom: 2px solid var(--color-foreground);
+}
+
+.prose th,
+.prose td {
+  padding: 0.45rem 0.9rem;
+  border-bottom: 1px solid var(--color-border);
+  vertical-align: top;
+}
+
+.prose tbody th {
+  text-align: start;
+  font-weight: 500;
+}
+
+.prose td code,
+.prose tbody th code {
+  background: none;
+  border: 0;
+  padding: 0;
+}
+
+.prose tbody tr:last-child th,
+.prose tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.prose caption {
+  caption-side: bottom;
+  padding-top: 0.7rem;
+  font-family: var(--font-sans);
+  font-size: var(--text-xs);
+  color: var(--color-muted);
+  text-align: start;
+}
+
+/* --- Figures and media --------------------------------------------------- */
+
+.prose figure {
+  margin: 0;
+}
+
+.prose img,
+.prose video,
+.prose svg {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  border-radius: var(--radius-lg);
+}
+
+/* `full` sets the maximum width, never a stretch: media never upscales. */
+.prose figure img {
+  margin-inline: auto;
+}
+
+.prose figcaption {
+  margin-top: 0.7rem;
+  font-family: var(--font-sans);
+  font-size: var(--text-xs);
+  line-height: 1.5;
+  color: var(--color-muted);
+}
+
+.prose hr {
+  border: 0;
+  border-top: 1px solid var(--color-border);
+}
+
+.prose > * + hr {
+  margin-top: 2.4em;
+}
+
+.prose > hr + * {
+  margin-top: 2.4em;
+}
+
+/* Blocks that are not body text get a little more air around them. */
+.prose > * + figure,
+.prose > * + pre,
+.prose > * + blockquote,
+.prose > * + .table-scroll {
+  margin-top: 1.6em;
+}
+
+.prose > figure + *,
+.prose > pre + *,
+.prose > blockquote + *,
+.prose > .table-scroll + * {
+  margin-top: 1.6em;
+}
+
+/*
+ * Anchor targets clear the app's top bar. A heading reached from the table
+ * of contents or a shared link must land below the bar, not under it, so
+ * every id-bearing element inside prose keeps a margin above it when
+ * scrolled to. The distance is `--anchor-offset` in `tokens.css` — the bar's
+ * height plus one step of air — which the showcase's sections and the table
+ * of contents' observer band read too.
+ */
+.prose :is(h1, h2, h3, h4, h5, h6, [id]) {
+  scroll-margin-top: var(--anchor-offset);
+}

@@ -1,0 +1,168 @@
+/*
+ * The writing surface.
+ *
+ * `packages/editor` writes its own class lists with `tailwind-variants`, the
+ * same as every other component, so almost nothing about the editor needs a
+ * stylesheet. What is here is the part a class list cannot reach: the DOM
+ * CodeMirror builds for itself inside a code block, the front matter block that
+ * is in the document but not on the page, and the two places where a node the
+ * editor draws has to be given the treatment the reading surface gives the same
+ * construct.
+ *
+ * The rule everywhere below is parity: a block being written is measured,
+ * coloured, and spaced like the same block being read (ADR-027, ADR-030). Where
+ * a number appears twice it is the reading surface's number, named in the
+ * comment beside it.
+ *
+ * Unlayered, as `prose.css`, `layout.css` and `present.css` are, and for the
+ * same reason: an unlayered rule beats a layered one whatever its specificity,
+ * and these rules have two unlayered stylesheets to answer — the reading
+ * typography they extend, and the base theme CodeMirror injects for itself. In
+ * `@layer components` every one of them would lose to both, silently.
+ */
+
+/* ------------------------------------------------------------------------
+ * Front matter is in the document and not on the page.
+ *
+ * The node carries the YAML source, and with it the comments, the key order
+ * and every field this release has never heard of (AGENTS.md rule 7), so it
+ * is never removed — it is simply not drawn. What the author edits instead
+ * is the properties strip above the body.
+ * ---------------------------------------------------------------------- */
+
+.document-editor-content > .front-matter-node {
+  display: none;
+}
+
+/* The first visible block starts the document, so it takes no top margin
+   from the block that is not there. */
+.document-editor-content > .front-matter-node + * {
+  margin-top: 0;
+}
+
+/* ------------------------------------------------------------------------
+ * Code blocks.
+ *
+ * The frame is the design system's `CodeBlock`, applied by the node view
+ * itself. Inside it, CodeMirror's own elements are given the metrics of that
+ * component's `<pre>`: `px-3.5 py-3 text-xs leading-relaxed`, over
+ * `--color-code-background`, so a block reads the same before and after it
+ * is published.
+ * ---------------------------------------------------------------------- */
+
+/*
+ * Every selector below names both the block and its editor host before it
+ * names a CodeMirror class. CodeMirror injects its base theme as a stylesheet
+ * of its own, at rules of the same specificity as `.cm-editor .cm-scroller`,
+ * and which of the two lands last in `<head>` is a build detail rather than
+ * something to depend on — so these rules out-specify it deliberately.
+ */
+.code-block .code-block-editor .cm-editor {
+  background-color: transparent;
+  color: var(--color-foreground);
+  font-size: var(--text-xs);
+}
+
+.code-block .code-block-editor .cm-editor .cm-scroller {
+  font-family: var(--font-mono);
+  font-variant-ligatures: none;
+  line-height: var(--leading-relaxed);
+}
+
+.code-block .code-block-editor .cm-editor .cm-content {
+  /* `py-3` on the reading surface's `<pre>`. The gutter follows it: CodeMirror
+     sizes the gutter's leading spacer from this padding. */
+  padding-block: 0.75rem;
+  caret-color: var(--color-foreground);
+}
+
+.code-block .code-block-editor .cm-editor .cm-line {
+  /* `px-3.5` at the trailing edge. The leading edge is the gutter's, below:
+     padding on the line itself scrolls away with the line, which would let a
+     block scrolled sideways put its code hard against the line numbers. */
+  padding-inline: 0 0.875rem;
+}
+
+.code-block .code-block-editor .cm-editor .cm-gutters {
+  /* The block's own surface, not a transparent one: the gutter is sticky, so
+     a block scrolled sideways would otherwise run its code under the numbers. */
+  background-color: var(--color-code-background);
+  border: 0;
+  color: var(--color-muted);
+  font-variant-numeric: tabular-nums;
+  /* The gap between a line number and the line, kept by the gutter so it
+     survives a sideways scroll. */
+  padding-inline-end: 0.625rem;
+}
+
+.code-block .code-block-editor .cm-editor .cm-lineNumbers .cm-gutterElement {
+  min-width: 1.25rem;
+  padding-inline: 0.875rem 0;
+  text-align: end;
+}
+
+.code-block .code-block-editor .cm-editor .cm-activeLine,
+.code-block .code-block-editor .cm-editor .cm-activeLineGutter {
+  background-color: transparent;
+}
+
+.code-block .code-block-editor .cm-editor .cm-selectionBackground,
+.code-block .code-block-editor .cm-editor.cm-focused .cm-selectionBackground,
+.code-block .code-block-editor .cm-editor .cm-content ::selection {
+  background-color: var(--color-selection);
+}
+
+.code-block .code-block-editor .cm-editor .cm-cursor,
+.code-block .code-block-editor .cm-editor .cm-cursor-primary {
+  border-left-color: var(--color-foreground);
+}
+
+/*
+ * The ring belongs to the block, not to CodeMirror's content element: what a
+ * keyboard user has arrived at is the code block, and the frame is what says
+ * so. CodeMirror's own dotted outline is removed in the same breath, so there
+ * is only ever one focus indicator.
+ */
+.code-block .code-block-editor .cm-editor.cm-focused {
+  outline: none;
+}
+
+.code-block:has(.cm-focused) {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 2px;
+}
+
+/* ------------------------------------------------------------------------
+ * Tables.
+ *
+ * `prosemirror-tables` builds a table with no `thead`, so the reading
+ * surface's `.prose thead th` treatment — the one that makes a header row
+ * read as column labels rather than as bold cells — has to be asked for by
+ * position here. Everything else about a table comes from `.prose`, which
+ * the editor's grid carries.
+ * ---------------------------------------------------------------------- */
+
+.document-editor-content table > tr:first-child > th {
+  font-family: var(--font-mono);
+  font-size: var(--text-2xs);
+  font-weight: 400;
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  color: var(--color-muted);
+  background-color: var(--color-surface);
+  border-bottom: 2px solid var(--color-foreground);
+}
+
+/* The cell being edited, and the selection a table drag makes. */
+.document-editor-content .selectedCell::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-color: var(--color-selection);
+  pointer-events: none;
+}
+
+.document-editor-content td,
+.document-editor-content th {
+  position: relative;
+}

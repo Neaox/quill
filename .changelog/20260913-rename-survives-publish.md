@@ -1,0 +1,2 @@
+Fixed: Renaming a document now writes the new title into the document itself — its front matter, and its first heading when that heading is what names it — as well as into the row that indexes it, so publishing after a rename carries the new name instead of silently restoring the old one.
+Changed: A rename is a write like any other: it bumps the document's draft version, so an editor that was open when it landed re-reads before its next save, and it is refused with `423 lock_lost` while another session is editing the document.

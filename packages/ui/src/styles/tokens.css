@@ -1,0 +1,428 @@
+/*
+ * Design tokens.
+ *
+ * Colour is generated, never written (ADR-028). The `--palette-*` and
+ * `--token-*` values, the four `--font-*` families, the radius scale, and the
+ * layout measurements all come from a theme document resolved by
+ * `@quill/theme` into the files imported below. Each of those files is scoped
+ * to one identity, and exactly one of them ever applies:
+ *
+ *   html                                    Instrument, the default
+ *   html[data-theme-id="instrument"]        Instrument, named explicitly
+ *   html[data-theme-id="press"]             Press
+ *   html[data-theme-id="atelier"]           Atelier
+ *
+ * Inside a theme, the colour scheme resolves in the order R13 established:
+ *
+ *   scope                                   light (the default)
+ *   @media (prefers-color-scheme: dark)     dark, unless data-theme="light"
+ *   scope[data-theme="dark"]                dark, always
+ *   scope[data-theme="light"]               light, always
+ *
+ * "Follow the operating system" is the absence of `data-theme`, exactly as
+ * "the default identity" is the absence of `data-theme-id`.
+ *
+ * What is left here is the part that is not a theme's to choose (ADR-028,
+ * layer 0): the semantic vocabulary components name, the modular type scale,
+ * control heights, elevation, and motion. A theme changes what a name resolves
+ * to; it never changes which names exist.
+ */
+
+@import './generated/instrument.gen.css';
+@import './generated/press.gen.css';
+@import './generated/atelier.gen.css';
+@import './generated/syntax-tokens.gen.css';
+
+@theme inline {
+  /* --- Colour: semantic names only. Components never see a raw value. --- */
+  --color-background: var(--palette-background);
+  --color-surface: var(--palette-surface);
+  --color-surface-raised: var(--palette-surface-raised);
+  --color-foreground: var(--palette-foreground);
+  --color-muted: var(--palette-muted);
+  --color-border: var(--palette-border);
+  --color-border-strong: var(--palette-border-strong);
+
+  --color-accent: var(--palette-accent);
+  --color-accent-hover: var(--palette-accent-hover);
+  --color-accent-foreground: var(--palette-accent-foreground);
+  --color-accent-subtle: var(--palette-accent-subtle);
+
+  --color-success: var(--palette-success);
+  --color-success-subtle: var(--palette-success-subtle);
+  --color-warning: var(--palette-warning);
+  --color-warning-subtle: var(--palette-warning-subtle);
+  --color-danger: var(--palette-danger);
+  --color-danger-hover: var(--palette-danger-hover);
+  --color-danger-subtle: var(--palette-danger-subtle);
+
+  --color-focus-ring: var(--palette-accent);
+  --color-selection: var(--palette-selection);
+  --color-code-background: var(--palette-code-background);
+  --color-overlay: var(--palette-overlay);
+}
+
+@theme {
+  /*
+   * --- Type families ---
+   * Declared here so Tailwind emits `font-sans`, `font-reading`, `font-mono`,
+   * and `font-display` utilities that *read* the variable rather than baking a
+   * family in. The values are a last-resort stack only: every generated theme
+   * redeclares all four at `:root` outside any cascade layer, so the identity
+   * in scope always wins over this one.
+   */
+  --font-display: ui-sans-serif, system-ui, sans-serif;
+  --font-sans: ui-sans-serif, system-ui, sans-serif;
+  --font-reading: ui-serif, Georgia, Cambria, 'Times New Roman', serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+
+  /*
+   * --- Type scale ---
+   * One modular scale, ratio 1.2 (minor third), anchored at 1rem. Every size
+   * in the product comes from this list; nothing is set ad hoc. Layer 0: a
+   * theme chooses faces, never sizes.
+   */
+  --text-2xs: 0.694rem;
+  --text-2xs--line-height: 1.45;
+  --text-xs: 0.833rem;
+  --text-xs--line-height: 1.5;
+  --text-sm: 0.875rem;
+  --text-sm--line-height: 1.5;
+  --text-base: 1rem;
+  --text-base--line-height: 1.55;
+  --text-lg: 1.2rem;
+  --text-lg--line-height: 1.5;
+  --text-xl: 1.44rem;
+  --text-xl--line-height: 1.35;
+  --text-2xl: 1.728rem;
+  --text-2xl--line-height: 1.3;
+  --text-3xl: 2.074rem;
+  --text-3xl--line-height: 1.2;
+  --text-4xl: 2.488rem;
+  --text-4xl--line-height: 1.15;
+
+  /*
+   * The long-form reading size sits deliberately between `base` and `lg`.
+   * Measured in the browser: 17px across the 38rem reading column is 66
+   * characters a line, inside the 65-75 band reading research keeps landing
+   * on. The face it is set in is the theme's; the size is not.
+   */
+  --text-reading: 1.0625rem;
+
+  /*
+   * --- The application bar, once ---
+   * The height of the document shell's header. It is a `--spacing-*` token so
+   * Tailwind emits `h-shell-header`, `top-shell-header` and
+   * `scroll-mt-shell-header` from it: the bar's own height, the offset the
+   * sticky columns hang below, and the distance an anchor target clears all
+   * read the same declaration instead of four numbers that drifted apart
+   * (review 2026-09-13, L4). Layer 0 (ADR-028): control heights are an
+   * invariant, never themable.
+   */
+  --spacing-shell-header: 2.5rem;
+  --text-reading--line-height: 1.7;
+
+  --leading-tight: 1.2;
+  --leading-snug: 1.35;
+  --leading-normal: 1.5;
+  --leading-relaxed: 1.65;
+  --leading-reading: 1.7;
+
+  --tracking-tight: -0.015em;
+  --tracking-normal: 0em;
+  --tracking-wide: 0.02em;
+  --tracking-caps: 0.06em;
+
+  /*
+   * --- Radii ---
+   * A last-resort scale, for the same reason as the families above: the
+   * theme's radius step redeclares all five unlayered.
+   */
+  --radius-sm: 0.25rem;
+  --radius-md: 0.375rem;
+  --radius-lg: 0.5rem;
+  --radius-xl: 0.75rem;
+  --radius-2xl: 1rem;
+
+  /* --- Elevation. Dark mode substitutes the palette's darker shadows. --- */
+  --shadow-raised: 0 1px 2px var(--palette-shadow-ambient);
+  --shadow-overlay:
+    0 1px 2px var(--palette-shadow-ambient), 0 8px 24px -6px var(--palette-shadow-direct);
+  --shadow-dialog:
+    0 2px 4px var(--palette-shadow-ambient), 0 24px 48px -12px var(--palette-shadow-direct);
+
+  /* --- Motion --- */
+  --duration-instant: 80ms;
+  --duration-fast: 140ms;
+  --duration-base: 220ms;
+  --duration-slow: 360ms;
+  --ease-standard: cubic-bezier(0.2, 0, 0, 1);
+  --ease-emphasised: cubic-bezier(0.3, 0, 0, 1);
+  --ease-exit: cubic-bezier(0.4, 0, 1, 1);
+
+  /*
+   * Bare `transition-*` utilities inherit the system's motion, so a component
+   * cannot accidentally use a duration or curve that is not a token.
+   */
+  --default-transition-duration: 140ms;
+  --default-transition-timing-function: cubic-bezier(0.2, 0, 0, 1);
+}
+
+/*
+ * `dark:` responds both to the operating system preference and to an explicit
+ * `data-theme`. Semantic tokens mean it is rarely needed; it exists for the
+ * cases where a shape rather than a colour has to change.
+ */
+@custom-variant dark {
+  &:where([data-theme='dark'], [data-theme='dark'] *) {
+    @slot;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    &:where(:root:not([data-theme='light']), :root:not([data-theme='light']) *) {
+      @slot;
+    }
+  }
+}
+
+/*
+ * Density, once, for every spacing and size utility at the same time.
+ *
+ * Every `p-*`, `gap-*`, `h-*`, and `w-*` in Tailwind 4 is a multiple of
+ * `--spacing`, so the theme's density step belongs there rather than on each
+ * component: one declaration tightens or loosens the whole component set, and
+ * no component has a density class of its own.
+ *
+ * The system is tuned on Instrument, whose step is `compact`, so that step is
+ * the unit and a `comfortable` theme loosens from it. The baseline is named
+ * rather than inlined because it is a fact about `@quill/theme`'s density
+ * table, not a number chosen here.
+ */
+@layer base {
+  :root {
+    /*
+     * Where a heading lands when it is scrolled to, and where "being read"
+     * starts: the bar's height plus one step of air. `SHELL_ANCHOR_OFFSET_PX`
+     * in `@quill/ui` is this same number for the one place that needs it in
+     * JavaScript (the table of contents' observer band); `tokens.test.ts`
+     * holds the two together.
+     */
+    --anchor-offset: calc(var(--spacing-shell-header) + var(--spacing) * 4);
+
+    --density-baseline: 0.875;
+    --spacing: calc(
+      0.25rem * var(--density-scale, var(--density-baseline)) / var(--density-baseline)
+    );
+  }
+}
+
+/*
+ * The theme's own axes, as variants.
+ *
+ * A component that has to look different under an identity, a density, or one
+ * of the signature rule treatments writes `rules-double:border-t` rather than
+ * taking the theme as a prop (docs/architecture/styling.md). Each reads the
+ * data attribute the theme already sets: `data-theme-id` on the document
+ * element, `data-rules` on the shell or the prose article. The default
+ * identity is the absence of `data-theme-id`, exactly as in the palettes.
+ */
+@custom-variant theme-instrument {
+  &:where(
+    :root:not([data-theme-id]) *,
+    :root:not([data-theme-id]),
+    [data-theme-id='instrument'] *,
+    [data-theme-id='instrument']
+  ) {
+    @slot;
+  }
+}
+
+@custom-variant theme-press {
+  &:where([data-theme-id='press'] *, [data-theme-id='press']) {
+    @slot;
+  }
+}
+
+@custom-variant theme-atelier {
+  &:where([data-theme-id='atelier'] *, [data-theme-id='atelier']) {
+    @slot;
+  }
+}
+
+@custom-variant rules-hairline {
+  &:where([data-rules='hairline'] *, [data-rules='hairline']) {
+    @slot;
+  }
+}
+
+@custom-variant rules-double {
+  &:where([data-rules='double'] *, [data-rules='double']) {
+    @slot;
+  }
+}
+
+@custom-variant rules-cards {
+  &:where([data-rules='cards'] *, [data-rules='cards']) {
+    @slot;
+  }
+}
+
+/*
+ * Reduced motion is honoured globally rather than per component: collapsing
+ * the duration tokens neutralises every transition and animation that is
+ * built from them, so a new component cannot forget to opt in.
+ */
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --duration-instant: 1ms;
+    --duration-fast: 1ms;
+    --duration-base: 1ms;
+    --duration-slow: 1ms;
+  }
+
+  *,
+  *::before,
+  *::after {
+    animation-duration: 1ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 1ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+@layer base {
+  html {
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+  }
+
+  body {
+    background-color: var(--color-background);
+    color: var(--color-foreground);
+    font-family: var(--font-sans);
+    font-size: var(--text-sm);
+    line-height: var(--leading-normal);
+    font-synthesis-weight: none;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+  }
+
+  ::selection {
+    background-color: var(--color-selection);
+    color: var(--color-foreground);
+  }
+
+  :where(h1, h2, h3, h4, h5, h6) {
+    font-weight: 600;
+    letter-spacing: var(--tracking-tight);
+    text-wrap: balance;
+  }
+
+  :where(p, li) {
+    text-wrap: pretty;
+  }
+
+  /* Never rely on the user-agent ring: it is invisible on dark surfaces. */
+  :where(a, button, input, select, textarea, summary, [tabindex]):focus-visible {
+    outline: 2px solid var(--color-focus-ring);
+    outline-offset: 2px;
+  }
+}
+
+/*
+ * One focus treatment for the whole product. Applied as a class so composite
+ * widgets (a tab, a dialog panel, a card) can carry the same ring as a button.
+ */
+.focus-ring:focus-visible,
+.focus-ring:has(:focus-visible) {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 2px;
+}
+
+.focus-ring-inset:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: -2px;
+}
+
+/*
+ * Overlay motion.
+ *
+ * The transform that centres a dialog is part of its entrance keyframe rather
+ * than a separate utility, so the animation and the resting position cannot
+ * disagree. Durations come from the tokens above, which means reduced motion
+ * already neutralises all of this.
+ */
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes dialog-in {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -48%) scale(0.985);
+  }
+}
+
+@keyframes tooltip-in {
+  from {
+    opacity: 0;
+    transform: scale(0.97);
+  }
+}
+
+/*
+ * Indeterminate progress: a short bar sweeping the track. Under reduced
+ * motion the sweep stops and the bar reads as a steady full line, so it still
+ * says "busy" without moving (`docs/design/feedback.md`).
+ */
+@keyframes progress-sweep {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(300%);
+  }
+}
+
+.progress-bar-indicator {
+  animation: progress-sweep 1.4s var(--ease-standard) infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .progress-bar-indicator {
+    animation: none;
+    width: 100%;
+    opacity: 0.6;
+  }
+}
+
+.dialog-overlay[data-state='open'] {
+  animation: fade-in var(--duration-fast) var(--ease-standard);
+}
+
+.dialog-panel {
+  transform: translate(-50%, -50%);
+}
+
+.dialog-panel[data-state='open'] {
+  animation: dialog-in var(--duration-base) var(--ease-emphasised);
+}
+
+.tooltip-panel[data-state='delayed-open'],
+.tooltip-panel[data-state='instant-open'] {
+  animation: tooltip-in var(--duration-instant) var(--ease-standard);
+  transform-origin: var(--radix-tooltip-content-transform-origin);
+}
+
+/*
+ * The actions menu, opening from whichever corner Radix placed it against —
+ * the same instant scale the tooltip uses, because both are a small panel
+ * attached to the control that opened it.
+ */
+.menu-panel[data-state='open'] {
+  animation: tooltip-in var(--duration-instant) var(--ease-standard);
+  transform-origin: var(--radix-dropdown-menu-content-transform-origin);
+}

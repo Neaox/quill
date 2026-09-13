@@ -1,0 +1,46 @@
+{
+  "name": "quill",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Open-source documentation platform. Markdown underneath, beautiful on top.",
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "dev": "pnpm --parallel --filter \"./apps/*\" dev",
+    "build": "pnpm --recursive --filter \"./apps/*\" build",
+    "format": "oxfmt",
+    "format:check": "oxfmt --check",
+    "lint": "oxlint",
+    "lint:deps": "depcruise apps packages --config .dependency-cruiser.cjs",
+    "typecheck": "pnpm --recursive typecheck && tsc -p tsconfig.json --noEmit && tsc -p e2e/tsconfig.json --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "test:e2e": "playwright test",
+    "rename": "node scripts/rename.ts",
+    "check": "pnpm format:check && pnpm lint && pnpm lint:deps && pnpm check:tailwind && pnpm typecheck && pnpm test:coverage && pnpm build && pnpm check:bundle",
+    "db:up": "docker compose up -d",
+    "db:down": "docker compose down",
+    "check:tailwind": "node scripts/check-tailwind.ts",
+    "check:bundle": "node scripts/check-bundle.ts",
+    "changelog:check": "node scripts/changelog.ts check",
+    "changelog:release": "node scripts/changelog.ts release"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.63.0",
+    "@quill/brand": "workspace:*",
+    "@types/node": "^24.13.4",
+    "@vitest/coverage-v8": "^5.0.0",
+    "dependency-cruiser": "^18.2.0",
+    "fast-check": "^4.9.0",
+    "oxfmt": "^0.67.0",
+    "oxlint": "^1.82.0",
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.0"
+  },
+  "engines": {
+    "node": ">=24.0.0 <25 || >=26.0.0",
+    "pnpm": ">=11"
+  },
+  "packageManager": "pnpm@11.17.0"
+}

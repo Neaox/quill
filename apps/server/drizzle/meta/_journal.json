@@ -1,0 +1,48 @@
+{
+  "version": "7",
+  "dialect": "postgresql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "7",
+      "when": 1789184536472,
+      "tag": "0000_right_norman_osborn",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1789191105552,
+      "tag": "0001_silky_revanche",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1789195882201,
+      "tag": "0002_sour_stark_industries",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1789199607378,
+      "tag": "0003_yellow_alice",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1789202456503,
+      "tag": "0004_remarkable_satana",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1789209159618,
+      "tag": "0005_sweet_sersi",
+      "breakpoints": true
+    }
+  ]
+}

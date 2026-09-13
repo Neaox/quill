@@ -1,0 +1,109 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: Quality gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: quill
+          POSTGRES_PASSWORD: quill
+          POSTGRES_DB: quill
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U quill -d quill"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgres://quill:quill@localhost:5432/quill
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Changelog fragment
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          pnpm changelog:check
+          git fetch --depth=1 origin "$BASE_SHA"
+          changed=$(git diff --name-only "$BASE_SHA"...HEAD)
+          if echo "$changed" | grep -qE '^(apps|packages)/' \
+            && ! echo "$changed" | grep -qE '^\.changelog/[0-9]{8}-.*\.md$'; then
+            echo "This PR changes apps/ or packages/ but adds no .changelog/ fragment." >&2
+            echo "Add one (see .changelog/README.md), or split out the unrelated change." >&2
+            exit 1
+          fi
+      # `pnpm check` ends with `check:bundle`, which reads the `dist` the
+      # `pnpm build` step before it produced: the reading route's gzip budget
+      # fails the gate like every other step (docs/operations/bundle-budget.md).
+      - run: pnpm check
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: coverage
+          path: coverage/
+          retention-days: 7
+
+  e2e:
+    name: End-to-end
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: quill
+          POSTGRES_PASSWORD: quill
+          POSTGRES_DB: quill
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U quill -d quill"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgres://quill:quill@localhost:5432/quill
+      APP_URL: http://localhost:5173
+      MAIL_DRIVER: dev
+      CONTENT_STORE: filesystem
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-playwright-${{ hashFiles('pnpm-lock.yaml') }}
+      - run: pnpm exec playwright install --with-deps
+      - run: pnpm test:e2e
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 7

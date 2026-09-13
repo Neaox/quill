@@ -1,0 +1,284 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,600;1,8..60,400&family=JetBrains+Mono:wght@400;500&display=swap">
+  <style>
+    body { margin: 0; background: var(--paper); color: var(--ink); font-family: 'Inter', ui-sans-serif, system-ui, sans-serif; font-size: 14px; line-height: 1.5; -webkit-font-smoothing: antialiased; }
+    a { color: var(--accent); text-decoration: none; }
+    a:hover { color: color-mix(in oklch, var(--accent), black 14%); }
+    .serif { font-family: var(--font-display); }
+    .mono { font-family: 'JetBrains Mono', ui-monospace, Menlo, monospace; }
+    .btn { display: inline-flex; align-items: center; gap: 8px; height: 36px; padding: 0 14px; border-radius: 6px; font-weight: 500; font-size: 14px; border: 1px solid transparent; white-space: nowrap; }
+    .btn-primary { background: var(--accent); color: oklch(99% 0 0); }
+    .btn-secondary { background: oklch(100% 0 0); border-color: var(--border-strong); box-shadow: 0 1px 2px color-mix(in oklch, var(--ink) 6%, transparent); }
+    .btn-ghost { color: var(--muted); }
+    .nav-item { display: flex; align-items: center; gap: 8px; height: 32px; padding: 0 10px; border-radius: 6px; color: var(--ink); }
+    .nav-item.active { background: color-mix(in oklch, var(--accent) 10%, var(--paper)); color: color-mix(in oklch, var(--accent), var(--ink) 35%); font-weight: 500; }
+    .nav-group { display: flex; align-items: center; gap: 6px; height: 30px; padding: 0 6px; font-size: 12px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
+    .prose { font-family: var(--font-reading); font-size: 17px; line-height: 1.7; }
+    .prose p { margin: 0; }
+    .prose h2 { font-family: 'Inter', sans-serif; font-size: 24px; line-height: 1.25; font-weight: 600; letter-spacing: -0.016em; margin: 0; }
+    .prose code { font-family: 'JetBrains Mono', monospace; font-size: 0.86em; background: var(--surface); border-radius: 4px; padding: 0.1em 0.35em; }
+    table { border-collapse: collapse; width: 100%; font-family: 'Inter', sans-serif; font-size: 13.5px; font-variant-numeric: tabular-nums; }
+    th { text-align: left; font-weight: 600; font-size: 12px; letter-spacing: 0.04em; text-transform: uppercase; color: var(--muted); padding: 10px 12px; border-bottom: 1px solid var(--border-strong); }
+    td { padding: 11px 12px; border-bottom: 1px solid var(--border); vertical-align: top; }
+    .menu-item { display: flex; align-items: center; gap: 10px; height: 32px; padding: 0 10px; border-radius: 6px; font-size: 13.5px; color: var(--ink); }
+    .menu-item.hover { background: var(--surface); }
+    .seg { display: inline-flex; align-items: center; height: 28px; padding: 0 10px; font-size: 12.5px; font-weight: 500; color: var(--muted); border-radius: 5px; }
+    .seg.on { background: oklch(100% 0 0); color: var(--ink); box-shadow: 0 1px 2px color-mix(in oklch, var(--ink) 10%, transparent); }
+    .pill { display: inline-flex; align-items: center; gap: 6px; height: 24px; padding: 0 9px; border-radius: 999px; font-size: 12px; font-weight: 500; }
+    .field-label { font-size: 12.5px; font-weight: 500; color: var(--ink); }
+    .gallery-item { display: flex; flex-direction: column; gap: 2px; padding: 8px 10px; border-radius: 8px; }
+    .gallery-item:hover { background: var(--surface); }
+    .checklist-row { display: flex; align-items: flex-start; gap: 9px; }
+  </style>
+</helmet>
+<div style="--paper: {{t.paper}}; --surface: {{t.surface}}; --ink: {{t.ink}}; --muted: {{t.muted}}; --border: {{t.border}}; --border-strong: {{t.borderStrong}}; --accent: {{accent}}; --font-reading: {{t.fontReading}}; --font-display: {{t.fontDisplay}}; width: 1440px; min-height: 900px; display: flex; flex-direction: column; background: var(--paper);">
+
+  <!-- Top bar: editing state -->
+  <div style="display: flex; align-items: center; gap: 16px; height: 52px; padding: 0 16px 0 20px; border-bottom: 1px solid var(--border);">
+    <div style="display: flex; align-items: center; gap: 10px; min-width: 240px;">
+      <div style="width: 26px; height: 26px; border-radius: 7px; background: var(--accent); display: flex; align-items: center; justify-content: center;">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="oklch(99% 0 0)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20l4-1 11-11-3-3L5 16z"></path><path d="M13 7l3 3"></path></svg>
+      </div>
+      <span style="font-weight: 600; font-size: 14px;">Acme Engineering</span>
+    </div>
+    <div style="flex: 1; display: flex; justify-content: center; align-items: center; gap: 10px; font-size: 13px; color: var(--muted);">
+      <span>New document</span>
+      <span style="color: var(--border-strong);">|</span>
+      <span>Engineering / Decisions</span>
+    </div>
+    <div style="display: flex; align-items: center; gap: 8px; min-width: 240px; justify-content: flex-end;">
+      <button class="btn btn-ghost" type="button">Preview</button>
+      <button class="btn btn-secondary" type="button">Done</button>
+      <button class="btn btn-primary" type="button">Publish</button>
+    </div>
+  </div>
+
+  <div style="display: flex; flex: 1; min-height: 0;">
+
+    <!-- Left navigation (quieter while editing) -->
+    <div style="width: 272px; flex-shrink: 0; padding: 16px 12px; border-right: 1px solid var(--border); background: var(--surface); display: flex; flex-direction: column; gap: 2px;">
+      <div class="nav-group">Engineering</div>
+      <div class="nav-item"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"></path></svg>Architecture</div>
+      <div style="display: flex; flex-direction: column; gap: 2px; padding-left: 22px;">
+        <div class="nav-item">System overview</div>
+        <div class="nav-item active">Authentication</div>
+        <div class="nav-item">Data model</div>
+        <div class="nav-item">Event pipeline</div>
+      </div>
+      <div class="nav-item"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"></path></svg>Runbooks</div>
+      <div class="nav-item"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"></path></svg>Incident management</div>
+      <div class="nav-item"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"></path></svg>Decisions</div>
+      <div class="nav-group" style="margin-top: 14px;">Product</div>
+      <div class="nav-item"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"></path></svg>Specifications</div>
+      <div class="nav-item"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"></path></svg>Release notes</div>
+    </div>
+
+    <!-- New document: gallery + question form shown side by side -->
+    <div style="flex: 1; min-width: 0; padding: 26px 24px 24px; display: flex; flex-direction: column; gap: 16px; min-height: 0;">
+
+      <div style="flex-shrink: 0;">
+        <h1 class="serif" style="margin: 0; font-size: 27px; font-weight: 600; letter-spacing: -0.015em;">New document</h1>
+        <p style="margin: 6px 0 0; font-size: 13.5px; color: var(--muted);">Choose a template or start from a blank page.</p>
+      </div>
+
+      <div style="display: flex; gap: 24px; flex: 1; min-height: 0;">
+
+        <!-- Gallery -->
+        <div style="width: 480px; flex-shrink: 0; display: flex; flex-direction: column; gap: 10px; padding: 14px; border-radius: 10px; background: oklch(100% 0 0); border: 1px solid var(--border-strong); box-shadow: 0 1px 2px color-mix(in oklch, var(--ink) 6%, transparent); min-height: 0;">
+
+          <div style="flex-shrink: 0; display: flex; align-items: center; gap: 8px; height: 36px; padding: 0 10px; border-radius: 6px; border: 1px solid var(--border-strong); color: var(--muted); font-size: 13px;">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"></circle><path d="M20 20l-3.5-3.5"></path></svg>
+            <span>Find a template</span>
+          </div>
+
+          <div style="flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 4px;">
+
+            <div class="gallery-item" style="flex-direction: row; align-items: center; gap: 10px;">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--muted)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M7 3h7l4 4v13a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z"></path><path d="M14 3v4h4"></path></svg>
+              <div style="display: flex; flex-direction: column; gap: 2px;">
+                <span style="font-size: 13.5px; font-weight: 500;">Blank page</span>
+                <span style="font-size: 12px; color: var(--muted);">Start writing without a template.</span>
+              </div>
+            </div>
+
+            <div class="nav-group" style="height: 22px; margin-top: 4px;">Recently used</div>
+            <div class="gallery-item">
+              <span style="font-size: 13.5px; font-weight: 500;">Technical design</span>
+              <span style="font-size: 12px; color: var(--muted);">Explain a proposed system before you build it.</span>
+              <span style="font-size: 11px; color: var(--muted);">Used 3 days ago</span>
+            </div>
+            <div class="gallery-item">
+              <span style="font-size: 13.5px; font-weight: 500;">Runbook</span>
+              <span style="font-size: 12px; color: var(--muted);">Step-by-step instructions for a recurring or on-call task.</span>
+              <span style="font-size: 11px; color: var(--muted);">Used 6 days ago</span>
+            </div>
+
+            <div class="nav-group" style="height: 22px; margin-top: 4px;">Engineering</div>
+
+            <div style="display: flex; flex-direction: column; gap: 6px; padding: 10px 12px; border-radius: 8px; background: color-mix(in oklch, var(--accent) 7%, var(--paper)); border: 1px solid color-mix(in oklch, var(--accent) 55%, var(--paper)); box-shadow: 0 0 0 3px color-mix(in oklch, var(--accent) 18%, var(--paper));">
+              <div style="display: flex; align-items: center; justify-content: space-between;">
+                <span style="font-size: 13.5px; font-weight: 600;">Architecture decision record</span>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"></circle><path d="M8 12l3 3 5-6"></path></svg>
+              </div>
+              <span style="font-size: 12px; color: var(--muted);">Record a decision, its context, and the alternatives you rejected.</span>
+              <span style="font-size: 11px; color: var(--muted);">Workspace template &middot; v3 &middot; used 41 times</span>
+              <button class="btn btn-primary" type="button" style="align-self: flex-start; margin-top: 2px; height: 30px; padding: 0 12px; font-size: 12.5px;">Use template</button>
+            </div>
+
+            <div class="gallery-item">
+              <span style="font-size: 13.5px; font-weight: 500;">Technical design</span>
+              <span style="font-size: 12px; color: var(--muted);">Explain a proposed system before you build it.</span>
+              <span style="font-size: 11px; color: var(--muted);">Workspace template &middot; v2 &middot; used 28 times</span>
+            </div>
+            <div class="gallery-item">
+              <span style="font-size: 13.5px; font-weight: 500;">Runbook</span>
+              <span style="font-size: 12px; color: var(--muted);">Step-by-step instructions for a recurring or on-call task.</span>
+              <span style="font-size: 11px; color: var(--muted);">Workspace template &middot; v4 &middot; used 19 times</span>
+            </div>
+            <div class="gallery-item">
+              <span style="font-size: 13.5px; font-weight: 500;">Postmortem</span>
+              <span style="font-size: 12px; color: var(--muted);">Document an incident: timeline, impact, root cause, follow-ups.</span>
+              <span style="font-size: 11px; color: var(--muted);">Workspace template &middot; v2 &middot; used 12 times</span>
+            </div>
+            <div class="gallery-item">
+              <span style="font-size: 13.5px; font-weight: 500;">RFC</span>
+              <span style="font-size: 12px; color: var(--muted);">Propose a change and gather feedback before committing to it.</span>
+              <span style="font-size: 11px; color: var(--muted);">Workspace template &middot; v1 &middot; used 7 times</span>
+            </div>
+
+            <div class="nav-group" style="height: 22px; margin-top: 4px;">Product</div>
+            <div class="gallery-item">
+              <span style="font-size: 13.5px; font-weight: 500;">PRD</span>
+              <span style="font-size: 12px; color: var(--muted);">Define the problem, the users, and what success looks like.</span>
+              <span style="font-size: 11px; color: var(--muted);">Workspace template &middot; v3 &middot; used 22 times</span>
+            </div>
+            <div class="gallery-item">
+              <span style="font-size: 13.5px; font-weight: 500;">Release notes</span>
+              <span style="font-size: 12px; color: var(--muted);">Summarize what shipped for customers and internal teams.</span>
+              <span style="font-size: 11px; color: var(--muted);">Workspace template &middot; v5 &middot; used 34 times</span>
+            </div>
+
+          </div>
+        </div>
+
+        <!-- Question form for the selected template -->
+        <div style="flex: 1; min-width: 0; display: flex; flex-direction: column; border-radius: 10px; background: oklch(100% 0 0); border: 1px solid var(--border-strong); box-shadow: 0 1px 2px color-mix(in oklch, var(--ink) 6%, transparent); min-height: 0;">
+
+          <div style="flex-shrink: 0; padding: 18px 20px; border-bottom: 1px solid var(--border);">
+            <div class="nav-group" style="height: auto; padding: 0;">Engineering</div>
+            <h2 class="serif" style="margin: 4px 0 0; font-size: 20px; font-weight: 600;">Architecture decision record</h2>
+            <p style="margin: 6px 0 0; font-size: 13px; color: var(--muted);">Capture a decision, why it was made, and what you considered instead.</p>
+          </div>
+
+          <div style="flex: 1; min-height: 0; overflow-y: auto; padding: 18px 20px; display: flex; flex-direction: column; gap: 18px;">
+
+            <div style="display: flex; flex-direction: column; gap: 6px;">
+              <label class="field-label">Title</label>
+              <div style="height: 36px; display: flex; align-items: center; padding: 0 12px; border-radius: 6px; border: 1px solid var(--border-strong); font-size: 13.5px;">Move session storage to Postgres</div>
+            </div>
+
+            <div style="display: flex; flex-direction: column; gap: 6px;">
+              <label class="field-label">Initial status</label>
+              <div style="display: inline-flex; gap: 2px; padding: 3px; border-radius: 7px; background: var(--surface); width: fit-content;">
+                <span class="seg on">Proposed</span>
+                <span class="seg">Accepted</span>
+              </div>
+            </div>
+
+            <div style="display: flex; flex-direction: column; gap: 6px;">
+              <label class="field-label">Does this supersede an earlier decision?</label>
+              <div style="display: inline-flex; align-items: center; height: 36px; padding: 0 8px; border-radius: 6px; border: 1px solid var(--border-strong); width: fit-content;">
+                <span style="display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 10px; border-radius: 999px; background: var(--surface); font-size: 12.5px;">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--muted)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M7 3h7l4 4v13a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z"></path><path d="M14 3v4h4"></path></svg>
+                  Session storage in Redis &middot; Decisions
+                </span>
+              </div>
+            </div>
+
+            <div style="display: flex; flex-direction: column; gap: 6px;">
+              <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px;">
+                <label class="field-label" style="max-width: 400px; font-weight: 500;">Does this decision touch authentication, data access, or secrets?</label>
+                <div style="width: 38px; height: 22px; border-radius: 999px; background: var(--accent); position: relative; flex-shrink: 0;">
+                  <div style="position: absolute; top: 2px; right: 2px; width: 18px; height: 18px; border-radius: 999px; background: oklch(100% 0 0);"></div>
+                </div>
+              </div>
+              <p style="margin: 0; font-size: 12px; color: var(--muted);">Adds a Security considerations section that the security team reviews.</p>
+            </div>
+
+            <div style="display: flex; flex-direction: column; gap: 10px; padding: 14px 16px; border-radius: 8px; background: var(--surface); border: 1px solid var(--border);">
+              <span style="font-size: 12px; font-weight: 600;">What you'll get</span>
+
+              <div class="checklist-row">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink: 0; margin-top: 1px;"><circle cx="12" cy="12" r="9"></circle><path d="M8 12l3 3 5-6"></path></svg>
+                <div style="display: flex; flex-direction: column;">
+                  <span style="font-size: 13px;">Context</span>
+                  <span style="font-size: 11.5px; color: var(--muted);">Required</span>
+                </div>
+              </div>
+              <div class="checklist-row">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink: 0; margin-top: 1px;"><circle cx="12" cy="12" r="9"></circle><path d="M8 12l3 3 5-6"></path></svg>
+                <div style="display: flex; flex-direction: column;">
+                  <span style="font-size: 13px;">Decision</span>
+                  <span style="font-size: 11.5px; color: var(--muted);">Required</span>
+                </div>
+              </div>
+              <div class="checklist-row">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink: 0; margin-top: 1px;"><circle cx="12" cy="12" r="9"></circle><path d="M8 12l3 3 5-6"></path></svg>
+                <div style="display: flex; flex-direction: column;">
+                  <span style="font-size: 13px;">Security considerations</span>
+                  <span style="font-size: 11.5px; color: var(--muted);">Required &middot; added because of your answer</span>
+                </div>
+              </div>
+              <div class="checklist-row">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--border-strong)" stroke-width="2" style="flex-shrink: 0; margin-top: 1px;"><circle cx="12" cy="12" r="9"></circle></svg>
+                <div style="display: flex; flex-direction: column;">
+                  <span style="font-size: 13px; color: var(--muted);">Alternatives considered</span>
+                  <span style="font-size: 11.5px; color: var(--muted);">Optional &middot; add later</span>
+                </div>
+              </div>
+
+              <span class="mono" style="font-size: 11px; color: var(--muted);">Metadata: type adr &middot; review every 365 days</span>
+            </div>
+
+          </div>
+
+          <div style="flex-shrink: 0; display: flex; justify-content: flex-end; gap: 10px; padding: 14px 20px; border-top: 1px solid var(--border);">
+            <button class="btn btn-ghost" type="button">Cancel</button>
+            <button class="btn btn-primary" type="button">Create document</button>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+  </div>
+</div>
+</x-dc>
+<script data-dc-script data-props='{"tone":{"editor":"enum","options":["Warm","Neutral","Cool"],"default":"Warm","section":"Theme"},"accent":{"editor":"color","options":["#1f6f6b","#4353c9","#8a3b2e","#4a6b3a"],"default":"#1f6f6b","section":"Theme"},"reading":{"editor":"enum","options":["Serif","Sans"],"default":"Serif","section":"Theme"}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const tones = {
+      Warm: { paper: 'oklch(98.5% 0.006 80)', surface: 'oklch(97.2% 0.008 80)', ink: 'oklch(24% 0.02 60)', muted: 'oklch(50% 0.02 60)', border: 'oklch(91% 0.01 80)', borderStrong: 'oklch(84% 0.012 80)' },
+      Neutral: { paper: 'oklch(99% 0.001 80)', surface: 'oklch(97.3% 0.002 80)', ink: 'oklch(22% 0.005 60)', muted: 'oklch(49% 0.006 60)', border: 'oklch(91% 0.003 80)', borderStrong: 'oklch(84% 0.004 80)' },
+      Cool: { paper: 'oklch(99% 0.002 264)', surface: 'oklch(97.2% 0.004 264)', ink: 'oklch(24% 0.02 264)', muted: 'oklch(48% 0.015 264)', border: 'oklch(91% 0.006 264)', borderStrong: 'oklch(84% 0.008 264)' },
+    }
+    const faces = {
+      Serif: { fontReading: "'Source Serif 4', Georgia, serif", fontDisplay: "'Source Serif 4', Georgia, serif" },
+      Sans: { fontReading: "'Inter', ui-sans-serif, system-ui, sans-serif", fontDisplay: "'Inter', ui-sans-serif, system-ui, sans-serif" },
+    }
+    const tone = tones[this.props.tone] ?? tones.Warm
+    const face = faces[this.props.reading] ?? faces.Serif
+    return { t: { ...tone, ...face }, accent: this.props.accent ?? '#1f6f6b' }
+  }
+}
+</script>
+</body>
+</html>

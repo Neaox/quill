@@ -1,0 +1,23 @@
+{
+  "name": "@quill/search",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Quill search core: query language, indexable document projection, ranking data, snippet offsets, and the permission-filter contract every search engine adapter shares (ADR-010).",
+  "license": "MIT",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./test-support": "./src/test-support/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@quill/domain": "workspace:*",
+    "@quill/markdown": "workspace:*"
+  },
+  "devDependencies": {
+    "@quill/config": "workspace:*",
+    "@types/mdast": "^4.0.4"
+  }
+}

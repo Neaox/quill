@@ -1,0 +1,287 @@
+# @quill/server
+
+The Fastify HTTP server: persistence, authentication, the transactional outbox and job runner, and the content API. See `quill-plan.md` sections 7, 11, 12, 14, 22, 23, and 25, and ADR-012, ADR-014, ADR-015, ADR-021, ADR-025, ADR-029, ADR-030, and ADR-031 for the design this implements.
+
+Business rules live in `packages/application`; this package composes them with a database, a content store, a Markdown pipeline, and HTTP. Routes call use cases and never a repository.
+
+## Layout
+
+```text
+src/
+  app.ts                 builds the Fastify instance (no listen) — routes only register when `deps` is supplied
+  main.ts                composition root: wires config, database, mailer, job runner, and starts listening
+  config.ts              environment loader (ServerConfig)
+  dependencies.ts        AppDependencies — everything a route needs beyond pure logic
+  errors.ts              AppError and factories; the { error: { code, message, details? } } shape
+
+  infrastructure/
+    content-store.ts        the ADR-014 store, filesystem or in-memory, chosen by configuration
+    markdown/
+      document-format.ts     the DocumentFormat port over packages/markdown
+      highlighter.ts         the ADR-030 highlighter the renderer takes as an option
+      required-sections.ts   which required sections are still empty (ADR-029)
+    db/
+      schema.ts           Drizzle schema for every table (plan §11)
+      connection.ts       pg Pool + Drizzle handle factory
+      migrator.ts         applies drizzle/*.sql under a Postgres advisory lock (plan §25)
+      test-database.ts    one randomly named, migrated schema per integration test run
+      rows.ts             requireRow() — narrows a possibly-undefined DB row without `!`
+    repositories/         one file per repository port, plus unit-of-work.ts
+    outbox/                consumer.ts (the interface), poller.ts (one FOR UPDATE SKIP LOCKED poll),
+                           render-on-publish.ts (render on DocumentPublished), send-mail.ts
+                           (deliver a queued message, then redact the row), acknowledge.ts
+                           (a deliberate no-op for a type nothing acts on yet)
+
+  jobs/
+    job-runner.ts         schedules poller.pollOutboxOnce and the periodic jobs on one interval
+    sweep-expired.ts      removes sessions past either clock and spent magic-link tokens
+
+  scripts/
+    export-openapi.ts       builds the app with in-memory fakes and writes packages/api-client/openapi.gen.json
+    seed.ts                 idempotent local development data, created through the real use cases
+    seed-documents.ts       the Markdown those documents are written in
+    *-cli.ts                the composition roots those two scripts are run through
+
+  shutdown.ts            the order the process closes in: job runner, then app, then pool
+
+  auth/
+    password.ts            createPasswordHasher(): the scheme registry composed, the re-hash
+                           rule, and the dummy verify a missing account still pays for — built
+                           once in the composition root, never lazily on a request
+    password-scheme.ts     the registry of hash schemes, keyed by PHC identifier, one current
+    password-schemes/      one file per scheme; argon2id.ts is the one in force
+    email.ts               the canonical form of an address: every lookup and insert uses it
+    breached-password-corpus.ts  the bundled list consulted when the remote corpus is down
+    tokens.ts               single-use magic-link token generation and hashing
+    session-token.ts        256-bit session tokens, their SHA-256, and a timing-safe compare
+    breached-password.ts    the BreachedPasswordChecker port + the HIBP k-anonymity implementation
+    mailer.ts               the Mailer port; dev-mailer.ts and smtp-mailer.ts implement it
+    session-cookie.ts       httpOnly, SameSite=Lax cookie helpers
+    rate-limit.ts           the backing-off limiter behind @fastify/rate-limit
+
+  application/
+    auth-service.ts         sign up/in/out, magic links, password reset and change, verification
+    session-service.ts      issue, authenticate, rotate, revoke; the absolute and idle clocks
+    audit.ts                the audit event vocabulary and the recorder
+    authorization.ts        how a route asks the ADR-012 resolver what a request may do
+    editing-service.ts      lock and draft operations, with `edit` re-resolved on every
+                            heartbeat and every write
+
+  infrastructure/http/
+    outbound-client.ts      the one SSRF-safe client every server-side fetch goes through
+
+  plugins/
+    error-handler.ts        maps every error to the consistent shape
+    request-id.ts           honours/generates x-request-id
+    session.ts               requireSession / requireVerifiedSession decorators
+    csrf.ts                  Sec-Fetch-Site and Origin checks on every state-changing request
+    security-headers.ts      @fastify/helmet: CSP with a per-response nonce, HSTS, and the rest
+    rate-limit.ts            wires @fastify/rate-limit to the limiter, per address and per account
+    openapi.ts                @fastify/swagger + swagger-ui (development only)
+
+  routes/                  auth, me, units, workspaces, collections, documents, drafts, locks
+                           (+ health.ts)
+                           document-schemas.ts holds the TypeBox shapes of the M2 content API
+  test-support/             harness.ts (a whole server against a real database), tenancy-fixture.ts,
+                           and fakes.ts; the in-memory repositories come from @quill/application/test-support
+
+drizzle/                  generated SQL migrations (drizzle-kit) + meta/_journal.json
+test-fixtures/            non-TypeScript fixtures for tests (kept out of src/ — see migrator.test.ts)
+```
+
+## Running migrations
+
+Migrations are SQL files generated by `drizzle-kit` from `src/infrastructure/db/schema.ts` into `drizzle/`, applied by `src/infrastructure/db/migrator.ts` — never by `drizzle-orm`'s own migrator, because the generated SQL hardcodes `public` as the foreign-key schema, which `migrator.ts` strips so the same files work under any `search_path` (this is how integration tests isolate themselves, see below).
+
+- **At startup**, `main.ts` calls `runMigrations(pool)` before the server starts listening. It takes a Postgres advisory lock first, so multiple server instances starting at once never race.
+- **To add a migration**: change `schema.ts`, then run `pnpm --filter @quill/server exec drizzle-kit generate` from the repo root (or `pnpm exec drizzle-kit generate` from `apps/server/`). Commit the new file under `drizzle/` and the updated `drizzle/meta/_journal.json`.
+- **Applied migrations** are tracked in a `schema_migrations` table (one row per applied tag), created on first run.
+- The first migration also seeds a singleton `public` principal row (`principals.kind = 'public'`), so `GrantRepository`'s `ensurePrincipal` never has to race to create it — see the comment at the end of `drizzle/0000_*.sql`.
+
+## Local development
+
+```bash
+docker compose up -d postgres   # from the repo root
+pnpm --filter @quill/server dev
+```
+
+`DATABASE_URL` defaults to `postgres://quill:quill@localhost:5432/quill` (the same default `docker compose` and `.env.example` use). See `.env.example` for every variable `config.ts` reads, including `MAIL_DRIVER` (`dev` logs magic links to stdout instead of sending mail; `smtp` requires `SMTP_HOST`/`SMTP_FROM`).
+
+## Auth flows (plan §23, ADR-011)
+
+The standard is ADR-011; `docs/security/review-2026-09-12-m1-auth-closure.md` records which
+test proves each of its requirements.
+
+- **Email and password**: `POST /api/auth/sign-up`, `POST /api/auth/sign-in`. Passwords are 12
+  to 128 characters of any Unicode with no composition rules, hashed with Argon2id at explicit
+  parameters (`m=19456, t=2, p=1`) and re-hashed on sign-in when a stored hash is below them.
+  Every new password is checked against the breached corpus; a corpus that cannot be reached
+  fails open and writes an audit event.
+- **No account enumeration**: sign-up always answers `202 {}`. An address that already has an
+  account gets a "you already have an account" email rather than a different status code.
+  Sign-in runs one verify whether or not the account exists, sign-up runs one hash on both
+  branches, and an unknown address asking for a link still mints and hashes a token and writes
+  an audit row of the same shape — so the timing does not answer the question either.
+  `application/sign-in-timing.test.ts` proves it by counting, and again on the clock.
+- **Addresses are normalised** (trimmed, lower-cased) at the service boundary for every lookup
+  and every insert, with a unique index on `lower(email)` behind it: one mailbox is one
+  account however it is spelled (`auth/email.ts`).
+- **Magic links**: `POST /api/auth/magic-link { email }` always answers `202` and issues a
+  *sign-in* link and nothing else; verification links come from sign-up and reset links from
+  the reset endpoint, each with its own budget. It never creates an account.
+  `POST /api/auth/magic-link/consume { token, confirm? }` signs in. Tokens are 256-bit, stored
+  only as a SHA-256, single use under concurrency, expire after 15 minutes, and are
+  *superseded*: issuing a newer one for the same user and purpose retires every older
+  unconsumed one.
+- **Links carry their token in the fragment**, never the query string, so it reaches no access
+  log, no browser history, and no `Referer`; the web app reads it in the browser and posts it
+  back. Every link request leaves a short-lived `__Host-<slug>_link` cookie behind, and
+  consuming a link needs that cookie or `confirm: true` in the body — so a mail scanner or a
+  link-preview bot that follows the link gets `403 confirmation_required` and spends nothing.
+- **Mail is queued, not sent, on the request path.** A `MailRequested` outbox event is written
+  in the same transaction as the token, and a consumer delivers it and then redacts the link
+  out of the processed row. Waiting for SMTP on one branch and not the other was a measurable
+  answer to "does this address have an account here?".
+- **Email verification**: sign-up sends the link; `POST /api/auth/verify-email { token }`
+  completes it. A verified address is required before creating or changing tenancy, documents,
+  drafts, or grants (`app.requireVerifiedSession`); `/api/me` and the auth routes are not gated.
+- **Password reset**: `POST /api/auth/password-reset/request { email }`, then
+  `POST /api/auth/password-reset/confirm { token, newPassword }`, which revokes every session.
+- **Password change** (signed in): `POST /api/auth/password { currentPassword, newPassword }`
+  re-authenticates, revokes every other session, and rotates this one.
+- **Sessions**: the cookie carries a 256-bit token from `crypto.randomBytes`; the `sessions` row
+  stores its SHA-256 in `token_hash` and keeps an opaque `id` as the row key — what
+  `document_locks.holder_session_id` and the management routes name. Two clocks are enforced
+  server-side: absolute (30 days, `expires_at`) and idle (7 days, `last_seen_at`). Sessions
+  rotate on sign-in, password change, reset, and privilege change.
+- **Session management**: `GET /api/auth/sessions` lists them, `DELETE /api/auth/sessions/:id`
+  revokes one, `DELETE /api/auth/sessions` signs out everywhere.
+- **Sign out**: `POST /api/auth/sign-out` deletes the session and clears the cookie; idempotent.
+- **Cookie**: `__Host-` prefixed and `Secure` when `APP_URL` is https, plus `HttpOnly`,
+  `SameSite=Lax`, `Path=/`, and no `Domain`, and cleared with those same attributes — a
+  browser will not honour a deletion that does not match. Plain http is accepted only for
+  localhost. `SECURE_COOKIES` is deprecated and still honoured on a plain-http instance; on an
+  https one, `SECURE_COOKIES=false` is ignored with a warning, and a `SESSION_COOKIE_NAME`
+  without the `__Host-` prefix refuses to boot.
+- **CSRF**: every POST/PUT/PATCH/DELETE must carry `Sec-Fetch-Site` of `same-origin` or `none`
+  when it sends one, and a matching `Origin` when it sends one. A request with neither header is
+  treated as a non-browser client and allowed only when it carries no session cookie —
+  `plugins/csrf.ts` explains why.
+- **Rate limiting**: sign-in, sign-up, magic link, password reset, password change, and lock
+  takeover are limited per source address and per account, with a window that doubles for a key
+  that keeps exhausting it rather than a lockout an attacker could aim at a victim. A link
+  request counts against one bucket per *(account, purpose)*, shared across every route that
+  could send that kind of mail; the endpoints that consume a token are limited by address. A
+  correct sign-in clears both of its buckets, and the store forgets a key nobody has come back
+  to, so it cannot grow without bound.
+- **Audit**: every authentication outcome, session revocation, password change, privilege
+  change, collection change, and rate-limit refusal writes an `audit_events` row carrying no
+  token, password, or password hash. Privilege changes go through
+  `application/auth-service.ts`'s `grantInstanceAdmin`, never `users.setInstanceAdmin`
+  directly, because the repository call alone rotates nothing and audits nothing.
+- **Password schemes**: hashing is a registry keyed by the PHC identifier a stored hash already
+  carries (`auth/password-scheme.ts`), with exactly one scheme current. Adding one is a file in
+  `auth/password-schemes/` and an entry in the registry; retiring one is an operational step
+  with a cost, written down in that module's doc comment — holders of hashes it wrote have to
+  reset, because `verify` fails closed on a hash nothing registered recognises.
+
+## Configuration for authentication
+
+| Variable | Default | Meaning |
+| --- | --- | --- |
+| `APP_URL` | `http://localhost:$PORT` | Decides cookie `Secure`/`__Host-`, HSTS, and the `Origin` CSRF accepts |
+| `SESSION_TTL_MS` | 30 days | Absolute session lifetime |
+| `SESSION_IDLE_TTL_MS` | 7 days | Idle session lifetime, measured from `last_seen_at` |
+| `SESSION_COOKIE_NAME` | `__Host-quill_session` or `quill_session` | Override the cookie name |
+| `SECURE_COOKIES` | — | **Deprecated**; still honoured, warns on use |
+| `AUTH_RATE_LIMIT_MAX` | `10` | Attempts per window, per key |
+| `AUTH_RATE_LIMIT_WINDOW_MS` | `60000` | The first window; it doubles for a key that exhausts it |
+| `AUTH_RATE_LIMIT_MAX_WINDOW_MS` | `3600000` | Where the doubling stops |
+| `BREACHED_PASSWORD_CHECK` | `true` | Set `false` for an air-gapped instance |
+| `BREACHED_PASSWORD_RANGE_URL` | `https://api.pwnedpasswords.com/range` | The k-anonymity endpoint, and the outbound client's whole allowlist |
+| `TRUST_PROXY` | — | A hop count, or the proxy addresses and CIDR ranges to believe. Unset, `X-Forwarded-For` and a supplied `X-Request-Id` are ignored |
+| `NODE_ENV` | — | `production` stops the API description and Swagger UI being served, requires `DATABASE_URL`, and refuses `MAIL_DRIVER=dev` |
+| `SEED_ALLOW_PRODUCTION` | — | `1` lets `pnpm seed` run under `NODE_ENV=production`, which it otherwise refuses |
+
+## Outbound requests
+
+`infrastructure/http/outbound-client.ts` is the single client every server-side fetch goes
+through (ADR-011): a host allowlist, DNS resolution checked against loopback, private,
+link-local, carrier-grade-NAT and cloud-metadata ranges, redirects capped and re-checked on
+every hop, a timeout, and a response size cap applied as the body arrives.
+
+It resolves, checks, and then **connects to the address it checked**, through a custom
+`lookup` with `servername` kept so TLS still validates against the hostname — letting the
+connection resolve a second time is how DNS rebinding walks past an allowlist. That is also
+why the transport is `node:https` rather than `fetch`: `fetch` cannot express "connect here,
+speak TLS for that name". IPv6 addresses are parsed to their sixteen bytes, so the IPv4-mapped,
+NAT64 and 6to4 spellings of a private address get the IPv4 verdict rather than sailing past a
+string-prefix check.
+
+The transport and the resolver are parameters, so the unit tests drive the whole decision table
+without a network. The breached-password checker is its first caller; it consults a small
+bundled corpus (`auth/breached-password-corpus.ts`) whenever the remote range API cannot be
+reached, so an outage is a narrower check rather than no check.
+
+## Drafts and locks (ADR-021)
+
+`PUT /api/documents/:id/draft` and the four lock endpoints (`/lock/acquire`, `/lock/heartbeat`, `DELETE /lock`, `/lock/takeover`) implement the ADR-021 API contract table exactly, including its status codes (`423 lock_lost`, `409 stale_version`, `401 session_expired`, `409 held`, `410 expired`, `409 taken_over`, `404 released`). `infrastructure/repositories/lock-repository.ts` and `draft-repository.ts` port the SQL validated by research R5 (`docs/research/r05-draft-locking.md`) unchanged, against the real schema instead of the spike's.
+
+## Workspaces and collections
+
+`GET /api/workspaces` lists the workspaces a request can reach, decided by the same resolver a
+direct read uses, sorted by unit path and then by name, with the owning unit named beside each
+one so a picker can group without a second request. Collections are created, renamed, listed and
+deleted through `/api/workspaces/:id/collections` and `/api/collections/:id`: a rename leaves the
+slug alone (documents are addressed by id, so nothing has to move), and a collection that still
+holds documents refuses to be deleted, because removing the row would set `collection_id` null
+and take every one of those documents out of the permission tree.
+
+## The content API (M2)
+
+`docs/architecture/api-contract-m2.md` is the contract; the TypeBox schemas in `routes/document-schemas.ts` are its implementation, and the OpenAPI description is generated from them.
+
+- **Create** (`POST /api/workspaces/:id/documents`) makes a document and its first draft, blank or scaffolded from a published template (ADR-029). Template questions are answered in the request; conditions and `{{ answers.id }}` are resolved once, at creation, so nothing conditional ever reaches a revision.
+- **Publish** (`POST /api/documents/:id/publish`) serialises the draft, strips authoring scaffolding, checks the front matter, and writes one revision through the content store. Checking warns and never blocks: an unfilled placeholder or an incomplete required section comes back in the response and the publish goes ahead. A stale `base` answers `409 { kind: 'merge-required', current, conflicts }`.
+- **Read** (`/content`, `/rendered`, `/envelope`) splits the document in two, as ADR-031 requires: the body is a pure function of the revision and is cached by content hash under `(hash, RENDER_VERSION)`, while the envelope — permissions, lock, last publish, review, health signals — is fetched fresh. `/rendered` carries an `ETag` of the revision and the render version and answers `304` to a matching `If-None-Match`.
+- **History, compare, restore** (`/history`, `/diff`, `/restore`) read the Postgres revisions index, which is the fast path and not a cache (ADR-014). Restore publishes the old content again as a new revision; history is never rewritten.
+- **Navigation** (`GET /api/workspaces/:id/tree`) resolves the whole workspace's visibility in one pass with the domain's materialised resolution rather than one chain walk per document.
+
+One outbox consumer keeps the reading view honest: `DocumentPublished` renders the new revision so the first reader never pays for it. Nothing is invalidated on a rename any more — the titles of the documents a body links to are part of the render input and therefore of the cache key, so a rename simply gives those bodies a new key (ADR-031). `DocumentRenamed` — emitted by a rename, and by a publish whose first heading changed the title — is still registered, acknowledged and no more, because the poller claims only registered types and an unregistered one would accumulate for ever (review finding H6).
+
+## Configuration for content
+
+| Variable | Default | Meaning |
+| --- | --- | --- |
+| `CONTENT_STORE` | `filesystem` | `filesystem` or `memory` (ADR-014) |
+| `CONTENT_STORE_PATH` | `./data/content` | Where the filesystem backend keeps one bare repository per workspace |
+
+A repository the platform writes is readable by the `git` command line: `git log` and `git show` work inside `data/content/<workspace-id>.git`.
+
+## The API description and the client
+
+```bash
+pnpm --filter @quill/server export-openapi   # routes -> packages/api-client/openapi.gen.json
+pnpm --filter @quill/api-client generate     # openapi.gen.json -> the typed client
+```
+
+The description is built by registering the routes against in-memory fakes, so it needs no database and cannot drift from what the server accepts.
+
+## Seeding a local instance
+
+```bash
+pnpm --filter @quill/server seed
+```
+
+Creates two accounts, both printed when it finishes: an instance administrator (`admin@example.com` / `admin-password-change-me`) and an editor who is not an instance admin (`writer@example.com` / `writer-password-change-me`, granted editor on Engineering through `createGrant`, the same use case a route would call).
+
+It creates the unit "Acme" with the workspace "Engineering", and a second unit "Platform" with the workspace "Platform docs", so the organisational tree has real depth. Engineering gets the collections "Architecture", "Runbooks", "Decisions", and "Templates", and ten documents:
+
+- An authentication design, a system overview, and a "Reading surface tour" showcase (every callout tone, both breakout widths, five fenced languages, a task list, and a footnote) in Architecture.
+- A regional failover runbook and an on-call guide in Runbooks, published, plus "Incident review template (draft)" — created but deliberately never published, so it shows the reading view's not-published state.
+- Two decision records in Decisions.
+- Three built-in templates in Templates, the collection the New document dialog reads: "Architecture decision record" (a `:::when` section gated on whether alternatives were considered, wrapping a `:::repeat` for each option), "Technical design" (guidance blocks and optional sections for rollout and open questions), and "Runbook" (placeholder blocks and a `:::repeat` for steps).
+
+Platform docs holds one short published document, "Platform team charter".
+
+Every published document is created and published through the same use cases the API calls, so the revisions index, the render cache, and the link index end up exactly as a person doing the same work would leave them. Running the seed again changes nothing.

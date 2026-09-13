@@ -1,0 +1,20 @@
+{
+  "name": "r5-draft-locking",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Spike R5: draft and locking model for Quill (ADR-021)",
+  "type": "module",
+  "scripts": {
+    "test": "vitest run",
+    "bench": "node src/bench.ts",
+    "db:setup": "node src/setup-schema.ts",
+    "db:teardown": "node src/drop-schema.ts"
+  },
+  "dependencies": {
+    "pg": "^8.13.1"
+  },
+  "devDependencies": {
+    "@types/pg": "^8.11.10",
+    "vitest": "^2.1.8"
+  }
+}

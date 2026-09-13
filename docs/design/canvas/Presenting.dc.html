@@ -1,0 +1,159 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,600;1,8..60,400&family=JetBrains+Mono:wght@400;500&display=swap">
+  <style>
+    body { margin: 0; background: var(--paper); color: var(--ink); font-family: 'Inter', ui-sans-serif, system-ui, sans-serif; font-size: 14px; line-height: 1.5; -webkit-font-smoothing: antialiased; }
+    a { color: var(--accent); text-decoration: none; }
+    a:hover { color: color-mix(in oklch, var(--accent), black 14%); }
+    .serif { font-family: var(--font-display); }
+    .mono { font-family: 'JetBrains Mono', ui-monospace, Menlo, monospace; }
+    .site-link { font-size: 14px; font-weight: 500; color: var(--muted); }
+    .site-link.active { color: var(--ink); }
+    .nav-item { display: block; padding: 6px 12px; border-radius: 6px; font-size: 13.5px; color: var(--ink); }
+    .nav-item.active { background: color-mix(in oklch, var(--accent) 10%, var(--paper)); color: color-mix(in oklch, var(--accent), var(--ink) 35%); font-weight: 500; }
+    .nav-group { padding: 0 12px; margin: 22px 0 6px; font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
+    .prose { font-family: var(--font-reading); font-size: 17px; line-height: 1.7; }
+    .prose p { margin: 0; }
+    .prose h2 { font-family: 'Inter', sans-serif; font-size: 24px; line-height: 1.25; font-weight: 600; letter-spacing: -0.016em; margin: 0; }
+    .prose code { font-family: 'JetBrains Mono', monospace; font-size: 0.86em; background: var(--surface); border-radius: 4px; padding: 0.1em 0.35em; }
+    .toc-item { display: block; padding: 5px 0 5px 14px; border-left: 2px solid transparent; color: var(--muted); font-size: 13px; }
+    .toc-item.active { border-left-color: var(--accent); color: var(--ink); font-weight: 500; }
+    .step { display: flex; gap: 16px; }
+    .step-num { flex-shrink: 0; width: 28px; height: 28px; border-radius: 999px; background: color-mix(in oklch, var(--accent) 12%, var(--paper)); color: color-mix(in oklch, var(--accent), var(--ink) 35%); display: flex; align-items: center; justify-content: center; font-family: 'Inter', sans-serif; font-size: 13px; font-weight: 600; margin-top: 2px; }
+  </style>
+</helmet>
+<div style="--paper: {{t.paper}}; --surface: {{t.surface}}; --ink: {{t.ink}}; --muted: {{t.muted}}; --border: {{t.border}}; --border-strong: {{t.borderStrong}}; --accent: {{accent}}; --font-reading: {{t.fontReading}}; --font-display: {{t.fontDisplay}}; width: 1440px; min-height: 900px; display: flex; flex-direction: column; background: var(--paper);">
+
+  <!-- Site header: the organisation's brand, not the workspace chrome -->
+  <div style="border-bottom: 1px solid var(--border); background: var(--paper);">
+    <div style="max-width: 1280px; margin: 0 auto; display: flex; align-items: center; gap: 32px; height: 64px; padding: 0 32px;">
+      <div style="display: flex; align-items: center; gap: 12px;">
+        <div style="width: 30px; height: 30px; border-radius: 8px; background: var(--accent); display: flex; align-items: center; justify-content: center;">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="oklch(99% 0 0)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 18L12 5l8 13"></path><path d="M8 18h8"></path></svg>
+        </div>
+        <span class="serif" style="font-size: 20px; font-weight: 600; letter-spacing: -0.01em;">Acme Developer Docs</span>
+      </div>
+      <div style="display: flex; align-items: center; gap: 24px; margin-left: 12px;">
+        <a class="site-link active" href="#">Guides</a>
+        <a class="site-link" href="#">API reference</a>
+        <a class="site-link" href="#">Changelog</a>
+        <a class="site-link" href="#">Status</a>
+      </div>
+      <div style="flex: 1;"></div>
+      <div style="display: flex; align-items: center; gap: 10px; width: 300px; height: 38px; padding: 0 12px; border-radius: 8px; background: var(--surface); border: 1px solid var(--border); color: var(--muted);">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"></circle><path d="M20 20l-3.5-3.5"></path></svg>
+        <span style="flex: 1; font-size: 13.5px;">Search the docs</span>
+        <span class="mono" style="font-size: 11px; padding: 2px 6px; border-radius: 4px; border: 1px solid var(--border-strong); background: var(--paper);">/</span>
+      </div>
+      <a href="#" style="display: inline-flex; align-items: center; height: 36px; padding: 0 14px; border-radius: 6px; background: var(--accent); color: oklch(99% 0 0); font-weight: 500; font-size: 14px;">Get an API key</a>
+    </div>
+  </div>
+
+  <div style="max-width: 1280px; width: 100%; margin: 0 auto; display: flex; flex: 1; padding: 0 32px; box-sizing: border-box;">
+
+    <!-- Section navigation -->
+    <div style="width: 240px; flex-shrink: 0; padding: 32px 24px 0 0; border-right: 1px solid var(--border);">
+      <div class="nav-group" style="margin-top: 0;">Getting started</div>
+      <a class="nav-item" href="#">Overview</a>
+      <a class="nav-item" href="#">Quickstart</a>
+      <a class="nav-item active" href="#">Authentication</a>
+      <a class="nav-item" href="#">Rate limits</a>
+      <a class="nav-item" href="#">Errors</a>
+      <div class="nav-group">Core concepts</div>
+      <a class="nav-item" href="#">Workspaces</a>
+      <a class="nav-item" href="#">Documents</a>
+      <a class="nav-item" href="#">Revisions</a>
+      <a class="nav-item" href="#">Webhooks</a>
+      <div class="nav-group">Guides</div>
+      <a class="nav-item" href="#">Sync with a repository</a>
+      <a class="nav-item" href="#">Publish a public site</a>
+      <a class="nav-item" href="#">Export to PDF</a>
+    </div>
+
+    <!-- Content on the same layout grid as the workspace reading view -->
+    <div style="flex: 1; min-width: 0; display: grid; grid-template-columns: [full-start] 48px [wide-start] 1fr [content-start] 608px [content-end] 1fr [wide-end] 48px [full-end]; align-content: start; padding: 40px 0 64px;">
+
+      <div style="grid-column: content; font-size: 13px; font-weight: 500; color: var(--accent); letter-spacing: 0.02em;">Getting started</div>
+      <h1 class="serif" style="grid-column: content; margin: 10px 0 0; font-size: 42px; line-height: 1.1; font-weight: 600; letter-spacing: -0.02em; text-wrap: balance;">Authentication</h1>
+      <p class="serif" style="grid-column: content; margin: 12px 0 0; font-size: 19px; line-height: 1.5; color: var(--muted);">Every request is authenticated with a bearer token. This guide shows how to create one, how long it lasts, and how to rotate it without downtime.</p>
+
+      <div class="prose" style="grid-column: content; margin-top: 36px;"><h2 id="create">Create a token</h2></div>
+      <div style="grid-column: content; margin-top: 18px; display: flex; flex-direction: column; gap: 18px;">
+        <div class="step"><div class="step-num">1</div><div class="prose"><p>Open <strong>Settings</strong>, then <strong>API keys</strong>, and choose the workspace the key belongs to. Keys are scoped to one workspace.</p></div></div>
+        <div class="step"><div class="step-num">2</div><div class="prose"><p>Pick a role. <code>viewer</code> reads published documents; <code>editor</code> can also create drafts and publish.</p></div></div>
+        <div class="step"><div class="step-num">3</div><div class="prose"><p>Copy the key once. It is shown a single time and stored hashed.</p></div></div>
+      </div>
+
+      <div class="prose" style="grid-column: content; margin-top: 40px;"><h2 id="use">Use it</h2></div>
+      <div class="prose" style="grid-column: content; margin-top: 12px;"><p>Send the key as a bearer token. Every response carries the revision of the document it came from, so a client can tell exactly what it read.</p></div>
+
+      <div style="grid-column: content; margin-top: 20px; border-radius: 8px; background: oklch(22% 0.015 60); color: oklch(92% 0.01 80); overflow: hidden;">
+        <div style="display: flex; align-items: center; justify-content: space-between; padding: 8px 14px; font-size: 12px; color: oklch(70% 0.015 80); border-bottom: 1px solid oklch(30% 0.015 60);">
+          <span style="display: inline-flex; gap: 14px;"><span style="color: oklch(92% 0.01 80); font-weight: 500;">curl</span><span>Node</span><span>Python</span></span>
+          <span>Copy</span>
+        </div>
+        <pre class="mono" style="margin: 0; padding: 14px 16px; font-size: 13px; line-height: 1.65; white-space: pre;">curl https://docs.acme.dev/api/documents/018f4c1e \
+  -H "Authorization: Bearer $ACME_DOCS_KEY"</pre>
+      </div>
+
+      <!-- A full-width figure: the diagram spans the whole main region -->
+      <div style="grid-column: full; margin-top: 44px; border-radius: 10px; border: 1px solid var(--border); background: var(--surface); padding: 28px 32px; display: flex; flex-direction: column; gap: 16px;">
+        <div style="display: flex; align-items: center; justify-content: center; gap: 0;">
+          <div style="width: 180px; padding: 14px 16px; border-radius: 8px; background: var(--paper); border: 1px solid var(--border-strong); text-align: center;"><div style="font-weight: 600; font-size: 14px;">Client</div><div style="font-size: 12px; color: var(--muted); margin-top: 2px;">holds the key</div></div>
+          <svg width="96" height="24" viewBox="0 0 96 24" fill="none" stroke="var(--muted)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12h84M82 7l6 5-6 5"></path></svg>
+          <div style="width: 180px; padding: 14px 16px; border-radius: 8px; background: var(--paper); border: 1px solid var(--border-strong); text-align: center;"><div style="font-weight: 600; font-size: 14px;">Gateway</div><div style="font-size: 12px; color: var(--muted); margin-top: 2px;">verifies, rate limits</div></div>
+          <svg width="96" height="24" viewBox="0 0 96 24" fill="none" stroke="var(--muted)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12h84M82 7l6 5-6 5"></path></svg>
+          <div style="width: 180px; padding: 14px 16px; border-radius: 8px; background: var(--paper); border: 1px solid var(--border-strong); text-align: center;"><div style="font-weight: 600; font-size: 14px;">Documents API</div><div style="font-size: 12px; color: var(--muted); margin-top: 2px;">reads the content store</div></div>
+          <svg width="96" height="24" viewBox="0 0 96 24" fill="none" stroke="var(--muted)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12h84M82 7l6 5-6 5"></path></svg>
+          <div style="width: 180px; padding: 14px 16px; border-radius: 8px; background: color-mix(in oklch, var(--accent) 10%, var(--paper)); border: 1px solid color-mix(in oklch, var(--accent) 40%, var(--paper)); text-align: center;"><div style="font-weight: 600; font-size: 14px; color: color-mix(in oklch, var(--accent), var(--ink) 35%);">Revision</div><div style="font-size: 12px; color: var(--muted); margin-top: 2px;">returned with the body</div></div>
+        </div>
+        <div style="text-align: center; font-size: 12.5px; color: var(--muted);">Figure 1. Every read is pinned to a revision. Source: request-flow.mmd</div>
+      </div>
+
+      <div class="prose" style="grid-column: content; margin-top: 44px;"><h2 id="rotate">Rotate without downtime</h2></div>
+      <div class="prose" style="grid-column: content; margin-top: 12px;"><p>Create the new key first, deploy it, then revoke the old one. Both keys are valid during the overlap, so nothing fails while the deploy rolls out.</p></div>
+
+      <div style="grid-column: content; margin-top: 56px; padding-top: 20px; border-top: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; font-size: 13px; color: var(--muted);">
+        <span>Updated 15 August 2026</span>
+        <a href="#" style="display: inline-flex; align-items: center; gap: 6px;">Was this page helpful?</a>
+      </div>
+    </div>
+
+    <!-- On this page -->
+    <div style="width: 200px; flex-shrink: 0; padding: 48px 0 0 24px;">
+      <div style="font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); margin-bottom: 10px; padding-left: 14px;">On this page</div>
+      <a class="toc-item active" href="#create">Create a token</a>
+      <a class="toc-item" href="#use">Use it</a>
+      <a class="toc-item" href="#rotate">Rotate without downtime</a>
+      <a class="toc-item" href="#scopes">Scopes</a>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script data-dc-script data-props='{"tone":{"editor":"enum","options":["Warm","Neutral","Cool"],"default":"Warm","section":"Theme"},"accent":{"editor":"color","options":["#1f6f6b","#4353c9","#8a3b2e","#4a6b3a"],"default":"#1f6f6b","section":"Theme"},"reading":{"editor":"enum","options":["Serif","Sans"],"default":"Serif","section":"Theme"}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const tones = {
+      Warm: { paper: 'oklch(98.5% 0.006 80)', surface: 'oklch(97.2% 0.008 80)', ink: 'oklch(24% 0.02 60)', muted: 'oklch(50% 0.02 60)', border: 'oklch(91% 0.01 80)', borderStrong: 'oklch(84% 0.012 80)' },
+      Neutral: { paper: 'oklch(99% 0.001 80)', surface: 'oklch(97.3% 0.002 80)', ink: 'oklch(22% 0.005 60)', muted: 'oklch(49% 0.006 60)', border: 'oklch(91% 0.003 80)', borderStrong: 'oklch(84% 0.004 80)' },
+      Cool: { paper: 'oklch(99% 0.002 264)', surface: 'oklch(97.2% 0.004 264)', ink: 'oklch(24% 0.02 264)', muted: 'oklch(48% 0.015 264)', border: 'oklch(91% 0.006 264)', borderStrong: 'oklch(84% 0.008 264)' },
+    }
+    const faces = {
+      Serif: { fontReading: "'Source Serif 4', Georgia, serif", fontDisplay: "'Source Serif 4', Georgia, serif" },
+      Sans: { fontReading: "'Inter', ui-sans-serif, system-ui, sans-serif", fontDisplay: "'Inter', ui-sans-serif, system-ui, sans-serif" },
+    }
+    const tone = tones[this.props.tone] ?? tones.Warm
+    const face = faces[this.props.reading] ?? faces.Serif
+    return { t: { ...tone, ...face }, accent: this.props.accent ?? '#1f6f6b' }
+  }
+}
+</script>
+</body>
+</html>

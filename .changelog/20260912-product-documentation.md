@@ -1,0 +1,1 @@
+Added: `docs/product` holds the product owner's view of the platform: the personas and what each must never be able to do, forty-two use cases with Given/When/Then acceptance criteria traced to a milestone and an end-to-end journey spec, and a map of the surfaces (signed-in app, public site, presentation mode, exports, API) with what must never appear on each.

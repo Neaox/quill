@@ -1,0 +1,36 @@
+{
+  "name": "r3-editor-converter",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Spike R3: mdast <-> ProseMirror converter and round-trip fidelity harness",
+  "type": "module",
+  "scripts": {
+    "start": "node run.ts",
+    "layout-attr": "node run.ts --layout-attr",
+    "soft-breaks": "node run.ts --collapse-soft-breaks",
+    "probes": "node probes.ts",
+    "diffs": "node diff-report.ts",
+    "schema": "node schema-probe.ts"
+  },
+  "dependencies": {
+    "@tiptap/core": "^3.31.3",
+    "@tiptap/extension-code": "^3.31.3",
+    "@tiptap/extension-image": "^3.31.3",
+    "@tiptap/extension-list": "^3.31.3",
+    "@tiptap/extension-table": "^3.31.3",
+    "@tiptap/pm": "^3.31.3",
+    "@tiptap/starter-kit": "^3.31.3",
+    "prosemirror-model": "^1.24.1",
+    "remark-directive": "^4.0.0",
+    "remark-frontmatter": "^5.0.0",
+    "remark-gfm": "^4.0.1",
+    "remark-parse": "^11.0.0",
+    "remark-stringify": "^11.0.0",
+    "unified": "^11.0.5"
+  },
+  "devDependencies": {
+    "@milkdown/preset-commonmark": "^7.22.1",
+    "@milkdown/transformer": "^7.22.1",
+    "@types/mdast": "^4.0.4"
+  }
+}

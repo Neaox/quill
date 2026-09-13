@@ -1,0 +1,7 @@
+{
+  "extends": "@quill/config/tsconfig.web.json",
+  "compilerOptions": {
+    "types": ["vitest/globals"]
+  },
+  "include": ["src"]
+}

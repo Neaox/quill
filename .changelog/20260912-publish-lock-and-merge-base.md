@@ -1,0 +1,6 @@
+Fixed: Publishing and restoring a document now re-validate the lock, so an editor whose document was taken over can no longer publish over the new holder's work; both answer 423 with the current holder.
+Fixed: A publish is now merged against the revision the draft itself records rather than the one the caller sends, so a three-way merge always compares what the author actually edited from; a base that does not match the draft answers 422 with the base to re-read.
+Fixed: A lock nobody has heartbeaten within its lifetime is reported as no lock at all, so a document is no longer shown as being edited, with its edit button greyed out, an hour after its editor closed the tab.
+Fixed: Restoring an older revision now moves the draft onto the restored content, so the author's next publish no longer silently undoes the restore.
+Fixed: A document's links are re-indexed whenever its published body is read, so backlinks and the broken-link signal no longer describe the revision a restore undid.
+Changed: A rendered body is cached under everything it was rendered from, including the titles of the documents it links to, so renaming a document refreshes the bodies that link to it instead of marking them stale. Entries cached by earlier releases are re-rendered on first read.

@@ -1,0 +1,8 @@
+Fixed: Prose around a colon is no longer lost when a document is rendered. `Ratio 3:2` and `data:image/png` read as an unknown inline directive to the Markdown parser and were rendered as `Ratio 3` and `data/png`; an unrecognised directive now renders the source the author typed, which is what a Markdown renderer without directive support shows.
+Fixed: A `::block{...}` line no longer renders as nothing. An unregistered live block renders as a section naming the block type with its parameters as readable text.
+Fixed: Code blocks in documents saved with Windows line endings are highlighted in the right places. Line endings are normalised to `\n` when a document is parsed, which is recorded as a formatting-only change alongside the others a first publish makes.
+Fixed: Optional template sections stay in a draft until publish, so the author can still add one after the document is created, instead of being removed the moment it is made.
+Fixed: Publishing removes a `:::when` block that was never resolved, with a warning, and unwraps `:::repeat` so its sections publish as ordinary content.
+Fixed: A `:::repeat` no longer publishes its wrapper, and a `:::when` no longer leaks its condition to readers.
+Security: Heading identifiers in rendered documents are prefixed `user-content-`, so a heading cannot collide with the application's own element ids or shadow a same-named global. Links in a table of contents resolve as before.
+Security: Inline `data:` images are limited to PNG, JPEG, GIF, WebP and AVIF; SVG, which can carry script, is no longer accepted. Protocol-relative links (`//host/path`) are rejected.

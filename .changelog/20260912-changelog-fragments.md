@@ -1,0 +1,1 @@
+Added: Changelog fragments under `.changelog/` are now assembled into `CHANGELOG.md` by `pnpm changelog:release <version>`, and validated by `pnpm changelog:check`, instead of hand-editing `CHANGELOG.md` in every pull request.

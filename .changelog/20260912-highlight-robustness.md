@@ -1,0 +1,3 @@
+Fixed: One code block with an unreadable highlighting payload no longer leaves the rest of the page uncoloured.
+Fixed: Diff blocks colour the whole of a changed line rather than only its leading `+` or `-`, and more of what the registered grammars emit is themed: doctypes and prologs, character literals, entities, at-rules, JSX spreads, Dockerfile instructions, SQL quoted identifiers, C# interpolation holes, Markdown strikethrough, and a diff's file and hunk headers.
+Changed: Packed token ranges are read as a versioned format: a payload from a newer writer is refused rather than misread, and a malformed or negative offset is rejected.

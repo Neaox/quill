@@ -1,0 +1,126 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Instrument+Sans:ital,wght@0,400;0,500;0,600;1,400&family=JetBrains+Mono:wght@400;500&display=swap">
+  <style>
+    body { margin: 0; background: oklch(97.5% 0.012 90); color: oklch(25% 0.02 70); font-family: 'Instrument Sans', ui-sans-serif, system-ui, sans-serif; font-size: 14.5px; line-height: 1.5; -webkit-font-smoothing: antialiased; }
+    a { color: oklch(42% 0.1 150); text-decoration: none; }
+    a:hover { color: oklch(34% 0.1 150); }
+    .disp { font-family: 'Instrument Serif', Georgia, serif; }
+    .mono { font-family: 'JetBrains Mono', ui-monospace, monospace; }
+    .tab { display: flex; align-items: center; gap: 10px; height: 38px; padding: 0 14px; border-radius: 10px 0 0 10px; font-weight: 500; color: oklch(35% 0.02 70); }
+    .tab .sw { width: 10px; height: 10px; border-radius: 3px; }
+    .tab.on { background: oklch(100% 0 0); box-shadow: 0 1px 2px oklch(25% 0.02 70 / 6%), 0 6px 16px -10px oklch(25% 0.02 70 / 20%); color: oklch(25% 0.02 70); }
+    .leaf { display: flex; align-items: center; height: 34px; padding-left: 36px; border-radius: 8px; color: oklch(40% 0.02 70); }
+    .leaf.on { color: oklch(30% 0.1 150); font-weight: 600; }
+    .prose { font-family: 'Instrument Sans', sans-serif; font-size: 16.5px; line-height: 1.68; color: oklch(28% 0.02 70); }
+    .prose p { margin: 0; }
+    .prose code { font-family: 'JetBrains Mono', monospace; font-size: 0.85em; background: oklch(93.5% 0.02 90); padding: 0.12em 0.4em; border-radius: 6px; }
+    .h2 { font-family: 'Instrument Serif', Georgia, serif; font-size: 32px; line-height: 1.15; font-weight: 400; letter-spacing: -0.005em; }
+    .card { background: oklch(100% 0 0); border-radius: 14px; box-shadow: 0 1px 2px oklch(25% 0.02 70 / 5%), 0 10px 30px -18px oklch(25% 0.02 70 / 28%); }
+    .stamp { display: inline-flex; align-items: center; gap: 7px; height: 26px; padding: 0 11px; border-radius: 999px; font-size: 12.5px; font-weight: 600; letter-spacing: 0.01em; }
+    table { border-collapse: separate; border-spacing: 0; width: 100%; font-size: 14px; font-variant-numeric: tabular-nums; }
+    th { text-align: left; font-size: 12px; font-weight: 600; color: oklch(50% 0.02 70); padding: 12px 14px; border-bottom: 1px solid oklch(90% 0.015 90); }
+    td { padding: 12px 14px; border-bottom: 1px solid oklch(93% 0.015 90); vertical-align: top; }
+    tr:last-child td { border-bottom: 0; }
+    .toc a { display: block; padding: 6px 0 6px 14px; color: oklch(45% 0.02 70); border-left: 2px solid transparent; }
+    .toc a.on { color: oklch(30% 0.1 150); border-left-color: oklch(42% 0.1 150); font-weight: 600; }
+  </style>
+</helmet>
+<div style="width: 1440px; min-height: 900px; background: oklch(97.5% 0.012 90); display: flex;">
+
+  <!-- Notebook: collections as coloured tabs -->
+  <div style="width: 276px; padding: 22px 0 22px 18px; display: flex; flex-direction: column; gap: 4px;">
+    <div style="display: flex; align-items: center; gap: 10px; padding: 0 14px 18px;">
+      <div style="width: 30px; height: 30px; border-radius: 9px; background: oklch(25% 0.02 70); display: flex; align-items: center; justify-content: center;"><span class="disp" style="color: oklch(97.5% 0.012 90); font-size: 19px; font-style: italic;">q</span></div>
+      <span class="disp" style="font-size: 22px;">Acme Engineering</span>
+    </div>
+    <div style="display: flex; align-items: center; gap: 10px; height: 40px; margin: 0 14px 12px 14px; padding: 0 12px; border-radius: 10px; background: oklch(93.5% 0.02 90); color: oklch(50% 0.02 70);">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"></circle><path d="M20 20l-3.5-3.5"></path></svg><span>Find anything</span>
+    </div>
+    <div class="tab on"><span class="sw" style="background: oklch(55% 0.12 150);"></span>Engineering</div>
+    <div style="background: oklch(100% 0 0); border-radius: 0 0 0 10px; padding: 6px 8px 8px 0; margin-right: 0;">
+      <div class="leaf">System overview</div>
+      <div class="leaf on">Authentication</div>
+      <div class="leaf">Data model</div>
+      <div class="leaf">Runbooks</div>
+      <div class="leaf">Decisions</div>
+    </div>
+    <div class="tab"><span class="sw" style="background: oklch(55% 0.14 320);"></span>Product</div>
+    <div class="tab"><span class="sw" style="background: oklch(70% 0.13 75);"></span>Operations</div>
+    <div class="tab"><span class="sw" style="background: oklch(60% 0.12 240);"></span>Design</div>
+    <div style="flex: 1;"></div>
+    <div style="display: flex; align-items: center; gap: 10px; padding: 0 14px; color: oklch(45% 0.02 70);"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"></path></svg>New page</div>
+  </div>
+
+  <!-- Page: a sheet with the collection's colour along its top edge -->
+  <div style="flex: 1; padding: 22px 28px 22px 0; display: flex; gap: 24px;">
+    <div class="card" style="flex: 1; min-width: 0; border-top: 6px solid oklch(55% 0.12 150); padding: 40px 64px 64px; display: flex; flex-direction: column;">
+      <div style="display: flex; align-items: center; justify-content: space-between;">
+        <div style="display: flex; align-items: center; gap: 8px; font-size: 13.5px; color: oklch(50% 0.02 70);"><span style="color: oklch(42% 0.1 150); font-weight: 600;">Engineering</span><span>/</span><span>Architecture</span></div>
+        <div style="display: flex; align-items: center; gap: 10px;">
+          <span class="stamp" style="background: oklch(94% 0.03 150); color: oklch(35% 0.1 150);"><span style="width: 7px; height: 7px; border-radius: 999px; background: currentColor;"></span>Published</span>
+          <span style="height: 36px; padding: 0 14px; border-radius: 10px; border: 1px solid oklch(88% 0.015 90); display: inline-flex; align-items: center; font-weight: 500;">Share</span>
+          <span style="height: 36px; padding: 0 16px; border-radius: 10px; background: oklch(25% 0.02 70); color: oklch(97.5% 0.012 90); display: inline-flex; align-items: center; font-weight: 500;">Edit</span>
+        </div>
+      </div>
+
+      <div style="max-width: 660px; margin-top: 40px;">
+        <h1 class="disp" style="margin: 0; font-size: 58px; line-height: 1.02; font-weight: 400; letter-spacing: -0.01em; text-wrap: balance;">Authentication <em style="color: oklch(42% 0.1 150);">architecture</em></h1>
+        <p style="margin: 18px 0 0; font-size: 19px; line-height: 1.45; color: oklch(48% 0.02 70);">How platform APIs issue, verify, and revoke access tokens, and what every service must do with them.</p>
+        <div style="display: flex; align-items: center; gap: 12px; margin-top: 22px; font-size: 13.5px; color: oklch(50% 0.02 70);">
+          <span style="display: inline-flex; align-items: center; gap: 8px;"><span style="width: 24px; height: 24px; border-radius: 999px; background: oklch(85% 0.06 75); display: inline-flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 700; color: oklch(35% 0.08 70);">PT</span>Platform team</span>
+          <span>&middot;</span><span>Updated 15 Aug 2026</span><span>&middot;</span><span>Review due Feb 2027</span>
+        </div>
+
+        <div class="prose" style="margin-top: 36px;"><p>Every request to a platform API carries a short-lived access token. Services never validate tokens themselves; they call the gateway, which holds the signing keys and the revocation list. This document is the contract between the identity service and everyone who depends on it.</p></div>
+
+        <div class="h2" style="margin-top: 44px;">Token flow</div>
+        <div class="prose" style="margin-top: 12px;"><p>A client exchanges credentials for a token pair at <code>POST /auth/token</code>. The access token lives for fifteen minutes; the refresh token for thirty days and is rotated on every use.</p></div>
+
+        <div style="margin-top: 22px; padding: 16px 18px; border-radius: 12px; background: oklch(95% 0.03 90); display: flex; gap: 12px;">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="oklch(55% 0.12 75)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink: 0; margin-top: 2px;"><path d="M12 3l9.5 17h-19z"></path><path d="M12 10v4M12 17h.01"></path></svg>
+          <div class="prose" style="font-size: 15.5px; line-height: 1.55;"><strong style="font-weight: 600;">Two keys during rotation.</strong> Tokens issued before a key rotation stay valid until they expire, so services must accept both signing keys for fifteen minutes.</div>
+        </div>
+
+        <div class="h2" style="margin-top: 44px;">Endpoints</div>
+        <div class="prose" style="margin-top: 12px;"><p>Latency budgets are measured at the gateway, p95 over a rolling hour.</p></div>
+      </div>
+
+      <!-- Wide table on its own sheet -->
+      <div style="margin: 22px -24px 0; border-radius: 12px; border: 1px solid oklch(90% 0.015 90); overflow: hidden;">
+        <table>
+          <thead><tr><th>Endpoint</th><th>Method</th><th>Purpose</th><th>Auth</th><th>Latency budget</th><th>Owner</th></tr></thead>
+          <tbody>
+            <tr><td class="mono" style="font-size: 13px;">/auth/token</td><td>POST</td><td>Exchange credentials for an access and refresh token pair</td><td>Client secret</td><td>120 ms</td><td>Identity</td></tr>
+            <tr><td class="mono" style="font-size: 13px;">/auth/refresh</td><td>POST</td><td>Rotate a refresh token and issue a new pair</td><td>Refresh token</td><td>80 ms</td><td>Identity</td></tr>
+            <tr><td class="mono" style="font-size: 13px;">/auth/introspect</td><td>POST</td><td>Verify a token and return its claims to a service</td><td>Service mTLS</td><td>15 ms</td><td>Gateway</td></tr>
+            <tr><td class="mono" style="font-size: 13px;">/auth/revoke</td><td>POST</td><td>Revoke a token family after a compromise</td><td>Client secret</td><td>200 ms</td><td>Identity</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Margin: outline and the conversation -->
+    <div style="width: 232px; padding-top: 48px; display: flex; flex-direction: column; gap: 30px;">
+      <div>
+        <div style="font-size: 12px; font-weight: 600; color: oklch(50% 0.02 70); margin-bottom: 8px; padding-left: 14px;">On this page</div>
+        <div class="toc"><a class="on" href="#">Token flow</a><a href="#">Endpoints</a><a href="#">Verifying a token</a><a href="#">Key rotation</a><a href="#">Revocation</a></div>
+      </div>
+      <div class="card" style="padding: 14px 16px; border-radius: 12px;">
+        <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;"><span style="width: 22px; height: 22px; border-radius: 999px; background: oklch(88% 0.05 320); display: inline-flex; align-items: center; justify-content: center; font-size: 9px; font-weight: 700; color: oklch(35% 0.1 320);">SO</span><span style="font-weight: 600; font-size: 13px;">Sam</span><span style="font-size: 12px; color: oklch(55% 0.02 70);">2h</span></div>
+        <div style="font-size: 13.5px; line-height: 1.5; color: oklch(35% 0.02 70);">Should this say a service must never cache an introspection result longer than the token lifetime?</div>
+        <div style="margin-top: 10px; font-size: 13px;"><a href="#">Reply</a></div>
+      </div>
+    </div>
+  </div>
+</div>
+</x-dc>
+</body>
+</html>

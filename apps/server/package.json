@@ -1,0 +1,44 @@
+{
+  "name": "@quill/server",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Quill HTTP server: API, public-site rendering, background jobs.",
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "dev": "node --watch --env-file-if-exists=../../.env src/main.ts",
+    "start": "node --env-file-if-exists=../../.env src/main.ts",
+    "typecheck": "tsc -p tsconfig.json",
+    "build": "tsc -p tsconfig.json",
+    "export-openapi": "node src/scripts/export-openapi-cli.ts",
+    "seed": "node --env-file-if-exists=../../.env src/scripts/seed-cli.ts"
+  },
+  "dependencies": {
+    "@fastify/cookie": "^11.1.2",
+    "@fastify/helmet": "^13.1.1",
+    "@fastify/rate-limit": "^11.2.0",
+    "@fastify/swagger": "^9.8.1",
+    "@fastify/swagger-ui": "^6.1.1",
+    "@fastify/type-provider-typebox": "^6.1.0",
+    "@node-rs/argon2": "^2.2.1",
+    "@quill/application": "workspace:*",
+    "@quill/brand": "workspace:*",
+    "@quill/content-store": "workspace:*",
+    "@quill/domain": "workspace:*",
+    "@quill/highlight": "workspace:*",
+    "@quill/markdown": "workspace:*",
+    "@quill/theme": "workspace:*",
+    "@sinclair/typebox": "^0.34.52",
+    "drizzle-orm": "^0.45.2",
+    "fastify": "^5.12.3",
+    "nodemailer": "^10.0.3",
+    "pg": "^8.23.0",
+    "remeda": "^2.48.0"
+  },
+  "devDependencies": {
+    "@quill/config": "workspace:*",
+    "@types/nodemailer": "^8.0.1",
+    "@types/pg": "^8.23.1",
+    "drizzle-kit": "^0.31.10"
+  }
+}

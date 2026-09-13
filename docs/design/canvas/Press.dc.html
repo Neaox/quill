@@ -1,0 +1,133 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;0,6..72,600;1,6..72,400;1,6..72,500&family=Instrument+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+  <style>
+    body { margin: 0; background: oklch(98% 0.008 85); color: oklch(22% 0.015 60); font-family: 'Instrument Sans', ui-sans-serif, system-ui, sans-serif; font-size: 14px; line-height: 1.5; -webkit-font-smoothing: antialiased; }
+    a { color: oklch(42% 0.12 25); text-decoration: none; }
+    a:hover { color: oklch(34% 0.12 25); }
+    .caps { font-family: 'Instrument Sans', sans-serif; font-size: 11.5px; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase; color: oklch(48% 0.02 60); }
+    .rd { font-family: 'Newsreader', Georgia, serif; }
+    .mono { font-family: 'JetBrains Mono', ui-monospace, monospace; }
+    .rule2 { height: 3px; border-top: 1px solid oklch(22% 0.015 60); border-bottom: 1px solid oklch(22% 0.015 60); }
+    .prose { font-family: 'Newsreader', Georgia, serif; font-size: 18.5px; line-height: 1.62; font-variant-numeric: oldstyle-nums proportional-nums; }
+    .prose p { margin: 0; }
+    .prose code { font-family: 'JetBrains Mono', monospace; font-size: 0.8em; color: oklch(30% 0.02 60); background: oklch(94.5% 0.012 85); padding: 0.08em 0.3em; border-radius: 2px; }
+    .h2 { font-family: 'Newsreader', Georgia, serif; font-size: 27px; line-height: 1.2; font-weight: 500; letter-spacing: -0.01em; display: flex; align-items: baseline; gap: 14px; }
+    .h2 .num { font-family: 'Instrument Sans', sans-serif; font-size: 12px; font-weight: 600; letter-spacing: 0.1em; color: oklch(42% 0.12 25); }
+    .toc a { display: block; font-family: 'Newsreader', Georgia, serif; font-size: 15.5px; line-height: 1.5; color: oklch(35% 0.015 60); padding: 3px 0; }
+    .toc a.on { color: oklch(22% 0.015 60); font-weight: 500; }
+    .toc .n { display: inline-block; width: 26px; font-family: 'Instrument Sans', sans-serif; font-size: 11px; font-weight: 600; letter-spacing: 0.08em; color: oklch(42% 0.12 25); }
+    .side { font-family: 'Newsreader', Georgia, serif; font-size: 14.5px; line-height: 1.5; color: oklch(38% 0.015 60); }
+    .side .who { font-family: 'Instrument Sans', sans-serif; font-size: 11px; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: oklch(42% 0.12 25); display: block; margin-bottom: 4px; }
+    table { border-collapse: collapse; width: 100%; font-family: 'Instrument Sans', sans-serif; font-size: 14px; font-variant-numeric: tabular-nums; }
+    th { text-align: left; font-size: 11.5px; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: oklch(48% 0.02 60); padding: 0 10px 10px 0; border-bottom: 1px solid oklch(22% 0.015 60); }
+    td { padding: 10px 10px 10px 0; border-bottom: 1px solid oklch(88% 0.012 85); vertical-align: top; }
+    tr:last-child td { border-bottom: 1px solid oklch(22% 0.015 60); }
+  </style>
+</helmet>
+<div style="width: 1440px; min-height: 900px; background: oklch(98% 0.008 85); display: flex; flex-direction: column;">
+
+  <!-- Masthead -->
+  <div style="display: flex; align-items: center; justify-content: space-between; height: 56px; padding: 0 48px;">
+    <div style="display: flex; align-items: center; gap: 28px;">
+      <span class="caps" style="color: oklch(22% 0.015 60);">Acme Engineering</span>
+      <span class="caps">Engineering &nbsp;&middot;&nbsp; Architecture</span>
+    </div>
+    <div style="display: flex; align-items: center; gap: 22px;">
+      <span class="caps" style="display: inline-flex; align-items: center; gap: 8px;"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"></circle><path d="M20 20l-3.5-3.5"></path></svg>Search</span>
+      <span class="caps">History</span>
+      <a href="#" class="caps" style="color: oklch(42% 0.12 25);">Edit</a>
+      <span style="width: 28px; height: 28px; border-radius: 999px; border: 1px solid oklch(22% 0.015 60); display: inline-flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 600;">MR</span>
+    </div>
+  </div>
+  <div class="rule2" style="margin: 0 48px;"></div>
+
+  <!-- Three columns: folio | text | sidenotes -->
+  <div style="display: grid; grid-template-columns: 250px 1fr 300px; column-gap: 56px; padding: 44px 48px 64px; flex: 1;">
+
+    <!-- Folio -->
+    <div style="display: flex; flex-direction: column; gap: 30px; padding-top: 108px;">
+      <div>
+        <div class="caps" style="margin-bottom: 10px;">Contents</div>
+        <div class="toc">
+          <a class="on" href="#"><span class="n">01</span>Token flow</a>
+          <a href="#"><span class="n">02</span>Endpoints</a>
+          <a href="#"><span class="n">03</span>Verifying a token</a>
+          <a href="#"><span class="n">04</span>Key rotation</a>
+          <a href="#"><span class="n">05</span>Revocation</a>
+        </div>
+      </div>
+      <div style="border-top: 1px solid oklch(88% 0.012 85); padding-top: 18px; display: flex; flex-direction: column; gap: 12px;">
+        <div><div class="caps">Owner</div><div class="rd" style="font-size: 16px; margin-top: 2px;">Platform team</div></div>
+        <div><div class="caps">Published</div><div class="rd" style="font-size: 16px; margin-top: 2px;">15 August 2026, version 12</div></div>
+        <div><div class="caps">Review due</div><div class="rd" style="font-size: 16px; margin-top: 2px;">February 2027</div></div>
+        <div><div class="caps">Source</div><div class="rd" style="font-size: 16px; margin-top: 2px;">platform/docs on GitHub</div></div>
+      </div>
+    </div>
+
+    <!-- Text column -->
+    <div style="max-width: 620px;">
+      <div class="caps" style="color: oklch(42% 0.12 25);">Technical design</div>
+      <h1 class="rd" style="margin: 12px 0 0; font-size: 54px; line-height: 1.04; font-weight: 500; letter-spacing: -0.018em; text-wrap: balance;">Authentication architecture</h1>
+      <p class="rd" style="margin: 16px 0 0; font-size: 21px; line-height: 1.4; font-style: italic; color: oklch(40% 0.015 60);">How platform APIs issue, verify, and revoke access tokens, and what every service must do with them.</p>
+
+      <div class="prose" style="margin-top: 40px;">
+        <p>Every request to a platform API carries a short-lived access token. Services never validate tokens themselves; they call the gateway, which holds the signing keys and the revocation list. This document is the contract between the identity service and everyone who depends on it.</p>
+      </div>
+
+      <div class="h2" style="margin-top: 48px;"><span class="num">01</span>Token flow</div>
+      <div class="prose" style="margin-top: 14px;">
+        <p>A client exchanges credentials for a token pair at <code>POST /auth/token</code>. The access token lives for fifteen minutes; the refresh token for thirty days and is rotated on every use, so a stolen refresh token is detected the moment the legitimate client rotates it.</p>
+      </div>
+      <div class="prose" style="margin-top: 18px; padding-left: 20px; border-left: 1px solid oklch(42% 0.12 25);">
+        <p style="font-size: 17px; line-height: 1.55;"><span class="caps" style="color: oklch(42% 0.12 25); display: block; margin-bottom: 4px;">Note</span>Tokens issued before a key rotation stay valid until they expire. Services must accept two signing keys during the fifteen-minute overlap.</p>
+      </div>
+
+      <div class="h2" style="margin-top: 48px;"><span class="num">02</span>Endpoints</div>
+      <div class="prose" style="margin-top: 14px;"><p>Latency budgets are measured at the gateway, p95 over a rolling hour.</p></div>
+
+      <!-- Wide table: extends into the sidenote column, hairlines only -->
+      <div style="margin-top: 22px; width: 920px;">
+        <table>
+          <thead><tr><th>Endpoint</th><th>Method</th><th>Purpose</th><th>Auth</th><th>Budget</th><th>Owner</th></tr></thead>
+          <tbody>
+            <tr><td class="mono" style="font-size: 13px;">/auth/token</td><td>POST</td><td>Exchange credentials for an access and refresh token pair</td><td>Client secret</td><td>120 ms</td><td>Identity</td></tr>
+            <tr><td class="mono" style="font-size: 13px;">/auth/refresh</td><td>POST</td><td>Rotate a refresh token and issue a new pair</td><td>Refresh token</td><td>80 ms</td><td>Identity</td></tr>
+            <tr><td class="mono" style="font-size: 13px;">/auth/introspect</td><td>POST</td><td>Verify a token and return its claims to a service</td><td>Service mTLS</td><td>15 ms</td><td>Gateway</td></tr>
+            <tr><td class="mono" style="font-size: 13px;">/auth/revoke</td><td>POST</td><td>Revoke a token family after a compromise</td><td>Client secret</td><td>200 ms</td><td>Identity</td></tr>
+          </tbody>
+        </table>
+        <div class="caps" style="margin-top: 10px; font-weight: 500; letter-spacing: 0.06em; text-transform: none; font-size: 12.5px;">Table 1. Measured at the gateway, ninety-fifth percentile.</div>
+      </div>
+    </div>
+
+    <!-- Sidenotes: comments and provenance live in the margin -->
+    <div style="padding-top: 300px; display: flex; flex-direction: column; gap: 34px;">
+      <div class="side">
+        <span class="who">Sam Okafor &nbsp;&middot;&nbsp; 2h</span>
+        Should this also say a service must never cache an introspection result longer than the token lifetime?
+        <div style="margin-top: 6px;"><a href="#" style="font-family: 'Instrument Sans', sans-serif; font-size: 12.5px;">Reply</a></div>
+      </div>
+      <div class="side" style="border-top: 1px solid oklch(88% 0.012 85); padding-top: 14px;">
+        <span class="who">Source</span>
+        <span class="mono" style="font-size: 12.5px; color: oklch(30% 0.02 60);">src/auth/verify.ts</span><br>
+        at revision <span class="mono" style="font-size: 12.5px;">8f31c72</span>, lines 42 to 71. <a href="#" style="font-family: 'Instrument Sans', sans-serif; font-size: 12.5px;">Open</a>
+      </div>
+      <div class="side" style="border-top: 1px solid oklch(88% 0.012 85); padding-top: 14px;">
+        <span class="who">Also read</span>
+        <a href="#" style="display: block; color: oklch(22% 0.015 60);">Key rotation runbook</a>
+        <a href="#" style="display: block; color: oklch(22% 0.015 60);">Gateway service documentation</a>
+      </div>
+    </div>
+  </div>
+</div>
+</x-dc>
+</body>
+</html>

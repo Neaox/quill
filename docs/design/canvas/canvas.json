@@ -1,0 +1,166 @@
+{
+  "pages": [
+    { "id": "directions", "name": "Directions" },
+    { "id": "screens", "name": "Screens" }
+  ],
+  "artboards": [
+    {
+      "file": "Press.dc.html",
+      "title": "Direction A: Press",
+      "page": "directions",
+      "x": 0,
+      "y": 0,
+      "w": 1440,
+      "h": 900
+    },
+    {
+      "file": "Instrument.dc.html",
+      "title": "Direction B: Instrument",
+      "page": "directions",
+      "x": 1560,
+      "y": 0,
+      "w": 1440,
+      "h": 900
+    },
+    {
+      "file": "Atelier.dc.html",
+      "title": "Direction C: Atelier",
+      "page": "directions",
+      "x": 3120,
+      "y": 0,
+      "w": 1440,
+      "h": 900
+    },
+    {
+      "file": "Main.dc.html",
+      "title": "Reading",
+      "page": "screens",
+      "x": 0,
+      "y": 0,
+      "w": 1440,
+      "h": 900
+    },
+    {
+      "file": "Writing.dc.html",
+      "title": "Writing",
+      "page": "screens",
+      "x": 1560,
+      "y": 0,
+      "w": 1440,
+      "h": 900
+    },
+    {
+      "file": "Presenting.dc.html",
+      "title": "Presenting (public site)",
+      "page": "screens",
+      "x": 3120,
+      "y": 0,
+      "w": 1440,
+      "h": 900
+    },
+    {
+      "file": "ReadingMobile.dc.html",
+      "title": "Reading on a phone",
+      "page": "screens",
+      "x": 0,
+      "y": 1060,
+      "w": 390,
+      "h": 844
+    },
+    {
+      "file": "Present.dc.html",
+      "title": "Presenting to the room (full screen)",
+      "page": "screens",
+      "x": 1560,
+      "y": 1060,
+      "w": 1440,
+      "h": 900
+    },
+    {
+      "file": "TemplatePicker.dc.html",
+      "title": "New document: templates and questions",
+      "page": "screens",
+      "x": 3120,
+      "y": 1060,
+      "w": 1440,
+      "h": 1100
+    },
+    {
+      "file": "WritingTemplate.dc.html",
+      "title": "Writing from a template",
+      "page": "screens",
+      "x": 4680,
+      "y": 1060,
+      "w": 1440,
+      "h": 900
+    },
+    {
+      "file": "ThemeOnboarding.dc.html",
+      "title": "Theme onboarding: preview and tweak",
+      "page": "screens",
+      "x": 0,
+      "y": 2300,
+      "w": 1440,
+      "h": 1000
+    }
+  ],
+  "annotations": [
+    {
+      "id": "press-note",
+      "page": "directions",
+      "x": 0,
+      "y": 960,
+      "w": 440,
+      "text": "A. Press\n\nIdentity: a well-set journal. Newsreader for reading and display, Instrument Sans in small caps for every label, double rules, numbered sections, and a real margin. Comments, source references, and related reading live in that margin as sidenotes beside the paragraph they belong to, instead of in a panel. One oxblood accent, used only for links and rules.\n\nReader story: the new engineer reading architecture for an hour. Nothing competes with the text; provenance sits in the folio where a book keeps it.\nWriter story: writing feels like authoring a piece, not filling a form. Metadata is a colophon, not a toolbar.\n\nTrade-off: the calmest and most distinctive of the three, but the least app-like. Dense runbooks and a 3am on-call reader want more instrument, less journal."
+    },
+    {
+      "id": "instrument-note",
+      "page": "directions",
+      "x": 1560,
+      "y": 960,
+      "w": 440,
+      "text": "B. Instrument\n\nIdentity: a precise engineering instrument. IBM Plex Sans, Serif, and Mono as one family. A monospace status readout carries path, version, owner, and state. An icon rail plus a compact tree with indent guides. A revision timeline is always visible on the right, so history is a glance, not a menu. One signal colour (international orange) marks the current revision, the active item, and the primary action, and nothing else.\n\nReader story: the on-call engineer at 3am. Path, freshness, and owner are the first things on screen; the command palette is one keystroke; code and tables are first-class.\nWriter story: structure is visible while you write; publishing adds a tick to the timeline you can see.\n\nTrade-off: the most technical and confident, and the best fit for the first users. It needs discipline to stay warm; the serif body and generous line-height are what keep it from feeling like a terminal."
+    },
+    {
+      "id": "atelier-note",
+      "page": "directions",
+      "x": 3120,
+      "y": 960,
+      "w": 440,
+      "text": "C. Atelier\n\nIdentity: a beautiful notebook. Collections are coloured tabs down the left edge, and the open page carries its collection's colour along its top edge, so you always know which notebook you are in. Instrument Serif for titles with an italic accent word, Instrument Sans for reading, layered-paper surfaces with soft shadows, 10 to 14px radii.\n\nReader story: the person browsing rather than searching. Place is felt through colour and tabs; pages feel like objects you can pick up.\nWriter story: the friendliest blank page of the three. Creating a page in a collection feels like adding a sheet to a notebook.\n\nTrade-off: the warmest and most approachable, and the one that risks reading as consumer rather than engineering. Colour per collection is delightful in a workspace of six collections and noisy in one of sixty."
+    },
+    {
+      "id": "how-to-choose",
+      "page": "directions",
+      "x": 4680,
+      "y": 0,
+      "w": 380,
+      "text": "Three genuinely different directions for the same document, each with a signature the others lack: sidenotes (A), a revision timeline and status readout (B), coloured notebook tabs (C).\n\nAll three keep what is already decided: the content/wide/full grid, the serif-or-sans reading choice as a workspace theme lever, and the same document facts.\n\nPick one, or name the parts you want combined. The chosen direction is then built into packages/ui and every later screen inherits it. The Screens page still shows the earlier, more neutral draft with its theme tweaks."
+    },
+    {
+      "id": "direction",
+      "page": "screens",
+      "x": 520,
+      "y": 1060,
+      "w": 420,
+      "text": "Earlier draft: warm editorial, deliberately close to the neutral design system so the theme levers could be judged. Superseded by the Directions page for identity; still useful for the block width menu, slash menu, comment placement, public site, and phone behaviour.\n\nUse the Theme tweaks above each screen to flip tone, accent, and reading face. Cool + Sans + the indigo swatch is the current token set."
+    },
+    {
+      "id": "templates-and-onboarding",
+      "page": "screens",
+      "x": 1560,
+      "y": 2300,
+      "w": 440,
+      "text": "Templates (ADR-029): a template is a Markdown document whose front matter declares questions, required and optional sections, and the metadata it stamps. Questions are asked once at creation and control which sections exist and how the document behaves. In the editor, guidance is a dismissible hint, placeholders are muted italic text, optional sections are an add affordance rather than content, and the template panel tracks progress. None of it reaches a published revision.\n\nTheme onboarding (ADR-028): logo and brand colours in, a suggested built-in theme shown on a real page in light and dark, the layer 2 levers with live contrast checks, saved as a fork the tenant can adjust or reset."
+    },
+    {
+      "id": "what-to-look-at",
+      "page": "screens",
+      "x": 1000,
+      "y": 1060,
+      "w": 420,
+      "text": "Things to check on these screens:\n\n1. Reading: the endpoints table breaks out to the wide lines while prose keeps its measure; the table of contents sits outside the grid so nothing collides.\n2. Writing: the block handle menu with Content / Wide / Full, the slash menu, an anchored comment beside the prose, and the calm draft-state bar (no Git words anywhere).\n3. Presenting: the public site drops workspace chrome, carries the organisation's brand, and uses the same reading grid; the diagram spans full width.\n4. Phone: every width collapses, the table scrolls inside its frame, and the page outline is thumb-reachable at the bottom.\n5. Presenting to the room: the same document, full screen, one section at a time, type scaled for a projector, a progress bar and a dot rail as the only chrome, and a presenter bar that fades when idle. Notes come from a :::notes directive and show only to the presenter. One keystroke opens a note for later, anchored to the current section and private to the presenter; after the session those notes become a checklist in the editor."
+    }
+  ],
+  "launch": { "view": "canvas", "page": "directions" }
+}

@@ -1,0 +1,1 @@
+Added: `packages/ui` gained a toast mechanism (`Toaster`, `toast`) built on sonner, rendered fully unstyled and themed from this package's tokens, with tone variants, a promise-aware API, and reduced-motion-aware swipe-to-dismiss.

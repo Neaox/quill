@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="light dark" />
+    <title>%BRAND_NAME%</title>
+    <script>
+      // Applies the remembered theme before first paint, so a reader who has
+      // chosen dark never sees a white flash. `system` deliberately writes
+      // nothing: the stylesheet's prefers-color-scheme rules stay in charge.
+      ;(function () {
+        try {
+          var stored = localStorage.getItem('theme-preference')
+          if (stored === 'light' || stored === 'dark') {
+            document.documentElement.setAttribute('data-theme', stored)
+          }
+        } catch (error) {
+          // Site data is blocked; the system preference still applies.
+        }
+      })()
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

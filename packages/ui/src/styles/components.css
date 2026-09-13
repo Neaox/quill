@@ -1,0 +1,250 @@
+/*
+ * The structure behind the signature variants (ADR-028, layer 1).
+ *
+ * Everything here is shape: the shell's columns and how they reflow, the
+ * indent guide down a tree, the spine of a revision timeline, and the
+ * treatment of a data table. Colour comes from the semantic tokens and nothing
+ * else, so these rules are identical under every identity and every scheme.
+ *
+ * What is *not* here is anything a component can say in its own class list:
+ * interaction and current-item states follow real attributes with Tailwind
+ * variants, and the theme's rule treatment is the `rules-*` custom variants of
+ * `tokens.css` (docs/architecture/styling.md).
+ *
+ * All of it sits in Tailwind's `components` layer, which is what makes the
+ * relationship with the components themselves predictable: a class here is a
+ * default, and a utility on the element always wins. A rule earns its place
+ * here when it is structural, when a parent attribute selects it, or when the
+ * same shape is shared by more than one component. Everything else stays in
+ * the component's own class list, in one place.
+ */
+
+@layer components {
+  /* ------------------------------------------------------------------------
+   * Metadata, set in the mono face.
+   *
+   * The artboard's strongest habit: anything that is a fact *about* a document
+   * rather than part of it — a path, a version, an owner, a column heading, a
+   * line reference — is monospace, small, and quiet.
+   * ---------------------------------------------------------------------- */
+
+  .meta {
+    font-family: var(--font-mono);
+    font-size: var(--text-2xs);
+    line-height: 1.45;
+    letter-spacing: var(--tracking-caps);
+    text-transform: uppercase;
+    color: var(--color-muted);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .meta-value {
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+    line-height: 1.5;
+    color: var(--color-muted);
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* ------------------------------------------------------------------------
+   * The document shell.
+   *
+   * Five regions in document order, so the tab sequence and the visual order
+   * agree at every width. Below the large breakpoint the complementary column
+   * drops under the document; below the medium breakpoint everything becomes
+   * one column and the rail turns on its side. Only the areas live here — the
+   * borders, widths, and directions that change with them are variant
+   * utilities on the components, where they can be read beside the defaults
+   * they replace.
+   * ---------------------------------------------------------------------- */
+
+  .document-shell {
+    display: grid;
+    grid-template-areas:
+      'header header header header'
+      'rail nav main aside';
+    grid-template-columns: auto auto minmax(0, 1fr) auto;
+    grid-template-rows: auto minmax(0, 1fr);
+    min-height: 100dvh;
+    background-color: var(--color-background);
+  }
+
+  .shell-header {
+    grid-area: header;
+    position: sticky;
+    top: 0;
+    z-index: 30;
+  }
+
+  .shell-rail {
+    grid-area: rail;
+  }
+
+  .shell-nav {
+    grid-area: nav;
+  }
+
+  .shell-main {
+    grid-area: main;
+    min-width: 0;
+  }
+
+  .shell-aside {
+    grid-area: aside;
+  }
+
+  /*
+   * A complementary column with nothing in it is not a column. Reading a
+   * document fills it with revisions, contents and health; the editor and
+   * every notice rendered in the shell's main area fill nothing, and used to
+   * be framed by an empty bordered strip the width of the revisions panel.
+   * The DOM is the source of that fact, so the rule reads it directly rather
+   * than asking a page to declare in advance what it is about to render.
+   */
+  .shell-aside:empty {
+    display: none;
+  }
+
+  /* Each column scrolls on its own, under the header, at the full height. */
+  .shell-rail,
+  .shell-nav,
+  .shell-aside {
+    position: sticky;
+    top: var(--spacing-shell-header);
+    max-height: calc(100dvh - var(--spacing-shell-header));
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+
+  @media (width < 64rem) {
+    .document-shell {
+      grid-template-areas:
+        'header header header'
+        'rail nav main'
+        'aside aside aside';
+      grid-template-columns: auto auto minmax(0, 1fr);
+    }
+
+    .shell-aside {
+      position: relative;
+      /* `relative` keeps `top` honest, and the sticky offset above is not it. */
+      top: auto;
+      max-height: none;
+    }
+  }
+
+  @media (width < 48rem) {
+    .document-shell {
+      grid-template-areas:
+        'header'
+        'rail'
+        'nav'
+        'main'
+        'aside';
+      grid-template-columns: minmax(0, 1fr);
+      grid-template-rows: auto auto auto minmax(0, 1fr) auto;
+    }
+
+    /*
+     * `relative`, not `static`, and the reason is not stacking: a `static`
+     * scroll container in a grid leaks its scrollable overflow to the
+     * viewport, so a workspace with two hundred documents gave the phone
+     * eight thousand pixels of empty page to scroll past the end of the
+     * one it was showing. Positioning the column makes it the containing
+     * block for its own overflow, which is where that overflow belongs.
+     */
+    .shell-rail {
+      position: relative;
+      top: auto;
+      max-height: none;
+      overflow-x: auto;
+    }
+
+    /* A long tree must not bury the document it belongs to. */
+    .shell-nav {
+      position: relative;
+      top: auto;
+      max-height: 13rem;
+    }
+  }
+
+  /* ------------------------------------------------------------------------
+   * Tree navigation: the indent guide. The accent bar on the current item is
+   * the component's, keyed on `aria-current`.
+   * ---------------------------------------------------------------------- */
+
+  .tree-branch {
+    margin-inline-start: 1.3125rem;
+    border-inline-start: 1px solid var(--color-border);
+  }
+
+  /* ------------------------------------------------------------------------
+   * The revision timeline: the spine, and the resting shape of a tick. Filling
+   * the current tick with the accent is the component's, keyed on
+   * `aria-current`.
+   * ---------------------------------------------------------------------- */
+
+  .timeline {
+    border-inline-start: 1px solid var(--color-border);
+  }
+
+  .timeline-dot {
+    flex: none;
+    width: 0.4375rem;
+    height: 0.4375rem;
+    margin-inline-start: -0.28125rem;
+    border: 1.5px solid var(--color-border-strong);
+    border-radius: 999px;
+    background-color: var(--color-background);
+  }
+
+  /* ------------------------------------------------------------------------
+   * Tabular data outside a document: the artboard's two-pixel rule under the
+   * column headings, monospace headings, and compact rows.
+   * ---------------------------------------------------------------------- */
+
+  .data-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: var(--text-xs);
+    font-variant-numeric: tabular-nums;
+    text-align: start;
+  }
+
+  .data-table thead th {
+    font-family: var(--font-mono);
+    font-size: var(--text-2xs);
+    font-weight: 400;
+    letter-spacing: var(--tracking-caps);
+    text-transform: uppercase;
+    color: var(--color-muted);
+    text-align: start;
+    padding: 0.375rem 0.75rem;
+    border-bottom: 2px solid var(--color-foreground);
+    white-space: nowrap;
+  }
+
+  .data-table td,
+  .data-table tbody th {
+    height: 1.75rem;
+    padding: 0.25rem 0.75rem;
+    border-bottom: 1px solid var(--color-border);
+    vertical-align: middle;
+    text-align: start;
+    font-weight: 400;
+    color: var(--color-foreground);
+  }
+
+  .data-table tbody tr:last-child td,
+  .data-table tbody tr:last-child th {
+    border-bottom: 0;
+  }
+
+  .data-table caption {
+    caption-side: bottom;
+    padding-top: 0.625rem;
+    font-size: var(--text-2xs);
+    color: var(--color-muted);
+    text-align: start;
+  }
+}

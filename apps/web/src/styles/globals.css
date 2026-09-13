@@ -1,0 +1,63 @@
+@import 'tailwindcss';
+
+/*
+ * The design system: fonts, semantic tokens, the reading grid (ADR-027), and
+ * long-form typography. Raw colour values, type sizes, and motion durations
+ * are defined there and nowhere else; this application only ever names them.
+ */
+@import '@quill/ui/styles.css';
+
+/*
+ * Tailwind's automatic source detection stops at this application and never
+ * looks inside `node_modules`, where the workspace packages are linked. The
+ * design system declares its own sources; the editor does not, because it has
+ * no stylesheet of its own — its class strings are laid out by whichever
+ * application mounts it, which is this one.
+ */
+@source '../../../../packages/editor/src';
+
+/*
+ * The writing surface is the reading surface (ADR-003, ADR-027).
+ *
+ * `@quill/editor` renders semantic class names and no layout of its own, on
+ * the understanding that "the application's stylesheet lays them out on the
+ * reading grid" (`packages/editor/README.md`). Both halves of that are now in
+ * the design system: `.document-editor-content` — ProseMirror's
+ * contenteditable, whose children *are* the document's blocks — is declared
+ * alongside `.layout-grid`, so a block set to `wide` while it is written spans
+ * exactly the lines it will span when it is read, and the editor puts `prose`
+ * on that same element, so the reading rhythm's `.prose > *` rules land on the
+ * blocks themselves rather than having to be restated here at numbers that
+ * could drift from the ones a reader gets.
+ *
+ * What is left here is the little the reading surface has no equivalent for.
+ */
+
+/*
+ * A writing surface is tall even when the document is short: a click below
+ * the last paragraph should still land in the document.
+ */
+.document-editor {
+  min-height: 60svh;
+}
+
+/*
+ * The caret is the focus indicator inside a document, and the surface is
+ * always the target of a click that lands in it, so a ring around the whole
+ * document would be noise. The surrounding controls keep theirs.
+ */
+.document-editor-content:focus {
+  outline: none;
+}
+
+/*
+ * A table being written has no scroll container around it: ProseMirror owns
+ * that DOM, so the reader's wrapper cannot be put there. A fixed layout is
+ * what `prosemirror-tables` is built for anyway — it is how a column drag
+ * knows what it is resizing — and it keeps a six-column table inside the
+ * measure on a phone instead of pushing the page sideways.
+ */
+.document-editor-content table {
+  table-layout: fixed;
+  width: 100%;
+}

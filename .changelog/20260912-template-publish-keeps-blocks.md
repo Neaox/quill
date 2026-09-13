@@ -1,0 +1,2 @@
+Fixed: Publishing a template no longer strips its own guidance, placeholders, optional sections and conditional blocks. Those are stripped only when a document created from the template is published, so a published template now hands every document made from it the full body its author wrote, including a `:::repeat` nested inside a `:::when`.
+Fixed: Presenter notes (`:::notes`) now survive a publish in the document's Markdown source, so presentation mode has notes to show, while staying out of the rendered body, the outline, the link index, and search text.
