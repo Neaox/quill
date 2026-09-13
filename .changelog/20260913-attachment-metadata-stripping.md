@@ -1,0 +1,2 @@
+Security: Uploaded images are stored without what they carried besides their pixels: EXIF, XMP, IPTC, comments, text chunks and anything after the end of the picture are removed at the container level, with no decoder, so a photograph's location and camera never reach readers (ADR-011, amendment of 13 September 2026).
+Changed: An image whose container cannot be read is refused at upload with `file_malformed` rather than stored.

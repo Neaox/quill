@@ -55,7 +55,7 @@ Authentication and security have to meet current practice, not the practice of t
 - **Rendered Markdown is sanitised**: raw HTML in documents is passed through an allowlist sanitiser (rehype-sanitize with a schema that permits the elements and attributes the renderer itself emits, plus safe inline HTML, and strips scripts, event handlers, `javascript:` and `data:` URLs except images). Sanitisation runs at render time, on the server, before anything enters the render cache; the editor previews the same output.
 - Links to other documents are id-based (ADR-031); external links get `rel="noopener noreferrer"`.
 - **Server-side requests** (embed metadata, source references, live blocks) go through one outbound client with an allowlist of hosts per integration, DNS resolution checked against private and link-local ranges to block SSRF, redirects limited and re-checked, timeouts, and response size caps.
-- **Uploads**: size limits, content type determined by sniffing not by the client's header, images re-encoded, SVG sanitised, everything served from the blob store with `Content-Disposition` and a separate origin or path prefix that never executes.
+- **Uploads**: size limits, content type determined by sniffing not by the client's header, images re-encoded, SVG sanitised, everything served from the blob store with `Content-Disposition` and a separate origin or path prefix that never executes. See the amendment of 2026-09-13 for what "re-encoded" and "sanitised" became: images are stripped at the container level without a decoder, and SVG is refused.
 
 ### Abuse resistance
 
@@ -69,6 +69,28 @@ Authentication and security have to meet current practice, not the practice of t
 - `pnpm audit` and a licence check run in CI; production dependencies are pinned by the lockfile; build scripts run only for allow-listed packages.
 - A threat model for the platform is written in R12 and revisited when a new surface (public sites, live blocks, integrations) is added.
 - Security fixes follow `SECURITY.md`; the review checklist in `docs/security/checklist.md` is part of the definition of done for any change touching auth, sessions, permissions, rendering, uploads, or outbound requests.
+
+## Amendment, 2026-09-13: uploaded images are stripped, not re-encoded; SVG is refused, not sanitised
+
+The uploads clause above asks for two things the attachments work did not build: images re-encoded and SVG sanitised. Everything else in the clause is built — the type is sniffed from the bytes and a mismatch refused, the cap is counted as the bytes arrive, the file is served from the blob store by hash with `nosniff`, a sandboxing policy, and `inline` only for images (`packages/application/src/use-cases/attachments.ts`, `media-types.ts`; `apps/server/src/routes/attachments.ts`). This amendment records why those two were not, and what stands in their place, so the gap is a decision rather than debt.
+
+### What re-encoding is for, and what already covers it
+
+The advice to re-encode uploaded images addresses three risks.
+
+1. **Polyglot files**: a file that is a valid image and also valid HTML, script, an archive, or a program. The harm needs a consumer that reads the other half. Here the browser is told the sniffed type with `X-Content-Type-Options: nosniff`, so it will neither render the bytes as a page nor run them as a script; the response carries `Content-Security-Policy: default-src 'none'; img-src 'self' data:; object-src 'none'; sandbox`; a PDF is a download, never inline; and the plug-ins that once executed same-origin polyglots are gone from browsers. What remains is the platform being used to host a payload that someone downloads and uses elsewhere, which needs `edit` on a document, and is rate-limited and audited. The two places such a payload lives — after the end-of-image marker, and inside comment or text segments — are exactly what stripping removes.
+2. **Decoder exploits**: a picture crafted against a bug in the reader's image decoder (libwebp's 2023 heap overflow is the canonical case). Re-encoding does not remove this risk; it moves it. The decoder would run on the server, in the process that holds the database and blob-store credentials and is updated at the operator's cadence, instead of in a browser's sandboxed, automatically updated renderer process; `sharp` bundles the same libwebp, libpng, libjpeg-turbo and libavif the browsers use, and was affected by the same bug. Nor can it close the risk: the Markdown sanitiser admits `data:image/*` URIs and the application's policy allows `img-src data:`, so a person who can edit a document can already hand every reader's decoder any bytes at all without an upload. Server-side re-encoding of uploads would add attack surface to the most valuable process without removing any from the least.
+3. **Metadata**: EXIF (position, device and serial, timestamps, a thumbnail of what was cropped away), XMP, IPTC, comments, text chunks. Every reader with `view` receives all of it, and with public publishing (M3) that is everyone. This is real, it is the one risk on the list that re-encoding uniquely addressed, and it does not need a decoder.
+
+Against that, re-encoding costs a large native dependency and its build matrix in a self-hosted image; a second lossy pass over a lossy original; and care for every case that must survive a re-encode — animation, colour profiles, wide gamut, HDR — each of which is a way to quietly change what an author uploaded.
+
+### Decision
+
+- **Uploaded images are rewritten at the level of their container, without decoding.** PNG chunks, JPEG segments, GIF blocks, WebP chunks and AVIF items are walked, and only the parts a decoder needs to show the picture are kept: pixels, palette, colour profile, transparency, dimensions, animation control and frames. EXIF, XMP, IPTC, comments, text and time stamps are dropped, and so is whatever follows the end-of-image marker. A picture the walker cannot read as its container is refused (`file_malformed`) rather than stored. What the platform stores is the picture as kept, and the size and hash it records are of that. PNG, JPEG and GIF are streamed; WebP and AVIF are rewritten from a buffer bounded by the upload cap, because their heads state their whole. The keep-lists are in `image-metadata.ts` and `image-metadata-avif.ts`, one per format, tested against files written by real encoders and decoded back with independent decoders. No dependency was added.
+- **SVG is refused, not sanitised.** An SVG is a document — it can carry script, external references and CSS — and a sanitiser has to be right about all of it, for ever. Nothing in the product needs SVG upload yet. When a diagram or source-artifact feature does (plan section 11, R14), it arrives with its own decision and its own renderer; until then the refusal names SVG and suggests PNG.
+- The checklist line for uploads reads accordingly.
+
+#
 
 ## Alternatives considered
 
