@@ -108,19 +108,36 @@ const breachedPasswords: BreachedPasswordChecker = withLocalFallback(
 // One registry for the process, so a provider's discovery document and key
 // set are fetched once rather than on every sign-in (ADR-011). Every outbound
 // call it makes goes through the SSRF-safe client, on an allowlist built from
-// the issuer and the endpoints its own discovery document names — unless
-// `OIDC_DEV_LOOPBACK` says this instance is signing in against a provider on
-// its own loopback (`auth/oidc/dev-loopback-client.ts`), which `config.ts`
-// refuses to allow anywhere but a loopback `APP_URL`.
+// the issuer and the endpoints its own discovery document names — except a
+// provider whose issuer is plain http, which only exists at all under
+// `OIDC_DEV_LOOPBACK` (`provider-config.ts`'s `checkIssuer`), and which alone
+// is diverted to loopback (`registry.ts`'s `isInsecureIssuer`); a real
+// provider's issuer is `https:` and is never diverted, whatever else is
+// configured on the same instance (`auth/oidc/dev-loopback-client.ts`).
 const identityProviders = createIdentityProviderRegistry({
   providers: config.oidcProviders,
   appUrl: config.appUrl,
-  createClient: config.oidcDevLoopback
-    ? createDevLoopbackOutboundClientFactory()
-    : outboundClientFactory,
+  createClient: outboundClientFactory,
+  ...(config.oidcDevLoopback
+    ? { devLoopbackClient: createDevLoopbackOutboundClientFactory() }
+    : {}),
   clock,
   secretResolver,
 })
+// Diverting a provider's traffic is worth saying out loud even though it is
+// never a real provider's (see above): silently changing where a request
+// goes is exactly the kind of thing a startup log should name.
+if (config.oidcDevLoopback) {
+  for (const provider of config.oidcProviders) {
+    if (new URL(provider.issuer).protocol === 'http:') {
+      warnAtStartup(
+        { source: 'oidc-dev-loopback', provider: provider.id },
+        `OIDC_DEV_LOOPBACK is diverting the "${provider.id}" provider's traffic to loopback ` +
+          `because its issuer is plain http.`,
+      )
+    }
+  }
+}
 
 // Every secret a provider or the mailer might read at the moment of use has
 // to name a value *somewhere* before this instance takes traffic — checked
@@ -131,14 +148,12 @@ const identityProviders = createIdentityProviderRegistry({
 const secretChecks: SecretExistenceCheck[] = config.oidcProviders.map((provider) => ({
   name: provider.clientSecretName,
   envVarName: `${providerVariablePrefix(provider.id)}CLIENT_SECRET`,
-  envValue: provider.clientSecretEnvValue,
   description: `the "${provider.id}" OIDC provider's client secret`,
 }))
 if (config.mailer.driver === 'smtp' && config.mailer.user !== undefined) {
   secretChecks.push({
     name: config.mailer.passwordSecretName,
     envVarName: 'SMTP_PASS',
-    envValue: config.mailer.passwordEnvValue,
     description: 'the SMTP password',
   })
 }

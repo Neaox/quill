@@ -32,6 +32,9 @@ export function createEnvelopeCipher(keys: KeyProvider): SecretCipher {
     get currentKeyId() {
       return keys.currentKeyId
     },
+    get keyIds() {
+      return keys.keyIds
+    },
 
     async seal(name: string, value: string): Promise<SealedSecret> {
       const dataKey = generateDataKey()

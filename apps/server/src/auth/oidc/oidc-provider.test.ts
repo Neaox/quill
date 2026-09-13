@@ -76,14 +76,16 @@ function claims(overrides: Record<string, unknown> = {}): Record<string, unknown
   }
 }
 
-/** The default resolver: the store holds nothing, so every test falls back to `clientSecretEnvValue`. */
-function envFallbackResolver(): SecretResolver {
+/**
+ * The default resolver: what "the client secret resolved to `CLIENT_SECRET`"
+ * means everywhere in this file except the "resolving the client secret"
+ * describe block below, which is the one place *how* it resolves matters —
+ * that is `resolve-secret.test.ts`'s job, not this file's.
+ */
+function fixedSecretResolver(value: string = CLIENT_SECRET): SecretResolver {
   return {
-    async resolve(fallback) {
-      if (fallback.envValue !== undefined && fallback.envValue.length > 0) {
-        return { ok: true, value: fallback.envValue }
-      }
-      return { ok: false, reason: 'not-found' }
+    async resolve() {
+      return { ok: true, value }
     },
   }
 }
@@ -96,7 +98,6 @@ function config(overrides: Partial<OidcProviderConfig> = {}): OidcProviderConfig
     issuer: ISSUER,
     clientId: CLIENT_ID,
     clientSecretName: 'oidc/acme/client-secret',
-    clientSecretEnvValue: CLIENT_SECRET,
     scopes: ['openid', 'email'],
     claims: {
       email: 'email',
@@ -117,7 +118,7 @@ interface Scenario {
   readonly discovery?: Record<string, unknown>
   /** What the token endpoint answers, or a function that throws. */
   readonly token?: OutboundResponse | (() => never)
-  /** Defaults to one that always falls back to `clientSecretEnvValue`. */
+  /** Defaults to one that always resolves to `CLIENT_SECRET`. */
   readonly secretResolver?: SecretResolver
 }
 
@@ -155,7 +156,7 @@ function providerFor(scenario: Scenario = {}, overrides: Partial<OidcProviderCon
     redirectUri: REDIRECT_URI,
     createClient: () => client,
     clock,
-    secretResolver: scenario.secretResolver ?? envFallbackResolver(),
+    secretResolver: scenario.secretResolver ?? fixedSecretResolver(),
   })
 }
 
@@ -229,7 +230,7 @@ describe('start', () => {
         },
       }),
       clock,
-      secretResolver: envFallbackResolver(),
+      secretResolver: fixedSecretResolver(),
     })
 
     expect(await provider.start()).toEqual({
@@ -265,7 +266,7 @@ describe('the token exchange', () => {
   it('form-encodes the credentials the way RFC 6749 Appendix B asks', async () => {
     // A space is `+`, and `!*'()` are escaped — neither of which
     // `encodeURIComponent` does on its own.
-    await roundTrip({}, { clientId: 'a b', clientSecretEnvValue: "s!*'()~" })
+    await roundTrip({ secretResolver: fixedSecretResolver("s!*'()~") }, { clientId: 'a b' })
 
     const header = posted[0]?.headers?.['authorization'] ?? ''
     const decoded = Buffer.from(header.replace('Basic ', ''), 'base64').toString('utf8')
@@ -337,31 +338,14 @@ describe('the token exchange', () => {
 })
 
 describe('resolving the client secret (ADR-034)', () => {
-  it('uses the secret store over the environment fallback when both name a value', async () => {
-    const resolver: SecretResolver = {
-      async resolve() {
-        return { ok: true, value: 'from-the-secrets-store' }
-      },
-    }
-
-    await roundTrip({ secretResolver: resolver })
-
-    const header = posted[0]?.headers?.['authorization'] ?? ''
-    const decoded = Buffer.from(header.replace('Basic ', ''), 'base64').toString('utf8')
-    expect(decoded).toBe('quill-client:from-the-secrets-store')
-  })
-
-  it('falls back to the environment value when the store holds nothing', async () => {
-    // The default resolver every other test in this file uses already proves
-    // this path — `clientSecretEnvValue` reaching the request — since nothing
-    // here ever stores a secret. Restated on its own so the fallback is a
-    // named, intentional case rather than an incidental default.
+  it('passes the secret name and the environment variable name to the resolver, and sends whatever it returns', async () => {
     const resolver: SecretResolver = {
       async resolve(fallback) {
-        expect(fallback.name).toBe('oidc/acme/client-secret')
-        return fallback.envValue === undefined
-          ? { ok: false, reason: 'not-found' }
-          : { ok: true, value: fallback.envValue }
+        expect(fallback).toEqual({
+          name: 'oidc/acme/client-secret',
+          envVarName: 'OIDC_ACME_CLIENT_SECRET',
+        })
+        return { ok: true, value: 'from-the-resolver' }
       },
     }
 
@@ -369,29 +353,29 @@ describe('resolving the client secret (ADR-034)', () => {
 
     const header = posted[0]?.headers?.['authorization'] ?? ''
     const decoded = Buffer.from(header.replace('Basic ', ''), 'base64').toString('utf8')
-    // Form-urlencoded before base64 (RFC 6749 Appendix B), same as every
-    // other test in this file that inspects the header.
-    expect(decoded).toBe('quill-client:quill+secret%2Bwith%2Fcharacters')
+    expect(decoded).toBe('quill-client:from-the-resolver')
   })
 
-  it('fails the exchange, rather than sending an empty secret, when neither names a value', async () => {
+  it('fails the exchange, rather than sending an empty secret, when nothing names a value', async () => {
     const resolver: SecretResolver = {
       async resolve() {
         return { ok: false, reason: 'not-found' }
       },
     }
 
-    expect(
-      await roundTrip({ secretResolver: resolver }, { clientSecretEnvValue: undefined }),
-    ).toEqual({
+    expect(await roundTrip({ secretResolver: resolver })).toEqual({
       ok: false,
       reason: 'token_exchange_failed',
-      detail: 'the client secret is not configured (oidc/acme/client-secret)',
+      detail:
+        'the client secret (oidc/acme/client-secret) is not usable: nothing names a value for it',
     })
     expect(posted).toEqual([])
   })
 
-  it('fails the exchange when the stored secret cannot be opened', async () => {
+  it('fails the exchange with a different reason when the stored secret cannot be opened', async () => {
+    // Different operator actions — re-enter the value, versus restore the
+    // master key or run `secrets:rotate` — so the audit detail says which,
+    // even though the browser sees the same failure either way (ADR-011).
     const resolver: SecretResolver = {
       async resolve() {
         return { ok: false, reason: 'unreadable' }
@@ -401,7 +385,8 @@ describe('resolving the client secret (ADR-034)', () => {
     expect(await roundTrip({ secretResolver: resolver })).toEqual({
       ok: false,
       reason: 'token_exchange_failed',
-      detail: 'the client secret is not configured (oidc/acme/client-secret)',
+      detail:
+        'the client secret (oidc/acme/client-secret) is not usable: no master key held by this instance can open it',
     })
   })
 })
@@ -590,7 +575,7 @@ describe('a token that does not verify', () => {
         },
       }),
       clock,
-      secretResolver: envFallbackResolver(),
+      secretResolver: fixedSecretResolver(),
       minKeyRefreshIntervalMs: 0,
     })
 
@@ -637,7 +622,7 @@ describe('a token that does not verify', () => {
         },
       }),
       clock,
-      secretResolver: envFallbackResolver(),
+      secretResolver: fixedSecretResolver(),
       metadataTtlMs: 1,
     })
 

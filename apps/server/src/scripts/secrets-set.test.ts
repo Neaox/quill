@@ -5,15 +5,28 @@ import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
 import { createServerHarness } from '../test-support/harness.ts'
 import type { ServerHarness } from '../test-support/harness.ts'
 import { seedTenancy } from '../test-support/tenancy-fixture.ts'
-import { setSecretValue } from './secrets-set.ts'
+import { parseSecretsSetArgv, readSecretValue, setSecretValue } from './secrets-set.ts'
+import type { StdinLike } from './secrets-set.ts'
 
 /**
- * `quill secrets:set`, against a real database and the real envelope cipher:
- * an administrator entering the value ADR-034 asks for, and the CLI
- * (`secrets-set-cli.ts`) reading it from stdin rather than `argv` — proved
- * here at the level below the process boundary, since a value never once
- * appears on a command line in this file either.
+ * `pnpm --filter @quill/server secrets:set`, against a real database and the
+ * real envelope cipher: an administrator entering the value ADR-034 asks
+ * for. The argument-count guard and the terminal-stdin refusal
+ * (`secrets-set-cli.ts`'s own logic, `parseSecretsSetArgv` and
+ * `readSecretValue`) are proved on their own below, with fakes standing in
+ * for `process.argv` and `process.stdin` — a value never once appears on a
+ * command line in this file either.
  */
+
+/** A minimal async-iterable stdin: `chunks` joined is the value a real pipe or redirect would deliver. */
+function fakeStdin(chunks: readonly string[], isTTY = false): StdinLike {
+  return {
+    isTTY,
+    async *[Symbol.asyncIterator]() {
+      for (const chunk of chunks) yield chunk
+    },
+  }
+}
 
 let harness: ServerHarness
 let actor: UserId
@@ -112,5 +125,53 @@ describe('setSecretValue', () => {
     )
     expect(rows[0]?.target_id).toBe('oidc/acme/client-secret')
     expect(JSON.stringify(rows[0]?.metadata)).not.toContain('hunter2')
+  })
+})
+
+describe('parseSecretsSetArgv (H1: never accepts a value on the command line)', () => {
+  it('accepts exactly one argument: the name', () => {
+    expect(parseSecretsSetArgv(['oidc/acme/client-secret'])).toEqual({
+      ok: true,
+      name: 'oidc/acme/client-secret',
+    })
+  })
+
+  it('refuses no arguments at all', () => {
+    const result = parseSecretsSetArgv([])
+    expect(result.ok).toBe(false)
+    expect(!result.ok && result.message).toContain('Usage:')
+  })
+
+  it('refuses a second argument rather than treating it as the value', () => {
+    const result = parseSecretsSetArgv(['oidc/acme/client-secret', 'hunter2'])
+    expect(result.ok).toBe(false)
+    expect(!result.ok && result.message).toContain('never from a command-line argument')
+  })
+})
+
+describe('readSecretValue (H1: never a prompt this command does not offer)', () => {
+  it('reads and joins every chunk stdin delivers', async () => {
+    expect(await readSecretValue(fakeStdin(['hun', 'ter2']))).toEqual({
+      ok: true,
+      value: 'hunter2',
+    })
+  })
+
+  it('strips exactly one trailing newline, the shell’s and not the secret’s', async () => {
+    expect(await readSecretValue(fakeStdin(['hunter2\n']))).toEqual({ ok: true, value: 'hunter2' })
+    expect(await readSecretValue(fakeStdin(['hunter2\r\n']))).toEqual({
+      ok: true,
+      value: 'hunter2',
+    })
+    expect(await readSecretValue(fakeStdin(['hunter2\n\n']))).toEqual({
+      ok: true,
+      value: 'hunter2\n',
+    })
+  })
+
+  it('refuses a terminal stdin rather than hanging until somebody types into it', async () => {
+    const result = await readSecretValue(fakeStdin(['anything'], true))
+    expect(result.ok).toBe(false)
+    expect(!result.ok && result.message).toContain('is a terminal')
   })
 })

@@ -36,7 +36,6 @@ describe('loadOidcProviders', () => {
       issuer: 'https://login.microsoftonline.com/tenant-1/v2.0',
       clientId: 'client-1',
       clientSecretName: 'oidc/entra/client-secret',
-      clientSecretEnvValue: 'secret-1',
       scopes: ['openid', 'email', 'profile'],
       claims: {
         email: 'email',
@@ -63,16 +62,20 @@ describe('loadOidcProviders', () => {
     expect(providers.map((provider) => provider.id)).toEqual(['google', 'entra'])
   })
 
-  it('leaves the client secret to the secrets store when no environment fallback is set', () => {
-    // No `OIDC_ENTRA_CLIENT_SECRET` at all: valid at config-load time, because
-    // the secrets store (ADR-034) may hold `oidc/entra/client-secret`
-    // instead. Whether *something* names a value is checked once the
-    // database is reachable (`infrastructure/secrets/boot-validation.ts`).
+  it('leaves the client secret to the secrets store: OIDC_<ID>_CLIENT_SECRET is not read here at all', () => {
+    // Valid at config-load time whether it is set or not, because the
+    // secrets store (ADR-034) may hold `oidc/entra/client-secret` instead,
+    // and its value — when it is the fallback that is actually used — is
+    // read fresh from the environment at the moment of use
+    // (`infrastructure/secrets/resolve-secret.ts`), never snapshotted here.
+    // Whether *something* names a value is checked once the database is
+    // reachable (`infrastructure/secrets/boot-validation.ts`).
     const { OIDC_ENTRA_CLIENT_SECRET: _omitted, ...withoutSecret } = ENTRA
-    const [provider] = loadOidcProviders(withoutSecret)
+    const [withSecret] = loadOidcProviders(ENTRA)
+    const [without] = loadOidcProviders(withoutSecret)
 
-    expect(provider?.clientSecretName).toBe('oidc/entra/client-secret')
-    expect(provider?.clientSecretEnvValue).toBeUndefined()
+    expect(without).toEqual(withSecret)
+    expect(without?.clientSecretName).toBe('oidc/entra/client-secret')
   })
 
   it('allows a plain http issuer only when told to (OIDC_DEV_LOOPBACK, config.ts)', () => {

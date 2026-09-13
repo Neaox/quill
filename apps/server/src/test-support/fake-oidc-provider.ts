@@ -26,6 +26,19 @@ import type { OutboundClientFactory } from '../auth/oidc/discovery.ts'
  * redirect cap, the timeout, the size cap, and the real `node:http` transport
  * in place. The DNS-pinning layer that is bypassed has its own decision-table
  * tests in `outbound-client.test.ts`.
+ *
+ * **What `/authorize` deliberately does not check.** It mints a code for any
+ * caller and redirects wherever `redirect_uri` says, without validating
+ * either against a value it registered anywhere — there is nothing to
+ * register against, since this fake never sees the platform's configuration.
+ * `/token`'s own `redirect_uri` equality check (below) is therefore
+ * tautological here: it compares against the value `/authorize` itself just
+ * recorded, not an independent registration. Both properties are genuinely
+ * proved, just not by this file: `auth-oidc.integration.test.ts` drives the
+ * platform's own redirect-URI handling, and `oidc-provider.test.ts` its
+ * client-id handling. A browser journey against this fake
+ * (`e2e/sso.spec.ts`) should be read as proving the sign-in flow, not these
+ * two checks.
  */
 
 /** RFC 5737 TEST-NET-3: never routed, and public as far as the SSRF checks are concerned. */
@@ -152,7 +165,21 @@ interface PendingAuthorization {
    * `overrides` exactly as it always has.
    */
   readonly claims?: FakeIdTokenOverrides
+  /** Wall-clock `Date.now()`, for `sweepPending` — never the test's fake clock. */
+  readonly issuedAt: number
 }
+
+/**
+ * A code nobody exchanged within five minutes never will be: a real
+ * authorization code lives for a browser round trip, not a test suite's
+ * lifetime. Bounds `pending`, which otherwise grows for as long as this
+ * process runs — a vitest file lives for one run, but `e2e/sso.spec.ts` now
+ * runs this as a real process for a whole Playwright suite.
+ */
+const PENDING_TTL_MS = 5 * 60_000
+
+/** `requests` is diagnostic, not protocol state — capped so a long-running process's memory does not grow with it. */
+const MAX_REQUESTS_LOGGED = 1000
 
 /**
  * The cookie a real browser carries to `/authorize`, set on this provider's
@@ -204,6 +231,19 @@ export async function startFakeOidcProvider(options: FakeOidcOptions): Promise<F
   const pending = new Map<string, PendingAuthorization>()
   const requests: string[] = []
   let issued = 0
+
+  /** Drops any authorization code older than `PENDING_TTL_MS`, on the way into every new one. */
+  function sweepPending(): void {
+    const cutoff = Date.now() - PENDING_TTL_MS
+    for (const [code, authorization] of pending) {
+      if (authorization.issuedAt < cutoff) pending.delete(code)
+    }
+  }
+
+  function logRequest(pathname: string): void {
+    requests.push(pathname)
+    if (requests.length > MAX_REQUESTS_LOGGED) requests.shift()
+  }
 
   const server: Server = createServer((request, response) => {
     void handle(request, response)
@@ -277,7 +317,7 @@ export async function startFakeOidcProvider(options: FakeOidcOptions): Promise<F
   async function handle(request: IncomingMessage, response: ServerResponse): Promise<void> {
     /* v8 ignore next -- `url` is set on every request Node hands to a handler. */
     const url = new URL(request.url ?? '/', issuer)
-    requests.push(url.pathname)
+    logRequest(url.pathname)
 
     if (url.pathname === '/.well-known/openid-configuration') {
       json(response, 200, discoveryDocument())
@@ -294,6 +334,7 @@ export async function startFakeOidcProvider(options: FakeOidcOptions): Promise<F
       // person in" step, and mints a code exactly as the in-process
       // `authorize()` helper below does, plus this request's own claims
       // cookie, so the two never drift apart.
+      sweepPending()
       issued += 1
       const code = `code-${String(issued)}`
       const claims = readClaimsCookie(request.headers.cookie)
@@ -301,6 +342,7 @@ export async function startFakeOidcProvider(options: FakeOidcOptions): Promise<F
         challenge: parameter(url.searchParams, 'code_challenge'),
         redirectUri: parameter(url.searchParams, 'redirect_uri'),
         nonce: parameter(url.searchParams, 'nonce'),
+        issuedAt: Date.now(),
         ...(claims === undefined ? {} : { claims }),
       })
       const location = new URL(parameter(url.searchParams, 'redirect_uri'))
@@ -365,6 +407,7 @@ export async function startFakeOidcProvider(options: FakeOidcOptions): Promise<F
       }),
 
     authorize(authorizationUrl) {
+      sweepPending()
       const query = new URL(authorizationUrl).searchParams
       issued += 1
       const code = `code-${String(issued)}`
@@ -372,6 +415,7 @@ export async function startFakeOidcProvider(options: FakeOidcOptions): Promise<F
         challenge: parameter(query, 'code_challenge'),
         redirectUri: parameter(query, 'redirect_uri'),
         nonce: parameter(query, 'nonce'),
+        issuedAt: Date.now(),
       })
       return { code, state: parameter(query, 'state') }
     },

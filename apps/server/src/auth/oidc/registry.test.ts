@@ -6,6 +6,7 @@ import {
   oidcCallbackUrl,
   outboundClientFactory,
 } from './registry.ts'
+import type { OutboundClientFactory } from './discovery.ts'
 import type { OidcProviderConfig } from './provider-config.ts'
 import type { SecretResolver } from '../../infrastructure/secrets/resolve-secret.ts'
 
@@ -13,10 +14,24 @@ const CLOCK = createFakeClock(new Date('2026-01-01T00:00:00.000Z'))
 
 /** Never actually resolved in this file: nothing here drives a token exchange. */
 const UNUSED_SECRET_RESOLVER: SecretResolver = {
-  /* v8 ignore next 3 */
   async resolve() {
     throw new Error('not exercised by registry.test.ts')
   },
+}
+
+/** A client factory that records which hosts it was built for, and answers nothing useful otherwise. */
+function recordingClientFactory(into: string[]): OutboundClientFactory {
+  return (hosts) => {
+    into.push(...hosts)
+    return {
+      async get() {
+        return { status: 503, body: '' }
+      },
+      async post() {
+        return { status: 503, body: '' }
+      },
+    }
+  }
 }
 
 function provider(id: string, displayName: string): OidcProviderConfig {
@@ -27,7 +42,6 @@ function provider(id: string, displayName: string): OidcProviderConfig {
     issuer: `https://${id}.example.com`,
     clientId: 'client',
     clientSecretName: `oidc/${id}/client-secret`,
-    clientSecretEnvValue: 'secret',
     scopes: ['openid'],
     claims: { email: 'email', emailVerified: 'email_verified', displayName: 'name', groups: null },
     authorizationParameters: {},
@@ -80,6 +94,50 @@ describe('the identity provider registry', () => {
     expect(oidcCallbackUrl('https://docs.example.com', 'a/b')).toBe(
       'https://docs.example.com/api/auth/oidc/a%2Fb/callback',
     )
+  })
+
+  /**
+   * M2 of the PR #13 review: `devLoopbackClient` must divert only a provider
+   * whose own issuer is `http:`, never one that is `https:` — a dev box with
+   * both the e2e fake and a real Entra provider configured must not send the
+   * real provider's discovery, JWKS, or token-exchange traffic (carrying its
+   * client secret) to whatever is listening on loopback.
+   */
+  it('sends only an http-issuer provider through the loopback client, never an https one', async () => {
+    const calledWith = { safe: [] as string[], loopback: [] as string[] }
+    const httpsProvider = provider('entra', 'Microsoft')
+    const httpProvider = { ...provider('fake', 'Fake'), issuer: 'http://fake.example.test' }
+    const registry = createIdentityProviderRegistry({
+      providers: [httpsProvider, httpProvider],
+      appUrl: 'https://docs.example.com',
+      createClient: recordingClientFactory(calledWith.safe),
+      devLoopbackClient: recordingClientFactory(calledWith.loopback),
+      clock: CLOCK,
+      secretResolver: UNUSED_SECRET_RESOLVER,
+    })
+
+    await registry.find('entra')?.start()
+    await registry.find('fake')?.start()
+
+    expect(calledWith.safe).toContain('entra.example.com')
+    expect(calledWith.safe).not.toContain('fake.example.test')
+    expect(calledWith.loopback).toContain('fake.example.test')
+    expect(calledWith.loopback).not.toContain('entra.example.com')
+  })
+
+  it('never diverts anything when no loopback client is given, whatever a provider’s issuer is', async () => {
+    const safe: string[] = []
+    const registry = createIdentityProviderRegistry({
+      providers: [{ ...provider('fake', 'Fake'), issuer: 'http://fake.example.test' }],
+      appUrl: 'https://docs.example.com',
+      createClient: recordingClientFactory(safe),
+      clock: CLOCK,
+      secretResolver: UNUSED_SECRET_RESOLVER,
+    })
+
+    await registry.find('fake')?.start()
+
+    expect(safe).toContain('fake.example.test')
   })
 })
 

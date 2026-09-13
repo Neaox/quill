@@ -8,6 +8,17 @@ import { startFakeOidcProvider } from '../test-support/fake-oidc-provider.ts'
  * for `e2e/sso.spec.ts`, which drives a real browser against a real running
  * `pnpm --filter @quill/server start` process instead.
  *
+ * An identity provider that signs tokens with a self-generated key and
+ * authorises anyone who asks has no business running on a production host,
+ * so this refuses under `NODE_ENV=production` unconditionally — the same
+ * shape as `reset-database-cli.ts`, and for the same reason: the server runs
+ * from source (`start: node src/main.ts`, no bundle step), so this script
+ * ships in the deployed tree along with everything else in `src/`, and
+ * nothing should be one `pnpm` command away from standing it up there.
+ * `.dependency-cruiser.cjs` separately keeps `test-support/fake-oidc-provider.ts`
+ * out of every *other* non-test file, so this is the one deliberate
+ * exception rather than the first of an accidental pattern.
+ *
  * `playwright.config.ts` starts this as a third `webServer`, alongside the
  * API and Vite: `E2E_FAKE_OIDC_PORT` is fixed (`e2e/support/env.ts`) so that
  * the API server's own `OIDC_FAKE_ISSUER` — set from the same variable —
@@ -20,6 +31,11 @@ import { startFakeOidcProvider } from '../test-support/fake-oidc-provider.ts'
  * without either one being told the other's configuration directly.
  */
 
+if (process.env['NODE_ENV'] === 'production') {
+  process.stderr.write('Refusing to start the fake OIDC provider under NODE_ENV=production.\n')
+  process.exit(1)
+}
+
 function required(name: string): string {
   const value = process.env[name]
   if (value === undefined || value.length === 0) {
@@ -28,7 +44,17 @@ function required(name: string): string {
   return value
 }
 
-const port = Number(process.env['E2E_FAKE_OIDC_PORT'] ?? '3197')
+/** The same shape `config.ts`'s `parsePort` checks — a typo here must not become `listen(NaN)`. */
+function requiredPort(name: string, fallback: number): number {
+  const raw = process.env[name]
+  const port = Number(raw ?? String(fallback))
+  if (!Number.isInteger(port) || port < 1 || port > 65_535) {
+    throw new Error(`${name} must be an integer between 1 and 65535, received "${raw}"`)
+  }
+  return port
+}
+
+const port = requiredPort('E2E_FAKE_OIDC_PORT', 3197)
 const clock = createSystemClock()
 const provider = await startFakeOidcProvider({
   clientId: required('FAKE_OIDC_CLIENT_ID'),

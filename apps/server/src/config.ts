@@ -260,11 +260,12 @@ export type MailerConfig =
       /**
        * The secret name the SMTP password is stored under (ADR-034),
        * resolved at the moment of use — an outbox send, in
-       * `auth/smtp-mailer.ts` — never read or held here.
+       * `auth/smtp-mailer.ts`. `SMTP_PASS` is the fallback for one release,
+       * read fresh from the environment at that same moment
+       * (`infrastructure/secrets/resolve-secret.ts`) rather than snapshotted
+       * here — this field never holds the password's value.
        */
       readonly passwordSecretName: string
-      /** `SMTP_PASS`, kept only as a fallback for one release. */
-      readonly passwordEnvValue?: string
     }
 
 /** Always this: one name, not an administrator's choice, like every OIDC client secret. */
@@ -696,16 +697,25 @@ function loadMasterKeyConfig(
   return { driver: 'environment', keys: [key ?? DEVELOPMENT_MASTER_KEY, ...previous] }
 }
 
-function loadOidcDevLoopback(env: NodeJS.ProcessEnv, appUrl: URL): boolean {
+/**
+ * Refused on `isRealDeployment(appUrl) || production` — two independent
+ * signals, not one, matching `loadMasterKeyConfig`'s refusal of the
+ * development master key below: an instance whose `APP_URL` is merely
+ * misconfigured back to loopback (a proxy-fronted instance behind a
+ * forgotten default, say) is still caught by `NODE_ENV=production`, and one
+ * that forgets to set `NODE_ENV` is still caught by its own public address.
+ */
+function loadOidcDevLoopback(env: NodeJS.ProcessEnv, appUrl: URL, production: boolean): boolean {
   const raw = env['OIDC_DEV_LOOPBACK']
   if (raw === undefined || raw === 'false') return false
   if (raw !== 'true') {
     throw new Error(`OIDC_DEV_LOOPBACK must be "true" or "false", received "${raw}"`)
   }
-  if (isRealDeployment(appUrl)) {
+  if (isRealDeployment(appUrl) || production) {
     throw new Error(
-      'OIDC_DEV_LOOPBACK is refused once APP_URL names anything but loopback: it exists only ' +
-        'so a local OIDC provider can sit on loopback for development and end-to-end tests.',
+      'OIDC_DEV_LOOPBACK is refused once APP_URL names anything but loopback, or under ' +
+        'NODE_ENV=production: it exists only so a local OIDC provider can sit on loopback for ' +
+        'development and end-to-end tests.',
     )
   }
   return true
@@ -730,7 +740,11 @@ function loadMailerConfig(env: NodeJS.ProcessEnv): MailerConfig {
   }
 
   const user = env['SMTP_USER']
-  const pass = env['SMTP_PASS']
+  // `SMTP_PASS` itself is deliberately not read here: its value is read
+  // fresh from the environment at the moment of use
+  // (`infrastructure/secrets/resolve-secret.ts`), never snapshotted onto
+  // this object, which is reachable from every route handler for the whole
+  // deprecation window (`AppDependencies.config`).
   return {
     driver: 'smtp',
     host,
@@ -739,7 +753,6 @@ function loadMailerConfig(env: NodeJS.ProcessEnv): MailerConfig {
     from,
     ...(user === undefined ? {} : { user }),
     passwordSecretName: SMTP_PASSWORD_SECRET_NAME,
-    ...(pass === undefined ? {} : { passwordEnvValue: pass }),
   }
 }
 
@@ -757,11 +770,11 @@ export function loadConfig(
   }
 
   const appUrl = parseAppUrl(env['APP_URL'] ?? `http://localhost:${port}`)
+  const production = env['NODE_ENV'] === 'production'
   // Computed before `oidcProviders` below, which needs it to decide whether
   // an issuer may be plain http (`loadOidcProviders`'s `allowInsecureIssuer`).
-  const oidcDevLoopback = loadOidcDevLoopback(env, appUrl)
+  const oidcDevLoopback = loadOidcDevLoopback(env, appUrl, production)
 
-  const production = env['NODE_ENV'] === 'production'
   const databaseUrl = env['DATABASE_URL']
   // Two defaults that are right on a laptop and dangerous anywhere else. A
   // production instance that silently pointed at a local database, or logged

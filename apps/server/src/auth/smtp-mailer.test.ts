@@ -15,18 +15,16 @@ const { createSmtpMailer } = await import('./smtp-mailer.ts')
 
 /** Never asked, in a test with no `user` configured. */
 const UNUSED_SECRET_RESOLVER: SecretResolver = {
-  /* v8 ignore next 3 */
   async resolve() {
     throw new Error('not exercised: no SMTP user is configured')
   },
 }
 
-function envFallbackResolver(): SecretResolver {
+/** How the resolver resolves — store, or its own environment fallback — is `resolve-secret.test.ts`'s job, not this file's; here it is just given a value or told there is none. */
+function fixedResolver(value: string | undefined): SecretResolver {
   return {
-    async resolve(fallback) {
-      return fallback.envValue === undefined
-        ? { ok: false, reason: 'not-found' }
-        : { ok: true, value: fallback.envValue }
+    async resolve() {
+      return value === undefined ? { ok: false, reason: 'not-found' } : { ok: true, value }
     },
   }
 }
@@ -83,7 +81,7 @@ describe('createSmtpMailer', () => {
     })
   })
 
-  it('falls back to SMTP_PASS when the secrets store holds nothing', async () => {
+  it('sends whatever the resolver returns, whether it came from the store or its environment fallback', async () => {
     const mailer = createSmtpMailer(
       {
         host: 'smtp.example.com',
@@ -92,9 +90,8 @@ describe('createSmtpMailer', () => {
         from: 'docs@example.com',
         user: 'user',
         passwordSecretName: 'smtp/password',
-        passwordEnvValue: 'the-env-password',
       },
-      envFallbackResolver(),
+      fixedResolver('the-env-password'),
     )
     await mailer.sendAccountExists({ to: 'ada@example.com', signInUrl: 'https://example.com/' })
 
@@ -103,7 +100,7 @@ describe('createSmtpMailer', () => {
     )
   })
 
-  it('refuses to send when a user is configured but neither the store nor the environment names a password', async () => {
+  it('refuses to send when a user is configured but the resolver names no password', async () => {
     const mailer = createSmtpMailer(
       {
         host: 'smtp.example.com',
@@ -113,12 +110,16 @@ describe('createSmtpMailer', () => {
         user: 'user',
         passwordSecretName: 'smtp/password',
       },
-      envFallbackResolver(),
+      fixedResolver(undefined),
     )
 
     await expect(
       mailer.sendAccountExists({ to: 'ada@example.com', signInUrl: 'https://example.com/' }),
     ).rejects.toThrow(/the SMTP password is not configured/)
+    // No package here declares a `bin`, so the command named is the real one.
+    await expect(
+      mailer.sendAccountExists({ to: 'ada@example.com', signInUrl: 'https://example.com/' }),
+    ).rejects.toThrow(/pnpm --filter @quill\/server secrets:set smtp\/password/)
     expect(sendMail).not.toHaveBeenCalled()
   })
 

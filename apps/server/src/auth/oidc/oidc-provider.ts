@@ -51,7 +51,8 @@ export interface OidcProviderDeps {
   /**
    * Resolves `config.clientSecretName` at the moment of use — the token
    * exchange, and only then (ADR-034) — falling back to
-   * `config.clientSecretEnvValue` for one release when nothing is stored.
+   * `OIDC_<ID>_CLIENT_SECRET`, read fresh from the environment, for one
+   * release when nothing is stored.
    */
   readonly secretResolver: SecretResolver
   readonly metadataTtlMs?: number
@@ -166,12 +167,19 @@ export function createOidcIdentityProvider(deps: OidcProviderDeps): IdentityProv
     const resolved = await deps.secretResolver.resolve({
       name: config.clientSecretName,
       envVarName: `${providerVariablePrefix(config.id)}CLIENT_SECRET`,
-      envValue: config.clientSecretEnvValue,
     })
     if (!resolved.ok) {
+      // Different operator actions: re-enter the value, versus restore the
+      // master key that used to wrap it or run `secrets:rotate` — the
+      // browser sees the same failure either way (ADR-011's no-oracle rule),
+      // but the audit detail is what an operator actually acts on.
+      const why =
+        resolved.reason === 'unreadable'
+          ? 'no master key held by this instance can open it'
+          : 'nothing names a value for it'
       return {
         ok: false,
-        detail: `the client secret is not configured (${config.clientSecretName})`,
+        detail: `the client secret (${config.clientSecretName}) is not usable: ${why}`,
       }
     }
     const clientSecret = resolved.value

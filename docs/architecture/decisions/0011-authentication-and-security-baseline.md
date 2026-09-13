@@ -130,15 +130,31 @@ with the two endpoints on their own flat per-address budget.
 is resolved from the settings store's secrets (`setSecret` / `getSecret`,
 envelope-encrypted under the `KeyProvider`'s instance master key, ADR-034) at
 the moment of use — the token exchange — falling back to the environment
-variable for one release when the store holds nothing under
+variable, read fresh at that same moment rather than held anywhere for the
+length of the deprecation window, when the store holds nothing under
 `oidc/<id>/client-secret`. An administrator runs
-`printf '%s' '…' | pnpm --filter @quill/server secrets:set oidc/<id>/client-secret`
-once; boot then warns, naming that command, for as long as the fallback is
-what makes a provider work, and refuses to start when neither names a value.
-`SMTP_PASS` moved the same way, to `smtp/password`, resolved on each outbox
-send rather than once at process start. The end of the fallback — when
-`OIDC_<ID>_CLIENT_SECRET` and `SMTP_PASS` stop being read at all — is a
-later, separate change.
+`pnpm --filter @quill/server secrets:set oidc/<id>/client-secret < /path/to/secret-file`
+once — the command refuses a value given as a second argument rather than
+accepting it, which is what would put it in shell history; boot then warns,
+naming that command, for as long as the fallback is what makes a provider
+work, and refuses to start when neither names a *readable* value: a row
+whose master key this instance no longer holds is caught here too, not left
+to fail at the next sign-in. `SMTP_PASS` moved the same way, to
+`smtp/password`, resolved on each outbox send rather than once at process
+start. The end of the fallback — when `OIDC_<ID>_CLIENT_SECRET` and
+`SMTP_PASS` stop being read at all — is a later, separate change.
+
+**A discovery document may move an endpoint to another host, on the issuer's
+own scheme.** `auth/oidc/discovery.ts` requires every endpoint a discovery
+document names to share the issuer's scheme but never required it to share
+the issuer's *host* — Amazon Cognito really does host its token endpoint on a
+different name from its issuer, which is why the check was written that way.
+`e2e/sso.spec.ts`'s fake provider is the first thing to exercise that: its
+`authorization_endpoint` is a literal `127.0.0.1` address, browser-reachable
+with no DNS involved, while its issuer, token endpoint and key set stay on
+its own fake hostname, reachable only through the loopback-aware client a
+real browser never needs. This was already true of the implementation; it is
+recorded here because this PR is the first thing to rely on it.
 
 **Still to come on this ADR:** passkeys (WebAuthn), moving provider
 configuration itself — not just its secret — from the environment to

@@ -454,7 +454,6 @@ describe('loadConfig', () => {
         from: 'docs@example.com',
         user: 'user',
         passwordSecretName: 'smtp/password',
-        passwordEnvValue: 'pass',
       })
     })
 
@@ -495,6 +494,17 @@ describe('loadConfig: OIDC_DEV_LOOPBACK', () => {
     expect(() =>
       loadConfig({ OIDC_DEV_LOOPBACK: 'true', APP_URL: 'https://docs.example.com' }),
     ).toThrow(/OIDC_DEV_LOOPBACK is refused/)
+  })
+
+  it('is refused under NODE_ENV=production even when APP_URL is still loopback', () => {
+    // Two independent signals, matching `loadMasterKeyConfig`'s refusal of
+    // the development master key: an instance whose APP_URL is merely
+    // misconfigured back to loopback is still caught by NODE_ENV=production.
+    // Checked before the production-only DATABASE_URL/mailer refusals, so
+    // neither needs to be satisfied for this one to be the failure seen.
+    expect(() => loadConfig({ OIDC_DEV_LOOPBACK: 'true', NODE_ENV: 'production' })).toThrow(
+      /OIDC_DEV_LOOPBACK is refused/,
+    )
   })
 
   it('lets a configured provider use a plain http issuer once it is on', () => {

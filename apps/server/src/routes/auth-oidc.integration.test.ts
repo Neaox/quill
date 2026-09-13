@@ -118,10 +118,10 @@ beforeAll(async () => {
     issuer: provider.issuer,
     clientId: CLIENT_ID,
     // The secrets store holds nothing in this harness, so every test proves
-    // the environment fallback; `secrets.test.ts` and
+    // the environment fallback (given to `createServerHarness` as `env`
+    // below, never the real `process.env`); `resolve-secret.test.ts` and
     // `boot-validation.test.ts` prove the store path.
     clientSecretName: oidcClientSecretName('acme'),
-    clientSecretEnvValue: CLIENT_SECRET,
     scopes: ['openid', 'email', 'profile'],
     claims: {
       email: 'email',
@@ -154,6 +154,13 @@ beforeAll(async () => {
     clock,
     oidcProviders: [config, unreachable, noLinking],
     createOidcClient: provider.createClient,
+    // One name per provider id (`providerVariablePrefix`), all the same
+    // value: the fallback path every test in this file exercises.
+    env: {
+      OIDC_ACME_CLIENT_SECRET: CLIENT_SECRET,
+      OIDC_UNREACHABLE_CLIENT_SECRET: CLIENT_SECRET,
+      OIDC_NOLINK_CLIENT_SECRET: CLIENT_SECRET,
+    },
   })
 }, 60_000)
 

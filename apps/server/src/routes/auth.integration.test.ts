@@ -37,7 +37,6 @@ const SEARCH_INDEX = createInMemorySearchIndex()
 
 /** No test in this file configures a provider, so nothing here ever resolves a secret. */
 const UNUSED_SECRET_RESOLVER: SecretResolver = {
-  /* v8 ignore next 3 */
   async resolve() {
     throw new Error('not exercised: no OIDC provider is configured in this file')
   },

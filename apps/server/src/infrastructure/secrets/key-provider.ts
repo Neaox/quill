@@ -112,6 +112,7 @@ export function createLocalKeyProvider(keys: readonly Uint8Array[]): KeyProvider
 
   return {
     currentKeyId,
+    keyIds: [...byId.keys()],
 
     async wrap(dataKey: Uint8Array): Promise<WrappedKey> {
       return {

@@ -114,6 +114,16 @@ export interface HarnessOptions {
   readonly clock?: FakeClock
   readonly oidcProviders?: readonly OidcProviderConfig[]
   readonly createOidcClient?: OutboundClientFactory
+  /**
+   * The environment `createSecretResolver` falls back to for a provider's
+   * client secret or the SMTP password (`resolve-secret.ts`), never the real
+   * `process.env` — a test that wants the fallback path supplies
+   * `OIDC_<ID>_CLIENT_SECRET` or `SMTP_PASS` here explicitly, exactly as an
+   * operator would set it, and every other test is isolated from whatever
+   * happens to be in this process's own environment. Defaults to empty, so
+   * the fallback is a failure unless a test asks for it.
+   */
+  readonly env?: NodeJS.ProcessEnv
 }
 
 export async function createServerHarness(options: HarnessOptions = {}): Promise<ServerHarness> {
@@ -165,7 +175,7 @@ export async function createServerHarness(options: HarnessOptions = {}): Promise
   // than from `clientSecretEnvValue` calls `setSecret` against `deps` itself
   // before driving the flow; every existing test proves the environment
   // fallback simply by never doing so (ADR-034).
-  const secretResolver = createSecretResolver({ uow, secrets, clock, ids })
+  const secretResolver = createSecretResolver({ uow, secrets, clock, ids }, options.env ?? {})
   const deps: AppDependencies = {
     uow,
     searchIndex,

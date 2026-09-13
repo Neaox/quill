@@ -325,9 +325,16 @@ loopback — the in-process fake `e2e/sso.spec.ts` drives as its own process
 (`scripts/fake-oidc-server-cli.ts`), or the same fake run by hand — despite the SSRF-safe
 outbound client's blanket refusal of loopback and private addresses
 (`auth/oidc/dev-loopback-client.ts`). Refused outright once `APP_URL` names anything but
-loopback, in the same "convenience that hard-refuses outside development" shape as the
-all-zero master key and `MAIL_DRIVER=dev`. It also lifts the generic preset's issuer off
-`https` for exactly the same reason (`provider-config.ts`'s `checkIssuer`) — nothing else does.
+loopback *or* under `NODE_ENV=production` — two independent signals, matching
+`loadMasterKeyConfig`'s refusal of the all-zero master key rather than either alone — and
+`e2e/sso.spec.ts` and `FAKE_OIDC_CLIENT_ID`/`FAKE_OIDC_CLIENT_SECRET` are the only things that
+need it: those two are fixed, public, test-only values (`e2e/support/env.ts`), confined to
+`e2e/**` and the fake provider's own process, never a real credential. It also lifts the generic
+preset's issuer off `https` for exactly the same reason (`provider-config.ts`'s `checkIssuer`) —
+nothing else does. The diversion itself is scoped to a provider whose own issuer is plain http
+(`registry.ts`'s `isInsecureIssuer`): a real provider — Entra, Google, an on-prem Okta — is
+always `https:` and is never diverted, even on a developer machine that also has one of those
+configured.
 
 ## Outbound requests
 
@@ -403,17 +410,26 @@ A repository the platform writes is readable by the `git` command line: `git log
 | `QUILL_MASTER_KEY_FILE` | — | Required with the `file` driver: one base64 key per line, current first. Must not be readable by anyone but its owner |
 | `SECRETS_ROTATE_ACTOR` | — | The administrator a scripted rotation is audited against |
 
-Entering a secret an administrator would otherwise type into the environment:
+Entering a secret an administrator would otherwise type into the environment — the value comes
+from a file or a variable already in the shell's memory, never typed or pasted onto the command
+line itself, which is what would put it in `~/.bash_history`:
 
 ```bash
-printf '%s' 'the-client-secret' | pnpm --filter @quill/server secrets:set oidc/entra/client-secret
+pnpm --filter @quill/server secrets:set oidc/entra/client-secret < /path/to/secret-file
+# or, without a file:
+read -rs SECRET && printf '%s' "$SECRET" | pnpm --filter @quill/server secrets:set oidc/entra/client-secret
 ```
 
-The value is read from stdin, never from `argv` — a command-line argument sits in shell
-history and in this or any other process's list of running commands, which is exactly what a
-secret must not do. Setting a name that already has a value replaces it, so rotating a client
-secret at the provider is the same command run again; `SECRETS_SET_ACTOR` names the administrator
-it is audited against, the same way `SECRETS_ROTATE_ACTOR` does for a rotation.
+The command refuses a second argument (the value must never be typed there) and refuses a
+terminal stdin (it will not wait for you to type the value at a prompt it never offered), so
+either mistake is a readable error rather than a hang or a silent leak. The value is read from
+stdin, never from `argv` and never printed back — a command-line argument sits in shell history
+and in this or any other process's list of running commands for as long as it runs, which is
+exactly what a secret must not do, and `< file` or `read -rs` (its value never touches this
+command's own argument list) are how the recipe above avoids that rather than merely asserting
+it. Setting a name that already has a value replaces it, so rotating a client secret at the
+provider is the same command run again; `SECRETS_SET_ACTOR` names the administrator it is
+audited against, the same way `SECRETS_ROTATE_ACTOR` does for a rotation.
 
 Rotating the master key: add the new key, keep the old one in `QUILL_MASTER_KEY_PREVIOUS`, restart, then
 

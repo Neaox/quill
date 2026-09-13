@@ -22,16 +22,20 @@ import { createHasher } from '../infrastructure/hasher.ts'
 import { createSystemClock } from '../infrastructure/system-clock.ts'
 import { createUuidGenerator } from '../infrastructure/uuid-generator.ts'
 import { createSearchService } from '@quill/search'
-import { setSecretValue } from './secrets-set.ts'
+import { parseSecretsSetArgv, readSecretValue, setSecretValue } from './secrets-set.ts'
 import type { UserId } from '@quill/domain'
 
 /**
  * `pnpm --filter @quill/server secrets:set <name>` — the composition root for
  * `secrets-set.ts`: the same wiring `main.ts` does, without an HTTP server.
+ * The argument-count guard, the terminal-stdin refusal, and the trailing-
+ * newline rule are `secrets-set.ts`'s own logic (`parseSecretsSetArgv`,
+ * `readSecretValue`) and are covered by its tests; this file is wiring only.
  *
- * The value is read from stdin, never from `argv`:
+ * The value is read from stdin, never from `argv`, and never typed at a
+ * prompt this command does not offer:
  *
- *   printf '%s' 'the-client-secret' | pnpm --filter @quill/server secrets:set oidc/acme/client-secret
+ *   pnpm --filter @quill/server secrets:set oidc/acme/client-secret < /path/to/secret-file
  *
  * `SECRETS_SET_ACTOR` names the instance administrator entering it, the same
  * way `SECRETS_ROTATE_ACTOR` does for a rotation; without it the audit row is
@@ -39,23 +43,19 @@ import type { UserId } from '@quill/domain'
  * deployment script rather than somebody at a keyboard.
  */
 
-async function readStdin(): Promise<string> {
-  const chunks: Buffer[] = []
-  for await (const chunk of process.stdin) chunks.push(chunk as Buffer)
-  // A single trailing newline is the shell's, not the secret's — `echo` and
-  // most editors add exactly one. Anything else in the value is kept as read.
-  return Buffer.concat(chunks)
-    .toString('utf8')
-    .replace(/\r?\n$/, '')
-}
-
-const name = process.argv[2]
-if (name === undefined || name.length === 0) {
-  process.stderr.write(
-    'Usage: pnpm --filter @quill/server secrets:set <name>, with the value piped to stdin.\n',
-  )
+const parsedArgv = parseSecretsSetArgv(process.argv.slice(2))
+if (!parsedArgv.ok) {
+  process.stderr.write(`${parsedArgv.message}\n`)
   process.exit(1)
 }
+const { name } = parsedArgv
+
+const readValue = await readSecretValue(process.stdin)
+if (!readValue.ok) {
+  process.stderr.write(`${readValue.message}\n`)
+  process.exit(1)
+}
+const { value } = readValue
 
 const config = loadConfig()
 const clock = createSystemClock()
@@ -69,12 +69,14 @@ const searchIndex = createPostgresSearchIndex({
   visibility: createVisibleDocumentResolver({ uow }),
   clock,
 })
-const secrets = createEnvelopeCipher(
-  await createKeyProvider(config.masterKey, { warn: () => undefined }),
-)
+// Surfaced to the operator entering the secret, the same way
+// `rotate-secrets-cli.ts` surfaces it: a key-file warning is exactly the
+// kind of thing somebody entering a secret right now needs to see.
+const warn = (details: object, message: string): void =>
+  void process.stderr.write(`${message} ${JSON.stringify(details)}\n`)
+const secrets = createEnvelopeCipher(await createKeyProvider(config.masterKey, { warn }))
 
 try {
-  const value = await readStdin()
   const outcome = await setSecretValue(
     {
       uow,

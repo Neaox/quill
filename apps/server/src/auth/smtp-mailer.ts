@@ -1,7 +1,6 @@
 import { createTransport } from 'nodemailer'
 import type { Transporter } from 'nodemailer'
 
-import { BRAND } from '@quill/brand'
 import type { MagicLinkPurpose } from '@quill/application'
 
 import type { SecretResolver } from '../infrastructure/secrets/resolve-secret.ts'
@@ -15,8 +14,6 @@ export interface SmtpMailerConfig {
   readonly user?: string
   /** The secret name the SMTP password is stored under (ADR-034). */
   readonly passwordSecretName: string
-  /** `SMTP_PASS`, kept only as a fallback for one release. */
-  readonly passwordEnvValue?: string
 }
 
 const SUBJECTS: Readonly<Record<MagicLinkPurpose, string>> = {
@@ -45,13 +42,12 @@ export function createSmtpMailer(config: SmtpMailerConfig, secretResolver: Secre
       const resolved = await secretResolver.resolve({
         name: config.passwordSecretName,
         envVarName: 'SMTP_PASS',
-        envValue: config.passwordEnvValue,
       })
       if (!resolved.ok) {
         throw new Error(
-          `the SMTP password is not configured: set it with \`${BRAND.slug} secrets:set ` +
-            `${config.passwordSecretName}\` (the value is read from stdin, never printed back) ` +
-            'or, for now, SMTP_PASS.',
+          `the SMTP password is not configured: set it with \`pnpm --filter @quill/server ` +
+            `secrets:set ${config.passwordSecretName}\` (the value is read from stdin, never ` +
+            'printed back) or, for now, SMTP_PASS.',
         )
       }
       pass = resolved.value

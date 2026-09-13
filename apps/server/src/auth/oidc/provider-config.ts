@@ -32,24 +32,19 @@ export interface OidcProviderConfig {
    * the value (ADR-034: "Settings files reference secrets by name, never by
    * value"). Resolved through `getSecret` at the moment of use, the token
    * exchange, so the value never sits in `OidcProviderConfig` where a crash
-   * dump or a log of this object would reach it.
+   * dump or a log of this object would reach it — this holds for the entire
+   * deprecation window, because `OIDC_<ID>_CLIENT_SECRET`'s value is read
+   * fresh from the environment at that same moment
+   * (`infrastructure/secrets/resolve-secret.ts`) rather than snapshotted here.
    *
    * Always `oidc/<id>/client-secret` (`oidcClientSecretName`): a provider's
    * secret name is derived from its id rather than administrator-chosen, so
    * there is exactly one place an administrator writes it —
-   * `quill secrets:set oidc/<id>/client-secret` — and boot validation knows
-   * what to look for without reading the environment a second time.
+   * `pnpm --filter @quill/server secrets:set oidc/<id>/client-secret` — and
+   * boot validation knows what to look for without reading the environment a
+   * second time.
    */
   readonly clientSecretName: string
-  /**
-   * `OIDC_<ID>_CLIENT_SECRET`, read once at boot, kept only as a fallback for
-   * one release: when no secret is stored under `clientSecretName`, this
-   * value is used instead and a deprecation warning names the secret an
-   * administrator should set (`infrastructure/secrets/boot-validation.ts`).
-   * `undefined` once nothing is set, which is fine — the secrets store is
-   * then the only source, and boot validation refuses to start otherwise.
-   */
-  readonly clientSecretEnvValue: string | undefined
   readonly scopes: readonly string[]
   readonly claims: OidcClaimMapping
   /** Extra parameters the preset puts on the authorisation request, such as Google's `hd`. */
@@ -179,13 +174,13 @@ function loadProvider(
     preset: preset.id,
     issuer: checkIssuer(derived.issuer, prefix, allowInsecureIssuer),
     clientId: required(env, `${prefix}CLIENT_ID`, id),
-    // No longer `required`: the secrets store is now the primary source
-    // (ADR-034), and whether *some* source names a value — this variable or a
-    // stored secret — is checked once the database is reachable, in
-    // `infrastructure/secrets/boot-validation.ts`, which is also where the
+    // Not read here at all any more: the secrets store is the primary source
+    // (ADR-034), `OIDC_<ID>_CLIENT_SECRET`'s value is read fresh from the
+    // environment at the moment of use (`resolve-secret.ts`), and whether
+    // *some* source names a value is checked once the database is reachable,
+    // in `infrastructure/secrets/boot-validation.ts`, which is also where the
     // deprecation warning for using this variable is issued.
     clientSecretName: oidcClientSecretName(id),
-    clientSecretEnvValue: optional(env, `${prefix}CLIENT_SECRET`),
     scopes: parseScopes(optional(env, `${prefix}SCOPES`), preset.scopes),
     claims: {
       email: optional(env, `${prefix}EMAIL_CLAIM`) ?? preset.claims.email,
