@@ -10,6 +10,9 @@ import { createDatabase } from '../infrastructure/db/connection.ts'
 import { runMigrations } from '../infrastructure/db/migrator.ts'
 import { createDocumentFormat } from '../infrastructure/markdown/document-format.ts'
 import { createUnitOfWork } from '../infrastructure/repositories/unit-of-work.ts'
+import { createEnvelopeCipher } from '../infrastructure/secrets/envelope-cipher.ts'
+import { createKeyProvider } from '../infrastructure/secrets/key-provider.ts'
+import { createSettingsStore } from '../infrastructure/settings-store.ts'
 import { createHasher } from '../infrastructure/hasher.ts'
 import { createSystemClock } from '../infrastructure/system-clock.ts'
 import { createUuidGenerator } from '../infrastructure/uuid-generator.ts'
@@ -46,6 +49,7 @@ const clock = createSystemClock()
 const ids = createUuidGenerator()
 const database = createDatabase({ connectionString: config.databaseUrl })
 await runMigrations(database.pool)
+const contentStore = createContentStore(config.contentStore, clock)
 
 const uow = createUnitOfWork(database.db, database.pool, ids)
 const searchIndex = createPostgresSearchIndex({
@@ -59,7 +63,9 @@ try {
     uow,
     searchIndex,
     search: createSearchService(searchIndex),
-    contentStore: createContentStore(config.contentStore, clock),
+    contentStore,
+    settings: createSettingsStore(contentStore),
+    secrets: createEnvelopeCipher(await createKeyProvider(config.masterKey)),
     format: createDocumentFormat(),
     clock,
     ids,

@@ -247,6 +247,46 @@ export type {
 } from './list-visible-workspaces.ts'
 export { listVisibleWorkspaces } from './list-visible-workspaces.ts'
 
+export type {
+  EffectiveSettingsResult,
+  ReadSettingsResult,
+  SettingsDependencies,
+  UpdateOrganisationSettingsResult,
+  UpdateSettingsCommand,
+  UpdateWorkspaceSettingsResult,
+} from './settings.ts'
+export {
+  readEffectiveSettings,
+  readOrganisationSettings,
+  readWorkspaceSettings,
+  SETTINGS_AUDIT_EVENTS,
+  updateOrganisationSettings,
+  updateWorkspaceSettings,
+} from './settings.ts'
+
+export type {
+  DeleteSecretResult,
+  DescribeSecretResult,
+  GetSecretResult,
+  RotateMasterKeyResult,
+  SecretsDependencies,
+  SetSecretCommand,
+  SetSecretResult,
+} from './secrets.ts'
+export {
+  deleteSecret,
+  describeSecret,
+  getSecret,
+  isSecretName,
+  listSecretNames,
+  MAX_SECRET_NAME_LENGTH,
+  MAX_SECRET_VALUE_LENGTH,
+  rotateMasterKey,
+  ROTATION_BATCH,
+  SECRET_AUDIT_EVENTS,
+  setSecret,
+} from './secrets.ts'
+
 export {
   documentsById,
   toCollectionEntity,

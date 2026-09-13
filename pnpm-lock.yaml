@@ -91,6 +91,9 @@ importers:
       '@sinclair/typebox':
         specifier: ^0.34.52
         version: 0.34.52
+      ajv:
+        specifier: ^8.20.0
+        version: 8.20.0
       drizzle-orm:
         specifier: ^0.45.2
         version: 0.45.2(@types/pg@8.23.1)(pg@8.23.0)
@@ -214,12 +217,27 @@ importers:
 
   packages/application:
     dependencies:
+      '@quill/brand':
+        specifier: workspace:*
+        version: link:../brand
       '@quill/domain':
         specifier: workspace:*
         version: link:../domain
+      '@quill/theme':
+        specifier: workspace:*
+        version: link:../theme
+      '@sinclair/typebox':
+        specifier: ^0.34.52
+        version: 0.34.52
+      ajv:
+        specifier: ^8.20.0
+        version: 8.20.0
       remeda:
         specifier: ^2.48.0
         version: 2.48.0
+      yaml:
+        specifier: ^2.9.0
+        version: 2.9.0
     devDependencies:
       '@quill/config':
         specifier: workspace:*

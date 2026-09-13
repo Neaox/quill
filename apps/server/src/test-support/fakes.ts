@@ -1,7 +1,37 @@
+import type { Clock } from '@quill/application'
+
 import type { BreachedPasswordChecker, BreachedPasswordResult } from '../auth/breached-password.ts'
 import type { AccountExistsEmail, MagicLinkEmail, Mailer } from '../auth/mailer.ts'
 import { ARGON2_PARAMETERS, needsRehash } from '../auth/password.ts'
 import type { PasswordHasher } from '../auth/password.ts'
+import type { ServerConfig } from '../config.ts'
+import type { AppDependencies } from '../dependencies.ts'
+import { createContentStore } from '../infrastructure/content-store.ts'
+import { createEnvelopeCipher } from '../infrastructure/secrets/envelope-cipher.ts'
+import { createKeyProvider } from '../infrastructure/secrets/key-provider.ts'
+import { createSettingsStore } from '../infrastructure/settings-store.ts'
+
+/**
+ * The content store, the settings store, and the secret cipher, wired the way
+ * a running server wires them but entirely in memory.
+ *
+ * The settings store is the *real* adapter over the *real* content store, so
+ * a test that writes settings exercises the publish path and its
+ * compare-and-swap rather than a fake of them (ADR-034). One helper, because
+ * three ports that are always built together should not be assembled by hand
+ * in every test that stands a server up.
+ */
+export async function inMemorySettings(
+  clock: Clock,
+  config: ServerConfig,
+): Promise<Pick<AppDependencies, 'contentStore' | 'settings' | 'secrets'>> {
+  const contentStore = createContentStore({ driver: 'memory' }, clock)
+  return {
+    contentStore,
+    settings: createSettingsStore(contentStore),
+    secrets: createEnvelopeCipher(await createKeyProvider(config.masterKey)),
+  }
+}
 
 /**
  * The clock and id generator are the application layer's own fakes, so the

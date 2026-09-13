@@ -258,6 +258,34 @@ One outbox consumer keeps the reading view honest: `DocumentPublished` renders t
 
 A repository the platform writes is readable by the `git` command line: `git log` and `git show` work inside `data/content/<workspace-id>.git`.
 
+## Settings and secrets (ADR-034)
+
+`docs/architecture/api-contract-settings.md` is the contract.
+
+- **Settings are files.** What an organisation configures — its name and logo, its theme, the default layout, the public site's navigation, and the policies (share links, public publishing, and how strictly the theme doctor reports) — is a YAML file in a **system workspace** of the content store, written through the same publish path documents are. Every change is a revision with an author and a change note; settings have history and restore like documents, and they move to another instance by being copied. A workspace's own file (`.quill/workspaces/<id>.yaml`) holds its layout override, when the organisation allows one.
+- **Versions are a hard edge.** `version` is a literal and every object refuses fields it does not declare, so a release that adds one optional field writes documents the previous release refuses outright rather than reading leniently and dropping what it does not know (ADR-034). It is recoverable: an unreadable file is reported with its revision to an instance administrator, who overwrites it — or restores an earlier revision of it — through the API.
+- **`logo` does not render yet.** `BlobStore` has no implementation on `AppDependencies` until the attachments work merges, so a saved hash resolves to nothing. The field is in the document from the start because adding it later would be a version bump for every instance.
+- **Concurrent writes are refused, not merged.** A read answers with the revision it read at; a write states the revision it was based on. The adapter recovers the file's bytes at that revision and hands them to the content store as the expected value, so the compare-and-swap is over the file itself: two administrators configuring two different workspaces never collide, and two changing the same file get `409 settings_conflict` rather than a blend of both.
+- **Secrets are rows, encrypted.** A secret entered in the product gets a data key of its own (AES-256-GCM), and that data key is wrapped by the instance master key, which is never in the database. Settings files reference a secret by name — `oidc/entra/client-secret` — and never by value, which is what makes a copied settings file complete and harmless. No route answers with a value; the audit trail records the name and the key id.
+
+| Variable | Default | Meaning |
+| --- | --- | --- |
+| `QUILL_MASTER_KEY` | the all-zero development key, with a warning | Base64, 32 bytes. Required on any instance whose `APP_URL` is not loopback, and under `NODE_ENV=production`; the development key is refused by value there |
+| `QUILL_MASTER_KEY_PREVIOUS` | — | Comma-separated retired keys, kept so a rotation can unwrap |
+| `MASTER_KEY_DRIVER` | `environment` | `environment` or `file` |
+| `QUILL_MASTER_KEY_FILE` | — | Required with the `file` driver: one base64 key per line, current first. Must not be readable by anyone but its owner |
+| `SECRETS_ROTATE_ACTOR` | — | The administrator a scripted rotation is audited against |
+
+Rotating the master key: add the new key, keep the old one in `QUILL_MASTER_KEY_PREVIOUS`, restart, then
+
+```bash
+pnpm --filter @quill/server secrets:rotate
+```
+
+and drop the old key. It re-wraps every data key and never touches a ciphertext, so it costs the same whatever the secrets are; it is safe to run twice, because a secret already on the current key is not in the query; and each write is a compare-and-swap on the envelope it read, so a rotation running beside an administrator replacing a secret cannot leave the new value unopenable. A secret whose old key has gone is reported by name, and the command exits non-zero — that secret has to be entered again.
+
+**Both layers of the envelope are bound to where they sit.** The value is sealed against `secret:v1:<name>` and the wrapped data key against `wrap:v1:<key id>`, as authenticated associated data. Somebody who can write the table but cannot read the master key therefore cannot move the SMTP password's row into the OIDC client secret's name and have the application use it as one.
+
 ## The API description and the client
 
 ```bash

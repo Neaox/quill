@@ -43,6 +43,7 @@ export interface ServerConfig {
   readonly mailer: MailerConfig
   readonly contentStore: ContentStoreConfig
   readonly shareLinks: ShareLinkConfig
+  readonly masterKey: MasterKeyConfig
 }
 
 /**
@@ -50,13 +51,35 @@ export interface ServerConfig {
  *
  * TODO(M3): this belongs to the organisation's settings, where an
  * administrator can change it — along with the maximum role a link may carry
- * — without a restart. It is an environment variable until the settings store
- * lands, so that the policy exists and is enforced from the first release
- * rather than being retrofitted onto links people already hold.
+ * — without a restart. The settings store has landed, and
+ * `policies.shareLinksAllowed` in `.quill/organisation.yaml` is where this
+ * moves to; until the share-link path reads it, the environment variable
+ * stays, so that the policy is enforced from the first release rather than
+ * being retrofitted onto links people already hold.
  */
 export interface ShareLinkConfig {
   readonly enabled: boolean
 }
+
+/**
+ * Where the instance master key comes from (ADR-034).
+ *
+ * It wraps the data key of every secret an administrator enters in the
+ * product, and it is the one thing a restore cannot rebuild from the content
+ * store: without it every document and setting survives and only the entered
+ * secrets have to be entered again. So a production instance refuses to boot
+ * without one being stated, rather than quietly inventing a key that the next
+ * deployment would not have.
+ *
+ * `environment` is the self-host default; `file` reads the keys from a
+ * mounted volume. Both list the current key first and any retired keys after
+ * it, which is what makes a rotation possible without downtime. Cloud key
+ * services are a third driver when they arrive; the port they implement,
+ * `KeyProvider`, already assumes the key never leaves the service.
+ */
+export type MasterKeyConfig =
+  | { readonly driver: 'environment'; readonly keys: readonly string[] }
+  | { readonly driver: 'file'; readonly path: string }
 
 /**
  * Where published content lives (ADR-014). `filesystem` is the default
@@ -328,6 +351,88 @@ function loadShareLinkConfig(env: NodeJS.ProcessEnv): ShareLinkConfig {
   return { enabled: value === 'on' }
 }
 
+/**
+ * The development master key: thirty-two zero bytes.
+ *
+ * Deliberately the most obviously worthless key there is, rather than one
+ * generated per process. A generated key would make every restart lose the
+ * secrets entered before it, which reads as a bug; this one makes a laptop
+ * work across restarts and could never be mistaken for a real key. A real
+ * deployment refuses to boot with it — including when an operator has pasted
+ * it in deliberately.
+ */
+export const DEVELOPMENT_MASTER_KEY = Buffer.alloc(32).toString('base64')
+
+/**
+ * Whether this is a real deployment, from the same signal the session cookie
+ * takes its `Secure` flag from: the app's own URL.
+ *
+ * `NODE_ENV` is a deployment convention and a variable somebody forgets;
+ * `APP_URL` is what browsers actually reach, and an instance answering on a
+ * name that is not loopback is serving somebody. Using the same source for
+ * both means a deployment cannot be strict about its cookies and lax about
+ * its master key, which is exactly the combination a single missing variable
+ * used to produce (ADR-011's reasoning, applied to ADR-034's key).
+ */
+function isRealDeployment(appUrl: URL): boolean {
+  return !LOOPBACK_HOSTS.has(appUrl.hostname)
+}
+
+const KEY_REQUIRED =
+  'QUILL_MASTER_KEY wraps every secret an administrator enters in the product, and an instance ' +
+  'that invents one cannot read what the last one wrote (ADR-034).'
+
+function loadMasterKeyConfig(
+  env: NodeJS.ProcessEnv,
+  appUrl: URL,
+  production: boolean,
+  warn: ConfigWarn,
+): MasterKeyConfig {
+  const driver = env['MASTER_KEY_DRIVER'] ?? 'environment'
+  if (driver === 'file') {
+    const path = env['QUILL_MASTER_KEY_FILE']
+    if (path === undefined || path.length === 0) {
+      throw new Error('QUILL_MASTER_KEY_FILE is required when MASTER_KEY_DRIVER=file')
+    }
+    return { driver: 'file', path }
+  }
+  if (driver !== 'environment') {
+    throw new Error(`MASTER_KEY_DRIVER must be "environment" or "file", received "${driver}"`)
+  }
+
+  const real = isRealDeployment(appUrl)
+  const key = env['QUILL_MASTER_KEY']
+  if (key === undefined || key.length === 0) {
+    if (real) {
+      throw new Error(
+        `QUILL_MASTER_KEY is required on an instance serving "${appUrl.host}": ${KEY_REQUIRED}`,
+      )
+    }
+    if (production) {
+      throw new Error(`QUILL_MASTER_KEY is required under NODE_ENV=production: ${KEY_REQUIRED}`)
+    }
+    warn(
+      'QUILL_MASTER_KEY is unset, so secrets entered in the product are wrapped with the ' +
+        'all-zero development key. Set a real one before this instance holds anything.',
+    )
+  }
+  // The same refusal, by value: an operator who copied the development key out
+  // of `.env.example` into a deployment has the key nobody has to guess.
+  if (key === DEVELOPMENT_MASTER_KEY && (real || production)) {
+    throw new Error(
+      'QUILL_MASTER_KEY is the all-zero development key, which is published in ' +
+        '`.env.example` and is not a secret. Generate one: node -e ' +
+        `"console.log(require('node:crypto').randomBytes(32).toString('base64'))"`,
+    )
+  }
+
+  const previous = (env['QUILL_MASTER_KEY_PREVIOUS'] ?? '')
+    .split(',')
+    .map((entry) => entry.trim())
+    .filter((entry) => entry.length > 0)
+  return { driver: 'environment', keys: [key ?? DEVELOPMENT_MASTER_KEY, ...previous] }
+}
+
 function loadMailerConfig(env: NodeJS.ProcessEnv): MailerConfig {
   const driver = env['MAIL_DRIVER'] ?? 'dev'
   if (driver === 'dev') {
@@ -419,5 +524,6 @@ export function loadConfig(
     mailer,
     contentStore: loadContentStoreConfig(env),
     shareLinks: loadShareLinkConfig(env),
+    masterKey: loadMasterKeyConfig(env, appUrl, production, warn),
   }
 }

@@ -31,6 +31,9 @@ import { createVisibleDocumentResolver } from './infrastructure/search/visible-d
 import { createSendMailConsumer } from './infrastructure/outbox/send-mail.ts'
 import { pollOutboxOnce } from './infrastructure/outbox/poller.ts'
 import { createUnitOfWork } from './infrastructure/repositories/unit-of-work.ts'
+import { createEnvelopeCipher } from './infrastructure/secrets/envelope-cipher.ts'
+import { createKeyProvider } from './infrastructure/secrets/key-provider.ts'
+import { createSettingsStore } from './infrastructure/settings-store.ts'
 import { createSystemClock } from './infrastructure/system-clock.ts'
 import { createUuidGenerator } from './infrastructure/uuid-generator.ts'
 import { createJobRunner } from './jobs/job-runner.ts'
@@ -39,7 +42,18 @@ import { createSweepJob } from './jobs/sweep-expired.ts'
 import { DOCUMENT_CREATED, DOCUMENT_PUBLISHED } from '@quill/application'
 import { createSearchService } from '@quill/search'
 
-const config = loadConfig()
+/**
+ * Startup warnings are collected and replayed through the app's own logger
+ * once it exists, rather than going to `process.emitWarning`: a deployment
+ * reads structured JSON logs and has no reason to be watching stderr for
+ * Node's warning channel. Configuration is loaded before the logger exists,
+ * which is the only reason they are held rather than logged as they happen.
+ */
+const startupWarnings: Array<{ details: object; message: string }> = []
+const warnAtStartup = (details: object, message: string): void =>
+  void startupWarnings.push({ details, message })
+
+const config = loadConfig(process.env, (message) => warnAtStartup({ source: 'config' }, message))
 const clock = createSystemClock()
 const ids = createUuidGenerator()
 const hasher = createHasher()
@@ -70,6 +84,12 @@ const breachedPasswords: BreachedPasswordChecker = withLocalFallback(
 
 const uow = createUnitOfWork(database.db, database.pool, ids)
 const contentStore = createContentStore(config.contentStore, clock)
+// Settings are files in a system workspace of that same content store, and
+// secrets are envelope-encrypted rows under the instance master key (ADR-034).
+const settings = createSettingsStore(contentStore)
+const secrets = createEnvelopeCipher(
+  await createKeyProvider(config.masterKey, { warn: warnAtStartup }),
+)
 const format = createDocumentFormat()
 const rateLimiter = createRateLimiter({ clock, config: config.rateLimit })
 // One Argon2id hash at startup, so no request ever pays for the dummy.
@@ -84,6 +104,8 @@ const deps = {
   searchIndex,
   search: createSearchService(searchIndex),
   contentStore,
+  settings,
+  secrets,
   format,
   clock,
   ids,
@@ -97,6 +119,7 @@ const deps = {
   config,
 }
 const app = buildApp({ logLevel: config.logLevel, deps })
+for (const { details, message } of startupWarnings) app.log.warn(details, message)
 
 const jobRunner = createJobRunner({
   clock,

@@ -27,6 +27,30 @@ export function buildCommitMessage(message: CommitMessage): string {
   return `${subject}\n\n${trailers.join('\n')}\n`
 }
 
+export interface FileCommitMessage {
+  readonly path: string
+  readonly summary?: string
+  readonly changeNote?: string
+}
+
+/**
+ * The message for a commit that writes a file rather than a document
+ * (ADR-034's settings files).
+ *
+ * It carries no document trailer, and that is the point: a rebuild of the
+ * revisions index reads document ids out of trailers, and a settings commit
+ * has no document to attribute. The change note is still a trailer, because
+ * "why did this setting change" is the same question as for a document.
+ */
+export function buildFileCommitMessage(message: FileCommitMessage): string {
+  const subject = foldTrailerValue(message.summary ?? `Update ${message.path}`)
+  const body =
+    message.changeNote === undefined
+      ? ''
+      : `\n${formatTrailer(CHANGE_NOTE_TRAILER, message.changeNote)}\n`
+  return `${subject}\n${body}`
+}
+
 /** A bulk publish is one revision, so it gets one subject line. */
 function describe(changes: readonly ContentChange[]): string {
   const labels = changes.map(label)
