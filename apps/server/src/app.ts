@@ -6,6 +6,7 @@ import type { ServerConfig, TrustProxyConfig } from './config.ts'
 import type { AppDependencies } from './dependencies.ts'
 import { serialiseRequest } from './plugins/logging.ts'
 import { authRoutes } from './routes/auth.ts'
+import { oidcAuthRoutes } from './routes/auth-oidc.ts'
 import { collectionRoutes } from './routes/collections.ts'
 import { documentRoutes } from './routes/documents.ts'
 import { draftRoutes } from './routes/drafts.ts'
@@ -144,6 +145,7 @@ export function buildApp(options: AppOptions = {}): FastifyInstance {
     })
 
     app.register(authRoutes(deps))
+    app.register(oidcAuthRoutes(deps))
     app.register(meRoutes(deps))
     app.register(unitRoutes(deps))
     app.register(workspaceRoutes(deps))

@@ -58,7 +58,7 @@ Status is taken from the plan's Delivery status table, which is authoritative.
 | 35 | Give the organisation its identity | Instance admin | Signed in, internal | M3 | Planned | `theme.spec.ts` |
 | 36 | Choose a workspace's layout | Workspace lead | Signed in, internal | M3 | Planned | `theme.spec.ts` |
 | 37 | Set personal reading preferences | Reader | Signed in, internal | M2 / M3 | Partly built | `design.spec.ts` |
-| 38 | Sign in with the organisation's provider | Any member | Signed in, internal | M3 | Planned | `sso.spec.ts` |
+| 38 | Sign in with the organisation's provider | Any member | Signed in, internal | M3 | Built (API); journey to follow | `sso.spec.ts` |
 | 39 | Manage sessions and sign out everywhere | Any member | Signed in, internal | M1 | Built (API) | `administer.spec.ts` |
 | 40 | Review the audit log | Instance admin | Signed in, internal | M1 / M8 | Events built, UI planned | `administer.spec.ts` |
 | 41 | Export a workspace as Markdown | Workspace lead | Signed in, outbound | M4 | Planned | `export.spec.ts` |
@@ -1222,9 +1222,16 @@ contrast, and size to the person.
 - **Situation:** the organisation uses Microsoft Entra ID, Google Workspace,
   Okta, Auth0, or Cognito
 - **Job:** sign in with the account they already have.
-- **Milestone:** M3 — **Planned** (ADR-011; SAML and SCIM are M8)
+- **Milestone:** M3 — **Built (API)** for OIDC on 13 September (ADR-011; SAML
+  and SCIM are M8), and proved end to end by an in-process OpenID Connect
+  provider in `apps/server/src/routes/auth-oidc.integration.test.ts`. The
+  browser journey `e2e/sso.spec.ts` is still to follow, driving that same
+  in-process provider through a real browser. Providers are configured per
+  instance from the environment today; the administration screen, "require
+  SSO for this domain", home-realm discovery by email domain, group mapping,
+  and back-channel logout are still to come.
 - **Surfaces:** signed-in app
-- **Journey:** `e2e/sso.spec.ts` (planned)
+- **Journey:** `e2e/sso.spec.ts` (to follow, against the in-process provider)
 
 **Flow**
 
@@ -1244,6 +1251,10 @@ contrast, and size to the person.
   administrator access still work.
 - Given a provider that asserts an unverified email, when sign-in completes,
   then the email is not trusted for linking.
+- Given an account here that has never verified that address, when somebody
+  signs in through the provider with it, then nothing is linked and the
+  refusal is the same one every other failure gives — the account's owner
+  verifies their email first, and the link is then safe to make.
 - Given a sign-out at the provider with back-channel logout, when the next
   request arrives here, then the session is already revoked.
 

@@ -86,6 +86,119 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/auth/oidc/{id}/callback": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: {
+                    code?: string;
+                    error?: string;
+                    state?: string;
+                };
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/auth/oidc/{id}/start": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: {
+                    redirect?: string;
+                };
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/auth/oidc/providers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            providers: components["schemas"]["OidcProviderSummary"][];
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/auth/password": {
         parameters: {
             query?: never;
@@ -2557,6 +2670,10 @@ export interface components {
             slug: string;
             workspaceId: string;
         };
+        OidcProviderSummary: {
+            displayName: string;
+            id: string;
+        };
         OrganisationSettings: {
             layout: {
                 default: {
@@ -3287,6 +3404,7 @@ export interface components {
     pathItems: never;
 }
 export type SchemaCollection = components['schemas']['Collection'];
+export type SchemaOidcProviderSummary = components['schemas']['OidcProviderSummary'];
 export type SchemaOrganisationSettings = components['schemas']['OrganisationSettings'];
 export type SchemaOutlineEntry = components['schemas']['OutlineEntry'];
 export type SchemaSecret = components['schemas']['Secret'];

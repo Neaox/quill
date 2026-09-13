@@ -33,6 +33,15 @@ export const AUDIT_EVENTS = {
   sessionRevoked: 'auth.session.revoked',
   sessionsRevoked: 'auth.sessions.revoked',
   magicLinkIssued: 'auth.magic_link.issued',
+  // Single sign-on (ADR-011). Every outcome is recorded, and none of these
+  // rows carries a code, a state, a nonce, or any part of a token: the
+  // target is `<issuer>#<subject>`, which is the provider's own public key
+  // for a person, and the metadata is the outcome.
+  ssoSignInStarted: 'auth.sso.started',
+  ssoSignInSucceeded: 'auth.sso.succeeded',
+  ssoSignInFailed: 'auth.sso.failed',
+  ssoLinked: 'auth.sso.linked',
+  ssoProvisioned: 'auth.sso.provisioned',
   magicLinkConsumed: 'auth.magic_link.consumed',
   breachCheckUnavailable: 'auth.breached_password.unavailable',
   breachedPasswordRejected: 'auth.breached_password.rejected',

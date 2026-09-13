@@ -38,6 +38,16 @@ export type {
 export type { Clock, Hasher, IdGenerator, TokenService } from './system.ts'
 
 export type {
+  CompleteSignInResult,
+  FederatedIdentity,
+  FederatedSignInFailure,
+  IdentityProvider,
+  SignInBinding,
+  StartedSignIn,
+  StartSignInResult,
+} from './identity-provider.ts'
+
+export type {
   KeyProvider,
   SealedSecret,
   SecretCipher,
@@ -103,6 +113,9 @@ export type {
   GroupRow,
   HeartbeatResult,
   HistoryPage,
+  IdentityId,
+  IdentityRepository,
+  IdentityRow,
   LockRepository,
   MagicLinkId,
   MagicLinkPurpose,

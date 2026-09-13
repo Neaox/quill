@@ -9,6 +9,7 @@ import type { BreachedPasswordChecker } from './auth/breached-password.ts'
 import { createDevMailer } from './auth/dev-mailer.ts'
 import type { Mailer } from './auth/mailer.ts'
 import { createPasswordHasher } from './auth/password.ts'
+import { createIdentityProviderRegistry, outboundClientFactory } from './auth/oidc/registry.ts'
 import { createRateLimiter } from './auth/rate-limit.ts'
 import { createTokenService } from './auth/tokens.ts'
 import { createSmtpMailer } from './auth/smtp-mailer.ts'
@@ -82,6 +83,17 @@ const breachedPasswords: BreachedPasswordChecker = withLocalFallback(
     : createDisabledBreachedPasswordChecker(),
 )
 
+// One registry for the process, so a provider's discovery document and key
+// set are fetched once rather than on every sign-in (ADR-011). Every outbound
+// call it makes goes through the SSRF-safe client, on an allowlist built from
+// the issuer and the endpoints its own discovery document names.
+const identityProviders = createIdentityProviderRegistry({
+  providers: config.oidcProviders,
+  appUrl: config.appUrl,
+  createClient: outboundClientFactory,
+  clock,
+})
+
 const uow = createUnitOfWork(database.db, database.pool, ids)
 const contentStore = createContentStore(config.contentStore, clock)
 // Settings are files in a system workspace of that same content store, and
@@ -92,6 +104,7 @@ const secrets = createEnvelopeCipher(
 )
 const format = createDocumentFormat()
 const rateLimiter = createRateLimiter({ clock, config: config.rateLimit })
+const oidcRateLimiter = createRateLimiter({ clock, config: config.oidcRateLimit })
 // One Argon2id hash at startup, so no request ever pays for the dummy.
 const passwords = await createPasswordHasher()
 const searchIndex = createPostgresSearchIndex({
@@ -115,7 +128,9 @@ const deps = {
   mailer,
   breachedPasswords,
   rateLimiter,
+  oidcRateLimiter,
   passwords,
+  identityProviders,
   config,
 }
 const app = buildApp({ logLevel: config.logLevel, deps })

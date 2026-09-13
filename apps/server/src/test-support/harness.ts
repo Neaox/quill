@@ -32,6 +32,9 @@ import { createSettingsStore } from '../infrastructure/settings-store.ts'
 import { createJobRunner } from '../jobs/job-runner.ts'
 import type { JobRunner } from '../jobs/job-runner.ts'
 import { createSweepJob } from '../jobs/sweep-expired.ts'
+import { createIdentityProviderRegistry, outboundClientFactory } from '../auth/oidc/registry.ts'
+import type { OutboundClientFactory } from '../auth/oidc/discovery.ts'
+import type { OidcProviderConfig } from '../auth/oidc/provider-config.ts'
 import { createPasswordHasher } from '../auth/password.ts'
 import { createRateLimiter } from '../auth/rate-limit.ts'
 import { generateSessionToken, hashSessionToken } from '../auth/session-token.ts'
@@ -78,6 +81,12 @@ export const HARNESS_NOW = new Date('2026-01-01T00:00:00.000Z')
 /** Thirty-two fixed bytes: a real key, and obviously a test's. */
 export const HARNESS_MASTER_KEY = Buffer.alloc(32, 7).toString('base64')
 
+/**
+ * Single sign-on is off unless a test asks for it (ADR-011). A test that does
+ * supplies the provider configuration it wants and, because a fake provider
+ * necessarily listens on the loopback address the SSRF client refuses, the
+ * outbound factory that reaches it — see `fake-oidc-provider.ts`.
+ */
 export interface HarnessOptions {
   /**
    * Overrides the deliberately enormous default budget, for a test that is
@@ -86,11 +95,19 @@ export interface HarnessOptions {
   readonly rateLimit?: RateLimitConfig
   /** `SHARE_LINKS=off`, for the tests that check the policy closes the door. */
   readonly shareLinksAllowed?: boolean
+  /**
+   * The fake clock to run on. Supplied when something outside the server has
+   * to agree with it — a fake identity provider stamping `iat` and `exp`, for
+   * instance. Defaults to a fresh one at `HARNESS_NOW`.
+   */
+  readonly clock?: FakeClock
+  readonly oidcProviders?: readonly OidcProviderConfig[]
+  readonly createOidcClient?: OutboundClientFactory
 }
 
 export async function createServerHarness(options: HarnessOptions = {}): Promise<ServerHarness> {
   const database = await createTestDatabase()
-  const clock = createFakeClock(HARNESS_NOW)
+  const clock = options.clock ?? createFakeClock(HARNESS_NOW)
   const ids = createFakeIdGenerator()
   const uow = createUnitOfWork(database.db, database.pool, ids)
   // A year on both session clocks: several tests jump the fake clock months
@@ -111,8 +128,15 @@ export async function createServerHarness(options: HarnessOptions = {}): Promise
     // fallback's warning is not printed once per suite.
     QUILL_MASTER_KEY: HARNESS_MASTER_KEY,
   })
-  const config =
-    options.rateLimit === undefined ? loaded : { ...loaded, rateLimit: options.rateLimit }
+  // Provider configuration is supplied directly rather than through the
+  // environment: `loadConfig` requires an https issuer (ADR-011) and a fake
+  // provider in a test serves plain http over a loopback socket. What the
+  // environment loader accepts is proved by `auth/oidc/provider-config.test.ts`.
+  const config = {
+    ...loaded,
+    ...(options.rateLimit === undefined ? {} : { rateLimit: options.rateLimit }),
+    oidcProviders: options.oidcProviders ?? [],
+  }
   const breachedPasswords = createFakeBreachedPasswordChecker()
   const mailer = createRecordingMailer()
   let shareLinksAllowed = options.shareLinksAllowed ?? true
@@ -143,7 +167,14 @@ export async function createServerHarness(options: HarnessOptions = {}): Promise
     mailer,
     breachedPasswords,
     rateLimiter: createRateLimiter({ clock, config: config.rateLimit }),
+    oidcRateLimiter: createRateLimiter({ clock, config: config.oidcRateLimit }),
     passwords: await createPasswordHasher(),
+    identityProviders: createIdentityProviderRegistry({
+      providers: config.oidcProviders,
+      appUrl: config.appUrl,
+      createClient: options.createOidcClient ?? outboundClientFactory,
+      clock,
+    }),
     config,
   }
 

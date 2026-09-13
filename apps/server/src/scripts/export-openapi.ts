@@ -11,6 +11,7 @@ import { buildApp } from '../app.ts'
 import { createHasher } from '../infrastructure/hasher.ts'
 import { loadConfig } from '../config.ts'
 import type { AppDependencies } from '../dependencies.ts'
+import { createIdentityProviderRegistry, outboundClientFactory } from '../auth/oidc/registry.ts'
 import { createPasswordHasher } from '../auth/password.ts'
 import { createRateLimiter } from '../auth/rate-limit.ts'
 import { createTokenService } from '../auth/tokens.ts'
@@ -71,7 +72,16 @@ async function describableDependencies(): Promise<AppDependencies> {
     // are present because the routes ask for them, not because they run.
     breachedPasswords: createFakeBreachedPasswordChecker(),
     rateLimiter: createRateLimiter({ clock, config: config.rateLimit }),
+    oidcRateLimiter: createRateLimiter({ clock, config: config.oidcRateLimit }),
     passwords: await createPasswordHasher(),
+    // Describing the API talks to no provider; the registry is present
+    // because the routes read it at registration, and it is empty.
+    identityProviders: createIdentityProviderRegistry({
+      providers: config.oidcProviders,
+      appUrl: config.appUrl,
+      createClient: outboundClientFactory,
+      clock,
+    }),
     config,
   }
 }

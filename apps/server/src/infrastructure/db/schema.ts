@@ -134,6 +134,42 @@ export const magicLinkTokens = pgTable(
   ],
 )
 
+/**
+ * One account at one OpenID Connect provider (ADR-011, "Identity, not email,
+ * is the key").
+ *
+ * The unique index is on `(issuer, subject)` and not on the configured
+ * provider id: two configured providers pointed at the same directory are
+ * the same directory, and keying on the pair would let one person end up
+ * with two accounts by pressing a different button. `provider_id` is kept
+ * for the audit trail and for account settings.
+ *
+ * No email column, deliberately. A provider's `email` is an attribute that
+ * can be reassigned to somebody else; matching on the subject is what stops
+ * a recycled address inheriting an account. The address the platform knows
+ * lives on `users`, where it always has.
+ */
+export const identities = pgTable(
+  'identities',
+  {
+    id: text('id').primaryKey(),
+    userId: text('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    providerId: text('provider_id').notNull(),
+    issuer: text('issuer').notNull(),
+    subject: text('subject').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull(),
+    lastSignInAt: timestamp('last_sign_in_at', { withTimezone: true }),
+  },
+  (table) => [
+    uniqueIndex('identities_issuer_subject_key').on(table.issuer, table.subject),
+    // Account settings lists a person's identities, and deleting a user
+    // cascades through this column.
+    index('identities_user_id_idx').on(table.userId),
+  ],
+)
+
 export const groups = pgTable('groups', {
   id: text('id').primaryKey(),
   unitId: text('unit_id')

@@ -77,6 +77,47 @@ Authentication and security have to meet current practice, not the practice of t
 - **Password rules and rotation.** Rejected per NIST: they reduce security by pushing users to predictable patterns; breached-password checks and length do more.
 - **Passkeys deferred to enterprise.** Rejected: they are cheaper to add now than to retrofit and are the current best practice for consumer and workforce sign-in alike.
 
+## Implemented
+
+**OIDC sign-in — 13 September 2026 (M3).** The Enterprise SSO section above is
+implemented for OpenID Connect, in `apps/server/src/auth/oidc/` and
+`apps/server/src/application/federated-sign-in-service.ts`, with presets for
+Microsoft Entra ID, Google Workspace, Amazon Cognito, Auth0, and a generic
+provider; Okta is described by the generic preset and gains a named one when
+an instance asks for its group claim. Authorization Code with PKCE (`S256`)
+only, `state` and `nonce` bound to a ten-minute `__Host-` cookie, discovery
+and JWKS fetched through the SSRF-safe outbound client and cached with a TTL
+and a rate-limited rotation re-read, the id token verified with `node:crypto`
+against `RS256`/`ES256` and checked for issuer, audience, `azp`, expiry and
+nonce, and then the preset's own claim checks (`tid`, `hd`). Identities are
+stored as `(issuer, subject)` in a new `identities` table, and the linking
+policy this ADR asks for is implemented: an identity attaches to an account
+that already exists only when the provider asserts a verified email **and**
+that account has already verified the same address for itself, which is what
+stops a pre-registered account being handed to whoever the provider vouches
+for; a per-provider `ALLOW_LINKING` flag turns linking off entirely; a link
+revokes every other session that account holds, because attaching a second
+way in is a privilege change. Just-in-time provisioning is governed by a
+per-provider "sign-up via SSO allowed" flag, sessions are issued and rotated
+through the existing session service, every outcome is audited without
+tokens, and every failure answers the browser identically. Configuration is
+per instance through `OIDC_PROVIDERS` and `OIDC_<ID>_*`, validated at boot,
+with the two endpoints on their own flat per-address budget.
+
+**Still to come on this ADR:** passkeys (WebAuthn), the client secret moving
+from the environment into the settings store's secrets (`setSecret` /
+`getSecret`, envelope-encrypted under the `KeyProvider`'s instance master key,
+ADR-034) — which now exists, so what remains is the migration: an
+administrator enters each secret once, and only then does the environment
+variable stop being read — moving provider configuration from the environment
+to per-organisation settings an administrator edits, "require SSO for this verified email domain", routing an
+entered email to its organisation's provider, group mapping at sign-in,
+RP-initiated and back-channel logout, and SAML 2.0 with SCIM in the
+enterprise phase. (Microsoft Entra ID emits no `email_verified` claim, so an
+Entra identity never links into an account that already exists; whether a
+tenant-pinned Entra token's `email` may be trusted without one is a decision
+for an administrator, and the configuration does not make it by accident.)
+
 ## Consequences
 
 - The M1 auth implementation is reviewed against this ADR before M2 ships; gaps become tracked findings, not accepted debt.

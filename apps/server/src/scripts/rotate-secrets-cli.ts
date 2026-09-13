@@ -3,6 +3,7 @@ import { createDisabledBreachedPasswordChecker } from '../auth/breached-password
 import { createDevMailer } from '../auth/dev-mailer.ts'
 import { createPasswordHasher } from '../auth/password.ts'
 import { createRateLimiter } from '../auth/rate-limit.ts'
+import { createIdentityProviderRegistry, outboundClientFactory } from '../auth/oidc/registry.ts'
 import { createTokenService } from '../auth/tokens.ts'
 import { loadConfig } from '../config.ts'
 import { createContentStore } from '../infrastructure/content-store.ts'
@@ -68,7 +69,14 @@ try {
       // ports are here because `AppDependencies` is one shape.
       breachedPasswords: createDisabledBreachedPasswordChecker(),
       rateLimiter: createRateLimiter({ clock, config: config.rateLimit }),
+      oidcRateLimiter: createRateLimiter({ clock, config: config.oidcRateLimit }),
       passwords: await createPasswordHasher(),
+      identityProviders: createIdentityProviderRegistry({
+        providers: config.oidcProviders,
+        appUrl: config.appUrl,
+        createClient: outboundClientFactory,
+        clock,
+      }),
       config,
     },
     (process.env['SECRETS_ROTATE_ACTOR'] ?? null) as UserId,

@@ -17,6 +17,7 @@ import { registerSessionSupport } from './session.ts'
 const SESSION_CONFIG = {
   cookieName: 'quill_session',
   linkCookieName: 'quill_link',
+  oidcCookieName: 'quill_oidc',
   ttlMs: 600_000,
   idleTtlMs: 300_000,
   secureCookie: false,

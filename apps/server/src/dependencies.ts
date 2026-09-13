@@ -14,6 +14,7 @@ import type {
 import type { SearchService } from '@quill/search'
 
 import type { BreachedPasswordChecker } from './auth/breached-password.ts'
+import type { IdentityProviderRegistry } from './auth/oidc/registry.ts'
 import type { Mailer } from './auth/mailer.ts'
 import type { PasswordHasher } from './auth/password.ts'
 import type { RateLimiter } from './auth/rate-limit.ts'
@@ -74,9 +75,22 @@ export interface AppDependencies {
    */
   readonly rateLimiter: RateLimiter
   /**
+   * The OIDC endpoints' own limiter: a large, flat, per-address budget that
+   * bounds outbound traffic rather than slowing a guess down
+   * (`ServerConfig.oidcRateLimit`). Separate from `rateLimiter` because a
+   * shared store would apply the auth endpoints' backoff to it.
+   */
+  readonly oidcRateLimiter: RateLimiter
+  /**
    * Argon2id, with the dummy hash sign-in needs already computed. Built by
    * `createPasswordHasher` in the composition root, never lazily on a request.
    */
   readonly passwords: PasswordHasher
+  /**
+   * The configured OpenID Connect providers (ADR-011), built once so their
+   * discovery and JWKS caches live as long as the process. Empty on an
+   * instance with no `OIDC_PROVIDERS`.
+   */
+  readonly identityProviders: IdentityProviderRegistry
   readonly config: ServerConfig
 }

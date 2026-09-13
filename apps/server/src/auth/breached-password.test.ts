@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto'
 import { describe, expect, it, vi } from 'vitest'
 
-import type { OutboundClient, OutboundRequest } from '../infrastructure/http/outbound-client.ts'
+import type { OutboundReader, OutboundRequest } from '../infrastructure/http/outbound-client.ts'
 import { OutboundRequestError } from '../infrastructure/http/outbound-client.ts'
 import { createFakeBreachedPasswordChecker } from '../test-support/fakes.ts'
 import {
@@ -15,14 +15,14 @@ function sha1(value: string): string {
   return createHash('sha1').update(value, 'utf8').digest('hex').toUpperCase()
 }
 
-function clientReturning(body: string, status = 200): OutboundClient {
-  return { get: vi.fn<OutboundClient['get']>(async () => ({ status, body })) }
+function clientReturning(body: string, status = 200): OutboundReader {
+  return { get: vi.fn<OutboundReader['get']>(async () => ({ status, body })) }
 }
 
 describe('createHibpBreachedPasswordChecker', () => {
   it('sends only the first five characters of the SHA-1, never the password', async () => {
     const requests: OutboundRequest[] = []
-    const client: OutboundClient = {
+    const client: OutboundReader = {
       async get(request) {
         requests.push(request)
         return { status: 200, body: '' }
@@ -80,7 +80,7 @@ describe('createHibpBreachedPasswordChecker', () => {
   })
 
   it('reports the corpus unavailable when the request fails', async () => {
-    const client: OutboundClient = {
+    const client: OutboundReader = {
       async get() {
         throw new OutboundRequestError('timeout', 'too slow')
       },
@@ -93,7 +93,7 @@ describe('createHibpBreachedPasswordChecker', () => {
   })
 
   it('reports the corpus unavailable when something not an Error is thrown', async () => {
-    const client: OutboundClient = {
+    const client: OutboundReader = {
       async get() {
         throw 'nope'
       },

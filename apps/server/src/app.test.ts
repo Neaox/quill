@@ -13,6 +13,7 @@ import { createSearchService } from '@quill/search'
 import { createInMemorySearchIndex } from '@quill/search/test-support'
 
 import { createUnitOfWork } from './infrastructure/repositories/unit-of-work.ts'
+import { createIdentityProviderRegistry, outboundClientFactory } from './auth/oidc/registry.ts'
 import { createPasswordHasher } from './auth/password.ts'
 import { createRateLimiter } from './auth/rate-limit.ts'
 import {
@@ -90,7 +91,14 @@ describe('server with dependencies', () => {
       mailer: createRecordingMailer(),
       breachedPasswords: createFakeBreachedPasswordChecker(),
       rateLimiter: createRateLimiter({ clock, config: config.rateLimit }),
+      oidcRateLimiter: createRateLimiter({ clock, config: config.oidcRateLimit }),
       passwords: await createPasswordHasher(),
+      identityProviders: createIdentityProviderRegistry({
+        providers: config.oidcProviders,
+        appUrl: config.appUrl,
+        createClient: outboundClientFactory,
+        clock,
+      }),
       config,
     }
   }, 30_000)
@@ -156,7 +164,14 @@ describe('trusting what is in front of the server', () => {
       mailer: createRecordingMailer(),
       breachedPasswords: createFakeBreachedPasswordChecker(),
       rateLimiter: createRateLimiter({ clock, config: config.rateLimit }),
+      oidcRateLimiter: createRateLimiter({ clock, config: config.oidcRateLimit }),
       passwords: await createPasswordHasher(),
+      identityProviders: createIdentityProviderRegistry({
+        providers: config.oidcProviders,
+        appUrl: config.appUrl,
+        createClient: outboundClientFactory,
+        clock,
+      }),
       config,
     }
   }, 30_000)

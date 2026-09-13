@@ -208,3 +208,12 @@ export type PublishedResult = Json<PublishResponses[200]>
 export type MergeRequired = Json<PublishResponses[409]>
 
 export type MergeConflict = MergeRequired['conflicts'][number]
+
+/**
+ * `GET /auth/oidc/providers`: what the sign-in page may offer (ADR-011).
+ * Deliberately only an id and a label — it is read before anybody has signed
+ * in, so it must say nothing about who uses the instance.
+ */
+export type OidcProviderList = GetBody<'/api/auth/oidc/providers'>
+
+export type OidcProviderSummary = OidcProviderList['providers'][number]

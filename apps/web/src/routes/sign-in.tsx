@@ -13,7 +13,13 @@ import { optionalStringSearch } from './-search.ts'
  */
 export const Route = createFileRoute('/sign-in')({
   head: () => ({ meta: [{ title: 'Sign in' }] }),
-  validateSearch: (search: Record<string, unknown>): { redirect?: string } =>
-    optionalStringSearch(search, 'redirect'),
+  /**
+   * `redirect` is the page that was being asked for; `error` is how a failed
+   * single sign-on comes back from `/api/auth/oidc/:id/callback` (ADR-011).
+   */
+  validateSearch: (search: Record<string, unknown>): { redirect?: string; error?: string } => ({
+    ...optionalStringSearch(search, 'redirect'),
+    ...optionalStringSearch(search, 'error'),
+  }),
   component: SignInPage,
 })

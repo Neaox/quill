@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto'
 
-import type { OutboundClient } from '../infrastructure/http/outbound-client.ts'
+import type { OutboundReader } from '../infrastructure/http/outbound-client.ts'
 import { isLocallyKnownBreached } from './breached-password-corpus.ts'
 
 /**
@@ -60,7 +60,8 @@ export function withLocalFallback(remote: BreachedPasswordChecker): BreachedPass
 }
 
 export interface HibpCheckerOptions {
-  readonly client: OutboundClient
+  /** Only ever reads, so it asks for the read half (`OutboundReader`). */
+  readonly client: OutboundReader
   /** The range endpoint; the password's SHA-1 prefix is appended to it. */
   readonly rangeApiUrl: string
 }

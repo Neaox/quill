@@ -29,6 +29,7 @@ import { createAuthService } from './auth-service.ts'
 const SESSION = {
   cookieName: 'quill_session',
   linkCookieName: 'quill_link',
+  oidcCookieName: 'quill_oidc',
   ttlMs: 60_000,
   idleTtlMs: 60_000,
   secureCookie: false,

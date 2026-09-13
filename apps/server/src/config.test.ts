@@ -37,6 +37,7 @@ describe('loadConfig', () => {
       session: {
         cookieName: `${BRAND.slug}_session`,
         linkCookieName: `${BRAND.slug}_link`,
+        oidcCookieName: `${BRAND.slug}_oidc`,
         ttlMs: 30 * 24 * 60 * 60 * 1000,
         idleTtlMs: 7 * 24 * 60 * 60 * 1000,
         secureCookie: false,
@@ -48,6 +49,11 @@ describe('loadConfig', () => {
         rangeApiUrl: 'https://api.pwnedpasswords.com/range',
       },
       mailer: { driver: 'dev' },
+      // Single sign-on is off until OIDC_PROVIDERS names a provider (ADR-011).
+      oidcProviders: [],
+      // Large, flat, per address: the window is its own maximum, so it never
+      // doubles (see `ServerConfig.oidcRateLimit`).
+      oidcRateLimit: { max: 300, windowMs: 60_000, maxWindowMs: 60_000 },
       contentStore: { driver: 'filesystem', path: './data/content' },
       shareLinks: { enabled: true },
       masterKey: { driver: 'environment', keys: [Buffer.alloc(32).toString('base64')] },
@@ -78,6 +84,7 @@ describe('loadConfig', () => {
     expect(config.session).toEqual({
       cookieName: '__Host-custom_session',
       linkCookieName: `__Host-${BRAND.slug}_link`,
+      oidcCookieName: `__Host-${BRAND.slug}_oidc`,
       ttlMs: 1000,
       idleTtlMs: 7 * 24 * 60 * 60 * 1000,
       secureCookie: true,
@@ -352,6 +359,20 @@ describe('loadConfig', () => {
     })
     expect(config.session.idleTtlMs).toBe(5000)
     expect(config.rateLimit).toEqual({ max: 3, windowMs: 1000, maxWindowMs: 8000 })
+  })
+
+  it('reads the single sign-on budget, and keeps it flat whatever it is set to', () => {
+    const config = loadConfig({ OIDC_RATE_LIMIT_MAX: '50' })
+
+    expect(config.oidcRateLimit).toEqual({ max: 50, windowMs: 60_000, maxWindowMs: 60_000 })
+    // The auth endpoints' backoff is untouched by it.
+    expect(config.rateLimit.maxWindowMs).toBeGreaterThan(config.rateLimit.windowMs)
+  })
+
+  it('rejects a non-positive single sign-on budget', () => {
+    expect(() => loadConfig({ OIDC_RATE_LIMIT_MAX: '0' })).toThrow(
+      /OIDC_RATE_LIMIT_MAX must be a positive integer/,
+    )
   })
 
   it('rejects a non-positive idle timeout', () => {
