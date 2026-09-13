@@ -32,8 +32,10 @@ export const commandPaletteStyles = tv({
     groupLabel: 'px-2 pt-2 pb-1 text-2xs font-medium tracking-wide text-muted uppercase',
     option: [
       'flex w-full cursor-pointer flex-col items-start gap-1 rounded-md px-2 py-2 text-start',
-      'text-sm text-foreground aria-selected:bg-surface',
+      'text-sm text-foreground hover:bg-surface/60 aria-selected:bg-surface',
     ],
+    optionLabel: 'w-full truncate font-medium',
+    optionDetail: 'flex w-full min-w-0 flex-col gap-1',
     notice: 'min-h-0 grow overflow-y-auto px-4 py-6 text-sm text-muted',
     footer: 'flex shrink-0 items-center justify-between gap-3 border-t border-border px-3 py-2',
   },
@@ -42,8 +44,23 @@ export const commandPaletteStyles = tv({
 export interface CommandPaletteOption {
   /** What `onSelect` is given. Unique across every group. */
   readonly id: string
-  /** The row itself: a title, a snippet, a trail — whatever the surface shows. */
-  readonly content: ReactNode
+  /**
+   * What this option is *called*: one short phrase, and the whole of its
+   * accessible name.
+   *
+   * The split between this and `detail` is the point of the two fields. An
+   * option whose name is its title plus three lines of matched text is read
+   * out in full every time the arrow keys land on it, and two rows that begin
+   * with different titles are then indistinguishable to anybody choosing by
+   * ear — which is also why `getByRole('option', { name })` cannot tell them
+   * apart. The name is the title; everything else describes it.
+   */
+  readonly label: ReactNode
+  /**
+   * The rest of the row — a snippet, a trail — shown beneath the label and
+   * attached to the option as its description rather than its name.
+   */
+  readonly detail?: ReactNode | undefined
 }
 
 export interface CommandPaletteGroup {
@@ -74,6 +91,17 @@ export interface CommandPaletteProps {
   readonly notice?: ReactNode | undefined
   /** The foot of the panel: "See all results", a hint about the keys. */
   readonly footer?: ReactNode | undefined
+  /**
+   * What has just been answered, in a sentence, for a screen reader.
+   *
+   * Focus never leaves the field here, so nothing about the list is spoken on
+   * its own: `aria-activedescendant` speaks only when the arrows move it, and
+   * eight results replacing three is otherwise silent. This is announced
+   * politely when it changes, so the caller passes the *settled* answer —
+   * "8 results" — and nothing at all while one is still on the way, which is
+   * what keeps it from chattering at every keystroke.
+   */
+  readonly status?: string | undefined
 }
 
 /** One option, with its place in the flattened list the arrow keys walk. */
@@ -144,6 +172,7 @@ function Panel({
   busy = false,
   notice,
   footer,
+  status,
 }: PanelProps) {
   const ids = useId()
   const field = useRef<HTMLInputElement | null>(null)
@@ -179,15 +208,19 @@ function Panel({
   }
 
   /**
-   * The keys the list owns. Escape is deliberately absent: it belongs to the
-   * dialog, and Radix already closes on it, so handling it here would be a
-   * second answer to the same key.
+   * The keys the list owns, and only those.
+   *
+   * Escape is deliberately absent: it belongs to the dialog, and Radix already
+   * closes on it, so answering it here would be a second answer to one key.
+   * **Home and End are deliberately absent too.** This is an *editable*
+   * combobox whose text field never gives up focus, so those two keys are the
+   * caret's — moving it to the start or the end of the query — exactly as they
+   * are in any other text box. A listbox claims them only when the listbox
+   * itself has focus, which by design this one never does.
    */
   function onKeyDown(event: KeyboardEvent<HTMLInputElement>): void {
     if (event.key === 'ArrowDown') move(1)
     else if (event.key === 'ArrowUp') move(-1)
-    else if (event.key === 'Home') setWanted(0)
-    else if (event.key === 'End') move(optionIds.length)
     else if (event.key === 'Enter') choose()
     else return
     event.preventDefault()
@@ -263,12 +296,30 @@ function Panel({
                     // out rather than a walk through every result.
                     tabIndex={-1}
                     aria-selected={option.position === active}
+                    // The name is the label's own text, not the row's: pointing
+                    // at the element keeps the accessible name and the visible
+                    // words identical (WCAG 2.5.3), which an `aria-label`
+                    // restating the title would only promise.
+                    aria-labelledby={`${ids}-label-${option.position}`}
+                    {...(option.detail === undefined
+                      ? {}
+                      : { 'aria-describedby': `${ids}-detail-${option.position}` })}
                     onClick={() => {
                       onSelect(option.id)
                     }}
                     className={styles.option()}
                   >
-                    {option.content}
+                    <span id={`${ids}-label-${option.position}`} className={styles.optionLabel()}>
+                      {option.label}
+                    </span>
+                    {option.detail === undefined ? undefined : (
+                      <span
+                        id={`${ids}-detail-${option.position}`}
+                        className={styles.optionDetail()}
+                      >
+                        {option.detail}
+                      </span>
+                    )}
                   </button>
                 ))}
               </div>
@@ -277,6 +328,12 @@ function Panel({
         )}
 
         {notice === undefined ? undefined : <div className={styles.notice()}>{notice}</div>}
+
+        {/* Polite, and outside the listbox so it is never an option: the list
+            is what changed, and this is the sentence that says so. */}
+        <VisuallyHidden.Root role="status" aria-live="polite">
+          {status ?? ''}
+        </VisuallyHidden.Root>
 
         {footer === undefined ? undefined : <div className={styles.footer()}>{footer}</div>}
       </Primitive.Content>

@@ -1,14 +1,23 @@
-import { Link, getRouteApi, useNavigate } from '@tanstack/react-router'
+import { getRouteApi, useNavigate } from '@tanstack/react-router'
 import type { FormEvent } from 'react'
 
 import { Button, Callout, Input, Spinner, tv } from '@quill/ui'
 
-import { readInvalidQuery, useLoadedWorkspace, useSearchResults } from '../../lib/api/index.ts'
+import {
+  queryTooLong,
+  readInvalidQuery,
+  useLoadedWorkspace,
+  useSearchResults,
+} from '../../lib/api/index.ts'
 import { workspaceReference } from '../../lib/routing/document-reference.ts'
 import { InvalidQueryNotice } from './invalid-query-notice.tsx'
-import { SearchHitSummary, searchHitLink } from './search-hit.tsx'
+import { SearchHitLink } from './search-hit.tsx'
 import {
   ELSEWHERE_SECTION_LABEL,
+  QUERY_TOO_LONG,
+  SEARCH_PROMPT,
+  SEARCH_UNAVAILABLE,
+  describeResults,
   searchSections,
   sectionsHitCount,
   type SearchSection,
@@ -51,13 +60,12 @@ function HitList({ section }: { readonly section: SearchSection }) {
   return (
     <div className={styles.list()}>
       {section.hits.map((hit) => (
-        <Link
-          key={hit.documentId}
-          {...searchHitLink(section.workspaceSlug, hit)}
+        <SearchHitLink
+          key={`${section.id}:${hit.documentId}`}
+          hit={hit}
+          workspaceSlug={section.workspaceSlug}
           className={styles.hit()}
-        >
-          <SearchHitSummary hit={hit} />
-        </Link>
+        />
       ))}
     </div>
   )
@@ -90,6 +98,13 @@ export function SearchPage() {
   const here = sections.find((section) => section.id === 'current')
   const elsewhere = sections.filter((section) => section.id !== 'current')
   const invalid = readInvalidQuery(results.error)
+  const busy = results.isFetching
+  // Said only once an answer has settled, so paging announces the longer list
+  // rather than the act of asking for it.
+  const announcement =
+    query === '' || busy || results.isError || invalid !== undefined
+      ? ''
+      : describeResults(sections)
   const styles = searchPageStyles()
 
   function onSubmit(event: FormEvent<HTMLFormElement>) {
@@ -103,7 +118,7 @@ export function SearchPage() {
   }
 
   return (
-    <div className={styles.root()}>
+    <div aria-busy={busy} className={styles.root()}>
       <h1 className={styles.heading()}>Search</h1>
 
       <form onSubmit={onSubmit} className={styles.form()}>
@@ -124,19 +139,28 @@ export function SearchPage() {
         </Button>
       </form>
 
+      {/* Polite, so a page that has just lengthened under "Show more" is
+          announced without interrupting whatever is being read. */}
+      <p aria-live="polite" className="sr-only">
+        {announcement}
+      </p>
+
       {query === '' ? (
-        <p className={styles.quiet()}>
-          Type something to search every workspace you can read. Matches in {workspace.name} come
-          first.
-        </p>
+        <p className={styles.quiet()}>{SEARCH_PROMPT}</p>
+      ) : queryTooLong(query) ? (
+        <p className={styles.quiet()}>{QUERY_TOO_LONG}</p>
       ) : invalid !== undefined ? (
         <InvalidQueryNotice query={query} invalid={invalid} />
       ) : results.isError ? (
         <Callout tone="danger" title="Couldn't run that search">
-          Search is not answering right now. Try again in a moment.
+          {SEARCH_UNAVAILABLE}
         </Callout>
       ) : results.isPending ? (
-        <Spinner className="size-5" />
+        // `Spinner` is decorative by its own contract, so the words beside it
+        // are what actually say the page is working (`docs/design/feedback.md`).
+        <p className={styles.quiet()}>
+          <Spinner className="size-4" /> Searching…
+        </p>
       ) : sectionsHitCount(sections) === 0 ? (
         <Callout tone="info" title={`Nothing matched “${query}”`}>
           Try fewer words, or check a filter’s spelling. A quoted phrase is matched exactly; every

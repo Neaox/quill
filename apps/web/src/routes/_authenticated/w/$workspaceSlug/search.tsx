@@ -2,7 +2,11 @@ import { createFileRoute } from '@tanstack/react-router'
 
 import { SearchPage } from '../../../../features/search/search-page.tsx'
 import { RouteNotice } from '../../../../features/workspaces/route-notice.tsx'
-import { searchResultsQueryOptions, workspaceQueryOptions } from '../../../../lib/api/index.ts'
+import {
+  queryTooLong,
+  searchResultsQueryOptions,
+  workspaceQueryOptions,
+} from '../../../../lib/api/index.ts'
 import { optionalStringSearch } from '../../../-search.ts'
 
 /** The query, as URL state: a search is a place, so it can be linked to and shared (ADR-013). */
@@ -32,7 +36,9 @@ export const Route = createFileRoute('/_authenticated/w/$workspaceSlug/search')(
     const workspace = await context.queryClient.ensureQueryData(
       workspaceQueryOptions(context.apiClient, params.workspaceSlug),
     )
-    if (deps.q.trim() !== '') {
+    // Neither empty nor longer than the route will read: the page says so
+    // itself, and prefetching either would only earn a refusal.
+    if (deps.q.trim() !== '' && !queryTooLong(deps.q.trim())) {
       void context.queryClient.prefetchInfiniteQuery(
         searchResultsQueryOptions(context.apiClient, {
           query: deps.q,

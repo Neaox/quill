@@ -39,9 +39,41 @@ async function signIn(page: Page): Promise<void> {
   await signInAsAdmin(page.context().request)
 }
 
+/**
+ * A result on the results page.
+ *
+ * Scoped to `main`, because the navigation tree in the shell links to the same
+ * documents by the same names: the page and the sidebar are two different
+ * claims, and only one of them is what a search returned.
+ */
+function result(page: Page, title: string) {
+  return page.getByRole('main').getByRole('link', { name: title })
+}
+
 /** The palette's own field, which is the one that gets typed into. */
 function queryBox(page: Page) {
   return page.getByRole('combobox', { name: 'Search documentation' })
+}
+
+/** The top bar's own control, and the first thing the mounted shell renders. */
+function searchField(page: Page) {
+  return page.getByRole('banner').getByRole('button', { name: 'Search documentation' })
+}
+
+/**
+ * Opens the palette with the keyboard.
+ *
+ * The wait is load-bearing rather than defensive: the shortcut is a listener
+ * the application registers when it mounts (`features/search/search-provider.tsx`),
+ * and a key pressed between `goto` resolving and React mounting reaches
+ * nothing at all. Waiting for a control the mounted shell renders is the
+ * signal that the listener exists — a sleep would only be a guess at how long
+ * mounting takes on the slowest browser profile.
+ */
+async function openWithShortcut(page: Page): Promise<void> {
+  await expect(searchField(page)).toBeVisible()
+  await page.keyboard.press('ControlOrMeta+k')
+  await expect(queryBox(page)).toBeVisible()
 }
 
 test.describe('search', () => {
@@ -55,12 +87,12 @@ test.describe('search', () => {
     await queryBox(page).fill('failover')
 
     const here = page.getByRole('group', { name: 'In this workspace' })
-    await expect(here.getByRole('option', { name: /Regional failover/ })).toBeVisible()
+    await expect(here.getByRole('option', { name: 'Regional failover', exact: true })).toBeVisible()
     // The snippet marks the matched words, from offsets rather than from
     // anything the server rendered (ADR-010).
     await expect(here.locator('mark').first()).toHaveText(/failover/i)
 
-    await here.getByRole('option', { name: /Regional failover/ }).click()
+    await here.getByRole('option', { name: 'Regional failover', exact: true }).click()
 
     await expect(page.getByRole('heading', { level: 1, name: 'Regional failover' })).toBeVisible()
     // The readable address (ADR-035): the title's words, then the short key.
@@ -70,9 +102,7 @@ test.describe('search', () => {
   test('opens on Ctrl+K from wherever focus is, and closes on Escape', async ({ page }) => {
     await signIn(page)
     await page.goto(`/w/${ENGINEERING}`)
-    await expect(page.getByRole('heading', { level: 1 })).toBeVisible()
-
-    await page.keyboard.press('ControlOrMeta+k')
+    await openWithShortcut(page)
     await expect(queryBox(page)).toBeFocused()
 
     await page.keyboard.press('Escape')
@@ -82,9 +112,7 @@ test.describe('search', () => {
   test('reaches a result with the keyboard alone', async ({ page }) => {
     await signIn(page)
     await page.goto(`/w/${ENGINEERING}`)
-    await expect(page.getByRole('heading', { level: 1 })).toBeVisible()
-
-    await page.keyboard.press('ControlOrMeta+k')
+    await openWithShortcut(page)
     await queryBox(page).fill('failover')
     await expect(page.getByRole('option').first()).toBeVisible()
 
@@ -101,16 +129,18 @@ test.describe('search', () => {
     await signIn(page)
     await page.goto(`/w/${ENGINEERING}`)
 
-    await page.keyboard.press('ControlOrMeta+k')
+    await openWithShortcut(page)
     // "charter" is in the Platform docs workspace and in no Engineering
     // document, so every answer has to come from elsewhere.
     await queryBox(page).fill('charter')
 
     const elsewhere = page.getByRole('group', { name: 'Platform docs' })
-    await expect(elsewhere.getByRole('option', { name: /Platform team charter/ })).toBeVisible()
+    await expect(
+      elsewhere.getByRole('option', { name: 'Platform team charter', exact: true }),
+    ).toBeVisible()
     await expect(page.getByRole('group', { name: 'In this workspace' })).toBeHidden()
 
-    await elsewhere.getByRole('option', { name: /Platform team charter/ }).click()
+    await elsewhere.getByRole('option', { name: 'Platform team charter', exact: true }).click()
 
     await expect(
       page.getByRole('heading', { level: 1, name: 'Platform team charter' }),
@@ -122,7 +152,7 @@ test.describe('search', () => {
     await signIn(page)
     await page.goto(`/w/${ENGINEERING}`)
 
-    await page.keyboard.press('ControlOrMeta+k')
+    await openWithShortcut(page)
     await queryBox(page).fill('zzzqqqnothinghere')
 
     await expect(page.getByText(/Nothing matched/)).toBeVisible()
@@ -133,21 +163,24 @@ test.describe('search', () => {
     await signIn(page)
     await page.goto(`/w/${ENGINEERING}`)
 
-    await page.keyboard.press('ControlOrMeta+k')
+    await openWithShortcut(page)
     // A filter with nothing after its colon: one of the three refusals the
     // API answers with `422 invalid_query` and a position
     // (`docs/architecture/api-contract-m2.md`).
     await queryBox(page).fill('owner:')
 
-    await expect(page.getByRole('alert')).toContainText('This filter has nothing after its colon')
-    await expect(page.getByRole('alert')).toContainText('at character')
+    // Scoped to the palette: the app shell mounts a toaster, whose live region
+    // is an always-present, empty `role="alert"` of its own.
+    const notice = page.getByRole('dialog', { name: 'Search documentation' }).getByRole('alert')
+    await expect(notice).toContainText('This filter has nothing after its colon')
+    await expect(notice).toContainText('at character')
   })
 
   test('carries the query to the results page, which pages and can be shared', async ({ page }) => {
     await signIn(page)
     await page.goto(`/w/${ENGINEERING}`)
 
-    await page.keyboard.press('ControlOrMeta+k')
+    await openWithShortcut(page)
     await queryBox(page).fill('failover')
     await expect(page.getByRole('option').first()).toBeVisible()
     await page.getByRole('link', { name: 'See all results' }).click()
@@ -155,12 +188,12 @@ test.describe('search', () => {
     await expect(page).toHaveURL(/\/w\/engineering\/search\?q=failover$/)
     await expect(page.getByRole('heading', { level: 1, name: 'Search' })).toBeVisible()
     await expect(page.getByRole('heading', { level: 2, name: 'In this workspace' })).toBeVisible()
-    await expect(page.getByRole('link', { name: /Regional failover/ }).first()).toBeVisible()
+    await expect(result(page, 'Regional failover')).toBeVisible()
 
     // The address alone is enough: a reload lands on the same results, which
     // is the whole reason the query is URL state (ADR-013).
     await page.reload()
-    await expect(page.getByRole('link', { name: /Regional failover/ }).first()).toBeVisible()
+    await expect(result(page, 'Regional failover')).toBeVisible()
 
     // The shell is still there — search is a page inside the workspace, not a
     // replacement for it (`docs/design/feedback.md`).
@@ -170,7 +203,7 @@ test.describe('search', () => {
   test('refines the query from the results page itself', async ({ page }) => {
     await signIn(page)
     await page.goto(`/w/${ENGINEERING}/search?q=failover`)
-    await expect(page.getByRole('link', { name: /Regional failover/ }).first()).toBeVisible()
+    await expect(result(page, 'Regional failover')).toBeVisible()
 
     const box = page.getByRole('main').getByLabel('Search this organisation')
     await box.fill('charter')
@@ -185,7 +218,7 @@ test.describe('search', () => {
     await signIn(page)
     await page.goto('/')
 
-    await page.keyboard.press('ControlOrMeta+k')
+    await openWithShortcut(page)
     await queryBox(page).fill('failover')
 
     // No workspace is in scope, so nothing is "in this workspace": every match
@@ -206,8 +239,8 @@ test.describe('search', () => {
     await page.getByRole('banner').getByRole('button', { name: 'Search documentation' }).click()
     await queryBox(page).fill('failover')
 
-    await expect(page.getByRole('option', { name: /Regional failover/ })).toBeVisible()
-    await page.getByRole('option', { name: /Regional failover/ }).click()
+    await expect(page.getByRole('option', { name: 'Regional failover', exact: true })).toBeVisible()
+    await page.getByRole('option', { name: 'Regional failover', exact: true }).click()
     await expect(page.getByRole('heading', { level: 1, name: 'Regional failover' })).toBeVisible()
   })
 })

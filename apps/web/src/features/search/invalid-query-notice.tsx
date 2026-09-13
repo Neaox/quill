@@ -1,6 +1,6 @@
 import { tv } from '@quill/ui'
 
-import type { InvalidQuery } from '../../lib/api/index.ts'
+import type { InvalidQuery, InvalidQueryKind } from '../../lib/api/index.ts'
 
 export const invalidQueryStyles = tv({
   slots: {
@@ -22,7 +22,7 @@ export const invalidQueryStyles = tv({
  * (`docs/architecture/patterns.md`). An unknown kind falls back to the
  * server's message, which is never worse than nothing.
  */
-const REASONS: Readonly<Record<string, string>> = {
+const REASONS: Readonly<Record<InvalidQueryKind, string>> = {
   'unterminated-quote': 'This quotation mark is never closed.',
   'empty-filter-value': 'This filter has nothing after its colon.',
   'nothing-to-search-for':
@@ -31,6 +31,10 @@ const REASONS: Readonly<Record<string, string>> = {
 
 const HELP =
   'Search for words, "an exact phrase", -something to exclude, or a filter such as title:, tag:, owner:, status:, collection: or in:.'
+
+function isKnownKind(kind: string): kind is InvalidQueryKind {
+  return Object.hasOwn(REASONS, kind)
+}
 
 export interface InvalidQueryNoticeProps {
   /** Exactly what was typed, so the position can be pointed at in it. */
@@ -49,7 +53,10 @@ export interface InvalidQueryNoticeProps {
  */
 export function InvalidQueryNotice({ query, invalid }: InvalidQueryNoticeProps) {
   const styles = invalidQueryStyles()
-  const reason = REASONS[invalid.kind] ?? invalid.message
+  // Typed by the kinds the API documents, so a fourth refusal is a compile
+  // error here rather than a silent fall-through; an unknown kind from a newer
+  // server still says something, in the server's own words.
+  const reason = isKnownKind(invalid.kind) ? REASONS[invalid.kind] : invalid.message
   // A position past the end — a quote that opened at the last character, say
   // — marks nothing rather than an empty span, and the sentence still says
   // where it was.

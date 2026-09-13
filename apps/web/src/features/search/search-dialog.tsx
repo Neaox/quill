@@ -4,7 +4,7 @@ import { useMemo, useState } from 'react'
 import { CommandPalette, buttonClassName, tv, type CommandPaletteGroup } from '@quill/ui'
 
 import {
-  PALETTE_LIMIT,
+  queryTooLong,
   readInvalidQuery,
   useSearch,
   useWorkspace,
@@ -16,8 +16,15 @@ import {
   type DocumentLinkTarget,
 } from '../../lib/routing/document-reference.ts'
 import { InvalidQueryNotice } from './invalid-query-notice.tsx'
-import { SearchHitSummary, searchHitLink } from './search-hit.tsx'
-import { searchSections, type SearchSection } from './sections.ts'
+import { SearchHitDetail, searchHitLink } from './search-hit.tsx'
+import {
+  QUERY_TOO_LONG,
+  SEARCH_PROMPT,
+  SEARCH_UNAVAILABLE,
+  describeResults,
+  searchSections,
+  type SearchSection,
+} from './sections.ts'
 import { useDebouncedValue } from './use-debounced-value.ts'
 
 export const searchDialogStyles = tv({
@@ -76,11 +83,8 @@ export function SearchDialog({ open, onOpenChange, workspaceSlug }: SearchDialog
   // Already in the cache whenever there is a workspace in the address: the
   // shell's loader awaited it before anything inside rendered (ADR-035).
   const workspace = useWorkspace(workspaceSlug).data
-  const results = useSearch({
-    query: debounced,
-    workspaceId: workspace?.id ?? null,
-    limit: PALETTE_LIMIT,
-  })
+  // No `limit`: `useSearch` already asks for the palette's page size.
+  const results = useSearch({ query: debounced, workspaceId: workspace?.id ?? null })
 
   const sections = useMemo(
     () => searchSections(results.data === undefined ? [] : [results.data], workspace ?? null),
@@ -95,13 +99,29 @@ export function SearchDialog({ open, onOpenChange, workspaceSlug }: SearchDialog
       options: section.hits.map((hit) => {
         const id = optionId(section, hit)
         destinations.set(id, searchHitLink(section.workspaceSlug, hit))
-        return { id, content: <SearchHitSummary hit={hit} /> }
+        // The title alone is the option's name; everything else describes it,
+        // so the arrow keys announce "Regional failover" rather than the whole
+        // snippet (`search-hit.tsx`).
+        return { id, label: hit.title, detail: <SearchHitDetail hit={hit} /> }
       }),
     }))
     return { groups: rendered, targets: destinations }
   }, [sections])
 
   const typed = query.trim()
+  /**
+   * The query the answer on screen is actually about.
+   *
+   * Every notice is written from this rather than from what is in the box:
+   * `invalid` carries an offset into the query the *server* refused, so slicing
+   * the live text at it would mark the wrong character of a different string,
+   * and "nothing matched" said about a query that has not been sent yet is
+   * simply untrue. The box's own value stays `query`, because that is what is
+   * being typed.
+   */
+  const answering = debounced.trim()
+  /** A keystroke is waiting out the debounce, so what is on screen is not the answer to it. */
+  const settling = typed !== answering
   const invalid = readInvalidQuery(results.error)
   const styles = searchDialogStyles()
 
@@ -116,7 +136,11 @@ export function SearchDialog({ open, onOpenChange, workspaceSlug }: SearchDialog
       value={query}
       onValueChange={setQuery}
       groups={groups}
-      busy={results.isFetching}
+      // Busy for the whole wait, not just the request: between a keystroke and
+      // the debounce firing there is nothing in flight, and a field that drops
+      // `aria-busy` there presents the previous query's hits as the answer to
+      // this one (`docs/design/feedback.md`).
+      busy={results.isFetching || settling}
       onSelect={(id) => {
         const target = targets.get(id)
         /* v8 ignore next -- every option's id was put in the map beside it. */
@@ -126,32 +150,49 @@ export function SearchDialog({ open, onOpenChange, workspaceSlug }: SearchDialog
       }}
       notice={notice()}
       footer={footer()}
+      {...(status() === undefined ? {} : { status: status() })}
     />
   )
 
+  /** Whether the answer on screen is the one the box is asking for. */
+  function settled(): boolean {
+    return !settling && !results.isPending && !results.isFetching
+  }
+
   function notice() {
+    // The live query, not the settled one: clearing the box goes back to the
+    // prompt at once rather than 180 ms later, and nothing is pending.
     if (typed === '') {
-      return (
-        <p className={styles.prompt()}>
-          Type to search every workspace you can read. Matches where you are come first.
-        </p>
-      )
+      return <p className={styles.prompt()}>{SEARCH_PROMPT}</p>
     }
-    if (invalid !== undefined) return <InvalidQueryNotice query={typed} invalid={invalid} />
+    if (queryTooLong(typed)) {
+      return <p className={styles.prompt()}>{QUERY_TOO_LONG}</p>
+    }
+    // Everything below describes an answer, so it waits for one. While a
+    // keystroke is settling, the field is busy and the last answer stands.
+    if (!settled()) return undefined
+    if (invalid !== undefined) return <InvalidQueryNotice query={answering} invalid={invalid} />
     if (results.isError) {
       return (
         <p role="alert" className={styles.prompt()}>
-          Search is not answering right now. Try again in a moment.
+          {SEARCH_UNAVAILABLE}
         </p>
       )
     }
-    // Only once an answer for *this* query has actually arrived: the previous
-    // answer is kept on screen while the next is fetched, and saying "nothing
-    // matched" over results that are merely stale would be a lie for 200 ms.
-    if (groups.length === 0 && !results.isPending && !results.isFetching) {
-      return <p className={styles.prompt()}>Nothing matched “{typed}”.</p>
+    if (groups.length === 0) {
+      return <p className={styles.prompt()}>Nothing matched “{answering}”.</p>
     }
     return undefined
+  }
+
+  /**
+   * What a screen reader is told once an answer has settled, and nothing at all
+   * while one is on the way — which is what stops it chattering per keystroke.
+   */
+  function status(): string | undefined {
+    if (typed === '' || !settled()) return undefined
+    if (invalid !== undefined || results.isError) return undefined
+    return describeResults(sections)
   }
 
   function footer() {
@@ -165,7 +206,7 @@ export function SearchDialog({ open, onOpenChange, workspaceSlug }: SearchDialog
         {/* Only inside a workspace: the results page is a place in one, and a
             control that cannot go anywhere is not rendered at all
             (`docs/design/feedback.md`). */}
-        {workspace === undefined || typed === '' ? undefined : (
+        {workspace === undefined || typed === '' || queryTooLong(typed) ? undefined : (
           <Link
             {...searchLink(workspaceReference(workspace), typed)}
             className={buttonClassName({ variant: 'secondary', size: 'sm' })}

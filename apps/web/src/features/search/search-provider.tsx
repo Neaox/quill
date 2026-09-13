@@ -94,7 +94,10 @@ function SearchHost({ children }: { readonly children: ReactNode }) {
    */
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
-      if (event.key !== 'k' && event.key !== 'K') return
+      // `code` is the physical key, so the shortcut survives a layout on
+      // which `key` is not a Latin letter at all; `key` is still accepted
+      // because a remapped layout may put K somewhere else entirely.
+      if (event.code !== 'KeyK' && event.key !== 'k' && event.key !== 'K') return
       if (!(event.metaKey || event.ctrlKey) || event.altKey) return
       if (event.defaultPrevented) return
       event.preventDefault()

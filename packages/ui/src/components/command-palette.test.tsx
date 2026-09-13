@@ -10,14 +10,20 @@ const GROUPS: readonly CommandPaletteGroup[] = [
     id: 'current',
     label: 'In this workspace',
     options: [
-      { id: 'a', content: <span>Regional failover</span> },
-      { id: 'b', content: <span>Authentication architecture</span> },
+      { id: 'a', label: 'Regional failover', detail: <span>Failover is not reversible</span> },
+      {
+        id: 'b',
+        label: 'Authentication architecture',
+        detail: <span>How a request is identified</span>,
+      },
     ],
   },
   {
     id: 'platform-docs',
     label: 'Platform docs',
-    options: [{ id: 'c', content: <span>Platform team charter</span> }],
+    options: [
+      { id: 'c', label: 'Platform team charter', detail: <span>The Platform team owns</span> },
+    ],
   },
 ]
 
@@ -86,6 +92,37 @@ describe('CommandPalette', () => {
     ).toEqual(['In this workspace', 'Platform docs'])
   })
 
+  it('names an option by its title alone, never by the detail beneath it', async () => {
+    render(palette())
+
+    const options = await screen.findAllByRole('option')
+    // The whole point of the label/detail split: three rows whose detail all
+    // mention "failover" are still told apart by name, by a screen reader and
+    // by a test alike.
+    expect(options.map((option) => option.getAttribute('aria-label'))).toEqual([null, null, null])
+    expect(screen.getByRole('option', { name: 'Regional failover' })).toBeInTheDocument()
+    expect(screen.getByRole('option', { name: 'Authentication architecture' })).toBeInTheDocument()
+  })
+
+  it('attaches the detail as the option’s description, not its name', async () => {
+    render(palette())
+
+    const option = await screen.findByRole('option', { name: 'Regional failover' })
+    expect(option).toHaveAccessibleDescription('Failover is not reversible')
+  })
+
+  it('describes nothing when an option has no detail', async () => {
+    render(
+      palette({
+        groups: [{ id: 'only', label: 'Only', options: [{ id: 'a', label: 'Just a title' }] }],
+      }),
+    )
+
+    const option = await screen.findByRole('option', { name: 'Just a title' })
+    expect(option).not.toHaveAttribute('aria-describedby')
+    expect(option).toHaveAccessibleDescription('')
+  })
+
   it('starts with the first option active and points the field at it', async () => {
     render(palette())
 
@@ -106,21 +143,31 @@ describe('CommandPalette', () => {
     expect(field()).toHaveFocus()
   })
 
-  it('stops at both ends rather than wrapping, and Home and End reach them at once', async () => {
+  it('stops at both ends rather than wrapping', async () => {
     render(palette())
     await screen.findAllByRole('option')
 
     await userEvent.keyboard('{ArrowUp}')
     expect(screen.getAllByRole('option')[0]).toHaveAttribute('aria-selected', 'true')
 
-    await userEvent.keyboard('{End}')
+    await userEvent.keyboard('{ArrowDown}{ArrowDown}{ArrowDown}{ArrowDown}')
     expect(screen.getAllByRole('option')[2]).toHaveAttribute('aria-selected', 'true')
+  })
+
+  it('leaves Home and End to the caret, as in any other text field', async () => {
+    const onValueChange = vi.fn<(value: string) => void>()
+    render(palette({ value: 'failover', onValueChange }))
+    await screen.findAllByRole('option')
 
     await userEvent.keyboard('{ArrowDown}')
-    expect(screen.getAllByRole('option')[2]).toHaveAttribute('aria-selected', 'true')
+    expect(screen.getAllByRole('option')[1]).toHaveAttribute('aria-selected', 'true')
 
-    await userEvent.keyboard('{Home}')
-    expect(screen.getAllByRole('option')[0]).toHaveAttribute('aria-selected', 'true')
+    // This is an *editable* combobox whose field never gives up focus, so the
+    // two keys that move the caret to either end of the query stay its own;
+    // a listbox claims them only when the listbox itself has focus.
+    await userEvent.keyboard('{Home}{End}')
+
+    expect(screen.getAllByRole('option')[1]).toHaveAttribute('aria-selected', 'true')
   })
 
   it('selects the active option on Enter, by the id the caller gave it', async () => {

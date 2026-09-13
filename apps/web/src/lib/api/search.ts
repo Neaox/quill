@@ -18,6 +18,18 @@ import type { SearchResults } from './types.ts'
  * about what a cursor means or which workspace the search was run from.
  */
 
+/**
+ * The longest query the server will read: `GET /api/search`'s `q` is capped at
+ * 512 by its schema, so anything longer is a `400` rather than a search. It
+ * lives here, beside the request, because it is a fact about the route rather
+ * than about either surface.
+ */
+export const MAX_QUERY_LENGTH = 512
+
+export function queryTooLong(query: string): boolean {
+  return query.length > MAX_QUERY_LENGTH
+}
+
 /** What the palette shows without scrolling; the results page asks for more. */
 export const PALETTE_LIMIT = 8
 
@@ -37,13 +49,23 @@ export interface SearchInput {
   readonly limit?: number
 }
 
+/**
+ * `signal` is TanStack Query's own, and it aborts the moment its observer is
+ * superseded or unmounted. Typeahead is where that earns its keep: every
+ * debounced word starts a request, and without this each one runs to
+ * completion against the server's 300 ms budget (quill-plan.md section 31)
+ * long after the key it belonged to has been replaced. `openapi-fetch` passes
+ * it straight to `fetch`.
+ */
 function fetchPage(
   client: ApiClient,
   input: SearchInput,
   cursor: string | undefined,
+  signal: AbortSignal,
 ): Promise<SearchResults> {
   return request(
     client.GET('/api/search', {
+      signal,
       params: {
         query: {
           q: input.query.trim(),
@@ -67,8 +89,8 @@ export function searchQueryOptions(client: ApiClient, input: SearchInput) {
   const query = input.query.trim()
   return {
     queryKey: queryKeys.search(input.workspaceId, query, null),
-    queryFn: () => fetchPage(client, input, undefined),
-    enabled: query !== '',
+    queryFn: ({ signal }: { signal: AbortSignal }) => fetchPage(client, input, undefined, signal),
+    enabled: query !== '' && !queryTooLong(query),
     // The previous answer stays on screen while the next one is fetched, so a
     // list does not blink to empty between keystrokes; `isFetching` is what
     // the field's busy state reads (`docs/design/feedback.md`).
@@ -91,11 +113,11 @@ export function searchResultsQueryOptions(client: ApiClient, input: SearchInput)
   const query = input.query.trim()
   return {
     queryKey: queryKeys.searchResults(input.workspaceId, query),
-    queryFn: ({ pageParam }: { pageParam: string | undefined }) =>
-      fetchPage(client, { limit: RESULTS_LIMIT, ...input }, pageParam),
+    queryFn: ({ pageParam, signal }: { pageParam: string | undefined; signal: AbortSignal }) =>
+      fetchPage(client, { limit: RESULTS_LIMIT, ...input }, pageParam, signal),
     initialPageParam: undefined,
     getNextPageParam: (lastPage: SearchResults) => lastPage.nextCursor,
-    enabled: query !== '',
+    enabled: query !== '' && !queryTooLong(query),
   }
 }
 

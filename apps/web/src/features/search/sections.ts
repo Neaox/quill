@@ -1,4 +1,4 @@
-import type { SearchHit, SearchResults } from '../../lib/api/index.ts'
+import { MAX_QUERY_LENGTH, type SearchHit, type SearchResults } from '../../lib/api/index.ts'
 import {
   workspaceReference,
   type ReferencableWorkspace,
@@ -90,4 +90,49 @@ export function searchSections(
 /** How many documents a set of sections is offering, for "no results" and for counts. */
 export function sectionsHitCount(sections: readonly SearchSection[]): number {
   return sections.reduce((total, section) => total + section.hits.length, 0)
+}
+
+/* --- The words both surfaces use ------------------------------------------
+ *
+ * Search says the same things in a palette and on a page, and a sentence
+ * written twice drifts. They live beside the headings because this module is
+ * already the feature's shared vocabulary.
+ */
+
+/** What an empty search box invites. */
+export const SEARCH_PROMPT =
+  'Type to search every workspace you can read. Matches where you are come first.'
+
+/** What a failed request says. Never the status code: there is nothing to do with one. */
+export const SEARCH_UNAVAILABLE = 'Search is not answering right now. Try again in a moment.'
+
+/**
+ * What an over-long query is told. The cap itself is `MAX_QUERY_LENGTH` in
+ * `lib/api/search.ts`, beside the request it is a fact about; this is the
+ * sentence, which belongs with the rest of the feature's words. Saying it here
+ * rather than sending the query keeps the refusal in the same vocabulary as
+ * the three the server answers with.
+ */
+export const QUERY_TOO_LONG = `That search is too long: ${MAX_QUERY_LENGTH} characters at most.`
+
+/**
+ * What has just been answered, as one sentence for a live region.
+ *
+ * Counting the workspaces as well as the hits is the point: search is the one
+ * surface that crosses them (quill-plan.md §15), and "8 results" alone would
+ * hide that five of them are somewhere else entirely.
+ */
+export function describeResults(sections: readonly SearchSection[]): string {
+  const hits = sectionsHitCount(sections)
+  if (hits === 0) return 'No results.'
+
+  const here = sections.find((section) => section.id === 'current')?.hits.length ?? 0
+  const elsewhere = sections.filter((section) => section.id !== 'current')
+  const parts = [`${hits} ${hits === 1 ? 'result' : 'results'}`]
+  if (here > 0) parts.push(`${here} in this workspace`)
+  if (elsewhere.length > 0) {
+    const names = elsewhere.length === 1 ? 'workspace' : 'workspaces'
+    parts.push(`${sectionsHitCount(elsewhere)} in ${elsewhere.length} other ${names}`)
+  }
+  return `${parts.join(', ')}.`
 }

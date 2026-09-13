@@ -37,9 +37,24 @@ export const searchFieldStyles = tv({
  * the browser rather than about the application's state, so it is neither
  * state nor something an effect has to keep in step — and the authenticated
  * application is a single-page app (ADR-013), so there is no server render for
- * it to disagree with. `⌘` on an Apple keyboard, `Ctrl` everywhere else.
+ * it to disagree with.
+ *
+ * `userAgentData.platform` is the question actually being asked, and
+ * `navigator.platform` is the older spelling of it; the user-agent string is
+ * not consulted, because it is the one vendors are freezing. An unrecognised
+ * platform gets `Ctrl`, which is the commoner answer.
  */
-const MODIFIER_LABEL = /mac|iphone|ipad|ipod/i.test(navigator.userAgent) ? '⌘ K' : 'Ctrl K'
+function applePlatform(): boolean {
+  const hinted: unknown = 'userAgentData' in navigator ? navigator.userAgentData : undefined
+  const stated: unknown =
+    typeof hinted === 'object' && hinted !== null && 'platform' in hinted
+      ? hinted.platform
+      : undefined
+  const platform = typeof stated === 'string' && stated !== '' ? stated : navigator.platform
+  return /mac|iphone|ipad|ipod/i.test(platform)
+}
+
+const MODIFIER_LABEL = applePlatform() ? '⌘ K' : 'Ctrl K'
 
 /**
  * The top bar's search field (`docs/design/canvas/Main.dc.html`).

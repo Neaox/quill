@@ -60,7 +60,6 @@ export { CodeBlock, codeBlockStyles, type CodeBlockProps } from './components/co
 export {
   CommandPalette,
   commandPaletteStyles,
-  positionOptions,
   type CommandPaletteGroup,
   type CommandPaletteOption,
   type CommandPaletteProps,

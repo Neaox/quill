@@ -107,10 +107,9 @@ export {
  */
 export { useDraftClient, useLockClient } from './editor-clients.ts'
 export {
-  PALETTE_LIMIT,
-  RESULTS_LIMIT,
+  MAX_QUERY_LENGTH,
+  queryTooLong,
   readInvalidQuery,
-  searchQueryOptions,
   searchResultsQueryOptions,
   useSearch,
   useSearchResults,
@@ -156,6 +155,5 @@ export type {
   MergeConflict,
   SearchResults,
   SearchHit,
-  SearchGroup,
   SearchSnippet,
 } from './types.ts'

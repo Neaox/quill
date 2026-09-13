@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, type ReactNode } from 'react'
 
 import {
   Badge,
@@ -270,13 +270,13 @@ const PALETTE_GROUPS = [
     options: [
       {
         id: 'failover',
-        content: <PaletteRow title="Regional failover" trail="Engineering / Runbooks" />,
+        label: 'Regional failover',
+        detail: <PaletteTrail>Engineering / Runbooks</PaletteTrail>,
       },
       {
         id: 'auth',
-        content: (
-          <PaletteRow title="Authentication architecture" trail="Engineering / Architecture" />
-        ),
+        label: 'Authentication architecture',
+        detail: <PaletteTrail>Engineering / Architecture</PaletteTrail>,
       },
     ],
   },
@@ -286,19 +286,15 @@ const PALETTE_GROUPS = [
     options: [
       {
         id: 'charter',
-        content: <PaletteRow title="Platform team charter" trail="Platform docs / Docs" />,
+        label: 'Platform team charter',
+        detail: <PaletteTrail>Platform docs / Docs</PaletteTrail>,
       },
     ],
   },
 ]
 
-function PaletteRow({ title, trail }: { readonly title: string; readonly trail: string }) {
-  return (
-    <span className="flex flex-col gap-1">
-      <span className="text-sm font-medium text-foreground">{title}</span>
-      <span className="text-2xs text-muted">{trail}</span>
-    </span>
-  )
+function PaletteTrail({ children }: { readonly children: ReactNode }) {
+  return <span className="text-2xs text-muted">{children}</span>
 }
 
 /**

@@ -2,6 +2,8 @@ import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it } from 'vitest'
 
+import { expectNoAccessibilityViolations } from '@quill/ui/testing/axe'
+
 import { renderApp } from '../../lib/api/render-app.tsx'
 import { errorResponse, jsonResponse, type FakeRoutes } from '../../lib/api/testing.ts'
 
@@ -215,7 +217,9 @@ describe('the search results page', () => {
       shellRoutes(() => jsonResponse(200, { query: '', current: [], elsewhere: [] })),
     )
 
-    expect(await screen.findByText(/Type something to search/)).toBeInTheDocument()
+    expect(
+      await screen.findByText(/Type to search every workspace you can read/),
+    ).toBeInTheDocument()
   })
 
   it('shows a refused query where it went wrong, inside the shell', async () => {
@@ -243,6 +247,102 @@ describe('the search results page', () => {
 
     const notice = await screen.findByText("Couldn't run that search")
     expect(within(notice.closest('div') as HTMLElement).getByText(/not answering/)).toBeVisible()
+  })
+
+  it('is free of axe violations, shell and results together', async () => {
+    renderApp(
+      '/w/engineering/search?q=failover',
+      shellRoutes(() =>
+        jsonResponse(200, {
+          query: 'failover',
+          current: [hit('Regional failover')],
+          elsewhere: [PLATFORM_GROUP],
+        }),
+      ),
+    )
+
+    await screen.findByRole('link', { name: 'Regional failover' })
+
+    // The whole page, shell included. It was scoped to `main` while the
+    // sidebar's workspace name sat outside any landmark; #16 put it inside a
+    // named section, so the broader check is the one worth keeping.
+    await expectNoAccessibilityViolations(document.body)
+  })
+
+  it('names a result by its title, with the snippet and trail describing it', async () => {
+    renderApp(
+      '/w/engineering/search?q=failover',
+      shellRoutes(() =>
+        jsonResponse(200, {
+          query: 'failover',
+          current: [hit('Regional failover')],
+          elsewhere: [],
+        }),
+      ),
+    )
+
+    // Exactly, not by substring: the snippet mentions "failover" too, and a
+    // link named by its whole row cannot be told from its neighbours by ear.
+    const link = await screen.findByRole('link', { name: 'Regional failover' })
+    // The description is the snippet and the trail. Marked words are separate
+    // inline elements, and the accessible-name computation joins them without
+    // spaces, so this matches on the words rather than on the whole sentence.
+    expect(link).toHaveAccessibleDescription(/failover/)
+    expect(link).toHaveAccessibleDescription(/Runbooks/)
+  })
+
+  it('announces what landed, counting the workspaces crossed', async () => {
+    renderApp(
+      '/w/engineering/search?q=failover',
+      shellRoutes(() =>
+        jsonResponse(200, {
+          query: 'failover',
+          current: [hit('Regional failover')],
+          elsewhere: [PLATFORM_GROUP],
+        }),
+      ),
+    )
+
+    await screen.findByRole('link', { name: 'Regional failover' })
+    await waitFor(() => {
+      expect(
+        screen.getByText('2 results, 1 in this workspace, 1 in 1 other workspace.'),
+      ).toBeInTheDocument()
+    })
+  })
+
+  it('says it is searching in words, not only with a spinner', async () => {
+    const answer = Promise.withResolvers<void>()
+    renderApp(
+      '/w/engineering/search?q=failover',
+      shellRoutes(async () => {
+        await answer.promise
+        return jsonResponse(200, {
+          query: 'failover',
+          current: [hit('Regional failover')],
+          elsewhere: [],
+        })
+      }),
+    )
+
+    // `Spinner` is decorative by contract, so the words are what say so.
+    expect(await screen.findByText('Searching…')).toBeVisible()
+    answer.resolve()
+    await screen.findByRole('link', { name: 'Regional failover' })
+  })
+
+  it('refuses a query longer than the server would read', async () => {
+    let requests = 0
+    renderApp(
+      `/w/engineering/search?q=${'a'.repeat(513)}`,
+      shellRoutes(() => {
+        requests += 1
+        return jsonResponse(200, { query: 'x', current: [], elsewhere: [] })
+      }),
+    )
+
+    expect(await screen.findByText(/That search is too long/)).toBeVisible()
+    expect(requests).toBe(0)
   })
 
   it('names the search in the document title', async () => {

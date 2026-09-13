@@ -2,6 +2,8 @@ import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it } from 'vitest'
 
+import { expectNoAccessibilityViolations } from '@quill/ui/testing/axe'
+
 import { renderApp } from '../../lib/api/render-app.tsx'
 import { errorResponse, jsonResponse, type FakeRoutes } from '../../lib/api/testing.ts'
 
@@ -80,6 +82,19 @@ async function openPalette(routes: FakeRoutes = shellRoutes(() => jsonResponse(2
 function field(): HTMLElement {
   return screen.getByRole('combobox', { name: 'Search documentation' })
 }
+
+/**
+ * `aria-hidden-focus` is off for these two checks, and only these two.
+ *
+ * While a modal dialog is open, Radix brackets it with focus guards — empty
+ * `aria-hidden` spans carrying `tabindex="0"` — which are how the focus trap
+ * knows the edges have been reached. axe reports every one of them as a hidden
+ * focusable element, which is exactly what they are and exactly what they are
+ * for; the rule is about content a person can tab into and not perceive, and
+ * these hold nothing. Everything else axe checks stays on, over the whole
+ * composed page.
+ */
+const AXE_WITH_FOCUS_TRAP = { rules: { 'aria-hidden-focus': { enabled: false } } }
 
 /**
  * An input that binds Ctrl+K itself, standing in for a real one: it answers
@@ -327,6 +342,132 @@ describe('the search palette', () => {
       expect(router.state.location.pathname).toBe('/w/engineering/search')
     })
     expect(router.state.location.searchStr).toBe('?q=failover')
+  })
+
+  it('is free of axe violations with results on screen, inside the real shell', async () => {
+    await openPalette()
+
+    await userEvent.keyboard('failover')
+    await screen.findAllByRole('option')
+
+    // The composed surface, not the primitive in isolation: the palette is a
+    // dialog over the whole workspace shell, and this is the arrangement
+    // people actually meet.
+    await expectNoAccessibilityViolations(document.body, AXE_WITH_FOCUS_TRAP)
+  })
+
+  it('is free of axe violations in its empty state, where the listbox is absent', async () => {
+    await openPalette(
+      shellRoutes(() => jsonResponse(200, { query: 'zzz', current: [], elsewhere: [] })),
+    )
+
+    await userEvent.keyboard('zzz')
+    await screen.findByText(/Nothing matched/)
+
+    // `aria-expanded="false"` with `aria-controls` pointing at an id that is
+    // not rendered: legal, and the combination worth pinning.
+    await expectNoAccessibilityViolations(document.body, AXE_WITH_FOCUS_TRAP)
+  })
+
+  it('stays busy through the debounce, before any request has been made', async () => {
+    let requests = 0
+    await openPalette(
+      shellRoutes(() => {
+        requests += 1
+        return jsonResponse(200, RESULTS)
+      }),
+    )
+
+    await userEvent.keyboard('failover')
+    await screen.findAllByRole('option')
+    expect(requests).toBe(1)
+
+    // A second word: for the length of the debounce nothing is in flight, and
+    // the previous answer is still on screen. The field must still say it is
+    // working, or those hits read as the answer to what is now in the box.
+    await userEvent.keyboard(' runbook')
+    expect(field()).toHaveAttribute('aria-busy', 'true')
+    expect(requests).toBe(1)
+  })
+
+  it('never says "nothing matched" about a query it has not sent yet', async () => {
+    await openPalette(
+      shellRoutes((request) => {
+        const asked = new URL(request.url).searchParams.get('q')
+        return jsonResponse(
+          200,
+          asked === 'failover' ? RESULTS : { query: asked, current: [], elsewhere: [] },
+        )
+      }),
+    )
+
+    await userEvent.keyboard('failover')
+    await screen.findAllByRole('option')
+
+    await userEvent.keyboard('x')
+    expect(screen.queryByText(/Nothing matched/)).not.toBeInTheDocument()
+
+    await waitFor(() => {
+      expect(screen.getByText('Nothing matched “failoverx”.')).toBeVisible()
+    })
+  })
+
+  it('marks the character of the query the answer is actually about', async () => {
+    await openPalette(
+      shellRoutes((request) => {
+        const asked = new URL(request.url).searchParams.get('q') ?? ''
+        return asked === 'owner:'
+          ? errorResponse(422, 'invalid_query', 'That filter has no value', {
+              kind: 'empty-filter-value',
+              position: 5,
+            })
+          : jsonResponse(200, { query: asked, current: [], elsewhere: [] })
+      }),
+    )
+
+    await userEvent.keyboard('owner:')
+    await screen.findByRole('alert')
+
+    // Keep typing: the refusal belonged to `owner:`, and `owner:x` is a filter
+    // that now has a value, so the stale notice must not be redrawn over it.
+    await userEvent.keyboard('x')
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  })
+
+  it('announces the settled answer, counting the workspaces it crossed', async () => {
+    await openPalette()
+
+    await userEvent.keyboard('failover')
+
+    await waitFor(() => {
+      expect(screen.getByRole('status')).toHaveTextContent(
+        '2 results, 1 in this workspace, 1 in 1 other workspace.',
+      )
+    })
+  })
+
+  it('says nothing while an answer is still on the way', async () => {
+    await openPalette()
+
+    await userEvent.keyboard('failover')
+    // Mid-debounce: the region is empty rather than announcing a stale count.
+    expect(screen.getByRole('status')).toHaveTextContent('')
+  })
+
+  it('refuses a query longer than the server would read, without sending it', async () => {
+    let requests = 0
+    await openPalette(
+      shellRoutes(() => {
+        requests += 1
+        return jsonResponse(200, RESULTS)
+      }),
+    )
+
+    await userEvent.paste('a'.repeat(513))
+
+    expect(await screen.findByText(/That search is too long/)).toBeVisible()
+    expect(requests).toBe(0)
+    expect(screen.queryByRole('link', { name: 'See all results' })).not.toBeInTheDocument()
   })
 
   it('offers no results page until there is a query to show results for', async () => {
