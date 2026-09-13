@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { runThemeDoctor } from '../doctor/run.ts'
 import { validateThemeDocument } from '../schema/validate.ts'
 import { BUILTIN_THEME_IDS, type BuiltinThemeId } from '../schema/theme-document.ts'
-import { BUILTIN_THEMES, builtinTheme, DEFAULT_THEME } from './themes.ts'
+import { BUILTIN_THEMES, builtinTheme, DEFAULT_THEME, recommendedLayout } from './themes.ts'
 
 describe('the built-in themes', () => {
   it('ships exactly the three directions on the design canvas', () => {
@@ -61,5 +61,18 @@ describe('the seeds taken from the artboards', () => {
     const report = runThemeDoctor(BUILTIN_THEMES.instrument)
     const marks = report.adjustments.filter((entry) => entry.role === 'accent')
     expect(marks.some((entry) => entry.reason === 'band')).toBe(true)
+  })
+
+  /**
+   * ADR-028's amendment moves the signature variants out of the theme and
+   * calls them a layout, chosen per workspace; the theme keeps them as what it
+   * *recommends*. This function is the one place that reads the one as the
+   * other, which is what makes the rename a one-line change — so it is held to
+   * that here, in the package the definition now lives in.
+   */
+  it('recommends each built-in theme’s own signature variants as a layout', () => {
+    for (const theme of Object.values(BUILTIN_THEMES)) {
+      expect(recommendedLayout(theme)).toEqual(theme.variants)
+    }
   })
 })

@@ -17,7 +17,7 @@
 export { atelier } from './atelier.ts'
 export { instrument } from './instrument.ts'
 export { press } from './press.ts'
-export { BUILTIN_THEMES, DEFAULT_THEME, builtinTheme } from './themes.ts'
+export { BUILTIN_THEMES, DEFAULT_THEME, builtinTheme, recommendedLayout } from './themes.ts'
 export type {
   BuiltinThemeId,
   ThemeDocument,

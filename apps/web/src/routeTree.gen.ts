@@ -19,10 +19,17 @@ import { Route as SignUpRouteImport } from './routes/sign-up'
 import { Route as VerifyEmailRouteImport } from './routes/verify-email'
 import { Route as ShareTokenRouteRouteImport } from './routes/share/$token/route'
 import { Route as AuthenticatedAdminOrganisationRouteImport } from './routes/_authenticated/admin/organisation'
+import { Route as AuthenticatedAdminSettingsRouteRouteImport } from './routes/_authenticated/admin/settings/route'
 import { Route as AuthenticatedWWorkspaceSlugRouteRouteImport } from './routes/_authenticated/w/$workspaceSlug/route'
 import { Route as ShareTokenIndexRouteImport } from './routes/share/$token/index'
+import { Route as AuthenticatedAdminSettingsIndexRouteImport } from './routes/_authenticated/admin/settings/index'
+import { Route as AuthenticatedAdminSettingsLayoutRouteImport } from './routes/_authenticated/admin/settings/layout'
+import { Route as AuthenticatedAdminSettingsOrganisationRouteImport } from './routes/_authenticated/admin/settings/organisation'
+import { Route as AuthenticatedAdminSettingsSecretsRouteImport } from './routes/_authenticated/admin/settings/secrets'
+import { Route as AuthenticatedAdminSettingsThemeRouteImport } from './routes/_authenticated/admin/settings/theme'
 import { Route as AuthenticatedWWorkspaceSlugIndexRouteImport } from './routes/_authenticated/w/$workspaceSlug/index'
 import { Route as AuthenticatedWWorkspaceSlugSearchRouteImport } from './routes/_authenticated/w/$workspaceSlug/search'
+import { Route as AuthenticatedWWorkspaceSlugSettingsRouteImport } from './routes/_authenticated/w/$workspaceSlug/settings'
 import { Route as ShareTokenDDocumentRefIndexRouteImport } from './routes/share/$token/d/$documentRef/index'
 import { Route as AuthenticatedWWorkspaceSlugDDocumentIdIndexRouteImport } from './routes/_authenticated/w/$workspaceSlug/d/$documentId/index'
 import { Route as AuthenticatedWWorkspaceSlugDDocumentIdEditRouteImport } from './routes/_authenticated/w/$workspaceSlug/d/$documentId/edit'
@@ -78,6 +85,12 @@ const AuthenticatedAdminOrganisationRoute =
     path: '/admin/organisation',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
+const AuthenticatedAdminSettingsRouteRoute =
+  AuthenticatedAdminSettingsRouteRouteImport.update({
+    id: '/admin/settings',
+    path: '/admin/settings',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 const AuthenticatedWWorkspaceSlugRouteRoute =
   AuthenticatedWWorkspaceSlugRouteRouteImport.update({
     id: '/w/$workspaceSlug',
@@ -89,6 +102,36 @@ const ShareTokenIndexRoute = ShareTokenIndexRouteImport.update({
   path: '/',
   getParentRoute: () => ShareTokenRouteRoute,
 } as any)
+const AuthenticatedAdminSettingsIndexRoute =
+  AuthenticatedAdminSettingsIndexRouteImport.update({
+    id: '/',
+    path: '/',
+    getParentRoute: () => AuthenticatedAdminSettingsRouteRoute,
+  } as any)
+const AuthenticatedAdminSettingsLayoutRoute =
+  AuthenticatedAdminSettingsLayoutRouteImport.update({
+    id: '/layout',
+    path: '/layout',
+    getParentRoute: () => AuthenticatedAdminSettingsRouteRoute,
+  } as any)
+const AuthenticatedAdminSettingsOrganisationRoute =
+  AuthenticatedAdminSettingsOrganisationRouteImport.update({
+    id: '/organisation',
+    path: '/organisation',
+    getParentRoute: () => AuthenticatedAdminSettingsRouteRoute,
+  } as any)
+const AuthenticatedAdminSettingsSecretsRoute =
+  AuthenticatedAdminSettingsSecretsRouteImport.update({
+    id: '/secrets',
+    path: '/secrets',
+    getParentRoute: () => AuthenticatedAdminSettingsRouteRoute,
+  } as any)
+const AuthenticatedAdminSettingsThemeRoute =
+  AuthenticatedAdminSettingsThemeRouteImport.update({
+    id: '/theme',
+    path: '/theme',
+    getParentRoute: () => AuthenticatedAdminSettingsRouteRoute,
+  } as any)
 const AuthenticatedWWorkspaceSlugIndexRoute =
   AuthenticatedWWorkspaceSlugIndexRouteImport.update({
     id: '/',
@@ -99,6 +142,12 @@ const AuthenticatedWWorkspaceSlugSearchRoute =
   AuthenticatedWWorkspaceSlugSearchRouteImport.update({
     id: '/search',
     path: '/search',
+    getParentRoute: () => AuthenticatedWWorkspaceSlugRouteRoute,
+  } as any)
+const AuthenticatedWWorkspaceSlugSettingsRoute =
+  AuthenticatedWWorkspaceSlugSettingsRouteImport.update({
+    id: '/settings',
+    path: '/settings',
     getParentRoute: () => AuthenticatedWWorkspaceSlugRouteRoute,
   } as any)
 const ShareTokenDDocumentRefIndexRoute =
@@ -135,10 +184,17 @@ export interface FileRoutesByFullPath {
   '/sign-up': typeof SignUpRoute
   '/verify-email': typeof VerifyEmailRoute
   '/share/$token': typeof ShareTokenRouteRouteWithChildren
+  '/admin/settings': typeof AuthenticatedAdminSettingsRouteRouteWithChildren
   '/w/$workspaceSlug': typeof AuthenticatedWWorkspaceSlugRouteRouteWithChildren
   '/admin/organisation': typeof AuthenticatedAdminOrganisationRoute
   '/share/$token/': typeof ShareTokenIndexRoute
+  '/admin/settings/layout': typeof AuthenticatedAdminSettingsLayoutRoute
+  '/admin/settings/organisation': typeof AuthenticatedAdminSettingsOrganisationRoute
+  '/admin/settings/secrets': typeof AuthenticatedAdminSettingsSecretsRoute
+  '/admin/settings/theme': typeof AuthenticatedAdminSettingsThemeRoute
   '/w/$workspaceSlug/search': typeof AuthenticatedWWorkspaceSlugSearchRoute
+  '/w/$workspaceSlug/settings': typeof AuthenticatedWWorkspaceSlugSettingsRoute
+  '/admin/settings/': typeof AuthenticatedAdminSettingsIndexRoute
   '/w/$workspaceSlug/': typeof AuthenticatedWWorkspaceSlugIndexRoute
   '/share/$token/d/$documentRef/': typeof ShareTokenDDocumentRefIndexRoute
   '/w/$workspaceSlug/d/$documentId/edit': typeof AuthenticatedWWorkspaceSlugDDocumentIdEditRoute
@@ -155,7 +211,13 @@ export interface FileRoutesByTo {
   '/verify-email': typeof VerifyEmailRoute
   '/admin/organisation': typeof AuthenticatedAdminOrganisationRoute
   '/share/$token': typeof ShareTokenIndexRoute
+  '/admin/settings/layout': typeof AuthenticatedAdminSettingsLayoutRoute
+  '/admin/settings/organisation': typeof AuthenticatedAdminSettingsOrganisationRoute
+  '/admin/settings/secrets': typeof AuthenticatedAdminSettingsSecretsRoute
+  '/admin/settings/theme': typeof AuthenticatedAdminSettingsThemeRoute
   '/w/$workspaceSlug/search': typeof AuthenticatedWWorkspaceSlugSearchRoute
+  '/w/$workspaceSlug/settings': typeof AuthenticatedWWorkspaceSlugSettingsRoute
+  '/admin/settings': typeof AuthenticatedAdminSettingsIndexRoute
   '/w/$workspaceSlug': typeof AuthenticatedWWorkspaceSlugIndexRoute
   '/share/$token/d/$documentRef': typeof ShareTokenDDocumentRefIndexRoute
   '/w/$workspaceSlug/d/$documentId/edit': typeof AuthenticatedWWorkspaceSlugDDocumentIdEditRoute
@@ -173,10 +235,17 @@ export interface FileRoutesById {
   '/sign-up': typeof SignUpRoute
   '/verify-email': typeof VerifyEmailRoute
   '/share/$token': typeof ShareTokenRouteRouteWithChildren
+  '/_authenticated/admin/settings': typeof AuthenticatedAdminSettingsRouteRouteWithChildren
   '/_authenticated/w/$workspaceSlug': typeof AuthenticatedWWorkspaceSlugRouteRouteWithChildren
   '/_authenticated/admin/organisation': typeof AuthenticatedAdminOrganisationRoute
   '/share/$token/': typeof ShareTokenIndexRoute
+  '/_authenticated/admin/settings/layout': typeof AuthenticatedAdminSettingsLayoutRoute
+  '/_authenticated/admin/settings/organisation': typeof AuthenticatedAdminSettingsOrganisationRoute
+  '/_authenticated/admin/settings/secrets': typeof AuthenticatedAdminSettingsSecretsRoute
+  '/_authenticated/admin/settings/theme': typeof AuthenticatedAdminSettingsThemeRoute
   '/_authenticated/w/$workspaceSlug/search': typeof AuthenticatedWWorkspaceSlugSearchRoute
+  '/_authenticated/w/$workspaceSlug/settings': typeof AuthenticatedWWorkspaceSlugSettingsRoute
+  '/_authenticated/admin/settings/': typeof AuthenticatedAdminSettingsIndexRoute
   '/_authenticated/w/$workspaceSlug/': typeof AuthenticatedWWorkspaceSlugIndexRoute
   '/share/$token/d/$documentRef/': typeof ShareTokenDDocumentRefIndexRoute
   '/_authenticated/w/$workspaceSlug/d/$documentId/edit': typeof AuthenticatedWWorkspaceSlugDDocumentIdEditRoute
@@ -194,10 +263,17 @@ export interface FileRouteTypes {
     | '/sign-up'
     | '/verify-email'
     | '/share/$token'
+    | '/admin/settings'
     | '/w/$workspaceSlug'
     | '/admin/organisation'
     | '/share/$token/'
+    | '/admin/settings/layout'
+    | '/admin/settings/organisation'
+    | '/admin/settings/secrets'
+    | '/admin/settings/theme'
     | '/w/$workspaceSlug/search'
+    | '/w/$workspaceSlug/settings'
+    | '/admin/settings/'
     | '/w/$workspaceSlug/'
     | '/share/$token/d/$documentRef/'
     | '/w/$workspaceSlug/d/$documentId/edit'
@@ -214,7 +290,13 @@ export interface FileRouteTypes {
     | '/verify-email'
     | '/admin/organisation'
     | '/share/$token'
+    | '/admin/settings/layout'
+    | '/admin/settings/organisation'
+    | '/admin/settings/secrets'
+    | '/admin/settings/theme'
     | '/w/$workspaceSlug/search'
+    | '/w/$workspaceSlug/settings'
+    | '/admin/settings'
     | '/w/$workspaceSlug'
     | '/share/$token/d/$documentRef'
     | '/w/$workspaceSlug/d/$documentId/edit'
@@ -231,10 +313,17 @@ export interface FileRouteTypes {
     | '/sign-up'
     | '/verify-email'
     | '/share/$token'
+    | '/_authenticated/admin/settings'
     | '/_authenticated/w/$workspaceSlug'
     | '/_authenticated/admin/organisation'
     | '/share/$token/'
+    | '/_authenticated/admin/settings/layout'
+    | '/_authenticated/admin/settings/organisation'
+    | '/_authenticated/admin/settings/secrets'
+    | '/_authenticated/admin/settings/theme'
     | '/_authenticated/w/$workspaceSlug/search'
+    | '/_authenticated/w/$workspaceSlug/settings'
+    | '/_authenticated/admin/settings/'
     | '/_authenticated/w/$workspaceSlug/'
     | '/share/$token/d/$documentRef/'
     | '/_authenticated/w/$workspaceSlug/d/$documentId/edit'
@@ -326,6 +415,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedAdminOrganisationRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/admin/settings': {
+      id: '/_authenticated/admin/settings'
+      path: '/admin/settings'
+      fullPath: '/admin/settings'
+      preLoaderRoute: typeof AuthenticatedAdminSettingsRouteRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/w/$workspaceSlug': {
       id: '/_authenticated/w/$workspaceSlug'
       path: '/w/$workspaceSlug'
@@ -340,6 +436,41 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ShareTokenIndexRouteImport
       parentRoute: typeof ShareTokenRouteRoute
     }
+    '/_authenticated/admin/settings/': {
+      id: '/_authenticated/admin/settings/'
+      path: '/'
+      fullPath: '/admin/settings/'
+      preLoaderRoute: typeof AuthenticatedAdminSettingsIndexRouteImport
+      parentRoute: typeof AuthenticatedAdminSettingsRouteRoute
+    }
+    '/_authenticated/admin/settings/layout': {
+      id: '/_authenticated/admin/settings/layout'
+      path: '/layout'
+      fullPath: '/admin/settings/layout'
+      preLoaderRoute: typeof AuthenticatedAdminSettingsLayoutRouteImport
+      parentRoute: typeof AuthenticatedAdminSettingsRouteRoute
+    }
+    '/_authenticated/admin/settings/organisation': {
+      id: '/_authenticated/admin/settings/organisation'
+      path: '/organisation'
+      fullPath: '/admin/settings/organisation'
+      preLoaderRoute: typeof AuthenticatedAdminSettingsOrganisationRouteImport
+      parentRoute: typeof AuthenticatedAdminSettingsRouteRoute
+    }
+    '/_authenticated/admin/settings/secrets': {
+      id: '/_authenticated/admin/settings/secrets'
+      path: '/secrets'
+      fullPath: '/admin/settings/secrets'
+      preLoaderRoute: typeof AuthenticatedAdminSettingsSecretsRouteImport
+      parentRoute: typeof AuthenticatedAdminSettingsRouteRoute
+    }
+    '/_authenticated/admin/settings/theme': {
+      id: '/_authenticated/admin/settings/theme'
+      path: '/theme'
+      fullPath: '/admin/settings/theme'
+      preLoaderRoute: typeof AuthenticatedAdminSettingsThemeRouteImport
+      parentRoute: typeof AuthenticatedAdminSettingsRouteRoute
+    }
     '/_authenticated/w/$workspaceSlug/': {
       id: '/_authenticated/w/$workspaceSlug/'
       path: '/'
@@ -352,6 +483,13 @@ declare module '@tanstack/react-router' {
       path: '/search'
       fullPath: '/w/$workspaceSlug/search'
       preLoaderRoute: typeof AuthenticatedWWorkspaceSlugSearchRouteImport
+      parentRoute: typeof AuthenticatedWWorkspaceSlugRouteRoute
+    }
+    '/_authenticated/w/$workspaceSlug/settings': {
+      id: '/_authenticated/w/$workspaceSlug/settings'
+      path: '/settings'
+      fullPath: '/w/$workspaceSlug/settings'
+      preLoaderRoute: typeof AuthenticatedWWorkspaceSlugSettingsRouteImport
       parentRoute: typeof AuthenticatedWWorkspaceSlugRouteRoute
     }
     '/share/$token/d/$documentRef/': {
@@ -385,8 +523,34 @@ declare module '@tanstack/react-router' {
   }
 }
 
+interface AuthenticatedAdminSettingsRouteRouteChildren {
+  AuthenticatedAdminSettingsLayoutRoute: typeof AuthenticatedAdminSettingsLayoutRoute
+  AuthenticatedAdminSettingsOrganisationRoute: typeof AuthenticatedAdminSettingsOrganisationRoute
+  AuthenticatedAdminSettingsSecretsRoute: typeof AuthenticatedAdminSettingsSecretsRoute
+  AuthenticatedAdminSettingsThemeRoute: typeof AuthenticatedAdminSettingsThemeRoute
+  AuthenticatedAdminSettingsIndexRoute: typeof AuthenticatedAdminSettingsIndexRoute
+}
+
+const AuthenticatedAdminSettingsRouteRouteChildren: AuthenticatedAdminSettingsRouteRouteChildren =
+  {
+    AuthenticatedAdminSettingsLayoutRoute:
+      AuthenticatedAdminSettingsLayoutRoute,
+    AuthenticatedAdminSettingsOrganisationRoute:
+      AuthenticatedAdminSettingsOrganisationRoute,
+    AuthenticatedAdminSettingsSecretsRoute:
+      AuthenticatedAdminSettingsSecretsRoute,
+    AuthenticatedAdminSettingsThemeRoute: AuthenticatedAdminSettingsThemeRoute,
+    AuthenticatedAdminSettingsIndexRoute: AuthenticatedAdminSettingsIndexRoute,
+  }
+
+const AuthenticatedAdminSettingsRouteRouteWithChildren =
+  AuthenticatedAdminSettingsRouteRoute._addFileChildren(
+    AuthenticatedAdminSettingsRouteRouteChildren,
+  )
+
 interface AuthenticatedWWorkspaceSlugRouteRouteChildren {
   AuthenticatedWWorkspaceSlugSearchRoute: typeof AuthenticatedWWorkspaceSlugSearchRoute
+  AuthenticatedWWorkspaceSlugSettingsRoute: typeof AuthenticatedWWorkspaceSlugSettingsRoute
   AuthenticatedWWorkspaceSlugIndexRoute: typeof AuthenticatedWWorkspaceSlugIndexRoute
   AuthenticatedWWorkspaceSlugDDocumentIdEditRoute: typeof AuthenticatedWWorkspaceSlugDDocumentIdEditRoute
   AuthenticatedWWorkspaceSlugDDocumentIdIndexRoute: typeof AuthenticatedWWorkspaceSlugDDocumentIdIndexRoute
@@ -396,6 +560,8 @@ const AuthenticatedWWorkspaceSlugRouteRouteChildren: AuthenticatedWWorkspaceSlug
   {
     AuthenticatedWWorkspaceSlugSearchRoute:
       AuthenticatedWWorkspaceSlugSearchRoute,
+    AuthenticatedWWorkspaceSlugSettingsRoute:
+      AuthenticatedWWorkspaceSlugSettingsRoute,
     AuthenticatedWWorkspaceSlugIndexRoute:
       AuthenticatedWWorkspaceSlugIndexRoute,
     AuthenticatedWWorkspaceSlugDDocumentIdEditRoute:
@@ -410,12 +576,15 @@ const AuthenticatedWWorkspaceSlugRouteRouteWithChildren =
   )
 
 interface AuthenticatedRouteRouteChildren {
+  AuthenticatedAdminSettingsRouteRoute: typeof AuthenticatedAdminSettingsRouteRouteWithChildren
   AuthenticatedWWorkspaceSlugRouteRoute: typeof AuthenticatedWWorkspaceSlugRouteRouteWithChildren
   AuthenticatedAdminOrganisationRoute: typeof AuthenticatedAdminOrganisationRoute
   AuthenticatedWWorkspaceSlugDDocumentIdPresentRoute: typeof AuthenticatedWWorkspaceSlugDDocumentIdPresentRoute
 }
 
 const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
+  AuthenticatedAdminSettingsRouteRoute:
+    AuthenticatedAdminSettingsRouteRouteWithChildren,
   AuthenticatedWWorkspaceSlugRouteRoute:
     AuthenticatedWWorkspaceSlugRouteRouteWithChildren,
   AuthenticatedAdminOrganisationRoute: AuthenticatedAdminOrganisationRoute,
