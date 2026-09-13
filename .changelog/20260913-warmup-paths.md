@@ -1,0 +1,1 @@
+Changed: The web dev server warms the editor and presentation chunks at start-up from absolute paths, so a first Edit or Present opens as fast as the second and Vitest no longer reports the warmup files as missing.
