@@ -85,6 +85,8 @@ export default defineConfig({
       ],
       exclude: [
         '**/*.test.{ts,tsx}',
+        // Benchmarks measure; they are not behaviour to cover.
+        '**/*.bench.ts',
         '**/*.d.ts',
         '**/*.gen.*',
         '**/index.ts',

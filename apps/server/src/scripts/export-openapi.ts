@@ -3,6 +3,8 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { createFakeClock, createFakeIdGenerator } from '@quill/application/test-support'
 import { createInMemoryUnitOfWork } from '@quill/application/test-support'
+import { createSearchService } from '@quill/search'
+import { createInMemorySearchIndex } from '@quill/search/test-support'
 
 import { createShareLinkPolicy } from '../application/share-link-policy.ts'
 import { buildApp } from '../app.ts'
@@ -40,8 +42,13 @@ export interface OpenApiDocument {
 async function describableDependencies(): Promise<AppDependencies> {
   const clock = createFakeClock(new Date('2026-01-01T00:00:00.000Z'))
   const config = loadConfig({ CONTENT_STORE: 'memory' })
+  // Describing the API searches nothing, so the core's own in-memory index is
+  // the honest choice rather than one bound to a database that is not there.
+  const searchIndex = createInMemorySearchIndex()
   return {
     uow: createInMemoryUnitOfWork(),
+    searchIndex,
+    search: createSearchService(searchIndex),
     contentStore: createContentStore({ driver: 'memory' }, clock),
     format: createDocumentFormat(),
     clock,

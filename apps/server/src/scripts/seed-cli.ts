@@ -13,7 +13,10 @@ import { createUnitOfWork } from '../infrastructure/repositories/unit-of-work.ts
 import { createHasher } from '../infrastructure/hasher.ts'
 import { createSystemClock } from '../infrastructure/system-clock.ts'
 import { createUuidGenerator } from '../infrastructure/uuid-generator.ts'
+import { createPostgresSearchIndex } from '../infrastructure/search/postgres-search-index.ts'
+import { createVisibleDocumentResolver } from '../infrastructure/search/visible-documents.ts'
 import { seedDevelopmentData } from './seed.ts'
+import { createSearchService } from '@quill/search'
 
 /**
  * `pnpm --filter @quill/server seed` — the seed's composition root: the same
@@ -44,9 +47,18 @@ const ids = createUuidGenerator()
 const database = createDatabase({ connectionString: config.databaseUrl })
 await runMigrations(database.pool)
 
+const uow = createUnitOfWork(database.db, database.pool, ids)
+const searchIndex = createPostgresSearchIndex({
+  db: database.db,
+  visibility: createVisibleDocumentResolver({ uow }),
+  clock,
+})
+
 try {
   const result = await seedDevelopmentData({
-    uow: createUnitOfWork(database.db, database.pool, ids),
+    uow,
+    searchIndex,
+    search: createSearchService(searchIndex),
     contentStore: createContentStore(config.contentStore, clock),
     format: createDocumentFormat(),
     clock,

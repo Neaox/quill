@@ -36,6 +36,14 @@ module.exports = {
       to: { path: '^(packages/(content-store|search|providers|ui|api-client)|apps/)' },
     },
     {
+      name: 'search-imports-application-types-only',
+      comment:
+        'The search core declares no port of its own: it re-exports the one in the application layer. Those imports must stay type-only, so nothing of the application layer is pulled into the core at runtime and its tests still run without standing one up.',
+      severity: 'error',
+      from: { path: '^packages/search/src' },
+      to: { path: '^packages/application', dependencyTypesNot: ['type-only'] },
+    },
+    {
       name: 'web-does-not-import-server',
       severity: 'error',
       from: { path: '^apps/web' },

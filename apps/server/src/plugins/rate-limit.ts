@@ -82,6 +82,30 @@ export function addressRateLimit(bucket: string): { readonly rateLimit: object }
   }
 }
 
+/**
+ * Route-level `config.rateLimit` for a signed-in endpoint with a budget of
+ * its own: one bucket, keyed by the person behind the session rather than by
+ * the address, so an office behind one address is not one budget between
+ * them. `max` overrides the plugin's default for this route only; the window
+ * is the limiter's, so an exhausted budget still backs off the way every
+ * other one does.
+ */
+export function sessionRateLimit(bucket: string, max: number): { readonly rateLimit: object } {
+  return {
+    rateLimit: { max, keyGenerator: (request: FastifyRequest) => sessionKey(bucket, request) },
+  }
+}
+
+/**
+ * The exact key `sessionRateLimit` counts under. A request with no session
+ * falls back to its address: every route that uses this requires a session, so
+ * that is a defence rather than a path — but a budget that silently became one
+ * shared bucket for every anonymous caller would be no budget at all.
+ */
+export function sessionKey(bucket: string, request: FastifyRequest): string {
+  return `${bucket}:session:${request.session?.userId ?? request.ip}`
+}
+
 export interface AccountKeyOf {
   (request: FastifyRequest): string | undefined
 }

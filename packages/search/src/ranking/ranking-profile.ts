@@ -1,47 +1,20 @@
+import type { RankingProfile } from '@quill/application/ports'
+
 /**
  * Ranking as data (ADR-010, quill-plan.md §15): every adapter reads the same
  * `RankingProfile` and translates it into its own engine's scoring — a
  * `tsvector` weight letter for Postgres, a ranking rule for Meilisearch —
  * rather than each adapter inventing its own notion of "title matters more
- * than body".
+ * than body". The shapes belong to the search port (`@quill/application`'s
+ * `ports/search-index.ts`); the numbers and the decay curve are here.
  */
 
-/** How much a match in each field contributes, relative to the others. */
-export interface FieldWeights {
-  readonly title: number
-  readonly headings: number
-  readonly body: number
-}
-
-/** How a document's age affects its score: a multiplier that decays toward 1 (no boost) as the document gets older. */
-export interface RecencyBoost {
-  /** Days for the boost to fall to half its value. */
-  readonly halfLifeDays: number
-  /** The most a freshly updated document's score can be multiplied up by. */
-  readonly maxBoost: number
-}
-
-/**
- * How search results favour the workspace the caller is currently in
- * (quill-plan.md §15): search is the one surface that crosses workspaces, so
- * a match in the current workspace outranks an equally relevant match
- * elsewhere, and matches elsewhere are offered as grouped suggestions rather
- * than interleaved into one list.
- */
-export interface WorkspaceAffinity {
-  /** Multiplier an adapter applies to a hit's score when it is in the caller's current workspace. */
-  readonly currentWorkspaceBoost: number
-  /** Whether matches outside the current workspace are grouped by workspace rather than left flat. */
-  readonly groupOthersByWorkspace: boolean
-}
-
-export interface RankingProfile {
-  readonly fieldWeights: FieldWeights
-  readonly recencyBoost: RecencyBoost
-  /** Multiplier applied when the query matched an exact quoted phrase rather than loose terms. */
-  readonly exactPhraseBoost: number
-  readonly workspaceAffinity: WorkspaceAffinity
-}
+export type {
+  FieldWeights,
+  RankingProfile,
+  RecencyBoost,
+  WorkspaceAffinity,
+} from '@quill/application/ports'
 
 /**
  * The defaults every adapter starts from. Pinned by a test: changing a

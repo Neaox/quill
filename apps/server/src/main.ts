@@ -20,7 +20,14 @@ import { createOutboundClient } from './infrastructure/http/outbound-client.ts'
 import { runMigrations } from './infrastructure/db/migrator.ts'
 import { createDocumentFormat } from './infrastructure/markdown/document-format.ts'
 import { createAcknowledgingConsumer } from './infrastructure/outbox/acknowledge.ts'
+import { combineConsumers } from './infrastructure/outbox/combine.ts'
+import {
+  createIndexOnPublishConsumer,
+  createIndexOnRenameConsumer,
+} from './infrastructure/outbox/index-on-publish.ts'
 import { createRenderOnPublishConsumer } from './infrastructure/outbox/render-on-publish.ts'
+import { createPostgresSearchIndex } from './infrastructure/search/postgres-search-index.ts'
+import { createVisibleDocumentResolver } from './infrastructure/search/visible-documents.ts'
 import { createSendMailConsumer } from './infrastructure/outbox/send-mail.ts'
 import { pollOutboxOnce } from './infrastructure/outbox/poller.ts'
 import { createUnitOfWork } from './infrastructure/repositories/unit-of-work.ts'
@@ -29,7 +36,8 @@ import { createUuidGenerator } from './infrastructure/uuid-generator.ts'
 import { createJobRunner } from './jobs/job-runner.ts'
 import { createShutdown } from './shutdown.ts'
 import { createSweepJob } from './jobs/sweep-expired.ts'
-import { DOCUMENT_CREATED, DOCUMENT_RENAMED } from '@quill/application'
+import { DOCUMENT_CREATED, DOCUMENT_PUBLISHED } from '@quill/application'
+import { createSearchService } from '@quill/search'
 
 const config = loadConfig()
 const clock = createSystemClock()
@@ -66,8 +74,15 @@ const format = createDocumentFormat()
 const rateLimiter = createRateLimiter({ clock, config: config.rateLimit })
 // One Argon2id hash at startup, so no request ever pays for the dummy.
 const passwords = await createPasswordHasher()
+const searchIndex = createPostgresSearchIndex({
+  db: database.db,
+  visibility: createVisibleDocumentResolver({ uow }),
+  clock,
+})
 const deps = {
   uow,
+  searchIndex,
+  search: createSearchService(searchIndex),
   contentStore,
   format,
   clock,
@@ -87,10 +102,23 @@ const jobRunner = createJobRunner({
   clock,
   poll: (consumers, now) => pollOutboxOnce(database.pool, consumers, { now }),
 })
-// Rendering on publish is what keeps the first reader from paying for a
-// render. Nothing invalidates: a rename simply gives the bodies that link to
-// the renamed document a new cache key (ADR-031).
-jobRunner.register(createRenderOnPublishConsumer(deps))
+// Two things happen on a publish, in this order: the body is rendered, so
+// the first reader never pays for a render (ADR-031), and the document is
+// indexed, so it is findable (ADR-010). The runner holds one consumer per
+// event type, so they are combined rather than one silently replacing the
+// other.
+jobRunner.register(
+  combineConsumers(
+    DOCUMENT_PUBLISHED,
+    createRenderOnPublishConsumer(deps),
+    createIndexOnPublishConsumer(deps),
+  ),
+)
+// A rename writes the new title into the document itself, and the title is
+// the most heavily weighted field in the index (ADR-010). Nothing else acts
+// on it: a body that links to the renamed document simply renders under a new
+// cache key (ADR-031).
+jobRunner.register(createIndexOnRenameConsumer(deps))
 // Delivery happens here rather than on the request path, so an address that
 // has an account costs no more than one that does not (ADR-011).
 jobRunner.register(createSendMailConsumer(mailer))
@@ -100,13 +128,7 @@ jobRunner.register(createSendMailConsumer(mailer))
 jobRunner.register(
   createAcknowledgingConsumer(
     DOCUMENT_CREATED,
-    'Nothing acts on a creation yet; the search index arrives with M4.',
-  ),
-)
-jobRunner.register(
-  createAcknowledgingConsumer(
-    DOCUMENT_RENAMED,
-    'Nothing acts on a rename: a body that links to the renamed document simply renders under a new cache key (ADR-031).',
+    'Nothing acts on a creation: a document with no published revision has nothing to index or render.',
   ),
 )
 jobRunner.schedule(createSweepJob({ uow, clock, session: config.session }))

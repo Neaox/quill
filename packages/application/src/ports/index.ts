@@ -13,12 +13,24 @@ export type {
 } from './content-store.ts'
 export type { BlobRef, BlobStore } from './blob-store.ts'
 export type {
+  FieldFilterKey,
+  FieldWeights,
+  FilterClause,
   IndexableDocument,
+  IndexableDocumentV1,
+  IndexableHeading,
+  PhraseClause,
+  QueryClause,
+  RankingProfile,
+  RecencyBoost,
+  SearchHit,
+  SearchHits,
   SearchIndex,
-  SearchPrincipal,
+  SearchIndexQueryOptions,
   SearchQuery,
-  SearchResult,
-  SearchResults,
+  TermClause,
+  VisibilityFilter,
+  WorkspaceAffinity,
 } from './search-index.ts'
 export type { Clock, Hasher, IdGenerator, TokenService } from './system.ts'
 

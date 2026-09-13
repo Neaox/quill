@@ -173,4 +173,33 @@ describe('GrantRepository', () => {
     )
     expect(principalRows.rowCount).toBe(1)
   })
+
+  /**
+   * PostgreSQL allows 65,535 bound parameters per statement and each selector
+   * spends two, so a workspace of more than about thirty-three thousand
+   * documents used to make this throw — which broke the flat document list as
+   * surely as it broke search, because both materialise a whole workspace's
+   * permissions at once (`visibleDocumentIds`).
+   */
+  it('answers about more scopes than one statement can bind', async () => {
+    await grants.create({
+      id: 'grant-many',
+      principalKind: 'user',
+      principalId: ALICE,
+      scopeKind: 'document',
+      scopeId: 'document-20000',
+      role: 'viewer',
+      effect: 'allow',
+      createdBy: null,
+      now,
+    })
+
+    const scopes = Array.from({ length: 40_000 }, (_unused, index) => ({
+      kind: 'document' as const,
+      id: `document-${index}`,
+    }))
+
+    const found = await grants.listForScopes(scopes)
+    expect(found.map((grant) => grant.scopeId)).toEqual(['document-20000'])
+  }, 30_000)
 })

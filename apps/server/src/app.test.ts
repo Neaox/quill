@@ -10,6 +10,9 @@ import { createTokenService } from './auth/tokens.ts'
 import { loadConfig } from './config.ts'
 import type { AppDependencies } from './dependencies.ts'
 import { createTestDatabase, type TestDatabase } from './infrastructure/db/test-database.ts'
+import { createSearchService } from '@quill/search'
+import { createInMemorySearchIndex } from '@quill/search/test-support'
+
 import { createUnitOfWork } from './infrastructure/repositories/unit-of-work.ts'
 import { createPasswordHasher } from './auth/password.ts'
 import { createRateLimiter } from './auth/rate-limit.ts'
@@ -19,6 +22,9 @@ import {
   createFakeIdGenerator,
   createRecordingMailer,
 } from './test-support/fakes.ts'
+
+/** Nothing in these tests searches; the engine is present because `AppDependencies` is one shape. */
+const SEARCH_INDEX = createInMemorySearchIndex()
 
 describe('server', () => {
   const app = buildApp({ logLevel: 'silent' })
@@ -79,6 +85,8 @@ describe('server with dependencies', () => {
       shareLinkPolicy: { allowed: () => true },
       contentStore: createContentStore({ driver: 'memory' }, clock),
       format: createDocumentFormat(),
+      searchIndex: SEARCH_INDEX,
+      search: createSearchService(SEARCH_INDEX),
       mailer: createRecordingMailer(),
       breachedPasswords: createFakeBreachedPasswordChecker(),
       rateLimiter: createRateLimiter({ clock, config: config.rateLimit }),
@@ -143,6 +151,8 @@ describe('trusting what is in front of the server', () => {
       shareLinkPolicy: { allowed: () => true },
       contentStore: createContentStore({ driver: 'memory' }, clock),
       format: createDocumentFormat(),
+      searchIndex: SEARCH_INDEX,
+      search: createSearchService(SEARCH_INDEX),
       mailer: createRecordingMailer(),
       breachedPasswords: createFakeBreachedPasswordChecker(),
       rateLimiter: createRateLimiter({ clock, config: config.rateLimit }),

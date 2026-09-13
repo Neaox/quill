@@ -16,6 +16,9 @@ import { createDocumentFormat } from '../infrastructure/markdown/document-format
 import { loadConfig } from '../config.ts'
 import type { AppDependencies } from '../dependencies.ts'
 import { createTestDatabase, type TestDatabase } from '../infrastructure/db/test-database.ts'
+import { createSearchService } from '@quill/search'
+import { createInMemorySearchIndex } from '@quill/search/test-support'
+
 import { createUnitOfWork } from '../infrastructure/repositories/unit-of-work.ts'
 import { injectAsBrowser } from '../test-support/browser-client.ts'
 import {
@@ -25,6 +28,9 @@ import {
   createRecordingMailer,
 } from '../test-support/fakes.ts'
 import type { FakeBreachedPasswordChecker, FakeClock } from '../test-support/fakes.ts'
+
+/** Nothing in these tests searches; the engine is present because `AppDependencies` is one shape. */
+const SEARCH_INDEX = createInMemorySearchIndex()
 
 let database: TestDatabase
 let app: FastifyInstance
@@ -52,6 +58,8 @@ beforeAll(async () => {
     shareLinkPolicy: { allowed: () => true },
     contentStore: createContentStore({ driver: 'memory' }, clock),
     format: createDocumentFormat(),
+    searchIndex: SEARCH_INDEX,
+    search: createSearchService(SEARCH_INDEX),
     mailer: createRecordingMailer(),
     breachedPasswords,
     rateLimiter: createRateLimiter({ clock, config: RATE_LIMIT }),

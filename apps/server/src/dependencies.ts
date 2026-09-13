@@ -4,10 +4,12 @@ import type {
   DocumentFormat,
   Hasher,
   IdGenerator,
+  SearchIndex,
   ShareLinkPolicy,
   TokenService,
   UnitOfWork,
 } from '@quill/application'
+import type { SearchService } from '@quill/search'
 
 import type { BreachedPasswordChecker } from './auth/breached-password.ts'
 import type { Mailer } from './auth/mailer.ts'
@@ -43,6 +45,16 @@ export interface AppDependencies {
    * setting and nothing above it changes.
    */
   readonly shareLinkPolicy: ShareLinkPolicy
+  /**
+   * The search engine (ADR-010). Both the index and the service over it are
+   * here because they serve different callers: the outbox consumers and
+   * `quill reindex` write through the index, while the route reads through
+   * the service, which is where parsing, snippets, and workspace-affinity
+   * grouping happen. The composition root builds the second from the first,
+   * so there is still one engine.
+   */
+  readonly searchIndex: SearchIndex
+  readonly search: SearchService
   readonly mailer: Mailer
   /** The breached-password corpus (ADR-011). Fails open, and says so in the audit log. */
   readonly breachedPasswords: BreachedPasswordChecker
