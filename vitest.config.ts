@@ -16,6 +16,10 @@ export default defineConfig({
           name: 'packages',
           environment: 'node',
           include: ['packages/*/src/**/*.test.ts'],
+          // Property tests and the content store's real-filesystem contention
+          // tests are I/O-bound; on a loaded machine or a two-core CI runner
+          // the 5 s default reports them as failures rather than slow.
+          testTimeout: 30_000,
           exclude: ['packages/ui/**', 'packages/editor/**'],
         },
       },
@@ -42,6 +46,9 @@ export default defineConfig({
           name: 'server',
           environment: 'node',
           include: ['apps/server/src/**/*.test.ts'],
+          // Integration tests migrate a fresh schema each behind one advisory
+          // lock; under a full parallel run that queue alone can pass 5 s.
+          testTimeout: 30_000,
         },
       },
       {
