@@ -9,6 +9,8 @@
  */
 export const queryKeys = {
   me: ['me'] as const,
+  /** The sign-in page's provider buttons (ADR-011). One list per instance. */
+  oidcProviders: ['oidc-providers'] as const,
   units: (parentId?: string) => ['units', parentId ?? null] as const,
   workspaceList: () => ['workspace-list'] as const,
   /**

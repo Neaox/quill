@@ -106,6 +106,34 @@ export function sessionKey(bucket: string, request: FastifyRequest): string {
   return `${bucket}:session:${request.session?.userId ?? request.ip}`
 }
 
+/**
+ * A `preHandler` that counts against a **different limiter** from the auth
+ * endpoints' (ADR-011; see `ServerConfig.oidcRateLimit` for why single
+ * sign-on needs its own budget).
+ *
+ * Written against the limiter rather than through `@fastify/rate-limit`
+ * because the plugin gives every route a `child` of the *one* store it was
+ * registered with: a route-level `store` is merged into the parameters and
+ * then never instantiated, so asking for a second limiter that way silently
+ * counts against the first. The refusal is still the platform's — the same
+ * `rateLimited` error shape, and the same audit hook every other limited
+ * route reports through.
+ */
+export function flatAddressRateLimit(
+  bucket: string,
+  limiter: RateLimiter,
+  config: RateLimitConfig,
+): preHandlerHookHandler {
+  return async function flatAddressRateLimitHook(this: FastifyInstance, request): Promise<void> {
+    const key = addressKey(bucket, request)
+    const decision = limiter.hit(key)
+    if (decision.current > config.max) {
+      this.onRateLimitExceeded(request, key)
+      throw rateLimited(decision.ttl)
+    }
+  }
+}
+
 export interface AccountKeyOf {
   (request: FastifyRequest): string | undefined
 }

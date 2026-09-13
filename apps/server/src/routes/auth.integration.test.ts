@@ -3,6 +3,7 @@ import type { FastifyInstance } from 'fastify'
 
 import { buildApp } from '../app.ts'
 import { createPasswordHasher } from '../auth/password.ts'
+import { createIdentityProviderRegistry, outboundClientFactory } from '../auth/oidc/registry.ts'
 import { createRateLimiter } from '../auth/rate-limit.ts'
 import { createTokenService } from '../auth/tokens.ts'
 import { MAIL_REQUESTED } from '@quill/application'
@@ -63,9 +64,16 @@ beforeAll(async () => {
     mailer: createRecordingMailer(),
     breachedPasswords,
     rateLimiter: createRateLimiter({ clock, config: RATE_LIMIT }),
+    oidcRateLimiter: createRateLimiter({ clock, config: config.oidcRateLimit }),
     // The real Argon2id here: this file is the end-to-end journey, and the
     // dummy hash it builds at startup is part of what is being closed.
     passwords: await createPasswordHasher(),
+    identityProviders: createIdentityProviderRegistry({
+      providers: config.oidcProviders,
+      appUrl: config.appUrl,
+      createClient: outboundClientFactory,
+      clock,
+    }),
     config,
   }
   app = buildApp({ logLevel: 'silent', deps, serveApiDocs: false })

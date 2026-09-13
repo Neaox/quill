@@ -25,6 +25,7 @@ export {
   type RequestMagicLinkInput,
   type ConfirmPasswordResetInput,
 } from './auth.ts'
+export { useOidcProviders, oidcStartPath } from './oidc.ts'
 
 export {
   unitsQueryOptions,
@@ -102,6 +103,8 @@ export type {
   SignInResponse,
   SignUpResponse,
   MagicLinkPurpose,
+  OidcProviderList,
+  OidcProviderSummary,
   UnitDto,
   WorkspaceDto,
   WorkspaceSummaryDto,

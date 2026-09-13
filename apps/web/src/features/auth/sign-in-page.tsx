@@ -5,6 +5,7 @@ import { Button, Input, textLinkClassName } from '@quill/ui'
 
 import { useSignIn } from '../../lib/api/index.ts'
 import { AuthCard } from './auth-card.tsx'
+import { SignInProviders } from './sign-in-providers.tsx'
 import { FormError } from '../../lib/forms/form-error.tsx'
 
 const routeApi = getRouteApi('/sign-in')
@@ -15,9 +16,15 @@ const routeApi = getRouteApi('/sign-in')
  * The `redirect` search param is the return path a 401 (or an unauthenticated
  * visit to a protected route) was sent here with; a successful sign-in goes
  * straight back to it (task requirement: "preserves the return path").
+ *
+ * `error=sso` is how a failed single sign-on comes back (ADR-011). The
+ * provider's callback answers every failure identically — a wrong state, a
+ * refused token, an account this instance will not create — because telling
+ * them apart in the browser would be an oracle for every address in the
+ * directory. The reason is in the audit log, where an operator can read it.
  */
 export function SignInPage() {
-  const { redirect } = routeApi.useSearch()
+  const { redirect, error } = routeApi.useSearch()
   const navigate = routeApi.useNavigate()
   const signIn = useSignIn()
 
@@ -48,6 +55,12 @@ export function SignInPage() {
         </>
       }
     >
+      {error === 'sso' ? (
+        <p role="alert" className="text-sm leading-relaxed text-danger">
+          That sign-in could not be completed. Please try again, or sign in with your email.
+        </p>
+      ) : undefined}
+      <SignInProviders redirect={redirect} />
       <form onSubmit={handleSubmit} className="flex flex-col gap-4" noValidate>
         <Input
           label="Email"

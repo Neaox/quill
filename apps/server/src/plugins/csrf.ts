@@ -21,6 +21,25 @@ import { crossOriginRejected } from '../errors.ts'
  * a session cookie is not a browser doing the user's bidding; refusing it
  * costs a scripted client nothing it cannot fix with one header, and closes
  * the gap that "absent means allowed" would otherwise leave.
+ *
+ * **The OIDC callback is exempt, by design.** `GET
+ * /api/auth/oidc/:id/callback` is where an identity provider returns the
+ * browser after a sign-in, and that is a *top-level cross-site navigation*:
+ * `Sec-Fetch-Site` is `cross-site` and there is no same-origin `Origin` to
+ * match, so this check would refuse every real sign-in. It is exempt for
+ * free, because the hook only runs for state-changing methods and the
+ * callback is a `GET` — but the exemption is deliberate and is written down
+ * here so nobody "fixes" it by widening the hook to `GET` later.
+ *
+ * What takes this check's place there is a secret rather than a header. The
+ * callback believes nothing unless the browser presents the short-lived
+ * `__Host-` cookie this server minted for that attempt, and unless the
+ * `state` in the query matches the one inside it
+ * (`auth/oidc/state-cookie.ts`). A cross-site request to the callback has no
+ * such cookie, so it is refused — which is login CSRF closed by the same
+ * mechanism the OpenID Connect specification asks for. The callback changes
+ * state, so it must never become anything but that: it is a `GET` only
+ * because a redirect is a `GET`.
  */
 
 const STATE_CHANGING = new Set(['POST', 'PUT', 'PATCH', 'DELETE'])

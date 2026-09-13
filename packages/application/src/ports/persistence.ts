@@ -182,6 +182,60 @@ export interface MagicLinkRepository {
 }
 
 // ---------------------------------------------------------------------------
+// Federated identities
+// ---------------------------------------------------------------------------
+
+export type IdentityId = string
+
+/**
+ * One account at one identity provider (ADR-011: "Identity, not email, is
+ * the key").
+ *
+ * `(issuer, subject)` is the identity, and it is unique across the instance:
+ * a provider's own immutable key for a person, which survives them changing
+ * their name, their department, and their email address. `email` is an
+ * attribute and is deliberately *not* stored here — the `users` row owns it,
+ * and a second sign-in matches by subject, so an address that moves to
+ * somebody else at the provider can never inherit an account here.
+ *
+ * `providerId` is the configured provider this identity arrived through. It
+ * is recorded for the audit trail and for "which button did they press",
+ * never for matching: two configured providers pointed at one issuer are the
+ * same directory, and matching on the pair would make them two accounts.
+ */
+export interface IdentityRow {
+  readonly id: IdentityId
+  readonly userId: UserId
+  readonly providerId: string
+  readonly issuer: string
+  readonly subject: string
+  readonly createdAt: Date
+  readonly lastSignInAt: Date | null
+}
+
+export interface IdentityRepository {
+  /** The only way a returning federated user is recognised (ADR-011). */
+  findBySubject(issuer: string, subject: string): Promise<IdentityRow | null>
+  /** Every identity one user holds, for account settings and for the audit trail. */
+  listForUser(userId: UserId): Promise<readonly IdentityRow[]>
+  /**
+   * Links an identity to a user. Two browsers completing a first sign-in at
+   * once must not make two rows, so an `(issuer, subject)` that already
+   * exists wins and is returned unchanged rather than raising.
+   */
+  link(input: {
+    readonly id: IdentityId
+    readonly userId: UserId
+    readonly providerId: string
+    readonly issuer: string
+    readonly subject: string
+    readonly now: Date
+  }): Promise<IdentityRow>
+  /** Stamps the moment this identity was last used to sign in. */
+  touch(id: IdentityId, now: Date): Promise<void>
+}
+
+// ---------------------------------------------------------------------------
 // Tenancy: units and workspaces
 // ---------------------------------------------------------------------------
 
@@ -872,6 +926,7 @@ export interface RepositoryBundle {
   readonly sessions: SessionRepository
   readonly credentials: CredentialRepository
   readonly magicLinks: MagicLinkRepository
+  readonly identities: IdentityRepository
   readonly units: UnitRepository
   readonly groups: GroupRepository
   readonly workspaces: WorkspaceRepository

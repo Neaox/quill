@@ -282,6 +282,58 @@ describe('createInMemoryUnitOfWork: magic links', () => {
   })
 })
 
+describe('createInMemoryUnitOfWork: identities', () => {
+  it('links, finds by subject, lists per user, and stamps the last sign-in', async () => {
+    const uow = createInMemoryUnitOfWork()
+    const linked = await uow.repos.identities.link({
+      id: 'identity-1',
+      userId: USER_1,
+      providerId: 'entra',
+      issuer: 'https://sso.example.com',
+      subject: 'subject-1',
+      now: NOW,
+    })
+
+    expect(
+      await uow.repos.identities.findBySubject('https://sso.example.com', 'subject-1'),
+    ).toEqual(linked)
+    expect(await uow.repos.identities.findBySubject('https://sso.example.com', 'nope')).toBeNull()
+    expect(await uow.repos.identities.listForUser(USER_1)).toEqual([linked])
+    expect(await uow.repos.identities.listForUser(USER_2)).toEqual([])
+
+    const later = new Date(NOW.getTime() + 1000)
+    await uow.repos.identities.touch('identity-1', later)
+    await uow.repos.identities.touch('nope', later)
+    expect(
+      await uow.repos.identities.findBySubject('https://sso.example.com', 'subject-1'),
+    ).toMatchObject({ lastSignInAt: later })
+  })
+
+  it('hands the winner’s row back rather than making a second one, as the unique index does', async () => {
+    const uow = createInMemoryUnitOfWork()
+    const first = await uow.repos.identities.link({
+      id: 'identity-1',
+      userId: USER_1,
+      providerId: 'entra',
+      issuer: 'https://sso.example.com',
+      subject: 'subject-1',
+      now: NOW,
+    })
+
+    const second = await uow.repos.identities.link({
+      id: 'identity-2',
+      userId: USER_2,
+      providerId: 'google',
+      issuer: 'https://sso.example.com',
+      subject: 'subject-1',
+      now: NOW,
+    })
+
+    expect(second).toEqual(first)
+    expect(await uow.repos.identities.listForUser(USER_2)).toEqual([])
+  })
+})
+
 describe('createInMemoryUnitOfWork: units', () => {
   it('creates, finds, lists children, renames, and deletes', async () => {
     const uow = createInMemoryUnitOfWork()

@@ -75,6 +75,8 @@ export interface OutboundFetchInit {
   readonly headers: Readonly<Record<string, string>>
   readonly redirect: 'manual'
   readonly signal: AbortSignal
+  /** Present only on a `post`; the transport writes it before ending the request. */
+  readonly body?: string
   /**
    * The addresses this connection may use: the ones `check` just approved.
    * The real transport pins its socket to them; a test's fake ignores them.
@@ -92,6 +94,20 @@ export interface OutboundRequest {
   readonly headers?: Readonly<Record<string, string>>
 }
 
+/**
+ * A `post` carries a body and, unlike a `get`, is never redirected.
+ *
+ * Following a redirect on a request that carries credentials — which is what
+ * an OIDC token exchange is — would replay the client secret and the
+ * authorisation code at whatever host the first one named. The allowlist
+ * would still hold, but the secret would have been sent somewhere its owner
+ * did not choose, so a 3xx here is a failure rather than a hop.
+ */
+export interface OutboundPostRequest extends OutboundRequest {
+  readonly body: string
+  readonly contentType: string
+}
+
 export interface OutboundResponse {
   readonly status: number
   readonly body: string
@@ -104,6 +120,7 @@ export type OutboundFailure =
   | 'dns_failure'
   | 'too_many_redirects'
   | 'redirect_without_location'
+  | 'redirect_not_followed'
   | 'response_too_large'
   | 'timeout'
   | 'network_error'
@@ -118,8 +135,22 @@ export class OutboundRequestError extends Error {
   }
 }
 
-export interface OutboundClient {
+/**
+ * The read half. Stated separately because most callers only ever fetch, and
+ * a caller that cannot post is a caller that cannot be talked into replaying
+ * a credential somewhere.
+ */
+export interface OutboundReader {
   get(request: OutboundRequest): Promise<OutboundResponse>
+}
+
+export interface OutboundClient extends OutboundReader {
+  /**
+   * One hop, with a body, to an allow-listed host. Used by the OIDC token
+   * exchange (ADR-011), which is the first outbound call the platform makes
+   * that is not a read.
+   */
+  post(request: OutboundPostRequest): Promise<OutboundResponse>
 }
 
 const DEFAULT_TIMEOUT_MS = 5_000
@@ -197,6 +228,10 @@ function expand(side: string): number[] | null {
     bytes.push(value >> 8, value & 0xff)
   }
   return bytes
+}
+
+function isRedirect(status: number): boolean {
+  return status >= 300 && status <= 399
 }
 
 function allZero(bytes: Uint8Array, from: number, to: number): boolean {
@@ -310,7 +345,8 @@ export async function nodeFetch(
       resolve,
     )
     outgoing.on('error', reject)
-    outgoing.end()
+    // `end(undefined)` on a GET is exactly `end()`; a `post` writes its body here.
+    outgoing.end(init.body)
   })
 
   return {
@@ -402,37 +438,49 @@ export function createOutboundClient(options: OutboundClientOptions): OutboundCl
     return text + decoder.decode()
   }
 
+  /**
+   * One hop: check the target, connect only to what was checked, and hand
+   * back the response together with the controller the size cap aborts with.
+   */
+  async function sendOnce(
+    target: URL,
+    method: string,
+    headers: Readonly<Record<string, string>>,
+    body: string | undefined,
+  ): Promise<{ response: OutboundFetchResponse; controller: AbortController }> {
+    const addresses = await check(target)
+    const controller = new AbortController()
+    const timer = setTimeout(() => controller.abort(), timeoutMs)
+    try {
+      const response = await doFetch(target.href, {
+        method,
+        headers,
+        // Never followed by the transport: `get` follows redirects by hand so
+        // every hop is checked again, and `post` refuses them outright.
+        redirect: 'manual',
+        signal: controller.signal,
+        // Only the addresses this hop's checks approved.
+        addresses,
+        ...(body === undefined ? {} : { body }),
+      })
+      return { response, controller }
+    } catch (error) {
+      throw new OutboundRequestError(
+        controller.signal.aborted ? 'timeout' : 'network_error',
+        `Request to ${target.hostname} failed: ${String(error)}`,
+      )
+    } finally {
+      clearTimeout(timer)
+    }
+  }
+
   return {
     async get({ url, headers = {} }): Promise<OutboundResponse> {
       let target = new URL(url)
       for (let hop = 0; hop <= maxRedirects; hop += 1) {
-        const addresses = await check(target)
+        const { response, controller } = await sendOnce(target, 'GET', headers, undefined)
 
-        const controller = new AbortController()
-        const timer = setTimeout(() => controller.abort(), timeoutMs)
-        let response: OutboundFetchResponse
-        try {
-          response = await doFetch(target.href, {
-            method: 'GET',
-            headers,
-            // Followed by hand so every hop is checked again: a host that
-            // passes the allowlist must not be able to bounce the request
-            // into the private network.
-            redirect: 'manual',
-            signal: controller.signal,
-            // Only the addresses this hop's checks approved.
-            addresses,
-          })
-        } catch (error) {
-          throw new OutboundRequestError(
-            controller.signal.aborted ? 'timeout' : 'network_error',
-            `Request to ${target.hostname} failed: ${String(error)}`,
-          )
-        } finally {
-          clearTimeout(timer)
-        }
-
-        if (response.status < 300 || response.status > 399) {
+        if (!isRedirect(response.status)) {
           return { status: response.status, body: await readBody(response, controller) }
         }
         const location = response.headers.get('location')
@@ -445,6 +493,30 @@ export function createOutboundClient(options: OutboundClientOptions): OutboundCl
         target = new URL(location, target)
       }
       throw new OutboundRequestError('too_many_redirects', `More than ${maxRedirects} redirects`)
+    },
+
+    async post({ url, headers = {}, body, contentType }): Promise<OutboundResponse> {
+      const target = new URL(url)
+      const { response, controller } = await sendOnce(
+        target,
+        'POST',
+        {
+          ...headers,
+          'content-type': contentType,
+          'content-length': String(Buffer.byteLength(body)),
+        },
+        body,
+      )
+      // A 3xx here would mean replaying the credentials this body carries at
+      // a host the caller never named.
+      if (isRedirect(response.status)) {
+        controller.abort()
+        throw new OutboundRequestError(
+          'redirect_not_followed',
+          `${target.hostname} answered ${response.status} to a POST; redirects are not followed`,
+        )
+      }
+      return { status: response.status, body: await readBody(response, controller) }
     },
   }
 }

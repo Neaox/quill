@@ -10,6 +10,7 @@ import { createDocumentLinksRepository } from './document-links-repository.ts'
 import { createDraftRepository } from './draft-repository.ts'
 import { createGrantRepository } from './grant-repository.ts'
 import { createGroupRepository } from './group-repository.ts'
+import { createIdentityRepository } from './identity-repository.ts'
 import { createLockRepository } from './lock-repository.ts'
 import { createMagicLinkRepository } from './magic-link-repository.ts'
 import { createOutboxWriter } from './outbox-writer.ts'
@@ -39,6 +40,7 @@ function buildBundle(db: DrizzleClient, pool: pg.Pool, ids: IdGenerator): Reposi
     sessions: createSessionRepository(db),
     credentials: createCredentialRepository(db),
     magicLinks: createMagicLinkRepository(db),
+    identities: createIdentityRepository(db),
     units: createUnitRepository(db),
     groups: createGroupRepository(db),
     workspaces: createWorkspaceRepository(db),

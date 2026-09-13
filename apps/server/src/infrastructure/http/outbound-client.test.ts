@@ -278,3 +278,107 @@ describe('a response with no body', () => {
     })
   })
 })
+
+/**
+ * `post` is the first outbound call that is not a read (the OIDC token
+ * exchange, ADR-011). It goes through the same allowlist, address check and
+ * caps as `get`, and differs in exactly one rule: it never follows a
+ * redirect, because doing so would replay the client secret and the
+ * authorisation code at a host the caller never named.
+ */
+describe('post', () => {
+  it('sends the body with its content type and length, to an allowed host', async () => {
+    const { client, fetchMock } = setUp()
+
+    const response = await client.post({
+      url: `https://${ALLOWED}/token`,
+      body: 'grant_type=authorization_code&code=abc',
+      contentType: 'application/x-www-form-urlencoded',
+      headers: { accept: 'application/json' },
+    })
+
+    expect(response).toEqual({ status: 200, body: 'ok' })
+    expect(fetchMock.mock.calls[0]?.[1]).toMatchObject({
+      method: 'POST',
+      redirect: 'manual',
+      body: 'grant_type=authorization_code&code=abc',
+      headers: {
+        accept: 'application/json',
+        'content-type': 'application/x-www-form-urlencoded',
+        'content-length': '38',
+      },
+    })
+  })
+
+  it('refuses a host that is not on the allowlist, before it can send a secret', async () => {
+    const { client, fetchMock } = setUp()
+
+    await expect(
+      client.post({
+        url: 'https://evil.example.com/token',
+        body: 'client_secret=hunter2',
+        contentType: 'application/x-www-form-urlencoded',
+      }),
+    ).rejects.toMatchObject({ reason: 'host_not_allowed' })
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('refuses a private address, like every other outbound call', async () => {
+    const { client } = setUp({ resolve: async () => ['169.254.169.254'] })
+
+    await expect(
+      client.post({
+        url: `https://${ALLOWED}/token`,
+        body: '',
+        contentType: 'application/x-www-form-urlencoded',
+      }),
+    ).rejects.toMatchObject({ reason: 'private_address' })
+  })
+
+  it('does not follow a redirect: the body carries credentials', async () => {
+    const fetchMock = vi.fn<FetchLike>(async () =>
+      respond(302, '', { location: 'https://evil.example.com/collect' }),
+    )
+    const { client } = setUp({ fetch: fetchMock })
+
+    await expect(
+      client.post({
+        url: `https://${ALLOWED}/token`,
+        body: 'client_secret=hunter2',
+        contentType: 'application/x-www-form-urlencoded',
+      }),
+    ).rejects.toMatchObject({ reason: 'redirect_not_followed' })
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('answers with the provider’s error body rather than throwing on a 4xx', async () => {
+    // Built directly rather than through `respond`, which sends no body on a
+    // non-2xx: a token endpoint's refusal is exactly where the body matters.
+    const { client } = setUp({
+      fetch: async () => new Response('{"error":"invalid_grant"}', { status: 400 }),
+    })
+
+    expect(
+      await client.post({
+        url: `https://${ALLOWED}/token`,
+        body: '',
+        contentType: 'application/x-www-form-urlencoded',
+      }),
+    ).toEqual({ status: 400, body: '{"error":"invalid_grant"}' })
+  })
+
+  it('applies the response size cap while the body arrives', async () => {
+    const { client } = setUp({
+      maxResponseBytes: 8,
+      fetch: async () => respond(200, 'far too much to be a token response'),
+    })
+
+    await expect(
+      client.post({
+        url: `https://${ALLOWED}/token`,
+        body: '',
+        contentType: 'application/x-www-form-urlencoded',
+      }),
+    ).rejects.toMatchObject({ reason: 'response_too_large' })
+  })
+})
