@@ -1,3 +1,5 @@
+import { availableParallelism } from 'node:os'
+
 import { defineConfig } from 'vitest/config'
 
 /**
@@ -24,9 +26,23 @@ import { defineConfig } from 'vitest/config'
  */
 const BUDGET = { testTimeout: 30_000, hookTimeout: 60_000 } as const
 
+/**
+ * Half the cores, and never fewer than two.
+ *
+ * Vitest's default is one worker per core less one, and every worker is a
+ * Node process: on a 24-thread machine that was 23 of them, most holding a
+ * jsdom, for a peak of roughly 7.9 GB across the run. Measured on that
+ * machine, without coverage: 23 workers took 80 s and 7.9 GB, 12 took 96 s and
+ * 4.5 GB, 6 took 147 s and 2.5 GB. Half the cores gives up a fifth of the
+ * speed for nearly half the memory, and leaves the machine usable while the
+ * suite runs. `--maxWorkers` on the command line still overrides it.
+ */
+const MAX_WORKERS = Math.max(2, Math.floor(availableParallelism() / 2))
+
 export default defineConfig({
   test: {
     globals: true,
+    maxWorkers: MAX_WORKERS,
     projects: [
       {
         test: {
