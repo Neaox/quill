@@ -170,11 +170,24 @@ describe('the Share control', () => {
     // time — and a control that swallows a click teaches people not to trust
     // the next one (`docs/design/feedback.md`). The spinner is on the button
     // that was pressed, not a page-level bar.
-    const opening = user.click(share)
-    await expect.poll(() => share.getAttribute('aria-busy')).toBe('true')
-    await opening
+    //
+    // Recorded rather than polled for: a poll every 50 ms sees the busy state
+    // only if the chunk takes longer than that to arrive, and a `MutationObserver`
+    // keeps every change however brief.
+    const wasBusy: (string | null)[] = []
+    const changes = new MutationObserver((records) => {
+      wasBusy.push(...records.map((change) => change.oldValue))
+    })
+    changes.observe(share, {
+      attributes: true,
+      attributeFilter: ['aria-busy'],
+      attributeOldValue: true,
+    })
+    await user.click(share)
 
     await screen.findByRole('dialog', { name: 'Share “Regional failover”' })
+    expect(wasBusy).toContain('true')
+    changes.disconnect()
     expect(share).toHaveAttribute('aria-busy', 'false')
   })
 })
@@ -295,16 +308,35 @@ describe('creating a link', () => {
       }),
     )
     const dialog = await openShare(user)
+    // Relative to today, because the picker refuses a date that has gone and
+    // a literal one eventually does. Spelled with `en-CA`, which is ISO order
+    // in local time, rather than with `localDate`, so the expectation is not
+    // computed by the function under test.
+    const lastDay = new Date()
+    lastDay.setDate(lastDay.getDate() + 30)
 
     await user.selectOptions(within(dialog).getByLabelText('Expires'), 'On a date…')
-    await user.type(within(dialog).getByLabelText(/Expiry date/), '2026-09-20')
+    await user.type(
+      within(dialog).getByLabelText(/Expiry date/),
+      lastDay.toLocaleDateString('en-CA'),
+    )
     await user.click(within(dialog).getByRole('button', { name: 'Create link' }))
 
     await within(dialog).findByRole('group', { name: 'Success: Link created' })
-    // The end of the 20th *here*, not the end of the 20th in UTC: a bare date
+    // The end of that day *here*, not the end of it in UTC: a bare date
     // on a form is the day the person choosing it is living in, and asserting
     // a `Z` literal would be asserting the test machine's offset is zero.
-    expect(sent[0]?.expiresAt).toBe(new Date(2026, 8, 20, 23, 59, 59, 999).toISOString())
+    expect(sent[0]?.expiresAt).toBe(
+      new Date(
+        lastDay.getFullYear(),
+        lastDay.getMonth(),
+        lastDay.getDate(),
+        23,
+        59,
+        59,
+        999,
+      ).toISOString(),
+    )
   })
 
   it('will not offer a date that has already gone', async () => {
