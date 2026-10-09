@@ -27,7 +27,7 @@ import { S3BlobStore } from './s3-blob-store.ts'
  * service and a green test here. Anything that does not verify is answered
  * `403`, so every case below proves the signature as well as the behaviour.
  *
- * The MinIO in `docker-compose.yml` remains the local target for running the
+ * The RustFS in `docker-compose.yml` remains the local target for running the
  * product against S3 by hand, and for the operations guide's restore drill.
  */
 

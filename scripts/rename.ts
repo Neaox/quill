@@ -118,7 +118,7 @@ function buildReplacements(options: Options): Replacement[] {
     // have to special-case the "@" prefix.
     { pattern: /@quill\//g, value: `${options.scope}/` },
     // The doubled dev credential in docker-compose.yml and .env.example
-    // (e.g. MINIO_ROOT_PASSWORD). Matched before the whole-word pass below
+    // (e.g. RUSTFS_SECRET_KEY). Matched before the whole-word pass below
     // because "quillquill" has no internal word boundary for \b to find.
     { pattern: /quillquill/g, value: `${options.slug}${options.slug}` },
     // The lowercase identifier: container image, db defaults, credentials.

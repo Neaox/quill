@@ -7,7 +7,7 @@ Thank you for considering a contribution. This document covers how the project w
 ```bash
 pnpm install
 pnpm exec playwright install   # once, for end-to-end tests
-pnpm db:up                     # Postgres and MinIO
+pnpm db:up                     # Postgres and RustFS
 pnpm --filter @quill/server seed   # an admin, a workspace, and six real documents
 pnpm dev
 ```
