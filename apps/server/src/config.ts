@@ -161,7 +161,7 @@ export type ContentStoreConfig =
  *
  * `filesystem` is the self-host default: content-addressed files under
  * `BLOB_STORE_PATH`, which a backup can copy wholesale. `s3` is any
- * S3-compatible service, which for local development is the MinIO in
+ * S3-compatible service, which for local development is the RustFS in
  * `docker-compose.yml`.
  *
  * There is no in-process driver, deliberately. The content store has one
@@ -369,7 +369,7 @@ function loadS3Config(env: NodeJS.ProcessEnv): BlobStoreConfig {
     // would otherwise fail at the first upload rather than at boot.
     throw new Error(
       `S3_ENDPOINT must be an absolute http(s) URL, received "${endpoint}". ` +
-        'For the MinIO in docker-compose.yml that is http://localhost:9000.',
+        'For the RustFS in docker-compose.yml that is http://localhost:9000.',
     )
   }
   const pathStyle = env['S3_FORCE_PATH_STYLE']

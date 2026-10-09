@@ -12,7 +12,7 @@ Requirements: Node 24 (LTS), pnpm 11, Docker.
 
 ```bash
 pnpm install
-pnpm db:up                        # Postgres and MinIO via Docker Compose
+pnpm db:up                        # Postgres and RustFS via Docker Compose
 pnpm --filter @quill/server seed  # two accounts, two workspaces, real documents, and three templates
 pnpm dev                          # server on :3000, web on :5173
 ```

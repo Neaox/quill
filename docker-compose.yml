@@ -1,5 +1,5 @@
 # Local infrastructure for development and integration tests.
-# Postgres holds system data; MinIO stands in for S3-compatible blob storage.
+# Postgres holds system data; RustFS stands in for S3-compatible blob storage.
 # Nothing else is required to run Quill locally (quill-plan.md, section 28).
 
 services:
@@ -19,23 +19,29 @@ services:
       timeout: 3s
       retries: 10
 
-  minio:
-    image: minio/minio:latest
-    command: server /data --console-address ':9001'
+  # MinIO stopped publishing community images, so this is RustFS: Apache 2.0,
+  # S3-compatible, with the same ports (9000 S3 API, 9001 console). It is
+  # pre-release software, which is acceptable for throwaway local data only.
+  rustfs:
+    image: rustfs/rustfs:1.0.1
+    command: /data
     environment:
-      MINIO_ROOT_USER: quill
-      MINIO_ROOT_PASSWORD: quillquill
+      RUSTFS_ACCESS_KEY: quill
+      RUSTFS_SECRET_KEY: quillquill
+      RUSTFS_ADDRESS: ':9000'
+      RUSTFS_CONSOLE_ADDRESS: ':9001'
+      RUSTFS_CONSOLE_ENABLE: 'true'
     ports:
       - '9000:9000'
       - '9001:9001'
     volumes:
-      - minio-data:/data
+      - rustfs-data:/data
     healthcheck:
-      test: ['CMD', 'mc', 'ready', 'local']
+      test: ['CMD-SHELL', 'curl --fail --silent http://localhost:9000/health']
       interval: 5s
       timeout: 3s
       retries: 10
 
 volumes:
   postgres-data:
-  minio-data:
+  rustfs-data:

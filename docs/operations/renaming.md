@@ -105,7 +105,7 @@ If you introduce a literal mention of the product name in application code,
    (`QUILL` → `NEWNAME`) if one is ever introduced. It updates
    `packages/brand/src/index.ts` — including flipping `codeName` to
    `false` — every `package.json`, `pnpm-workspace.yaml`,
-   `docker-compose.yml` (including the doubled `MINIO_ROOT_PASSWORD`
+   `docker-compose.yml` (including the doubled `RUSTFS_SECRET_KEY`
    credential), `.env.example`, and the top-level docs
    (`README.md`, `CONTRIBUTING.md`, `AGENTS.md`, `ARCHITECTURE.md`,
    `SECURITY.md`, `LICENSE`), plus everything under `docs/`, `.github/`,
