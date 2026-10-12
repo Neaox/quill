@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { BUILTIN_THEME_IDS, DEFAULT_THEME } from '@quill/theme'
+import { DEFAULT_THEME, OFFERED_THEME_IDS } from '@quill/theme'
 
 import {
   applyThemeId,
@@ -13,8 +13,9 @@ import {
 } from './theme-id.ts'
 
 describe('theme identity', () => {
-  it('offers exactly the built-in identities', () => {
-    expect(THEME_IDS).toEqual(BUILTIN_THEME_IDS)
+  it('offers exactly the built-in identities that are still offered', () => {
+    expect(THEME_IDS).toEqual(OFFERED_THEME_IDS)
+    expect(THEME_IDS).not.toContain('press')
   })
 
   it('agrees with the theme package about which identity is the default', () => {
@@ -25,14 +26,23 @@ describe('theme identity', () => {
     expect(isThemeId('press')).toBe(true)
     expect(isThemeId('instrument')).toBe(true)
     expect(isThemeId('atelier')).toBe(true)
+    expect(isThemeId('calm')).toBe(true)
+    expect(isThemeId('editorial')).toBe(true)
+    expect(isThemeId('grid')).toBe(true)
     expect(isThemeId('bauhaus')).toBe(false)
     expect(isThemeId(undefined)).toBe(false)
   })
 
   it('names each identity from its own theme document', () => {
     expect(themeIdName('instrument')).toBe('Instrument')
-    expect(themeIdName('press')).toBe('Press')
     expect(themeIdName('atelier')).toBe('Atelier')
+    expect(themeIdName('calm')).toBe('Calm')
+    expect(themeIdName('editorial')).toBe('Editorial')
+    expect(themeIdName('grid')).toBe('Grid')
+  })
+
+  it('names a superseded identity after the theme that replaced it', () => {
+    expect(themeIdName('press')).toBe('Editorial')
   })
 
   it('reports each identity signature variants', () => {
@@ -43,7 +53,8 @@ describe('theme identity', () => {
       header: 'readout',
       rules: 'hairline',
     })
-    expect(themeIdVariants('press').comments).toBe('sidenotes')
+    expect(themeIdVariants('editorial').comments).toBe('sidenotes')
+    expect(themeIdVariants('press')).toEqual(themeIdVariants('editorial'))
     expect(themeIdVariants('atelier').navigation).toBe('tabs')
   })
 })

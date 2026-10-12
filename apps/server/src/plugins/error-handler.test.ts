@@ -7,7 +7,7 @@ import { AppError } from '../errors.ts'
 import { registerErrorHandler } from './error-handler.ts'
 
 function buildTestApp() {
-  const app = fastify({ logger: false }).withTypeProvider<TypeBoxTypeProvider>()
+  const app = fastify({ logger: false, bodyLimit: 64 }).withTypeProvider<TypeBoxTypeProvider>()
   registerErrorHandler(app)
 
   app.get('/app-error', async () => {
@@ -19,9 +19,33 @@ function buildTestApp() {
   app.get('/boom', async () => {
     throw new Error('unexpected')
   })
+  app.delete('/resource', async () => ({ ok: true }))
+  app.post('/echo', async () => ({ ok: true }))
+  app.get('/teapot', async () => {
+    throw Object.assign(new Error('I am a teapot: secret detail'), { statusCode: 418 })
+  })
+  app.get('/unnamed', async () => {
+    throw Object.assign(new Error('closed'), { statusCode: 499 })
+  })
+  app.get('/unavailable', async () => {
+    throw Object.assign(new Error('pool exhausted'), { statusCode: 503 })
+  })
   app.post('/validated', { schema: { body: Type.Object({ name: Type.String() }) } }, async () => ({
     ok: true,
   }))
+
+  app.post(
+    '/formatted',
+    {
+      schema: {
+        body: Type.Object({
+          email: Type.String({ format: 'email' }),
+          address: Type.Object({ postcode: Type.String({ minLength: 3 }) }),
+        }),
+      },
+    },
+    async () => ({ ok: true }),
+  )
 
   return app
 }
@@ -49,6 +73,121 @@ describe('registerErrorHandler', () => {
     const body = response.json()
     expect(body.error.code).toBe('validation_error')
     expect(Array.isArray(body.error.details)).toBe(true)
+  })
+
+  it('names the fields at fault in the message, not the validator’s phrasing', async () => {
+    const missing = await app.inject({ method: 'POST', url: '/validated', payload: {} })
+    expect(missing.json().error.message).toBe('The request was not valid: name.')
+
+    const wrong = await app.inject({
+      method: 'POST',
+      url: '/formatted',
+      payload: { email: 'nope', address: { postcode: 'xyz' } },
+    })
+    expect(wrong.json().error.message).toBe('The request was not valid: email.')
+
+    const nested = await app.inject({
+      method: 'POST',
+      url: '/formatted',
+      payload: { email: 'a@example.com', address: { postcode: 'x' } },
+    })
+    expect(nested.json().error.message).toBe('The request was not valid: address.postcode.')
+  })
+
+  it('adds a missing property to the object it is missing from', async () => {
+    const response = await app.inject({
+      method: 'POST',
+      url: '/formatted',
+      payload: { email: 'a@example.com', address: {} },
+    })
+
+    expect(response.json().error.message).toBe('The request was not valid: address.postcode.')
+  })
+
+  it('says only that the request was not valid when no field is at fault', async () => {
+    const response = await app.inject({
+      method: 'POST',
+      url: '/validated',
+      headers: { 'content-type': 'application/json' },
+      payload: '"not an object"',
+    })
+
+    expect(response.statusCode).toBe(400)
+    expect(response.json().error.message).toBe('The request was not valid.')
+  })
+
+  it('keeps the validator’s own findings in details, for a client that wants them', async () => {
+    const response = await app.inject({
+      method: 'POST',
+      url: '/formatted',
+      payload: { email: 'nope', address: { postcode: 'xyz' } },
+    })
+
+    expect(response.json().error.details).toEqual([
+      expect.objectContaining({
+        instancePath: '/email',
+        keyword: 'format',
+        params: { format: 'email' },
+      }),
+    ])
+  })
+
+  /**
+   * Fastify refuses a malformed request itself, before any route runs, and
+   * says which 4xx it is. That is the client's mistake, and a 500 told them
+   * the platform was broken instead.
+   */
+  it('keeps the status of a request Fastify refused', async () => {
+    const unsupported = await app.inject({
+      method: 'DELETE',
+      url: '/resource',
+      headers: { 'content-type': '' },
+      payload: 'x',
+    })
+    expect(unsupported.statusCode).toBe(415)
+    expect(unsupported.json()).toEqual({
+      error: { code: 'unsupported_media_type', message: 'Unsupported Media Type' },
+    })
+
+    const malformed = await app.inject({
+      method: 'POST',
+      url: '/echo',
+      headers: { 'content-type': 'application/json' },
+      payload: '{"name":',
+    })
+    expect(malformed.statusCode).toBe(400)
+    expect(malformed.json()).toEqual({ error: { code: 'invalid_body', message: 'Bad Request' } })
+
+    const large = await app.inject({
+      method: 'POST',
+      url: '/echo',
+      headers: { 'content-type': 'application/json' },
+      payload: JSON.stringify({ name: 'x'.repeat(200) }),
+    })
+    expect(large.statusCode).toBe(413)
+    expect(large.json()).toEqual({
+      error: { code: 'payload_too_large', message: 'Payload Too Large' },
+    })
+  })
+
+  it('answers any other 4xx with its standard phrase, never the error text', async () => {
+    const response = await app.inject({ method: 'GET', url: '/teapot' })
+    expect(response.statusCode).toBe(418)
+    expect(response.json()).toEqual({ error: { code: 'bad_request', message: "I'm a Teapot" } })
+  })
+
+  it('says Bad Request for a 4xx that has no standard phrase', async () => {
+    const response = await app.inject({ method: 'GET', url: '/unnamed' })
+    expect(response.statusCode).toBe(499)
+    expect(response.json()).toEqual({ error: { code: 'bad_request', message: 'Bad Request' } })
+  })
+
+  it('keeps a 5xx a generic 500', async () => {
+    const response = await app.inject({ method: 'GET', url: '/unavailable' })
+    expect(response.statusCode).toBe(500)
+    expect(response.json()).toEqual({
+      error: { code: 'internal_error', message: 'Internal Server Error' },
+    })
   })
 
   it('maps an unexpected error to a generic 500 without leaking internals', async () => {

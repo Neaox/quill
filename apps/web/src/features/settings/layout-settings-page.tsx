@@ -1,13 +1,14 @@
-import { Button } from '@quill/ui'
-
 import {
   useLoadedOrganisationSettings,
   useSaveOrganisationSettings,
   type OrganisationSettings,
 } from '../../lib/api/index.ts'
+import { COMPACT_EDITOR_QUERY, useMediaQuery } from '../layout/use-media-query.ts'
 import { describeLayout, LayoutChoices } from './layout-choices.tsx'
+import { SettingsActionBar } from './settings-action-bar.tsx'
 import { SettingsActions, SettingsSection } from './settings-frame.tsx'
 import { SettingsFormFeedback } from './settings-form-feedback.tsx'
+import { SettingsSaveButton } from './settings-save-button.tsx'
 import { ToggleField } from './toggle-field.tsx'
 import { UnsavedChangesGuard } from './unsaved-changes-guard.tsx'
 import { useSettingsDraft } from './use-settings-draft.ts'
@@ -33,6 +34,7 @@ import { useSettingsDraft } from './use-settings-draft.ts'
  * identity's variants. The sentence below says so on screen.
  */
 export function LayoutSettingsPage() {
+  const compact = useMediaQuery(COMPACT_EDITOR_QUERY)
   const loaded = useLoadedOrganisationSettings()
   const save = useSaveOrganisationSettings()
   const draft = useSettingsDraft<OrganisationSettings>(loaded.data.settings, loaded.data.revision)
@@ -47,14 +49,19 @@ export function LayoutSettingsPage() {
     )
   }
 
+  const saveButton = (
+    <SettingsSaveButton
+      compact={compact}
+      dirty={draft.dirty}
+      pending={save.isPending}
+      onSave={submit}
+    />
+  )
+
   return (
     <>
       <UnsavedChangesGuard dirty={draft.dirty} what="layout" />
-      <SettingsActions>
-        <Button size="sm" loading={save.isPending} disabled={!draft.dirty} onClick={submit}>
-          Save
-        </Button>
-      </SettingsActions>
+      {compact ? undefined : <SettingsActions>{saveButton}</SettingsActions>}
 
       <SettingsSection
         title="Layout"
@@ -115,6 +122,17 @@ export function LayoutSettingsPage() {
           }}
         />
       </SettingsSection>
+
+      {/* On a phone the choices are a long page and Save belongs where the
+        thumb is, not back at the top of it. */}
+      {compact ? (
+        <SettingsActionBar label="Layout actions">
+          <p className="min-w-0 grow truncate text-xs text-muted">
+            {draft.dirty ? 'Unsaved changes' : 'Nothing to save'}
+          </p>
+          {saveButton}
+        </SettingsActionBar>
+      ) : undefined}
     </>
   )
 }

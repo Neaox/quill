@@ -7,6 +7,7 @@ import { registerSecurityHeaders } from './security-headers.ts'
 async function buildTestApp(options: {
   https: boolean
   serveApiDocs: boolean
+  frameSources?: readonly string[]
 }): Promise<FastifyInstance> {
   const app = fastify({ logger: false })
   registerSecurityHeaders(app, options)
@@ -17,6 +18,23 @@ async function buildTestApp(options: {
 }
 
 describe('registerSecurityHeaders', () => {
+  it('frames nothing, unless configuration names the origins it may frame', async () => {
+    const strict = await buildTestApp({ https: true, serveApiDocs: false })
+    const framing = await buildTestApp({
+      https: true,
+      serveApiDocs: false,
+      frameSources: ['https://draw.example.com'],
+    })
+
+    const none = (await strict.inject({ method: 'GET', url: '/thing' })).headers
+    const one = (await framing.inject({ method: 'GET', url: '/thing' })).headers
+    expect(none['content-security-policy']).toContain("frame-src 'none'")
+    expect(one['content-security-policy']).toContain('frame-src https://draw.example.com;')
+    expect(one['content-security-policy']).toContain("frame-ancestors 'none'")
+    await strict.close()
+    await framing.close()
+  })
+
   it('sets a strict, nonce-based CSP with no unsafe directives', async () => {
     const app = await buildTestApp({ https: true, serveApiDocs: false })
     const response = await app.inject({ method: 'GET', url: '/thing' })

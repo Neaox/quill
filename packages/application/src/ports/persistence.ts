@@ -63,6 +63,8 @@ export interface CreateUserInput {
 export interface UserRepository {
   create(input: CreateUserInput): Promise<UserRow>
   findById(id: UserId): Promise<UserRow | null>
+  /** Several at once, in no particular order; an id that names nobody is simply absent. */
+  listByIds(ids: readonly UserId[]): Promise<readonly UserRow[]>
   findByEmail(email: string): Promise<UserRow | null>
   markEmailVerified(id: UserId, now: Date): Promise<void>
   setInstanceAdmin(id: UserId, isInstanceAdmin: boolean): Promise<void>
@@ -420,6 +422,14 @@ export interface CollectionRepository {
    */
   findBySiteSlug(siteSlug: string): Promise<CollectionRow | null>
   listByWorkspace(workspaceId: WorkspaceId): Promise<readonly CollectionRow[]>
+  /** The collections with these ids, in no particular order; an unknown id is simply absent. */
+  listByIds(ids: readonly CollectionId[]): Promise<readonly CollectionRow[]>
+  /**
+   * Collections in any workspace whose name contains `text`, ignoring case,
+   * by name, at most `limit` of them: what a picker offers as somebody types
+   * (the public menu's target combobox).
+   */
+  searchByName(text: string, limit: number): Promise<readonly CollectionRow[]>
   /**
    * Every collection whose site is switched on, for `robots.txt` — which names
    * a sitemap per site — and for an administrator's list of what is public.
@@ -473,6 +483,21 @@ export interface DocumentRow {
   readonly headRevision: RevisionId | null
   readonly createdAt: Date
   readonly updatedAt: Date
+}
+
+/** Where a page of siblings resumes: after the sibling with this creation time and id. */
+export interface ChildCursor {
+  readonly createdAt: Date
+  readonly id: DocumentId
+}
+
+export interface ChildPage {
+  readonly workspaceId: WorkspaceId
+  readonly collectionId: CollectionId
+  /** The parent, or null for the documents at the top of the collection. */
+  readonly parentId: DocumentId | null
+  readonly after: ChildCursor | null
+  readonly limit: number
 }
 
 export interface CreateDocumentInput {
@@ -540,6 +565,15 @@ export interface DocumentRepository {
    * which reads rows the caller has already decided it cannot use.
    */
   listByCollection(collectionId: CollectionId): Promise<readonly DocumentRow[]>
+  /**
+   * One page of the documents directly under a parent (or at the top of a collection, for a
+   * null parent), in the order siblings have: oldest first, then by id, so a new document is
+   * last and nothing moves when it is made (ADR-049). The page after `after`, by key rather
+   * than by offset, so a document made while someone reads is neither repeated nor skipped.
+   */
+  listChildren(input: ChildPage): Promise<readonly DocumentRow[]>
+  /** How many documents each of these has directly beneath it; one with none is absent. */
+  countChildren(parentIds: readonly DocumentId[]): Promise<ReadonlyMap<DocumentId, number>>
   /** Resolving a body's outgoing links must cost one query, not one per link. */
   listByIds(ids: readonly DocumentId[]): Promise<readonly DocumentRow[]>
   /**
@@ -556,6 +590,8 @@ export interface DraftRow {
   readonly draftVersion: number
   readonly baseRevision: RevisionId | null
   readonly ast: unknown
+  /** Who wrote what is waiting in the draft; absent for a draft with no record (ADR-033). */
+  readonly authorship?: unknown
   readonly updatedAt: Date
 }
 
@@ -583,6 +619,8 @@ export interface DraftRepository {
     readonly sessionId: SessionId
     readonly expectedVersion: number
     readonly ast: unknown
+    /** The record of who wrote what, as it is after this write; omitted leaves it as it was. */
+    readonly authorship?: unknown
     readonly now: Date
   }): Promise<WriteDraftResult>
   /**
@@ -595,7 +633,8 @@ export interface DraftRepository {
    * holding content that would undo it on their next publish. Replacing the
    * content bumps the draft version, so an editor that was open when the
    * restore happened is told its write is stale and re-reads (ADR-021);
-   * leaving the content alone leaves the version alone with it.
+   * leaving the content alone leaves the version alone with it. Either way the record of
+   * who wrote what is cleared: from here the draft says what is published.
    */
   rebase(input: {
     readonly documentId: DocumentId
@@ -1022,6 +1061,18 @@ export interface AttachmentRow {
   readonly contentType: string
   readonly size: number
   readonly sha256: string
+  /**
+   * Starts at 1 and rises with each revision (ADR-043). The URL never changes,
+   * so a document showing the attachment shows its latest revision; a writer
+   * names the version they edited, and a newer one refuses their save.
+   */
+  readonly version: number
+  /**
+   * Words the file carries that a reader of the document can see but the
+   * Markdown does not say — a diagram's labels — for search. Null for a file
+   * with none, or one whose words could not be read within the limits.
+   */
+  readonly searchText: string | null
   readonly createdAt: Date
   readonly deletedAt: Date | null
 }
@@ -1035,6 +1086,20 @@ export interface CreateAttachmentInput {
   readonly contentType: string
   readonly size: number
   readonly sha256: string
+  readonly searchText?: string | null
+  readonly now: Date
+}
+
+/** A new revision of an attachment's bytes, under the same id and URL. */
+export interface ReviseAttachmentInput {
+  readonly id: AttachmentId
+  /** The version the writer edited; any other current version refuses the revision. */
+  readonly expectedVersion: number
+  readonly revisedBy: UserId
+  readonly contentType: string
+  readonly size: number
+  readonly sha256: string
+  readonly searchText: string | null
   readonly now: Date
 }
 
@@ -1048,8 +1113,50 @@ export interface AttachmentRepository {
    * years may have shed many, and none of them is ever an answer.
    */
   listForDocument(documentId: DocumentId): Promise<readonly AttachmentRow[]>
+  /**
+   * The live attachments among `ids` that belong to this workspace, in one
+   * query. Scoped by workspace in the query itself, so a body can never be
+   * handed another workspace's file however its URLs were written.
+   */
+  listLiveInWorkspace(
+    workspaceId: WorkspaceId,
+    ids: readonly AttachmentId[],
+  ): Promise<readonly AttachmentRow[]>
   /** Marks the row removed. Removing an already-removed attachment is not an error. */
   softDelete(id: AttachmentId, now: Date): Promise<void>
+  /**
+   * Replaces a live attachment's bytes with a new revision, keeping the one
+   * it replaces in the attachment's history. A compare-and-set on the
+   * version: null when the attachment is gone or is no longer at
+   * `expectedVersion`, and nothing is written.
+   */
+  revise(input: ReviseAttachmentInput): Promise<AttachmentRow | null>
+}
+
+// ---------------------------------------------------------------------------
+// Person preferences
+// ---------------------------------------------------------------------------
+
+/**
+ * A person's own preferences as stored: the versioned document exactly as it
+ * was written, read through `use-cases/person-preferences.ts`'s versioned
+ * reader rather than trusted here, so a document an older or newer release
+ * wrote is never misread by the storage layer (ADR-033).
+ */
+export interface PersonPreferencesRow {
+  readonly userId: UserId
+  readonly document: unknown
+  readonly updatedAt: Date
+}
+
+export interface PersonPreferencesRepository {
+  find(userId: UserId): Promise<PersonPreferencesRow | null>
+  /** Writes the whole document, replacing whatever the person had. */
+  put(input: {
+    readonly userId: UserId
+    readonly document: unknown
+    readonly now: Date
+  }): Promise<PersonPreferencesRow>
 }
 
 // ---------------------------------------------------------------------------
@@ -1125,6 +1232,7 @@ export interface RepositoryBundle {
   readonly documentLinks: DocumentLinksRepository
   readonly secrets: SecretsRepository
   readonly attachments: AttachmentRepository
+  readonly personPreferences: PersonPreferencesRepository
   readonly outbox: OutboxWriter
   readonly audit: AuditWriter
 }

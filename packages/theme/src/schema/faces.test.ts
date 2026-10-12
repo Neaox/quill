@@ -21,6 +21,15 @@ describe('the curated type set', () => {
     }
   })
 
+  it('offers Figtree for every role but mono, as Grid sets it', () => {
+    expect(CURATED_FACES.figtree.family).toBe('Figtree Variable')
+    expect(CURATED_FACES.figtree.roles).toEqual(['interface', 'reading', 'display'])
+  })
+
+  it('offers Inter for every role but mono, as Calm sets it', () => {
+    expect(CURATED_FACES.inter.roles).toEqual(['interface', 'reading', 'display'])
+  })
+
   it('offers a monospace face only for the mono role', () => {
     expect(CURATED_FACES['jetbrains-mono'].roles).toEqual(['mono'])
     expect(CURATED_FACES['ibm-plex-mono'].roles).toEqual(['mono'])

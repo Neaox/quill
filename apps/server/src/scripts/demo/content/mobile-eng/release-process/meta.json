@@ -1,0 +1,14 @@
+{
+  "collection": "Releases",
+  "title": "Release process",
+  "type": "guide",
+  "owners": ["jonas@acme.example"],
+  "tags": ["skiff", "mobile", "releases", "process"],
+  "review": "6m",
+  "status": "published",
+  "notes": [
+    "First version of the monthly calendar and staged rollout",
+    "Added the hotfix path, corrected the iOS phased release percentages and recorded the 2026.10 status"
+  ],
+  "frontMatter": {}
+}

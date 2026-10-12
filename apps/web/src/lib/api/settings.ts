@@ -9,6 +9,7 @@ import { queryKeys } from './query-keys.ts'
 import type {
   OrganisationSettings,
   OrganisationSettingsResponse,
+  OrganisationThemeSummary,
   SavedOrganisationSettings,
   SecretDto,
   WorkspaceSettingsDocument,
@@ -50,6 +51,66 @@ export function organisationSettingsQueryOptions(client: ApiClient) {
     queryFn: () => request(client.GET('/api/settings/organisation', {})),
     staleTime: SETTINGS_STALE_TIME_MS,
   }
+}
+
+/**
+ * The organisation's theme, as every page applies it (ADR-028, "Delivery").
+ *
+ * No session needed and none sent for: the share-link surface and the
+ * sign-in page render with the theme too. The default `staleTime` of zero is
+ * deliberate — the answer is a few bytes, the server tells the browser to ask
+ * every time, and refetching when a window regains focus is what carries a
+ * theme saved in one tab into the others.
+ */
+export function organisationThemeQueryOptions(client: ApiClient) {
+  return {
+    queryKey: queryKeys.organisationTheme(),
+    queryFn: (): Promise<OrganisationThemeSummary> =>
+      request(client.GET('/api/settings/organisation/theme', {})),
+  }
+}
+
+/**
+ * The organisation's label names (ADR-037), so the editor draws
+ * `:acme[Acme]` as the reader will and warns about a name that is none of
+ * them; undefined until the theme has loaded, so nothing is called unknown
+ * before the organisation has said what is known.
+ */
+export function useOrganisationLabels(): readonly string[] | undefined {
+  const client = useApiClient()
+  const { data } = useQuery({
+    ...organisationThemeQueryOptions(client),
+    select: (theme) => theme.labels,
+  })
+  return data
+}
+
+/** The organisation's emoji as the editor and the settings screen draw them (ADR-038). */
+export interface OrganisationEmoji {
+  /** Each custom emoji's served address and size, by name. */
+  readonly custom: ReadonlyMap<
+    string,
+    { src: string; still?: string | undefined; width: number; height: number }
+  >
+  /** The emoji each label's pill leads with, by label name. */
+  readonly labelEmoji: ReadonlyMap<string, string>
+}
+
+function organisationEmoji(theme: OrganisationThemeSummary): OrganisationEmoji {
+  return {
+    custom: new Map(theme.emoji.map(({ name, ...image }) => [name, image])),
+    labelEmoji: new Map(Object.entries(theme.labelEmoji)),
+  }
+}
+
+/**
+ * The organisation's own emoji (ADR-038), so the editor draws `:acme:` as
+ * the reader will; undefined until the theme summary has loaded.
+ */
+export function useOrganisationEmoji(): OrganisationEmoji | undefined {
+  const client = useApiClient()
+  const { data } = useQuery({ ...organisationThemeQueryOptions(client), select: organisationEmoji })
+  return data
 }
 
 export function useOrganisationSettings() {
@@ -107,6 +168,11 @@ export function useSaveOrganisationSettings() {
         revision: saved.revision,
         settings: saved.settings,
       } satisfies OrganisationSettingsResponse)
+      // The theme the page wears is the server's rendering of the saved
+      // document, not something this browser derives, so it is fetched
+      // again rather than patched: the next stylesheet address is the
+      // server's to name.
+      void queryClient.invalidateQueries({ queryKey: queryKeys.organisationTheme() })
     },
     onError: (error: unknown) => {
       if (isSettingsConflict(error)) {

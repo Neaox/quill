@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 
 import { expectNoAccessibilityViolations } from '../../testing/axe.ts'
-import { Menu } from './menu.tsx'
+import { Menu, MenuButton } from './menu.tsx'
 
 const ITEMS = [
   { label: 'Rename…', onSelect: () => {} },
@@ -128,5 +128,167 @@ describe('Menu', () => {
     expect(item).toHaveAttribute('data-disabled')
     await userEvent.click(item)
     expect(onSelect).not.toHaveBeenCalled()
+  })
+})
+
+function renderPersonMenu(
+  onSignOut = vi.fn<() => void>(),
+  onScheme = vi.fn<(value: string) => void>(),
+) {
+  const view = render(
+    <MenuButton
+      label="Account menu for Ada Writer"
+      header={<span>ada@example.com</span>}
+      sections={[
+        {
+          id: 'appearance',
+          entries: [
+            {
+              kind: 'choice',
+              label: 'Appearance',
+              value: 'system',
+              options: [
+                { value: 'system', label: 'System' },
+                { value: 'dark', label: 'Dark' },
+              ],
+              onValueChange: onScheme,
+            },
+          ],
+        },
+        {
+          id: 'organisation',
+          label: 'Organisation',
+          entries: [{ kind: 'link', label: 'Theme', target: { to: '/admin/settings/theme' } }],
+        },
+        { id: 'empty', label: 'Nothing', entries: [] },
+        { id: 'session', entries: [{ kind: 'action', label: 'Sign out', onSelect: onSignOut }] },
+      ]}
+    >
+      <span>Ada Writer</span>
+    </MenuButton>,
+  )
+  return { ...view, onSignOut, onScheme }
+}
+
+describe('MenuButton', () => {
+  it('is a menu button named by the label, which contains the words it shows', async () => {
+    const { container } = renderPersonMenu()
+
+    const trigger = screen.getByRole('button', { name: 'Account menu for Ada Writer' })
+    expect(trigger).toHaveTextContent('Ada Writer')
+    expect(trigger).toHaveAttribute('aria-haspopup', 'menu')
+    await expectNoAccessibilityViolations(container)
+  })
+
+  it('opens from the keyboard onto its first item and walks links, choices and actions', async () => {
+    renderPersonMenu()
+
+    screen.getByRole('button', { name: 'Account menu for Ada Writer' }).focus()
+    await userEvent.keyboard('{Enter}')
+    const menu = await screen.findByRole('menu')
+
+    expect(screen.getByRole('menuitemradio', { name: 'System' })).toHaveFocus()
+    expect(screen.getByRole('menuitemradio', { name: 'System' })).toHaveAttribute(
+      'aria-checked',
+      'true',
+    )
+    await userEvent.keyboard('{ArrowDown}{ArrowDown}')
+    expect(screen.getByRole('menuitem', { name: 'Theme' })).toHaveFocus()
+    expect(screen.getByRole('menuitem', { name: 'Theme' })).toHaveAttribute(
+      'href',
+      '/admin/settings/theme',
+    )
+    await userEvent.keyboard('{End}')
+    expect(screen.getByRole('menuitem', { name: 'Sign out' })).toHaveFocus()
+    expect(screen.getByRole('group', { name: 'Organisation' })).toBeInTheDocument()
+    expect(screen.queryByText('Nothing')).not.toBeInTheDocument()
+    await expectNoAccessibilityViolations(menu)
+  })
+
+  it('keeps the panel open on a choice and closes on an action', async () => {
+    const { onSignOut, onScheme } = renderPersonMenu()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Account menu for Ada Writer' }))
+    await userEvent.click(await screen.findByRole('menuitemradio', { name: 'Dark' }))
+    expect(onScheme).toHaveBeenCalledWith('dark')
+    expect(screen.getByRole('menu')).toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Sign out' }))
+    expect(onSignOut).toHaveBeenCalledOnce()
+    expect(screen.queryByRole('menu')).not.toBeInTheDocument()
+  })
+})
+
+describe('MenuButton rows', () => {
+  function renderRows(onCycle = vi.fn<() => void>()) {
+    render(
+      <MenuButton
+        label="Account menu for Ada Writer"
+        sections={[
+          {
+            id: 'person',
+            entries: [
+              {
+                kind: 'link',
+                label: 'Preferences',
+                target: { to: '/preferences' },
+                icon: <svg data-testid="prefs-icon" />,
+              },
+              {
+                kind: 'action',
+                label: 'Appearance',
+                icon: <svg data-testid="scheme-icon" />,
+                hint: 'System',
+                keepOpen: true,
+                onSelect: onCycle,
+              },
+            ],
+          },
+        ]}
+      >
+        <span>Ada Writer</span>
+      </MenuButton>,
+    )
+    return onCycle
+  }
+
+  it('draws an icon before a row, which says nothing the words do not and is hidden from assistive technology', async () => {
+    renderRows()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Account menu for Ada Writer' }))
+
+    const item = await screen.findByRole('menuitem', { name: 'Preferences' })
+    expect(item).toContainElement(screen.getByTestId('prefs-icon'))
+    expect(screen.getByTestId('prefs-icon').closest('[aria-hidden="true"]')).not.toBeNull()
+  })
+
+  it('says what a row is set to after its name, as a reader hears it: "Appearance: System"', async () => {
+    renderRows()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Account menu for Ada Writer' }))
+
+    expect(
+      await screen.findByRole('menuitem', { name: /^Appearance:\s*System$/u }),
+    ).toBeInTheDocument()
+  })
+
+  it('announces a change of the setting politely, since the row keeps the focus', async () => {
+    renderRows()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Account menu for Ada Writer' }))
+    const hint = (await screen.findByText('System')).closest('[aria-live]')
+
+    expect(hint).toHaveAttribute('aria-live', 'polite')
+  })
+
+  it('keeps the panel open on a row that asks to, so it can be pressed again', async () => {
+    const onCycle = renderRows()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Account menu for Ada Writer' }))
+    await userEvent.click(await screen.findByRole('menuitem', { name: /^Appearance:\s*System$/u }))
+    await userEvent.keyboard('{Enter}')
+
+    expect(onCycle).toHaveBeenCalledTimes(2)
+    expect(screen.getByRole('menu')).toBeInTheDocument()
   })
 })

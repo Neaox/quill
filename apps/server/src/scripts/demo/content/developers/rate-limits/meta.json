@@ -1,0 +1,11 @@
+{
+  "collection": "API reference",
+  "title": "Rate limits",
+  "type": "reference",
+  "owners": ["marcus@acme.example"],
+  "tags": ["api", "limits", "429"],
+  "review": "90d",
+  "status": "published",
+  "notes": ["First version", "Doubled the Team limits for 2026.10 and added backoff guidance"],
+  "frontMatter": {}
+}

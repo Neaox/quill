@@ -40,5 +40,11 @@ export {
   type ContentPath,
 } from './git/tree-path.ts'
 export { parseTrailers, trailerValues, type Trailer } from './git/trailers.ts'
-export { OURS_LABEL, THEIRS_LABEL, threeWayMerge, type ThreeWayMerge } from './three-way-merge.ts'
+export {
+  conflictMarkers,
+  OURS_LABEL,
+  THEIRS_LABEL,
+  threeWayMerge,
+  type ThreeWayMerge,
+} from './three-way-merge.ts'
 export { DEFAULT_CONTEXT, NO_NEWLINE, unifiedDiff, type UnifiedDiff } from './unified-diff.ts'

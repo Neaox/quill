@@ -82,6 +82,20 @@ describe('projectIndexableDocument', () => {
     expect(result.body).toBe('The body paragraph.')
   })
 
+  it('searches the words of the drawings the body shows, after its prose (ADR-043)', () => {
+    const project = (markdown: string, drawingText: readonly string[]) =>
+      projectIndexableDocument({
+        ...location(),
+        frontMatter: MINIMAL_FRONT_MATTER,
+        ast: parseMarkdown(markdown),
+        drawingText,
+      }).body
+
+    expect(project('# Title\n\nThe flow.', ['Gateway\nLedger'])).toBe('The flow.\nGateway\nLedger')
+    expect(project('# Title', ['Gateway'])).toBe('Gateway')
+    expect(project('# Title\n\nThe flow.', [])).toBe('The flow.')
+  })
+
   it('defaults tags and owners to empty arrays when front matter omits them', () => {
     const ast = parseMarkdown('# Title')
     const result = projectIndexableDocument({

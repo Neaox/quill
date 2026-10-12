@@ -237,6 +237,8 @@ function readExpiry(value: string | null | undefined): Date | null {
  */
 function noIndex(reply: FastifyReply): void {
   reply.header('x-robots-tag', 'noindex, nofollow')
+  // The token is in the address, so no answer here tells another origin it.
+  reply.header('referrer-policy', 'no-referrer')
 }
 
 export function shareLinkRoutes(deps: AppDependencies): FastifyPluginAsync {

@@ -17,7 +17,7 @@ import type {
 import { readDraftContent, withDocumentAst, type DraftContent } from '../documents/draft-content.ts'
 import { useApiClient } from './client-context.tsx'
 import { draftQueryOptions, useSaveDraft } from './drafts.ts'
-import { ApiError } from './errors.ts'
+import { ApiError, isTransientFailure, retryAfterOf } from './errors.ts'
 import { useAcquireLock, useHeartbeatLock, useReleaseLock, useTakeoverLock } from './locks.ts'
 import { queryKeys } from './query-keys.ts'
 import type { DraftDto, LockHolderDto } from './types.ts'
@@ -199,19 +199,26 @@ export function useDraftClient(documentId: string): DraftClient {
             updatedAt: Date.parse(result.updatedAt),
           }
         } catch (error) {
-          const failure = asApiError(error)
-          switch (failure.status) {
+          // Transient and unknown failures are outcomes too, never a throw:
+          // a thrown save is what froze autosave (audit 2026-10-11, P0-1).
+          if (isTransientFailure(error)) {
+            return { status: 'unavailable', retryAfterMs: retryAfterOf(error) }
+          }
+          if (!(error instanceof ApiError)) {
+            return {
+              status: 'rejected',
+              message: error instanceof Error ? error.message : 'The draft could not be saved',
+            }
+          }
+          switch (error.status) {
             case 423:
-              return { status: 'lock_lost', holder: holderFrom(failure.details, UNNAMED_HOLDER) }
+              return { status: 'lock_lost', holder: holderFrom(error.details, UNNAMED_HOLDER) }
             case 409:
-              return {
-                status: 'stale_version',
-                currentVersion: currentVersionFrom(failure.details),
-              }
+              return { status: 'stale_version', currentVersion: currentVersionFrom(error.details) }
             case 401:
               return { status: 'session_expired' }
             default:
-              throw failure
+              return { status: 'rejected', message: error.message }
           }
         }
       },

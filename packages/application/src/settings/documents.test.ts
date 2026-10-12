@@ -9,9 +9,9 @@ import {
   parseWorkspaceSettings,
   recommendedLayout,
   SECRET_NAME_PATTERN,
-  SETTINGS_VERSION,
   validateOrganisationSettings,
   validateWorkspaceSettings,
+  WORKSPACE_SETTINGS_VERSION,
   workspaceSettingsPath,
 } from './documents.ts'
 import { LAYOUT_CHOICES, LAYOUT_SLOTS } from './layout.ts'
@@ -55,9 +55,40 @@ describe('defaults', () => {
     }
   })
 
+  it('reads back an organisation on Calm, whose layout divides sections with plain space', () => {
+    const settings = defaultOrganisationSettings(BUILTIN_THEMES.calm)
+    expect(settings.layout.default.rules).toBe('plain')
+    expect(parseOrganisationSettings(settings)).toEqual(settings)
+  })
+
+  it('reads back an organisation on Grid, whose reading column starts beside the navigation', () => {
+    const settings = defaultOrganisationSettings(BUILTIN_THEMES.grid)
+    expect(settings.layout.default.align).toBe('start')
+    expect(validateOrganisationSettings(settings)).toMatchObject({ valid: true })
+    expect(parseOrganisationSettings(settings)).toEqual(settings)
+  })
+
+  it('reads a layout saved before alignment existed as centred, by leaving it unstated', () => {
+    const { align: _align, ...before } = defaultOrganisationSettings(BUILTIN_THEMES.grid).layout
+      .default
+    const settings = { ...organisation, layout: { ...organisation.layout, default: before } }
+    expect(validateOrganisationSettings(settings)).toMatchObject({ valid: true })
+  })
+
+  it('refuses an alignment outside the bounded set', () => {
+    const settings = {
+      ...organisation,
+      layout: {
+        ...organisation.layout,
+        default: { ...organisation.layout.default, align: 'justify' },
+      },
+    }
+    expect(validateOrganisationSettings(settings)).toMatchObject({ valid: false })
+  })
+
   it('give a workspace a file that inherits everything', () => {
     expect(defaultWorkspaceSettings('w-1')).toEqual({
-      version: SETTINGS_VERSION,
+      version: WORKSPACE_SETTINGS_VERSION,
       workspaceId: 'w-1',
     })
     expect(validateWorkspaceSettings(defaultWorkspaceSettings('w-1'))).toMatchObject({
@@ -68,13 +99,10 @@ describe('defaults', () => {
 
 describe('validation', () => {
   it('reports every problem at once, with a pointer to each', () => {
-    const result = validateOrganisationSettings({ ...organisation, name: '', publicNavigation: 3 })
+    const result = validateOrganisationSettings({ ...organisation, name: '', publicMenu: 3 })
     expect(result.valid).toBe(false)
     if (result.valid) throw new Error('expected the document to be refused')
-    expect(result.issues.map((issue) => issue.path).toSorted()).toEqual([
-      '/name',
-      '/publicNavigation',
-    ])
+    expect(result.issues.map((issue) => issue.path).toSorted()).toEqual(['/name', '/publicMenu'])
   })
 
   it('refuses a document with fields nobody declared', () => {
@@ -105,16 +133,6 @@ describe('validation', () => {
         expect(result, `${slot}=${choice}`).toMatchObject({ valid: true })
       }
     }
-  })
-
-  it('refuses more public navigation links than the bar can hold', () => {
-    const links = Array.from({ length: 9 }, (_, index) => ({
-      label: `Link ${index}`,
-      href: '/docs',
-    }))
-    expect(
-      validateOrganisationSettings({ ...organisation, publicNavigation: links }),
-    ).toMatchObject({ valid: false })
   })
 
   it('refuses a logo that is not a content hash', () => {
@@ -165,20 +183,10 @@ describe('validation', () => {
     ).toMatchObject({ valid: false })
   })
 
-  it('refuses a public navigation link that is not a path or an http address', () => {
-    const hrefs = ['javascript:alert(1)', 'data:text/html,<script>', '//evil.example.com']
-    expect(hrefs.map(verdictFor)).toEqual(hrefs.map((href) => ({ href, valid: false })))
-  })
-
-  it('accepts a rooted path and an absolute http address', () => {
-    const hrefs = ['/handbook', '/', 'https://status.example.com', 'http://intranet/docs']
-    expect(hrefs.map(verdictFor)).toEqual(hrefs.map((href) => ({ href, valid: true })))
-  })
-
   it('refuses workspace settings with a layout outside the set', () => {
     expect(
       validateWorkspaceSettings({
-        version: SETTINGS_VERSION,
+        version: WORKSPACE_SETTINGS_VERSION,
         workspaceId: 'w-1',
         layout: { ...organisation.layout.default, navigation: 'carousel' },
       }),
@@ -203,21 +211,12 @@ describe('version dispatch (rule 17)', () => {
   })
 
   it('refuses a document of the right version but the wrong shape', () => {
-    expect(parseOrganisationSettings({ version: SETTINGS_VERSION })).toBeNull()
-    expect(parseWorkspaceSettings({ version: SETTINGS_VERSION })).toBeNull()
+    expect(parseOrganisationSettings({ version: organisation.version })).toBeNull()
+    expect(parseWorkspaceSettings({ version: WORKSPACE_SETTINGS_VERSION })).toBeNull()
   })
 })
 
 const matches = (name: string): boolean => new RegExp(SECRET_NAME_PATTERN).test(name)
-
-/** Whether one navigation address is accepted, named so a failure says which. */
-const verdictFor = (href: string): { href: string; valid: boolean } => ({
-  href,
-  valid: validateOrganisationSettings({
-    ...organisation,
-    publicNavigation: [{ label: 'Handbook', href }],
-  }).valid,
-})
 
 describe('secret names', () => {
   it('accepts the path-like names settings files reference', () => {

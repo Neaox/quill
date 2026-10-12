@@ -112,7 +112,7 @@ module.exports = {
   ],
   options: {
     doNotFollow: { path: 'node_modules' },
-    exclude: { path: ['node_modules', 'dist', 'coverage', '\\.gen\\.ts$'] },
+    exclude: { path: ['node_modules', 'dist', 'coverage', '\\.gen\\.[jt]s$'] },
     tsPreCompilationDeps: true,
     tsConfig: { fileName: 'tsconfig.json' },
     enhancedResolveOptions: {

@@ -18,8 +18,10 @@ export {
 } from './highlight-registry.ts'
 export {
   applyHighlighting,
+  createRangesRegistry,
   type CodeBlockElement,
   type HighlightClientEnvironment,
   type HighlightRoot,
   type TextNodeLike,
 } from './apply-highlighting.ts'
+export { placeRanges, type PlacedRange, type TextSegment } from './place-ranges.ts'

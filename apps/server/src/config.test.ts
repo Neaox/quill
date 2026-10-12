@@ -67,6 +67,14 @@ describe('loadConfig', () => {
         // Flat, which is what the same window twice says.
         rateLimit: { max: 60, windowMs: 60_000, maxWindowMs: 60_000 },
       },
+      // The Compose file's self-hosted editor, while the app is on loopback.
+      drawio: {
+        editor: {
+          url: 'http://localhost:8080/',
+          origin: 'http://localhost:8080',
+          thirdParty: false,
+        },
+      },
     })
   })
 

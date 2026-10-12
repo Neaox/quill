@@ -2,7 +2,11 @@ import { createFileRoute, notFound } from '@tanstack/react-router'
 
 import { EditorRoute } from '../../../../../../features/documents/editor-route.tsx'
 import { RouteNotice } from '../../../../../../features/workspaces/route-notice.tsx'
-import { ApiError, documentQueryOptions } from '../../../../../../lib/api/index.ts'
+import {
+  ApiError,
+  documentQueryOptions,
+  organisationThemeQueryOptions,
+} from '../../../../../../lib/api/index.ts'
 
 /**
  * Writing a document, inside the same shell reading it uses — the sidebar and
@@ -19,13 +23,24 @@ import { ApiError, documentQueryOptions } from '../../../../../../lib/api/index.
  * because the tab has to say *which* document is being edited. "Editing" on
  * its own names nothing, and a writer with three tabs open cannot tell them
  * apart. The draft and the lock stay the editor's own to own.
+ *
+ * It also makes sure the organisation's theme summary is in the cache —
+ * normally it already is, from the app shell — because the editor reads the
+ * label names in it once, when it is built (ADR-037), and must not be built
+ * before them. A theme that cannot be read is not a reason to refuse to edit:
+ * labels then read as written, as they would to a reader.
  */
 export const Route = createFileRoute('/_authenticated/w/$workspaceSlug/d/$documentId/edit')({
   loader: async ({ context, params }) => {
     try {
-      const document = await context.queryClient.ensureQueryData(
-        documentQueryOptions(context.apiClient, params.documentId),
-      )
+      const [document] = await Promise.all([
+        context.queryClient.ensureQueryData(
+          documentQueryOptions(context.apiClient, params.documentId),
+        ),
+        context.queryClient
+          .ensureQueryData(organisationThemeQueryOptions(context.apiClient))
+          .catch(() => undefined),
+      ])
       return { title: document.title }
     } catch (error) {
       if (error instanceof ApiError && (error.status === 404 || error.status === 403)) {

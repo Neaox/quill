@@ -1,0 +1,14 @@
+{
+  "collection": "Playbooks",
+  "title": "Handling an angry customer",
+  "type": "playbook",
+  "owners": ["tom@acme.example"],
+  "tags": ["playbook", "tone", "escalation"],
+  "review": "6m",
+  "status": "published",
+  "notes": [
+    "First version, adapted from the onboarding session for new agents",
+    "Tightened the lead thresholds, added the section on abusive language"
+  ],
+  "frontMatter": {}
+}

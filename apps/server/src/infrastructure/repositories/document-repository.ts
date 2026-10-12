@@ -1,6 +1,7 @@
-import { and, eq, inArray, sql } from 'drizzle-orm'
+import { and, asc, count, eq, gt, inArray, isNull, or, sql } from 'drizzle-orm'
 
 import type {
+  ChildPage,
   CollectionId,
   CreateDocumentInput,
   CreateDocumentOutcome,
@@ -172,6 +173,50 @@ export function createDocumentRepository(db: DrizzleClient): DocumentRepository 
     async listByCollection(collectionId: CollectionId): Promise<readonly DocumentRow[]> {
       const rows = await db.select().from(documents).where(eq(documents.collectionId, collectionId))
       return rows.map(toDocumentRow)
+    },
+
+    async listChildren({
+      workspaceId,
+      collectionId,
+      parentId,
+      after,
+      limit,
+    }: ChildPage): Promise<readonly DocumentRow[]> {
+      const rows = await db
+        .select()
+        .from(documents)
+        .where(
+          and(
+            eq(documents.workspaceId, workspaceId),
+            eq(documents.collectionId, collectionId),
+            parentId === null ? isNull(documents.parentId) : eq(documents.parentId, parentId),
+            after === null
+              ? undefined
+              : or(
+                  gt(documents.createdAt, after.createdAt),
+                  and(eq(documents.createdAt, after.createdAt), gt(documents.id, after.id)),
+                ),
+          ),
+        )
+        .orderBy(asc(documents.createdAt), asc(documents.id))
+        .limit(limit)
+      return rows.map(toDocumentRow)
+    },
+
+    async countChildren(
+      parentIds: readonly DocumentId[],
+    ): Promise<ReadonlyMap<DocumentId, number>> {
+      if (parentIds.length === 0) return new Map()
+      const rows = await db
+        .select({ parentId: documents.parentId, count: count() })
+        .from(documents)
+        .where(inArray(documents.parentId, [...parentIds]))
+        .groupBy(documents.parentId)
+      return new Map(
+        rows.flatMap(({ parentId, count: total }) =>
+          parentId === null ? [] : [[parentId as DocumentId, total] as const],
+        ),
+      )
     },
 
     async listByIds(ids: readonly DocumentId[]): Promise<readonly DocumentRow[]> {

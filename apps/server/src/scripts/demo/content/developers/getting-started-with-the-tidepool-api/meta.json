@@ -1,0 +1,15 @@
+{
+  "collection": "Guides",
+  "title": "Getting started with the Tidepool API",
+  "type": "guide",
+  "owners": ["marcus@acme.example"],
+  "tags": ["api", "quickstart", "tokens"],
+  "review": "90d",
+  "status": "published",
+  "notes": [
+    "First version of the quickstart",
+    "Added the create-feedback step and the write scope",
+    "Added test tokens and a next-steps section"
+  ],
+  "frontMatter": {}
+}

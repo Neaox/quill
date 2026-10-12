@@ -1,0 +1,14 @@
+{
+  "collection": "Culture",
+  "title": "How we make decisions",
+  "type": "article",
+  "owners": ["priya@acme.example", "dana@acme.example"],
+  "tags": ["culture", "decisions"],
+  "review": "1y",
+  "status": "published",
+  "notes": [
+    "First version",
+    "Lengthened the comment period to 5 working days and added disagree and commit"
+  ],
+  "frontMatter": {}
+}

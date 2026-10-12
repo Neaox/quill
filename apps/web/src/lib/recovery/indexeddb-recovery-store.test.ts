@@ -1,104 +1,71 @@
 import { describe, expect, it, vi } from 'vitest'
 
-import type { PendingDraft } from '@quill/editor'
+import type { DraftBase, PendingDraft } from '@quill/editor'
 
 import { createIndexedDbRecoveryStore } from './indexeddb-recovery-store.ts'
-
-/**
- * A fake IndexedDB, small enough to read and real enough to be worth
- * testing against: requests are event targets that settle on a microtask,
- * exactly like the real thing, which is what makes the ordering this module
- * depends on (open, then read back, then mirror every write in order)
- * actually exercised rather than assumed.
- */
-class FakeRequest<T> extends EventTarget {
-  result!: T
-  error: Error | null = null
-
-  settle(work: () => T, upgrade?: () => void): this {
-    queueMicrotask(() => {
-      try {
-        if (upgrade !== undefined) {
-          upgrade()
-          this.dispatchEvent(new Event('upgradeneeded'))
-        }
-        this.result = work()
-        this.dispatchEvent(new Event('success'))
-      } catch (error) {
-        this.error = error instanceof Error ? error : new Error(String(error))
-        this.dispatchEvent(new Event('error'))
-      }
-    })
-    return this
-  }
-}
-
-interface FakeOptions {
-  /** Rejects `open`, as a browser in private mode or out of quota does. */
-  readonly refuseToOpen?: boolean
-  /** Fails every write, as a quota refusal mid-session does. */
-  readonly refuseWrites?: boolean
-}
-
-function createFakeIndexedDb(
-  rows: Map<string, unknown> = new Map(),
-  options: FakeOptions = {},
-): { factory: IDBFactory; rows: Map<string, unknown>; isOpen: () => boolean } {
-  let open = false
-  const stores = new Set<string>()
-
-  const objectStore = {
-    get: (key: string) => new FakeRequest<unknown>().settle(() => rows.get(key)),
-    put: (value: unknown, key: string) =>
-      new FakeRequest<unknown>().settle(() => {
-        if (options.refuseWrites === true) throw new Error('Quota exceeded')
-        rows.set(key, value)
-        return undefined
-      }),
-    delete: (key: string) =>
-      new FakeRequest<unknown>().settle(() => {
-        rows.delete(key)
-        return undefined
-      }),
-  }
-
-  const database = {
-    objectStoreNames: { contains: (name: string) => stores.has(name) },
-    createObjectStore: (name: string) => {
-      stores.add(name)
-      return objectStore
-    },
-    transaction: () => ({ objectStore: () => objectStore }),
-    close: () => {
-      open = false
-    },
-  }
-
-  const factory = {
-    open: () =>
-      new FakeRequest<unknown>().settle(
-        () => {
-          if (options.refuseToOpen === true) throw new Error('Refused')
-          open = true
-          return database
-        },
-        () => {
-          if (options.refuseToOpen !== true) stores.add('pending-drafts')
-        },
-      ),
-  }
-
-  // The fake implements exactly the slice of `IDBFactory` this module uses;
-  // the cast is the boundary of that, and every member it reaches for is
-  // above.
-  return { factory: factory as unknown as IDBFactory, rows, isOpen: () => open }
-}
+import { createFakeIndexedDb } from './testing.ts'
 
 const EDIT: PendingDraft = {
   ast: { type: 'root', children: [] },
   expectedVersion: 4,
   savedAt: 1_700_000_000_000,
 }
+
+const BASE: DraftBase = { ast: { type: 'root', children: [] }, draftVersion: 3 }
+
+describe('the recovery store’s base', () => {
+  it('has none for a document nobody has saved', async () => {
+    const { factory } = createFakeIndexedDb()
+    const store = createIndexedDbRecoveryStore({ documentId: 'doc-1', factory })
+    await store.ready
+    expect(store.readBase()).toBeUndefined()
+  })
+
+  it('remembers the draft the editor last agreed with the server, and mirrors it', async () => {
+    const { factory, rows } = createFakeIndexedDb()
+    const store = createIndexedDbRecoveryStore({ documentId: 'doc-1', factory })
+    await store.ready
+
+    store.writeBase(BASE)
+
+    expect(store.readBase()).toEqual(BASE)
+    await vi.waitFor(() => {
+      expect(rows.get('doc-1#base')).toEqual(BASE)
+    })
+    // Beside the edit and not instead of it.
+    expect(rows.has('doc-1')).toBe(false)
+  })
+
+  it('hands back the base a previous session left, with the edit it was left beside', async () => {
+    const { factory } = createFakeIndexedDb(
+      new Map<string, unknown>([
+        ['doc-1', EDIT],
+        ['doc-1#base', BASE],
+      ]),
+    )
+    const store = createIndexedDbRecoveryStore({ documentId: 'doc-1', factory })
+
+    expect(await store.ready).toEqual(EDIT)
+    expect(store.readBase()).toEqual(BASE)
+  })
+
+  it('ignores a base that is not one, and never lets a recovered one replace a newer', async () => {
+    const stale = createFakeIndexedDb(
+      new Map<string, unknown>([['doc-1#base', { nonsense: true }]]),
+    )
+    const junk = createIndexedDbRecoveryStore({ documentId: 'doc-1', factory: stale.factory })
+    await junk.ready
+    expect(junk.readBase()).toBeUndefined()
+
+    const old = createFakeIndexedDb(
+      new Map<string, unknown>([['doc-1#base', { ...BASE, draftVersion: 1 }]]),
+    )
+    const store = createIndexedDbRecoveryStore({ documentId: 'doc-1', factory: old.factory })
+    store.writeBase(BASE)
+    await store.ready
+    expect(store.readBase()).toEqual(BASE)
+  })
+})
 
 describe('createIndexedDbRecoveryStore', () => {
   it('hands back the edit a previous session never managed to send', async () => {

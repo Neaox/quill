@@ -6,20 +6,34 @@
   "license": "MIT",
   "type": "module",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./parse": "./src/pipeline/parse-document.ts",
+    "./code-languages": "./src/code-group/languages.ts",
+    "./emoji-shortcodes": "./src/emoji/shortcodes.ts",
+    "./emoji-names": "./src/emoji/names.ts",
+    "./extension": "./src/extensions/index.ts",
+    "./drawio": "./src/extensions/drawio/index.ts",
+    "./merge-worker": "./src/merge/merge-worker.ts"
   },
   "scripts": {
-    "typecheck": "tsc -p tsconfig.json"
+    "typecheck": "tsc -p tsconfig.json",
+    "generate:emoji": "node scripts/generate-emoji.ts",
+    "generate:table-specimens": "node scripts/generate-table-specimens.ts"
   },
   "dependencies": {
     "@quill/domain": "workspace:*",
+    "@quill/highlight": "workspace:*",
     "@sinclair/typebox": "^0.34.52",
     "@tiptap/core": "^3.31.3",
     "ajv": "^8.20.0",
     "ajv-formats": "^3.0.1",
+    "hast-util-from-html": "^2.0.3",
     "hast-util-sanitize": "^5.0.2",
     "mdast-util-directive": "^3.1.0",
+    "mdast-util-to-markdown": "^2.1.2",
     "mdast-util-to-string": "^4.0.0",
+    "node-diff3": "^3.2.1",
+    "property-information": "^7.2.0",
     "prosemirror-model": "^1.25.11",
     "rehype-sanitize": "^6.0.0",
     "rehype-stringify": "^10.0.1",
@@ -37,6 +51,8 @@
   "devDependencies": {
     "@quill/config": "workspace:*",
     "@types/hast": "^3.0.5",
-    "@types/mdast": "^4.0.4"
+    "@types/mdast": "^4.0.4",
+    "gemoji": "^8.1.0",
+    "hast-util-to-html": "^9.0.5"
   }
 }

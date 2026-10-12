@@ -1,0 +1,14 @@
+{
+  "collection": "Components",
+  "title": "Form fields",
+  "type": "reference",
+  "owners": ["sofia@acme.example"],
+  "tags": ["components", "forms", "inputs", "validation", "react"],
+  "review": "6m",
+  "status": "published",
+  "notes": [
+    "First published: text input, textarea, select, checkbox and radio",
+    "Documented error summaries and aria-describedby wiring after the import wizard review; added the autocomplete table"
+  ],
+  "frontMatter": {}
+}

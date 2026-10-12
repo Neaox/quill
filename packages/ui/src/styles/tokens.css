@@ -2,14 +2,18 @@
  * Design tokens.
  *
  * Colour is generated, never written (ADR-028). The `--palette-*` and
- * `--token-*` values, the four `--font-*` families, the radius scale, and the
- * layout measurements all come from a theme document resolved by
+ * `--token-*` values, the four `--font-*` families, the reading setting
+ * (`--text-reading`, `--leading-reading`, `--layout-content`), the radius
+ * scale, and the layout measurements all come from a theme document resolved by
  * `@quill/theme` into the files imported below. Each of those files is scoped
  * to one identity, and exactly one of them ever applies:
  *
  *   html                                    Instrument, the default
  *   html[data-theme-id="instrument"]        Instrument, named explicitly
- *   html[data-theme-id="press"]             Press
+ *   html[data-theme-id="calm"]              Calm
+ *   html[data-theme-id="editorial"]         Editorial
+ *   html[data-theme-id="press"]             Editorial, which superseded Press
+ *   html[data-theme-id="grid"]              Grid
  *   html[data-theme-id="atelier"]           Atelier
  *
  * Inside a theme, the colour scheme resolves in the order R13 established:
@@ -29,7 +33,9 @@
  */
 
 @import './generated/instrument.gen.css';
-@import './generated/press.gen.css';
+@import './generated/calm.gen.css';
+@import './generated/editorial.gen.css';
+@import './generated/grid.gen.css';
 @import './generated/atelier.gen.css';
 @import './generated/syntax-tokens.gen.css';
 
@@ -39,7 +45,18 @@
   --color-surface: var(--palette-surface);
   --color-surface-raised: var(--palette-surface-raised);
   --color-foreground: var(--palette-foreground);
+  /*
+   * The middle of three inks. Headings and the current item are in
+   * `foreground`, facts and quiet lists in `muted`, and everything a reader
+   * scans but does not stop on — the sidebar's documents, a control's label —
+   * in this, so a column of chrome reads as a column of text without
+   * competing with the page. Derived from the two generated inks rather than
+   * generated itself, so every identity has it and it can only ever sit
+   * between two values the theme doctor has already passed.
+   */
+  --color-foreground-soft: color-mix(in oklch, var(--palette-foreground) 55%, var(--palette-muted));
   --color-muted: var(--palette-muted);
+  --color-body: var(--palette-body);
   --color-border: var(--palette-border);
   --color-border-strong: var(--palette-border-strong);
 
@@ -47,6 +64,12 @@
   --color-accent-hover: var(--palette-accent-hover);
   --color-accent-foreground: var(--palette-accent-foreground);
   --color-accent-subtle: var(--palette-accent-subtle);
+  /*
+   * The accent as text on the page — an eyebrow, an active entry, a coloured
+   * link — a step further from the paper than the accent a control is filled
+   * with, so it holds its contrast at small sizes.
+   */
+  --color-accent-ink: var(--palette-accent-ink);
 
   --color-success: var(--palette-success);
   --color-success-subtle: var(--palette-success-subtle);
@@ -105,7 +128,11 @@
    * The long-form reading size sits deliberately between `base` and `lg`.
    * Measured in the browser: 17px across the 38rem reading column is 66
    * characters a line, inside the 65-75 band reading research keeps landing
-   * on. The face it is set in is the theme's; the size is not.
+   * on. This is the shared setting and the fallback: a theme may move the
+   * anchor within bounds (`type.scale`, ADR-028's amendment of 11 October
+   * 2026), and its generated block redeclares these three unlayered, but
+   * every size in a document stays an `em` of it, so the proportions of the
+   * scale never move.
    */
   --text-reading: 1.0625rem;
 
@@ -119,7 +146,7 @@
    * (review 2026-09-13, L4). Layer 0 (ADR-028): control heights are an
    * invariant, never themable.
    */
-  --spacing-shell-header: 2.5rem;
+  --spacing-shell-header: 3.25rem;
   --text-reading--line-height: 1.7;
 
   --leading-tight: 1.2;
@@ -173,6 +200,16 @@
  * `data-theme`. Semantic tokens mean it is rarely needed; it exists for the
  * cases where a shape rather than a colour has to change.
  */
+/*
+ * The current item in a set: a navigation link to the page being shown, the
+ * active step, the current revision. `aria-current` is the attribute that says
+ * so, and its value says what kind of current it is ("page", "step",
+ * "location", "date", "time", "true"), so this matches any value but "false".
+ * Tailwind's own `aria-current:` is boolean and matches only "true", which is
+ * not what a router writes; the lint rule `quill/tailwind-v4` refuses it.
+ */
+@custom-variant current (&:where([aria-current]:not([aria-current='false'])));
+
 @custom-variant dark {
   &:where([data-theme='dark'], [data-theme='dark'] *) {
     @slot;
@@ -207,7 +244,18 @@
      * JavaScript (the table of contents' observer band); `tokens.test.ts`
      * holds the two together.
      */
-    --anchor-offset: calc(var(--spacing-shell-header) + var(--spacing) * 4);
+    --anchor-offset: calc(var(--sticky-chrome-top) + var(--spacing) * 4);
+
+    /*
+     * How far the page's sticky chrome reaches into the viewport, top and
+     * bottom: here, the application bar, and the safe-area inset of a phone
+     * with a home indicator. A table's hanging header and footer stop there
+     * (ADR-040), and the anchor offset above is derived from it, so the two
+     * can never disagree. The public site measures its own header instead
+     * (`@quill/design-css`, `sticky-chrome.ts`).
+     */
+    --sticky-chrome-top: var(--spacing-shell-header);
+    --sticky-chrome-bottom: env(safe-area-inset-bottom, 0px);
 
     --density-baseline: 0.875;
     --spacing: calc(
@@ -237,14 +285,31 @@
   }
 }
 
-@custom-variant theme-press {
-  &:where([data-theme-id='press'] *, [data-theme-id='press']) {
+@custom-variant theme-editorial {
+  &:where(
+    [data-theme-id='editorial'] *,
+    [data-theme-id='editorial'],
+    [data-theme-id='press'] *,
+    [data-theme-id='press']
+  ) {
+    @slot;
+  }
+}
+
+@custom-variant theme-grid {
+  &:where([data-theme-id='grid'] *, [data-theme-id='grid']) {
     @slot;
   }
 }
 
 @custom-variant theme-atelier {
   &:where([data-theme-id='atelier'] *, [data-theme-id='atelier']) {
+    @slot;
+  }
+}
+
+@custom-variant theme-calm {
+  &:where([data-theme-id='calm'] *, [data-theme-id='calm']) {
     @slot;
   }
 }
@@ -263,6 +328,12 @@
 
 @custom-variant rules-cards {
   &:where([data-rules='cards'] *, [data-rules='cards']) {
+    @slot;
+  }
+}
+
+@custom-variant rules-plain {
+  &:where([data-rules='plain'] *, [data-rules='plain']) {
     @slot;
   }
 }
@@ -291,9 +362,15 @@
 }
 
 @layer base {
+  /*
+   * The window is the application's scroll container, so whatever the
+   * keyboard reaches is scrolled clear of the bar and any pinned footer
+   * (WCAG 2.4.11). Anchor targets add only their air on top (`prose.css`).
+   */
   html {
     -webkit-text-size-adjust: 100%;
     text-size-adjust: 100%;
+    scroll-padding-block: var(--sticky-chrome-top) var(--sticky-chrome-bottom);
   }
 
   body {
@@ -409,6 +486,21 @@
 
 .dialog-panel[data-state='open'] {
   animation: dialog-in var(--duration-base) var(--ease-emphasised);
+}
+
+/*
+ * A sheet rests where it is drawn (no centring transform) and rises the last
+ * stretch from the bottom edge it is anchored to.
+ */
+.dialog-sheet[data-state='open'] {
+  animation: sheet-in var(--duration-base) var(--ease-emphasised);
+}
+
+@keyframes sheet-in {
+  from {
+    opacity: 0;
+    transform: translateY(1.5rem);
+  }
 }
 
 /*

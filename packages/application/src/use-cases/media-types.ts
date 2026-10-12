@@ -26,8 +26,32 @@ export const IMAGE_MEDIA_TYPES = [
 
 export type ImageMediaType = (typeof IMAGE_MEDIA_TYPES)[number]
 
+/**
+ * A drawing: an SVG diagram (ADR-011, amendment of 2026-10-11).
+ *
+ * An SVG is a document that can carry script, so it is never served as a
+ * picture: it is a download, behind the same sandboxing headers as every
+ * attachment, and a reader only ever sees it drawn inline in a document body
+ * after the renderer's own SVG allowlist has taken out everything that runs,
+ * fetches, or navigates (`packages/markdown/src/render/drawing.ts`).
+ */
+export const DRAWING_MEDIA_TYPE = 'image/svg+xml'
+
+/**
+ * A raw draw.io diagram (`.drawio`): the XML source with no picture (ADR-043).
+ * Accepted so a diagram made elsewhere can be brought in, served only as a
+ * download, and opened in the draw.io editor, which saves it as a
+ * `.drawio.svg` — the form a document shows.
+ */
+export const DIAGRAM_SOURCE_MEDIA_TYPE = 'application/vnd.jgraph.mxfile'
+
 /** Every type an attachment may be. Anything else is refused (ADR-011). */
-export const ALLOWED_MEDIA_TYPES = [...IMAGE_MEDIA_TYPES, 'application/pdf'] as const
+export const ALLOWED_MEDIA_TYPES = [
+  ...IMAGE_MEDIA_TYPES,
+  DRAWING_MEDIA_TYPE,
+  DIAGRAM_SOURCE_MEDIA_TYPE,
+  'application/pdf',
+] as const
 
 export type AllowedMediaType = (typeof ALLOWED_MEDIA_TYPES)[number]
 
@@ -42,9 +66,12 @@ export function isAllowedMediaType(type: string): type is AllowedMediaType {
   return ALLOWED.has(type)
 }
 
-/** The types served inline; everything else is a download (ADR-011 "safe serving"). */
+/**
+ * The types served inline; everything else is a download (ADR-011 "safe
+ * serving"). A drawing is a download: it is shown only drawn into a body.
+ */
 export function isInlineMediaType(type: string): boolean {
-  return type.startsWith('image/')
+  return type.startsWith('image/') && type !== DRAWING_MEDIA_TYPE
 }
 
 /**
@@ -61,11 +88,9 @@ export const SNIFF_BYTES = 512
 /**
  * A media type read straight from the bytes, or `null` for anything this
  * platform does not accept — which includes every type it simply does not
- * recognise. `svg` is named rather than dropped so an upload can be refused
- * with the reason rather than with "not an image", which is a confusing thing
- * to be told about a picture.
+ * recognise.
  */
-export type SniffedMediaType = AllowedMediaType | 'image/svg+xml' | null
+export type SniffedMediaType = AllowedMediaType | null
 
 const PNG = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]
 const JPEG = [0xff, 0xd8, 0xff]
@@ -144,10 +169,9 @@ const SVG_PROLOGUE = /^(?:\uFEFF)?\s*(?:<\?xml[^>]*\?>\s*|<!DOCTYPE[^>]*>\s*|<!-
  * Whether these bytes open an SVG.
  *
  * SVG has no magic number — it is XML — so this is the one format here
- * recognised by shape rather than by signature. It is recognised at all only
- * so the refusal can say *why*: an SVG is a document that can carry script and
- * fetch external references, which is why the renderer's sanitiser will not
- * accept one either (`packages/markdown/src/render/sanitize-schema.ts`).
+ * recognised by shape rather than by signature. What an SVG may contain is
+ * not decided here: it is stored as it came, served only as a download, and
+ * drawn only through the renderer's SVG allowlist (`DRAWING_MEDIA_TYPE`).
  */
 export function looksLikeSvg(bytes: Uint8Array): boolean {
   const head = new TextDecoder('utf-8', { fatal: false }).decode(bytes.subarray(0, SNIFF_BYTES))
@@ -155,6 +179,16 @@ export function looksLikeSvg(bytes: Uint8Array): boolean {
   // The root element ends in whitespace, in `>`, or in the `/` of `<svg/>`;
   // requiring one of the three is what keeps `<svgx>` from reading as an SVG.
   return /^<svg[\s/>]/i.test(body)
+}
+
+/**
+ * Whether these bytes open a draw.io file: an `<mxfile>` root after the same
+ * prologue an SVG may have. Like SVG, recognised by shape; what it holds is
+ * read only by `@quill/markdown/drawio`, within its limits.
+ */
+export function looksLikeDrawio(bytes: Uint8Array): boolean {
+  const head = new TextDecoder('utf-8', { fatal: false }).decode(bytes.subarray(0, SNIFF_BYTES))
+  return /^<mxfile[\s/>]/.test(head.replace(SVG_PROLOGUE, ''))
 }
 
 /**
@@ -172,6 +206,7 @@ export function sniffMediaType(bytes: Uint8Array): SniffedMediaType {
   if (isAvif(bytes)) return 'image/avif'
   if (isPdf(bytes)) return 'application/pdf'
   if (looksLikeSvg(bytes)) return 'image/svg+xml'
+  if (looksLikeDrawio(bytes)) return DIAGRAM_SOURCE_MEDIA_TYPE
   return null
 }
 

@@ -66,12 +66,18 @@ function rangesOf(packed: string): readonly TokenRange[] | null {
 }
 
 /**
+ * The page's token registry, or null where the browser cannot paint ranges
+ * and the markup fallback applies. Shared by the reader's one pass and the
+ * editor's per-block painting, so both find the same page-global `Highlight`s.
+ *
  * Equivalent to `supportsHighlightRanges(env)`, restated here so the
  * `if` narrows `CSS`/`Highlight` to non-nullable for the construction below
  * — a call to the standalone predicate does not survive as a narrowing fact
  * across the call boundary.
  */
-function createRangesRegistry(env: HighlightClientEnvironment): TokenHighlightRegistry | null {
+export function createRangesRegistry(
+  env: Pick<HighlightClientEnvironment, 'CSS' | 'Highlight'>,
+): TokenHighlightRegistry | null {
   const { CSS, Highlight } = env
   if (CSS?.highlights == null || Highlight == null) return null
   return createTokenHighlightRegistry({

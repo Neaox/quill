@@ -625,7 +625,7 @@ Runs the research phase and the repository constitution at the same time.
 ### M5 — Trust
 
 - Source references: GitHub provider, exact-revision snippets, line ranges, floating and immutable references, integration credentials.
-- Source artifacts: Mermaid and Draw.io with rendered-plus-source pairing.
+- Source artifacts: Mermaid and Draw.io with rendered-plus-source pairing. **Mermaid drawn in the reader and inline SVG drawings landed early** (ADR-036); what remains is server-side drawing for the public site and export, Draw.io, and rendered-plus-source pairing.
 - Embeds: Open Graph and oEmbed, link cards, allowlists, sandboxing.
 - Templates: ADR, technical design, runbook, postmortem, RFC.
 - Exit: **Release 2.** An engineer can trust a snippet because it points to an exact revision.

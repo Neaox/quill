@@ -1,0 +1,15 @@
+{
+  "collection": "Runbooks",
+  "title": "Multi-region failover",
+  "type": "runbook",
+  "owners": ["marcus@acme.example"],
+  "tags": ["runbook", "failover", "aws", "disaster-recovery"],
+  "review": "90d",
+  "status": "published",
+  "notes": [
+    "First version, after the March staging drill",
+    "Added webhook replay and the drill history after the June drill",
+    "Scale-up now runs alongside promotion; target cut to 30 minutes after the September production drill"
+  ],
+  "frontMatter": {}
+}

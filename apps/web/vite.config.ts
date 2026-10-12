@@ -80,6 +80,19 @@ export default defineConfig({
     proxy: {
       // A Playwright run points this at its own API server (`e2e/support/env.ts`).
       '/api': { target: process.env['API_URL'] ?? 'http://localhost:3000', changeOrigin: true },
+      // The server-rendered surfaces (`docs/architecture/public-site.md`):
+      // the public site and the reader preview are pages the server answers
+      // with HTML, so in development they are proxied like the API rather
+      // than falling through to the single-page app.
+      '/s/': { target: process.env['API_URL'] ?? 'http://localhost:3000', changeOrigin: true },
+      '/preview/': {
+        target: process.env['API_URL'] ?? 'http://localhost:3000',
+        changeOrigin: true,
+      },
+      '/robots.txt': {
+        target: process.env['API_URL'] ?? 'http://localhost:3000',
+        changeOrigin: true,
+      },
     },
   },
 })

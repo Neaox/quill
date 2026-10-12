@@ -60,6 +60,7 @@ development database is never touched, and can keep running throughout.
 | `pnpm build`                                           | Production build of the apps                         |
 | `pnpm rename`                                          | Rewrite the product name/slug/scope in one pass; see [`docs/operations/renaming.md`](docs/operations/renaming.md) |
 | `pnpm --filter @quill/server seed`                     | Fill a local database: an admin and a writer, two units, two workspaces, twelve documents, three templates |
+| `pnpm seed:demo`                                       | The same, plus a demo company: eleven workspaces, about a hundred documents with histories, public sites and private ones; see [`apps/server/src/scripts/demo/README.md`](apps/server/src/scripts/demo/README.md) |
 | `pnpm --filter @quill/server export-openapi`           | Write the API description from the routes into `packages/api-client/openapi.gen.json` |
 | `pnpm --filter @quill/api-client generate`             | Regenerate the typed client from that description     |
 | `pnpm changelog:check` / `pnpm changelog:release <version>` | Validate changelog fragments in [`.changelog/`](.changelog/README.md), or assemble them into `CHANGELOG.md` |

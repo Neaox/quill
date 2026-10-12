@@ -20,6 +20,7 @@
     "test:e2e": "playwright test",
     "rename": "node scripts/rename.ts",
     "check": "pnpm format:check && pnpm lint && pnpm lint:deps && pnpm check:tailwind && pnpm typecheck && pnpm test:coverage && pnpm build && pnpm check:bundle",
+    "seed:demo": "pnpm --filter @quill/server seed:demo",
     "db:up": "docker compose up -d",
     "db:down": "docker compose down",
     "check:tailwind": "node scripts/check-tailwind.ts",

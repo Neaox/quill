@@ -1,0 +1,15 @@
+{
+  "collection": "Strategy",
+  "title": "Product vision 2027",
+  "type": "design",
+  "owners": ["priya@acme.example"],
+  "tags": ["vision", "strategy", "tidepool", "skiff"],
+  "review": "180d",
+  "status": "published",
+  "notes": [
+    "First draft for the leadership offsite",
+    "Added the measures table and refreshed workspace and Skiff figures",
+    "Recorded the Slack integration decision and the language-model copy exclusion"
+  ],
+  "frontMatter": {}
+}

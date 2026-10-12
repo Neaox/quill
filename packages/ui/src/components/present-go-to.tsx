@@ -23,7 +23,7 @@ export const presentGoToStyles = tv({
     list: 'flex min-h-0 flex-col gap-0.5 overflow-y-auto',
     option: [
       'flex w-full cursor-pointer items-baseline gap-3 rounded-md px-3 py-2 text-start',
-      'text-sm text-foreground aria-selected:bg-surface aria-current:font-medium',
+      'text-sm text-foreground aria-selected:bg-surface current:font-medium',
     ],
     ordinal: 'w-6 shrink-0 font-mono text-2xs text-muted tabular-nums',
     empty: 'px-3 py-6 text-center text-sm text-muted',

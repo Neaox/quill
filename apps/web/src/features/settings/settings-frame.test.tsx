@@ -26,6 +26,15 @@ describe('the settings area', () => {
     })
   })
 
+  it('is where /admin goes, rather than a page that is not there', async () => {
+    const { router } = renderApp('/admin', routes())
+
+    expect(await screen.findByRole('heading', { level: 1, name: 'Organisation' })).toBeVisible()
+    await waitFor(() => {
+      expect(router.state.location.pathname).toBe('/admin/settings/organisation')
+    })
+  })
+
   it('marks the section being read, as an attribute rather than a chosen class', async () => {
     renderApp('/admin/settings/theme', routes())
 

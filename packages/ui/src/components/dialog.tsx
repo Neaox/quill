@@ -16,12 +16,11 @@ export const dialogStyles = tv({
   slots: {
     overlay: 'dialog-overlay fixed inset-0 bg-overlay',
     panel: [
-      'dialog-panel fixed top-1/2 left-1/2 w-[min(32rem,calc(100vw-2rem))]',
-      'rounded-lg border border-border bg-surface-raised p-5 shadow-dialog',
+      'fixed border border-border bg-surface-raised p-5 shadow-dialog',
       // A dialog never grows past the viewport: its body scrolls instead, so
       // the actions in the footer are always reachable however long the form
       // inside it is (a destination picker over a large workspace, say).
-      'flex max-h-[calc(100dvh-2rem)] flex-col',
+      'flex flex-col',
     ],
     header: 'flex shrink-0 items-start justify-between gap-4',
     headings: 'flex flex-col gap-1.5',
@@ -50,11 +49,38 @@ export const dialogStyles = tv({
       base: { overlay: 'z-40', panel: 'z-50' },
       nested: { overlay: 'z-60', panel: 'z-70' },
     },
+    /**
+     * Where the panel rests.
+     *
+     * `centre` is the ordinary modal. `sheet` rises from the bottom edge and
+     * spans the width: on a phone that is where the thumb already is, the
+     * panel can be as tall as its content without a margin wasted on every
+     * side, and it clears the home indicator through the safe-area inset.
+     * The motion for each lives in `tokens.css` beside the others.
+     */
+    placement: {
+      centre: {
+        panel: [
+          'dialog-panel top-1/2 left-1/2 w-[min(32rem,calc(100vw-2rem))]',
+          'max-h-[calc(100dvh-2rem)] rounded-lg',
+        ],
+      },
+      sheet: {
+        panel: [
+          'dialog-sheet inset-x-0 bottom-0 max-h-[calc(100dvh-3rem)] rounded-t-xl',
+          'border-x-0 border-b-0 pb-[max(calc(var(--spacing)*5),env(safe-area-inset-bottom))]',
+          // On a tablet a sheet the width of the screen is a wall; it keeps
+          // a column's width, centred over the bar that opened it.
+          'sm:mx-auto sm:max-w-2xl sm:border-x',
+        ],
+      },
+    },
   },
-  defaultVariants: { elevation: 'base' },
+  defaultVariants: { elevation: 'base', placement: 'centre' },
 })
 
 export type DialogElevation = NonNullable<VariantProps<typeof dialogStyles>['elevation']>
+export type DialogPlacement = NonNullable<VariantProps<typeof dialogStyles>['placement']>
 
 export interface DialogProps {
   /** Controlled open state. Omit to let the dialog own it. */
@@ -64,14 +90,23 @@ export interface DialogProps {
   readonly trigger?: ReactNode
   /** Required: a dialog without an accessible name is unusable without sight. */
   readonly title: string
-  readonly description?: string
+  /** Shown under the title and read as the dialog's description; plain text or a short row of inline content. */
+  readonly description?: ReactNode
   readonly children: ReactNode
   /** Actions, laid out end-aligned under a divider. */
   readonly footer?: ReactNode
   readonly closeLabel?: string
   /** `nested` for a dialog opened from inside another one. */
   readonly elevation?: DialogElevation
+  /** `sheet` rises from the bottom edge, for a phone; `centre` is the default. */
+  readonly placement?: DialogPlacement
   readonly className?: string | undefined
+  /**
+   * Called as the dialog closes, before focus returns to the trigger. Call
+   * `event.preventDefault()` and move focus yourself when closing leads
+   * somewhere else — an action in the dialog that jumps to part of the page.
+   */
+  readonly onCloseAutoFocus?: ((event: Event) => void) | undefined
 }
 
 /**
@@ -92,9 +127,11 @@ export function Dialog({
   footer,
   closeLabel = 'Close',
   elevation,
+  placement,
   className,
+  onCloseAutoFocus,
 }: DialogProps) {
-  const styles = dialogStyles({ elevation })
+  const styles = dialogStyles({ elevation, placement })
 
   return (
     <Primitive.Root
@@ -111,6 +148,7 @@ export function Dialog({
           // primitive warns rather than silently describing the dialog by a
           // dangling id.
           {...(description === undefined ? { 'aria-describedby': undefined } : {})}
+          {...(onCloseAutoFocus === undefined ? {} : { onCloseAutoFocus })}
           className={styles.panel({ className })}
         >
           <div className={styles.header()}>

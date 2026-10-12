@@ -33,7 +33,7 @@ export interface FetchResult<T> {
 export async function request<T>(call: Promise<FetchResult<T>>): Promise<T> {
   const { data, error, response } = await call
   if (!response.ok) {
-    throw toApiError(response.status, error)
+    throw toApiError(response.status, error, response.headers)
   }
   return data as T
 }

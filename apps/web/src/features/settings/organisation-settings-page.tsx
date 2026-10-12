@@ -1,12 +1,12 @@
-import { Button, Input } from '@quill/ui'
+import { Button, InfoPopover, Input } from '@quill/ui'
 
 import {
   useLoadedOrganisationSettings,
   useSaveOrganisationSettings,
   type OrganisationSettings,
 } from '../../lib/api/index.ts'
-import { SelectField } from '../../lib/forms/select-field.tsx'
-import { PublicNavigationEditor, publicNavigationIsValid } from './public-navigation-editor.tsx'
+import { menuIsValid } from './public-menu/menu-model.ts'
+import { PublicMenuEditor } from './public-menu/public-menu-editor.tsx'
 import { SettingsActions, SettingsSection } from './settings-frame.tsx'
 import { SettingsFormFeedback } from './settings-form-feedback.tsx'
 import { ToggleField } from './toggle-field.tsx'
@@ -36,9 +36,9 @@ export function OrganisationSettingsPage() {
 
   const settings = draft.value
   const server = loaded.data.settings
-  const navigationValid = publicNavigationIsValid(settings.publicNavigation)
+  const menuValid = menuIsValid(settings.publicMenu)
   const nameValid = settings.name.trim() !== '' && settings.name.length <= MAX_NAME_LENGTH
-  const ready = draft.dirty && navigationValid && nameValid
+  const ready = draft.dirty && menuValid && nameValid
 
   function update(next: Partial<OrganisationSettings>) {
     draft.change({ ...settings, ...next })
@@ -101,14 +101,16 @@ export function OrganisationSettingsPage() {
       </SettingsSection>
 
       <SettingsSection
-        title="Public navigation"
-        description="The links beside the site name on the public site. A path on this site, or a full https:// address — at most eight."
+        title="Public menu"
+        description="The links and dropdowns in the public site’s header. Link documents and collections by what they are, so a rename or a move is in the header straight away, or link anywhere on the web."
         level={2}
+        wide
       >
-        <PublicNavigationEditor
-          links={settings.publicNavigation}
-          onLinksChange={(links) => {
-            update({ publicNavigation: [...links] })
+        <PublicMenuEditor
+          menu={settings.publicMenu}
+          siteName={settings.name}
+          onMenuChange={(publicMenu) => {
+            update({ publicMenu: [...publicMenu] })
           }}
         />
       </SettingsSection>
@@ -134,19 +136,20 @@ export function OrganisationSettingsPage() {
             update({ policies: { ...settings.policies, publicPublishingAllowed: checked } })
           }}
         />
-        <SelectField
-          label="Contrast enforcement"
-          value={settings.policies.contrastEnforcement}
-          description="AA text contrast is the one theme rule enforced by default. Advisory reports it like every other rule. Either way the theme doctor advises and never refuses a save."
-          onChange={(event) => {
-            const value = event.target.value
-            if (value !== 'enforced' && value !== 'advisory') return
-            update({ policies: { ...settings.policies, contrastEnforcement: value } })
+        <ToggleField
+          label="Enforce AA text contrast"
+          description="A theme whose text falls below AA contrast is marked as one to act on. Off, it is reported beside every other rule. Either way the theme doctor advises and never refuses a save."
+          help={<ContrastHelp />}
+          checked={settings.policies.contrastEnforcement === 'enforced'}
+          onCheckedChange={(checked) => {
+            update({
+              policies: {
+                ...settings.policies,
+                contrastEnforcement: checked ? 'enforced' : 'advisory',
+              },
+            })
           }}
-        >
-          <option value="enforced">Enforced — an AA failure is marked as one to act on</option>
-          <option value="advisory">Advisory — reported beside every other rule</option>
-        </SelectField>
+        />
       </SettingsSection>
     </>
   )
@@ -193,10 +196,10 @@ function OrganisationSummary({ settings }: { readonly settings: OrganisationSett
     <ul>
       <li>Name: {settings.name}</li>
       <li>
-        Public navigation:{' '}
-        {settings.publicNavigation.length === 0
+        Public menu:{' '}
+        {settings.publicMenu.length === 0
           ? 'no links'
-          : settings.publicNavigation.map((link) => link.label).join(', ')}
+          : `${settings.publicMenu.length} ${settings.publicMenu.length === 1 ? 'item' : 'items'}`}
       </li>
       <li>Share links: {settings.policies.shareLinksAllowed ? 'allowed' : 'not allowed'}</li>
       <li>
@@ -204,5 +207,33 @@ function OrganisationSummary({ settings }: { readonly settings: OrganisationSett
       </li>
       <li>Contrast enforcement: {settings.policies.contrastEnforcement}</li>
     </ul>
+  )
+}
+
+/** The W3C's own explanation of the AA contrast minimum (WCAG 2.2, success criterion 1.4.3). */
+const CONTRAST_MINIMUM_GUIDANCE =
+  'https://www.w3.org/WAI/WCAG22/Understanding/contrast-minimum.html'
+
+/**
+ * What "AA" means, for the many people who have never met WCAG: the setting
+ * assumes it, so the explanation sits beside it rather than in a manual.
+ */
+function ContrastHelp() {
+  return (
+    <InfoPopover
+      label="About AA text contrast"
+      title="What AA text contrast means"
+      learnMore={{ href: CONTRAST_MINIMUM_GUIDANCE, label: 'Read the W3C guidance' }}
+    >
+      <p>
+        Text needs to stand out enough from what is behind it to be read by people with low vision,
+        on a dim or glaring screen, or in sunlight.
+      </p>
+      <p className="mt-2">
+        AA is the level of the Web Content Accessibility Guidelines that most organisations and many
+        laws ask for: a contrast ratio of at least 4.5 to 1 for body text, and 3 to 1 for large
+        text.
+      </p>
+    </InfoPopover>
   )
 }

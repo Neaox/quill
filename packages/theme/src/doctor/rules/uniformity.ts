@@ -2,6 +2,8 @@ import { describeAdjustment } from '../../colour/adjustment.ts'
 import { isInGamut } from '../../colour/oklch.ts'
 import { MAX_CHROMA_COMPENSATION, hueDistance } from '../../colour/hue.ts'
 import type { Palette } from '../../colour/palette.ts'
+import type { ThemeDocument } from '../../schema/theme-document.ts'
+import { adjustmentEvidence, swatchEvidence } from '../evidence.ts'
 import { adjusted, check, fromChecks, pass, round, warn, type Rule } from '../rule.ts'
 
 const NEUTRAL_ROLES = [
@@ -18,6 +20,12 @@ const NEUTRAL_ROLES = [
 
 const HUE_TOLERANCE = 0.5
 
+type NeutralRole = (typeof NEUTRAL_ROLES)[number]
+
+const holdsToneHue = (theme: ThemeDocument, palette: Palette, role: NeutralRole): boolean =>
+  palette.colours[role].chroma === 0 ||
+  hueDistance(palette.colours[role].hue, theme.seeds.tone.hue) <= HUE_TOLERANCE
+
 /** Section 2: lightening a colour must not turn a teal into a mint. */
 export const rampHueRule: Rule = {
   id: 'uniformity/ramp-hue-constant',
@@ -30,12 +38,14 @@ export const rampHueRule: Rule = {
           const distance = hueDistance(palette.colours[role].hue, theme.seeds.tone.hue)
           return check(
             `${palette.scheme} ${role} drifted ${round(distance, 1)} degrees from the tone hue`,
-            palette.colours[role].chroma === 0 || distance <= HUE_TOLERANCE,
+            holdsToneHue(theme, palette, role),
           )
         }),
       ),
       'every neutral step holds the tone hue',
     ),
+  evidence: (theme, palettes) =>
+    swatchEvidence(palettes, NEUTRAL_ROLES, (palette, role) => holdsToneHue(theme, palette, role)),
 }
 
 /** Section 2: gamut-map, never clip. */
@@ -58,6 +68,7 @@ export const gamutRule: Rule = {
       ? pass('every colour was already inside sRGB')
       : adjusted(`chroma reduced to fit sRGB: ${reductions.map(describeAdjustment).join(', ')}`)
   },
+  evidence: (_theme, palettes) => adjustmentEvidence(palettes, ['gamut']),
 }
 
 /** Section 2: a hue-dependent chroma adjustment of up to 15 percent. */
@@ -85,4 +96,5 @@ export const chromaCompensationRule: Rule = {
             .join(', ')}`,
         )
   },
+  evidence: (_theme, palettes) => adjustmentEvidence(palettes, ['compensation']),
 }

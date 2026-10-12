@@ -20,6 +20,37 @@ describe('MagicLinkPage', () => {
     ).toBeInTheDocument()
   })
 
+  it('says what is wrong with the address, and sends nothing, when it is not one', async () => {
+    let sent = 0
+    renderApp('/magic-link', {
+      'POST /api/auth/magic-link': () => {
+        sent += 1
+        return jsonResponse(202, {})
+      },
+    })
+    await screen.findByRole('heading', { level: 1, name: 'Email me a sign-in link' })
+
+    await userEvent.type(screen.getByLabelText('Email', { exact: false }), 'reader')
+    await userEvent.click(screen.getByRole('button', { name: 'Send link' }))
+
+    expect(screen.getByLabelText('Email', { exact: false })).toHaveAccessibleDescription(
+      'Enter a valid email address, like name@example.com.',
+    )
+    expect(sent).toBe(0)
+  })
+
+  it('names the address, trimmed, in the confirmation', async () => {
+    renderApp('/magic-link', {
+      'POST /api/auth/magic-link': () => jsonResponse(202, {}),
+    })
+    await screen.findByRole('heading', { level: 1, name: 'Email me a sign-in link' })
+
+    await userEvent.type(screen.getByLabelText('Email', { exact: false }), ' reader@example.com ')
+    await userEvent.click(screen.getByRole('button', { name: 'Send link' }))
+
+    expect(await screen.findByText(/If an account exists for reader@example.com,/)).toBeVisible()
+  })
+
   it('consumes a token from the URL and signs the visitor in', async () => {
     renderApp('/magic-link?token=abc123', {
       'POST /api/auth/magic-link/consume': () => jsonResponse(200, { userId: 'user-1' }),
@@ -53,7 +84,11 @@ describe('MagicLinkPage', () => {
     })
 
     expect(
-      await screen.findByRole('heading', { level: 1, name: 'Home' }, { timeout: 3000 }),
+      await screen.findByRole(
+        'heading',
+        { level: 1, name: /^Good (morning|afternoon|evening), / },
+        { timeout: 3000 },
+      ),
     ).toBeInTheDocument()
   })
 

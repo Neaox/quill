@@ -1,11 +1,12 @@
 import { parseDocument } from '@quill/markdown'
+import { getSchema } from '@tiptap/core'
 import { DOMParser, DOMSerializer } from '@tiptap/pm/model'
 import type { Node as PMNode } from '@tiptap/pm/model'
 import { describe, expect, it } from 'vitest'
 
 import { documentFromMdast, documentToMdast } from '../document/ast.ts'
-import { editorSchema } from './editor-schema.ts'
-import { nodeClassName, withDom } from './dom.ts'
+import { baseExtensions, editorSchema } from './editor-schema.ts'
+import { nodeClassName, withDom, withLabels } from './dom.ts'
 
 /**
  * The DOM is the clipboard. A block the author copies leaves the document as
@@ -59,6 +60,67 @@ describe('the DOM the editor gives the schema', () => {
     expect(doc.firstChild?.type.name).toBe('containerDirective')
     expect(doc.firstChild?.attrs['name']).toBe('callout')
     expect(doc.firstChild?.attrs['attributes']).toEqual({ type: 'warning' })
+  })
+
+  it('draws a badge the way the reader sees it, and brings it back unchanged', () => {
+    const markdown = 'A :ok[Built] and a :badge[Gap]{tone="warning"} and a :plan[Designed].\n'
+    const { doc } = documentFromMdast(parseDocument(markdown).ast)
+    const html = document.createElement('div')
+    html.append(serializer.serializeFragment(doc.content))
+
+    const badges = [...html.querySelectorAll('span.badge')]
+    expect(badges.map((badge) => [badge.textContent, badge.getAttribute('data-tone')])).toEqual([
+      ['Built', 'success'],
+      ['Gap', 'warning'],
+      ['Designed', 'neutral'],
+    ])
+    expect(markdownAgain(markdown)).toBe(
+      JSON.stringify(
+        documentToMdast(documentFromMdast(parseDocument(markdown).ast).doc).tree.children[0],
+      ),
+    )
+  })
+
+  it('draws a badge whose attributes were never set, in its shorthand tone', () => {
+    const directive = editorSchema.nodes['textDirective']
+    if (directive === undefined) throw new Error('no textDirective node')
+    const badge = directive.create({ name: 'ok', attributes: null }, editorSchema.text('Built'))
+    const html = document.createElement('div')
+    html.append(serializer.serializeNode(badge))
+    expect(html.querySelector('span.badge')?.getAttribute('data-tone')).toBe('success')
+  })
+
+  it('draws the organisation’s labels as the reader does, and only those (ADR-037)', () => {
+    const labelled = DOMSerializer.fromSchema(
+      getSchema(withLabels(baseExtensions, ['airbnb', 'ok'])),
+    )
+    const { doc } = documentFromMdast(
+      parseDocument('On :airbnb[Airbnb], :vrbo[Vrbo] and :ok[Built].\n').ast,
+    )
+    const html = document.createElement('div')
+    html.append(labelled.serializeFragment(doc.content))
+
+    expect(
+      [...html.querySelectorAll('span.badge')].map((badge) => [
+        badge.textContent,
+        badge.getAttribute('data-label') ?? badge.getAttribute('data-tone'),
+      ]),
+    ).toEqual([
+      ['Airbnb', 'airbnb'],
+      // A built-in name stays the built-in, whatever the theme says.
+      ['Built', 'success'],
+    ])
+    expect(withLabels(baseExtensions, [])).toBe(baseExtensions)
+  })
+
+  it('leaves a directive that is not a badge as it was drawn', () => {
+    const html = document.createElement('div')
+    html.append(
+      serializer.serializeFragment(
+        documentFromMdast(parseDocument('Press :kbd[Esc] or status:ok.\n').ast).doc.content,
+      ),
+    )
+    expect(html.querySelector('.badge')).toBeNull()
   })
 
   it('keeps front matter and an escape-hatch node whole', () => {

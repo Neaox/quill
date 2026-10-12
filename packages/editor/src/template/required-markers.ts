@@ -3,6 +3,7 @@ import type { Node as PMNode } from '@tiptap/pm/model'
 import { Plugin, PluginKey } from '@tiptap/pm/state'
 import { Decoration, DecorationSet } from '@tiptap/pm/view'
 
+import { redecorateChangedBlocks } from '../document/changed-blocks.ts'
 import { templateDeclaration } from './progress.ts'
 
 /**
@@ -16,6 +17,11 @@ import { templateDeclaration } from './progress.ts'
  *
  * The meaning is carried by words as well as by a dot, because nothing may be
  * carried by colour or shape alone.
+ *
+ * The markers live in plugin state and are mapped through each transaction;
+ * only the blocks a transaction touched are looked at again, and the whole
+ * document only when the front matter that declares the sections changed
+ * (quill-plan.md section 31).
  */
 
 function marker(): HTMLElement {
@@ -31,52 +37,71 @@ function marker(): HTMLElement {
   return element
 }
 
+// Read from the front matter block, so a keystroke in the body never parses
+// the YAML again.
+const declared = new WeakMap<PMNode, ReadonlySet<string>>()
+
 /** The headings a template declares as required, read from the document itself. */
 export function requiredHeadings(doc: PMNode): ReadonlySet<string> {
   const first = doc.firstChild
   if (first === null || first.type.name !== 'frontMatter') return new Set()
+  const known = declared.get(first)
+  if (known !== undefined) return known
   const declaration = templateDeclaration(String(first.attrs['value']))
-  if (declaration === undefined) return new Set()
-  return new Set(
-    declaration.sections
+  const required: ReadonlySet<string> = new Set(
+    (declaration?.sections ?? [])
       .filter((section) => section.required === true)
       .map((section) => section.heading),
   )
+  declared.set(first, required)
+  return required
 }
 
-// Decorations are a pure function of the document, so the same document never
-// pays for them twice — and a keystroke elsewhere in a long document does not
-// re-scan every heading.
-const cache = new WeakMap<PMNode, DecorationSet>()
-
-export function requiredDecorations(doc: PMNode): DecorationSet {
-  const cached = cache.get(doc)
-  if (cached !== undefined) return cached
-
+/** The markers for the required headings between two positions. */
+function markers(doc: PMNode, from: number, to: number): readonly Decoration[] {
   const required = requiredHeadings(doc)
   const decorations: Decoration[] = []
-  if (required.size > 0) {
-    doc.forEach((node, offset) => {
-      if (node.type.name !== 'heading' || !required.has(node.textContent.trim())) return
+  if (required.size === 0) return decorations
+  doc.nodesBetween(from, to, (node, offset) => {
+    if (node.type.name === 'heading' && required.has(node.textContent.trim())) {
       decorations.push(
         Decoration.node(offset, offset + node.nodeSize, { 'data-required-section': 'true' }),
         Decoration.widget(offset + node.nodeSize - 1, marker, { side: 1 }),
       )
-    })
-  }
-  const set = DecorationSet.create(doc, decorations)
+    }
+    return false
+  })
+  return decorations
+}
+
+// Decorations are a pure function of the document, so the same document never
+// pays for them twice.
+const cache = new WeakMap<PMNode, DecorationSet>()
+
+/** Every marker in a document, which is what the plugin starts from. */
+export function requiredDecorations(doc: PMNode): DecorationSet {
+  const cached = cache.get(doc)
+  if (cached !== undefined) return cached
+  const set = DecorationSet.create(doc, [...markers(doc, 0, doc.content.size)])
   cache.set(doc, set)
   return set
 }
 
-export const requiredSectionsKey = new PluginKey('requiredSections')
+export const requiredSectionsKey = new PluginKey<DecorationSet>('requiredSections')
 
 export const RequiredSections = Extension.create({
   name: 'requiredSections',
   addProseMirrorPlugins: () => [
-    new Plugin({
+    new Plugin<DecorationSet>({
       key: requiredSectionsKey,
-      props: { decorations: (state) => requiredDecorations(state.doc) },
+      state: {
+        init: (_, state) => requiredDecorations(state.doc),
+        apply: (transaction, set, before) =>
+          before.doc.firstChild === transaction.doc.firstChild
+            ? redecorateChangedBlocks(set, transaction, markers)
+            : requiredDecorations(transaction.doc),
+      },
+      props: { decorations: (state) => requiredSectionsKey.getState(state) },
     }),
   ],
 })

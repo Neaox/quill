@@ -5,8 +5,9 @@ import { tv } from '../lib/class-names.ts'
 import { Spinner } from './spinner.tsx'
 
 /**
- * The accent is the product's one signal colour, so exactly one variant wears
- * it: the primary action. Everything else is drawn in ink on paper, which is
+ * The accent is the product's one signal colour, so only the primary action
+ * wears it: filled (`primary`) where acting is the point of the view, tinted
+ * (`soft`) where reading is. Everything else is drawn in ink on paper, which is
  * what keeps the accent meaningful when it does appear.
  *
  * Heights are the artboard's compact rows. The small size is 28 pixels, which
@@ -27,6 +28,15 @@ export const buttonStyles = tv({
   variants: {
     variant: {
       primary: 'border-transparent bg-accent text-accent-foreground hover:bg-accent-hover',
+      /*
+       * The primary action of a surface that is not about acting — the Edit
+       * beside a document being read. It keeps the accent, as the one
+       * signal on the bar, but as the soft selection tint rather than a filled
+       * block, so it is findable without pulling the eye off the page. The
+       * label stays in ink: the tint is too light for accent-coloured text to
+       * pass AA under every identity, and ink on it always does.
+       */
+      soft: 'border-transparent bg-accent-subtle text-foreground hover:bg-selection',
       secondary:
         'border-border bg-surface-raised text-foreground hover:border-border-strong hover:bg-surface',
       ghost: 'border-transparent bg-transparent text-muted hover:bg-surface hover:text-foreground',
@@ -36,6 +46,9 @@ export const buttonStyles = tv({
       sm: 'h-7 px-2.5 text-2xs',
       md: 'h-8 px-3 text-xs',
       lg: 'h-10 px-4 text-sm',
+      // The touch size: 44 pixels, the smallest target WCAG 2.5.5 and both
+      // platform guidelines accept, for an action on a phone's thumb bar.
+      xl: 'h-11 px-5 text-sm',
     },
   },
   compoundVariants: [{ variant: 'ghost', size: 'sm', class: 'px-2' }],

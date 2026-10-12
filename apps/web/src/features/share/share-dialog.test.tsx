@@ -147,6 +147,10 @@ async function openShare(user: ReturnType<typeof userEvent.setup>) {
   return screen.findByRole('dialog', { name: 'Share “Regional failover”' })
 }
 
+/** A date as the platform says it in the reader's language: what the dialog is expected to have asked for. */
+const on = (iso: string): string =>
+  new Intl.DateTimeFormat(undefined, { dateStyle: 'medium' }).format(new Date(iso))
+
 describe('the Share control', () => {
   it('is offered to someone who may manage the document', async () => {
     renderApp(READING_PATH, shareRoutes())
@@ -201,15 +205,20 @@ describe('the share dialog', () => {
     const rows = await within(dialog).findAllByRole('listitem')
     expect(rows).toHaveLength(4)
     expect(rows[0]).toHaveTextContent('This document')
-    expect(rows[0]).toHaveTextContent('Expires 2099-01-01')
+    expect(rows[0]).toHaveTextContent(`Expires ${on('2099-01-01T00:00:00.000Z')}`)
     expect(rows[0]).toHaveTextContent('created by you')
-    expect(rows[0]).toHaveTextContent('last opened 2026-02-02')
+    // When it was last opened is a time element: how long ago, and the moment itself.
+    expect(
+      within(rows[0] as HTMLElement)
+        .getAllByRole('time')
+        .map((time) => time.getAttribute('datetime')),
+    ).toContain('2026-02-02T10:00:00.000Z')
     expect(rows[1]).toHaveTextContent('This document and everything under it')
     expect(rows[1]).toHaveTextContent('Never expires')
     expect(rows[1]).toHaveTextContent('created by a colleague')
     expect(rows[1]).toHaveTextContent('never opened')
-    expect(rows[2]).toHaveTextContent('Expired 2020-01-01')
-    expect(rows[3]).toHaveTextContent('Revoked 2026-01-06')
+    expect(rows[2]).toHaveTextContent(`Expired ${on('2020-01-01T00:00:00.000Z')}`)
+    expect(rows[3]).toHaveTextContent(`Revoked ${on('2026-01-06T09:00:00.000Z')}`)
   })
 
   it('offers Revoke only on a link that is still open', async () => {

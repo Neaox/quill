@@ -31,7 +31,7 @@ export interface EffectiveSettings {
   readonly layoutSource: 'workspace' | 'organisation'
   readonly layoutLocked: boolean
   readonly policies: OrganisationSettings['policies']
-  readonly publicNavigation: OrganisationSettings['publicNavigation']
+  readonly publicMenu: OrganisationSettings['publicMenu']
   readonly organisationName: string
   readonly logo?: OrganisationLogo
 }
@@ -48,7 +48,7 @@ export function resolveEffectiveSettings(
     layoutSource: override === undefined ? 'organisation' : 'workspace',
     layoutLocked: organisation.layout.locked,
     policies: organisation.policies,
-    publicNavigation: organisation.publicNavigation,
+    publicMenu: organisation.publicMenu,
     organisationName: organisation.name,
     ...(organisation.logo === undefined ? {} : { logo: organisation.logo }),
   }

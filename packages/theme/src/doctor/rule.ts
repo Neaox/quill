@@ -1,5 +1,6 @@
 import type { ThemePalettes } from '../colour/palette.ts'
 import type { ThemeDocument } from '../schema/theme-document.ts'
+import type { Evidence } from './evidence.ts'
 
 export type RuleStatus = 'pass' | 'adjusted' | 'warn'
 
@@ -30,6 +31,18 @@ export type Rule = {
     palettes: ThemePalettes,
     options: DoctorOptions,
   ) => RuleOutcome
+  /**
+   * Whether the rule has anything to judge in this theme; a rule that does
+   * not apply is left out of the report rather than counted as a pass.
+   * Omitted, it always applies.
+   */
+  readonly appliesTo?: (theme: ThemeDocument) => boolean
+  /** The colours the rule judged, so a reader can be shown them rather than told. */
+  readonly evidence?: (
+    theme: ThemeDocument,
+    palettes: ThemePalettes,
+    options: DoctorOptions,
+  ) => readonly Evidence[]
 }
 
 export const pass = (detail: string): RuleOutcome => ({ status: 'pass', detail })

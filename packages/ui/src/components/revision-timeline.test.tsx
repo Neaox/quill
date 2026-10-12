@@ -21,13 +21,35 @@ const StubLink: LinkComponent = ({ to, params, search, hash, children, ...rest }
 )
 
 describe('RevisionTimeline', () => {
+  it('offers each revision a comparison with the one before it', async () => {
+    const { container } = render(
+      <RevisionTimeline
+        revisions={REVISIONS.map((revision, index) =>
+          index === REVISIONS.length - 1
+            ? revision
+            : { ...revision, compare: { to: '#compare', search: { to: revision.id } } },
+        )}
+        currentId="v12"
+      />,
+    )
+
+    expect(
+      screen.getByRole('link', { name: 'Compare v12 with the previous version' }),
+    ).toHaveAttribute('href', '#compare?to=v12')
+    expect(screen.queryByRole('link', { name: 'Compare v10 with the previous version' })).toBeNull()
+    await expectNoAccessibilityViolations(container)
+  })
+
   it('lists every publish in order, as links, under the default identity', async () => {
     const { container } = render(<RevisionTimeline revisions={REVISIONS} currentId="v12" />)
 
     const region = screen.getByRole('region', { name: 'Revisions' })
     expect(region).toHaveAttribute('data-history', 'timeline')
     expect(within(region).getAllByRole('listitem')).toHaveLength(3)
-    expect(within(region).getByText('2026-07-02')).toHaveAttribute('datetime', '2026-07-02')
+    expect(within(region).getAllByRole('time')[1]).toHaveAttribute(
+      'datetime',
+      new Date('2026-07-02').toISOString(),
+    )
     await expectNoAccessibilityViolations(container)
   })
 

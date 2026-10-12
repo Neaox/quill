@@ -45,7 +45,7 @@ export {
   type LinkTarget,
 } from './lib/link.tsx'
 
-export { Badge, type BadgeProps, type BadgeTone } from './components/badge.tsx'
+export { Badge, badgeStyles, type BadgeProps, type BadgeTone } from './components/badge.tsx'
 export { Breadcrumb, type BreadcrumbItem, type BreadcrumbProps } from './components/breadcrumb.tsx'
 export {
   Button,
@@ -57,6 +57,7 @@ export {
 } from './components/button.tsx'
 export { Callout, type CalloutProps, type CalloutTone } from './components/callout.tsx'
 export { CodeBlock, codeBlockStyles, type CodeBlockProps } from './components/code-block.tsx'
+export { Combobox, comboboxStyles, type ComboboxProps } from './components/combobox.tsx'
 export {
   CommandPalette,
   commandPaletteStyles,
@@ -64,6 +65,7 @@ export {
   type CommandPaletteOption,
   type CommandPaletteProps,
 } from './components/command-palette.tsx'
+export type { ListboxGroup, ListboxOption } from './components/listbox.tsx'
 export {
   CommentsPanel,
   type CommentsPanelProps,
@@ -75,6 +77,7 @@ export {
   DialogClose,
   dialogStyles,
   type DialogElevation,
+  type DialogPlacement,
   type DialogProps,
 } from './components/dialog.tsx'
 export {
@@ -86,21 +89,100 @@ export {
 export { DocumentShell, type DocumentShellProps } from './components/document-shell.tsx'
 export { IconRail, type IconRailItem, type IconRailProps } from './components/icon-rail.tsx'
 export {
+  CheckIcon,
+  ChevronDownIcon,
   ChevronRightIcon,
+  ChevronUpIcon,
   CloseIcon,
+  CollectionIcon,
   CommentIcon,
+  CompareIcon,
   CopyIcon,
   DangerIcon,
+  DocumentIcon,
+  DropdownIcon,
+  ExternalIcon,
   HistoryIcon,
   InfoIcon,
+  LinkIcon,
   OutlineIcon,
+  PencilIcon,
+  PlusIcon,
+  PresentIcon,
+  PreviewIcon,
+  RestoreIcon,
   SearchIcon,
+  SettingsIcon,
+  ShareIcon,
+  SignOutIcon,
   SuccessIcon,
+  SwapIcon,
+  UserIcon,
   WarningIcon,
+  WorkspacesIcon,
   type IconProps,
 } from './components/icons.tsx'
-export { Input, type InputProps } from './components/input.tsx'
-export { Menu, menuStyles, type MenuItem, type MenuProps } from './components/menu.tsx'
+export {
+  ParagraphIcon,
+  Heading1Icon,
+  Heading2Icon,
+  Heading3Icon,
+  Heading4Icon,
+  BulletListIcon,
+  NumberedListIcon,
+  TaskListIcon,
+  QuoteIcon,
+  DividerIcon,
+  CalloutIcon,
+  FigureIcon,
+  CardsIcon,
+  WidthIcon,
+  NotesIcon,
+  ImageIcon,
+  DiagramIcon,
+  DrawingIcon,
+  CodeGroupIcon,
+  CodeIcon,
+  TableIcon,
+  BadgeIcon,
+  LabelIcon,
+  EmojiIcon,
+  FootnoteIcon,
+  SmallPrintIcon,
+  KeyboardIcon,
+  PlaceholderIcon,
+  GuidanceIcon,
+  OptionalIcon,
+  RepeatIcon,
+  DetailsIcon,
+  AccordionIcon,
+} from './components/block-icons.tsx'
+export {
+  AlignCenterIcon,
+  AlignLeftIcon,
+  AlignRightIcon,
+  ArrowDownIcon,
+  ArrowLeftIcon,
+  ArrowRightIcon,
+  ArrowUpIcon,
+  ColumnLeftIcon,
+  ColumnRightIcon,
+  OptionsIcon,
+  RowAboveIcon,
+  RowBelowIcon,
+  TrashIcon,
+} from './components/table-icons.tsx'
+export { Input, type InputProps, type InputSize } from './components/input.tsx'
+export {
+  Menu,
+  MenuButton,
+  menuStyles,
+  type MenuButtonProps,
+  type MenuEntry,
+  type MenuItem,
+  type MenuProps,
+  type MenuSection,
+} from './components/menu.tsx'
 export {
   Block,
   LayoutGrid,
@@ -124,6 +206,12 @@ export {
   type PropertySelectOption,
   type PropertySelectProps,
 } from './components/properties-field.tsx'
+export {
+  RevisionPicker,
+  revisionPickerStyles,
+  type RevisionChoice,
+  type RevisionPickerProps,
+} from './components/revision-picker.tsx'
 export {
   RevisionTimeline,
   type Revision,
@@ -183,6 +271,8 @@ export {
   type TabPanelProps,
   type TabProps,
   type TabsProps,
+  type TabsSize,
+  type TabsVariant,
 } from './components/tabs.tsx'
 export {
   toast,
@@ -201,6 +291,12 @@ export {
   type ToasterProps,
   type ToastTone,
 } from './components/toaster.tsx'
+export { HoverCard, hoverCardStyles, type HoverCardProps } from './components/hover-card.tsx'
+export {
+  InfoPopover,
+  infoPopoverStyles,
+  type InfoPopoverProps,
+} from './components/info-popover.tsx'
 export {
   Tooltip,
   TooltipProvider,
@@ -208,12 +304,33 @@ export {
   type TooltipProviderProps,
 } from './components/tooltip.tsx'
 export {
+  NestedList,
+  nestedListStyles,
+  type NestedListItem,
+  type NestedListProps,
+} from './components/nested-list.tsx'
+export {
   Tree,
   type TreeNode,
   type TreeNodeAction,
   type TreeProps,
   type TreeSection,
 } from './components/tree.tsx'
+export { RelativeTime, type RelativeTimeProps } from './components/relative-time.tsx'
+export { LocalTime, type LocalTimeProps } from './components/local-time.tsx'
+export {
+  formatMoment,
+  FULL_MOMENT,
+  toMoment,
+  type MomentStyle,
+  type MomentValue,
+} from './lib/time/moment.ts'
+export {
+  VirtualTree,
+  virtualTreeStyles,
+  type VirtualTreeProps,
+  type VirtualTreeRow,
+} from './components/virtual-tree.tsx'
 
 export {
   applyThemePreference,
@@ -228,6 +345,18 @@ export {
   type ThemePreference,
   type ThemeStorage,
 } from './theme/theme.ts'
+export {
+  ANIMATED_IMAGES_ATTRIBUTE,
+  ANIMATED_IMAGES_PREFERENCES,
+  ANIMATED_IMAGES_STORAGE_KEY,
+  applyAnimatedImagesPreference,
+  DEFAULT_ANIMATED_IMAGES_PREFERENCE,
+  isAnimatedImagesPreference,
+  readAnimatedImagesPreference,
+  rememberAnimatedImagesPreference,
+  type AnimatedImagesPreference,
+  type AnimatedImagesStorage,
+} from './motion/animated-images.ts'
 /*
  * The tenant's identity (ADR-028, layer 1) is **not** re-exported here. It is
  * `@quill/ui/theme`, because only a preview surface — the design showcase, and

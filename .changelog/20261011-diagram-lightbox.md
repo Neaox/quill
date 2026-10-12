@@ -1,0 +1,1 @@
+Added: diagrams open in a lightbox. Select a drawing, or its expand button, to see it full screen; zoom with the wheel, a pinch or the keyboard, drag to pan, and turn a phone to landscape for room. It works in the app, the reader preview and the public site.

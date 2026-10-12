@@ -19,7 +19,7 @@ import {
 import { ExternalIcon, HistoryIcon, PublishIcon } from './design-icons.tsx'
 import { Specimen, specimenAction } from './specimen-layout.tsx'
 
-const VARIANTS = ['primary', 'secondary', 'ghost', 'danger'] as const
+const VARIANTS = ['primary', 'soft', 'secondary', 'ghost', 'danger'] as const
 const SIZES = ['sm', 'md', 'lg'] as const
 
 /** Button variants, sizes, and states. */
@@ -28,7 +28,7 @@ export function ButtonSpecimens() {
     <>
       <Specimen
         label="Variants"
-        note="One primary action per view; it is the only one wearing the accent"
+        note="One primary action per view, the only one wearing the accent: filled where acting is the point, soft where reading is"
         bodyClassName="flex flex-wrap items-center gap-2.5"
       >
         {VARIANTS.map((variant) => (

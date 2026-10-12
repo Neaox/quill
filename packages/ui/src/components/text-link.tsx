@@ -22,24 +22,31 @@ import { tv } from '../lib/class-names.ts'
  */
 export const textLinkStyles = tv({
   base: [
-    'rounded-sm text-accent underline decoration-transparent underline-offset-2',
+    'rounded-sm underline decoration-transparent underline-offset-2',
     'transition-[color,text-decoration-color] hover:decoration-current',
     'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring',
   ],
   variants: {
     /** `inherit` takes the surrounding text's size, which is the usual case in prose. */
     size: { inherit: '', xs: 'text-xs', sm: 'text-sm' },
+    /**
+     * `accent` is a link somebody came to the page to follow; `quiet` is a
+     * secondary way round it ("Forgot password?"), drawn in the muted ink so
+     * it never competes with the page's one primary action.
+     */
+    tone: { accent: 'text-accent', quiet: 'text-muted hover:text-foreground' },
   },
-  defaultVariants: { size: 'inherit' },
+  defaultVariants: { size: 'inherit', tone: 'accent' },
 })
 
 export type TextLinkVariants = VariantProps<typeof textLinkStyles>
 
 export interface TextLinkClassOptions {
   readonly size?: NonNullable<TextLinkVariants['size']>
+  readonly tone?: NonNullable<TextLinkVariants['tone']>
   readonly className?: string | undefined
 }
 
-export function textLinkClassName({ size, className }: TextLinkClassOptions = {}): string {
-  return textLinkStyles({ size, class: className })
+export function textLinkClassName({ size, tone, className }: TextLinkClassOptions = {}): string {
+  return textLinkStyles({ size, tone, class: className })
 }

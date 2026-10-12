@@ -1,0 +1,15 @@
+{
+  "collection": "Architecture",
+  "title": "Platform overview",
+  "type": "design",
+  "owners": ["marcus@acme.example"],
+  "tags": ["architecture", "aws", "kubernetes", "tidepool"],
+  "review": "180d",
+  "status": "published",
+  "notes": [
+    "First version, written during the EKS upgrade",
+    "Added failure domains and recovery targets after the June drill",
+    "October numbers; webhooks and transcription split onto their own queues, recovery target cut to 30 minutes"
+  ],
+  "frontMatter": {}
+}

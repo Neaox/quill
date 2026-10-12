@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto'
 import { expect, test, type Locator, type Page } from '@playwright/test'
 
 import { seedDevelopmentData, ADMIN_EMAIL, ADMIN_PASSWORD } from './support/seed.ts'
+import { accountMenu } from './support/account.ts'
 
 /**
  * The settings journey: use cases 35 and 36, answered through the interface
@@ -73,7 +74,7 @@ async function signIn(page: Page): Promise<void> {
   // Waits for the page the router settled on rather than for the address bar,
   // so a `page.goto` after it is not cancelled by the home route's redirect
   // (the reasoning is spelled out in `organise.spec.ts`).
-  await expect(page.getByRole('button', { name: 'Sign out' })).toBeVisible()
+  await expect(accountMenu(page)).toBeVisible()
   await expect(page).not.toHaveURL(/sign-in/)
 }
 
@@ -160,7 +161,8 @@ test.describe('instance settings', () => {
      * fail again for good. Sending the hue to whichever end it is further from
      * always moves it, however many times this runs.
      */
-    const hue = page.getByLabel('Accent hue')
+    await page.getByRole('tab', { name: 'Sliders' }).click()
+    const hue = page.getByLabel('Colour', { exact: true })
     const started = Number(await hue.inputValue())
     const key = started > 180 ? 'Home' : 'End'
     const expected = key === 'Home' ? '0' : '359'
@@ -180,11 +182,41 @@ test.describe('instance settings', () => {
     // Reloaded from the settings file, the same theme comes back — and the
     // preview generates the same palette from it.
     await page.reload()
-    await expect(page.getByLabel('Accent hue')).toHaveValue(expected)
+    await page.getByRole('tab', { name: 'Sliders' }).click()
+    await expect(page.getByLabel('Colour', { exact: true })).toHaveValue(expected)
     expect(await previewAccent(page)).toBe(previewed)
 
     // Editing a built-in forks it, so the built-in stays as it shipped.
     await expect(page.getByText(/Forked from Instrument/)).toBeVisible()
+  })
+
+  test('keeps labels and emoji on a screen of their own, saved into the theme', async ({
+    page,
+  }) => {
+    await signIn(page)
+    await page.goto('/admin/settings/theme')
+    // Theme is colour, type and shape; labels and emoji are the next section.
+    await expect(page.getByRole('button', { name: 'Add label' })).toHaveCount(0)
+    await page
+      .getByRole('navigation', { name: 'Settings' })
+      .getByRole('link', { name: 'Labels and emoji' })
+      .click()
+    await expect(page.getByRole('heading', { level: 1, name: 'Labels and emoji' })).toBeVisible()
+
+    // Unique per run, so a retry never meets the label the last attempt left.
+    const name = `e2e-${randomUUID().slice(0, 6)}`
+    const labels = page.getByRole('group', { name: 'Labels' })
+    await labels.getByLabel('Name', { exact: true }).fill(name)
+    await labels.getByLabel('Title', { exact: true }).last().fill('Journey')
+    await labels.getByRole('button', { name: 'Add label' }).click()
+    await save(page)
+
+    await page.reload()
+    await expect(page.getByText(`:${name}[Journey]`)).toBeVisible()
+
+    // Put it back, so the instance is left as the other journeys expect it.
+    await page.getByRole('button', { name: 'Remove the label Journey' }).click()
+    await save(page)
   })
 
   test('sets the layout every workspace starts with, and does not lock it', async ({ page }) => {
@@ -194,7 +226,7 @@ test.describe('instance settings', () => {
     await expect(page.getByRole('heading', { level: 1, name: 'Layout' })).toBeVisible()
     await page.getByRole('radio', { name: /Collection tabs/ }).check()
 
-    const lock = page.getByRole('checkbox', { name: 'Every workspace uses this arrangement' })
+    const lock = page.getByRole('switch', { name: 'Every workspace uses this arrangement' })
     if (await lock.isChecked()) await lock.uncheck()
 
     await save(page)
@@ -202,7 +234,7 @@ test.describe('instance settings', () => {
     await page.reload()
     await expect(page.getByRole('radio', { name: /Collection tabs/ })).toBeChecked()
     await expect(
-      page.getByRole('checkbox', { name: 'Every workspace uses this arrangement' }),
+      page.getByRole('switch', { name: 'Every workspace uses this arrangement' }),
     ).not.toBeChecked()
   })
 
@@ -235,7 +267,7 @@ test.describe('instance settings', () => {
 
     // Identity is not offered here: it belongs to the organisation, and a
     // workspace inherits it.
-    await expect(page.getByLabel('Accent hue')).toHaveCount(0)
+    await expect(page.getByRole('group', { name: 'Accent' })).toHaveCount(0)
   })
 
   test('refuses a workspace’s layout once the organisation locks it', async ({ page }) => {
@@ -243,7 +275,7 @@ test.describe('instance settings', () => {
     await signIn(page)
 
     await page.goto('/admin/settings/layout')
-    await page.getByRole('checkbox', { name: 'Every workspace uses this arrangement' }).check()
+    await page.getByRole('switch', { name: 'Every workspace uses this arrangement' }).check()
     await save(page)
 
     await page.goto(`/w/${workspaceId}/settings`)
@@ -255,7 +287,7 @@ test.describe('instance settings', () => {
 
     // Put it back, so the instance is left as the other journeys expect it.
     await page.goto('/admin/settings/layout')
-    await page.getByRole('checkbox', { name: 'Every workspace uses this arrangement' }).uncheck()
+    await page.getByRole('switch', { name: 'Every workspace uses this arrangement' }).uncheck()
     await save(page)
   })
 

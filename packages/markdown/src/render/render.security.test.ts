@@ -1,11 +1,15 @@
 import { describe, expect, it } from 'vitest'
 import type { ContainerDirective } from 'mdast-util-directive'
+import type { Element, Properties, Root as HastRoot } from 'hast'
+import { sanitize } from 'hast-util-sanitize'
+import { toHtml } from 'hast-util-to-html'
 import type { Root } from 'mdast'
 
 import { optionalDirective } from '../directives/optional.ts'
 import { repeatDirective } from '../directives/repeat.ts'
 import { parseMarkdown } from '../pipeline/processor.ts'
 import { renderHtml } from './html.ts'
+import { sanitizeSchema } from './sanitize-schema.ts'
 
 const render = (markdown: string): string => renderHtml(parseMarkdown(markdown))
 
@@ -157,7 +161,8 @@ describe('renderHtml: adversarial corpus', () => {
 
     expect(html).not.toContain('evil.example')
     expect(html).toContain('href="/d/abc"')
-    expect(html).toContain('href="#heading"')
+    // Survives, sent to the heading's rendered id (`fragment-links.ts`).
+    expect(html).toContain('href="#user-content-heading"')
   })
 
   it('escapes raw HTML nested inside a directive', () => {
@@ -233,7 +238,7 @@ describe('renderHtml: adversarial corpus', () => {
 
     expect(html).not.toContain('<script')
     expect(html).toContain('class="callout callout-note"')
-    expect(html).toContain('aria-label="Note"')
+    expect(html).toContain('<p class="callout-label" id="user-content-callout.1">Note</p>')
     expect(html).toContain('<p>Body.</p>')
   })
 })
@@ -304,13 +309,59 @@ describe('renderHtml: directive attribute injection', () => {
     // The label text is escaped where it becomes element content (the
     // `callout-label` paragraph)...
     expect(html).toContain(
-      '<p class="callout-label">&#x3C;/p>&#x3C;script>alert(1)&#x3C;/script></p>',
+      '<span class="sr-only">Note: </span>&#x3C;/p>&#x3C;script>alert(1)&#x3C;/script></p>',
     )
-    // ...and, inside the quoted `aria-label` value, stays inert for the same
-    // reason as the repeat-title case above: its own `<` needs no escaping to
-    // stay contained, because no unescaped `"` ever ends the attribute early.
-    expect(html).toContain('aria-label="</p><script>alert(1)</script>"')
+    // ...and the aside is named by reference to that paragraph, so the label
+    // never becomes an attribute value at all.
+    expect(html).toContain('aria-labelledby="user-content-callout.1"')
+    expect(html).not.toContain('aria-label="</p>')
     expect(html).toContain('<p>Body.</p>')
+  })
+
+  it('names a task checkbox only with escaped text, and keeps it a disabled checkbox', () => {
+    const html = render('- [x] x" onmouseover="alert(1) <img src=x onerror=alert(1)>\n')
+
+    // The name is the words as written, raw HTML included, as text: inside a
+    // quoted value whose own quotes are escaped, a `<` is inert.
+    expect(html).toContain(
+      '<input type="checkbox" checked disabled aria-label="x&#x22; onmouseover=&#x22;alert(1) <img src=x onerror=alert(1)>">',
+    )
+    const outsideTheName = html.replace(/aria-label="[^"]*"/g, '')
+    expect(outsideTheName).not.toContain('<img')
+    expect(outsideTheName.match(/<input/g)).toHaveLength(1)
+  })
+
+  it('admits a name on an input only as text, never another kind of input or a live one', () => {
+    const input = (properties: Properties): Element => ({
+      type: 'element',
+      tagName: 'input',
+      properties,
+      children: [],
+    })
+    const tree: HastRoot = {
+      type: 'root',
+      children: [
+        input({ type: 'text', ariaLabel: 'Name', autoFocus: true, onFocus: 'alert(1)' }),
+        input({ type: 'checkbox', checked: true, 'aria-label': 'Done', name: 'x' }),
+      ],
+    }
+
+    const html = toHtml(sanitize(tree, sanitizeSchema))
+
+    expect(html).toBe(
+      '<input disabled type="checkbox"><input type="checkbox" checked aria-label="Done" disabled>',
+    )
+  })
+
+  it('cannot point a heading or callout name at an element of the author’s choosing', () => {
+    const html = render('## main\n\n:::callout[main]\nBody.\n:::\n')
+
+    // Every reference and the id it names carry the sanitiser's prefix, so a
+    // heading called "main" names itself and nothing of the page around it.
+    expect(html).toContain('aria-labelledby="user-content-title.main"')
+    expect(html).toContain('<span id="user-content-title.main">main</span>')
+    expect(html).not.toMatch(/aria-labelledby="(?!user-content-)/)
+    expect(html).not.toMatch(/ id="(?!user-content-)/)
   })
 })
 

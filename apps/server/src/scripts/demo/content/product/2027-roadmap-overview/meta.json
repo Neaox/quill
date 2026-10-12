@@ -1,0 +1,15 @@
+{
+  "collection": "Roadmap",
+  "title": "2027 roadmap overview",
+  "type": "reference",
+  "owners": ["priya@acme.example"],
+  "tags": ["roadmap", "planning", "2027"],
+  "review": "90d",
+  "status": "published",
+  "notes": [
+    "Roadmap as agreed at the September planning session",
+    "Added Slack integration as a conditional Q1 item",
+    "Moved region-pinned workspaces to Q2 after the Pinecrest Bank renewal; refreshed statuses"
+  ],
+  "frontMatter": {}
+}

@@ -1,0 +1,16 @@
+{
+  "collection": "Specs",
+  "title": "Spec: Feedback clustering v2",
+  "type": "spec",
+  "owners": ["marcus@acme.example"],
+  "tags": ["spec", "clustering", "tidepool", "q1-2027"],
+  "review": "90d",
+  "status": "published",
+  "notes": [
+    "Initial draft: embedding approach and data model",
+    "Chose pgvector after the storage benchmark; added the evaluation targets",
+    "Added backfill plan, regional storage note and the work list",
+    "Updated with first prototype results; ticked completed work"
+  ],
+  "frontMatter": {}
+}

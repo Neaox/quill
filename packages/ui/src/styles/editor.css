@@ -135,22 +135,611 @@
 /* ------------------------------------------------------------------------
  * Tables.
  *
- * `prosemirror-tables` builds a table with no `thead`, so the reading
- * surface's `.prose thead th` treatment — the one that makes a header row
- * read as column labels rather than as bold cells — has to be asked for by
- * position here. Everything else about a table comes from `.prose`, which
- * the editor's grid carries.
+ * The reading surface sets a table from its structure (`thead`, `tfoot`,
+ * `th scope="row"`) and from classes its renderer writes for what the columns
+ * hold. `prosemirror-tables` builds one `tbody` of cells, so the editor writes
+ * the same decisions onto its cells as classes (`table-presentation.ts`) and
+ * this stylesheet gives them the page's treatment — the same custom properties
+ * (`--table-header-*`, from `prose.css`), so a theme that changes a header
+ * changes it here too. Everything else about a table comes from `.prose`,
+ * which the editor's grid carries.
  * ---------------------------------------------------------------------- */
 
-.document-editor-content table > tr:first-child > th {
+/* A column header is a quiet label: `.prose thead th`. */
+.document-editor-content th.table-column-header {
+  background-color: var(--table-header-bg);
+  color: var(--color-muted);
   font-family: var(--font-mono);
   font-size: var(--text-2xs);
-  font-weight: 400;
+  font-weight: var(--table-header-weight);
   letter-spacing: var(--tracking-caps);
   text-transform: uppercase;
-  color: var(--color-muted);
+  text-align: start;
+  white-space: nowrap;
+  padding: 0.5625rem 0.75rem;
+  border-bottom: var(--table-header-rule);
+}
+
+/* Under plain space and cards the column names are quiet sans labels, as they are on the page. */
+:is(
+    [data-rules='plain'] .document-editor-content,
+    .document-editor-content[data-rules='plain'],
+    [data-rules='cards'] .document-editor-content,
+    .document-editor-content[data-rules='cards']
+  )
+  th.table-column-header {
+  font-family: var(--font-sans);
+  font-size: 0.8125rem;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+/* A cell's text is a paragraph in the editor and is the cell's own on the page. */
+.document-editor-content :is(th, td) > p {
+  margin: 0;
+}
+
+/*
+ * A row header names its row in the ink, on the header's surface, with the
+ * header's rule beside it. The page's rules for a first column that is frozen,
+ * or set in the ink under plain space, are written for `tbody td:first-child`
+ * and are as specific as can be, so this names the block as well to be heard.
+ */
+.document-editor-content .table-block-editor tbody :is(th, td).table-row-header:first-child {
+  background-color: var(--table-header-bg);
+  color: var(--color-foreground);
+  font-weight: 500;
+  text-align: start;
+  border-inline-end: var(--table-header-rule);
+}
+
+/* With `headers=row` the GFM header row is data; it is a `th` only because the document says so. */
+.document-editor-content th.table-body-cell {
+  color: inherit;
+  font-weight: inherit;
+}
+
+.document-editor-content
+  .table-block-editor:is([data-headers='both'], [data-headers='row'])
+  th.table-column-header:first-child {
+  border-inline-end: var(--table-header-rule);
+}
+
+/* A footer's rows are totals, under a stronger rule, in the header's surface. */
+.document-editor-content tr.table-footer-row > :is(th, td) {
+  border-top: 2px solid var(--color-border-strong);
+  border-bottom: 0;
   background-color: var(--color-surface);
-  border-bottom: 2px solid var(--color-foreground);
+  color: var(--color-foreground);
+  font-weight: 600;
+}
+
+.document-editor-content tr.table-footer-row + tr.table-footer-row > :is(th, td) {
+  border-top-width: 1px;
+  border-top-color: var(--color-border);
+}
+
+/* Alignment, the author's or a column of numbers', and what a column holds (`prose.css`). */
+.document-editor-content :is(th, td).align-left {
+  text-align: start;
+}
+
+.document-editor-content :is(th, td).align-center {
+  text-align: center;
+}
+
+.document-editor-content :is(th, td):is(.align-right, .align-numeric) {
+  text-align: end;
+}
+
+.document-editor-content :is(th, td).align-numeric {
+  font-variant-numeric: lining-nums tabular-nums;
+  white-space: nowrap;
+}
+
+.document-editor-content :is(th, td).column-nowrap {
+  white-space: nowrap;
+}
+
+.document-editor-content td.column-long {
+  min-width: min(18rem, 70cqi);
+}
+
+/*
+ * A table's caption is the first paragraph of its `:::table` wrapper, above the
+ * table. On the page it is the card's title (`.prose caption`); it is set the
+ * same here, inside the card's edge.
+ */
+.document-editor-content .table-block-editor > p[data-directive-label] {
+  margin: 0;
+  padding: 0.6875rem 0.75rem 0.5rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  line-height: 1.4;
+  color: var(--color-foreground);
+}
+
+/* The words a link is being made for, drawn as selected while the link box has the keyboard. */
+.document-editor-content .selection-held {
+  background-color: var(--color-selection);
+  border-radius: 1px;
+}
+
+/* ------------------------------------------------------------------------
+ * Callouts (`packages/editor/src/callout/`).
+ *
+ * The editor draws a callout with the reader's own `.callout` classes, so its
+ * stripe, colour and icon are the page's. Two things are the editor's: the
+ * callout's blocks are in a content element, so they are spaced as the page
+ * spaces a callout's children; and a title of the author's own is the
+ * callout's first paragraph, which is set as the page sets a title —
+ * `.callout-label`, the variant's icon beside small capitals — and is the
+ * thing the author types into.
+ * ---------------------------------------------------------------------- */
+
+.document-editor-content .callout > .directive-content > * + * {
+  margin-top: 0.55em;
+}
+
+.document-editor-content .callout > .directive-content > :first-child {
+  margin-top: 0;
+}
+
+.document-editor-content .callout > .directive-content > p[data-directive-label]:first-child {
+  display: flex;
+  align-items: center;
+  gap: 0.45em;
+  margin: 0;
+  font-size: 0.75rem;
+  line-height: 1.4;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--callout);
+}
+
+.document-editor-content
+  .callout
+  > .directive-content
+  > p[data-directive-label]:first-child::before {
+  content: '';
+  flex: none;
+  width: 1.25em;
+  height: 1.25em;
+  background-color: currentcolor;
+  mask: var(--callout-icon) center / contain no-repeat;
+}
+
+/*
+ * A callout's heading is where its type is changed: the type's name, or the icon
+ * beside a title, opens the list of types (`callout-variant-menu.tsx`). The name
+ * carries a chevron to say so, and the icon, which has no room for one, the
+ * pointer.
+ */
+/*
+ * Presenter notes say what they are, in the box a template block has: a small heading drawn as a
+ * callout draws its title (the icon masked out of the heading's own colour), quieter, since it
+ * labels a block and does not announce one. It is the view's, not the document's.
+ */
+.document-editor-content .directive-notes > .directive-heading {
+  --callout: var(--color-muted);
+  --callout-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M1.5 2h13M2.5 2v7.25a1 1 0 0 0 1 1h9a1 1 0 0 0 1-1V2M5.25 14.25 8 10.5l2.75 3.75'/%3E%3C/svg%3E");
+  margin-bottom: 0.375rem;
+  font-size: 0.6875rem;
+  font-weight: 500;
+  user-select: none;
+}
+
+.document-editor-content .callout > .callout-label {
+  cursor: pointer;
+}
+
+.document-editor-content .callout > .callout-label::after {
+  content: '▾';
+  font-size: 0.9em;
+  opacity: 0.6;
+}
+
+.document-editor-content .callout > .callout-label:hover::after {
+  opacity: 1;
+}
+
+.document-editor-content
+  .callout
+  > .directive-content
+  > p[data-directive-label]:first-child::before {
+  cursor: pointer;
+}
+
+/* An empty title says what it is for; it is taken away when the caret leaves it. */
+.document-editor-content
+  .callout
+  > .directive-content
+  > p[data-directive-label]:first-child:has(> .ProseMirror-trailingBreak:only-child)::after {
+  content: 'Title';
+  opacity: 0.55;
+}
+
+@media (forced-colors: active) {
+  .document-editor-content
+    .callout
+    > .directive-content
+    > p[data-directive-label]:first-child::before {
+    forced-color-adjust: none;
+    background-color: CanvasText;
+  }
+}
+
+/* ------------------------------------------------------------------------
+ * Table handles (`packages/editor/src/table/table-handles.ts`).
+ *
+ * The handles sit in a layer over the table that is the size of the table's
+ * own box, outside its editable cells: a grip astride the top edge for every
+ * column and the leading edge for every row, a "+" on every border to insert
+ * a line, a handle on every column border and on the trailing edge to resize. The script only says where each
+ * is, as `--start` (and `--size`) along its axis, and how tall and wide the
+ * table is as `--table-height` and `--table-width`; everything about how they
+ * look is here.
+ *
+ * The card must not clip them, so a table being edited does not use the
+ * reading surface's `overflow: clip`; its scroller rounds its own corners.
+ * ---------------------------------------------------------------------- */
+
+.document-editor-content .table-editor {
+  position: relative;
+}
+
+.document-editor-content .table-block-editor {
+  overflow: visible;
+}
+
+.document-editor-content .table-block-editor .table-scroll {
+  border-radius: var(--radius-lg);
+}
+
+/* The `:::table` card is the wrapper, so its scroller is not a second card. */
+.document-editor-content .table-block > .table-editor > .table-scroll {
+  border: 0;
+  background-color: transparent;
+}
+
+.table-handles {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  pointer-events: none;
+  user-select: none;
+}
+
+.table-handles > * {
+  pointer-events: auto;
+}
+
+/*
+ * Out of sight, and out of reach, until the pointer or the caret is in the table.
+ * Several handles sit outside the table's own box (the corner, the "+" on its
+ * edges), so the way to them leaves the table for a moment: they stay a third of
+ * a second after the pointer does, which is long enough to arrive, and arriving
+ * is hovering the table again, since they are inside it.
+ */
+.table-editor:not(:hover, :focus-within) > .table-handles {
+  visibility: hidden;
+  transition: visibility 0s linear 0.3s;
+}
+
+.table-editor > .table-handles[data-dragging] {
+  visibility: visible;
+}
+
+:root[data-dragging='true'] {
+  user-select: none;
+}
+
+/* The grips. Dots say "take hold here"; a selected line's grip is the accent. */
+.table-grip {
+  --grip-dot: var(--color-border-strong);
+  position: absolute;
+  top: 0;
+  left: 0;
+  padding: 0;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background-color: var(--color-surface);
+  cursor: grab;
+  transition:
+    background-color 120ms ease,
+    border-color 120ms ease;
+}
+
+.table-grip::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  margin: auto;
+  background-image: radial-gradient(circle, var(--grip-dot) 0.8px, transparent 1.1px);
+}
+
+.table-grip[data-axis='column'] {
+  top: -0.25rem;
+  width: calc(var(--size) - 2px);
+  height: 0.5rem;
+  translate: calc(var(--start) + 1px) 0;
+}
+
+.table-grip[data-axis='column']::before {
+  width: 1rem;
+  height: 100%;
+  background-size: 0.3125rem 100%;
+  background-repeat: repeat-x;
+}
+
+.table-grip[data-axis='row'] {
+  left: -0.25rem;
+  width: 0.5rem;
+  height: calc(var(--size) - 2px);
+  translate: 0 calc(var(--start) + 1px);
+}
+
+.table-grip[data-axis='row']::before {
+  width: 100%;
+  height: 1rem;
+  background-size: 100% 0.3125rem;
+  background-repeat: repeat-y;
+}
+
+/*
+ * The corner selects the whole table. It sits just outside the corner, where
+ * the column and row grips meet, and its dots are a grid rather than a line.
+ * There is no "+" on that corner for it to compete with.
+ */
+.table-grip[data-axis='table'] {
+  top: -0.8125rem;
+  left: -0.8125rem;
+  z-index: 2;
+  width: 0.75rem;
+  height: 0.75rem;
+  cursor: pointer;
+}
+
+.table-grip[data-axis='table']::before {
+  width: 0.375rem;
+  height: 0.375rem;
+  background-size: 0.1875rem 0.1875rem;
+}
+
+/*
+ * The handle is small and the pointer arrives from the table, a little to one
+ * side or the other, so its target reaches further out than it is drawn: up
+ * and to the left, away from the table, where the pointer comes from.
+ */
+.table-grip[data-axis='table']::after {
+  content: '';
+  position: absolute;
+  inset: -0.75rem 0 0 -0.5rem;
+}
+
+.table-grip:hover {
+  --grip-dot: var(--color-accent);
+  border-color: var(--color-accent);
+  background-color: var(--color-accent-subtle);
+}
+
+.table-grip:active {
+  cursor: grabbing;
+}
+
+.table-grip[data-state='selected'] {
+  --grip-dot: var(--color-accent-foreground);
+  border-color: var(--color-accent);
+  background-color: var(--color-accent);
+}
+
+/*
+ * The "+" on a border: a dot that says "a line can go here", which becomes a
+ * button, and a guide across the table, as the pointer comes to it.
+ */
+.table-insert {
+  position: absolute;
+  top: 0;
+  left: 0;
+  /* Above the resize handle that shares its border: the "+" is the nearer of the two. */
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  width: 1.25rem;
+  height: 1.25rem;
+  padding: 0;
+  border: 0;
+  border-radius: 9999px;
+  background-color: transparent;
+  color: var(--color-border-strong);
+  cursor: pointer;
+  transition:
+    background-color 120ms ease,
+    color 120ms ease;
+}
+
+.table-insert[data-axis='column'] {
+  top: -0.625rem;
+  translate: calc(var(--start) - 0.625rem) 0;
+}
+
+.table-insert[data-axis='row'] {
+  left: -0.625rem;
+  translate: 0 calc(var(--start) - 0.625rem);
+}
+
+.table-insert::before {
+  content: '';
+  width: 0.25rem;
+  height: 0.25rem;
+  border-radius: 9999px;
+  background-color: currentColor;
+}
+
+.table-insert::after {
+  content: '';
+  position: absolute;
+  background-color: var(--color-accent);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 120ms ease;
+}
+
+.table-insert[data-axis='column']::after {
+  top: 100%;
+  left: 50%;
+  width: 2px;
+  height: calc(var(--table-height) - 0.625rem);
+  translate: -50% 0;
+}
+
+.table-insert[data-axis='row']::after {
+  top: 50%;
+  left: 100%;
+  width: calc(var(--table-width) - 0.625rem);
+  height: 2px;
+  translate: 0 -50%;
+}
+
+.table-insert:hover,
+.table-insert:focus-visible {
+  background-color: var(--color-accent);
+  color: var(--color-accent-foreground);
+}
+
+/* The plus is two bars drawn in the button's own colour. */
+.table-insert:hover::before,
+.table-insert:focus-visible::before {
+  width: 0.625rem;
+  height: 0.625rem;
+  border-radius: 0;
+  background:
+    linear-gradient(currentColor, currentColor) center / 100% 1.5px no-repeat,
+    linear-gradient(currentColor, currentColor) center / 1.5px 100% no-repeat;
+}
+
+.table-insert:hover::after,
+.table-insert:focus-visible::after {
+  opacity: 1;
+}
+
+/* A border between columns, and the table's trailing edge, are handles to drag. */
+.table-column-border,
+.table-width-handle {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 0.5rem;
+  height: var(--table-height);
+  translate: calc(var(--start) - 0.25rem) 0;
+  cursor: col-resize;
+}
+
+.table-column-border::after,
+.table-width-handle::after {
+  content: '';
+  position: absolute;
+  inset-block: 0;
+  left: 50%;
+  width: 2px;
+  translate: -50% 0;
+  background-color: var(--color-accent);
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+
+.table-column-border:hover::after,
+.table-handles[data-dragging='border'] .table-column-border:active::after {
+  opacity: 1;
+}
+
+/* The width handle is a pill on the edge, always findable, rather than a line. */
+.table-width-handle::after {
+  inset-block: calc(50% - 1rem);
+  width: 4px;
+  border-radius: 9999px;
+  background-color: var(--color-border-strong);
+  opacity: 1;
+}
+
+.table-width-handle:hover::after,
+.table-handles[data-dragging='width'] .table-width-handle::after {
+  background-color: var(--color-accent);
+}
+
+/* What a drag shows: the shares being set, the line being moved, and where it will land. */
+.table-readout {
+  position: absolute;
+  top: -2.5rem;
+  left: 50%;
+  translate: -50% 0;
+  padding: 0.125rem 0.5rem;
+  border-radius: var(--radius-sm);
+  background-color: var(--color-foreground);
+  color: var(--color-background);
+  font-family: var(--font-mono);
+  font-size: var(--text-2xs);
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.table-drag-ghost,
+.table-drop-line {
+  position: absolute;
+  top: 0;
+  left: 0;
+  display: none;
+  pointer-events: none;
+}
+
+.table-drag-ghost {
+  border: 1px solid var(--color-accent);
+  border-radius: var(--radius-sm);
+  background-color: color-mix(in oklch, var(--color-accent) 16%, transparent);
+}
+
+.table-drop-line {
+  background-color: var(--color-accent);
+}
+
+.table-handles[data-dragging='column'] :is(.table-drag-ghost, .table-drop-line)[data-axis='column'],
+.table-handles[data-dragging='row'] :is(.table-drag-ghost, .table-drop-line)[data-axis='row'] {
+  display: block;
+}
+
+.table-drag-ghost[data-axis='column'] {
+  width: var(--size);
+  height: var(--table-height);
+  translate: var(--start) 0;
+}
+
+.table-drag-ghost[data-axis='row'] {
+  width: var(--table-width);
+  height: var(--size);
+  translate: 0 var(--start);
+}
+
+.table-drop-line[data-axis='column'] {
+  width: 2px;
+  height: var(--table-height);
+  translate: calc(var(--start) - 1px) 0;
+}
+
+.table-drop-line[data-axis='row'] {
+  width: var(--table-width);
+  height: 2px;
+  translate: 0 calc(var(--start) - 1px);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .table-grip,
+  .table-insert,
+  .table-insert::after,
+  .table-column-border::after,
+  .table-width-handle::after {
+    transition: none;
+  }
 }
 
 /* The cell being edited, and the selection a table drag makes. */
@@ -158,11 +747,319 @@
   content: '';
   position: absolute;
   inset: 0;
-  background-color: var(--color-selection);
+  background-color: color-mix(in oklch, var(--color-accent) 16%, transparent);
   pointer-events: none;
 }
 
 .document-editor-content td,
 .document-editor-content th {
   position: relative;
+}
+
+/*
+ * Where the caret is, for someone using the keyboard (`document/caret-context.ts`): the cell, or the
+ * callout, notes or details, it is in, in the focus ring's colour. The editor adds the class only
+ * while the keyboard was the last thing used, as `:focus-visible` does for a control, so a click
+ * does not leave a ring behind. A cell is ringed inside its own edges, where the next cell's ring
+ * does not cover it.
+ */
+.document-editor-content :is(td, th).has-caret {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: -2px;
+}
+
+.document-editor-content :not(td, th).has-caret {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+
+@media (forced-colors: active) {
+  .document-editor-content .has-caret {
+    outline-color: Highlight;
+  }
+}
+
+/* ------------------------------------------------------------------------
+ * Placeholders.
+ *
+ * An empty document says how to start, and the empty line the caret is on
+ * says how to insert a block: quiet, in the muted colour, and never in the
+ * way of the caret or a click. The text is the editor's `data-placeholder`;
+ * only the caret's line carries one, so a page with gaps in it is not
+ * covered in hints.
+ * ---------------------------------------------------------------------- */
+
+.document-editor-content .is-editor-empty::before,
+.document-editor-content.ProseMirror-focused .is-empty::before {
+  content: attr(data-placeholder);
+  float: inline-start;
+  height: 0;
+  color: var(--color-muted);
+  pointer-events: none;
+}
+
+/* The slash and its query while the menu is open, marked as a command being typed. */
+.document-editor-content .suggestion {
+  border-radius: var(--radius-sm);
+  background-color: var(--color-selection);
+}
+
+/*
+ * Find and replace (`packages/editor/src/find/`): every match is tinted in the warning colour, which is
+ * not the selection's, so it reads as "found" and not "selected"; the one the selection is on is
+ * stronger and outlined, so it can be told apart from the rest without colour alone.
+ */
+/* Where a search in a selection is looking: the selection's own tint, which stays as the selection moves on to the matches. */
+.document-editor-content .find-scope {
+  background-color: var(--color-selection);
+}
+
+.document-editor-content .find-match {
+  border-radius: var(--radius-sm);
+  background-color: color-mix(in oklch, var(--color-warning) 28%, transparent);
+}
+
+.document-editor-content .find-match-current {
+  border-radius: var(--radius-sm);
+  background-color: color-mix(in oklch, var(--color-warning) 55%, transparent);
+  outline: 2px solid var(--color-warning);
+}
+
+@media (forced-colors: active) {
+  .document-editor-content .find-match {
+    background-color: Mark;
+    color: MarkText;
+  }
+
+  .document-editor-content .find-match-current {
+    outline-color: Highlight;
+  }
+}
+
+/* ---------------------------------------------------------------------- *
+ * Image actions (`packages/editor/src/image/image-actions.ts`)
+ *
+ * An image an extension acts on — a draw.io diagram's "Edit diagram" — has
+ * its buttons over its top corner, shown when the pointer is over it, when
+ * anything in it has focus, when it is the selected node, and always on a
+ * screen without hover, where there is no other way to find them.
+ * ---------------------------------------------------------------------- */
+
+.document-editor-content .image-actions {
+  position: relative;
+  display: inline-block;
+  max-width: 100%;
+}
+
+.document-editor-content .image-actions-bar {
+  position: absolute;
+  inset-block-start: 0.5rem;
+  inset-inline-end: 0.5rem;
+  display: flex;
+  gap: 0.25rem;
+  opacity: 0;
+  transition: opacity 120ms var(--ease-standard, ease);
+}
+
+.document-editor-content .image-actions-bar[hidden] {
+  display: none;
+}
+
+.document-editor-content
+  .image-actions:is(:hover, :focus-within, .ProseMirror-selectednode)
+  .image-actions-bar {
+  opacity: 1;
+}
+
+@media (hover: none) {
+  .document-editor-content .image-actions-bar {
+    opacity: 1;
+  }
+}
+
+.document-editor-content .image-actions-button {
+  min-height: 2rem;
+  padding-inline: 0.75rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background-color: color-mix(in oklch, var(--color-surface-raised) 92%, transparent);
+  backdrop-filter: blur(6px);
+  color: var(--color-foreground);
+  font: inherit;
+  font-size: var(--text-xs);
+  font-weight: 500;
+  box-shadow: 0 1px 2px var(--color-shadow-ambient, rgb(0 0 0 / 0.08));
+  cursor: pointer;
+}
+
+.document-editor-content .image-actions-button:hover {
+  background-color: var(--color-surface-raised);
+}
+
+.document-editor-content .image-actions-button:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 2px;
+}
+
+/* ---------------------------------------------------------------------- *
+ * Details (ADR-048).
+ *
+ * The reader's frame and rules come from `prose.css`, through the `details`
+ * class the view carries; this is the writing surface's row. The chevron is
+ * a real button that opens and closes the body while writing, turning as the
+ * reader's does; "Open by default" sits at the row's end, quiet until the
+ * details is hovered or holds the caret, and says whether it is on by its
+ * check and its pressed state, never by colour alone.
+ * ---------------------------------------------------------------------- */
+
+.document-editor-content .details-editor {
+  position: relative;
+}
+
+.document-editor-content .details-editor-content {
+  padding-inline-start: var(--details-indent, 1.5rem);
+}
+
+.document-editor-content .details-editor .details-summary {
+  padding-block: 0.7rem;
+  padding-inline-end: 9rem;
+  font-family: var(--font-sans);
+  font-size: 0.95em;
+  font-weight: 600;
+  line-height: 1.45;
+  color: var(--color-foreground);
+}
+
+.document-editor-content .details-editor[data-summary-empty] .details-summary::before {
+  content: 'Summary';
+  float: inline-start;
+  height: 0;
+  font-weight: 500;
+  color: var(--color-muted);
+  pointer-events: none;
+}
+
+.document-editor-content .details-editor-content > :not(.details-summary) {
+  margin-block-end: 0.75rem;
+}
+
+.document-editor-content
+  .details-editor[data-folded]
+  .details-editor-content
+  > :not(.details-summary) {
+  display: none;
+}
+
+.document-editor-content .details-editor-toggle {
+  position: absolute;
+  inset-block-start: 0.6rem;
+  inset-inline-start: 0;
+  display: grid;
+  place-items: center;
+  inline-size: 1.5rem;
+  block-size: 1.5rem;
+  border-radius: var(--radius-sm);
+  color: var(--color-muted);
+  transition: color var(--duration-fast) var(--ease-standard);
+}
+
+.document-editor-content .details-editor-toggle svg {
+  transition: transform var(--duration-base) var(--ease-standard);
+}
+
+.document-editor-content .details-editor-toggle[aria-expanded='true'] svg {
+  transform: rotate(90deg);
+}
+
+.document-editor-content .details-editor-toggle:dir(rtl) svg {
+  transform: rotate(180deg);
+}
+
+.document-editor-content .details-editor > .details-editor-content {
+  margin-block-start: 0;
+}
+
+.document-editor-content .details-editor.callout .details-editor-toggle {
+  inset-inline-start: 0.6rem;
+  color: var(--callout);
+}
+
+.document-editor-content .details-editor.callout > .details-editor-content {
+  padding-inline: calc(0.85rem + var(--details-indent, 1.5rem)) 1.1rem;
+}
+
+.document-editor-content .details-editor-default {
+  position: absolute;
+  inset-block-start: 0.6rem;
+  inset-inline-end: 0.25rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  block-size: 1.5rem;
+  padding-inline: 0.45rem;
+  border-radius: var(--radius-sm);
+  font-family: var(--font-sans);
+  font-size: var(--text-xs);
+  font-weight: 500;
+  color: var(--color-muted);
+  opacity: 0;
+  transition:
+    opacity var(--duration-fast) var(--ease-standard),
+    color var(--duration-fast) var(--ease-standard);
+}
+
+.document-editor-content .details-editor-default svg {
+  visibility: hidden;
+}
+
+.document-editor-content .details-editor-default[aria-pressed='true'] {
+  color: var(--color-foreground);
+}
+
+.document-editor-content .details-editor-default[aria-pressed='true'] svg {
+  visibility: visible;
+}
+
+.document-editor-content .details-editor:is(:hover, :focus-within) > .details-editor-default,
+.document-editor-content .details-editor-default[aria-pressed='true'],
+.document-editor-content .details-editor-default:focus-visible {
+  opacity: 1;
+}
+
+.document-editor-content :is(.details-editor-toggle, .details-editor-default):hover {
+  background-color: color-mix(in oklch, var(--color-foreground) 6%, transparent);
+  color: var(--color-foreground);
+}
+
+.document-editor-content :is(.details-editor-toggle, .details-editor-default):focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 1px;
+}
+
+@media (hover: none) {
+  .document-editor-content .details-editor-default {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .document-editor-content .details-editor-toggle svg {
+    transition: none;
+  }
+}
+
+/* ------------------------------------------------------------------------
+ * Task lists.
+ *
+ * Each task is drawn with its checkbox (`task-item-view.ts`), which carries
+ * the reading surface's own task classes so `prose.css` draws the box and
+ * hangs the words beside it. The list is the editor's `ul.task-list`, so its
+ * bullets are taken off here, as `ul.contains-task-list` takes them off for
+ * a reader.
+ * ---------------------------------------------------------------------- */
+
+.document-editor-content ul.task-list {
+  list-style: none;
+  padding-inline-start: 0;
 }

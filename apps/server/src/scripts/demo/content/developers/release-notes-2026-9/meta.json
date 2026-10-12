@@ -1,0 +1,10 @@
+{
+  "collection": "Changelog",
+  "title": "Release notes 2026.9",
+  "type": "article",
+  "owners": ["marcus@acme.example"],
+  "tags": ["changelog", "2026.9"],
+  "status": "published",
+  "notes": ["Published with the 2026.9 release"],
+  "frontMatter": {}
+}

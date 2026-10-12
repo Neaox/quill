@@ -1,8 +1,10 @@
 import type { Mark, Node as PMNode } from 'prosemirror-model'
 import type {
   BlockContent,
+  Code,
   DefinitionContent,
   ListItem,
+  Paragraph,
   PhrasingContent,
   Root,
   RootContent,
@@ -10,6 +12,12 @@ import type {
   TableRow,
 } from 'mdast'
 
+import { DETAILS } from '../details/details.ts'
+import type { CalloutType } from '../directives/callout.ts'
+import { isCalloutType } from '../directives/callout.ts'
+import { markerFor, markerType } from '../pipeline/github-alert.ts'
+import type { AlertForm } from '../pipeline/github-alert.ts'
+import type { SourceForm } from '../pipeline/source-form.ts'
 import type { Warning } from '../warnings.ts'
 import { warning } from '../warnings.ts'
 
@@ -38,6 +46,80 @@ interface AppliedMark {
 interface MarkRun {
   readonly applied: AppliedMark | undefined
   readonly nodes: PMNode[]
+}
+
+/** How a callout is written as a quote, and what its first block is if it is a title. */
+interface AlertWriting extends AlertForm {
+  readonly type: CalloutType
+}
+
+/**
+ * How a callout is written as a quote (GitHub's alert, Obsidian's callout), when it
+ * was read from one or made in the editor, and is still a callout of a known type
+ * with nothing else to say. The quote is the standard form wherever one exists, so
+ * the title Obsidian puts after the marker and the kinds it has are written as it
+ * writes them; the directive is for a callout that was written as one.
+ */
+function alertFormOf(node: PMNode): AlertWriting | undefined {
+  const { attrs } = node
+  const form: unknown = attrs['alert']
+  const attributes: unknown = attrs['attributes']
+  if (attrs['name'] !== 'callout' || typeof form !== 'object' || form === null) return undefined
+  if (typeof attributes !== 'object' || attributes === null) return undefined
+  if (!('marker' in form) || typeof form.marker !== 'string') return undefined
+  const entries = Object.entries(attributes)
+  const type = entries.length === 1 ? entries[0]?.[1] : undefined
+  if (typeof type !== 'string' || !isCalloutType(type)) return undefined
+  return { marker: form.marker, own: 'own' in form && form.own === true, type }
+}
+
+/** The title a callout's first block is, and the body that follows it. */
+function titleAndBody(body: readonly BlockNode[]): {
+  readonly title: PhrasingContent[]
+  readonly rest: readonly BlockNode[]
+} {
+  const [first, ...rest] = body
+  return first?.type === 'paragraph' && first.data?.directiveLabel === true
+    ? { title: first.children, rest }
+    : { title: [], rest: body }
+}
+
+/** Text nodes that touch are one: what the parser would have read the written text as. */
+function joinText(inline: readonly PhrasingContent[]): PhrasingContent[] {
+  return inline.reduce<PhrasingContent[]>((joined, node) => {
+    const last = joined.at(-1)
+    return last?.type === 'text' && node.type === 'text'
+      ? [...joined.slice(0, -1), { ...last, value: last.value + node.value }]
+      : [...joined, node]
+  }, [])
+}
+
+/** A callout as the quote it was: its marker and title on a line, then its blocks. */
+function alertBlockquote(
+  form: AlertWriting,
+  body: readonly BlockNode[],
+  data: ReturnType<typeof dataOf>,
+): BlockContent {
+  // A type that was changed in the editor is written as the type it is now.
+  const marker =
+    markerType(form.marker) === form.type ? form.marker : markerFor(form.type, form.marker)
+  const { title, rest } = titleAndBody(body)
+  const line: PhrasingContent[] = [
+    { type: 'text', value: title.length === 0 ? marker : `${marker} ` },
+    ...title,
+  ]
+  const [first, ...others] = rest
+  const blocks: BlockNode[] =
+    !form.own && first?.type === 'paragraph'
+      ? [
+          {
+            ...first,
+            children: joinText([...line, { type: 'text', value: '\n' }, ...first.children]),
+          },
+          ...others,
+        ]
+      : [{ type: 'paragraph', children: joinText(line) }, ...rest]
+  return { type: 'blockquote', children: blocks, ...data }
 }
 
 function children(node: PMNode): PMNode[] {
@@ -88,6 +170,12 @@ function markRuns(nodes: readonly PMNode[], active: readonly string[]): MarkRun[
   return runs
 }
 
+/** How the node was written, carried back to mdast for the writer (`pipeline/source-form.ts`). */
+function dataOf(node: PMNode | Mark): { data?: { sourceForm: SourceForm } } {
+  const sourceForm: SourceForm | null = node.attrs['sourceForm']
+  return sourceForm === null ? {} : { data: { sourceForm } }
+}
+
 function isSyntheticParagraph(node: PMNode): boolean {
   return (
     node.type.name === 'paragraph' && node.attrs['synthetic'] === true && node.content.size === 0
@@ -109,7 +197,7 @@ export function proseMirrorToMdast(doc: PMNode): MdastDocument {
       case 'text':
         return { type: 'text', value: node.textContent }
       case 'hardBreak':
-        return { type: 'break' }
+        return { type: 'break', ...dataOf(node) }
       case 'htmlInline':
         return { type: 'html', value: node.attrs['value'] }
       case 'image':
@@ -139,6 +227,7 @@ export function proseMirrorToMdast(doc: PMNode): MdastDocument {
           name: node.attrs['name'],
           attributes: node.attrs['attributes'],
           children: inlines(children(node), []),
+          ...dataOf(node),
         }
       default:
         warnings.push(warning('unknown-inline-node', node.type.name))
@@ -150,16 +239,22 @@ export function proseMirrorToMdast(doc: PMNode): MdastDocument {
     const { attrs } = applied.mark
     switch (applied.name) {
       case 'bold':
-        return { type: 'strong', children: kids }
+        return { type: 'strong', children: kids, ...dataOf(applied.mark) }
       case 'italic':
-        return { type: 'emphasis', children: kids }
+        return { type: 'emphasis', children: kids, ...dataOf(applied.mark) }
       case 'strike':
         return { type: 'delete', children: kids }
       case 'code':
         return { type: 'inlineCode', value: textOf(kids) }
       default:
         return attrs['referenceType'] === null
-          ? { type: 'link', url: attrs['href'], title: attrs['title'], children: kids }
+          ? {
+              type: 'link',
+              url: attrs['href'],
+              title: attrs['title'],
+              children: kids,
+              ...(attrs['literal'] === true ? { data: { autolinkLiteral: true } } : {}),
+            }
           : {
               type: 'linkReference',
               identifier: attrs['identifier'],
@@ -205,7 +300,11 @@ export function proseMirrorToMdast(doc: PMNode): MdastDocument {
   }
 
   function tableRow(row: PMNode): TableRow {
-    return { type: 'tableRow', children: children(row).map((cell) => tableCell(cell)) }
+    return {
+      type: 'tableRow',
+      children: children(row).map((cell) => tableCell(cell)),
+      ...dataOf(row),
+    }
   }
 
   function listItem(item: PMNode): ListItem {
@@ -215,6 +314,53 @@ export function proseMirrorToMdast(doc: PMNode): MdastDocument {
       checked:
         item.type.name === 'taskItem' ? item.attrs['checked'] === true : item.attrs['checked'],
       children: itemChildren(item),
+      ...dataOf(item),
+    }
+  }
+
+  function code(node: PMNode): Code {
+    const { attrs } = node
+    return {
+      type: 'code',
+      lang: attrs['language'],
+      meta: attrs['meta'],
+      value: node.textContent,
+      ...dataOf(node),
+    }
+  }
+
+  /**
+   * A details, in the syntax it was read in (ADR-048): GitHub's HTML and
+   * Obsidian's callouts are `details` nodes, written back as they were while
+   * they can still say everything (`details/write.ts`); the rest is
+   * `:::details`. An empty summary is no label at all.
+   */
+  function details(node: PMNode): BlockNode {
+    const { attrs } = node
+    const [summary, ...body] = children(node)
+    const title = summary === undefined ? [] : inlines(children(summary), [])
+    const label: Paragraph[] =
+      title.length === 0
+        ? []
+        : [{ type: 'paragraph', data: { directiveLabel: true }, children: title }]
+    const content = [...label, ...blocks(body.filter((kid) => !isSyntheticParagraph(kid)))]
+    const syntax = attrs['syntax']
+    if (syntax === 'html' || syntax === 'callout') {
+      return {
+        type: 'details',
+        syntax,
+        attributes: attrs['attributes'],
+        ...(attrs['source'] === null ? {} : { source: attrs['source'] }),
+        children: content,
+        ...dataOf(node),
+      }
+    }
+    return {
+      type: 'containerDirective',
+      name: DETAILS,
+      attributes: attrs['attributes'],
+      children: content,
+      ...dataOf(node),
     }
   }
 
@@ -222,17 +368,26 @@ export function proseMirrorToMdast(doc: PMNode): MdastDocument {
     const { attrs } = node
     switch (node.type.name) {
       case 'paragraph': {
+        const { data } = dataOf(node)
+        const label = attrs['directiveLabel'] === true ? { directiveLabel: true } : {}
         const paragraph: BlockNode = { type: 'paragraph', children: inlines(children(node), []) }
         return [
-          attrs['directiveLabel'] === true
-            ? { ...paragraph, data: { directiveLabel: true } }
-            : paragraph,
+          data === undefined && label.directiveLabel === undefined
+            ? paragraph
+            : { ...paragraph, data: { ...data, ...label } },
         ]
       }
       case 'heading':
-        return [{ type: 'heading', depth: attrs['level'], children: inlines(children(node), []) }]
+        return [
+          {
+            type: 'heading',
+            depth: attrs['level'],
+            children: inlines(children(node), []),
+            ...dataOf(node),
+          },
+        ]
       case 'blockquote':
-        return [{ type: 'blockquote', children: blocks(children(node)) }]
+        return [{ type: 'blockquote', children: blocks(children(node)), ...dataOf(node) }]
       case 'bulletList':
       case 'taskList':
       case 'orderedList': {
@@ -244,34 +399,53 @@ export function proseMirrorToMdast(doc: PMNode): MdastDocument {
             start: ordered ? attrs['start'] : null,
             spread: attrs['spread'] === true,
             children: children(node).map((item) => listItem(item)),
+            ...dataOf(node),
           },
         ]
       }
       case 'codeBlock':
+        return [code(node)]
+      case 'codeGroup':
         return [
-          { type: 'code', lang: attrs['language'], meta: attrs['meta'], value: node.textContent },
+          {
+            type: 'codeGroup',
+            syntax: attrs['syntax'],
+            attributes: attrs['attributes'],
+            spread: attrs['spread'] === true,
+            ...(typeof attrs['opening'] === 'string' ? { opening: attrs['opening'] } : {}),
+            children: children(node).map((tab) => code(tab)),
+          },
         ]
       case 'horizontalRule':
-        return [{ type: 'thematicBreak' }]
+        return [{ type: 'thematicBreak', ...dataOf(node) }]
       case 'htmlBlock':
-        return [{ type: 'html', value: node.textContent }]
+        return [{ type: 'html', value: node.textContent, ...dataOf(node) }]
       case 'table':
         return [
           {
             type: 'table',
             align: attrs['align'],
             children: children(node).map((row) => tableRow(row)),
+            ...dataOf(node),
           },
         ]
-      case 'containerDirective':
+      case 'details':
+        return [details(node)]
+      case 'containerDirective': {
+        // The line an empty container holds only because it must is not written.
+        const content = blocks(children(node).filter((kid) => !isSyntheticParagraph(kid)))
+        const alert = alertFormOf(node)
+        if (alert !== undefined) return [alertBlockquote(alert, content, dataOf(node))]
         return [
           {
             type: 'containerDirective',
             name: attrs['name'],
             attributes: attrs['attributes'],
-            children: blocks(children(node)),
+            children: content,
+            ...dataOf(node),
           },
         ]
+      }
       case 'leafDirective':
         return [
           {
@@ -279,6 +453,7 @@ export function proseMirrorToMdast(doc: PMNode): MdastDocument {
             name: attrs['name'],
             attributes: attrs['attributes'],
             children: inlines(children(node), []),
+            ...dataOf(node),
           },
         ]
       case 'definition':
@@ -298,6 +473,7 @@ export function proseMirrorToMdast(doc: PMNode): MdastDocument {
             identifier: attrs['identifier'],
             label: attrs['label'],
             children: blocks(children(node)),
+            ...dataOf(node),
           },
         ]
       case 'rawMdast':

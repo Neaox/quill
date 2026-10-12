@@ -1,4 +1,4 @@
-import { and, count, eq } from 'drizzle-orm'
+import { and, count, eq, ilike, inArray } from 'drizzle-orm'
 
 import type {
   CollectionId,
@@ -109,6 +109,27 @@ export function createCollectionRepository(db: DrizzleClient): CollectionReposit
         .from(collections)
         .where(eq(collections.workspaceId, workspaceId))
         .orderBy(collections.name)
+      return rows.map(toCollectionRow)
+    },
+
+    async listByIds(ids: readonly CollectionId[]): Promise<readonly CollectionRow[]> {
+      if (ids.length === 0) return []
+      const rows = await db
+        .select()
+        .from(collections)
+        .where(inArray(collections.id, [...ids]))
+      return rows.map(toCollectionRow)
+    },
+
+    async searchByName(text: string, limit: number): Promise<readonly CollectionRow[]> {
+      // `%`, `_` and `\` are pattern characters to ILIKE; what was typed is matched literally.
+      const literal = text.replaceAll(/[\\%_]/gu, (character) => `\\${character}`)
+      const rows = await db
+        .select()
+        .from(collections)
+        .where(ilike(collections.name, `%${literal}%`))
+        .orderBy(collections.name)
+        .limit(limit)
       return rows.map(toCollectionRow)
     },
 

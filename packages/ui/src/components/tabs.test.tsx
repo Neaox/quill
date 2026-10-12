@@ -102,4 +102,24 @@ describe('Tabs', () => {
     // Still showing what the caller asked for, not what was clicked.
     expect(screen.getByRole('tab', { name: 'Content', selected: true })).toBeInTheDocument()
   })
+
+  it('gives a touch tab a 44-pixel target in either look', () => {
+    render(
+      <Tabs defaultValue="one">
+        <TabList label="Choose" variant="segmented" size="touch">
+          <Tab value="one" variant="segmented" size="touch">
+            One
+          </Tab>
+          <Tab value="two" size="touch">
+            Two
+          </Tab>
+        </TabList>
+        <TabPanel value="one">The first.</TabPanel>
+        <TabPanel value="two">The second.</TabPanel>
+      </Tabs>,
+    )
+    expect(screen.getByRole('tablist', { name: 'Choose' })).toHaveClass('w-full')
+    expect(screen.getByRole('tab', { name: 'One' })).toHaveClass('h-10')
+    expect(screen.getByRole('tab', { name: 'Two' })).toHaveClass('min-h-11')
+  })
 })

@@ -3,6 +3,7 @@ import { SYNTAX_FAMILIES, type PaletteToken, type SyntaxFamily } from '../tokens
 import { buildAccentVariants, type AccentRole } from './accent.ts'
 import type { Adjustment } from './adjustment.ts'
 import { DARK_CHROMA_REDUCTION, type Scheme } from './bands.ts'
+import { buildLabelColours, type LabelColours } from './labels.ts'
 import { NO_CEILING, type ChromaCeiling } from './derive.ts'
 import { buildNeutralRamp, type NeutralRole } from './neutral-ramp.ts'
 import { parseColour, withAlpha, type Colour } from './oklch.ts'
@@ -17,6 +18,8 @@ export type Palette = {
   readonly scheme: Scheme
   readonly colours: Readonly<Record<PaletteRole, Colour>>
   readonly syntax: Readonly<Record<SyntaxFamily, Colour>>
+  /** The organisation's labels (ADR-037), in the theme's order; empty for a theme without. */
+  readonly labels: readonly LabelColours[]
   readonly adjustments: readonly Adjustment[]
 }
 
@@ -30,6 +33,7 @@ export const PALETTE_ROLES: readonly PaletteRole[] = [
   'border',
   'borderStrong',
   'muted',
+  'body',
   'ink',
   'codeBackground',
   'placeholder',
@@ -38,6 +42,7 @@ export const PALETTE_ROLES: readonly PaletteRole[] = [
   'accentHover',
   'accentForeground',
   'accentSubtle',
+  'accentInk',
   'focusRing',
   'selection',
   'success',
@@ -84,12 +89,14 @@ export const PALETTE_TOKEN_ROLES: Readonly<Record<PaletteToken, PaletteRole>> = 
   '--palette-surface-raised': 'raised',
   '--palette-foreground': 'ink',
   '--palette-muted': 'muted',
+  '--palette-body': 'body',
   '--palette-border': 'border',
   '--palette-border-strong': 'borderStrong',
   '--palette-accent': 'accent',
   '--palette-accent-hover': 'accentHover',
   '--palette-accent-foreground': 'accentForeground',
   '--palette-accent-subtle': 'accentSubtle',
+  '--palette-accent-ink': 'accentInk',
   '--palette-success': 'success',
   '--palette-success-subtle': 'successSubtle',
   '--palette-warning': 'warning',
@@ -146,6 +153,7 @@ const buildScheme = (document: ThemeDocument, scheme: Scheme, reference?: Palett
     neutral.colours.codeBackground,
     syntaxCeiling(reference),
   )
+  const labels = buildLabelColours(document.labels ?? [], scheme, neutral.colours)
 
   return {
     scheme,
@@ -156,11 +164,13 @@ const buildScheme = (document: ThemeDocument, scheme: Scheme, reference?: Palett
       ...buildEffects(scheme, neutral.colours),
     },
     syntax: syntax.colours,
+    labels: labels.labels,
     adjustments: [
       ...neutral.adjustments,
       ...accent.adjustments,
       ...status.adjustments,
       ...syntax.adjustments,
+      ...labels.adjustments,
     ],
   }
 }

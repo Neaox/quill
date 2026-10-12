@@ -104,4 +104,21 @@ describe('Input', () => {
 
     expect(container.firstElementChild).toHaveClass('w-64')
   })
+
+  it('is the compact row by default, matching the other controls in a form', () => {
+    render(<Input label="Slug" />)
+
+    expect(screen.getByLabelText('Slug')).toHaveClass('h-8', 'text-xs')
+  })
+
+  it('offers the touch size for a form that is the whole page', async () => {
+    const { container } = render(<Input label="Email" size="lg" description="Work address." />)
+
+    const field = screen.getByLabelText('Email')
+    expect(field).toHaveClass('h-10', 'text-sm')
+    expect(field).not.toHaveClass('h-8')
+    expect(field).not.toHaveAttribute('size')
+    expect(container.querySelector('label')).toHaveClass('text-sm')
+    await expectNoAccessibilityViolations(container)
+  })
 })

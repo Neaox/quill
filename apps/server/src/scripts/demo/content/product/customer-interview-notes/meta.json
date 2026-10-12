@@ -1,0 +1,27 @@
+{
+  "collection": "Templates",
+  "title": "Customer interview notes",
+  "type": "template",
+  "owners": ["sofia@acme.example"],
+  "tags": ["template", "research", "interviews"],
+  "review": "1y",
+  "status": "published",
+  "notes": ["Template based on the August interview notes"],
+  "frontMatter": {
+    "type": "template",
+    "template": {
+      "name": "Customer interview notes",
+      "category": "Research",
+      "version": 1,
+      "questions": [
+        { "id": "customer", "label": "Customer", "type": "text", "default": "Customer name" },
+        { "id": "interviewDate", "label": "Interview date", "type": "date", "optional": true }
+      ],
+      "sections": [
+        { "heading": "Context", "required": true },
+        { "heading": "What we heard", "required": true },
+        { "heading": "Follow-ups", "required": true }
+      ]
+    }
+  }
+}

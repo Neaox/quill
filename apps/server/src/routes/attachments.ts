@@ -2,6 +2,7 @@ import { Readable } from 'node:stream'
 
 import fastifyMultipart from '@fastify/multipart'
 import { Type } from '@sinclair/typebox'
+import { Value } from '@sinclair/typebox/value'
 import type { TypeBoxTypeProvider } from '@fastify/type-provider-typebox'
 import {
   ALLOWED_MEDIA_TYPES,
@@ -9,14 +10,17 @@ import {
   deleteAttachment,
   getAttachment,
   listAttachments,
+  reviseAttachment,
   uploadAttachment,
 } from '@quill/application'
 import type {
+  AttachmentRefusal,
   AttachmentRow,
   Authorizer,
   ImageMediaType,
   ServedAttachment,
 } from '@quill/application'
+import type { MultipartFile } from '@fastify/multipart'
 import type { DocumentId } from '@quill/domain'
 import type { FastifyPluginAsync, FastifyReply, FastifyRequest } from 'fastify'
 
@@ -89,10 +93,18 @@ export const AttachmentSchema = Type.Object(
     contentType: Type.String({ enum: [...ALLOWED_MEDIA_TYPES] }),
     size: Type.Integer(),
     sha256: Type.String(),
+    /** Rises with each revision; a save names the version it edited (ADR-043). */
+    version: Type.Integer({ minimum: 1 }),
     uploadedBy: Type.Union([Type.String(), Type.Null()]),
     createdAt: Type.String({ format: 'date-time' }),
   },
   { $id: 'Attachment' },
+)
+
+/** The version a revision was made from: the compare-and-set a save names (ADR-043). */
+export const ReviseQuerySchema = Type.Object(
+  { expectedVersion: Type.Integer({ minimum: 1 }) },
+  { additionalProperties: false },
 )
 
 /**
@@ -119,6 +131,7 @@ export interface AttachmentResponse {
   readonly contentType: string
   readonly size: number
   readonly sha256: string
+  readonly version: number
   readonly uploadedBy: string | null
   readonly createdAt: string
 }
@@ -132,6 +145,7 @@ export function attachmentResponse(row: AttachmentRow): AttachmentResponse {
     contentType: row.contentType,
     size: row.size,
     sha256: row.sha256,
+    version: row.version,
     uploadedBy: row.uploadedBy,
     createdAt: row.createdAt.toISOString(),
   }
@@ -173,6 +187,45 @@ export function attachmentRoutes(deps: AppDependencies): FastifyPluginAsync {
 
     app.addSchema(AttachmentSchema)
     app.addSchema(AttachmentListSchema)
+
+    /**
+     * Asked before a file is read and spent only once one is stored, so a
+     * refusal — which costs a few hundred bytes and no storage — leaves an
+     * honest person's budget where it was (ADR-011 abuse resistance). An upload
+     * and a revision draw on the same budget: both store bytes.
+     */
+    function requireUploadBudget(request: FastifyRequest, userId: string): string {
+      const budget = uploadBudget(userId)
+      const standing = deps.attachmentRateLimiter.peek(budget)
+      if (standing.current >= rateLimit.max) {
+        // The same audit hook every other limit reports through, so a
+        // spending spree looks the same in the log wherever it happened.
+        app.onRateLimitExceeded(request, budget)
+        throw rateLimited(standing.ttl)
+      }
+      return budget
+    }
+
+    /** The one file a multipart request carries, in the field it has to arrive in. */
+    async function uploadedFile(request: FastifyRequest): Promise<MultipartFile> {
+      const part = await request.file()
+      if (part === undefined) {
+        throw unprocessable(
+          'file_missing',
+          `Send the file in a multipart field called "${UPLOAD_FIELD}"`,
+        )
+      }
+      if (part.fieldname !== UPLOAD_FIELD) {
+        // Drained before answering: busboy holds the request until its
+        // stream is consumed, and the parser's own limit bounds it.
+        part.file.resume()
+        throw unprocessable(
+          'file_missing',
+          `Send the file in a multipart field called "${UPLOAD_FIELD}", not "${part.fieldname}"`,
+        )
+      }
+      return part
+    }
 
     /** The row, checked against the document that owns it — which is what governs it. */
     async function authorisedAttachment(
@@ -246,35 +299,8 @@ export function attachmentRoutes(deps: AppDependencies): FastifyPluginAsync {
         const documentId = await resolveDocumentId(deps, request.params.id)
         const session = requireAuthenticatedSession(request)
         await requireDocumentAccess(authorizerFor(deps, request), documentId, 'edit')
-
-        // Asked before the file is read and spent only once one is stored, so
-        // a refusal — which costs a few hundred bytes and no storage — leaves
-        // an honest person's budget where it was (ADR-011 abuse resistance).
-        const budget = uploadBudget(session.userId)
-        const standing = deps.attachmentRateLimiter.peek(budget)
-        if (standing.current >= rateLimit.max) {
-          // The same audit hook every other limit reports through, so a
-          // spending spree looks the same in the log wherever it happened.
-          app.onRateLimitExceeded(request, budget)
-          throw rateLimited(standing.ttl)
-        }
-
-        const part = await request.file()
-        if (part === undefined) {
-          throw unprocessable(
-            'file_missing',
-            `Send the file in a multipart field called "${UPLOAD_FIELD}"`,
-          )
-        }
-        if (part.fieldname !== UPLOAD_FIELD) {
-          // Drained before answering: busboy holds the request until its
-          // stream is consumed, and the parser's own limit bounds it.
-          part.file.resume()
-          throw unprocessable(
-            'file_missing',
-            `Send the file in a multipart field called "${UPLOAD_FIELD}", not "${part.fieldname}"`,
-          )
-        }
+        const budget = requireUploadBudget(request, session.userId)
+        const part = await uploadedFile(request)
 
         const result = await uploadAttachment(deps, {
           documentId,
@@ -295,30 +321,74 @@ export function attachmentRoutes(deps: AppDependencies): FastifyPluginAsync {
           /* v8 ignore next 2 -- the authorizer has already loaded this document. */
           case 'document-not-found':
             throw notFound('Document not found')
-          case 'empty':
-            throw unprocessable('file_empty', 'That file has nothing in it')
-          case 'too-large':
-            throw payloadTooLarge(
-              `That file is larger than the ${Math.floor(result.maxBytes / MEGABYTE)} MB limit`,
-              { maxBytes: result.maxBytes },
+          default:
+            throw refused(result)
+        }
+      },
+    )
+
+    app.put(
+      '/api/attachments/:id',
+      {
+        preHandler: app.requireVerifiedSession,
+        schema: {
+          params: IdParamsSchema,
+          querystring: ReviseQuerySchema,
+          consumes: ['multipart/form-data'],
+          body: UploadBodySchema,
+          response: { 200: Type.Ref(AttachmentSchema) },
+        },
+        // Off, as for an upload: the body is the multipart stream. The query
+        // is checked in the handler instead, before the body is touched.
+        validatorCompiler: () => (data) => ({ value: data }),
+      },
+      async (request) => {
+        const session = requireAuthenticatedSession(request)
+        const query = Value.Convert(ReviseQuerySchema, request.query)
+        if (!Value.Check(ReviseQuerySchema, query)) {
+          throw unprocessable(
+            'expected_version_missing',
+            'Say which version of the file this saves over, as ?expectedVersion=<n>.',
+          )
+        }
+        await authorisedAttachment(request, 'edit')
+        const budget = requireUploadBudget(request, session.userId)
+        const part = await uploadedFile(request)
+
+        const result = await reviseAttachment(deps, {
+          attachmentId: request.params.id,
+          revisedBy: session.userId,
+          expectedVersion: query.expectedVersion,
+          declaredContentType: part.mimetype,
+          body: part.file,
+          maxBytes,
+        })
+
+        if (result.kind !== 'revised') part.file.resume()
+
+        switch (result.kind) {
+          case 'revised':
+            deps.attachmentRateLimiter.hit(budget)
+            return attachmentResponse(result.attachment)
+          /* v8 ignore next 2 -- the row was loaded and checked a moment ago. */
+          case 'not-found':
+            throw notFound(ATTACHMENT_REFUSAL)
+          case 'version-conflict':
+            // Never a silent overwrite (ADR-043): the writer is told what is
+            // there now, and chooses to save theirs as a copy or to reload.
+            throw conflict(
+              'attachment_version_conflict',
+              'Somebody saved a newer version of this file since you opened it.',
+              { current: attachmentResponse(result.current) },
             )
-          case 'type-not-allowed':
-            throw unprocessable('file_type_not_allowed', refusalFor(result.sniffed), {
-              sniffed: result.sniffed,
-              allowed: [...ALLOWED_MEDIA_TYPES],
-            })
-          case 'type-mismatch':
+          case 'type-changed':
             throw unprocessable(
-              'file_type_mismatch',
-              `That file was sent as ${result.declared}, but its contents are ${result.sniffed}`,
-              { declared: result.declared, sniffed: result.sniffed },
+              'file_type_changed',
+              `This file is ${result.current}; a new version of it has to be too, not ${result.sniffed}.`,
+              { current: result.current, sniffed: result.sniffed },
             )
-          case 'malformed':
-            throw unprocessable(
-              'file_malformed',
-              `That file could not be read as ${describeImage(result.contentType)}: ${result.reason}. Export it again and upload that.`,
-              { contentType: result.contentType, reason: result.reason },
-            )
+          default:
+            throw refused(result)
         }
       },
     )
@@ -406,6 +476,39 @@ export function attachmentRoutes(deps: AppDependencies): FastifyPluginAsync {
   }
 }
 
+/**
+ * The error for a file the platform would not take, as an upload or as a
+ * revision: one wording for each reason, wherever the file arrived.
+ */
+function refused(refusal: AttachmentRefusal): Error {
+  switch (refusal.kind) {
+    case 'empty':
+      return unprocessable('file_empty', 'That file has nothing in it')
+    case 'too-large':
+      return payloadTooLarge(
+        `That file is larger than the ${Math.floor(refusal.maxBytes / MEGABYTE)} MB limit`,
+        { maxBytes: refusal.maxBytes },
+      )
+    case 'type-not-allowed':
+      return unprocessable('file_type_not_allowed', TYPE_NOT_ALLOWED, {
+        sniffed: refusal.sniffed,
+        allowed: [...ALLOWED_MEDIA_TYPES],
+      })
+    case 'type-mismatch':
+      return unprocessable(
+        'file_type_mismatch',
+        `That file was sent as ${refusal.declared}, but its contents are ${refusal.sniffed}`,
+        { declared: refusal.declared, sniffed: refusal.sniffed },
+      )
+    case 'malformed':
+      return unprocessable(
+        'file_malformed',
+        `That file could not be read as ${describeImage(refusal.contentType)}: ${refusal.reason}. Export it again and upload that.`,
+        { contentType: refusal.contentType, reason: refusal.reason },
+      )
+  }
+}
+
 /** The bucket one person's uploads count against, whichever document they aim at. */
 export function uploadBudget(userId: string): string {
   return `attachment:upload:account:${userId}`
@@ -449,12 +552,8 @@ function describeImage(contentType: ImageMediaType): string {
 }
 
 /** Why this file was refused, in the words the person who chose it would use. */
-function refusalFor(sniffed: string | null): string {
-  if (sniffed === 'image/svg+xml') {
-    return 'SVG files are not accepted: an SVG is a document that can carry scripts, so the platform neither stores nor renders one. Export the drawing as PNG and upload that.'
-  }
-  return 'That file is not a type this platform accepts. Images (PNG, JPEG, GIF, WebP and AVIF) and PDFs are.'
-}
+const TYPE_NOT_ALLOWED =
+  'That file is not a type this platform accepts. Images (PNG, JPEG, GIF, WebP and AVIF), SVG drawings, draw.io diagrams and PDFs are.'
 
 /**
  * The headers an attachment is served with (ADR-011 "safe serving").

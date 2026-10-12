@@ -1,6 +1,6 @@
 import { MutationCache, QueryCache, QueryClient } from '@tanstack/react-query'
 
-import { ApiError } from './errors.ts'
+import { ApiError, isTransientFailure, retryAfterOf } from './errors.ts'
 
 /**
  * `invalid_credentials` is `useSignIn` rejecting the password someone just
@@ -42,6 +42,22 @@ function handleError(error: unknown, onUnauthorized: UnauthorizedHandler | undef
   }
 }
 
+const QUERY_RETRIES = 2
+
+/**
+ * TanStack Query's own exponential backoff (1s, 2s, 4s, capped at 30s), with
+ * jitter so every tab that lost the server does not come back in step, and
+ * never sooner than the server's `Retry-After`.
+ */
+function queryRetryDelay(
+  failureCount: number,
+  retryAfter: number | null,
+  random: () => number = Math.random,
+): number {
+  const ceiling = Math.min(1000 * 2 ** failureCount, 30_000)
+  return Math.max(ceiling / 2 + (random() * ceiling) / 2, retryAfter ?? 0)
+}
+
 /**
  * One `QueryClient` for the app (ADR-013: server state lives in TanStack
  * Query). A 401 discovered by any query or mutation — not just the `me`
@@ -59,10 +75,12 @@ export function createQueryClient({ onUnauthorized }: QueryClientOptions = {}): 
     mutationCache: new MutationCache({ onError }),
     defaultOptions: {
       queries: {
-        // A 401/403/404/409/423 will not succeed on retry; only a transient
-        // network failure might, and TanStack Query's default backoff
-        // already covers that case for the one status worth retrying.
-        retry: (failureCount, error) => !(error instanceof ApiError) && failureCount < 2,
+        // A 4xx will not succeed on retry, and neither will a 500. A request
+        // that never arrived, a rate limit, and a gateway or server that is
+        // restarting will (audit 2026-10-11, P0-2: a single 502 on a
+        // background refresh used to fail the query outright).
+        retry: (failureCount, error) => failureCount < QUERY_RETRIES && isTransientFailure(error),
+        retryDelay: (failureCount, error) => queryRetryDelay(failureCount, retryAfterOf(error)),
       },
     },
   })

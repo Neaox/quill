@@ -1,0 +1,11 @@
+{
+  "collection": "Reports",
+  "title": "Quarterly access review: Q3 2026",
+  "type": "reference",
+  "owners": ["aisha@acme.example"],
+  "tags": ["access-review", "soc2", "cc6", "q3"],
+  "review": "90d",
+  "status": "published",
+  "notes": ["Q3 2026 results, completed 9 October"],
+  "frontMatter": {}
+}

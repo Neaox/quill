@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { instrument } from '../builtin/instrument.ts'
 import { buildPalettes } from '../colour/palette.ts'
 import type { ThemeDocument } from '../schema/theme-document.ts'
-import { ALL_RULES, ENFORCED_RULE_ID } from './rules/all.ts'
+import { ALL_RULES, applicableRules, ENFORCED_RULE_ID } from './rules/all.ts'
 import { reportOn, runThemeDoctor } from './run.ts'
 
 /** A tenant who drags the ink almost onto the paper. */
@@ -12,18 +12,28 @@ const unreadable: ThemeDocument = {
   overrides: { light: { '--palette-foreground': 'oklch(95% 0.006 250)' } },
 }
 
+/** The rules a report on this theme names, in order. */
+const ids = (theme: ThemeDocument) => runThemeDoctor(theme).results.map((result) => result.id)
+
 describe('runThemeDoctor', () => {
-  it('reports on every rule, once', () => {
+  it('reports on every rule that applies, once', () => {
     const report = runThemeDoctor(instrument)
-    expect(report.results).toHaveLength(ALL_RULES.length)
-    expect(new Set(report.results.map((result) => result.id)).size).toBe(ALL_RULES.length)
+    const applicable = applicableRules(instrument)
+    expect(report.results).toHaveLength(applicable.length)
+    expect(new Set(report.results.map((result) => result.id)).size).toBe(applicable.length)
     expect(report.themeId).toBe('instrument')
+  })
+
+  it('leaves out a rule with nothing to judge, rather than counting it a pass', () => {
+    expect(ids(instrument)).not.toContain('legibility/labels')
+    const labelled = { ...instrument, labels: [{ name: 'airbnb', title: 'Airbnb', hue: 15 }] }
+    expect(ids(labelled)).toEqual(ALL_RULES.map((rule) => rule.id))
   })
 
   it('summarises the statuses and lists the warnings', () => {
     const report = runThemeDoctor(unreadable)
     const total = report.summary.pass + report.summary.adjusted + report.summary.warn
-    expect(total).toBe(ALL_RULES.length)
+    expect(total).toBe(applicableRules(unreadable).length)
     expect(report.warnings.map((result) => result.id)).toContain(ENFORCED_RULE_ID)
   })
 

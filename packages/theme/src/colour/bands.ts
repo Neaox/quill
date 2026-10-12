@@ -5,11 +5,13 @@
  * doctor reads the band, and neither restates a number the other owns.
  */
 
-export type Scheme = 'light' | 'dark'
+export const SCHEMES = ['light', 'dark'] as const
+
+export type Scheme = (typeof SCHEMES)[number]
 
 export type Band = { readonly low: number; readonly high: number }
 
-export type NeutralRole = 'paper' | 'surface' | 'raised' | 'border' | 'muted' | 'ink'
+export type NeutralRole = 'paper' | 'surface' | 'raised' | 'border' | 'muted' | 'body' | 'ink'
 
 /** Section 3: lightness bands per role. */
 export const LIGHTNESS_BANDS: Record<NeutralRole | 'accent', Record<Scheme, Band>> = {
@@ -18,6 +20,7 @@ export const LIGHTNESS_BANDS: Record<NeutralRole | 'accent', Record<Scheme, Band
   raised: { light: { low: 96, high: 100 }, dark: { low: 22, high: 29 } },
   border: { light: { low: 85, high: 92 }, dark: { low: 28, high: 35 } },
   muted: { light: { low: 45, high: 55 }, dark: { low: 65, high: 75 } },
+  body: { light: { low: 28, high: 42 }, dark: { low: 80, high: 90 } },
   ink: { light: { low: 18, high: 28 }, dark: { low: 90, high: 95 } },
   accent: { light: { low: 40, high: 55 }, dark: { low: 65, high: 78 } },
 }
@@ -32,7 +35,8 @@ export const TARGET_LIGHTNESS: Record<NeutralRole, Record<Scheme, number>> = {
   raised: { light: 99.5, dark: 25 },
   border: { light: 90.5, dark: 31 },
   muted: { light: 50, dark: 70 },
-  ink: { light: 24, dark: 92.5 },
+  body: { light: 34, dark: 84 },
+  ink: { light: 24, dark: 94.5 },
 }
 
 /** Section 3: a surface must read as a surface, not as paper with a shadow. */
@@ -53,6 +57,23 @@ export const CHROMA_BUDGET = {
   /** "One saturated thing at a time": the ceiling for a non-accent surface. */
   saturatedThreshold: 0.05,
 } as const
+
+/**
+ * Section 4: a wash — the accent or a status colour mixed into the page, for
+ * a callout, a selected row, a badge — is a tinted area, not a panel, and may
+ * carry more colour than one. Calibrated on the dark accent tints of Linear,
+ * Vercel and Fumadocs, roughly C 0.03 to 0.05 at low lightness: a dark wash
+ * held to the panel's C 0.02 cannot be told from grey, so the brand it is
+ * meant to carry is lost.
+ */
+export const WASH_CHROMA_BUDGET: Readonly<Record<Scheme, number>> = { light: 0.03, dark: 0.045 }
+
+/**
+ * The least chroma at which a brand colour still reads as its hue rather than
+ * as grey: a wash against the surface it sits on, and the accent and status
+ * colours as marks. A suggested fix never takes a tinted colour below it.
+ */
+export const RECOGNISABLE_CHROMA = { wash: 0.025, mark: 0.06 } as const
 
 /** Section 4 and 7: dark mode keeps the hue and loses 20 to 30 percent of the chroma. */
 export const DARK_CHROMA_REDUCTION = { low: 0.2, high: 0.3, chosen: 0.25 } as const

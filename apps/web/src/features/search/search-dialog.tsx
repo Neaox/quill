@@ -6,8 +6,11 @@ import { CommandPalette, buttonClassName, tv, type CommandPaletteGroup } from '@
 import {
   queryTooLong,
   readInvalidQuery,
+  useMe,
   useSearch,
+  useSignOut,
   useWorkspace,
+  useWorkspaceList,
   type SearchHit,
 } from '../../lib/api/index.ts'
 import {
@@ -15,6 +18,7 @@ import {
   workspaceReference,
   type DocumentLinkTarget,
 } from '../../lib/routing/document-reference.ts'
+import { commandGroups, matchCommands, paletteCommands, type CommandAction } from './commands.ts'
 import { InvalidQueryNotice } from './invalid-query-notice.tsx'
 import { SearchHitDetail, searchHitLink } from './search-hit.tsx'
 import {
@@ -86,6 +90,23 @@ export function SearchDialog({ open, onOpenChange, workspaceSlug }: SearchDialog
   // No `limit`: `useSearch` already asks for the palette's page size.
   const results = useSearch({ query: debounced, workspaceId: workspace?.id ?? null })
 
+  // The commands: where to go and what to do, from anywhere (`commands.ts`).
+  // Matched against what is typed *now*, not the debounced copy: they are
+  // local, so there is nothing to wait for.
+  const me = useMe().data
+  const workspaces = useWorkspaceList().data
+  const signOut = useSignOut()
+  const commands = useMemo(
+    () =>
+      paletteCommands({
+        isInstanceAdmin: me?.isInstanceAdmin === true,
+        workspaces: workspaces ?? [],
+      }),
+    [me?.isInstanceAdmin, workspaces],
+  )
+  const matchedCommands = matchCommands(commands, query)
+  const actions = new Map(matchedCommands.map((command) => [command.id, command.action]))
+
   const sections = useMemo(
     () => searchSections(results.data === undefined ? [] : [results.data], workspace ?? null),
     [results.data, workspace],
@@ -107,6 +128,10 @@ export function SearchDialog({ open, onOpenChange, workspaceSlug }: SearchDialog
     }))
     return { groups: rendered, targets: destinations }
   }, [sections])
+
+  // Commands first: a handful of named places that answer at once, then the
+  // documents, which take a round trip.
+  const allGroups = [...commandGroups(matchedCommands), ...groups]
 
   const typed = query.trim()
   /**
@@ -132,16 +157,22 @@ export function SearchDialog({ open, onOpenChange, workspaceSlug }: SearchDialog
       title="Search documentation"
       inputLabel="Search documentation"
       placeholder="Search documentation"
-      description="Results appear as you type. Use the up and down arrows to move between them and Enter to open one."
+      description="Places to go and results appear as you type. Use the up and down arrows to move between them and Enter to open one."
       value={query}
       onValueChange={setQuery}
-      groups={groups}
+      groups={allGroups}
       // Busy for the whole wait, not just the request: between a keystroke and
       // the debounce firing there is nothing in flight, and a field that drops
       // `aria-busy` there presents the previous query's hits as the answer to
       // this one (`docs/design/feedback.md`).
       busy={results.isFetching || settling}
       onSelect={(id) => {
+        const action = actions.get(id)
+        if (action !== undefined) {
+          onOpenChange(false)
+          run(action)
+          return
+        }
         const target = targets.get(id)
         /* v8 ignore next -- every option's id was put in the map beside it. */
         if (target === undefined) return
@@ -153,6 +184,24 @@ export function SearchDialog({ open, onOpenChange, workspaceSlug }: SearchDialog
       {...(status() === undefined ? {} : { status: status() })}
     />
   )
+
+  /** What choosing a command does. The router spells every address (ADR-035). */
+  function run(action: CommandAction): void {
+    switch (action.kind) {
+      case 'home':
+        void navigate({ to: '/' })
+        return
+      case 'workspace':
+        void navigate({ to: '/w/$workspaceSlug', params: { workspaceSlug: action.workspaceSlug } })
+        return
+      case 'organisation':
+        void navigate({ to: action.to })
+        return
+      case 'sign-out':
+        signOut.mutate()
+        return
+    }
+  }
 
   /** Whether the answer on screen is the one the box is asking for. */
   function settled(): boolean {
@@ -179,7 +228,7 @@ export function SearchDialog({ open, onOpenChange, workspaceSlug }: SearchDialog
         </p>
       )
     }
-    if (groups.length === 0) {
+    if (allGroups.length === 0) {
       return <p className={styles.prompt()}>Nothing matched “{answering}”.</p>
     }
     return undefined

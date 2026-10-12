@@ -12,12 +12,14 @@ export const PALETTE_TOKENS = [
   '--palette-surface-raised',
   '--palette-foreground',
   '--palette-muted',
+  '--palette-body',
   '--palette-border',
   '--palette-border-strong',
   '--palette-accent',
   '--palette-accent-hover',
   '--palette-accent-foreground',
   '--palette-accent-subtle',
+  '--palette-accent-ink',
   '--palette-success',
   '--palette-success-subtle',
   '--palette-warning',
@@ -133,6 +135,53 @@ export const TYPE_TOKENS = [
   '--font-sans',
   '--font-reading',
   '--font-mono',
+  '--text-reading',
+  '--text-reading--line-height',
+  '--leading-reading',
+] as const
+
+/**
+ * The reading surface's scale and link treatment (ADR-028's amendment of 11
+ * October 2026). `prose.css` reads these; every size is an `em` of the body
+ * so a presentation that raises the body raises everything with it.
+ */
+export const PROSE_TOKENS = [
+  '--prose-lede-size',
+  '--prose-lede-leading',
+  '--prose-h1-size',
+  '--prose-h1-leading',
+  '--prose-h1-weight',
+  '--prose-h1-tracking',
+  '--prose-h2-size',
+  '--prose-h2-leading',
+  '--prose-h2-weight',
+  '--prose-h2-tracking',
+  '--prose-h2-space',
+  '--prose-h3-size',
+  '--prose-h3-leading',
+  '--prose-h3-weight',
+  '--prose-h3-tracking',
+  '--prose-h3-space',
+  '--prose-h4-size',
+  '--prose-h4-leading',
+  '--prose-h4-weight',
+  '--prose-h4-tracking',
+  '--prose-eyebrow-size',
+  '--prose-eyebrow-weight',
+  '--prose-eyebrow-tracking',
+  '--prose-table-size',
+  '--prose-table-leading',
+  '--prose-code-size',
+  '--prose-link-colour',
+  '--prose-link-decoration',
+  '--prose-link-thickness',
+  '--prose-link-thickness-hover',
+  '--prose-link-offset',
+  '--prose-flow-block',
+  '--prose-flow-after-heading',
+  '--prose-flow-after-title',
+  '--prose-flow-object-before',
+  '--prose-flow-object-after',
 ] as const
 
 export const SHAPE_TOKENS = [
@@ -152,15 +201,23 @@ export const LAYOUT_TOKENS = [
 ] as const
 
 export type TypeToken = (typeof TYPE_TOKENS)[number]
+export type ProseToken = (typeof PROSE_TOKENS)[number]
 export type ShapeToken = (typeof SHAPE_TOKENS)[number]
 export type LayoutToken = (typeof LAYOUT_TOKENS)[number]
 
-export type TokenName = PaletteToken | SyntaxToken | TypeToken | ShapeToken | LayoutToken
+export type TokenName =
+  | PaletteToken
+  | SyntaxToken
+  | TypeToken
+  | ProseToken
+  | ShapeToken
+  | LayoutToken
 
 export const TOKEN_NAMES: readonly TokenName[] = [
   ...PALETTE_TOKENS,
   ...SYNTAX_TOKENS,
   ...TYPE_TOKENS,
+  ...PROSE_TOKENS,
   ...SHAPE_TOKENS,
   ...LAYOUT_TOKENS,
 ]

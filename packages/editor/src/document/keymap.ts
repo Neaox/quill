@@ -1,15 +1,30 @@
 import { Extension } from '@tiptap/core'
 import type { NodeType, Schema } from '@tiptap/pm/model'
-import { chainCommands, setBlockType, toggleMark } from '@tiptap/pm/commands'
+import { chainCommands, setBlockType } from '@tiptap/pm/commands'
 import { dropCursor } from '@tiptap/pm/dropcursor'
 import { gapCursor } from '@tiptap/pm/gapcursor'
 import { history, redo, undo } from '@tiptap/pm/history'
-import { liftListItem, sinkListItem, splitListItem, wrapInList } from '@tiptap/pm/schema-list'
+import { liftListItem, sinkListItem, splitListItem } from '@tiptap/pm/schema-list'
 import type { Command } from '@tiptap/pm/state'
 
-import { markType, nodeType } from '../schema/node-type.ts'
+import { clearFormatting, INLINE_MARKS, toggleInlineMark } from '../format/marks.ts'
+import { TEXT_STYLES, toggleTextStyle } from '../format/text-styles.ts'
+import { nodeType } from '../schema/node-type.ts'
 import { tableCommands } from '../schema/tables.ts'
+import {
+  enterInTable,
+  goToCell,
+  moveColumn,
+  moveRow,
+  nextCellOrNewRow,
+} from '../table/table-commands.ts'
+import { tableContext } from '../table/table-context.ts'
 import { insertHardBreak } from './commands.ts'
+import { enterTable } from './enter-table.ts'
+import { leaveEnd, leaveStart } from './exit-block.ts'
+import { moveBlock } from './move-block.ts'
+import { selectNextOccurrence } from './select-next-occurrence.ts'
+import { selectOutward } from './select-outward.ts'
 
 /**
  * The editor's keyboard map.
@@ -24,19 +39,6 @@ import { insertHardBreak } from './commands.ts'
  * handler outside one.
  */
 
-const MARK_KEYS: Readonly<Record<string, string>> = {
-  'Mod-b': 'bold',
-  'Mod-i': 'italic',
-  'Mod-Shift-x': 'strike',
-  'Mod-e': 'code',
-}
-
-const LIST_KEYS: Readonly<Record<string, string>> = {
-  'Mod-Shift-7': 'orderedList',
-  'Mod-Shift-8': 'bulletList',
-  'Mod-Shift-9': 'taskList',
-}
-
 const ITEM_NODES = ['listItem', 'taskItem'] as const
 
 /** One command per list item type, tried in turn, so both kinds of list work. */
@@ -44,30 +46,65 @@ function acrossItemTypes(schema: Schema, make: (type: NodeType) => Command): Com
   return chainCommands(...ITEM_NODES.map((name) => make(nodeType(schema, name))))
 }
 
+/** Moves the selection's row or column one place, as dragging its grip does. */
+function moveLine(axis: 'row' | 'column', by: number): Command {
+  return (state, dispatch) => {
+    const context = tableContext(state)
+    if (context === undefined) return false
+    const from = axis === 'row' ? context.rect.top : context.rect.left
+    return (axis === 'row' ? moveRow : moveColumn)(from, from + by)(state, dispatch)
+  }
+}
+
+/** The two deepest heading levels are bound to keys but not offered in menus. */
+export const DEEP_HEADING_LEVELS = [5, 6] as const
+
 export function keyboardShortcuts(schema: Schema): Readonly<Record<string, Command>> {
-  const headings = Object.fromEntries(
-    [1, 2, 3, 4, 5, 6].map((level) => [
+  const deepHeadings = Object.fromEntries(
+    DEEP_HEADING_LEVELS.map((level) => [
       `Mod-Alt-${String(level)}`,
       setBlockType(nodeType(schema, 'heading'), { level }),
     ]),
   )
   const marks = Object.fromEntries(
-    Object.entries(MARK_KEYS).map(([key, name]) => [key, toggleMark(markType(schema, name))]),
+    INLINE_MARKS.map((mark) => [mark.key, toggleInlineMark(mark.name)]),
   )
-  const lists = Object.fromEntries(
-    Object.entries(LIST_KEYS).map(([key, name]) => [key, wrapInList(nodeType(schema, name))]),
+  const styles = Object.fromEntries(
+    TEXT_STYLES.flatMap((style) =>
+      style.key === undefined ? [] : [[style.key, toggleTextStyle(style)]],
+    ),
   )
 
   return {
     ...marks,
-    ...headings,
-    ...lists,
-    'Mod-Alt-0': setBlockType(nodeType(schema, 'paragraph')),
-    'Mod-Alt-c': setBlockType(nodeType(schema, 'codeBlock')),
+    'Mod-\\': clearFormatting,
+    ...styles,
+    ...deepHeadings,
     'Shift-Enter': insertHardBreak,
-    Enter: acrossItemTypes(schema, splitListItem),
-    Tab: chainCommands(tableCommands.nextCell, acrossItemTypes(schema, sinkListItem)),
+    // In a table, Enter goes down a cell and adds a row at the end; Tab goes
+    // to the next cell and adds a row from the last (ADR-040).
+    Enter: chainCommands(enterInTable, acrossItemTypes(schema, splitListItem)),
+    Tab: chainCommands(nextCellOrNewRow, acrossItemTypes(schema, sinkListItem)),
+    // Out of a block that has the end or the start of the document, which has nowhere to go (exit-block.ts).
+    ArrowDown: chainCommands(leaveEnd('down'), enterTable('down')),
+    ArrowRight: chainCommands(leaveEnd('right'), enterTable('right')),
+    ArrowUp: chainCommands(leaveStart('up'), enterTable('up')),
+    ArrowLeft: chainCommands(leaveStart('left'), enterTable('left')),
+    // One cell at a time, however far into the text the caret is (the plain arrows go a character).
+    'Alt-Shift-ArrowUp': goToCell('up'),
+    'Alt-Shift-ArrowDown': goToCell('down'),
+    'Alt-Shift-ArrowLeft': goToCell('left'),
+    'Alt-Shift-ArrowRight': goToCell('right'),
+    // In a table the keys move its rows; anywhere else, the block (move-block.ts).
+    'Alt-ArrowUp': chainCommands(moveLine('row', -1), moveBlock(-1)),
+    'Alt-ArrowDown': chainCommands(moveLine('row', 1), moveBlock(1)),
+    'Alt-ArrowLeft': moveLine('column', -1),
+    'Alt-ArrowRight': moveLine('column', 1),
     'Shift-Tab': chainCommands(tableCommands.previousCell, acrossItemTypes(schema, liftListItem)),
+    // The block first, then what is around it, and last the document (select-outward.ts).
+    'Mod-a': selectOutward,
+    // The word, then each next place it comes (select-next-occurrence.ts).
+    'Mod-d': selectNextOccurrence,
     'Mod-z': undo,
     'Mod-y': redo,
     'Mod-Shift-z': redo,

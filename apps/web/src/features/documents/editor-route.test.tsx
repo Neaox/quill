@@ -1,12 +1,14 @@
 import { act, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
+import { toast } from '@quill/ui'
 import { expectNoAccessibilityViolations } from '@quill/ui/testing/axe'
 
 import { DRAFT_CONTENT_VERSION } from '../../lib/documents/draft-content.ts'
 import { renderApp } from '../../lib/api/render-app.tsx'
 import { errorResponse, jsonResponse, type FakeRoutes } from '../../lib/api/testing.ts'
+import { createFakeIndexedDb } from '../../lib/recovery/testing.ts'
 
 const me = () =>
   jsonResponse(200, {
@@ -147,6 +149,46 @@ describe('the editor route', () => {
     })
   })
 
+  it('mounts with the organisation’s labels, even when the theme answers late (ADR-037)', async () => {
+    const labelled = {
+      type: 'root',
+      children: [
+        {
+          type: 'paragraph',
+          children: [
+            { type: 'text', value: 'Sold on ' },
+            {
+              type: 'textDirective',
+              name: 'airbnb',
+              attributes: {},
+              children: [{ type: 'text', value: 'Airbnb' }],
+            },
+          ],
+        },
+      ],
+    }
+    await openEditor(
+      editorRoutes({
+        'GET /api/documents/{id}/draft': draft({
+          ast: { version: DRAFT_CONTENT_VERSION, frontMatter: {}, ast: labelled },
+        }),
+        'GET /api/settings/organisation/theme': async () => {
+          await new Promise((resolve) => setTimeout(resolve, 50))
+          return jsonResponse(200, {
+            themeId: 'instrument',
+            stylesheetHref: '/api/settings/organisation/theme.css?v=1',
+            attributes: {},
+            labels: ['airbnb'],
+          })
+        },
+      }),
+    )
+
+    const surface = screen.getByRole('textbox', { name: 'Regional failover' })
+    const label = within(surface).getByText('Airbnb')
+    expect(label.closest('.badge')).toHaveAttribute('data-label', 'airbnb')
+  })
+
   it('autosaves what is typed, in the envelope the draft arrived in', async () => {
     const saved: Array<{ ast: { frontMatter: unknown }; expectedVersion: number }> = []
     await openEditor(
@@ -174,6 +216,64 @@ describe('the editor route', () => {
     expect(await screen.findByText('draft saved')).toBeInTheDocument()
   })
 
+  it('previews the unpublished changes, in a new tab, from the editor', async () => {
+    await openEditor()
+
+    const link = screen.getByRole('link', { name: /^Preview\s+your unpublished changes/u })
+
+    expect(link.getAttribute('href')).toBe(`/preview/d/regional-failover-${KEY}?draft`)
+    expect(link.getAttribute('target')).toBe('_blank')
+  })
+
+  it('is left with Done: the draft is saved, the lock is let go, nothing is published', async () => {
+    const calls: string[] = []
+    await openEditor(
+      editorRoutes({
+        'PUT /api/documents/{id}/draft': () => {
+          calls.push('save')
+          return jsonResponse(200, { draftVersion: 4, updatedAt: '2026-02-03T00:05:00.000Z' })
+        },
+        'DELETE /api/documents/{id}/lock': () => {
+          calls.push('release')
+          return new Response(null, { status: 204 })
+        },
+        'POST /api/documents/{id}/publish': () => {
+          calls.push('publish')
+          return jsonResponse(500, {})
+        },
+        'GET /api/documents/{id}/rendered': () =>
+          jsonResponse(200, {
+            revision: 'a'.repeat(40),
+            html: '<article><p>Move traffic east.</p></article>',
+            outline: [],
+            slots: [],
+          }),
+        'GET /api/documents/{id}/history': () => jsonResponse(200, { revisions: [] }),
+      }),
+    )
+    await userEvent.type(screen.getByRole('textbox', { name: 'Regional failover' }), ' Then west.')
+
+    await userEvent.click(screen.getByRole('button', { name: 'Done' }))
+
+    expect(await screen.findByRole('article', { name: 'Regional failover' })).toBeInTheDocument()
+    expect(calls).toContain('save')
+    expect(calls.indexOf('save')).toBeLessThan(calls.indexOf('release'))
+    expect(calls).not.toContain('publish')
+  })
+
+  it('offers Done even while somebody else holds the document, because leaving is always allowed', async () => {
+    await openEditor(
+      editorRoutes({
+        'POST /api/documents/{id}/lock/acquire': () =>
+          errorResponse(409, 'held', 'This document is locked by another editor', {
+            holder: { ...LOCK, holderUserId: 'user-2' },
+          }),
+      }),
+    )
+
+    expect(await screen.findByRole('button', { name: 'Done' })).toBeEnabled()
+  })
+
   it('says the document is held by someone else, and offers no takeover to an editor', async () => {
     await openEditor(
       editorRoutes({
@@ -199,7 +299,7 @@ describe('the editor route', () => {
     expect(
       await screen.findByRole('group', { name: 'Warning: Grace is editing this document' }),
     ).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'Take over the lock' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /^Take over from/u })).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Publish' })).toBeDisabled()
   })
 
@@ -217,12 +317,107 @@ describe('the editor route', () => {
       }),
     )
 
-    await userEvent.click(await screen.findByRole('button', { name: 'Take over the lock' }))
+    await userEvent.click(await screen.findByRole('button', { name: /^Take over from/u }))
 
     await waitFor(() => {
       expect(takenOver).toBe(1)
     })
     expect(await screen.findByText('editing')).toBeInTheDocument()
+  })
+
+  it('tells apart resuming a lost lock and taking it over, and offers the second only to a manager', async () => {
+    const refused = {
+      'PUT /api/documents/{id}/draft': () =>
+        errorResponse(423, 'lock_lost', 'You do not hold a valid lock', {
+          holder: { ...LOCK, holderUserId: 'user-2' },
+        }),
+    }
+    await openEditor(
+      editorRoutes({ ...refused, 'GET /api/documents/{id}/envelope': envelope({ manage: true }) }),
+    )
+
+    await userEvent.type(screen.getByRole('textbox', { name: 'Regional failover' }), ' Then west.')
+
+    const notice = await screen.findByRole(
+      'group',
+      { name: 'Danger: Your lock was lost' },
+      { timeout: 4000 },
+    )
+    // Each says what it does: one gets the lock back if it is free, the other ends someone's session.
+    expect(notice).toHaveTextContent(/if nobody else has taken the document since/u)
+    expect(notice).toHaveTextContent(/ends their session/u)
+    expect(within(notice).getByRole('button', { name: 'Resume editing' })).toBeInTheDocument()
+    expect(within(notice).getByRole('button', { name: /^Take over from/u })).toBeInTheDocument()
+  })
+
+  describe('after the lock is pressed for again', () => {
+    /** An editor whose lock is lost on the first save, and answers the next ask as told. */
+    async function lostLock(
+      next: () => Response,
+      options: { manage?: boolean } = {},
+    ): Promise<HTMLElement> {
+      let asked = 0
+      await openEditor(
+        editorRoutes({
+          'GET /api/documents/{id}/envelope': envelope({ manage: options.manage ?? false }),
+          'PUT /api/documents/{id}/draft': () =>
+            errorResponse(423, 'lock_lost', 'You do not hold a valid lock', {
+              holder: { ...LOCK, holderUserId: 'user-2' },
+            }),
+          'POST /api/documents/{id}/lock/acquire': () => {
+            asked += 1
+            return asked === 1 ? jsonResponse(200, { lock: LOCK }) : next()
+          },
+          'POST /api/documents/{id}/lock/takeover': () => jsonResponse(200, { lock: LOCK }),
+        }),
+      )
+      await userEvent.type(
+        screen.getByRole('textbox', { name: 'Regional failover' }),
+        ' Then west.',
+      )
+      return await screen.findByRole(
+        'group',
+        { name: 'Danger: Your lock was lost' },
+        { timeout: 4000 },
+      )
+    }
+
+    it('says the lock is back, so nobody has to wonder whether it worked', async () => {
+      const success = vi.spyOn(toast, 'success')
+      const notice = await lostLock(() => jsonResponse(200, { lock: LOCK }))
+
+      await userEvent.click(within(notice).getByRole('button', { name: 'Resume editing' }))
+
+      await waitFor(() => {
+        expect(success).toHaveBeenCalledWith(expect.stringMatching(/You have the lock again/u))
+      })
+    })
+
+    it('says who it was taken from, when a manager takes over', async () => {
+      const success = vi.spyOn(toast, 'success')
+      const notice = await lostLock(() => jsonResponse(200, { lock: LOCK }), { manage: true })
+
+      await userEvent.click(within(notice).getByRole('button', { name: /^Take over from/u }))
+
+      await waitFor(() => {
+        expect(success).toHaveBeenCalledWith(expect.stringMatching(/You took over from/u))
+      })
+    })
+
+    it('says why, and that the edit is safe, when someone else has the lock', async () => {
+      const danger = vi.spyOn(toast, 'danger')
+      const notice = await lostLock(() =>
+        errorResponse(409, 'held', 'Locked', { holder: { ...LOCK, holderUserId: 'user-2' } }),
+      )
+
+      await userEvent.click(within(notice).getByRole('button', { name: 'Resume editing' }))
+
+      await waitFor(() => {
+        expect(danger).toHaveBeenCalledWith(
+          expect.stringMatching(/is editing now.*safe in this browser/u),
+        )
+      })
+    })
   })
 
   it('keeps an edit that the server refused, and offers the way back', async () => {
@@ -245,7 +440,7 @@ describe('the editor route', () => {
       },
     )
     expect(within(notice).getByText(/held safely in this browser/)).toBeInTheDocument()
-    expect(within(notice).getByRole('button', { name: 'Take the lock again' })).toBeInTheDocument()
+    expect(within(notice).getByRole('button', { name: 'Resume editing' })).toBeInTheDocument()
     expect(await screen.findByText('lock lost')).toBeInTheDocument()
   })
 
@@ -639,5 +834,293 @@ describe("the document's properties, where its front matter used to be", () => {
     await userEvent.click(screen.getByRole('button', { name: 'Properties' }))
 
     await expectNoAccessibilityViolations(container)
+  })
+})
+
+/**
+ * Audit 2026-10-11: the five ways the editor could lose an author's work or
+ * lie about it, each reproduced through the whole route.
+ */
+describe('the editor keeps the author’s work through failures', () => {
+  const SURFACE = { name: 'Regional failover' }
+
+  /** A draft endpoint with the server's version rule: stale writes are refused. */
+  function createDraftServer() {
+    let current = { ast: TREE as unknown, draftVersion: 3 }
+    const writes: Array<{ text: string; expectedVersion: number }> = []
+    return {
+      writes,
+      get draft() {
+        return current
+      },
+      routes: {
+        'GET /api/documents/{id}/draft': () =>
+          jsonResponse(200, {
+            documentId: 'doc-1',
+            draftVersion: current.draftVersion,
+            baseRevision: 'a'.repeat(40),
+            ast: { version: DRAFT_CONTENT_VERSION, frontMatter: {}, ast: current.ast },
+            updatedAt: '2026-02-03T00:00:00.000Z',
+          }),
+        'PUT /api/documents/{id}/draft': async (request: Request) => {
+          const body = (await request.json()) as {
+            ast: { ast: unknown }
+            expectedVersion: number
+          }
+          if (body.expectedVersion !== current.draftVersion) {
+            return errorResponse(409, 'stale_version', 'Your draft version is behind', {
+              currentVersion: current.draftVersion,
+            })
+          }
+          current = { ast: body.ast.ast, draftVersion: current.draftVersion + 1 }
+          writes.push({ text: JSON.stringify(body.ast.ast), expectedVersion: body.expectedVersion })
+          return jsonResponse(200, {
+            draftVersion: current.draftVersion,
+            updatedAt: '2026-02-03T00:05:00.000Z',
+          })
+        },
+      } satisfies FakeRoutes,
+    }
+  }
+
+  async function openIn(view: ReturnType<typeof renderApp>) {
+    return within(view.container).findByRole('textbox', SURFACE, { timeout: 5000 })
+  }
+
+  it('survives a 5xx on a background refresh while editing (P0-2)', async () => {
+    let failing = false
+    const view = await openEditor(
+      editorRoutes({
+        'GET /api/documents/{id}': () =>
+          failing ? errorResponse(502, 'bad_gateway', 'Bad gateway') : document(),
+        'GET /api/documents/{id}/draft': () =>
+          failing ? errorResponse(502, 'bad_gateway', 'Bad gateway') : draft()(),
+      }),
+    )
+    // The retry policy has its own tests; this is about what the route does
+    // once a refresh has failed for good.
+    view.queryClient.setDefaultOptions({ queries: { retry: false } })
+    const surface = screen.getByRole('textbox', SURFACE)
+    await userEvent.type(surface, ' Then west.')
+
+    failing = true
+    await act(async () => {
+      await view.queryClient.refetchQueries()
+    })
+
+    expect(
+      await screen.findByRole('group', { name: 'Note: Couldn’t refresh this document' }),
+    ).toBeInTheDocument()
+    expect(screen.getByRole('textbox', SURFACE)).toHaveTextContent('Then west.')
+    expect(screen.queryByText("Couldn't open this document for editing")).not.toBeInTheDocument()
+  })
+
+  it('retries a save the server failed with a 502, and says so meanwhile (P0-1)', async () => {
+    const saved: string[] = []
+    let failures = 1
+    await openEditor(
+      editorRoutes({
+        'PUT /api/documents/{id}/draft': async (request) => {
+          if (failures > 0) {
+            failures -= 1
+            return errorResponse(502, 'bad_gateway', 'Bad gateway')
+          }
+          saved.push(JSON.stringify(await request.json()))
+          return jsonResponse(200, { draftVersion: 4, updatedAt: '2026-02-03T00:05:00.000Z' })
+        },
+      }),
+    )
+
+    await userEvent.type(screen.getByRole('textbox', SURFACE), ' Then west.')
+
+    expect(await screen.findByText('not saved — retrying', {}, { timeout: 4000 })).toBeVisible()
+    expect(await screen.findByText('draft saved', {}, { timeout: 4000 })).toBeInTheDocument()
+    expect(saved).toHaveLength(1)
+    expect(saved[0]).toContain('Then west.')
+  })
+
+  it('never lets a stale tab overwrite another, and reloads for real (P0-5)', async () => {
+    const server = createDraftServer()
+    const routes = editorRoutes(server.routes)
+    const tabA = renderApp(EDIT_PATH, routes)
+    const tabB = renderApp(EDIT_PATH, routes)
+    const surfaceA = await openIn(tabA)
+    const surfaceB = await openIn(tabB)
+
+    await userEvent.type(surfaceA, ' TAB1')
+    await waitFor(() => {
+      expect(server.draft.draftVersion).toBe(4)
+    })
+
+    // Tab B hears about it before its author types a thing.
+    const notice = await within(tabB.container).findByRole('group', {
+      name: 'Warning: This draft changed somewhere else',
+    })
+
+    // Typing in the stale tab sends nothing over tab A's save.
+    await userEvent.type(surfaceB, ' TAB2')
+    await new Promise((resolve) => setTimeout(resolve, 1500))
+    expect(server.draft.draftVersion).toBe(4)
+    expect(JSON.stringify(server.draft.ast)).toContain('TAB1')
+    expect(JSON.stringify(server.draft.ast)).not.toContain('TAB2')
+
+    // Reloading really replaces the content, and sets the unsent edit aside —
+    // including the words typed a moment ago, not yet read into the buffer.
+    await userEvent.type(surfaceB, ' late')
+    await userEvent.click(within(notice).getByRole('button', { name: 'Reload the draft' }))
+    await waitFor(() => {
+      expect(within(tabB.container).getByRole('textbox', SURFACE)).toHaveTextContent('TAB1')
+    })
+    expect(within(tabB.container).getByRole('textbox', SURFACE)).not.toHaveTextContent('TAB2')
+    const setAside = await within(tabB.container).findByRole('group', {
+      name: 'Note: Your unsaved change was set aside',
+    })
+
+    // Writing on from the reloaded draft saves on top of tab A's edit...
+    await userEvent.type(within(tabB.container).getByRole('textbox', SURFACE), ' more')
+    await waitFor(
+      () => {
+        expect(server.draft.draftVersion).toBe(5)
+      },
+      { timeout: 4000 },
+    )
+    expect(JSON.stringify(server.draft.ast)).toContain('TAB1')
+    expect(JSON.stringify(server.draft.ast)).toContain('more')
+
+    // ...and now it is tab A that knows it is behind.
+    expect(
+      await within(tabA.container).findByRole('group', {
+        name: 'Warning: This draft changed somewhere else',
+      }),
+    ).toBeInTheDocument()
+
+    // The set-aside edit comes back on request.
+    await userEvent.click(within(setAside).getByRole('button', { name: 'Restore my change' }))
+    await waitFor(() => {
+      expect(within(tabB.container).getByRole('textbox', SURFACE)).toHaveTextContent('TAB2')
+    })
+    expect(within(tabB.container).getByRole('textbox', SURFACE)).toHaveTextContent('late')
+    tabA.unmount()
+    tabB.unmount()
+  })
+
+  it('records an unsent edit under StrictMode and offers it back after a crash (P0-3)', async () => {
+    const { factory, rows } = createFakeIndexedDb()
+    vi.stubGlobal('indexedDB', factory)
+    try {
+      const down = renderApp(
+        EDIT_PATH,
+        editorRoutes({
+          'PUT /api/documents/{id}/draft': () => errorResponse(503, 'unavailable', 'Down'),
+        }),
+        { strictMode: true },
+      )
+      await userEvent.type(await openIn(down), ' Unsent words.')
+      await waitFor(() => {
+        expect(JSON.stringify([...rows.values()])).toContain('Unsent words.')
+      })
+
+      // The tab dies with the edit unsent.
+      down.unmount()
+
+      const saved: string[] = []
+      const reloaded = renderApp(
+        EDIT_PATH,
+        editorRoutes({
+          'PUT /api/documents/{id}/draft': async (request) => {
+            saved.push(JSON.stringify(await request.json()))
+            return jsonResponse(200, { draftVersion: 4, updatedAt: '2026-02-03T00:05:00.000Z' })
+          },
+        }),
+        { strictMode: true },
+      )
+
+      expect(await openIn(reloaded)).toHaveTextContent('Unsent words.')
+      expect(
+        await within(reloaded.container).findByRole('group', {
+          name: 'Note: Recovered an unsent edit',
+        }),
+      ).toBeInTheDocument()
+      await waitFor(
+        () => {
+          expect(saved.join()).toContain('Unsent words.')
+        },
+        { timeout: 4000 },
+      )
+      reloaded.unmount()
+    } finally {
+      vi.unstubAllGlobals()
+    }
+  })
+})
+
+const leaf = (id: string, title: string, children: unknown[] = []) => ({
+  id,
+  shortId: id.padEnd(10, '0'),
+  title,
+  slug: id,
+  status: 'published',
+  children,
+})
+
+describe('the child-documents block while writing', () => {
+  const withBlock = (depth: string) =>
+    draft({
+      ast: {
+        version: DRAFT_CONTENT_VERSION,
+        frontMatter: { title: 'Regional failover' },
+        ast: {
+          type: 'root',
+          children: [
+            { type: 'leafDirective', name: 'children', attributes: { depth }, children: [] },
+          ],
+        },
+      },
+    })
+
+  const tree = () =>
+    jsonResponse(200, {
+      collections: [
+        {
+          id: 'col-1',
+          name: 'Runbooks',
+          slug: 'runbooks',
+          documents: [
+            leaf('doc-1', 'Regional failover', [
+              leaf('primary', 'Primary region', [leaf('detail', 'Detail')]),
+            ]),
+            leaf('elsewhere', 'Somewhere else'),
+          ],
+        },
+      ],
+    })
+
+  it('previews the documents beneath this one, as deep as the block says', async () => {
+    await openEditor(
+      editorRoutes({
+        'GET /api/documents/{id}/draft': withBlock('2'),
+        'GET /api/workspaces/{id}/tree': tree,
+      }),
+    )
+    const block = await screen.findByRole('region', { name: 'Child documents' })
+    await waitFor(() => {
+      expect(within(block).getByText('Primary region')).toBeVisible()
+    })
+    expect(within(block).getByText('Detail')).toBeVisible()
+    expect(within(block).queryByText('Somewhere else')).toBeNull()
+  })
+
+  it('shows only the direct children at the depth it starts with', async () => {
+    await openEditor(
+      editorRoutes({
+        'GET /api/documents/{id}/draft': withBlock('1'),
+        'GET /api/workspaces/{id}/tree': tree,
+      }),
+    )
+    const block = await screen.findByRole('region', { name: 'Child documents' })
+    await waitFor(() => {
+      expect(within(block).getByText('Primary region')).toBeVisible()
+    })
+    expect(within(block).queryByText('Detail')).toBeNull()
   })
 })

@@ -1,0 +1,11 @@
+{
+  "collection": "Account and billing",
+  "title": "Frequently asked questions about billing",
+  "type": "article",
+  "owners": ["tom@acme.example"],
+  "tags": ["billing", "faq", "invoices"],
+  "review": "90d",
+  "status": "published",
+  "notes": ["First version", "Added the question about sales tax and VAT"],
+  "frontMatter": {}
+}

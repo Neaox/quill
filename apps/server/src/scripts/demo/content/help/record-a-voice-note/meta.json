@@ -1,0 +1,11 @@
+{
+  "collection": "Skiff mobile app",
+  "title": "Record a voice note",
+  "type": "guide",
+  "owners": ["tom@acme.example", "jonas@acme.example"],
+  "tags": ["skiff", "voice-notes", "mobile"],
+  "review": "180d",
+  "status": "published",
+  "notes": ["First version"],
+  "frontMatter": {}
+}

@@ -1,0 +1,15 @@
+{
+  "collection": "Audits",
+  "title": "SOC 2 Type II readiness",
+  "type": "reference",
+  "owners": ["aisha@acme.example"],
+  "tags": ["soc2", "audit", "compliance", "controls"],
+  "review": "90d",
+  "status": "published",
+  "notes": [
+    "Control status at the start of the observation window",
+    "Updated after the September penetration test and the restore test; no gaps remain",
+    "October update: Q3 access review and hardware keys done, new CC8.1 hotfix finding, fieldwork dates confirmed"
+  ],
+  "frontMatter": {}
+}

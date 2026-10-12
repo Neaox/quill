@@ -1,12 +1,12 @@
-import { useEffect, useRef } from 'react'
-
 import { tv } from '@quill/ui'
 
 import type { TokenMap } from '@quill/theme'
 
+import { paintProperties } from './custom-properties.ts'
+
 export const themePreviewStyles = tv({
   slots: {
-    root: 'grid gap-4 @2xl:grid-cols-2',
+    root: 'grid gap-4 @xl:grid-cols-2',
     pane: [
       'flex flex-col gap-3 overflow-hidden rounded-md border border-border bg-background p-4',
       'text-foreground',
@@ -37,20 +37,11 @@ interface PaneProps {
  * generated tokens.
  *
  * The tokens are written onto the pane element as CSS custom properties
- * rather than into a `<style>` element. Two reasons, both of them properties
- * of where this runs: the application's Content-Security-Policy is
- * nonce-based with no `unsafe-inline` (ADR-011), so an injected stylesheet
- * would be the one thing on the page that needs an exception; and a scoped
+ * (`paintProperties`) rather than into a `<style>` element: an injected
+ * stylesheet would need a Content-Security-Policy exception, and a scoped
  * `:root`-shaped block would have to reproduce the resolution order
  * `tokens.css` documents, while a custom property set on an element already
  * cascades to exactly the subtree being previewed and nothing else.
- *
- * The values are not sanitised, and do not need to be. A theme document's
- * `overrides` constrain their *keys* to `TOKEN_NAMES` and leave the values as
- * strings, but a custom property is not a rule: the CSSOM drops anything it
- * cannot parse, and nothing written through `setProperty` on one property can
- * reach another declaration, a selector, or a URL the browser would fetch.
- * The worst a bad value can do is fail to paint.
  *
  * The generated palette is otherwise used verbatim — `generateTheme` produced it,
  * and every value below the pane comes from it through the same semantic
@@ -59,38 +50,11 @@ interface PaneProps {
  * of it.
  */
 function ThemePreviewPane({ scheme, tokens }: PaneProps) {
-  const paneRef = useRef<HTMLDivElement>(null)
   const styles = themePreviewStyles()
-
-  // Synchronises the pane element's inline custom properties — a DOM
-  // property React does not render, exactly as `applyThemeId` writes
-  // `data-theme-id` onto the document element — with the generated palette of
-  // the theme being edited.
-  useEffect(() => {
-    const pane = paneRef.current
-    if (pane === null) return
-    const written = Object.entries(tokens)
-    for (const [name, value] of written) {
-      pane.style.setProperty(name, value)
-    }
-    /*
-     * Clears exactly what this run wrote, so the next one starts from nothing.
-     * `toTokenMap` emits a fixed key set today and nothing would be left
-     * behind — but `theme.overrides` and the syntax families make that set
-     * data-dependent, and a property this effect stopped emitting would
-     * otherwise keep its old value on the element for the life of the page.
-     * An effect that only ever adds is not a synchronisation.
-     */
-    return () => {
-      for (const [name] of written) {
-        pane.style.removeProperty(name)
-      }
-    }
-  }, [tokens])
 
   return (
     <div
-      ref={paneRef}
+      ref={paintProperties(tokens)}
       data-scheme={scheme}
       /*
        * `scheme-light` / `scheme-dark` are Tailwind 4's own `color-scheme`
@@ -158,6 +122,12 @@ function ThemePreviewPane({ scheme, tokens }: PaneProps) {
 export interface ThemePreviewProps {
   readonly light: TokenMap
   readonly dark: TokenMap
+  /**
+   * One scheme alone, for a phone's sheet, where two panes side by side would
+   * each be too narrow to judge and stacked would be a scroll apart. Omitted,
+   * both are shown.
+   */
+  readonly scheme?: 'light' | 'dark' | undefined
 }
 
 /**
@@ -166,16 +136,18 @@ export interface ThemePreviewProps {
  *
  * Both schemes are on screen together rather than behind a toggle, because
  * the question an administrator is actually asking is whether their accent
- * works in *both*, and a toggle makes that a memory test.
+ * works in *both*, and a toggle makes that a memory test. The exception is a
+ * phone (`theme-preview-bar.tsx`): a pane half of 375 pixels is too narrow to
+ * judge a measure in, so there it is one scheme at a time, a tap apart.
  */
-export function ThemePreview({ light, dark }: ThemePreviewProps) {
+export function ThemePreview({ light, dark, scheme }: ThemePreviewProps) {
   const styles = themePreviewStyles()
 
   return (
     <div className="@container">
       <div className={styles.root()} aria-label="Theme preview" role="group">
-        <ThemePreviewPane scheme="light" tokens={light} />
-        <ThemePreviewPane scheme="dark" tokens={dark} />
+        {scheme === 'dark' ? undefined : <ThemePreviewPane scheme="light" tokens={light} />}
+        {scheme === 'light' ? undefined : <ThemePreviewPane scheme="dark" tokens={dark} />}
       </div>
     </div>
   )

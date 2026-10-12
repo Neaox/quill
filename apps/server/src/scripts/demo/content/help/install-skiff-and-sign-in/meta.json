@@ -1,0 +1,11 @@
+{
+  "collection": "Skiff mobile app",
+  "title": "Install Skiff and sign in",
+  "type": "guide",
+  "owners": ["tom@acme.example", "jonas@acme.example"],
+  "tags": ["skiff", "mobile", "getting-started"],
+  "review": "180d",
+  "status": "published",
+  "notes": ["First version"],
+  "frontMatter": {}
+}

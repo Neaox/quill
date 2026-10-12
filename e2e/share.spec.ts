@@ -4,6 +4,7 @@ import { expect, test, type Locator, type Page } from '@playwright/test'
 
 import { collectionId, heading, paragraph, publishDocument } from './support/content.ts'
 import { seedDevelopmentData } from './support/seed.ts'
+import { accountMenu } from './support/account.ts'
 
 /**
  * Sharing a document with somebody outside the organisation, and closing the
@@ -34,7 +35,7 @@ async function signIn(page: Page, email: string, password: string): Promise<void
   // The page the router settled on, not the address bar: a client-side
   // navigation that overtakes a document load is cancelled on Firefox and
   // WebKit (see `present.spec.ts`).
-  await expect(page.getByRole('button', { name: 'Sign out' })).toBeVisible()
+  await expect(accountMenu(page)).toBeVisible()
 }
 
 /** The one row in the link list, addressed by what the link opens. */
@@ -153,7 +154,7 @@ test('a document is shared outside the organisation, read, and then closed', asy
   await expect(
     strangerPage.getByRole('navigation', { name: 'Documents', exact: true }),
   ).toHaveCount(0)
-  await expect(strangerPage.getByRole('button', { name: 'Sign out' })).toHaveCount(0)
+  await expect(accountMenu(strangerPage)).toHaveCount(0)
   // In no index and in no sitemap.
   await expect(strangerPage.locator('meta[name="robots"]')).toHaveAttribute(
     'content',
@@ -241,7 +242,7 @@ test('a subtree link opens the documents under it, and nothing around them', asy
   await expect(navigation).toBeVisible()
   // And still nothing from the signed-in world.
   await expect(reader.getByRole('navigation', { name: 'Documents', exact: true })).toHaveCount(0)
-  await expect(reader.getByRole('button', { name: 'Sign out' })).toHaveCount(0)
+  await expect(accountMenu(reader)).toHaveCount(0)
   expect(await stranger.cookies()).toEqual([])
 
   await stranger.close()

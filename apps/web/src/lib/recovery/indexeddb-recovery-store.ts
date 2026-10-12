@@ -1,5 +1,5 @@
 import { BRAND } from '@quill/brand'
-import type { PendingDraft, RecoveryStore } from '@quill/editor'
+import type { DraftBase, PendingDraft, RecoveryStore } from '@quill/editor'
 
 /**
  * The local recovery buffer of ADR-021, in IndexedDB.
@@ -68,6 +68,17 @@ function openDatabase(factory: IDBFactory, name: string): Promise<IDBDatabase> {
   return toPromise(request)
 }
 
+/** The base lives beside the edit, under a key a document id cannot collide with. */
+function baseKey(documentId: string): string {
+  return `${documentId}#base`
+}
+
+function isDraftBase(value: unknown): value is DraftBase {
+  if (typeof value !== 'object' || value === null) return false
+  const candidate = value as { draftVersion?: unknown; ast?: unknown }
+  return typeof candidate.draftVersion === 'number' && typeof candidate.ast === 'object'
+}
+
 function isPendingDraft(value: unknown): value is PendingDraft {
   if (typeof value !== 'object' || value === null) return false
   const candidate = value as { expectedVersion?: unknown; savedAt?: unknown }
@@ -81,6 +92,10 @@ export function createIndexedDbRecoveryStore(
   const databaseName = options.databaseName ?? DEFAULT_DATABASE_NAME
 
   let entry: PendingDraft | undefined
+  // The draft as this editor last agreed with the server, kept for a three-way
+  // merge; held and mirrored the same way as the edit.
+  let base: DraftBase | undefined
+  let baseWritten = false
   // A write that happens while the database is still opening must win: the
   // author's current edit is never replaced by one recovered from disk.
   let written = false
@@ -107,13 +122,20 @@ export function createIndexedDbRecoveryStore(
           () => undefined,
         )
 
-  const ready = connection.then(async (opened) => {
-    if (opened === undefined || written) return entry
-    const stored = await toPromise(
-      opened.transaction(OBJECT_STORE, 'readonly').objectStore(OBJECT_STORE).get(documentId),
+  /** One read of a key, which a refused database answers with nothing. */
+  const load = (opened: IDBDatabase, key: string): Promise<unknown> =>
+    toPromise(
+      opened.transaction(OBJECT_STORE, 'readonly').objectStore(OBJECT_STORE).get(key),
     ).catch(() => undefined)
-    if (written) return entry
-    if (isPendingDraft(stored)) entry = stored
+
+  const ready = connection.then(async (opened) => {
+    if (opened === undefined) return entry
+    const [storedEntry, storedBase] = await Promise.all([
+      written ? undefined : load(opened, documentId),
+      baseWritten ? undefined : load(opened, baseKey(documentId)),
+    ])
+    if (!written && isPendingDraft(storedEntry)) entry = storedEntry
+    if (!baseWritten && isDraftBase(storedBase)) base = storedBase
     return entry
   })
 
@@ -145,6 +167,12 @@ export function createIndexedDbRecoveryStore(
       written = true
       entry = undefined
       enqueue((store) => store.delete(documentId))
+    },
+    readBase: () => base,
+    writeBase(next) {
+      baseWritten = true
+      base = next
+      enqueue((store) => store.put(next, baseKey(documentId)))
     },
     close() {
       closed = true

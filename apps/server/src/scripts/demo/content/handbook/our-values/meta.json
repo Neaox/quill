@@ -1,0 +1,14 @@
+{
+  "collection": "Culture",
+  "title": "Our values",
+  "type": "article",
+  "owners": ["dana@acme.example", "priya@acme.example"],
+  "tags": ["culture", "values"],
+  "review": "1y",
+  "status": "published",
+  "notes": [
+    "First version, written after the all-hands workshops",
+    "Added \"Make it easy to leave\" and tightened the wording of the other four"
+  ],
+  "frontMatter": {}
+}

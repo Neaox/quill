@@ -47,8 +47,10 @@ describe('robots.txt', () => {
         'User-agent: *',
         'Allow: /s/',
         'Allow: /api/attachments/',
+        'Allow: /api/fonts/',
         'Disallow: /api/',
         'Disallow: /share/',
+        'Disallow: /preview/',
         'Disallow: /w/',
         'Disallow: /admin/',
         '',
@@ -75,6 +77,11 @@ describe('robots.txt', () => {
     expect(robots.indexOf('Allow: /api/attachments/')).toBeLessThan(
       robots.indexOf('Disallow: /api/'),
     )
+  })
+
+  it('allows the faces a published page is set in, for the same reason', () => {
+    const robots = renderRobots({ appUrl: 'https://docs.example.com', siteSlugs: [] })
+    expect(robots.indexOf('Allow: /api/fonts/')).toBeLessThan(robots.indexOf('Disallow: /api/'))
   })
 })
 

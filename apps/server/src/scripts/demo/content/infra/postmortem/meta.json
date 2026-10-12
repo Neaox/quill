@@ -1,0 +1,47 @@
+{
+  "collection": "Templates",
+  "title": "Postmortem",
+  "type": "template",
+  "owners": ["marcus@acme.example"],
+  "tags": ["template", "postmortem", "incidents"],
+  "review": "1y",
+  "status": "published",
+  "notes": ["First version of the postmortem template"],
+  "frontMatter": {
+    "type": "template",
+    "template": {
+      "name": "Postmortem",
+      "category": "Engineering",
+      "version": 1,
+      "questions": [
+        {
+          "id": "incidentTitle",
+          "label": "Short title",
+          "type": "text",
+          "default": "Untitled incident"
+        },
+        {
+          "id": "severity",
+          "label": "Severity",
+          "type": "choice",
+          "options": ["SEV1", "SEV2", "SEV3"],
+          "default": "SEV2"
+        },
+        {
+          "id": "customerImpact",
+          "label": "Were customers affected?",
+          "type": "boolean",
+          "default": true
+        }
+      ],
+      "sections": [
+        { "heading": "Summary", "required": true },
+        { "heading": "Customer impact", "when": "customerImpact", "optional": true },
+        { "heading": "Timeline", "required": true },
+        { "heading": "Root cause", "required": true },
+        { "heading": "What went well and what did not", "optional": true },
+        { "heading": "Action items", "required": true }
+      ]
+    }
+  }
+}

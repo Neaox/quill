@@ -5,14 +5,16 @@ import { PlainLink, type LinkComponent, type LinkTarget } from '../lib/link.tsx'
 
 /**
  * The current section is marked `aria-current="page"`, and that attribute is
- * what inverts it: the state is announced and painted from one fact, so it
- * survives monochrome and cannot drift out of step with the markup.
+ * what tints it: the state is announced and painted from one fact, so it
+ * cannot drift out of step with the markup. The tint is the same soft
+ * selection the tree's current document wears, so "where am I" looks the same
+ * in both columns.
  */
 export const iconRailStyles = tv({
   slots: {
     root: [
-      'flex flex-col items-center gap-1.5 bg-surface-raised p-2 border-e border-border',
-      'max-md:flex-row max-md:border-e-0 max-md:border-b',
+      'flex flex-col items-center gap-1.5 border-e border-border p-2',
+      'max-md:flex-row max-md:border-e-0 max-md:border-b max-md:px-2 max-md:py-1',
     ],
     list: 'flex flex-col items-center gap-1.5 max-md:flex-row',
     link: [
@@ -20,7 +22,7 @@ export const iconRailStyles = tv({
       'transition-[color,background-color] ease-standard',
       'hover:bg-surface hover:text-foreground',
       'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring',
-      'aria-[current=page]:bg-foreground aria-[current=page]:text-background',
+      'aria-[current=page]:bg-accent-subtle aria-[current=page]:text-foreground',
     ],
     footer: 'mt-auto pb-1 max-md:mt-0 max-md:ms-auto max-md:pb-0',
   },

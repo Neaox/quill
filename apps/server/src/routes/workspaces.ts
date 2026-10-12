@@ -5,11 +5,12 @@ import {
   createWorkspace,
   deleteWorkspace,
   getWorkspaceTree,
+  listTreeChildren,
   listVisibleDocuments,
   listVisibleWorkspaces,
   renameWorkspace,
 } from '@quill/application'
-import { slugify } from '@quill/domain'
+import { documentId, slugify } from '@quill/domain'
 import type { CollectionId, DocumentId } from '@quill/domain'
 import type { FastifyPluginAsync } from 'fastify'
 
@@ -19,7 +20,7 @@ import {
   requireInstanceAdmin,
   requireWorkspaceAccess,
 } from '../application/authorization.ts'
-import { resolveWorkspaceId } from '../application/references.ts'
+import { resolveDocumentId, resolveWorkspaceId } from '../application/references.ts'
 import type { AppDependencies } from '../dependencies.ts'
 import { AppError, conflict, notFound, unprocessable } from '../errors.ts'
 import { requireAuthenticatedSession } from '../plugins/session.ts'
@@ -28,6 +29,8 @@ import {
   CreatedDocumentSchema,
   DocumentSchema,
   IdParamsSchema,
+  TreeChildrenQuerySchema,
+  TreeChildrenSchema,
   WorkspaceIdParamsSchema,
   WorkspaceTreeSchema,
   documentResponse,
@@ -237,6 +240,47 @@ export function workspaceRoutes(deps: AppDependencies): FastifyPluginAsync {
       },
     )
 
+    /**
+     * One page of the documents directly under a parent: what a navigation tree that opens a
+     * level at a time asks for (ADR-049). Nothing in the answer grows with the workspace.
+     */
+    app.get(
+      '/api/workspaces/:id/tree/children',
+      {
+        preHandler: app.requireSession,
+        schema: {
+          params: IdParamsSchema,
+          querystring: TreeChildrenQuerySchema,
+          response: { 200: TreeChildrenSchema },
+        },
+      },
+      async (request) => {
+        const target = await resolveWorkspaceId(deps, request.params.id)
+        const authorizer = authorizerFor(deps, request)
+        const access = await requireWorkspaceAccess(authorizer, target, 'view')
+        const { collectionId, parentId, cursor, limit } = request.query
+        const after = cursor === undefined ? null : readCursor(cursor)
+        if (after === undefined)
+          throw unprocessable('invalid_cursor', 'That page is not one to resume from')
+        const page = await listTreeChildren(deps, {
+          workspaceId: target,
+          collectionId: collectionId as CollectionId,
+          parentId: parentId === undefined ? null : await resolveDocumentId(deps, parentId),
+          after,
+          limit: limit ?? DEFAULT_CHILDREN_PAGE,
+          identities: await authorizer.identities(),
+          seesEverything: access.isInstanceAdmin,
+        })
+        if (page.kind === 'collection-not-found') throw notFound('Collection not found')
+        /* v8 ignore next 2 -- the authorizer has already walked this workspace's tree. */
+        if (page.kind !== 'children') throw notFound('Workspace not found')
+        return {
+          nodes: page.nodes.map((node) => ({ ...node, slug: slugify(node.title) })),
+          ...(page.next === null ? {} : { next: writeCursor(page.next) }),
+        }
+      },
+    )
+
     app.get(
       '/api/workspaces/:workspaceId/documents',
       {
@@ -330,6 +374,27 @@ export function workspaceRoutes(deps: AppDependencies): FastifyPluginAsync {
         }
       },
     )
+  }
+}
+
+const DEFAULT_CHILDREN_PAGE = 50
+
+/** A page's resume point as the opaque string a client hands back: where the last row stood. */
+function writeCursor(cursor: { readonly createdAt: Date; readonly id: string }): string {
+  return Buffer.from(`${cursor.createdAt.toISOString()}|${cursor.id}`).toString('base64url')
+}
+
+/** The resume point a cursor names; `undefined` for one that was not written by `writeCursor`. */
+function readCursor(
+  value: string,
+): { readonly createdAt: Date; readonly id: DocumentId } | undefined {
+  const [at, id, ...rest] = Buffer.from(value, 'base64url').toString().split('|')
+  const createdAt = new Date(at ?? '')
+  if (id === undefined || rest.length > 0 || Number.isNaN(createdAt.getTime())) return undefined
+  try {
+    return { createdAt, id: documentId(id) }
+  } catch {
+    return undefined
   }
 }
 

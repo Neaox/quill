@@ -1,4 +1,4 @@
-import { BUILTIN_THEMES } from '../builtin/themes.ts'
+import { BUILTIN_THEMES, successorOf } from '../builtin/themes.ts'
 import type { BuiltinThemeId, ThemeDocument } from '../schema/theme-document.ts'
 
 export type ThemeChanges = {
@@ -19,9 +19,11 @@ const merged = <T extends object>(base: T, changes: Partial<T> | undefined): T =
 /**
  * ADR-028, onboarding step 4: saving creates the tenant's theme as a fork of
  * the chosen built-in, recording `base` so it can be re-opened, adjusted, or
- * reset to what it started from.
+ * reset to what it started from. A superseded id forks its successor and
+ * records the successor, so a new fork never starts life on a retired name.
  */
-export const forkTheme = (base: BuiltinThemeId, changes: ThemeChanges): ThemeDocument => {
+export const forkTheme = (from: BuiltinThemeId, changes: ThemeChanges): ThemeDocument => {
+  const base = successorOf(from)
   const source = BUILTIN_THEMES[base]
   return {
     ...source,
@@ -38,7 +40,11 @@ export const forkTheme = (base: BuiltinThemeId, changes: ThemeChanges): ThemeDoc
   }
 }
 
-/** Reset a forked theme to the built-in it came from, keeping its identity. */
+/**
+ * Reset a forked theme to the built-in it came from, keeping its identity. An
+ * old fork whose base has been superseded resets to the successor, and keeps
+ * the base it recorded, because that is what was saved.
+ */
 export const resetToBase = (theme: ThemeDocument): ThemeDocument =>
   theme.base === undefined
     ? theme

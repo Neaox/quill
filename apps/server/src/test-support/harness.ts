@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 import {
+  ATTACHMENT_REVISED,
   DOCUMENT_CREATED,
   DOCUMENT_MOVED,
   DOCUMENT_PUBLISHED,
@@ -29,6 +30,7 @@ import { createAcknowledgingConsumer } from '../infrastructure/outbox/acknowledg
 import { pollOutboxOnce } from '../infrastructure/outbox/poller.ts'
 import { combineConsumers } from '../infrastructure/outbox/combine.ts'
 import {
+  createIndexOnAttachmentRevisedConsumer,
   createIndexOnPublishConsumer,
   createIndexOnRenameConsumer,
 } from '../infrastructure/outbox/index-on-publish.ts'
@@ -48,6 +50,8 @@ import { createSecretResolver } from '../infrastructure/secrets/resolve-secret.t
 import { createSettingsStore } from '../infrastructure/settings-store.ts'
 import { createPublicSiteCache, PUBLIC_SITE_CACHE_TTL_MS } from '../public-site/cache.ts'
 import { createPublicStylesheets, loadDesignSystemCss } from '../public-site/stylesheet.ts'
+import { loadFaceFiles } from '../theme/face-files.ts'
+import { createThemeStylesheets } from '../theme/theme-stylesheet.ts'
 import { createJobRunner } from '../jobs/job-runner.ts'
 import type { JobRunner } from '../jobs/job-runner.ts'
 import { createSweepJob } from '../jobs/sweep-expired.ts'
@@ -61,6 +65,7 @@ import { createTokenService } from '../auth/tokens.ts'
 import { injectAsBrowser } from './browser-client.ts'
 import { createFakeBreachedPasswordChecker, createRecordingMailer } from './fakes.ts'
 import type { FakeBreachedPasswordChecker, RecordingMailer } from './fakes.ts'
+import { createDrawioText } from '../extensions/drawio/drawing-text.ts'
 
 /**
  * A whole server against a real database, a real content store, and the real
@@ -203,14 +208,21 @@ export async function createServerHarness(options: HarnessOptions = {}): Promise
     clock,
     ttlMs: options.publicSiteCacheTtlMs ?? PUBLIC_SITE_CACHE_TTL_MS,
   })
+  const faceFiles = await loadFaceFiles()
+  const themeStylesheets = createThemeStylesheets({ hasher, faceFiles })
   const deps: AppDependencies = {
     uow,
     searchIndex,
     search: createSearchService(searchIndex),
     // The real design-system CSS, read once per process, so a public page in a
     // test is styled by the same bytes a deployment serves (ADR-023).
+    // The real faces, read once per process, so a font request in a test is
+    // answered with the bytes a deployment serves.
+    faceFiles,
+    themeStylesheets,
     publicStylesheets: createPublicStylesheets({
       hasher,
+      themeStylesheets,
       designSystemCss: await loadDesignSystemCss(),
     }),
     publicSiteCache,
@@ -232,6 +244,7 @@ export async function createServerHarness(options: HarnessOptions = {}): Promise
     rateLimiter: createRateLimiter({ clock, config: config.rateLimit }),
     oidcRateLimiter: createRateLimiter({ clock, config: config.oidcRateLimit }),
     attachmentRateLimiter: createRateLimiter({ clock, config: config.attachments.rateLimit }),
+    drawingText: createDrawioText(),
     passwords: await createPasswordHasher(),
     identityProviders: createIdentityProviderRegistry({
       providers: config.oidcProviders,
@@ -287,6 +300,13 @@ export async function createServerHarness(options: HarnessOptions = {}): Promise
       DOCUMENT_MOVED,
       createRecordMoveRedirectConsumer(deps),
       invalidationOf(DOCUMENT_MOVED),
+    ),
+  )
+  jobRunner.register(
+    combineConsumers(
+      ATTACHMENT_REVISED,
+      createIndexOnAttachmentRevisedConsumer(deps),
+      invalidationOf(ATTACHMENT_REVISED),
     ),
   )
   jobRunner.register(createSendMailConsumer(mailer))

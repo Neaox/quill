@@ -1,0 +1,14 @@
+{
+  "collection": "Standards",
+  "title": "Database migrations policy",
+  "type": "policy",
+  "owners": ["marcus@acme.example"],
+  "tags": ["postgres", "migrations", "standards"],
+  "review": "1y",
+  "status": "published",
+  "notes": [
+    "First version",
+    "Added backfill rules after the September fingerprint backfill and extended the contract wait to two releases"
+  ],
+  "frontMatter": {}
+}

@@ -22,11 +22,18 @@ const EMPTY_RECT = {
   toJSON: () => ({}),
 } satisfies DOMRect
 
+/**
+ * Where an observed element is relative to the band the observer watches:
+ * `true` is in it, `'above'` is scrolled past it, and `false` (or `'below'`) is
+ * not yet reached.
+ */
+export type ObservedPosition = boolean | 'above' | 'below'
+
 /** One live `IntersectionObserver`, as the test that wants to drive it sees it. */
 export interface ObservedIntersections {
   readonly elements: Set<Element>
   /** Delivers entries for the observed elements, as the browser would on a scroll. */
-  intersect(visible: Readonly<Record<string, boolean>>): void
+  intersect(positions: Readonly<Record<string, ObservedPosition>>): void
 }
 
 export const intersectionObservers: ObservedIntersections[] = []
@@ -71,12 +78,16 @@ export function installBrowserShims(): void {
     constructor(callback: IntersectionObserverCallback) {
       const record: ObservedIntersections = {
         elements: this.#elements,
-        intersect: (visible) => {
+        intersect: (positions) => {
           const entries = [...this.#elements]
-            .filter((element) => element.id in visible)
+            .filter((element) => element.id in positions)
             .map((element) => ({
               target: element,
-              isIntersecting: visible[element.id] === true,
+              isIntersecting: positions[element.id] === true,
+              // Far enough either side of the band's top edge (at 0) that the
+              // direction is unambiguous, which is all a test needs of a rectangle.
+              boundingClientRect: { top: positions[element.id] === 'above' ? -100 : 100 },
+              rootBounds: { top: 0 },
             }))
           // The real API hands the observer itself to the callback; nothing
           // under test reads it, so the shim passes its own instance.

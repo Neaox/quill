@@ -53,7 +53,7 @@ export const Route = createFileRoute('/share/$token')({
     meta: [
       { title: loaderData?.title ?? 'Shared document' },
       { name: 'robots', content: 'noindex, nofollow' },
-      { name: 'referrer', content: 'strict-origin-when-cross-origin' },
+      { name: 'referrer', content: 'no-referrer' },
     ],
   }),
   notFoundComponent: ShareNotAvailable,

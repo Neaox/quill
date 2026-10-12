@@ -128,7 +128,7 @@ describe('deleting a document', () => {
 
     const tree = await screen.findByRole('navigation', { name: 'Documents' })
     await userEvent.click(
-      within(tree).getByRole('button', { name: 'More actions for Quarterly plan' }),
+      await within(tree).findByRole('button', { name: 'More actions for Quarterly plan' }),
     )
     // The menu's panel is portalled to the body, as every floating panel is;
     // it is the trigger that lives in the tree.
@@ -203,7 +203,7 @@ describe('deleting a document', () => {
 
     const tree = await screen.findByRole('navigation', { name: 'Documents' })
     await userEvent.click(
-      within(tree).getByRole('button', { name: 'More actions for Quarterly plan' }),
+      await within(tree).findByRole('button', { name: 'More actions for Quarterly plan' }),
     )
 
     // The row still offers "New child document"; what a reader never sees is

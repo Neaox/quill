@@ -71,6 +71,62 @@ describe('a directive card', () => {
     view.destroy()
   })
 
+  it('shows a callout’s tone in words and in the reader’s colours, and follows a change of tone', () => {
+    const { nodeView, view } = mount(directive({ type: 'warning' }, 'callout'))
+    const title = nodeView.dom.querySelector(':scope > .callout-label')
+
+    expect(nodeView.dom).toHaveClass('callout', 'callout-warning')
+    expect(title).toHaveTextContent('Warning')
+    // The group already says it; the title is for the eye.
+    expect(title).toHaveAttribute('aria-hidden', 'true')
+    expect(title).toHaveAttribute('contenteditable', 'false')
+
+    expect(nodeView.update(directive({ type: 'tip' }, 'callout'), [])).toBe(true)
+    expect(nodeView.dom).toHaveClass('callout-tip')
+    expect(nodeView.dom).not.toHaveClass('callout-warning')
+    expect(nodeView.dom.querySelectorAll('.callout-label')).toHaveLength(1)
+    expect(nodeView.dom.querySelector('.callout-label')).toHaveTextContent('Tip')
+    expect(nodeView.dom).toHaveAttribute('aria-label', 'Callout: tip')
+    view.destroy()
+  })
+
+  it('names a callout by its own title, which the page does, and by its tone when it has none', () => {
+    const titled = nodeType(editorSchema, 'containerDirective').create(
+      { name: 'callout', attributes: { type: 'tip' } },
+      [
+        nodeType(editorSchema, 'paragraph').create(
+          { directiveLabel: true },
+          editorSchema.text('Heads up'),
+        ),
+        nodeType(editorSchema, 'paragraph').create(null, editorSchema.text('Body.')),
+      ],
+    )
+    const { nodeView, view } = mount(titled)
+
+    // The title is the callout's first paragraph, drawn as its heading; the tone's name is not said twice.
+    expect(nodeView.dom.querySelector(':scope > .callout-label')).toBeNull()
+    expect(nodeView.dom).toHaveClass('callout', 'callout-tip')
+
+    expect(nodeView.update(directive({ type: 'tip' }, 'callout'), [])).toBe(true)
+    expect(nodeView.dom.querySelector(':scope > .callout-label')).toHaveTextContent('Tip')
+
+    expect(nodeView.update(titled, [])).toBe(true)
+    expect(nodeView.dom.querySelector(':scope > .callout-label')).toBeNull()
+    view.destroy()
+  })
+
+  it('draws an unknown tone as a note, as the reader does, and other cards without one', () => {
+    const unknown = mount(directive({ type: 'shout' }, 'callout'))
+    expect(unknown.nodeView.dom).toHaveClass('callout-note')
+    expect(unknown.nodeView.dom.querySelector('.callout-label')).toHaveTextContent('Note')
+    unknown.view.destroy()
+
+    const guidance = mount(directive({}, 'guidance'))
+    expect(guidance.nodeView.dom).not.toHaveClass('callout')
+    expect(guidance.nodeView.dom.querySelector('.callout-label')).toBeNull()
+    guidance.view.destroy()
+  })
+
   it('does nothing when its block has already left the document', () => {
     const { nodeView, view } = mount(directive({ title: 'Gone' }, 'optional'), () => undefined)
     const before = view.state.doc.toString()

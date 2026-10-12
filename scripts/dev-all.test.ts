@@ -1,21 +1,50 @@
 import { describe, expect, it } from 'vitest'
-import { formatEndpoints, waitForHttp } from './dev-all.ts'
+import { formatBanner, formatTable, waitForHttp } from './dev-all.ts'
 
 const refused = () => Promise.reject(new Error('ECONNREFUSED'))
 
-describe('formatEndpoints', () => {
-  it('lists every URL a developer opens, aligned under its label', () => {
-    const text = formatEndpoints([
-      { label: 'App', url: 'http://localhost:5173' },
-      { label: 'RustFS console', url: 'http://localhost:9001' },
+describe('formatTable', () => {
+  it('aligns every column but the last to its widest cell', () => {
+    const text = formatTable([
+      ['App', 'http://localhost:5173'],
+      ['RustFS console', 'http://localhost:9001'],
     ])
 
-    expect(text).toBe(
-      [
-        `  App${' '.repeat(13)}http://localhost:5173`,
-        '  RustFS console  http://localhost:9001',
-      ].join('\n'),
-    )
+    expect(text.split('\n')).toEqual([
+      `  App${' '.repeat(13)}http://localhost:5173`,
+      '  RustFS console  http://localhost:9001',
+    ])
+  })
+
+  it('aligns three columns, and leaves no trailing space on the last', () => {
+    const text = formatTable([
+      ['Admin', 'a@example.com', 'secret-one'],
+      ['Editor', 'writer@example.com', 'secret-two'],
+    ])
+
+    expect(text.split('\n')).toEqual([
+      '  Admin   a@example.com       secret-one',
+      '  Editor  writer@example.com  secret-two',
+    ])
+  })
+})
+
+describe('formatBanner', () => {
+  const banner = formatBanner({
+    name: 'Quill',
+    endpoints: [{ label: 'App', url: 'http://localhost:5173' }],
+    accounts: [{ role: 'Admin', email: 'admin@example.com', password: 'pw' }],
+  })
+
+  it('says what is running and where to open it', () => {
+    expect(banner).toContain('Quill is running:')
+    expect(banner).toContain('  App  http://localhost:5173')
+  })
+
+  it('lists the seeded accounts to sign in with, under their own heading', () => {
+    const lines = banner.split('\n')
+
+    expect(lines[lines.indexOf('Sign in with:') + 1]).toBe('  Admin  admin@example.com  pw')
   })
 })
 

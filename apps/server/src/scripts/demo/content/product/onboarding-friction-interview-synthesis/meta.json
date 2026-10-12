@@ -1,0 +1,14 @@
+{
+  "collection": "Research",
+  "title": "Onboarding friction: interview synthesis",
+  "type": "research",
+  "owners": ["priya@acme.example", "sofia@acme.example"],
+  "tags": ["research", "onboarding", "interviews"],
+  "review": "6m",
+  "status": "published",
+  "notes": [
+    "Synthesis of the first nine August interviews",
+    "Added the remaining five interviews, a segment breakdown and recommendations"
+  ],
+  "frontMatter": {}
+}

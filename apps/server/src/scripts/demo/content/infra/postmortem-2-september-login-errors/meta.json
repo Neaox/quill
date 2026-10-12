@@ -1,0 +1,10 @@
+{
+  "collection": "Incidents",
+  "title": "Postmortem: 2 September login errors",
+  "type": "postmortem",
+  "owners": ["aisha@acme.example", "marcus@acme.example"],
+  "tags": ["postmortem", "sso", "secrets", "sev2"],
+  "status": "published",
+  "notes": ["First version"],
+  "frontMatter": {}
+}

@@ -1,0 +1,15 @@
+{
+  "collection": "Specs",
+  "title": "Spec: Skiff voice notes",
+  "type": "spec",
+  "owners": ["jonas@acme.example", "priya@acme.example"],
+  "tags": ["spec", "skiff", "voice", "q1-2027"],
+  "review": "90d",
+  "status": "draft-ahead",
+  "notes": [
+    "First draft after the Northwind Retail visit",
+    "Raised the recording limit to 5 minutes; recorded the server-side transcription decision",
+    "Chose the vendor, added Spanish and the privacy section"
+  ],
+  "frontMatter": {}
+}

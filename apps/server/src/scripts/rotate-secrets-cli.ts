@@ -20,12 +20,13 @@ import { createSecretResolver } from '../infrastructure/secrets/resolve-secret.t
 import { createSettingsStore } from '../infrastructure/settings-store.ts'
 import { createHasher } from '../infrastructure/hasher.ts'
 import { createPublicSiteCache } from '../public-site/cache.ts'
-import { createPublicStylesheets } from '../public-site/stylesheet.ts'
 import { createSystemClock } from '../infrastructure/system-clock.ts'
 import { createUuidGenerator } from '../infrastructure/uuid-generator.ts'
 import { createSearchService } from '@quill/search'
 import { rotateSecrets } from './rotate-secrets.ts'
+import { pagelessStylesheets } from '../theme/pageless.ts'
 import type { UserId } from '@quill/domain'
+import { createDrawioText } from '../extensions/drawio/drawing-text.ts'
 
 /**
  * `pnpm --filter @quill/server secrets:rotate` — the rotation's composition
@@ -71,7 +72,7 @@ try {
       hasher,
       // Nothing here serves a page; the port is present because
       // `AppDependencies` is one shape.
-      publicStylesheets: createPublicStylesheets({ hasher, designSystemCss: '' }),
+      ...(await pagelessStylesheets(hasher)),
       publicSiteCache: createPublicSiteCache({ clock, ttlMs: 0 }),
       tokens: createTokenService(),
       shareLinkPolicy: createShareLinkPolicy(config),
@@ -82,6 +83,7 @@ try {
       rateLimiter: createRateLimiter({ clock, config: config.rateLimit }),
       oidcRateLimiter: createRateLimiter({ clock, config: config.oidcRateLimit }),
       attachmentRateLimiter: createRateLimiter({ clock, config: config.attachments.rateLimit }),
+      drawingText: createDrawioText(),
       passwords: await createPasswordHasher(),
       identityProviders: createIdentityProviderRegistry({
         providers: config.oidcProviders,

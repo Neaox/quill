@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { labelRevisions, revisionDate, shortRevision } from './revision-labels.ts'
+import { labelRevisions, shortRevision } from './revision-labels.ts'
 import type { RevisionSummary } from '../api/index.ts'
 
 function revision(id: string, timestamp: string): RevisionSummary {
@@ -24,7 +24,11 @@ describe('labelRevisions', () => {
     )
 
     expect(labelled.map((entry) => entry.label)).toEqual(['v3', 'v2', 'v1'])
-    expect(labelled.map((entry) => entry.date)).toEqual(['2026-03-01', '2026-02-01', '2026-01-01'])
+    expect(labelled.map((entry) => entry.date)).toEqual([
+      '2026-03-01T10:00:00.000Z',
+      '2026-02-01T10:00:00.000Z',
+      '2026-01-01T10:00:00.000Z',
+    ])
   })
 
   it('falls back to the short hash when the history is only a page of itself', () => {
@@ -46,12 +50,8 @@ describe('labelRevisions', () => {
   })
 })
 
-describe('shortRevision and revisionDate', () => {
+describe('shortRevision', () => {
   it('shortens a revision to the part a person reads', () => {
     expect(shortRevision('0123456789abcdef')).toBe('0123456')
-  })
-
-  it('takes the date out of an ISO timestamp', () => {
-    expect(revisionDate('2026-08-15T09:30:00.000Z')).toBe('2026-08-15')
   })
 })

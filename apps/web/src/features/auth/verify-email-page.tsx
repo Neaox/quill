@@ -18,7 +18,7 @@ function ConsumeVerification({ token }: { readonly token: string }) {
     return (
       <AuthCard title="Email verified">
         <Callout tone="success">Your email address has been verified.</Callout>
-        <Link to="/" className={buttonClassName({ className: 'w-full' })}>
+        <Link to="/" className={buttonClassName({ size: 'lg', className: 'w-full' })}>
           Continue
         </Link>
       </AuthCard>

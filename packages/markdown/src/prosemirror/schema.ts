@@ -12,11 +12,29 @@ import type { Schema } from 'prosemirror-model'
 
 /** Attributes default to null so an unset attribute and an absent one are the same thing. */
 function attributes(...names: readonly string[]): Attributes {
-  return Object.fromEntries(names.map((name) => [name, { default: null }]))
+  return Object.fromEntries(
+    names.map((name) => [name, name === SOURCE_FORM ? SOURCE_FORM_SPEC : { default: null }]),
+  )
 }
 
 /** ADR-027: width is a property of the block, not a wrapper the author can see. */
 const LAYOUT = 'layout'
+
+/**
+ * How the node was written where mdast does not record it (`pipeline/source-form.ts`):
+ * opaque here, carried so a document saved unchanged is written back as it was.
+ * It is never drawn into the DOM, and a node split off another was written
+ * nowhere, so it does not inherit it.
+ */
+const SOURCE_FORM = 'sourceForm'
+const SOURCE_FORM_SPEC = { default: null, rendered: false, keepOnSplit: false }
+
+/**
+ * What every block that can take a width carries: the width, and how it was
+ * written — including, for the first block lifted out of a `:::wide` wrapper,
+ * how the wrapper was written (`layout.ts`).
+ */
+const BLOCK = [LAYOUT, SOURCE_FORM] as const
 
 const Doc = Node.create({ name: 'doc', topNode: true, content: 'block+' })
 
@@ -28,7 +46,7 @@ const Paragraph = Node.create({
   content: 'inline*',
   // `directiveLabel` is the `[Label]` of `:::note[Label]`; `synthetic` marks a
   // paragraph the converter invented to satisfy a content expression.
-  addAttributes: () => attributes(LAYOUT, 'directiveLabel', 'synthetic'),
+  addAttributes: () => attributes(...BLOCK, 'directiveLabel', 'synthetic'),
 })
 
 const Heading = Node.create({
@@ -36,7 +54,7 @@ const Heading = Node.create({
   group: 'block',
   content: 'inline*',
   defining: true,
-  addAttributes: () => ({ level: { default: 1 }, ...attributes(LAYOUT) }),
+  addAttributes: () => ({ level: { default: 1 }, ...attributes(...BLOCK) }),
 })
 
 const Blockquote = Node.create({
@@ -44,7 +62,7 @@ const Blockquote = Node.create({
   group: 'block',
   content: 'block+',
   defining: true,
-  addAttributes: () => attributes(LAYOUT),
+  addAttributes: () => attributes(...BLOCK),
 })
 
 const CodeBlock = Node.create({
@@ -54,13 +72,62 @@ const CodeBlock = Node.create({
   marks: '',
   code: true,
   defining: true,
-  addAttributes: () => attributes('language', 'meta', LAYOUT),
+  addAttributes: () => attributes('language', 'meta', ...BLOCK),
+})
+
+/**
+ * A code group (ADR-041): its tabs are code blocks, each named by its own
+ * fence meta. The group keeps how it was written — the syntax, the spacing
+ * and the opening line — so a document opened and saved unchanged is written
+ * back byte for byte (`code-group/code-group.ts`).
+ */
+const CodeGroup = Node.create({
+  name: 'codeGroup',
+  group: 'block',
+  content: 'codeBlock+',
+  defining: true,
+  isolating: true,
+  addAttributes: () => ({
+    syntax: { default: 'directive' },
+    attributes: { default: {} },
+    spread: { default: false },
+    ...attributes('opening', ...BLOCK),
+  }),
+})
+
+/**
+ * A details (ADR-048): a summary line, then the blocks a reader opens it to
+ * see. One node whatever it was written as — `:::details`, GitHub's HTML, an
+ * Obsidian foldable callout — with the syntax and how it was spelled kept, so
+ * a document saved unchanged is written back byte for byte
+ * (`details/write.ts`). `attributes` is the shared vocabulary: `open` (open
+ * for a reader by default), `name` (an exclusive group) and `type` (drawn as
+ * that callout).
+ */
+const Details = Node.create({
+  name: 'details',
+  group: 'block',
+  content: 'detailsSummary block+',
+  defining: true,
+  addAttributes: () => ({
+    syntax: { default: 'directive' },
+    attributes: { default: {} },
+    ...attributes('source', ...BLOCK),
+  }),
+})
+
+/** The summary line a details is opened by: inline Markdown, one line of it. */
+const DetailsSummary = Node.create({
+  name: 'detailsSummary',
+  content: 'inline*',
+  defining: true,
+  isolating: true,
 })
 
 const HorizontalRule = Node.create({
   name: 'horizontalRule',
   group: 'block',
-  addAttributes: () => attributes(LAYOUT),
+  addAttributes: () => attributes(...BLOCK),
 })
 
 const HardBreak = Node.create({
@@ -68,6 +135,7 @@ const HardBreak = Node.create({
   group: 'inline',
   inline: true,
   selectable: false,
+  addAttributes: () => attributes(SOURCE_FORM),
 })
 
 // `spread` is mdast's loose/tight distinction; `checked` lets a plain list item
@@ -77,35 +145,35 @@ const BulletList = Node.create({
   name: 'bulletList',
   group: 'block',
   content: 'listItem+',
-  addAttributes: () => attributes('spread', LAYOUT),
+  addAttributes: () => attributes('spread', ...BLOCK),
 })
 
 const OrderedList = Node.create({
   name: 'orderedList',
   group: 'block',
   content: 'listItem+',
-  addAttributes: () => ({ start: { default: 1 }, ...attributes('spread', LAYOUT) }),
+  addAttributes: () => ({ start: { default: 1 }, ...attributes('spread', ...BLOCK) }),
 })
 
 const TaskList = Node.create({
   name: 'taskList',
   group: 'block',
   content: 'taskItem+',
-  addAttributes: () => attributes('spread', LAYOUT),
+  addAttributes: () => attributes('spread', ...BLOCK),
 })
 
 const ListItem = Node.create({
   name: 'listItem',
   content: 'paragraph block*',
   defining: true,
-  addAttributes: () => attributes('spread', 'checked'),
+  addAttributes: () => attributes('spread', 'checked', SOURCE_FORM),
 })
 
 const TaskItem = Node.create({
   name: 'taskItem',
   content: 'paragraph block*',
   defining: true,
-  addAttributes: () => ({ checked: { default: false }, ...attributes('spread') }),
+  addAttributes: () => ({ checked: { default: false }, ...attributes('spread', SOURCE_FORM) }),
 })
 
 const Image = Node.create({
@@ -122,12 +190,13 @@ const Table = Node.create({
   group: 'block',
   content: 'tableRow+',
   isolating: true,
-  addAttributes: () => attributes('align', LAYOUT),
+  addAttributes: () => attributes('align', ...BLOCK),
 })
 
 const TableRow = Node.create({
   name: 'tableRow',
   content: '(tableCell | tableHeader)*',
+  addAttributes: () => attributes(SOURCE_FORM),
 })
 
 const TableCell = Node.create({
@@ -159,7 +228,10 @@ const ContainerDirective = Node.create({
   addAttributes: () => ({
     name: { default: null },
     attributes: { default: {} },
-    ...attributes(LAYOUT),
+    // A callout that was written as a GitHub alert (`> [!NOTE]`), and how: it is
+    // written back as one. Not drawn: it is how the Markdown was spelled.
+    alert: { default: null, rendered: false },
+    ...attributes(...BLOCK),
   }),
 })
 
@@ -170,7 +242,7 @@ const LeafDirective = Node.create({
   addAttributes: () => ({
     name: { default: null },
     attributes: { default: {} },
-    ...attributes(LAYOUT),
+    ...attributes(...BLOCK),
   }),
 })
 
@@ -179,7 +251,11 @@ const TextDirective = Node.create({
   group: 'inline',
   inline: true,
   content: 'inline*',
-  addAttributes: () => ({ name: { default: null }, attributes: { default: {} } }),
+  addAttributes: () => ({
+    name: { default: null },
+    attributes: { default: {} },
+    ...attributes(SOURCE_FORM),
+  }),
 })
 
 const HtmlBlock = Node.create({
@@ -189,7 +265,7 @@ const HtmlBlock = Node.create({
   marks: '',
   code: true,
   defining: true,
-  addAttributes: () => attributes(LAYOUT),
+  addAttributes: () => attributes(...BLOCK),
 })
 
 const HtmlInline = Node.create({
@@ -214,7 +290,7 @@ const FootnoteDefinition = Node.create({
   group: 'block',
   content: 'block+',
   defining: true,
-  addAttributes: () => attributes('identifier', 'label', LAYOUT),
+  addAttributes: () => attributes('identifier', 'label', ...BLOCK),
 })
 
 const FootnoteReference = Node.create({
@@ -234,8 +310,8 @@ const RawMdast = Node.create({
   addAttributes: () => attributes('node'),
 })
 
-const Bold = Mark.create({ name: 'bold' })
-const Italic = Mark.create({ name: 'italic' })
+const Bold = Mark.create({ name: 'bold', addAttributes: () => attributes(SOURCE_FORM) })
+const Italic = Mark.create({ name: 'italic', addAttributes: () => attributes(SOURCE_FORM) })
 const Strike = Mark.create({ name: 'strike' })
 
 /**
@@ -249,7 +325,10 @@ const Code = Mark.create({ name: 'code', excludes: '', code: true })
 const Link = Mark.create({
   name: 'link',
   inclusive: false,
-  addAttributes: () => attributes('href', 'title', 'referenceType', 'identifier', 'label'),
+  // `literal`: written bare in the source (`autolink-literal.ts`), so a save
+  // writes it bare again while its words are still its address.
+  addAttributes: () =>
+    attributes('href', 'title', 'referenceType', 'identifier', 'label', 'literal'),
 })
 
 /**
@@ -264,6 +343,9 @@ export const extensions: Extensions = [
   Heading,
   Blockquote,
   CodeBlock,
+  CodeGroup,
+  Details,
+  DetailsSummary,
   HorizontalRule,
   HardBreak,
   BulletList,

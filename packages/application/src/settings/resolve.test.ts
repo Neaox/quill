@@ -46,7 +46,7 @@ describe('resolving down the ADR-028 table', () => {
     const configured = {
       ...organisation,
       name: 'Acme',
-      publicNavigation: [{ label: 'Handbook', href: '/handbook' }],
+      publicMenu: [{ kind: 'url' as const, label: 'Handbook', href: '/handbook' }],
       policies: {
         shareLinksAllowed: false,
         publicPublishingAllowed: true,
@@ -58,7 +58,7 @@ describe('resolving down the ADR-028 table', () => {
       theme: configured.theme,
       contrastEnforcement: 'advisory',
       organisationName: 'Acme',
-      publicNavigation: configured.publicNavigation,
+      publicMenu: configured.publicMenu,
       policies: configured.policies,
       logo: configured.logo,
     })

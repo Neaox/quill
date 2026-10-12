@@ -189,7 +189,7 @@ export async function loadPublicSite(
       organisation: organisation.document,
       pages,
       pathById,
-      navigation: navigationOf(published, pathById),
+      navigation: publicNavigationOf(published, pathById),
       home: (home === null ? null : published.find((row) => row.id === home)) ?? null,
     },
   }
@@ -202,8 +202,12 @@ export async function loadPublicSite(
  * disappearing with it — its own grant said it is public, and the reader must
  * not lose a page because the page above it was carved out — which is the same
  * rule the signed-in tree follows (`getWorkspaceTree`).
+ *
+ * Exported because the reader preview builds its navigation with exactly this
+ * function (`reader-preview.ts`): a preview whose tree nested or ordered
+ * differently from the site's would be previewing something else.
  */
-function navigationOf(
+export function publicNavigationOf(
   documents: readonly DocumentRow[],
   pathById: ReadonlyMap<DocumentId, string>,
 ): readonly PublicNavigationNode[] {

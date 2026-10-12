@@ -1,0 +1,11 @@
+{
+  "collection": "Escalations",
+  "title": "Severity definitions",
+  "type": "policy",
+  "owners": ["tom@acme.example"],
+  "tags": ["severity", "sla", "escalation"],
+  "review": "90d",
+  "status": "published",
+  "notes": ["First version, aligned with the engineering incident levels"],
+  "frontMatter": {}
+}

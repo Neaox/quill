@@ -1,7 +1,28 @@
 import { useNavigate } from '@tanstack/react-router'
 import { useId } from 'react'
 
+import { tv } from '@quill/ui'
+
 import { useWorkspaceList } from '../../lib/api/index.ts'
+
+/*
+ * The switcher is the sidebar's title: the workspace's name in ink at the
+ * weight of a heading, which happens to open a list. It wears a control's
+ * outline only when a pointer is on it, so the column reads as a page with a
+ * title rather than a form with a field at the top.
+ */
+export const workspaceSwitcherStyles = tv({
+  slots: {
+    root: 'flex min-w-0 grow items-center',
+    name: 'truncate px-2 text-sm font-semibold text-foreground',
+    select: [
+      'focus-ring h-8 w-full min-w-0 cursor-pointer rounded-md border border-transparent',
+      'bg-transparent px-1.5 text-sm font-semibold text-foreground',
+      'transition-[border-color,background-color] ease-standard',
+      'hover:border-border hover:bg-surface',
+    ],
+  },
+})
 
 export interface WorkspaceSwitcherProps {
   readonly activeWorkspaceId: string
@@ -35,6 +56,7 @@ export function WorkspaceSwitcher({
   const workspaces = useWorkspaceList()
   const navigate = useNavigate()
   const id = useId()
+  const styles = workspaceSwitcherStyles()
 
   const listed = workspaces.data ?? []
   // The active workspace is always offered, even before the list has arrived
@@ -45,11 +67,11 @@ export function WorkspaceSwitcher({
 
   // One workspace is not a choice: the name is a heading, not a control.
   if (options.length <= 1) {
-    return <p className="meta truncate text-muted">{activeWorkspaceName}</p>
+    return <p className={styles.name()}>{activeWorkspaceName}</p>
   }
 
   return (
-    <div className="flex min-w-0 grow items-center gap-1.5">
+    <div className={styles.root()}>
       <label htmlFor={id} className="sr-only">
         Switch workspace
       </label>
@@ -59,7 +81,7 @@ export function WorkspaceSwitcher({
         onChange={(event) => {
           void navigate({ to: '/w/$workspaceSlug', params: { workspaceSlug: event.target.value } })
         }}
-        className="focus-ring h-7 w-full min-w-0 rounded-md border border-border bg-surface-raised px-1.5 text-2xs font-medium text-foreground hover:border-border-strong"
+        className={styles.select()}
       >
         {options.map((workspace) => (
           <option key={workspace.id} value={workspace.id}>

@@ -1,0 +1,11 @@
+{
+  "collection": "Working here",
+  "title": "On-call compensation",
+  "type": "policy",
+  "owners": ["dana@acme.example", "marcus@acme.example"],
+  "tags": ["on-call", "compensation", "policy"],
+  "review": "1y",
+  "status": "published",
+  "notes": ["First version, effective 1 October 2026"],
+  "frontMatter": {}
+}

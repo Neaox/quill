@@ -1,27 +1,36 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 
 import { ANCHOR_OFFSET_PX, tv } from '@quill/ui'
 
 import type { OutlineEntry } from '../../lib/api/index.ts'
+import { activeHeading, positionOf } from '../../lib/documents/active-heading.ts'
+import type { BandPosition } from '../../lib/documents/active-heading.ts'
 
+/*
+ * The quietest list on the page: the headings in the faintest ink down a
+ * hairline, wrapping rather than truncating so a long heading is still read
+ * whole. The heading being read takes full ink and lays the accent over its
+ * stretch of the hairline — each entry's own leading edge sits on the list's
+ * rule — so the position is a mark as well as a colour.
+ */
 export const tableOfContentsStyles = tv({
   slots: {
     root: '',
-    heading: 'meta pb-2',
-    list: 'flex flex-col gap-1.5 text-sm',
+    heading: 'section-label pb-2.5',
+    list: 'flex flex-col border-s border-border text-xs leading-snug',
     link: [
-      'block truncate text-muted transition-colors ease-standard',
-      'hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2',
-      'focus-visible:outline-focus-ring aria-current:font-medium',
-      'aria-current:text-foreground',
+      '-ms-px block border-s border-transparent py-1 ps-3 text-pretty text-muted',
+      'transition-[color,border-color] ease-standard hover:text-foreground',
+      'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring',
+      'current:border-accent current:font-medium current:text-foreground',
     ],
   },
   variants: {
     depth: {
       1: { link: '' },
       2: { link: '' },
-      3: { link: 'ps-3' },
-      4: { link: 'ps-6' },
+      3: { link: 'ps-6' },
+      4: { link: 'ps-9' },
     },
   },
 })
@@ -82,7 +91,6 @@ export function TableOfContents({
   const entries = useMemo(() => flatten(sections(outline)), [outline])
   const headingIds = useMemo(() => entries.map((entry) => entry.id), [entries])
   const [currentId, setCurrentId] = useState<string | undefined>(undefined)
-  const visible = useRef<Set<string>>(new Set())
 
   /* Synchronises with the browser's IntersectionObserver over the headings of
      the body that `DocumentBody` has just mounted — an external system, and
@@ -94,18 +102,14 @@ export function TableOfContents({
   useEffect(() => {
     if (headingIds.length === 0) return undefined
 
-    const seen = visible.current
-    seen.clear()
+    // Where each heading is relative to the band, kept for as long as this
+    // observer lives. The observer reports only what *changed*, so the rest has
+    // to be remembered: "which heading is current" depends on all of them.
+    const positions = new Map<string, BandPosition>()
     const observer = new IntersectionObserver(
       (records) => {
-        for (const record of records) {
-          if (record.isIntersecting) seen.add(record.target.id)
-          else seen.delete(record.target.id)
-        }
-        const first = headingIds.find((id) => seen.has(id))
-        // Nothing intersecting means the reader is between two headings; the
-        // last one they passed is still the section they are in.
-        if (first !== undefined) setCurrentId(first)
+        for (const record of records) positions.set(record.target.id, positionOf(record))
+        setCurrentId(activeHeading(headingIds, positions))
       },
       // The band is the top of the viewport: a heading counts as "being read"
       // from the moment it reaches the place it would be scrolled to — the
@@ -120,7 +124,6 @@ export function TableOfContents({
     }
     return () => {
       observer.disconnect()
-      seen.clear()
     }
   }, [headingIds])
 

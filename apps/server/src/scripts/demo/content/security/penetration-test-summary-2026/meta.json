@@ -1,0 +1,11 @@
+{
+  "collection": "Audits",
+  "title": "Penetration test summary 2026",
+  "type": "reference",
+  "owners": ["aisha@acme.example"],
+  "tags": ["pentest", "vulnerabilities", "audit", "2026"],
+  "review": "6m",
+  "status": "published",
+  "notes": ["Summary of the September 2026 external test, status as of 12 October"],
+  "frontMatter": {}
+}

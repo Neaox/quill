@@ -1,0 +1,11 @@
+{
+  "collection": "Patterns",
+  "title": "Empty states",
+  "type": "design",
+  "owners": ["sofia@acme.example"],
+  "tags": ["patterns", "empty-states", "content"],
+  "review": "1y",
+  "status": "published",
+  "notes": ["First published"],
+  "frontMatter": {}
+}

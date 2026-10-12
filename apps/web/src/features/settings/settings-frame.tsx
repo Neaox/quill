@@ -9,15 +9,25 @@ import { SETTINGS_SECTIONS } from './settings-sections.ts'
 
 export const settingsFrameStyles = tv({
   slots: {
-    root: 'flex flex-col gap-8 @3xl:flex-row @3xl:gap-12',
-    nav: 'shrink-0 @3xl:w-44',
+    root: 'flex flex-col gap-6 @3xl:flex-row @3xl:gap-12',
+    // Beside the body from the container's `3xl` up, and held in view while
+    // a long screen scrolls, the way Linear's and Vercel's settings keep
+    // their section list; above the body, as a wrapping row, below it.
+    nav: [
+      'shrink-0 @3xl:sticky @3xl:w-48 @3xl:self-start',
+      '@3xl:top-[calc(var(--spacing-shell-header)+var(--spacing)*12)]',
+    ],
     list: 'flex flex-wrap gap-1 @3xl:flex-col @3xl:flex-nowrap',
     link: [
-      'focus-ring block rounded-md px-2.5 py-1.5 text-sm text-muted',
+      // 44 pixels tall where a thumb uses it, the desktop list's density
+      // where a pointer does.
+      'focus-ring block rounded-md px-3 py-3 text-sm text-muted @3xl:px-2.5 @3xl:py-1.5',
       'transition-colors hover:bg-surface hover:text-foreground',
-      'aria-current:bg-surface aria-current:font-medium aria-current:text-foreground',
+      'current:bg-surface current:font-medium current:text-foreground',
     ],
-    body: 'flex min-w-0 grow flex-col gap-10',
+    // Its own container, so an editor inside it decides its columns by the
+    // room it was actually given beside the navigation, not by the window.
+    body: '@container flex min-w-0 grow flex-col gap-10',
   },
 })
 

@@ -1,0 +1,11 @@
+{
+  "collection": "Components",
+  "title": "Data tables",
+  "type": "reference",
+  "owners": ["sofia@acme.example"],
+  "tags": ["components", "tables", "data", "react"],
+  "review": "6m",
+  "status": "published",
+  "notes": ["First published"],
+  "frontMatter": {}
+}

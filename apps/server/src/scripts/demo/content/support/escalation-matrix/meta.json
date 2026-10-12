@@ -1,0 +1,15 @@
+{
+  "collection": "Escalations",
+  "title": "Escalation matrix",
+  "type": "reference",
+  "owners": ["tom@acme.example"],
+  "tags": ["escalation", "on-call", "severity"],
+  "review": "90d",
+  "status": "published",
+  "notes": [
+    "First version",
+    "Shortened the Sev 2 update cadence from 2 hours to 1 hour",
+    "Added the security row and the weekend rule after the 2 September login errors"
+  ],
+  "frontMatter": {}
+}

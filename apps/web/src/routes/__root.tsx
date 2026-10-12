@@ -2,6 +2,7 @@ import { HeadContent, Outlet, createRootRouteWithContext } from '@tanstack/react
 
 import { BRAND } from '@quill/brand'
 
+import { OrganisationTheme } from '../features/theme/organisation-theme.tsx'
 import { RouteNotice } from '../features/workspaces/route-notice.tsx'
 import type { RouterContext } from '../app/router-context.ts'
 
@@ -39,10 +40,17 @@ export const Route = createRootRouteWithContext<RouterContext>()({
   component: RootLayout,
 })
 
+/**
+ * The organisation's theme is applied here, above every route, so every
+ * screen wears it — signed in or not — and a saved theme changes all of them
+ * at once (ADR-028, "Delivery").
+ */
 function RootLayout() {
+  const { apiClient, queryClient } = Route.useRouteContext()
   return (
     <>
       <HeadContent />
+      <OrganisationTheme apiClient={apiClient} queryClient={queryClient} />
       <Outlet />
     </>
   )

@@ -1,0 +1,14 @@
+{
+  "collection": "Feedback and themes",
+  "title": "Import feedback from a CSV file",
+  "type": "guide",
+  "owners": ["tom@acme.example"],
+  "tags": ["import", "csv", "tidepool"],
+  "review": "180d",
+  "status": "published",
+  "notes": [
+    "First version",
+    "Raised the file limits to 25 MB and 10,000 rows; added the url column and how to undo an import"
+  ],
+  "frontMatter": {}
+}

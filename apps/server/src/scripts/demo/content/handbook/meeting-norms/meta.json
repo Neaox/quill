@@ -1,0 +1,11 @@
+{
+  "collection": "Working here",
+  "title": "Meeting norms",
+  "type": "guide",
+  "owners": ["dana@acme.example", "marcus@acme.example"],
+  "tags": ["meetings", "working-here"],
+  "review": "1y",
+  "status": "published",
+  "notes": ["First version, from the meeting audit in September"],
+  "frontMatter": {}
+}

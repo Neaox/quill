@@ -1,0 +1,14 @@
+{
+  "collection": "Strategy",
+  "title": "Pricing principles",
+  "type": "design",
+  "owners": ["priya@acme.example", "ravi@acme.example"],
+  "tags": ["pricing", "strategy"],
+  "review": "6m",
+  "status": "published",
+  "notes": [
+    "Principles and plan table agreed with finance",
+    "Added principle 6 and the September seat-ceiling analysis"
+  ],
+  "frontMatter": {}
+}

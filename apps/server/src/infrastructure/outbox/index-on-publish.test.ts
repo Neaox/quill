@@ -1,9 +1,18 @@
-import { DOCUMENT_PUBLISHED, DOCUMENT_RENAMED, EVENT_PAYLOAD_VERSION } from '@quill/application'
+import {
+  ATTACHMENT_REVISED,
+  DOCUMENT_PUBLISHED,
+  DOCUMENT_RENAMED,
+  EVENT_PAYLOAD_VERSION,
+} from '@quill/application'
 import { documentId as toDocumentId, workspaceId as toWorkspaceId } from '@quill/domain'
 import { describe, expect, it, vi } from 'vitest'
 
 import type { IndexDocumentDependencies } from '../search/index-document.ts'
-import { createIndexOnPublishConsumer, createIndexOnRenameConsumer } from './index-on-publish.ts'
+import {
+  createIndexOnAttachmentRevisedConsumer,
+  createIndexOnPublishConsumer,
+  createIndexOnRenameConsumer,
+} from './index-on-publish.ts'
 
 /**
  * What the consumers do with a payload, without a database behind them: the
@@ -13,6 +22,7 @@ import { createIndexOnPublishConsumer, createIndexOnRenameConsumer } from './ind
 
 const DOCUMENT = toDocumentId('11111111-1111-4111-8111-111111111111')
 const WORKSPACE = toWorkspaceId('22222222-2222-4222-8222-222222222222')
+const OTHER = toDocumentId('44444444-4444-4444-8444-444444444444')
 
 /** Every call `indexDocument` makes goes through the repository, so recording that is recording the work. */
 function dependencies(findById = vi.fn<() => Promise<null>>(async () => null)): {
@@ -20,8 +30,12 @@ function dependencies(findById = vi.fn<() => Promise<null>>(async () => null)): 
   findById: ReturnType<typeof vi.fn>
 } {
   const remove = vi.fn<() => Promise<void>>(async () => {})
+  const listSourcesReferencing = vi.fn<() => Promise<readonly string[]>>(async () => [
+    DOCUMENT,
+    OTHER,
+  ])
   const deps = {
-    uow: { repos: { documents: { findById } } },
+    uow: { repos: { documents: { findById }, documentLinks: { listSourcesReferencing } } },
     contentStore: { read: async () => null },
     format: {},
     searchIndex: { remove, index: vi.fn<() => Promise<void>>(async () => {}) },
@@ -73,6 +87,42 @@ describe('indexing on rename', () => {
   it('leaves an event this release cannot read alone', async () => {
     const { deps, findById } = dependencies()
     await createIndexOnRenameConsumer(deps).handle({ version: 99 })
+    expect(findById).not.toHaveBeenCalled()
+  })
+})
+
+describe('indexing on a revised attachment (ADR-043)', () => {
+  const ATTACHMENT = '55555555-5555-4555-8555-555555555555'
+
+  it('re-indexes every published document that shows it', async () => {
+    const { deps, findById } = dependencies()
+    await createIndexOnAttachmentRevisedConsumer(deps).handle({
+      version: EVENT_PAYLOAD_VERSION,
+      attachmentId: ATTACHMENT,
+      documentId: DOCUMENT,
+      workspaceId: WORKSPACE,
+      attachmentVersion: 2,
+    })
+    expect(findById).toHaveBeenCalledWith(DOCUMENT)
+    expect(findById).toHaveBeenCalledWith(OTHER)
+  })
+
+  it('is registered for AttachmentRevised', () => {
+    expect(createIndexOnAttachmentRevisedConsumer(dependencies().deps).eventType).toBe(
+      ATTACHMENT_REVISED,
+    )
+  })
+
+  it('leaves an event this release cannot read alone', async () => {
+    const { deps, findById } = dependencies()
+    const consumer = createIndexOnAttachmentRevisedConsumer(deps)
+    await consumer.handle({ version: 99 })
+    await consumer.handle({
+      version: EVENT_PAYLOAD_VERSION,
+      attachmentId: ATTACHMENT,
+      documentId: DOCUMENT,
+      workspaceId: WORKSPACE,
+    })
     expect(findById).not.toHaveBeenCalled()
   })
 })

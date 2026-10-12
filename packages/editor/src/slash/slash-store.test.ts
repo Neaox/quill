@@ -1,35 +1,45 @@
 import { describe, expect, it, vi } from 'vitest'
 
-import { SLASH_ITEMS } from './slash-items.ts'
+import type { SlashPicker } from './slash-item.ts'
 import { createSlashStore } from './slash-store.ts'
 
-const OPEN = {
+const MENU = {
   query: 'tab',
-  items: SLASH_ITEMS.slice(0, 1),
+  sections: [],
   rect: { top: 10, bottom: 20, left: 5 },
   apply: () => {},
 }
 
+const PICKER: SlashPicker = {
+  title: 'Badge tone',
+  placeholder: 'Search tones',
+  empty: () => 'Nothing',
+  source: { kind: 'list', options: () => [] },
+  choose: () => () => true,
+}
+
+const PICKING = { picker: PICKER, rect: null, choose: () => {}, cancel: () => {} }
+
 describe('the bridge between the suggestion plugin and React', () => {
   it('starts closed', () => {
-    expect(createSlashStore().getSnapshot().open).toBe(false)
+    expect(createSlashStore().getSnapshot().mode).toBe('closed')
   })
 
-  it('tells its listeners when it opens and when it closes', () => {
+  it('tells its listeners when the menu opens and when it closes', () => {
     const store = createSlashStore()
     const listener = vi.fn<() => void>()
     const unsubscribe = store.subscribe(listener)
 
-    store.open(OPEN)
+    store.showMenu(MENU)
     expect(listener).toHaveBeenCalledTimes(1)
-    expect(store.getSnapshot()).toMatchObject({ open: true, query: 'tab' })
+    expect(store.getSnapshot()).toMatchObject({ mode: 'menu', query: 'tab' })
 
     store.close()
     expect(listener).toHaveBeenCalledTimes(2)
-    expect(store.getSnapshot().open).toBe(false)
+    expect(store.getSnapshot().mode).toBe('closed')
 
     unsubscribe()
-    store.open(OPEN)
+    store.showMenu(MENU)
     expect(listener).toHaveBeenCalledTimes(2)
   })
 
@@ -38,7 +48,21 @@ describe('the bridge between the suggestion plugin and React', () => {
     const listener = vi.fn<() => void>()
     store.subscribe(listener)
     store.close()
+    store.closeMenu()
     expect(listener).not.toHaveBeenCalled()
+  })
+
+  it('leaves a picker open when the menu that opened it closes', () => {
+    const store = createSlashStore()
+    store.showPicker(PICKING)
+    store.closeMenu()
+    expect(store.getSnapshot().mode).toBe('picker')
+    store.close()
+    expect(store.getSnapshot().mode).toBe('closed')
+
+    store.showMenu(MENU)
+    store.closeMenu()
+    expect(store.getSnapshot().mode).toBe('closed')
   })
 
   it('gives its keys to the menu only while the menu is shown', () => {
@@ -49,20 +73,14 @@ describe('the bridge between the suggestion plugin and React', () => {
     store.setKeyHandler(handler)
     expect(store.handleKey('ArrowDown')).toBe(false)
 
-    store.open(OPEN)
+    store.showPicker(PICKING)
+    expect(store.handleKey('ArrowDown')).toBe(false)
+
+    store.showMenu(MENU)
     expect(store.handleKey('ArrowDown')).toBe(true)
     expect(handler).toHaveBeenCalledWith('ArrowDown')
 
     store.setKeyHandler(null)
     expect(store.handleKey('ArrowDown')).toBe(false)
-  })
-
-  it('does nothing when a closed snapshot is applied', () => {
-    const store = createSlashStore()
-    const item = SLASH_ITEMS[0]
-    if (item === undefined) throw new Error('The catalogue is empty.')
-    expect(() => {
-      store.getSnapshot().apply(item)
-    }).not.toThrow()
   })
 })

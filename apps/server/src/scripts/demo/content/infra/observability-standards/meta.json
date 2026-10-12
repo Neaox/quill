@@ -1,0 +1,11 @@
+{
+  "collection": "Standards",
+  "title": "Observability standards",
+  "type": "policy",
+  "owners": ["marcus@acme.example"],
+  "tags": ["observability", "slo", "standards", "alerting"],
+  "review": "1y",
+  "status": "published",
+  "notes": ["First version"],
+  "frontMatter": {}
+}

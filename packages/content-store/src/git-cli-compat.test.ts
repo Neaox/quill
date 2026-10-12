@@ -30,7 +30,7 @@ import {
   NOW,
   write,
 } from './test-fixtures.ts'
-import { OURS_LABEL, THEIRS_LABEL, threeWayMerge } from './three-way-merge.ts'
+import { conflictMarkers, OURS_LABEL, THEIRS_LABEL } from './three-way-merge.ts'
 
 function gitVersion(): string | null {
   try {
@@ -250,7 +250,7 @@ describe.skipIf(VERSION === null)('a repository the git CLI can read', () => {
     expect(await repo.objects.readRef('refs/heads/main')).toBe(repo.git('rev-parse', 'HEAD').trim())
   })
 
-  it('merges exactly the bytes `git merge-file` does', async () => {
+  it('writes a conflict exactly as `git merge-file` does', async () => {
     const cases: ReadonlyArray<readonly [string, string, string]> = [
       [
         'one\ntwo\nthree\nfour\nfive\n',
@@ -269,7 +269,7 @@ describe.skipIf(VERSION === null)('a repository the git CLI can read', () => {
           writeFile(join(directory, name), content),
         ),
       )
-      expect(threeWayMerge(base, ours, theirs).text).toBe(gitMergeFile(directory))
+      expect(conflictMarkers(base, ours, theirs)).toBe(gitMergeFile(directory))
     }
   })
 })

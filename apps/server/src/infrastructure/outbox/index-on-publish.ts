@@ -1,5 +1,10 @@
-import { DOCUMENT_PUBLISHED, DOCUMENT_RENAMED } from '@quill/application'
-import { parseDocumentPublished, parseDocumentRenamed } from '@quill/application'
+import { ATTACHMENT_REVISED, DOCUMENT_PUBLISHED, DOCUMENT_RENAMED } from '@quill/application'
+import {
+  attachmentUrl,
+  parseAttachmentRevised,
+  parseDocumentPublished,
+  parseDocumentRenamed,
+} from '@quill/application'
 
 import { indexDocument } from '../search/index-document.ts'
 import type { IndexDocumentDependencies } from '../search/index-document.ts'
@@ -49,6 +54,29 @@ export function createIndexOnRenameConsumer(deps: IndexDocumentDependencies): Ou
       const event = parseDocumentRenamed(payload)
       if (event === null) return
       await indexDocument(deps, event.documentId)
+    },
+  }
+}
+
+/**
+ * A revised attachment changes the words of every published body that shows
+ * it — a re-saved diagram's labels (ADR-043) — without any of them being
+ * republished, so each is projected again. The link index says which: it
+ * holds the links of published heads, in the attachment's own workspace.
+ */
+export function createIndexOnAttachmentRevisedConsumer(
+  deps: IndexDocumentDependencies,
+): OutboxConsumer {
+  return {
+    eventType: ATTACHMENT_REVISED,
+    async handle(payload: unknown): Promise<void> {
+      const event = parseAttachmentRevised(payload)
+      if (event === null) return
+      const documents = await deps.uow.repos.documentLinks.listSourcesReferencing(
+        attachmentUrl(event.attachmentId),
+        event.workspaceId,
+      )
+      for (const documentId of documents) await indexDocument(deps, documentId)
     },
   }
 }

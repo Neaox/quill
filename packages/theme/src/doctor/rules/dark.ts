@@ -1,7 +1,13 @@
 import { zip } from 'remeda'
 import { DARK_CHROMA_REDUCTION } from '../../colour/bands.ts'
 import { hueDistance } from '../../colour/hue.ts'
-import { PALETTE_ROLES, type Palette } from '../../colour/palette.ts'
+import {
+  PALETTE_ROLES,
+  type Palette,
+  type PaletteRole,
+  type ThemePalettes,
+} from '../../colour/palette.ts'
+import { contrastEvidence, swatchEvidence } from '../evidence.ts'
 import { boundaryPairs, describe, holds, syntaxPairs, textPairs, type Pair } from '../pairs.ts'
 import { adjusted, check, fromChecks, pass, round, warn, type Rule } from '../rule.ts'
 
@@ -20,6 +26,29 @@ const MIXED_ROLES = new Set<string>([
   'dangerSubtle',
 ])
 
+const driftedHue = (palettes: ThemePalettes, role: PaletteRole): boolean => {
+  const light = palettes.light.colours[role]
+  const dark = palettes.dark.colours[role]
+  return (
+    !MIXED_ROLES.has(role) &&
+    light.chroma > 0 &&
+    dark.chroma > 0 &&
+    hueDistance(light.hue, dark.hue) > HUE_TOLERANCE
+  )
+}
+
+/**
+ * A mixed role's chroma is held by its own budget in each scheme
+ * (`WASH_CHROMA_BUDGET`), not to the light one's: a wash on a dark page needs
+ * more chroma than the same wash on a light page to read as the same colour.
+ */
+const gainedChroma = (palettes: ThemePalettes, role: PaletteRole): boolean =>
+  !MIXED_ROLES.has(role) &&
+  palettes.dark.colours[role].chroma > palettes.light.colours[role].chroma + 1e-9
+
+const rederived = (palettes: ThemePalettes, role: PaletteRole): boolean =>
+  !driftedHue(palettes, role) && !gainedChroma(palettes, role)
+
 /** Section 7: same hue seeds, dark bands, chroma reduced. Never an inversion. */
 export const darkRederivationRule: Rule = {
   id: 'dark/rederivation',
@@ -29,15 +58,9 @@ export const darkRederivationRule: Rule = {
     const failures = PALETTE_ROLES.flatMap((role) => {
       const light = palettes.light.colours[role]
       const dark = palettes.dark.colours[role]
-      const driftedHue =
-        !MIXED_ROLES.has(role) &&
-        light.chroma > 0 &&
-        dark.chroma > 0 &&
-        hueDistance(light.hue, dark.hue) > HUE_TOLERANCE
-      const gainedChroma = dark.chroma > light.chroma + 1e-9
       return [
-        ...(driftedHue ? [`${role} changed hue between schemes`] : []),
-        ...(gainedChroma
+        ...(driftedHue(palettes, role) ? [`${role} changed hue between schemes`] : []),
+        ...(gainedChroma(palettes, role)
           ? [
               `${role} gained chroma in dark mode (${round(light.chroma, 4)} to ${round(dark.chroma, 4)})`,
             ]
@@ -55,6 +78,16 @@ export const darkRederivationRule: Rule = {
       ? pass(detail)
       : adjusted(`${detail}, outside the 20 to 30 percent the rules ask for`)
   },
+  evidence: (_theme, palettes) =>
+    swatchEvidence(palettes, PALETTE_ROLES, (_palette, role) => rederived(palettes, role)),
+}
+
+const holdsElevation = (palette: Palette, role: 'paper' | 'surface' | 'raised'): boolean => {
+  const { paper, surface, raised } = palette.colours
+  if (palette.scheme === 'light' || role === 'paper') return true
+  return role === 'surface'
+    ? surface.lightness > paper.lightness
+    : raised.lightness > surface.lightness
 }
 
 /** Section 7: elevation is lightness, not shadow, once the paper is dark. */
@@ -68,16 +101,18 @@ export const darkElevationRule: Rule = {
       [
         check(
           `dark surface L ${round(surface.lightness, 1)} does not rise above paper L ${round(paper.lightness, 1)}`,
-          surface.lightness > paper.lightness,
+          holdsElevation(palettes.dark, 'surface'),
         ),
         check(
           `dark raised L ${round(raised.lightness, 1)} does not rise above surface L ${round(surface.lightness, 1)}`,
-          raised.lightness > surface.lightness,
+          holdsElevation(palettes.dark, 'raised'),
         ),
       ],
       'each dark elevation step is lighter than the one below it',
     )
   },
+  evidence: (_theme, palettes) =>
+    swatchEvidence(palettes, ['paper', 'surface', 'raised'], holdsElevation),
 }
 
 const everyPair = (palette: Palette): readonly Pair[] => [
@@ -100,4 +135,5 @@ export const darkRecheckRule: Rule = {
       ? pass(`all ${pairs.length} pairs were re-checked in dark mode and hold`)
       : warn(regressions.map(describe).join('; '))
   },
+  evidence: (_theme, palettes) => contrastEvidence(palettes, everyPair),
 }

@@ -27,6 +27,7 @@ import { createAcknowledgingConsumer } from './infrastructure/outbox/acknowledge
 import { combineConsumers } from './infrastructure/outbox/combine.ts'
 import {
   createIndexOnPublishConsumer,
+  createIndexOnAttachmentRevisedConsumer,
   createIndexOnRenameConsumer,
 } from './infrastructure/outbox/index-on-publish.ts'
 import {
@@ -48,18 +49,22 @@ import type { SecretExistenceCheck } from './infrastructure/secrets/boot-validat
 import { createSettingsStore } from './infrastructure/settings-store.ts'
 import { createPublicSiteCache, PUBLIC_SITE_CACHE_TTL_MS } from './public-site/cache.ts'
 import { createPublicStylesheets, loadDesignSystemCss } from './public-site/stylesheet.ts'
+import { loadFaceFiles } from './theme/face-files.ts'
+import { createThemeStylesheets } from './theme/theme-stylesheet.ts'
 import { createSystemClock } from './infrastructure/system-clock.ts'
 import { createUuidGenerator } from './infrastructure/uuid-generator.ts'
 import { createJobRunner } from './jobs/job-runner.ts'
 import { createShutdown } from './shutdown.ts'
 import { createSweepJob } from './jobs/sweep-expired.ts'
 import {
+  ATTACHMENT_REVISED,
   DOCUMENT_CREATED,
   DOCUMENT_MOVED,
   DOCUMENT_PUBLISHED,
   DOCUMENT_RENAMED,
 } from '@quill/application'
 import { createSearchService } from '@quill/search'
+import { createDrawioText } from './extensions/drawio/drawing-text.ts'
 
 /**
  * Startup warnings are collected and replayed through the app's own logger
@@ -193,14 +198,21 @@ const searchIndex = createPostgresSearchIndex({
   visibility: createVisibleDocumentResolver({ uow }),
   clock,
 })
+// The curated faces are read once, here, so that serving a font or naming one
+// in a stylesheet never touches the filesystem (ADR-028).
+const faceFiles = await loadFaceFiles()
+const themeStylesheets = createThemeStylesheets({ hasher, faceFiles })
 const deps = {
   uow,
   searchIndex,
   search: createSearchService(searchIndex),
   // The design system's plain CSS is read once, here, so that serving a public
   // page never touches the filesystem (ADR-023).
+  faceFiles,
+  themeStylesheets,
   publicStylesheets: createPublicStylesheets({
     hasher,
+    themeStylesheets,
     designSystemCss: await loadDesignSystemCss(),
   }),
   publicSiteCache,
@@ -219,6 +231,7 @@ const deps = {
   rateLimiter,
   oidcRateLimiter,
   attachmentRateLimiter,
+  drawingText: createDrawioText(),
   passwords,
   identityProviders,
   config,
@@ -279,6 +292,15 @@ jobRunner.register(
     DOCUMENT_MOVED,
     createRecordMoveRedirectConsumer(deps),
     invalidationOf(DOCUMENT_MOVED),
+  ),
+)
+// A re-saved diagram (ADR-043) changes the words and the picture of every
+// published body that shows it, without a publish.
+jobRunner.register(
+  combineConsumers(
+    ATTACHMENT_REVISED,
+    createIndexOnAttachmentRevisedConsumer(deps),
+    invalidationOf(ATTACHMENT_REVISED),
   ),
 )
 // Delivery happens here rather than on the request path, so an address that

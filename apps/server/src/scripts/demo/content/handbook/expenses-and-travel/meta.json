@@ -1,0 +1,15 @@
+{
+  "collection": "Policies",
+  "title": "Expenses and travel",
+  "type": "policy",
+  "owners": ["dana@acme.example"],
+  "tags": ["expenses", "travel", "policy", "finance"],
+  "review": "6m",
+  "status": "published",
+  "notes": [
+    "First version",
+    "Raised the hotel and meal limits and clarified when a receipt is required",
+    "Shortened the claim deadline to 30 days and added the rail-first rule for short trips"
+  ],
+  "frontMatter": {}
+}

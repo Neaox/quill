@@ -1,0 +1,14 @@
+{
+  "collection": "Hiring",
+  "title": "Engineering hiring plan 2027",
+  "type": "reference",
+  "owners": ["dana@acme.example"],
+  "tags": ["hiring", "headcount", "planning"],
+  "review": "90d",
+  "status": "draft-ahead",
+  "notes": [
+    "First plan: 14 net hires",
+    "Raised to 18 net hires for Skiff 2.0 and a second security engineer"
+  ],
+  "frontMatter": {}
+}

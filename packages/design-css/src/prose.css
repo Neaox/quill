@@ -3,7 +3,10 @@
  *
  * The faces are the theme's: `--font-reading` for the body, `--font-sans` for
  * the headings and every piece of furniture around them, `--font-mono` for
- * code. The sizes and the rhythm are not a theme's to choose (ADR-028, layer
+ * code. So are the three inks: `--color-foreground` for headings, emphasis and
+ * anything a reader's eye should land on first, `--color-body` for the running
+ * text it is reading, a visible step quieter, and `--color-muted` for the
+ * facts around it. The sizes and the rhythm are not a theme's to choose (ADR-028, layer
  * 0), so they are written once here and scale from `--text-reading`.
  *
  * `.prose` is applied to the layout grid itself, so every block of a document
@@ -20,13 +23,13 @@
   font-family: var(--font-reading);
   font-size: var(--text-reading);
   line-height: var(--leading-reading);
-  color: var(--color-foreground);
+  color: var(--color-body);
   font-variant-numeric: lining-nums tabular-nums;
   hanging-punctuation: first last;
 }
 
 .prose > * + * {
-  margin-top: 1.15em;
+  margin-top: var(--prose-flow-block, 1.15em);
 }
 
 /* --- Headings ------------------------------------------------------------ */
@@ -50,17 +53,29 @@
 }
 
 .prose h1 {
-  font-size: 2.074em;
-  line-height: 1.15;
-  font-weight: 600;
-  letter-spacing: -0.022em;
+  font-size: var(--prose-h1-size, 2.074em);
+  line-height: var(--prose-h1-leading, 1.15);
+  font-weight: var(--prose-h1-weight, 600);
+  letter-spacing: var(--prose-h1-tracking, -0.022em);
+}
+
+/*
+ * On a phone a display-sized title wraps a word to a line, so it gives way to
+ * at most 1.8 times the body (27px over a 15px body), whatever the theme's
+ * own size is.
+ */
+@media (width < 32.5rem) {
+  .prose h1 {
+    font-size: min(var(--prose-h1-size, 2.074em), 1.8em);
+    line-height: 1.185;
+  }
 }
 
 .prose h2 {
-  font-size: 1.33em;
-  line-height: 1.25;
-  font-weight: 600;
-  letter-spacing: -0.014em;
+  font-size: var(--prose-h2-size, 1.33em);
+  line-height: var(--prose-h2-leading, 1.25);
+  font-weight: var(--prose-h2-weight, 600);
+  letter-spacing: var(--prose-h2-tracking, -0.014em);
 }
 
 /*
@@ -71,43 +86,68 @@
  *             something addressable rather than as a bigger sentence
  *   double    the printed double rule under the heading
  *   cards     nothing: the card around the section is the separation
+ *   plain     nothing at all: the space above the heading is the separation
  *
- * All three are generated content or a border, so none of them reaches a
- * screen reader, and the heading text is unchanged in every one.
+ * Generated content *is* read by screen readers and joins the heading's name
+ * computed from its content, so the hairline's hash carries an empty
+ * alternative (`content: '#' / ''`) and is drawn, never spoken; the others
+ * are borders, which are never read. The heading text is unchanged in every one.
+ *
+ * The attribute is matched on the prose element itself as well as on an
+ * ancestor: the reading view sets it on the shell, the public site on the
+ * article, and a treatment that only matched one of them would quietly be
+ * missing from the other.
  */
-[data-rules='hairline'] .prose h2::before {
-  content: '#';
+[data-rules='hairline'] .prose h2::before,
+.prose[data-rules='hairline'] h2::before {
+  content: '#' / '';
   font-family: var(--font-mono);
   font-weight: 400;
   color: var(--color-border-strong);
   margin-inline-end: 0.4em;
 }
 
-[data-rules='double'] .prose h2 {
+/*
+ * The hash is the public site's cue that a section is addressable. In the application it is
+ * not wanted anywhere: on the writing surface it reads as Markdown that has lost a character,
+ * on the reading page it is decoration beside a heading that already has its own link, and a
+ * slide is a heading on its own. So the shell and the presentation do not draw it, whatever the
+ * theme says; the public site, which is not the shell, keeps it.
+ */
+[data-rules].document-shell .prose h2::before,
+[data-rules] .present-step .prose h2::before,
+[data-surface='present'] .prose h2::before {
+  content: none;
+}
+
+[data-rules='double'] .prose h2,
+.prose[data-rules='double'] h2 {
   border-bottom: 3px double var(--color-foreground);
   padding-bottom: 0.25em;
 }
 
 .prose h3 {
-  font-size: 1.14em;
-  line-height: 1.35;
-  font-weight: 600;
-  letter-spacing: -0.01em;
+  font-size: var(--prose-h3-size, 1.14em);
+  line-height: var(--prose-h3-leading, 1.35);
+  font-weight: var(--prose-h3-weight, 600);
+  letter-spacing: var(--prose-h3-tracking, -0.01em);
 }
 
-.prose h4 {
-  font-size: 1em;
-  line-height: 1.45;
-  font-weight: 600;
-  letter-spacing: 0;
+.prose h4,
+.prose h5,
+.prose h6 {
+  font-size: var(--prose-h4-size, 1em);
+  line-height: var(--prose-h4-leading, 1.45);
+  font-weight: var(--prose-h4-weight, 600);
+  letter-spacing: var(--prose-h4-tracking, 0);
 }
 
 .prose > * + h2 {
-  margin-top: 2.6em;
+  margin-top: var(--prose-h2-space, 2.6em);
 }
 
 .prose > * + h3 {
-  margin-top: 2em;
+  margin-top: var(--prose-h3-space, 2em);
 }
 
 .prose > * + h4 {
@@ -115,11 +155,14 @@
 }
 
 /* A heading and the block it introduces belong together. */
-.prose > h1 + *,
 .prose > h2 + *,
 .prose > h3 + *,
 .prose > h4 + * {
-  margin-top: 0.75em;
+  margin-top: var(--prose-flow-after-heading, 0.75em);
+}
+
+.prose > h1 + * {
+  margin-top: var(--prose-flow-after-title, 0.75em);
 }
 
 .prose > h1 {
@@ -127,9 +170,9 @@
 }
 
 .prose > h1 + p {
-  font-size: 1.1em;
-  color: var(--color-muted);
-  line-height: 1.6;
+  font-size: var(--prose-lede-size, 1.1em);
+  color: var(--color-body);
+  line-height: var(--prose-lede-leading, 1.6);
 }
 
 /* Front matter: type, review cadence, last review. Facts, so monospace. */
@@ -145,18 +188,24 @@
 
 /*
  * Every heading the Markdown renderer emits ends with a permalink anchor
- * (`<a class="heading-anchor" aria-label="Permalink: …">#</a>`), so a section
- * can be linked to. It is always in the layout and never announced as
- * decoration — a screen reader meets it by its label — but it only *shows*
+ * (`<a class="heading-anchor" aria-label="Link to this section: …">`), so a
+ * section can be linked to. The heading is named by its words alone
+ * (`aria-labelledby`), and the anchor's hash is hidden from assistive
+ * technology: a screen reader meets the link by its label. It only *shows*
  * when the heading is hovered or the anchor itself is focused, because a
  * column of hashes down the margin is furniture, not content. Opacity rather
  * than `display`, so nothing reflows when it appears.
+ *
+ * The hash is a glyph of the text face at 0.8 em, so it is held to text
+ * contrast (WCAG 1.4.3, 4.5:1), not the 3:1 of an icon: `--color-muted` is
+ * 5.07:1 on the light page and 6.63:1 on the dark, where the border colour
+ * it used to borrow was 3.33:1.
  */
 .prose .heading-anchor {
   font-family: var(--font-mono);
   font-weight: 400;
   font-size: 0.8em;
-  color: var(--color-border-strong);
+  color: var(--color-muted);
   text-decoration: none;
   margin-inline-start: 0.4em;
   opacity: 0;
@@ -189,11 +238,11 @@
  * carried by more than colour either way.
  */
 .prose a {
-  color: var(--color-foreground);
+  color: var(--prose-link-colour, var(--color-foreground));
   text-decoration: underline;
-  text-decoration-color: var(--color-border-strong);
-  text-decoration-thickness: from-font;
-  text-underline-offset: 0.16em;
+  text-decoration-color: var(--prose-link-decoration, var(--color-border-strong));
+  text-decoration-thickness: var(--prose-link-thickness, from-font);
+  text-underline-offset: var(--prose-link-offset, 0.16em);
   transition:
     color var(--duration-fast) var(--ease-standard),
     text-decoration-color var(--duration-fast) var(--ease-standard);
@@ -202,10 +251,12 @@
 .prose a:hover {
   color: var(--color-accent);
   text-decoration-color: var(--color-accent);
+  text-decoration-thickness: var(--prose-link-thickness-hover, from-font);
 }
 
 .prose strong {
   font-weight: 600;
+  color: var(--color-foreground);
 }
 
 .prose abbr[title] {
@@ -267,6 +318,96 @@
   margin-top: 0.4em;
 }
 
+/*
+ * A task list (`- [x] Done`): the checkbox is the item's marker, so the
+ * bullet goes and the box sits where the bullet was, its text hanging clear
+ * of it. The box is the reader's view of a state, never a control (the
+ * renderer emits it disabled), so it is drawn in the theme's own colours.
+ */
+.prose ul.contains-task-list {
+  list-style: none;
+  padding-inline-start: 0;
+}
+
+.prose .task-list-item {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  column-gap: 0.65em;
+  align-items: start;
+}
+
+/*
+ * The box is a fixed square in `em`, centred on the first line of its text
+ * (`lh` is that line's height), so it sits level with the words at any size
+ * and in any theme. Its corner is its own, not the theme's radius scale: a
+ * theme whose small radius is generous would otherwise turn it into a circle,
+ * which reads as a radio button.
+ */
+.prose .task-list-item > input[type='checkbox'] {
+  --task-box: 1.125em;
+  /*
+   * A form control does not inherit the text's font unless told to, and both
+   * `em` and `lh` below are measured from its own: without this the box is
+   * sized and centred against the browser's control font, not the item's.
+   */
+  font: inherit;
+  appearance: none;
+  display: grid;
+  place-items: center;
+  width: var(--task-box);
+  height: var(--task-box);
+  margin: calc((1lh - var(--task-box)) / 2) 0 0;
+  border: 1.5px solid var(--color-border-strong);
+  border-radius: 0.3em;
+  background-color: var(--color-surface-raised);
+}
+
+.prose .task-list-item > input[type='checkbox']:checked {
+  border-color: var(--color-accent);
+  background-color: var(--color-accent);
+}
+
+/*
+ * The tick: a shape masked out of the accent's own foreground, centred by the
+ * grid, so it is exactly in the middle and always reads against the fill.
+ */
+.prose .task-list-item > input[type='checkbox']:checked::before {
+  content: '';
+  width: 72%;
+  height: 72%;
+  background-color: var(--color-accent-foreground);
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M3.5 8.25l3 3 6-6.5' fill='none' stroke='black' stroke-width='2.25' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E")
+    center / contain no-repeat;
+}
+
+/*
+ * Forced colours remove both the fill and the masked tick (each a background),
+ * so a checked box would draw exactly as an empty one. The box keeps a system
+ * border, and a checked one is filled with `Highlight` and ticked in
+ * `HighlightText`, drawn as they are rather than overridden.
+ */
+@media (forced-colors: active) {
+  .prose .task-list-item > input[type='checkbox'] {
+    border-color: CanvasText;
+  }
+
+  .prose .task-list-item > input[type='checkbox']:checked {
+    forced-color-adjust: none;
+    border-color: Highlight;
+    background-color: Highlight;
+  }
+
+  .prose .task-list-item > input[type='checkbox']:checked::before {
+    forced-color-adjust: none;
+    background-color: HighlightText;
+  }
+}
+
+/* A nested list belongs to the item's text column, under the words, not the box. */
+.prose .task-list-item > :is(ul, ol, p) {
+  grid-column: 2;
+}
+
 .prose dl {
   display: grid;
   grid-template-columns: minmax(0, auto) minmax(0, 1fr);
@@ -305,17 +446,44 @@
 
 .prose code {
   font-family: var(--font-mono);
-  font-size: 0.85em;
+  /* A monospace face sits small beside the reading face at the same size, so it is a step up. */
+  font-size: 0.875em;
   font-variant-ligatures: none;
 }
 
+/*
+ * Inline code, as a chip.
+ *
+ * It is set in full ink where the text around it is the middle one, on the code ground and
+ * inside a hairline, so it is plain without colour that it is a literal thing to type or
+ * to find, and it reads the same in a heading, a list, a quote and a callout. The radius is
+ * in `em`, so a chip in a heading is rounded as much as one in a paragraph. Wrapped, each
+ * line is a chip of its own, with both of its ends (`clone`), rather than one box cut in
+ * two with a seam where it broke.
+ *
+ * A link's own colour is the link's, and code in one keeps it: it is the link that says
+ * what it is.
+ */
 .prose :not(pre) > code {
   background-color: var(--color-code-background);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-sm);
-  padding: 0.1em 0.35em;
+  border: 1px solid color-mix(in oklab, var(--color-border) 75%, transparent);
+  border-radius: 0.35em;
+  padding: 0.08em 0.4em;
+  color: var(--color-foreground);
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
   /* A long identifier wraps rather than pushing the measure out on a phone. */
   overflow-wrap: break-word;
+}
+
+.prose a :not(pre) > code,
+.prose a > code {
+  color: inherit;
+}
+
+/* A heading is bold; the chip in it is a weight lighter, or it shouts over the words it explains. */
+.prose :is(h1, h2, h3, h4, h5, h6) > code {
+  font-weight: 500;
 }
 
 .prose pre {
@@ -330,65 +498,550 @@
 }
 
 .prose pre code {
-  font-size: var(--text-xs);
+  font-size: var(--prose-code-size, var(--text-xs));
   white-space: pre;
 }
 
 /*
- * A code block scrolls, so it must be reachable without a pointer. The
- * Markdown renderer gives every `pre` a tabindex; this is the ring it gets.
+ * A code block or a drawing that scrolls sideways must be reachable without a
+ * pointer (WCAG 2.1.1). The reader script makes one a tab stop while, and
+ * only while, it overflows (`reader/scroll-regions.ts`); this is the ring it
+ * gets.
  */
-.prose pre:focus-visible {
+.prose pre:focus-visible,
+.prose .diagram:focus-visible {
   outline: 2px solid var(--color-focus-ring);
   outline-offset: 2px;
+}
+
+/* --- Code blocks and code groups (ADR-041) ------------------------------- */
+
+/*
+ * Every fenced block is a card: the card is the surface, and the `pre`
+ * inside it only scrolls. A block can be captioned with the file it belongs
+ * in (`title="app.ts"`), and the reader script gives every card a copy
+ * button in its top corner (`code-blocks.ts`).
+ */
+.prose .code-block {
+  position: relative;
+  min-width: 0;
+  background-color: var(--color-code-background);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+}
+
+.prose .code-block > pre {
+  /*
+   * The block's own size is its code's, so each line's height is the code's
+   * too: a `pre` at the text size around smaller code sets every line at the
+   * larger height, which projected text (presentation mode) makes double-spaced.
+   */
+  font-size: var(--prose-code-size, var(--text-xs));
+  margin: 0;
+  border: 0;
+  border-radius: inherit;
+  background-color: transparent;
+}
+
+.prose .code-block > pre:focus-visible {
+  outline-offset: -2px;
+}
+
+.prose .code-caption {
+  display: flex;
+  align-items: baseline;
+  gap: 0.75rem;
+  min-width: 0;
+  margin: 0;
+  /* Room on the right for the copy button that sits over the caption. */
+  padding: 0.5rem 3rem 0.5rem 1rem;
+  border-bottom: 1px solid var(--color-border);
+  font-family: var(--font-sans);
+  font-size: 0.75rem;
+  line-height: 1.4;
+  color: var(--color-muted);
+}
+
+.prose .code-caption[hidden] {
+  display: none;
+}
+
+.prose .code-label {
+  flex: none;
+  font-weight: 600;
+  color: var(--color-foreground);
+  white-space: nowrap;
+}
+
+.prose .code-title {
+  min-width: 0;
+  overflow: hidden;
+  font-family: var(--font-mono);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/*
+ * A code group without script: its panels stacked, each its own card under
+ * its tab's name, so nothing is hidden from a reader who cannot run it.
+ */
+.prose .code-group {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0.75rem;
+  min-width: 0;
+}
+
+/*
+ * With script, one card: a compact strip of tabs, the chosen one marked by
+ * weight, colour and an accent underline, and the panel on show beneath.
+ */
+.prose .code-group[data-enhanced='true'] {
+  gap: 0;
+  background-color: var(--color-code-background);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+}
+
+/* A panel is a grid item: without this, a long line widens the card past the page. */
+.prose .code-group > .code-panel {
+  min-width: 0;
+}
+
+.prose .code-group[data-enhanced='true'] > .code-panel[hidden] {
+  display: none;
+}
+
+.prose .code-group[data-enhanced='true'] > .code-panel:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: -2px;
+  border-radius: 0 0 var(--radius-md) var(--radius-md);
+}
+
+.prose .code-group[data-enhanced='true'] > .code-panel > .code-block {
+  border: 0;
+  border-radius: 0 0 var(--radius-md) var(--radius-md);
+  background-color: transparent;
+}
+
+.prose .code-group[data-enhanced='true'] .code-label {
+  display: none;
+}
+
+.prose .code-group[data-enhanced='true'] .code-caption {
+  padding-inline-end: 1rem;
+}
+
+.code-group-header {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  min-width: 0;
+  padding-inline-end: 0.375rem;
+  border-bottom: 1px solid var(--color-border);
+}
+
+/*
+ * Many tabs scroll sideways, on the page's own thin, blended scrollbar, and
+ * never down: a label does not wrap. An end with tabs out of sight fades
+ * (`data-overflow`, set by the reader script), so the reader sees there is
+ * more.
+ */
+.code-tabs {
+  display: flex;
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior-x: contain;
+  scrollbar-width: thin;
+}
+
+.code-tabs[data-overflow='end'] {
+  mask-image: linear-gradient(to right, #000 calc(100% - 2.5rem), transparent);
+}
+
+.code-tabs[data-overflow='start'] {
+  mask-image: linear-gradient(to left, #000 calc(100% - 2.5rem), transparent);
+}
+
+.code-tabs[data-overflow='start end'] {
+  mask-image: linear-gradient(
+    to right,
+    transparent,
+    #000 2.5rem,
+    #000 calc(100% - 2.5rem),
+    transparent
+  );
+}
+
+.code-tab {
+  position: relative;
+  display: inline-flex;
+  flex: none;
+  flex-direction: column;
+  align-items: center;
+  margin: 0;
+  padding: 0.625rem 0.875rem;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  font-family: var(--font-sans);
+  font-size: 0.8125rem;
+  font-weight: 500;
+  line-height: 1.2;
+  color: var(--color-muted);
+  white-space: nowrap;
+  cursor: pointer;
+  transition: color var(--duration-fast, 120ms) var(--ease-standard, ease);
+}
+
+/* The chosen tab is bolder; the width it will need is kept for it, so choosing never shifts the strip. */
+.code-tab::before {
+  content: attr(data-label);
+  height: 0;
+  overflow: hidden;
+  font-weight: 600;
+  visibility: hidden;
+}
+
+.code-tab:hover {
+  color: var(--color-foreground);
+}
+
+.code-tab[aria-selected='true'] {
+  font-weight: 600;
+  color: var(--color-foreground);
+}
+
+.code-tab[aria-selected='true']::after {
+  content: '';
+  position: absolute;
+  inset-inline: 0.875rem;
+  bottom: 0;
+  height: 2px;
+  border-radius: 2px 2px 0 0;
+  background-color: var(--color-accent);
+}
+
+/*
+ * Forced colours remove the bar (a background) and the colour change, which
+ * left eight identical labels. The chosen tab is drawn as the system draws a
+ * selection: `Highlight` behind `HighlightText`, with the bar kept as a border.
+ */
+@media (forced-colors: active) {
+  .code-tab[aria-selected='true'] {
+    forced-color-adjust: none;
+    background-color: Highlight;
+    color: HighlightText;
+  }
+
+  .code-tab[aria-selected='true']::after {
+    background-color: transparent;
+    border-block-end: 2px solid HighlightText;
+  }
+}
+
+/* Inset, because the strip scrolls and would clip a ring drawn outside it. */
+.code-tab:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: -2px;
+  border-radius: var(--radius-sm);
+}
+
+/*
+ * The copy button: an icon in the card's top corner, shown on hover and
+ * focus and always on a touch screen, with words beside it only when it has
+ * something to say ("Copied", "Copy selection").
+ */
+.code-copy {
+  position: absolute;
+  top: 0.375rem;
+  right: 0.375rem;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  height: 1.75rem;
+  min-width: 1.75rem;
+  margin: 0;
+  padding: 0 0.375rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background-color: color-mix(in oklch, var(--color-surface-raised) 85%, transparent);
+  backdrop-filter: blur(6px);
+  font-family: var(--font-sans);
+  font-size: 0.75rem;
+  font-weight: 500;
+  line-height: 1;
+  color: var(--color-muted);
+  white-space: nowrap;
+  cursor: pointer;
+  opacity: 0;
+  transition:
+    opacity var(--duration-fast, 120ms) var(--ease-standard, ease),
+    color var(--duration-fast, 120ms) var(--ease-standard, ease);
+}
+
+.code-copy-glyph {
+  display: grid;
+  flex: none;
+  place-items: center;
+}
+
+.code-copy .code-copy-icon {
+  display: block;
+  width: 1rem;
+  height: 1rem;
+  border-radius: 0;
+}
+
+.code-copy-text {
+  display: none;
+}
+
+.code-copy:is([data-state='copied'], [data-state='failed'], [data-mode='selection'])
+  .code-copy-text {
+  display: inline;
+}
+
+:is(.code-block, .diagram, .code-group):is(:hover, :focus-within) .code-copy,
+.code-copy:is(
+  :focus-visible,
+  [data-state='copied'],
+  [data-state='failed'],
+  [data-mode='selection']
+) {
+  opacity: 1;
+}
+
+.code-copy:hover {
+  color: var(--color-foreground);
+}
+
+.code-copy[data-state='copied'] {
+  color: var(--color-success);
+}
+
+.code-copy:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 2px;
+}
+
+@media (hover: none) {
+  .code-copy {
+    opacity: 1;
+  }
+}
+
+/* In a strip — a group's tabs, the editor's caption — the button sits in line. */
+:is(.code-group-header, .code-block-toolbar) > .code-copy {
+  position: static;
+  flex: none;
+}
+
+/* A drawn diagram's source is hidden, and so is the button that copies it. */
+.prose .diagram[data-state='drawn'] > .code-copy {
+  display: none;
+}
+
+/* The live region copying speaks through: present to a screen reader, absent from the page. */
+.code-copy-status {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .code-tab,
+  .code-copy {
+    transition: none;
+  }
 }
 
 /* --- Tables -------------------------------------------------------------- */
 
 /*
- * A table is always inside a scroll container, at whatever width its block
- * was given; `wide` and `full` simply give the columns room before scrolling
- * is needed. The container is focusable so a keyboard user can scroll it.
+ * A table is a block (ADR-040): `.table-block` is the card and the grid item,
+ * and inside it `.table-scroll` scrolls a table wider than its column
+ * sideways, at whatever width the block was given; `wide` and `full` simply
+ * give the columns room before scrolling is needed. The scroller is
+ * focusable so a keyboard user can scroll it; its ring is drawn on the card.
+ *
+ * The card rounds its corners with `overflow: clip`, never `hidden`: clip
+ * does not make it a scroll container, so the header the reader script
+ * hangs in it (`.table-sticky-head`) still sticks to the page. A body
+ * rendered before render version 6 has no block, and its scroller is the card.
  */
-.table-scroll {
+.table-block,
+.table-scroll:not(.table-block > .table-scroll) {
   background-color: var(--color-surface-raised);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-lg);
 }
 
+.table-block {
+  position: relative;
+  overflow: clip;
+  container: table / inline-size;
+  timeline-scope: --table-x;
+  /* The theme's own shadow, dark in both schemes, so the edge reads as depth, never as a glow. */
+  --table-shadow: var(
+    --palette-shadow-ambient,
+    color-mix(in oklch, var(--color-foreground) 14%, transparent)
+  );
+}
+
+.table-scroll {
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scroll-timeline: --table-x inline;
+}
+
+.table-scroll:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 2px;
+}
+
+.table-block > .table-scroll:focus-visible {
+  outline: none;
+}
+
+.table-block:has(> .table-scroll:focus-visible) {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 2px;
+}
+
+/*
+ * `separate` with no spacing draws exactly what `collapse` did with these
+ * bottom-only rules, and lets a sticky first column keep its own edge:
+ * collapsed borders belong to the table and stay behind when a cell sticks.
+ */
 .prose table {
   width: 100%;
-  border-collapse: collapse;
+  border-collapse: separate;
+  border-spacing: 0;
   font-family: var(--font-sans);
-  font-size: 0.88rem;
-  line-height: 1.5;
+  font-size: var(--prose-table-size, 0.88rem);
+  line-height: var(--prose-table-leading, 1.5);
   font-variant-numeric: lining-nums tabular-nums;
 }
 
+/*
+ * Proportional columns (`columns="2fr 3fr 1fr"`) are honoured exactly where
+ * there is room, and become hints on a narrow screen, where the table lays
+ * itself out from its content and scrolls.
+ */
+.prose table:has(> colgroup) {
+  table-layout: fixed;
+}
+
+@container table (width < 40rem) {
+  .prose .table-block table:has(> colgroup) {
+    table-layout: auto;
+  }
+}
+
+/*
+ * A header cell's surface, one definition for both kinds (ADR-040): the
+ * column headers in the header row and the row headers down the first column
+ * share their tint and their rule, so the two can never drift apart. Each
+ * `rules` treatment sets these once; the row header's rule is on its inline
+ * end, the column header's under it. Their type is their own: a column
+ * header is a quiet label, a row header names its row in the ink.
+ */
+.prose {
+  --table-header-bg: var(--color-surface);
+  --table-header-weight: 400;
+  --table-header-rule: 1px solid var(--color-border-strong);
+}
+
+/* The printed treatment keeps the printed rule: a full-weight line under the head. */
+:is([data-rules='double'] .prose, .prose[data-rules='double']) {
+  --table-header-rule: 2px solid var(--color-foreground);
+}
+
+:is(
+  [data-rules='plain'] .prose,
+  .prose[data-rules='plain'],
+  [data-rules='cards'] .prose,
+  .prose[data-rules='cards']
+) {
+  --table-header-weight: 500;
+  --table-header-rule: 1px solid var(--color-border);
+}
+
+.prose :is(thead th, :is(tbody, tfoot) th[scope='row']) {
+  background-color: var(--table-header-bg);
+}
+
 .prose thead th {
+  color: var(--color-muted);
+  font-weight: var(--table-header-weight);
   font-family: var(--font-mono);
   font-size: var(--text-2xs);
-  font-weight: 400;
   letter-spacing: var(--tracking-caps);
   text-transform: uppercase;
   text-align: start;
-  color: var(--color-muted);
-  background-color: var(--color-surface);
   white-space: nowrap;
-  padding: 0.5rem 0.9rem;
-  border-bottom: 2px solid var(--color-foreground);
+  padding: 0.5625rem 0.75rem;
+  border-bottom: var(--table-header-rule);
+}
+
+/* A row header's rule separates the header column from the data; so does the corner's. */
+.prose :is(tbody, tfoot) th[scope='row'],
+.table-block:is([data-headers='both'], [data-headers='row']) thead th:first-child {
+  border-inline-end: var(--table-header-rule);
 }
 
 .prose th,
 .prose td {
-  padding: 0.45rem 0.9rem;
+  padding: 0.5625rem 0.75rem;
   border-bottom: 1px solid var(--color-border);
   vertical-align: top;
 }
 
-.prose tbody th {
+.prose :is(tbody, tfoot) th {
   text-align: start;
   font-weight: 500;
+  color: var(--color-foreground);
+}
+
+/*
+ * Under plain space and cards the table loses its ruled, technical header
+ * too: the column names are quiet sans labels on the surface, and the first
+ * column is set in the ink, as a heading for its row. That is a look, and
+ * says nothing to a screen reader: a first column that really heads its
+ * rows is written `headers=row` or `headers=both`, and is a `th`.
+ * Hairlines keep the monospace capitals, which are that treatment's voice.
+ */
+:is(
+    [data-rules='plain'] .prose,
+    .prose[data-rules='plain'],
+    [data-rules='cards'] .prose,
+    .prose[data-rules='cards']
+  )
+  thead
+  th {
+  font-family: var(--font-sans);
+  font-size: 0.8125rem;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+:is(
+    [data-rules='plain'] .prose,
+    .prose[data-rules='plain'],
+    [data-rules='cards'] .prose,
+    .prose[data-rules='cards']
+  )
+  tbody
+  td:first-child {
+  color: var(--color-foreground);
+  font-weight: 600;
 }
 
 .prose td code,
@@ -403,18 +1056,679 @@
   border-bottom: 0;
 }
 
+/*
+ * A table's caption (ADR-040) is its name, and sits above it, as a data
+ * table's title reads; `caption=bottom` sets it below as a quieter note. Its
+ * words are held at the card's left edge while a wide table scrolls under
+ * them.
+ */
 .prose caption {
-  caption-side: bottom;
-  padding-top: 0.7rem;
+  caption-side: top;
+  padding: 0.6875rem 0 0.5rem;
   font-family: var(--font-sans);
-  font-size: var(--text-xs);
-  color: var(--color-muted);
+  font-size: 0.875rem;
+  font-weight: 600;
+  line-height: 1.4;
+  color: var(--color-foreground);
   text-align: start;
+}
+
+.table-block[data-caption='bottom'] caption {
+  caption-side: bottom;
+  padding: 0.5rem 0 0.6875rem;
+  border-top: 1px solid var(--color-border);
+  font-size: var(--text-xs);
+  font-weight: 400;
+  color: var(--color-muted);
+}
+
+.prose .table-caption-text {
+  position: sticky;
+  inset-inline-start: 0;
+  display: inline-block;
+  max-inline-size: 100cqi;
+  padding-inline: 0.75rem;
+  box-sizing: border-box;
+}
+
+.prose .table-caption-text > p {
+  margin: 0;
+}
+
+/*
+ * A footer (`footer=N`): totals under a stronger rule, in the header's tone
+ * on its surface, numbers still aligned in tabular figures.
+ */
+.prose tfoot :is(th, td) {
+  border-top: 2px solid var(--color-border-strong);
+  border-bottom: 0;
+  background-color: var(--color-surface);
+  color: var(--color-foreground);
+  font-weight: 600;
+}
+
+.prose tfoot tr + tr :is(th, td) {
+  border-top-width: 1px;
+  border-top-color: var(--color-border);
+}
+
+/*
+ * A row header (`headers=row|both`) is a header cell (above) that keeps room
+ * for a name: frozen at the left, it is what a reader holds on to while the
+ * rest scrolls, so it is never squeezed to a word a line.
+ */
+.prose :is(tbody, tfoot) th[scope='row'] {
+  min-width: min(9rem, 35cqi);
+  color: var(--color-foreground);
+  font-weight: 600;
+}
+
+/* Alignment: the author's, from the delimiter row, or a column of numbers. */
+.prose :is(th, td).align-left {
+  text-align: start;
+}
+
+.prose :is(th, td).align-center {
+  text-align: center;
+}
+
+.prose :is(th, td):is(.align-right, .align-numeric) {
+  text-align: end;
+}
+
+/*
+ * Column shapes, decided by the renderer (`table-columns.ts`). Numbers line
+ * up in tabular figures; numbers, dates and identifiers never break across
+ * lines; running text gets room to read before the table scrolls instead of
+ * being squeezed to a word a line.
+ */
+.prose :is(th, td).align-numeric {
+  font-variant-numeric: lining-nums tabular-nums;
+  white-space: nowrap;
+}
+
+.prose :is(th, td).column-nowrap {
+  white-space: nowrap;
+}
+
+.prose td.column-long {
+  min-width: min(18rem, 70cqi);
+}
+
+/*
+ * Sorting (`tables.ts`). The header's own text is the button, so the column
+ * name is what a reader clicks and what a screen reader names; the arrows
+ * are faint until hovered, and the sorted direction is drawn solid.
+ */
+.prose .table-sort {
+  display: inline-flex;
+  /* The arrows have no baseline of their own; without this a reversed
+     button sits lower than its neighbours. */
+  vertical-align: top;
+  align-items: center;
+  gap: 0.4em;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: inherit;
+  font: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+  text-align: inherit;
+  cursor: pointer;
+}
+
+.prose :is(th.align-right, th.align-numeric) .table-sort {
+  flex-direction: row-reverse;
+}
+
+.prose .table-sort:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 2px;
+}
+
+.prose .table-sort-icon {
+  display: inline-grid;
+  gap: 0.125rem;
+  flex: none;
+}
+
+.prose .table-sort-icon::before,
+.prose .table-sort-icon::after {
+  content: '';
+  border-inline: 0.22rem solid transparent;
+  /* At rest the arrows still reach 3:1 against the header (WCAG 1.4.11). */
+  opacity: 0.75;
+  transition: opacity var(--duration-fast, 120ms) var(--ease-standard, ease);
+}
+
+.prose .table-sort-icon::before {
+  border-block-end: 0.26rem solid currentColor;
+}
+
+.prose .table-sort-icon::after {
+  border-block-start: 0.26rem solid currentColor;
+}
+
+.prose .table-sort:hover .table-sort-icon::before,
+.prose .table-sort:hover .table-sort-icon::after {
+  opacity: 1;
+}
+
+/* A header holding a link keeps it, and its sort button sits beside it. */
+.prose .table-sort-beside {
+  margin-inline-start: 0.35em;
+  padding: 0.125rem;
+  vertical-align: middle;
+}
+
+/*
+ * Under forced colours the arrows keep their shape, in the system's text
+ * colour, so the sorted direction can still be told; and a frozen column
+ * keeps its edge as a real border, which a shadow is not.
+ */
+@media (forced-colors: active) {
+  .prose .table-sort-icon {
+    forced-color-adjust: none;
+    color: CanvasText;
+  }
+
+  .prose th[aria-sort='ascending'] .table-sort-icon::after,
+  .prose th[aria-sort='descending'] .table-sort-icon::before {
+    opacity: 0;
+  }
+
+  .table-block :is(th, td):first-child {
+    border-inline-end: 1px solid CanvasText;
+  }
+}
+
+.prose th[aria-sort] {
+  color: var(--color-foreground);
+}
+
+.prose th[aria-sort='ascending'] .table-sort-icon::before,
+.prose th[aria-sort='descending'] .table-sort-icon::after {
+  opacity: 1;
+}
+
+.prose th[aria-sort='ascending'] .table-sort-icon::after,
+.prose th[aria-sort='descending'] .table-sort-icon::before {
+  opacity: 0.15;
+}
+
+/* The polite live region a sort is announced in: heard, never seen. */
+.table-announcement {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/*
+ * A frozen first column stays put while the rest scrolls under it. Sticky
+ * inside the scroller works, because that is the axis the scroller
+ * scrolls. It is frozen when the author says so (`freeze=first-column`),
+ * when the first column heads the rows (`headers=row|both`, unless
+ * `freeze=none`), and by default on a narrow table. The top-left cell sits
+ * above both the frozen column and the header row, in the header's tone.
+ */
+.table-block:is(
+    [data-freeze~='first-column'],
+    [data-headers='row']:not([data-freeze='none']),
+    [data-headers='both']:not([data-freeze='none'])
+  )
+  :is(th, td):first-child {
+  position: sticky;
+  inset-inline-start: 0;
+  z-index: 1;
+}
+
+.table-block:is(
+    [data-freeze~='first-column'],
+    [data-headers='row']:not([data-freeze='none']),
+    [data-headers='both']:not([data-freeze='none'])
+  )
+  td:first-child {
+  box-shadow: inset -1px 0 var(--color-border);
+}
+
+.table-block:is(
+    [data-freeze~='first-column'],
+    [data-headers='row']:not([data-freeze='none']),
+    [data-headers='both']:not([data-freeze='none'])
+  )
+  tbody
+  td:first-child {
+  background-color: var(--color-surface-raised);
+}
+
+@container table (width < 40rem) {
+  .table-block:not([data-freeze]) :is(th, td):first-child {
+    position: sticky;
+    inset-inline-start: 0;
+    z-index: 1;
+  }
+
+  .table-block:not([data-freeze]) :is(thead th:not([scope='row']), td):first-child {
+    box-shadow: inset -1px 0 var(--color-border);
+  }
+
+  .table-block:not([data-freeze]):not([data-headers]) thead th:first-child {
+    box-shadow: inset -1px 0 var(--color-border);
+  }
+
+  .table-block:not([data-freeze]) tbody td:first-child {
+    background-color: var(--color-surface-raised);
+  }
+}
+
+/*
+ * The corner cells, top-left and bottom-left: above the frozen column and the
+ * header or footer row they sit in, where both stick (the full-screen viewer).
+ */
+.table-block:is(
+    [data-freeze~='first-column'],
+    [data-headers='row']:not([data-freeze='none']),
+    [data-headers='both']:not([data-freeze='none'])
+  )
+  :is(thead, tfoot)
+  :is(th, td):first-child {
+  z-index: 3;
+}
+
+@container table (width < 40rem) {
+  .table-block:not([data-freeze]) :is(thead, tfoot) :is(th, td):first-child {
+    z-index: 3;
+  }
+}
+
+/*
+ * The shadows that say there is more to either side, drawn from the
+ * scroller's own scroll position where the browser has scroll-driven
+ * animations, and from the reader script's `data-overflow-*` otherwise. The
+ * start shadow falls at the frozen column's edge when there is one
+ * (`--table-frozen-width`, measured by the reader script).
+ */
+.table-block::before,
+.table-block::after {
+  content: '';
+  position: absolute;
+  inset-block: 0;
+  z-index: 5;
+  width: 1.25rem;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity var(--duration-fast, 120ms) var(--ease-standard, ease);
+}
+
+.table-block::before {
+  inset-inline-start: var(--table-frozen-width, 0px);
+  background: linear-gradient(to right, var(--table-shadow), transparent);
+}
+
+.table-block::after {
+  inset-inline-end: 0;
+  background: linear-gradient(to left, var(--table-shadow), transparent);
+}
+
+.table-block[data-overflow-start]::before,
+.table-block[data-overflow-end]::after {
+  opacity: 1;
+}
+
+@supports (animation-timeline: scroll()) {
+  .table-block::before {
+    animation: table-overflow-start linear both;
+    animation-timeline: --table-x;
+  }
+
+  .table-block::after {
+    animation: table-overflow-end linear both;
+    animation-timeline: --table-x;
+  }
+}
+
+@keyframes table-overflow-start {
+  from {
+    opacity: 0;
+  }
+
+  6%,
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes table-overflow-end {
+  from,
+  94% {
+    opacity: 1;
+  }
+
+  to {
+    opacity: 0;
+  }
+}
+
+/*
+ * The hanging header and footer (`tables.ts` says why they are copies).
+ * Strips of no height at the top and the foot of the block, sticky to the
+ * page inside its own sticky chrome (`--sticky-chrome-top`, the application
+ * bar or the site header; `--sticky-chrome-bottom`, a phone's safe area);
+ * each copy hangs out of its strip over the rows, clipped sideways to the
+ * scroller's width and moved with it. Shown only while the real rows have
+ * scrolled out of view; the block's `overflow: clip` cuts them off at the
+ * table's ends.
+ */
+:is(.table-sticky-head, .table-sticky-bottom) {
+  position: sticky;
+  z-index: 4;
+  height: 0;
+}
+
+.table-sticky-head {
+  inset-block-start: var(--sticky-chrome-top, 0px);
+  visibility: hidden;
+}
+
+/* Presentation mode has no bar above its slides. */
+[data-surface='present'] {
+  --sticky-chrome-top: 0px;
+}
+
+.table-block[data-sticky-head][data-stuck] > .table-sticky-head {
+  visibility: visible;
+}
+
+.table-sticky-clip {
+  overflow: hidden;
+  background-color: var(--color-surface);
+  box-shadow: 0 8px 12px -10px var(--table-shadow);
+}
+
+/*
+ * The foot of the block: a strip stuck above the bottom chrome, holding the
+ * pinned scrollbar and, under it, the footer's copy. The scrollbar is a thin
+ * proxy scroller kept level with the table's own (`tables.ts`), shown only
+ * while the table overflows sideways and its own bar is below the fold, so a
+ * tall, wide table scrolls sideways from anywhere in it. It sits above the
+ * pinned footer, and nothing hung over the table ever covers the real bar.
+ */
+.table-sticky-bottom {
+  inset-block-end: var(--sticky-chrome-bottom, 0px);
+}
+
+.table-sticky-stack {
+  position: absolute;
+  inset-inline: 0;
+  inset-block-end: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.table-scrollbar {
+  display: none;
+  /* A native scroller with no text: the browser drags it, and nothing is selected. */
+  -webkit-user-select: none;
+  user-select: none;
+  overflow-x: auto;
+  overflow-y: hidden;
+  background-color: color-mix(in oklch, var(--color-surface-raised) 88%, transparent);
+  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px);
+  border-top: 1px solid var(--color-border);
+  overscroll-behavior-x: contain;
+}
+
+.table-scrollbar-track {
+  height: 1px;
+}
+
+.table-block[data-bar] .table-scrollbar {
+  display: block;
+}
+
+.table-sticky-foot {
+  display: none;
+}
+
+.table-block[data-sticky-foot][data-stuck-foot] .table-sticky-foot {
+  display: block;
+}
+
+.table-sticky-foot > .table-sticky-clip {
+  box-shadow: 0 -8px 12px -10px var(--table-shadow);
+}
+
+.prose :is(.table-sticky-head, .table-sticky-foot) table {
+  table-layout: fixed;
+}
+
+/*
+ * Stacked (`responsive=stack`): on a narrow table every row becomes a card
+ * of label and value, the label repeated from the column header by the
+ * renderer (`data-label`), so this works without the reader script. A row
+ * header is its card's title, the caption stays above the cards, and the
+ * footer is a last, summary card. The header row stays as a line of column
+ * names, which are its sort buttons.
+ */
+@container table (width < 36rem) {
+  .table-block[data-responsive='stack'] > .table-scroll {
+    overflow-x: visible;
+  }
+
+  .table-block[data-responsive='stack'] :is(table, caption, thead, tbody, tfoot, tr, th, td) {
+    display: block;
+  }
+
+  .table-block[data-responsive='stack'] :is(.table-sticky-head, .table-sticky-bottom),
+  .table-block[data-responsive='stack']::before,
+  .table-block[data-responsive='stack']::after {
+    display: none;
+  }
+
+  /* With nothing to sort, the names are already beside every value. */
+  .table-block[data-responsive='stack']:not([data-sortable]) thead {
+    display: none;
+  }
+
+  .table-block[data-responsive='stack'] thead tr {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.25rem 1rem;
+    padding: 0.5625rem 0.75rem;
+    background-color: var(--color-surface);
+    border-bottom: 1px solid var(--color-border-strong);
+  }
+
+  .prose .table-block[data-responsive='stack'] thead th {
+    padding: 0;
+    border: 0;
+    background: none;
+  }
+
+  .table-block[data-responsive='stack'] :is(tbody, tfoot) tr {
+    padding-block: 0.375rem;
+    border-bottom: 1px solid var(--color-border);
+  }
+
+  .table-block[data-responsive='stack'] :is(tbody, tfoot) tr:last-child {
+    border-bottom: 0;
+  }
+
+  .table-block[data-responsive='stack'] tfoot {
+    background-color: var(--color-surface);
+    border-top: 2px solid var(--color-border-strong);
+  }
+
+  .prose .table-block[data-responsive='stack'] :is(tbody, tfoot) td {
+    display: grid;
+    grid-template-columns: minmax(6rem, 38%) minmax(0, 1fr);
+    gap: 0.75rem;
+    padding-block: 0.3rem;
+    border: 0;
+    text-align: start;
+    white-space: normal;
+    background: none;
+  }
+
+  .prose .table-block[data-responsive='stack'] td:not([data-label]) {
+    display: block;
+  }
+
+  /* The card's title: the row header, in the header's tint across the card. */
+  .prose .table-block[data-responsive='stack'] :is(tbody, tfoot) th[scope='row'] {
+    margin-block: -0.375rem 0.25rem;
+    padding-block: 0.5rem;
+    border: 0;
+    border-bottom: 1px solid var(--color-border);
+    font-size: 0.9375rem;
+    white-space: normal;
+  }
+
+  /* Nothing scrolls sideways in a stack, so nothing is frozen, whatever froze it. */
+  .prose .table-block[data-responsive='stack'][data-responsive] :is(th, td):first-child {
+    position: static;
+    box-shadow: none;
+  }
+
+  .table-block[data-responsive='stack'] td::before {
+    content: attr(data-label);
+    /* Shown, never spoken: a screen reader already says the column's header. */
+    content: attr(data-label) / '';
+    color: var(--color-muted);
+    font-size: 0.8125rem;
+    font-weight: 500;
+  }
+}
+
+/*
+ * The expand button (`table-viewer.ts`): the diagram's, at the card's top
+ * right, shown on hover and focus and always on a touch screen. Its ring is
+ * drawn inside, because the card clips what falls outside it.
+ */
+.table-block > .table-expand {
+  top: 0.3125rem;
+  right: 0.3125rem;
+  z-index: 6;
+  width: 1.75rem;
+  height: 1.75rem;
+}
+
+.table-block:hover > .table-expand {
+  opacity: 1;
+}
+
+.table-block > .table-expand:focus-visible {
+  opacity: 1;
+  outline-offset: -2px;
+}
+
+/*
+ * A table in the viewer. The stage is the one scroll container, on both
+ * axes, so the header row, the row headers and the footer stick there in
+ * plain CSS, with nothing hung beside them. The table is set at its own
+ * width, never squeezed; "Fit width" shrinks it to the stage when asked.
+ */
+.lightbox-stage.lightbox-stage-table {
+  overflow: auto;
+  touch-action: auto;
+  cursor: auto;
+  user-select: text;
+  padding: 0 1.25rem;
+  overscroll-behavior: contain;
+}
+
+/* Its controls take a row of their own, so they never sit over the header row. */
+.lightbox[open]:has(> .lightbox-stage-table) {
+  grid-template-rows: auto minmax(0, 1fr) auto;
+}
+
+.lightbox:has(> .lightbox-stage-table) > .lightbox-controls {
+  position: static;
+  justify-self: end;
+  margin: max(0.75rem, env(safe-area-inset-top)) max(0.75rem, env(safe-area-inset-right)) 0.75rem;
+}
+
+.lightbox-stage-table > .table-block {
+  container-type: normal;
+  overflow: visible;
+  width: max-content;
+  min-width: 100%;
+  margin-inline: auto;
+}
+
+.lightbox-stage-table > .table-block[data-fit] {
+  zoom: var(--table-fit, 1);
+}
+
+.lightbox-stage-table .table-scroll {
+  overflow: visible;
+}
+
+/* The hint floats over the table, above its footer, wherever it is scrolled to. */
+.lightbox-stage-table > .lightbox-hint {
+  position: fixed;
+  bottom: calc(4.5rem + env(safe-area-inset-bottom));
+  z-index: 4;
+}
+
+/* The viewer's own footer shows the caption; the table's stays for its name only. */
+.lightbox-stage-table caption {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.lightbox-stage-table thead :is(th, td) {
+  position: sticky;
+  inset-block-start: 0;
+  z-index: 2;
+}
+
+.lightbox-stage-table tfoot :is(th, td) {
+  position: sticky;
+  inset-block-end: 0;
+  z-index: 2;
+}
+
+.lightbox-stage-table thead :is(th, td):first-child {
+  z-index: 3;
+}
+
+.lightbox-text-control {
+  font-weight: 600;
+  letter-spacing: var(--tracking-caps, 0.06em);
+}
+
+/* On paper a table is its whole self: no scrolling, no copies, no shadows, no buttons. */
+@media print {
+  .table-scroll {
+    overflow: visible;
+  }
+
+  .table-sticky-head,
+  .table-sticky-bottom,
+  .table-expand,
+  .table-block::before,
+  .table-block::after {
+    display: none;
+  }
 }
 
 /* --- Figures and media --------------------------------------------------- */
 
-.prose figure {
+/* The browser's indent taken off; the space above is the reading rhythm's. */
+.prose :where(figure) {
   margin: 0;
 }
 
@@ -435,7 +1749,7 @@
 .prose figcaption {
   margin-top: 0.7rem;
   font-family: var(--font-sans);
-  font-size: var(--text-xs);
+  font-size: 0.8125rem;
   line-height: 1.5;
   color: var(--color-muted);
 }
@@ -453,19 +1767,61 @@
   margin-top: 2.4em;
 }
 
-/* Blocks that are not body text get a little more air around them. */
-.prose > * + figure,
-.prose > * + pre,
-.prose > * + blockquote,
-.prose > * + .table-scroll {
-  margin-top: 1.6em;
+/*
+ * Blocks that are not body text get a little more air around them. Every
+ * selector here weighs the same (`:where` takes the classes' weight away), so
+ * when two objects meet the space below the first wins, as source order says.
+ */
+.prose
+  > *
+  + :where(
+    figure,
+    pre,
+    blockquote,
+    .table-block,
+    .table-scroll,
+    .callout,
+    .code-block,
+    .code-group,
+    .details,
+    .accordion
+  ) {
+  margin-top: var(--prose-flow-object-before, 1.6em);
 }
 
-.prose > figure + *,
-.prose > pre + *,
-.prose > blockquote + *,
-.prose > .table-scroll + * {
-  margin-top: 1.6em;
+.prose
+  > :where(
+    figure,
+    pre,
+    blockquote,
+    .table-block,
+    .table-scroll,
+    .callout,
+    .code-block,
+    .code-group,
+    .details,
+    .accordion
+  )
+  + * {
+  margin-top: var(--prose-flow-object-after, 1.6em);
+}
+
+/* An object straight under a heading still takes the larger space above it. */
+.prose
+  > :is(h2, h3, h4)
+  + :where(
+    figure,
+    pre,
+    blockquote,
+    .table-block,
+    .table-scroll,
+    .callout,
+    .code-block,
+    .code-group,
+    .details,
+    .accordion
+  ) {
+  margin-top: var(--prose-flow-object-before, 1.6em);
 }
 
 /*
@@ -474,8 +1830,1348 @@
  * every id-bearing element inside prose keeps a margin above it when
  * scrolled to. The distance is `--anchor-offset` in `tokens.css` — the bar's
  * height plus one step of air — which the showcase's sections and the table
- * of contents' observer band read too.
+ * of contents' observer band read too. The page's scroll padding already
+ * clears the chrome itself (`html` in `tokens.css` and `public-site.css`,
+ * which also keeps a focused control out from under it), so the margin is
+ * only the rest: padding and margin together are the offset.
  */
 .prose :is(h1, h2, h3, h4, h5, h6, [id]) {
-  scroll-margin-top: var(--anchor-offset);
+  scroll-margin-top: calc(var(--anchor-offset) - var(--sticky-chrome-top, 0px));
+}
+
+/* --- Title block --------------------------------------------------------- */
+
+/*
+ * A short paragraph written immediately before the title is its eyebrow: the
+ * kind of document, or the part of the documentation it belongs to, in the
+ * accent's small capitals. Plain Markdown, so it degrades to a line above the
+ * heading anywhere else.
+ */
+.prose > p:has(+ h1) {
+  font-family: var(--font-sans);
+  font-size: var(--prose-eyebrow-size, 0.76rem);
+  line-height: 1.4;
+  font-weight: var(--prose-eyebrow-weight, 600);
+  letter-spacing: var(--prose-eyebrow-tracking, 0.08em);
+  text-transform: uppercase;
+  color: var(--color-accent-ink, var(--color-accent));
+}
+
+.prose > p:has(+ h1) + h1 {
+  margin-top: 0.45em;
+}
+
+/* Small print: where a document's facts came from, what its marks mean. */
+.prose small {
+  font-family: var(--font-sans);
+  font-size: 0.8rem;
+  line-height: 1.55;
+  color: var(--color-muted);
+}
+
+.prose > h1 + p + p:has(> small:only-child) {
+  margin-top: 0.85em;
+}
+
+/* --- Badges -------------------------------------------------------------- */
+
+/*
+ * `:badge[Built]{tone=success}`. The words are the meaning and the tone only
+ * emphasis, so a badge reads the same in monochrome. Pills rather than the
+ * interface badge's square tags: in running text and table cells a status is
+ * read, not scanned as metadata.
+ */
+.prose .badge {
+  display: inline-block;
+  padding: 0.25em 0.6667em;
+  border-radius: 999px;
+  font-family: var(--font-sans);
+  font-size: 0.75rem;
+  line-height: 1.1667;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+  vertical-align: 0.1em;
+  background-color: color-mix(in oklch, var(--color-muted) 12%, var(--color-surface-raised));
+  color: var(--color-body);
+}
+
+.prose .badge[data-tone='accent'] {
+  background-color: var(--color-accent-subtle);
+  color: var(--color-accent);
+}
+
+.prose .badge[data-tone='success'] {
+  background-color: var(--color-success-subtle);
+  color: var(--color-success);
+}
+
+.prose .badge[data-tone='warning'] {
+  background-color: var(--color-warning-subtle);
+  color: var(--color-warning);
+}
+
+.prose .badge[data-tone='danger'] {
+  background-color: var(--color-danger-subtle);
+  color: var(--color-danger);
+}
+
+/*
+ * A tenant label (`:acme[Acme]`, ADR-037): a neutral pill led by a dot in
+ * the label's colour, which the theme stylesheet sets as `--label-dot`. The
+ * pill stays neutral so the words keep body contrast whatever the colour; the
+ * colour identifies, as the same name does in a drawing.
+ */
+.prose .badge[data-label]::before {
+  content: '';
+  display: inline-block;
+  width: 0.5833em;
+  height: 0.5833em;
+  margin-inline-end: 0.5em;
+  border-radius: 50%;
+  vertical-align: 0.05em;
+  background-color: var(--label-dot, currentColor);
+}
+
+/*
+ * In the editor, a labelled directive that names no label (`:acm[Acme]`,
+ * ADR-037): it reads as written, underlined so the typo is seen. The reason
+ * is beside it in words for assistive technology and in its title.
+ */
+.prose [data-unknown-label] {
+  text-decoration: underline wavy var(--color-warning);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 0.2em;
+}
+
+/* --- Emoji ----------------------------------------------------------------- */
+
+/*
+ * `:+1:` and the organisation's own `:acme:` (ADR-038). A custom emoji is an
+ * image set at the height of the text around it and on its baseline, never the
+ * block figure every other image in a document is. An animated one is that
+ * image inside a `picture.emoji`, which offers its still under reduced motion.
+ */
+.prose img.emoji {
+  display: inline-block;
+  width: auto;
+  height: 1.2em;
+  max-width: none;
+  margin: 0;
+  border-radius: 0;
+  vertical-align: -0.22em;
+}
+
+/*
+ * A label led by its emoji: the emoji takes the dot's place, at the pill's own
+ * line height so the pill is no taller than its neighbours.
+ */
+.prose .badge[data-label]:has(> .emoji)::before {
+  content: none;
+}
+
+.prose .badge > .emoji {
+  margin-inline-end: 0.4em;
+}
+
+.prose .badge > img.emoji,
+.prose .badge > picture.emoji > img.emoji {
+  height: 1.3333em;
+  margin-block: -0.125em;
+  vertical-align: -0.25em;
+}
+
+/*
+ * In the editor, a shortcode drawn as its emoji keeps its text in the document,
+ * hidden, until the caret reaches it (`packages/editor/src/document/emoji.ts`).
+ */
+.prose .emoji-source {
+  display: none;
+}
+
+/* A cell that opens with a status: the badges lead, and the detail runs on after them. */
+.prose .cell-status {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.3rem 0.4rem;
+  margin-inline-end: 0.4em;
+  vertical-align: 1px;
+}
+
+.prose .cell-status code {
+  font-size: 0.72rem;
+  color: var(--color-muted);
+}
+
+.prose .cell-detail {
+  color: var(--color-body);
+}
+
+/* --- Footnotes ---------------------------------------------------------- */
+
+/*
+ * The notes close the document as their own quieter section: set apart by a
+ * hairline and a step of air, a size smaller, with their heading for screen
+ * readers only (the renderer writes it `sr-only`, as GitHub does).
+ */
+.prose .footnotes {
+  margin-top: var(--prose-flow-object-before, 1.6em);
+  padding-top: var(--prose-flow-block, 1.15em);
+  border-top: 1px solid var(--color-border);
+  font-size: 0.875em;
+  color: var(--color-body);
+}
+
+.prose .footnotes ol {
+  margin-top: 0;
+}
+
+/* --- Figures and diagrams ------------------------------------------------ */
+
+/*
+ * A diagram is an object on the page, like a table: it sits on a raised
+ * surface and scrolls sideways inside it at phone width rather than
+ * shrinking its text past reading. A figure holding one is the surface, with
+ * its caption inside.
+ */
+.prose figure:has(> .diagram),
+.prose :not(figure) > .diagram {
+  background-color: var(--color-surface-raised);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-xl);
+}
+
+.prose .diagram {
+  overflow-x: auto;
+}
+
+.prose figure > .diagram {
+  border: 0;
+}
+
+.prose .diagram-drawing {
+  padding: 1.25rem 1.25rem 0.75rem;
+}
+
+/*
+ * A drawing is set at its own width (`--natural-width`, from the drawing
+ * itself) and gives way to at most four fifths of it on a narrower page;
+ * past that it keeps its text legible and the slot scrolls sideways.
+ */
+.prose .diagram svg {
+  display: block;
+  margin-inline: auto;
+  width: clamp(calc(var(--natural-width, 100%) * 0.8), 100%, var(--natural-width, 100%));
+  max-width: none;
+  height: auto;
+  border-radius: 0;
+}
+
+/*
+ * The source is what a reader without the drawing reads; once drawn, it
+ * steps aside. While Mermaid loads, the slot keeps a little height so the
+ * page does not jump twice.
+ */
+.prose .diagram > pre {
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  background-color: transparent;
+}
+
+.prose .diagram[data-state='drawing'] > pre {
+  visibility: hidden;
+  max-height: 12rem;
+  overflow: hidden;
+}
+
+.prose .diagram[data-state='drawn'] > pre {
+  display: none;
+}
+
+/*
+ * A drawn diagram's source, kept as its long description behind a closed
+ * disclosure under the drawing (`draw-diagrams.ts`): a quiet line a reader
+ * can open, never hidden from the page or from a screen reader.
+ */
+.prose .diagram-source {
+  border-top: 1px solid var(--color-border);
+  font-family: var(--font-sans);
+  font-size: var(--text-xs);
+}
+
+.prose .diagram-source > summary {
+  padding: 0.5rem 1.25rem;
+  color: var(--color-muted);
+  cursor: pointer;
+}
+
+.prose .diagram-source > summary:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: -2px;
+}
+
+.prose figure:has(> .diagram) figcaption {
+  margin-top: 0;
+  padding: 0.5rem 1.25rem 1rem;
+  max-width: 48rem;
+}
+
+.prose figcaption > p + p {
+  margin-top: 0.5em;
+}
+
+/* --- Cards --------------------------------------------------------------- */
+
+/*
+ * `:::cards`: sections side by side, as many columns as fit. `panels` are
+ * raised surfaces for a figure or a few paragraphs; `ruled` are open columns
+ * under an accent rule, for short principles read together.
+ */
+.prose .cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(15rem, 100%), 1fr));
+  gap: 0.9rem;
+}
+
+/* Four cards read as a pair of pairs, never three and an orphan. */
+.prose .cards:has(> .card:nth-child(4):last-child) {
+  grid-template-columns: repeat(auto-fit, minmax(min(20rem, 100%), 1fr));
+}
+
+.prose .card {
+  display: grid;
+  align-content: start;
+  gap: 0.6rem;
+  min-width: 0;
+  font-family: var(--font-sans);
+  font-size: 0.875rem;
+  line-height: 1.55;
+  color: var(--color-body);
+}
+
+.prose .cards[data-variant='panels'] .card {
+  padding: 1rem 1.1rem 1.05rem;
+  background-color: var(--color-surface-raised);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-xl);
+}
+
+.prose .cards[data-variant='ruled'] .card {
+  padding-top: 0.75rem;
+  border-top: 2px solid var(--color-accent);
+}
+
+.prose .card > :is(h2, h3, h4, h5, h6) {
+  font-family: var(--font-sans);
+  font-size: 0.95rem;
+  line-height: 1.35;
+  letter-spacing: -0.005em;
+}
+
+[data-rules='hairline'] .prose .card > h2::before {
+  content: none;
+}
+
+.prose .card .diagram {
+  background-color: transparent;
+  border: 0;
+}
+
+.prose .card .diagram-drawing {
+  padding: 0.25rem 0;
+}
+
+/* --- Drawings ------------------------------------------------------------ */
+
+/*
+ * An SVG diagram drawn inline (`packages/markdown/src/render/drawing.ts`).
+ * Its own stylesheet is removed, so it is styled here, through a small class
+ * vocabulary written once for every drawing and coloured from the theme, so
+ * a diagram follows light and dark like the text around it.
+ *
+ *   zone, group           the area that is "us"; a dashed outline around others
+ *   box, box planned      a part; one designed but not built
+ *   inner, focus          a part within a part; the part the diagram is about
+ *   title (large), sub    a part's name; the line under it (`sub strong`)
+ *   heading, key          a column's name; an accented term
+ *   label, label-zone     a word on a line, haloed against its background
+ *   label-warn            a word that warns
+ *   send, receive, check  what we send, what comes in, reading back
+ *   planned               a line designed but not built
+ *   arrow-*               each line's arrowhead
+ *   lifeline, step(-text) a sequence's lifelines and numbered steps
+ */
+.prose .diagram[data-diagram='svg'] {
+  --drawing-surface: var(--color-surface-raised);
+  --drawing-well: color-mix(in oklch, var(--color-foreground) 5%, var(--color-surface-raised));
+  --drawing-edge: color-mix(in oklch, var(--color-border-strong) 40%, var(--color-border));
+  --drawing-ink: var(--color-foreground);
+  --drawing-ink-2: var(--color-body);
+  --drawing-ink-3: var(--color-muted);
+  --drawing-zone: color-mix(in oklch, var(--color-accent) 7%, var(--color-surface-raised));
+  --drawing-focus: color-mix(in oklch, var(--color-accent) 13%, var(--color-surface-raised));
+  --drawing-plan: color-mix(in oklch, var(--color-muted) 10%, var(--color-surface-raised));
+
+  padding: 1.25rem 1.25rem 0.5rem;
+  font-family: var(--font-sans);
+}
+
+.prose .diagram[data-diagram='svg'] svg {
+  min-width: 45rem;
+  width: 100%;
+  font-family: var(--font-sans);
+}
+
+/*
+ * A draw.io diagram (ADR-043) was laid out at a size, so it is drawn at that
+ * size — its own `width` — and only ever shrinks to fit, never stretches.
+ * Its colours are its own: adaptive ones (`light-dark()`) follow the page's
+ * scheme by themselves; a diagram drawn with fixed ones is set on paper in
+ * the dark, where its black lines would otherwise vanish. Its labels keep the
+ * fonts draw.io gave them.
+ */
+.prose .diagram[data-diagram='svg'] svg[data-drawio] {
+  min-width: 0;
+  width: auto;
+  max-width: 100%;
+  font-family: revert;
+}
+
+.prose .diagram[data-diagram='svg'] svg[data-drawio='fixed'] {
+  border-radius: var(--radius-md);
+  background-color: light-dark(transparent, #fff);
+}
+
+/*
+ * One saved with its labels as HTML is shown as an image of the file
+ * (`data-drawio-legacy`): the same size rule, and paper, because an image
+ * cannot follow the page's scheme.
+ */
+.prose .diagram[data-diagram='svg'] img[data-drawio-legacy] {
+  display: block;
+  margin-inline: auto;
+  max-width: 100%;
+  height: auto;
+  border-radius: var(--radius-md);
+  background-color: light-dark(transparent, #fff);
+}
+
+.prose .diagram[data-diagram='svg'] :is(.zone) {
+  fill: var(--drawing-zone);
+  stroke: var(--color-border);
+}
+
+.prose .diagram[data-diagram='svg'] .group {
+  fill: none;
+  stroke: var(--drawing-edge);
+  stroke-dasharray: 4 4;
+}
+
+.prose .diagram[data-diagram='svg'] .box {
+  fill: var(--drawing-surface);
+  stroke: var(--drawing-edge);
+  stroke-width: 1.2;
+}
+
+.prose .diagram[data-diagram='svg'] .box.planned {
+  fill: var(--drawing-plan);
+  stroke-dasharray: 5 4;
+}
+
+.prose .diagram[data-diagram='svg'] .inner {
+  fill: var(--drawing-well);
+}
+
+.prose .diagram[data-diagram='svg'] .focus {
+  fill: var(--drawing-focus);
+  stroke: var(--color-accent);
+  stroke-width: 1.2;
+}
+
+.prose .diagram[data-diagram='svg'] .title {
+  fill: var(--drawing-ink);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.prose .diagram[data-diagram='svg'] .title.large {
+  font-size: 15px;
+}
+
+.prose .diagram[data-diagram='svg'] .sub {
+  fill: var(--drawing-ink-3);
+  font-size: 11px;
+  font-weight: 400;
+}
+
+.prose .diagram[data-diagram='svg'] .sub.strong {
+  fill: var(--drawing-ink);
+}
+
+.prose .diagram[data-diagram='svg'] .key {
+  fill: var(--color-accent);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.prose .diagram[data-diagram='svg'] .heading {
+  fill: var(--drawing-ink-3);
+  font-size: 11.5px;
+  font-weight: 600;
+}
+
+.prose .diagram[data-diagram='svg'] :is(.label, .label-zone) {
+  fill: var(--drawing-ink-2);
+  font-size: 10.5px;
+  font-weight: 500;
+  paint-order: stroke;
+  stroke: var(--drawing-surface);
+  stroke-width: 4px;
+  stroke-linejoin: round;
+}
+
+.prose .diagram[data-diagram='svg'] .label-zone {
+  stroke: var(--drawing-zone);
+}
+
+.prose .diagram[data-diagram='svg'] .label-warn {
+  fill: var(--color-warning);
+  font-weight: 600;
+}
+
+.prose .diagram[data-diagram='svg'] .send {
+  fill: none;
+  stroke: var(--color-accent);
+  stroke-width: 1.7;
+}
+
+.prose .diagram[data-diagram='svg'] .receive {
+  fill: none;
+  stroke: var(--drawing-ink-2);
+  stroke-width: 1.6;
+}
+
+.prose .diagram[data-diagram='svg'] .check {
+  fill: none;
+  stroke: var(--drawing-ink-3);
+  stroke-width: 1.4;
+  stroke-dasharray: 4 4;
+}
+
+.prose .diagram[data-diagram='svg'] .planned:not(.box) {
+  fill: none;
+  stroke: var(--drawing-ink-3);
+  stroke-width: 1.4;
+  stroke-dasharray: 2 4;
+}
+
+.prose .diagram[data-diagram='svg'] .arrow-send {
+  fill: var(--color-accent);
+}
+
+.prose .diagram[data-diagram='svg'] .arrow-receive {
+  fill: var(--drawing-ink-2);
+}
+
+.prose .diagram[data-diagram='svg'] :is(.arrow-check, .arrow-planned) {
+  fill: var(--drawing-ink-3);
+}
+
+.prose .diagram[data-diagram='svg'] .lifeline {
+  stroke: var(--drawing-edge);
+  stroke-width: 1;
+  stroke-dasharray: 3 5;
+}
+
+.prose .diagram[data-diagram='svg'] .step {
+  fill: var(--drawing-surface);
+  stroke: var(--drawing-ink-3);
+}
+
+.prose .diagram[data-diagram='svg'] .step-text {
+  fill: var(--drawing-ink-2);
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  font-weight: 600;
+}
+
+/* --- Callouts ------------------------------------------------------------ */
+
+/*
+ * `:::callout{type}` and GitHub's alerts (`> [!WARNING]`). A raised note with
+ * a stripe and a small-caps title in its kind's colour; the words stay in ink.
+ * The kind is never carried by colour alone (WCAG 1.4.1): the renderer always
+ * writes the title, which says the kind in words (or, under an author's own
+ * title, to a screen reader), and the title leads with the kind's icon. The
+ * editor draws its callouts with these same classes, so the two agree.
+ */
+.prose .callout {
+  --callout: var(--color-accent);
+  --callout-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3.75 1.75h5.5l3 3v9.5h-8.5z'/%3E%3Cpath d='M6 8.25h4M6 11h4'/%3E%3C/svg%3E");
+
+  padding: 0.85rem 1.1rem 0.95rem;
+  background-color: var(--color-surface-raised);
+  border-radius: var(--radius-md);
+  box-shadow:
+    inset 3px 0 0 var(--callout),
+    inset 0 0 0 1px var(--color-border);
+  font-family: var(--font-sans);
+  font-size: 0.92em;
+  line-height: 1.6;
+}
+
+.prose .callout > * + * {
+  margin-top: 0.55em;
+}
+
+.prose .callout-label {
+  display: flex;
+  align-items: center;
+  gap: 0.45em;
+  font-size: 0.75rem;
+  line-height: 1.4;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--callout);
+}
+
+/* The kind's icon: a shape masked out of the title's own colour. */
+.prose .callout-label::before {
+  content: '';
+  flex: none;
+  width: 1.25em;
+  height: 1.25em;
+  background-color: currentcolor;
+  mask: var(--callout-icon) center / contain no-repeat;
+}
+
+.prose .callout-info {
+  --callout-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='8' cy='8' r='6.25'/%3E%3Cpath d='M8 7.25v4M8 4.75v.01'/%3E%3C/svg%3E");
+}
+
+.prose .callout-tip {
+  --callout: var(--color-success);
+  --callout-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6.25 12.25h3.5M6.75 14.25h2.5M8 1.75a4.25 4.25 0 0 0-2.4 7.76c.38.27.65.7.65 1.17v.32h3.5v-.32c0-.47.27-.9.65-1.17A4.25 4.25 0 0 0 8 1.75z'/%3E%3C/svg%3E");
+}
+
+.prose .callout-important {
+  --callout-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M2.25 2.75h11.5v8h-6l-3.25 2.75v-2.75h-2.25z'/%3E%3Cpath d='M8 5v2.75M8 9.5v.01'/%3E%3C/svg%3E");
+}
+
+.prose .callout-warning {
+  --callout: var(--color-warning);
+  --callout-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M8 1.75 1.5 13.75h13z'/%3E%3Cpath d='M8 6.25v3.5M8 11.75v.01'/%3E%3C/svg%3E");
+}
+
+.prose .callout-caution {
+  --callout: var(--color-danger);
+  --callout-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5.5 1.75h5l3.75 3.75v5l-3.75 3.75h-5L1.75 10.5v-5z'/%3E%3Cpath d='M8 4.75v3.75M8 10.75v.01'/%3E%3C/svg%3E");
+}
+
+/*
+ * Forced colours drop the stripe and the frame (both shadows) and the icon (a
+ * masked background), which left a callout indistinguishable from a
+ * paragraph. It keeps a real border, heavier at its start like the stripe,
+ * and its icon drawn in the text colour.
+ */
+@media (forced-colors: active) {
+  .prose .callout {
+    border: 1px solid CanvasText;
+    border-inline-start-width: 4px;
+  }
+
+  .prose .callout-label::before {
+    forced-color-adjust: none;
+    background-color: CanvasText;
+  }
+}
+
+/* --- Details and accordions (ADR-048) ----------------------------------- */
+
+/*
+ * The browser's own `<details>`, drawn calm: a row a reader can open, ruled
+ * above and below, with a chevron at its start that turns down as it opens.
+ * Open is told by the chevron's direction, never by colour alone. Details one
+ * after another share their rules, so a run of them, and an accordion, reads
+ * as one list. The body is indented to the summary's words.
+ *
+ * The theme's rules decide the frame, as they do a table's: hairlines by
+ * default, the stronger rule under `double`, open space under `plain`, and a
+ * raised card under `cards`, where an accordion is one card ruled inside.
+ * Each treatment sets the frame as custom properties on the element that
+ * carries `data-rules`, so the nearest one wins — a preview's over the page
+ * around it — which an ancestor selector cannot say.
+ */
+[data-rules='hairline'],
+[data-rules='double'],
+[data-rules='plain'] {
+  --details-rule: 1px solid var(--color-border);
+  --details-card: 0;
+  --details-surface: transparent;
+  --details-radius: 0;
+  --details-gap: 0;
+  --details-inset: 0px;
+  --accordion-rule: var(--details-rule);
+}
+
+[data-rules='double'] {
+  --details-rule: 1px solid var(--color-border-strong);
+}
+
+[data-rules='plain'] {
+  --details-rule: 0;
+}
+
+[data-rules='cards'] {
+  --details-rule: 1px solid var(--color-border);
+  --details-card: 1px solid var(--color-border);
+  --details-surface: var(--color-surface-raised);
+  --details-radius: var(--radius-lg);
+  --details-gap: 0.5rem;
+  --details-inset: 0.5rem;
+  --accordion-rule: 0;
+}
+
+.prose .details {
+  --details-indent: 1.5rem;
+
+  border-block: var(--details-rule, 1px solid var(--color-border));
+  border-inline: var(--details-card, 0);
+  border-radius: var(--details-radius, 0);
+  background-color: var(--details-surface, transparent);
+}
+
+.prose > .details + .details,
+.prose .details-body > .details + .details {
+  margin-top: var(--details-gap, 0);
+  border-top: var(--details-card, 0);
+}
+
+.prose .accordion {
+  border: var(--details-card, 0);
+  border-radius: var(--details-radius, 0);
+  background-color: var(--details-surface, transparent);
+}
+
+.prose .accordion > .details {
+  border-block: var(--accordion-rule, 1px solid var(--color-border));
+  border-inline: 0;
+  border-radius: 0;
+  background-color: transparent;
+}
+
+.prose .accordion > .details + .details {
+  margin-top: 0;
+  border-top: var(--details-card, 0);
+}
+
+/*
+ * A block, not a flex row: the summary is inline Markdown, and a flex row
+ * would make each run of text and each code span an item of its own. Its
+ * words start where the body's do; the chevron hangs in the indent.
+ */
+.prose .details > summary {
+  position: relative;
+  display: block;
+  padding-block: 0.7rem;
+  padding-inline: calc(var(--details-indent) + var(--details-inset, 0px))
+    calc(0.5rem + var(--details-inset, 0px));
+  list-style: none;
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+  font-family: var(--font-sans);
+  font-size: 0.95em;
+  font-weight: 600;
+  line-height: 1.45;
+  color: var(--color-foreground);
+  transition: background-color var(--duration-fast, 120ms) var(--ease-standard, ease);
+}
+
+.prose .details > summary::-webkit-details-marker {
+  display: none;
+}
+
+/* The chevron: two strokes of a square, pointing at the summary while closed and down when open. */
+.prose .details > summary::before {
+  content: '';
+  position: absolute;
+  inset-block-start: calc(0.7rem + 0.725em - 0.25rem);
+  inset-inline-start: calc(0.55rem + var(--details-inset, 0px));
+  inline-size: 0.4rem;
+  block-size: 0.4rem;
+  border-inline-end: 1.5px solid currentColor;
+  border-block-end: 1.5px solid currentColor;
+  color: var(--color-muted);
+  transform: rotate(-45deg);
+  transition:
+    transform var(--duration-base, 200ms) var(--ease-standard, ease),
+    color var(--duration-fast, 120ms) var(--ease-standard, ease);
+}
+
+.prose .details > summary:dir(rtl)::before {
+  transform: rotate(135deg);
+}
+
+.prose .details[open] > summary::before {
+  transform: translateY(-0.1rem) rotate(45deg);
+}
+
+.prose .details > summary:hover {
+  background-color: color-mix(in oklch, var(--color-foreground) 4%, transparent);
+}
+
+.prose .details > summary:hover::before,
+.prose .details[open] > summary::before {
+  color: var(--color-foreground);
+}
+
+.prose .details > summary:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 2px;
+}
+
+.prose .details > summary > :is(code, a) {
+  font-weight: 500;
+}
+
+.prose .details-body {
+  padding-block: 0.15rem 1.1rem;
+  padding-inline: calc(var(--details-indent) + var(--details-inset, 0px)) var(--details-inset, 0px);
+}
+
+.prose .details-body > * + * {
+  margin-top: var(--prose-flow-block, 1.15em);
+}
+
+.prose
+  .details-body
+  > :where(figure, pre, blockquote, .table-block, .callout, .code-block, .code-group, .details)
+  + *,
+.prose
+  .details-body
+  > *
+  + :where(figure, pre, blockquote, .table-block, .callout, .code-block, .code-group) {
+  margin-top: var(--prose-flow-object-before, 1.6em);
+}
+
+/*
+ * A folded callout keeps the callout's frame and colour, and opens like any
+ * details: its title is the summary, its chevron in the kind's colour.
+ */
+.prose .details.callout {
+  --details-inset: 0.6rem;
+
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-md);
+  background-color: var(--color-surface-raised);
+}
+
+.prose .details.callout > summary::before,
+.prose .details.callout[open] > summary::before {
+  color: var(--callout);
+}
+
+.prose > .details.callout + .details.callout {
+  margin-top: 0.75rem;
+}
+
+/*
+ * Opening and closing glide where the browser can animate to a height of
+ * `auto`, and are instant everywhere else and under reduced motion.
+ */
+@supports (interpolate-size: allow-keywords) and selector(::details-content) {
+  .prose .details {
+    interpolate-size: allow-keywords;
+  }
+
+  .prose .details::details-content {
+    block-size: 0;
+    overflow-y: clip;
+    transition:
+      block-size var(--duration-base, 200ms) var(--ease-standard, ease),
+      content-visibility var(--duration-base, 200ms) allow-discrete;
+  }
+
+  .prose .details[open]::details-content {
+    block-size: auto;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .prose .details > summary,
+  .prose .details > summary::before,
+  .prose .details::details-content {
+    transition: none;
+  }
+}
+
+/* On paper every details is open, and nothing invites a click. */
+@media print {
+  .prose .details::details-content {
+    content-visibility: visible;
+    block-size: auto;
+  }
+
+  .prose .details > summary::before {
+    display: none;
+  }
+}
+
+/* --- Lightbox ------------------------------------------------------------ */
+
+/*
+ * Any diagram opens full screen to be zoomed and panned
+ * (`src/lightbox/lightbox.ts`). In the document: a small frosted button over
+ * the drawing's corner, shown on hover and focus and always on a touch
+ * screen, and a zoom-in cursor over the drawing itself. In the lightbox: a
+ * raised panel over a softened page, the zoom and close floating at its top
+ * corner, and the caption under the drawing, where a figure keeps it. Every colour is a token, so it is the theme's
+ * in light and dark.
+ */
+.prose figure:has(> .diagram),
+.prose .diagram {
+  position: relative;
+}
+
+.prose .diagram[data-expandable='true']:has(svg) {
+  cursor: zoom-in;
+}
+
+:is(.diagram-expand, .table-expand) {
+  position: absolute;
+  top: 0.625rem;
+  right: 0.625rem;
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  width: 2rem;
+  height: 2rem;
+  padding: 0;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background-color: color-mix(in oklch, var(--color-surface-raised) 80%, transparent);
+  backdrop-filter: blur(6px);
+  color: var(--color-muted);
+  cursor: pointer;
+  opacity: 0;
+  transition:
+    opacity var(--duration-fast, 120ms) var(--ease-standard, ease),
+    color var(--duration-fast, 120ms) var(--ease-standard, ease);
+}
+
+:is(figure, .diagram):hover > .diagram-expand,
+.diagram-expand:focus-visible {
+  opacity: 1;
+}
+
+:is(.diagram-expand, .table-expand):hover {
+  color: var(--color-foreground);
+}
+
+:is(.diagram-expand, .table-expand):focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 2px;
+}
+
+@media (hover: none) {
+  :is(.diagram-expand, .table-expand) {
+    opacity: 1;
+  }
+}
+
+/* A Mermaid diagram has nothing to open until it is drawn. */
+.prose figure:has(> .diagram[data-diagram='mermaid']:not([data-state='drawn'])) > .diagram-expand,
+.prose .diagram[data-diagram='mermaid']:not([data-state='drawn']) > .diagram-expand {
+  display: none;
+}
+
+html.lightbox-open {
+  overflow: hidden;
+}
+
+.lightbox:focus {
+  outline: none;
+}
+
+.lightbox {
+  inset: 0;
+  width: calc(100vw - 2.5rem);
+  height: calc(100dvh - 2.5rem);
+  max-width: none;
+  max-height: none;
+  margin: auto;
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-xl);
+  background-color: var(--color-surface-raised);
+  color: var(--color-foreground);
+  box-shadow:
+    0 24px 64px -16px var(--color-shadow-direct, rgb(0 0 0 / 0.35)),
+    0 4px 16px var(--color-shadow-ambient, rgb(0 0 0 / 0.12));
+  opacity: 0;
+  transform: scale(0.98);
+  transition:
+    opacity 180ms var(--ease-standard, ease),
+    transform 180ms var(--ease-standard, ease),
+    overlay 180ms allow-discrete,
+    display 180ms allow-discrete;
+}
+
+.lightbox[open] {
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) auto;
+  opacity: 1;
+  transform: none;
+}
+
+@starting-style {
+  .lightbox[open] {
+    opacity: 0;
+    transform: scale(0.98);
+  }
+}
+
+.lightbox::backdrop {
+  background-color: color-mix(in oklch, var(--color-background) 70%, transparent);
+  backdrop-filter: blur(10px);
+  opacity: 0;
+  transition:
+    opacity 180ms var(--ease-standard, ease),
+    overlay 180ms allow-discrete,
+    display 180ms allow-discrete;
+}
+
+.lightbox[open]::backdrop {
+  opacity: 1;
+}
+
+@starting-style {
+  .lightbox[open]::backdrop {
+    opacity: 0;
+  }
+}
+
+/* A phone gives the drawing the whole screen, clear of the notch and the bar. */
+@media (width < 40rem) {
+  .lightbox {
+    width: 100vw;
+    height: 100dvh;
+    border: 0;
+    border-radius: 0;
+    padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom)
+      env(safe-area-inset-left);
+  }
+}
+
+/*
+ * An external editor in the lightbox shell (`packages/editor/src/embedded-
+ * frame`): a bar naming it above the editor's own frame, which takes the rest.
+ */
+.lightbox.embedded-editor[open] {
+  grid-template-rows: auto minmax(0, 1fr);
+}
+
+.lightbox-caption {
+  margin: 0;
+  /* Centred at a reading measure, as long as the screen is wide. */
+  padding: 0.875rem max(1.25rem, (100% - 72ch) / 2);
+  border-top: 1px solid var(--color-border);
+  text-align: center;
+  font: 0.8125rem / 1.5 var(--font-sans);
+  color: var(--color-body, var(--color-muted));
+  text-wrap: pretty;
+}
+
+.lightbox-controls {
+  position: absolute;
+  z-index: 1;
+  top: max(0.75rem, env(safe-area-inset-top));
+  right: max(0.75rem, env(safe-area-inset-right));
+  display: flex;
+  align-items: center;
+  gap: 0.125rem;
+  padding: 0.1875rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background-color: var(--color-surface);
+  box-shadow: 0 4px 12px -4px var(--color-shadow-ambient, rgb(0 0 0 / 0.12));
+}
+
+.lightbox-control {
+  display: grid;
+  place-items: center;
+  min-width: 2rem;
+  height: 2rem;
+  padding: 0 0.5rem;
+  border: 0;
+  border-radius: calc(var(--radius-md) - 0.1875rem);
+  background: transparent;
+  color: var(--color-muted);
+  font: 500 0.8125rem / 1 var(--font-sans);
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+  transition:
+    background-color var(--duration-fast, 120ms) var(--ease-standard, ease),
+    color var(--duration-fast, 120ms) var(--ease-standard, ease);
+}
+
+/* A control that cannot act at this size is gone (`hidden`), or at a limit disabled with its reason. */
+.lightbox-control[hidden] {
+  display: none;
+}
+
+.lightbox-control[aria-disabled='true'] {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.lightbox-control[aria-disabled='true']:hover {
+  background-color: transparent;
+  color: var(--color-muted);
+}
+
+.lightbox-control:hover {
+  background-color: var(--color-surface-raised);
+  color: var(--color-foreground);
+}
+
+.lightbox-control:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 1px;
+}
+
+.lightbox-readout {
+  min-width: 3.5rem;
+}
+
+.lightbox-control[data-action='close'] {
+  margin-inline-start: 0.25rem;
+}
+
+.lightbox-stage {
+  position: relative;
+  overflow: hidden;
+  touch-action: none;
+  cursor: zoom-in;
+}
+
+/*
+ * A custom drag (panning a drawing, a table handle in the editor) turns text
+ * selection off for exactly as long as it lasts (`data-dragging` on the root,
+ * set on press and cleared on release or cancel), never otherwise: a reader
+ * can always select and copy what they read.
+ */
+:root[data-dragging] {
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.lightbox-stage[data-zoomed='true'] {
+  cursor: grab;
+}
+
+.lightbox-stage[data-dragging='true'] {
+  cursor: grabbing;
+}
+
+.lightbox-canvas {
+  width: 100%;
+  height: 100%;
+  transform-origin: 0 0;
+  transition: transform 200ms var(--ease-standard, ease);
+  will-change: transform;
+}
+
+.lightbox-stage[data-dragging='true'] .lightbox-canvas {
+  transition: none;
+}
+
+.lightbox-stage.prose .lightbox-canvas > .diagram {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: 100%;
+  padding: clamp(1rem, 4vw, 2.5rem);
+  /* Clear of the controls floating over the top corner. */
+  padding-block-start: max(clamp(1rem, 4vw, 2.5rem), 3.75rem);
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  overflow: visible;
+}
+
+/*
+ * A picture in the lightbox (`lightbox/images.ts`): fitted to the stage, whatever its size, and
+ * clear of the controls floating over the top corner, like a drawing.
+ */
+.lightbox-stage.prose .lightbox-canvas > .lightbox-picture {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: 100%;
+  padding: clamp(1rem, 4vw, 2.5rem);
+  padding-block-start: max(clamp(1rem, 4vw, 2.5rem), 3.75rem);
+}
+
+.lightbox-stage.prose .lightbox-picture img {
+  max-width: 100%;
+  max-height: 100%;
+  width: auto;
+  height: auto;
+  margin: 0;
+  object-fit: contain;
+}
+
+/* A picture that opens says so under the pointer, and shows the keyboard where it is. */
+.prose img[data-expandable='true'] {
+  cursor: zoom-in;
+}
+
+.prose img[data-expandable='true']:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 2px;
+}
+
+.lightbox-stage.prose .lightbox-canvas > .diagram[data-diagram] svg {
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  max-width: none;
+  max-height: 100%;
+}
+
+.lightbox-hint {
+  position: absolute;
+  bottom: 1rem;
+  left: 50%;
+  margin: 0;
+  padding: 0.375rem 0.75rem;
+  translate: -50% 0;
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  background-color: var(--color-surface-raised);
+  color: var(--color-muted);
+  font: 500 0.75rem / 1.2 var(--font-sans);
+  white-space: nowrap;
+  pointer-events: none;
+  animation: lightbox-hint 4.5s var(--ease-standard, ease) forwards;
+}
+
+/*
+ * The turn hint: a phone that turns onto its side twice and settles there,
+ * as the system's own rotate prompts do, and stays until the reader turns
+ * the device or touches the drawing. Reduced motion shows it already turned.
+ */
+.lightbox-hint[data-turn='true'] {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding-inline-start: 0.5rem;
+  color: var(--color-foreground);
+  animation: none;
+}
+
+.lightbox-turn {
+  flex: none;
+  overflow: visible;
+}
+
+.lightbox-turn-phone {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: lightbox-turn 1.6s var(--ease-standard, ease) 0.3s 2 both;
+}
+
+.lightbox-turn-arrow {
+  color: var(--color-accent-ink, var(--color-accent));
+}
+
+@keyframes lightbox-turn {
+  0%,
+  15% {
+    rotate: 0deg;
+  }
+
+  55%,
+  100% {
+    rotate: -90deg;
+  }
+}
+
+.lightbox[data-used='true'] .lightbox-hint {
+  opacity: 0;
+  transition: opacity 200ms var(--ease-standard, ease);
+}
+
+@keyframes lightbox-hint {
+  0%,
+  70% {
+    opacity: 1;
+  }
+
+  100% {
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lightbox,
+  .lightbox::backdrop,
+  .lightbox-canvas,
+  .diagram-expand,
+  .table-expand {
+    transition: none;
+  }
+
+  .lightbox-hint {
+    animation: none;
+  }
+
+  .lightbox-turn-phone {
+    animation: none;
+    rotate: -90deg;
+  }
+}
+
+/* --- Contents and child documents --------------------------------------- */
+
+/*
+ * The `::toc` block and the `::children` block: nested lists of links that lead
+ * somewhere else in the document, or beneath it. One card, so the two read as
+ * the same kind of thing — a way around — and quiet by design, like the "On this
+ * page" list they share a job with.
+ *
+ * Both lists reset the reading list style (`.prose ul`, `.prose ol`), and the
+ * writing surface draws the same two blocks inside the same card, so this is
+ * also what they look like while they are being written.
+ */
+.prose .toc,
+.prose .live-block[data-live-block='children'] {
+  font-family: var(--font-sans);
+  font-size: 0.92em;
+  line-height: 1.5;
+  padding: 0.75rem 1rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background-color: var(--color-surface);
+}
+
+.prose :is(.toc, .live-block[data-live-block='children']) :is(ol, ul) {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.prose :is(.toc, .live-block[data-live-block='children']) :is(ol, ul) :is(ol, ul) {
+  margin-top: 0.2rem;
+  padding-inline-start: 1rem;
+}
+
+.prose :is(.toc, .live-block[data-live-block='children']) li + li {
+  margin-top: 0.2rem;
 }

@@ -1,0 +1,14 @@
+{
+  "collection": "Guides",
+  "title": "Migrating from v1 to v2",
+  "type": "guide",
+  "owners": ["marcus@acme.example"],
+  "tags": ["api", "migration", "v1", "deprecation"],
+  "review": "90d",
+  "status": "published",
+  "notes": [
+    "First version of the migration guide",
+    "Added the v1 retirement dates and the webhook signature change"
+  ],
+  "frontMatter": {}
+}

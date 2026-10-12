@@ -1,0 +1,10 @@
+{
+  "collection": "Research",
+  "title": "Interview notes: Harbourview Health",
+  "type": "meeting",
+  "owners": ["priya@acme.example"],
+  "tags": ["interview", "harbourview-health", "healthcare"],
+  "status": "published",
+  "notes": ["Notes written up the day after the interview"],
+  "frontMatter": {}
+}

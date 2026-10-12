@@ -10,7 +10,11 @@
   ],
   "exports": {
     ".": "./src/index.ts",
-    "./client": "./src/client/index.ts"
+    "./client": "./src/client/index.ts",
+    "./browser": "./src/browser/browser-environment.ts",
+    "./corpus": "./src/corpus/language-corpus.ts",
+    "./languages": "./src/languages.ts",
+    "./tokens": "./src/tokens.ts"
   },
   "scripts": {
     "typecheck": "tsc -p tsconfig.json"

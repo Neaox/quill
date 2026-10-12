@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import {
   defaultOrganisationSettings,
   defaultWorkspaceSettings,
+  ORGANISATION_SETTINGS_VERSION,
   SETTINGS_VERSION,
 } from './documents.ts'
 import { decodeOrganisationSettings, decodeWorkspaceSettings, encodeSettings } from './yaml.ts'
@@ -40,7 +41,7 @@ describe('encoding', () => {
     const long = 'x'.repeat(300)
     const text = encodeSettings({
       ...organisation,
-      publicNavigation: [{ label: 'Handbook', href: `/docs/${long}` }],
+      publicMenu: [{ kind: 'url', label: 'Handbook', href: `/docs/${long}` }],
     })
     expect(text).toContain(`/docs/${long}`)
   })
@@ -66,5 +67,31 @@ describe('decoding', () => {
     expect(decodeWorkspaceSettings(`version: ${SETTINGS_VERSION}\n`)).toMatchObject({
       kind: 'unreadable',
     })
+  })
+})
+
+describe('the format corpus (ADR-033)', () => {
+  it('reads a version 1 file as written, its navigation links kept as menu links', async () => {
+    const { readFile } = await import('node:fs/promises')
+    const text = await readFile(new URL('./corpus/organisation.v1.yaml', import.meta.url), 'utf8')
+    const decoded = decodeOrganisationSettings(text)
+    if (decoded.kind !== 'settings') throw new Error(`unreadable: ${decoded.reason}`)
+    expect(decoded.document.version).toBe(ORGANISATION_SETTINGS_VERSION)
+    expect(decoded.document.name).toBe('Acme')
+    expect(decoded.document.publicMenu).toEqual([
+      { kind: 'url', href: '/handbook', label: 'Handbook' },
+      { kind: 'url', href: 'https://status.example.com', label: 'Status' },
+    ])
+  })
+
+  it('writes the current version back, so a version 1 file is upgraded on its next save', async () => {
+    const { readFile } = await import('node:fs/promises')
+    const text = await readFile(new URL('./corpus/organisation.v1.yaml', import.meta.url), 'utf8')
+    const decoded = decodeOrganisationSettings(text)
+    if (decoded.kind !== 'settings') throw new Error('unreadable')
+    const rewritten = encodeSettings(decoded.document)
+    expect(rewritten).toContain(`version: ${ORGANISATION_SETTINGS_VERSION}`)
+    expect(rewritten).not.toContain('publicNavigation')
+    expect(decodeOrganisationSettings(rewritten)).toEqual(decoded)
   })
 })

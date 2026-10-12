@@ -21,6 +21,19 @@ describe('quill/tailwind-v4', () => {
     expect(messages).toContain('bare `rounded`')
   })
 
+  it('refuses aria-current:, which matches only "true" and not the router’s "page"', () => {
+    const result = runRule('tailwind-v4', fixtureFiles('tailwind-v4', 'aria-current'))
+    expect(result.diagnostics.map((d) => d.message).join('\n')).toContain('use current:')
+  })
+
+  it('rewrites aria-current: to current:, including under group-', () => {
+    const { targetPath } = copyFixtureGroup('tailwind-v4', 'aria-current', 'current.tsx')
+    runRule('tailwind-v4', [targetPath], { fix: true })
+    expect(readFixedFile(targetPath)).toBe(
+      'export function Item() {\n  return <a className="current:font-medium group-current:bg-accent">hi</a>\n}\n',
+    )
+  })
+
   it('auto-fixes the pure renames', () => {
     const { targetPath } = copyFixtureGroup('tailwind-v4', 'invalid', 'bad.tsx')
     runRule('tailwind-v4', [targetPath], { fix: true })

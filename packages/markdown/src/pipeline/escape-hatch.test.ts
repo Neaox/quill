@@ -124,7 +124,7 @@ describe('remarkToMarkdownExtensions', () => {
   it('creates the extension list when no other plugin has', () => {
     const processor = unified().use(remarkToMarkdownExtensions).freeze()
 
-    expect(processor.data('toMarkdownExtensions')).toHaveLength(3)
+    expect(processor.data('toMarkdownExtensions')).toHaveLength(7)
   })
 
   it('appends to a list another plugin already created', () => {

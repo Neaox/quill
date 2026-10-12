@@ -47,12 +47,57 @@ describe('validateThemeDocument', () => {
     )
   })
 
+  it('accepts a reading setting inside its bounds and refuses one outside them', () => {
+    expect(
+      validateThemeDocument(
+        withType({ ...press.type, scale: { size: 18.5, leading: 1.68, measure: 40 } }),
+      ).valid,
+    ).toBe(true)
+
+    const result = validateThemeDocument(
+      withType({ ...press.type, scale: { size: 24, leading: 1.2, measure: 60, tracking: 0 } }),
+    )
+    expect(result.valid).toBe(false)
+    if (result.valid) return
+    expect(result.issues.map((issue) => issue.path)).toEqual(
+      expect.arrayContaining(['/type/scale/size', '/type/scale/leading', '/type/scale/measure']),
+    )
+  })
+
+  it('accepts every built-in id as a base, including a superseded one', () => {
+    for (const base of ['instrument', 'calm', 'editorial', 'grid', 'atelier', 'press']) {
+      expect(validateThemeDocument({ ...press, id: 'northwind', base }).valid).toBe(true)
+    }
+    expect(validateThemeDocument({ ...press, id: 'northwind', base: 'bauhaus' }).valid).toBe(false)
+  })
+
   it('names the document itself for a problem that has no path', () => {
     const result = validateThemeDocument({ ...press, unexpected: true })
     expect(result.valid).toBe(false)
     if (result.valid) return
     expect(result.issues[0]?.path).toBe('')
     expect(result.issues[0]?.message).toContain('the theme document')
+  })
+
+  it('accepts lightness steps for the tone and a dark accent start, and refuses a stray step', () => {
+    const stepped = {
+      ...press,
+      seeds: {
+        ...press.seeds,
+        tone: { ...press.seeds.tone, steps: { light: { paper: 97, body: 38 }, dark: { ink: 95 } } },
+        accent: { ...press.seeds.accent, darkLightness: 72 },
+      },
+    }
+    expect(validateThemeDocument(stepped).valid).toBe(true)
+    expect(
+      validateThemeDocument({
+        ...stepped,
+        seeds: {
+          ...stepped.seeds,
+          tone: { ...stepped.seeds.tone, steps: { light: { glow: 50 } } },
+        },
+      }).valid,
+    ).toBe(false)
   })
 
   it('rejects a value that is not an object at all', () => {

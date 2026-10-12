@@ -1,15 +1,28 @@
 import {
+  compareDocuments,
+  compareLines,
+  compareProperties,
   ensureDocumentId,
   extractLinks,
   extractText,
   isTemplateDeclaration,
+  linesOf,
   parseDocument,
+  attributeChanges,
+  readAuthorship,
+  renderComparison,
+  revertChanges,
+  revertibleChanges,
   renderDocument,
   resolveTemplate,
   serializeDocument,
+  stampEdit,
   stripAuthoringBlocks,
   validateFrontMatter,
 } from '@quill/markdown'
+import { standardEmoji } from '@quill/markdown/emoji-shortcodes'
+import { createMarkdownRegistry } from '@quill/markdown/extension'
+import type { MarkdownRegistry } from '@quill/markdown/extension'
 import type {
   Highlighter,
   SerialisableDocument,
@@ -17,8 +30,15 @@ import type {
   TemplateDeclaration,
   Warning,
 } from '@quill/markdown'
-import { RENDERED_CONTENT_VERSION, DRAFT_CONTENT_VERSION } from '@quill/application'
+import {
+  COMPARED_CONTENT_VERSION,
+  RENDERED_CONTENT_VERSION,
+  DRAFT_CONTENT_VERSION,
+} from '@quill/application'
 import type {
+  CompareInput,
+  ComparedContent,
+  ComparedSource,
   CreateDocumentContentInput,
   DocumentFormat,
   DraftContent,
@@ -32,6 +52,8 @@ import type {
   RenderedContent,
   RenderInput,
   RetitleInput,
+  RevertInput,
+  StampAuthorshipInput,
 } from '@quill/application'
 
 import { documentTitle, retitleDocument } from './document-title.ts'
@@ -60,12 +82,20 @@ const REQUIRED_SECTIONS = 'requiredSections'
 
 export interface DocumentFormatOptions {
   readonly highlighter?: Highlighter
+  /**
+   * The installed Markdown extensions (ADR-039). Quill's own — draw.io
+   * (ADR-043) — when not given; built once, here, as the format is.
+   */
+  readonly extensions?: MarkdownRegistry
 }
 
 export function createDocumentFormat(options: DocumentFormatOptions = {}): DocumentFormat {
   const highlighter = options.highlighter ?? createHighlighter()
+  const extensions = options.extensions ?? createMarkdownRegistry()
 
   return {
+    extensions: extensions.signature,
+
     create(input: CreateDocumentContentInput): NewDocumentContent {
       return input.template === undefined
         ? blankDocument(input)
@@ -125,13 +155,22 @@ export function createDocumentFormat(options: DocumentFormatOptions = {}): Docum
      * titles when auto-titled links land, so they travel with the input from
      * now on rather than being bolted on later.
      */
-    render({ markdown }: RenderInput): RenderedContent {
+    render({ markdown, drawings, labels, emoji, labelEmoji }: RenderInput): RenderedContent {
       const { frontMatter, ast } = parseDocument(markdown)
       const text = extractText(ast)
       // One call, one tree: the heading ids in the body and the ids the
       // outline points at are produced by the same slugger, so a table of
       // contents can never drift from the document it describes.
-      const rendered = renderDocument(ast, { highlighter, frontMatter })
+      const rendered = renderDocument(ast, {
+        highlighter,
+        frontMatter,
+        drawings: new Map([...(drawings ?? [])].map(([url, drawing]) => [url, drawing.markup])),
+        extensions,
+        labels,
+        standardEmoji,
+        emoji,
+        labelEmoji,
+      })
       return {
         version: RENDERED_CONTENT_VERSION,
         html: rendered.html,
@@ -157,6 +196,81 @@ export function createDocumentFormat(options: DocumentFormatOptions = {}): Docum
     toDraft(markdown: string): DraftContent {
       const { frontMatter, ast } = parseDocument(markdown)
       return { version: DRAFT_CONTENT_VERSION, frontMatter, ast }
+    },
+
+    /**
+     * Two versions drawn as one page, with the reader's own renderer and the
+     * same options a body is rendered with, so a comparison looks like the
+     * document it compares (`@quill/markdown`'s `renderComparison`).
+     */
+    compare({ before, after, context, patches, draft, authorship }: CompareInput): ComparedContent {
+      const older = parseDocument(before)
+      const newer = parseDocument(after)
+      const comparison = compareDocuments(older.ast, newer.ast)
+      const compared =
+        draft === undefined ? undefined : { draft: toTree(draft.ast), after: newer.ast, comparison }
+      const revertible = compared === undefined ? undefined : revertibleChanges(compared)
+      const authors =
+        compared === undefined ? undefined : attributeChanges(compared, readAuthorship(authorship))
+      const rendered = renderComparison(
+        comparison,
+        {
+          highlighter,
+          frontMatter: newer.frontMatter,
+          drawings: new Map(
+            [...(context.drawings ?? [])].map(([url, drawing]) => [url, drawing.markup]),
+          ),
+          extensions,
+          labels: context.labels,
+          standardEmoji,
+          emoji: context.emoji,
+          labelEmoji: context.labelEmoji,
+        },
+        { patches: patches === true },
+      )
+      return {
+        version: COMPARED_CONTENT_VERSION,
+        html: rendered.html,
+        sections: rendered.sections,
+        changes:
+          revertible === undefined
+            ? rendered.changes
+            : rendered.changes.map((change) => {
+                const stamp = authors?.get(change.id)
+                return {
+                  ...change,
+                  revertible: revertible.has(change.id),
+                  ...(stamp === undefined ? {} : { author: { userId: stamp.by, at: stamp.at } }),
+                }
+              }),
+        summary: rendered.summary,
+        properties: compareProperties(older.frontMatter, newer.frontMatter),
+      }
+    },
+
+    /**
+     * The draft with some changes between two texts put back: the same comparison the
+     * caller was shown, applied to the draft's own tree where the blocks are the ones it saw.
+     */
+    revert({ before, after, draft, changes }: RevertInput): DraftContent {
+      const newer = parseDocument(after)
+      const comparison = compareDocuments(parseDocument(before).ast, newer.ast)
+      const tree = revertChanges(
+        { draft: toTree(draft.ast), after: newer.ast, comparison },
+        changes,
+      )
+      return { ...draft, ast: tree }
+    },
+
+    stampAuthorship({ previous, next, authorship, by, at }: StampAuthorshipInput): unknown {
+      return stampEdit(readAuthorship(authorship), toTree(previous.ast), toTree(next.ast), {
+        by,
+        at,
+      })
+    },
+
+    compareSource(before: string, after: string): ComparedSource {
+      return compareLines(linesOf(before), linesOf(after))
     },
   }
 }

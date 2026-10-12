@@ -7,14 +7,19 @@ import {
   createRoute,
   createRouter,
 } from '@tanstack/react-router'
-import { render, screen, waitFor, within } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it } from 'vitest'
 
 import { expectNoAccessibilityViolations } from '@quill/ui/testing/axe'
 
 import { ApiClientProvider } from '../../lib/api/client-context.tsx'
-import { createFakeApiClient, jsonResponse, type FakeRoutes } from '../../lib/api/testing.ts'
+import {
+  createFakeApiClient,
+  errorResponse,
+  jsonResponse,
+  type FakeRoutes,
+} from '../../lib/api/testing.ts'
 import { WorkspaceTree } from './workspace-navigation.tsx'
 
 /**
@@ -143,14 +148,67 @@ describe('WorkspaceTree navigation', () => {
     expect(await screen.findByRole('heading', { name: 'Document page' })).toBeInTheDocument()
   })
 
-  it('nests a child document under its parent, as the tree route says', async () => {
+  it('shows a document’s children, a level deeper, once it is opened, and not before', async () => {
     renderTree()
 
-    const parent = await screen.findByRole('link', { name: 'Quarterly plan' })
-    const child = screen.getByRole('link', { name: 'Appendix' })
-    // The nesting is the list structure, not a class: the child's list is
-    // inside the parent's item.
-    expect(parent.closest('li')?.contains(child)).toBe(true)
+    await screen.findByRole('link', { name: 'Quarterly plan' })
+    expect(screen.queryByRole('link', { name: 'Appendix' })).toBeNull()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Expand Quarterly plan' }))
+
+    const child = await screen.findByRole('link', { name: 'Appendix' })
+    // The window cannot show nesting as list structure, so each row says how deep it is.
+    expect(child.closest('li')).toHaveAttribute('aria-level', '2')
+    expect(screen.getByRole('link', { name: 'Quarterly plan' }).closest('li')).toHaveAttribute(
+      'aria-level',
+      '1',
+    )
+    await userEvent.click(screen.getByRole('button', { name: 'Collapse Quarterly plan' }))
+    expect(screen.queryByRole('link', { name: 'Appendix' })).toBeNull()
+  })
+
+  it('opens the tree to the document being read, so it is always found', async () => {
+    renderTree({ currentDocumentId: 'doc-3' })
+
+    const current = await screen.findByRole('link', { name: 'Appendix' })
+
+    expect(current).toHaveAttribute('aria-current', 'page')
+    expect(screen.getByRole('button', { name: 'Collapse Quarterly plan' })).toBeInTheDocument()
+  })
+
+  it('draws a window of a long list, with more behind “Show more”, however many documents there are', async () => {
+    const many = Array.from({ length: 5000 }, (_, n) =>
+      treeNode(`doc-many-${String(n)}`, `Entry ${String(n)}`),
+    )
+    renderTree(
+      {},
+      {
+        'GET /api/workspaces/{id}/tree': () =>
+          jsonResponse(200, {
+            collections: [{ id: 'col-log', name: 'Log', slug: 'log', documents: many }],
+          }),
+      },
+    )
+
+    expect(await screen.findByRole('link', { name: 'Entry 0' })).toBeInTheDocument()
+    // One page is fetched and a window of it drawn: nothing in the DOM grows with 5,000.
+    expect(screen.getAllByRole('listitem').length).toBeLessThan(60)
+    expect(screen.queryByRole('link', { name: 'Entry 4999' })).toBeNull()
+
+    // "Show more" is the fifty-first row, below the window: scroll to it as a reader would.
+    const scroller = screen.getByRole('navigation', { name: 'Documents' }).firstElementChild
+    if (scroller === null) throw new Error('The tree has no scrolling region.')
+    scroller.scrollTop = 1400
+    fireEvent.scroll(scroller)
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Show more' }))
+
+    // The page after the first, in order, and still only a window of it.
+    expect((await screen.findByRole('link', { name: 'Entry 50' })).closest('li')).toHaveAttribute(
+      'aria-posinset',
+      '51',
+    )
+    expect(screen.getAllByRole('listitem').length).toBeLessThan(60)
   })
 
   it('keeps the collections in the order the tree route returned them', async () => {
@@ -308,14 +366,21 @@ describe('WorkspaceTree collection flows', () => {
   })
 
   it('refuses to delete a collection that still holds documents, and says why', async () => {
-    renderTree()
+    renderTree(
+      {},
+      {
+        'DELETE /api/collections/{id}': () =>
+          errorResponse(409, 'collection_not_empty', 'It still holds documents', { documents: 2 }),
+      },
+    )
 
     await userEvent.click(await screen.findByRole('button', { name: 'More actions for Guides' }))
     await userEvent.click(await screen.findByRole('menuitem', { name: 'Delete…' }))
 
     const dialog = await screen.findByRole('dialog', { name: /Delete/ })
-    // Two documents, counting the one nested inside the other.
-    expect(within(dialog).getByText(/still holds 2 documents/)).toBeInTheDocument()
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Delete' }))
+    // Whether it is empty is the server's to say, with the count: the tree knows a page at a time.
+    expect(await within(dialog).findByText(/still holds 2 documents/)).toBeInTheDocument()
     expect(within(dialog).getByRole('button', { name: 'Move documents first' })).toBeInTheDocument()
     expect(within(dialog).queryByRole('button', { name: 'Delete' })).not.toBeInTheDocument()
   })

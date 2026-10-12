@@ -6,7 +6,8 @@ import { tv } from '../lib/class-names.ts'
 import { PlainLink, type LinkComponent, type LinkTarget } from '../lib/link.tsx'
 import { useThemeVariants } from '../theme/theme-variants.tsx'
 import { buttonClassName } from './button.tsx'
-import { HistoryIcon } from './icons.tsx'
+import { CompareIcon, HistoryIcon } from './icons.tsx'
+import { RelativeTime } from './relative-time.tsx'
 
 /**
  * The revision on screen is the only tick marked `aria-current`, and that
@@ -17,15 +18,29 @@ import { HistoryIcon } from './icons.tsx'
 export const revisionTimelineStyles = tv({
   slots: {
     root: '',
-    heading: 'meta pb-2',
+    heading: 'section-label pb-2.5',
     list: 'timeline ps-3',
+    /*
+     * The version is the name, in the middle ink and one weight up; the date
+     * is the fact beside it, in the quietest. Tabular figures, so a column of
+     * dates lines up without a monospace face.
+     */
     link: [
-      'group meta-value flex min-h-7 items-center gap-2.5 text-muted',
+      'group flex min-h-7 items-center gap-2.5 text-xs text-foreground-soft tabular-nums',
       'transition-colors ease-standard hover:text-foreground',
       'focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-focus-ring',
-      'aria-current:text-foreground',
+      'current:text-foreground',
     ],
-    dot: ['timeline-dot', 'group-aria-current:border-accent group-aria-current:bg-accent'],
+    version: 'font-medium',
+    date: 'text-muted',
+    dot: ['timeline-dot', 'group-current:border-accent group-current:bg-accent'],
+    row: 'group/row flex items-center justify-between gap-2',
+    compare: [
+      'flex size-6 shrink-0 items-center justify-center rounded-sm text-muted opacity-0',
+      'transition-[opacity,color] ease-standard hover:bg-surface hover:text-foreground',
+      'group-hover/row:opacity-100 focus-visible:opacity-100 pointer-coarse:opacity-100',
+      'focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus-ring',
+    ],
     panel: [
       'tooltip-panel z-50 w-60 rounded-lg border border-border bg-surface-raised p-3',
       'shadow-overlay',
@@ -37,10 +52,16 @@ export interface Revision {
   readonly id: string
   /** What a reader calls it: `v12`. */
   readonly label: string
-  /** `YYYY-MM-DD`, for a `<time datetime>`. */
+  /** When it was published, as an ISO date or timestamp: said as how long ago, in full on hover. */
   readonly at: string
   /** Where the revision is read, as a route and its parameters — never a built `href`. */
   readonly link: LinkTarget
+  /**
+   * Where this revision is compared with the one before it. Offered beside
+   * the tick, quietly until the row is pointed at or focused; absent for the
+   * first revision, which has nothing before it.
+   */
+  readonly compare?: LinkTarget | undefined
 }
 
 export interface RevisionTimelineProps {
@@ -77,17 +98,27 @@ function Ticks({
       {revisions.map((revision) => {
         const isCurrent = revision.id === currentId
         return (
-          <li key={revision.id}>
+          <li key={revision.id} className={styles.row()}>
             <Link
               {...revision.link}
               aria-current={isCurrent ? 'true' : undefined}
               className={styles.link()}
             >
               <span aria-hidden="true" className={styles.dot()} />
-              <span>{revision.label}</span>
-              <time dateTime={revision.at}>{revision.at}</time>
+              <span className={styles.version()}>{revision.label}</span>
+              <RelativeTime value={revision.at} className={styles.date()} />
               {isCurrent ? <span className="sr-only">current revision</span> : undefined}
             </Link>
+            {revision.compare === undefined ? undefined : (
+              <Link
+                {...revision.compare}
+                className={styles.compare()}
+                aria-label={`Compare ${revision.label} with the previous version`}
+                title="Compare with previous"
+              >
+                <CompareIcon />
+              </Link>
+            )}
           </li>
         )
       })}

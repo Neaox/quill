@@ -105,6 +105,23 @@ function claimTheShortcut(event: KeyboardEvent): void {
   if (event.key === 'k') event.preventDefault()
 }
 
+const admin = () =>
+  jsonResponse(200, {
+    id: 'user-0',
+    email: 'admin@example.com',
+    displayName: 'Instance administrator',
+    emailVerified: true,
+    isInstanceAdmin: true,
+  })
+
+function groupLabels(): (string | null | undefined)[] {
+  return screen
+    .getAllByRole('group')
+    .map(
+      (group) => document.getElementById(group.getAttribute('aria-labelledby') ?? '')?.textContent,
+    )
+}
+
 describe('the search palette', () => {
   it('is not on screen until it is opened', async () => {
     renderApp(
@@ -474,5 +491,75 @@ describe('the search palette', () => {
     await openPalette()
 
     expect(screen.queryByRole('link', { name: 'See all results' })).not.toBeInTheDocument()
+  })
+
+  describe('its commands', () => {
+    it('list where to go before anything is typed, without the organisation for a non-admin', async () => {
+      await openPalette()
+
+      expect(await screen.findByRole('option', { name: 'Home' })).toBeInTheDocument()
+      expect(groupLabels()).toEqual(['Go to', 'Account'])
+      expect(screen.getByRole('option', { name: 'Sign out' })).toBeInTheDocument()
+      expect(
+        screen.queryByRole('option', { name: 'Organisation settings' }),
+      ).not.toBeInTheDocument()
+      // The prompt still says what typing does.
+      expect(screen.getByText(/Type to search every workspace you can read/)).toBeVisible()
+    })
+
+    it('offer an administrator every organisation setting, and go to the one chosen', async () => {
+      const { router } = await openPalette({
+        ...shellRoutes(() => jsonResponse(200, RESULTS)),
+        'GET /api/me': admin,
+      })
+
+      const organisation = await screen.findByRole('group', { name: 'Organisation' })
+      expect(
+        within(organisation)
+          .getAllByRole('option')
+          .map((option) => option.textContent),
+      ).toEqual([
+        'Organisation settings',
+        'Theme',
+        'Labels and emoji',
+        'Layout',
+        'Secrets and sign-in',
+        'Units and workspaces',
+      ])
+
+      await userEvent.keyboard('theme')
+      expect(screen.getByRole('option', { name: 'Theme' })).toHaveAttribute('aria-selected', 'true')
+      await userEvent.keyboard('{Enter}')
+
+      await waitFor(() => {
+        expect(router.state.location.pathname).toBe('/admin/settings/theme')
+      })
+      expect(screen.queryByRole('dialog', { name: 'Search documentation' })).not.toBeInTheDocument()
+    })
+
+    it('sign out from anywhere', async () => {
+      let signedOut = false
+      await openPalette({
+        ...shellRoutes(() => jsonResponse(200, RESULTS)),
+        'POST /api/auth/sign-out': () => {
+          signedOut = true
+          return new Response(null, { status: 204 })
+        },
+      })
+
+      await userEvent.keyboard('log out')
+      await userEvent.click(await screen.findByRole('option', { name: 'Sign out' }))
+
+      await waitFor(() => {
+        expect(signedOut).toBe(true)
+      })
+    })
+
+    it('are free of axe violations, listed before anything is typed', async () => {
+      await openPalette({ ...shellRoutes(() => jsonResponse(200, RESULTS)), 'GET /api/me': admin })
+      await screen.findByRole('group', { name: 'Organisation' })
+
+      await expectNoAccessibilityViolations(document.body, AXE_WITH_FOCUS_TRAP)
+    })
   })
 })

@@ -17,6 +17,7 @@ export { baseExtensions, editorSchema } from './schema/editor-schema.ts'
 export { createTable, tableCommands } from './schema/tables.ts'
 export { buildExtensions } from './document/extensions.ts'
 export type { EditorExtensionOptions } from './document/extensions.ts'
+export type { EditorEmojiOptions } from './document/emoji.ts'
 export { keyboardShortcuts } from './document/keymap.ts'
 export { choosePaste } from './document/paste.ts'
 export type { PasteAction, PasteInput } from './document/paste.ts'
@@ -39,6 +40,17 @@ export {
   setLink,
 } from './document/commands.ts'
 export type { ImageAttributes, LinkAttributes } from './document/commands.ts'
+
+// Images, and the actions an extension offers on one (ADR-039)
+export { setImageSource, withImageActions } from './image/image-actions.ts'
+export type { ImageAction, ImageRef } from './image/image-actions.ts'
+
+// draw.io's editor binding (ADR-043); its editing session is `@quill/editor/drawio`
+export { drawioImageAction, drawioSlashContribution } from './extensions/drawio/drawio-binding.ts'
+export type {
+  DrawioImageActionOptions,
+  DrawioSlashOptions,
+} from './extensions/drawio/drawio-binding.ts'
 
 // Blocks, widths, and the block menu
 export { BlockMenu } from './block/block-menu.tsx'
@@ -67,8 +79,39 @@ export { SlashMenu } from './slash/slash-menu.tsx'
 export type { SlashMenuProps } from './slash/slash-menu.tsx'
 export { createSlashStore } from './slash/slash-store.ts'
 export type { SlashSnapshot, SlashStore } from './slash/slash-store.ts'
-export { filterSlashItems, SLASH_ITEMS } from './slash/slash-items.ts'
-export type { SlashContext, SlashItem, SlashRequest } from './slash/slash-items.ts'
+export {
+  BUILT_IN_SLASH_CONTRIBUTIONS,
+  createSlashRegistry,
+  describePlace,
+} from './slash/slash-registry.ts'
+export type { SlashRegistry, SlashRegistryOptions } from './slash/slash-registry.ts'
+export { commandItem, pickerItem, SLASH_GROUPS } from './slash/slash-item.ts'
+export type {
+  DocumentLinkTarget,
+  SlashContribution,
+  SlashEnvironment,
+  SlashGroup,
+  SlashItem,
+  SlashItemMeta,
+  SlashPicker,
+  SlashPickerOption,
+  SlashPickerSource,
+  SlashPlace,
+  SlashRequest,
+  SlashRunContext,
+} from './slash/slash-item.ts'
+export {
+  containerDirective,
+  insertBlock,
+  insertInline,
+  insertText,
+  paragraph,
+  textDirective,
+} from './slash/slash-commands.ts'
+export { rankMatches } from './slash/slash-rank.ts'
+export { createSlashRecents } from './slash/slash-recents.ts'
+export type { SlashRecents } from './slash/slash-recents.ts'
+export { AUTOFORMAT_HINTS } from './document/autoformat.ts'
 
 // Document properties, where the front matter block used to be
 export { DocumentProperties, documentPropertiesStyles } from './properties/document-properties.tsx'
@@ -101,16 +144,11 @@ export {
 } from './properties/front-matter-view.ts'
 
 // Code blocks
-export { LANGUAGES, loadGrammar, resolveLanguage } from './code-block/languages.ts'
+export { LANGUAGES, languageForFile, resolveLanguage } from './code-block/languages.ts'
 export type { EditorLanguage } from './code-block/languages.ts'
-export { COPIED_FEEDBACK_MS, PLAIN_TEXT } from './code-block/code-block-view.ts'
-export {
-  UNMAPPED_TOKEN_CLASSES,
-  tokenHighlightStyle,
-  tokenVariable,
-} from './code-block/highlight-style.ts'
-export { TOKEN_CLASSES } from '@quill/highlight'
-export type { TokenClass } from '@quill/highlight'
+export { PLAIN_TEXT } from './code-block/code-block-view.ts'
+export { LanguagePicker } from './code-block/language-picker.tsx'
+export type { LanguagePickerProps } from './code-block/language-picker.tsx'
 
 // The template surface
 export { useTemplateProgress } from './template/use-template-progress.ts'
@@ -127,8 +165,13 @@ export type { TemplateDeclarationSummary } from './template/progress.ts'
 export type {
   AcquireResult,
   Autosave,
+  AutosavePhase,
   AutosaveStatus,
   Clock,
+  Connectivity,
+  DraftChannel,
+  DraftSavedMessage,
+  FakeConnectivity,
   DocumentLock,
   DraftClient,
   DraftSaveResult,
@@ -141,6 +184,7 @@ export type {
   LockHolder,
   LockState,
   LockStatus,
+  DraftBase,
   PendingDraft,
   RecoveryStore,
   TakeoverResult,
@@ -149,10 +193,14 @@ export type {
 } from './drafts/index.ts'
 export {
   AUTOSAVE_DEBOUNCE_MS,
+  browserConnectivity,
+  createBroadcastDraftChannel,
   createFakeClock,
+  createFakeConnectivity,
+  createMemoryDraftChannels,
   createMemoryRecoveryStore,
   HEARTBEAT_INTERVAL_MS,
-  HEARTBEAT_RETRY_DELAY_MS,
+  HEARTBEAT_RETRY_BACKOFF,
   initialLockState,
   lockReducer,
   systemClock,

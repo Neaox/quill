@@ -1,0 +1,15 @@
+{
+  "collection": "Guides",
+  "title": "Webhooks",
+  "type": "guide",
+  "owners": ["marcus@acme.example"],
+  "tags": ["api", "webhooks", "events", "hmac"],
+  "review": "90d",
+  "status": "published",
+  "notes": [
+    "First version: endpoints, events, signatures, retries",
+    "Added Go verification, the test endpoint and the theme.merged event",
+    "Added import.completed and the signing secret rotation procedure"
+  ],
+  "frontMatter": {}
+}

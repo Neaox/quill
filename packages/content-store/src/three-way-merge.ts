@@ -4,11 +4,23 @@
  * A publish carries the revision its draft was based on. When that base is no
  * longer the head — someone else published, or a change arrived through Git
  * sync — the two sets of edits are merged against their common ancestor
- * instead of one silently overwriting the other. `node-diff3` produces the same
- * output as `git merge-file`, conflict markers included, in a fraction of the
- * time a shell-out takes (research R4).
+ * instead of one silently overwriting the other.
+ *
+ * Whether the two combine, and what they combine into, is decided by the one
+ * merge engine in `@quill/markdown` (ADR-021, amendment of 2026-10-11), the
+ * same one that merges offline drafts, so drafts and publishing cannot
+ * disagree about what a conflict is. It merges by block and then by word, so
+ * edits to neighbouring lines of one paragraph combine where a line merge
+ * would stop.
+ *
+ * When they do not combine, the text shown in the merge view is what
+ * `git merge-file` would write, markers included (ADR-014): `node-diff3`
+ * produces the same bytes in a fraction of the time a shell-out takes
+ * (research R4), and it is the form a Git user reading a synced repository
+ * already knows.
  */
 
+import { mergeMarkdown } from '@quill/markdown'
 import { merge } from 'node-diff3'
 
 export interface ThreeWayMerge {
@@ -21,9 +33,16 @@ export interface ThreeWayMerge {
 export const OURS_LABEL = 'yours'
 export const THEIRS_LABEL = 'published'
 
-export function threeWayMerge(base: string, ours: string, theirs: string): ThreeWayMerge {
-  const outcome = merge(ours.split('\n'), base.split('\n'), theirs.split('\n'), {
+/** The two sides with `git merge-file`'s conflict markers, line by line. */
+export function conflictMarkers(base: string, ours: string, theirs: string): string {
+  return merge(ours.split('\n'), base.split('\n'), theirs.split('\n'), {
     label: { a: OURS_LABEL, b: THEIRS_LABEL },
-  })
-  return { clean: !outcome.conflict, text: outcome.result.join('\n') }
+  }).result.join('\n')
+}
+
+export function threeWayMerge(base: string, ours: string, theirs: string): ThreeWayMerge {
+  const merged = mergeMarkdown(base, ours, theirs)
+  return merged.clean
+    ? { clean: true, text: merged.markdown }
+    : { clean: false, text: conflictMarkers(base, ours, theirs) }
 }

@@ -20,6 +20,13 @@ export interface SecurityHeaderOptions {
    * the docs are served at all — is served a relaxed policy.
    */
   readonly serveApiDocs: boolean
+  /**
+   * The origins the app may frame, and nothing else: the draw.io editor's,
+   * when the instance has one (ADR-043). Generated from configuration, so the
+   * policy names exactly the editor an operator chose. Empty, `frame-src` is
+   * `'none'`.
+   */
+  readonly frameSources?: readonly string[]
 }
 
 /** Two years, the value the HSTS preload list requires. */
@@ -52,7 +59,10 @@ export function registerSecurityHeaders(
         'media-src': ["'self'"],
         'manifest-src': ["'self'"],
         'worker-src': ["'self'"],
-        'frame-src': ["'none'"],
+        'frame-src':
+          options.frameSources === undefined || options.frameSources.length === 0
+            ? ["'none'"]
+            : [...options.frameSources],
         'frame-ancestors': ["'none'"],
         'object-src': ["'none'"],
         'base-uri': ["'self'"],

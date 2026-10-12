@@ -14,13 +14,15 @@
  * carries the `.gen.css` suffix, which is what excludes it from the formatter
  * and the coverage report — that test is the only thing keeping it honest.
  */
-import { tokenCssContract } from '@quill/highlight'
+import { tokenStylesheet } from '@quill/highlight'
 import {
-  BUILTIN_THEMES,
-  BUILTIN_THEME_IDS,
+  OFFERED_THEMES,
+  OFFERED_THEME_IDS,
   generateTheme,
+  supersededBy,
   toCss,
   type BuiltinThemeId,
+  type OfferedThemeId,
 } from '@quill/theme'
 
 import { DEFAULT_THEME_ID, THEME_ID_ATTRIBUTE } from '../theme/theme-id.ts'
@@ -31,19 +33,26 @@ export interface GeneratedStylesheet {
   readonly css: string
 }
 
+const idMatch = (id: BuiltinThemeId): string => `[${THEME_ID_ATTRIBUTE}='${id}']`
+
 /**
  * The scope a theme's custom properties apply in.
  *
  * A `:where()` keeps the default theme at the specificity of a bare `:root`
- * while still matching its own id, and the two arms are mutually exclusive,
- * so exactly one theme's block ever applies. `toCss` appends the colour
- * scheme selectors to whatever it is given, which is why this has to stay a
- * single compound selector rather than a selector list.
+ * while still matching its own id, and the arms are mutually exclusive, so
+ * exactly one theme's block ever applies. A theme that superseded another
+ * also answers to the retired id (`:is()`), so a page that still names Press
+ * paints Editorial rather than falling back to the default. `toCss` appends
+ * the colour scheme selectors to whatever it is given, which is why this has
+ * to stay a single compound selector rather than a selector list.
  */
-export const themeScope = (id: BuiltinThemeId): string =>
-  id === DEFAULT_THEME_ID
-    ? `:root:where(:not([${THEME_ID_ATTRIBUTE}]), [${THEME_ID_ATTRIBUTE}='${id}'])`
-    : `:root[${THEME_ID_ATTRIBUTE}='${id}']`
+export const themeScope = (id: OfferedThemeId): string => {
+  if (id === DEFAULT_THEME_ID) return `:root:where(:not([${THEME_ID_ATTRIBUTE}]), ${idMatch(id)})`
+  const aliases = supersededBy(id)
+  return aliases.length === 0
+    ? `:root${idMatch(id)}`
+    : `:root:is(${[id, ...aliases].map(idMatch).join(', ')})`
+}
 
 /** Named once, so the first line of every generated file can say it. */
 export const REGENERATE_COMMAND = 'pnpm --filter @quill/ui generate:tokens'
@@ -63,31 +72,16 @@ const banner = (source: string): string =>
   ].join('\n')
 
 /** One built-in identity's palettes, in the resolution order of `tokens.css`. */
-export const themeStylesheet = (id: BuiltinThemeId): string =>
+export const themeStylesheet = (id: OfferedThemeId): string =>
   banner(`the \`${id}\` theme document in @quill/theme`) +
-  toCss(generateTheme(BUILTIN_THEMES[id]), { selector: themeScope(id) })
+  toCss(generateTheme(OFFERED_THEMES[id]), { selector: themeScope(id) })
 
-/**
- * The syntax token stylesheet (ADR-030).
- *
- * Two selector families read the same `--token-*` variable the theme emits,
- * and they are never comma-joined: a browser without `::highlight()` drops a
- * whole selector list that contains one, which would take the markup rules
- * down with it. Both are colour-only, because that is all `::highlight()` can
- * paint, and parity between the two presentations beats a flourish in one.
- */
-export const syntaxStylesheet = (): string => {
-  const { variables, classSelectors, highlightSelectors } = tokenCssContract()
-  const rules = variables.flatMap((variable, index) =>
-    [classSelectors[index], highlightSelectors[index]].map(
-      (selector) => `${selector} {\n  color: var(${variable});\n}\n`,
-    ),
-  )
-  return `${banner('the token classes of @quill/highlight')}${rules.join('\n')}`
-}
+/** The syntax token stylesheet: `@quill/highlight`'s one rule text, under a banner (ADR-030). */
+export const syntaxStylesheet = (): string =>
+  `${banner('the token classes of @quill/highlight')}${tokenStylesheet()}`
 
 /** Every generated stylesheet, in the order `tokens.css` imports them. */
 export const generatedStylesheets = (): readonly GeneratedStylesheet[] => [
-  ...BUILTIN_THEME_IDS.map((id) => ({ path: `generated/${id}.gen.css`, css: themeStylesheet(id) })),
+  ...OFFERED_THEME_IDS.map((id) => ({ path: `generated/${id}.gen.css`, css: themeStylesheet(id) })),
   { path: 'generated/syntax-tokens.gen.css', css: syntaxStylesheet() },
 ]

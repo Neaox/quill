@@ -1,0 +1,10 @@
+{
+  "collection": "RFCs",
+  "title": "Decision: SQLite for the local store",
+  "type": "adr",
+  "owners": ["jonas@acme.example"],
+  "tags": ["adr", "skiff", "storage", "sqlite"],
+  "status": "published",
+  "notes": ["Recorded the decision made on 18 November 2025"],
+  "frontMatter": {}
+}

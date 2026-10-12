@@ -37,6 +37,37 @@ describe('buildNeutralRamp', () => {
     expect(dark.ink.lightness).toBeGreaterThan(dark.paper.lightness)
   })
 
+  it('sets running text a visible step quieter than the ink, at the full body floor', () => {
+    for (const scheme of ['light', 'dark'] as const) {
+      const { body, ink, muted, paper } = buildNeutralRamp(tone, scheme).colours
+      const fromPaper = (colour: { lightness: number }) =>
+        Math.abs(colour.lightness - paper.lightness)
+      expect(fromPaper(body)).toBeLessThan(fromPaper(ink))
+      expect(fromPaper(body)).toBeGreaterThan(fromPaper(muted))
+      expect(contrastRatio(body, paper)).toBeGreaterThanOrEqual(CONTRAST_FLOORS.body.ratio)
+    }
+  })
+
+  it('starts each role at the theme’s own step when the tone states one', () => {
+    const stepped = {
+      ...tone,
+      steps: { light: { paper: 97.2, surface: 94, raised: 100 }, dark: { paper: 19 } },
+    }
+    const light = buildNeutralRamp(stepped, 'light').colours
+    expect(light.paper.lightness).toBe(97.2)
+    expect(light.surface.lightness).toBe(94)
+    expect(light.raised.lightness).toBe(100)
+    expect(light.codeBackground.lightness).toBe(93.5)
+    expect(buildNeutralRamp(stepped, 'dark').colours.paper.lightness).toBe(19)
+  })
+
+  it('still settles a stated text step against the contrast floors', () => {
+    const tooFaint = { ...tone, steps: { light: { body: 70 } } }
+    const ramp = buildNeutralRamp(tooFaint, 'light')
+    expect(ramp.colours.body.lightness).toBeLessThan(70)
+    expect(ramp.adjustments.some((entry) => entry.role === 'body')).toBe(true)
+  })
+
   it('settles the placeholder into the decorative band and reports the move', () => {
     const ramp = buildNeutralRamp(tone, 'light')
     expect(ramp.adjustments.some((entry) => entry.role === 'placeholder')).toBe(true)
@@ -72,6 +103,19 @@ describe('accent variants', () => {
   it('falls back to the band midpoint when the seed gives no lightness', () => {
     const variants = buildAccentVariants({ hue: 200, chroma: 0.12 }, 'light', neutral)
     expect(inBand(variants.colours.accent.lightness, LIGHTNESS_BANDS.accent.light)).toBe(true)
+  })
+
+  it('starts the dark accent where the seed says, when it says', () => {
+    const dark = buildNeutralRamp(tone, 'dark').colours
+    const stated = buildAccentVariants(
+      { hue: 190, chroma: 0.085, lightness: 47, darkLightness: 78 },
+      'dark',
+      dark,
+    )
+    const unstated = buildAccentVariants({ hue: 190, chroma: 0.085, lightness: 47 }, 'dark', dark)
+    expect(stated.colours.accent.lightness).toBe(78)
+    expect(unstated.colours.accent.lightness).toBeLessThan(78)
+    expect(stated.colours.accentMark.lightness).toBe(47)
   })
 
   it('uses the accent itself as the focus ring', () => {

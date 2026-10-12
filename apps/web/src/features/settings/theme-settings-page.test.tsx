@@ -1,7 +1,8 @@
-import { fireEvent, screen, waitFor } from '@testing-library/react'
+import { fireEvent, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it } from 'vitest'
 
+import { press } from '@quill/theme'
 import { expectNoAccessibilityViolations } from '@quill/ui/testing/axe'
 
 import { renderApp } from '../../lib/api/render-app.tsx'
@@ -9,6 +10,7 @@ import { jsonResponse, type FakeRoutes } from '../../lib/api/testing.ts'
 import {
   admin,
   NEXT_REVISION,
+  organisationSettings,
   readOrganisation,
   REVISION,
   themeReport,
@@ -22,6 +24,12 @@ function routes(extra: FakeRoutes = {}): FakeRoutes {
     'GET /api/settings/organisation': readOrganisation(),
     ...extra,
   }
+}
+
+/** The accent's hue slider, which sits behind the colour control's Sliders tab. */
+async function accentHueSlider(): Promise<HTMLElement> {
+  await userEvent.click(await screen.findByRole('tab', { name: 'Sliders' }))
+  return screen.getByLabelText('Colour')
 }
 
 function recordingPut(bodies: Array<Record<string, unknown>>) {
@@ -62,7 +70,7 @@ describe('the theme editor', () => {
   it('regenerates the palettes when a lever moves, in this browser', async () => {
     const { container } = renderApp(PATH, routes())
 
-    const hue = await screen.findByLabelText('Accent hue')
+    const hue = await accentHueSlider()
     const before = paneTokens(container, 'light').getPropertyValue('--palette-accent')
 
     fireEvent.change(hue, { target: { value: '200' } })
@@ -77,14 +85,29 @@ describe('the theme editor', () => {
     renderApp(PATH, routes())
 
     expect(await screen.findByRole('list', { name: 'Theme doctor report' })).toBeVisible()
-    expect(screen.getByText(/pass · .* adjusted · .* warn/)).toBeVisible()
+    expect(screen.getByText(/^All \d+ checks pass$/)).toBeVisible()
+  })
+
+  it('applies a doctor’s fix to the draft, for the preview to show and Save to keep', async () => {
+    renderApp(PATH, routes())
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Grid' }))
+    expect(await screen.findByRole('link', { name: '2 to check' })).toBeVisible()
+    const fix = await screen.findByText('Lift the dark raised surface a little')
+    const card = fix.closest('li')
+    if (card === null) throw new Error('the suggestion is not a list item')
+    await userEvent.click(within(card).getByRole('button', { name: 'Apply' }))
+
+    expect(await screen.findByRole('link', { name: '1 to check' })).toBeVisible()
+    expect(screen.getByText(/Not saved yet/)).toBeVisible()
+    expect(screen.getAllByRole('button', { name: 'Save' })[0]).toBeEnabled()
   })
 
   it('forks the built-in the first time a lever moves, so the built-in stays as it shipped', async () => {
     const bodies: Array<Record<string, unknown>> = []
     renderApp(PATH, routes({ 'PUT /api/settings/organisation': recordingPut(bodies) }))
 
-    const hue = await screen.findByLabelText('Accent hue')
+    const hue = await accentHueSlider()
     fireEvent.change(hue, { target: { value: '200' } })
     await userEvent.click(screen.getByRole('button', { name: 'Save' }))
 
@@ -100,16 +123,47 @@ describe('the theme editor', () => {
     expect(bodies[0]).toMatchObject({ expectedRevision: REVISION })
   })
 
+  it('keeps a saved Press theme as it was saved when a lever moves, though Press is retired', async () => {
+    const bodies: Array<Record<string, unknown>> = []
+    renderApp(
+      PATH,
+      routes({
+        'GET /api/settings/organisation': readOrganisation(organisationSettings({ theme: press })),
+        'PUT /api/settings/organisation': recordingPut(bodies),
+      }),
+    )
+
+    // Retired, so not offered; its successor is the one pressed.
+    expect(await screen.findByRole('button', { name: 'Editorial' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    )
+    expect(screen.queryByRole('button', { name: 'Press' })).not.toBeInTheDocument()
+
+    fireEvent.change(await accentHueSlider(), { target: { value: '20' } })
+    await userEvent.click(screen.getByRole('button', { name: 'Save' }))
+
+    await waitFor(() => {
+      expect(bodies).toHaveLength(1)
+    })
+    const saved = bodies[0]?.['settings'] as {
+      theme: { base: string; type: { reading: { id: string } }; seeds: { accent: { hue: number } } }
+    }
+    expect(saved.theme.base).toBe('press')
+    expect(saved.theme.type.reading.id).toBe('newsreader')
+    expect(saved.theme.seeds.accent.hue).toBe(20)
+  })
+
   it('starts from another built-in, and offers a reset back to it', async () => {
     renderApp(PATH, routes())
 
-    await userEvent.click(await screen.findByRole('button', { name: 'Press' }))
+    await userEvent.click(await screen.findByRole('button', { name: 'Editorial' }))
 
-    expect(screen.getByText(/Forked from Press/)).toBeVisible()
-    const reset = screen.getByRole('button', { name: 'Reset to Press' })
+    expect(screen.getByText(/Forked from Editorial/)).toBeVisible()
+    const reset = screen.getByRole('button', { name: 'Reset to Editorial' })
 
     // A reset after a lever has moved puts the built-in's own value back.
-    fireEvent.change(screen.getByLabelText('Accent hue'), { target: { value: '10' } })
+    fireEvent.change(await accentHueSlider(), { target: { value: '10' } })
     expect(screen.getByText('10°')).toBeVisible()
     await userEvent.click(reset)
     expect(screen.queryByText('10°')).not.toBeInTheDocument()
@@ -143,6 +197,17 @@ describe('the theme editor', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Remove the colour for Runbooks' }))
 
     expect(screen.queryByLabelText('Runbooks hue')).not.toBeInTheDocument()
+  })
+
+  it('leaves labels and emoji to a screen of their own, and links to it', async () => {
+    renderApp(PATH, routes())
+
+    await screen.findByRole('heading', { level: 1, name: 'Theme' })
+    expect(screen.queryByRole('button', { name: 'Add label' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Add emoji' })).not.toBeInTheDocument()
+    expect(
+      screen.getByRole('navigation', { name: 'Settings' }).querySelector('[href$="/labels"]'),
+    ).not.toBeNull()
   })
 
   it('says what the guided flow is, without a control that would do nothing', async () => {

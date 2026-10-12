@@ -6,6 +6,7 @@ import { tv } from '../lib/class-names.ts'
 import { PlainLink, type LinkComponent } from '../lib/link.tsx'
 import { useThemeVariants } from '../theme/theme-variants.tsx'
 import { Breadcrumb, type BreadcrumbItem } from './breadcrumb.tsx'
+import { RelativeTime } from './relative-time.tsx'
 
 /**
  * The publication state is a `data-state` attribute on the flag rather than a
@@ -14,23 +15,54 @@ import { Breadcrumb, type BreadcrumbItem } from './breadcrumb.tsx'
  */
 export const documentHeaderStyles = tv({
   slots: {
-    root: 'flex h-10 items-center border-b border-border bg-surface-raised',
-    mark: 'flex h-10 w-14 shrink-0 items-center justify-center border-e border-border',
-    readout: 'meta-value flex min-w-0 items-center gap-1 truncate px-4',
-    ancestor: 'hidden sm:contents',
+    /*
+     * The page's own colour, nearly opaque, over a blur: the document scrolls
+     * up under the bar and stays faintly legible behind it, so the bar reads
+     * as part of the page rather than a slab across it. The hairline below is
+     * the only edge it needs.
+     */
+    root: [
+      'flex h-shell-header items-center border-b border-border',
+      'bg-background/88 backdrop-blur-md',
+    ],
+    mark: 'flex h-full w-14 shrink-0 items-center justify-center border-e border-border',
+    /*
+     * On a phone the trail gives way entirely: the bar there holds the
+     * controls and nothing else, and the document's own title is the first
+     * thing on the page beneath it. A title cut to its first three letters
+     * would say less than no title, and still cost the controls their room.
+     */
+    readout: 'flex min-w-0 items-center gap-1.5 truncate px-4 text-sm text-muted max-sm:hidden',
+    trail: 'px-4 max-sm:hidden',
+    ancestor: 'hidden lg:contents',
     ancestorLink: [
       'truncate rounded-sm underline decoration-transparent underline-offset-2',
       'transition-[color,text-decoration-color] hover:text-foreground hover:decoration-current',
       'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring',
     ],
     separator: 'text-border-strong',
-    current: 'truncate font-medium text-foreground',
+    current: 'truncate font-semibold text-foreground',
     spacer: 'grow',
-    facts: 'meta-value hidden items-center gap-4 md:flex',
+    // The facts are the first thing to give way as the bar narrows: the
+    // complementary column says the same (revisions, signals) on every width
+    // where they are hidden here.
+    facts: 'hidden items-center gap-3 text-xs whitespace-nowrap text-muted tabular-nums xl:flex',
     fact: 'flex items-center gap-1.5',
-    flag: 'inline-flex items-center gap-1.5',
+    // The date gives way before the state does: the revisions beside the
+    // document carry it too, and nothing else on screen says "published".
+    revisionFact: 'hidden items-center gap-1.5 2xl:flex',
+    /*
+     * The state is a word on a quiet pill — the one place in the bar a fact is
+     * raised — with the accent kept to the dot, and only when it is published.
+     */
+    flag: [
+      'inline-flex items-center gap-1.5 rounded-full bg-surface px-2 py-0.5',
+      'font-medium text-foreground-soft capitalize',
+    ],
     dot: 'size-1.5 rounded-full bg-border-strong data-[state=published]:bg-accent',
-    actions: 'flex items-center gap-2 ps-4 pe-3',
+    // On a phone the controls are the whole bar, so they take its width and
+    // the first of them (search, normally) can sit at the start of it.
+    actions: 'flex items-center gap-1.5 ps-3 pe-4 max-sm:grow max-sm:gap-1 max-sm:ps-2 max-sm:pe-2',
   },
 })
 
@@ -52,7 +84,7 @@ export interface DocumentStatus {
   readonly path: readonly BreadcrumbItem[]
   /** The published revision, as a reader sees it: `v12`. */
   readonly version?: string | undefined
-  /** The revision date, as `YYYY-MM-DD`, for a `<time datetime>`. */
+  /** When the document was last changed, as an ISO date or timestamp: said as how long ago, in full on hover. */
   readonly updated?: string | undefined
   readonly owner?: string | undefined
   readonly state?: DocumentState | undefined
@@ -61,8 +93,8 @@ export interface DocumentStatus {
 export interface DocumentHeaderProps {
   readonly status: DocumentStatus
   /**
-   * `readout` is Instrument's monospace instrument panel; `breadcrumb` is the
-   * trail Press and Atelier use. Both carry the same facts.
+   * `readout` is Instrument's single line of facts; `breadcrumb` is the trail
+   * Press and Atelier use. Both carry the same facts.
    */
   readonly variant?: ThemeVariants['header'] | undefined
   /** The document's controls, at the end of the bar. */
@@ -89,7 +121,8 @@ function hasFacts(status: DocumentStatus): boolean {
 }
 
 /**
- * Instrument's monospace instrument panel.
+ * Instrument's readout: the path as one line of text, the document in ink and
+ * the places above it a tone quieter.
  *
  * The ancestors are the same *places* the breadcrumb variant links to, so they
  * are links here too: a header that renders them as inert text would leave the
@@ -131,9 +164,10 @@ function Readout({
 /**
  * The bar above every document.
  *
- * Instrument reads it as an instrument panel: the path, the state, the
- * revision, and the owner in one monospace line, because they are facts about
- * the document rather than part of it. Press and Atelier ask for the same
+ * Instrument reads it as a readout: the path, the state, the revision, and
+ * the owner on one quiet line, because they are facts about the document
+ * rather than part of it. It is set in the interface face like the rest of the
+ * chrome (`docs/design/chrome.md`); the numbers keep tabular figures. Press and Atelier ask for the same
  * facts as a breadcrumb trail with the rest alongside. The variant changes the
  * arrangement; it never changes what is said, so nothing is lost by switching.
  */
@@ -156,7 +190,7 @@ export function DocumentHeader({
       {header === 'readout' ? (
         <Readout status={status} linkComponent={linkComponent} />
       ) : (
-        <Breadcrumb items={status.path} linkComponent={linkComponent} className="px-4" />
+        <Breadcrumb items={status.path} linkComponent={linkComponent} className={styles.trail()} />
       )}
 
       <div className={styles.spacer()} />
@@ -175,14 +209,12 @@ export function DocumentHeader({
             </div>
           )}
           {status.version === undefined && status.updated === undefined ? undefined : (
-            <div className={styles.fact()}>
+            <div className={styles.revisionFact()}>
               <dt className="sr-only">Revision</dt>
               <dd>
                 {status.version}
                 {status.version === undefined || status.updated === undefined ? undefined : ' · '}
-                {status.updated === undefined ? undefined : (
-                  <time dateTime={status.updated}>{status.updated}</time>
-                )}
+                {status.updated === undefined ? undefined : <RelativeTime value={status.updated} />}
               </dd>
             </div>
           )}

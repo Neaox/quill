@@ -3,7 +3,7 @@ import { tv } from '@quill/ui'
 import type { HealthSignal } from '../../lib/api/index.ts'
 
 /**
- * Quiet by construction: metadata type, muted colour, and a dot that only
+ * Quiet by construction: the chrome's small type, muted colour, and a dot that only
  * carries the accent for the one signal that is a deadline. ADR-029 is
  * explicit that an unfilled required section "shows as a quiet quality
  * indicator, the same family as 'no owner' or 'review overdue', never as an
@@ -13,11 +13,11 @@ import type { HealthSignal } from '../../lib/api/index.ts'
 export const healthSignalStyles = tv({
   slots: {
     root: '',
-    heading: 'meta pb-2',
+    heading: 'section-label pb-2.5',
     list: 'flex flex-col gap-1.5',
-    item: 'meta-value flex items-start gap-2',
+    item: 'flex items-start gap-2 text-xs leading-snug text-muted',
     dot: 'mt-1.5 size-1.5 shrink-0 rounded-full bg-border-strong data-[kind=review-overdue]:bg-accent',
-    detail: 'text-muted/80',
+    detail: 'text-muted',
   },
 })
 

@@ -30,7 +30,10 @@ describe('CommentsPanel', () => {
 
     const region = screen.getByRole('region', { name: 'Comments, 2' })
     expect(within(region).getAllByRole('listitem')).toHaveLength(2)
-    expect(within(region).getByText('2026-08-14')).toHaveAttribute('datetime', '2026-08-14')
+    expect(within(region).getAllByRole('time')[0]).toHaveAttribute(
+      'datetime',
+      new Date('2026-08-14').toISOString(),
+    )
     await expectNoAccessibilityViolations(container)
   })
 

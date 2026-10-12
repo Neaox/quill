@@ -129,6 +129,12 @@ async function publishDocument(
   collectionId: CollectionId = tenancy.collectionId,
 ): Promise<DocumentId> {
   const id = await createDocument(title, workspaceId, collectionId)
+  await publishMarkdown(id, markdown)
+  return id
+}
+
+/** Draft and publish a document that already exists, and let the outbox run. */
+async function publishMarkdown(id: DocumentId, markdown: string): Promise<void> {
   const acquired = await harness.app.inject({
     method: 'POST',
     url: `/api/documents/${id}/lock/acquire`,
@@ -155,7 +161,6 @@ async function publishDocument(
   expect(published.statusCode).toBe(200)
 
   await harness.drainOutbox()
-  return id
 }
 
 interface SearchHitResponse {
@@ -409,5 +414,60 @@ describe('finding a document', () => {
       'Never published',
     )
     expect(unpublished).toBeDefined()
+  }, 60_000)
+})
+
+describe('finding a draw.io diagram by its labels (ADR-043)', () => {
+  const BOUNDARY = 'quillboundary'
+
+  function drawio(label: string): Buffer {
+    const model = `&lt;mxfile&gt;&lt;diagram id=&quot;p&quot;&gt;&lt;mxGraphModel&gt;&lt;root&gt;&lt;mxCell id=&quot;a&quot; value=&quot;${label}&quot; vertex=&quot;1&quot;/&gt;&lt;/root&gt;&lt;/mxGraphModel&gt;&lt;/diagram&gt;&lt;/mxfile&gt;`
+    return Buffer.from(
+      `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10" content="${model}"><text>${label}</text></svg>`,
+    )
+  }
+
+  function multipart(bytes: Buffer) {
+    const head =
+      `--${BOUNDARY}\r\n` +
+      'Content-Disposition: form-data; name="file"; filename="flow.drawio.svg"\r\n' +
+      'Content-Type: image/svg+xml\r\n\r\n'
+    return {
+      payload: Buffer.concat([Buffer.from(head), bytes, Buffer.from(`\r\n--${BOUNDARY}--\r\n`)]),
+      headers: { 'content-type': `multipart/form-data; boundary=${BOUNDARY}` },
+    }
+  }
+
+  it('finds a published document by a word that is only in its diagram, before and after a re-save', async () => {
+    const id = await createDocument('Payment flow', tenancy.workspaceId, tenancy.collectionId)
+    const uploaded = await harness.app.inject({
+      method: 'POST',
+      url: `/api/documents/${id}/attachments`,
+      cookies: editor,
+      ...multipart(drawio('Reconciliationengine')),
+    })
+    expect(uploaded.statusCode).toBe(201)
+    const attachment = uploaded.json() as { id: string; url: string }
+    await publishMarkdown(id, `# Payment flow\n\n![How a payment moves](${attachment.url})\n`)
+
+    expect(titles((await search('reconciliationengine')).json() as SearchResponse)).toContain(
+      'Payment flow',
+    )
+
+    const revised = await harness.app.inject({
+      method: 'PUT',
+      url: `/api/attachments/${attachment.id}?expectedVersion=1`,
+      cookies: editor,
+      ...multipart(drawio('Settlementledger')),
+    })
+    expect(revised.statusCode).toBe(200)
+    await harness.drainOutbox()
+
+    expect(titles((await search('settlementledger')).json() as SearchResponse)).toContain(
+      'Payment flow',
+    )
+    expect(titles((await search('reconciliationengine')).json() as SearchResponse)).not.toContain(
+      'Payment flow',
+    )
   }, 60_000)
 })

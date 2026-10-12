@@ -1,0 +1,11 @@
+{
+  "collection": "Foundations",
+  "title": "Spacing and layout",
+  "type": "reference",
+  "owners": ["sofia@acme.example"],
+  "tags": ["spacing", "layout", "grid", "tokens", "foundations"],
+  "review": "1y",
+  "status": "published",
+  "notes": ["First published"],
+  "frontMatter": {}
+}

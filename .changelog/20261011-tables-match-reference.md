@@ -1,0 +1,1 @@
+Changed: tables render on their own card on every surface, including the public site. They are set at the wider reading width, with status badges inline before their detail and tenant labels shown as a neutral pill led by a dot in the label colour, as in the reference portal.

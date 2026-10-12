@@ -15,6 +15,8 @@ import {
  */
 export interface PresentSearch {
   step?: number
+  /** `presenter` is the presenter's own window (ADR-050); absent, the window is the room's. */
+  view?: 'presenter'
 }
 
 /**
@@ -38,7 +40,10 @@ export const Route = createFileRoute('/_authenticated/w/$workspaceSlug_/d/$docum
   validateSearch: (search: Record<string, unknown>): PresentSearch => {
     const raw = search['step']
     const step = typeof raw === 'number' ? raw : Number(raw)
-    return Number.isInteger(step) && step > 0 ? { step } : {}
+    return {
+      ...(Number.isInteger(step) && step > 0 ? { step } : {}),
+      ...(search['view'] === 'presenter' ? { view: 'presenter' as const } : {}),
+    }
   },
   loader: async ({ context, params }) => {
     // Both at once, and only the document's answer decides anything: a

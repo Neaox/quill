@@ -1,5 +1,4 @@
 export type {
-  NavigationLink,
   OrganisationLogo,
   OrganisationSettings,
   SecretReference,
@@ -10,8 +9,8 @@ export type {
 export {
   defaultOrganisationSettings,
   defaultWorkspaceSettings,
-  MAX_PUBLIC_NAVIGATION_LINKS,
   ORGANISATION_SETTINGS_PATH,
+  ORGANISATION_SETTINGS_VERSION,
   OrganisationSettingsSchema,
   parseOrganisationSettings,
   parseWorkspaceSettings,
@@ -21,6 +20,7 @@ export {
   SETTINGS_VERSION,
   SYSTEM_WORKSPACE_ID,
   validateOrganisationSettings,
+  WORKSPACE_SETTINGS_VERSION,
   validateWorkspaceSettings,
   WorkspaceSettingsSchema,
   workspaceSettingsPath,
@@ -34,3 +34,30 @@ export { resolveEffectiveSettings } from './resolve.ts'
 
 export type { SettingsDecode } from './yaml.ts'
 export { decodeOrganisationSettings, decodeWorkspaceSettings, encodeSettings } from './yaml.ts'
+
+export type { PublicMenu, PublicMenuGroup, PublicMenuItem, PublicMenuLink } from './public-menu.ts'
+export {
+  MAX_PUBLIC_MENU_GROUP_LINKS,
+  MAX_PUBLIC_MENU_ITEMS,
+  MAX_PUBLIC_MENU_LABEL_LENGTH,
+  MAX_PUBLIC_MENU_URL_LENGTH,
+  menuLinks,
+  menuTargetIds,
+  PUBLIC_MENU_URL_PATTERN,
+  PublicMenuSchema,
+} from './public-menu.ts'
+
+export type { CustomEmojiEntry, EmojiMediaType, RenderedEmoji } from './emoji.ts'
+export {
+  CustomEmojiSchema,
+  customEmojiByName,
+  EMOJI_MEDIA_TYPES,
+  EMOJI_URL_PREFIX,
+  emojiFileName,
+  emojiForFile,
+  emojiUrl,
+  labelEmoji,
+  MAX_CUSTOM_EMOJI,
+  MAX_EMOJI_BYTES,
+  MAX_EMOJI_PIXELS,
+} from './emoji.ts'

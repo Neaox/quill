@@ -1,13 +1,27 @@
 import { Link } from '@tanstack/react-router'
-import { useState, type FormEvent } from 'react'
+import type { FormEvent } from 'react'
 
 import { Button, buttonClassName, Callout, Input, textLinkClassName } from '@quill/ui'
 
 import { useSignUp } from '../../lib/api/index.ts'
 import { AuthCard } from './auth-card.tsx'
 import { FormError } from '../../lib/forms/form-error.tsx'
+import { formValues } from '../../lib/forms/form-values.ts'
+import { schemaFromRules } from '../../lib/forms/standard-schema.ts'
+import { useFormValidation } from '../../lib/forms/use-form-validation.ts'
+import {
+  allOf,
+  emailRule,
+  MIN_PASSWORD_LENGTH,
+  minLengthRule,
+  requiredRule,
+} from '../../lib/forms/validation.ts'
 
-const MIN_PASSWORD_LENGTH = 8
+const SIGN_UP_SCHEMA = schemaFromRules({
+  displayName: requiredRule('Enter your name.'),
+  email: emailRule,
+  password: allOf(requiredRule('Choose a password.'), minLengthRule(MIN_PASSWORD_LENGTH)),
+})
 
 /**
  * Account creation. Sign-up does not sign the user in on its own
@@ -17,26 +31,33 @@ const MIN_PASSWORD_LENGTH = 8
  */
 export function SignUpPage() {
   const signUp = useSignUp()
-
-  const [displayName, setDisplayName] = useState('')
-  const [email, setEmail] = useState('')
-  const [password, setPassword] = useState('')
-  const [passwordTouched, setPasswordTouched] = useState(false)
-
-  const passwordTooShort = password.length > 0 && password.length < MIN_PASSWORD_LENGTH
+  const validation = useFormValidation(SIGN_UP_SCHEMA)
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
-    setPasswordTouched(true)
-    if (password.length < MIN_PASSWORD_LENGTH) return
-    signUp.mutate({ email, password, displayName })
+    const form = event.currentTarget
+    void validation.validate(formValues(form), form).then((values) => {
+      if (values === undefined) return
+      const { displayName = '', email = '', password = '' } = values
+      signUp.mutate(
+        { displayName: displayName.trim(), email: email.trim(), password },
+        {
+          onError: (failure) => {
+            validation.adopt(failure, form)
+          },
+        },
+      )
+    })
   }
 
   if (signUp.isSuccess) {
     return (
-      <AuthCard title="Account created">
+      <AuthCard
+        title="Account created"
+        description="Your account is ready. Sign in with the email and password you just chose."
+      >
         <Callout tone="success">You can now sign in with your new account.</Callout>
-        <Link to="/sign-in" className={buttonClassName({ className: 'w-full' })}>
+        <Link to="/sign-in" className={buttonClassName({ size: 'lg', className: 'w-full' })}>
           Sign in
         </Link>
       </AuthCard>
@@ -46,6 +67,7 @@ export function SignUpPage() {
   return (
     <AuthCard
       title="Create your account"
+      description="One account for every workspace you are invited to here."
       footer={
         <>
           Already have an account?{' '}
@@ -55,49 +77,41 @@ export function SignUpPage() {
         </>
       }
     >
-      <form onSubmit={handleSubmit} className="flex flex-col gap-4" noValidate>
+      <form
+        onSubmit={handleSubmit}
+        onChange={validation.clearOnChange}
+        className="flex flex-col gap-5"
+        noValidate
+      >
         <Input
+          size="lg"
           label="Name"
-          name="name"
+          name="displayName"
           autoComplete="name"
           required
-          value={displayName}
-          onChange={(event) => {
-            setDisplayName(event.target.value)
-          }}
+          error={validation.errors['displayName']}
         />
         <Input
+          size="lg"
           label="Email"
           type="email"
           name="email"
           autoComplete="email"
           required
-          value={email}
-          onChange={(event) => {
-            setEmail(event.target.value)
-          }}
+          error={validation.errors['email']}
         />
         <Input
+          size="lg"
           label="Password"
           type="password"
           name="password"
           autoComplete="new-password"
           required
-          minLength={MIN_PASSWORD_LENGTH}
-          description="At least 8 characters."
-          {...(passwordTouched && passwordTooShort
-            ? { error: 'Password must be at least 8 characters.' }
-            : {})}
-          value={password}
-          onChange={(event) => {
-            setPassword(event.target.value)
-          }}
-          onBlur={() => {
-            setPasswordTouched(true)
-          }}
+          description={`At least ${MIN_PASSWORD_LENGTH} characters.`}
+          error={validation.errors['password']}
         />
-        <FormError error={signUp.error} />
-        <Button type="submit" loading={signUp.isPending} className="mt-1 w-full">
+        <FormError error={validation.formLevel(signUp.error)} />
+        <Button type="submit" size="lg" loading={signUp.isPending} className="mt-2 w-full">
           Create account
         </Button>
       </form>

@@ -1,11 +1,14 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import { documentId, userId, workspaceId } from '@quill/domain'
 import type { DocumentId } from '@quill/domain'
+import { RENDERED_CONTENT_VERSION } from '../ports/document-format.ts'
 import type { RenderedContent } from '../ports/document-format.ts'
 
 import { createFakeContentStore } from '../test-support/fake-content-store.ts'
+import { createInMemoryBlobStore } from '../test-support/in-memory-blob-store.ts'
 import type { FakeContentStore } from '../test-support/fake-content-store.ts'
 import { createFakeDocumentFormat } from '../test-support/fake-document-format.ts'
+import { createFakeSettings } from '../test-support/fake-settings.ts'
 import {
   aShortId,
   createFakeClock,
@@ -24,6 +27,8 @@ import {
   resolveLinks,
 } from './render-document.ts'
 import { restoreRevision } from './restore-revision.ts'
+import { defaultOrganisationSettings } from '../settings/documents.ts'
+import type { CustomEmojiEntry } from '../settings/emoji.ts'
 import type { RenderDocumentDependencies } from './render-document.ts'
 
 const NOW = new Date('2026-01-01T00:00:00.000Z')
@@ -92,6 +97,8 @@ beforeEach(async () => {
     clock: createFakeClock(NOW),
     ids: createFakeIdGenerator(),
     hasher: createFakeHasher(),
+    blobStore: createInMemoryBlobStore(),
+    settings: createFakeSettings(),
   }
   await uow.repos.workspaces.create({
     id: WORKSPACE,
@@ -142,6 +149,15 @@ describe('renderDigest', () => {
     )
     expect(renderDigest({ markdown: '# Two', linkTitles: new Map() })).not.toBe(
       renderDigest({ markdown: '# One', linkTitles: new Map() }),
+    )
+  })
+
+  it('covers the installed extensions, and only when there are any (ADR-039)', () => {
+    const input = { markdown: '# One', linkTitles: new Map() }
+    expect(renderDigest(input, '')).toBe(renderDigest(input))
+    expect(renderDigest(input, 'quill.drawio@1.0.0')).not.toBe(renderDigest(input))
+    expect(renderDigest(input, 'quill.drawio@1.0.1')).not.toBe(
+      renderDigest(input, 'quill.drawio@1.0.0'),
     )
   })
 })
@@ -252,7 +268,7 @@ describe('renderDocument', () => {
 
     // A row written by a release this one knows nothing about, and a row that
     // carries a known version but is not a body at all.
-    for (const content of [{ version: 99 }, { version: RENDER_VERSION, html: 42 }]) {
+    for (const content of [{ version: 99 }, { version: RENDERED_CONTENT_VERSION, html: 42 }]) {
       await uow.repos.renderCache.save({
         key: first.key,
         documentId: id,
@@ -362,5 +378,312 @@ describe('resolveLinks', () => {
         text: 'Diagram',
       },
     ])
+  })
+})
+
+describe('drawings', () => {
+  const OTHER_WORKSPACE = workspaceId('00000000-0000-4000-8000-000000000102')
+  const LOOP = '<svg viewBox="0 0 10 10"><rect class="box"/></svg>'
+
+  async function attach(
+    owner: DocumentId,
+    markup: string,
+    overrides: { readonly workspaceId?: typeof WORKSPACE; readonly contentType?: string } = {},
+  ): Promise<string> {
+    const bytes = new TextEncoder().encode(markup)
+    const blob = await deps.blobStore.put(
+      (async function* () {
+        yield bytes
+      })(),
+      'image/svg+xml',
+    )
+    const id = deps.ids.uuid()
+    await uow.repos.attachments.create({
+      id,
+      documentId: owner,
+      workspaceId: overrides.workspaceId ?? WORKSPACE,
+      uploadedBy: AUTHOR,
+      filename: 'the-loop.svg',
+      contentType: overrides.contentType ?? 'image/svg+xml',
+      size: blob.size,
+      sha256: blob.hash,
+      now: NOW,
+    })
+    return `/api/attachments/${id}`
+  }
+
+  async function bodyOf(id: DocumentId): Promise<string> {
+    const rendered = await renderDocument(deps, { documentId: id })
+    if (rendered.kind !== 'rendered') throw new Error(rendered.kind)
+    return rendered.content.html
+  }
+
+  it('hands the renderer the SVG drawings a body shows', async () => {
+    const id = await publish('Map', '# Map')
+    const url = await attach(id, LOOP)
+    await republish(
+      id,
+      `# Map
+
+![The loop](${url})`,
+    )
+
+    expect(await bodyOf(id)).toContain(`<drawing src="${url}">${LOOP}</drawing>`)
+  })
+
+  it('draws nothing that belongs to another workspace', async () => {
+    const id = await publish('Map', '# Map')
+    const url = await attach(id, LOOP, { workspaceId: OTHER_WORKSPACE })
+    await republish(
+      id,
+      `# Map
+
+![The loop](${url})`,
+    )
+
+    expect(await bodyOf(id)).not.toContain('<drawing')
+  })
+
+  it('draws nothing removed, and nothing that is not a drawing', async () => {
+    const id = await publish('Map', '# Map')
+    const removed = await attach(id, LOOP)
+    await uow.repos.attachments.softDelete(removed.split('/').at(-1) ?? '', NOW)
+    const picture = await attach(id, LOOP, { contentType: 'image/png' })
+    await republish(
+      id,
+      `# Map
+
+![a](${removed})
+
+![b](${picture})`,
+    )
+
+    expect(await bodyOf(id)).not.toContain('<drawing')
+  })
+
+  it('renders afresh when the drawing a body shows is a different one', () => {
+    const markdown = '![a](/api/attachments/x)'
+    const one = renderDigest({
+      markdown,
+      linkTitles: new Map(),
+      drawings: new Map([['/api/attachments/x', { sha256: 'a', markup: '' }]]),
+    })
+    const two = renderDigest({
+      markdown,
+      linkTitles: new Map(),
+      drawings: new Map([['/api/attachments/x', { sha256: 'b', markup: '' }]]),
+    })
+
+    expect(one).not.toBe(two)
+  })
+})
+
+describe('drawings, several at once', () => {
+  it('hands over every drawing shown, and leaves out one whose bytes are gone', async () => {
+    const id = await publish('Map', '# Map')
+    const blobs = createInMemoryBlobStore()
+    deps = { ...deps, blobStore: blobs }
+    const urls: string[] = []
+    for (const markup of ['<svg id="one"/>', '<svg id="two"/>', '<svg id="gone"/>']) {
+      const bytes = new TextEncoder().encode(markup)
+      const blob = await blobs.put(
+        (async function* () {
+          yield bytes
+        })(),
+        'image/svg+xml',
+      )
+      const attachment = deps.ids.uuid()
+      await uow.repos.attachments.create({
+        id: attachment,
+        documentId: id,
+        workspaceId: WORKSPACE,
+        uploadedBy: AUTHOR,
+        filename: 'd.svg',
+        contentType: 'image/svg+xml',
+        size: blob.size,
+        sha256: blob.hash,
+        now: NOW,
+      })
+      urls.push(`/api/attachments/${attachment}`)
+      if (markup.includes('gone')) await blobs.delete(blob.hash)
+    }
+    await republish(id, ['# Map', ...urls.map((url) => `![d](${url})`)].join('\n\n'))
+
+    const rendered = await renderDocument(deps, { documentId: id })
+    if (rendered.kind !== 'rendered') throw new Error(rendered.kind)
+
+    expect(rendered.content.html).toContain('<svg id="one"/>')
+    expect(rendered.content.html).toContain('<svg id="two"/>')
+    expect(rendered.content.html).not.toContain('gone')
+  })
+})
+
+describe('labels (ADR-037)', () => {
+  async function defineLabels(...names: readonly string[]): Promise<void> {
+    const read = await deps.settings.readOrganisation()
+    const current = read.kind === 'settings' ? read.document : defaultOrganisationSettings()
+    const { labels: _labels, ...theme } = current.theme
+    const labels = names.map((name) => ({ name, title: name, hue: 10 }))
+    const written = await deps.settings.writeOrganisation({
+      // A theme with no labels leaves the field out, as every theme saved
+      // before labels existed does.
+      document: { ...current, theme: labels.length === 0 ? theme : { ...theme, labels } },
+      expectedRevision: read.kind === 'settings' ? read.revision : null,
+      author,
+    })
+    if (written.kind !== 'written') throw new Error(written.kind)
+  }
+
+  async function rendered(id: DocumentId) {
+    const result = await renderDocument(deps, { documentId: id })
+    if (result.kind !== 'rendered') throw new Error(result.kind)
+    return result
+  }
+
+  it('hands the renderer the organisation theme’s label names', async () => {
+    const id = await publish('Channels', '# Channels')
+    await defineLabels('booking', 'airbnb')
+
+    expect((await rendered(id)).content.html).toContain(
+      '<label name="booking"/><label name="airbnb"/>',
+    )
+  })
+
+  it('renders afresh when the names change, and keeps the key of a body with none', async () => {
+    const id = await publish('Channels', '# Channels')
+    const before = await rendered(id)
+    await defineLabels()
+    expect((await rendered(id)).key).toBe(before.key)
+
+    await defineLabels('airbnb')
+    const labelled = await rendered(id)
+    expect(labelled.key).not.toBe(before.key)
+    expect(labelled.cached).toBe(false)
+
+    await defineLabels('airbnb')
+    expect((await rendered(id)).cached).toBe(true)
+  })
+
+  it('covers the names in sorted order, so their order in the theme is not a new key', () => {
+    const input = { markdown: '# A', linkTitles: new Map() }
+    expect(renderDigest({ ...input, labels: new Set(['b', 'a']) })).toBe(
+      renderDigest({ ...input, labels: new Set(['a', 'b']) }),
+    )
+    expect(renderDigest({ ...input, labels: new Set<string>() })).toBe(renderDigest(input))
+  })
+
+  it('renders without labels when the settings file cannot be read', async () => {
+    const id = await publish('Channels', '# Channels')
+    await defineLabels('airbnb')
+    const settings = createFakeSettings()
+    settings.place('organisation', 'not: [valid\n')
+    deps = { ...deps, settings }
+
+    expect((await rendered(id)).content.html).not.toContain('<label')
+  })
+})
+
+describe('emoji (ADR-038)', () => {
+  const AIRBNB: CustomEmojiEntry = {
+    name: 'airbnb',
+    hash: 'a'.repeat(64),
+    mediaType: 'image/svg+xml',
+    width: 64,
+    height: 64,
+  }
+
+  async function defineEmoji(
+    emoji: readonly CustomEmojiEntry[],
+    labels: readonly { name: string; emoji?: string }[] = [],
+  ): Promise<void> {
+    const read = await deps.settings.readOrganisation()
+    const current = read.kind === 'settings' ? read.document : defaultOrganisationSettings()
+    const theme =
+      labels.length === 0
+        ? current.theme
+        : {
+            ...current.theme,
+            labels: labels.map((label) => ({ ...label, title: label.name, hue: 10 })),
+          }
+    const written = await deps.settings.writeOrganisation({
+      document: { ...current, theme, emoji: [...emoji] },
+      expectedRevision: read.kind === 'settings' ? read.revision : null,
+      author,
+    })
+    if (written.kind !== 'written') throw new Error(written.kind)
+  }
+
+  async function rendered(id: DocumentId) {
+    const result = await renderDocument(deps, { documentId: id })
+    if (result.kind !== 'rendered') throw new Error(result.kind)
+    return result
+  }
+
+  it('hands the renderer the organisation’s emoji, and each label’s leading one', async () => {
+    const id = await publish('Channels', '# Channels')
+    await defineEmoji(
+      [AIRBNB, { ...AIRBNB, name: 'booking_com', hash: 'b'.repeat(64) }],
+      [{ name: 'airbnb' }, { name: 'booking', emoji: 'booking_com' }, { name: 'vrbo' }],
+    )
+
+    expect((await rendered(id)).content.html).toContain(
+      '<emoji name="airbnb" src="/api/emoji/airbnb.aaaaaaaaaaaaaaaa.svg"/>' +
+        '<emoji name="booking_com" src="/api/emoji/booking_com.bbbbbbbbbbbbbbbb.svg"/>' +
+        '<lead label="airbnb" emoji="airbnb"/><lead label="booking" emoji="booking_com"/>',
+    )
+  })
+
+  it('renders afresh when an image is replaced, and keeps the key of a body with none', async () => {
+    const id = await publish('Channels', '# Channels')
+    const before = await rendered(id)
+    await defineEmoji([])
+    expect((await rendered(id)).key).toBe(before.key)
+
+    await defineEmoji([AIRBNB])
+    const drawn = await rendered(id)
+    expect(drawn.key).not.toBe(before.key)
+
+    await defineEmoji([{ ...AIRBNB, hash: 'c'.repeat(64) }])
+    expect((await rendered(id)).key).not.toBe(drawn.key)
+  })
+
+  it('renders afresh when what an emoji is said to show changes', () => {
+    const input = { markdown: '# A', linkTitles: new Map() }
+    const image = { src: '/api/emoji/a.aaaaaaaaaaaaaaaa.png', width: 1, height: 1 }
+    const digestOf = (shown: object) =>
+      renderDigest({ ...input, emoji: new Map([['a', { ...image, ...shown }]]) })
+
+    expect(digestOf({ description: 'Acme logo' })).not.toBe(
+      digestOf({ description: 'A roadrunner' }),
+    )
+    expect(digestOf({ description: 'Acme logo' })).not.toBe(digestOf({}))
+  })
+
+  it('covers emoji and leading emoji in sorted order', () => {
+    const input = { markdown: '# A', linkTitles: new Map() }
+    const image = { src: '/api/emoji/a.aaaaaaaaaaaaaaaa.png', width: 1, height: 1 }
+    expect(
+      renderDigest({
+        ...input,
+        emoji: new Map([
+          ['b', image],
+          ['a', image],
+        ]),
+      }),
+    ).toBe(
+      renderDigest({
+        ...input,
+        emoji: new Map([
+          ['a', image],
+          ['b', image],
+        ]),
+      }),
+    )
+    expect(renderDigest({ ...input, labelEmoji: new Map([['airbnb', 'airbnb']]) })).not.toBe(
+      renderDigest(input),
+    )
+    expect(renderDigest({ ...input, emoji: new Map(), labelEmoji: new Map() })).toBe(
+      renderDigest(input),
+    )
   })
 })

@@ -6,7 +6,7 @@ import {
   ApiError,
   queryKeys,
   workspaceQueryOptions,
-  workspaceTreeQueryOptions,
+  treeCollectionsQueryOptions,
 } from '../../../../lib/api/index.ts'
 
 /**
@@ -45,7 +45,7 @@ export const Route = createFileRoute('/_authenticated/w/$workspaceSlug')({
       // slug lookup already answered rather than asking again.
       context.queryClient.setQueryData(queryKeys.workspace(workspace.id), workspace)
       void context.queryClient.prefetchQuery(
-        workspaceTreeQueryOptions(context.apiClient, workspace.id),
+        treeCollectionsQueryOptions(context.apiClient, workspace.id),
       )
       return {
         workspaceId: workspace.id,

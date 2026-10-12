@@ -40,9 +40,9 @@ export interface TokenHighlightRegistry {
    * its class's `Highlight`, and returns a disposer that removes exactly
    * this call's ranges and nothing else.
    */
-  applyRanges(
-    createRange: (range: TokenRange) => unknown,
-    ranges: readonly TokenRange[],
+  applyRanges<Range extends TokenRange>(
+    createRange: (range: Range) => unknown,
+    ranges: readonly Range[],
   ): () => void
 }
 

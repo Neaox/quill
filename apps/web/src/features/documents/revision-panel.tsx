@@ -1,7 +1,17 @@
 import { useNavigate } from '@tanstack/react-router'
 import { useRef, useState, type FormEvent } from 'react'
 
-import { Button, Dialog, RevisionTimeline, Spinner, toast, tv, type ToastId } from '@quill/ui'
+import {
+  Button,
+  Dialog,
+  formatMoment,
+  RevisionTimeline,
+  Spinner,
+  toMoment,
+  toast,
+  tv,
+  type ToastId,
+} from '@quill/ui'
 
 import type { LabelledRevision } from '../../lib/documents/revision-labels.ts'
 import { FormError } from '../../lib/forms/form-error.tsx'
@@ -14,13 +24,14 @@ export const revisionPanelStyles = tv({
   slots: {
     root: 'flex flex-col gap-3',
     compare: 'group',
+    heading: 'section-label pb-2.5',
     summary: [
-      'meta cursor-pointer list-none pt-1 text-muted transition-colors ease-standard',
-      'hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2',
-      'focus-visible:outline-focus-ring',
+      'w-fit cursor-pointer list-none rounded-sm text-xs font-medium text-foreground-soft',
+      'transition-colors ease-standard hover:text-foreground focus-visible:outline-2',
+      'focus-visible:outline-offset-2 focus-visible:outline-focus-ring',
     ],
     form: 'flex flex-col gap-2 pt-2',
-    empty: 'meta-value',
+    empty: 'text-xs leading-snug text-muted',
   },
 })
 
@@ -40,6 +51,12 @@ export interface RevisionPanelProps {
    */
   readonly lastPublishedBy?: string | undefined
   readonly className?: string | undefined
+}
+
+/** A date in the reader's own language, for a place that can only hold text (an option in a list). */
+function dateOf(timestamp: string): string {
+  const moment = toMoment(timestamp)
+  return moment === undefined ? '' : formatMoment(moment, 'date')
 }
 
 /**
@@ -74,7 +91,7 @@ export function RevisionPanel({
   if (isPending) {
     return (
       <div className={styles.root({ className })}>
-        <p className="meta pb-2">Revisions</p>
+        <p className={styles.heading()}>Revisions</p>
         <Spinner className="size-4" />
       </div>
     )
@@ -83,7 +100,7 @@ export function RevisionPanel({
   if (head === undefined) {
     return (
       <div className={styles.root({ className })}>
-        <p className="meta pb-2">Revisions</p>
+        <p className={styles.heading()}>Revisions</p>
         <p className={styles.empty()}>not published yet</p>
       </div>
     )
@@ -193,7 +210,7 @@ export function RevisionPanel({
       />
 
       {lastPublishedBy === undefined ? undefined : (
-        <p className={styles.empty()}>{`last published by ${lastPublishedBy}`}</p>
+        <p className={styles.empty()}>{`Last published by ${lastPublishedBy}`}</p>
       )}
 
       {revisions.length > 1 ? (
@@ -203,14 +220,14 @@ export function RevisionPanel({
             <SelectField label="From" name="from" defaultValue={older?.revision}>
               {revisions.map((revision) => (
                 <option key={revision.revision} value={revision.revision}>
-                  {revision.label} · {revision.date}
+                  {revision.label} · {dateOf(revision.date)}
                 </option>
               ))}
             </SelectField>
             <SelectField label="To" name="to" defaultValue={selected}>
               {revisions.map((revision) => (
                 <option key={revision.revision} value={revision.revision}>
-                  {revision.label} · {revision.date}
+                  {revision.label} · {dateOf(revision.date)}
                 </option>
               ))}
             </SelectField>

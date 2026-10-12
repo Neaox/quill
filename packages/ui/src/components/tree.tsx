@@ -14,16 +14,17 @@ import { Menu, type MenuItem } from './menu.tsx'
  */
 export const treeStyles = tv({
   slots: {
-    root: 'flex flex-col gap-4 py-3.5',
-    sectionHeader: 'group/section flex items-center justify-between gap-2 px-3 pb-1.5',
-    groupLabel: 'meta',
+    root: 'flex flex-col gap-5 py-3',
+    sectionHeader: 'group/section flex min-h-7 items-center justify-between gap-2 ps-2 pe-1 pb-0.5',
+    groupLabel: 'section-label truncate',
+    count: 'section-count ms-1.5',
     sectionControls: 'flex shrink-0 items-center gap-0.5',
     sectionAction: [
-      'flex size-5 shrink-0 cursor-pointer items-center justify-center rounded-sm text-muted opacity-0',
+      'flex size-6 shrink-0 cursor-pointer items-center justify-center rounded-md text-muted opacity-0',
       'hover:bg-surface hover:text-foreground group-hover/section:opacity-100 focus-visible:opacity-100',
       'focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-focus-ring',
     ],
-    branch: '',
+    branch: 'flex flex-col gap-px',
     row: 'group/row flex items-center gap-0.5',
     /*
      * A row's actions are revealed by hovering it, focusing the control, or
@@ -41,24 +42,30 @@ export const treeStyles = tv({
       'opacity-0 transition-opacity ease-standard',
       'group-hover/section:opacity-100 focus-visible:opacity-100 data-[state=open]:opacity-100',
     ],
+    /*
+     * Documents are text a reader scans, so they are set in the middle ink at
+     * the chrome's reading size; the one being read sits on the soft accent
+     * selection, in full ink and one weight up. Selection, weight and
+     * `aria-current` together, so it never rests on the tint alone.
+     */
     link: [
-      'flex min-h-7 min-w-0 grow cursor-pointer items-center gap-1.5 rounded-e-sm ps-3 pe-2 text-xs text-muted',
+      'flex min-h-7 min-w-0 grow cursor-pointer items-center gap-1.5 rounded-md px-2 py-1',
+      'text-xs leading-snug text-foreground-soft',
       'transition-[color,background-color] ease-standard',
       'hover:bg-surface hover:text-foreground',
       'focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-focus-ring',
-      'aria-[current=page]:bg-surface aria-[current=page]:font-medium',
-      'aria-[current=page]:text-foreground aria-[current=page]:shadow-[inset_2px_0_0_var(--color-accent)]',
-      'aria-pressed:bg-surface aria-pressed:font-medium aria-pressed:text-foreground',
-      'aria-pressed:shadow-[inset_2px_0_0_var(--color-accent)]',
+      'aria-[current=page]:bg-accent-subtle aria-[current=page]:font-semibold',
+      'aria-[current=page]:text-foreground',
+      'aria-pressed:bg-accent-subtle aria-pressed:font-semibold aria-pressed:text-foreground',
       'disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50',
     ],
     text: 'truncate',
-    badge: 'meta shrink-0 text-muted',
-    reason: 'meta shrink-0 text-muted',
+    badge: 'shrink-0 text-2xs font-normal text-muted',
+    reason: 'shrink-0 text-2xs font-normal text-muted',
   },
   variants: {
     /** Only a nested list carries the indent guide; the top level is flush. */
-    nested: { true: { branch: 'tree-branch' } },
+    nested: { true: { branch: 'tree-branch mt-px ps-1' } },
   },
 })
 
@@ -84,8 +91,13 @@ export interface TreeNode {
 
 export interface TreeSection {
   readonly id: string
-  /** The collection this branch belongs to, shown as a monospace overline. */
+  /** The collection this branch belongs to, shown as the section's label. */
   readonly label: string
+  /**
+   * How many documents the section holds, nesting included, shown beside the
+   * label in the quietest ink. Omitted, no count is drawn.
+   */
+  readonly count?: number | undefined
   readonly nodes: readonly TreeNode[]
   /**
    * A single action beside the section label, revealed on hover or focus
@@ -253,7 +265,17 @@ export function Tree({
       {sections.map((section) => (
         <div key={section.id}>
           <div className={styles.sectionHeader()}>
-            <p className={styles.groupLabel()}>{section.label}</p>
+            <p className={styles.groupLabel()}>
+              <span>{section.label}</span>
+              {section.count === undefined ? undefined : (
+                <span className={styles.count()}>
+                  {section.count}
+                  <span className="sr-only">
+                    {section.count === 1 ? ' document' : ' documents'}
+                  </span>
+                </span>
+              )}
+            </p>
             <div className={styles.sectionControls()}>
               {section.action === undefined ? undefined : (
                 <button

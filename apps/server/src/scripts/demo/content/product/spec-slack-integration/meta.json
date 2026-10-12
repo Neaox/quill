@@ -1,0 +1,10 @@
+{
+  "collection": "Specs",
+  "title": "Spec: Slack integration",
+  "type": "spec",
+  "owners": ["marcus@acme.example"],
+  "tags": ["spec", "slack", "integrations", "tidepool"],
+  "status": "draft",
+  "notes": [],
+  "frontMatter": {}
+}

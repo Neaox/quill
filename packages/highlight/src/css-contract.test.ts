@@ -7,6 +7,7 @@ import {
   grammarTokenGroups,
   tokenCssContract,
   tokenGroupKey,
+  tokenStylesheet,
   unthemedTokenGroups,
 } from './css-contract.ts'
 import { SUPPORTED_LANGUAGES } from './grammars.ts'
@@ -20,6 +21,34 @@ describe('tokenCssContract', () => {
     expect(contract.highlightSelectors).toEqual(
       TOKEN_CLASSES.map((tokenClass) => `::highlight(${BRAND.slug}-tok-${tokenClass})`),
     )
+  })
+})
+
+describe('tokenStylesheet', () => {
+  const css = tokenStylesheet()
+  const { variables, classSelectors, highlightSelectors } = tokenCssContract()
+
+  it('colours each class selector and each highlight selector from its token variable', () => {
+    for (const [index, variable] of variables.entries()) {
+      expect(css).toContain(`${classSelectors[index]} {\n  color: var(${variable});\n}\n`)
+      expect(css).toContain(`${highlightSelectors[index]} {\n  color: var(${variable});\n}\n`)
+    }
+  })
+
+  it('never comma-joins the two families, so a browser without ::highlight() keeps the classes', () => {
+    const selectors = css.split('\n').filter((line) => line.endsWith('{') && !line.startsWith('@'))
+    // Each selector twice: coloured, and plain under forced colours.
+    expect(selectors).toHaveLength(variables.length * 4)
+    expect(selectors.filter((selector) => selector.includes(','))).toEqual([])
+  })
+
+  it('gives forced colours plain text rather than colours that read as a selection', () => {
+    const forced = css.slice(css.indexOf('@media (forced-colors: active) {'))
+    expect(forced).not.toBe(css)
+    for (const selector of [...classSelectors, ...highlightSelectors]) {
+      expect(forced).toContain(`  ${selector} {\n    color: CanvasText;\n  }\n`)
+    }
+    expect(forced).not.toContain('var(--token-')
   })
 })
 

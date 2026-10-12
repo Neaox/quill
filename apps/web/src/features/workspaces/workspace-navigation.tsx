@@ -2,27 +2,21 @@ import { useNavigate } from '@tanstack/react-router'
 import { useEffect, useId, useState } from 'react'
 
 import {
-  Button,
   Callout,
   Menu,
   OutlineIcon,
+  PlusIcon,
   Spinner,
   Tooltip,
   TooltipProvider,
-  Tree,
   tv,
+  VirtualTree,
   type IconRailItem,
-  type TreeNode,
   type TreeNodeAction,
-  type TreeSection,
 } from '@quill/ui'
 
-import { useMe, useWorkspaceTree, type TreeCollectionDto } from '../../lib/api/index.ts'
-import {
-  documentLink,
-  documentReference,
-  workspaceLink,
-} from '../../lib/routing/document-reference.ts'
+import { useMe, useTreeCollections } from '../../lib/api/index.ts'
+import { workspaceLink } from '../../lib/routing/document-reference.ts'
 import { RouterLink } from '../../lib/routing/router-link.tsx'
 import {
   CreateCollectionDialog,
@@ -31,23 +25,30 @@ import {
 } from './collection-dialogs.tsx'
 import { useDocumentActions } from './document-actions.tsx'
 import { NewDocumentDialog } from './new-document-dialog.tsx'
+import { useTreeRows } from './use-tree-rows.ts'
 import { WorkspaceSwitcher } from './workspace-switcher.tsx'
-
-type ApiTreeNode = TreeCollectionDto['documents'][number]
 
 export const workspaceNavigationStyles = tv({
   slots: {
-    root: 'flex flex-col gap-1 py-3',
-    header: 'flex items-center justify-between gap-2 px-3',
-    heading: 'meta truncate text-muted',
-    controls: 'flex shrink-0 items-center gap-1',
+    root: 'flex flex-col gap-1 pt-4 pb-3',
+    header: 'flex items-center justify-between gap-1',
+    controls: 'flex shrink-0 items-center gap-0.5',
     add: [
-      'flex size-6 shrink-0 cursor-pointer items-center justify-center rounded-sm text-muted',
+      'flex size-7 shrink-0 cursor-pointer items-center justify-center rounded-md text-muted',
       'transition-colors hover:bg-surface hover:text-foreground',
       'focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-focus-ring',
     ],
-    newRow: 'flex items-center px-3 pt-1.5 pb-0.5',
-    notice: 'px-3 py-2',
+    /*
+     * "New" is a row of the sidebar rather than a slab across it: the same
+     * shape and ink as the documents under it, with the plus to say what it
+     * does, so it is always there and never louder than the list.
+     */
+    newRow: [
+      'flex min-h-8 w-full cursor-pointer items-center gap-2 rounded-md px-2 text-xs font-medium',
+      'text-foreground-soft transition-colors ease-standard hover:bg-surface hover:text-foreground',
+      'focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-focus-ring',
+    ],
+    notice: 'px-2 py-2',
   },
 })
 
@@ -72,33 +73,6 @@ function isTypingTarget(target: EventTarget | null): boolean {
     target.tagName === 'TEXTAREA' ||
     target.tagName === 'SELECT'
   )
-}
-
-function toTreeNode(workspaceSlug: string, node: ApiTreeNode): TreeNode {
-  return {
-    id: node.id,
-    label: node.title,
-    // One helper builds every document address (ADR-035): a route and its
-    // parameters, so the router encodes the segments and type-checks the
-    // pattern, and nothing here concatenates a URL.
-    link: documentLink(workspaceSlug, documentReference(node)),
-    children: node.children.map((child) => toTreeNode(workspaceSlug, child)),
-  }
-}
-
-/** Every document in a collection, nesting included: what "is it empty" means. */
-function countDocuments(nodes: readonly ApiTreeNode[]): number {
-  return nodes.reduce((total, node) => total + 1 + countDocuments(node.children), 0)
-}
-
-/** The collection a document sits in, so "new child" opens preset to both. */
-function findCollectionOf(
-  collections: readonly TreeCollectionDto[],
-  documentId: string,
-): TreeCollectionDto | undefined {
-  const holds = (nodes: readonly ApiTreeNode[]): boolean =>
-    nodes.some((node) => node.id === documentId || holds(node.children))
-  return collections.find((collection) => holds(collection.documents))
 }
 
 /** What the "New document" dialog is opened for: a collection, a parent, or neither. */
@@ -148,7 +122,7 @@ export function WorkspaceTree({
   workspaceName,
   currentDocumentId,
 }: WorkspaceTreeProps) {
-  const tree = useWorkspaceTree(workspaceId)
+  const collectionsQuery = useTreeCollections(workspaceId)
   // Moving and deleting the open document are the shell's, not this tree's:
   // the same two dialogs answer the document header's menu (`document-actions.tsx`).
   const documentActions = useDocumentActions()
@@ -174,23 +148,17 @@ export function WorkspaceTree({
     }
   }, [workspaceId])
 
-  const collections = tree.data?.collections ?? []
+  const collections = collectionsQuery.data ?? []
 
-  function newChildPreset(parentDocumentId: string) {
-    const collection = findCollectionOf(collections, parentDocumentId)
-    setPreset(
-      collection === undefined
-        ? { parentId: parentDocumentId }
-        : { collectionId: collection.id, parentId: parentDocumentId },
-    )
-  }
-
-  function nodeActions(node: TreeNode): readonly TreeNodeAction[] {
+  function nodeActions(node: {
+    readonly id: string
+    readonly collectionId: string
+  }): readonly TreeNodeAction[] {
     const actions: TreeNodeAction[] = [
       {
         label: 'New child document',
         onSelect: () => {
-          newChildPreset(node.id)
+          setPreset({ collectionId: node.collectionId, parentId: node.id })
         },
       },
     ]
@@ -201,36 +169,41 @@ export function WorkspaceTree({
     return actions
   }
 
-  const sections: readonly TreeSection[] = collections.map((collection) => ({
-    id: collection.id,
-    label: collection.name,
-    nodes: collection.documents.map((node) => toTreeNode(workspaceSlug, node)),
-    action: {
-      label: `New document in ${collection.name}`,
-      onSelect: () => {
-        setPreset({ collectionId: collection.id })
-      },
-    },
-    actions: [
-      {
-        label: 'Rename…',
+  const { rows, toggle, more } = useTreeRows({
+    workspaceId: workspaceId ?? '',
+    workspaceSlug,
+    collections,
+    currentId: currentDocumentId,
+    nodeActions,
+    section: (collection) => ({
+      action: {
+        label: `New document in ${collection.name}`,
         onSelect: () => {
-          setCollectionDialog({ kind: 'rename', id: collection.id, name: collection.name })
+          setPreset({ collectionId: collection.id })
         },
       },
-      {
-        label: 'Delete…',
-        onSelect: () => {
-          setCollectionDialog({
-            kind: 'delete',
-            id: collection.id,
-            name: collection.name,
-            documentCount: countDocuments(collection.documents),
-          })
+      actions: [
+        {
+          label: 'Rename…',
+          onSelect: () => {
+            setCollectionDialog({ kind: 'rename', id: collection.id, name: collection.name })
+          },
         },
-      },
-    ],
-  }))
+        {
+          label: 'Delete…',
+          onSelect: () => {
+            // Whether it is empty is the server's to say: the tree knows a page at a time.
+            setCollectionDialog({
+              kind: 'delete',
+              id: collection.id,
+              name: collection.name,
+              documentCount: 0,
+            })
+          },
+        },
+      ],
+    }),
+  })
 
   return (
     // A region named by its own heading, so the column's chrome — the
@@ -258,7 +231,7 @@ export function WorkspaceTree({
                   setCollectionDialog({ kind: 'create' })
                 }}
               >
-                <span aria-hidden="true">+</span>
+                <PlusIcon />
               </button>
               <WorkspaceOverflow
                 workspaceSlug={workspaceSlug}
@@ -267,28 +240,26 @@ export function WorkspaceTree({
             </div>
           </div>
 
-          <div className={styles.newRow()}>
-            <TooltipProvider>
-              <Tooltip content="New document (press c)">
-                <Button
-                  size="sm"
-                  variant="secondary"
-                  className="w-full"
-                  onClick={() => {
-                    setPreset({})
-                  }}
-                >
-                  {/*
-                    "New", not "New document": the workspace home's header
-                    carries a "New document" button of its own, and two
-                    controls with one name is a worse answer than a short one
-                    with a tooltip that says the rest.
-                  */}
-                  New
-                </Button>
-              </Tooltip>
-            </TooltipProvider>
-          </div>
+          <TooltipProvider>
+            <Tooltip content="New document (press c)">
+              <button
+                type="button"
+                className={styles.newRow()}
+                onClick={() => {
+                  setPreset({})
+                }}
+              >
+                <PlusIcon className="text-muted" />
+                {/*
+                  "New", not "New document": the workspace home's header
+                  carries a "New document" button of its own, and two
+                  controls with one name is a worse answer than a short one
+                  with a tooltip that says the rest.
+                */}
+                New
+              </button>
+            </Tooltip>
+          </TooltipProvider>
 
           <NewDocumentDialog
             // A fresh instance per preset, keyed on the destination it opens
@@ -345,22 +316,25 @@ export function WorkspaceTree({
         </>
       )}
 
-      {tree.isPending ? (
+      {collectionsQuery.isPending ? (
         <p className={styles.notice()} aria-busy="true">
           <Spinner />
         </p>
-      ) : tree.isError ? (
+      ) : collectionsQuery.isError ? (
         <div className={styles.notice()}>
           <Callout tone="danger" title="Couldn't load the documents">
             Reload the page to try again.
           </Callout>
         </div>
       ) : (
-        <Tree
+        <VirtualTree
           label="Documents"
-          sections={sections}
-          nodeActions={nodeActions}
+          rows={rows}
+          onToggle={toggle}
+          onMore={more}
           linkComponent={RouterLink}
+          // The window is cut from this: tall enough to use, short enough to leave the controls above it.
+          className="max-h-[calc(100dvh-var(--spacing-shell-header)-9rem)] max-md:max-h-96"
           {...(currentDocumentId === undefined ? {} : { currentId: currentDocumentId })}
         />
       )}

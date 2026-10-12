@@ -1,6 +1,7 @@
 import { expect, test, type Page } from '@playwright/test'
 
 import { seedDevelopmentData } from './support/seed.ts'
+import { accountMenu } from './support/account.ts'
 
 /**
  * Presenting a seeded document to a room: open it from the reading view, step
@@ -48,7 +49,7 @@ async function signIn(page: Page, email: string, password: string): Promise<void
   await page.getByRole('button', { name: 'Sign in' }).click()
   // The page the router settled on, not the address bar: see the note at the
   // top of the file.
-  await expect(page.getByRole('button', { name: 'Sign out' })).toBeVisible()
+  await expect(accountMenu(page)).toBeVisible()
   await expect(page).toHaveURL('/')
 }
 

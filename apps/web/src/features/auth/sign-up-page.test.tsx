@@ -39,7 +39,51 @@ describe('SignUpPage', () => {
     await userEvent.type(screen.getByLabelText('Password', { exact: false }), 'short')
     await userEvent.click(screen.getByRole('button', { name: 'Create account' }))
 
-    expect(await screen.findByRole('alert')).toHaveTextContent('at least 8 characters')
+    expect(await screen.findByRole('alert')).toHaveTextContent('Use at least 12 characters.')
+  })
+
+  it('holds a password to the length the server does, not a shorter one', async () => {
+    let sent = 0
+    renderApp('/sign-up', {
+      'POST /api/auth/sign-up': () => {
+        sent += 1
+        return jsonResponse(201, { userId: 'user-1' })
+      },
+    })
+    await screen.findByRole('heading', { level: 1, name: 'Create your account' })
+
+    await userEvent.type(screen.getByLabelText('Name', { exact: false }), 'Reader')
+    await userEvent.type(screen.getByLabelText('Email', { exact: false }), 'reader@example.com')
+    await userEvent.type(screen.getByLabelText('Password', { exact: false }), '12345678901')
+    await userEvent.click(screen.getByRole('button', { name: 'Create account' }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Use at least 12 characters.')
+    expect(sent).toBe(0)
+  })
+
+  it('asks for what is missing, field by field, and sends nothing', async () => {
+    let sent = 0
+    renderApp('/sign-up', {
+      'POST /api/auth/sign-up': () => {
+        sent += 1
+        return jsonResponse(201, { userId: 'user-1' })
+      },
+    })
+    await screen.findByRole('heading', { level: 1, name: 'Create your account' })
+
+    await userEvent.click(screen.getByRole('button', { name: 'Create account' }))
+
+    expect(screen.getByLabelText('Name', { exact: false })).toHaveAccessibleDescription(
+      'Enter your name.',
+    )
+    expect(screen.getByLabelText('Email', { exact: false })).toHaveAccessibleDescription(
+      'Enter your email address.',
+    )
+    expect(screen.getByLabelText('Password', { exact: false })).toHaveAccessibleDescription(
+      /Choose a password./,
+    )
+    expect(screen.getByLabelText('Name', { exact: false })).toHaveFocus()
+    expect(sent).toBe(0)
   })
 
   it('shows the server error when the email is already taken', async () => {

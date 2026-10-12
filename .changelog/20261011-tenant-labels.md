@@ -1,0 +1,3 @@
+Added: Labels: an organisation's theme can define up to 24 named colours, such as one per booking channel. A document writes `:airbnb[Airbnb]` to show a pill in that colour, and an SVG drawing's `class="airbnb"` takes the same colour, in light and dark (ADR-037).
+Added: The theme settings page has a Labels section beside collection colours: a name, a title and a colour for each, previewed as the pill a reader sees in both schemes and checked by the theme doctor.
+Changed: The editor draws the organisation’s labels as the reader does, and underlines a labelled directive the theme does not define with a warning that names the nearest label (“Did you mean airbnb?”); it still reads as written.

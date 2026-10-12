@@ -50,7 +50,7 @@ Outside Quill the directive degrades to its readable form (ADR-002): a link to t
 ### What this is not
 
 - **Not MDX.** No JSX, no imports, no expressions in documents. The set of block types is a registry, and a new type is a server-side registration with a schema, a fetcher, and a renderer, not code in a document.
-- **Not a plugin system for authors.** Tenants get new block types from built-ins and from integrations. A general extension API for third parties is a later decision and would still register types the same way.
+- **Not a plugin system for authors.** Tenants get new block types from built-ins and from integrations. A general extension API for third parties is a later decision and would still register types the same way. (Decided in ADR-039, 2026-10-11: a networked Markdown extension is a live block type, declared as the extension's `live` binding.)
 
 ### Delivery
 

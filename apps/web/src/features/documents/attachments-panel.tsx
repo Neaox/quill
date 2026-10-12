@@ -1,6 +1,6 @@
 import { useState } from 'react'
 
-import { Button, Dialog, DataTable, Spinner, toast, tv } from '@quill/ui'
+import { Button, Dialog, DataTable, LocalTime, Spinner, toast, tv } from '@quill/ui'
 
 import { ApiError } from '../../lib/api/index.ts'
 import { useAttachments, useDeleteAttachment, type Attachment } from '../../lib/api/attachments.ts'
@@ -117,9 +117,7 @@ export function AttachmentsPanel({
                     </span>
                   </th>
                   <td>
-                    <time dateTime={row.createdAt}>
-                      {new Date(row.createdAt).toLocaleDateString()}
-                    </time>
+                    <LocalTime value={row.createdAt} />
                   </td>
                   {canEdit ? (
                     <td>

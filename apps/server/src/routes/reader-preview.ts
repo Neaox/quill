@@ -1,0 +1,277 @@
+import { Type } from '@sinclair/typebox'
+import type { TypeBoxTypeProvider } from '@fastify/type-provider-typebox'
+import {
+  documentReference,
+  loadReaderPreview,
+  publicPageHref,
+  publicSiteHref,
+  publishedAt,
+  renderDocument,
+  renderDraft,
+} from '@quill/application'
+import type { ReaderPreview, RenderedContent } from '@quill/application'
+import type { DocumentId } from '@quill/domain'
+import type { FastifyPluginAsync, FastifyReply } from 'fastify'
+
+import { authorizerFor, requireDocumentAccess } from '../application/authorization.ts'
+import { resolveDocumentId } from '../application/references.ts'
+import type { AppDependencies } from '../dependencies.ts'
+import { AppError, conflict } from '../errors.ts'
+import {
+  renderDocumentMain,
+  renderNoPreviewPage,
+  renderUnpublishedMain,
+} from '../public-site/pages.ts'
+import { createReaderScript } from '../public-site/reader-script.ts'
+import { cachedHeaderMenu } from '../public-site/menu.ts'
+import { createSchemeScript } from '../public-site/scheme-script.ts'
+import { navigationSection } from '../public-site/templates/navigation.ts'
+import { renderPage } from '../public-site/templates/page.ts'
+import { renderPreviewBanner } from '../public-site/templates/preview-banner.ts'
+import { pageLayoutAttributes } from '../theme/page-attributes.ts'
+
+/**
+ * The reader preview: a document as a reader of the public site will see it
+ * (`docs/architecture/api-contract-reader-preview.md`).
+ *
+ * `GET /preview/d/:documentRef` renders any document the signed-in member may
+ * view through **the public site's own templates** — the same page shell,
+ * navigation, contents, stylesheet and script — whether or not its collection
+ * is published, so what a member checks is what a reader gets. Like the public
+ * site it is HTML rather than an API endpoint, and it is not in the OpenAPI
+ * description.
+ *
+ * It differs from a public page in exactly the ways a private page must:
+ *
+ * - **A session is required**, and the resolver decides (ADR-012): the
+ *   document needs `view`, checked by `requireDocumentAccess` like every
+ *   document route, and the navigation lists only what this member may read
+ *   (`loadReaderPreview`). A request with no session is sent to sign in and
+ *   back; one that may not read the document gets the same page a missing
+ *   document gets.
+ * - **Never indexed and never cached publicly**: `noindex,nofollow` in the
+ *   page and in `X-Robots-Tag`, no canonical, no structured data, and
+ *   `Cache-Control: private, no-store`, because the page carries whatever this
+ *   member may read and a shared cache must never hand it to anybody else.
+ * - **Marked as a preview** by a banner fixed to the bottom of the window,
+ *   which does not move the layout it is previewing.
+ */
+
+export const READER_PREVIEW_PREFIX = '/preview/d'
+
+/** The preview of a document, by its readable reference (ADR-035). */
+export function readerPreviewHref(reference: string): string {
+  return `${READER_PREVIEW_PREFIX}/${reference}`
+}
+
+const PreviewParams = Type.Object({ documentRef: Type.String({ minLength: 1, maxLength: 400 }) })
+
+/** `?draft` previews what has been saved and not published, instead of what is. */
+const PreviewQuery = Type.Object({ draft: Type.Optional(Type.String()) })
+
+/** The preview of the draft of a document, by its readable reference. */
+export function draftPreviewHref(reference: string): string {
+  return `${readerPreviewHref(reference)}?draft`
+}
+
+const NOT_FOR_INDEXING = 'noindex,nofollow'
+
+/** The headers every answer carries, the redirect and the refusals included. */
+function privately(reply: FastifyReply): void {
+  reply.header('cache-control', 'private, no-store')
+  // Tighter than the platform's `strict-origin-when-cross-origin`: nothing on
+  // a preview tells another origin that this instance was being looked at.
+  reply.header('referrer-policy', 'no-referrer')
+  reply.header('x-robots-tag', 'noindex, nofollow')
+}
+
+function sendHtml(reply: FastifyReply, status: number, page: string): FastifyReply {
+  return reply.status(status).type('text/html; charset=utf-8').send(page)
+}
+
+/** One answer for missing and for refused, so neither is distinguishable. */
+function nothingToPreview(reply: FastifyReply): FastifyReply {
+  return sendHtml(reply, 404, renderNoPreviewPage())
+}
+
+export function readerPreviewRoutes(deps: AppDependencies): FastifyPluginAsync {
+  const schemeScript = createSchemeScript(deps.hasher)
+  const readerScript = createReaderScript(deps.hasher)
+
+  /** The id the reference names, or null when it names nothing. */
+  const documentIdOf = async (reference: string): Promise<DocumentId | null> => {
+    try {
+      return await resolveDocumentId(deps, reference)
+    } catch (error) {
+      /* v8 ignore next -- resolution only ever refuses with a 404. */
+      if (!(error instanceof AppError) || error.statusCode !== 404) throw error
+      return null
+    }
+  }
+
+  /** What is drawn in the page's body: the published revision, or the draft saved since. */
+  interface Shown {
+    readonly content: RenderedContent | null
+    readonly title: string
+    readonly updatedAt: Date | null
+    readonly draft: boolean
+  }
+
+  const published = async (preview: ReaderPreview): Promise<Shown> => {
+    const { document } = preview
+    const rendered = await renderDocument(deps, { documentId: document.id, indexLinks: false })
+    if (rendered.kind !== 'rendered') {
+      return { content: null, title: document.title, updatedAt: null, draft: false }
+    }
+    const at = await publishedAt(deps, [document])
+    return {
+      content: rendered.content,
+      title: document.title,
+      /* v8 ignore next -- `publishedAt` answers for every document it is given. */
+      updatedAt: at.get(document.id) ?? document.updatedAt,
+      draft: false,
+    }
+  }
+
+  /** The draft as it was last saved, or null when there is none to show. */
+  const drafted = async (preview: ReaderPreview): Promise<Shown | null> => {
+    const rendered = await renderDraft(deps, { documentId: preview.document.id })
+    if (rendered.kind !== 'rendered') return null
+    return {
+      content: rendered.content,
+      title: rendered.title,
+      updatedAt: rendered.savedAt,
+      draft: true,
+    }
+  }
+
+  const pageOf = async (preview: ReaderPreview, shown: Shown): Promise<string> => {
+    const { document, collection, workspace, organisation } = preview
+    const { content, updatedAt } = shown
+    const publicHref =
+      preview.publicAddress === null
+        ? null
+        : publicPageHref(preview.publicAddress.siteSlug, preview.publicAddress.path)
+
+    const stylesheet = deps.publicStylesheets.forTheme(organisation.theme)
+    return renderPage({
+      siteName: organisation.name,
+      homeHref:
+        preview.publicAddress === null ? null : publicSiteHref(preview.publicAddress.siteSlug),
+      // The header menu is the public one, resolved exactly as a public page
+      // resolves it: a preview of a page shows the menu its reader will see,
+      // so a link to something that is not public is left out here too.
+      menu: await cachedHeaderMenu(deps, organisation),
+      currentHref: publicHref,
+      // A preview's address is a member's, so no link on it says where it was.
+      audience: 'private',
+      // The site's search answers for what is published; a preview of what
+      // may not be has nothing it could honestly search.
+      searchHref: null,
+      sections: preview.sections.map((section) =>
+        navigationSection({
+          name: section.collection.name,
+          nodes: section.navigation,
+          hrefOf: (node) => readerPreviewHref(node.path),
+          currentDocumentId: document.id,
+          open: section.collection.id === collection.id,
+        }),
+      ),
+      title: `Preview: ${shown.title}`,
+      description: null,
+      canonical: null,
+      robots: NOT_FOR_INDEXING,
+      stylesheetHref: stylesheet.href,
+      themeId: stylesheet.identity,
+      htmlAttributes: pageLayoutAttributes([
+        organisation.layout.default,
+        organisation.theme.variants,
+      ]),
+      scriptHref: schemeScript.href,
+      readerHref: readerScript.href,
+      outline: content === null ? [] : content.outline,
+      main:
+        content === null
+          ? renderUnpublishedMain({ collectionName: collection.name, title: shown.title })
+          : renderDocumentMain({
+              collectionName: collection.name,
+              title: shown.title,
+              bodyHtml: content.html,
+              rules: organisation.layout.default.rules,
+            }),
+      updatedAt,
+      structuredData: null,
+      query: null,
+      preview: renderPreviewBanner({
+        closeHref: `/w/${workspace.slug}/d/${documentReference(document)}`,
+        publicHref,
+        draft: shown.draft
+          ? { editHref: `/w/${workspace.slug}/d/${documentReference(document)}/edit` }
+          : undefined,
+      }),
+    })
+  }
+
+  return async (rawApp) => {
+    const app = rawApp.withTypeProvider<TypeBoxTypeProvider>()
+
+    app.get(
+      `${READER_PREVIEW_PREFIX}/:documentRef`,
+      {
+        // Read when there is one, so a request without a session can be sent
+        // to sign in rather than answered with the API's JSON 401.
+        preHandler: app.optionalSession,
+        schema: { params: PreviewParams, querystring: PreviewQuery, hide: true },
+      },
+      async (request, reply) => {
+        privately(reply)
+        const wantsDraft = request.query.draft !== undefined
+        if (request.session === undefined) {
+          const reference = request.params.documentRef
+          const back = wantsDraft ? draftPreviewHref(reference) : readerPreviewHref(reference)
+          return reply.redirect(`/sign-in?redirect=${encodeURIComponent(back)}`, 303)
+        }
+
+        const documentId = await documentIdOf(request.params.documentRef)
+        if (documentId === null) return nothingToPreview(reply)
+
+        const authorizer = authorizerFor(deps, request)
+        const access = await authorizer.document(documentId)
+        if (!access.ok && access.error.kind === 'document-not-found') return nothingToPreview(reply)
+        if (access.ok && !access.value.capabilities.view) return nothingToPreview(reply)
+        // A draft is an editor's: somebody who may only read has no business with it.
+        if (wantsDraft && access.ok && !access.value.capabilities.edit) {
+          return nothingToPreview(reply)
+        }
+        // Anything else is the tenancy tree contradicting itself, which the
+        // shared mapping answers as the server fault it is.
+        const granted = await requireDocumentAccess(authorizer, documentId, 'view')
+
+        const loaded = await loadReaderPreview(deps, {
+          documentId,
+          identities: await authorizer.identities(),
+          seesEverything: granted.isInstanceAdmin,
+        })
+        switch (loaded.kind) {
+          case 'preview': {
+            const shown = wantsDraft
+              ? await drafted(loaded.preview)
+              : await published(loaded.preview)
+            // A document with no draft to show is answered as one with nothing to preview.
+            return shown === null
+              ? nothingToPreview(reply)
+              : sendHtml(reply, 200, await pageOf(loaded.preview, shown))
+          }
+          /* v8 ignore next 2 -- the authorizer has just loaded this document. */
+          case 'not-found':
+            return nothingToPreview(reply)
+          case 'settings-unreadable':
+            throw conflict('settings_unreadable', 'The organisation’s settings cannot be read')
+          /* v8 ignore next 2 -- the authorizer walked the same tree a moment ago. */
+          case 'broken-tree':
+            throw new AppError(500, 'broken_tenancy_tree', 'The workspace cannot be placed')
+        }
+      },
+    )
+  }
+}

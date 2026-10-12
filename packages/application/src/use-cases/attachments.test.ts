@@ -12,10 +12,12 @@ import { createInMemoryUnitOfWork } from '../test-support/in-memory-repositories
 import type { InMemoryUnitOfWork } from '../test-support/in-memory-repositories.ts'
 import {
   ATTACHMENT_AUDIT_EVENTS,
+  attachmentIdsIn,
   attachmentUrl,
   deleteAttachment,
   getAttachment,
   listAttachments,
+  reviseAttachment,
   safeFilename,
   uploadAttachment,
 } from './attachments.ts'
@@ -88,7 +90,13 @@ async function upload(
 beforeEach(async () => {
   uow = createInMemoryUnitOfWork()
   blobStore = createInMemoryBlobStore()
-  deps = { uow, blobStore, clock: createFakeClock(NOW), ids: createFakeIdGenerator() }
+  deps = {
+    uow,
+    blobStore,
+    clock: createFakeClock(NOW),
+    ids: createFakeIdGenerator(),
+    drawingText: { read: async (file) => (file.includes('mxfile') ? 'Gateway Ledger' : null) },
+  }
   await uow.repos.workspaces.create({
     id: WORKSPACE,
     unitId: 'acme',
@@ -288,14 +296,27 @@ describe('uploadAttachment', () => {
     expect(blobStore.objects.size).toBe(0)
   })
 
-  it('refuses an SVG, and says that is what it was', async () => {
+  it('accepts an SVG as a drawing, stored as it came', async () => {
     const result = await upload({
-      filename: 'logo.svg',
+      filename: 'the-loop.svg',
       declaredContentType: 'image/svg+xml',
       body: streamed(svg()),
     })
-    expect(result).toStrictEqual({ kind: 'type-not-allowed', sniffed: 'image/svg+xml' })
-    expect(blobStore.objects.size).toBe(0)
+    expect(result).toMatchObject({ kind: 'uploaded', attachment: { contentType: 'image/svg+xml' } })
+    expect(blobStore.objects.size).toBe(1)
+  })
+
+  it('serves a drawing only as a download, never as a picture', async () => {
+    const uploaded = await upload({
+      filename: 'the-loop.svg',
+      declaredContentType: 'image/svg+xml',
+      body: streamed(svg()),
+    })
+    if (uploaded.kind !== 'uploaded') throw new Error(uploaded.kind)
+
+    const served = await getAttachment(deps, { attachmentId: uploaded.attachment.id })
+
+    expect(served).toMatchObject({ kind: 'found', disposition: 'attachment' })
   })
 
   it('refuses a type it does not recognise at all', async () => {
@@ -581,5 +602,190 @@ describe('deleteAttachment', () => {
     expect(
       await deleteAttachment(deps, { attachmentId: result.attachment.id, deletedBy: ACTOR }),
     ).toMatchObject({ kind: 'not-found' })
+  })
+})
+
+/** A `.drawio.svg`: a picture carrying its diagram source. */
+function drawioSvg(label = 'v1'): Uint8Array {
+  return new TextEncoder().encode(
+    `<svg xmlns="http://www.w3.org/2000/svg" content="&lt;mxfile&gt;&lt;/mxfile&gt;"><text>${label}</text></svg>`,
+  )
+}
+
+describe('a drawing’s words (ADR-043)', () => {
+  it('are read on upload and kept for search', async () => {
+    const result = await upload({
+      filename: 'flow.drawio.svg',
+      declaredContentType: 'image/svg+xml',
+      body: streamed(drawioSvg(), 7),
+    })
+
+    expect(result).toMatchObject({
+      kind: 'uploaded',
+      attachment: { contentType: 'image/svg+xml', version: 1, searchText: 'Gateway Ledger' },
+    })
+  })
+
+  it('are not looked for in a picture', async () => {
+    const result = await upload()
+    expect(result).toMatchObject({ kind: 'uploaded', attachment: { searchText: null } })
+  })
+
+  it('come from a raw .drawio too, which is accepted and stored as a download', async () => {
+    const result = await upload({
+      filename: 'flow.drawio',
+      declaredContentType: 'application/vnd.jgraph.mxfile',
+      body: streamed(new TextEncoder().encode('<?xml version="1.0"?>\n<mxfile host="x"></mxfile>')),
+    })
+
+    expect(result).toMatchObject({
+      kind: 'uploaded',
+      attachment: { contentType: 'application/vnd.jgraph.mxfile', searchText: 'Gateway Ledger' },
+    })
+    if (result.kind !== 'uploaded') return
+    expect(await getAttachment(deps, { attachmentId: result.attachment.id })).toMatchObject({
+      disposition: 'attachment',
+    })
+  })
+})
+
+describe('reviseAttachment', () => {
+  async function drawing(): Promise<string> {
+    const result = await upload({
+      filename: 'flow.drawio.svg',
+      declaredContentType: 'image/svg+xml',
+      body: streamed(drawioSvg()),
+    })
+    if (result.kind !== 'uploaded') throw new Error(result.kind)
+    return result.attachment.id
+  }
+
+  const revise = (
+    attachmentId: string,
+    overrides: Partial<Parameters<typeof reviseAttachment>[1]> = {},
+  ) =>
+    reviseAttachment(deps, {
+      attachmentId,
+      revisedBy: ACTOR,
+      expectedVersion: 1,
+      declaredContentType: 'image/svg+xml',
+      body: streamed(drawioSvg('v2')),
+      maxBytes: MAX_BYTES,
+      ...overrides,
+    })
+
+  it('replaces the bytes under the same id and URL, keeping the old revision', async () => {
+    const id = await drawing()
+    const before = await uow.repos.attachments.findById(id)
+    const result = await revise(id)
+
+    expect(result).toMatchObject({
+      kind: 'revised',
+      url: attachmentUrl(id),
+      attachment: { id, version: 2, sha256: sha256(drawioSvg('v2')), searchText: 'Gateway Ledger' },
+    })
+    expect(uow.attachmentHistory).toStrictEqual([before])
+    expect(await readBlob(blobStore, sha256(drawioSvg('v2')))).toStrictEqual(drawioSvg('v2'))
+  })
+
+  it('audits the revision and tells the rest of the platform', async () => {
+    const id = await drawing()
+    await revise(id)
+
+    expect(uow.auditEvents.at(-1)).toMatchObject({
+      type: ATTACHMENT_AUDIT_EVENTS.revised,
+      targetId: id,
+      metadata: { documentId: DOCUMENT, version: 2 },
+    })
+    expect(uow.events.at(-1)).toMatchObject({
+      type: 'AttachmentRevised',
+      payload: {
+        version: 1,
+        attachmentId: id,
+        documentId: DOCUMENT,
+        workspaceId: WORKSPACE,
+        attachmentVersion: 2,
+      },
+    })
+  })
+
+  it('refuses a save over a newer revision before reading a byte', async () => {
+    const id = await drawing()
+    await revise(id)
+    let read = false
+    const body = (async function* () {
+      read = true
+      yield drawioSvg('v3')
+    })()
+
+    const result = await revise(id, { body })
+
+    expect(result).toMatchObject({ kind: 'version-conflict', current: { id, version: 2 } })
+    expect(read).toBe(false)
+  })
+
+  it('answers with the winner when another save lands between the check and the write', async () => {
+    const id = await drawing()
+    const racing = await revise(id, {
+      body: (async function* () {
+        await revise(id)
+        yield drawioSvg('late')
+      })(),
+    })
+
+    expect(racing).toMatchObject({ kind: 'version-conflict', current: { version: 2 } })
+    expect(uow.attachmentHistory).toHaveLength(1)
+  })
+
+  it('answers not found if the attachment was taken down mid-save', async () => {
+    const id = await drawing()
+    const result = await revise(id, {
+      body: (async function* () {
+        await uow.repos.attachments.softDelete(id, NOW)
+        yield drawioSvg('late')
+      })(),
+    })
+    expect(result).toStrictEqual({ kind: 'not-found', attachmentId: id })
+  })
+
+  it('is a miss for an id that names nothing, or one taken down', async () => {
+    expect(await revise('nothing')).toStrictEqual({ kind: 'not-found', attachmentId: 'nothing' })
+    const id = await drawing()
+    await uow.repos.attachments.softDelete(id, NOW)
+    expect(await revise(id)).toMatchObject({ kind: 'not-found' })
+  })
+
+  it('keeps a drawing a drawing', async () => {
+    const id = await drawing()
+    expect(
+      await revise(id, { declaredContentType: 'image/png', body: streamed(png()) }),
+    ).toStrictEqual({
+      kind: 'type-changed',
+      current: 'image/svg+xml',
+      sniffed: 'image/png',
+    })
+  })
+
+  it('holds a revision to everything an upload is held to', async () => {
+    const id = await drawing()
+    expect(await revise(id, { body: streamed(new Uint8Array()) })).toStrictEqual({ kind: 'empty' })
+    expect(await revise(id, { maxBytes: 10 })).toStrictEqual({ kind: 'too-large', maxBytes: 10 })
+    expect(await revise(id, { declaredContentType: 'image/png' })).toMatchObject({
+      kind: 'type-mismatch',
+    })
+  })
+})
+
+describe('attachmentIdsIn', () => {
+  it('finds each attachment a body names once, whatever case its id is written in', () => {
+    const a = '3c9e1f4a-7b2d-4e8f-a1c6-5d0b9e2f8a17'
+    const b = '6f1d2b0e-5c3a-4b7e-9d21-0a8c4f3e7b19'
+    const markdown = `![x](/api/attachments/${a}) [y](/api/attachments/${b.toUpperCase()}) ![z](/api/attachments/${a})`
+    expect(attachmentIdsIn(markdown)).toStrictEqual([a, b])
+  })
+
+  it('finds nothing in a body without one, or with a malformed one', () => {
+    expect(attachmentIdsIn('# Plain')).toStrictEqual([])
+    expect(attachmentIdsIn('/api/attachments/not-an-id')).toStrictEqual([])
   })
 })

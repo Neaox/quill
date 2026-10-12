@@ -43,7 +43,7 @@ const styles = tv({
     link: [
       'block truncate text-muted transition-colors ease-standard',
       'hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2',
-      'focus-visible:outline-focus-ring aria-current:font-medium aria-current:text-foreground',
+      'focus-visible:outline-focus-ring current:font-medium current:text-foreground',
     ],
   },
 })()

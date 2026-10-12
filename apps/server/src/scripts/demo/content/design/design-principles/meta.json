@@ -1,0 +1,14 @@
+{
+  "collection": "Foundations",
+  "title": "Design principles",
+  "type": "design",
+  "owners": ["sofia@acme.example"],
+  "tags": ["principles", "foundations", "tideline"],
+  "review": "1y",
+  "status": "published",
+  "notes": [
+    "First published with four principles",
+    "Added \"Show the state of things\" after the sync-status work on Skiff, and a section on resolving conflicts"
+  ],
+  "frontMatter": {}
+}

@@ -1,0 +1,1 @@
+Fixed: code on the public site and in the reader preview is now syntax highlighted, exactly as in the signed-in reader, by one bundled reader script that also opens diagrams in the lightbox (Rolldown, a new devDependency of @quill/design-css, bundles it ahead of time because the public site has no bundler at run time).

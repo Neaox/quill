@@ -1,0 +1,14 @@
+{
+  "collection": "Brand",
+  "title": "Brand voice and tone",
+  "type": "guide",
+  "owners": ["ravi@acme.example"],
+  "tags": ["brand", "writing", "style"],
+  "review": "6m",
+  "status": "published",
+  "notes": [
+    "First version, agreed with the marketing team",
+    "Added the do and don't rows and a section on writing about live transcripts ahead of Skiff 2.0"
+  ],
+  "frontMatter": {}
+}

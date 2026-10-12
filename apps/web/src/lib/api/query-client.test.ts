@@ -1,6 +1,6 @@
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import { ApiError } from './errors.ts'
+import { ApiError, toApiError } from './errors.ts'
 import { clearSessionState, createQueryClient } from './query-client.ts'
 import { queryKeys } from './query-keys.ts'
 
@@ -115,6 +115,71 @@ describe('createQueryClient 401 handling', () => {
         },
       }),
     ).rejects.toBeInstanceOf(ApiError)
+  })
+})
+
+async function attemptsFor(failure: () => unknown): Promise<number> {
+  vi.useFakeTimers()
+  try {
+    let attempts = 0
+    const queryClient = createQueryClient()
+    const settled = queryClient
+      .fetchQuery({
+        queryKey: ['flaky'],
+        queryFn: () => {
+          attempts += 1
+          throw failure()
+        },
+      })
+      .catch(() => {})
+    await vi.runAllTimersAsync()
+    await settled
+    return attempts
+  } finally {
+    vi.useRealTimers()
+  }
+}
+
+/**
+ * Audit 2026-10-11, P0-2: a 502 on a background refresh failed at once, and
+ * the editor treated it as a document that could not be opened. A gateway or
+ * an overloaded server is worth another try; a refusal is not.
+ */
+describe('createQueryClient retries', () => {
+  it.each([502, 503, 504, 429])('retries a %i twice with backoff', async (status) => {
+    expect(await attemptsFor(() => toApiError(status, undefined))).toBe(3)
+  })
+
+  it('retries a request that never reached the server', async () => {
+    expect(await attemptsFor(() => new TypeError('Failed to fetch'))).toBe(3)
+  })
+
+  it.each([400, 401, 403, 404, 409, 423, 500])('never retries a %i', async (status) => {
+    expect(await attemptsFor(() => toApiError(status, undefined))).toBe(1)
+  })
+
+  it('waits as long as Retry-After asks before trying again', async () => {
+    vi.useFakeTimers()
+    try {
+      let attempts = 0
+      const queryClient = createQueryClient()
+      void queryClient
+        .fetchQuery({
+          queryKey: ['busy'],
+          queryFn: () => {
+            attempts += 1
+            if (attempts > 1) return 'ok'
+            throw toApiError(429, undefined, new Headers({ 'retry-after': '20' }))
+          },
+        })
+        .catch(() => {})
+      await vi.advanceTimersByTimeAsync(19_000)
+      expect(attempts).toBe(1)
+      await vi.advanceTimersByTimeAsync(1_000)
+      expect(attempts).toBe(2)
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })
 

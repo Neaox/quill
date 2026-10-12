@@ -8,6 +8,7 @@
 @import './tokens.css';
 @import '@quill/design-css/layout.css';
 @import '@quill/design-css/prose.css';
+@import '@quill/design-css/comparison.css';
 @import './components.css';
 @import './present.css';
 @import './editor.css';

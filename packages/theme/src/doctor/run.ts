@@ -1,7 +1,8 @@
 import type { Adjustment } from '../colour/adjustment.ts'
 import { buildPalettes, type ThemePalettes } from '../colour/palette.ts'
 import type { ThemeDocument } from '../schema/theme-document.ts'
-import { ALL_RULES, ENFORCED_RULE_ID } from './rules/all.ts'
+import type { Evidence } from './evidence.ts'
+import { applicableRules, ENFORCED_RULE_ID } from './rules/all.ts'
 import { DEFAULT_DOCTOR_OPTIONS, type DoctorOptions, type Rule, type RuleStatus } from './rule.ts'
 
 export type RuleResult = {
@@ -17,6 +18,10 @@ export type RuleResult = {
    * refuses to save, because the doctor advises and never blocks.
    */
   readonly enforced: boolean
+  /** What was measured, in both schemes; empty for a rule with nothing to show. */
+  readonly evidence: readonly Evidence[]
+  /** True when the rule warns and the theme document records that the tenant accepted it. */
+  readonly acknowledged: boolean
 }
 
 export type ThemeReport = {
@@ -38,7 +43,9 @@ export type ThemeReport = {
   readonly enforcedRulesHold: boolean
 }
 
-const resolve = (options: Partial<DoctorOptions> | undefined): DoctorOptions => ({
+export const resolveDoctorOptions = (
+  options: Partial<DoctorOptions> | undefined,
+): DoctorOptions => ({
   ...DEFAULT_DOCTOR_OPTIONS,
   ...options,
 })
@@ -57,6 +64,8 @@ const evaluateRule = (
     status: outcome.status,
     detail: outcome.detail,
     enforced: rule.id === ENFORCED_RULE_ID && options.textContrast === 'enforced',
+    evidence: rule.evidence?.(theme, palettes, options) ?? [],
+    acknowledged: outcome.status === 'warn' && (theme.acknowledged ?? []).includes(rule.id),
   }
 }
 
@@ -66,8 +75,10 @@ export const reportOn = (
   palettes: ThemePalettes,
   options?: Partial<DoctorOptions>,
 ): ThemeReport => {
-  const resolved = resolve(options)
-  const results = ALL_RULES.map((rule) => evaluateRule(rule, theme, palettes, resolved))
+  const resolved = resolveDoctorOptions(options)
+  const results = applicableRules(theme).map((rule) =>
+    evaluateRule(rule, theme, palettes, resolved),
+  )
   const summary = {
     pass: results.filter((result) => result.status === 'pass').length,
     adjusted: results.filter((result) => result.status === 'adjusted').length,

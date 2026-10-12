@@ -1,0 +1,45 @@
+{
+  "collection": "Templates",
+  "title": "Product requirements document",
+  "type": "template",
+  "owners": ["priya@acme.example"],
+  "tags": ["template", "prd", "specs"],
+  "review": "1y",
+  "status": "published",
+  "notes": ["First version of the template, adapted from the Q3 specs"],
+  "frontMatter": {
+    "type": "template",
+    "template": {
+      "name": "Product requirements document",
+      "category": "Product",
+      "version": 1,
+      "questions": [
+        {
+          "id": "productArea",
+          "label": "Product area",
+          "type": "choice",
+          "options": ["Tidepool", "Skiff", "API"],
+          "default": "Tidepool"
+        },
+        { "id": "targetQuarter", "label": "Target quarter", "type": "text", "default": "Q1 2027" },
+        {
+          "id": "hasDesign",
+          "label": "Does this need design work?",
+          "type": "boolean",
+          "default": true
+        },
+        { "id": "owner", "label": "Owner", "type": "user", "optional": true }
+      ],
+      "sections": [
+        { "heading": "Problem", "required": true },
+        { "heading": "Goals and non-goals", "required": true },
+        { "heading": "Users and use cases", "required": true },
+        { "heading": "Requirements", "required": true },
+        { "heading": "Design", "when": "hasDesign", "optional": true },
+        { "heading": "Dependencies and risks", "required": true },
+        { "heading": "Rollout", "required": true },
+        { "heading": "Open questions", "required": false }
+      ]
+    }
+  }
+}

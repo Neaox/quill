@@ -1,0 +1,15 @@
+{
+  "collection": "Compensation",
+  "title": "Engineering levels and bands",
+  "type": "policy",
+  "owners": ["dana@acme.example"],
+  "tags": ["compensation", "levels", "engineering", "confidential"],
+  "review": "6m",
+  "status": "published",
+  "notes": [
+    "First published ladder and bands, effective 1 January 2026",
+    "Raised all bands about 4% after the July benchmark and added midpoints",
+    "Added location tiers and the equity grant table from 1 October"
+  ],
+  "frontMatter": {}
+}

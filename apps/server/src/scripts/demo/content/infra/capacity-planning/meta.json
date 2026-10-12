@@ -1,0 +1,14 @@
+{
+  "collection": "Architecture",
+  "title": "Capacity planning",
+  "type": "reference",
+  "owners": ["marcus@acme.example"],
+  "tags": ["capacity", "cost", "postgres", "aws"],
+  "review": "90d",
+  "status": "published",
+  "notes": [
+    "First version, from the July review",
+    "October figures, January forecast and the Spot pool for transcription"
+  ],
+  "frontMatter": {}
+}

@@ -123,7 +123,9 @@ describe('the share-link page', () => {
 
     const header = screen.getByRole('banner')
     expect(header).toHaveTextContent('Quill')
-    expect(header).toHaveTextContent('Shared with you · expires 2026-10-01')
+    expect(header).toHaveTextContent(
+      `Shared with you · expires ${new Intl.DateTimeFormat(undefined, { dateStyle: 'medium' }).format(new Date('2026-10-01T00:00:00.000Z'))}`,
+    )
   })
 
   it('says so plainly when the link does not expire', async () => {
@@ -158,7 +160,7 @@ describe('the share-link page', () => {
     // The route is outside `_authenticated`, so nothing ever asks who this is.
     expect(asked).toEqual([])
     expect(screen.queryByRole('navigation', { name: 'Documents' })).not.toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'Sign out' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /^Account menu for / })).not.toBeInTheDocument()
     expect(screen.queryByRole('link', { name: /Sign in/ })).not.toBeInTheDocument()
     expect(screen.queryByRole('link', { name: 'Edit' })).not.toBeInTheDocument()
   })

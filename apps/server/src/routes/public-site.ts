@@ -1,15 +1,9 @@
 import { Type } from '@sinclair/typebox'
 import type { TypeBoxTypeProvider } from '@fastify/type-provider-typebox'
-import {
-  loadPublicSite,
-  publicPageHref,
-  publicSiteHref,
-  publishedAt,
-  renderDocument,
-} from '@quill/application'
+import { publicPageHref, publicSiteHref, publishedAt, renderDocument } from '@quill/application'
 import type { DocumentRow, PublicSite } from '@quill/application'
 import { PUBLIC_PRINCIPAL } from '@quill/domain'
-import type { WorkspaceId } from '@quill/domain'
+import type { DocumentId, WorkspaceId } from '@quill/domain'
 import { visibilityFilter } from '@quill/search'
 import type { FastifyPluginAsync, FastifyReply, FastifyRequest } from 'fastify'
 
@@ -27,8 +21,13 @@ import {
 } from '../public-site/pages.ts'
 import type { SearchResultView } from '../public-site/pages.ts'
 import { renderRobots, renderSitemap, renderSitemapIndex } from '../public-site/sitemap.ts'
+import { createReaderScript } from '../public-site/reader-script.ts'
+import { cachedHeaderMenu, cachedPublicSiteLoader } from '../public-site/menu.ts'
+import { createSchemeScript } from '../public-site/scheme-script.ts'
 import { ASSET_MAX_AGE_SECONDS } from '../public-site/stylesheet.ts'
+import { navigationSection } from '../public-site/templates/navigation.ts'
 import { renderPage } from '../public-site/templates/page.ts'
+import { pageLayoutAttributes } from '../theme/page-attributes.ts'
 import { addressRateLimit } from '../plugins/rate-limit.ts'
 import { unsearchable } from './search-query.ts'
 
@@ -100,9 +99,15 @@ const HOME_PATH = ''
 /** `theme-<32 hex characters>.css`, and nothing else. */
 const ASSET_FILE = /^theme-([0-9a-f]{32})\.css$/u
 
+/** `scheme-` or `reader-` and 32 hex characters, `.js`, and nothing else. */
+const SCRIPT_FILE = /^(scheme|reader)-([0-9a-f]{32})\.js$/u
+
 export function publicSiteRoutes(deps: AppDependencies): FastifyPluginAsync {
   const budget = addressRateLimit(PUBLIC_SITE_BUCKET, deps.config.publicSiteRateLimitMax)
   const pageSize = deps.config.publicSitemapPageSize
+  const schemeScript = createSchemeScript(deps.hasher)
+  const readerScript = createReaderScript(deps.hasher)
+  const scripts = { scheme: schemeScript, reader: readerScript } as const
 
   /** The absolute form of a path on this instance, for canonical links and the sitemap. */
   const absolute = (path: string): string => `${deps.config.appUrl}${path}`
@@ -145,26 +150,52 @@ export function publicSiteRoutes(deps: AppDependencies): FastifyPluginAsync {
     etag: `"${deps.hasher.contentHash(html)}"`,
   })
 
-  /** Everything the shell needs that is the same on every page of a site. */
-  const shellOf = (site: PublicSite) => {
+  /**
+   * Everything the shell needs that is the same on every page of a site, bar
+   * which document is open in the navigation and which address the header
+   * menu marks as the one being read.
+   */
+  const shellOf = async (
+    site: PublicSite,
+    currentDocumentId: DocumentId | null,
+    currentHref: string | null,
+  ) => {
     const stylesheet = deps.publicStylesheets.forTheme(site.organisation.theme)
     return {
-      siteSlug: site.siteSlug,
       siteName: site.organisation.name,
-      links: site.organisation.publicNavigation,
-      navigation: site.navigation,
+      homeHref: publicSiteHref(site.siteSlug),
+      menu: await cachedHeaderMenu(deps, site.organisation),
+      currentHref,
+      audience: 'public' as const,
+      searchHref: `${publicSiteHref(site.siteSlug)}/search`,
+      sections: [
+        navigationSection({
+          name: site.collection.name,
+          nodes: site.navigation,
+          hrefOf: (node) => publicPageHref(site.siteSlug, node.path),
+          currentDocumentId,
+          open: true,
+        }),
+      ],
       stylesheetHref: stylesheet.href,
+      themeId: stylesheet.identity,
+      scriptHref: schemeScript.href,
+      readerHref: readerScript.href,
+      preview: null,
+      htmlAttributes: pageLayoutAttributes([
+        site.organisation.layout.default,
+        site.organisation.theme.variants,
+      ]),
     }
   }
 
-  const notFoundPage = (request: FastifyRequest, reply: FastifyReply, site: PublicSite) =>
+  const notFoundPage = async (request: FastifyRequest, reply: FastifyReply, site: PublicSite) =>
     sendPage(
       request,
       reply,
       finished(
         renderPage({
-          ...shellOf(site),
-          currentPath: null,
+          ...(await shellOf(site, null, null)),
           title: 'Not found',
           description: null,
           // No canonical: this address is not the authoritative home of
@@ -200,14 +231,7 @@ export function publicSiteRoutes(deps: AppDependencies): FastifyPluginAsync {
    * `null` is the one answer every reason gives, and the caller turns it into
    * the page above.
    */
-  const siteAt = async (siteSlug: string): Promise<PublicSite | null> => {
-    const known = deps.publicSiteCache.site(siteSlug)
-    if (known !== null) return known
-    const loaded = await loadPublicSite(deps, siteSlug)
-    if (loaded.kind !== 'site') return null
-    deps.publicSiteCache.rememberSite(siteSlug, loaded.site)
-    return loaded.site
-  }
+  const siteAt = cachedPublicSiteLoader(deps)
 
   /**
    * One page of a site's addresses, newest-first stamps and all.
@@ -267,8 +291,7 @@ export function publicSiteRoutes(deps: AppDependencies): FastifyPluginAsync {
 
     const page = finished(
       renderPage({
-        ...shellOf(site),
-        currentPath: path,
+        ...(await shellOf(site, document.id, publicPageHref(site.siteSlug, path))),
         title: document.title,
         description,
         canonical,
@@ -338,6 +361,22 @@ export function publicSiteRoutes(deps: AppDependencies): FastifyPluginAsync {
       '/s/_assets/:file',
       { config: budget, schema: { params: AssetParams, hide: true } },
       async (request, reply) => {
+        // The colour-scheme script (`public-site/scheme-script.ts`) and the
+        // reader (`public-site/reader-script.ts`): one file each
+        // per release, addressed by its own hash like the stylesheet.
+        const script = SCRIPT_FILE.exec(request.params.file)
+        if (script !== null) {
+          const served = script[1] === 'reader' ? scripts.reader : scripts.scheme
+          if (script[2] !== served.hash) throw notFound('No such asset')
+          reply.type('text/javascript; charset=utf-8')
+          reply.header('cache-control', `public, max-age=${ASSET_MAX_AGE_SECONDS}, immutable`)
+          reply.header('etag', `"${served.hash}"`)
+          if (request.headers['if-none-match'] === `"${served.hash}"`) {
+            return reply.status(304).send()
+          }
+          return served.source
+        }
+
         const hash = ASSET_FILE.exec(request.params.file)?.[1]
         if (hash === undefined) throw notFound('No such asset')
         const settings = await deps.settings.readOrganisation()
@@ -372,8 +411,7 @@ export function publicSiteRoutes(deps: AppDependencies): FastifyPluginAsync {
         if (held !== null) return sendPage(request, reply, held)
         const page = finished(
           renderPage({
-            ...shellOf(site),
-            currentPath: null,
+            ...(await shellOf(site, null, publicSiteHref(site.siteSlug))),
             title: site.collection.name,
             description: null,
             canonical: absolute(publicSiteHref(site.siteSlug)),
@@ -418,8 +456,7 @@ export function publicSiteRoutes(deps: AppDependencies): FastifyPluginAsync {
           reply,
           finished(
             renderPage({
-              ...shellOf(site),
-              currentPath: null,
+              ...(await shellOf(site, null, `${publicSiteHref(site.siteSlug)}/search`)),
               // The query is *not* in the title. A search page is an address
               // anybody can choose the text of, and a title built from it
               // unfurls in a chat client as the organisation's own page saying

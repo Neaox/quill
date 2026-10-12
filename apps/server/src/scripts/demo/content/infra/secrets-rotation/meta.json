@@ -1,0 +1,11 @@
+{
+  "collection": "Runbooks",
+  "title": "Secrets rotation",
+  "type": "runbook",
+  "owners": ["aisha@acme.example", "marcus@acme.example"],
+  "tags": ["runbook", "secrets", "security", "soc2"],
+  "review": "6m",
+  "status": "published",
+  "notes": ["First version, with the overlap period added after the 2 September login errors"],
+  "frontMatter": {}
+}

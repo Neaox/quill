@@ -1,0 +1,50 @@
+{
+  "collection": "Templates",
+  "title": "RFC",
+  "type": "template",
+  "owners": ["jonas@acme.example"],
+  "tags": ["template", "rfc", "mobile"],
+  "status": "published",
+  "notes": ["First version, based on RFC-012 and RFC-015"],
+  "frontMatter": {
+    "template": {
+      "name": "RFC",
+      "category": "Engineering",
+      "version": 1,
+      "questions": [
+        {
+          "id": "rfcTitle",
+          "label": "What are you proposing?",
+          "type": "text",
+          "default": "Untitled proposal"
+        },
+        {
+          "id": "platforms",
+          "label": "Which platforms does it affect?",
+          "type": "choice",
+          "options": ["iOS and Android", "iOS only", "Android only"],
+          "default": "iOS and Android"
+        },
+        {
+          "id": "changesSyncProtocol",
+          "label": "Does it change what the app sends to or expects from the server?",
+          "type": "boolean",
+          "default": false
+        }
+      ],
+      "sections": [
+        { "heading": "Summary", "required": true },
+        { "heading": "Context", "required": true },
+        { "heading": "Proposal", "required": true },
+        { "heading": "Alternatives considered", "required": true },
+        {
+          "heading": "Compatibility with old app versions",
+          "when": "changesSyncProtocol",
+          "optional": true
+        },
+        { "heading": "Rollout", "required": true },
+        { "heading": "Open questions", "optional": true }
+      ]
+    }
+  }
+}

@@ -4,13 +4,10 @@ import { useMemo, useState } from 'react'
 import { DocumentShell, type DocumentState, type DocumentStatus } from '@quill/ui'
 
 import { useDocument, useLoadedWorkspace } from '../../lib/api/index.ts'
-import { revisionDate } from '../../lib/documents/revision-labels.ts'
 import { workspaceLink } from '../../lib/routing/document-reference.ts'
 import { RouterLink } from '../../lib/routing/router-link.tsx'
 import { SignedInHeader } from '../auth/signed-in-header.tsx'
 import { SearchField } from '../search/search-field.tsx'
-import { ThemeToggle } from '../theme/theme-toggle.tsx'
-import { useThemePreference } from '../theme/use-theme-preference.ts'
 import { DocumentActionsProvider } from './document-actions.tsx'
 import { ShellSlotsProvider, type ShellSlotNodes } from './shell-slots.tsx'
 import { WorkspaceTree, buildRailItems } from './workspace-navigation.tsx'
@@ -63,7 +60,6 @@ export function WorkspaceLayout() {
   const workspaceName = workspace.name
   const { documentId } = useParams({ strict: false })
   const document = useDocument(documentId)
-  const { preference, setPreference } = useThemePreference()
 
   // The slot containers, held in state and set by a callback ref, so they
   // exist from the first paint and keep their identity for the life of the
@@ -94,7 +90,7 @@ export function WorkspaceLayout() {
       ? {}
       : {
           state: DOCUMENT_STATE[currentDocument.status] ?? 'draft',
-          updated: revisionDate(currentDocument.updatedAt),
+          updated: currentDocument.updatedAt,
         }),
   }
 
@@ -120,12 +116,11 @@ export function WorkspaceLayout() {
               the whole shell rather than to whatever is open in it. */}
           <SearchField />
           <div ref={setActionsNode} className="contents" />
-          <ThemeToggle
-            preference={preference}
-            onPreferenceChange={setPreference}
-            className="hidden sm:flex"
-          />
-          <SignedInHeader compact />
+          {/* The document's controls end here; what follows is the reader's
+              own — their scheme, their settings, their session, all in the
+              person menu — so a hairline groups it apart. */}
+          <span aria-hidden="true" className="mx-1.5 hidden h-5 w-px bg-border sm:block" />
+          <SignedInHeader />
         </>
       }
       /*
