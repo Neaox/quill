@@ -3,6 +3,9 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import { parseDocument, serializeDocument } from '@quill/markdown'
+import { Schema } from '@tiptap/pm/model'
+
+import { editorSchema } from '../schema/editor-schema.ts'
 
 import { documentFromMdast, documentToMdast } from './ast.ts'
 
@@ -34,7 +37,7 @@ function roundTrip(markdown: string): string {
 
 describe('a document through the live editor schema', () => {
   it('finds the corpus the research measured', () => {
-    expect(FILES).toHaveLength(19)
+    expect(FILES).toHaveLength(27)
   })
 
   it('serialises to the canonical form for every corpus document', () => {
@@ -68,5 +71,20 @@ describe('a document through the live editor schema', () => {
     const collapsed = documentFromMdast(parseDocument(wrapped).ast, { softBreaks: 'collapse' })
     expect(preserved.doc.textContent).toContain('\n')
     expect(collapsed.doc.textContent).not.toContain('\n')
+  })
+
+  it('builds the document in the editor schema, or in the one it is given', () => {
+    // A live TipTap editor builds its own instance of the schema, and
+    // ProseMirror refuses a node from another: building straight into it is
+    // what makes a paste one conversion rather than a conversion and a copy.
+    const live = new Schema(editorSchema.spec)
+    const ast = parseDocument(':::wide\nBody.\n:::\n').ast
+    expect(documentFromMdast(ast).doc.type.schema).toBe(editorSchema)
+    const { doc } = documentFromMdast(ast, { schema: live })
+    expect(doc.type.schema).toBe(live)
+    expect(doc.child(0).attrs['layout']).toBe('wide')
+    expect(serializeDocument({ frontMatter: {}, ast: documentToMdast(doc).tree })).toBe(
+      ':::wide\nBody.\n:::\n',
+    )
   })
 })

@@ -12,7 +12,9 @@ import {
 import type { ThemeDocument } from '@quill/theme'
 
 import { createVersionedReader } from '../use-cases/versioned-reader.ts'
+import { CustomEmojiSchema, duplicateEmojiNames, MAX_CUSTOM_EMOJI } from './emoji.ts'
 import { LayoutSchema } from './layout.ts'
+import { PublicMenuSchema, publicMenuFromNavigation } from './public-menu.ts'
 
 /**
  * The settings documents an administrator edits in the product and the
@@ -28,11 +30,30 @@ import { LayoutSchema } from './layout.ts'
  *
  * Every document carries a `version` and every reader dispatches on it
  * (ADR-033, rule 17): `parseOrganisationSettings` accepts every version this
- * product has ever written, and a document from a *newer* release reads as
+ * product has ever written — version 1 through a reader of its own that lifts
+ * it to version 2 — and a document from a *newer* release reads as
  * null rather than being guessed at.
  */
 
-export const SETTINGS_VERSION = 1
+/**
+ * The version the organisation's settings are written at.
+ *
+ * Version 2 replaced version 1's flat `publicNavigation` — a label and an
+ * address per link — with `publicMenu`, which links documents and collections
+ * by id and holds dropdowns (`public-menu.ts`). A version 1 file is still
+ * read, through its own reader, and comes back as version 2 with every link
+ * kept; it is rewritten as version 2 the next time somebody saves.
+ */
+export const ORGANISATION_SETTINGS_VERSION = 2
+
+/** The version a workspace's settings are written at. */
+export const WORKSPACE_SETTINGS_VERSION = 1
+
+/**
+ * The newest version any settings document is written at. A document carrying
+ * a higher one was written by a newer release.
+ */
+export const SETTINGS_VERSION = Math.max(ORGANISATION_SETTINGS_VERSION, WORKSPACE_SETTINGS_VERSION)
 
 /**
  * The content-store workspace settings files live in (ADR-034).
@@ -97,8 +118,11 @@ const LogoSchema = Type.Object(
 )
 
 /**
- * Where a public navigation link may point: somewhere on this site, or at an
- * absolute http(s) address.
+ * Where a version 1 public navigation link may point: somewhere on this site,
+ * or at an absolute http(s) address. Version 1 only, and frozen: it is what a
+ * version 1 file was validated with when it was written, so it is what one is
+ * read with now. Version 2's menu has its own, stricter pattern
+ * (`PUBLIC_MENU_URL_PATTERN`).
  *
  * These links are rendered into the public site's header for every anonymous
  * reader, so the set of schemes is a whitelist rather than a blacklist. It
@@ -108,7 +132,7 @@ const LogoSchema = Type.Object(
  */
 export const NAVIGATION_HREF_PATTERN = '^(?:/(?!/)[^\\s]*|https?://[^\\s]+)$'
 
-/** One link beside the site name on the public site (ADR-028). */
+/** One link beside the site name on the public site, in version 1 (ADR-028). */
 const NavigationLinkSchema = Type.Object(
   {
     label: Type.String({ minLength: 1, maxLength: 60 }),
@@ -123,66 +147,99 @@ const NavigationLinkSchema = Type.Object(
 
 export const MAX_PUBLIC_NAVIGATION_LINKS = 8
 
-export const OrganisationSettingsSchema = Type.Object(
+/**
+ * What every version of the organisation's settings has in common. Spread
+ * into each version's schema, so a field shared between versions is described
+ * once; a field that changes shape between versions — the public navigation —
+ * is in each version's own schema instead.
+ */
+const organisationProperties = {
+  name: Type.String({ minLength: 1, maxLength: 120 }),
+  logo: Type.Optional(LogoSchema),
+  /**
+   * Identity, owned by the organisation and inherited by every workspace.
+   *
+   * The theme package's schema is used as it stands — so the file, the API
+   * and the OpenAPI description all validate against exactly one definition
+   * of a theme — with its static type stated rather than re-derived. The
+   * theme document builds its many small unions by mapping arrays of
+   * strings, which is enough to make `StaticDecode` of the whole document
+   * collapse; `ThemeDocument` is the type that schema already publishes.
+   */
+  theme: Type.Unsafe<ThemeDocument>(ThemeDocumentSchema),
+  layout: Type.Object(
+    {
+      default: LayoutSchema,
+      /**
+       * ADR-028 gives layout to the workspace "may be locked by the
+       * organisation". Locked, `updateWorkspaceSettings` refuses.
+       */
+      locked: Type.Boolean(),
+    },
+    { additionalProperties: false },
+  ),
+  policies: Type.Object(
+    {
+      shareLinksAllowed: Type.Boolean(),
+      publicPublishingAllowed: Type.Boolean(),
+      /**
+       * ADR-028: AA text contrast is the one doctor rule enforced by
+       * default, and "an instance administrator can switch that enforcement
+       * to advisory". This is that switch, and it is a policy rather than
+       * part of the theme: it says how strictly *any* theme this
+       * organisation saves is judged, and it outlives the theme it was set
+       * beside. It changes what the doctor **reports** — `enforced` on the
+       * rule, and `enforcedRulesHold` on the report — and never whether a
+       * save is accepted, because the doctor advises and the theme editor
+       * is where the advice is put to somebody who can act on it.
+       */
+      contrastEnforcement: Type.Union([Type.Literal('enforced'), Type.Literal('advisory')]),
+    },
+    { additionalProperties: false },
+  ),
+}
+
+/** Version 1, frozen: read, never written. */
+const OrganisationSettingsV1Schema = Type.Object(
   {
-    version: Type.Literal(SETTINGS_VERSION),
-    name: Type.String({ minLength: 1, maxLength: 120 }),
-    logo: Type.Optional(LogoSchema),
-    /**
-     * Identity, owned by the organisation and inherited by every workspace.
-     *
-     * The theme package's schema is used as it stands — so the file, the API
-     * and the OpenAPI description all validate against exactly one definition
-     * of a theme — with its static type stated rather than re-derived. The
-     * theme document builds its many small unions by mapping arrays of
-     * strings, which is enough to make `StaticDecode` of the whole document
-     * collapse; `ThemeDocument` is the type that schema already publishes.
-     */
-    theme: Type.Unsafe<ThemeDocument>(ThemeDocumentSchema),
-    layout: Type.Object(
-      {
-        default: LayoutSchema,
-        /**
-         * ADR-028 gives layout to the workspace "may be locked by the
-         * organisation". Locked, `updateWorkspaceSettings` refuses.
-         */
-        locked: Type.Boolean(),
-      },
-      { additionalProperties: false },
-    ),
+    version: Type.Literal(1),
+    ...organisationProperties,
     publicNavigation: Type.Array(NavigationLinkSchema, {
       maxItems: MAX_PUBLIC_NAVIGATION_LINKS,
     }),
-    policies: Type.Object(
-      {
-        shareLinksAllowed: Type.Boolean(),
-        publicPublishingAllowed: Type.Boolean(),
-        /**
-         * ADR-028: AA text contrast is the one doctor rule enforced by
-         * default, and "an instance administrator can switch that enforcement
-         * to advisory". This is that switch, and it is a policy rather than
-         * part of the theme: it says how strictly *any* theme this
-         * organisation saves is judged, and it outlives the theme it was set
-         * beside. It changes what the doctor **reports** — `enforced` on the
-         * rule, and `enforcedRulesHold` on the report — and never whether a
-         * save is accepted, because the doctor advises and the theme editor
-         * is where the advice is put to somebody who can act on it.
-         */
-        contrastEnforcement: Type.Union([Type.Literal('enforced'), Type.Literal('advisory')]),
-      },
-      { additionalProperties: false },
-    ),
+  },
+  { additionalProperties: false },
+)
+
+export const OrganisationSettingsSchema = Type.Object(
+  {
+    version: Type.Literal(ORGANISATION_SETTINGS_VERSION),
+    ...organisationProperties,
+    /**
+     * The public site's header menu: links to documents and collections by
+     * id, to addresses, and dropdown groups of them (`public-menu.ts`).
+     */
+    publicMenu: PublicMenuSchema,
+    /**
+     * The organisation's own emoji (ADR-038), `:acme:` drawn as its image.
+     * Optional, so every file written before emoji is read as it was
+     * (AGENTS.md rule 17); vocabulary rather than identity, so beside the
+     * theme rather than in it (`emoji.ts`).
+     */
+    emoji: Type.Optional(Type.Array(CustomEmojiSchema, { maxItems: MAX_CUSTOM_EMOJI })),
   },
   { additionalProperties: false },
 )
 
 export type OrganisationSettings = Static<typeof OrganisationSettingsSchema>
+/** A version 1 navigation link; version 2 reads them as address links in `publicMenu`. */
 export type NavigationLink = Static<typeof NavigationLinkSchema>
+type OrganisationSettingsV1 = Static<typeof OrganisationSettingsV1Schema>
 export type OrganisationLogo = Static<typeof LogoSchema>
 
 export const WorkspaceSettingsSchema = Type.Object(
   {
-    version: Type.Literal(SETTINGS_VERSION),
+    version: Type.Literal(WORKSPACE_SETTINGS_VERSION),
     /**
      * The workspace this file belongs to, written into the file as well as
      * into its name: a copied settings tree is then self-describing, and a
@@ -224,6 +281,7 @@ function validateWith<T>(validator: ValidateFunction, value: unknown): SettingsV
 }
 
 const organisationValidator = ajv.compile(OrganisationSettingsSchema)
+const organisationV1Validator = ajv.compile(OrganisationSettingsV1Schema)
 const workspaceValidator = ajv.compile(WorkspaceSettingsSchema)
 
 /**
@@ -238,7 +296,32 @@ const workspaceValidator = ajv.compile(WorkspaceSettingsSchema)
 export function validateOrganisationSettings(
   value: unknown,
 ): SettingsValidation<OrganisationSettings> {
-  const structural = validateWith<OrganisationSettings>(organisationValidator, value)
+  return withUniqueEmoji(
+    withValidTheme(validateWith<OrganisationSettings>(organisationValidator, value)),
+  )
+}
+
+/** A shortcode names one emoji, so two of one name are refused rather than one silently winning. */
+function withUniqueEmoji(
+  validation: SettingsValidation<OrganisationSettings>,
+): SettingsValidation<OrganisationSettings> {
+  if (!validation.valid) return validation
+  const duplicates = duplicateEmojiNames(validation.document.emoji)
+  return duplicates.length === 0
+    ? validation
+    : {
+        valid: false,
+        issues: duplicates.map(({ index, name }) => ({
+          path: `/emoji/${index}/name`,
+          message: `there is already an emoji called "${name}"`,
+          rule: 'emoji-unique',
+        })),
+      }
+}
+
+function withValidTheme<T extends { readonly theme: ThemeDocument }>(
+  structural: SettingsValidation<T>,
+): SettingsValidation<T> {
   if (!structural.valid) return structural
   const theme = validateThemeDocument(structural.document.theme)
   return theme.valid
@@ -254,14 +337,26 @@ export function validateWorkspaceSettings(value: unknown): SettingsValidation<Wo
 }
 
 const organisationReader = createVersionedReader<OrganisationSettings>({
-  [SETTINGS_VERSION]: (value) => {
+  1: (value) => {
+    const result = withValidTheme(
+      validateWith<OrganisationSettingsV1>(organisationV1Validator, value),
+    )
+    if (!result.valid) return null
+    const { publicNavigation, ...rest } = result.document
+    return {
+      ...rest,
+      version: ORGANISATION_SETTINGS_VERSION,
+      publicMenu: publicMenuFromNavigation(publicNavigation),
+    }
+  },
+  [ORGANISATION_SETTINGS_VERSION]: (value) => {
     const result = validateOrganisationSettings(value)
     return result.valid ? result.document : null
   },
 })
 
 const workspaceReader = createVersionedReader<WorkspaceSettings>({
-  [SETTINGS_VERSION]: (value) => {
+  [WORKSPACE_SETTINGS_VERSION]: (value) => {
     const result = validateWorkspaceSettings(value)
     return result.valid ? result.document : null
   },
@@ -288,11 +383,11 @@ export function defaultOrganisationSettings(
   theme: ThemeDocument = DEFAULT_THEME,
 ): OrganisationSettings {
   return {
-    version: SETTINGS_VERSION,
+    version: ORGANISATION_SETTINGS_VERSION,
     name: BRAND.name,
     theme,
     layout: { default: recommendedLayout(theme), locked: false },
-    publicNavigation: [],
+    publicMenu: [],
     policies: {
       shareLinksAllowed: true,
       publicPublishingAllowed: false,
@@ -309,5 +404,5 @@ export function defaultOrganisationSettings(
 export { recommendedLayout }
 
 export function defaultWorkspaceSettings(id: string): WorkspaceSettings {
-  return { version: SETTINGS_VERSION, workspaceId: id }
+  return { version: WORKSPACE_SETTINGS_VERSION, workspaceId: id }
 }

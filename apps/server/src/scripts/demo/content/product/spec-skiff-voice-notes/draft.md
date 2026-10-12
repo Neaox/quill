@@ -1,0 +1,73 @@
+# Spec: Skiff voice notes
+
+## Problem
+
+Field teams do not type. At Northwind Retail, store managers told us they have time to "say a sentence", not write one (see [Interview notes: Northwind Retail](doc:Interview notes: Northwind Retail)). Skiff captures text notes today. This spec adds voice notes that become transcripts and enter Tidepool as ordinary feedback.
+
+## What the user does
+
+1. Hold the microphone button in Skiff, or tap it once to start and again to stop.
+2. The note is saved on the phone immediately, with a waveform and a "waiting to upload" marker if there is no signal.
+3. When the phone is online, the audio uploads, is transcribed, and the transcript appears in the note within about two minutes.
+4. The transcript is editable. Editing it never changes the stored audio.
+5. A note whose transcript has not arrived after 10 minutes online shows "Still transcribing" with a retry action.
+
+## Flow
+
+::::wide
+:::figure
+
+```mermaid
+sequenceDiagram
+  accTitle: Voice note from recording to feedback item
+  accDescr: The user records in Skiff, the note is stored locally, uploaded when online, transcribed by a queue worker, and then appears in Tidepool as feedback. A failed transcription is retried before the user is told.
+  actor U as User
+  participant S as Skiff
+  participant A as Sync API
+  participant Q as Transcription worker
+  participant T as Tidepool
+  U->>S: Record note
+  S->>S: Save audio to local store
+  S->>A: Upload audio when online
+  A->>Q: Enqueue job
+  Q->>Q: Transcribe, retry up to 3 times
+  Q->>T: Create feedback item with transcript
+  T-->>S: Sync transcript back
+```
+
+The phone never waits for the transcript; it learns about it on the next sync.
+:::
+::::
+
+## Limits
+
+:::table[Launch limits]{width=70% caption=bottom}
+| Limit | Value | Reason |
+| :---- | ----: | :----- |
+| Maximum recording | 5 min | Lantern Logistics drivers dictate whole delivery reports |
+| Audio format | AAC, 32 kbps | Good enough for speech |
+| Audio retention | 30 days, or 90 on request | Transcript is the record |
+| Languages | 5 | English, German, Dutch, French, Spanish |
+| Target transcription time | 90 s | From upload to transcript, p95 |
+| Notes per phone per day | 200 | Stops a stuck button filling storage |
+:::
+
+A five-minute note is about 1.2 MB, so uploads use the background transfer service and resume after a dropped connection. The queue and local store behaviour are described in [Voice capture pipeline](doc:Voice capture pipeline).
+
+## Decisions
+
+- **Transcription runs on the server.** On-device models handled English well but made too many errors in Dutch and German in Jonas's tests (word error rate 19% against 8%). We revisit when that gap closes.
+- **The audio is deleted after 30 days**, unless the workspace admin sets 90 days. Harbourview Health is the first customer who will use that setting.
+- **The vendor is chosen.** A hosted speech service was 11% cheaper than self-hosting at our projected volume of 60,000 minutes a month, and it supports all five launch languages.
+
+## Privacy
+
+> [!IMPORTANT]
+> Audio can contain people's voices and names. A note is stored in the region of its workspace, encrypted at rest, and sent only to the transcription vendor under a data processing agreement that forbids training on it. Aisha has signed off on this wording.
+
+The first time someone records in Skiff, the app explains this in one sentence and asks for microphone permission. There is no recording of other people without a visible indicator.
+
+## Open questions
+
+- Should a transcript with a spoken name be flagged for redaction? Harbourview Health asked; we will scope it after launch.
+- Do we show the transcript review screen in Q1, or does it slip to Q2? Jonas says it can slip.

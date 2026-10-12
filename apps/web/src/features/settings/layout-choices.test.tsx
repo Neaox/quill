@@ -34,6 +34,7 @@ describe('the bounded set of layout variants', () => {
       'history',
       'header',
       'rules',
+      'align',
     ])
   })
 
@@ -50,6 +51,17 @@ describe('the bounded set of layout variants', () => {
     expect(axis.apply(INSTRUMENT, 'carousel')).toEqual(INSTRUMENT)
   })
 
+  it('offers plain space as a divider, the treatment Calm recommends', () => {
+    const rules = LAYOUT_AXES.find((axis) => axis.key === 'rules')
+    expect(rules?.options.map((option) => option.value)).toEqual([
+      'hairline',
+      'double',
+      'cards',
+      'plain',
+    ])
+    expect(layoutOptionLabel('rules', 'plain')).toBe('Space')
+  })
+
   it('names an option in words, and falls back to the raw value for an unknown one', () => {
     expect(layoutOptionLabel('navigation', 'tabs')).toBe('Collection tabs')
     expect(layoutOptionLabel('rules', 'carousel')).toBe('carousel')
@@ -57,7 +69,15 @@ describe('the bounded set of layout variants', () => {
 
   it('describes a whole layout for a readout', () => {
     expect(describeLayout(INSTRUMENT)).toBe(
-      'Navigation: Tree, Comments: Side panel, History: Timeline, Header: Status readout, Dividers: Hairlines',
+      'Navigation: Tree, Comments: Side panel, History: Timeline, Header: Status readout, Dividers: Hairlines, Reading column: Centred',
+    )
+  })
+
+  it('reads a layout saved before alignment existed as centred, and offers the docs-site column', () => {
+    const align = LAYOUT_AXES.find((axis) => axis.key === 'align')
+    expect(align?.options.map((option) => option.value)).toEqual(['centre', 'start'])
+    expect(describeLayout({ ...INSTRUMENT, align: 'start' })).toContain(
+      'Reading column: Beside the navigation',
     )
   })
 })

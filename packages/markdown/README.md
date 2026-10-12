@@ -9,8 +9,8 @@ CommonMark plus GitHub Flavored Markdown, with YAML front matter, plus directive
 ## Fidelity levels
 
 - **Byte-preserving** — a document never opened in the editor is never re-serialised.
-- **Semantic-preserving** — a document opened in the editor may be normalised once, on first publish: table cell padding, escape placement, character references, marker choices, soft line wraps collapsing to spaces, **CRLF and CR line endings becoming `\n`**, and **a leading byte-order mark dropped**. The diff view labels the change as formatting-only.
-- **Canonical** — everything this package writes. Measured over a 19-document corpus: 9 byte-identical, 19 converter-lossless, 18 semantically identical, 19 idempotent (`prosemirror/corpus.test.ts`, which names which nine).
+- **Semantic-preserving** — a document opened in the editor may be normalised once, on first publish. What an author sees is **soft line wraps collapsing to spaces** (ADR-003), together with **CRLF and CR line endings becoming `\n`**, **a leading byte-order mark dropped**, and **the blank lines that end a file becoming its one final newline**. Everything else is written as it was read (`pipeline/source-form.ts`): emphasis markers, hard breaks, a table's delimiter row and unchanged rows, directive attributes, blank lines between blocks and inside container fences, ordered list numbers, GitHub alert markers, and escapes, which are written only where they change how the text reads. Three things mdast does not keep are still normalised: character references (`&copy;` is written `©`), a backslash the author wrote where none was needed (`2026\.`), and the padding inside a code span; and an escape the writer cannot prove unnecessary from one text node alone (`(ST-*)`, `r4\` at the end of a paragraph) is kept. The diff view labels the change as formatting-only.
+- **Canonical** — everything this package writes. Measured over the 26-document corpus: 24 byte-identical, 26 converter-lossless, 26 semantically identical, 26 idempotent (`prosemirror/corpus.test.ts`, which names the two that are not, and why). On first save from the editor, the same 24 come back as they were but for their soft wraps, as do 185 of the 189 documents in lockstay's `docs/` (`prosemirror/real-docs.test.ts`, with `QUILL_REAL_DOCS`).
 
 Line endings are settled at `parseDocument`, before anything downstream sees the
 tree, because a `\r` is not only cosmetic: an HTML parser drops it while building
@@ -31,6 +31,14 @@ in one node and `\n` in the next writes a file with mixed line endings.
 | `:::repeat{title}` | container | A section the author may add again; instances are published |
 | `:::notes` | container | Presenter notes; shown in presentation mode only |
 | `:kbd[…]` | text | Keys the reader presses, rendered as `kbd` |
+| `:badge[…]{tone}`, `:ok` `:warn` `:bad` `:accent` `:plan` | text | A status pill; the words are the meaning, the tone emphasis (ADR-036) |
+| `:<label>[…]`, such as `:acme[Acme]` | text | One of the organisation's labels (`RenderOptions.labels`), drawn as a badge with `data-label` and coloured by the theme; a name the theme does not define reads as written (ADR-037) |
+| `:small[…]` | text | Small print, rendered as `small` |
+| `:::figure` | container | A block and the paragraphs that caption it, as `figure` and `figcaption` |
+| `:::cards{variant}` | container | Each heading starts a card; `panels` or `ruled` |
+| `:::table[caption]{width columns headers footer freeze responsive sort caption}` | container | Reading options for the one GFM table inside: its caption, widths, row headers, footer and what is frozen (ADR-040) |
+
+Two more constructs render specially without any directive. GitHub's alerts (`> [!NOTE]`, `TIP`, `IMPORTANT`, `WARNING`, `CAUTION`) render as callouts and stay blockquotes in the source. A ` ```mermaid ` fence renders as a diagram slot holding its source, which the reader draws; and an SVG attachment shown on its own line is drawn inline through `src/render/drawing.ts`'s allowlist (ADR-036).
 
 Every one degrades, and what "degrades" means depends on the shape:
 

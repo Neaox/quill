@@ -27,6 +27,8 @@ import type {
   MagicLinkTokenRow,
   OutboxEventRow,
   OutboxWriter,
+  PersonPreferencesRepository,
+  PersonPreferencesRow,
   PublicRedirectRepository,
   PublicRedirectRow,
   RenderCacheRepository,
@@ -74,11 +76,17 @@ export interface InMemoryUnitOfWork extends UnitOfWork {
    */
   /** Every audit row written, in order, for the use cases whose trail is part of their behaviour (ADR-011). */
   readonly auditEvents: readonly AuditEventRow[]
+  /** Every attachment state a revision replaced, oldest first: the attachments' history. */
+  readonly attachmentHistory: readonly AttachmentRow[]
 }
 
 /** The `(created_at, name)` order the secrets rotation pages by. */
 const compareSecretCursors = (left: SecretCursor, right: SecretCursor): number =>
   left.createdAt.getTime() - right.createdAt.getTime() || left.name.localeCompare(right.name)
+
+/** Collections in name order, compared by code point, for the listings the port says are by name. */
+const byName = (a: CollectionRow, b: CollectionRow): number =>
+  a.name < b.name ? -1 : a.name > b.name ? 1 : 0
 
 /** The key the unique index on `(site_slug, path)` makes, as one string. */
 const redirectKey = (siteSlug: string, path: string): string => JSON.stringify([siteSlug, path])
@@ -114,9 +122,11 @@ export function createInMemoryUnitOfWork(): InMemoryUnitOfWork {
   const publicRedirects = new Map<string, PublicRedirectRow>()
   const links = new Map<string, DocumentLinkRow[]>()
   const attachments = new Map<string, AttachmentRow>()
+  const attachmentHistory: AttachmentRow[] = []
   const events: OutboxEventRow[] = []
   const auditEvents: AuditEventRow[] = []
   const secrets = new Map<string, SecretRow>()
+  const personPreferences = new Map<string, PersonPreferencesRow>()
 
   const userRepository: UserRepository = {
     async create(input) {
@@ -134,6 +144,9 @@ export function createInMemoryUnitOfWork(): InMemoryUnitOfWork {
     },
     async findById(id) {
       return users.get(id) ?? null
+    },
+    async listByIds(ids) {
+      return ids.flatMap((id) => users.get(id) ?? [])
     },
     async findByEmail(email) {
       const id = usersByEmail.get(email)
@@ -458,6 +471,34 @@ export function createInMemoryUnitOfWork(): InMemoryUnitOfWork {
     async listByCollection(collectionId) {
       return [...documents.values()].filter((doc) => doc.collectionId === collectionId)
     },
+    async listChildren({ workspaceId, collectionId, parentId, after, limit }) {
+      const later = (doc: DocumentRow): boolean =>
+        after === null ||
+        doc.createdAt.getTime() > after.createdAt.getTime() ||
+        (doc.createdAt.getTime() === after.createdAt.getTime() && doc.id > after.id)
+      return [...documents.values()]
+        .filter(
+          (doc) =>
+            doc.workspaceId === workspaceId &&
+            doc.collectionId === collectionId &&
+            doc.parentId === parentId &&
+            later(doc),
+        )
+        .toSorted(
+          (a, b) => a.createdAt.getTime() - b.createdAt.getTime() || a.id.localeCompare(b.id),
+        )
+        .slice(0, limit)
+    },
+    async countChildren(parentIds) {
+      const wanted = new Set(parentIds)
+      const counts = new Map<DocumentId, number>()
+      for (const doc of documents.values()) {
+        if (doc.parentId !== null && wanted.has(doc.parentId)) {
+          counts.set(doc.parentId, (counts.get(doc.parentId) ?? 0) + 1)
+        }
+      }
+      return counts
+    },
     async listByIds(ids) {
       return ids.flatMap((id) => {
         const row = documents.get(id)
@@ -493,14 +534,20 @@ export function createInMemoryUnitOfWork(): InMemoryUnitOfWork {
 
   const draftRepository: DraftRepository = {
     async init({ documentId, baseRevision, ast, now }) {
-      const row: DraftRow = { documentId, draftVersion: 0, baseRevision, ast, updatedAt: now }
+      const row: DraftRow = {
+        documentId,
+        draftVersion: 0,
+        baseRevision,
+        ast,
+        updatedAt: now,
+      }
       drafts.set(documentId, row)
       return row
     },
     async find(documentId) {
       return drafts.get(documentId) ?? null
     },
-    async write({ documentId, sessionId, expectedVersion, ast, now }) {
+    async write({ documentId, sessionId, expectedVersion, ast, authorship, now }) {
       const lock = locks.get(documentId) ?? null
       const holdsValidLock =
         lock !== null && lock.holderSessionId === sessionId && lock.expiresAt >= now
@@ -517,6 +564,7 @@ export function createInMemoryUnitOfWork(): InMemoryUnitOfWork {
       const updated: DraftRow = {
         ...draft,
         ast,
+        ...(authorship === undefined ? {} : { authorship }),
         draftVersion: draft.draftVersion + 1,
         updatedAt: now,
       }
@@ -529,6 +577,7 @@ export function createInMemoryUnitOfWork(): InMemoryUnitOfWork {
       const updated: DraftRow = {
         ...draft,
         baseRevision,
+        authorship: null,
         updatedAt: now,
         // Replacing the content bumps the version, so an editor that was open
         // when a restore landed is told its next write is stale (ADR-021).
@@ -693,7 +742,20 @@ export function createInMemoryUnitOfWork(): InMemoryUnitOfWork {
     async listByWorkspace(workspaceId) {
       return [...collections.values()]
         .filter((row) => row.workspaceId === workspaceId)
-        .toSorted((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0))
+        .toSorted(byName)
+    },
+    async listByIds(ids) {
+      return ids.flatMap((id) => {
+        const row = collections.get(id)
+        return row === undefined ? [] : [row]
+      })
+    },
+    async searchByName(text, limit) {
+      const needle = text.toLocaleLowerCase()
+      return [...collections.values()]
+        .filter((row) => row.name.toLocaleLowerCase().includes(needle))
+        .toSorted(byName)
+        .slice(0, limit)
     },
     async listPublicSites() {
       const sites = [...collections.values()].flatMap((row) =>
@@ -850,6 +912,8 @@ export function createInMemoryUnitOfWork(): InMemoryUnitOfWork {
         contentType: input.contentType,
         size: input.size,
         sha256: input.sha256,
+        version: 1,
+        searchText: input.searchText ?? null,
         createdAt: input.now,
         deletedAt: null,
       }
@@ -864,10 +928,33 @@ export function createInMemoryUnitOfWork(): InMemoryUnitOfWork {
         .filter((row) => row.documentId === documentId && row.deletedAt === null)
         .toSorted((left, right) => left.createdAt.getTime() - right.createdAt.getTime())
     },
+    async listLiveInWorkspace(workspaceId, ids) {
+      const wanted = new Set(ids)
+      return [...attachments.values()].filter(
+        (row) => wanted.has(row.id) && row.workspaceId === workspaceId && row.deletedAt === null,
+      )
+    },
     async softDelete(id, now) {
       const row = attachments.get(id)
       if (row !== undefined && row.deletedAt === null)
         attachments.set(id, { ...row, deletedAt: now })
+    },
+    async revise(input) {
+      const row = attachments.get(input.id)
+      if (row === undefined || row.deletedAt !== null || row.version !== input.expectedVersion) {
+        return null
+      }
+      attachmentHistory.push(row)
+      const revised: AttachmentRow = {
+        ...row,
+        contentType: input.contentType,
+        size: input.size,
+        sha256: input.sha256,
+        searchText: input.searchText,
+        version: row.version + 1,
+      }
+      attachments.set(row.id, revised)
+      return revised
     },
   }
 
@@ -946,6 +1033,17 @@ export function createInMemoryUnitOfWork(): InMemoryUnitOfWork {
         metadata,
         createdAt: now,
       })
+    },
+  }
+
+  const personPreferencesRepository: PersonPreferencesRepository = {
+    async find(userId) {
+      return personPreferences.get(userId) ?? null
+    },
+    async put({ userId, document, now }) {
+      const row: PersonPreferencesRow = { userId, document, updatedAt: now }
+      personPreferences.set(userId, row)
+      return row
     },
   }
 
@@ -1034,6 +1132,7 @@ export function createInMemoryUnitOfWork(): InMemoryUnitOfWork {
     documentLinks: documentLinksRepository,
     secrets: secretsRepository,
     attachments: attachmentRepository,
+    personPreferences: personPreferencesRepository,
     outbox: outboxWriter,
     audit: auditWriter,
   }
@@ -1042,6 +1141,7 @@ export function createInMemoryUnitOfWork(): InMemoryUnitOfWork {
     repos,
     events,
     auditEvents,
+    attachmentHistory,
     async run(fn) {
       return fn(repos)
     },

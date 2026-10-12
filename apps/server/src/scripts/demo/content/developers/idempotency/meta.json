@@ -1,0 +1,11 @@
+{
+  "collection": "Guides",
+  "title": "Idempotency",
+  "type": "guide",
+  "owners": ["marcus@acme.example"],
+  "tags": ["api", "retries", "reliability"],
+  "review": "6m",
+  "status": "published",
+  "notes": ["First version"],
+  "frontMatter": {}
+}

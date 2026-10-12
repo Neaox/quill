@@ -3,14 +3,18 @@ import { useMemo, useState } from 'react'
 import { Button, Callout, Input, tv } from '@quill/ui'
 
 import {
-  BUILTIN_THEME_IDS,
   BUILTIN_THEMES,
   CURATED_FACE_IDS,
+  OFFERED_THEME_IDS,
   curatedFace,
+  describeColour,
+  describeGreys,
   forkTheme,
   generateTheme,
   resetToBase,
-  type BuiltinThemeId,
+  successorOf,
+  verdictOf,
+  withAccent,
 } from '@quill/theme'
 
 import {
@@ -20,12 +24,24 @@ import {
   type ThemeSettings,
 } from '../../lib/api/index.ts'
 import { SelectField } from '../../lib/forms/select-field.tsx'
+import { COMPACT_EDITOR_QUERY, useMediaQuery } from '../layout/use-media-query.ts'
+import { ColourControl } from './colour/colour-control.tsx'
+import { ToneControl } from './colour/tone-control.tsx'
 import { RangeField } from './range-field.tsx'
 import { SettingsActions, SettingsSection } from './settings-frame.tsx'
 import { SettingsFormFeedback } from './settings-form-feedback.tsx'
+import { SettingsSaveButton } from './settings-save-button.tsx'
 import { UnsavedChangesGuard } from './unsaved-changes-guard.tsx'
-import { ThemeDoctorReport } from './theme-doctor-report.tsx'
+import { focusDoctorGroup, ThemeDoctor } from './theme-doctor.tsx'
 import { ThemePreview } from './theme-preview.tsx'
+import { ThemePreviewBar } from './theme-preview-bar.tsx'
+import {
+  FORK_ID,
+  FORK_NAME,
+  forkedIfBuiltin,
+  isBuiltinThemeId,
+  withOptional,
+} from './theme-fork.ts'
 import { useSettingsDraft } from './use-settings-draft.ts'
 
 /**
@@ -58,41 +74,47 @@ import { useSettingsDraft } from './use-settings-draft.ts'
  * with the questions left out.
  *
  * Everything saves through the organisation settings API, because a theme is
- * a field of the organisation's document and not a resource of its own.
+ * a field of the organisation's document and not a resource of its own. A save
+ * applies at once: the server renders the saved document as the stylesheet
+ * every page links (ADR-028, "Delivery"), and the save invalidates the summary
+ * that names it, so this screen and every other open one re-theme without a
+ * reload.
+ *
+ * The theme's labels (ADR-037) are part of the same document but are edited
+ * on Labels and emoji (`labels-and-emoji-page.tsx`), beside the organisation's
+ * emoji they lead with; the doctor here still checks that each one reads.
  */
-
-/** The id a fork takes, so an edited theme never claims to be the built-in it came from. */
-const FORK_ID = 'organisation-theme'
-const FORK_NAME = 'Custom theme'
-
-const themeStyles = tv({
-  slots: {
-    columns: 'grid gap-8 @4xl:grid-cols-[minmax(0,20rem)_minmax(0,1fr)]',
-    levers: 'flex flex-col gap-5',
-    right: 'flex flex-col gap-6',
-    baseList: 'flex flex-wrap gap-2',
-  },
-})
-
-function isBuiltinThemeId(id: string): id is BuiltinThemeId {
-  return BUILTIN_THEME_IDS.some((candidate) => candidate === id)
-}
 
 /**
- * ADR-028's onboarding step 4: "saving creates the tenant's theme as a fork of
- * the chosen built-in, so it can be re-opened and adjusted later, or reset to
- * the base".
- *
- * A new instance starts on the built-in document itself, so the first lever
- * anybody moves forks it — same values, a new identity, and `base` recorded
- * so "reset to Instrument" still means something. Doing it on the first
- * change rather than behind a "make a copy" button keeps the fork an
- * implementation detail of editing, which is what it is.
+ * Two surfaces, not one reflowed. From the compact breakpoint up, the levers
+ * and the preview are columns and the preview is sticky, so it stays in view
+ * while the levers scroll; the doctor's full report follows below both at the body's width,
+ * where its findings read on one line. Below it, the levers are the page and
+ * the preview is a sheet behind `ThemePreviewBar`.
  */
-function forkedIfBuiltin(theme: ThemeSettings): ThemeSettings {
-  if (theme.base !== undefined || !isBuiltinThemeId(theme.id)) return theme
-  return forkTheme(theme.id, { id: FORK_ID, name: FORK_NAME })
-}
+const themeStyles = tv({
+  slots: {
+    // One column that never grows past its track, so nothing in it can push
+    // the page past its gutter on a phone.
+    columns: [
+      'grid grid-cols-[minmax(0,1fr)] items-start gap-8',
+      '@4xl:grid-cols-[minmax(0,22rem)_minmax(0,1fr)] @4xl:gap-10',
+    ],
+    levers: 'flex max-w-(--layout-content) flex-col gap-5 @4xl:max-w-none',
+    preview: [
+      'flex flex-col gap-3 @4xl:sticky',
+      '@4xl:top-[calc(var(--spacing-shell-header)+var(--spacing)*6)]',
+    ],
+    subheading: 'text-sm font-medium text-foreground',
+    previewLead: 'mt-1 text-xs text-muted',
+    doctor: 'flex flex-col gap-2',
+    baseList: 'flex flex-wrap gap-2',
+  },
+  variants: {
+    /** A phone's base choices are a grid of full-width, 44-pixel targets. */
+    compact: { true: { baseList: 'grid grid-cols-2 sm:grid-cols-3' } },
+  },
+})
 
 /**
  * The curated faces a document's body may be set in.
@@ -108,6 +130,7 @@ const READING_FACES = CURATED_FACE_IDS.map((id) => ({ id, face: curatedFace(id) 
 const DENSITIES = ['comfortable', 'compact'] as const
 
 export function ThemeSettingsPage() {
+  const compact = useMediaQuery(COMPACT_EDITOR_QUERY)
   const loaded = useLoadedOrganisationSettings()
   const save = useSaveOrganisationSettings()
   const draft = useSettingsDraft<OrganisationSettings>(loaded.data.settings, loaded.data.revision)
@@ -140,24 +163,30 @@ export function ThemeSettingsPage() {
     )
   }
 
-  const styles = themeStyles()
+  const styles = themeStyles({ compact })
+  const saveButton = (
+    <SettingsSaveButton
+      compact={compact}
+      dirty={draft.dirty}
+      pending={save.isPending}
+      onSave={submit}
+    />
+  )
   /**
    * Which built-in this theme stands on: the fork's `base` once it has been
    * forked, and the theme's own id before that, because a fresh instance *is*
    * the built-in even though nothing has recorded a base yet. Without the
-   * second half the three buttons all read unpressed while the sentence
-   * beneath them says which one is in use.
+   * second half the buttons all read unpressed while the sentence beneath
+   * them says which one is in use. A superseded base presses its successor,
+   * which is what a reset would now return to.
    */
-  const base = theme.base ?? (isBuiltinThemeId(theme.id) ? theme.id : undefined)
+  const savedBase = theme.base ?? (isBuiltinThemeId(theme.id) ? theme.id : undefined)
+  const base = savedBase === undefined ? undefined : successorOf(savedBase)
 
   return (
     <>
       <UnsavedChangesGuard dirty={draft.dirty} what="theme" />
-      <SettingsActions>
-        <Button size="sm" loading={save.isPending} disabled={!draft.dirty} onClick={submit}>
-          Save
-        </Button>
-      </SettingsActions>
+      {compact ? undefined : <SettingsActions>{saveButton}</SettingsActions>}
 
       <SettingsSection
         title="Theme"
@@ -176,8 +205,8 @@ export function ThemeSettingsPage() {
           conflictSummary={
             <ul>
               <li>Theme: {server.theme.name}</li>
-              <li>Accent hue: {Math.round(server.theme.seeds.accent.hue)}°</li>
-              <li>Neutral hue: {Math.round(server.theme.seeds.tone.hue)}°</li>
+              <li>Accent colour: {describeColour(server.theme.seeds.accent)}</li>
+              <li>Greys: {describeGreys(server.theme.seeds)}</li>
               <li>Density: {server.theme.shape.density}</li>
             </ul>
           }
@@ -192,25 +221,6 @@ export function ThemeSettingsPage() {
         />
 
         {/*
-         * TODO(M3): saving a theme does not yet change how the product looks.
-         * ADR-028's "Delivery" is a resolved token set served with the page and
-         * cached by content hash — a server route answering this organisation's
-         * generated custom properties with an ETag, and the application linking
-         * it — and that is a branch of its own. Generating the palettes in the
-         * browser instead would put `@quill/theme`'s doctor and generator in
-         * every reader's bundle, which is the regression review 2026-09-13 (H1)
-         * closed and the reading route's budget exists to keep closed. Until
-         * the route lands, this sentence is the honest description of what
-         * Save does, in the same register as the logo readout.
-         */}
-        <Callout tone="warning" title="Saving stores this theme; it does not apply it yet">
-          The organisation’s theme is written to its settings file and comes back here, exactly as
-          the preview shows it. Applying it across the product is the delivery route ADR-028
-          describes, which is not built: every screen still renders the built-in identity until it
-          is.
-        </Callout>
-
-        {/*
          * TODO(M3): the guided flow — a logo, the three questions, and a
          * suggested built-in — is the entry point ADR-028 describes and is
          * built on a later branch. `suggestBase` and `extractSeedsFromColours`
@@ -218,7 +228,11 @@ export function ThemeSettingsPage() {
          * choice with the questions left out, which is why this is a note and
          * not a control that would do nothing (docs/design/feedback.md).
          */}
-        <Callout tone="info" title="Setting this up for the first time?">
+        <Callout
+          tone="info"
+          title="Setting this up for the first time?"
+          className="max-w-(--layout-content)"
+        >
           The guided flow — upload a logo, answer three questions, see the suggestion on a real
           document — is not built yet. Until it is, start from the built-in that fits best and
           adjust the levers.
@@ -233,10 +247,10 @@ export function ThemeSettingsPage() {
                 values and keeps it as the base this theme can be reset to.
               </p>
               <div className={styles.baseList()}>
-                {BUILTIN_THEME_IDS.map((id) => (
+                {OFFERED_THEME_IDS.map((id) => (
                   <Button
                     key={id}
-                    size="sm"
+                    size={compact ? 'xl' : 'sm'}
                     variant={base === id ? 'primary' : 'secondary'}
                     aria-pressed={base === id}
                     onClick={() => {
@@ -278,67 +292,19 @@ export function ThemeSettingsPage() {
               }}
             />
 
-            <RangeField
-              label="Accent hue"
-              value={theme.seeds.accent.hue}
-              min={0}
-              max={359}
-              step={1}
-              display={`${Math.round(theme.seeds.accent.hue)}°`}
-              description="One hue. Links, controls and marks are all derived from it, and every derived pair is checked against the contrast floors."
-              onValueChange={(hue) => {
-                changeTheme((current) => ({
-                  ...current,
-                  seeds: { ...current.seeds, accent: { ...current.seeds.accent, hue } },
-                }))
+            <ColourControl
+              label="Accent"
+              value={theme.seeds.accent}
+              onValueChange={(accent) => {
+                changeTheme((current) => withAccent(current, accent))
               }}
             />
 
-            <RangeField
-              label="Accent intensity"
-              value={theme.seeds.accent.chroma}
-              min={0}
-              max={0.37}
-              step={0.005}
-              display={theme.seeds.accent.chroma.toFixed(3)}
-              description="How saturated the accent is at full strength."
-              onValueChange={(chroma) => {
-                changeTheme((current) => ({
-                  ...current,
-                  seeds: { ...current.seeds, accent: { ...current.seeds.accent, chroma } },
-                }))
-              }}
-            />
-
-            <RangeField
-              label="Neutral hue"
-              value={theme.seeds.tone.hue}
-              min={0}
-              max={359}
-              step={1}
-              display={`${Math.round(theme.seeds.tone.hue)}°`}
-              description="The hue of the greys: below 100 reads warm, around 250 reads cool."
-              onValueChange={(hue) => {
-                changeTheme((current) => ({
-                  ...current,
-                  seeds: { ...current.seeds, tone: { ...current.seeds.tone, hue } },
-                }))
-              }}
-            />
-
-            <RangeField
-              label="Neutral tint"
-              value={theme.seeds.tone.chroma}
-              min={0}
-              max={0.04}
-              step={0.002}
-              display={theme.seeds.tone.chroma.toFixed(3)}
-              description="Neutrals are tinted, not coloured: the area a page of grey covers caps this hard."
-              onValueChange={(chroma) => {
-                changeTheme((current) => ({
-                  ...current,
-                  seeds: { ...current.seeds, tone: { ...current.seeds.tone, chroma } },
-                }))
+            <ToneControl
+              tone={theme.seeds.tone}
+              accentHue={theme.seeds.accent.hue}
+              onToneChange={(tone) => {
+                changeTheme((current) => ({ ...current, seeds: { ...current.seeds, tone } }))
               }}
             />
 
@@ -403,48 +369,54 @@ export function ThemeSettingsPage() {
             <CollectionColours
               collections={theme.collections}
               onCollectionsChange={(collections) => {
-                changeTheme((current) =>
-                  collections === undefined
-                    ? withoutCollections(current)
-                    : { ...current, collections },
-                )
+                changeTheme((current) => withOptional(current, 'collections', collections))
               }}
             />
           </div>
 
-          <div className={styles.right()}>
-            <div>
-              <h2 className="text-sm font-medium text-foreground">Preview</h2>
-              <p className="mt-1 mb-3 text-xs text-muted">
-                A document in this theme, in both schemes, generated from the levers as they stand.
-              </p>
+          {compact ? undefined : (
+            <div className={styles.preview()}>
+              <div>
+                <h2 className={styles.subheading()}>Preview</h2>
+                <p className={styles.previewLead()}>
+                  A document in this theme, light and dark. Updates as you change the theme.
+                </p>
+              </div>
               <ThemePreview light={generated.light} dark={generated.dark} />
             </div>
-            <div>
-              <h2 className="mb-2 text-sm font-medium text-foreground">Theme doctor</h2>
-              <ThemeDoctorReport
-                report={generated.report}
-                contrastEnforcement={enforcement}
-                onRelaxEnforcement={() => {
-                  draft.change({
-                    ...settings,
-                    policies: { ...settings.policies, contrastEnforcement: 'advisory' },
-                  })
-                }}
-              />
-            </div>
-          </div>
+          )}
+        </div>
+
+        <div className={styles.doctor()}>
+          <h2 className={styles.subheading()}>Theme doctor</h2>
+          <ThemeDoctor
+            report={generated.report}
+            theme={theme}
+            contrastEnforcement={enforcement}
+            onThemeChange={changeTheme}
+            onRelaxEnforcement={() => {
+              draft.change({
+                ...settings,
+                policies: { ...settings.policies, contrastEnforcement: 'advisory' },
+              })
+            }}
+          />
         </div>
       </SettingsSection>
+
+      {compact ? (
+        <ThemePreviewBar
+          light={generated.light}
+          dark={generated.dark}
+          summary={verdictOf(generated.report.results)}
+          onReview={() => {
+            focusDoctorGroup('warn')
+          }}
+          save={saveButton}
+        />
+      ) : undefined}
     </>
   )
-}
-
-/** Drops `collections` entirely rather than writing an empty object the schema has no use for. */
-function withoutCollections(theme: ThemeSettings): ThemeSettings {
-  const next = { ...theme }
-  delete next.collections
-  return next
 }
 
 type CollectionSeeds = NonNullable<ThemeSettings['collections']>

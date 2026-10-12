@@ -1,0 +1,14 @@
+{
+  "collection": "Skiff mobile app",
+  "title": "Working offline",
+  "type": "guide",
+  "owners": ["tom@acme.example", "jonas@acme.example"],
+  "tags": ["skiff", "offline", "sync"],
+  "review": "180d",
+  "status": "published",
+  "notes": [
+    "First version",
+    "Offline cache raised to 500 notes; added the Wi-Fi only option for voice notes"
+  ],
+  "frontMatter": {}
+}

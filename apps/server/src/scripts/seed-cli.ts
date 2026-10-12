@@ -18,13 +18,16 @@ import { createSecretResolver } from '../infrastructure/secrets/resolve-secret.t
 import { createSettingsStore } from '../infrastructure/settings-store.ts'
 import { createHasher } from '../infrastructure/hasher.ts'
 import { createPublicSiteCache } from '../public-site/cache.ts'
-import { createPublicStylesheets } from '../public-site/stylesheet.ts'
 import { createSystemClock } from '../infrastructure/system-clock.ts'
 import { createUuidGenerator } from '../infrastructure/uuid-generator.ts'
 import { createPostgresSearchIndex } from '../infrastructure/search/postgres-search-index.ts'
 import { createVisibleDocumentResolver } from '../infrastructure/search/visible-documents.ts'
+import { DEMO_ORGANISATION_NAME, DEMO_PASSWORD } from './demo/structure.ts'
+import { seedDemoData } from './seed-demo.ts'
 import { seedDevelopmentData } from './seed.ts'
+import { pagelessStylesheets } from '../theme/pageless.ts'
 import { createSearchService } from '@quill/search'
+import { createDrawioText } from '../extensions/drawio/drawing-text.ts'
 
 /**
  * `pnpm --filter @quill/server seed` — the seed's composition root: the same
@@ -49,6 +52,9 @@ if (process.env['NODE_ENV'] === 'production' && process.env['SEED_ALLOW_PRODUCTI
   process.exit(1)
 }
 
+/** `--demo` adds the demo company (`demo/README.md`) on top of the development seed. */
+const demo = process.argv.includes('--demo')
+
 const config = loadConfig()
 const clock = createSystemClock()
 const ids = createUuidGenerator()
@@ -66,7 +72,7 @@ const searchIndex = createPostgresSearchIndex({
 const secrets = createEnvelopeCipher(await createKeyProvider(config.masterKey))
 
 try {
-  const result = await seedDevelopmentData({
+  const deps = {
     uow,
     searchIndex,
     search: createSearchService(searchIndex),
@@ -80,7 +86,7 @@ try {
     hasher,
     // Nothing here serves a page; the port is present because
     // `AppDependencies` is one shape.
-    publicStylesheets: createPublicStylesheets({ hasher, designSystemCss: '' }),
+    ...(await pagelessStylesheets(hasher)),
     publicSiteCache: createPublicSiteCache({ clock, ttlMs: 0 }),
     tokens: createTokenService(),
     shareLinkPolicy: createShareLinkPolicy(config),
@@ -91,6 +97,7 @@ try {
     rateLimiter: createRateLimiter({ clock, config: config.rateLimit }),
     oidcRateLimiter: createRateLimiter({ clock, config: config.oidcRateLimit }),
     attachmentRateLimiter: createRateLimiter({ clock, config: config.attachments.rateLimit }),
+    drawingText: createDrawioText(),
     passwords: await createPasswordHasher(),
     identityProviders: createIdentityProviderRegistry({
       providers: config.oidcProviders,
@@ -100,7 +107,8 @@ try {
       secretResolver: createSecretResolver({ uow, secrets, clock, ids }),
     }),
     config,
-  })
+  }
+  const result = await seedDevelopmentData(deps)
   process.stdout.write(
     [
       `Seeded workspace ${result.workspaceId} (and ${result.secondWorkspaceId})`,
@@ -117,6 +125,18 @@ try {
       '',
     ].join('\n'),
   )
+  if (demo) {
+    const summary = await seedDemoData(deps)
+    process.stdout.write(
+      [
+        `Seeded the ${DEMO_ORGANISATION_NAME} demo: ${summary.documents} new documents in ` +
+          `${summary.workspaces} workspaces (${summary.revisions} revisions, ${summary.publicSites} public sites).`,
+        `Every demo person signs in with ${DEMO_PASSWORD} (priya@acme.example, marcus@acme.example, ...).`,
+        ...summary.problems.map((problem) => `  problem: ${problem}`),
+        '',
+      ].join('\n'),
+    )
+  }
 } finally {
   await database.close()
 }

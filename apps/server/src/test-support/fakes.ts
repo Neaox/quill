@@ -13,6 +13,8 @@ import { createHasher } from '../infrastructure/hasher.ts'
 import { createSettingsStore } from '../infrastructure/settings-store.ts'
 import { createPublicSiteCache } from '../public-site/cache.ts'
 import { createPublicStylesheets } from '../public-site/stylesheet.ts'
+import { loadFaceFiles } from '../theme/face-files.ts'
+import { createThemeStylesheets } from '../theme/theme-stylesheet.ts'
 
 /**
  * The content store, the settings store, the secret cipher, and the public
@@ -35,16 +37,27 @@ export async function inMemorySettings(
 ): Promise<
   Pick<
     AppDependencies,
-    'contentStore' | 'settings' | 'secrets' | 'publicStylesheets' | 'publicSiteCache'
+    | 'contentStore'
+    | 'settings'
+    | 'secrets'
+    | 'faceFiles'
+    | 'themeStylesheets'
+    | 'publicStylesheets'
+    | 'publicSiteCache'
   >
 > {
   const contentStore = createContentStore({ driver: 'memory' }, clock)
+  const faceFiles = await loadFaceFiles()
+  const themeStylesheets = createThemeStylesheets({ hasher: createHasher(), faceFiles })
   return {
     contentStore,
     settings: createSettingsStore(contentStore),
     secrets: createEnvelopeCipher(await createKeyProvider(config.masterKey)),
+    faceFiles,
+    themeStylesheets,
     publicStylesheets: createPublicStylesheets({
       hasher: createHasher(),
+      themeStylesheets,
       designSystemCss: '',
     }),
     // Off: a test that is not about the public site should never be answered

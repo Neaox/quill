@@ -37,6 +37,26 @@ describe('Dialog', () => {
     await expectNoAccessibilityViolations(dialog)
   })
 
+  it('takes a description with markup, and is described by its text', async () => {
+    render(
+      <Dialog
+        open
+        title="Preview"
+        description={
+          <>
+            <strong>3</strong> to check
+          </>
+        }
+      >
+        Body.
+      </Dialog>,
+    )
+
+    const dialog = await screen.findByRole('dialog', { name: 'Preview' })
+    expect(dialog).toHaveAccessibleDescription('3 to check')
+    await expectNoAccessibilityViolations(dialog)
+  })
+
   it('carries no dangling description when none is given', async () => {
     render(
       <Dialog open title="Delete document">
@@ -139,6 +159,34 @@ describe('Dialog', () => {
     })
   })
 
+  it('lets the caller send focus somewhere other than the trigger when it closes', async () => {
+    const elsewhere = vi.fn<(event: Event) => void>((event) => {
+      event.preventDefault()
+      screen.getByRole('button', { name: 'Elsewhere' }).focus()
+    })
+    render(
+      <>
+        <Dialog
+          title="Delete document"
+          trigger={<Button>Delete</Button>}
+          onCloseAutoFocus={elsewhere}
+        >
+          Body.
+        </Dialog>
+        <Button>Elsewhere</Button>
+      </>,
+    )
+
+    await userEvent.click(screen.getByRole('button', { name: 'Delete' }))
+    await screen.findByRole('dialog')
+    await userEvent.keyboard('{Escape}')
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Elsewhere' })).toHaveFocus()
+    })
+    expect(elsewhere).toHaveBeenCalledOnce()
+  })
+
   it('closes from a footer action wrapped in DialogClose', async () => {
     render(
       <Dialog
@@ -189,5 +237,29 @@ describe('Dialog', () => {
     const dialog = await screen.findByRole('dialog')
     expect(dialog).toHaveClass('z-70')
     expect(document.querySelector('.dialog-overlay')).toHaveClass('z-60')
+  })
+
+  it('rises from the bottom edge as a sheet, clear of the home indicator', async () => {
+    render(
+      <Dialog open title="Preview" placement="sheet">
+        Body.
+      </Dialog>,
+    )
+
+    const dialog = await screen.findByRole('dialog', { name: 'Preview' })
+    expect(dialog).toHaveClass('dialog-sheet', 'bottom-0', 'inset-x-0')
+    expect(dialog).not.toHaveClass('dialog-panel')
+    expect(dialog.className).toContain('safe-area-inset-bottom')
+    await expectNoAccessibilityViolations(dialog)
+  })
+
+  it('is centred unless asked otherwise', async () => {
+    render(
+      <Dialog open title="Rename">
+        Body.
+      </Dialog>,
+    )
+
+    expect(await screen.findByRole('dialog')).toHaveClass('dialog-panel', 'top-1/2')
   })
 })

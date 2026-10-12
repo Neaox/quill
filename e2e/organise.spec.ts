@@ -4,6 +4,7 @@ import { expect, test, type Locator, type Page } from '@playwright/test'
 
 import { caretAtEndOf } from './support/editing.ts'
 import { ADMIN_EMAIL, ADMIN_PASSWORD } from './support/seed.ts'
+import { accountMenu } from './support/account.ts'
 
 /**
  * The organise journey: M2's acceptance question, answered through the
@@ -92,7 +93,7 @@ async function signIn(page: Page): Promise<void> {
   // says while `routes/index.tsx` is still deciding. A `page.goto` fired into
   // that gap is cancelled by the redirect that follows it: Firefox reports
   // `NS_BINDING_ABORTED`, WebKit "Frame load interrupted".
-  await expect(page.getByRole('button', { name: 'Sign out' })).toBeVisible()
+  await expect(accountMenu(page)).toBeVisible()
   await expect(page).not.toHaveURL(/sign-in/)
 }
 

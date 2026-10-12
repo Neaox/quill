@@ -1,0 +1,14 @@
+{
+  "collection": "Playbooks",
+  "title": "Refund and credit policy",
+  "type": "policy",
+  "owners": ["tom@acme.example"],
+  "tags": ["billing", "refunds", "policy"],
+  "review": "6m",
+  "status": "published",
+  "notes": [
+    "First version agreed with finance",
+    "Raised the agent limit to $200 and added seat reductions and payout timing"
+  ],
+  "frontMatter": {}
+}

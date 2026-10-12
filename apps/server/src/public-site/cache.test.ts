@@ -53,6 +53,25 @@ describe('the public site cache', () => {
     expect(held.page('acme', 'guides/one')).toBeNull()
   })
 
+  it('holds the one resolved header menu, and forgets it with everything else', () => {
+    const { clock, cache: held } = cache(1_000)
+    expect(held.menu()).toBeNull()
+    const menu = [
+      {
+        kind: 'link',
+        link: { label: 'Status', href: 'https://s.test', external: true, referrer: 'hidden' },
+      },
+    ] as const
+    held.rememberMenu(menu)
+    expect(held.menu()).toEqual(menu)
+    held.invalidate()
+    expect(held.menu()).toBeNull()
+
+    held.rememberMenu(menu)
+    clock.advance(1_000)
+    expect(held.menu()).toBeNull()
+  })
+
   it('forgets an entry once its time is up', () => {
     const { clock, cache: held } = cache(1_000)
     held.rememberSite('acme', aSite('acme'))

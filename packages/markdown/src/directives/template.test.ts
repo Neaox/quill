@@ -152,7 +152,7 @@ describe('stripAuthoringBlocks', () => {
     expect(output).not.toContain('Say what changed')
     expect(output).not.toContain('Never added')
     expect(output).toContain('We also considered B.')
-    expect(output).toContain(':::callout{type="note"}')
+    expect(output).toContain(':::callout{type=note}')
     expect(output).toContain('We chose  because.')
     expect(warnings.map((found) => found.detail)).toEqual(['the thing', 'Say what changed.'])
   })
@@ -270,7 +270,7 @@ describe('resolveTemplate', () => {
     // as the ghosted affordance of ADR-029 and publish decides its fate.
     expect(output).toContain(':::optional{title="Alternatives considered"}')
     expect(output).toContain('deploy --owner Platform')
-    expect(output).toContain(':::callout{type="note"}')
+    expect(output).toContain(':::callout{type=note}')
     expect(requiredSections).toEqual(['Context', 'Decision', 'Security considerations'])
     expect(warnings.map((found) => found.detail)).toEqual(['skipped'])
   })

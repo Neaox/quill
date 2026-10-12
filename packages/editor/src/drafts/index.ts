@@ -17,16 +17,21 @@ export type {
   LockHolder,
   TakeoverResult,
 } from './clients.ts'
-export type { PendingDraft, RecoveryStore } from './recovery-store.ts'
+export type { DraftBase, PendingDraft, RecoveryStore } from './recovery-store.ts'
 export { createMemoryRecoveryStore } from './recovery-store.ts'
 export type { LockEvent, LockState, LockStatus } from './lock-machine.ts'
 export { initialLockState, lockReducer } from './lock-machine.ts'
 export type { DocumentLock, UseDocumentLockOptions } from './use-document-lock.ts'
 export {
   HEARTBEAT_INTERVAL_MS,
-  HEARTBEAT_RETRY_DELAY_MS,
+  HEARTBEAT_RETRY_BACKOFF,
   useDocumentLock,
 } from './use-document-lock.ts'
-export type { Autosave, AutosaveStatus, UseAutosaveOptions } from './use-autosave.ts'
+export type { AutosavePhase, AutosaveStatus } from './autosave-machine.ts'
+export type { Autosave, UseAutosaveOptions } from './use-autosave.ts'
 export { AUTOSAVE_DEBOUNCE_MS, useAutosave } from './use-autosave.ts'
+export type { Connectivity, FakeConnectivity } from './connectivity.ts'
+export { browserConnectivity, createFakeConnectivity } from './connectivity.ts'
+export type { DraftChannel, DraftSavedMessage } from './draft-channel.ts'
+export { createBroadcastDraftChannel, createMemoryDraftChannels } from './draft-channel.ts'
 export { useUnsavedChangesGuard } from './use-unsaved-changes-guard.ts'

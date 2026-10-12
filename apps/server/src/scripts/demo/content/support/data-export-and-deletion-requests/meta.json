@@ -1,0 +1,11 @@
+{
+  "collection": "Playbooks",
+  "title": "Data export and deletion requests",
+  "type": "playbook",
+  "owners": ["tom@acme.example", "aisha@acme.example"],
+  "tags": ["privacy", "gdpr", "playbook"],
+  "review": "6m",
+  "status": "published",
+  "notes": ["First version, reviewed by security"],
+  "frontMatter": {}
+}

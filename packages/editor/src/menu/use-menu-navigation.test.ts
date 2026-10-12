@@ -39,6 +39,24 @@ describe('the menu navigation hook', () => {
     expect(view.result.current.handleKey('q')).toBe(false)
   })
 
+  it('says where the keyboard moved to, and only the keyboard', () => {
+    const onMove = vi.fn<(index: number) => void>()
+    const view = renderHook(() =>
+      useMenuNavigation({ count: 3, onSelect: () => {}, onDismiss: () => {}, onMove }),
+    )
+    act(() => {
+      view.result.current.handleKey('ArrowDown')
+    })
+    act(() => {
+      view.result.current.handleKey('End')
+    })
+    act(() => {
+      view.result.current.setActiveIndex(0)
+      view.result.current.handleKey('q')
+    })
+    expect(onMove.mock.calls).toEqual([[1], [2]])
+  })
+
   it('chooses the active item on Enter and on Tab', () => {
     const { view, onSelect } = setup(3)
     act(() => {

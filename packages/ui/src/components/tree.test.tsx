@@ -71,6 +71,24 @@ describe('Tree', () => {
     }
   })
 
+  it('shows a section count beside its label, and says what it counts', async () => {
+    const counted = SECTIONS.map((section, index) => ({ ...section, count: index === 0 ? 4 : 1 }))
+    const { container } = render(<Tree label="Documents" sections={counted} />)
+
+    expect(screen.getByText('engineering', { exact: true })).toBeInTheDocument()
+    expect(screen.getByText('engineering').parentElement).toHaveTextContent(
+      'engineering4 documents',
+    )
+    expect(screen.getByText('product').parentElement).toHaveTextContent('product1 document')
+    await expectNoAccessibilityViolations(container)
+  })
+
+  it('draws no count for a section that does not give one', () => {
+    render(<Tree label="Documents" sections={SECTIONS} />)
+
+    expect(screen.getByText('engineering').parentElement).toHaveTextContent(/^engineering$/)
+  })
+
   it('marks nothing when no document is open', () => {
     render(<Tree label="Documents" sections={SECTIONS} />)
 

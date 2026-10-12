@@ -23,14 +23,19 @@ import type { NeutralRole } from './neutral-ramp.ts'
 import { mix, withChroma, type Colour } from './oklch.ts'
 import { buildTint } from './tint.ts'
 
-export type AccentRole =
-  | 'accentMark'
-  | 'accent'
-  | 'accentHover'
-  | 'accentForeground'
-  | 'accentSubtle'
-  | 'focusRing'
-  | 'selection'
+/** Every palette role derived from the accent seed, and from nothing else. */
+export const ACCENT_ROLES = [
+  'accentMark',
+  'accent',
+  'accentHover',
+  'accentForeground',
+  'accentSubtle',
+  'accentInk',
+  'focusRing',
+  'selection',
+] as const
+
+export type AccentRole = (typeof ACCENT_ROLES)[number]
 
 export type AccentVariants = {
   readonly colours: Readonly<Record<AccentRole, Colour>>
@@ -46,6 +51,15 @@ const HOVER = {
 const SELECTION_MIX: Record<Scheme, number> = { light: 0.28, dark: 0.34 }
 
 const DEFAULT_SEED_LIGHTNESS: Record<Scheme, number> = { light: 55, dark: 70 }
+
+/**
+ * The accent as text on the page — an eyebrow, an active entry, a link that
+ * is coloured — sits a step further from the paper than the accent a control
+ * is filled with: darker in light, brighter in dark. lockstay's portal calls
+ * it `accent-ink` and keeps it at L 40 against L 43, and L 84 against L 78.
+ */
+const INK_STEP: Record<Scheme, number> = { light: -3, dark: 6 }
+const INK_CEILING = 92
 
 export const hoverOf = (
   colour: Colour,
@@ -87,6 +101,13 @@ export const buildAccentVariants = (
   }
 
   const seedLightness = seed.lightness ?? DEFAULT_SEED_LIGHTNESS[scheme]
+  /*
+   * The mark is the brand's own colour and keeps its light lightness in both
+   * schemes; the accent proper may start somewhere else in dark mode, when
+   * the brand says where.
+   */
+  const accentStart =
+    scheme === 'dark' && seed.darkLightness !== undefined ? seed.darkLightness : seedLightness
   const accentMark = take(
     settleGamut('accentMark', {
       lightness: seedLightness,
@@ -97,10 +118,10 @@ export const buildAccentVariants = (
 
   const band = LIGHTNESS_BANDS.accent[scheme]
   const chroma = Math.min(accentChromaFor(seed.chroma, scheme), cap('accent'))
-  const startLightness = clampToBand(seedLightness, band)
+  const startLightness = clampToBand(accentStart, band)
   adjustments.push(
     ...recordClamp('accent', 'chroma', 'budget', seed.chroma, chroma),
-    ...recordClamp('accent', 'lightness', 'band', seedLightness, startLightness),
+    ...recordClamp('accent', 'lightness', 'band', accentStart, startLightness),
   )
 
   const foregroundCandidates: readonly [Colour, Colour] =
@@ -127,6 +148,23 @@ export const buildAccentVariants = (
   const accentForeground = withChroma(chosen, Math.min(chosen.chroma, cap('accentForeground')))
   const accentSubtle = take(buildTint('accentSubtle', accent, scheme, neutral, cap('accentSubtle')))
 
+  const accentInk = take(
+    settleContrast(
+      'accentInk',
+      {
+        ...accent,
+        lightness: Math.min(accent.lightness + INK_STEP[scheme], INK_CEILING),
+        chroma: Math.min(accent.chroma, cap('accentInk')),
+      },
+      (candidate) =>
+        [neutral.paper, neutral.surface, neutral.raised].every(
+          (ground) =>
+            contrastRatio(candidate, ground) >= CONTRAST_FLOORS.secondary.ratio &&
+            apcaLc(candidate, ground) >= CONTRAST_FLOORS.secondary.lc,
+        ),
+    ),
+  )
+
   const selected = mix(accent, neutral.paper, SELECTION_MIX[scheme])
   const selection = take(
     settleContrast(
@@ -145,6 +183,7 @@ export const buildAccentVariants = (
       accentHover,
       accentForeground,
       accentSubtle,
+      accentInk,
       focusRing: accent,
       selection,
     },

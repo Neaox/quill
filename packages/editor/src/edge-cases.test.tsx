@@ -16,7 +16,7 @@ import { runAt } from './menu/use-menu-navigation.ts'
 import { withDom } from './schema/dom.ts'
 import { editorSchema } from './schema/editor-schema.ts'
 import { rectOf } from './slash/slash-extension.ts'
-import { SLASH_ITEMS } from './slash/slash-items.ts'
+import { createSlashRegistry } from './slash/slash-registry.ts'
 import { SlashMenu } from './slash/slash-menu.tsx'
 import { createSlashStore } from './slash/slash-store.ts'
 import { createEditorTestHarness } from './testing/harness.ts'
@@ -73,13 +73,20 @@ describe('the slash menu with nowhere to put itself', () => {
     expect(rectOf(() => null)).toBeNull()
   })
 
-  it('renders without a position when it was given none', () => {
+  it('renders in the corner when it was given no position', () => {
+    const [firstItem] = createSlashRegistry().items
+    if (firstItem === undefined) throw new Error('The catalogue is empty.')
     const store = createSlashStore()
     render(<SlashMenu store={store} editor={null} />)
     act(() => {
-      store.open({ query: '', items: SLASH_ITEMS.slice(0, 1), rect: null, apply: () => {} })
+      store.showMenu({
+        query: '',
+        sections: [{ title: 'Text', matches: [{ item: firstItem, ranges: [] }] }],
+        rect: null,
+        apply: () => {},
+      })
     })
-    expect(screen.getByRole('listbox', { name: 'Insert' }).getAttribute('style')).toBeNull()
+    expect(screen.getByRole('listbox', { name: 'Insert a block' })).toBeVisible()
   })
 })
 

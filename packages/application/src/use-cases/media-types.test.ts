@@ -4,6 +4,7 @@ import {
   ALLOWED_MEDIA_TYPES,
   isAllowedMediaType,
   isInlineMediaType,
+  looksLikeDrawio,
   looksLikeSvg,
   normaliseMediaType,
   sniffMediaType,
@@ -119,16 +120,34 @@ describe('looksLikeSvg', () => {
   })
 })
 
+describe('looksLikeDrawio', () => {
+  it('knows a raw draw.io file by its root, after a prologue', () => {
+    expect(looksLikeDrawio(bytes('<mxfile host="x">'))).toBe(true)
+    expect(looksLikeDrawio(bytes('<?xml version="1.0"?> <!-- d --> <mxfile/>'))).toBe(true)
+    expect(sniffMediaType(bytes('<mxfile>'))).toBe('application/vnd.jgraph.mxfile')
+  })
+
+  it('refuses a near miss, and serves a .drawio as a download', () => {
+    expect(looksLikeDrawio(bytes('<mxfilex>'))).toBe(false)
+    expect(looksLikeDrawio(bytes('<mxGraphModel>'))).toBe(false)
+    expect(isInlineMediaType('application/vnd.jgraph.mxfile')).toBe(false)
+  })
+})
+
 describe('the allowlist', () => {
   it('accepts exactly the declared set', () => {
     for (const type of ALLOWED_MEDIA_TYPES) expect(isAllowedMediaType(type)).toBe(true)
-    expect(isAllowedMediaType('image/svg+xml')).toBe(false)
+    expect(isAllowedMediaType('image/svg+xml')).toBe(true)
     expect(isAllowedMediaType('text/html')).toBe(false)
   })
 
   it('serves images inline and everything else as a download', () => {
     expect(isInlineMediaType('image/png')).toBe(true)
     expect(isInlineMediaType('application/pdf')).toBe(false)
+  })
+
+  it('serves a drawing as a download: it is shown only drawn into a body', () => {
+    expect(isInlineMediaType('image/svg+xml')).toBe(false)
   })
 })
 

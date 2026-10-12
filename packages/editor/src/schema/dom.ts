@@ -1,6 +1,8 @@
 import type { Attribute, Attributes, Extensions, MarkConfig, NodeConfig } from '@tiptap/core'
 import type { DOMOutputSpec, Node as PMNode, TagParseRule } from '@tiptap/pm/model'
 
+import { badgeTone, isLabelDirective } from '@quill/markdown'
+
 import { parseAttribute, renderAttribute } from './attributes.ts'
 
 /**
@@ -30,6 +32,8 @@ interface NodeDom {
   readonly text?: string
   /** Selectors for the same construct in HTML that was not written by the editor. */
   readonly fallback?: readonly string[]
+  /** Attributes read off such an element, which carries none of the editor's own. */
+  readonly fallbackAttributes?: (element: HTMLElement) => Record<string, unknown>
   readonly preserveWhitespace?: TagParseRule['preserveWhitespace']
 }
 
@@ -41,6 +45,16 @@ const NODE_DOM: Readonly<Record<string, NodeDom>> = {
   heading: { tag: 'h1' },
   blockquote: { tag: 'blockquote', fallback: ['blockquote'] },
   codeBlock: { tag: 'pre', inner: 'code', fallback: ['pre'], preserveWhitespace: 'full' },
+  codeGroup: { tag: 'div' },
+  // A pasted `<details open>` keeps opening for a reader (ADR-048).
+  details: {
+    tag: 'div',
+    fallback: ['details'],
+    fallbackAttributes: (element) => ({
+      attributes: element.hasAttribute('open') ? { open: '' } : {},
+    }),
+  },
+  detailsSummary: { tag: 'div', fallback: ['summary'] },
   horizontalRule: { tag: 'hr', leaf: true, fallback: ['hr'] },
   hardBreak: { tag: 'br', leaf: true, fallback: ['br'] },
   bulletList: { tag: 'ul', fallback: ['ul'] },
@@ -96,8 +110,52 @@ function tagOf(name: string, dom: NodeDom, node: PMNode): string {
   return name === 'heading' ? `h${String(node.attrs['level'])}` : dom.tag
 }
 
-function renderNode(name: string, dom: NodeDom, node: PMNode): DOMOutputSpec {
-  const attributes = { class: nodeClassName(name), ...htmlAttributes(node) }
+function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
+  return typeof value === 'object' && value !== null
+}
+
+/** The text directive node, the one node whose drawing depends on the organisation's labels. */
+const TEXT_DIRECTIVE = 'textDirective'
+
+/**
+ * A text directive that is a badge (`:ok[Built]`, `:badge[Gap]{tone=warning}`)
+ * or one of the organisation's labels (`:acme[Acme]`, ADR-037) is drawn
+ * with the reader's own badge markup — the `badge` class and its tone or its
+ * label — so it looks the same while it is being written as when it is read,
+ * coloured by the same theme stylesheet. Its own class still leads, which is
+ * what reads it back in.
+ */
+function badgeAttributes(
+  name: string,
+  node: PMNode,
+  labels: ReadonlySet<string>,
+): Record<string, string> {
+  if (name !== TEXT_DIRECTIVE || node.textContent.trim().length === 0) return {}
+  const directive = String(node.attrs['name'])
+  const attributes: unknown = node.attrs['attributes']
+  const badge = `${nodeClassName(name)} badge`
+  const tone = badgeTone(directive, isRecord(attributes) ? attributes : undefined)
+  if (tone !== undefined) return { class: badge, 'data-tone': tone }
+  return isLabelDirective(directive, labels) ? { class: badge, 'data-label': directive } : {}
+}
+
+/** The label names a text directive node was configured with (`withLabels`). */
+function labelsOf(options: Readonly<Record<string, unknown>>): ReadonlySet<string> {
+  const labels = options['labels']
+  return new Set(Array.isArray(labels) ? labels.filter((label) => typeof label === 'string') : [])
+}
+
+function renderNode(
+  name: string,
+  dom: NodeDom,
+  node: PMNode,
+  labels: ReadonlySet<string>,
+): DOMOutputSpec {
+  const attributes = {
+    class: nodeClassName(name),
+    ...htmlAttributes(node),
+    ...badgeAttributes(name, node, labels),
+  }
   const tag = tagOf(name, dom, node)
   if (dom.text !== undefined) return [tag, attributes, String(node.attrs[dom.text])]
   if (dom.leaf === true) return [tag, attributes]
@@ -112,10 +170,12 @@ function parseRules(name: string, dom: NodeDom): TagParseRule[] {
     name === 'heading'
       ? [1, 2, 3, 4, 5, 6].map((level) => ({ tag: `h${String(level)}`, attrs: { level } }))
       : [{ tag: `${dom.tag}.${nodeClassName(name)}`, ...whitespace }]
+  const read = dom.fallbackAttributes
   const fallbacks = (dom.fallback ?? []).map((tag) => ({
     tag,
     priority: FALLBACK_PRIORITY,
     ...whitespace,
+    ...(read === undefined ? {} : { getAttrs: (element: HTMLElement) => read(element) }),
   }))
   return [...own, ...fallbacks]
 }
@@ -142,7 +202,9 @@ function nodeConfig(name: string, dom: NodeDom): Partial<NodeConfig> {
     addAttributes() {
       return domAwareAttributes(this.parent?.() ?? {})
     },
-    renderHTML: ({ node }) => renderNode(name, dom, node),
+    renderHTML({ node }) {
+      return renderNode(name, dom, node, labelsOf(this.options))
+    },
     parseHTML: () => parseRules(name, dom),
   }
 }
@@ -155,6 +217,19 @@ function markConfig(dom: MarkDom): Partial<MarkConfig> {
     renderHTML: ({ mark }) => [dom.tag, htmlAttributes(mark), 0],
     parseHTML: () => dom.parse.map((tag) => ({ tag })),
   }
+}
+
+/**
+ * The extensions with the organisation's label names given to the text
+ * directive node, so `:acme[Acme]` is drawn as the reader will draw it.
+ * Without them a label is drawn as any unknown directive is, as written.
+ */
+export function withLabels(extensions: Extensions, labels: readonly string[]): Extensions {
+  return labels.length === 0
+    ? extensions
+    : extensions.map((extension) =>
+        extension.name === TEXT_DIRECTIVE ? extension.configure({ labels }) : extension,
+      )
 }
 
 /**

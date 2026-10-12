@@ -3,6 +3,7 @@ import { QueryClient } from '@tanstack/react-query'
 import { createApiClient, type ApiClient } from '@quill/api-client'
 
 import type { RouterContext } from '../../app/router-context.ts'
+import { withDerivedTreeRoutes } from './fake-tree-routes.ts'
 
 /**
  * A fake `fetch` for component tests, built from a small route table instead
@@ -79,7 +80,9 @@ function compileRoute(key: string, handler: FakeRouteHandler): CompiledRoute {
 const FAKE_ORIGIN = 'http://fake-api.test'
 
 export function createFakeApiClient(routes: FakeRoutes): ApiClient {
-  const compiled = Object.entries(routes).map(([key, handler]) => compileRoute(key, handler))
+  const compiled = Object.entries(withDerivedTreeRoutes(routes)).map(([key, handler]) =>
+    compileRoute(key, handler),
+  )
 
   const fakeFetch: typeof fetch = async (input) => {
     // Always a `Request` in practice — `openapi-fetch` never calls `fetch`

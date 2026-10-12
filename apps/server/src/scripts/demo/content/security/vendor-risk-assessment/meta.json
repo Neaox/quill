@@ -1,0 +1,11 @@
+{
+  "collection": "Policies",
+  "title": "Vendor risk assessment",
+  "type": "guide",
+  "owners": ["aisha@acme.example"],
+  "tags": ["vendors", "third-party", "soc2", "cc9"],
+  "review": "1y",
+  "status": "published",
+  "notes": ["First published guide and checklist"],
+  "frontMatter": {}
+}

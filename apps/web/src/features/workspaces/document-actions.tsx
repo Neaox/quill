@@ -9,12 +9,7 @@ import {
   type ReactNode,
 } from 'react'
 
-import {
-  useDocument,
-  useDocumentEnvelope,
-  useWorkspaceTree,
-  type TreeCollectionDto,
-} from '../../lib/api/index.ts'
+import { useDocument, useDocumentEnvelope, useTreePosition } from '../../lib/api/index.ts'
 import { DeleteDocumentDialog } from './delete-document-dialog.tsx'
 import { MoveDocumentDialog } from './move-document-dialog.tsx'
 
@@ -28,8 +23,6 @@ import { MoveDocumentDialog } from './move-document-dialog.tsx'
 const ShareDialog = lazy(async () => ({
   default: (await import('../share/share-dialog.tsx')).ShareDialog,
 }))
-
-type ApiTreeNode = TreeCollectionDto['documents'][number]
 
 /**
  * What can be done to the document currently open, and how to start it.
@@ -69,19 +62,6 @@ export function useDocumentActions(): DocumentActions {
   return useContext(DocumentActionsContext)
 }
 
-/** How many documents are nested directly under this one, from the workspace tree. */
-function countChildren(collections: readonly TreeCollectionDto[], documentId: string): number {
-  const find = (nodes: readonly ApiTreeNode[]): ApiTreeNode | undefined => {
-    for (const node of nodes) {
-      if (node.id === documentId) return node
-      const inChildren = find(node.children)
-      if (inChildren !== undefined) return inChildren
-    }
-    return undefined
-  }
-  return find(collections.flatMap((collection) => collection.documents))?.children.length ?? 0
-}
-
 export interface DocumentActionsProviderProps {
   readonly workspaceSlug: string
   readonly workspaceId: string
@@ -108,7 +88,7 @@ export function DocumentActionsProvider({
 }: DocumentActionsProviderProps) {
   const document = useDocument(documentId)
   const envelope = useDocumentEnvelope(documentId)
-  const tree = useWorkspaceTree(workspaceId)
+  const position = useTreePosition(resolvedDocumentId)
   const [moveOpen, setMoveOpen] = useState(false)
   const [deleteOpen, setDeleteOpen] = useState(false)
   const [shareOpen, setShareOpen] = useState(false)
@@ -182,10 +162,7 @@ export function DocumentActionsProvider({
             workspaceId={workspaceId}
             documentId={resolvedDocumentId ?? documentId}
             title={document.data.title}
-            childCount={countChildren(
-              tree.data?.collections ?? [],
-              resolvedDocumentId ?? documentId,
-            )}
+            childCount={position.data?.childCount ?? 0}
           />
           {shareOpenings === 0 ? undefined : (
             <Suspense fallback={null}>

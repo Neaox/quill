@@ -40,6 +40,24 @@ export const textPairs = (palette: Palette): readonly Pair[] => {
       floor: CONTRAST_FLOORS.body,
     },
     {
+      label: 'body on paper',
+      foreground: colours.body,
+      background: colours.paper,
+      floor: CONTRAST_FLOORS.body,
+    },
+    {
+      label: 'body on surface',
+      foreground: colours.body,
+      background: colours.surface,
+      floor: CONTRAST_FLOORS.body,
+    },
+    {
+      label: 'body on raised',
+      foreground: colours.body,
+      background: colours.raised,
+      floor: CONTRAST_FLOORS.body,
+    },
+    {
       label: 'muted on paper',
       foreground: colours.muted,
       background: colours.paper,
@@ -61,6 +79,30 @@ export const textPairs = (palette: Palette): readonly Pair[] => {
       label: 'accent on surface',
       foreground: colours.accent,
       background: colours.surface,
+      floor: CONTRAST_FLOORS.secondary,
+    },
+    {
+      label: 'accent ink on paper',
+      foreground: colours.accentInk,
+      background: colours.paper,
+      floor: CONTRAST_FLOORS.secondary,
+    },
+    {
+      label: 'accent ink on surface',
+      foreground: colours.accentInk,
+      background: colours.surface,
+      floor: CONTRAST_FLOORS.secondary,
+    },
+    {
+      label: 'accent ink on raised',
+      foreground: colours.accentInk,
+      background: colours.raised,
+      floor: CONTRAST_FLOORS.secondary,
+    },
+    {
+      label: 'accent ink on accent-subtle',
+      foreground: colours.accentInk,
+      background: colours.accentSubtle,
       floor: CONTRAST_FLOORS.secondary,
     },
     {

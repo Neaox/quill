@@ -1,4 +1,5 @@
 import { type ComponentPropsWithoutRef, useId } from 'react'
+import type { VariantProps } from 'tailwind-variants'
 
 import { tv } from '../lib/class-names.ts'
 
@@ -22,15 +23,42 @@ export const inputStyles = tv({
     description: 'text-2xs leading-normal text-muted',
     error: 'text-2xs leading-normal text-danger',
   },
+  variants: {
+    /**
+     * `md` is the compact row every other control in a form shares. `lg` is
+     * the touch size, matching the large button, for a form that is the whole
+     * page (signing in), where the field is the one thing to look at. The
+     * compact row stays in the base slot, so a component that extends these
+     * styles (`propertySelectStyles`) keeps its own padding over it.
+     */
+    size: {
+      md: {},
+      lg: {
+        root: 'gap-1.5',
+        label: 'text-sm',
+        control: 'h-10 px-3 text-sm',
+        description: 'text-xs',
+        error: 'text-xs',
+      },
+    },
+  },
+  defaultVariants: { size: 'md' },
 })
 
-export interface InputProps extends Omit<ComponentPropsWithoutRef<'input'>, 'children'> {
+export type InputSize = NonNullable<VariantProps<typeof inputStyles>['size']>
+
+export interface InputProps extends Omit<ComponentPropsWithoutRef<'input'>, 'children' | 'size'> {
+  /**
+   * The control's size, as on `Button`. Replaces the native `size` attribute,
+   * a width in characters, which a field that fills its column never wants.
+   */
+  readonly size?: InputSize
   /** The visible label. Never optional: an unlabelled field is a defect. */
   readonly label: string
   /** Help shown under the field, before it has been used. */
   readonly description?: string
   /** Validation message. Its presence is what marks the field invalid. */
-  readonly error?: string
+  readonly error?: string | undefined
 }
 
 /**
@@ -52,6 +80,7 @@ export function Input({
   error,
   id,
   className,
+  size,
   required = false,
   ...rest
 }: InputProps) {
@@ -59,7 +88,7 @@ export function Input({
   const inputId = id ?? generatedId
   const descriptionId = `${inputId}-description`
   const errorId = `${inputId}-error`
-  const styles = inputStyles()
+  const styles = inputStyles({ size })
 
   const describedBy = [
     description === undefined ? undefined : descriptionId,

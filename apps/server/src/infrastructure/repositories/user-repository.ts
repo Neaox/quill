@@ -1,4 +1,4 @@
-import { eq } from 'drizzle-orm'
+import { eq, inArray } from 'drizzle-orm'
 
 import type { CreateUserInput, UserRepository, UserRow } from '@quill/application'
 import type { UserId } from '@quill/domain'
@@ -37,6 +37,15 @@ export function createUserRepository(db: DrizzleClient): UserRepository {
       const rows = await db.select().from(users).where(eq(users.id, id))
       const row = rows[0]
       return row === undefined ? null : toUserRow(row)
+    },
+
+    async listByIds(ids: readonly UserId[]): Promise<readonly UserRow[]> {
+      if (ids.length === 0) return []
+      const rows = await db
+        .select()
+        .from(users)
+        .where(inArray(users.id, [...ids]))
+      return rows.map(toUserRow)
     },
 
     async findByEmail(email: string): Promise<UserRow | null> {

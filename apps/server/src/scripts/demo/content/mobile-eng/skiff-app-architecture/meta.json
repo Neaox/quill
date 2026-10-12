@@ -1,0 +1,15 @@
+{
+  "collection": "Architecture",
+  "title": "Skiff app architecture",
+  "type": "design",
+  "owners": ["jonas@acme.example", "marcus@acme.example"],
+  "tags": ["skiff", "mobile", "react-native", "architecture"],
+  "review": "6m",
+  "status": "published",
+  "notes": [
+    "First version, written after the 2026.1 release",
+    "Added the new architecture section and re-measured the budgets for 2026.6",
+    "Added the sync triggers, the Themes tab and the Android 14 recorder warning; budgets now for 2026.10"
+  ],
+  "frontMatter": {}
+}

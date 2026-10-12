@@ -1,0 +1,11 @@
+{
+  "collection": "Brand",
+  "title": "Press kit",
+  "type": "reference",
+  "owners": ["ravi@acme.example"],
+  "tags": ["press", "brand", "boilerplate"],
+  "review": "90d",
+  "status": "published",
+  "notes": ["First version: boilerplate, key facts and press contact"],
+  "frontMatter": {}
+}

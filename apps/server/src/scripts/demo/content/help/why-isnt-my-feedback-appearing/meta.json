@@ -1,0 +1,15 @@
+{
+  "collection": "Troubleshooting",
+  "title": "Why isn't my feedback appearing?",
+  "type": "article",
+  "owners": ["tom@acme.example"],
+  "tags": ["troubleshooting", "inbox", "sync"],
+  "review": "90d",
+  "status": "published",
+  "notes": [
+    "First version",
+    "Added the Free plan limit as a cause",
+    "Added the Zendesk tag case, the Wi-Fi only setting and a check for the wrong workspace"
+  ],
+  "frontMatter": {}
+}

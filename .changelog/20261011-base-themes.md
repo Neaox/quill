@@ -1,0 +1,14 @@
+Added: Grid, a built-in theme that reproduces the lockstay documentation portal: raised white surfaces on a cool page, crisp hairlines, one quiet teal, Figtree throughout at 15 px on 24 px over a 736 px column, lockstay's heading scale (34, 21 and 17 px at weights 700, 650 and 600), and teal links with a 1 px underline that thickens on hover. Its reading column sits beside the navigation rather than centred.
+Added: Calm, a built-in theme in the quiet modern sans the best documentation sites share: Inter throughout at 16 px on 26 px, white cards on a near-white page and a tinted charcoal in dark, small confident headings, and an indigo accent kept to the current item, the active entry, focus, the eyebrow and link underlines.
+Added: Editorial, a built-in theme for long-form reading: Source Serif 4 with optical sizes at 18.5 px on 31 px over a 66-character column, Inter for the chrome, warm paper and a warm charcoal, book-weight headings, and an earthy rust accent in the link underlines.
+Changed: Press is no longer offered. Its id now resolves to Editorial, its successor; an organisation that saved Press keeps exactly the theme it saved, and moving one lever on it no longer replaces its other values with the built-in's.
+Changed: A theme document may state its own reading setting (`type.scale`: body size and leading, the column width, the lede, each heading's size, line height, weight and tracking, the space above sections, the eyebrow, tables and code) and how links are drawn (`type.links`); every size reaches the page as an `em` of the body, so presenting still scales the whole document together. Themes that state nothing render as before.
+Added: A generated `accent-ink` colour, the accent as text a step further from the page than the accent a control is filled with, checked by the theme doctor on every surface it sits on.
+Added: A layout may set the reading column's alignment (`align`: centre or start).
+Changed: Source Serif 4 is served with its optical-size axis, and Inter now has a real italic.
+Changed: Onboarding suggests among Instrument, Calm, Editorial, Grid and Atelier.
+Added: A "Space" divider choice in layout settings (`rules: plain`): no rule under a heading, and a quiet sans header on tables.
+Changed: Running text in documents is set in a body ink a visible step quieter than headings and emphasis, in every theme, and dark-mode headings are brighter, so the type hierarchy reads at a glance in both schemes.
+Changed: A theme document may state its own lightness steps for the neutral roles and where its dark-mode accent starts; both are still settled against the contrast floors and judged by the theme doctor.
+Fixed: Instrument's monospace hash before a section heading and Press's double rule now appear on the public site as well as in the app.
+Fixed: Code in JetBrains Mono now renders accented Latin characters in the theme's face instead of a fallback.

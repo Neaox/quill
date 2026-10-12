@@ -34,7 +34,53 @@ describe('the document page', () => {
     expect(main.value).toContain('<article class="layout-grid prose" data-rules="hairline">')
     expect(main.value).toContain('<div class="layout-wide">wide</div>')
     expect(main.value).not.toContain('<article><h1>')
-    expect(main.value).toContain('<p class="site-eyebrow">Guides</p>')
+  })
+
+  it('names the collection above the title, inside the grid where the title is', () => {
+    const main = renderDocumentMain({
+      collectionName: 'Guides',
+      title: 'Rate limits',
+      bodyHtml: '<article><h1>Rate limits</h1><p>Body</p></article>',
+      rules: 'hairline',
+    }).value
+    expect(main).toMatch(/<p class="site-eyebrow">Guides<\/p>\s*<h1>Rate limits<\/h1>/u)
+    expect(main.indexOf('site-eyebrow')).toBeGreaterThan(main.indexOf('<article'))
+  })
+
+  it('puts the eyebrow above the title it supplies, when the body has none', () => {
+    const main = renderDocumentMain({
+      collectionName: 'Guides',
+      title: 'Rate limits',
+      bodyHtml: '<article><h2>Only a section</h2></article>',
+      rules: 'hairline',
+    }).value
+    expect(main).toMatch(/<p class="site-eyebrow">Guides<\/p>\s*<h1>Rate limits<\/h1>/u)
+  })
+
+  /**
+   * A short paragraph written immediately before the title is the author's
+   * own eyebrow (`prose.css` styles it), and two eyebrows would be one too
+   * many — the author's wins.
+   */
+  it('leaves the eyebrow to the author when the body already has one', () => {
+    const main = renderDocumentMain({
+      collectionName: 'Guides',
+      title: 'The sync map',
+      bodyHtml: '<article><p>Overview</p>\n<h1 id="x">The sync map</h1><p>Lede</p></article>',
+      rules: 'hairline',
+    }).value
+    expect(main).not.toContain('site-eyebrow')
+    expect(main).toContain('<p>Overview</p>')
+  })
+
+  it('still adds one when the paragraph before the title is not the first thing', () => {
+    const main = renderDocumentMain({
+      collectionName: 'Guides',
+      title: 'A page',
+      bodyHtml: '<article><h1>A page</h1><p>Lede</p><h1>Another</h1></article>',
+      rules: 'hairline',
+    }).value
+    expect(main).toContain('site-eyebrow')
   })
 
   it('escapes the collection name, which an administrator typed', () => {

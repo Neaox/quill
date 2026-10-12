@@ -4,6 +4,7 @@ import { expect, test } from '@playwright/test'
 
 import { signInAsAdmin } from './support/admin.ts'
 import { createWorkspace, uniqueEmail } from './support/fixtures.ts'
+import { accountMenu, signOut } from './support/account.ts'
 
 /**
  * Unique per run, because the server checks new passwords against the known
@@ -49,7 +50,7 @@ test.describe('authentication', () => {
     // resolver is real now, and this journey asserts that rather than
     // assuming it away.
     await expect(page.getByText('No workspaces yet')).toBeVisible()
-    await expect(page.getByText('E2E Reader')).toBeVisible()
+    await expect(accountMenu(page, 'E2E Reader')).toBeVisible()
 
     await signInAsAdmin(request)
     const workspace = await createWorkspace(request, 'Auth Spec Workspace')
@@ -62,7 +63,7 @@ test.describe('authentication', () => {
     await expect(page.getByRole('heading', { level: 1, name: workspace.name })).toBeHidden()
 
     await page.goto('/')
-    await page.getByRole('button', { name: 'Sign out' }).click()
+    await signOut(page)
     // Signing out empties the `me` cache and the app puts the signed-out
     // person back on sign-in. Waiting for that page is what keeps the
     // navigation below from being cancelled by it — Firefox reports

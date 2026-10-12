@@ -1,0 +1,13 @@
+{
+  "collection": "RFCs",
+  "title": "RFC-012: Adopt the React Native new architecture",
+  "type": "adr",
+  "owners": ["jonas@acme.example"],
+  "tags": ["rfc", "skiff", "react-native", "architecture"],
+  "status": "published",
+  "notes": [
+    "Proposed, with the prototype results",
+    "Accepted on 3 March; added the rollout outcome and trimmed the alternatives"
+  ],
+  "frontMatter": {}
+}

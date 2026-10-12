@@ -16,6 +16,7 @@
     "@quill/application": "workspace:*",
     "@quill/brand": "workspace:*",
     "@quill/domain": "workspace:*",
+    "@quill/markdown": "workspace:*",
     "node-diff3": "^3.2.1"
   },
   "devDependencies": {

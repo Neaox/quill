@@ -1,0 +1,13 @@
+{
+  "collection": "RFCs",
+  "title": "RFC-015: Replace polling with push sync",
+  "type": "adr",
+  "owners": ["jonas@acme.example"],
+  "tags": ["rfc", "skiff", "sync", "push"],
+  "status": "draft-ahead",
+  "notes": [
+    "Proposed, with the options comparison",
+    "Added the two-week prototype results and settled the hashed workspace id question with security"
+  ],
+  "frontMatter": {}
+}

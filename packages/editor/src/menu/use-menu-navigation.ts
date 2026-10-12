@@ -38,6 +38,14 @@ export interface MenuNavigationOptions {
   readonly count: number
   onSelect(index: number): void
   onDismiss(): void
+  /**
+   * The keyboard moved the active item. Fired from the key press itself, so a
+   * caller can bring the new item into view in the same event that moved to it
+   * rather than watching the index for a change.
+   */
+  onMove?(index: number): void
+  /** Where the menu opens: the first item unless the caller knows a better one. */
+  readonly initial?: number
 }
 
 export interface MenuNavigation {
@@ -51,8 +59,10 @@ export function useMenuNavigation({
   count,
   onSelect,
   onDismiss,
+  onMove,
+  initial = 0,
 }: MenuNavigationOptions): MenuNavigation {
-  const [requested, setRequested] = useState(0)
+  const [requested, setRequested] = useState(initial)
   // Clamped on read rather than corrected in an effect: the list shrinks as the
   // author types, and an effect would render one frame pointing at nothing.
   const activeIndex = count === 0 ? -1 : Math.min(requested, count - 1)
@@ -62,6 +72,7 @@ export function useMenuNavigation({
       const moved = nextIndex(activeIndex, count, key)
       if (moved !== null) {
         setRequested(moved)
+        onMove?.(moved)
         return true
       }
       if (key === 'Enter' || key === 'Tab') {
@@ -75,7 +86,7 @@ export function useMenuNavigation({
       }
       return false
     },
-    [activeIndex, count, onSelect, onDismiss],
+    [activeIndex, count, onSelect, onDismiss, onMove],
   )
 
   return { activeIndex, setActiveIndex: setRequested, handleKey }

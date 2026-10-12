@@ -13,7 +13,7 @@
  */
 
 /** `--spacing-shell-header`: the height of the document shell's header bar. */
-export const SHELL_HEADER_HEIGHT_PX = 40
+export const SHELL_HEADER_HEIGHT_PX = 52
 
 /**
  * `--anchor-offset`: where a heading lands when it is scrolled to, and so
@@ -24,4 +24,4 @@ export const SHELL_HEADER_HEIGHT_PX = 40
  * for the scroll margin and near enough for the observer, whose job is to
  * decide which of several headings is nearest a band, not to resolve a pixel.
  */
-export const ANCHOR_OFFSET_PX = 56
+export const ANCHOR_OFFSET_PX = 68

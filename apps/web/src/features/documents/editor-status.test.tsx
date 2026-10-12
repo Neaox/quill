@@ -16,7 +16,14 @@ describe('describeEditorStatus', () => {
     ['a signed-out session', { autosave: 'signed_out', lock: 'held' }, 'signed out'],
     ['a lost lock', { autosave: 'saved', lock: 'lost' }, 'lock lost'],
     ['a blocked autosave', { autosave: 'blocked', lock: 'held' }, 'lock lost'],
-    ['a stale draft', { autosave: 'stale', lock: 'held' }, 'draft changed elsewhere'],
+    ['a stale draft', { autosave: 'conflict', lock: 'held' }, 'draft changed elsewhere'],
+    ['a refused save', { autosave: 'failed', lock: 'held' }, 'couldn’t save'],
+    [
+      'a browser gone offline',
+      { autosave: 'offline', lock: 'reconnecting' },
+      'offline — will retry',
+    ],
+    ['a save waiting to retry', { autosave: 'retrying', lock: 'held' }, 'not saved — retrying'],
     ['two missed heartbeats', { autosave: 'saved', lock: 'at_risk' }, 'connection lost'],
     ['one missed heartbeat', { autosave: 'saved', lock: 'reconnecting' }, 'reconnecting'],
     ['a lock still being taken', { autosave: 'idle', lock: 'acquiring' }, 'opening'],
@@ -38,8 +45,8 @@ describe('describeEditorStatus', () => {
   })
 
   it.each([
-    ['saving', 'saving'],
-    ['pending', 'unsaved changes'],
+    ['saving', 'saving…'],
+    ['dirty', 'unsaved changes'],
     ['idle', 'editing'],
   ] as const)('reports %s while the lock is held', (autosave, label) => {
     expect(describeEditorStatus({ autosave, lock: 'held', holderName: undefined }).label).toBe(
@@ -49,6 +56,28 @@ describe('describeEditorStatus', () => {
 })
 
 describe('EditorStatus', () => {
+  it('offers Retry beside a save that could not be made, and nowhere else', async () => {
+    let retried = 0
+    const { rerender } = render(
+      <EditorStatus
+        autosave="failed"
+        lock="held"
+        holderName={undefined}
+        onRetry={() => {
+          retried += 1
+        }}
+      />,
+    )
+
+    screen.getByRole('button', { name: 'Retry' }).click()
+    expect(retried).toBe(1)
+
+    rerender(
+      <EditorStatus autosave="saved" lock="held" holderName={undefined} onRetry={() => {}} />,
+    )
+    expect(screen.queryByRole('button', { name: 'Retry' })).not.toBeInTheDocument()
+  })
+
   it('announces itself politely, because it changes without anyone looking', () => {
     render(<EditorStatus autosave="saved" lock="held" holderName={undefined} />)
 

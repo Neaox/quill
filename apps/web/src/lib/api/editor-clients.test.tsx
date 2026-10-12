@@ -126,13 +126,48 @@ describe('useDraftClient', () => {
     expect(await client.current.save(TREE, 3)).toEqual({ status: 'session_expired' })
   })
 
-  it('rethrows anything the ADR does not describe', async () => {
+  /*
+   * Audit 2026-10-11, P0-1: these used to be thrown, and a thrown save froze
+   * autosave on "saving" for good. They are outcomes the editor plans for.
+   */
+  it.each([429, 502, 503, 504])('reports a %i as unavailable, to be retried', async (status) => {
+    const client = draftClient({
+      'GET /api/documents/{id}/draft': () => jsonResponse(200, DRAFT),
+      'PUT /api/documents/{id}/draft': () => {
+        const response = errorResponse(status, 'unavailable', 'Try again')
+        response.headers.set('retry-after', '5')
+        return response
+      },
+    })
+
+    expect(await client.current.save(TREE, 3)).toEqual({
+      status: 'unavailable',
+      retryAfterMs: 5000,
+    })
+  })
+
+  it('reports a request that never reached the server as unavailable', async () => {
+    const client = draftClient({
+      'GET /api/documents/{id}/draft': () => jsonResponse(200, DRAFT),
+      'PUT /api/documents/{id}/draft': () => {
+        throw new TypeError('Failed to fetch')
+      },
+    })
+    await client.current.load()
+
+    expect(await client.current.save(TREE, 3)).toEqual({
+      status: 'unavailable',
+      retryAfterMs: null,
+    })
+  })
+
+  it('reports any other refusal as rejected, with the server’s reason', async () => {
     const client = draftClient({
       'GET /api/documents/{id}/draft': () => jsonResponse(200, DRAFT),
       'PUT /api/documents/{id}/draft': () => errorResponse(500, 'internal_error', 'Boom'),
     })
 
-    await expect(client.current.save(TREE, 3)).rejects.toMatchObject({ status: 500 })
+    expect(await client.current.save(TREE, 3)).toEqual({ status: 'rejected', message: 'Boom' })
   })
 })
 

@@ -1,10 +1,9 @@
 import type { ReactNode } from 'react'
 
 import { BRAND } from '@quill/brand'
-import { tv } from '@quill/ui'
+import { LocalTime, tv } from '@quill/ui'
 
 import type { SharedLink } from '../../lib/api/index.ts'
-import { revisionDate } from '../../lib/documents/revision-labels.ts'
 
 /**
  * The frame around a document somebody was sent a link to
@@ -60,7 +59,7 @@ export function ShareChrome({ link, children }: ShareChromeProps) {
             'this link does not expire'
           ) : (
             <>
-              expires <time dateTime={link.expiresAt}>{revisionDate(link.expiresAt)}</time>
+              expires <LocalTime value={link.expiresAt} />
             </>
           )}
         </p>

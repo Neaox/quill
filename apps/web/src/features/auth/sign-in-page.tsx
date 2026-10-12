@@ -1,5 +1,5 @@
 import { getRouteApi, Link } from '@tanstack/react-router'
-import { useState, type FormEvent } from 'react'
+import type { FormEvent } from 'react'
 
 import { Button, Input, textLinkClassName } from '@quill/ui'
 
@@ -7,8 +7,17 @@ import { useSignIn } from '../../lib/api/index.ts'
 import { AuthCard } from './auth-card.tsx'
 import { SignInProviders } from './sign-in-providers.tsx'
 import { FormError } from '../../lib/forms/form-error.tsx'
+import { formValues } from '../../lib/forms/form-values.ts'
+import { schemaFromRules } from '../../lib/forms/standard-schema.ts'
+import { useFormValidation } from '../../lib/forms/use-form-validation.ts'
+import { emailRule, requiredRule } from '../../lib/forms/validation.ts'
 
 const routeApi = getRouteApi('/sign-in')
+
+const SIGN_IN_SCHEMA = schemaFromRules({
+  email: emailRule,
+  password: requiredRule('Enter your password.'),
+})
 
 /**
  * Email and password sign-in.
@@ -28,24 +37,34 @@ export function SignInPage() {
   const navigate = routeApi.useNavigate()
   const signIn = useSignIn()
 
-  const [email, setEmail] = useState('')
-  const [password, setPassword] = useState('')
+  const validation = useFormValidation(SIGN_IN_SCHEMA)
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
-    signIn.mutate(
-      { email, password },
-      {
-        onSuccess: () => {
-          void navigate({ to: redirect ?? '/' })
+    // Read now: by the time the answer is back the event no longer has a form.
+    const form = event.currentTarget
+    void validation.validate(formValues(form), form).then((values) => {
+      if (values === undefined) return
+      const { email = '', password = '' } = values
+      signIn.mutate(
+        // The address is what a person pasted, which may carry spaces.
+        { email: email.trim(), password },
+        {
+          onSuccess: () => {
+            void navigate({ to: redirect ?? '/' })
+          },
+          onError: (failure) => {
+            validation.adopt(failure, form)
+          },
         },
-      },
-    )
+      )
+    })
   }
 
   return (
     <AuthCard
       title="Sign in"
+      description="Welcome back. Sign in to reach your workspaces."
       footer={
         <>
           Don&apos;t have an account?{' '}
@@ -61,39 +80,40 @@ export function SignInPage() {
         </p>
       ) : undefined}
       <SignInProviders redirect={redirect} />
-      <form onSubmit={handleSubmit} className="flex flex-col gap-4" noValidate>
+      <form
+        onSubmit={handleSubmit}
+        onChange={validation.clearOnChange}
+        className="flex flex-col gap-5"
+        noValidate
+      >
         <Input
+          size="lg"
           label="Email"
           type="email"
           name="email"
           autoComplete="email"
           required
-          value={email}
-          onChange={(event) => {
-            setEmail(event.target.value)
-          }}
+          error={validation.errors['email']}
         />
         <Input
+          size="lg"
           label="Password"
           type="password"
           name="password"
           autoComplete="current-password"
           required
-          value={password}
-          onChange={(event) => {
-            setPassword(event.target.value)
-          }}
+          error={validation.errors['password']}
         />
-        <FormError error={signIn.error} />
-        <Button type="submit" loading={signIn.isPending} className="mt-1 w-full">
+        <FormError error={validation.formLevel(signIn.error)} />
+        <Button type="submit" size="lg" loading={signIn.isPending} className="mt-2 w-full">
           Sign in
         </Button>
       </form>
-      <div className="flex justify-between text-sm">
-        <Link to="/magic-link" className={textLinkClassName()}>
+      <div className="flex flex-wrap justify-between gap-x-4 gap-y-2 text-sm">
+        <Link to="/magic-link" className={textLinkClassName({ tone: 'quiet' })}>
           Email me a link
         </Link>
-        <Link to="/reset-password" className={textLinkClassName()}>
+        <Link to="/reset-password" className={textLinkClassName({ tone: 'quiet' })}>
           Forgot password?
         </Link>
       </div>

@@ -23,15 +23,21 @@
 import {
   BUILTIN_THEMES,
   BUILTIN_THEME_IDS,
+  OFFERED_THEME_IDS,
   type BuiltinThemeId,
+  type OfferedThemeId,
   type ThemeVariants,
 } from '@quill/theme'
 
 /** The attribute `tokens.css` scopes each generated palette to. */
 export const THEME_ID_ATTRIBUTE = 'data-theme-id'
 
-/** The built-in identities, in the order the theme editor offers them. */
-export const THEME_IDS: readonly BuiltinThemeId[] = BUILTIN_THEME_IDS
+/**
+ * The built-in identities, in the order the theme editor offers them. A
+ * superseded id (Press) is not offered, but `isThemeId` still recognises it and
+ * the stylesheet still paints its successor under it.
+ */
+export const THEME_IDS: readonly OfferedThemeId[] = OFFERED_THEME_IDS
 
 /**
  * Instrument. Its palette also applies when the attribute is absent, which is
@@ -41,10 +47,10 @@ export const THEME_IDS: readonly BuiltinThemeId[] = BUILTIN_THEME_IDS
 export const DEFAULT_THEME_ID: BuiltinThemeId = 'instrument'
 
 export function isThemeId(value: unknown): value is BuiltinThemeId {
-  return THEME_IDS.some((id) => id === value)
+  return BUILTIN_THEME_IDS.some((id) => id === value)
 }
 
-/** The identity's human name, for a control that offers the choice. */
+/** The identity's human name, for a control that offers the choice; a retired id names its successor. */
 export function themeIdName(id: BuiltinThemeId): string {
   return BUILTIN_THEMES[id].name
 }

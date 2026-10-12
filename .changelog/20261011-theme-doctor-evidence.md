@@ -1,0 +1,3 @@
+Added: The theme doctor shows what it checked, drawn in context in light and dark (text on its surface, a link, a button, a focus ring, panels on the page), shows each adjusted colour as set and as shipped, lists the findings by severity, and offers verified fixes for each warning that can be applied to the draft theme or dismissed.
+Added: A theme doctor warning that cannot be fixed without losing the brand colour can be accepted as is; the theme document records it (`acknowledged`) and the doctor reports it as accepted.
+Changed: Suggested fixes keep the brand's hue and never grey out a tinted colour, and the closest to what was set comes first. Accent and status washes have their own chroma budget (C 0.03 light, C 0.045 dark) rather than the panel's C 0.02.

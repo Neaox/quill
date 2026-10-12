@@ -26,6 +26,12 @@ export {
   type ConfirmPasswordResetInput,
 } from './auth.ts'
 export { useOidcProviders, oidcStartPath } from './oidc.ts'
+export {
+  personPreferencesQueryOptions,
+  usePersonPreferences,
+  useSavePersonPreferences,
+  type PersonPreferences,
+} from './preferences.ts'
 
 export {
   unitsQueryOptions,
@@ -84,12 +90,23 @@ export {
   useDocumentHistory,
   usePublishedContent,
   useRenderedDocument,
-  useRevisionDiff,
+  useComparison,
+  useSourceComparison,
+  DRAFT_SIDE,
   type CachedRenderedDocument,
-  type DiffRange,
+  type ComparisonRange,
 } from './content.ts'
 export {
+  TREE_PAGE_SIZE,
+  treeChildrenQueryOptions,
+  treeCollectionsQueryOptions,
+  useTreeCollections,
+  useTreePosition,
+  type TreeLevel,
+} from './tree.ts'
+export {
   usePublishDocument,
+  useRevertPreview,
   useRestoreRevision,
   type PublishInput,
   type PublishOutcome,
@@ -133,8 +150,12 @@ export {
 } from './share-reading.ts'
 export {
   organisationSettingsQueryOptions,
+  organisationThemeQueryOptions,
   secretsQueryOptions,
   workspaceSettingsQueryOptions,
+  useOrganisationLabels,
+  useOrganisationEmoji,
+  type OrganisationEmoji,
   useOrganisationSettings,
   useLoadedOrganisationSettings,
   useSaveOrganisationSettings,
@@ -153,6 +174,12 @@ export {
   type SetSecretInput,
   type SettingsIssue,
 } from './settings.ts'
+export {
+  publicMenuTargetsQueryOptions,
+  useCollectionCandidates,
+  usePublicMenuTargets,
+  type MenuTargetIds,
+} from './public-menu.ts'
 
 export type {
   CollectionDto,
@@ -164,9 +191,15 @@ export type {
   OidcProviderSummary,
   OrganisationSettings,
   OrganisationSettingsResponse,
+  OrganisationThemeSummary,
   SavedOrganisationSettings,
   ThemeSettings,
-  PublicNavigationLink,
+  PublicMenu,
+  PublicMenuItem,
+  PublicMenuGroup,
+  PublicMenuLink,
+  PublicMenuTarget,
+  CollectionCandidate,
   LayoutSettings,
   WorkspaceSettingsResponse,
   WorkspaceSettingsDocument,
@@ -184,7 +217,10 @@ export type {
   CreateDocumentResponse,
   CreateDraftDto,
   CreateDocumentWarning,
+  TreeChildDto,
+  TreeChildrenPage,
   TreeCollectionDto,
+  TreePosition,
   WorkspaceTreeResponse,
   OutlineEntry,
   RenderedDocument,
@@ -193,7 +229,11 @@ export type {
   HealthSignal,
   DocumentHistory,
   RevisionSummary,
-  RevisionDiff,
+  Comparison,
+  ComparisonChange,
+  ComparisonSection,
+  SourceComparison,
+  SourceLine,
   PublishedContent,
   PublishedResult,
   MergeRequired,

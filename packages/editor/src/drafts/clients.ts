@@ -51,22 +51,51 @@ export interface LockClient {
  * is behind — re-read and retry), 423 `lock_lost` (stop and recover), 401
  * `session_expired`. The two conflict cases are deliberately distinct: one is
  * recoverable in place, the other is not.
+ *
+ * Two more outcomes are failures of the request rather than answers from the
+ * draft (audit 2026-10-11, P0-1). `unavailable` is transient — the network
+ * dropped, or the server answered 429, 502, 503 or 504 — so the same edit is
+ * resent later, and the server may or may not have applied the one that was
+ * lost. `rejected` is the server refusing for good (any other status), which
+ * stops autosave until the author retries or edits again.
  */
 export type DraftSaveResult =
   | { readonly status: 'saved'; readonly draftVersion: number; readonly updatedAt: number }
   | { readonly status: 'stale_version'; readonly currentVersion: number }
   | { readonly status: 'lock_lost'; readonly holder: LockHolder | null }
   | { readonly status: 'session_expired' }
+  | { readonly status: 'unavailable'; readonly retryAfterMs: number | null }
+  | { readonly status: 'rejected'; readonly message: string }
+
+/** Somebody who wrote a draft, as the draft records them. */
+export interface DraftAuthor {
+  readonly userId: string
+  readonly displayName: string
+}
 
 /** A draft as read back from the server. */
 export interface LoadedDraft {
   readonly ast: DocumentAst
   readonly draftVersion: number
   readonly baseRevision: string | null
+  /** Who saved this version, where the draft says; a merge names them. */
+  readonly writtenBy?: DraftAuthor | undefined
+  /**
+   * Who last merged their offline changes into this draft, until the next
+   * ordinary save (ADR-021, amendment of 2026-10-11): the author whose draft
+   * it was is told on their next load.
+   */
+  readonly mergedBy?: DraftAuthor | undefined
+}
+
+/** What a save says about itself beyond its tree. */
+export interface DraftSaveNote {
+  /** The tree merges this author's offline changes into another draft. */
+  readonly merged: boolean
 }
 
 /** The draft endpoints of ADR-021, bound to one document. */
 export interface DraftClient {
   load(): Promise<LoadedDraft>
-  save(ast: DocumentAst, expectedVersion: number): Promise<DraftSaveResult>
+  save(ast: DocumentAst, expectedVersion: number, note?: DraftSaveNote): Promise<DraftSaveResult>
 }

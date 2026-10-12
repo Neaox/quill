@@ -1,0 +1,14 @@
+{
+  "collection": "Foundations",
+  "title": "Colour",
+  "type": "reference",
+  "owners": ["sofia@acme.example"],
+  "tags": ["colour", "tokens", "contrast", "foundations"],
+  "review": "6m",
+  "status": "published",
+  "notes": [
+    "First published: accent, neutral and status scales",
+    "Darkened accent-500 for 4.5:1 on white, added dark theme pairings and the border-contrast note"
+  ],
+  "frontMatter": {}
+}

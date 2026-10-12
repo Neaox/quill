@@ -19,6 +19,7 @@ interface RawDraftRow {
   draft_version: number
   base_revision: string | null
   ast: unknown
+  authorship: unknown
   updated_at: Date
 }
 
@@ -37,6 +38,7 @@ function toDraftRow(row: RawDraftRow): DraftRow {
     draftVersion: row.draft_version,
     baseRevision: row.base_revision as RevisionId | null,
     ast: row.ast,
+    authorship: row.authorship,
     updatedAt: row.updated_at,
   }
 }
@@ -58,6 +60,7 @@ function toDraftRowFrom(row: typeof drafts.$inferSelect): DraftRow {
     draftVersion: row.draftVersion,
     baseRevision: row.baseRevision as RevisionId | null,
     ast: row.ast,
+    authorship: row.authorship,
     updatedAt: row.updatedAt,
   }
 }
@@ -94,6 +97,7 @@ export function createDraftRepository(db: DrizzleClient, pool: pg.Pool): DraftRe
           set: {
             baseRevision,
             ast,
+            authorship: null,
             draftVersion: sql`${drafts.draftVersion} + 1`,
             updatedAt: now,
           },
@@ -118,6 +122,7 @@ export function createDraftRepository(db: DrizzleClient, pool: pg.Pool): DraftRe
         .update(drafts)
         .set({
           baseRevision,
+          authorship: null,
           updatedAt: now,
           ...(ast === undefined ? {} : { ast, draftVersion: sql`${drafts.draftVersion} + 1` }),
         })
@@ -127,7 +132,14 @@ export function createDraftRepository(db: DrizzleClient, pool: pg.Pool): DraftRe
       return row === undefined ? null : toDraftRowFrom(row)
     },
 
-    async write({ documentId, sessionId, expectedVersion, ast, now }): Promise<WriteDraftResult> {
+    async write({
+      documentId,
+      sessionId,
+      expectedVersion,
+      ast,
+      authorship,
+      now,
+    }): Promise<WriteDraftResult> {
       const client = await pool.connect()
       try {
         await client.query('BEGIN')
@@ -167,10 +179,16 @@ export function createDraftRepository(db: DrizzleClient, pool: pg.Pool): DraftRe
 
         const updated = await client.query<RawDraftRow>(
           `UPDATE drafts
-           SET ast = $2::jsonb, draft_version = draft_version + 1, updated_at = $3::timestamptz
+           SET ast = $2::jsonb, draft_version = draft_version + 1, updated_at = $3::timestamptz,
+               authorship = COALESCE($4::jsonb, authorship)
            WHERE document_id = $1
            RETURNING *`,
-          [documentId, JSON.stringify(ast), now],
+          [
+            documentId,
+            JSON.stringify(ast),
+            now,
+            authorship === undefined ? null : JSON.stringify(authorship),
+          ],
         )
         await client.query('COMMIT')
         return {

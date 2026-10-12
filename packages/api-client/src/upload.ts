@@ -45,3 +45,54 @@ export async function uploadAttachment(
     },
   })
 }
+
+export interface ReviseAttachmentOptions {
+  readonly attachmentId: string
+  /** The version the new bytes were made from; a newer one answers `409` (ADR-043). */
+  readonly expectedVersion: number
+  readonly file: Blob
+  readonly filename: string
+}
+
+/**
+ * A new revision of an attachment, under the same id and address (ADR-043):
+ * the same multipart field as an upload, with the version it replaces.
+ */
+export async function reviseAttachment(
+  client: ApiClient,
+  options: ReviseAttachmentOptions,
+): Promise<{ data?: Attachment; error?: unknown; response: Response }> {
+  return client.PUT('/api/attachments/{id}', {
+    params: {
+      path: { id: options.attachmentId },
+      query: { expectedVersion: options.expectedVersion },
+    },
+    body: { file: '' },
+    bodySerializer: () => {
+      const form = new FormData()
+      form.append('file', options.file, options.filename)
+      return form
+    },
+  })
+}
+
+export type EmojiImage = components['schemas']['EmojiImage']
+
+/**
+ * An organisation's emoji image (ADR-038), the same way: one file in a
+ * multipart field called `file`. The answer is the image's hash, which the
+ * settings screen saves under a name; the upload alone publishes nothing.
+ */
+export async function uploadEmojiImage(
+  client: ApiClient,
+  file: Blob,
+): Promise<{ data?: EmojiImage; error?: unknown; response: Response }> {
+  return client.POST('/api/settings/organisation/emoji-images', {
+    body: { file: '' },
+    bodySerializer: () => {
+      const form = new FormData()
+      form.append('file', file)
+      return form
+    },
+  })
+}

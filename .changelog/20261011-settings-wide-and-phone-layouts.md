@@ -1,0 +1,4 @@
+Changed: Settings screens sit in a centred column up to 92rem with the section list beside the body and held in view, so a wide window is used instead of leaving more than half of it empty; the theme editor's preview gets real room beside the levers and stays in view while they scroll.
+Added: On a phone or a narrow tablet the theme editor's preview is a sheet behind a bar at the bottom of the screen, one scheme at a time with a Light and Dark switch, and the bar carries the theme doctor's verdict and Save; the layout settings put Save on the same kind of bar.
+Fixed: The signed-in home page and organisation page are centred on wide windows rather than pinned to the left edge by the start-aligned reading layout.
+Fixed: The page bar no longer squeezes the organisation's name out on a phone, and the document bar no longer runs off the side of a 375-pixel screen.

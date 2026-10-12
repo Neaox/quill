@@ -1,0 +1,14 @@
+{
+  "collection": "Policies",
+  "title": "Information security policy",
+  "type": "policy",
+  "owners": ["aisha@acme.example"],
+  "tags": ["policy", "security", "soc2"],
+  "review": "1y",
+  "status": "published",
+  "notes": [
+    "Annual approval for 2026",
+    "Cut the Critical fix deadline to 7 days, required passkeys instead of SMS, and added mobile, egress and sub-processor rules after the penetration test"
+  ],
+  "frontMatter": {}
+}

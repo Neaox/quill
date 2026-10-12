@@ -84,7 +84,7 @@ describe('a workspace’s settings', () => {
     renderApp(PATH, routes())
 
     await screen.findByRole('heading', { level: 1, name: 'Acme settings' })
-    expect(screen.queryByLabelText('Accent hue')).not.toBeInTheDocument()
+    expect(screen.queryByRole('group', { name: 'Accent' })).not.toBeInTheDocument()
     expect(screen.queryByLabelText('Reading face')).not.toBeInTheDocument()
   })
 

@@ -17,7 +17,7 @@ export interface LabelledRevision {
   readonly revision: string
   /** `v12` when the whole history is known, otherwise the short hash. */
   readonly label: string
-  /** `YYYY-MM-DD`, for a `<time datetime>`. */
+  /** When it was published, as the ISO timestamp the server gave: said in the reader's language where it is shown. */
   readonly date: string
   readonly summary: string
   readonly changeNote: string | undefined
@@ -26,11 +26,6 @@ export interface LabelledRevision {
 
 export function shortRevision(revision: string): string {
   return revision.slice(0, SHORT_REVISION_LENGTH)
-}
-
-/** The date part of an ISO timestamp, which is what every readout shows. */
-export function revisionDate(timestamp: string): string {
-  return timestamp.slice(0, 10)
 }
 
 export interface LabelRevisionsOptions {
@@ -52,7 +47,7 @@ export function labelRevisions(
   return revisions.map((revision, index) => ({
     revision: revision.revision,
     label: options.complete ? `v${revisions.length - index}` : shortRevision(revision.revision),
-    date: revisionDate(revision.timestamp),
+    date: revision.timestamp,
     summary: revision.summary,
     changeNote: revision.changeNote,
     authorName: revision.author.name,

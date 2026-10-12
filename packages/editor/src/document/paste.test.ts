@@ -4,7 +4,7 @@ import { choosePaste } from './paste.ts'
 import type { PasteInput } from './paste.ts'
 
 function paste(input: Partial<PasteInput>): PasteInput {
-  return { text: '', html: '', inCode: false, hasSelection: false, ...input }
+  return { text: '', html: '', inCode: false, hasSelection: false, hasFiles: false, ...input }
 }
 
 describe('what the editor does with the clipboard', () => {
@@ -51,6 +51,10 @@ describe('what the editor does with the clipboard', () => {
 
   it('leaves a paste inside a code block alone, where text is only text', () => {
     expect(choosePaste(paste({ text: '## Not a heading', inCode: true })).kind).toBe('default')
+  })
+
+  it('leaves a copied file to the file handler, whatever text comes with it', () => {
+    expect(choosePaste(paste({ text: 'diagram.png', hasFiles: true })).kind).toBe('default')
   })
 
   it('has nothing to do with an empty clipboard', () => {

@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -21,7 +22,12 @@ import { fileURLToPath } from 'node:url'
  * the sake of forty lines of `readFile`. The direction is enforced by
  * `.dependency-cruiser.cjs`'s `server-does-not-import-ui` rule.
  *
- * What is *not* here is anything generated: colour comes from a theme document
+ * The public site's reader script is here too, already bundled: its
+ * sources import `@quill/highlight`, and the bundler is Rolldown, but both are
+ * development dependencies, used only to write `reader/reader.gen.js`. At run
+ * time this package still depends on nothing.
+ *
+ * What is *not* here is any generated colour: it comes from a theme document
  * through `@quill/theme` (ADR-028), and syntax token colours from
  * `@quill/highlight` (ADR-030). These files only ever name tokens.
  */
@@ -39,6 +45,16 @@ const HERE = path.dirname(fileURLToPath(import.meta.url))
 /** Where one of this package's stylesheets lives on disk. */
 export function styleSheetPath(name: string): string {
   return path.join(HERE, name)
+}
+
+/**
+ * The public site's reader script — code highlighting and the diagram
+ * lightbox — as one plain ES module (`reader/reader.gen.js`, bundled from
+ * `reader/reader.ts` by `reader/bundle.ts`). Read once, synchronously, by the
+ * composition root that serves it.
+ */
+export function readPublicReaderScript(): string {
+  return readFileSync(path.join(HERE, 'reader', 'reader.gen.js'), 'utf8')
 }
 
 /** The three stylesheets, concatenated in cascade order. */

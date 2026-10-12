@@ -1,9 +1,9 @@
-import { and, asc, eq, isNull } from 'drizzle-orm'
+import { and, asc, eq, inArray, isNull } from 'drizzle-orm'
 
 import type { AttachmentRepository, AttachmentRow } from '@quill/application'
 import type { DocumentId, UserId, WorkspaceId } from '@quill/domain'
 
-import { attachments } from '../db/schema.ts'
+import { attachmentRevisions, attachments } from '../db/schema.ts'
 import type { DrizzleClient } from '../db/types.ts'
 import { requireRow } from '../db/rows.ts'
 
@@ -17,6 +17,8 @@ function toAttachmentRow(row: typeof attachments.$inferSelect): AttachmentRow {
     contentType: row.contentType,
     size: row.size,
     sha256: row.sha256,
+    version: row.version,
+    searchText: row.searchText,
     createdAt: row.createdAt,
     deletedAt: row.deletedAt,
   }
@@ -37,6 +39,7 @@ export function createAttachmentRepository(db: DrizzleClient): AttachmentReposit
           contentType: input.contentType,
           size: input.size,
           sha256: input.sha256,
+          searchText: input.searchText ?? null,
           createdAt: input.now,
         })
         .returning()
@@ -58,6 +61,21 @@ export function createAttachmentRepository(db: DrizzleClient): AttachmentReposit
       return rows.map(toAttachmentRow)
     },
 
+    async listLiveInWorkspace(workspaceId, ids): Promise<readonly AttachmentRow[]> {
+      if (ids.length === 0) return []
+      const rows = await db
+        .select()
+        .from(attachments)
+        .where(
+          and(
+            inArray(attachments.id, [...ids]),
+            eq(attachments.workspaceId, workspaceId),
+            isNull(attachments.deletedAt),
+          ),
+        )
+      return rows.map(toAttachmentRow)
+    },
+
     async softDelete(id, now): Promise<void> {
       // Guarded on `deleted_at IS NULL` so a second removal keeps the first
       // one's timestamp: when it went is a fact, and re-stamping it would make
@@ -66,6 +84,45 @@ export function createAttachmentRepository(db: DrizzleClient): AttachmentReposit
         .update(attachments)
         .set({ deletedAt: now })
         .where(and(eq(attachments.id, id), isNull(attachments.deletedAt)))
+    },
+
+    async revise(input): Promise<AttachmentRow | null> {
+      // The update is the compare-and-set: guarded on the version the writer
+      // edited, so of two saves racing from the same version exactly one
+      // matches, and the other writes nothing. The state it replaces is read
+      // first and kept only once the update has won.
+      const live = and(
+        eq(attachments.id, input.id),
+        eq(attachments.version, input.expectedVersion),
+        isNull(attachments.deletedAt),
+      )
+      const [previous] = await db.select().from(attachments).where(live).limit(1)
+      if (previous === undefined) return null
+      const [revised] = await db
+        .update(attachments)
+        .set({
+          contentType: input.contentType,
+          size: input.size,
+          sha256: input.sha256,
+          searchText: input.searchText,
+          version: input.expectedVersion + 1,
+          revisedBy: input.revisedBy,
+          revisedAt: input.now,
+        })
+        .where(live)
+        .returning()
+      if (revised === undefined) return null
+      await db.insert(attachmentRevisions).values({
+        attachmentId: previous.id,
+        version: previous.version,
+        contentType: previous.contentType,
+        size: previous.size,
+        sha256: previous.sha256,
+        savedBy: previous.revisedBy ?? previous.uploadedBy,
+        savedAt: previous.revisedAt ?? previous.createdAt,
+        replacedAt: input.now,
+      })
+      return toAttachmentRow(revised)
     },
   }
 }

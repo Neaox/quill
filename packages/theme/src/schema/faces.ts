@@ -50,7 +50,7 @@ export const CURATED_FACES = {
   inter: {
     id: 'inter',
     family: 'Inter Variable',
-    roles: ['interface', 'display'],
+    roles: ['interface', 'reading', 'display'],
     fallbacks: SANS_FALLBACKS,
     licence: OFL,
   },
@@ -103,6 +103,13 @@ export const CURATED_FACES = {
     fallbacks: SANS_FALLBACKS,
     licence: OFL,
   },
+  figtree: {
+    id: 'figtree',
+    family: 'Figtree Variable',
+    roles: ['interface', 'reading', 'display'],
+    fallbacks: SANS_FALLBACKS,
+    licence: OFL,
+  },
   'instrument-serif': {
     id: 'instrument-serif',
     family: 'Instrument Serif',
@@ -124,6 +131,7 @@ export const CURATED_FACE_IDS = [
   'newsreader',
   'instrument-sans',
   'instrument-serif',
+  'figtree',
 ] as const satisfies readonly CuratedFaceId[]
 
 /** Total by construction: the schema only admits an id this record declares. */

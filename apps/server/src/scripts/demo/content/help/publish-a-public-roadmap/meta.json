@@ -1,0 +1,11 @@
+{
+  "collection": "Roadmaps",
+  "title": "Publish a public roadmap",
+  "type": "guide",
+  "owners": ["tom@acme.example", "priya@acme.example"],
+  "tags": ["roadmap", "public", "tidepool"],
+  "review": "180d",
+  "status": "published",
+  "notes": ["First version", "Added how to use a custom domain (Business and Enterprise)"],
+  "frontMatter": {}
+}

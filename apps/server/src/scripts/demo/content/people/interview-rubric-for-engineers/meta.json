@@ -1,0 +1,14 @@
+{
+  "collection": "Hiring",
+  "title": "Interview rubric for engineers",
+  "type": "guide",
+  "owners": ["dana@acme.example"],
+  "tags": ["hiring", "engineering", "interviews"],
+  "review": "6m",
+  "status": "published",
+  "notes": [
+    "First published rubric, four competencies",
+    "Added a communication competency, the four-hour feedback rule, an outside interviewer for E5 and above, and the calibration section"
+  ],
+  "frontMatter": {}
+}

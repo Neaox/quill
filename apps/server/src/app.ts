@@ -6,6 +6,7 @@ import type { ServerConfig, TrustProxyConfig } from './config.ts'
 import type { AppDependencies } from './dependencies.ts'
 import { serialiseRequest } from './plugins/logging.ts'
 import { attachmentRoutes } from './routes/attachments.ts'
+import { emojiRoutes } from './routes/emoji.ts'
 import { authRoutes } from './routes/auth.ts'
 import { oidcAuthRoutes } from './routes/auth-oidc.ts'
 import { collectionRoutes } from './routes/collections.ts'
@@ -15,9 +16,12 @@ import { healthRoutes } from './routes/health.ts'
 import { lockRoutes } from './routes/locks.ts'
 import { meRoutes } from './routes/me.ts'
 import { publicSiteRoutes } from './routes/public-site.ts'
+import { publicMenuRoutes } from './routes/public-menu.ts'
+import { readerPreviewRoutes } from './routes/reader-preview.ts'
 import { searchRoutes } from './routes/search.ts'
 import { shareLinkRoutes, SHARE_SCHEMAS } from './routes/share-links.ts'
 import { settingsRoutes } from './routes/settings.ts'
+import { themeRoutes } from './routes/theme.ts'
 import { unitRoutes } from './routes/units.ts'
 import { workspaceRoutes } from './routes/workspaces.ts'
 import { registerCsrfProtection } from './plugins/csrf.ts'
@@ -26,6 +30,8 @@ import { registerOpenApi } from './plugins/openapi.ts'
 import { registerRateLimiting } from './plugins/rate-limit.ts'
 import { createRequestIdGenerator, registerRequestIdHeader } from './plugins/request-id.ts'
 import { registerSecurityHeaders } from './plugins/security-headers.ts'
+import { drawioFrameSources } from './extensions/drawio/drawio-config.ts'
+import { drawioRoutes } from './extensions/drawio/drawio-routes.ts'
 import { registerSessionSupport } from './plugins/session.ts'
 import { SHARED_SCHEMAS } from './routes/document-schemas.ts'
 
@@ -102,7 +108,11 @@ export function buildApp(options: AppOptions = {}): FastifyInstance {
 
     // Headers first: every response, including a 404 or a validation
     // failure, leaves with the same policy on it (ADR-011).
-    registerSecurityHeaders(app, { https: deps.config.https, serveApiDocs })
+    registerSecurityHeaders(app, {
+      https: deps.config.https,
+      serveApiDocs,
+      frameSources: drawioFrameSources(deps.config.drawio),
+    })
 
     // Registered before any route: `@fastify/swagger` documents the routes of
     // the context it is registered in, and only those registered after it.
@@ -154,12 +164,17 @@ export function buildApp(options: AppOptions = {}): FastifyInstance {
     app.register(collectionRoutes(deps))
     app.register(documentRoutes(deps))
     app.register(attachmentRoutes(deps))
+    app.register(drawioRoutes(deps))
     app.register(draftRoutes(deps))
     app.register(lockRoutes(deps))
     app.register(searchRoutes(deps))
     app.register(shareLinkRoutes(deps))
     app.register(settingsRoutes(deps))
+    app.register(publicMenuRoutes(deps))
+    app.register(themeRoutes(deps))
+    app.register(emojiRoutes(deps))
     app.register(publicSiteRoutes(deps))
+    app.register(readerPreviewRoutes(deps))
   }
 
   return app

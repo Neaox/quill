@@ -4,6 +4,7 @@ import { expect, test } from '@playwright/test'
 
 import { setFakeIdentity, uniqueFakeIdentity } from './support/oidc.ts'
 import { uniqueEmail } from './support/fixtures.ts'
+import { accountMenu, signOut } from './support/account.ts'
 
 /**
  * Single sign-on, through a real browser, against the in-process fake
@@ -64,7 +65,7 @@ test.describe('single sign-on', () => {
     // browser-visible effect of "the provider signs the person in" is
     // landing back here, signed in.
     await expect(page).toHaveURL('/')
-    await expect(page.getByText(identity.name)).toBeVisible()
+    await expect(accountMenu(page, identity.name)).toBeVisible()
 
     const me = await page.request.get('/api/me')
     expect(await me.json()).toMatchObject({
@@ -75,7 +76,7 @@ test.describe('single sign-on', () => {
 
     // The session survives a reload rather than only the redirect's own state.
     await page.reload()
-    await expect(page.getByText(identity.name)).toBeVisible()
+    await expect(accountMenu(page, identity.name)).toBeVisible()
   })
 
   test('a second sign-in matches the same person by subject, not by the email they now use', async ({
@@ -92,7 +93,7 @@ test.describe('single sign-on', () => {
     await expect(page).toHaveURL('/')
     expect(await (await page.request.get('/api/me')).json()).toMatchObject({ email: firstEmail })
 
-    await page.getByRole('button', { name: 'Sign out' }).click()
+    await signOut(page)
     await expect(page.getByRole('heading', { level: 1, name: 'Sign in' })).toBeVisible()
 
     // The same person, the provider now says, but at a different address —

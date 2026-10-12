@@ -1,4 +1,5 @@
 import { Node as PMNode } from 'prosemirror-model'
+import type { Schema } from 'prosemirror-model'
 
 import { isLayoutDirectiveName } from '../directives/layout.ts'
 import { schema } from './schema.ts'
@@ -58,13 +59,36 @@ function liftableChildren(node: NodeJson): readonly NodeJson[] | undefined {
   return liftable ? children : undefined
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null
+}
+
+/**
+ * A block's `sourceForm` with `wrapper` set to the form of the wrapper it was
+ * lifted out of, or taken off when `wrapper` is undefined: the wrapper is gone
+ * in the editor, so its first block keeps how it was written for the save.
+ */
+function withWrapperForm(child: NodeJson, wrapper: unknown): unknown {
+  const form = attrsOf(child)['sourceForm']
+  const { wrapper: _previous, ...own } = isRecord(form) ? form : {}
+  const next = isRecord(wrapper) ? { ...own, wrapper } : own
+  return Object.keys(next).length === 0 ? null : next
+}
+
 function liftChildren(nodes: readonly NodeJson[]): NodeJson[] {
   return nodes.flatMap((node) => {
     const lifted = { ...node, content: liftChildren(contentOf(node)) }
     const children = liftableChildren(lifted)
     if (children === undefined) return [node.content === undefined ? node : lifted]
-    const width = attrsOf(lifted)['name']
-    return children.map((child) => ({ ...child, attrs: { ...attrsOf(child), layout: width } }))
+    const { name: width, sourceForm } = attrsOf(lifted)
+    return children.map((child, index) => ({
+      ...child,
+      attrs: {
+        ...attrsOf(child),
+        layout: width,
+        sourceForm: withWrapperForm(child, index === 0 ? sourceForm : undefined),
+      },
+    }))
   })
 }
 
@@ -80,34 +104,53 @@ function wrapChildren(nodes: readonly NodeJson[]): NodeJson[] {
       out.push(lowered)
       continue
     }
-    const stripped = { ...lowered, attrs: { ...attrsOf(lowered), layout: null } }
+    const stripped = {
+      ...lowered,
+      attrs: { ...attrsOf(lowered), layout: null, sourceForm: withWrapperForm(lowered, undefined) },
+    }
     if (open !== undefined && open.width === width) {
       open.content.push(stripped)
       continue
     }
     open = { width, content: [stripped] }
+    const form = attrsOf(lowered)['sourceForm']
     out.push({
       type: 'containerDirective',
-      attrs: { name: width, attributes: {}, layout: null },
+      attrs: {
+        name: width,
+        attributes: {},
+        layout: null,
+        sourceForm: isRecord(form) && isRecord(form['wrapper']) ? form['wrapper'] : null,
+      },
       content: open.content,
     })
   }
   return out
 }
 
-function rebuild(doc: PMNode, transform: (nodes: readonly NodeJson[]) => NodeJson[]): PMNode {
+/**
+ * The document rebuilt through `transform`, in `target`. A caller whose
+ * schema is equal to this package's but not the same instance — a live
+ * editor's — names it, so the one JSON round trip the lift needs anyway is
+ * also the hop between the two schemas, rather than a second one after it.
+ */
+function rebuild(
+  doc: PMNode,
+  transform: (nodes: readonly NodeJson[]) => NodeJson[],
+  target: Schema,
+): PMNode {
   const json: NodeJson = doc.toJSON()
-  const next = PMNode.fromJSON(schema, { ...json, content: transform(contentOf(json)) })
+  const next = PMNode.fromJSON(target, { ...json, content: transform(contentOf(json)) })
   next.check()
   return next
 }
 
 /** Turns `:::wide` wrappers into a `layout` attribute on the blocks they held. */
-export function liftLayout(doc: PMNode): PMNode {
-  return rebuild(doc, liftChildren)
+export function liftLayout(doc: PMNode, target: Schema = schema): PMNode {
+  return rebuild(doc, liftChildren, target)
 }
 
 /** Turns `layout` attributes back into the fewest `:::wide` wrappers that express them. */
-export function wrapLayout(doc: PMNode): PMNode {
-  return rebuild(doc, wrapChildren)
+export function wrapLayout(doc: PMNode, target: Schema = schema): PMNode {
+  return rebuild(doc, wrapChildren, target)
 }

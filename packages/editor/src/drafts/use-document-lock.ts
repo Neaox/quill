@@ -1,7 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import type { BackoffPolicy } from './backoff.ts'
+import { backoffDelay } from './backoff.ts'
 import type { Clock } from './clock.ts'
 import { systemClock } from './clock.ts'
 import type { LockClient } from './clients.ts'
+import type { Connectivity } from './connectivity.ts'
+import { browserConnectivity } from './connectivity.ts'
 import type { LockEvent, LockState, LockStatus } from './lock-machine.ts'
 import { initialLockState, lockReducer } from './lock-machine.ts'
 
@@ -11,29 +15,55 @@ export const HEARTBEAT_INTERVAL_MS = 15_000
 /**
  * R5 section 4: a heartbeat that failed to complete is retried immediately rather
  * than at the next scheduled tick, so the blind-editing window is one round trip
- * rather than a whole interval.
+ * rather than a whole interval. Every retry after that backs off with jitter, to
+ * a cap well inside the 60 second expiry so a lapse still gets several attempts:
+ * a retry with no delay at all sent 296 requests from one tab in a 40 second
+ * outage (audit 2026-10-11, P0-4).
  */
-export const HEARTBEAT_RETRY_DELAY_MS = 0
+export const HEARTBEAT_RETRY_BACKOFF: Pick<BackoffPolicy, 'baseMs' | 'capMs'> = {
+  baseMs: 1000,
+  capMs: 10_000,
+}
 
 export interface UseDocumentLockOptions {
   readonly client: LockClient
   readonly clock?: Clock
   /** ADR-021: 15 seconds. */
   readonly heartbeatIntervalMs?: number
-  /** A failed heartbeat is retried immediately rather than at the next tick (R5 section 4). */
-  readonly retryDelayMs?: number
+  /** After the immediate first retry (R5 section 4), how later retries back off. */
+  readonly retryBackoff?: Pick<BackoffPolicy, 'baseMs' | 'capMs'>
+  /** `Math.random` unless a test pins the jitter. Read once, on mount. */
+  readonly random?: () => number
+  /** Retries pause while offline or hidden, and go at once when that ends. */
+  readonly connectivity?: Connectivity
   /** Set false for a reader: no heartbeats are scheduled and no lock is kept alive. */
   readonly enabled?: boolean
 }
 
 export interface DocumentLock extends LockState {
-  acquire(): Promise<void>
-  takeover(): Promise<void>
+  /**
+   * Asks for the lock, and says where that left it: `held` when it is the author's, and
+   * otherwise why not (`held_by_other`, or `acquiring` while the server could not be reached),
+   * so that whoever pressed the button can tell the author whether it worked.
+   */
+  acquire(): Promise<LockStatus>
+  /**
+   * Asks for the lock once more, quietly: what the author sees does not
+   * change until the answer does, and a failed request is simply not an
+   * answer. For waiting while somebody else edits (ADR-021, amendment of
+   * 2026-10-11), where the next ask is never far off.
+   */
+  reacquire(): Promise<void>
+  /** Takes the lock from whoever holds it (managers only), and says where that left it. */
+  takeover(): Promise<LockStatus>
   release(): Promise<void>
 }
 
 /** The statuses in which we still believe we have something worth heartbeating. */
 const BEATING_STATUSES: ReadonlySet<LockStatus> = new Set(['held', 'reconnecting', 'at_risk'])
+
+/** The statuses in which the last heartbeat failed and the next one is a retry. */
+const RETRYING_STATUSES: ReadonlySet<LockStatus> = new Set(['reconnecting', 'at_risk'])
 
 /** The one scheduled heartbeat, shared between the effect and the dispatcher. */
 interface HeartbeatTimer {
@@ -49,7 +79,12 @@ export function useDocumentLock(options: UseDocumentLockOptions): DocumentLock {
   const { client } = options
   const clock = options.clock ?? systemClock
   const heartbeatIntervalMs = options.heartbeatIntervalMs ?? HEARTBEAT_INTERVAL_MS
-  const retryDelayMs = options.retryDelayMs ?? HEARTBEAT_RETRY_DELAY_MS
+  // Primitives, so a caller passing a fresh object each render does not
+  // restart the loop (and release the lock) every time it renders.
+  const { baseMs, capMs } = options.retryBackoff ?? HEARTBEAT_RETRY_BACKOFF
+  // Read once, for the same reason.
+  const [random] = useState(() => options.random ?? Math.random)
+  const connectivity = options.connectivity ?? browserConnectivity
   const enabled = options.enabled ?? true
 
   const [state, setState] = useState<LockState>(initialLockState)
@@ -81,17 +116,27 @@ export function useDocumentLock(options: UseDocumentLockOptions): DocumentLock {
   )
 
   // Owns the heartbeat timer against the LockClient: schedules retries with
-  // `clock.setTimeout` and calls `client.heartbeat()` over the network, the one
-  // external system this hook synchronises with.
+  // `clock.setTimeout`, calls `client.heartbeat()` over the network, and listens
+  // to the browser's online and visibility events — the external systems this
+  // hook synchronises with.
   useEffect(() => {
     mountedRef.current = true
     const timer = timerRef.current
     let cancelled = false
+    let inFlight = false
+
+    const clearTimer = () => {
+      if (timer.handle === undefined) return
+      clock.clearTimeout(timer.handle)
+      timer.handle = undefined
+    }
 
     const beat = () => {
       timer.handle = undefined
+      inFlight = true
       client.heartbeat().then(
         (result) => {
+          inFlight = false
           if (cancelled) return
           apply({ type: 'heartbeat-result', result })
           // Only a heartbeat that actually succeeded keeps the loop going; every
@@ -99,9 +144,10 @@ export function useDocumentLock(options: UseDocumentLockOptions): DocumentLock {
           if (result.status === 'alive') schedule(heartbeatIntervalMs)
         },
         () => {
+          inFlight = false
           if (cancelled) return
           apply({ type: 'heartbeat-failed' })
-          schedule(retryDelayMs)
+          scheduleRetry()
         },
       )
     }
@@ -111,32 +157,88 @@ export function useDocumentLock(options: UseDocumentLockOptions): DocumentLock {
       timer.handle = clock.setTimeout(beat, delayMs)
     }
 
+    const canReachServer = () => connectivity.isOnline() && connectivity.isVisible()
+
+    /**
+     * Immediately after the first miss, then backing off. Offline or hidden,
+     * nothing is scheduled at all: the listener below resumes the loop. A
+     * healthy lock keeps its 15 second cadence while hidden, because pausing
+     * that would let the lock lapse whenever the author switched tabs.
+     */
+    function scheduleRetry(): void {
+      if (!canReachServer()) return
+      const misses = stateRef.current.missedHeartbeats
+      schedule(misses <= 1 ? 0 : backoffDelay(misses - 1, { baseMs, capMs, random }))
+    }
+
+    const unsubscribe = connectivity.subscribe(() => {
+      if (cancelled || !RETRYING_STATUSES.has(stateRef.current.status)) return
+      clearTimer()
+      if (canReachServer() && !inFlight) beat()
+    })
+
     startHeartbeatRef.current = enabled ? () => schedule(heartbeatIntervalMs) : null
 
     return () => {
       mountedRef.current = false
       cancelled = true
       startHeartbeatRef.current = null
-      if (timer.handle !== undefined) {
-        clock.clearTimeout(timer.handle)
-        timer.handle = undefined
-      }
+      unsubscribe()
+      clearTimer()
       // Leaving with the lock still held would block the document for up to 60s.
       if (stateRef.current.lock !== null) void client.release()
     }
-  }, [apply, clock, client, enabled, heartbeatIntervalMs, retryDelayMs])
+  }, [apply, baseMs, capMs, clock, client, connectivity, enabled, heartbeatIntervalMs, random])
 
-  const acquire = async (): Promise<void> => {
+  /**
+   * One attempt at the lock. A request that failed (the server restarting as
+   * the editor opens) is retried with the heartbeat's backoff rather than
+   * rejected: a rejection left the lock "opening" for good, and autosave with
+   * it, while the author typed into a buffer that was never sent.
+   */
+  const attemptAcquire = async (attempt: number): Promise<LockStatus> => {
+    let result
+    try {
+      result = await client.acquire()
+    } catch {
+      if (!mountedRef.current || stateRef.current.status !== 'acquiring') {
+        return stateRef.current.status
+      }
+      timerRef.current.handle = clock.setTimeout(
+        () => {
+          timerRef.current.handle = undefined
+          void attemptAcquire(attempt + 1)
+        },
+        backoffDelay(attempt, { baseMs, capMs, random }),
+      )
+      return stateRef.current.status
+    }
+    apply({ type: 'acquire-result', result })
+    startHeartbeatRef.current?.()
+    return stateRef.current.status
+  }
+
+  const acquire = async (): Promise<LockStatus> => {
     apply({ type: 'acquire-started' })
-    const result = await client.acquire()
+    return await attemptAcquire(1)
+  }
+
+  const reacquire = async (): Promise<void> => {
+    let result
+    try {
+      result = await client.acquire()
+    } catch {
+      return
+    }
     apply({ type: 'acquire-result', result })
     startHeartbeatRef.current?.()
   }
 
-  const takeover = async (): Promise<void> => {
+  const takeover = async (): Promise<LockStatus> => {
     const result = await client.takeover()
     apply({ type: 'takeover-result', result })
     startHeartbeatRef.current?.()
+    return stateRef.current.status
   }
 
   const release = async (): Promise<void> => {
@@ -144,5 +246,5 @@ export function useDocumentLock(options: UseDocumentLockOptions): DocumentLock {
     apply({ type: 'released' })
   }
 
-  return { ...state, acquire, takeover, release }
+  return { ...state, acquire, reacquire, takeover, release }
 }

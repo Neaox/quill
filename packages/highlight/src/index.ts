@@ -3,7 +3,19 @@
  * server or in a worker (ADR-030). Client-only presentation lives in the
  * package's `client` entry point.
  */
-export { SUPPORTED_LANGUAGES, resolveLanguage, type SupportedLanguage } from './grammars.ts'
+export {
+  CODE_LANGUAGES,
+  LANGUAGE_CATEGORIES,
+  SUPPORTED_LANGUAGES,
+  languageForFile,
+  languageLabel,
+  resolveCodeLanguage,
+  resolveLanguage,
+  type CodeLanguage,
+  type LanguageCategory,
+  type RegisteredLanguage,
+  type SupportedLanguage,
+} from './languages.ts'
 export {
   TOKEN_CLASSES,
   TOKEN_CLASS_ALIASES,
@@ -27,6 +39,7 @@ export {
   grammarTokenGroups,
   tokenCssContract,
   tokenGroupKey,
+  tokenStylesheet,
   unthemedTokenGroups,
   type TokenCssContract,
 } from './css-contract.ts'

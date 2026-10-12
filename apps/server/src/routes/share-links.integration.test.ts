@@ -376,6 +376,7 @@ describe('reading through a share link', () => {
 
     expect(response.statusCode).toBe(200)
     expect(response.headers['x-robots-tag']).toBe('noindex, nofollow')
+    expect(response.headers['referrer-policy']).toBe('no-referrer')
     const body = response.json()
     expect(Object.keys(body).toSorted()).toEqual(['children', 'document', 'link', 'rendered'])
     expect(body.document.title).toBe('Authentication architecture')
@@ -413,6 +414,7 @@ describe('reading through a share link', () => {
 
     expect(response.statusCode).toBe(200)
     expect(response.headers['x-robots-tag']).toBe('noindex, nofollow')
+    expect(response.headers['referrer-policy']).toBe('no-referrer')
     const etag = response.headers['etag']
     expect(typeof etag).toBe('string')
     expect(response.json().document.title).toBe('Token rotation')

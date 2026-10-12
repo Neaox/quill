@@ -1,6 +1,6 @@
 import { useState } from 'react'
 
-import { Badge, Button, Callout, DataTable, Dialog, Input, Spinner } from '@quill/ui'
+import { Badge, Button, Callout, DataTable, Dialog, Input, LocalTime, Spinner } from '@quill/ui'
 
 import {
   useDeleteSecret,
@@ -202,15 +202,7 @@ function SecretRow({ secret, onReplace, onDelete }: SecretRowProps) {
 /** A date as a `time` element, or an em dash when the thing never happened. */
 function SecretDate({ value }: { readonly value: string | null }) {
   if (value === null) return <span className="text-muted">—</span>
-  return (
-    <time dateTime={value}>
-      {new Date(value).toLocaleDateString(undefined, {
-        year: 'numeric',
-        month: 'short',
-        day: 'numeric',
-      })}
-    </time>
-  )
+  return <LocalTime value={value} />
 }
 
 interface SecretDialogProps {

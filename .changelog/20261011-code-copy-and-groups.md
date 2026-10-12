@@ -1,0 +1,5 @@
+Added: Every code block has a copy button, on the reader, the public site, presentation mode and in the editor; it copies just the selection when one is made inside the block, says "Copied", and selects the code with a keyboard hint when the browser refuses the clipboard (ADR-041).
+Added: Code groups: VitePress's `:::code-group` (and `::: code-group`) and Fumadocs' consecutive `tab="…"` fences show as tabs, synced by tab name across the page (or by `sync=`) and remembered per reader; without script every panel is shown under its name (ADR-041).
+Added: A fence's `title="file.ts"` shows as the code card's filename caption.
+Added: The editor shows a code group as tabs that can be added, renamed in place, removed and reordered by drag or keyboard, each one undoable; "Code group" is in the slash menu, and each code block's language field now searches as you type.
+Added: Converters from MkDocs `===` tabs, GitBook `{% tabs %}`, and Docusaurus, Starlight and Mintlify tab components into code groups, ready for the importer.

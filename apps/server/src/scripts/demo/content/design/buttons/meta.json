@@ -1,0 +1,14 @@
+{
+  "collection": "Components",
+  "title": "Buttons",
+  "type": "reference",
+  "owners": ["sofia@acme.example"],
+  "tags": ["components", "buttons", "react"],
+  "review": "6m",
+  "status": "published",
+  "notes": [
+    "First published with primary, secondary and ghost",
+    "Added the danger variant, the loading state and the React Native example"
+  ],
+  "frontMatter": {}
+}

@@ -1,0 +1,4 @@
+Added: A person menu in the signed-in bar shows who is signed in, holds the colour scheme (System, Light, Dark) at every width including phones, gives instance administrators links to Organisation settings, Theme, Layout, Secrets and sign-in, and Units and workspaces, and carries Sign out.
+Added: The command palette (Ctrl+K or Cmd+K) lists places to go before anything is typed and matches them as you type: Home, each workspace, Sign out, and, for instance administrators, every organisation setting.
+Changed: The signed-in home is a dashboard: a greeting, a search that also jumps anywhere, an administrator's set-up checklist that can be hidden and leaves once it is complete, drafts to continue, workspaces as cards with document and draft counts, and recent published changes with relative dates.
+Changed: The colour-scheme switch has moved from the top bar into the person menu.

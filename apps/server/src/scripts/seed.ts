@@ -6,7 +6,7 @@ import {
   publishDocument,
   renderDocument,
 } from '@quill/application'
-import type { CollectionId, DocumentId, UserId, WorkspaceId } from '@quill/domain'
+import type { CollectionId, DocumentId, Role, UserId, WorkspaceId } from '@quill/domain'
 import type { UnitId } from '@quill/application'
 import { parseDocument } from '@quill/markdown'
 
@@ -18,7 +18,10 @@ import {
   SECOND_WORKSPACE_COLLECTIONS,
   SECOND_WORKSPACE_DOCUMENTS,
 } from './seed-documents.ts'
+import { ADMIN_EMAIL, ADMIN_PASSWORD, WRITER_EMAIL, WRITER_PASSWORD } from './seed-accounts.ts'
 import type { SeedDocument } from './seed-documents.ts'
+
+export { ADMIN_EMAIL, ADMIN_PASSWORD, WRITER_EMAIL, WRITER_PASSWORD }
 
 /**
  * A local instance with something real in it.
@@ -29,13 +32,7 @@ import type { SeedDocument } from './seed-documents.ts'
  * doing the same work. Running it twice changes nothing.
  */
 
-export const ADMIN_EMAIL = 'admin@example.com'
-export const ADMIN_PASSWORD = 'admin-password-change-me'
 const ADMIN_NAME = 'Instance administrator'
-
-/** A second account, an editor rather than an instance admin (ADR-012). */
-export const WRITER_EMAIL = 'writer@example.com'
-export const WRITER_PASSWORD = 'writer-password-change-me'
 const WRITER_NAME = 'Ada Writer'
 
 /** The seed holds no editor session; this names it in the one place a publish asks (ADR-021). */
@@ -80,7 +77,7 @@ export async function seedDevelopmentData(deps: AppDependencies): Promise<SeedRe
     slug: WORKSPACE_SLUG,
     unitId: acme,
   })
-  await ensureEditorGrant(deps, { admin, userId: writer, workspaceId: workspace })
+  await ensureGrant(deps, { admin, userId: writer, workspaceId: workspace, role: 'editor' })
 
   const platform = await ensureUnit(deps, {
     name: SECOND_UNIT_NAME,
@@ -118,14 +115,14 @@ export async function seedDevelopmentData(deps: AppDependencies): Promise<SeedRe
   }
 }
 
-interface EnsureUserInput {
+export interface EnsureUserInput {
   readonly email: string
   readonly password: string
   readonly displayName: string
   readonly isInstanceAdmin: boolean
 }
 
-async function ensureUser(deps: AppDependencies, input: EnsureUserInput): Promise<UserId> {
+export async function ensureUser(deps: AppDependencies, input: EnsureUserInput): Promise<UserId> {
   const existing = await deps.uow.repos.users.findByEmail(input.email)
   const now = deps.clock.now()
   const user =
@@ -147,13 +144,13 @@ async function ensureUser(deps: AppDependencies, input: EnsureUserInput): Promis
   return user.id
 }
 
-interface EnsureUnitInput {
+export interface EnsureUnitInput {
   readonly name: string
   readonly label: string
   readonly parentId: UnitId | null
 }
 
-async function ensureUnit(deps: AppDependencies, input: EnsureUnitInput): Promise<UnitId> {
+export async function ensureUnit(deps: AppDependencies, input: EnsureUnitInput): Promise<UnitId> {
   const siblings = await deps.uow.repos.units.listChildren(input.parentId)
   const existing = siblings.find((candidate) => candidate.name === input.name)
   if (existing !== undefined) return existing.id
@@ -169,13 +166,13 @@ async function ensureUnit(deps: AppDependencies, input: EnsureUnitInput): Promis
   return unit.id
 }
 
-interface EnsureWorkspaceInput {
+export interface EnsureWorkspaceInput {
   readonly name: string
   readonly slug: string
   readonly unitId: UnitId
 }
 
-async function ensureWorkspace(
+export async function ensureWorkspace(
   deps: AppDependencies,
   input: EnsureWorkspaceInput,
 ): Promise<WorkspaceId> {
@@ -192,27 +189,25 @@ async function ensureWorkspace(
   return workspace.id
 }
 
-interface EnsureEditorGrantInput {
+export interface EnsureGrantInput {
   readonly admin: UserId
   readonly userId: UserId
   readonly workspaceId: WorkspaceId
+  readonly role: Role
 }
 
 /**
- * Grants the writer editor on a workspace, through the same command a route
+ * Grants a user a role on a workspace, through the same command a route
  * would use (ADR-012). Checked against the workspace's existing grants first,
  * so running the seed again does not stack up duplicate rows.
  */
-async function ensureEditorGrant(
-  deps: AppDependencies,
-  input: EnsureEditorGrantInput,
-): Promise<void> {
+export async function ensureGrant(deps: AppDependencies, input: EnsureGrantInput): Promise<void> {
   const existing = await deps.uow.repos.grants.listForScope('workspace', input.workspaceId)
   const already = existing.some(
     (grant) =>
       grant.principalKind === 'user' &&
       grant.principalId === input.userId &&
-      grant.role === 'editor' &&
+      grant.role === input.role &&
       grant.effect === 'allow',
   )
   if (already) return
@@ -222,15 +217,15 @@ async function ensureEditorGrant(
     principalId: input.userId,
     scopeKind: 'workspace',
     scopeId: input.workspaceId,
-    role: 'editor',
+    role: input.role,
     effect: 'allow',
     createdBy: input.admin,
   })
-  /* v8 ignore next -- the writer and workspace are both known good here. */
+  /* v8 ignore next -- the user and workspace are both known good here. */
   if (result.kind !== 'created') throw new Error(`Seed grant failed: ${result.kind}`)
 }
 
-async function ensureCollections(
+export async function ensureCollections(
   deps: AppDependencies,
   workspace: WorkspaceId,
   names: readonly string[],

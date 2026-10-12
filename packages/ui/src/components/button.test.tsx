@@ -45,7 +45,7 @@ describe('Button', () => {
     expect(onClick).toHaveBeenCalledOnce()
   })
 
-  it.each(['primary', 'secondary', 'ghost', 'danger'] as const)(
+  it.each(['primary', 'soft', 'secondary', 'ghost', 'danger'] as const)(
     'renders the %s variant with a distinct class list',
     (variant) => {
       render(<Button variant={variant}>Action</Button>)
@@ -54,7 +54,16 @@ describe('Button', () => {
     },
   )
 
-  it.each(['sm', 'md', 'lg'] as const)('renders the %s size', (size) => {
+  it('keeps the soft variant in ink on the accent tint, so its label passes on any accent', () => {
+    render(<Button variant="soft">Edit</Button>)
+
+    const className = screen.getByRole('button', { name: 'Edit' }).className
+    expect(className).toContain('bg-accent-subtle')
+    expect(className).toContain('text-foreground')
+    expect(className).not.toContain('text-accent-foreground')
+  })
+
+  it.each(['sm', 'md', 'lg', 'xl'] as const)('renders the %s size', (size) => {
     render(<Button size={size}>Action</Button>)
 
     expect(screen.getByRole('button', { name: 'Action' })).toBeInTheDocument()
@@ -62,8 +71,8 @@ describe('Button', () => {
 
   it('gives every variant and size a different class list', () => {
     const classes = new Set<string>()
-    for (const variant of ['primary', 'secondary', 'ghost', 'danger'] as const) {
-      for (const size of ['sm', 'md', 'lg'] as const) {
+    for (const variant of ['primary', 'soft', 'secondary', 'ghost', 'danger'] as const) {
+      for (const size of ['sm', 'md', 'lg', 'xl'] as const) {
         const { unmount } = render(
           <Button variant={variant} size={size}>
             Action
@@ -74,7 +83,7 @@ describe('Button', () => {
       }
     }
 
-    expect(classes.size).toBe(12)
+    expect(classes.size).toBe(20)
   })
 
   it('appends caller classes after its own', () => {

@@ -29,6 +29,14 @@ export const DOCUMENT_RENAMED = 'DocumentRenamed'
  */
 export const DOCUMENT_MOVED = 'DocumentMoved'
 
+/**
+ * An attachment's bytes were replaced by a new revision under the same URL
+ * (ADR-043). Every published body that shows it changes without being
+ * republished, so what was derived from those bodies — the search index, the
+ * public site's cached pages — is brought up to date from this.
+ */
+export const ATTACHMENT_REVISED = 'AttachmentRevised'
+
 export const EVENT_PAYLOAD_VERSION = 1
 
 export interface DocumentCreatedPayload {
@@ -62,6 +70,15 @@ export interface DocumentMovedPayload {
   /** Null when the document was in no collection, which is a tree the resolver refuses anyway. */
   readonly fromCollectionId: CollectionId | null
   readonly toCollectionId: CollectionId | null
+}
+
+export interface AttachmentRevisedPayload {
+  readonly version: number
+  readonly attachmentId: string
+  readonly documentId: DocumentId
+  readonly workspaceId: WorkspaceId
+  /** The attachment's own version after the revision. */
+  readonly attachmentVersion: number
 }
 
 /**
@@ -145,6 +162,24 @@ const movedReader = createVersionedReader<DocumentMovedPayload>({
   },
 })
 
+const revisedReader = createVersionedReader<AttachmentRevisedPayload>({
+  [EVENT_PAYLOAD_VERSION]: (payload) => {
+    const attachmentId = readString(payload, 'attachmentId')
+    const documentId = readString(payload, 'documentId')
+    const workspaceId = readString(payload, 'workspaceId')
+    const attachmentVersion = (payload as Record<string, unknown>)['attachmentVersion']
+    if (attachmentId === null || documentId === null || workspaceId === null) return null
+    if (typeof attachmentVersion !== 'number') return null
+    return {
+      version: EVENT_PAYLOAD_VERSION,
+      attachmentId,
+      documentId: documentId as DocumentId,
+      workspaceId: workspaceId as WorkspaceId,
+      attachmentVersion,
+    }
+  },
+})
+
 const mailReader = createVersionedReader<MailRequestedPayload>({
   [EVENT_PAYLOAD_VERSION]: (payload) => {
     const to = readString(payload, 'to')
@@ -190,4 +225,9 @@ export function parseDocumentRenamed(payload: unknown): DocumentRenamedPayload |
 /** A `DocumentMoved` payload, or null when it is not one this release can read. */
 export function parseDocumentMoved(payload: unknown): DocumentMovedPayload | null {
   return movedReader.read(payload)
+}
+
+/** An `AttachmentRevised` payload, or null when it is not one this release can read. */
+export function parseAttachmentRevised(payload: unknown): AttachmentRevisedPayload | null {
+  return revisedReader.read(payload)
 }

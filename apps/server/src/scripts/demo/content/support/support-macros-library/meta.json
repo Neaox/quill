@@ -1,0 +1,14 @@
+{
+  "collection": "Macros",
+  "title": "Support macros library",
+  "type": "reference",
+  "owners": ["tom@acme.example"],
+  "tags": ["macros", "templates", "zendesk"],
+  "review": "90d",
+  "status": "published",
+  "notes": [
+    "First version: the eight macros agents use most",
+    "Added the Skiff transcript and SSO macros, fixed the refund wording to match the new $200 limit"
+  ],
+  "frontMatter": {}
+}

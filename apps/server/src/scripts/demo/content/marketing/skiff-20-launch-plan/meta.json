@@ -1,0 +1,15 @@
+{
+  "collection": "Launch plans",
+  "title": "Skiff 2.0 launch plan",
+  "type": "design",
+  "owners": ["ravi@acme.example", "priya@acme.example"],
+  "tags": ["launch", "skiff", "skiff-2.0", "campaign"],
+  "review": "90d",
+  "status": "published",
+  "notes": [
+    "First plan, agreed with Priya Nair: goals, pillars, timeline and a 38,500 USD budget",
+    "Added podcast sponsorship, raised paid spend (budget now 51,500 USD) and wrote the launch day run of show",
+    "Moved the webinar to 18 November, raised the adoption target to 30% and added the risks table after early beta feedback"
+  ],
+  "frontMatter": {}
+}

@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { press } from '../builtin/press.ts'
 import { BUILTIN_THEMES } from '../builtin/themes.ts'
 import { runThemeDoctor } from '../doctor/run.ts'
 import { validateThemeDocument } from '../schema/validate.ts'
@@ -6,10 +7,17 @@ import { forkTheme, resetToBase } from './fork-theme.ts'
 
 describe('forkTheme', () => {
   it('records what it was forked from, so it can be re-opened', () => {
-    const fork = forkTheme('press', { id: 'northwind', name: 'Northwind' })
-    expect(fork.base).toBe('press')
+    const fork = forkTheme('editorial', { id: 'northwind', name: 'Northwind' })
+    expect(fork.base).toBe('editorial')
     expect(fork.id).toBe('northwind')
-    expect(fork.seeds).toEqual(BUILTIN_THEMES.press.seeds)
+    expect(fork.seeds).toEqual(BUILTIN_THEMES.editorial.seeds)
+    expect(fork.type.scale).toEqual(BUILTIN_THEMES.editorial.type.scale)
+  })
+
+  it('forks a superseded theme’s successor, and records the successor', () => {
+    const fork = forkTheme('press', { id: 'northwind', name: 'Northwind' })
+    expect(fork.base).toBe('editorial')
+    expect(fork.seeds).toEqual(BUILTIN_THEMES.editorial.seeds)
   })
 
   it('changes only what it is asked to', () => {
@@ -47,19 +55,27 @@ describe('forkTheme', () => {
 
 describe('resetToBase', () => {
   it('puts a fork back to what it started from, keeping its identity', () => {
-    const fork = forkTheme('press', {
+    const fork = forkTheme('grid', {
       id: 'northwind',
       name: 'Northwind',
       shape: { radiusStep: 4, density: 'compact' },
     })
     const reset = resetToBase(fork)
-    expect(reset.shape).toEqual(BUILTIN_THEMES.press.shape)
+    expect(reset.shape).toEqual(BUILTIN_THEMES.grid.shape)
     expect(reset.id).toBe('northwind')
     expect(reset.name).toBe('Northwind')
+    expect(reset.base).toBe('grid')
+  })
+
+  it('resets an old Press fork to Editorial, keeping the base it saved', () => {
+    const saved = { ...press, id: 'northwind', name: 'Northwind', base: 'press' as const }
+    const reset = resetToBase(saved)
+    expect(reset.seeds).toEqual(BUILTIN_THEMES.editorial.seeds)
     expect(reset.base).toBe('press')
+    expect(reset.id).toBe('northwind')
   })
 
   it('leaves a theme that was never forked alone', () => {
-    expect(resetToBase(BUILTIN_THEMES.press)).toBe(BUILTIN_THEMES.press)
+    expect(resetToBase(press)).toBe(press)
   })
 })

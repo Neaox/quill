@@ -180,14 +180,17 @@ describe('the content journey', () => {
     expect(republished.statusCode).toBe(200)
     const secondRevision = republished.json().revision as string
 
-    const diff = await get(
-      `/api/documents/${id}/diff?from=${revision}&to=${secondRevision}`,
+    const compared = await get(
+      `/api/documents/${id}/compare?from=${revision}&to=${secondRevision}`,
       viewer,
     )
-    expect(diff.statusCode).toBe(200)
-    expect(diff.json().unified).toContain('+A second pass.')
-    expect(diff.json()).toMatchObject({ from: revision, to: secondRevision })
-    expect(diff.json().added).toBeGreaterThan(0)
+    expect(compared.statusCode).toBe(200)
+    expect(compared.json().changes).toMatchObject([
+      { id: 'c1', change: 'added', block: 'paragraph', excerpt: 'A second pass.' },
+    ])
+    expect(compared.json().html).toContain(
+      '<ins data-diff="added"><span data-diff-label="">Added: </span>A second pass.</ins>',
+    )
 
     const restored = await harness.app.inject({
       method: 'POST',
@@ -473,16 +476,161 @@ describe('the content journey', () => {
     expect(content.json().markdown).not.toContain('placeholder')
   })
 
-  it('404s a diff against a revision this document never had', async () => {
+  it('404s a comparison with a revision this document never had', async () => {
     const id = await createDocument('Only one revision')
     await writeDraft(id, '# Only one revision\n\nBody.\n', 0)
     const published = await publish(id, await baseOf(id))
 
     const response = await get(
-      `/api/documents/${id}/diff?from=${'f'.repeat(40)}&to=${published.json().revision}`,
+      `/api/documents/${id}/compare?from=${'f'.repeat(40)}&to=${published.json().revision}`,
       viewer,
     )
     expect(response.statusCode).toBe(404)
+  })
+
+  it('compares without a trace of how revisions are stored', async () => {
+    const id = await createDocument('Storage stays hidden')
+    await writeDraft(id, '# Storage stays hidden\n\nPort 3000.\n\n- one\n', 0)
+    const first = await publish(id, await baseOf(id))
+    await writeDraft(id, '# Storage stays hidden\n\nPort 3001.\n\n- one\n- two\n', 1)
+    const second = await publish(id, first.json().revision)
+    const range = `from=${first.json().revision}&to=${second.json().revision}`
+    const row = await harness.deps.uow.repos.documents.findById(id)
+    expect(row?.path).toBeTruthy()
+
+    for (const path of [
+      `/api/documents/${id}/compare?${range}`,
+      `/api/documents/${id}/compare/source?${range}`,
+    ]) {
+      const response = await get(path, viewer)
+      expect(response.statusCode).toBe(200)
+      // No storage path, no revision hash, no hunk or file header, no Git words.
+      expect(response.body).not.toContain(row?.path)
+      expect(response.body).not.toMatch(/[0-9a-f]{40}/)
+      expect(response.body).not.toContain('@@')
+      expect(response.body).not.toMatch(/(?:---|\+\+\+) [ab]\//)
+      expect(response.body).not.toMatch(/\b(?:commit|diff --git|unified|hunk)\b/i)
+    }
+  })
+
+  it('compares the published document with the draft, for an editor only', async () => {
+    const id = await createDocument('Changes since publish')
+    await writeDraft(id, '# Changes since publish\n\nBody.\n', 0)
+    const published = await publish(id, await baseOf(id))
+    await writeDraft(id, '# Changes since publish\n\nBody, edited.\n', 1)
+    const range = `from=${published.json().revision}&to=draft`
+
+    const forEditor = await get(`/api/documents/${id}/compare?${range}`, editor)
+    expect(forEditor.statusCode).toBe(200)
+    expect(forEditor.json().summary).toMatchObject({ changed: 1, wordsAdded: 1 })
+    expect((await get(`/api/documents/${id}/compare?${range}`, viewer)).statusCode).toBe(403)
+  })
+
+  it('draws each change on its own, and says which can be put back, when asked', async () => {
+    const id = await createDocument('Patches')
+    await writeDraft(id, '# Patches\n\nRestart the queue first.\n\nCheck the dashboard.\n', 0)
+    const published = await publish(id, await baseOf(id))
+    await writeDraft(
+      id,
+      '# Patches\n\nRestart the queue first, then wait.\n\nCheck the dashboard.\n',
+      1,
+    )
+    const range = `from=${published.json().revision}&to=draft`
+
+    const plain = (await get(`/api/documents/${id}/compare?${range}`, editor)).json()
+    const detailed = (
+      await get(`/api/documents/${id}/compare?${range}&patches=true`, editor)
+    ).json()
+
+    expect(plain.changes[0]).not.toHaveProperty('html')
+    expect(detailed.changes).toMatchObject([
+      {
+        change: 'changed',
+        revertible: true,
+        html: expect.stringContaining('<ins data-diff="added">'),
+      },
+    ])
+  })
+
+  it('answers with the draft as it would be with a change put back, and saves nothing', async () => {
+    const id = await createDocument('Reverting')
+    await writeDraft(id, '# Reverting\n\nRestart the queue first.\n', 0)
+    const published = await publish(id, await baseOf(id))
+    await writeDraft(id, '# Reverting\n\nRestart the queue first, then wait.\n', 1)
+    const range = `from=${published.json().revision}&to=draft&patches=true`
+    const [change] = (await get(`/api/documents/${id}/compare?${range}`, editor)).json().changes
+
+    const reverted = await harness.app.inject({
+      method: 'POST',
+      url: `/api/documents/${id}/draft/revert-preview`,
+      cookies: editor,
+      payload: { from: published.json().revision, draftVersion: 2, changes: [change.id] },
+    })
+
+    expect(reverted.statusCode).toBe(200)
+    expect(JSON.stringify(reverted.json().ast)).toContain('Restart the queue first.')
+    expect(JSON.stringify(reverted.json().ast)).not.toContain('then wait')
+    const saved = (await get(`/api/documents/${id}/draft`, editor)).json()
+    expect(JSON.stringify(saved.ast)).toContain('then wait')
+  })
+
+  it('refuses to put changes back for a draft that has moved on, or a change it does not have', async () => {
+    const id = await createDocument('Refusing')
+    await writeDraft(id, '# Refusing\n\nOne.\n', 0)
+    const published = await publish(id, await baseOf(id))
+    await writeDraft(id, '# Refusing\n\nOne, edited.\n', 1)
+    const revert = async (draftVersion: number, changes: string[], cookies = editor) =>
+      await harness.app.inject({
+        method: 'POST',
+        url: `/api/documents/${id}/draft/revert-preview`,
+        cookies,
+        payload: { from: published.json().revision, draftVersion, changes },
+      })
+
+    expect((await revert(1, ['c1'])).statusCode).toBe(409)
+    expect((await revert(2, ['c9'])).statusCode).toBe(422)
+    expect((await revert(2, ['nope'])).statusCode).toBe(400)
+    expect((await revert(2, ['c1'], viewer)).statusCode).toBe(403)
+  })
+
+  it('names who made each change in the draft, by the one who saved it', async () => {
+    const id = await createDocument('Authors')
+    await writeDraft(id, '# Authors\n\nRestart the queue first.\n', 0)
+    const published = await publish(id, await baseOf(id))
+    await writeDraft(id, '# Authors\n\nRestart the queue first.\n\nPage the manager.\n', 1)
+
+    const compared = await get(
+      `/api/documents/${id}/compare?from=${published.json().revision}&to=draft`,
+      editor,
+    )
+
+    expect(compared.json().changes).toMatchObject([
+      { change: 'added', author: { id: expect.any(String), at: expect.any(String) } },
+    ])
+    // The record is cleared by publishing: from then the draft says what is published.
+    const again = await publish(id, await baseOf(id))
+    const afterwards = await get(
+      `/api/documents/${id}/compare?from=${again.json().revision}&to=draft`,
+      editor,
+    )
+    expect(afterwards.json().changes).toEqual([])
+  })
+
+  it('revalidates a comparison by its tag', async () => {
+    const id = await createDocument('Tagged comparison')
+    await writeDraft(id, '# Tagged comparison\n\nBody.\n', 0)
+    const published = await publish(id, await baseOf(id))
+    const path = `/api/documents/${id}/compare?to=${published.json().revision}`
+    const first = await get(path, viewer)
+    expect(first.headers.etag).toMatch(/^"[0-9a-f]{64}:\d+:compare-2"$/)
+
+    const again = await harness.app.inject({
+      method: 'GET',
+      url: path,
+      cookies: viewer,
+      headers: { 'if-none-match': String(first.headers.etag) },
+    })
+    expect(again.statusCode).toBe(304)
   })
 
   it('404s a restore of a revision this document never had', async () => {
@@ -503,9 +651,13 @@ describe('the content journey', () => {
     const id = await createDocument('First revision only')
     await writeDraft(id, '# First revision only\n\nBody.\n', 0)
     const published = await publish(id, await baseOf(id))
-    const diff = await get(`/api/documents/${id}/diff?to=${published.json().revision}`, viewer)
-    expect(diff.statusCode).toBe(200)
-    expect(diff.json()).toMatchObject({ from: null, removed: 0 })
+    const compared = await get(
+      `/api/documents/${id}/compare?to=${published.json().revision}`,
+      viewer,
+    )
+    expect(compared.statusCode).toBe(200)
+    expect(compared.json().summary).toMatchObject({ removed: 0, changed: 0 })
+    expect(compared.json().summary.added).toBeGreaterThan(0)
   })
 
   it('reports the live envelope, including health signals', async () => {

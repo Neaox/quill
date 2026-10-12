@@ -167,6 +167,50 @@ describe('optimistic draft versions', () => {
   })
 })
 
+describe('the record of who wrote what', () => {
+  const record = {
+    version: 1,
+    blocks: { abc: { by: 'alice', at: '2026-01-01T00:00:01.000Z' } },
+    removed: [],
+  }
+
+  async function aSavedDraft() {
+    const t0 = at(0)
+    await locks.acquire({ documentId: DOC, userId: ALICE, sessionId: 'alice-tab-1', now: t0 })
+    await drafts.init({ documentId: DOC, baseRevision: null, ast: { text: '' }, now: t0 })
+    await drafts.write({
+      documentId: DOC,
+      sessionId: 'alice-tab-1',
+      expectedVersion: 0,
+      ast: { text: 'one' },
+      authorship: record,
+      now: at(1000),
+    })
+  }
+
+  it('is kept beside the draft, and kept through a save that leaves it as it was', async () => {
+    await aSavedDraft()
+
+    await drafts.write({
+      documentId: DOC,
+      sessionId: 'alice-tab-1',
+      expectedVersion: 1,
+      ast: { text: 'two' },
+      now: at(2000),
+    })
+
+    expect((await drafts.find(DOC))?.authorship).toEqual(record)
+  })
+
+  it('is cleared when the draft is moved onto a new base, because it then says what is published', async () => {
+    await aSavedDraft()
+
+    await drafts.rebase({ documentId: DOC, baseRevision: null, now: at(3000) })
+
+    expect((await drafts.find(DOC))?.authorship).toBeNull()
+  })
+})
+
 describe('find', () => {
   it('returns null when no draft exists', async () => {
     expect(await drafts.find(DOC)).toBeNull()

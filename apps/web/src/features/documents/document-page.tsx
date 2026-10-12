@@ -1,13 +1,14 @@
 import { getRouteApi, Link } from '@tanstack/react-router'
 import { useState } from 'react'
 
-import { Button, buttonClassName, Menu, type MenuItem } from '@quill/ui'
+import { Button, buttonClassName, Menu, PresentIcon, ShareIcon, type MenuItem } from '@quill/ui'
 
 import {
   useDocumentEnvelope,
   useDocumentHistory,
   useLoadedDocument,
   useRenderedDocument,
+  useTreeCollections,
   type DiffRange,
   type OutlineEntry,
 } from '../../lib/api/index.ts'
@@ -16,8 +17,10 @@ import { useDocumentActions } from '../workspaces/document-actions.tsx'
 import { RenameDocumentControl } from '../workspaces/rename-document-control.tsx'
 import { ShellActions, ShellAside } from '../workspaces/shell-slots.tsx'
 import { AttachmentsPanel } from './attachments-panel.tsx'
+import { DraftNotice } from './draft-notice.tsx'
 import { DocumentReader } from './document-reader.tsx'
 import { HealthSignals } from './health-signals.tsx'
+import { PreviewLink } from './preview-link.tsx'
 import { RevisionPanel } from './revision-panel.tsx'
 import { TableOfContents } from './table-of-contents.tsx'
 
@@ -53,6 +56,9 @@ export function DocumentPage() {
   const envelope = useDocumentEnvelope(documentId)
   const history = useDocumentHistory(documentId)
   const rendered = useRenderedDocument(documentId, rev)
+  // The sidebar has already asked for the collections, so naming the collection is
+  // a cache read rather than a request of its own.
+  const collections = useTreeCollections(document.data.workspaceId)
   const actions = useDocumentActions()
   const [showingAttachments, setShowingAttachments] = useState(false)
 
@@ -64,6 +70,9 @@ export function DocumentPage() {
   const lock = envelope.data?.lock ?? null
   const compare: DiffRange | undefined = to === undefined ? undefined : { from: from ?? null, to }
   const title = document.data.title
+  const collectionName = collections.data?.find(
+    (collection) => collection.id === document.data.collectionId,
+  )?.name
   /*
    * The revision whose body is on screen: the URL's if it names one, else this
    * document's own head, else whatever the render answered with. Decided here,
@@ -96,13 +105,20 @@ export function DocumentPage() {
     <>
       <ShellActions>
         {lock === null ? undefined : (
-          <span className="meta-value hidden truncate md:inline">{lock.holderName} is editing</span>
+          <span className="hidden truncate text-xs text-muted md:inline">
+            {lock.holderName} is editing
+          </span>
         )}
         {actions.canManage ? (
           <RenameDocumentControl documentId={documentId} title={title} />
         ) : undefined}
         <Menu label={title} items={menuItems} />
         {/*
+          Present and Share keep their words on every screen wide enough to
+          hold them, and give them up for their icons below that, where the
+          bar has room for the title and the controls and nothing else; the
+          words stay their accessible names throughout.
+
           Presenting is reading at projector size (quill-plan.md section 14),
           so it is offered wherever a document is read — but only once there is
           a published revision to present, since the presentation is built from
@@ -113,10 +129,20 @@ export function DocumentPage() {
             to="/w/$workspaceSlug/d/$documentId/present"
             params={{ workspaceSlug, documentId }}
             search={{}}
-            className={buttonClassName({ variant: 'secondary', size: 'sm' })}
+            title="Present"
+            className={buttonClassName({ variant: 'ghost', className: 'max-lg:px-2' })}
           >
-            Present
+            <PresentIcon />
+            <span className="max-lg:sr-only">Present</span>
           </Link>
+        )}
+        {/*
+          Preview opens the page as a reader will meet it — the public site's
+          own chrome and theme — from the latest published revision, so it is
+          offered beside Present, under the same condition.
+        */}
+        {lastPublished === null ? undefined : (
+          <PreviewLink documentRef={documentId} variant="ghost" size="md" className="max-lg:px-2" />
         )}
         {/*
           Sharing is granting access, so it is offered to whoever may grant it
@@ -126,19 +152,21 @@ export function DocumentPage() {
         */}
         {actions.canManage ? (
           <Button
-            variant="secondary"
-            size="sm"
+            variant="ghost"
+            className="max-lg:px-2"
+            title="Share"
+            iconStart={<ShareIcon />}
             loading={actions.isOpeningShare}
             onClick={actions.openShare}
           >
-            Share
+            <span className="max-lg:sr-only">Share</span>
           </Button>
         ) : undefined}
         {permissions?.edit === true ? (
           <Link
             to="/w/$workspaceSlug/d/$documentId/edit"
             params={{ workspaceSlug, documentId }}
-            className={buttonClassName({ size: 'sm' })}
+            className={buttonClassName({ variant: 'soft' })}
           >
             Edit
           </Link>
@@ -152,6 +180,19 @@ export function DocumentPage() {
         canEdit={permissions?.edit === true}
       />
 
+      {/*
+        Only above a page that exists: a document never published has no
+        "published page" readers still see, and its own empty state already
+        says what is waiting.
+      */}
+      {permissions?.edit === true && envelope.data?.draft != null && lastPublished !== null ? (
+        <DraftNotice
+          workspaceSlug={workspaceSlug}
+          documentId={documentId}
+          savedAt={envelope.data.draft.savedAt}
+        />
+      ) : undefined}
+
       <DocumentReader
         documentId={documentId}
         workspaceSlug={workspaceSlug}
@@ -161,6 +202,7 @@ export function DocumentPage() {
         compare={compare}
         revisions={revisions}
         canEdit={permissions?.edit === true}
+        eyebrow={collectionName}
       />
 
       {/*
@@ -172,7 +214,14 @@ export function DocumentPage() {
         shell paints them in, main before the complementary column.
       */}
       <ShellAside>
-        <div className="flex flex-col gap-7">
+        {/*
+          "On this page" first: it is what a reader reaches for while reading,
+          so it sits at the top of the column, level with the title. The
+          history and the health of the document follow, for the reader who
+          came to ask about it rather than to read it.
+        */}
+        <div className="flex flex-col gap-9">
+          <TableOfContents key={onScreen} outline={rendered.data?.body.outline ?? NO_OUTLINE} />
           <RevisionPanel
             documentId={documentId}
             workspaceSlug={workspaceSlug}
@@ -182,7 +231,6 @@ export function DocumentPage() {
             canRestore={permissions?.edit === true}
             {...(lastPublished === null ? {} : { lastPublishedBy: lastPublished.author })}
           />
-          <TableOfContents key={onScreen} outline={rendered.data?.body.outline ?? NO_OUTLINE} />
           <HealthSignals signals={envelope.data?.health ?? []} />
         </div>
       </ShellAside>

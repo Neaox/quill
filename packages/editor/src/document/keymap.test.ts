@@ -56,6 +56,49 @@ describe('the editor keyboard map', () => {
     expect(press('- [x] one\n', 'Enter', 4)).toContain('- [x] o')
   })
 
+  it.each(['Up', 'Down', 'Left', 'Right'])(
+    'binds Alt+Shift+%s to a move between cells, and spends it outside none',
+    (direction) => {
+      expect(binding(`Alt-Shift-Arrow${direction}`)).toBeTypeOf('function')
+      expect(
+        press('A paragraph.' + String.fromCharCode(10), `Alt-Shift-Arrow${direction}`, 3),
+      ).toBeNull()
+    },
+  )
+
+  it('binds Select all to the block first, so it takes the paragraph before the document', () => {
+    const opened = harness.state(
+      'One.' + String.fromCharCode(10) + String.fromCharCode(10) + 'Two.',
+    )
+    const state = opened.apply(opened.tr.setSelection(TextSelection.create(opened.doc, 7)))
+    let selected = ''
+    binding('Mod-a')(state, (tr) => {
+      selected = tr.doc.textBetween(tr.selection.from, tr.selection.to)
+    })
+
+    expect(selected).toBe('Two.')
+  })
+
+  it('binds Mod+D to the word under the caret', () => {
+    const opened = harness.state('Some words.' + String.fromCharCode(10))
+    const state = opened.apply(opened.tr.setSelection(TextSelection.create(opened.doc, 8)))
+    let selected = ''
+    binding('Mod-d')(state, (tr) => {
+      selected = tr.doc.textBetween(tr.selection.from, tr.selection.to)
+    })
+
+    expect(selected).toBe('words')
+  })
+
+  it('moves a block with Alt+Up and Alt+Down outside a table, and a table’s row inside one', () => {
+    const NL = String.fromCharCode(10)
+    expect(press('One.' + NL + NL + 'Two.' + NL, 'Alt-ArrowUp', 7)).toBe(
+      'Two.' + NL + NL + 'One.' + NL,
+    )
+    const table = '| a | b |' + NL + '| - | - |' + NL + '| c | d |' + NL + '| e | f |' + NL
+    expect(press(table, 'Alt-ArrowDown', 15)).toContain('| e | f |' + NL + '| c | d |')
+  })
+
   it('leaves Enter to the document outside a list', () => {
     expect(press('A paragraph.\n', 'Enter', 3)).toBeNull()
   })
@@ -69,6 +112,18 @@ describe('the editor keyboard map', () => {
   it('moves between table cells with Tab', () => {
     const table = ['| A | B |', '| - | - |', '| 1 | 2 |', ''].join('\n')
     expect(press(table, 'Tab', 4)).toBe(table)
+  })
+
+  it('adds a row when Tab leaves the last cell, so a table can be written from the keyboard', () => {
+    const table = ['| A | B |', '| - | - |', '| 1 | 2 |', ''].join('\n')
+    // Position 21 is inside the last cell of the last row.
+    expect(press(table, 'Tab', 21)).toContain('| | |')
+  })
+
+  it('moves down a table with Enter instead of splitting a cell, which GFM cannot hold', () => {
+    const table = ['| A | B |', '| - | - |', '| 1 | 2 |', ''].join('\n')
+    expect(press(table, 'Enter', 4)).toBe(table)
+    expect(press(table, 'Enter', 21)).toContain('| | |')
   })
 
   it('leaves Tab alone where it means neither of those things', () => {

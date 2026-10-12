@@ -1,0 +1,11 @@
+{
+  "collection": "Releases",
+  "title": "Release checklist",
+  "type": "guide",
+  "owners": ["jonas@acme.example"],
+  "tags": ["skiff", "mobile", "releases", "checklist"],
+  "review": "6m",
+  "status": "published",
+  "notes": ["First version, from the 2026.8 retrospective"],
+  "frontMatter": {}
+}

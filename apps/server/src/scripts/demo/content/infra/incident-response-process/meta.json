@@ -1,0 +1,14 @@
+{
+  "collection": "Incidents",
+  "title": "Incident response process",
+  "type": "guide",
+  "owners": ["marcus@acme.example"],
+  "tags": ["incidents", "process", "on-call"],
+  "review": "6m",
+  "status": "published",
+  "notes": [
+    "First version",
+    "Added detection failures and Support's right to declare after the 14 August webhook delays; four-hour IC handover"
+  ],
+  "frontMatter": {}
+}

@@ -4,6 +4,8 @@ import {
   createFakeContentStore,
   createFakeDocumentFormat,
   createFakeIdGenerator,
+  createFakeSettings,
+  createInMemoryBlobStore,
   createInMemoryUnitOfWork,
 } from '@quill/application/test-support'
 import { createHasher } from '../hasher.ts'
@@ -41,6 +43,8 @@ beforeEach(async () => {
     clock: createFakeClock(NOW),
     ids: createFakeIdGenerator(),
     hasher: createHasher(),
+    blobStore: createInMemoryBlobStore(),
+    settings: createFakeSettings(),
   }
   for (const [index, [id, slug]] of (
     [

@@ -29,6 +29,10 @@ export function useDraft(documentId: string | undefined) {
   return useQuery({
     ...draftQueryOptions(client, documentId ?? ''),
     enabled: documentId !== undefined,
+    // The open editor owns the draft's content, and a refetched draft never
+    // replaces it; refetching on focus only added chances for a transient
+    // failure while somebody was writing (audit 2026-10-11, P0-2).
+    refetchOnWindowFocus: false,
   })
 }
 

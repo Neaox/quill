@@ -39,16 +39,24 @@ function recordingPut(bodies: Array<Record<string, unknown>>) {
   }
 }
 
+/** Opens the fixture's one menu link, whose fields are shown only while it is open. */
+async function openHandbook(): Promise<HTMLElement> {
+  await userEvent.click(await screen.findByRole('button', { name: 'Handbook' }))
+  return screen.getByDisplayValue('/handbook')
+}
+
 describe('the organisation settings screen', () => {
   it('shows the organisation as it is saved', async () => {
     renderApp(PATH, routes())
 
     expect(await screen.findByRole('heading', { level: 1, name: 'Organisation' })).toBeVisible()
     expect(screen.getByLabelText('Organisation name')).toHaveValue('Acme')
-    expect(screen.getByDisplayValue('/handbook')).toBeInTheDocument()
-    expect(screen.getByRole('checkbox', { name: 'Allow share links' })).toBeChecked()
+    expect(await screen.findByRole('button', { name: 'Handbook' })).toHaveAccessibleDescription(
+      '/handbook',
+    )
+    expect(screen.getByRole('switch', { name: 'Allow share links' })).toBeChecked()
     expect(
-      screen.getByRole('checkbox', { name: 'Allow publishing to the public web' }),
+      screen.getByRole('switch', { name: 'Allow publishing to the public web' }),
     ).not.toBeChecked()
   })
 
@@ -69,6 +77,22 @@ describe('the organisation settings screen', () => {
     expect(saved.name).toBe('Globex')
   })
 
+  it('turns contrast enforcement off and on with a switch, saved as the policy word', async () => {
+    const bodies: Array<Record<string, unknown>> = []
+    renderApp(PATH, routes({ 'PUT /api/settings/organisation': recordingPut(bodies) }))
+
+    const enforce = await screen.findByRole('switch', { name: 'Enforce AA text contrast' })
+    expect(enforce).toBeChecked()
+    await userEvent.click(enforce)
+    await userEvent.click(screen.getByRole('button', { name: 'Save' }))
+
+    await waitFor(() => {
+      expect(bodies).toHaveLength(1)
+    })
+    const saved = bodies[0]?.['settings'] as { policies: { contrastEnforcement: string } }
+    expect(saved.policies.contrastEnforcement).toBe('advisory')
+  })
+
   it('has nothing to save until something changes', async () => {
     renderApp(PATH, routes())
 
@@ -87,17 +111,17 @@ describe('the organisation settings screen', () => {
     expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled()
   })
 
-  it('refuses a navigation address the public site would not accept', async () => {
+  it('refuses a menu address the public site would not accept', async () => {
     renderApp(PATH, routes())
 
-    const href = await screen.findByDisplayValue('/handbook')
+    const href = await openHandbook()
     await userEvent.clear(href)
     // A whitelist, not a blacklist: script in a tenant's navigation bar is
     // stored XSS on a page nobody has to sign in to reach.
     await userEvent.type(href, 'javascript:alert(1)')
 
     expect(
-      screen.getByText('Use a path on this site, such as /handbook, or a full https:// address.'),
+      screen.getByText('Use a full https:// address, or a path on this site such as /s/handbook.'),
     ).toBeVisible()
     expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled()
   })
@@ -105,7 +129,7 @@ describe('the organisation settings screen', () => {
   it.each(['//evil.example', 'data:text/html,x'])('refuses %s as an address', async (href) => {
     renderApp(PATH, routes())
 
-    const field = await screen.findByDisplayValue('/handbook')
+    const field = await openHandbook()
     await userEvent.clear(field)
     await userEvent.type(field, href)
 
@@ -115,42 +139,44 @@ describe('the organisation settings screen', () => {
   it('accepts an absolute https address', async () => {
     renderApp(PATH, routes())
 
-    const field = await screen.findByDisplayValue('/handbook')
+    const field = await openHandbook()
     await userEvent.clear(field)
     await userEvent.type(field, 'https://acme.example/handbook')
 
     expect(screen.getByRole('button', { name: 'Save' })).toBeEnabled()
   })
 
-  it('adds, reorders and removes navigation links', async () => {
+  it('saves the public menu the editor builds, in the settings document', async () => {
     const bodies: Array<Record<string, unknown>> = []
-    renderApp(PATH, routes({ 'PUT /api/settings/organisation': recordingPut(bodies) }))
+    renderApp(
+      PATH,
+      routes({
+        'PUT /api/settings/organisation': recordingPut(bodies),
+        'GET /api/search': () => jsonResponse(200, { query: '', current: [], elsewhere: [] }),
+        'GET /api/settings/organisation/public-menu/collections': () =>
+          jsonResponse(200, { collections: [] }),
+      }),
+    )
 
     await userEvent.click(await screen.findByRole('button', { name: 'Add a link' }))
-    const rows = within(screen.getByRole('list', { name: 'Public navigation links' })).getAllByRole(
-      'listitem',
+    await userEvent.type(
+      screen.getByRole('combobox', { name: 'Add a link' }),
+      'https://status.example.com{Enter}',
     )
-    const added = rows[1]
-    if (added === undefined) throw new Error('the new row was not rendered')
-    await userEvent.type(within(added).getByLabelText('Name'), 'Policies')
-    await userEvent.type(within(added).getByLabelText('Address'), '/policies')
-
-    await userEvent.click(screen.getByRole('button', { name: 'Move Policies up' }))
+    // The new link opens; Alt and an arrow on its row move it up.
+    screen.getByRole('button', { name: 'status.example.com', expanded: true }).focus()
+    await userEvent.keyboard('{Alt>}{ArrowUp}{/Alt}')
     await userEvent.click(screen.getByRole('button', { name: 'Save' }))
 
     await waitFor(() => {
       expect(bodies).toHaveLength(1)
     })
-    const saved = bodies[0]?.['settings'] as {
-      publicNavigation: readonly { label: string; href: string }[]
-    }
-    expect(saved.publicNavigation).toEqual([
-      { label: 'Policies', href: '/policies' },
-      { label: 'Handbook', href: '/handbook' },
+    const saved = bodies[0]?.['settings'] as { version: number; publicMenu: unknown }
+    expect(saved.version).toBe(2)
+    expect(saved.publicMenu).toEqual([
+      { kind: 'url', href: 'https://status.example.com', label: 'status.example.com' },
+      { kind: 'url', href: '/handbook', label: 'Handbook' },
     ])
-
-    await userEvent.click(screen.getByRole('button', { name: 'Remove Policies' }))
-    expect(screen.queryByDisplayValue('/policies')).not.toBeInTheDocument()
   })
 
   it('shows what somebody else saved when the write conflicts, and offers their version', async () => {
@@ -199,7 +225,7 @@ describe('the organisation settings screen', () => {
         'PUT /api/settings/organisation': () =>
           errorResponse(422, 'invalid_settings', 'These settings are not valid', {
             issues: [
-              { path: '/publicNavigation/0/href', message: 'must match pattern', rule: 'pattern' },
+              { path: '/publicMenu/0/href', message: 'must match pattern', rule: 'pattern' },
             ],
           }),
       }),
@@ -210,7 +236,7 @@ describe('the organisation settings screen', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Save' }))
 
     expect(await screen.findByText(/must match pattern/)).toBeVisible()
-    expect(screen.getByText('/publicNavigation/0/href')).toBeVisible()
+    expect(screen.getByText('/publicMenu/0/href')).toBeVisible()
   })
 
   it('shows the logo as a reference, with no control that cannot work yet', async () => {

@@ -1,4 +1,4 @@
-import { ApiError } from '../api/index.ts'
+import { describeError } from './describe-error.ts'
 
 export interface FormErrorProps {
   readonly error: unknown
@@ -15,12 +15,9 @@ export interface FormErrorProps {
 export function FormError({ error }: FormErrorProps) {
   if (error === undefined || error === null) return undefined
 
-  const message =
-    error instanceof ApiError ? error.message : 'Something went wrong. Please try again.'
-
   return (
     <p role="alert" className="text-sm leading-relaxed text-danger">
-      {message}
+      {describeError(error)}
     </p>
   )
 }

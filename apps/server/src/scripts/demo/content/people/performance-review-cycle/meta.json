@@ -1,0 +1,11 @@
+{
+  "collection": "Compensation",
+  "title": "Performance review cycle",
+  "type": "guide",
+  "owners": ["dana@acme.example"],
+  "tags": ["performance", "reviews", "calibration"],
+  "review": "1y",
+  "status": "published",
+  "notes": ["Published for the 2026 annual cycle"],
+  "frontMatter": {}
+}

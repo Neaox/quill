@@ -1,3 +1,4 @@
+import type { ThemeDocument } from '../../schema/theme-document.ts'
 import type { Rule } from '../rule.ts'
 import { lightnessBandRule, surfaceSeparationRule } from './bands.ts'
 import { accentBudgetRule, areaBudgetRule, oneSaturatedThingRule } from './chroma.ts'
@@ -10,6 +11,7 @@ import {
   textOnAccentRule,
   uiBoundaryRule,
 } from './legibility.ts'
+import { labelRule } from './labels.ts'
 import { accentCoverageRule } from './proportion.ts'
 import { chromaCompensationRule, gamutRule, rampHueRule } from './uniformity.ts'
 import { accentSeparationRule, statusSeparationRule } from './vision.ts'
@@ -41,4 +43,9 @@ export const ALL_RULES: readonly Rule[] = [
   darkRecheckRule,
   statusSeparationRule,
   accentSeparationRule,
+  labelRule,
 ]
+
+/** The rules with something to judge in this theme, in section order. */
+export const applicableRules = (theme: ThemeDocument): readonly Rule[] =>
+  ALL_RULES.filter((rule) => rule.appliesTo?.(theme) ?? true)

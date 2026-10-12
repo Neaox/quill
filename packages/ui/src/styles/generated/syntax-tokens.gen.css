@@ -238,3 +238,180 @@
 ::highlight(quill-tok-italic) {
   color: var(--token-italic);
 }
+
+@media (forced-colors: active) {
+  .tok-punctuation {
+    color: CanvasText;
+  }
+  .tok-comment {
+    color: CanvasText;
+  }
+  .tok-keyword {
+    color: CanvasText;
+  }
+  .tok-operator {
+    color: CanvasText;
+  }
+  .tok-boolean {
+    color: CanvasText;
+  }
+  .tok-null {
+    color: CanvasText;
+  }
+  .tok-number {
+    color: CanvasText;
+  }
+  .tok-string {
+    color: CanvasText;
+  }
+  .tok-template-string {
+    color: CanvasText;
+  }
+  .tok-interpolation {
+    color: CanvasText;
+  }
+  .tok-function {
+    color: CanvasText;
+  }
+  .tok-class-name {
+    color: CanvasText;
+  }
+  .tok-property {
+    color: CanvasText;
+  }
+  .tok-attr-name {
+    color: CanvasText;
+  }
+  .tok-attr-value {
+    color: CanvasText;
+  }
+  .tok-tag {
+    color: CanvasText;
+  }
+  .tok-selector {
+    color: CanvasText;
+  }
+  .tok-regex {
+    color: CanvasText;
+  }
+  .tok-important {
+    color: CanvasText;
+  }
+  .tok-variable {
+    color: CanvasText;
+  }
+  .tok-constant {
+    color: CanvasText;
+  }
+  .tok-symbol {
+    color: CanvasText;
+  }
+  .tok-builtin {
+    color: CanvasText;
+  }
+  .tok-deleted {
+    color: CanvasText;
+  }
+  .tok-inserted {
+    color: CanvasText;
+  }
+  .tok-url {
+    color: CanvasText;
+  }
+  .tok-title {
+    color: CanvasText;
+  }
+  .tok-bold {
+    color: CanvasText;
+  }
+  .tok-italic {
+    color: CanvasText;
+  }
+  ::highlight(quill-tok-punctuation) {
+    color: CanvasText;
+  }
+  ::highlight(quill-tok-comment) {
+    color: CanvasText;
+  }
+  ::highlight(quill-tok-keyword) {
+    color: CanvasText;
+  }
+  ::highlight(quill-tok-operator) {
+    color: CanvasText;
+  }
+  ::highlight(quill-tok-boolean) {
+    color: CanvasText;
+  }
+  ::highlight(quill-tok-null) {
+    color: CanvasText;
+  }
+  ::highlight(quill-tok-number) {
+    color: CanvasText;
+  }
+  ::highlight(quill-tok-string) {
+    color: CanvasText;
+  }
+  ::highlight(quill-tok-template-string) {
+    color: CanvasText;
+  }
+  ::highlight(quill-tok-interpolation) {
+    color: CanvasText;
+  }
+  ::highlight(quill-tok-function) {
+    color: CanvasText;
+  }
+  ::highlight(quill-tok-class-name) {
+    color: CanvasText;
+  }
+  ::highlight(quill-tok-property) {
+    color: CanvasText;
+  }
+  ::highlight(quill-tok-attr-name) {
+    color: CanvasText;
+  }
+  ::highlight(quill-tok-attr-value) {
+    color: CanvasText;
+  }
+  ::highlight(quill-tok-tag) {
+    color: CanvasText;
+  }
+  ::highlight(quill-tok-selector) {
+    color: CanvasText;
+  }
+  ::highlight(quill-tok-regex) {
+    color: CanvasText;
+  }
+  ::highlight(quill-tok-important) {
+    color: CanvasText;
+  }
+  ::highlight(quill-tok-variable) {
+    color: CanvasText;
+  }
+  ::highlight(quill-tok-constant) {
+    color: CanvasText;
+  }
+  ::highlight(quill-tok-symbol) {
+    color: CanvasText;
+  }
+  ::highlight(quill-tok-builtin) {
+    color: CanvasText;
+  }
+  ::highlight(quill-tok-deleted) {
+    color: CanvasText;
+  }
+  ::highlight(quill-tok-inserted) {
+    color: CanvasText;
+  }
+  ::highlight(quill-tok-url) {
+    color: CanvasText;
+  }
+  ::highlight(quill-tok-title) {
+    color: CanvasText;
+  }
+  ::highlight(quill-tok-bold) {
+    color: CanvasText;
+  }
+  ::highlight(quill-tok-italic) {
+    color: CanvasText;
+  }
+}

@@ -1,5 +1,6 @@
 import { Outlet, createFileRoute, redirect } from '@tanstack/react-router'
 
+import { useAnimatedImagesPreference } from '../../features/preferences/use-animated-images-preference.ts'
 import { SearchProvider } from '../../features/search/search-provider.tsx'
 import { ApiError, meQueryOptions } from '../../lib/api/index.ts'
 
@@ -44,7 +45,13 @@ export const Route = createFileRoute('/_authenticated')({
   component: AuthenticatedLayout,
 })
 
+/**
+ * Also where the person's own preferences reach the page: every signed-in
+ * surface plays animated images the way they asked (ADR-047), so the one
+ * ancestor of them all applies it.
+ */
 function AuthenticatedLayout() {
+  useAnimatedImagesPreference()
   return (
     <SearchProvider>
       <Outlet />

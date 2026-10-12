@@ -28,6 +28,8 @@ import {
 import { ContrastTable } from './contrast-table.tsx'
 import { SampleDocument } from './sample-document.tsx'
 import { SignatureSpecimens } from './signature-specimens.tsx'
+import { DetailsSpecimens } from './details-specimens.tsx'
+import { TableSpecimens } from './table-specimens.tsx'
 import { COMMENTS, RAIL_ITEMS, REVISIONS, STATUS, TREE_SECTIONS } from './showcase-data.tsx'
 import { Section, specimenAction } from './specimen-layout.tsx'
 import {
@@ -216,6 +218,37 @@ export function DesignPage() {
               <div className="rounded-xl border border-border bg-surface-raised px-2 py-12 sm:px-6">
                 <SampleDocument />
               </div>
+            </Block>
+
+            <Section
+              id="tables"
+              overline="Tables"
+              title="Tables as good as a spreadsheet"
+              description="ADR-040: every table feature, as Markdown and as the renderer draws it, with the reader's own tools. Scroll the page past a long table and its header hangs under the bar; press a header to sort; open any table full screen."
+            >
+              <p className="text-xs leading-relaxed text-muted">
+                Each specimen's Markdown is under it. Switch the alignment to see the widths
+                centred.
+              </p>
+            </Section>
+
+            <Block width="full" className="mt-8">
+              <TableSpecimens />
+            </Block>
+
+            <Section
+              id="details"
+              overline="Details"
+              title="Details and accordions"
+              description="ADR-048: the browser's own details, in Quill's directive, GitHub's HTML and Obsidian's foldable callouts, drawn by the theme's rules. Open one in an accordion and the others close; a link or find into a closed one opens it."
+            >
+              <p className="text-xs leading-relaxed text-muted">
+                Each specimen's Markdown is under it.
+              </p>
+            </Section>
+
+            <Block width="wide" className="mt-8">
+              <DetailsSpecimens />
             </Block>
           </div>
         </DocumentShell>

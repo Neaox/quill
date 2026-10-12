@@ -1,8 +1,9 @@
 import { parseDocument } from '@quill/markdown'
 import { Slice } from '@tiptap/pm/model'
 import type { Fragment, Node as PMNode, Schema } from '@tiptap/pm/model'
-import type { Command } from '@tiptap/pm/state'
+import type { Command, Transaction } from '@tiptap/pm/state'
 
+import type { DocumentAst } from '../document-ast.ts'
 import { markType, nodeType } from '../schema/node-type.ts'
 import { documentFromMdast } from './ast.ts'
 
@@ -96,18 +97,22 @@ export function insertNode(node: PMNode): Command {
 }
 
 /**
- * The blocks a Markdown string becomes, front matter dropped: pasting a whole
- * file into the middle of a document should bring its prose, not a second
- * metadata block, which only the first bytes of a file may be anyway.
+ * The blocks a parsed Markdown string becomes, front matter dropped: pasting a
+ * whole file into the middle of a document should bring its prose, not a
+ * second metadata block, which only the first bytes of a file may be anyway.
  */
-export function markdownFragment(markdown: string, schema: Schema): Fragment {
-  const { ast } = parseDocument(markdown)
+export function astFragment(ast: DocumentAst, schema: Schema): Fragment {
   const body = { ...ast, children: ast.children.filter((child) => child.type !== 'yaml') }
-  // Rebuilt in the schema of the document being edited. TipTap builds its own
+  // Built in the schema of the document being edited. TipTap builds its own
   // `Schema` from its extension list, so the one the converter targets and the
   // one a live editor runs are equal but not identical, and ProseMirror compares
   // node types by identity: a node from the wrong instance is silently refused.
-  return schema.nodeFromJSON(documentFromMdast(body).doc.toJSON()).content
+  return documentFromMdast(body, { schema }).doc.content
+}
+
+/** The blocks a Markdown string becomes: parsed once, converted once. */
+export function markdownFragment(markdown: string, schema: Schema): Fragment {
+  return astFragment(parseDocument(markdown).ast, schema)
 }
 
 function isOneParagraph(fragment: Fragment): boolean {
@@ -119,19 +124,21 @@ function isOneParagraph(fragment: Fragment): boolean {
  * inserted as inline content so it joins the sentence the caret is in; anything
  * with structure replaces the selection as blocks.
  */
+export function replaceSelectionWithFragment(tr: Transaction, fragment: Fragment): Transaction {
+  if (isOneParagraph(fragment)) {
+    return tr.replaceSelection(new Slice(fragment.child(0).content, 0, 0))
+  }
+  // A lone block is placed rather than merged: replacing a cursor with a slice
+  // of one block leaves the document untouched, because there is nothing to
+  // merge it into.
+  if (fragment.childCount === 1) return tr.replaceSelectionWith(fragment.child(0))
+  return tr.replaceSelection(new Slice(fragment, 0, 0))
+}
+
 export function insertMarkdown(markdown: string): Command {
-  return (state, dispatch, view) => {
+  return (state, dispatch) => {
     const fragment = markdownFragment(markdown, state.schema)
-    if (isOneParagraph(fragment)) {
-      const inline = new Slice(fragment.child(0).content, 0, 0)
-      dispatch?.(state.tr.replaceSelection(inline).scrollIntoView())
-      return true
-    }
-    // A lone block is placed rather than merged: replacing a cursor with a slice
-    // of one block leaves the document untouched, because there is nothing to
-    // merge it into.
-    if (fragment.childCount === 1) return insertNode(fragment.child(0))(state, dispatch, view)
-    dispatch?.(state.tr.replaceSelection(new Slice(fragment, 0, 0)).scrollIntoView())
+    dispatch?.(replaceSelectionWithFragment(state.tr, fragment).scrollIntoView())
     return true
   }
 }

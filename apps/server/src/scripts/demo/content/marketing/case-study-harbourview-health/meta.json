@@ -1,0 +1,14 @@
+{
+  "collection": "Content",
+  "title": "Case study: Harbourview Health",
+  "type": "article",
+  "owners": ["ravi@acme.example"],
+  "tags": ["case-study", "harbourview-health", "healthcare", "tidepool"],
+  "review": "6m",
+  "status": "published",
+  "notes": [
+    "First version after eight weeks of Tidepool, approved by Harbourview Health",
+    "Updated to six-month figures (triage time down 60%) and added the Skiff 2.0 beta on the wards"
+  ],
+  "frontMatter": {}
+}

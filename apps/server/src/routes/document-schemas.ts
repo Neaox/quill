@@ -1,7 +1,14 @@
 import { Type } from '@sinclair/typebox'
 import { DOCUMENT_STATUSES, slugify } from '@quill/domain'
 import type { Static } from '@sinclair/typebox'
-import type { DocumentRow, DraftRow, EnvelopeView, HistoryPageView } from '@quill/application'
+import type {
+  ComparedContent,
+  ComparedSource,
+  DocumentRow,
+  DraftRow,
+  EnvelopeView,
+  HistoryPageView,
+} from '@quill/application'
 import type { DocumentStatus } from '@quill/domain'
 
 /**
@@ -116,6 +123,8 @@ export const EnvelopeSchema = Type.Object({
     }),
     Type.Null(),
   ]),
+  /** Unpublished changes, for somebody who may edit; null for everybody else and when there are none. */
+  draft: Type.Union([Type.Object({ savedAt: Type.String({ format: 'date-time' }) }), Type.Null()]),
   review: Type.Union([
     Type.Object({ dueAt: Type.String({ format: 'date-time' }), overdue: Type.Boolean() }),
     Type.Null(),
@@ -179,18 +188,116 @@ export const HistoryQuerySchema = Type.Object({
   cursor: Type.Optional(Type.String()),
 })
 
-export const DiffQuerySchema = Type.Object({
+export const CompareQuerySchema = Type.Object({
   /** Omitted compares against nothing, which is how a first revision reads. */
   from: Type.Optional(RevisionSchema),
-  to: RevisionSchema,
+  /** A revision, or `draft`: the document as its next publish would write it. */
+  to: Type.Union([RevisionSchema, Type.Literal('draft')]),
+  /** Draw each change on its own too, and say which can be put back in the draft. */
+  patches: Type.Optional(Type.Boolean()),
 })
 
-export const DiffSchema = Type.Object({
-  from: Nullable(RevisionSchema),
-  to: RevisionSchema,
-  unified: Type.String(),
-  added: Type.Integer(),
-  removed: Type.Integer(),
+/** Some changes since a revision, to be put back in the draft the caller is looking at. */
+export const RevertDraftChangesBodySchema = Type.Object({
+  /** The revision the changes are since; omitted for a document never published. */
+  from: Type.Optional(RevisionSchema),
+  /** The version of the draft the caller is looking at. */
+  draftVersion: Type.Integer({ minimum: 0 }),
+  /** The ids the comparison named them by. */
+  changes: Type.Array(Type.String({ pattern: '^c\\d{1,6}$' }), { minItems: 1, maxItems: 500 }),
+})
+
+/** The draft as it would be with those changes put back: not saved, for the editor to apply. */
+export const RevertedDraftSchema = Type.Object({
+  draftVersion: Type.Integer(),
+  ast: Type.Record(Type.String(), Type.Unknown()),
+})
+
+const ChangeKindSchema = Type.Union([
+  Type.Literal('added'),
+  Type.Literal('removed'),
+  Type.Literal('changed'),
+  Type.Literal('moved'),
+])
+
+const LineChangeSchema = Type.Union([
+  Type.Literal('equal'),
+  Type.Literal('added'),
+  Type.Literal('removed'),
+])
+
+/**
+ * Two versions of a document as one page (`docs/architecture/api-contract-m2.md`).
+ *
+ * Deliberately Git-free: no path, no revision hash, no hunk header. Each
+ * change names its block by `id`, which the `html` carries as
+ * `data-change-id`; each section names its heading by the id the heading
+ * carries in `html`.
+ */
+export const ComparisonSchema = Type.Object({
+  html: Type.String(),
+  summary: Type.Object({
+    sections: Type.Integer(),
+    added: Type.Integer(),
+    removed: Type.Integer(),
+    changed: Type.Integer(),
+    moved: Type.Integer(),
+    wordsAdded: Type.Integer(),
+    wordsRemoved: Type.Integer(),
+  }),
+  changes: Type.Array(
+    Type.Object({
+      id: Type.String(),
+      change: ChangeKindSchema,
+      block: Type.String(),
+      excerpt: Type.String(),
+      wordsAdded: Type.Integer(),
+      wordsRemoved: Type.Integer(),
+      section: Type.Optional(Type.Object({ id: Type.String(), title: Type.String() })),
+      /** The change drawn on its own; only with `patches`. */
+      html: Type.Optional(Type.String()),
+      /** Whether it can be put back in the draft; only in a comparison with the draft. */
+      revertible: Type.Optional(Type.Boolean()),
+      /** Who made it, when the draft's record knows; only in a comparison with the draft. */
+      author: Type.Optional(
+        Type.Object({
+          id: Type.String(),
+          /** Absent when the account is gone. */
+          name: Type.Optional(Type.String()),
+          at: Type.String({ format: 'date-time' }),
+        }),
+      ),
+    }),
+  ),
+  sections: Type.Array(
+    Type.Object({
+      id: Type.String(),
+      depth: Type.Integer(),
+      title: Type.String(),
+      changes: Type.Integer(),
+    }),
+  ),
+  properties: Type.Array(
+    Type.Object({
+      name: Type.String(),
+      before: Type.Optional(Type.String()),
+      after: Type.Optional(Type.String()),
+    }),
+  ),
+})
+
+/** The two versions' Markdown by line, each changed line's words marked. */
+export const SourceComparisonSchema = Type.Object({
+  lines: Type.Array(
+    Type.Object({
+      change: LineChangeSchema,
+      before: Type.Optional(Type.Integer()),
+      after: Type.Optional(Type.Integer()),
+      segments: Type.Array(Type.Object({ change: LineChangeSchema, text: Type.String() })),
+    }),
+  ),
+  wordsAdded: Type.Integer(),
+  wordsRemoved: Type.Integer(),
 })
 
 export const RenderedQuerySchema = Type.Object({ revision: Type.Optional(RevisionSchema) })
@@ -232,6 +339,44 @@ export const TreeNodeSchema = Type.Recursive(
     }),
   { $id: 'TreeNode' },
 )
+
+/** The most documents one page of a parent's children holds. */
+export const MAX_CHILDREN_PAGE = 200
+
+export const TreeChildrenQuerySchema = Type.Object({
+  collectionId: Type.String({ minLength: 1 }),
+  /** The parent; omitted for the documents at the top of the collection. */
+  parentId: Type.Optional(Type.String({ minLength: 1 })),
+  /** Where the page resumes: the `next` of the page before it, which is opaque. */
+  cursor: Type.Optional(Type.String({ minLength: 1, maxLength: 200 })),
+  limit: Type.Optional(Type.Integer({ minimum: 1, maximum: MAX_CHILDREN_PAGE, default: 50 })),
+})
+
+/** One entry of a navigation tree that opens a level at a time (ADR-049). */
+export const TreeChildSchema = Type.Object({
+  id: Type.String(),
+  shortId: Type.String(),
+  title: Type.String(),
+  slug: Type.String(),
+  status: DocumentStatusSchema,
+  /** How many documents it has directly beneath it, that the reader may see. */
+  childCount: Type.Integer(),
+})
+
+export const TreeChildrenSchema = Type.Object({
+  nodes: Type.Array(TreeChildSchema),
+  /** Pass as `cursor` for the next page; absent on the last. */
+  next: Type.Optional(Type.String()),
+})
+
+/** Where a document sits in a navigation tree that opens a level at a time (ADR-049). */
+export const TreePositionSchema = Type.Object({
+  collectionId: Type.Union([Type.String(), Type.Null()]),
+  /** The documents it nests under, outermost first: the order they are opened in to show it. */
+  ancestors: Type.Array(Type.String()),
+  /** How many documents are directly beneath it. */
+  childCount: Type.Integer(),
+})
 
 export const WorkspaceTreeSchema = Type.Object({
   collections: Type.Array(
@@ -309,6 +454,7 @@ export function envelopeResponse(envelope: EnvelopeView): Static<typeof Envelope
             author: envelope.lastPublished.author,
             at: envelope.lastPublished.at.toISOString(),
           },
+    draft: envelope.draft === null ? null : { savedAt: envelope.draft.savedAt.toISOString() },
     review:
       envelope.review === null
         ? null
@@ -330,5 +476,48 @@ export function historyResponse(page: HistoryPageView): Static<typeof HistorySch
       ...(entry.changeNote === undefined ? {} : { changeNote: entry.changeNote }),
     })),
     ...(page.nextCursor === undefined ? {} : { nextCursor: page.nextCursor }),
+  }
+}
+
+export function comparisonResponse(content: ComparedContent): Static<typeof ComparisonSchema> {
+  return {
+    html: content.html,
+    summary: { ...content.summary },
+    changes: content.changes.map(({ section, html, revertible, author, ...change }) => ({
+      ...change,
+      ...(author === undefined
+        ? {}
+        : {
+            author: {
+              id: author.userId,
+              at: author.at,
+              ...(author.name === undefined ? {} : { name: author.name }),
+            },
+          }),
+      ...(section === undefined ? {} : { section: { ...section } }),
+      ...(html === undefined ? {} : { html }),
+      ...(revertible === undefined ? {} : { revertible }),
+    })),
+    sections: content.sections.map((section) => ({ ...section })),
+    properties: content.properties.map(({ name, before, after }) => ({
+      name,
+      ...(before === undefined ? {} : { before }),
+      ...(after === undefined ? {} : { after }),
+    })),
+  }
+}
+
+export function sourceComparisonResponse(
+  source: ComparedSource,
+): Static<typeof SourceComparisonSchema> {
+  return {
+    lines: source.lines.map(({ change, before, after, segments }) => ({
+      change,
+      ...(before === undefined ? {} : { before }),
+      ...(after === undefined ? {} : { after }),
+      segments: segments.map((segment) => ({ ...segment })),
+    })),
+    wordsAdded: source.wordsAdded,
+    wordsRemoved: source.wordsRemoved,
   }
 }

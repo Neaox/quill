@@ -1,0 +1,11 @@
+{
+  "collection": "Getting started",
+  "title": "Create your first workspace",
+  "type": "guide",
+  "owners": ["tom@acme.example"],
+  "tags": ["getting-started", "tidepool", "workspace"],
+  "review": "180d",
+  "status": "published",
+  "notes": ["First version"],
+  "frontMatter": {}
+}

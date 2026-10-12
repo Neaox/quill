@@ -1,3 +1,5 @@
+import { CALLOUT_TYPES, DEFAULT_CALLOUT_TYPE, isCalloutType } from '@quill/markdown'
+import type { CalloutType } from '@quill/markdown'
 import { buttonClassName } from '@quill/ui'
 import type { Extensions, NodeConfig } from '@tiptap/core'
 import type { Node as PMNode } from '@tiptap/pm/model'
@@ -5,6 +7,8 @@ import type { Decoration } from '@tiptap/pm/view'
 import type { EditorView as ProseMirrorView, NodeView } from '@tiptap/pm/view'
 import { tv } from 'tailwind-variants'
 
+import { calloutTitleOf } from '../callout/callout-title.ts'
+import { TableBlockView } from '../table/table-view.ts'
 import { dismiss, isDismissed } from './dismissal.ts'
 
 /**
@@ -28,14 +32,21 @@ import { dismiss, isDismissed } from './dismissal.ts'
  */
 const card = tv({
   slots: {
-    root:
-      'directive rounded-md border border-border-strong/50 bg-surface px-4 py-3 ' +
-      'data-[dismissed=true]:opacity-70 data-[added=false]:border-dashed',
+    root: 'directive',
     content: 'directive-content',
   },
+  variants: {
+    // A callout is drawn by the reader's own `.callout` and nothing else: a card
+    // frame around it would be a second outline the published page does not have.
+    framed: {
+      true: {
+        root:
+          'rounded-md border border-border-strong/50 bg-surface px-4 py-3 ' +
+          'data-[dismissed=true]:opacity-70 data-[added=false]:border-dashed',
+      },
+    },
+  },
 })
-
-const styles = card()
 
 interface Chrome {
   readonly tag: 'aside' | 'section' | 'div'
@@ -44,7 +55,17 @@ interface Chrome {
   readonly dismissible?: boolean
   /** Content the author has to accept before it is content at all. */
   readonly gated?: boolean
+  /** A callout, drawn in its tone as a reader sees it. */
+  readonly toned?: boolean
+  /** What the block is, as a small heading in it: for a block that is the author's alone and says so. */
+  readonly heading?: string
   label(node: PMNode): string
+}
+
+/** A callout's tone: its `type`, or a note for one the reader would not know either. */
+function toneOf(node: PMNode): CalloutType {
+  const type = attributesOf(node)['type']
+  return isCalloutType(type) ? type : DEFAULT_CALLOUT_TYPE
 }
 
 function attributesOf(node: PMNode): Readonly<Record<string, string>> {
@@ -69,9 +90,14 @@ const CHROME: Readonly<Record<string, Chrome>> = {
   callout: {
     tag: 'div',
     role: 'group',
+    toned: true,
     label: (node) => `Callout: ${attributesOf(node)['type'] ?? 'note'}`,
   },
   placeholder: { tag: 'div', label: () => 'Placeholder' },
+  // What the presenter says, which no reader ever sees (ADR-050): the author is told so in the block.
+  notes: { tag: 'aside', role: 'note', heading: 'Presenter notes', label: () => 'Presenter notes' },
+  // Details where opening one closes the others (ADR-048).
+  accordion: { tag: 'div', role: 'group', label: () => 'Accordion' },
 }
 
 const DEFAULT_CHROME: Chrome = {
@@ -95,6 +121,10 @@ export class DirectiveNodeView implements NodeView {
   private readonly view: ProseMirrorView
   private readonly getPos: () => number | undefined
   private readonly action: HTMLButtonElement
+  /** A callout's tone in words, as the reader titles it; its icon and colours are `prose.css`'s. */
+  private readonly tone: HTMLElement
+  /** The small heading of a block that says what it is (presenter notes), drawn as a callout's title is. */
+  private readonly heading: HTMLElement
   private dismissed: boolean
 
   constructor(
@@ -110,7 +140,7 @@ export class DirectiveNodeView implements NodeView {
     const chrome = chromeFor(node)
 
     this.dom = document.createElement(chrome.tag)
-    this.dom.className = styles.root({
+    this.dom.className = card({ framed: chrome.toned !== true }).root({
       class: `directive-${String(node.attrs['name'] ?? 'unknown')}`,
     })
     if (chrome.role !== undefined) this.dom.setAttribute('role', chrome.role)
@@ -122,14 +152,29 @@ export class DirectiveNodeView implements NodeView {
       size: 'sm',
       className: 'directive-action',
     })
-    this.action.contentEditable = 'false'
+    this.action.setAttribute('contenteditable', 'false')
     this.action.addEventListener('click', () => {
       this.act()
     })
 
+    // Hidden from assistive technology: the group's own name already says it.
+    this.tone = document.createElement('p')
+    this.tone.className = 'callout-label'
+    this.tone.setAttribute('contenteditable', 'false')
+    this.tone.setAttribute('aria-hidden', 'true')
+    this.tone.title = 'Change the callout’s type'
+
+    // Hidden from assistive technology for the same reason: the block's own name already says it.
+    this.heading = document.createElement('p')
+    this.heading.className = 'callout-label directive-heading'
+    this.heading.setAttribute('contenteditable', 'false')
+    this.heading.setAttribute('aria-hidden', 'true')
+    this.heading.textContent = chrome.heading ?? ''
+
     this.contentDOM = document.createElement('div')
-    this.contentDOM.className = styles.content()
+    this.contentDOM.className = card().content()
     this.dom.append(this.contentDOM)
+    if (chrome.heading !== undefined) this.dom.prepend(this.heading)
     this.render()
   }
 
@@ -150,11 +195,31 @@ export class DirectiveNodeView implements NodeView {
     this.view.focus()
   }
 
+  /**
+   * A callout drawn in its tone (WCAG 1.4.1): the reader's own classes, so its
+   * stripe, colour and icon come from the same tokens as the published one,
+   * and its tone's name above the words.
+   */
+  private showTone(): void {
+    const tone = toneOf(this.node)
+    this.dom.classList.add('callout')
+    for (const type of CALLOUT_TYPES) this.dom.classList.toggle(`callout-${type}`, type === tone)
+    // With a title of its own the callout is headed by that, as it is on the page, and
+    // the tone's name is left to the icon and colour; without one, the name is the heading.
+    if (calloutTitleOf(this.node) === undefined) {
+      this.tone.textContent = tone.slice(0, 1).toUpperCase() + tone.slice(1)
+      this.dom.prepend(this.tone)
+    } else {
+      this.tone.remove()
+    }
+  }
+
   private render(): void {
     const chrome = chromeFor(this.node)
     const gatedShut = chrome.gated === true && !isAdded(this.node)
     this.dom.setAttribute('aria-label', chrome.label(this.node))
     this.dom.dataset['added'] = String(!gatedShut)
+    if (chrome.toned === true) this.showTone()
 
     // Taken out of the DOM rather than hidden in it: an affordance that is not
     // offered should not be in the reading order or the accessibility tree.
@@ -196,7 +261,10 @@ const withView: Partial<NodeConfig> = {
   addNodeView:
     () =>
     ({ node, editor, getPos, decorations }) =>
-      new DirectiveNodeView(node, editor.view, getPos, decorations),
+      // A `:::table` wrapper is drawn as the table's card (ADR-040).
+      node.attrs['name'] === 'table'
+        ? new TableBlockView(node)
+        : new DirectiveNodeView(node, editor.view, getPos, decorations),
 }
 
 /** Gives container directives their author-facing chrome. */

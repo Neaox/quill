@@ -10,13 +10,14 @@ import type {
   DocumentEnvelope,
   DocumentHistory,
   PublishedContent,
+  Comparison,
   RenderedDocument,
-  RevisionDiff,
+  SourceComparison,
 } from './types.ts'
 
 /**
  * The read side of the M2 content API: the cached body, the live envelope,
- * the revision list, and the diff between two revisions (ADR-031,
+ * the revision list, and the comparison of two versions (ADR-031,
  * `docs/architecture/api-contract-m2.md`).
  */
 
@@ -158,34 +159,77 @@ export function useDocumentHistory(
   })
 }
 
-export interface DiffRange {
+/** The draft, as the newer side of a comparison: what the next publish would write. */
+export const DRAFT_SIDE = 'draft'
+
+export interface ComparisonRange {
   /** `null` compares against the empty document, which is what the route means by an absent `from`. */
   readonly from: string | null
+  /** A revision, or `DRAFT_SIDE`. */
   readonly to: string
 }
 
+function comparisonQuery(range: ComparisonRange, patches = false) {
+  return {
+    to: range.to,
+    ...(range.from === null ? {} : { from: range.from }),
+    ...(patches ? { patches } : {}),
+  }
+}
+
 /**
- * The unified diff between two revisions. Both revisions are immutable, so
- * the answer is too.
+ * Two versions as one page (`GET /documents/:id/compare`). Two revisions are
+ * immutable, so their comparison is too; a comparison with the draft is
+ * asked for again whenever it is shown, because the draft is being written,
+ * and for each `version` of it that is saved.
  */
-export function useRevisionDiff(documentId: string, range: DiffRange | undefined) {
+export function useComparison(
+  documentId: string,
+  range: ComparisonRange,
+  options: {
+    readonly version?: number
+    /** Each change drawn on its own, and which can be put back in the draft. */
+    readonly patches?: boolean
+  } = {},
+) {
   const client = useApiClient()
   return useQuery({
-    queryKey: queryKeys.diff(documentId, range?.from ?? null, range?.to ?? ''),
-    queryFn: () => {
-      if (range === undefined) {
-        throw new Error('useRevisionDiff: a range is required once enabled')
-      }
-      return request<RevisionDiff>(
-        client.GET('/api/documents/{id}/diff', {
-          params: {
-            path: { id: documentId },
-            query: { to: range.to, ...(range.from === null ? {} : { from: range.from }) },
-          },
+    queryKey: queryKeys.comparison(
+      documentId,
+      range.from,
+      range.to,
+      options.version,
+      options.patches,
+    ),
+    // Between one version of the draft and the next, the last answer is the best
+    // there is, which is what lets a summary of it not flicker as the author types.
+    placeholderData: (previous) => (range.to === DRAFT_SIDE ? previous : undefined),
+    queryFn: () =>
+      request<Comparison>(
+        client.GET('/api/documents/{id}/compare', {
+          params: { path: { id: documentId }, query: comparisonQuery(range, options.patches) },
         }),
-      )
-    },
-    enabled: range !== undefined,
-    staleTime: Number.POSITIVE_INFINITY,
+      ),
+    staleTime: range.to === DRAFT_SIDE ? 0 : Number.POSITIVE_INFINITY,
+  })
+}
+
+/** The two versions' Markdown by line, fetched only when the source view is open. */
+export function useSourceComparison(
+  documentId: string,
+  range: ComparisonRange,
+  options: { readonly enabled: boolean },
+) {
+  const client = useApiClient()
+  return useQuery({
+    queryKey: queryKeys.sourceComparison(documentId, range.from, range.to),
+    queryFn: () =>
+      request<SourceComparison>(
+        client.GET('/api/documents/{id}/compare/source', {
+          params: { path: { id: documentId }, query: comparisonQuery(range) },
+        }),
+      ),
+    enabled: options.enabled,
+    staleTime: range.to === DRAFT_SIDE ? 0 : Number.POSITIVE_INFINITY,
   })
 }

@@ -24,14 +24,18 @@ export const documentShellStyles = tv({
     ],
     header: 'shell-header',
     rail: 'shell-rail',
-    nav: [
-      'shell-nav w-62 border-e border-border bg-surface-raised',
-      'max-md:w-auto max-md:border-e-0 max-md:border-b',
-    ],
+    /*
+     * The sidebar and the complementary column sit straight on the page, as
+     * the document does: no panel colour and no rule between them and the
+     * text, so the eye reads one page with three columns rather than three
+     * boxes. Only where they stack under one another on a narrow screen does a
+     * hairline say where one ends.
+     */
+    nav: ['shell-nav w-66 px-2', 'max-md:w-auto max-md:border-b max-md:border-border'],
     main: 'shell-main',
     aside: [
-      'shell-aside w-56 border-s border-border px-5 py-8',
-      'max-lg:w-auto max-lg:border-s-0 max-lg:border-t',
+      'shell-aside w-60 px-6 pt-8 pb-8',
+      'max-lg:w-auto max-lg:border-t max-lg:border-border max-lg:pt-8',
     ],
   },
 })

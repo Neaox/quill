@@ -1,58 +1,72 @@
-import type { NavigationLink, OutlineEntry, PublicNavigationNode } from '@quill/application'
-import { publicSiteHref } from '@quill/application'
+import type { OutlineEntry, ResolvedPublicMenu } from '@quill/application'
 
 import { html, raw, toDocument, type Html } from '../html.ts'
 import { renderFooter } from './footer.ts'
-import { renderNavigation } from './navigation.ts'
+import { renderHeaderMenu, type PageAudience } from './header-menu.ts'
+import { renderNavigation, type NavigationSection } from './navigation.ts'
 import { renderTableOfContents } from './table-of-contents.ts'
 
 /**
- * The public page (ADR-023; `docs/design/canvas/Presenting.dc.html`).
+ * The public page (ADR-023; `docs/architecture/public-site.md`).
  *
  * One template for every page the site has — the home, a document, the search
- * results, the not-found page — because they are one page with different
- * middles, and because the things that must be true of a public page are true
- * of all four: the content is in the first response with no JavaScript
- * involved, there is no application chrome, there is no sign-in wall, and
+ * results, the not-found page — and for the reader preview, because they are
+ * one page with different middles, and because the things that must be true
+ * of a public page are true of all of them: the content is in the first
+ * response, there is no application chrome, there is no sign-in wall, and
  * nothing about the organisation travels beyond what was published
- * (`docs/product/surfaces.md`).
+ * (`docs/product/surfaces.md`). A preview that used a template of its own
+ * would be previewing that template.
+ *
+ * The chrome, in reading order:
+ *
+ * - **A sticky header** on a translucent page colour with a hairline: the
+ *   organisation's lockup on the left, then its menu — links and dropdowns,
+ *   folded behind a Menu button on a narrow screen (`header-menu.ts`) — and
+ *   the site's search and the reader's colour-scheme switch on the right.
+ * - **Three columns**: the documents (one disclosure per collection), the
+ *   page, and "On this page". They fold on a narrow screen into one column
+ *   with the documents in a disclosure card of their own (`public-site.css`).
+ * - **A footer** under the page, outside `main`, where a footer is a landmark.
  *
  * What is deliberately here rather than in a route:
  *
- * - **Landmarks.** A `header`, a `nav` for the site's sections, a `main` with
- *   the page in an `article`, a second labelled `nav` for the contents, and a
- *   `footer`; a skip link ahead of all of it (AGENTS.md rule 14).
+ * - **Landmarks.** A skip link ahead of everything, a `header`, a labelled
+ *   `nav` for the documents, a `main`, a second labelled `nav` for the
+ *   contents, and a `footer` (AGENTS.md rule 14).
  * - **The crawler's half of the page** (use case 29): a canonical link, a
- *   description taken from the document's first paragraph, Open Graph tags,
- *   and optional `Article` structured data. There is **no `noindex`** on a
- *   published document, ever — that belongs to share links, which are a
- *   different surface (ADR-011). The search results and the not-found page do
- *   carry one, because neither is a published document and both are addresses
- *   whose text the person following the link chose.
- * - **One stylesheet, addressed by its hash**, preloaded so the first paint
- *   does not wait on discovery, and no inline style anywhere: the CSP is
- *   nonce-based with no `unsafe-inline`, so a style attribute this template
- *   emitted would silently do nothing.
- * - **No executable script at all.** Light and dark follow
- *   `prefers-color-scheme` in the generated theme, so the page needs no toggle
- *   and therefore no code (ADR-028). The one `<script>` is the structured
- *   data, which is `application/ld+json`: a data block, not a script a browser
- *   runs, and deliberately without a nonce. A nonce is minted per response, so
- *   carrying one would mean a `304` handing a reader a fresh nonce for a body
- *   that holds the old one — the page's own identity would change on every
- *   request, and nothing would ever revalidate. With no nonce anywhere on the
- *   page, the `ETag` is simply the page.
+ *   description, Open Graph tags and optional `Article` structured data. There
+ *   is **no `noindex`** on a published document, ever; the search results, the
+ *   not-found page and the preview carry one because none of them is.
+ * - **One stylesheet and one script, each addressed by its own hash**, and no
+ *   inline style or script anywhere: the CSP is strict with no
+ *   `unsafe-inline`. The script (`scheme-script.ts`) is a same-origin file in
+ *   the head, so it runs before first paint without a nonce — and because no
+ *   nonce is on the page, its bytes are its identity and a `304` stays right.
+ *   The one inline `<script>` is structured data, which is
+ *   `application/ld+json`: a data block, never executed.
  */
 
 export interface PageView {
-  readonly siteSlug: string
   /** The organisation's name, which is the site's name (ADR-028). */
   readonly siteName: string
-  /** The tenant's configured top links (`publicNavigation`, ADR-034). */
-  readonly links: readonly NavigationLink[]
-  readonly navigation: readonly PublicNavigationNode[]
-  /** The page being shown, so the navigation can mark it; null off a document. */
-  readonly currentPath: string | null
+  /** Where the lockup leads, or null when there is no home to go to. */
+  readonly homeHref: string | null
+  /**
+   * The organisation's header menu, already resolved to titles and addresses
+   * (`resolvePublicMenu`; `templates/header-menu.ts`).
+   */
+  readonly menu: ResolvedPublicMenu
+  /** This page's own address, so the menu can mark it; null when it has none. */
+  readonly currentHref: string | null
+  /**
+   * `public` for a published page, `private` for the reader preview: a private
+   * page's external links never tell their destination where they came from.
+   */
+  readonly audience: PageAudience
+  /** Where the search box submits, or null when there is nothing to search. */
+  readonly searchHref: string | null
+  readonly sections: readonly NavigationSection[]
   /** What goes in `<title>`; the site's name is appended unless it is the site's name. */
   readonly title: string
   readonly description: string | null
@@ -62,13 +76,26 @@ export interface PageView {
    * A `robots` directive, or null for a page a crawler should treat normally.
    *
    * ADR-023's "never `noindex`" is about *published documents*: a search
-   * result page is not one, and neither is a not-found page. Both carry
-   * `noindex,follow`, so a crawler reads the links and indexes the pages they
-   * lead to without the result page itself becoming an indexable address that
-   * anybody can choose the text of.
+   * result page is not one, a not-found page is not one, and a preview is not
+   * one.
    */
   readonly robots: string | null
   readonly stylesheetHref: string
+  readonly scriptHref: string
+  /** The reader — code highlighting and the diagram lightbox (`reader-script.ts`) — loaded as a module. */
+  readonly readerHref: string
+  /**
+   * The theme identity the stylesheet's palette is scoped to, written on
+   * `<html>` as `data-theme-id` exactly as the application writes it
+   * (ADR-028), so the one theme stylesheet applies the same way on both.
+   */
+  readonly themeId: string
+  /**
+   * The layout attributes the stylesheet reads from `<html>` — `data-rules`,
+   * `data-align` (`theme/page-attributes.ts`) — exactly as the application
+   * writes them. Names are `data-` and a lower-case word; values are escaped.
+   */
+  readonly htmlAttributes: Readonly<Record<string, string>>
   readonly outline: readonly OutlineEntry[]
   /** The middle of the page: an article, an index, results, or an apology. */
   readonly main: Html
@@ -77,15 +104,36 @@ export interface PageView {
   readonly structuredData: string | null
   /** What the search box should already contain. */
   readonly query: string | null
+  /** The reader preview's banner (`preview-banner.ts`), or null on the public site. */
+  readonly preview: Html | null
+}
+
+/** The word after the organisation's name in the lockup, a tone quieter. */
+const EDITION = 'docs'
+
+const graphemes = new Intl.Segmenter(undefined, { granularity: 'grapheme' })
+
+/**
+ * The lockup's mark: the organisation's initial on an accent tile.
+ *
+ * A stand-in for the logo, which the settings document can name but nothing
+ * can serve yet (`settings/documents.ts`). One grapheme rather than one code
+ * unit, so a name that starts with an accent or an emoji keeps it whole.
+ */
+export function lockupMark(name: string): string {
+  const [first] = graphemes.segment(name.trim())
+  return first === undefined ? '' : first.segment.toLocaleUpperCase()
 }
 
 export function renderPage(view: PageView): string {
   const title = view.title === view.siteName ? view.title : `${view.title} · ${view.siteName}`
-  const searchHref = `${publicSiteHref(view.siteSlug)}/search`
-  return toDocument(html`<html lang="en">
+  const navigation = renderNavigation(view.sections)
+  const root = html`lang="en" data-theme-id="${view.themeId}"${htmlAttributes(view.htmlAttributes)}`
+  return toDocument(html`<html ${root}>
     <head>
       <meta charset="utf-8" />
       <meta name="viewport" content="width=device-width, initial-scale=1" />
+      <meta name="color-scheme" content="light dark" />
       <title>${title}</title>
       ${view.robots === null ? '' : html`<meta name="robots" content="${view.robots}" />`}
       ${view.description === null ? '' : html`<meta name="description" content="${view.description}" />`}
@@ -102,6 +150,8 @@ export function renderPage(view: PageView): string {
       <meta name="twitter:card" content="summary" />
       <link rel="preload" as="style" href="${view.stylesheetHref}" />
       <link rel="stylesheet" href="${view.stylesheetHref}" />
+      <script src="${view.scriptHref}"></script>
+      <script type="module" src="${view.readerHref}"></script>
       ${
         view.structuredData === null
           ? ''
@@ -112,41 +162,105 @@ export function renderPage(view: PageView): string {
     </head>
     <body>
       <a class="skip-link" href="#site-main">Skip to content</a>
+      ${view.preview ?? ''}
       <header class="site-header">
         <div class="site-header-inner">
-          <a class="site-brand" href="${publicSiteHref(view.siteSlug)}">${view.siteName}</a>
-          ${
-            view.links.length === 0
-              ? ''
-              : html`<ul class="site-links">
-                  ${view.links.map((link) => html`<li><a href="${link.href}">${link.label}</a></li>`)}
-                </ul>`
-          }
-          <form class="site-search" role="search" action="${searchHref}" method="get">
-            <label class="visually-hidden" for="site-search-input">Search ${view.siteName}</label>
-            <input
-              id="site-search-input"
-              type="search"
-              name="q"
-              placeholder="Search the docs"
-              value="${view.query ?? ''}"
-            />
-            <button type="submit">Search</button>
-          </form>
+          ${renderLockup(view)}
+          ${renderHeaderMenu({ menu: view.menu, currentHref: view.currentHref, audience: view.audience })}
+          <div class="site-tools">
+            ${view.searchHref === null ? '' : renderSearch(view.searchHref, view.siteName, view.query)}
+            ${SCHEME_SWITCH}
+          </div>
         </div>
       </header>
       <div class="site-body">
-        ${renderNavigation({
-          siteSlug: view.siteSlug,
-          nodes: view.navigation,
-          currentPath: view.currentPath,
-        })}
+        ${
+          navigation.value === ''
+            ? ''
+            : html`<div class="site-side">
+                <details class="site-menu" open>
+                  <summary>Documents</summary>
+                  ${navigation}
+                </details>
+              </div>`
+        }
         <main class="site-main" id="site-main">${view.main}</main>
-        ${renderTableOfContents(view.outline)}
+        <div class="site-aside">${renderTableOfContents(view.outline)}</div>
+        ${renderFooter({ organisationName: view.siteName, updatedAt: view.updatedAt })}
       </div>
-      ${renderFooter({ organisationName: view.siteName, updatedAt: view.updatedAt })}
     </body>
   </html> `)
+}
+
+function renderLockup(view: PageView): Html {
+  const inner = html`<span class="site-mark" aria-hidden="true">${lockupMark(view.siteName)}</span
+    ><span class="site-wordmark"
+      >${view.siteName} <span class="site-edition">${EDITION}</span></span
+    >`
+  return view.homeHref === null
+    ? html`<span class="site-brand">${inner}</span>`
+    : html`<a class="site-brand" href="${view.homeHref}">${inner}</a>`
+}
+
+const SEARCH_ICON = html`<svg
+  class="site-search-icon"
+  viewBox="0 0 16 16"
+  width="14"
+  height="14"
+  aria-hidden="true"
+  focusable="false"
+>
+  <circle cx="7" cy="7" r="4.5" fill="none" stroke="currentColor" stroke-width="1.5" />
+  <path
+    d="M10.5 10.5L14 14"
+    fill="none"
+    stroke="currentColor"
+    stroke-width="1.5"
+    stroke-linecap="round"
+  />
+</svg>`
+
+/**
+ * The site's search: a plain `GET` form, so it works with no script, and a
+ * submit button a keyboard reaches even though the design shows only the
+ * field — pressing Enter is not the only way a form should be submittable.
+ */
+function renderSearch(action: string, siteName: string, query: string | null): Html {
+  return html`<form class="site-search" role="search" action="${action}" method="get">
+    <label class="visually-hidden" for="site-search-input">Search ${siteName}</label>
+    ${SEARCH_ICON}
+    <input
+      id="site-search-input"
+      type="search"
+      name="q"
+      placeholder="Search"
+      value="${query ?? ''}"
+    />
+    <button class="visually-hidden-until-focus" type="submit">Search</button>
+  </form>`
+}
+
+/**
+ * The reader's colour scheme (ADR-028), as a segmented control on a well.
+ *
+ * `hidden` in the markup: without the script there is nothing to change and
+ * the page follows the system, so a control that did nothing would be a lie.
+ * The script reveals it and checks the reader's current choice.
+ */
+const SCHEME_SWITCH = html`<fieldset class="site-scheme" hidden>
+  <legend class="visually-hidden">Colour scheme</legend>
+  <label><input type="radio" name="site-scheme" value="system" checked /><span>System</span></label>
+  <label><input type="radio" name="site-scheme" value="light" /><span>Light</span></label>
+  <label><input type="radio" name="site-scheme" value="dark" /><span>Dark</span></label>
+</fieldset>`
+
+/** An attribute name may only be `data-` and a word: it is written into the page unescaped. */
+const ATTRIBUTE_NAME = /^data-[a-z]+$/u
+
+function htmlAttributes(attributes: Readonly<Record<string, string>>): Html[] {
+  return Object.entries(attributes)
+    .filter(([name]) => ATTRIBUTE_NAME.test(name))
+    .map(([name, value]) => html` ${raw(name)}="${value}"`)
 }
 
 /**

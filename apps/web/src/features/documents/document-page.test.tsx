@@ -67,7 +67,7 @@ const BODY_HTML = `<article>
 <p>How to move traffic between regions.</p>
 <h2 id="steps">Steps<a class="heading-anchor" href="#steps" aria-label="Permalink: Steps">#</a></h2>
 <pre><code data-lang="ts" data-tokens="${TOKENS}">${CODE}</code></pre>
-<div class="layout-wide"><table><thead><tr><th scope="col">Region</th><th scope="col">Owner</th></tr></thead><tbody><tr><td>eu</td><td>Platform</td></tr></tbody></table></div>
+<div class="layout-wide"><div class="table-scroll" tabindex="0" role="group" aria-label="Table"><table><thead><tr><th scope="col">Region</th><th scope="col">Owner</th></tr></thead><tbody><tr><td>eu</td><td>Platform</td></tr></tbody></table></div></div>
 <h2 id="afterwards">Afterwards<a class="heading-anchor" href="#afterwards" aria-label="Permalink: Afterwards">#</a></h2>
 <p>Tell the on-call engineer.</p>
 </article>`
@@ -160,7 +160,7 @@ describe('the reading view', () => {
     expect(code?.textContent).toBe(CODE)
   })
 
-  it('puts a rendered table in a labelled, keyboard-reachable scroll region', async () => {
+  it('keeps the renderer’s labelled, keyboard-reachable scroll region round a table', async () => {
     renderApp(READING_PATH, readingRoutes())
 
     const article = await screen.findByRole('article', { name: 'Regional failover' })
@@ -178,6 +178,65 @@ describe('the reading view', () => {
     const links = within(contents).getAllByRole('link')
 
     expect(links.map((link) => link.textContent)).toEqual(['Steps', 'Afterwards'])
+  })
+
+  it('starts with no section marked, because nothing has been read yet', async () => {
+    renderApp(READING_PATH, readingRoutes())
+    const contents = await screen.findByRole('navigation', { name: 'On this page' })
+
+    act(() => {
+      for (const observer of intersectionObservers) {
+        observer.intersect({ steps: false, afterwards: false })
+      }
+    })
+
+    expect(within(contents).queryAllByRole('link', { current: true })).toEqual([])
+  })
+
+  it('marks the section being read when none of its headings is in view, from where the reader scrolled past', async () => {
+    renderApp(READING_PATH, readingRoutes())
+    const contents = await screen.findByRole('navigation', { name: 'On this page' })
+
+    act(() => {
+      for (const observer of intersectionObservers) {
+        observer.intersect({ steps: 'above', afterwards: 'below' })
+      }
+    })
+
+    expect(within(contents).getByRole('link', { name: 'Steps' })).toHaveAttribute(
+      'aria-current',
+      'true',
+    )
+  })
+
+  it('goes back up the contents as the reader scrolls back up the page', async () => {
+    renderApp(READING_PATH, readingRoutes())
+    const contents = await screen.findByRole('navigation', { name: 'On this page' })
+
+    act(() => {
+      for (const observer of intersectionObservers) {
+        observer.intersect({ steps: 'above', afterwards: true })
+      }
+    })
+    expect(within(contents).getByRole('link', { name: 'Afterwards' })).toHaveAttribute(
+      'aria-current',
+      'true',
+    )
+
+    // Back up: "Afterwards" slides out of the bottom of the band, and the one
+    // before it, which is above, is where the reader is.
+    act(() => {
+      for (const observer of intersectionObservers) {
+        observer.intersect({ afterwards: 'below' })
+      }
+    })
+    expect(within(contents).getByRole('link', { name: 'Steps' })).toHaveAttribute(
+      'aria-current',
+      'true',
+    )
+    expect(within(contents).getByRole('link', { name: 'Afterwards' })).not.toHaveAttribute(
+      'aria-current',
+    )
   })
 
   it('follows the reader down the page', async () => {
@@ -213,7 +272,7 @@ describe('the reading view', () => {
     // in the readout any more: an owner is ADR-029's `owners` front-matter
     // field, no M2 route carries it, and a fact nothing can answer is not
     // shown as a dash (`DocumentStatus` in `@quill/ui`).
-    expect(await screen.findByText('last published by Ada')).toBeInTheDocument()
+    expect(await screen.findByText('Last published by Ada')).toBeInTheDocument()
     expect(screen.queryByText(/^owner:/)).not.toBeInTheDocument()
   })
 
@@ -238,6 +297,72 @@ describe('the reading view', () => {
 
     await screen.findByRole('article', { name: 'Regional failover' })
     expect(screen.queryByRole('link', { name: 'Edit' })).not.toBeInTheDocument()
+  })
+
+  it('tells an editor about changes that are saved and not published, and how to go on', async () => {
+    renderApp(
+      READING_PATH,
+      readingRoutes({
+        'GET /api/documents/{id}/envelope': envelope({
+          draft: { savedAt: '2026-02-04T09:30:00.000Z' },
+        }),
+      }),
+    )
+
+    const notice = await screen.findByRole('group', { name: 'Note: You have unpublished changes' })
+
+    expect(within(notice).getByText(/Readers still see the published page/u)).toBeInTheDocument()
+    expect(within(notice).getByRole('link', { name: 'Resume editing' })).toHaveAttribute(
+      'href',
+      `${READING_PATH}/edit`,
+    )
+    const preview = within(notice).getByRole('link', {
+      name: /^Preview\s+your unpublished changes/u,
+    })
+    expect(preview).toHaveAttribute('href', `/preview/d/regional-failover-${KEY}?draft`)
+    expect(preview).toHaveAttribute('target', '_blank')
+    // When it was saved, said as how long ago and in full on hover, by the platform.
+    const saved = within(notice).getByRole('time')
+    expect(saved).toHaveAttribute('datetime', '2026-02-04T09:30:00.000Z')
+    expect(saved).toHaveAttribute('title')
+  })
+
+  it('has nothing to say when there are no unpublished changes', async () => {
+    renderApp(READING_PATH, readingRoutes())
+
+    await screen.findByRole('article', { name: 'Regional failover' })
+
+    expect(screen.queryByText('You have unpublished changes')).not.toBeInTheDocument()
+  })
+
+  it('has nothing to say to somebody who may not edit, whatever the envelope holds', async () => {
+    renderApp(
+      READING_PATH,
+      readingRoutes({
+        'GET /api/documents/{id}/envelope': envelope({
+          permissions: { view: true, comment: false, edit: false, manage: false },
+          draft: { savedAt: '2026-02-04T09:30:00.000Z' },
+        }),
+      }),
+    )
+
+    await screen.findByRole('article', { name: 'Regional failover' })
+
+    expect(screen.queryByText('You have unpublished changes')).not.toBeInTheDocument()
+  })
+
+  it('is accessible with the notice showing', async () => {
+    const { container } = renderApp(
+      READING_PATH,
+      readingRoutes({
+        'GET /api/documents/{id}/envelope': envelope({
+          draft: { savedAt: '2026-02-04T09:30:00.000Z' },
+        }),
+      }),
+    )
+    await screen.findByRole('group', { name: 'Note: You have unpublished changes' })
+
+    await expectNoAccessibilityViolations(container)
   })
 
   it('says who is editing, when someone is', async () => {
@@ -291,6 +416,124 @@ describe('the reading view', () => {
     )
     // The title still has to come from somewhere when the body cannot.
     expect(screen.getByRole('heading', { level: 1, name: 'Regional failover' })).toBeInTheDocument()
+  })
+
+  describe('a document that was never published', () => {
+    const unpublished = (extra: FakeRoutes = {}) =>
+      readingRoutes({
+        'GET /api/documents/{id}/rendered': () =>
+          errorResponse(404, 'not_found', 'This document has no published revision'),
+        'GET /api/documents/{id}/history': () => jsonResponse(200, { revisions: [] }),
+        ...extra,
+      })
+
+    const text = (value: string) => ({ type: 'text', value })
+    const draftOf =
+      (...children: readonly object[]) =>
+      () =>
+        jsonResponse(200, {
+          documentId: 'doc-1',
+          draftVersion: 3,
+          baseRevision: null,
+          updatedAt: '2026-02-03T00:00:00.000Z',
+          ast: { version: 1, frontMatter: {}, ast: { type: 'root', children } },
+        })
+
+    it('says what is waiting to be published when there is a draft with writing in it, rather than that nothing is there', async () => {
+      renderApp(
+        READING_PATH,
+        unpublished({
+          'GET /api/documents/{id}/draft': draftOf(
+            { type: 'heading', depth: 2, children: [text('Overview')] },
+            {
+              type: 'paragraph',
+              children: [text('Three tiers and a cache in front of the slow one.')],
+            },
+            { type: 'heading', depth: 2, children: [text('Steps')] },
+          ),
+        }),
+      )
+
+      const note = await screen.findByRole('group', {
+        name: 'Note: Written, but not published yet',
+      })
+
+      expect(note).toHaveTextContent('Your draft has 2 sections and about 11 words')
+      expect(note).toHaveTextContent('Readers see nothing until you publish it')
+      expect(within(note).getByRole('link', { name: 'Continue writing' })).toHaveAttribute(
+        'href',
+        `${READING_PATH}/edit`,
+      )
+    })
+
+    it('offers a look at the draft as readers will see it, and does not claim readers still see a published page', async () => {
+      renderApp(
+        READING_PATH,
+        unpublished({
+          'GET /api/documents/{id}/envelope': envelope({
+            lastPublished: null,
+            draft: { savedAt: '2026-02-04T09:30:00.000Z' },
+          }),
+          'GET /api/documents/{id}/draft': draftOf({
+            type: 'paragraph',
+            children: [text('Three tiers and a cache in front of the slow one.')],
+          }),
+        }),
+      )
+
+      const note = await screen.findByRole('group', {
+        name: 'Note: Written, but not published yet',
+      })
+
+      expect(
+        within(note).getByRole('link', { name: /^Preview\s+your unpublished changes/u }),
+      ).toHaveAttribute('href', `/preview/d/regional-failover-${KEY}?draft`)
+      // There is no published page for readers to still be seeing.
+      expect(
+        screen.queryByRole('group', { name: 'Note: You have unpublished changes' }),
+      ).not.toBeInTheDocument()
+    })
+
+    it('says so when the draft is only a template’s sections, with nothing written in them yet', async () => {
+      renderApp(
+        READING_PATH,
+        unpublished({
+          'GET /api/documents/{id}/draft': draftOf(
+            { type: 'heading', depth: 2, children: [text('Context')] },
+            {
+              type: 'containerDirective',
+              name: 'guidance',
+              children: [
+                { type: 'paragraph', children: [text('Say why in two or three sentences.')] },
+              ],
+            },
+            { type: 'heading', depth: 2, children: [text('Decision')] },
+          ),
+        }),
+      )
+
+      const note = await screen.findByRole('group', { name: 'Note: Nothing written yet' })
+
+      expect(note).toHaveTextContent('Your draft has 2 sections and no writing in them yet')
+      expect(within(note).getByRole('link', { name: 'Start writing' })).toBeInTheDocument()
+    })
+
+    it('says only that it has not been published to somebody who cannot write it, and offers them nothing to do', async () => {
+      renderApp(
+        READING_PATH,
+        unpublished({
+          'GET /api/documents/{id}/envelope': envelope({
+            permissions: { view: true, comment: false, edit: false, manage: false },
+          }),
+        }),
+      )
+
+      const note = await screen.findByRole('group', { name: 'Note: Nothing published yet' })
+
+      expect(note).toHaveTextContent('has not been published yet')
+      expect(note).not.toHaveTextContent('write something')
+      expect(within(note).queryByRole('link')).toBeNull()
+    })
   })
 
   it('reports a real failure as one, with a way to try again', async () => {
@@ -403,5 +646,106 @@ describe('comparing two revisions', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Compare' }))
 
     expect(await screen.findByRole('heading', { name: 'Comparing v1 with v2' })).toBeInTheDocument()
+  })
+})
+
+const leaf = (id: string, title: string, children: unknown[] = []) => ({
+  id,
+  shortId: `${id}`.padEnd(10, '0'),
+  title,
+  slug: id,
+  status: 'published',
+  children,
+})
+
+describe('the child-documents block when reading', () => {
+  const CHILDREN_HTML = `<article>
+<h1 id="regional-failover">Regional failover</h1>
+<section class="live-block" data-live-block="children" aria-label="Live block: children" data-depth="2"><p>::children{depth="2"}</p></section>
+</article>`
+
+  const tree = () =>
+    jsonResponse(200, {
+      collections: [
+        {
+          id: 'col-1',
+          name: 'Runbooks',
+          slug: 'runbooks',
+          documents: [
+            leaf('doc-1', 'Regional failover', [
+              leaf('primary', 'Primary region', [leaf('detail', 'Detail', [leaf('deep', 'Deep')])]),
+              leaf('secondary', 'Secondary region'),
+            ]),
+            leaf('elsewhere', 'Somewhere else'),
+          ],
+        },
+      ],
+    })
+
+  const routes = (overrides: FakeRoutes = {}): FakeRoutes =>
+    readingRoutes({
+      'GET /api/documents/{id}/rendered': () =>
+        jsonResponse(200, {
+          revision: 'b'.repeat(40),
+          html: CHILDREN_HTML,
+          outline: [{ id: 'regional-failover', depth: 1, text: 'Regional failover', children: [] }],
+          slots: [],
+        }),
+      'GET /api/workspaces/{id}/tree': tree,
+      ...overrides,
+    })
+
+  it('lists the documents beneath this one as links, as deep as the block asks', async () => {
+    renderApp(READING_PATH, routes())
+
+    const block = await screen.findByRole('region', { name: 'Child documents' })
+    expect(await within(block).findByRole('link', { name: 'Primary region' })).toBeVisible()
+    expect(
+      within(block)
+        .getAllByRole('link')
+        .map((link) => link.textContent),
+    ).toEqual(['Primary region', 'Detail', 'Secondary region'])
+    // Its own address, and not a sibling's.
+    expect(within(block).queryByText('Somewhere else')).toBeNull()
+    expect(within(block).queryByText('::children{depth="2"}')).toBeNull()
+  })
+
+  it('links to each document by its address (ADR-035)', async () => {
+    renderApp(READING_PATH, routes())
+    const block = await screen.findByRole('region', { name: 'Child documents' })
+    expect(await within(block).findByRole('link', { name: 'Secondary region' })).toHaveAttribute(
+      'href',
+      '/w/acme/d/secondary-region-secondary0',
+    )
+  })
+
+  it('says so when there are none', async () => {
+    renderApp(
+      READING_PATH,
+      routes({
+        'GET /api/workspaces/{id}/tree': () =>
+          jsonResponse(200, {
+            collections: [
+              {
+                id: 'col-1',
+                name: 'Runbooks',
+                slug: 'runbooks',
+                documents: [leaf('doc-1', 'Regional failover')],
+              },
+            ],
+          }),
+      }),
+    )
+    const block = await screen.findByRole('region', { name: 'Child documents' })
+    expect(await within(block).findByText('This document has no child documents.')).toBeVisible()
+  })
+
+  it('draws nothing until the tree has arrived, rather than claiming there are none', async () => {
+    renderApp(
+      READING_PATH,
+      routes({ 'GET /api/workspaces/{id}/tree': () => new Promise<Response>(() => {}) }),
+    )
+    const block = await screen.findByRole('region', { name: 'Child documents' })
+    expect(block).toBeEmptyDOMElement()
   })
 })

@@ -1,0 +1,14 @@
+{
+  "collection": "Strategy",
+  "title": "Competitive landscape",
+  "type": "research",
+  "owners": ["priya@acme.example"],
+  "tags": ["competitors", "strategy", "sales"],
+  "review": "90d",
+  "status": "published",
+  "notes": [
+    "First version from the Q2 win-loss review",
+    "Refreshed from 58 deals; added Loopwise clustering beta and Slack source"
+  ],
+  "frontMatter": {}
+}

@@ -1,0 +1,14 @@
+{
+  "collection": "Onboarding",
+  "title": "30-60-90 day plan",
+  "type": "guide",
+  "owners": ["dana@acme.example"],
+  "tags": ["onboarding", "engineering", "new hires"],
+  "review": "6m",
+  "status": "published",
+  "notes": [
+    "First version for engineering hires",
+    "Added a first-week access and security section ahead of the SOC 2 Type II observation window"
+  ],
+  "frontMatter": {}
+}

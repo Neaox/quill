@@ -92,6 +92,18 @@ Against that, re-encoding costs a large native dependency and its build matrix i
 
 #
 
+## Amendment, 2026-10-11: SVG drawings are accepted and drawn through their own allowlist
+
+The refusal above said SVG would arrive "with its own decision and its own renderer". ADR-036 is that decision. `image/svg+xml` is an accepted attachment type; it is stored as uploaded and served only as a download (`Content-Disposition: attachment`), with `nosniff` and the same sandboxing policy as every attachment, so the file itself is never a page on our origin. A reader sees an SVG only drawn inline in a document body, after `packages/markdown/src/render/drawing.ts` has kept the elements and attribute values a static diagram needs and removed everything that runs, fetches, navigates, or styles from outside (script, handlers, links, `use`, `image`, `foreignObject`, animation, `style`, foreign `url()`), with every id prefixed. Drawings are read only from the document's own workspace and are drawn after the document sanitiser has run, into slots only the renderer emits. The checklist line for uploads reads accordingly.
+
+## Amendment, 2026-10-11: external links in the public menu, `noopener` always and `noreferrer` by default
+
+External links always carry `noopener`, with or without a new tab, so a destination never gets a handle on our page. `noreferrer` is the default; an administrator may turn it off **per public-menu link** (`referrer: sent` on an external address in the organisation settings, version 2). Links in a document body keep `noopener noreferrer`. The rule is one function, `externalLinkRel(referrer, audience)` in `apps/server/src/public-site/templates/header-menu.ts`.
+
+- **Why hidden is the default:** a reader's choice of where to go next is theirs, and a referrer turns every outbound click into a row in somebody else's analytics.
+- **Why turning it off is bounded:** every public response sends `Referrer-Policy: strict-origin-when-cross-origin`, which the toggle never loosens and no link widens with a `referrerpolicy` attribute, so a destination learns the site's origin only — never the page, a slug or a search term — and nothing at all on an https→http step down.
+- **Why private surfaces cannot turn it off:** a reader preview's address names a member's document and a share page's address *is* its token, so there every external link is `noopener noreferrer` whatever the menu says, and those responses send `Referrer-Policy: no-referrer` (the share pages' own `<meta name="referrer">` too).
+
 ## Alternatives considered
 
 - **JWTs in the browser.** Rejected: revocation and rotation are harder, and nothing here needs stateless tokens.
@@ -172,3 +184,11 @@ not make it by accident.)
 - The M1 auth implementation is reviewed against this ADR before M2 ships; gaps become tracked findings, not accepted debt.
 - The Markdown renderer gains the sanitiser before any rendered content is served.
 - The outbound HTTP client with SSRF protection is built once, before the first integration.
+
+## Amendment (2026-10-11): open-web outbound fetches
+
+ADR-042 (link previews) admits a second, separate instance of the outbound client with no host allowlist, for fetching public pages and images on a user's behalf. Every address check, connection pin and redirect re-check of the allowlisted client still applies, on every hop, with stricter limits (5 redirects, 6 s, 512 KiB of HTML, stopping at `</head>`; 5 MiB images, sniffed and re-encoded). The allowlisted client is unchanged, and nothing that holds credentials may use the open-web instance.
+
+## Amendment (2026-10-11): app link schemes
+
+ADR-044 (deep links) lets an organisation allow link schemes beyond `http`, `https` and `mailto`, from a catalogue (`tel` and `sms` on by default) or a validated custom entry. The sanitiser keeps a deny list that no setting can override (`javascript`, `data`, `vbscript`, `file`, `blob`, `filesystem`, `about`, browser-internal schemes, and OS protocol handlers with known exploits). A link with a scheme that is not allowed is rendered as text, not dropped silently.

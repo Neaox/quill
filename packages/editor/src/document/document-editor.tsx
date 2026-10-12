@@ -1,17 +1,31 @@
 import { cx } from '@quill/ui'
 import type { SoftBreakMode, Warning } from '@quill/markdown'
+import type { NestedListItem } from '@quill/ui'
 import { EditorContent, useEditor } from '@tiptap/react'
 import type { Editor } from '@tiptap/react'
 import { useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react'
 import type { Ref } from 'react'
 
 import { BlockMenu } from '../block/block-menu.tsx'
-import type { CommentRequest } from '../block/block-menu.tsx'
+import { ChildDocumentsProvider } from '../blocks/child-documents-context.tsx'
+import type { CommentRequest } from '../block/comment-request.ts'
+import { EditorContextMenu } from '../context-menu/editor-context-menu.tsx'
+import type { ImageAction } from '../image/image-actions.ts'
+import { CalloutVariantMenu } from '../callout/callout-variant-menu.tsx'
+import { BlockInserter } from '../slash/block-inserter.tsx'
+import type { DocumentLinkTarget, SlashContribution, SlashRequest } from '../slash/slash-item.ts'
 import { SlashMenu } from '../slash/slash-menu.tsx'
+import { createSlashRecents, emojiRecentsKey } from '../slash/slash-recents.ts'
+import { createSlashRegistry } from '../slash/slash-registry.ts'
+import { FindBar } from '../find/find-bar.tsx'
+import { ShortcutsDialog } from '../shortcuts/shortcuts-dialog.tsx'
+import { FormattingToolbar } from '../toolbar/formatting-toolbar.tsx'
+import { useLinkEditing } from '../toolbar/hooks.ts'
 import { createSlashStore } from '../slash/slash-store.ts'
-import type { SlashItem, SlashRequest } from '../slash/slash-items.ts'
 import type { FileRequest } from './files.ts'
+import type { EditorEmojiOptions } from './emoji.ts'
 import type { DocumentAst } from '../document-ast.ts'
+import { replaceDocument } from './replace-document.ts'
 import { documentFromMdast, documentToMdast } from './ast.ts'
 import type { LoadedDocument } from './ast.ts'
 import { buildExtensions } from './extensions.ts'
@@ -35,6 +49,12 @@ import { buildExtensions } from './extensions.ts'
 export interface DocumentEditorHandle {
   /** The document as mdast, with any warning the conversion produced. */
   toMdast(): DocumentAst
+  /**
+   * Makes the editor hold this document, as one undoable step that leaves what did not
+   * change as it was. For a change made on the author's behalf (putting back what they
+   * asked to put back); a different document is opened by remounting, not by this.
+   */
+  replaceContent(ast: DocumentAst): void
   readonly warnings: readonly Warning[]
   readonly editor: Editor | null
 }
@@ -44,13 +64,60 @@ export interface DocumentEditorProps {
   readonly ast: DocumentAst
   readonly editable?: boolean
   readonly placeholder?: string
+  /**
+   * How a paragraph wrapped in the source opens. `collapse`, the default, is
+   * what a reader sees: the editing surface keeps whitespace, so a source
+   * newline would otherwise show as a line break the reading view does not
+   * have. Nothing is saved for it until the author edits, and the first save
+   * after that carries the formatting-only normalisation ADR-002 licenses
+   * once. `preserve` keeps the newlines, for a caller that needs the tree as
+   * it came.
+   */
   readonly softBreaks?: SoftBreakMode
+  /**
+   * The organisation's label names (ADR-037), so `:acme[Acme]` is drawn
+   * as a label while it is written and a name that is none of them is
+   * warned about. Read once, when the editor is built; undefined while the
+   * names are not yet known.
+   */
+  readonly labels?: readonly string[] | undefined
+  /**
+   * The organisation's own emoji and each label's leading one (ADR-038), so
+   * `:acme:` is drawn while it is written. Read once, when the editor is
+   * built; GitHub's shortcodes need nothing.
+   */
+  readonly emoji?: EditorEmojiOptions | undefined
   /** Names the editing region for assistive technology. */
   readonly label?: string
-  readonly slashItems?: readonly SlashItem[]
+  /**
+   * Items a feature or a Markdown extension adds to the slash menu, after
+   * Quill's own (ADR-039). Read once, when the editor is built.
+   */
+  readonly slashContributions?: readonly SlashContribution[]
+  /**
+   * Actions on images that an extension owns, such as draw.io's "Edit
+   * diagram" (ADR-043). Read once, when the editor is built.
+   */
+  readonly imageActions?: readonly ImageAction[]
+  /**
+   * Where the slash menu remembers what this person inserted last: a key in
+   * the browser's local storage, which the application makes per person.
+   */
+  readonly recentsKey?: string
+  /**
+   * The documents beneath this one, nested, for the child-documents block to
+   * show. The editor cannot look them up itself; omitted, the block says there
+   * are none.
+   */
+  readonly childDocuments?: readonly NestedListItem[] | undefined
   readonly className?: string
   readonly ref?: Ref<DocumentEditorHandle>
-  /** Called after every change, with the same handle the ref exposes. */
+  /**
+   * Called after every change, with the same handle the ref exposes. It runs
+   * on every keystroke, so it must stay cheap: hand `handle.toMdast` on to be
+   * called later rather than calling it here, because converting a long
+   * document takes several frames (quill-plan.md section 31).
+   */
   onChange?(handle: DocumentEditorHandle): void
   /** A comment was asked for on a range; ADR-022 anchoring is the application's. */
   onComment?(request: CommentRequest): void
@@ -62,10 +129,26 @@ export interface DocumentEditorProps {
    * dropped file is left to the browser.
    */
   onFiles?(request: FileRequest): void
+  /**
+   * Finds documents for "Link to document" in the slash menu; the request is
+   * the application's. Omitted, the menu does not offer the item. Whether it
+   * is given is read once, when the editor is built.
+   */
+  searchDocuments?(query: string, signal: AbortSignal): Promise<readonly DocumentLinkTarget[]>
 }
 
 function handleFor(editor: Editor, warnings: readonly Warning[]): DocumentEditorHandle {
-  return { toMdast: () => documentToMdast(editor.state.doc).tree, warnings, editor }
+  return {
+    toMdast: () => documentToMdast(editor.state.doc).tree,
+    replaceContent: (ast) => {
+      replaceDocument(
+        editor,
+        documentFromMdast(ast, { softBreaks: 'collapse', schema: editor.schema }).doc,
+      )
+    },
+    warnings,
+    editor,
+  }
 }
 
 export function DocumentEditor({
@@ -73,42 +156,78 @@ export function DocumentEditor({
   editable = true,
   placeholder,
   softBreaks,
+  labels,
+  emoji,
   label = 'Document',
-  slashItems,
+  slashContributions,
+  imageActions,
+  recentsKey,
+  childDocuments,
   className,
   ref,
   onChange,
   onComment,
   onRequest,
   onFiles,
+  searchDocuments,
 }: DocumentEditorProps) {
   const store = useMemo(() => createSlashStore(), [])
+  const [shortcutsOpen, setShortcutsOpen] = useState(false)
 
   // The extension list is built once with the editor, so it reads the current
   // callbacks through a box rather than closing over the first ones it saw.
-  const latest = useRef({ onChange, onRequest, onFiles })
+  const latest = useRef({ onChange, onRequest, onFiles, searchDocuments })
   // Keeps that box in sync with the latest onChange/onRequest for the ProseMirror
   // extensions built once below (useEditor), which read it instead of closing
   // over stale props.
   useEffect(() => {
-    latest.current = { onChange, onRequest, onFiles }
-  }, [onChange, onRequest, onFiles])
+    latest.current = { onChange, onRequest, onFiles, searchDocuments }
+  }, [onChange, onRequest, onFiles, searchDocuments])
 
   // Converted once, by a lazy initial state rather than a memo: the AST is the
   // initial content, and a later value must not re-open the document under the
   // author's caret. See the note above about remounting, which is how a document
   // is genuinely replaced.
   const [initial] = useState<LoadedDocument>(() =>
-    documentFromMdast(ast, softBreaks === undefined ? {} : { softBreaks }),
+    documentFromMdast(ast, { softBreaks: softBreaks ?? 'collapse' }),
   )
 
   /* oxlint-disable react/refs -- the callback box below is read when the author
      acts, never while rendering. The extension list and the editor are built once,
      so a closure over the first callbacks it saw is exactly the staleness this
      box exists to avoid. */
+  // The slash menu's catalogue and memory, built once with the editor from
+  // what is known then: an item that needs the organisation's labels is
+  // offered when there are labels to offer.
+  const [slash] = useState(() => ({
+    registry: createSlashRegistry({
+      ...(slashContributions === undefined ? {} : { contributions: slashContributions }),
+      environment: {
+        ...(labels === undefined ? {} : { labels }),
+        ...(emoji === undefined ? {} : { customEmoji: emoji.custom }),
+        ...(searchDocuments === undefined
+          ? {}
+          : {
+              searchDocuments: async (query: string, signal: AbortSignal) =>
+                (await latest.current.searchDocuments?.(query, signal)) ?? [],
+            }),
+      },
+    }),
+    recents: createSlashRecents(recentsKey),
+  }))
+  // What was chosen last from the emoji menu, kept apart from the slash menu's blocks.
+  const [emojiRecents] = useState(() => createSlashRecents(emojiRecentsKey(recentsKey)))
+
   const editor = useEditor({
     extensions: buildExtensions({
       ...(placeholder === undefined ? {} : { placeholder }),
+      ...(labels === undefined ? {} : { labels }),
+      ...(emoji === undefined ? {} : { emoji }),
+      emojiRecents,
+      onShowShortcuts: () => {
+        setShortcutsOpen(true)
+      },
+      ...(imageActions === undefined ? {} : { imageActions }),
       files: {
         onFiles: (request) => {
           latest.current.onFiles?.(request)
@@ -116,9 +235,9 @@ export function DocumentEditor({
       },
       slash: {
         store,
-        ...(slashItems === undefined ? {} : { items: slashItems }),
-        run: (item, instance) => {
-          item.run({ editor: instance, request: (request) => latest.current.onRequest?.(request) })
+        ...slash,
+        request: (request) => {
+          latest.current.onRequest?.(request)
         },
       },
     }),
@@ -148,11 +267,29 @@ export function DocumentEditor({
 
   useImperativeHandle(ref, () => handleFor(editor, initial.warnings), [editor, initial.warnings])
 
+  const linkEditing = useLinkEditing(editor)
+
   return (
     <div className={cx('document-editor relative', className)}>
+      <FindBar editor={editor} />
       <BlockMenu editor={editor} {...(onComment === undefined ? {} : { onComment })} />
-      <EditorContent editor={editor} />
+      {editable ? <BlockInserter editor={editor} /> : null}
+      <ChildDocumentsProvider value={childDocuments}>
+        <EditorContent editor={editor} />
+      </ChildDocumentsProvider>
       <SlashMenu store={store} editor={editor} />
+      <FormattingToolbar editor={editor} linkEditing={linkEditing} onComment={onComment} />
+      <EditorContextMenu editor={editor} linkEditing={linkEditing} onComment={onComment} />
+      <CalloutVariantMenu editor={editor} />
+      <ShortcutsDialog
+        open={shortcutsOpen}
+        onOpenChange={setShortcutsOpen}
+        onCloseAutoFocus={(event) => {
+          // Back to the words, not to the page's first control.
+          event.preventDefault()
+          editor.commands.focus()
+        }}
+      />
     </div>
   )
 }

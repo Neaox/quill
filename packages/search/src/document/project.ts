@@ -30,6 +30,12 @@ export interface DocumentLocation {
 export interface ProjectIndexableDocumentInput extends DocumentLocation {
   readonly frontMatter: CoreFrontMatter
   readonly ast: Root
+  /**
+   * The words of the drawings the body shows — a draw.io diagram's labels
+   * (ADR-043) — which a reader sees on the page but the Markdown does not say.
+   * Searched as body text, after the prose.
+   */
+  readonly drawingText?: readonly string[]
 }
 
 /** A document whose front matter never says otherwise is indexed as published: this projection only ever runs from a `DocumentPublished` event. */
@@ -56,7 +62,7 @@ export function projectIndexableDocument(input: ProjectIndexableDocumentInput): 
     path: input.path,
     title: input.frontMatter.title ?? text.title ?? input.path,
     headings: flattenHeadings(outline),
-    body: text.body,
+    body: [text.body, ...(input.drawingText ?? [])].filter((part) => part !== '').join('\n'),
     tags: input.frontMatter.tags ?? [],
     owners: input.frontMatter.owners ?? [],
     status: input.frontMatter.status ?? DEFAULT_STATUS,

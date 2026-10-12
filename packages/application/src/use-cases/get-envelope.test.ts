@@ -5,11 +5,13 @@ import type { DocumentId } from '@quill/domain'
 import { LOCK_TTL_MS } from '../ports/persistence.ts'
 import { createFakeContentStore } from '../test-support/fake-content-store.ts'
 import type { FakeContentStore } from '../test-support/fake-content-store.ts'
+import { createInMemoryBlobStore } from '../test-support/in-memory-blob-store.ts'
 import { createFakeDocumentFormat, serialise } from '../test-support/fake-document-format.ts'
 import { createFakeClock, createFakeHasher, createFakeIdGenerator } from '../test-support/fakes.ts'
 import type { FakeClock } from '../test-support/fakes.ts'
 import { createInMemoryUnitOfWork } from '../test-support/in-memory-repositories.ts'
 import type { InMemoryUnitOfWork } from '../test-support/in-memory-repositories.ts'
+import { createFakeSettings } from '../test-support/fake-settings.ts'
 import { createDocument } from './create-document.ts'
 import { getEnvelope, reviewOf } from './get-envelope.ts'
 import type { EnvelopeDependencies } from './get-envelope.ts'
@@ -67,6 +69,8 @@ beforeEach(async () => {
     clock,
     ids: createFakeIdGenerator(),
     hasher: createFakeHasher(),
+    blobStore: createInMemoryBlobStore(),
+    settings: createFakeSettings(),
   }
   await uow.repos.users.create({
     id: AUTHOR,
@@ -291,5 +295,75 @@ describe('reviewOf', () => {
     expect(reviewOf({ review: { interval: '30x' } }, lastPublished, NOW)).toBeNull()
     expect(reviewOf({ review: { interval: '30d' } }, null, NOW)).toBeNull()
     expect(reviewOf({ review: { interval: '30d', lastReviewed: 'never' } }, null, NOW)).toBeNull()
+  })
+})
+
+describe('the draft an editor has not published', () => {
+  const viewer = capabilitiesForRole('viewer')
+
+  async function published(body: string): Promise<DocumentId> {
+    const id = await draft('Overview', body)
+    const result = await publishDocument(deps, {
+      documentId: id,
+      base: null,
+      author,
+      sessionId: SESSION,
+    })
+    if (result.kind !== 'published') throw new Error(result.kind)
+    return id
+  }
+
+  async function edit(id: DocumentId, body: string): Promise<void> {
+    const current = await uow.repos.drafts.find(id)
+    const content = readDraftContent(current?.ast)
+    await uow.repos.drafts.init({
+      documentId: id,
+      baseRevision: current?.baseRevision ?? null,
+      ast: { version: 1, frontMatter: content?.frontMatter ?? {}, ast: { body } },
+      now: clock.now(),
+    })
+  }
+
+  const draftOf = async (id: DocumentId, capabilities = editor) => {
+    const result = await getEnvelope(deps, { documentId: id, capabilities })
+    return result.kind === 'envelope' ? result.envelope.draft : undefined
+  }
+
+  it('is reported to an editor when it says something the published page does not', async () => {
+    const id = await published('# Overview\nPublished.')
+    clock.advance(60_000)
+    await edit(id, '# Overview\nPublished.\nAnd more, not yet out.')
+
+    expect(await draftOf(id)).toEqual({ savedAt: clock.now() })
+  })
+
+  it('is not reported once it says what the published page does', async () => {
+    const id = await published('# Overview\nPublished.')
+
+    expect(await draftOf(id)).toBeNull()
+  })
+
+  it('is not reported when it was changed and changed back', async () => {
+    const id = await published('# Overview\nPublished.')
+    clock.advance(60_000)
+    await edit(id, '# Overview\nSomething else.')
+    clock.advance(60_000)
+    await edit(id, '# Overview\nPublished.')
+
+    expect(await draftOf(id)).toBeNull()
+  })
+
+  it('is reported for a document that has never been published', async () => {
+    const id = await draft('Overview', '# Overview\nNot out yet.')
+
+    expect(await draftOf(id)).toEqual({ savedAt: NOW })
+  })
+
+  it('is not reported to somebody who cannot edit, who has no business with it', async () => {
+    const id = await published('# Overview\nPublished.')
+    clock.advance(60_000)
+    await edit(id, '# Overview\nChanged.')
+
+    expect(await draftOf(id, viewer)).toBeNull()
   })
 })

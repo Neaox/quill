@@ -1,0 +1,14 @@
+{
+  "collection": "Architecture",
+  "title": "Voice capture pipeline",
+  "type": "design",
+  "owners": ["jonas@acme.example"],
+  "tags": ["skiff", "mobile", "voice", "audio"],
+  "review": "6m",
+  "status": "published",
+  "notes": [
+    "First version: recording, chunking, upload and transcription budgets",
+    "Added silence trimming (2026.8) and re-measured the stage budgets"
+  ],
+  "frontMatter": {}
+}

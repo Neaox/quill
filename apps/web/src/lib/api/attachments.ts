@@ -29,6 +29,20 @@ export type { Attachment } from '@quill/api-client/upload'
  */
 export const ATTACHMENT_MAX_BYTES = 25 * 1024 * 1024
 
+/** draw.io's own type for a raw diagram, which the server accepts (ADR-043). */
+const DRAWIO_SOURCE_TYPE = 'application/vnd.jgraph.mxfile'
+
+/**
+ * The file with the type its name says, when the browser had none to give:
+ * no platform knows `.drawio`, so it arrives typeless, and the server refuses
+ * a declared type that disagrees with the bytes. Every other file is sent as
+ * the browser described it, and the server still decides.
+ */
+export function declared(file: File): File {
+  if (file.type !== '' || !/\.drawio$/i.test(file.name)) return file
+  return new File([file], file.name, { type: DRAWIO_SOURCE_TYPE })
+}
+
 export interface UploadAttachmentInput {
   readonly documentId: string
   readonly file: File
@@ -49,7 +63,7 @@ export function useUploadAttachment() {
     mutationFn: async ({ documentId, file }: UploadAttachmentInput): Promise<Attachment> => {
       const { data, error, response } = await uploadAttachment(client, {
         documentId,
-        file,
+        file: declared(file),
         filename: file.name,
       })
       if (!response.ok || data === undefined) throw toApiError(response.status, error)

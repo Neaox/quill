@@ -5,8 +5,14 @@ import type { ThemeDocument } from '../schema/theme-document.ts'
  * accent, a serif that sets both the display and the reading surface,
  * sidenotes down the margin, and double rules under every heading.
  *
- * The seeds are the artboard's own values. Its paper is `oklch(98% 0.008 85)`
- * and its accent `oklch(42% 0.12 25)`.
+ * **Superseded by Editorial** (11 October 2026). The two were the same idea —
+ * warm paper and a serif reading column — and Editorial is the finished one,
+ * so Press is no longer offered and its id resolves to Editorial
+ * (`SUPERSEDED_THEMES`). This document is kept, frozen, because it is exactly
+ * what an organisation that chose Press saved into its settings: that copy
+ * keeps loading and rendering as it was saved, and the tests hold it to that
+ * (AGENTS.md rule 17). Never edit it; a change here would no longer describe
+ * what was saved.
  */
 export const press: ThemeDocument = {
   id: 'press',

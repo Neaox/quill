@@ -1,0 +1,14 @@
+{
+  "collection": "Working here",
+  "title": "Remote and hybrid work",
+  "type": "policy",
+  "owners": ["dana@acme.example"],
+  "tags": ["remote", "hybrid", "policy", "working-here"],
+  "review": "1y",
+  "status": "published",
+  "notes": [
+    "First version after the 2026 hybrid survey",
+    "Raised the home office budget to $750 and added the rules for working abroad"
+  ],
+  "frontMatter": {}
+}

@@ -1,4 +1,9 @@
-import { DOCUMENT_MOVED, DOCUMENT_PUBLISHED, DOCUMENT_RENAMED } from '@quill/application'
+import {
+  ATTACHMENT_REVISED,
+  DOCUMENT_MOVED,
+  DOCUMENT_PUBLISHED,
+  DOCUMENT_RENAMED,
+} from '@quill/application'
 import { describe, expect, it } from 'vitest'
 
 import { createPublicSiteCache, PUBLIC_SITE_CACHE_TTL_MS } from '../../public-site/cache.ts'
@@ -21,16 +26,18 @@ function consumers() {
 }
 
 describe('invalidating the public site', () => {
-  it('is registered for publishing, renaming and moving, and for nothing else', () => {
+  it('is registered for publishing, renaming, moving and revising, and nothing else', () => {
     expect(consumers().consumers.map((consumer) => consumer.eventType)).toEqual([
       DOCUMENT_PUBLISHED,
       DOCUMENT_RENAMED,
       DOCUMENT_MOVED,
+      ATTACHMENT_REVISED,
     ])
   })
 
   it('empties the cache on each of them', async () => {
-    for (const [index] of [DOCUMENT_PUBLISHED, DOCUMENT_RENAMED, DOCUMENT_MOVED].entries()) {
+    const events = [DOCUMENT_PUBLISHED, DOCUMENT_RENAMED, DOCUMENT_MOVED, ATTACHMENT_REVISED]
+    for (const [index] of events.entries()) {
       const { cache, consumers: registered } = consumers()
       cache.rememberPage('acme', 'guides/one', { html: '<p>one</p>', etag: '"one"' })
       await registered[index]?.handle({ version: 1 })

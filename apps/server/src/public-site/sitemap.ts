@@ -92,8 +92,14 @@ export function renderRobots(view: RobotsView): string {
     // precedes the `Disallow` it narrows, which is how the longest-match rule
     // in the robots exclusion standard resolves the pair.
     'Allow: /api/attachments/',
+    // The faces a public page's stylesheet names (ADR-028): a crawler that
+    // renders the page reads it as a reader would, type included.
+    'Allow: /api/fonts/',
     'Disallow: /api/',
     'Disallow: /share/',
+    // The reader preview needs a session and says `noindex` itself; this is
+    // the courtesy line for a crawler that never gets that far.
+    'Disallow: /preview/',
     'Disallow: /w/',
     'Disallow: /admin/',
     '',

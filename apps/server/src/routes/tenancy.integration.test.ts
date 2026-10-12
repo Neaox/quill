@@ -27,6 +27,7 @@ import {
   createRecordingMailer,
   inMemorySettings,
 } from '../test-support/fakes.ts'
+import { createDrawioText } from '../extensions/drawio/drawing-text.ts'
 
 /** Nothing in these tests searches; the engine is present because `AppDependencies` is one shape. */
 const SEARCH_INDEX = createInMemorySearchIndex()
@@ -81,6 +82,7 @@ beforeAll(async () => {
     rateLimiter: createRateLimiter({ clock, config: config.rateLimit }),
     oidcRateLimiter: createRateLimiter({ clock, config: config.oidcRateLimit }),
     attachmentRateLimiter: createRateLimiter({ clock, config: config.attachments.rateLimit }),
+    drawingText: createDrawioText(),
     passwords: await createPasswordHasher(),
     identityProviders: createIdentityProviderRegistry({
       providers: config.oidcProviders,

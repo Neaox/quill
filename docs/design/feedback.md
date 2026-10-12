@@ -70,6 +70,57 @@ the look is the point, and says on press that it is a specimen. There is no
 fourth option; a button that swallows a click teaches people not to trust the
 next one. The `quill/no-inert-control` lint rule catches the obvious cases.
 
+### Disable or hide: decide by how people use the control
+
+People feel lost when they reach for something they use often and it isn't
+there. So the question is not "can this act right now?" but two others:
+
+1. **Is someone likely to reach for it right now, in this context?**
+2. **If it weren't here, would they understand why without being told?**
+
+The rules for when a control appears must be intuitive from what is on the
+screen, never from state the reader can't see. Layouts stay stable: a
+control doesn't move, appear or disappear because of something transient,
+such as a save in flight, a dropped connection, or a selection elsewhere.
+
+This is decided once per control from how people use it in general. It is
+never tracked per person: Quill doesn't learn what each user clicks to
+decide what they see.
+
+With those questions in mind, choose with judgement:
+
+- **Disable it, and say why,** when people use it often or look for it in
+  that place. Examples: Publish, Save, Share, Edit, Present, Copy, Restore,
+  a toolbar's formatting buttons. If it vanished, people would think it had
+  moved or broken, so it stays where they expect it.
+  - **Reason in a tooltip:** a native `disabled` button gets no hover or
+    focus, so use `aria-disabled="true"`, which keeps it focusable, makes it
+    do nothing on press, and keeps the reason in its accessible description.
+    Alternatively, wrap it so the tooltip still opens on hover and on
+    keyboard focus.
+  - **Reason as a line of text** where there is room.
+  - **Wording:** the reason says what would make it available, not just
+    that it isn't: "Publish needs a title", "Only editors can share this
+    page", "You're offline. Saving resumes when you reconnect".
+- **Hide it** when it only makes sense in some situations, and the reason
+  it's absent is plain from what's on the screen, so its absence costs
+  nothing and its presence would only be noise. Examples:
+  - "Fit width" in the table viewer when the table visibly already fits;
+  - "Next change" when there is one change;
+  - a scroll affordance when nothing scrolls;
+  - an "Expand" button on a table that needs no room.
+
+  If the reason isn't visible (a permission, a policy, a state elsewhere),
+  disable with a reason instead.
+  - Hide by removing it or with `hidden`, never by making it invisible but
+    focusable.
+  - If it disappears while focused, move focus to the nearest sensible
+    control, so focus is never lost.
+- **Not built yet:** don't render it at all, as above.
+
+When it is unclear which applies, prefer **disabled with a reason**: a
+visible "not now, because…" teaches people more than an absence does.
+
 ## Moving between pages
 
 A navigation that has to wait, for a code-split route's chunk or for its
@@ -96,3 +147,7 @@ phones, pause on hover and focus, dismiss on swipe, and respect reduced
 motion. They are announced through a polite live region; a `danger` toast is
 assertive. Duration defaults to a few seconds; a toast with an action stays
 until dismissed.
+
+## Two states, one of them on: a switch
+
+A setting with exactly two states, where one of them is plainly "on" (allow share links, enforce AA contrast, lock the layout), is a switch: `ToggleField`, a native checkbox with `role="switch"`, drawn as a track and thumb, with its label and sentence leading and the switch closing the row. It is not a select of two options, and not a checkbox to tick: a select hides the state behind a click, and a checkbox reads as agreeing to something rather than turning it on. A choice between named alternatives that are neither on nor off (centred or beside the navigation, hairlines or cards) stays a radio group.

@@ -5,6 +5,7 @@ import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
 import { tv } from 'tailwind-variants'
 
 import { runAt, useMenuNavigation } from '../menu/use-menu-navigation.ts'
+import type { CommentRequest } from './comment-request.ts'
 import { setBlockWidth } from './commands.ts'
 import { BLOCK_ACTIONS, BLOCK_WIDTHS, describeBlockMenu, widthLabel } from './block-state.ts'
 
@@ -40,11 +41,7 @@ const styles = blockMenu()
 /** What choosing a disabled item does. */
 function doNothing(): void {}
 
-export interface CommentRequest {
-  readonly from: number
-  readonly to: number
-  readonly text: string
-}
+export type { CommentRequest }
 
 export interface BlockMenuProps {
   readonly editor: Editor | null
@@ -66,6 +63,8 @@ export function BlockMenu({ editor, onComment, className }: BlockMenuProps) {
   const triggerRef = useRef<HTMLButtonElement | null>(null)
   const menuRef = useRef<HTMLDivElement | null>(null)
   const wasOpen = useRef(false)
+  // A menu dismissed by a press elsewhere leaves the focus where that press put it.
+  const leftByPress = useRef(false)
   const baseId = useId()
 
   const block = useEditorState({
@@ -138,8 +137,28 @@ export function BlockMenu({ editor, onComment, className }: BlockMenuProps) {
   // when it closes, and nowhere at all before it has ever been opened.
   useEffect(() => {
     if (open) menuRef.current?.focus()
-    else if (wasOpen.current) triggerRef.current?.focus()
+    else if (wasOpen.current && !leftByPress.current) triggerRef.current?.focus()
+    leftByPress.current = false
     wasOpen.current = open
+  }, [open])
+
+  // Synchronises with a press anywhere in the page, which React does not hear
+  // about, for as long as the menu is open: a menu is a mode, and a click away
+  // from it is how a pointer leaves it. The trigger's own press is its toggle's.
+  useEffect(() => {
+    if (!open) return undefined
+    const dismiss = (event: PointerEvent): void => {
+      const target = event.target
+      if (!(target instanceof Node)) return
+      if (menuRef.current?.contains(target) === true) return
+      if (triggerRef.current?.contains(target) === true) return
+      leftByPress.current = true
+      setOpen(false)
+    }
+    document.addEventListener('pointerdown', dismiss, true)
+    return () => {
+      document.removeEventListener('pointerdown', dismiss, true)
+    }
   }, [open])
 
   if (editor === null || block === null) return null

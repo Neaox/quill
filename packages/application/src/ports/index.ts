@@ -62,6 +62,18 @@ export type {
 export type { Settings, SettingsRead, SettingsWrite, WriteSettingsInput } from './settings.ts'
 
 export type {
+  CompareContext,
+  CompareInput,
+  RevertInput,
+  StampAuthorshipInput,
+  ComparedChange,
+  ComparedChangeKind,
+  ComparedContent,
+  ComparedLine,
+  ComparedProperty,
+  ComparedSection,
+  ComparedSource,
+  ComparisonSummary,
   CreateDocumentContentInput,
   DocumentAst,
   DocumentFormat,
@@ -77,10 +89,16 @@ export type {
   PublishedDocumentView,
   RenderedContent,
   RenderInput,
+  DrawingSource,
   RetitleInput,
   TemplateSource,
 } from './document-format.ts'
-export { DRAFT_CONTENT_VERSION, RENDERED_CONTENT_VERSION } from './document-format.ts'
+export {
+  COMPARED_CONTENT_VERSION,
+  DRAFT_CONTENT_VERSION,
+  RENDERED_CONTENT_VERSION,
+} from './document-format.ts'
+export type { DrawingText } from './drawing-text.ts'
 
 export type {
   AcquireLockResult,
@@ -94,6 +112,9 @@ export type {
   CollectionRepository,
   CollectionRow,
   CreateAttachmentInput,
+  ReviseAttachmentInput,
+  ChildCursor,
+  ChildPage,
   CreateDocumentInput,
   CreateDocumentOutcome,
   CreateGrantInput,
@@ -129,6 +150,8 @@ export type {
   NewDocumentLink,
   OutboxEventRow,
   OutboxWriter,
+  PersonPreferencesRepository,
+  PersonPreferencesRow,
   PrincipalKind,
   PublicRedirectRepository,
   PublicRedirectRow,

@@ -34,11 +34,11 @@ export function organisationSettings(
   overrides: Partial<OrganisationSettings> = {},
 ): OrganisationSettings {
   return {
-    version: 1,
+    version: 2,
     name: 'Acme',
     theme: DEFAULT_THEME,
     layout: { default: DEFAULT_THEME.variants, locked: false },
-    publicNavigation: [{ label: 'Handbook', href: '/handbook' }],
+    publicMenu: [{ kind: 'url', label: 'Handbook', href: '/handbook' }],
     policies: {
       shareLinksAllowed: true,
       publicPublishingAllowed: false,
