@@ -132,6 +132,22 @@ describe('VirtualTree', () => {
     expect(pinned()).toEqual(['Runbooks'])
   })
 
+  it('never pins a collection over the heading of an empty one above it', () => {
+    // An empty collection at the top is a heading with another heading straight below it. The
+    // one below must not be pinned over it: its name, and the controls to fill or delete it,
+    // would be hidden under a heading that has nothing to say about them.
+    const rows = [
+      section('a', 'Archive'),
+      section('b', 'Guides'),
+      ...Array.from({ length: 5 }, (_, n) => node(n + 1)),
+    ]
+
+    open(rows)
+
+    expect(pinned()).toEqual(['Archive'])
+    expect(screen.getAllByRole('listitem').map((item) => item.textContent)).toContain('Guides')
+  })
+
   it('says where each row is among its siblings and how deep, since the rows around it are not drawn', () => {
     open([node(3, { depth: 2, position: 3, siblings: 40 })])
 

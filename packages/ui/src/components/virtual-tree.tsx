@@ -76,6 +76,10 @@ export const virtualTreeStyles = tv({
  * must draw it though it is above the view) and the row (which must pin it) cannot disagree.
  */
 function sectionAt(sections: readonly number[], firstInView: number): number | undefined {
+  // A heading already at the top of the view is the one pinned: it is where it would be pinned
+  // anyway, and letting the heading below take over would cover it. That is what hid an empty
+  // collection, a heading with another heading straight under it, along with its controls.
+  if (sections.includes(firstInView)) return firstInView
   return sections.findLast((index) => index <= firstInView + 1)
 }
 
