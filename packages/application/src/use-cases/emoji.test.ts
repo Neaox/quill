@@ -22,6 +22,12 @@ const upload = (bytes: Uint8Array, declaredContentType: string) => {
   }
 }
 
+/** The GIF's NETSCAPE loop-count byte: how many more times it plays. */
+const loopCount = (bytes: Uint8Array | null) => {
+  const at = new TextDecoder('latin1').decode(bytes ?? new Uint8Array()).indexOf('NETSCAPE2.0')
+  return bytes?.[at + 13]
+}
+
 describe('uploading an emoji image (ADR-038)', () => {
   it('stores an SVG as it came, and names it by its hash', async () => {
     const { blobStore, result } = upload(SVG, 'image/svg+xml')
@@ -72,10 +78,6 @@ describe('uploading an emoji image (ADR-038)', () => {
     expect(uploaded).toMatchObject({ frames: 2, milliseconds: 200, plays: 3 })
     if (uploaded.original === undefined) throw new Error('no original')
 
-    const loopCount = (bytes: Uint8Array | null) => {
-      const at = new TextDecoder('latin1').decode(bytes ?? new Uint8Array()).indexOf('NETSCAPE2.0')
-      return bytes?.[at + 13]
-    }
     expect(loopCount(await readBlob(blobStore, uploaded.hash))).toBe(2)
     expect(loopCount(await readBlob(blobStore, uploaded.original))).toBe(0)
   })

@@ -9,6 +9,7 @@ import { createServerHarness } from '../test-support/harness.ts'
 import type { ServerHarness } from '../test-support/harness.ts'
 import { seedTenancy } from '../test-support/tenancy-fixture.ts'
 import type { TenancyFixture } from '../test-support/tenancy-fixture.ts'
+import { drawioFixture } from '../test-support/drawio-fixture.ts'
 
 /**
  * Search end to end (ADR-010, use case 20): publish a document, let the outbox
@@ -420,13 +421,6 @@ describe('finding a document', () => {
 describe('finding a draw.io diagram by its labels (ADR-043)', () => {
   const BOUNDARY = 'quillboundary'
 
-  function drawio(label: string): Buffer {
-    const model = `&lt;mxfile&gt;&lt;diagram id=&quot;p&quot;&gt;&lt;mxGraphModel&gt;&lt;root&gt;&lt;mxCell id=&quot;a&quot; value=&quot;${label}&quot; vertex=&quot;1&quot;/&gt;&lt;/root&gt;&lt;/mxGraphModel&gt;&lt;/diagram&gt;&lt;/mxfile&gt;`
-    return Buffer.from(
-      `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10" content="${model}"><text>${label}</text></svg>`,
-    )
-  }
-
   function multipart(bytes: Buffer) {
     const head =
       `--${BOUNDARY}\r\n` +
@@ -444,7 +438,7 @@ describe('finding a draw.io diagram by its labels (ADR-043)', () => {
       method: 'POST',
       url: `/api/documents/${id}/attachments`,
       cookies: editor,
-      ...multipart(drawio('Reconciliationengine')),
+      ...multipart(drawioFixture('Reconciliationengine')),
     })
     expect(uploaded.statusCode).toBe(201)
     const attachment = uploaded.json() as { id: string; url: string }
@@ -458,7 +452,7 @@ describe('finding a draw.io diagram by its labels (ADR-043)', () => {
       method: 'PUT',
       url: `/api/attachments/${attachment.id}?expectedVersion=1`,
       cookies: editor,
-      ...multipart(drawio('Settlementledger')),
+      ...multipart(drawioFixture('Settlementledger')),
     })
     expect(revised.statusCode).toBe(200)
     await harness.drainOutbox()

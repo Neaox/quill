@@ -219,39 +219,39 @@ describe('MenuButton', () => {
   })
 })
 
-describe('MenuButton rows', () => {
-  function renderRows(onCycle = vi.fn<() => void>()) {
-    render(
-      <MenuButton
-        label="Account menu for Ada Writer"
-        sections={[
-          {
-            id: 'person',
-            entries: [
-              {
-                kind: 'link',
-                label: 'Preferences',
-                target: { to: '/preferences' },
-                icon: <svg data-testid="prefs-icon" />,
-              },
-              {
-                kind: 'action',
-                label: 'Appearance',
-                icon: <svg data-testid="scheme-icon" />,
-                hint: 'System',
-                keepOpen: true,
-                onSelect: onCycle,
-              },
-            ],
-          },
-        ]}
-      >
-        <span>Ada Writer</span>
-      </MenuButton>,
-    )
-    return onCycle
-  }
+function renderRows(onCycle = vi.fn<() => void>()) {
+  render(
+    <MenuButton
+      label="Account menu for Ada Writer"
+      sections={[
+        {
+          id: 'person',
+          entries: [
+            {
+              kind: 'link',
+              label: 'Preferences',
+              target: { to: '/preferences' },
+              icon: <svg data-testid="prefs-icon" />,
+            },
+            {
+              kind: 'action',
+              label: 'Appearance',
+              icon: <svg data-testid="scheme-icon" />,
+              hint: 'System',
+              keepOpen: true,
+              onSelect: onCycle,
+            },
+          ],
+        },
+      ]}
+    >
+      <span>Ada Writer</span>
+    </MenuButton>,
+  )
+  return onCycle
+}
 
+describe('MenuButton rows', () => {
   it('draws an icon before a row, which says nothing the words do not and is hidden from assistive technology', async () => {
     renderRows()
 

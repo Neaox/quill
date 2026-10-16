@@ -1,6 +1,6 @@
 import { lazy, Suspense, useState, type ReactNode } from 'react'
 
-import { Badge, Button } from '@quill/ui'
+import { Badge, Button, tv } from '@quill/ui'
 
 import { useReview } from '../../lib/api/index.ts'
 import { RequestReviewDialog } from './request-review-dialog.tsx'
@@ -14,6 +14,11 @@ import { summariseReview } from './review-summary.ts'
 const ChangesReview = lazy(async () => ({
   default: (await import('../documents/changes-review.tsx')).ChangesReview,
 }))
+
+/** Where the request button shows: the header from `sm`, or the phone's notice below it. */
+const requestButton = tv({
+  variants: { surface: { notice: 'sm:hidden', header: 'max-sm:hidden' } },
+})
 
 export interface ReviewActionsProps {
   readonly documentId: string
@@ -87,7 +92,7 @@ export function ReviewActions({
         <Button
           variant={primary ? 'primary' : 'secondary'}
           size="sm"
-          className={surface === 'notice' ? 'sm:hidden' : 'max-sm:hidden'}
+          className={requestButton({ surface })}
           onClick={() => {
             setAsking(true)
           }}
