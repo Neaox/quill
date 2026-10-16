@@ -113,6 +113,20 @@
       "when": 1791762384214,
       "tag": "0015_lyrical_lady_bullseye",
       "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1791841848019,
+      "tag": "0016_link_previews",
+      "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1792178465263,
+      "tag": "0017_link_preview_image_indexes",
+      "breakpoints": true
     }
   ]
 }

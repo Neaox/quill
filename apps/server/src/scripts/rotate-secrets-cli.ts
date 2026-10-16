@@ -27,6 +27,7 @@ import { rotateSecrets } from './rotate-secrets.ts'
 import { pagelessStylesheets } from '../theme/pageless.ts'
 import type { UserId } from '@quill/domain'
 import { createDrawioText } from '../extensions/drawio/drawing-text.ts'
+import { INERT_LINK_PREVIEW_PORTS } from '../infrastructure/link-preview/inert.ts'
 
 /**
  * `pnpm --filter @quill/server secrets:rotate` — the rotation's composition
@@ -76,6 +77,7 @@ try {
       publicSiteCache: createPublicSiteCache({ clock, ttlMs: 0 }),
       tokens: createTokenService(),
       shareLinkPolicy: createShareLinkPolicy(config),
+      linkPreviewPorts: INERT_LINK_PREVIEW_PORTS,
       mailer: createDevMailer(() => undefined),
       // A rotation sends no mail, reaches no network and limits nothing; the
       // ports are here because `AppDependencies` is one shape.

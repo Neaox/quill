@@ -293,6 +293,11 @@ export {
 } from './components/toaster.tsx'
 export { HoverCard, hoverCardStyles, type HoverCardProps } from './components/hover-card.tsx'
 export {
+  LinkPreviewPanel,
+  linkPreviewPanelStyles,
+  type LinkPreviewPanelProps,
+} from './components/link-preview-panel.tsx'
+export {
   InfoPopover,
   infoPopoverStyles,
   type InfoPopoverProps,

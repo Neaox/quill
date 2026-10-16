@@ -3175,3 +3175,254 @@ html.lightbox-open {
 .prose :is(.toc, .live-block[data-live-block='children']) li + li {
   margin-top: 0.2rem;
 }
+
+/* --- Link previews (ADR-042) ---------------------------------------------- */
+
+/*
+ * A link the author chose to show with its page's own title and picture. The
+ * body holds an ordinary anchor and the server swaps it for one of these when a
+ * preview is stored, so a link without one is just the link it always was.
+ *
+ * Both forms are a single anchor: one tab stop, one name for a screen reader,
+ * and the whole card is the target. Pictures carry the dimensions they were
+ * stored with (`width` and `height` attributes), so nothing moves as they load.
+ * Information is never carried by colour alone: the card has a border and the
+ * chip keeps its underline.
+ */
+
+.prose a.link-chip {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.35em;
+  max-inline-size: 100%;
+  vertical-align: baseline;
+}
+
+.prose .link-chip-icon {
+  align-self: center;
+  inline-size: 1em;
+  block-size: 1em;
+  flex: none;
+  border-radius: var(--radius-sm);
+  object-fit: contain;
+}
+
+.prose .link-chip-text {
+  min-inline-size: 0;
+  overflow-wrap: anywhere;
+}
+
+.prose a.link-card {
+  display: flex;
+  align-items: stretch;
+  inline-size: 100%;
+  max-inline-size: 42em;
+  overflow: hidden;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background-color: var(--color-surface-raised);
+  color: var(--color-foreground);
+  font-family: var(--font-sans);
+  font-size: 0.9em;
+  line-height: 1.4;
+  text-decoration: none;
+  transition:
+    border-color var(--duration-fast) var(--ease-standard),
+    background-color var(--duration-fast) var(--ease-standard);
+}
+
+.prose a.link-card:hover {
+  border-color: var(--color-border-strong);
+  color: var(--color-foreground);
+}
+
+.prose a.link-card:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 2px;
+}
+
+.prose .link-card-body {
+  display: flex;
+  min-inline-size: 0;
+  flex: 1 1 auto;
+  flex-direction: column;
+  justify-content: center;
+  gap: 0.25em;
+  padding: 0.75em 1em;
+}
+
+.prose .link-card-title {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.prose .link-card-description {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  color: var(--color-body);
+  overflow-wrap: anywhere;
+}
+
+.prose .link-card-site {
+  display: flex;
+  align-items: center;
+  gap: 0.4em;
+  overflow: hidden;
+  color: var(--color-muted);
+  font-size: 0.85em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The picture beside the words: a fixed-width column, cropped to fill it. */
+.prose .link-card-image {
+  inline-size: 9em;
+  flex: none;
+  align-self: stretch;
+  block-size: auto;
+  object-fit: cover;
+  border-inline-start: 1px solid var(--color-border);
+}
+
+/* The picture above the words, at the proportions of a shared link. */
+.prose a.link-card[data-layout='top'] {
+  max-inline-size: 28em;
+}
+
+.prose a.link-card[data-layout='top'][data-image='yes'] {
+  flex-direction: column-reverse;
+}
+
+.prose a.link-card[data-layout='top'] .link-card-image {
+  inline-size: 100%;
+  aspect-ratio: 1.91 / 1;
+  border-inline-start: 0;
+  border-block-end: 1px solid var(--color-border);
+}
+
+/* A narrow screen has no room for a column beside the words. */
+@media (width < 32.5rem) {
+  .prose a.link-card[data-image='yes'] {
+    flex-direction: column-reverse;
+  }
+
+  .prose .link-card-image {
+    inline-size: 100%;
+    aspect-ratio: 1.91 / 1;
+    border-inline-start: 0;
+    border-block-end: 1px solid var(--color-border);
+  }
+}
+
+@media (forced-colors: active) {
+  .prose a.link-card {
+    border-color: CanvasText;
+  }
+
+  .prose a.link-card:hover {
+    border-color: Highlight;
+  }
+}
+
+@media print {
+  .prose a.link-card {
+    break-inside: avoid;
+  }
+}
+
+/* --- Compact links and connector status (ADR-042) ------------------------- */
+
+/*
+ * One line: icon, title and site, as a block, for a list of references. A single anchor like a
+ * card, with the same border and focus ring, so the two read as one family.
+ */
+.prose a.link-compact {
+  display: flex;
+  align-items: center;
+  gap: 0.5em;
+  inline-size: 100%;
+  max-inline-size: 42em;
+  min-inline-size: 0;
+  padding: 0.4em 0.75em;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background-color: var(--color-surface-raised);
+  color: var(--color-foreground);
+  font-family: var(--font-sans);
+  font-size: 0.9em;
+  line-height: 1.4;
+  text-decoration: none;
+  transition: border-color var(--duration-fast) var(--ease-standard);
+}
+
+.prose a.link-compact:hover {
+  border-color: var(--color-border-strong);
+  color: var(--color-foreground);
+}
+
+.prose a.link-compact:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 2px;
+}
+
+.prose .link-compact-title {
+  min-inline-size: 0;
+  overflow: hidden;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.prose .link-compact-site {
+  margin-inline-start: auto;
+  overflow: hidden;
+  color: var(--color-muted);
+  font-size: 0.85em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/*
+ * The state a connector reports ("Open", "Merged"). The words say it; the tone only colours it,
+ * so nothing is carried by colour alone.
+ */
+.prose .link-status {
+  flex: none;
+  padding: 0.05em 0.5em;
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  color: var(--color-muted);
+  font-family: var(--font-sans);
+  font-size: 0.75em;
+  font-weight: 600;
+  line-height: 1.4;
+  white-space: nowrap;
+}
+
+.prose .link-status[data-tone='accent'] {
+  color: var(--color-accent);
+}
+
+.prose .link-status[data-tone='success'] {
+  color: var(--color-success);
+}
+
+.prose .link-status[data-tone='warning'] {
+  color: var(--color-warning);
+}
+
+.prose .link-status[data-tone='danger'] {
+  color: var(--color-danger);
+}
+
+@media (forced-colors: active) {
+  .prose a.link-compact {
+    border-color: CanvasText;
+  }
+}

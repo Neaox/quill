@@ -149,7 +149,10 @@ export type {
   MagicLinkTokenRow,
   NewDocumentLink,
   OutboxEventRow,
+  OutboxEventInput,
   OutboxWriter,
+  LinkPreviewRepository,
+  LinkPreviewRow,
   PersonPreferencesRepository,
   PersonPreferencesRow,
   PrincipalKind,
@@ -187,3 +190,12 @@ export type {
   WriteDraftResult,
 } from './persistence.ts'
 export { LOCK_HEARTBEAT_MS, LOCK_TTL_MS } from './persistence.ts'
+
+export type {
+  LinkPreviewAudience,
+  LinkPreviewAudiences,
+  LinkPreviewRateLimits,
+  LinkPreviewResolver,
+  RateDecision,
+} from './link-previews.ts'
+export { PUBLIC_PREVIEW_SCOPE } from './link-previews.ts'

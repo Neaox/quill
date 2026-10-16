@@ -1063,3 +1063,18 @@
   list-style: none;
   padding-inline-start: 0;
 }
+
+/*
+ * A link shown with its page's own title (ADR-042). In the reader this is a chip with the page's
+ * icon; while it is being written it is the words, drawn as a link that has been given a
+ * presentation, so the author can tell it from an ordinary link and still edit the words in it.
+ */
+.document-editor-content span.text-directive[data-name='link'] {
+  padding-inline: 0.25em;
+  border-radius: var(--radius-sm);
+  background-color: var(--color-accent-subtle);
+  text-decoration: underline;
+  text-decoration-color: var(--color-border-strong);
+  text-underline-offset: 0.16em;
+  box-decoration-break: clone;
+}

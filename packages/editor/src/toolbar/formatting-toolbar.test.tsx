@@ -382,6 +382,119 @@ describe('a caret in a link', () => {
   })
 })
 
+describe('how a link is shown', () => {
+  const source = 'Read [the docs](https://example.com/guide) now.\n'
+
+  const display = (name: string) => within(toolbar('Link')).getByRole('button', { name })
+
+  it('offers a plain link, an inline link and a card, with the one in force pressed', async () => {
+    const opened = open(source)
+    select(opened, 'the docs', 3)
+    const group = within(toolbar('Link')).getByRole('group', { name: 'Show link as' })
+    expect(
+      within(group)
+        .getAllByRole('button')
+        .map((button) => button.textContent),
+    ).toEqual(['Link', 'Inline', 'Compact', 'Card'])
+    expect(display('Link')).toHaveAttribute('aria-pressed', 'true')
+    expect(display('Card')).toHaveAttribute('aria-pressed', 'false')
+    await expectNoAccessibilityViolations(opened.container)
+  })
+
+  it('shows the link inline when asked, and back as the plain link in one more press', async () => {
+    const opened = open(source)
+    select(opened, 'the docs', 3)
+    await opened.user.click(display('Inline'))
+    expect(markdown(opened)).toBe(
+      'Read :link[the docs]{url="https://example.com/guide" display="inline"} now.\n',
+    )
+    expect(display('Inline')).toHaveAttribute('aria-pressed', 'true')
+    await opened.user.click(display('Link'))
+    expect(markdown(opened)).toBe('Read [the docs](https://example.com/guide) now.\n')
+  })
+
+  it('shows it as a card, whose choices then appear beside the display', async () => {
+    const opened = open(source)
+    select(opened, 'the docs', 3)
+    await opened.user.click(display('Card'))
+    const bar = toolbar('Link')
+    await opened.user.click(within(bar).getByRole('button', { name: 'Image above' }))
+    expect(markdown(opened)).toContain('layout="top"')
+    await opened.user.click(within(bar).getByRole('button', { name: 'Image' }))
+    expect(markdown(opened)).toContain('image="none"')
+  })
+
+  describe('a card', () => {
+    const card = '::link{url="https://example.com/guide" display=card}\n'
+
+    /** Selects the card as a block, which is what pressing it does. */
+    function selectCard(opened: Opened): void {
+      const editor = editorOf(opened)
+      act(() => {
+        editor.view.focus()
+        editor.commands.setNodeSelection(0)
+      })
+    }
+
+    it('has its own title and description typed in, the page’s words shown as placeholders', async () => {
+      const opened = open(card)
+      selectCard(opened)
+      await opened.user.click(
+        within(toolbar('Link')).getByRole('button', { name: 'Preview details…' }),
+      )
+      const title = screen.getByRole('textbox', { name: 'Card title' })
+      expect(title).toHaveFocus()
+      await opened.user.type(title, 'Our take')
+      await opened.user.type(
+        screen.getByRole('textbox', { name: 'Card description' }),
+        'Why it matters',
+      )
+      await opened.user.click(screen.getByRole('button', { name: 'Apply' }))
+      expect(markdown(opened)).toContain('title="Our take"')
+      expect(markdown(opened)).toContain('description="Why it matters"')
+      expect(screen.queryByRole('textbox', { name: 'Card title' })).toBeNull()
+    })
+
+    it('hides the description when asked, which is not the same as leaving it empty', async () => {
+      const opened = open(card)
+      selectCard(opened)
+      await opened.user.click(
+        within(toolbar('Link')).getByRole('button', { name: 'Preview details…' }),
+      )
+      await opened.user.click(screen.getByRole('checkbox', { name: 'No description' }))
+      await opened.user.click(screen.getByRole('button', { name: 'Apply' }))
+      expect(markdown(opened)).toMatch(/description[ }]/u)
+    })
+
+    it('goes back to what the page says in one press, and gives up on Escape', async () => {
+      const opened = open(
+        '::link{url="https://example.com/guide" display=card title="Mine" description="Mine too"}' +
+          String.fromCharCode(10),
+      )
+      selectCard(opened)
+      await opened.user.click(
+        within(toolbar('Link')).getByRole('button', { name: 'Preview details…' }),
+      )
+      await opened.user.keyboard('{Escape}')
+      expect(markdown(opened)).toContain('title="Mine"')
+      await opened.user.click(
+        within(toolbar('Link')).getByRole('button', { name: 'Preview details…' }),
+      )
+      await opened.user.click(screen.getByRole('button', { name: 'Reset to fetched' }))
+      expect(markdown(opened)).not.toContain('title=')
+      expect(markdown(opened)).not.toContain('description')
+    })
+  })
+
+  it('keeps the address to the link box for an ordinary link only', async () => {
+    const opened = open(source)
+    select(opened, 'the docs', 3)
+    expect(within(toolbar('Link')).getByRole('button', { name: 'Link…' })).toBeVisible()
+    await opened.user.click(display('Inline'))
+    expect(within(toolbar('Link')).queryByRole('button', { name: 'Link…' })).toBeNull()
+  })
+})
+
 describe('moving through the toolbar from the keyboard', () => {
   it('enters with Alt+F10, moves with the arrows, and leaves with Escape', async () => {
     const opened = open('Say something clever.\n')

@@ -258,6 +258,7 @@ function PublishedBody({
         label={title}
         eyebrow={eyebrow}
         className={styles.body()}
+        linkPeek
         renderChildDocuments={(depth) => (
           <ChildDocumentsBlock
             documentId={documentId}

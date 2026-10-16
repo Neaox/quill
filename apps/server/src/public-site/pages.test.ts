@@ -8,11 +8,14 @@ import {
   firstParagraph,
   renderDocumentMain,
   renderIndexMain,
+  renderBotPage,
   renderNotFoundMain,
   renderSearchMain,
   renderSnippet,
   unwrapArticle,
 } from './pages.ts'
+import { OPEN_WEB_LIMITS } from '../infrastructure/http/open-web-client.ts'
+import { DEFAULT_RATE_LIMITS } from '../infrastructure/link-preview/rate-limits.ts'
 
 const node = (title: string, path: string): PublicNavigationNode => ({
   documentId: path as DocumentId,
@@ -256,5 +259,53 @@ describe('articleStructuredData', () => {
       }),
     ) as Record<string, unknown>
     expect(data).not.toHaveProperty('description')
+  })
+})
+
+describe('the bot page', () => {
+  const view = {
+    userAgent: 'ExampleBot/1 (+https://docs.example.com/bot)',
+    instanceName: 'Acme Docs',
+    limits: { timeoutSeconds: 6, maxRedirects: 5, pageKiB: 512, imageMiB: 5 },
+    perHost: { burst: 5, perSecond: 0.5 },
+  }
+
+  it('says who is asking, what is fetched, how much and how often, and how to stop it', () => {
+    // The template is reflowed source; what matters is the words, not where the line broke.
+    const page = renderBotPage(view).replaceAll(/\s+/gu, ' ')
+    expect(page).toContain('ExampleBot/1 (+https://docs.example.com/bot)')
+    expect(page).toContain('Acme Docs')
+    expect(page).toContain('at most 512 KiB')
+    expect(page).toContain('at most 5 MiB')
+    expect(page).toContain('more than 5 redirects')
+    expect(page).toContain('at most 5 requests')
+    expect(page).toContain('one every 2 seconds')
+    expect(page).toContain('403')
+    expect(page).toContain('robots.txt')
+  })
+
+  it('is a complete page with a language, a title and one main landmark', () => {
+    const page = renderBotPage(view)
+    expect(page.startsWith('<!doctype html>')).toBe(true)
+    expect(page).toContain('<html lang="en">')
+    expect(page).toContain('<title>Acme Docs link preview bot</title>')
+    expect(page.match(/<main>/gu)).toHaveLength(1)
+    expect(page.match(/<h1>/gu)).toHaveLength(1)
+  })
+
+  it('escapes the instance name, which an administrator typed', () => {
+    const page = renderBotPage({ ...view, instanceName: '<script>alert(1)</script>' })
+    expect(page).not.toContain('<script>')
+    expect(page).toContain('&lt;script&gt;')
+  })
+
+  it('promises exactly what the client enforces', () => {
+    expect(OPEN_WEB_LIMITS).toEqual({
+      timeoutSeconds: 6,
+      maxRedirects: 5,
+      pageKiB: 512,
+      imageMiB: 5,
+    })
+    expect(DEFAULT_RATE_LIMITS.perHost).toEqual({ capacity: 5, refillPerSecond: 0.5 })
   })
 })

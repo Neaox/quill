@@ -14,6 +14,8 @@ import { documentRoutes } from './routes/documents.ts'
 import { draftRoutes } from './routes/drafts.ts'
 import { healthRoutes } from './routes/health.ts'
 import { lockRoutes } from './routes/locks.ts'
+import { linkPreviewImageRoutes } from './routes/link-preview-images.ts'
+import { linkPreviewRoutes } from './routes/link-previews.ts'
 import { meRoutes } from './routes/me.ts'
 import { publicSiteRoutes } from './routes/public-site.ts'
 import { publicMenuRoutes } from './routes/public-menu.ts'
@@ -159,6 +161,8 @@ export function buildApp(options: AppOptions = {}): FastifyInstance {
     app.register(authRoutes(deps))
     app.register(oidcAuthRoutes(deps))
     app.register(meRoutes(deps))
+    app.register(linkPreviewRoutes(deps))
+    app.register(linkPreviewImageRoutes(deps))
     app.register(unitRoutes(deps))
     app.register(workspaceRoutes(deps))
     app.register(collectionRoutes(deps))

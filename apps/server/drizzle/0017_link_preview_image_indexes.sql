@@ -1,0 +1,2 @@
+CREATE INDEX "link_previews_thumbnail_idx" ON "link_previews" USING btree ((document->'thumbnail'->>'hash'));--> statement-breakpoint
+CREATE INDEX "link_previews_favicon_idx" ON "link_previews" USING btree ((document->'favicon'->>'hash'));

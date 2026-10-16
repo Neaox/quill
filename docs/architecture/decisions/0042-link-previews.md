@@ -1,7 +1,7 @@
 # ADR-042: Link previews
 
 **Status:** Accepted
-**Date:** 2026-10-11
+**Date:** 2026-10-11 (display and authoring amended 2026-10-13)
 **Delivery:** M5, with embeds (quill-plan.md section 20)
 **Related:** ADR-008 (providers and integrations), ADR-011 (security baseline, amended by this ADR), ADR-031 (render caching), ADR-032 (live blocks), ADR-039 (Markdown extensions), [docs/ideas/work-tracker-and-code-host-connectors.md](../../ideas/work-tracker-and-code-host-connectors.md)
 
@@ -39,6 +39,8 @@ It tries each layer in turn and keeps the first rich answer:
 3. **Open Graph**, then **Twitter Card** tags.
 4. **The page itself:** `<title>`, `meta name="description"`, `link rel="icon"`, and JSON-LD `headline` and `description`.
 
+oEmbed discovery (the page's own `<link>`) costs a second request to the host, so it runs only when Open Graph, Twitter Card and the page's own tags did not give a rich answer. A *known* provider is asked first, before the page is fetched at all: one request, and the only way to get anything from a host that serves bots nothing. A card is **rich** when it has a title and either a description or an image.
+
 Every field is treated as untrusted plain text: trimmed, length-capped, and stripped of control characters. Remote HTML is never rendered. oEmbed `html` is ignored unless the provider is on the **embed allowlist** (below).
 
 ### Fetching the open web safely
@@ -52,7 +54,11 @@ The outbound client gains an **open-web mode**, as a separate instance with its 
 - only `http(s)` on ports 80 and 443;
 - only `text/html` or `application/json`, decided from the response headers before the body is read;
 - the body is read as a stream, and reading stops at `</head>` or 512 KiB, whichever comes first;
-- the character set is taken from the header, else the meta tag, else UTF-8.
+- the character set is taken from the header, else the meta tag, else UTF-8;
+- names are resolved with c-ares, not `getaddrinfo`, so a hostile nameserver cannot hold the threadpool that serves every file read in the process;
+- at most 8 requests run at once and 64 wait, and more are refused as busy;
+- only the markup before `<body>`, and at most 2 000 tags of it, is parsed, because the HTML parser's cost is quadratic in nesting;
+- a URL longer than 4 096 characters is not looked up at all.
 
 The user agent is honest: `<Brand>Bot/<version> (+<instance URL>/bot)`. The `/bot` page explains what is fetched and how to opt out. A small, documented list of hosts known to serve Open Graph only to well-known crawlers may get a fallback user agent. Every such entry is reviewed.
 
@@ -65,7 +71,9 @@ Rate limits apply per target host, globally (a token bucket), and per organisati
 A thumbnail or favicon is never hotlinked: that would leak readers' addresses and break the image CSP.
 - The image is fetched once through the same open-web client, with images only and a 5 MiB cap.
 - Its bytes are sniffed to confirm it is PNG, JPEG, WebP or GIF; SVG is refused.
-- It is decoded, re-encoded and resized to fixed sizes, which also strips metadata.
+- It is decoded, re-encoded and resized to fixed sizes, which also strips metadata. Only the first frame of an animation is read.
+  - The decode happens in a **small pool of reusable child processes** (two by default, replaced after 100 images, stopped when idle, and killed on any failure rather than reused), because starting a process that loads the codec cost half a second and 70 MiB per image. Each has a heap cap, a pixel limit (24 megapixels, checked from the header) and a time limit, as ADR-047 requires for every untrusted codec. A crash or hang costs one job. The child is given **no environment variables**, so the database URL, keys and credentials are not in its memory, and its reply is treated as untrusted too: it must still be a WebP, within the size asked for, or it is refused.
+  - The sizes are 640 pixels for a thumbnail and 64 for a favicon, never enlarged. The output is WebP.
 - It is stored in the blob store under its hash and served same-origin and immutable.
 
 A preview whose image fails keeps its text.
@@ -83,15 +91,61 @@ A preview whose image fails keeps its text.
   - A failure is cached for 1 hour, which bounds retries against dead links.
   - "Refresh preview" in the editor forces a fetch, rate-limited per user.
 - **Scope.** A preview from the public layers (2 to 4) is shared across the instance. A preview from a connector (layer 1) is keyed by integration and visible only where that integration is granted.
+  - **A restrictive policy gets its own scope, named for the policy.** A fetch runs under the policy of the person whose reading asked for it, so an organisation that limits where Quill goes can be sure Quill did not go there on its behalf. A fetch under the default policy is stored in the shared `public` scope. A fetch under any other (an allow or block list, text-only) is stored in a scope derived from a hash of that exact policy: everyone with the same policy shares it, nobody else can read it, and changing the policy moves an organisation to a new scope with no migration. Both are read, the organisation's own first.
+- **One row per link and scope**, holding the preview as a versioned document (ADR-033), when it was fetched, when a fetch was last asked for, and when it may next be tried. A row is derived data: rows nobody has read for 90 days are swept, and one fetch rebuilds any of them.
+- **A miss queues, atomically.** Asking for a fetch is a conditional upsert, so any number of readers who miss the same link at once queue exactly one fetch, and a fetch that was lost (a restart) may be asked for again after five minutes. The fetch is an outbox event (`LinkPreviewRequested`), so it has retries with backoff and a dead letter. The processed row keeps the site's address and drops the path and query, since a link can carry a token.
+- **A failed refresh keeps the last good preview.** Its clock moves so a dead link is not asked for on every read, and the card is shown with its age.
+- **Rate limits** apply to each fetch: per host, per scope, and globally, as token buckets. A fetch that finds no room is put back for exactly as long as the bucket says (plus jitter) and the attempt is **not counted**, so a burst of links to one site is spread out and never dead-lettered. A forced refresh is limited per person, as is looking up a page of links, and as is **causing new fetches**: asking is free, so a person can read any page, but the number of requests to strangers' servers one person can cause is rationed. The links left out simply read as pending and are queued by a later read.
+- **Fetches run on a lane of their own**, not on the outbox's main poller. The main poller handles one event at a time inside the transaction that claimed it, which is right for quick work of ours and wrong for a fetch that waits seconds on someone else's server: a few slow sites would delay publishing and mail. The lane claims events with a lease (short transaction, no connection held while the fetch runs), runs up to eight at once, and treats "not yet" as a deferral rather than a failure.
+- **Anonymous readers never cause a fetch.** The public site and an export read stored previews through a read that cannot queue (`peekLinkPreviews`). Only a signed-in member's page loads and pastes can ask for one, so a stranger cannot make Quill fetch an address by requesting a page.
+- **Every fetch is logged**: one line with the host, what it was for (page, oEmbed, image), the outcome, status, redirects, bytes and duration. Never the path, the query or the response.
+- **The pictures are served by us** from `/link-previews/images/<hash>`, immutable and inert (`nosniff`, a policy that allows nothing, a fixed WebP type). **Only a hash a stored preview shows is served**: the blob store holds attachments by hash too, and a hash is not a permission, so every other hash answers the same not-found as one that does not exist.
+- **`/bot`** is a public page the user agent names, generated from the limits the client enforces, saying what is fetched, how much, how often, and how to stop it.
+- **The API** has two endpoints, both only reading what is stored and queueing: `POST /api/link-previews/resolve` takes up to 50 links and answers, for each, one of `ready` (with `stale`), `pending`, `unavailable` (with the reason) or `blocked`; `POST /api/link-previews/refresh` forces one.
 - **Rendering never fetches** (ADR-031). The body renders a link with a preview slot carrying the normalised key. Page assembly fills slots from the snapshot store, exactly as it fills live blocks. A missing snapshot shows the plain link and queues a fetch. The public site shows a preview only from the public layers, and only if the organisation allows previews there.
 - **In the editor**, pasting a URL inserts the link at once, and a placeholder chip resolves when the preview arrives. A slow or failed preview never blocks typing.
 
-### Markdown stays a URL
+### Display: the author decides
 
-A preview is a presentation of a link, never content.
-- A bare URL on its own line, or a pasted URL, takes the organisation's default display.
-- An author's choice is written as a directive so it round-trips and degrades: `::link{url="https://…" display=card}`, or `:link[https://…]{display=inline}` in running text. The display is one of `url`, `inline`, `card` or `embed`; a `fields=` attribute applies where a connector supplies structured fields.
-- Outside Quill each form reads as its URL. The choice is made from a floating toolbar on the link (ADR-039's editor binding), with keyboard access and undo.
+A preview is a presentation of a link, never content, so how a link looks is the author's choice. The choice is stored in the document and read the same way by every reader.
+
+**What other tools offer.** Notion offers URL, mention, bookmark and embed from a menu on every paste. Confluence offers inline, card, embed and URL, switched from a floating toolbar. Google Docs offers a chip, a hover card, and "convert to plain link". Slack unfurls below the message, and only removal is the author's. Linear and GitHub turn their own links into status-aware titles. What people value is the same everywhere: the choice is per link, switching is one click and reversible, the link never gets in the way while typing, and the plain link is always one step away. What people complain about: a modal menu on every paste, a card the author did not ask for, an author's own words replaced by a scraped title, and previews that shift the page as they arrive.
+
+**Four displays.**
+
+| Display  | Reads as                                | Use                                                                   |
+| -------- | --------------------------------------- | --------------------------------------------------------------------- |
+| `url`    | The link as written, with no preview    | Prose that names a destination; always the fallback                   |
+| `inline` | Favicon and title, in running text      | Linking to a page mid-sentence                                        |
+| `card`   | Title, description and thumbnail, block | A reference worth a look: an article, a design, a pull request        |
+| `embed`  | The live content in a sandboxed frame   | Video, slides, a design file, from an allowlisted provider only       |
+
+**What the author can shape on a card:**
+- `layout`: `side` (thumbnail beside the text; the default and the most compact) or `top` (a large image above it);
+- `image=none` to drop the thumbnail;
+- `title` and `description` to replace the fetched text with their own; `description=""` hides it. This also repairs a page whose tags are wrong or missing, and gives a stable result where the host blocks us.
+
+**The author's words always win.** If the author wrote link text (`[the design doc](https://…)`), `inline` keeps it and only adds the favicon and the hover peek. The fetched title replaces the text only for a bare URL.
+
+**In the Markdown file** a choice is a directive, so it round-trips and degrades: `::link{url="https://…" display=card layout=top}` as a block, `:link[https://…]{display=inline}` in running text. A directive with an unknown attribute keeps it (rule 7), and one with an unknown `display` renders as `url`. Outside Quill every form reads as its URL. A link with no directive takes the organisation's default.
+
+**Defaults.** The organisation chooses the default for a pasted or bare link: `url`, `inline` (the shipped default) or `card`. `inline` is the least surprising: it reads as a link, and a card is something the author asks for. A bare URL on a line of its own does not change this.
+
+**Authoring surface.**
+- **Paste inserts the link at once.** A small, non-blocking prompt then appears at the link: `Show as  Link · Inline · Card · Embed`. An option appears only if it can work (`Embed` only for an allowlisted provider). The prompt takes no focus, and goes away when the author types, presses Escape or clicks elsewhere. It never blocks typing, and `Ctrl+Z` straight after a paste returns the plain link.
+- **The floating toolbar on any link** has the same segmented control, plus edit text, open, copy, refresh preview and remove link. For a card it adds a **Preview details** popover: layout, image, and title and description overrides, with the fetched values as placeholders and a "reset to fetched" action.
+- **Every feature has slash, toolbar, keyboard and undo.** The slash menu has `/link card` and `/link embed`; `Ctrl+K` (the link dialog) includes the display choice; the command palette has "Show link as card / inline / link" for the link at the cursor.
+- **The preview is honest while it loads and when it fails.** A placeholder chip with the height of the final inline form holds the place, so nothing shifts. A failure leaves the plain link and a quiet "Preview unavailable. Retry" in the toolbar, never an error in the page. A status line in the toolbar says where a preview came from ("Open Graph, fetched 2 days ago") and warns when it will not show on the public site.
+- **Pasting from outside** (a Slack message, a web page, an email) keeps links as links, which take the default. Only a bare pasted URL is offered the prompt.
+- **Internal links.** A pasted link to another Quill document is the first-party case of layer 1. It resolves by id, shows the live title, and respects what the reader may see: a reader without access sees a plain, unlinked label, never a title. The same displays apply, minus `embed`.
+
+**Reading surface, internal and public.**
+- **One component per display**, shared by the app reader, the public site, presentation mode and export (rule 16). Inline is an `<a>` holding a decorative favicon and the title. A card is a single `<a>` block: the title is the accessible name, the site name and description follow, and the thumbnail is decorative (`alt=""`) and sized from its stored dimensions so the page does not shift as images load. One tab stop per link, with a visible focus ring.
+- **Hover and focus peek.** An `inline` or `url` link to a previewable page shows a compact card on hover or keyboard focus after a short delay. It is dismissible with Escape, stays open while the pointer is over it, and never traps focus (WCAG 1.4.13). It is a reader setting ("Show link previews on hover", on by default), because it is a reading preference where the author's choice of display is content. On touch devices the peek is off and the link behaves as a link.
+- **Public site.** A preview is drawn only from a public layer (2 to 4), and only if the organisation allows it. Anything else renders as `url`, and the editor says so at authoring time. Images are same-origin and immutable. External links carry `rel="noopener"`.
+- **Print, export and offline.** **An export is the rendered body before its link slots are filled, so every link in it is a plain, working link with the words the author gave it or its address.** The directive renders as an ordinary anchor first (a *slot*, carrying the author's choice and the address its preview is stored under), and the page's server-side step swaps a slot for a chip or card only when a preview is ready. Anything that does not run that step, an export to HTML, PDF or Word, a Git sync, a crawler that reads the cached body, a printout, therefore gets plain links without having to know about previews. The export code must not call the fill step, and a test pins that an unfilled body has no chip, card or image in it.
+- **Dead links.** A preview is a snapshot. When a link later dies (ADR-046) the snapshot stays as it was, and the link-health report is where that is surfaced.
+- **Presentation mode.** Cards scale with the slide, and `layout=top` suits it.
 
 ### Embeds are an allowlist
 
@@ -104,13 +158,43 @@ Everything else is at most a card.
 
 ### Policy
 
-Organisation settings control link previews:
-- on or off;
-- on or off for the public site;
-- a block list and an allow-only list of hosts;
-- whether the instance-wide anonymous layer may be used, so an organisation can require connectors.
+An organisation decides what Quill may do about links. The settings are:
 
-Internal hostnames, including the instance's own private names and anything resolving inside, are never fetched. Private content needs a connector. Every fetch is logged with its host and outcome, never the response. Policy changes are audited.
+- **Mode**, one of:
+  - `off`: nothing is fetched, and every link is a plain link. Authors can still write directives; they render as `url`.
+  - `text`: titles, descriptions and site names only. No picture is fetched, stored or shown, so no third-party image is ever copied or served.
+  - `rich`: everything, including thumbnails and favicons (the shipped default).
+- **The public site**, on or off, separately: an organisation may use previews internally and publish plain links.
+- **The default display** of a pasted or bare link (`url`, `inline` or `card`).
+- **An allow list and a block list** of URL patterns (below).
+- **Whether the instance-wide anonymous layer may be used**, so an organisation can require connectors.
+
+**Patterns.** A pattern names a host, optionally with a path prefix:
+
+| Written                      | Matches                                                 |
+| ---------------------------- | ------------------------------------------------------- |
+| `example.com`                | that host                                               |
+| `*.example.com`              | any subdomain, not `example.com` itself (list both)     |
+| `example.com/docs`           | that host, at `/docs` and under it, never `/docsx`      |
+| `*.example.com/internal/*`   | the same on every subdomain; a trailing `*` is optional |
+
+The grammar has no regular expressions: an administrator can read what a pattern does, and it cannot be made to backtrack. A wildcard is allowed only as a leading `*.` on the host and a trailing `*` on the path. A scheme is ignored, a port is not accepted (only 80 and 443 are ever used), and an internationalised name is matched in its punycode form. Hosts compare case-insensitively and without a trailing dot, so `EVIL.example.` is `evil.example`; numeric forms of an address (`2130706433`, `0x7f.1`) are compared as the address they are; paths compare case-sensitively after dot segments are resolved. A list holds at most 500 patterns, and a policy with one pattern that does not parse is refused whole with the pattern named, because a block list that silently skips the entry that was mistyped is worse than none.
+
+**Semantics.** A block wins over an allow. If the allow list is not empty, only matching URLs may be contacted. `off` permits nothing.
+
+**What the policy governs is Quill's requests, not what people may write.** A link to a blocked site is still a working link; Quill just never contacts that site to describe it. So the policy is enforced where a request is made, on **every** request a preview makes: the pasted URL, each redirect it lands on, an oEmbed endpoint (known or discovered), and each image. A block list that is checked only against the pasted URL is one a redirect, or a page that names an image on another host, walks around. The pasted URL is also checked on its own before an oEmbed provider is asked about it, since that request would otherwise send the provider a link the policy forbids.
+
+**At read time too.** Previews are snapshots shared across the instance (above), so a stored preview was made under whatever policy applied then. Showing one applies the viewing organisation's policy again: a preview of a URL the policy does not permit is not shown (the link renders as `url`), and in `text` mode a stored thumbnail and favicon are not served. A policy change therefore takes effect at once, without waiting for a refresh.
+
+**Operators have a layer above organisations.** The instance's own configuration can add hosts that no organisation may enable, and the operations guide recommends an egress firewall as a second wall: the server's outbound traffic is allowed to the public internet and to nothing inside the network, so a flaw in the application-level checks is not the only thing between a pasted URL and an internal service.
+
+Internal hostnames, including the instance's own private names and anything resolving inside, are never fetched, whatever the policy says. Private content needs a connector. Every fetch is logged with its host and outcome, never the response. Policy changes are audited.
+
+## Dependencies
+
+Two runtime dependencies are added to the server (AGENTS.md rule 11):
+- **`parse5`**, the HTML Standard's reference parser (already in the lockfile through other tooling). Metadata is where hand-written patterns fail on real pages: attribute order and quoting, entities, `<noscript>`, markup in comments. It is used only to read HTML we fetched ourselves, which is the allowance in "Alternatives considered" below.
+- **`sharp`** (libvips), the image codec ADR-047 already chooses. It lands here first, behind an `ImageTranscoder` port, so ADR-047 reuses it rather than adding it again.
 
 ## Alternatives considered
 
@@ -129,9 +213,9 @@ Internal hostnames, including the instance's own private names and anything reso
 
 ## Delivery
 
-1. The open-web outbound client, with its tests and the ADR-011 amendment.
-2. The resolver layers 2 to 4 and the image pipeline, against recorded fixtures.
-3. Snapshots and refresh jobs (on ADR-032's store), and slot filling at page assembly.
-4. Editor paste, the toolbar, and the directive.
+1. The open-web outbound client, with its tests and the ADR-011 amendment. *Built.*
+2. The resolver layers 2 to 4 and the image pipeline, against recorded fixtures. *Built.*
+3. Snapshots and refresh jobs, and the read API. *Built*, on a table of its own (`link_previews`), since ADR-032's snapshot store does not exist yet; folding it into that store later is a move of rows, not of behaviour. Slot filling at page assembly arrives with the renderers in step 4, which call the same read.
+4. The directive and its renderers (inline, card, peek) on the reading and public surfaces, then the editor: paste prompt, floating toolbar, preview details, slash, `Ctrl+K` and command palette. *Started.* Built and tested: the `link` directive (parse, validate, write back, unknown attributes kept), its slot in the body, and the fill. **The reading surfaces are built:** a member's `GET /documents/:id/rendered` fills the body for the viewer (queueing what is missing, answering `pendingLinks`, tagged by what was drawn so a late preview is never a 304 for the plain link), the public site and share links draw stored previews only, and publishing queues the previews of a document's links so the first reader finds them. The web client looks again at 2, 4, 8 and 16 seconds while any are pending, then stops. Chips and cards are styled in the shared prose stylesheet. **The hover and focus peek is built** (a reader preference of the browser, on by default, off on touch). **The editor is built in part.** A link is one thing with a display: a plain Markdown link, an inline `:link` or a `::link` card, and one command moves it between them without losing its address or the author's words (`packages/editor/src/link`). Pasting a bare address inserts the plain link at once and offers `Show as Link · Inline · Card`, which takes no focus and goes away on typing, Escape or moving off; the floating toolbar on any link has the same segmented control, and for a card its layout, image and a Preview details box (title and description over the page's, with the fetched words as placeholders, "No description", and "Reset to fetched"); `/link card` and `/link inline` take an address in the slash menu; the context menu has "Show link as"; a card is drawn in the writing surface from its preview, or from its address while there is none. Not built: `Ctrl+K` with the display choice, the command palette entries, refresh and the status line in the toolbar, the embed display, and the organisation default display and settings screens (step 5).
 5. Settings and policy, then the embed allowlist.
 6. The connector layer, with the first connector (GitHub).

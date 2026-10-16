@@ -53,6 +53,7 @@ import { DraftPreviewLink } from './draft-preview-link.tsx'
 import { PublishButton } from './publish-button.tsx'
 import { ChangesReview } from './changes-review.tsx'
 import { ReviewButton } from './review-button.tsx'
+import { useEditorLinkPreviews } from './editor-link-previews.ts'
 import { useDocumentLinkSearch } from './use-document-link-search.ts'
 import { DocumentPropertiesPanel } from './properties/document-properties-panel.tsx'
 import { useDrawio } from './drawio/use-drawio.tsx'
@@ -251,6 +252,7 @@ function EditingSession({
 
   // For the child-documents block, which shows what is beneath this document.
   const childDocuments = useChildDocuments(document, workspaceSlug)
+  const linkPreviews = useEditorLinkPreviews()
 
   const draftClient = useDraftClient(documentId)
   const lockClient = useLockClient(documentId)
@@ -826,6 +828,7 @@ function EditingSession({
           labels={labels}
           emoji={emoji}
           childDocuments={childDocuments}
+          linkPreviews={linkPreviews}
           className={styles.surface()}
           onChange={(handle) => {
             // How to read the tree, not the tree: converting a long document

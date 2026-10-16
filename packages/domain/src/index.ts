@@ -132,3 +132,56 @@ export type {
   WorkspaceTree,
 } from './permissions/materialise.ts'
 export { materialiseEffectivePermissions } from './permissions/materialise.ts'
+
+export { MAX_URL_LENGTH, normaliseUrl } from './link-preview/normalise-url.ts'
+export {
+  LINK_PREVIEW_FAILURES,
+  LINK_PREVIEW_KINDS,
+  LINK_PREVIEW_LAYERS,
+  PREVIEW_TONES,
+} from './link-preview/link-preview.ts'
+export type {
+  LinkPreview,
+  LinkPreviewFailure,
+  LinkPreviewKind,
+  LinkPreviewLayer,
+  PreviewEmbed,
+  PreviewFile,
+  PreviewImage,
+  PreviewStatus,
+  PreviewTone,
+} from './link-preview/link-preview.ts'
+export {
+  DEFAULT_LINK_PREVIEW_POLICY,
+  LINK_PREVIEW_MODES,
+  MAX_POLICY_PATTERNS,
+  compileLinkPolicy,
+  parseUrlPattern,
+} from './link-preview/link-policy.ts'
+export type {
+  CompiledLinkPolicy,
+  LinkPreviewMode,
+  LinkPreviewPolicy,
+  PatternError,
+  PolicyError,
+  UrlPattern,
+} from './link-preview/link-policy.ts'
+export {
+  FAILURE_REMEMBERED_FOR_MS,
+  PREVIEW_FRESH_FOR_MS,
+  REQUEST_IN_FLIGHT_FOR_MS,
+  isStale,
+  retryAfter,
+} from './link-preview/snapshot.ts'
+export type { LinkPreviewRecord, LinkPreviewView } from './link-preview/snapshot.ts'
+export {
+  CARD_LAYOUTS,
+  DEFAULT_CARD_LAYOUT,
+  LINK_DISPLAYS,
+  DEFAULT_LINK_DISPLAY,
+  UNCHOSEN,
+  isBlockDisplay,
+  isCardLayout,
+  isLinkDisplay,
+} from './link-preview/display.ts'
+export type { CardLayout, LinkChoice, LinkDisplay } from './link-preview/display.ts'

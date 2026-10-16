@@ -25,6 +25,7 @@ export {
   DOCUMENT_PUBLISHED,
   DOCUMENT_RENAMED,
   EVENT_PAYLOAD_VERSION,
+  LINK_PREVIEW_REQUESTED,
   MAIL_REQUESTED,
   parseAttachmentRevised,
   parseDocumentMoved,
@@ -462,3 +463,23 @@ export {
   readPersonPreferences,
   updatePersonPreferences,
 } from './person-preferences.ts'
+
+export type {
+  LinkPreviewDependencies,
+  LinkPreviewFetchDependencies,
+  LinkPreviewPorts,
+  LinkPreviewReadCommand,
+  LinkPreviewReading,
+  LinkPreviewRequestedPayload,
+  RefreshFailure,
+} from './link-previews.ts'
+export {
+  LinkPreviewRetryLater,
+  MAX_LINKS_PER_READ,
+  fetchLinkPreview,
+  getLinkPreviews,
+  parseLinkPreviewRequested,
+  peekLinkPreviews,
+  refreshLinkPreview,
+  storedPreviewReader,
+} from './link-previews.ts'

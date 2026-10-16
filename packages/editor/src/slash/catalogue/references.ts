@@ -1,7 +1,8 @@
 import { DEFAULT_CHILD_DEPTH, DEFAULT_TOC_MAX, DEFAULT_TOC_MIN } from '@quill/markdown'
-import { DocumentIcon, FootnoteIcon, OutlineIcon, SmallPrintIcon } from '@quill/ui'
+import { DocumentIcon, FootnoteIcon, LinkIcon, OutlineIcon, SmallPrintIcon } from '@quill/ui'
 
 import { insertLink } from '../../document/commands.ts'
+import { cardLinkNode, inlineLinkNode, previewableAddress } from '../../link/new-link.ts'
 import {
   insertBlock,
   insertFootnote,
@@ -56,12 +57,65 @@ function documentLinkItem(
   )
 }
 
+/**
+ * A link that shows the page it goes to, made from an address typed or pasted
+ * into the menu's second step (ADR-042: `/link card`, `/link inline`). There is
+ * one option, and only once what was typed is an address worth previewing.
+ */
+function linkPreviewItem(display: 'inline' | 'card'): SlashItem {
+  const card = display === 'card'
+  return pickerItem(
+    {
+      id: card ? 'link-card' : 'link-inline',
+      label: card ? 'Link card' : 'Link with preview',
+      description: card
+        ? 'A web page as a card: its title, summary and picture'
+        : 'A web page’s icon and title, in the line',
+      group: 'References',
+      keywords: ['link', 'url', 'web', 'website', 'preview', 'bookmark', 'embed', 'card', 'unfurl'],
+      aliases: card ? ['bookmark', 'card'] : ['chip'],
+      icon: LinkIcon,
+      inline: !card,
+    },
+    {
+      title: card ? 'Link card address' : 'Link address',
+      placeholder: 'Paste or type a web address',
+      empty: (query) =>
+        query.trim() === ''
+          ? 'Paste or type a web address'
+          : 'That is not a web address (https://…)',
+      source: {
+        kind: 'list',
+        options: (query) => {
+          const address = previewableAddress(query)
+          return address === null
+            ? []
+            : [
+                {
+                  id: address,
+                  label: address,
+                  description: card ? 'Insert as a card' : 'Insert inline',
+                },
+              ]
+        },
+      },
+      choose: (option) =>
+        card
+          ? insertBlock((schema) => cardLinkNode(schema, option.id), { standalone: true })
+          : insertInline((schema) => inlineLinkNode(schema, option.id)),
+    },
+    (place) => (card ? true : place.state.selection.$from.parent.inlineContent),
+  )
+}
+
 export const referenceItems: SlashContribution = {
   id: 'core.references',
   items: (environment) => [
     ...(environment.searchDocuments === undefined
       ? []
       : [documentLinkItem(environment.searchDocuments)]),
+    linkPreviewItem('card'),
+    linkPreviewItem('inline'),
     commandItem(
       {
         id: 'table-of-contents',

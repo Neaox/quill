@@ -91,6 +91,8 @@ export const queryKeys = {
    * an invalidation of the current one, and `undefined` (the head revision)
    * is its own entry that a publish invalidates.
    */
+  /** One link's preview as the signed-in viewer is shown it (ADR-042), keyed by the address as written. */
+  linkPreview: (url: string) => ['link-preview', url] as const,
   rendered: (documentId: string, revision?: string) =>
     ['rendered', documentId, revision ?? null] as const,
   envelope: (documentId: string) => ['envelope', documentId] as const,

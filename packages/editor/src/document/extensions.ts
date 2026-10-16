@@ -28,6 +28,7 @@ import type { FileDropOptions } from './files.ts'
 import { CaretContext } from './caret-context.ts'
 import { HoldStopsAtBlockEdge } from './hold-guard.ts'
 import { KeyboardShortcuts } from './keymap.ts'
+import { LinkOfferExtension } from '../link/link-offer.ts'
 import { MarkdownPaste } from './paste.ts'
 import { withTableViews } from '../table/table-extension.ts'
 import { TaskToggle, withTaskItemView } from '../task/task-item-view.ts'
@@ -152,6 +153,7 @@ export function buildExtensions(options: EditorExtensionOptions = {}): Extension
     TablePaste,
     TablePresentation,
     MarkdownPaste,
+    LinkOfferExtension,
     GuidanceDismissal,
     PlaceholderTyping,
     RequiredSections,

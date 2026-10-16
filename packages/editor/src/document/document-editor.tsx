@@ -8,6 +8,8 @@ import type { Ref } from 'react'
 
 import { BlockMenu } from '../block/block-menu.tsx'
 import { ChildDocumentsProvider } from '../blocks/child-documents-context.tsx'
+import { LinkPreviewProvider, NO_LINK_PREVIEWS } from '../blocks/link-preview-context.tsx'
+import type { LinkPreviewSource } from '../blocks/link-preview-context.tsx'
 import type { CommentRequest } from '../block/comment-request.ts'
 import { EditorContextMenu } from '../context-menu/editor-context-menu.tsx'
 import type { ImageAction } from '../image/image-actions.ts'
@@ -20,7 +22,8 @@ import { createSlashRegistry } from '../slash/slash-registry.ts'
 import { FindBar } from '../find/find-bar.tsx'
 import { ShortcutsDialog } from '../shortcuts/shortcuts-dialog.tsx'
 import { FormattingToolbar } from '../toolbar/formatting-toolbar.tsx'
-import { useLinkEditing } from '../toolbar/hooks.ts'
+import { LinkOfferBar } from '../toolbar/link-offer-bar.tsx'
+import { useDetailsEditing, useLinkEditing } from '../toolbar/hooks.ts'
 import { createSlashStore } from '../slash/slash-store.ts'
 import type { FileRequest } from './files.ts'
 import type { EditorEmojiOptions } from './emoji.ts'
@@ -110,6 +113,11 @@ export interface DocumentEditorProps {
    * are none.
    */
   readonly childDocuments?: readonly NestedListItem[] | undefined
+  /**
+   * How to look up the preview of a link, for the link cards it draws (ADR-042). The editor
+   * cannot ask the server itself; omitted, a card is drawn from its address alone.
+   */
+  readonly linkPreviews?: LinkPreviewSource | undefined
   readonly className?: string
   readonly ref?: Ref<DocumentEditorHandle>
   /**
@@ -163,6 +171,7 @@ export function DocumentEditor({
   imageActions,
   recentsKey,
   childDocuments,
+  linkPreviews,
   className,
   ref,
   onChange,
@@ -268,28 +277,37 @@ export function DocumentEditor({
   useImperativeHandle(ref, () => handleFor(editor, initial.warnings), [editor, initial.warnings])
 
   const linkEditing = useLinkEditing(editor)
+  const detailsEditing = useDetailsEditing(editor)
 
   return (
     <div className={cx('document-editor relative', className)}>
-      <FindBar editor={editor} />
-      <BlockMenu editor={editor} {...(onComment === undefined ? {} : { onComment })} />
-      {editable ? <BlockInserter editor={editor} /> : null}
-      <ChildDocumentsProvider value={childDocuments}>
-        <EditorContent editor={editor} />
-      </ChildDocumentsProvider>
-      <SlashMenu store={store} editor={editor} />
-      <FormattingToolbar editor={editor} linkEditing={linkEditing} onComment={onComment} />
-      <EditorContextMenu editor={editor} linkEditing={linkEditing} onComment={onComment} />
-      <CalloutVariantMenu editor={editor} />
-      <ShortcutsDialog
-        open={shortcutsOpen}
-        onOpenChange={setShortcutsOpen}
-        onCloseAutoFocus={(event) => {
-          // Back to the words, not to the page's first control.
-          event.preventDefault()
-          editor.commands.focus()
-        }}
-      />
+      <LinkPreviewProvider value={linkPreviews ?? NO_LINK_PREVIEWS}>
+        <FindBar editor={editor} />
+        <BlockMenu editor={editor} {...(onComment === undefined ? {} : { onComment })} />
+        {editable ? <BlockInserter editor={editor} /> : null}
+        <ChildDocumentsProvider value={childDocuments}>
+          <EditorContent editor={editor} />
+        </ChildDocumentsProvider>
+        <SlashMenu store={store} editor={editor} />
+        <FormattingToolbar
+          editor={editor}
+          linkEditing={linkEditing}
+          detailsEditing={detailsEditing}
+          onComment={onComment}
+        />
+        <LinkOfferBar editor={editor} />
+        <EditorContextMenu editor={editor} linkEditing={linkEditing} onComment={onComment} />
+        <CalloutVariantMenu editor={editor} />
+        <ShortcutsDialog
+          open={shortcutsOpen}
+          onOpenChange={setShortcutsOpen}
+          onCloseAutoFocus={(event) => {
+            // Back to the words, not to the page's first control.
+            event.preventDefault()
+            editor.commands.focus()
+          }}
+        />
+      </LinkPreviewProvider>
     </div>
   )
 }

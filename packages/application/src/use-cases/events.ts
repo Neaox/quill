@@ -37,6 +37,14 @@ export const DOCUMENT_MOVED = 'DocumentMoved'
  */
 export const ATTACHMENT_REVISED = 'AttachmentRevised'
 
+/**
+ * A link preview is wanted (ADR-042). Fetching a stranger's page is slow, can
+ * fail, and must not happen while a reader waits, so a miss queues this and the
+ * reader is shown a plain link meanwhile. The outbox gives it retries with
+ * backoff and a dead letter for free.
+ */
+export const LINK_PREVIEW_REQUESTED = 'LinkPreviewRequested'
+
 export const EVENT_PAYLOAD_VERSION = 1
 
 export interface DocumentCreatedPayload {

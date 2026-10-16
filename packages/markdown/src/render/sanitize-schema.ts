@@ -1,3 +1,4 @@
+import { LINK_DISPLAYS } from '@quill/domain'
 import { defaultSchema } from 'hast-util-sanitize'
 import type { Schema } from 'hast-util-sanitize'
 
@@ -171,6 +172,18 @@ const attributes: Schema['attributes'] = {
     ['className', 'data-footnote-backref', 'heading-anchor'],
     ARIA_LABEL,
     ['href', /^(?!\/\/)/],
+    // `link-slots.ts`'s slot (ADR-042): what the author chose for a link and the
+    // address its preview is stored under. Inert text and fixed words; the page
+    // reads them and nothing executes them. `display` and `layout` are the
+    // directive's own enumerations, `image` has the one value `none`.
+    'data-link-slot',
+    'data-link-key',
+    'data-link-words',
+    'data-title',
+    'data-description',
+    ['data-display', ...LINK_DISPLAYS],
+    ['data-layout', 'side', 'top'],
+    ['data-image', 'none'],
   ],
 
   // `handlers.ts`'s `code` handler: `data-lang` names a fenced block's language,
@@ -244,7 +257,7 @@ const attributes: Schema['attributes'] = {
 
   // `handlers.ts`'s `calloutAside`: the title paragraph rendered above a
   // callout's body. Its `id` is the default's `'*'` attribute, prefixed.
-  p: [['className', 'callout-label']],
+  p: [['className', 'callout-label', 'link-slot-block']],
 
   // `details/render.ts` (ADR-048): the browser's own details, a callout's
   // classes when it is a folded callout, `open`, and a name only in a

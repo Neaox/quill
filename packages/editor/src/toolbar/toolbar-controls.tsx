@@ -21,13 +21,13 @@ import { ActionMenu } from '../menu/action-menu.tsx'
 export const toolbarStyles = tv({
   slots: {
     root: [
-      'formatting-toolbar fixed top-0 left-0 z-20 flex max-w-[calc(100vw-1rem)] items-center gap-1',
+      'formatting-toolbar fixed top-0 left-0 z-20 flex max-w-[calc(100vw-1rem)] flex-wrap items-center gap-1',
       'rounded-md border border-border-strong/70 bg-surface-raised p-1 shadow-raised',
     ],
     group: 'flex items-center gap-0.5',
     separator: 'mx-0.5 h-5 w-px shrink-0 border-0 bg-border',
     button: [
-      'inline-flex h-8 min-w-8 cursor-pointer items-center justify-center gap-1 rounded-sm px-2',
+      'inline-flex h-8 min-w-8 cursor-pointer items-center justify-center gap-1 rounded-sm px-2 whitespace-nowrap',
       'text-sm text-foreground transition-colors ease-standard hover:bg-surface',
       'focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus-ring',
       'disabled:pointer-events-none disabled:opacity-40',
@@ -97,7 +97,11 @@ export function ToolbarButton({ action, state, onRun, children }: ToolbarButtonP
       type="button"
       data-toolbar-item=""
       className={styles.button()}
-      title={describeAction(action)}
+      title={
+        enabled
+          ? describeAction(action)
+          : (action.whyUnavailable?.(state) ?? describeAction(action))
+      }
       aria-label={action.label}
       aria-keyshortcuts={action.keys}
       aria-pressed={toggles ? checked : undefined}

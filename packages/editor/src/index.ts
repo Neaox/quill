@@ -9,6 +9,11 @@
 
 // The writing surface
 export { DocumentEditor } from './document/document-editor.tsx'
+export type {
+  EditorLinkImage,
+  EditorLinkPreview,
+  LinkPreviewSource,
+} from './blocks/link-preview-context.tsx'
 export type { DocumentEditorHandle, DocumentEditorProps } from './document/document-editor.tsx'
 export type { DocumentAst, DocumentNode, MdastNode } from './document-ast.ts'
 export { documentFromMdast, documentToMdast } from './document/ast.ts'

@@ -25,9 +25,17 @@ describe('what the editor does with the clipboard', () => {
     expect(choosePaste(input)).toEqual({ kind: 'link', href: 'https://example.com/a' })
   })
 
-  it('pastes a URL as text when nothing is selected for it to describe', () => {
-    const input = paste({ text: 'https://example.com/a' })
-    expect(choosePaste(input).kind).toBe('markdown')
+  it('pastes a bare URL as a link of its own when nothing is selected for it to describe', () => {
+    const input = paste({ text: ' https://example.com/a\n' })
+    expect(choosePaste(input)).toEqual({ kind: 'address', href: 'https://example.com/a' })
+  })
+
+  it('does the same for an address copied from a page, which brings a fragment of HTML with it', () => {
+    const input = paste({
+      text: 'https://example.com/a',
+      html: '<a href="https://example.com/a">x</a>',
+    })
+    expect(choosePaste(input).kind).toBe('address')
   })
 
   it('leaves a URL with anything after it to Markdown, selection or not', () => {

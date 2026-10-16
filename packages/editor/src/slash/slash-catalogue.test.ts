@@ -297,6 +297,18 @@ describe('data and references', () => {
     expectStable(result.markdown)
   })
 
+  it('link card: a web address as a card, on a line of its own', async () => {
+    const result = await choose(run('link-card'), 'https://blog.example/post')
+    expect(result.markdown).toContain('::link{url="https://blog.example/post" display="card"}')
+    expectStable(roundTrip(result.markdown))
+  })
+
+  it('link with preview: a web address inline, spelling itself', async () => {
+    const result = await choose(run('link-inline', 'See '), 'https://blog.example/post')
+    expect(result.markdown).toBe('See :link[https://blog.example/post]{display="inline"}\n')
+    expectStable(result.markdown)
+  })
+
   it('footnote: the mark at the caret, numbered after the others, and the note at the end', () => {
     const result = run('footnote', 'Claim[^1] and more\n\n[^1]: First.\n\nThen ')
     expect(result.markdown).toBe(
@@ -326,6 +338,8 @@ describe('pickers say when nothing matches', () => {
     ['label', 'No label matches “zz”'],
     ['emoji', 'No emoji matches “zz”'],
     ['document-link', 'No document matches “zz”'],
+    ['link-card', 'That is not a web address (https://…)'],
+    ['link-inline', 'That is not a web address (https://…)'],
   ])('%s', (id, message) => {
     expect(run(id).picker?.empty('zz')).toBe(message)
   })

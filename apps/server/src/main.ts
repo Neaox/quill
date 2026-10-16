@@ -34,7 +34,20 @@ import {
   createRecordMoveRedirectConsumer,
   createRecordRenameRedirectConsumer,
 } from './infrastructure/outbox/record-public-redirect.ts'
+import { createWarmLinkPreviewsOnPublishConsumer } from './infrastructure/outbox/warm-link-previews-on-publish.ts'
 import { createInvalidatePublicSiteConsumers } from './infrastructure/outbox/invalidate-public-site.ts'
+import { createOpenWebClient } from './infrastructure/http/open-web-client.ts'
+import { createLinkPreviewAudiences } from './infrastructure/link-preview/audiences.ts'
+import { createFetchObserver } from './infrastructure/link-preview/fetch-log.ts'
+import { createImageIngestor } from './infrastructure/link-preview/image-ingestor.ts'
+import { createIsolatedTranscoder } from './infrastructure/link-preview/isolated-transcoder.ts'
+import { createLinkPreviewProvider } from './infrastructure/link-preview/link-preview-provider.ts'
+import { OEMBED_PROVIDERS } from './infrastructure/link-preview/oembed-providers.gen.ts'
+import { createOembedRegistry } from './infrastructure/link-preview/oembed-registry.ts'
+import { createLinkPreviewRateLimits } from './infrastructure/link-preview/rate-limits.ts'
+import { linkPreviewUserAgent } from './infrastructure/link-preview/user-agent.ts'
+import { createFetchLinkPreviewConsumer } from './infrastructure/outbox/fetch-link-preview.ts'
+import { pollOutboxLane } from './infrastructure/outbox/lane.ts'
 import { createRenderOnPublishConsumer } from './infrastructure/outbox/render-on-publish.ts'
 import { createPostgresSearchIndex } from './infrastructure/search/postgres-search-index.ts'
 import { createVisibleDocumentResolver } from './infrastructure/search/visible-documents.ts'
@@ -54,6 +67,7 @@ import { createThemeStylesheets } from './theme/theme-stylesheet.ts'
 import { createSystemClock } from './infrastructure/system-clock.ts'
 import { createUuidGenerator } from './infrastructure/uuid-generator.ts'
 import { createJobRunner } from './jobs/job-runner.ts'
+import { createSweepLinkPreviewsJob } from './jobs/sweep-link-previews.ts'
 import { createShutdown } from './shutdown.ts'
 import { createSweepJob } from './jobs/sweep-expired.ts'
 import {
@@ -202,7 +216,32 @@ const searchIndex = createPostgresSearchIndex({
 // in a stylesheet never touches the filesystem (ADR-028).
 const faceFiles = await loadFaceFiles()
 const themeStylesheets = createThemeStylesheets({ hasher, faceFiles })
+// Link previews (ADR-042). Fetching goes through the open-web client, a second
+// instance with its own stricter limits, never the allowlisted one above, and
+// images are decoded in a child process with no environment. The policy every
+// organisation gets is the default until the settings screens exist.
+const openWeb = createOpenWebClient({
+  userAgent: linkPreviewUserAgent(config.appUrl),
+  // One log line per fetch: the host and how it went, never the path or the response.
+  observe: createFetchObserver(() => app.log),
+})
+const linkPreviewPorts = {
+  audiences: createLinkPreviewAudiences(),
+  resolver: createLinkPreviewProvider({
+    reader: openWeb,
+    images: createImageIngestor({
+      reader: openWeb,
+      transcoder: createIsolatedTranscoder(),
+      blobs: blobStore,
+    }),
+    oembed: createOembedRegistry(OEMBED_PROVIDERS),
+    clock,
+  }),
+  limits: createLinkPreviewRateLimits(clock),
+}
+
 const deps = {
+  linkPreviewPorts,
   uow,
   searchIndex,
   search: createSearchService(searchIndex),
@@ -242,6 +281,8 @@ for (const { details, message } of startupWarnings) app.log.warn(details, messag
 const jobRunner = createJobRunner({
   clock,
   poll: (consumers, now) => pollOutboxOnce(database.pool, consumers, { now }),
+  // Slow work on other people's servers has its own lane, so it never delays a publish or a mail.
+  pollLane: (consumers, now) => pollOutboxLane(database.pool, consumers, { now }),
 })
 // Two things happen on a publish, in this order: the body is rendered, so
 // the first reader never pays for a render (ADR-031), and the document is
@@ -267,6 +308,7 @@ jobRunner.register(
   combineConsumers(
     DOCUMENT_PUBLISHED,
     createRenderOnPublishConsumer(deps),
+    createWarmLinkPreviewsOnPublishConsumer({ ...deps, ...linkPreviewPorts }),
     createIndexOnPublishConsumer(deps),
     invalidationOf(DOCUMENT_PUBLISHED),
   ),
@@ -303,6 +345,10 @@ jobRunner.register(
     invalidationOf(ATTACHMENT_REVISED),
   ),
 )
+// A reader who finds no preview is shown a plain link and a fetch is queued;
+// this answers it, in the background, with retries for what is not the link's
+// fault (ADR-042).
+jobRunner.lane(createFetchLinkPreviewConsumer({ uow, clock, ids, ...linkPreviewPorts }))
 // Delivery happens here rather than on the request path, so an address that
 // has an account costs no more than one that does not (ADR-011).
 jobRunner.register(createSendMailConsumer(mailer))
@@ -316,6 +362,7 @@ jobRunner.register(
   ),
 )
 jobRunner.schedule(createSweepJob({ uow, clock, session: config.session }))
+jobRunner.schedule(createSweepLinkPreviewsJob({ uow, clock }))
 jobRunner.start()
 
 // The order matters and is pinned by `shutdown.test.ts`: the job runner

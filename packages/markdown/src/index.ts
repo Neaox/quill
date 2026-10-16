@@ -138,6 +138,13 @@ export {
 export type { StandardEmoji } from './emoji/shortcodes.ts'
 export type { SmallPrint } from './directives/small.ts'
 export { smallDirective } from './directives/small.ts'
+export type { Link, LinkForm } from './directives/link.ts'
+export { effectiveDisplay, linkDirective } from './directives/link.ts'
+// The vocabulary a link's author chooses from, which the editor's controls are drawn from.
+export { DEFAULT_LINK_DISPLAY, LINK_DISPLAYS, UNCHOSEN, isBlockDisplay } from '@quill/domain'
+export type { CardLayout, LinkChoice, LinkDisplay } from '@quill/domain'
+export { fillLinkSlots, linkSlotKeys, scanLinkSlots } from './render/link-slots.ts'
+export type { FillOptions, LinkSlots } from './render/link-slots.ts'
 export type { Figure } from './directives/figure.ts'
 export { figureDirective } from './directives/figure.ts'
 export type { Cards, CardsVariant } from './directives/cards.ts'

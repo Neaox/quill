@@ -6,6 +6,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { commentAction } from '../actions/block-actions.ts'
 import type { EditorAction } from '../actions/editor-action.ts'
 import { linkActions } from '../actions/link-actions.ts'
+import { cardDetailsAction } from '../actions/link-display-actions.ts'
+import { useLinkPreviewSource } from '../blocks/link-preview-context.tsx'
+import { linkTargetAt, setLinkChoice } from '../link/link-display.ts'
 import type { CommentRequest } from '../block/comment-request.ts'
 import type { Rect } from '../floating/placement.ts'
 import { useFloatingPlacement } from '../floating/use-floating-placement.ts'
@@ -13,6 +16,7 @@ import { applyLink, unlink } from '../format/links.ts'
 import { holdSelectionMeta, releaseSelectionMeta } from './held-selection.ts'
 import { useEditorFocus, useEditorSnapshot, useFocusWithin, useRunAction } from './hooks.ts'
 import type { LinkEditing } from './hooks.ts'
+import { LinkDetailsEditor } from './link-details-editor.tsx'
 import { LinkEditor } from './link-editor.tsx'
 import { TableToolbarContent } from './table-toolbar-content.tsx'
 import {
@@ -73,8 +77,14 @@ function rangeRect(view: EditorView, from: number, to: number): Rect {
 function locateTarget(editor: Editor, target: ToolbarTarget): Rect | null {
   switch (target.kind) {
     case 'text':
-    case 'link':
       return rangeRect(editor.view, target.from, target.to)
+    case 'link':
+      // A card is a block and has no text range to centre on; an inline directive's range
+      // is its node, so the toolbar hangs from the words inside it.
+      if (target.form === 'leaf') return topEdge(editor.view, target.from)
+      return target.form === 'text'
+        ? rangeRect(editor.view, target.from + 1, target.to - 1)
+        : rangeRect(editor.view, target.from, target.to)
     case 'table':
       return tableTop(editor.view, target.tablePos)
     case 'callout':
@@ -107,10 +117,17 @@ function tableTop(view: EditorView, pos: number): Rect | null {
 export interface FormattingToolbarProps {
   readonly editor: Editor
   readonly linkEditing: LinkEditing
+  /** The box a card's own title and description are typed into (ADR-042). */
+  readonly detailsEditing: LinkEditing
   readonly onComment?: ((request: CommentRequest) => void) | undefined
 }
 
-export function FormattingToolbar({ editor, linkEditing, onComment }: FormattingToolbarProps) {
+export function FormattingToolbar({
+  editor,
+  linkEditing,
+  detailsEditing,
+  onComment,
+}: FormattingToolbarProps) {
   const state = useEditorSnapshot(editor)
   const target = editor.isEditable ? toolbarTarget(state) : null
   // The surface exists only while there is something to point at, so everything
@@ -122,6 +139,7 @@ export function FormattingToolbar({ editor, linkEditing, onComment }: Formatting
       state={state}
       target={target}
       linkEditing={linkEditing}
+      detailsEditing={detailsEditing}
       onComment={onComment}
     />
   )
@@ -132,7 +150,14 @@ interface ToolbarSurfaceProps extends FormattingToolbarProps {
   readonly target: ToolbarTarget
 }
 
-function ToolbarSurface({ editor, state, target, linkEditing, onComment }: ToolbarSurfaceProps) {
+function ToolbarSurface({
+  editor,
+  state,
+  target,
+  linkEditing,
+  detailsEditing,
+  onComment,
+}: ToolbarSurfaceProps) {
   const focused = useEditorFocus(editor)
   const run = useRunAction(editor)
   const toolbar = useRef<HTMLDivElement | null>(null)
@@ -161,6 +186,15 @@ function ToolbarSurface({ editor, state, target, linkEditing, onComment }: Toolb
         },
       }),
     [linkEditing],
+  )
+  const details = useMemo(
+    () =>
+      cardDetailsAction({
+        openDetails: () => {
+          detailsEditing.open()
+        },
+      }),
+    [detailsEditing],
   )
   const comment = useMemo(() => commentAction(onComment), [onComment])
 
@@ -201,6 +235,8 @@ function ToolbarSurface({ editor, state, target, linkEditing, onComment }: Toolb
     }
   }, [editor, editingLink, heldFrom, heldTo])
 
+  const editingDetails = visible && detailsEditing.isOpenFor(key) && target.kind === 'link'
+
   if (!visible) return null
 
   const finishLink = (command: Command): void => {
@@ -210,6 +246,7 @@ function ToolbarSurface({ editor, state, target, linkEditing, onComment }: Toolb
   }
   const returnToDocument = (): void => {
     linkEditing.close()
+    detailsEditing.close()
     editor.view.focus()
   }
 
@@ -236,7 +273,15 @@ function ToolbarSurface({ editor, state, target, linkEditing, onComment }: Toolb
         if (handleToolbarKey(event, returnToDocument)) event.preventDefault()
       }}
     >
-      {editingLink ? (
+      {editingDetails ? (
+        <DetailsBox
+          editor={editor}
+          onDone={() => {
+            detailsEditing.close()
+            editor.view.focus()
+          }}
+        />
+      ) : editingLink ? (
         <LinkEditor
           href={target.kind === 'link' ? target.href : null}
           onApply={(href) => {
@@ -248,7 +293,14 @@ function ToolbarSurface({ editor, state, target, linkEditing, onComment }: Toolb
           onCancel={returnToDocument}
         />
       ) : (
-        <ToolbarFor target={target} state={state} onRun={run} link={link} comment={comment} />
+        <ToolbarFor
+          target={target}
+          state={state}
+          onRun={run}
+          link={link}
+          details={details}
+          comment={comment}
+        />
       )}
     </div>
   )
@@ -259,11 +311,12 @@ interface ToolbarForProps {
   readonly state: EditorState
   readonly onRun: (action: EditorAction) => void
   readonly link: ReturnType<typeof linkActions>
+  readonly details: EditorAction
   readonly comment: EditorAction | undefined
 }
 
 /** The contents for one kind of target. */
-function ToolbarFor({ target, state, onRun, link, comment }: ToolbarForProps) {
+function ToolbarFor({ target, state, onRun, link, details, comment }: ToolbarForProps) {
   switch (target.kind) {
     case 'text':
       return <TextToolbarContent state={state} onRun={onRun} link={link.edit} comment={comment} />
@@ -273,6 +326,8 @@ function ToolbarFor({ target, state, onRun, link, comment }: ToolbarForProps) {
           state={state}
           onRun={onRun}
           href={target.href}
+          details={details}
+          form={target.form}
           edit={link.edit}
           remove={link.remove}
         />
@@ -282,4 +337,32 @@ function ToolbarFor({ target, state, onRun, link, comment }: ToolbarForProps) {
     case 'callout':
       return <CalloutToolbarContent state={state} onRun={onRun} callout={target.callout} />
   }
+}
+
+interface DetailsBoxProps {
+  readonly editor: Editor
+  readonly onDone: () => void
+}
+
+/** The card's own title and description, with what the page says shown as the placeholders. */
+function DetailsBox({ editor, onDone }: DetailsBoxProps) {
+  const target = linkTargetAt(editor.state)
+  const fetched = useLinkPreviewSource().preview(target?.href ?? '')
+  if (target === null || target.form === 'mark') return null
+  const { title, description } = target.link.choice
+  const apply = (choice: { title: string | null; description: string | null }): void => {
+    setLinkChoice(choice)(editor.state, editor.view.dispatch)
+    onDone()
+  }
+  return (
+    <LinkDetailsEditor
+      current={{ title, description }}
+      fetched={fetched}
+      onApply={apply}
+      onReset={() => {
+        apply({ title: null, description: null })
+      }}
+      onCancel={onDone}
+    />
+  )
 }

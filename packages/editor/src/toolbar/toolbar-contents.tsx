@@ -10,6 +10,11 @@ import {
   CALLOUT_VARIANT_GROUP,
 } from '../actions/callout-actions.ts'
 import type { EditorAction } from '../actions/editor-action.ts'
+import {
+  CARD_IMAGE,
+  CARD_LAYOUT_GROUP,
+  LINK_DISPLAY_GROUP,
+} from '../actions/link-display-actions.ts'
 import { calloutLabel } from '../callout/callouts.ts'
 import type { CalloutContext } from '../callout/callouts.ts'
 import { normaliseHref } from '../format/href.ts'
@@ -130,14 +135,36 @@ export function TextToolbarContent({ state, onRun, link, comment }: TextContentP
   )
 }
 
+/** What a card's layout choices say on the toolbar, where room is short; their names are the full words. */
+const LAYOUT_WORDS: Readonly<Record<string, string>> = {
+  'card-layout-side': 'Beside',
+  'card-layout-top': 'Above',
+}
+
 export interface LinkContentProps extends ContentProps {
   readonly href: string
+  /** Opens the box a card's own words are typed into. */
+  readonly details: EditorAction
+  /** How the link is written: only an ordinary link has its address edited in the link box. */
+  readonly form: 'mark' | 'text' | 'leaf'
   readonly edit: EditorAction
   readonly remove: EditorAction
 }
 
-/** A caret in a link: where it goes, and how to change or remove it. */
-export function LinkToolbarContent({ state, onRun, href, edit, remove }: LinkContentProps) {
+/**
+ * A caret in a link: where it goes, how it is shown, what a card is made of, and
+ * how to change or remove it (ADR-042). A link's display is one segmented choice,
+ * which is always one press from the plain link.
+ */
+export function LinkToolbarContent({
+  state,
+  onRun,
+  href,
+  details,
+  form,
+  edit,
+  remove,
+}: LinkContentProps) {
   // Only an address a document may carry becomes something to click; anything
   // else is shown as text, so the toolbar is never a way to follow a bad link.
   const safe = normaliseHref(href) === href
@@ -159,14 +186,44 @@ export function LinkToolbarContent({ state, onRun, href, edit, remove }: LinkCon
         )}
       </ToolbarGroup>
       <ToolbarSeparator />
-      <ToolbarGroup label="Edit link">
-        <ToolbarButton action={edit} state={state} onRun={onRun}>
-          Edit
-        </ToolbarButton>
-        <ToolbarButton action={remove} state={state} onRun={onRun}>
-          Remove
-        </ToolbarButton>
+      <ToolbarGroup label="Show link as">
+        {LINK_DISPLAY_GROUP.actions.map((action) => (
+          <ToolbarButton key={action.id} action={action} state={state} onRun={onRun}>
+            {action.label}
+          </ToolbarButton>
+        ))}
       </ToolbarGroup>
+      {form === 'leaf' ? (
+        <>
+          <ToolbarSeparator />
+          <ToolbarGroup label="Card">
+            {CARD_LAYOUT_GROUP.actions.map((action) => (
+              <ToolbarButton key={action.id} action={action} state={state} onRun={onRun}>
+                {LAYOUT_WORDS[action.id] ?? action.label}
+              </ToolbarButton>
+            ))}
+            <ToolbarButton action={CARD_IMAGE} state={state} onRun={onRun}>
+              {CARD_IMAGE.label}
+            </ToolbarButton>
+            <ToolbarButton action={details} state={state} onRun={onRun}>
+              Details
+            </ToolbarButton>
+          </ToolbarGroup>
+        </>
+      ) : null}
+      {form === 'mark' ? (
+        <>
+          <ToolbarSeparator />
+          <ToolbarGroup label="Edit link">
+            <ToolbarButton action={edit} state={state} onRun={onRun}>
+              Edit
+            </ToolbarButton>
+            <ToolbarButton action={remove} state={state} onRun={onRun}>
+              Remove
+            </ToolbarButton>
+          </ToolbarGroup>
+        </>
+      ) : null}
     </>
   )
 }

@@ -6,6 +6,10 @@ import type { LookupFunction } from 'node:net'
 import { lookup } from 'node:dns/promises'
 import { Readable } from 'node:stream'
 
+import { startBudget } from './budget.ts'
+import { OutboundRequestError } from './outbound-error.ts'
+import type { Budget } from './budget.ts'
+
 /**
  * The one client every server-side fetch goes through (ADR-011).
  *
@@ -113,27 +117,8 @@ export interface OutboundResponse {
   readonly body: string
 }
 
-export type OutboundFailure =
-  | 'host_not_allowed'
-  | 'scheme_not_allowed'
-  | 'private_address'
-  | 'dns_failure'
-  | 'too_many_redirects'
-  | 'redirect_without_location'
-  | 'redirect_not_followed'
-  | 'response_too_large'
-  | 'timeout'
-  | 'network_error'
-
-export class OutboundRequestError extends Error {
-  readonly reason: OutboundFailure
-
-  constructor(reason: OutboundFailure, message: string) {
-    super(message)
-    this.name = 'OutboundRequestError'
-    this.reason = reason
-  }
-}
+export { OutboundRequestError } from './outbound-error.ts'
+export type { OutboundFailure } from './outbound-error.ts'
 
 /**
  * The read half. Stated separately because most callers only ever fetch, and
@@ -157,7 +142,7 @@ const DEFAULT_TIMEOUT_MS = 5_000
 const DEFAULT_MAX_REDIRECTS = 3
 const DEFAULT_MAX_RESPONSE_BYTES = 1024 * 1024
 
-async function resolveWithDns(hostname: string): Promise<readonly string[]> {
+export async function resolveWithDns(hostname: string): Promise<readonly string[]> {
   const records = await lookup(hostname, { all: true, verbatim: true })
   return records.map((record) => record.address)
 }
@@ -261,6 +246,10 @@ function embeddedIpv4(bytes: Uint8Array): number[] | null {
   if (bytes[0] === 0x20 && bytes[1] === 0x02) {
     return Array.from(bytes.slice(2, 6))
   }
+  // ::ffff:0:0:0/96 — IPv4-translated (SIIT): the mapped form with the marker moved.
+  if (allZero(bytes, 0, 8) && bytes[8] === 0xff && bytes[9] === 0xff && allZero(bytes, 10, 12)) {
+    return Array.from(bytes.slice(12, 16))
+  }
   return null
 }
 
@@ -270,6 +259,18 @@ function ipv6Blocked(address: string): boolean {
      `isIP` has already classified as IPv6. */
   if (bytes === null) return true
 
+  // 64:ff9b:1::/48 — local-use NAT64. Where the IPv4 address sits depends on a
+  // prefix length this host cannot know, so the whole range is refused.
+  if (
+    bytes[0] === 0x00 &&
+    bytes[1] === 0x64 &&
+    bytes[2] === 0xff &&
+    bytes[3] === 0x9b &&
+    bytes[4] === 0x00 &&
+    bytes[5] === 0x01
+  ) {
+    return true
+  }
   const embedded = embeddedIpv4(bytes)
   if (embedded !== null) return ipv4BytesBlocked(embedded)
 
@@ -278,6 +279,9 @@ function ipv6Blocked(address: string): boolean {
     allZero(bytes, 0, 15) || // :: and ::1
     (first & 0xfe) === 0xfc || // fc00::/7, unique local
     (first === 0xfe && (second & 0xc0) === 0x80) || // fe80::/10, link-local
+    (first === 0xfe && (second & 0xc0) === 0xc0) || // fec0::/10, site-local, deprecated
+    (first === 0x20 && second === 0x01 && bytes[2] === 0x0d && bytes[3] === 0xb8) || // 2001:db8::/32, documentation
+    (first === 0x01 && second === 0x00 && allZero(bytes, 2, 8)) || // 100::/64, discard-only
     first === 0xff || // ff00::/8, multicast
     // 2001:0000::/32 — Teredo, an IPv4 tunnel whose embedded address is
     // obfuscated. Nothing legitimate here needs it, so it is simply refused.
@@ -365,6 +369,34 @@ export async function nodeFetch(
   }
 }
 
+/**
+ * Every address `hostname` resolves to, or a refusal if any of them is one the
+ * platform may not reach.
+ *
+ * Shared by the allowlisted client and the open-web client (ADR-042): whatever
+ * a client lets through by name, the address check is the one thing neither may
+ * skip, and a hostname with even one private answer is refused whole, since the
+ * connection could otherwise land on it.
+ */
+export async function resolvePublicAddresses(
+  hostname: string,
+  resolve: ResolveHost,
+): Promise<readonly string[]> {
+  let addresses: readonly string[]
+  try {
+    addresses = await resolve(hostname)
+  } catch {
+    throw new OutboundRequestError('dns_failure', `${hostname} did not resolve`)
+  }
+  if (addresses.length === 0 || addresses.some(isBlockedAddress)) {
+    throw new OutboundRequestError(
+      'private_address',
+      `${hostname} resolves to an address the platform may not reach`,
+    )
+  }
+  return addresses
+}
+
 export function createOutboundClient(options: OutboundClientOptions): OutboundClient {
   const allowed = new Set(options.allowedHosts.map((host) => host.toLowerCase()))
   const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS
@@ -387,32 +419,17 @@ export function createOutboundClient(options: OutboundClientOptions): OutboundCl
         `${target.hostname} is not an allowed outbound host`,
       )
     }
-    let addresses: readonly string[]
-    try {
-      addresses = await resolve(target.hostname)
-    } catch {
-      throw new OutboundRequestError('dns_failure', `${target.hostname} did not resolve`)
-    }
-    if (addresses.length === 0 || addresses.some(isBlockedAddress)) {
-      throw new OutboundRequestError(
-        'private_address',
-        `${target.hostname} resolves to an address the platform may not reach`,
-      )
-    }
-    return addresses
+    return resolvePublicAddresses(target.hostname, resolve)
   }
 
   /**
    * Reads at most `maxResponseBytes`, and stops the transfer rather than
    * finishing it and complaining afterwards.
    */
-  async function readBody(
-    response: OutboundFetchResponse,
-    controller: AbortController,
-  ): Promise<string> {
+  async function readBody(response: OutboundFetchResponse, budget: Budget): Promise<string> {
     const declared = Number(response.headers.get('content-length') ?? '0')
     if (declared > maxResponseBytes) {
-      controller.abort()
+      budget.stop()
       throw new OutboundRequestError('response_too_large', 'Response exceeds the size cap')
     }
     if (response.body === null) return ''
@@ -423,11 +440,12 @@ export function createOutboundClient(options: OutboundClientOptions): OutboundCl
     const reader = response.body.getReader()
     try {
       for (;;) {
-        const chunk = await reader.read()
+        // Raced against the call's clock: a body that arrives a byte at a time stops on time too.
+        const chunk = await budget.guard(reader.read())
         if (chunk.done) break
         read += chunk.value.byteLength
         if (read > maxResponseBytes) {
-          controller.abort()
+          budget.stop()
           throw new OutboundRequestError('response_too_large', 'Response exceeds the size cap')
         }
         text += decoder.decode(chunk.value, { stream: true })
@@ -438,85 +456,95 @@ export function createOutboundClient(options: OutboundClientOptions): OutboundCl
     return text + decoder.decode()
   }
 
-  /**
-   * One hop: check the target, connect only to what was checked, and hand
-   * back the response together with the controller the size cap aborts with.
-   */
+  /** One hop: check the target, and connect only to what was checked. */
   async function sendOnce(
     target: URL,
     method: string,
     headers: Readonly<Record<string, string>>,
     body: string | undefined,
-  ): Promise<{ response: OutboundFetchResponse; controller: AbortController }> {
-    const addresses = await check(target)
-    const controller = new AbortController()
-    const timer = setTimeout(() => controller.abort(), timeoutMs)
+    budget: Budget,
+  ): Promise<OutboundFetchResponse> {
+    // The name is resolved under the clock too: a resolver that stalls is a host that stalls.
+    const addresses = await budget.guard(check(target))
     try {
-      const response = await doFetch(target.href, {
-        method,
-        headers,
-        // Never followed by the transport: `get` follows redirects by hand so
-        // every hop is checked again, and `post` refuses them outright.
-        redirect: 'manual',
-        signal: controller.signal,
-        // Only the addresses this hop's checks approved.
-        addresses,
-        ...(body === undefined ? {} : { body }),
-      })
-      return { response, controller }
+      return await budget.guard(
+        doFetch(target.href, {
+          method,
+          headers,
+          // Never followed by the transport: `get` follows redirects by hand so
+          // every hop is checked again, and `post` refuses them outright.
+          redirect: 'manual',
+          signal: budget.signal,
+          // Only the addresses this hop's checks approved.
+          addresses,
+          ...(body === undefined ? {} : { body }),
+        }),
+      )
     } catch (error) {
+      if (error instanceof OutboundRequestError) throw error
       throw new OutboundRequestError(
-        controller.signal.aborted ? 'timeout' : 'network_error',
+        'network_error',
         `Request to ${target.hostname} failed: ${String(error)}`,
       )
-    } finally {
-      clearTimeout(timer)
     }
   }
 
   return {
     async get({ url, headers = {} }): Promise<OutboundResponse> {
-      let target = new URL(url)
-      for (let hop = 0; hop <= maxRedirects; hop += 1) {
-        const { response, controller } = await sendOnce(target, 'GET', headers, undefined)
+      // One clock for the whole call: every redirect, and the body.
+      const budget = startBudget(timeoutMs)
+      try {
+        let target = new URL(url)
+        for (let hop = 0; hop <= maxRedirects; hop += 1) {
+          // eslint-disable-next-line no-await-in-loop -- each hop depends on the last one's Location.
+          const response = await sendOnce(target, 'GET', headers, undefined, budget)
 
-        if (!isRedirect(response.status)) {
-          return { status: response.status, body: await readBody(response, controller) }
+          if (!isRedirect(response.status)) {
+            return { status: response.status, body: await readBody(response, budget) }
+          }
+          const location = response.headers.get('location')
+          if (location === null) {
+            throw new OutboundRequestError(
+              'redirect_without_location',
+              `${target.hostname} answered ${response.status} with no Location`,
+            )
+          }
+          target = new URL(location, target)
         }
-        const location = response.headers.get('location')
-        if (location === null) {
-          throw new OutboundRequestError(
-            'redirect_without_location',
-            `${target.hostname} answered ${response.status} with no Location`,
-          )
-        }
-        target = new URL(location, target)
+        throw new OutboundRequestError('too_many_redirects', `More than ${maxRedirects} redirects`)
+      } finally {
+        budget.dispose()
       }
-      throw new OutboundRequestError('too_many_redirects', `More than ${maxRedirects} redirects`)
     },
 
     async post({ url, headers = {}, body, contentType }): Promise<OutboundResponse> {
-      const target = new URL(url)
-      const { response, controller } = await sendOnce(
-        target,
-        'POST',
-        {
-          ...headers,
-          'content-type': contentType,
-          'content-length': String(Buffer.byteLength(body)),
-        },
-        body,
-      )
-      // A 3xx here would mean replaying the credentials this body carries at
-      // a host the caller never named.
-      if (isRedirect(response.status)) {
-        controller.abort()
-        throw new OutboundRequestError(
-          'redirect_not_followed',
-          `${target.hostname} answered ${response.status} to a POST; redirects are not followed`,
+      const budget = startBudget(timeoutMs)
+      try {
+        const target = new URL(url)
+        const response = await sendOnce(
+          target,
+          'POST',
+          {
+            ...headers,
+            'content-type': contentType,
+            'content-length': String(Buffer.byteLength(body)),
+          },
+          body,
+          budget,
         )
+        // A 3xx here would mean replaying the credentials this body carries at
+        // a host the caller never named.
+        if (isRedirect(response.status)) {
+          budget.stop()
+          throw new OutboundRequestError(
+            'redirect_not_followed',
+            `${target.hostname} answered ${response.status} to a POST; redirects are not followed`,
+          )
+        }
+        return { status: response.status, body: await readBody(response, budget) }
+      } finally {
+        budget.dispose()
       }
-      return { status: response.status, body: await readBody(response, controller) }
     },
   }
 }

@@ -5,6 +5,7 @@ import { Decoration, DecorationSet } from '@tiptap/pm/view'
 import type { EditorView } from '@tiptap/pm/view'
 import { tv } from 'tailwind-variants'
 
+import { pasteAddress } from '../link/link-offer.ts'
 import { astFragment, insertMarkdown, replaceSelectionWithFragment, setLink } from './commands.ts'
 import { chooseFiles } from './files.ts'
 import { pageMarkdownParser } from './markdown-parser.ts'
@@ -46,6 +47,8 @@ export const PASTE_PROGRESS_DELAY_MS = 300
 export type PasteAction =
   | { readonly kind: 'default' }
   | { readonly kind: 'link'; readonly href: string }
+  /** A bare address with nothing selected: linked at once, with an offer to show it another way. */
+  | { readonly kind: 'address'; readonly href: string }
   | { readonly kind: 'markdown'; readonly text: string }
 
 export interface PasteInput {
@@ -62,7 +65,7 @@ export interface PasteInput {
 export function choosePaste(input: PasteInput): PasteAction {
   const text = input.text.trim()
   if (input.inCode || input.hasFiles || text.length === 0) return { kind: 'default' }
-  if (input.hasSelection && URL_ONLY.test(text)) return { kind: 'link', href: text }
+  if (URL_ONLY.test(text)) return { kind: input.hasSelection ? 'link' : 'address', href: text }
   if (input.html.length > 0) return { kind: 'default' }
   return { kind: 'markdown', text: input.text }
 }
@@ -205,6 +208,8 @@ export const MarkdownPaste = Extension.create<MarkdownPasteOptions>({
               if (action.kind === 'default') return false
               event.preventDefault()
               if (action.kind === 'link') return setLink(action.href)(view.state, view.dispatch)
+              if (action.kind === 'address')
+                return pasteAddress(action.href)(view.state, view.dispatch)
               if (action.text.length > LARGE_PASTE_CHARS) {
                 pasteLater(view, action.text, parse())
                 return true

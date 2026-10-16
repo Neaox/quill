@@ -24,6 +24,7 @@ import {
 import { useChildDocuments } from './child-documents-context.tsx'
 import { documentHeadings, headingItems, sameHeadings } from './document-headings.ts'
 import { LevelSelect } from './level-select.tsx'
+import { LinkCardBlock } from './link-card-view.tsx'
 
 /**
  * How a leaf directive is drawn in the writing surface.
@@ -183,6 +184,8 @@ function LeafDirectiveView(props: NodeViewProps) {
       return <TableOfContentsBlock {...props} />
     case 'children':
       return <ChildDocumentsBlock {...props} />
+    case 'link':
+      return <LinkCardBlock {...props} />
     default:
       return <PlainLeafDirective />
   }
