@@ -1,6 +1,6 @@
 import type { Blockquote, Html, Paragraph, PhrasingContent, Root, RootContent } from 'mdast'
 
-import type { DirectiveAttributes } from '../directives/definition.ts'
+import type { DirectiveAttributes, DirectiveContent } from '../directives/definition.ts'
 import { splitFirstLine } from '../pipeline/first-line.ts'
 import type { Details } from './details.ts'
 
@@ -103,10 +103,37 @@ interface Frame {
   opening: string
   openingEndLine: number
   summary: PhrasingContent[] | undefined
-  readonly children: RootContent[]
+  readonly children: FlowContent[]
   /** The lines the first thing in the frame started on and the last ended on. */
   firstLine: number | undefined
   lastLine: number
+}
+
+/** A block a flow container holds, which is what a details can hold. */
+type FlowContent = DirectiveContent[number]
+
+/** Every type of block, which the compiler keeps complete as extensions add more. */
+const FLOW_TYPES: Readonly<Record<FlowContent['type'], true>> = {
+  blockquote: true,
+  code: true,
+  codeGroup: true,
+  containerDirective: true,
+  definition: true,
+  details: true,
+  diffCode: true,
+  footnoteDefinition: true,
+  heading: true,
+  html: true,
+  leafDirective: true,
+  list: true,
+  paragraph: true,
+  rawMdast: true,
+  table: true,
+  thematicBreak: true,
+}
+
+function isFlowContent(node: RootContent): node is FlowContent {
+  return Object.hasOwn(FLOW_TYPES, node.type)
 }
 
 interface Item {
@@ -117,8 +144,9 @@ interface Item {
 
 /**
  * The siblings of one flow container with every complete details made one
- * node; undefined when its tags do not balance, or a summary is out of place,
- * in which case nothing at this level is read as details.
+ * node; undefined when its tags do not balance, a summary is out of place, or
+ * something other than a block would go inside one, in which case nothing at
+ * this level is read as details.
  */
 function readHtmlSiblings(
   children: readonly RootContent[],
@@ -130,15 +158,18 @@ function readHtmlSiblings(
   const stack: Frame[] = []
   let previousLine: number | undefined
 
-  const place = (item: Item): void => {
+  /** Places an item at the current level; false when it cannot stand inside the open details. */
+  const place = (item: Item): boolean => {
     const top = stack.at(-1)
     if (top === undefined) out.push(item.node)
+    else if (!isFlowContent(item.node)) return false
     else {
       top.children.push(item.node)
       top.firstLine ??= item.line
       top.lastLine = item.endLine
     }
     previousLine = item.endLine
+    return true
   }
 
   for (const child of children) {
@@ -146,7 +177,7 @@ function readHtmlSiblings(
     const end = child.position?.end.line ?? start
     const tags = child.type === 'html' ? tagsOf(child) : undefined
     if (child.type !== 'html' || tags === undefined) {
-      place({ node: child, line: start, endLine: end })
+      if (!place({ node: child, line: start, endLine: end })) return undefined
       continue
     }
     for (const [index, tag] of tags.entries()) {
@@ -192,7 +223,8 @@ function readHtmlSiblings(
       const closing = stack.pop()
       if (closing === undefined) return undefined
       previousLine = tag.endLine
-      place({ node: finish(closing, tag), line: closing.openLine, endLine: tag.endLine })
+      if (!place({ node: finish(closing, tag), line: closing.openLine, endLine: tag.endLine }))
+        return undefined
     }
   }
   return stack.length === 0 ? out : undefined
@@ -249,7 +281,7 @@ function fromCallout(node: Blockquote): Details | undefined {
   const title = trimEnd(split.line)
   const attributes: DirectiveAttributes = sign === '+' ? { type: kind, open: '' } : { type: kind }
   const joined = split.rest.length > 0
-  const body: RootContent[] = joined
+  const body: DirectiveContent = joined
     ? [{ type: 'paragraph', children: split.rest }, ...blocks]
     : blocks
   return {

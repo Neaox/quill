@@ -2,6 +2,7 @@ import type { Blockquote, Paragraph, PhrasingContent, RootContent, Text } from '
 import type { ContainerDirective } from 'mdast-util-directive'
 import type { Handle, Join } from 'mdast-util-to-markdown'
 
+import type { DirectiveContent } from '../directives/definition.ts'
 import { flag } from '../directives/definition.ts'
 import { rawMdast } from '../pipeline/raw-mdast.ts'
 import type { ToMarkdownExtension } from '../pipeline/raw-mdast.ts'
@@ -75,7 +76,7 @@ function summaryOf(node: Details): Paragraph | undefined {
   return isSummary(first) ? first : undefined
 }
 
-function bodyOf(node: Details): RootContent[] {
+function bodyOf(node: Details): DirectiveContent {
   return node.children.filter((child) => !isSummary(child))
 }
 
