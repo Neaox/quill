@@ -167,12 +167,16 @@ test('a unit, a workspace, collections, documents, nesting, moving and deleting'
   await fillAndConfirm(newChild, 'Title', 'Appendix', 'Create')
   await expect(page.getByRole('heading', { level: 1, name: 'Appendix' })).toBeVisible()
 
-  // Nesting is the tree's structure: the child's row is inside the parent's.
-  const parentItem = tree(page)
-    .getByRole('listitem')
-    .filter({ has: page.getByRole('link', { name: 'Quarterly plan' }) })
-    .first()
-  await expect(parentItem.getByRole('link', { name: 'Appendix' })).toBeVisible()
+  // Nesting is the tree's structure. The tree is a window onto flat rows (ADR-049), so a child is
+  // one level deeper than its parent rather than inside its row.
+  const rowOf = (name: string) =>
+    tree(page)
+      .getByRole('listitem')
+      .filter({ has: page.getByRole('link', { name, exact: true }) })
+      .first()
+  await expect(rowOf('Appendix')).toBeVisible()
+  const parentLevel = Number(await rowOf('Quarterly plan').getAttribute('aria-level'))
+  await expect(rowOf('Appendix')).toHaveAttribute('aria-level', String(parentLevel + 1))
 
   // --- Rename both ----------------------------------------------------------
   await header(page).getByRole('button', { name: 'Rename "Appendix"' }).click()
