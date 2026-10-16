@@ -31,8 +31,8 @@ function written(state: EditorState): string {
 }
 
 /** A state with the caret in the textblock holding `text`, at `offset` within it. */
-function caretIn(markdown: string, text: string, offset = 0): EditorState {
-  const state = harness.state(markdown)
+function caretIn(source: string, text: string, offset = 0): EditorState {
+  const state = harness.state(source)
   let found = -1
   state.doc.descendants((node, pos) => {
     if (found === -1 && node.isTextblock && node.textContent === text) found = pos + 1 + offset
@@ -43,8 +43,8 @@ function caretIn(markdown: string, text: string, offset = 0): EditorState {
 }
 
 /** A state with the caret on the empty line of the body of the details at the top. */
-function caretInEmptyBody(markdown: string, index = 1): EditorState {
-  const state = harness.state(markdown)
+function caretInEmptyBody(source: string, index = 1): EditorState {
+  const state = harness.state(source)
   const details = state.doc.firstChild
   let pos = 1
   details?.forEach((child, offset, at) => {

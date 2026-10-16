@@ -120,7 +120,7 @@ function lazyPage() {
     },
   })
   const watched: Element[] = []
-  let report: IntersectionObserverCallback = () => undefined
+  let report: IntersectionObserverCallback | undefined
   class Viewport {
     constructor(callback: IntersectionObserverCallback) {
       report = callback
@@ -140,7 +140,7 @@ function lazyPage() {
     /** The first `count` blocks come into view. */
     scrollTo(count: number) {
       const entries = watched.slice(0, count).map((target) => ({ target, isIntersecting: true }))
-      report(entries as unknown as IntersectionObserverEntry[], {} as IntersectionObserver)
+      report?.(entries as unknown as IntersectionObserverEntry[], {} as IntersectionObserver)
     },
     /** One idle period of `ms`, timing each task in it. */
     idle(ms = 50) {

@@ -32,6 +32,13 @@ const ATTRIBUTE_BREAKOUT = /"\s+on[a-z-]+\s*=\s*"/i
  * renderer itself builds) still comes through, and that the hostile part
  * survives only as inert, escaped text.
  */
+const input = (properties: Properties): Element => ({
+  type: 'element',
+  tagName: 'input',
+  properties,
+  children: [],
+})
+
 describe('renderHtml: adversarial corpus', () => {
   it('escapes a raw <script> block to inert text', () => {
     const html = render('Before.\n\n<script>alert(document.cookie)</script>\n\nAfter.\n')
@@ -332,12 +339,6 @@ describe('renderHtml: directive attribute injection', () => {
   })
 
   it('admits a name on an input only as text, never another kind of input or a live one', () => {
-    const input = (properties: Properties): Element => ({
-      type: 'element',
-      tagName: 'input',
-      properties,
-      children: [],
-    })
     const tree: HastRoot = {
       type: 'root',
       children: [

@@ -457,6 +457,10 @@ function mergeList(before: List, after: List): { node: List; added: number; remo
   return { node: { ...after, children: items }, added, removed }
 }
 
+function tableWidth(table: Table): number {
+  return table.children[0]?.children.length ?? 0
+}
+
 /**
  * A table compared by row, then by cell. The header row is always the
  * header: it is compared cell by cell with the older header rather than
@@ -464,10 +468,13 @@ function mergeList(before: List, after: List): { node: List; added: number; remo
  * table, and is shown before and after instead (`undefined`).
  */
 function mergeTable(before: Table, after: Table): Merged<Table> | undefined {
-  const width = (table: Table) => table.children[0]?.children.length ?? 0
   const [olderHead, ...olderBody] = before.children
   const [newerHead, ...newerBody] = after.children
-  if (width(before) !== width(after) || olderHead === undefined || newerHead === undefined) {
+  if (
+    tableWidth(before) !== tableWidth(after) ||
+    olderHead === undefined ||
+    newerHead === undefined
+  ) {
     return undefined
   }
 
@@ -567,11 +574,14 @@ function wordsIn(node: Nodes): number {
   return countWords(plainText(node))
 }
 
+/** Phrasing without the whitespace-only text between its meaningful parts. */
+function meaningfulChildren(children: readonly PhrasingContent[]): PhrasingContent[] {
+  return children.filter((child) => !(child.type === 'text' && child.value.trim() === ''))
+}
+
 /** A paragraph that is only a picture: an image, perhaps with a link around it. */
 function isImageParagraph(node: Paragraph): boolean {
-  const meaningful = (children: readonly PhrasingContent[]): PhrasingContent[] =>
-    children.filter((child) => !(child.type === 'text' && child.value.trim() === ''))
-  const content = meaningful(node.children)
+  const content = meaningfulChildren(node.children)
   return (
     content.length > 0 &&
     content.every(
@@ -579,7 +589,7 @@ function isImageParagraph(node: Paragraph): boolean {
         child.type === 'image' ||
         child.type === 'imageReference' ||
         (child.type === 'link' &&
-          meaningful(child.children).every(
+          meaningfulChildren(child.children).every(
             (inner) => inner.type === 'image' || inner.type === 'imageReference',
           )),
     )

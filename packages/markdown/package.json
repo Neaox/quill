@@ -21,6 +21,7 @@
     "generate:table-specimens": "node scripts/generate-table-specimens.ts"
   },
   "dependencies": {
+    "@quill/brand": "workspace:*",
     "@quill/domain": "workspace:*",
     "@quill/highlight": "workspace:*",
     "@sinclair/typebox": "^0.34.52",

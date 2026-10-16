@@ -103,8 +103,8 @@ function myers(left: Int32Array, right: Int32Array, offset: number): readonly Ed
     trace.push({ d, values: frontier.slice(centre - d - 1, centre + d + 2) })
     for (let k = -d; k <= d; k += 2) {
       const down = frontier[centre + k + 1] ?? 0
-      const right_ = frontier[centre + k - 1] ?? 0
-      let x = k === -d || (k !== d && right_ < down) ? down : right_ + 1
+      const rightward = frontier[centre + k - 1] ?? 0
+      let x = k === -d || (k !== d && rightward < down) ? down : rightward + 1
       let y = x - k
       while (x < n && y < m && left[x] === right[y]) {
         x += 1
@@ -140,7 +140,7 @@ function myers(left: Int32Array, right: Int32Array, offset: number): readonly Ed
     x = previousX
     y = previousY
   }
-  return edits.reverse()
+  return edits.toReversed()
 }
 
 /**

@@ -258,27 +258,29 @@ function pairScores<T extends Nodes>(
   return pairs
 }
 
+function lowercaseWords(node: Nodes): string[] {
+  return tokenize(plainText(node))
+    .filter(isWord)
+    .map((word) => word.toLowerCase())
+}
+
 /**
  * How much two blocks share: the Dice coefficient of their words, as a
  * multiset and ignoring case. Two blocks with no words at all — two rules,
  * two images with no description — are the same thing in a different state.
  */
 export function similarity(left: Nodes, right: Nodes): number {
-  const words = (node: Nodes) =>
-    tokenize(plainText(node))
-      .filter(isWord)
-      .map((word) => word.toLowerCase())
-  const leftWords = words(left)
-  const rightWords = words(right)
+  const leftWords = lowercaseWords(left)
+  const rightWords = lowercaseWords(right)
   if (leftWords.length === 0 && rightWords.length === 0) return 1
   const counts = new Map<string, number>()
   for (const word of leftWords) counts.set(word, (counts.get(word) ?? 0) + 1)
   let shared = 0
   for (const word of rightWords) {
-    const left_ = counts.get(word) ?? 0
-    if (left_ > 0) {
+    const available = counts.get(word) ?? 0
+    if (available > 0) {
       shared += 1
-      counts.set(word, left_ - 1)
+      counts.set(word, available - 1)
     }
   }
   return (2 * shared) / (leftWords.length + rightWords.length)

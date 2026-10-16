@@ -175,13 +175,13 @@ export function createLazyCodeMirror(options: LazyCodeMirrorOptions): LazyCodeMi
   options.parent.append(pre)
 
   let registry: TokenHighlightRegistry | null | undefined
-  let unpaint = (): void => undefined
+  let unpaint: (() => void) | undefined
   let painted = false
 
   /** Colours the static block with the reader's ranges, over its one text node. */
   const paint = (): void => {
-    unpaint()
-    unpaint = () => undefined
+    unpaint?.()
+    unpaint = undefined
     painted = true
     const grammar = language?.grammar
     if (destroyed || live !== undefined || grammar === undefined) return
@@ -203,12 +203,12 @@ export function createLazyCodeMirror(options: LazyCodeMirrorOptions): LazyCodeMi
     )
   }
 
-  let stopWatching = (): void => undefined
+  let stopWatching: (() => void) | undefined
 
   const open = (): CodeMirrorHost => {
     if (live !== undefined) return live
-    stopWatching()
-    unpaint()
+    stopWatching?.()
+    unpaint?.()
     pre.remove()
     opening.delete(pre)
     live = createCodeMirror({ ...options, text, language, editable, painting })
@@ -264,8 +264,8 @@ export function createLazyCodeMirror(options: LazyCodeMirrorOptions): LazyCodeMi
     },
     destroy() {
       destroyed = true
-      stopWatching()
-      unpaint()
+      stopWatching?.()
+      unpaint?.()
       live?.destroy()
     },
   }
