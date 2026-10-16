@@ -541,13 +541,30 @@ describe('the editor route', () => {
         'POST /api/documents/{id}/publish': () =>
           jsonResponse(409, { kind: 'merge-required', current: 'c'.repeat(40), conflicts: [] }),
         'GET /api/documents/{id}/history': () => jsonResponse(200, { revisions: [] }),
-        'GET /api/documents/{id}/diff': () =>
+        'GET /api/documents/{id}/compare': () =>
           jsonResponse(200, {
-            from: 'a'.repeat(40),
-            to: 'c'.repeat(40),
-            unified: '@@ -1 +1 @@\n-was\n+is',
-            added: 1,
-            removed: 1,
+            html: '<article><p data-change="changed" data-change-id="c1">It <del data-diff="removed">was</del><ins data-diff="added">is</ins>.</p></article>',
+            summary: {
+              sections: 1,
+              added: 0,
+              removed: 0,
+              changed: 1,
+              moved: 0,
+              wordsAdded: 1,
+              wordsRemoved: 1,
+            },
+            changes: [
+              {
+                id: 'c1',
+                change: 'changed',
+                block: 'paragraph',
+                excerpt: 'It is.',
+                wordsAdded: 1,
+                wordsRemoved: 1,
+              },
+            ],
+            sections: [],
+            properties: [],
           }),
       }),
     )
@@ -556,7 +573,7 @@ describe('the editor route', () => {
     const dialog = await screen.findByRole('dialog', { name: 'Someone else published first' })
     await userEvent.click(within(dialog).getByRole('button', { name: 'See what changed' }))
 
-    expect(await screen.findByRole('group', { name: 'Unified diff' })).toBeInTheDocument()
+    expect(await screen.findByRole('article', { name: 'Comparison' })).toBeInTheDocument()
   })
 
   it('refuses to open a draft written by a newer release rather than losing it', async () => {

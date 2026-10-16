@@ -9,7 +9,7 @@ import {
   useLoadedDocument,
   useRenderedDocument,
   useTreeCollections,
-  type DiffRange,
+  type ComparisonRange,
   type OutlineEntry,
 } from '../../lib/api/index.ts'
 import { useRecordViewOnOpen } from './use-record-view-on-open.ts'
@@ -71,7 +71,8 @@ export function DocumentPage() {
   const lastPublished = envelope.data?.lastPublished ?? null
   const permissions = envelope.data?.permissions
   const lock = envelope.data?.lock ?? null
-  const compare: DiffRange | undefined = to === undefined ? undefined : { from: from ?? null, to }
+  const compare: ComparisonRange | undefined =
+    to === undefined ? undefined : { from: from ?? null, to }
   const title = document.data.title
   const collectionName = collections.data?.find(
     (collection) => collection.id === document.data.collectionId,

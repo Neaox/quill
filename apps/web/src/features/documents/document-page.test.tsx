@@ -1,6 +1,6 @@
 import { act, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
 import { packRanges } from '@quill/highlight'
 import { expectNoAccessibilityViolations } from '@quill/ui/testing/axe'
@@ -165,6 +165,18 @@ describe('the reading view records that it was opened', () => {
     expect(await screen.findByRole('article', { name: 'Regional failover' })).toBeInTheDocument()
   })
 })
+
+const text = (value: string) => ({ type: 'text', value })
+const draftOf =
+  (...children: readonly object[]) =>
+  () =>
+    jsonResponse(200, {
+      documentId: 'doc-1',
+      draftVersion: 3,
+      baseRevision: null,
+      updatedAt: '2026-02-03T00:00:00.000Z',
+      ast: { version: 1, frontMatter: {}, ast: { type: 'root', children } },
+    })
 
 describe('the reading view', () => {
   it('renders the published body on the reading grid, with breakout widths intact', async () => {
@@ -459,18 +471,6 @@ describe('the reading view', () => {
         ...extra,
       })
 
-    const text = (value: string) => ({ type: 'text', value })
-    const draftOf =
-      (...children: readonly object[]) =>
-      () =>
-        jsonResponse(200, {
-          documentId: 'doc-1',
-          draftVersion: 3,
-          baseRevision: null,
-          updatedAt: '2026-02-03T00:00:00.000Z',
-          ast: { version: 1, frontMatter: {}, ast: { type: 'root', children } },
-        })
-
     it('says what is waiting to be published when there is a draft with writing in it, rather than that nothing is there', async () => {
       renderApp(
         READING_PATH,
@@ -652,36 +652,93 @@ describe('reading an older revision', () => {
   })
 })
 
+/**
+ * What the comparison route answers: the page as it reads with each change marked where it is,
+ * and the changes as a list (ADR-031).
+ */
+const COMPARISON = {
+  html: '<article><h1 id="regional-failover">Regional failover</h1><p data-change="changed" data-change-id="c1">Move traffic <del data-diff="removed">east</del><ins data-diff="added">west</ins> first.</p></article>',
+  summary: {
+    sections: 1,
+    added: 0,
+    removed: 0,
+    changed: 1,
+    moved: 0,
+    wordsAdded: 1,
+    wordsRemoved: 1,
+  },
+  changes: [
+    {
+      id: 'c1',
+      change: 'changed',
+      block: 'paragraph',
+      excerpt: 'Move traffic west first.',
+      wordsAdded: 1,
+      wordsRemoved: 1,
+      section: { id: 'regional-failover', title: 'Regional failover' },
+    },
+  ],
+  sections: [{ id: 'regional-failover', depth: 1, title: 'Regional failover', changes: 1 }],
+  properties: [],
+}
+
 describe('comparing two revisions', () => {
-  it('loads the diff view on demand and renders added and removed lines', async () => {
+  it('loads the comparison on demand and draws what changed where it changed', async () => {
     renderApp(`${READING_PATH}?from=${'a'.repeat(40)}&to=${'b'.repeat(40)}`, {
       ...readingRoutes(),
-      'GET /api/documents/{id}/diff': () =>
-        jsonResponse(200, {
-          from: 'a'.repeat(40),
-          to: 'b'.repeat(40),
-          unified: '--- a\n+++ b\n@@ -1 +1 @@\n-old line\n+new line',
-          added: 1,
-          removed: 1,
-        }),
+      'GET /api/documents/{id}/compare': () => jsonResponse(200, COMPARISON),
     })
 
     expect(await screen.findByRole('heading', { name: 'Comparing v1 with v2' })).toBeInTheDocument()
-    const diff = await screen.findByRole('group', { name: 'Unified diff' })
-    const added = within(diff).getByText('+new line').closest('span')
-    const removed = within(diff).getByText('-old line').closest('span')
-    // The change is an attribute on the line, so it is what the styling and
-    // the screen reader both read (docs/architecture/styling.md).
-    expect(added).toHaveAttribute('data-change', 'added')
-    expect(removed).toHaveAttribute('data-change', 'removed')
-    expect(within(diff).getByText('added:')).toBeInTheDocument()
+    // Said in words first, and the change is marked on the page, not in a second listing.
+    expect(await screen.findByText('1 block changed')).toBeInTheDocument()
+    const page = await screen.findByRole('article', { name: 'Comparison' })
+    // The change is an attribute on the block, so it is what the styling and the screen
+    // reader both read (docs/architecture/styling.md).
+    expect(page.querySelector('[data-change="changed"]')).toHaveTextContent('Move traffic')
+    expect(page.querySelector('ins[data-diff="added"]')).toHaveTextContent('west')
+    expect(page.querySelector('del[data-diff="removed"]')).toHaveTextContent('east')
+  })
+
+  it('goes from change to change, marking the one the reader chose', async () => {
+    const scroll = vi.fn<() => void>()
+    HTMLElement.prototype.scrollIntoView = scroll
+    renderApp(`${READING_PATH}?from=${'a'.repeat(40)}&to=${'b'.repeat(40)}`, {
+      ...readingRoutes(),
+      'GET /api/documents/{id}/compare': () => jsonResponse(200, COMPARISON),
+    })
+
+    const changes = await screen.findByRole('navigation', { name: 'Changes' })
+    await userEvent.click(
+      within(changes).getByRole('button', { name: /Changed.*Regional failover/u }),
+    )
+
+    const page = await screen.findByRole('article', { name: 'Comparison' })
+    const target = page.querySelector('[data-change-id="c1"]')
+    expect(target).toHaveAttribute('data-change-current')
+    expect(target).toHaveFocus()
+    expect(scroll).toHaveBeenCalled()
+  })
+
+  it('says so when two revisions have the same content', async () => {
+    renderApp(`${READING_PATH}?from=${'a'.repeat(40)}&to=${'b'.repeat(40)}`, {
+      ...readingRoutes(),
+      'GET /api/documents/{id}/compare': () =>
+        jsonResponse(200, {
+          ...COMPARISON,
+          html: '<article><p>Same.</p></article>',
+          summary: { ...COMPARISON.summary, changed: 0, wordsAdded: 0, wordsRemoved: 0 },
+          changes: [],
+        }),
+    })
+
+    expect(await screen.findByText('No difference')).toBeInTheDocument()
   })
 
   it('compares the two revisions a reader picks', async () => {
     renderApp(READING_PATH, {
       ...readingRoutes(),
-      'GET /api/documents/{id}/diff': () =>
-        jsonResponse(200, { from: null, to: 'b', unified: '', added: 0, removed: 0 }),
+      'GET /api/documents/{id}/compare': () => jsonResponse(200, COMPARISON),
     })
 
     await userEvent.click(await screen.findByText('Compare', { selector: 'summary' }))
@@ -690,6 +747,17 @@ describe('comparing two revisions', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Compare' }))
 
     expect(await screen.findByRole('heading', { name: 'Comparing v1 with v2' })).toBeInTheDocument()
+  })
+
+  it('says what went wrong, and does not draw a half-answer', async () => {
+    renderApp(`${READING_PATH}?from=${'a'.repeat(40)}&to=${'b'.repeat(40)}`, {
+      ...readingRoutes(),
+      'GET /api/documents/{id}/compare': () =>
+        errorResponse(404, 'not_found', 'That revision does not exist'),
+    })
+
+    expect(await screen.findByText("Couldn't compare these revisions")).toBeInTheDocument()
+    expect(screen.queryByRole('article', { name: 'Comparison' })).not.toBeInTheDocument()
   })
 })
 
