@@ -35,6 +35,7 @@ export {
 
 export {
   unitsQueryOptions,
+  useAllUnits,
   useUnits,
   useCreateUnit,
   useRenameUnit,
@@ -65,6 +66,39 @@ export {
   type CreateWorkspaceInput,
   type RenameWorkspaceInput,
 } from './workspaces.ts'
+export {
+  useAddGroupMember,
+  useCreateGroup,
+  useDeleteGroup,
+  useGroupMembers,
+  useGroups,
+  usePeopleSearch,
+  useRemoveGroupMember,
+  useRenameGroup,
+  groupsQueryOptions,
+  type CreateGroupInput,
+  type DeleteGroupInput,
+  type GroupMemberInput,
+  type RenameGroupInput,
+} from './groups.ts'
+export {
+  homeSummaryQueryOptions,
+  useClearViewingHistory,
+  useHomeSummary,
+  useRecordView,
+  type HomeScope,
+} from './home.ts'
+export { useMarkNotificationsRead, useNotifications } from './notifications.ts'
+export {
+  useAttention,
+  useDecideReview,
+  useRequestReview,
+  useReview,
+  useReviewerCandidates,
+  useWithdrawReview,
+  type ReviewDecision,
+  type ReviewerRef,
+} from './review.ts'
 export {
   documentQueryOptions,
   workspaceDocumentsQueryOptions,
@@ -207,6 +241,15 @@ export type {
   UnitDto,
   WorkspaceDto,
   WorkspaceSummaryDto,
+  GroupSummaryDto,
+  PersonDto,
+  HomeSummaryDto,
+  ReviewRequestDto,
+  ReviewAssignmentDto,
+  ReviewerCandidates,
+  AttentionItem,
+  NotificationItem,
+  NotificationsDto,
   DocumentDto,
   DraftDto,
   SaveDraftResponse,
