@@ -44,7 +44,12 @@ describe('sweepExpired', () => {
       expiresAt: new Date(NOW.getTime() - days(10)),
     })
 
-    expect(await sweepExpired(deps, NOW)).toEqual({ sessions: 1, magicLinks: 0 })
+    expect(await sweepExpired(deps, NOW)).toEqual({
+      sessions: 1,
+      magicLinks: 0,
+      documentViews: 0,
+      notifications: 0,
+    })
     expect(await uow.repos.sessions.findById('stale')).toBeNull()
   })
 
@@ -75,7 +80,12 @@ describe('sweepExpired', () => {
       expiresAt: new Date(NOW.getTime() + days(30)),
     })
 
-    expect(await sweepExpired(deps, NOW)).toEqual({ sessions: 0, magicLinks: 0 })
+    expect(await sweepExpired(deps, NOW)).toEqual({
+      sessions: 0,
+      magicLinks: 0,
+      documentViews: 0,
+      notifications: 0,
+    })
     expect(await uow.repos.sessions.findById('live')).not.toBeNull()
   })
 
@@ -101,6 +111,55 @@ describe('sweepExpired', () => {
     expect((await sweepExpired(deps, NOW)).magicLinks).toBe(2)
     expect(await uow.repos.magicLinks.findByTokenHash('hash-live')).not.toBeNull()
     expect(await uow.repos.magicLinks.findByTokenHash('hash-spent')).toBeNull()
+  })
+})
+
+describe('sweepExpired: what people opened', () => {
+  it('forgets a view older than ninety days and keeps a recent one', async () => {
+    const { uow, deps } = await setUp()
+    const view = (documentId: string, at: Date) =>
+      uow.repos.documentViews.touch({
+        userId: ALICE,
+        documentId: documentId as never,
+        workspaceId: 'workspace' as never,
+        now: at,
+        debounceBefore: new Date(0),
+      })
+    await view('old', new Date(NOW.getTime() - days(91)))
+    await view('recent', new Date(NOW.getTime() - days(89)))
+
+    expect((await sweepExpired(deps, NOW)).documentViews).toBe(1)
+    expect(
+      (
+        await uow.repos.documentViews.listRecent({ userId: ALICE, since: new Date(0), limit: 10 })
+      ).map((row) => row.documentId),
+    ).toEqual(['recent'])
+  })
+})
+
+describe('sweepExpired: notifications', () => {
+  it('forgets a notification older than ninety days and keeps a recent one', async () => {
+    const { uow, deps } = await setUp()
+    const notification = (id: string, createdAt: Date) => ({
+      id,
+      recipientUserId: ALICE,
+      kind: 'review-requested' as const,
+      documentId: 'document' as never,
+      requestId: id,
+      actorUserId: null,
+      createdAt,
+    })
+    await uow.repos.notifications.insertMany([
+      notification('old', new Date(NOW.getTime() - days(91))),
+      notification('recent', new Date(NOW.getTime() - days(89))),
+    ])
+
+    expect((await sweepExpired(deps, NOW)).notifications).toBe(1)
+    expect(
+      (await uow.repos.notifications.listForUser({ userId: ALICE, after: null, limit: 10 })).map(
+        (row) => row.id,
+      ),
+    ).toEqual(['recent'])
   })
 })
 

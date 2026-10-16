@@ -1,6 +1,8 @@
 import {
   COLLECTION_AUDIT_EVENTS,
   DOCUMENT_AUDIT_EVENTS,
+  REVIEW_AUDIT_EVENTS,
+  GROUP_AUDIT_EVENTS,
   SHARE_LINK_AUDIT_EVENTS,
   SECRET_AUDIT_EVENTS,
   SETTINGS_AUDIT_EVENTS,
@@ -59,10 +61,24 @@ export const AUDIT_EVENTS = {
   workspaceRenamed: TENANCY_AUDIT_EVENTS.workspaceRenamed,
   workspaceDeleted: TENANCY_AUDIT_EVENTS.workspaceDeleted,
   documentDeleted: DOCUMENT_AUDIT_EVENTS.deleted,
+  // Groups and their members decide who can read what, so changing them is
+  // administration (ADR-052).
+  groupCreated: GROUP_AUDIT_EVENTS.created,
+  groupRenamed: GROUP_AUDIT_EVENTS.renamed,
+  groupDeleted: GROUP_AUDIT_EVENTS.deleted,
+  groupMemberAdded: GROUP_AUDIT_EVENTS.memberAdded,
+  groupMemberRemoved: GROUP_AUDIT_EVENTS.memberRemoved,
   // Share links (plan section 14). The row names the link, never its token.
   shareLinkCreated: SHARE_LINK_AUDIT_EVENTS.created,
   shareLinkRevoked: SHARE_LINK_AUDIT_EVENTS.revoked,
   shareLinkUsed: SHARE_LINK_AUDIT_EVENTS.used,
+  // Review requests (ADR-052). A row names the request and the document; a
+  // message or a comment is never written here.
+  reviewRequested: REVIEW_AUDIT_EVENTS.requested,
+  reviewDecided: REVIEW_AUDIT_EVENTS.decided,
+  reviewWithdrawn: REVIEW_AUDIT_EVENTS.withdrawn,
+  reviewSuperseded: REVIEW_AUDIT_EVENTS.superseded,
+  reviewPublished: REVIEW_AUDIT_EVENTS.published,
   // Configuration and secrets (ADR-034). A secret's row names it and the key
   // that wraps it; its value is never written here or anywhere else.
   organisationSettingsUpdated: SETTINGS_AUDIT_EVENTS.organisationUpdated,

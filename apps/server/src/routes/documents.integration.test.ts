@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { parseDocument } from '@quill/markdown'
-import { revisionId } from '@quill/domain'
+import { createGrant } from '@quill/application'
+import { revisionId, userId } from '@quill/domain'
 import type { DocumentId, WorkspaceId } from '@quill/domain'
 
 import { createServerHarness, HARNESS_NOW } from '../test-support/harness.ts'
@@ -688,6 +689,7 @@ describe('the content journey', () => {
       view: true,
       comment: false,
       edit: false,
+      publish: false,
       manage: false,
     })
     expect(envelope.json().lastPublished).toMatchObject({ author: 'Editor' })
@@ -716,6 +718,63 @@ describe('permissions on the content routes', () => {
     const refused = await publish(id, null, viewer)
     expect(refused.statusCode).toBe(403)
     expect(refused.json().error.code).toBe('forbidden')
+  })
+
+  it('lets a contributor write a draft but not make it live, and says so in the envelope', async () => {
+    const contributorId = userId('00000000-0000-4000-8000-00000000a005')
+    const { repos } = harness.deps.uow
+    await repos.users.create({
+      id: contributorId,
+      email: 'contributor@example.com',
+      displayName: 'Contributor',
+      now: harness.clock.now(),
+    })
+    await repos.users.markEmailVerified(contributorId, harness.clock.now())
+    const granted = await createGrant(harness.deps, {
+      principalKind: 'user',
+      principalId: contributorId,
+      scopeKind: 'workspace',
+      scopeId: tenancy.workspaceId,
+      role: 'contributor',
+      effect: 'allow',
+      createdBy: tenancy.admin,
+    })
+    expect(granted.kind).toBe('created')
+    const contributor = await harness.cookiesFor(contributorId)
+
+    const id = await createDocument('Proposed change', {}, contributor)
+    const acquired = await harness.app.inject({
+      method: 'POST',
+      url: `/api/documents/${id}/lock/acquire`,
+      cookies: contributor,
+    })
+    expect(acquired.statusCode).toBe(200)
+    const written = await harness.app.inject({
+      method: 'PUT',
+      url: `/api/documents/${id}/draft`,
+      cookies: contributor,
+      payload: { ast: draftOf('# Proposed change\n\nWords.\n'), expectedVersion: 0 } as Record<
+        string,
+        unknown
+      >,
+    })
+    expect(written.statusCode).toBe(200)
+    await harness.app.inject({
+      method: 'DELETE',
+      url: `/api/documents/${id}/lock`,
+      cookies: contributor,
+    })
+
+    const refused = await publish(id, null, contributor)
+    expect(refused.statusCode).toBe(403)
+    expect(refused.json().error.message).toMatch(/publish/)
+
+    const asContributor = await get(`/api/documents/${id}/envelope`, contributor)
+    expect(asContributor.json().permissions).toMatchObject({ edit: true, publish: false })
+    const asEditor = await get(`/api/documents/${id}/envelope`, editor)
+    expect(asEditor.json().permissions).toMatchObject({ edit: true, publish: true })
+    // An editor can, and the contributor's words go live.
+    expect((await publish(id, null, editor)).statusCode).toBe(200)
   })
 
   it('lets an instance admin do what no grant gives them', async () => {
