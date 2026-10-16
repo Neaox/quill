@@ -195,6 +195,22 @@ export interface Zoomable {
   readonly onClose?: (() => void) | undefined
 }
 
+/*
+ * Zooming in and out are used all the time, so at a limit they stay where
+ * they are, disabled with the reason (`docs/design/feedback.md`, "Disable
+ * or hide"): `aria-disabled`, not `disabled`, so they stay focusable and
+ * the reason can be read.
+ */
+function limit(button: HTMLButtonElement, reached: boolean, reason: string): void {
+  if (reached) {
+    button.setAttribute('aria-disabled', 'true')
+    button.title = reason
+  } else {
+    button.removeAttribute('aria-disabled')
+    button.removeAttribute('title')
+  }
+}
+
 /**
  * Opens `subject` in the lightbox, with its zoom and pan controls. The one lightbox a diagram and
  * a picture share, so both zoom, pan and close the same way.
@@ -233,21 +249,6 @@ export function openZoomable(
   })
 
   let view: View = FIT
-  /*
-   * Zooming in and out are used all the time, so at a limit they stay where
-   * they are, disabled with the reason (`docs/design/feedback.md`, "Disable
-   * or hide"): `aria-disabled`, not `disabled`, so they stay focusable and
-   * the reason can be read.
-   */
-  const limit = (button: HTMLButtonElement, reached: boolean, reason: string): void => {
-    if (reached) {
-      button.setAttribute('aria-disabled', 'true')
-      button.title = reason
-    } else {
-      button.removeAttribute('aria-disabled')
-      button.removeAttribute('title')
-    }
-  }
   const limits = (): void => {
     limit(buttons.out, view.scale <= MIN_SCALE, 'Already fitted to the screen')
     limit(buttons.in, view.scale >= MAX_SCALE, 'Already at the largest size')
