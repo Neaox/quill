@@ -89,7 +89,7 @@ type CollectionDialog =
       readonly kind: 'delete'
       readonly id: string
       readonly name: string
-      readonly documentCount: number
+      readonly documentCount: number | undefined
     }
 
 export interface WorkspaceTreeProps {
@@ -192,12 +192,13 @@ export function WorkspaceTree({
         {
           label: 'Delete…',
           onSelect: () => {
-            // Whether it is empty is the server's to say: the tree knows a page at a time.
+            // Whether it is empty is the server's to say: the tree knows a page at a time, so the
+            // count is not known here and the dialog says so rather than claiming none.
             setCollectionDialog({
               kind: 'delete',
               id: collection.id,
               name: collection.name,
-              documentCount: 0,
+              documentCount: undefined,
             })
           },
         },

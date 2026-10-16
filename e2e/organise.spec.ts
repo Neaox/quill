@@ -211,6 +211,9 @@ test('a unit, a workspace, collections, documents, nesting, moving and deleting'
   // just rewritten (`support/editing.ts` for why that is not simply a click).
   const titleHeading = surface.getByRole('heading', { level: 1 }).first()
   await expect(titleHeading).toHaveText('Appendix A')
+  // The pointer is still where the Edit link was, which is over Publish once the editor is
+  // open: its changes card opens under it, and covers the middle of the heading.
+  await page.mouse.move(0, 400)
   await caretAtEndOf(surface, titleHeading)
   await page.keyboard.press('Enter')
   await page.keyboard.type('Everything that did not fit in the plan.')
@@ -276,6 +279,10 @@ test('a collection that still holds documents says so instead of being deleted',
   await menu(page).getByRole('menuitem', { name: 'Delete…' }).click()
 
   const dialog = page.getByRole('dialog', { name: /Delete .Guides/ })
+  // The tree has not loaded what is in Guides, so the dialog does not claim it is empty: it asks,
+  // and the server's refusal brings the reason and the way out in place of Delete.
+  await expect(dialog.getByText(/This collection is empty/)).toHaveCount(0)
+  await dialog.getByRole('button', { name: 'Delete' }).click()
   await expect(dialog.getByText(/still holds/)).toBeVisible()
   await expect(dialog.getByRole('button', { name: 'Move documents first' })).toBeVisible()
   await expect(dialog.getByRole('button', { name: 'Delete' })).toHaveCount(0)

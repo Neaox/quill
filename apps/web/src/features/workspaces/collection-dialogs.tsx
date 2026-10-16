@@ -149,8 +149,12 @@ export interface DeleteCollectionDialogProps {
   readonly workspaceId: string
   readonly collectionId: string
   readonly name: string
-  /** How many documents the navigation currently shows in it, before asking the server. */
-  readonly documentCount: number
+  /**
+   * How many documents the navigation shows in it, when it knows. The tree loads a level at a time,
+   * so for a collection it has not opened it knows nothing, and that is `undefined`, not zero: only
+   * the server can say a collection is empty, and the dialog must not say so first.
+   */
+  readonly documentCount: number | undefined
 }
 
 function notEmptyMessage(count: number): string {
@@ -178,7 +182,8 @@ export function DeleteCollectionDialog({
     remove.error instanceof ApiError && remove.error.code === 'collection_not_empty'
       ? (readDocumentCount(remove.error.details) ?? documentCount)
       : undefined
-  const blockedCount = refused ?? (documentCount > 0 ? documentCount : undefined)
+  const blockedCount =
+    refused ?? (documentCount !== undefined && documentCount > 0 ? documentCount : undefined)
 
   return (
     <ConfirmDeleteDialog
@@ -218,9 +223,17 @@ export function DeleteCollectionDialog({
         )
       }}
     >
-      <p>
-        This collection is empty, so nothing is lost. Its access and publishing settings go with it.
-      </p>
+      {documentCount === 0 ? (
+        <p>
+          This collection is empty, so nothing is lost. Its access and publishing settings go with
+          it.
+        </p>
+      ) : (
+        <p>
+          If it still holds documents you will be asked to move them first. Its access and
+          publishing settings go with it.
+        </p>
+      )}
     </ConfirmDeleteDialog>
   )
 }
