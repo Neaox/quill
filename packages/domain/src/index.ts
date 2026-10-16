@@ -42,7 +42,25 @@ export type { DocumentStatus } from './document-status.ts'
 export { DOCUMENT_STATUSES, isDocumentStatus } from './document-status.ts'
 
 export type { Role } from './roles.ts'
-export { ROLES, canComment, canEdit, canManage, canOwn, canView, roleAtLeast } from './roles.ts'
+export {
+  ROLES,
+  canComment,
+  canEdit,
+  canManage,
+  canOwn,
+  canPublish,
+  canView,
+  roleAtLeast,
+} from './roles.ts'
+
+export type { AssignmentState, ReviewDecision, ReviewerKind, ReviewStatus } from './review.ts'
+export {
+  ASSIGNMENT_STATES,
+  REVIEW_STATUSES,
+  assignmentStateFor,
+  deriveReviewStatus,
+  isActiveReviewStatus,
+} from './review.ts'
 
 export type { Instance } from './tenancy/instance.ts'
 export type { OrganisationalUnit } from './tenancy/organisational-unit.ts'

@@ -7,6 +7,9 @@ import {
   parseDocumentPublished,
   parseDocumentRenamed,
   parseMailRequested,
+  parseReviewDecided,
+  parseReviewRequested,
+  parseReviewWithdrawn,
 } from './events.ts'
 
 const DOC = documentId('00000000-0000-4000-8000-000000000201')
@@ -140,5 +143,57 @@ describe('parseDocumentMoved', () => {
 
   it('refuses a version nothing shipped can read', () => {
     expect(parseDocumentMoved({ ...moved, version: 99 })).toBeNull()
+  })
+})
+
+describe('review events', () => {
+  const requested = {
+    version: EVENT_PAYLOAD_VERSION,
+    requestId: 'r1',
+    documentId: DOC,
+    workspaceId: WORKSPACE,
+    requestedBy: USER,
+    reviewers: [{ kind: 'user', id: 'u1' }],
+  }
+  const decided = {
+    version: EVENT_PAYLOAD_VERSION,
+    requestId: 'r1',
+    documentId: DOC,
+    workspaceId: WORKSPACE,
+    decidedBy: USER,
+    decision: 'approve',
+    status: 'approved',
+  }
+  const withdrawn = {
+    version: EVENT_PAYLOAD_VERSION,
+    requestId: 'r1',
+    documentId: DOC,
+    workspaceId: WORKSPACE,
+    withdrawnBy: USER,
+    reason: 'superseded',
+  }
+
+  it('reads payloads of the version it knows', () => {
+    expect(parseReviewRequested(requested)).toEqual(requested)
+    expect(parseReviewDecided(decided)).toEqual(decided)
+    expect(parseReviewWithdrawn(withdrawn)).toEqual(withdrawn)
+  })
+
+  it('drops reviewers it cannot read and defaults an unknown reason to withdrawn', () => {
+    const messy = {
+      ...requested,
+      reviewers: [null, { kind: 'robot', id: 'x' }, ...requested.reviewers],
+    }
+    expect(parseReviewRequested(messy)?.reviewers).toEqual(requested.reviewers)
+    expect(parseReviewWithdrawn({ ...withdrawn, reason: 'whatever' })?.reason).toBe('withdrawn')
+  })
+
+  it('refuses anything it cannot read', () => {
+    expect(parseReviewRequested({ ...requested, version: 99 })).toBeNull()
+    expect(parseReviewRequested({ ...requested, reviewers: 'nope' })).toBeNull()
+    expect(parseReviewRequested({ ...requested, requestId: '' })).toBeNull()
+    expect(parseReviewDecided({ ...decided, decision: 'maybe' })).toBeNull()
+    expect(parseReviewDecided({ ...decided, status: undefined })).toBeNull()
+    expect(parseReviewWithdrawn({ ...withdrawn, withdrawnBy: null })).toBeNull()
   })
 })
