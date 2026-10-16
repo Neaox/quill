@@ -12,10 +12,12 @@ import {
   type DiffRange,
   type OutlineEntry,
 } from '../../lib/api/index.ts'
+import { useRecordViewOnOpen } from './use-record-view-on-open.ts'
 import { labelRevisions } from '../../lib/documents/revision-labels.ts'
 import { useDocumentActions } from '../workspaces/document-actions.tsx'
 import { RenameDocumentControl } from '../workspaces/rename-document-control.tsx'
 import { ShellActions, ShellAside } from '../workspaces/shell-slots.tsx'
+import { ReviewActions } from '../review/review-actions.tsx'
 import { AttachmentsPanel } from './attachments-panel.tsx'
 import { DraftNotice } from './draft-notice.tsx'
 import { DocumentReader } from './document-reader.tsx'
@@ -61,6 +63,7 @@ export function DocumentPage() {
   const collections = useTreeCollections(document.data.workspaceId)
   const actions = useDocumentActions()
   const [showingAttachments, setShowingAttachments] = useState(false)
+  useRecordViewOnOpen(documentId)
 
   const revisions = labelRevisions(history.data?.revisions ?? [], {
     complete: history.data?.nextCursor === undefined,
@@ -162,6 +165,16 @@ export function DocumentPage() {
             <span className="max-lg:sr-only">Share</span>
           </Button>
         ) : undefined}
+        {permissions === undefined ? undefined : (
+          <ReviewActions
+            documentId={documentId}
+            title={title}
+            // Only a draft with something in it is worth a review.
+            canEdit={permissions.edit && envelope.data?.draft != null}
+            canPublish={permissions.publish}
+            published={lastPublished?.revision ?? null}
+          />
+        )}
         {permissions?.edit === true ? (
           <Link
             to="/w/$workspaceSlug/d/$documentId/edit"
@@ -190,6 +203,16 @@ export function DocumentPage() {
           workspaceSlug={workspaceSlug}
           documentId={documentId}
           savedAt={envelope.data.draft.savedAt}
+          actions={
+            <ReviewActions
+              surface="notice"
+              documentId={documentId}
+              title={title}
+              canEdit
+              canPublish={permissions.publish}
+              published={lastPublished.revision}
+            />
+          }
         />
       ) : undefined}
 
@@ -228,7 +251,7 @@ export function DocumentPage() {
             revisions={revisions}
             currentRevision={rev}
             isPending={history.isPending}
-            canRestore={permissions?.edit === true}
+            canRestore={permissions?.publish === true}
             {...(lastPublished === null ? {} : { lastPublishedBy: lastPublished.author })}
           />
           <HealthSignals signals={envelope.data?.health ?? []} />

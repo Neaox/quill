@@ -50,6 +50,7 @@ import { ImageDialog } from './image-dialog.tsx'
 import type { ImageRequest } from './image-dialog.tsx'
 import { MergeDialog } from './merge-dialog.tsx'
 import { DraftPreviewLink } from './draft-preview-link.tsx'
+import { ReviewActions } from '../review/review-actions.tsx'
 import { PublishButton } from './publish-button.tsx'
 import { ChangesReview } from './changes-review.tsx'
 import { ReviewButton } from './review-button.tsx'
@@ -592,18 +593,35 @@ function EditingSession({
             setReview({})
           }}
         />
-        <PublishButton
-          onReview={(change) => {
-            setReview({ change })
-          }}
+        {/*
+          A writer who cannot publish asks for a review to get a change live, so for them it is
+          the primary action; one who can asks as a courtesy, beside Publish (ADR-052).
+        */}
+        <ReviewActions
           documentId={documentId}
+          title={title}
+          canEdit={canEdit}
+          canPublish={permissions?.publish !== false}
           published={published}
-          saved={autosave.draftVersion}
-          unsaved={autosave.unsaved}
-          loading={publish.isPending}
-          blocked={!canPublish}
-          onPublish={handlePublish}
+          primary={permissions?.publish === false}
+          beforeRequest={async () => {
+            if (autosave.unsaved) await autosave.flush()
+          }}
         />
+        {permissions?.publish === false ? undefined : (
+          <PublishButton
+            onReview={(change) => {
+              setReview({ change })
+            }}
+            documentId={documentId}
+            published={published}
+            saved={autosave.draftVersion}
+            unsaved={autosave.unsaved}
+            loading={publish.isPending}
+            blocked={!canPublish}
+            onPublish={handlePublish}
+          />
+        )}
       </ShellActions>
 
       {/* Mounted only while it is open: its comparison is the heavy one, drawn change by change. */}
