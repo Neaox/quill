@@ -351,7 +351,9 @@ describe('the content journey', () => {
           kind: 'write',
           documentId: id,
           path: document?.path ?? '',
-          markdown: '# Externally edited\n\nSomebody else was here.\n',
+          // Documents are addressed by the `id` in their front matter, so a sync that left it off
+          // would have deleted the document as far as the store can tell.
+          markdown: `---\nid: ${id}\n---\n\n# Externally edited\n\nSomebody else was here.\n`,
         },
       ],
       author: { name: 'Grace', email: 'grace@example.com' },
