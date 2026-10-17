@@ -63,6 +63,7 @@ export function VirtualRows<Row>({
     getScrollElement: () => scroller.current,
     estimateSize: (index) => {
       const row = rows[index]
+      /* v8 ignore next -- the window only asks about indexes below `count`; this narrows the lookup. */
       return row === undefined ? 0 : rowHeight(row)
     },
     overscan: OVERSCAN,
@@ -73,6 +74,7 @@ export function VirtualRows<Row>({
       }),
     getItemKey: (index) => {
       const row = rows[index]
+      /* v8 ignore next -- see estimateSize. */
       return row === undefined ? index : rowKey(row)
     },
   })
@@ -87,6 +89,7 @@ export function VirtualRows<Row>({
       >
         {virtualizer.getVirtualItems().map((item) => {
           const row = rows[item.index]
+          /* v8 ignore next -- see estimateSize. */
           if (row === undefined) return undefined
           return (
             <li

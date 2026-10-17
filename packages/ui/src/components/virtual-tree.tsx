@@ -248,6 +248,7 @@ export function VirtualTree({
       observeElementRect(instance, (rect) => {
         report(rect.height === 0 ? UNMEASURED : rect)
       }),
+    /* v8 ignore next -- the window only asks about indexes below `count`; `?? index` narrows the lookup. */
     getItemKey: (index) => rows[index]?.id ?? index,
     // The section above the view is drawn too, so that it can be pinned to the top of it.
     rangeExtractor: (range) => {
@@ -274,6 +275,7 @@ export function VirtualTree({
     // Every row is one height, so where one is needs no measuring. The region's own scroll
     // position is set, and the window follows from the scroll that sets off.
     const region = scroller.current
+    /* v8 ignore next -- the effect runs after the region is mounted; this narrows the ref. */
     if (region === null) return
     const view = region.clientHeight || UNMEASURED.height
     region.scrollTop = Math.max(0, currentIndex * ROW_HEIGHT - view / 2 + ROW_HEIGHT / 2)
@@ -299,6 +301,7 @@ export function VirtualTree({
         >
           {virtualizer.getVirtualItems().map((item) => {
             const row = rows[item.index]
+            /* v8 ignore next -- the window only draws indexes below `count`; this narrows the lookup. */
             if (row === undefined) return undefined
             return (
               <li

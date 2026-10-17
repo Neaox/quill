@@ -1,5 +1,5 @@
 import { render, screen } from '@testing-library/react'
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it } from 'vitest'
 
 import { VirtualRows } from './virtual-rows.tsx'
 
@@ -57,5 +57,33 @@ describe('VirtualRows', () => {
     expect(heading?.style.getPropertyValue('--start')).toBe('0px')
     expect(entry?.style.getPropertyValue('--start')).toBe('36px')
     expect(heading?.style.getPropertyValue('--size')).toBe('36px')
+  })
+
+  describe('in a region that has a measured height', () => {
+    const measured = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'offsetHeight')
+
+    afterEach(() => {
+      if (measured === undefined) Reflect.deleteProperty(HTMLElement.prototype, 'offsetHeight')
+      else Object.defineProperty(HTMLElement.prototype, 'offsetHeight', measured)
+    })
+
+    it('draws the rows that height shows, not the height it assumes when it cannot measure', () => {
+      Object.defineProperty(HTMLElement.prototype, 'offsetHeight', {
+        configurable: true,
+        get: () => 96,
+      })
+      render(
+        <VirtualRows
+          label="Workspaces"
+          rows={rows(5000)}
+          rowKey={(row) => row.id}
+          rowHeight={() => 48}
+          renderRow={(row) => <span>{row.id}</span>}
+        />,
+      )
+
+      // Two rows fill 96px, and eight more are drawn beyond the edge so scrolling shows no gap.
+      expect(screen.getAllByRole('listitem')).toHaveLength(10)
+    })
   })
 })

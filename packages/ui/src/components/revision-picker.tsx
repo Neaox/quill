@@ -108,6 +108,7 @@ function spoken(choice: RevisionChoice | undefined): string {
 const openOnChosen = {
   onOpenAutoFocus: (event: Event) => {
     const content = event.currentTarget
+    /* v8 ignore next -- Radix hands the menu's own element; the check only narrows `EventTarget`. */
     const checked =
       content instanceof HTMLElement
         ? content.querySelector<HTMLElement>('[role="menuitemradio"][aria-checked="true"]')

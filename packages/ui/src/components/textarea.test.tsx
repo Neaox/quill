@@ -31,4 +31,28 @@ describe('Textarea', () => {
     await userEvent.type(screen.getByLabelText('Message'), '!!')
     expect(screen.getByText('13 left')).toBeInTheDocument()
   })
+
+  it('counts what a controlled field holds, and tells the owner of each change', async () => {
+    const changes: string[] = []
+    render(
+      <Textarea
+        label="Message"
+        maxLength={20}
+        value="Hello"
+        onChange={(event) => changes.push(event.target.value)}
+      />,
+    )
+
+    expect(screen.getByText('15 left')).toBeInTheDocument()
+    await userEvent.type(screen.getByLabelText('Message'), '!')
+    expect(changes).toEqual(['Hello!'])
+    expect(screen.getByText('15 left')).toBeInTheDocument()
+  })
+
+  it('marks a required field for sight and for the browser, not for the label read aloud', () => {
+    render(<Textarea label="Message" required />)
+
+    expect(screen.getByRole('textbox', { name: 'Message' })).toBeRequired()
+    expect(screen.getByText('*')).toHaveAttribute('aria-hidden', 'true')
+  })
 })
