@@ -589,11 +589,15 @@ async function comparisonRange(
 }
 
 function comparisonRefused(kind: 'not-found' | 'revision-not-found' | 'no-draft'): Error {
-  if (kind === 'revision-not-found')
-    return notFound('That revision does not exist for this document')
-  if (kind === 'no-draft') return notFound('This document has no draft to compare with')
-  /* v8 ignore next -- the authorizer has already loaded this document. */
-  return notFound('Document not found')
+  switch (kind) {
+    case 'revision-not-found':
+      return notFound('That revision does not exist for this document')
+    case 'no-draft':
+      return notFound('This document has no draft to compare with')
+    /* v8 ignore next 2 -- the authorizer has already loaded this document. */
+    case 'not-found':
+      return notFound('Document not found')
+  }
 }
 
 function readBase(value: string | null | undefined): RevisionId | null {

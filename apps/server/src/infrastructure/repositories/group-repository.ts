@@ -75,6 +75,7 @@ export function createGroupRepository(db: DrizzleClient): GroupRepository {
         .select({ children: count() })
         .from(groups)
         .where(eq(groups.parentId, id))
+      /* v8 ignore next -- an aggregate without GROUP BY always yields exactly one row; the fallback only satisfies noUncheckedIndexedAccess. */
       return rows[0]?.children ?? 0
     },
 

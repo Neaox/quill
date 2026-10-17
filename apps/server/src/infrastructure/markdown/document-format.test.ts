@@ -584,3 +584,44 @@ describe('createDocumentFormat: retitle', () => {
     expect(renamed.frontMatter).toEqual({ id: DOC, title: 'Recovered' })
   })
 })
+
+describe('createDocumentFormat: compare', () => {
+  const context = { linkTitles: new Map() }
+
+  it('draws an unchanged SVG drawing from the markup it was handed', () => {
+    const url = '/api/attachments/0b6b0d2c-7f7e-4a39-8a8a-4a5f6d0c1a11'
+    const compared = format.compare({
+      before: `![The loop](${url})\n\nBefore.\n`,
+      after: `![The loop](${url})\n\nAfter.\n`,
+      context: {
+        ...context,
+        drawings: new Map([[url, { sha256: 'a', markup: '<svg viewBox="0 0 1 1"><rect/></svg>' }]]),
+      },
+    })
+    expect(compared.html).toContain('<svg viewBox="0 0 1 1"')
+  })
+
+  it('names who wrote each change of a draft that has a record, and none without one', () => {
+    const before = 'Kept.\n'
+    const previous = draftOf(before)
+    const next = draftOf('Kept.\n\nAdded by Ada.\n')
+    const authorship = format.stampAuthorship({
+      previous,
+      next,
+      authorship: undefined,
+      by: 'ada',
+      at: '2026-01-01T00:00:00.000Z',
+    })
+    const after = 'Kept.\n\nAdded by Ada.\n'
+
+    const stamped = format.compare({ before, after, context, draft: next, authorship })
+    expect(stamped.changes.map(({ revertible, author }) => ({ revertible, author }))).toEqual([
+      { revertible: true, author: { userId: 'ada', at: '2026-01-01T00:00:00.000Z' } },
+    ])
+
+    const unrecorded = format.compare({ before, after, context, draft: next })
+    expect(unrecorded.changes.map(({ revertible, author }) => ({ revertible, author }))).toEqual([
+      { revertible: true },
+    ])
+  })
+})

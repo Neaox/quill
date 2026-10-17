@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import type { DocumentId } from '@quill/domain'
+import { createGrant } from '@quill/application'
+import type { DocumentId, WorkspaceId } from '@quill/domain'
 
 import { createServerHarness } from '../test-support/harness.ts'
 import type { ServerHarness } from '../test-support/harness.ts'
@@ -178,5 +179,38 @@ describe('GET /api/home: what is relevant to the person', () => {
     const body = (await home(outsider)).json()
     expect(body.jumpBackIn).toEqual([])
     expect(body.stats).toEqual([])
+  })
+})
+
+describe('GET /api/home: a workspace with nothing in it', () => {
+  it('is counted, with no time of last change', async () => {
+    const empty = await harness.deps.uow.repos.workspaces.create({
+      id: harness.deps.ids.uuid() as WorkspaceId,
+      unitId: tenancy.unitId,
+      name: 'Empty',
+      slug: 'empty',
+      now: harness.clock.now(),
+    })
+    const granted = await createGrant(harness.deps, {
+      principalKind: 'user',
+      principalId: tenancy.outsider,
+      scopeKind: 'workspace',
+      scopeId: empty.id,
+      role: 'viewer',
+      effect: 'allow',
+      createdBy: tenancy.admin,
+    })
+    expect(granted.kind).toBe('created')
+
+    const body = (await home(outsider)).json()
+
+    expect(body.stats).toEqual([
+      expect.objectContaining({
+        workspaceId: empty.id,
+        documentCount: 0,
+        draftCount: 0,
+        updatedAt: null,
+      }),
+    ])
   })
 })

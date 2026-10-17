@@ -79,6 +79,7 @@ export function createNotificationRepository(db: DrizzleClient): NotificationRep
         .select({ unread: sql<number>`count(*)::int` })
         .from(notifications)
         .where(and(eq(notifications.recipientUserId, userId), isNull(notifications.readAt)))
+      /* v8 ignore next -- an aggregate without GROUP BY always yields exactly one row; the fallback only satisfies noUncheckedIndexedAccess. */
       return row?.unread ?? 0
     },
 

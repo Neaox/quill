@@ -343,6 +343,7 @@ export const TreeNodeSchema = Type.Recursive(
 
 /** The most documents one page of a parent's children holds. */
 export const MAX_CHILDREN_PAGE = 200
+export const DEFAULT_CHILDREN_PAGE = 50
 
 export const TreeChildrenQuerySchema = Type.Object({
   collectionId: Type.String({ minLength: 1 }),
@@ -350,7 +351,9 @@ export const TreeChildrenQuerySchema = Type.Object({
   parentId: Type.Optional(Type.String({ minLength: 1 })),
   /** Where the page resumes: the `next` of the page before it, which is opaque. */
   cursor: Type.Optional(Type.String({ minLength: 1, maxLength: 200 })),
-  limit: Type.Optional(Type.Integer({ minimum: 1, maximum: MAX_CHILDREN_PAGE, default: 50 })),
+  limit: Type.Optional(
+    Type.Integer({ minimum: 1, maximum: MAX_CHILDREN_PAGE, default: DEFAULT_CHILDREN_PAGE }),
+  ),
 })
 
 /** One entry of a navigation tree that opens a level at a time (ADR-049). */

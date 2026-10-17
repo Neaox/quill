@@ -221,6 +221,7 @@ export function reviewRoutes(deps: AppDependencies): FastifyPluginAsync {
               'Everyone asked to review needs to be able to view this document',
               { reviewers: result.reviewers },
             )
+          /* v8 ignore next 6 -- the body schema already bounds the list to 1..MAX_REVIEWERS, and de-duplicating keeps at least one. */
           case 'invalid-reviewers':
             throw unprocessable(
               'invalid_reviewers',

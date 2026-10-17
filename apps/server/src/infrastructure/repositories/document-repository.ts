@@ -227,11 +227,13 @@ export function createDocumentRepository(db: DrizzleClient): DocumentRepository 
         .from(documents)
         .where(inArray(documents.parentId, [...parentIds]))
         .groupBy(documents.parentId)
-      return new Map(
-        rows.flatMap(({ parentId, count: total }) =>
-          parentId === null ? [] : [[parentId as DocumentId, total] as const],
-        ),
-      )
+      const counts = new Map<DocumentId, number>()
+      for (const { parentId, count: total } of rows) {
+        /* v8 ignore next -- the `IN` filter above never matches a null parent; the guard narrows the column's type. */
+        if (parentId === null) continue
+        counts.set(parentId as DocumentId, total)
+      }
+      return counts
     },
 
     async listByIds(ids: readonly DocumentId[]): Promise<readonly DocumentRow[]> {

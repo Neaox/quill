@@ -211,4 +211,32 @@ describe('DocumentRepository', () => {
     await documents.delete(DOC)
     expect(await documents.findById(DOC)).toBeNull()
   })
+
+  it('counts the children of each parent named, and omits a parent with none', async () => {
+    const childOf = (id: string, seed: number) => ({
+      ...baseInput(now),
+      id: documentId(id),
+      shortId: aShortId(seed),
+      parentId: DOC,
+      slug: `child-${seed}`,
+      path: `/getting-started/child-${seed}`,
+    })
+    const CHILDLESS = documentId('00000000-0000-4000-8000-0000000000d9')
+    await documents.create(baseInput(now))
+    await documents.create({
+      ...baseInput(now),
+      id: CHILDLESS,
+      shortId: aShortId(9),
+      slug: 'solo',
+      path: '/solo',
+    })
+    await documents.create(childOf('00000000-0000-4000-8000-0000000000d2', 2))
+    await documents.create(childOf('00000000-0000-4000-8000-0000000000d3', 3))
+
+    expect(await documents.countChildren([DOC, CHILDLESS])).toEqual(new Map([[DOC, 2]]))
+  })
+
+  it('counts no children for no parents without asking the database', async () => {
+    expect(await documents.countChildren([])).toEqual(new Map())
+  })
 })

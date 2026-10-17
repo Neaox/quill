@@ -130,6 +130,41 @@ describe('groups', () => {
     expect(blank.statusCode).toBe(400)
   })
 
+  it('refuses to nest a group inside a group of another unit', async () => {
+    const elsewhere = await harness.deps.uow.repos.units.create({
+      id: harness.deps.ids.uuid(),
+      parentId: null,
+      name: 'Elsewhere',
+      slug: 'elsewhere',
+      label: 'company',
+      now: harness.clock.now(),
+    })
+    const foreign = await call('POST', '/api/groups', admin, {
+      unitId: elsewhere.id,
+      name: 'Foreign parent',
+    })
+    expect(foreign.statusCode).toBe(201)
+
+    const nested = await call('POST', '/api/groups', admin, {
+      unitId: tenancy.unitId,
+      name: 'Misplaced child',
+      parentGroupId: foreign.json().id,
+    })
+
+    expect(nested.statusCode).toBe(409)
+    expect(nested.json().error.code).toBe('group_parent_in_another_unit')
+  })
+
+  it('refuses to rename a group to a name its siblings already use', async () => {
+    await createGroup('Taken name')
+    const id = await createGroup('Wants that name')
+
+    const renamed = await call('PATCH', `/api/groups/${id}`, admin, { name: 'taken name' })
+
+    expect(renamed.statusCode).toBe(409)
+    expect(renamed.json().error.code).toBe('group_name_taken')
+  })
+
   it('renames, and answers 404 for a group that is not there', async () => {
     const id = await createGroup('Before')
     const renamed = await call('PATCH', `/api/groups/${id}`, admin, { name: 'After' })
