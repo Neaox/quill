@@ -76,7 +76,7 @@ describe('the notifications bell', () => {
     await userEvent.click(await screen.findByRole('button', { name: 'Notifications' }))
 
     const panel = await screen.findByRole('dialog', { name: 'Notifications' })
-    expect(within(panel).getByText('You’re all caught up.')).toBeInTheDocument()
+    expect(await within(panel).findByText('You’re all caught up.')).toBeInTheDocument()
     await expectNoAccessibilityViolations(panel)
   })
 
@@ -91,7 +91,7 @@ describe('the notifications bell', () => {
     await userEvent.click(await screen.findByRole('button', { name: 'Notifications, 1 unread' }))
     const panel = await screen.findByRole('dialog', { name: 'Notifications' })
 
-    const links = within(panel).getAllByRole('link')
+    const links = await within(panel).findAllByRole('link')
     expect(links[0]).toHaveTextContent('Grace asked you to review Release notes')
     expect(links[0]).toHaveAttribute('href', '/w/engineering/d/release-notes-k7m3q9v2rt')
     expect(links[0]).toHaveTextContent('Unread')
@@ -115,7 +115,7 @@ describe('the notifications bell', () => {
 
     await userEvent.click(await screen.findByRole('button', { name: 'Notifications, 2 unread' }))
     const panel = await screen.findByRole('dialog', { name: 'Notifications' })
-    await userEvent.click(within(panel).getByRole('button', { name: 'Mark all as read' }))
+    await userEvent.click(await within(panel).findByRole('button', { name: 'Mark all as read' }))
 
     await waitFor(() => {
       expect(marked).toEqual([{}])
@@ -134,7 +134,7 @@ describe('the notifications bell', () => {
 
     await userEvent.click(await screen.findByRole('button', { name: 'Notifications, 1 unread' }))
     const panel = await screen.findByRole('dialog', { name: 'Notifications' })
-    await userEvent.click(within(panel).getByRole('link', { name: /Release notes/u }))
+    await userEvent.click(await within(panel).findByRole('link', { name: /Release notes/u }))
 
     await waitFor(() => {
       expect(marked).toEqual([{ ids: ['1'] }])

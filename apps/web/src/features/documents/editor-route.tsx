@@ -22,9 +22,6 @@ import {
   ApiError,
   useDocument,
   useDocumentEnvelope,
-  useDraft,
-  useDraftClient,
-  useLockClient,
   useMe,
   useOrganisationEmoji,
   useOrganisationLabels,
@@ -34,6 +31,8 @@ import {
   type DocumentPermissions,
   type MergeRequired,
 } from '../../lib/api/index.ts'
+import { useDraft } from '../../lib/api/drafts.ts'
+import { useDraftClient, useLockClient } from '../../lib/api/editor-clients.ts'
 // By its own path rather than through `lib/api`'s barrel: see the note there.
 // Uploading is the editor's alone, and the reading route pays for whatever the
 // barrel reaches.

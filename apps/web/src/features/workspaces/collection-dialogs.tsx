@@ -2,13 +2,13 @@ import { useState, type FormEvent } from 'react'
 
 import { Button, Dialog, Input } from '@quill/ui'
 
+import { ApiError } from '../../lib/api/index.ts'
 import {
-  ApiError,
   readDocumentCount,
   useCreateCollection,
   useDeleteCollection,
   useRenameCollection,
-} from '../../lib/api/index.ts'
+} from '../../lib/api/collections.ts'
 import { FormError } from '../../lib/forms/form-error.tsx'
 import { ConfirmDeleteDialog } from '../dialogs/confirm-delete-dialog.tsx'
 import { RenameDialog } from '../dialogs/rename-dialog.tsx'

@@ -12,12 +12,8 @@ import {
   tv,
 } from '@quill/ui'
 
-import {
-  ApiError,
-  useDraft,
-  useRenderedDocument,
-  type ComparisonRange,
-} from '../../lib/api/index.ts'
+import { ApiError, useRenderedDocument, type ComparisonRange } from '../../lib/api/index.ts'
+import { useDraft } from '../../lib/api/drafts.ts'
 import { isDocumentTree, readDraftContent } from '../../lib/documents/draft-content.ts'
 import { summariseDraft, type DraftSummary } from '../../lib/documents/draft-summary.ts'
 import type { LabelledRevision } from '../../lib/documents/revision-labels.ts'
