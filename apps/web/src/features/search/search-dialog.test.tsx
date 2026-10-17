@@ -1,11 +1,12 @@
 import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
 import { expectNoAccessibilityViolations } from '@quill/ui/testing/axe'
 
 import { renderApp } from '../../lib/api/render-app.tsx'
 import { errorResponse, jsonResponse, type FakeRoutes } from '../../lib/api/testing.ts'
+import { registerEditorCommands } from './editor-commands.ts'
 
 const me = () =>
   jsonResponse(200, {
@@ -523,6 +524,7 @@ describe('the search palette', () => {
         'Theme',
         'Labels and emoji',
         'Layout',
+        'Links',
         'Secrets and sign-in',
         'Units and workspaces',
       ])
@@ -535,6 +537,33 @@ describe('the search palette', () => {
         expect(router.state.location.pathname).toBe('/admin/settings/theme')
       })
       expect(screen.queryByRole('dialog', { name: 'Search documentation' })).not.toBeInTheDocument()
+    })
+
+    it('offer what the open editor can do at the cursor, first, and run it', async () => {
+      const run = vi.fn<() => void>()
+      const unregister = registerEditorCommands(() => [
+        { id: 'editor:link-show-card', label: 'Show link as card', keywords: ['link'], run },
+      ])
+      try {
+        await openPalette()
+
+        const group = await screen.findByRole('group', { name: 'At the cursor' })
+        expect(groupLabels()[0]).toBe('At the cursor')
+        await userEvent.click(within(group).getByRole('option', { name: 'Show link as card' }))
+
+        expect(run).toHaveBeenCalledOnce()
+        expect(
+          screen.queryByRole('dialog', { name: 'Search documentation' }),
+        ).not.toBeInTheDocument()
+      } finally {
+        unregister()
+      }
+    })
+
+    it('offer nothing at the cursor when no editor is open', async () => {
+      await openPalette()
+      await screen.findByRole('option', { name: 'Home' })
+      expect(screen.queryByRole('group', { name: 'At the cursor' })).not.toBeInTheDocument()
     })
 
     it('sign out from anywhere', async () => {

@@ -288,6 +288,7 @@ describe('the administrator’s set-up checklist', () => {
       ['Theme', '/admin/settings/theme'],
       ['Labels and emoji', '/admin/settings/labels'],
       ['Layout', '/admin/settings/layout'],
+      ['Links', '/admin/settings/links'],
       ['Secrets and sign-in', '/admin/settings/secrets'],
       ['Units and workspaces', '/admin/organisation'],
     ])

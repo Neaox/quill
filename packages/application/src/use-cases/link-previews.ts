@@ -29,7 +29,6 @@ import type {
   LinkPreviewRateLimits,
   LinkPreviewResolver,
 } from '../ports/link-previews.ts'
-import { PUBLIC_PREVIEW_SCOPE } from '../ports/link-previews.ts'
 import type { LinkPreviewRow, UnitOfWork } from '../ports/persistence.ts'
 import type { Clock, IdGenerator } from '../ports/system.ts'
 import { EVENT_PAYLOAD_VERSION, LINK_PREVIEW_REQUESTED } from './events.ts'
@@ -271,18 +270,21 @@ export interface LinkPreviewReading {
 
 /**
  * The best row among those found for one key: a stored preview over anything
- * else, the audience's own over the shared one, and only then a failure. A
- * pending request in the shared scope is not an answer for a private one.
+ * else, then whatever the audience's own scope says (a failure, a pending
+ * request).
+ *
+ * Only the audience's **own scope** is ever read (ADR-042, security review
+ * S10). A preview is a snapshot of what one fetch found under one policy, and
+ * a restrictive policy must never be shown what a looser one found: the looser
+ * fetch may have followed a redirect to a host this audience blocks, or
+ * collected a picture its mode forbids. The cost is one fetch per distinct
+ * policy rather than one for the instance, which only organisations that
+ * restrict links pay.
  */
-function choose(rows: readonly LinkPreviewRow[], own: string): LinkPreviewRow | null {
-  const usable = rows.filter(
-    (row) => row.state === 'ready' && storedPreviewReader.read(row.document) !== null,
-  )
+function choose(rows: readonly LinkPreviewRow[]): LinkPreviewRow | null {
   return (
-    usable.find((row) => row.scope === own) ??
-    usable.find((row) => row.scope === PUBLIC_PREVIEW_SCOPE) ??
-    rows.find((row) => row.scope === own) ??
-    rows.find((row) => row.scope === PUBLIC_PREVIEW_SCOPE && row.state === 'failed') ??
+    rows.find((row) => row.state === 'ready' && storedPreviewReader.read(row.document) !== null) ??
+    rows[0] ??
     null
   )
 }
@@ -424,12 +426,7 @@ async function read(
   })
   const unique = [...new Set(lookups)]
   const rows =
-    unique.length === 0
-      ? []
-      : await deps.uow.repos.linkPreviews.findMany(
-          [...new Set([audience.scope, PUBLIC_PREVIEW_SCOPE])],
-          unique,
-        )
+    unique.length === 0 ? [] : await deps.uow.repos.linkPreviews.findMany([audience.scope], unique)
   const rowsByKey = Map.groupBy(rows, (row) => row.key)
   const now = deps.clock.now()
 
@@ -437,11 +434,7 @@ async function read(
   const readings = asked.map(({ url, key }): LinkPreviewReading => {
     if (key === null) return { url, key, view: { state: 'unavailable', reason: 'invalid_url' } }
     if (!audience.policy.permits(new URL(key))) return { url, key, view: { state: 'blocked' } }
-    const { view, wantsFetch } = classify(
-      choose(rowsByKey.get(key) ?? [], audience.scope),
-      audience,
-      now,
-    )
+    const { view, wantsFetch } = classify(choose(rowsByKey.get(key) ?? []), audience, now)
     if (wantsFetch) wanted.add(key)
     return { url, key, view }
   })
@@ -470,12 +463,9 @@ export async function refreshLinkPreview(
   if (!deps.limits.allowRefresh(command.userId)) return err('rate_limited')
 
   await queueFetches(deps, { userId: command.userId, audience, keys: [key], force: true })
-  const rows = await deps.uow.repos.linkPreviews.findMany(
-    [...new Set([audience.scope, PUBLIC_PREVIEW_SCOPE])],
-    [key],
-  )
+  const rows = await deps.uow.repos.linkPreviews.findMany([audience.scope], [key])
   // The refresh is queued, so say so, whatever the old row says: pending, or the old preview marked stale.
-  const row = choose(rows, audience.scope)
+  const row = choose(rows)
   const preview = row?.state === 'ready' ? storedPreviewReader.read(row.document) : null
   return ok(
     preview === null
@@ -525,8 +515,12 @@ export async function fetchLinkPreview(
   const key = normaliseUrl(event.url)
   if (key === null) return
 
+  // The scope is the asker's *current* one, not the one written on the event: if the
+  // organisation's policy changed while this waited, what comes back was fetched under
+  // the new rules and must be stored, and shown, only where those rules apply.
   const audience = await deps.audiences.forPerson(event.requestedBy)
-  const decision = deps.limits.allowFetch({ host: new URL(key).host, scope: event.scope })
+  const scope = audience.scope
+  const decision = deps.limits.allowFetch({ host: new URL(key).host, scope })
   if (!decision.allowed) throw new LinkPreviewRetryLater('rate limit', decision.retryAfterMs)
 
   const result = await deps.resolver.resolve(key, { policy: audience.policy })
@@ -538,13 +532,13 @@ export async function fetchLinkPreview(
   await deps.uow.run(async (repos) => {
     if (result.ok) {
       await repos.linkPreviews.putReady({
-        scope: event.scope,
+        scope,
         key,
         document: toStoredPreview(result.value),
         now,
       })
     } else {
-      await repos.linkPreviews.putFailure({ scope: event.scope, key, failure: result.error, now })
+      await repos.linkPreviews.putFailure({ scope, key, failure: result.error, now })
     }
   })
 }

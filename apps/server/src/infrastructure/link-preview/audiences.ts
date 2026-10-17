@@ -17,12 +17,16 @@ import type { LinkPreviewPolicy, UserId } from '@quill/domain'
  * shown it, and changing the policy moves an organisation to a new scope with
  * no migration and no way to read what the old one stored.
  *
- * Where a person's policy comes from (the organisation's settings, once the
- * settings screens exist) is the `policyFor` function. Until then it is the
- * default, which is what every organisation gets.
+ * Where a person's policy comes from (the organisation's settings; see
+ * `application/link-settings.ts`) is the `policyFor` function, and the public
+ * site's is `publicPolicy`. The public site is held to the same rules as the
+ * members and reads the same scope, so it can never draw a preview fetched
+ * under a looser policy than the organisation's own. With no function given,
+ * every organisation gets the default.
  */
 
 export type PolicyFor = (userId: UserId) => Promise<LinkPreviewPolicy>
+export type PublicPolicy = () => Promise<LinkPreviewPolicy>
 
 const SCOPE_PREFIX = 'policy:'
 const REMEMBERED_POLICIES = 64
@@ -45,6 +49,7 @@ const CLOSED: LinkPreviewPolicy = { mode: 'off', allow: [], block: [] }
 
 export function createLinkPreviewAudiences(
   policyFor: PolicyFor = async () => DEFAULT_LINK_PREVIEW_POLICY,
+  publicPolicy: PublicPolicy = async () => DEFAULT_LINK_PREVIEW_POLICY,
 ): LinkPreviewAudiences {
   // Compiling is cheap but not free, and most people share one of a few policies.
   const compiled = new Map<string, LinkPreviewAudience>()
@@ -73,6 +78,6 @@ export function createLinkPreviewAudiences(
     async forPerson(userId) {
       return audienceFor(await policyFor(userId))
     },
-    forPublic: () => audienceFor(DEFAULT_LINK_PREVIEW_POLICY),
+    forPublic: async () => audienceFor(await publicPolicy()),
   }
 }

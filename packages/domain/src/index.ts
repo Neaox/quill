@@ -173,6 +173,7 @@ export {
   LINK_PREVIEW_MODES,
   MAX_POLICY_PATTERNS,
   compileLinkPolicy,
+  describePatternError,
   parseUrlPattern,
 } from './link-preview/link-policy.ts'
 export type {
@@ -195,13 +196,19 @@ export {
   CARD_LAYOUTS,
   DEFAULT_CARD_LAYOUT,
   LINK_DISPLAYS,
+  ORGANISATION_DEFAULT_DISPLAYS,
   DEFAULT_LINK_DISPLAY,
   UNCHOSEN,
   isBlockDisplay,
   isCardLayout,
   isLinkDisplay,
 } from './link-preview/display.ts'
-export type { CardLayout, LinkChoice, LinkDisplay } from './link-preview/display.ts'
+export type {
+  CardLayout,
+  LinkChoice,
+  LinkDisplay,
+  OrganisationDefaultDisplay,
+} from './link-preview/display.ts'
 export {
   EMBED_PROVIDERS,
   EMBED_RATIOS,

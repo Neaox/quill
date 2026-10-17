@@ -3371,6 +3371,20 @@ html.lightbox-open {
   outline-offset: 2px;
 }
 
+/*
+ * A run of compact links is a list of references, so the lines sit closer than paragraphs do,
+ * and a line is never split across a printed page.
+ */
+.prose p:has(> a.link-compact) + p:has(> a.link-compact) {
+  margin-top: 0.4em;
+}
+
+@media print {
+  .prose a.link-compact {
+    break-inside: avoid;
+  }
+}
+
 .prose .link-compact-title {
   min-inline-size: 0;
   overflow: hidden;

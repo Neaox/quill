@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
 import { commandGroups, matchCommands, paletteCommands } from './commands.ts'
 
@@ -26,6 +26,7 @@ describe('the palette’s commands', () => {
       'Theme',
       'Labels and emoji',
       'Layout',
+      'Links',
       'Secrets and sign-in',
       'Units and workspaces',
       'Sign out',
@@ -48,6 +49,7 @@ describe('the palette’s commands', () => {
       'Theme',
       'Labels and emoji',
       'Layout',
+      'Links',
       'Secrets and sign-in',
     ])
   })
@@ -68,5 +70,69 @@ describe('the palette’s commands', () => {
 
     expect(groups.map((group) => group.label)).toEqual(['Go to', 'Account'])
     expect(groups[1]?.options).toEqual([{ id: 'command:sign-out', label: 'Sign out' }])
+  })
+
+  describe('from the open editor', () => {
+    const editor = [
+      {
+        id: 'editor:link-show-card',
+        label: 'Show link as card',
+        keywords: ['link', 'preview'],
+        run: () => undefined,
+      },
+      {
+        id: 'editor:link-show-inline',
+        label: 'Show link as inline',
+        keywords: ['link'],
+        run: () => undefined,
+      },
+    ]
+    const withEditor = (query: string) =>
+      matchCommands(
+        paletteCommands({ isInstanceAdmin: false, workspaces: WORKSPACES, editor }),
+        query,
+      )
+
+    it('are listed first and before anything is typed, since they are about where the cursor is', () => {
+      expect(withEditor('').map((command) => command.label)).toEqual([
+        'Show link as card',
+        'Show link as inline',
+        'Home',
+        'Sign out',
+      ])
+    })
+
+    it('are found by what they do and by the words an author would type', () => {
+      expect(withEditor('card').map((command) => command.label)).toEqual(['Show link as card'])
+      expect(withEditor('preview').map((command) => command.label)).toEqual(['Show link as card'])
+    })
+
+    it('sit in a group of their own, ahead of the places to go', () => {
+      const groups = commandGroups(withEditor(''))
+      expect(groups.map((group) => group.label)).toEqual(['At the cursor', 'Go to', 'Account'])
+      expect(groups[0]?.options.map((option) => option.label)).toEqual([
+        'Show link as card',
+        'Show link as inline',
+      ])
+    })
+
+    it('run what the editor gave them', () => {
+      const run = vi.fn<() => void>()
+      const [command] = matchCommands(
+        paletteCommands({
+          isInstanceAdmin: false,
+          workspaces: [],
+          editor: [{ id: 'x', label: 'Do x', keywords: [], run }],
+        }),
+        'do x',
+      )
+      if (command?.action.kind !== 'editor') throw new Error('expected an editor command')
+      command.action.run()
+      expect(run).toHaveBeenCalledOnce()
+    })
+
+    it('are absent when no editor is open', () => {
+      expect(labels('card', true)).toEqual([])
+    })
   })
 })

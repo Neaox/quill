@@ -1,3 +1,4 @@
+import type { LinkDisplay } from '@quill/markdown'
 import { createContext, useContext } from 'react'
 
 /**
@@ -29,10 +30,12 @@ export interface EditorLinkPreview {
   readonly status?: EditorLinkStatus | undefined
   /** From a connector, for a permalink to lines of source. */
   readonly code?: EditorLinkCode | undefined
-  /** Which layer answered; `internal` is another document of this instance, drawn with a document's icon. */
-  readonly layer?: string | undefined
   /** Present when the link is a file rather than a page: drawn with an icon for its type, its type and size. */
   readonly file?: EditorLinkFile | undefined
+  /** Which layer answered (`internal`, `connector`, `oembed`, `open-graph`, `twitter-card`, `page`); `internal` is another document of this instance, drawn with a document's icon, and the layer feeds the toolbar's status line. */
+  readonly layer?: string | undefined
+  /** When the page was fetched, as an ISO moment. */
+  readonly fetchedAt?: string | undefined
 }
 
 export interface EditorLinkStatus {
@@ -71,12 +74,34 @@ export interface EditorLinkImage {
 /** Where a stored picture is served from. */
 export type LinkImageUrl = (image: EditorLinkImage) => string
 
+/** Where the answer for an address stands: what the toolbar's status line says. */
+export type LinkPreviewState = 'ready' | 'pending' | 'unavailable' | 'blocked'
+
+/**
+ * How asking for a fresh fetch went. `started` means it is on its way; the
+ * others are answers the author is told quietly, never errors in the page.
+ */
+export type LinkRefreshOutcome = 'started' | 'rate_limited' | 'blocked' | 'failed'
+
 export interface LinkPreviewSource {
   /** The preview for an address, or null while there is none (still coming, blocked, unavailable). */
   preview(url: string): EditorLinkPreview | null
   /** Says that a card is showing this address, so the application finds out about it. */
   request(url: string): void
   readonly imageUrl: LinkImageUrl
+  /**
+   * Where the answer for an address stands, or null while nobody has asked yet.
+   * Absent when the application cannot say, and then the toolbar has no status line.
+   */
+  state?(url: string): LinkPreviewState | null
+  /** Asks for a fresh fetch. Never rejects: how it went is the answer. Absent when refreshing is not offered. */
+  refresh?(url: string): Promise<LinkRefreshOutcome>
+  /** True while a refresh is in flight. */
+  readonly refreshing?: boolean | undefined
+  /** What a link looks like when its author chose nothing: the organisation's default. */
+  readonly defaultDisplay?: LinkDisplay | undefined
+  /** False when the organisation draws no previews on the public site and share links. */
+  readonly publicSite?: boolean | undefined
 }
 
 /** No lookup at all: every card is drawn from its address. */

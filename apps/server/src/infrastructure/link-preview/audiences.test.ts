@@ -13,10 +13,37 @@ const audienceOf = (policy: LinkPreviewPolicy) =>
   createLinkPreviewAudiences(async () => policy).forPerson(ADA)
 
 describe('createLinkPreviewAudiences', () => {
-  it('reads for the public under the default policy, whatever a person is configured with', () => {
-    const audience = createLinkPreviewAudiences(async () => ({ ...rich, mode: 'off' })).forPublic()
+  it('reads for the public under the default policy when nothing says otherwise', async () => {
+    const audience = await createLinkPreviewAudiences(async () => ({
+      ...rich,
+      mode: 'off',
+    })).forPublic()
     expect(audience.scope).toBe(PUBLIC_PREVIEW_SCOPE)
     expect(audience.policy.images).toBe(true)
+  })
+
+  it('reads for the public under the policy it is given, in the scope of whoever made the previews', async () => {
+    const policy: LinkPreviewPolicy = { ...rich, allow: ['docs.example'] }
+    const audiences = createLinkPreviewAudiences(
+      async () => policy,
+      async () => policy,
+    )
+    const publicAudience = await audiences.forPublic()
+    expect(publicAudience.scope).toBe((await audiences.forPerson(ADA)).scope)
+    expect(publicAudience.scope).not.toBe(PUBLIC_PREVIEW_SCOPE)
+    expect(publicAudience.policy.permits(new URL('https://other.example/'))).toBe(false)
+  })
+
+  it('draws nothing on the public site when the public policy permits nothing', async () => {
+    const audiences = createLinkPreviewAudiences(
+      async () => rich,
+      async () => ({ ...rich, mode: 'off' }),
+    )
+    const publicAudience = await audiences.forPublic()
+    expect(publicAudience.policy.permits(new URL('https://anything.example/'))).toBe(false)
+    expect((await audiences.forPerson(ADA)).policy.permits(new URL('https://a.example/'))).toBe(
+      true,
+    )
   })
 
   it('gives everyone the shared scope and the default policy until a policy is configured', async () => {

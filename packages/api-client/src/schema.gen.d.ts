@@ -3659,6 +3659,13 @@ export interface components {
                 };
                 locked: boolean;
             };
+            linkPreviews?: {
+                allow: string[];
+                block: string[];
+                defaultDisplay: "url" | "inline" | "compact" | "card";
+                mode: "off" | "text" | "rich";
+                publicSite: boolean;
+            };
             logo?: {
                 alt: string;
                 hash: string;

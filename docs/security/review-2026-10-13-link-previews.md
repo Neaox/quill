@@ -82,7 +82,7 @@ An organisation's block list that is evaluated only against the pasted URL is by
 
 **Implemented.** `UrlPermit` is asked on **every** hop and every request, including each image and oEmbed fetch, and the pasted URL is checked on its own before any provider is asked. The domain package holds the policy grammar (hosts, `*.` subdomains, path prefixes, no regular expressions) with tests for the usual bypasses: trailing dot, upper case, explicit port, credentials in the URL, decimal, hex and octal IP forms, dot segments, encoded dot segments, and doubled slashes.
 
-**Open.** Storage, the settings screens and audit are step 5. Enforcement **at read time** is specified in the ADR and must be built with step 3: a cached preview must be re-checked against the viewing organisation's policy when shown, or a policy change would not take effect until the entry expired.
+**Open.** Storage, the settings screens and audit are step 5 (built; see S10). Enforcement **at read time** is specified in the ADR and must be built with step 3: a cached preview must be re-checked against the viewing organisation's policy when shown, or a policy change would not take effect until the entry expired.
 
 ### S9. URL length (Low, fixed)
 
@@ -356,3 +356,27 @@ oxlint                                  no errors in the new code
 ```
 
 The repository-wide `pnpm check` is red for reasons that predate this work (committed scratch files in `e2e/`, type errors in `packages/markdown`, lint in `packages/ui`).
+
+## Addendum: step 5 (the organisation's settings, S10)
+
+**Date:** 2026-10-17. **Scope:** `packages/application/src/settings/link-previews.ts`, `apps/server/src/application/link-settings.ts`, `apps/server/src/infrastructure/link-preview/audiences.ts`, `packages/application/src/use-cases/link-previews.ts`, the settings screen.
+
+### S10. A restrictive policy must never show a preview fetched under a looser one (Medium, fixed)
+
+The first design let an audience under a restrictive policy read the shared `public` scope as well as its own, on the reasoning that a preview fetched under the default policy is the same for everyone. It is not. A fetch under the default policy may have followed a redirect to a host a restrictive policy blocks (a page on an allowed host that redirects to a blocked one; the preview then describes the blocked host), or kept a thumbnail a `text`-only policy forbids, and the public site, which read the shared scope, would have drawn it for an organisation that had since turned previews off or restricted them.
+
+Fixed, and held by tests across scopes (`use-cases/link-previews.test.ts`, `routes/link-settings.integration.test.ts`):
+- **An audience reads only its own scope.** There is no fallback to `public` for a restrictive audience.
+- **The public site and share links read the organisation's scope**, not the shared one: `forPublic` is the organisation's policy, or a policy that permits nothing when it has turned previews off there.
+- **A fetch is stored under the scope of the policy in force when it ran**, not the scope written on the queued event, so a policy changed while a fetch waited cannot put a looser result in a stricter scope (or the reverse).
+- **An unreadable settings file fails closed**: previews off everywhere, public site included.
+- **A policy that does not compile fails closed** (previews off, in a scope of its own), as before; and the settings API refuses a pattern that does not parse, naming it, so a mistyped block entry is never silently skipped.
+
+The integration test saves settings through the real API and fetches through the real audiences: a preview fetched under the loose policy is drawn for members and the public site; after the policy is tightened (text only, a block list, or off) neither draws it, a new fetch runs under the tighter policy and is stored where only that policy reads, and loosening again finds the earlier loose preview still there, fresh, with no new fetch.
+
+### Other checks
+
+- **Who may change it.** `PUT /api/settings/organisation` is instance administration (a test pins a `403` for an editor); reading it needs only a session, and it carries no secret.
+- **Audit.** `settings.link_previews.changed` records the mode, the two switches and the number of patterns in each list, never a pattern; the revision beside it holds the whole before and after.
+- **Input.** At most 500 patterns of at most 300 characters each, parsed by the grammar that has no regular expressions (no backtracking), unknown fields refused.
+- **No new outbound path.** The settings change what the existing open-web client is asked to fetch; it adds no request of its own.

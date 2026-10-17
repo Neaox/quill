@@ -37,6 +37,7 @@ import {
 import { createWarmLinkPreviewsOnPublishConsumer } from './infrastructure/outbox/warm-link-previews-on-publish.ts'
 import { createInvalidatePublicSiteConsumers } from './infrastructure/outbox/invalidate-public-site.ts'
 import { createOpenWebClient } from './infrastructure/http/open-web-client.ts'
+import { linkPublicPolicy, linkSettingsPolicy } from './application/link-settings.ts'
 import { createLinkPreviewAudiences } from './infrastructure/link-preview/audiences.ts'
 import { createConnectorCredentialSource } from './infrastructure/link-preview/connectors/credentials.ts'
 import {
@@ -225,8 +226,9 @@ const faceFiles = await loadFaceFiles()
 const themeStylesheets = createThemeStylesheets({ hasher, faceFiles })
 // Link previews (ADR-042). Fetching goes through the open-web client, a second
 // instance with its own stricter limits, never the allowlisted one above, and
-// images are decoded in a child process with no environment. The policy every
-// organisation gets is the default until the settings screens exist.
+// images are decoded in a child process with no environment. What Quill may
+// fetch, and what the public site may draw, is the organisation's own setting,
+// read on each request so that a change takes effect at once.
 const openWeb = createOpenWebClient({
   userAgent: linkPreviewUserAgent(config.appUrl),
   // One log line per fetch: the host and how it went, never the path or the response.
@@ -246,7 +248,10 @@ const linkConnectors = createLinkConnectorRegistry([
   createGitHubConnector({ client: gitHubApi, clock, userAgent: connectorUserAgent }),
 ])
 const linkPreviewPorts = {
-  audiences: createLinkPreviewAudiences(),
+  audiences: createLinkPreviewAudiences(
+    () => linkSettingsPolicy(settings),
+    () => linkPublicPolicy(settings),
+  ),
   resolver: createLinkPreviewProvider({
     reader: openWeb,
     images: createImageIngestor({

@@ -64,3 +64,12 @@ export const UNCHOSEN: LinkChoice = {
 
 /** How a link with no stored choice is shown: favicon and title, quiet in running text. */
 export const DEFAULT_LINK_DISPLAY: LinkDisplay = 'inline'
+
+/**
+ * What an organisation may make the default for a link nobody chose a display
+ * for. `embed` is left out: it needs an allowlisted provider, so it is a choice
+ * about one link and never a blanket rule.
+ */
+export const ORGANISATION_DEFAULT_DISPLAYS = ['url', 'inline', 'compact', 'card'] as const
+
+export type OrganisationDefaultDisplay = (typeof ORGANISATION_DEFAULT_DISPLAYS)[number]

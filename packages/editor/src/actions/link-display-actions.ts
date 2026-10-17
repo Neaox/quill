@@ -35,10 +35,23 @@ const DISPLAY_DESCRIPTIONS = {
 
 /** A card is a block, so inside a line that cannot be split (a heading, a table cell, a placeholder) it cannot go. */
 function blockUnavailableBecause(state: EditorState): string | undefined {
-  return linkTargetAt(state) !== null && !showLinkAs('card')(state)
-    ? 'A card or compact link needs a line of its own, which this place cannot give it'
-    : undefined
+  return linkTargetAt(state) !== null && !showLinkAs('card')(state) ? NO_LINE_OF_ITS_OWN : undefined
 }
+
+/** The displays an author can choose for a link, in the order they are offered, with their words. */
+export const LINK_DISPLAY_CHOICES = (
+  ['url', 'inline', 'compact', 'card'] as const satisfies readonly (keyof typeof DISPLAY_LABELS)[]
+).map((display) => ({
+  display,
+  label: DISPLAY_LABELS[display],
+  description: DISPLAY_DESCRIPTIONS[display],
+}))
+
+export type LinkDisplayChoice = (typeof LINK_DISPLAY_CHOICES)[number]['display']
+
+/** Why a card or a compact line cannot go where the selection is; the one sentence every surface uses. */
+export const NO_LINE_OF_ITS_OWN =
+  'A card or compact link needs a line of its own, which this place cannot give it'
 
 /** An embed is a block like a card, and also needs a page that can be embedded at all. */
 function embedUnavailableBecause(state: EditorState): string | undefined {

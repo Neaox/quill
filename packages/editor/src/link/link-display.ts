@@ -1,17 +1,12 @@
-import {
-  DEFAULT_LINK_DISPLAY,
-  UNCHOSEN,
-  effectiveDisplay,
-  isBlockDisplay,
-  linkDirective,
-} from '@quill/markdown'
+import { UNCHOSEN, effectiveDisplay, isBlockDisplay, linkDirective } from '@quill/markdown'
 import type { Link, LinkChoice, LinkDisplay } from '@quill/markdown'
 import { Fragment } from '@tiptap/pm/model'
 import type { Node as PMNode } from '@tiptap/pm/model'
-import { NodeSelection, TextSelection } from '@tiptap/pm/state'
+import { NodeSelection, Selection, TextSelection } from '@tiptap/pm/state'
 import type { Command, EditorState, Transaction } from '@tiptap/pm/state'
 
 import { linkAt } from '../format/links.ts'
+import { linkDefaultDisplayOf } from './link-default-display.ts'
 import { embedHintFor } from './link-embeds.ts'
 import { markType, nodeType } from '../schema/node-type.ts'
 import { directiveAttributes, directiveName } from '../schema/directive-attributes.ts'
@@ -64,14 +59,14 @@ function modelOf(node: PMNode): Link {
   })
 }
 
-function directiveTarget(node: PMNode, from: number): LinkTarget {
+function directiveTarget(node: PMNode, from: number, fallback: LinkDisplay): LinkTarget {
   const link = modelOf(node)
   return {
     form: link.form === 'leaf' ? 'leaf' : 'text',
     from,
     to: from + node.nodeSize,
     href: link.url,
-    display: effectiveDisplay(link, DEFAULT_LINK_DISPLAY),
+    display: effectiveDisplay(link, fallback),
     node,
     link,
   }
@@ -93,12 +88,14 @@ export function linkTargetAt(state: EditorState): LinkTarget | null {
     selection.node.type.name === 'leafDirective' &&
     isLinkDirective(selection.node)
   ) {
-    return directiveTarget(selection.node, selection.from)
+    return directiveTarget(selection.node, selection.from, linkDefaultDisplayOf(state))
   }
   const { $from } = selection
   for (let depth = $from.depth; depth > 0; depth -= 1) {
     const node = $from.node(depth)
-    if (isLinkDirective(node)) return directiveTarget(node, $from.before(depth))
+    if (isLinkDirective(node)) {
+      return directiveTarget(node, $from.before(depth), linkDefaultDisplayOf(state))
+    }
   }
   const run = linkAt(state)
   return run === null
@@ -196,6 +193,15 @@ function caretInside(tr: Transaction, from: number, node: PMNode, offset: number
 }
 
 /**
+ * Whether the selection is somewhere a block display (a card, a compact line)
+ * can go: in a paragraph, which can be split around it. A heading, a table
+ * cell or a placeholder cannot, and there an inline link is as far as it goes.
+ */
+export function blockDisplayFits(state: EditorState): boolean {
+  return state.selection.$from.parent.type.name === 'paragraph'
+}
+
+/**
  * Shows the link under the selection as `display`: a plain link, an inline chip,
  * a card or an embed. Not what the link already is. A card is a block, so it
  * cannot go in a heading or a table cell: there the command is unavailable rather
@@ -263,6 +269,39 @@ export function setLinkChoice(patch: Partial<LinkChoice>): Command {
         attributes: linkDirective.serialize(model).attributes,
       }),
     )
+    return true
+  }
+}
+
+/**
+ * Runs each command that applies, one after another, each on the document the
+ * last one left, and dispatches the lot as **one** transaction, so one undo takes
+ * them all back. Answers whether any of them did something.
+ *
+ * Two commands dispatched one after the other are two history steps whenever the
+ * second does not touch the first's range, as a card replacing a link does not.
+ */
+export function inOneStep(...commands: readonly Command[]): Command {
+  return (state, dispatch) => {
+    const merged = state.tr
+    let current = state
+    let did = false
+    for (const command of commands) {
+      let produced: Transaction | null = null
+      if (command(current, (tr) => (produced = tr))) {
+        did = true
+        if (produced !== null) {
+          const tr: Transaction = produced
+          for (const step of tr.steps) merged.step(step)
+          current = current.apply(tr)
+        }
+      }
+    }
+    if (!did) return false
+    if (dispatch !== undefined) {
+      merged.setSelection(Selection.fromJSON(merged.doc, current.selection.toJSON()))
+      dispatch(merged.scrollIntoView())
+    }
     return true
   }
 }

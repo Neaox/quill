@@ -4,6 +4,7 @@ import {
   CARD_LAYOUTS,
   DEFAULT_CARD_LAYOUT,
   LINK_DISPLAYS,
+  ORGANISATION_DEFAULT_DISPLAYS,
   UNCHOSEN,
   isBlockDisplay,
   isCardLayout,
@@ -45,5 +46,12 @@ describe('the link display vocabulary', () => {
       title: null,
       description: null,
     })
+  })
+
+  it('lets an organisation default a bare link to any display that needs no provider', () => {
+    expect(ORGANISATION_DEFAULT_DISPLAYS).toEqual(['url', 'inline', 'compact', 'card'])
+    // `embed` is per link and per allowlisted provider, never a blanket default.
+    expect(ORGANISATION_DEFAULT_DISPLAYS).not.toContain('embed')
+    for (const display of ORGANISATION_DEFAULT_DISPLAYS) expect(LINK_DISPLAYS).toContain(display)
   })
 })

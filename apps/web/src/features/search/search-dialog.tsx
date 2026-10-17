@@ -18,6 +18,7 @@ import {
   workspaceReference,
   type DocumentLinkTarget,
 } from '../../lib/routing/document-reference.ts'
+import { currentEditorCommands } from './editor-commands.ts'
 import { commandGroups, matchCommands, paletteCommands, type CommandAction } from './commands.ts'
 import { InvalidQueryNotice } from './invalid-query-notice.tsx'
 import { SearchHitDetail, searchHitLink } from './search-hit.tsx'
@@ -96,14 +97,14 @@ export function SearchDialog({ open, onOpenChange, workspaceSlug }: SearchDialog
   const me = useMe().data
   const workspaces = useWorkspaceList().data
   const signOut = useSignOut()
-  const commands = useMemo(
-    () =>
-      paletteCommands({
-        isInstanceAdmin: me?.isInstanceAdmin === true,
-        workspaces: workspaces ?? [],
-      }),
-    [me?.isInstanceAdmin, workspaces],
-  )
+  // Asked of the open editor each time the palette is drawn, not remembered: what it can do
+  // depends on where the cursor is *now* (`editor-commands.ts`).
+  const editorCommands = open ? currentEditorCommands() : []
+  const commands = paletteCommands({
+    isInstanceAdmin: me?.isInstanceAdmin === true,
+    workspaces: workspaces ?? [],
+    editor: editorCommands,
+  })
   const matchedCommands = matchCommands(commands, query)
   const actions = new Map(matchedCommands.map((command) => [command.id, command.action]))
 
@@ -199,6 +200,9 @@ export function SearchDialog({ open, onOpenChange, workspaceSlug }: SearchDialog
         return
       case 'sign-out':
         signOut.mutate()
+        return
+      case 'editor':
+        action.run()
         return
     }
   }
