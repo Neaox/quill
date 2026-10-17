@@ -3421,6 +3421,75 @@ html.lightbox-open {
   color: var(--color-danger);
 }
 
+/*
+ * A link to a file (ADR-042, "File links"): the same chip, line and card, led by an icon for the
+ * kind of file instead of a favicon. The icon is an empty, decorative span that the server writes
+ * with a `data-file-kind`, drawn here as a mask in the text colour, so one markup serves light,
+ * dark and forced-colours. The paths are the ones `FileIcon` in `@quill/ui` draws; a test in that
+ * package fails if the two drift apart. The words beside it always say the type, so the icon
+ * carries nothing alone.
+ */
+.prose .link-file-icon {
+  display: inline-block;
+  flex: none;
+  align-self: center;
+  inline-size: 1em;
+  block-size: 1em;
+  background-color: currentColor;
+  -webkit-mask: var(--link-file-icon) center / contain no-repeat;
+  mask: var(--link-file-icon) center / contain no-repeat;
+}
+
+.prose a.link-file .link-file-icon-large {
+  inline-size: 2.5em;
+  block-size: 2.5em;
+  margin-block: 0.6em;
+  margin-inline: 0.9em 0;
+  color: var(--color-muted);
+}
+
+.prose .link-file-icon[data-file-kind='image'] {
+  --link-file-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 2.75h5l3 3v7.5H4ZM9 2.75v3h3'/%3E%3Cpath d='m5.75 12 1.9-2.4 1.4 1.5.9-1 1.1 1.9'/%3E%3C/svg%3E");
+}
+
+.prose .link-file-icon[data-file-kind='pdf'] {
+  --link-file-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 2.75h5l3 3v7.5H4ZM9 2.75v3h3'/%3E%3Cpath d='M5.75 11.75c1.1-1.5 1.7-3 2.25-3s.1 1.6 2.25 2.5'/%3E%3C/svg%3E");
+}
+
+.prose .link-file-icon[data-file-kind='video'] {
+  --link-file-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 2.75h5l3 3v7.5H4ZM9 2.75v3h3'/%3E%3Cpath d='M7 8.75v3l2.75-1.5Z'/%3E%3C/svg%3E");
+}
+
+.prose .link-file-icon[data-file-kind='audio'] {
+  --link-file-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 2.75h5l3 3v7.5H4ZM9 2.75v3h3'/%3E%3Cpath d='M7.25 12V8.75l3-.75v3M7.25 12h.01M10.25 11h.01'/%3E%3C/svg%3E");
+}
+
+.prose .link-file-icon[data-file-kind='document'] {
+  --link-file-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 2.75h5l3 3v7.5H4ZM9 2.75v3h3'/%3E%3Cpath d='M6 8.5h4M6 10.5h4M6 12.25h2'/%3E%3C/svg%3E");
+}
+
+.prose .link-file-icon[data-file-kind='spreadsheet'] {
+  --link-file-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 2.75h5l3 3v7.5H4ZM9 2.75v3h3'/%3E%3Cpath d='M6 8.75h4M6 10.75h4M8 8v4.25'/%3E%3C/svg%3E");
+}
+
+.prose .link-file-icon[data-file-kind='presentation'] {
+  --link-file-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 2.75h5l3 3v7.5H4ZM9 2.75v3h3'/%3E%3Cpath d='M6 8.25h4v2.75H6ZM8 11v1.25'/%3E%3C/svg%3E");
+}
+
+.prose .link-file-icon[data-file-kind='text'] {
+  --link-file-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 2.75h5l3 3v7.5H4ZM9 2.75v3h3'/%3E%3Cpath d='M6 9h4M6 11h2.5'/%3E%3C/svg%3E");
+}
+
+.prose .link-file-icon[data-file-kind='archive'] {
+  --link-file-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 2.75h5l3 3v7.5H4ZM9 2.75v3h3'/%3E%3Cpath d='M8 3.5v1M8 5.5v1M8 7.5v1M7 9.5h2v2.5H7Z'/%3E%3C/svg%3E");
+}
+
+/* A link to a document the reader may not open: words, with nothing to follow. */
+.prose .link-unavailable {
+  color: var(--color-muted);
+  font-style: italic;
+}
+
 @media (forced-colors: active) {
   .prose a.link-compact {
     border-color: CanvasText;

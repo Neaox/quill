@@ -20,7 +20,9 @@ import type { FetchLike, OutboundFetchResponse, ResolveHost } from './outbound-c
  *   allowlisted client stops its timer once headers arrive, which would let a
  *   host drip a body forever; here the clock keeps running while we read;
  * - the media type is decided from the headers **before** the body is read, so
- *   a PDF or a video is never downloaded to be thrown away;
+ *   a PDF or a video is never downloaded to be thrown away. A caller that wants
+ *   to know that a link is a file (`headersOnly`) is answered from the headers
+ *   alone and the body is cancelled unread;
  * - bodies are never compressed (`accept-encoding: identity`, and any other
  *   `content-encoding` is refused), so the byte cap is a cap on real bytes and
  *   a compression bomb has nothing to expand;
@@ -74,6 +76,12 @@ export interface OpenWebRequest {
    * cut short is garbage, so those are refused.
    */
   readonly overflow: 'truncate' | 'reject'
+  /**
+   * Media types answered from the headers alone, without reading a byte of the body (a PDF, a
+   * video, a document): the response carries the type, the declared size and the suggested file
+   * name, and the transfer is cancelled. Checked only for a type `accept` does not take.
+   */
+  readonly headersOnly?: readonly string[]
   /** An ASCII marker (case-insensitive) after which reading stops. */
   readonly stopAfter?: string
   readonly headers?: Readonly<Record<string, string>>
@@ -131,6 +139,10 @@ export interface OpenWebResponse {
   readonly body: Uint8Array
   /** True when reading stopped before the body ended (the marker or the cap). */
   readonly truncated: boolean
+  /** For a `headersOnly` answer: the length the host declared, or null if it did not say. */
+  readonly declaredBytes?: number | null
+  /** For a `headersOnly` answer: the raw `content-disposition`, for the caller to read a file name from. */
+  readonly disposition?: string | null
 }
 
 export interface OpenWebReader {
@@ -162,6 +174,14 @@ export function pageRequest(url: string): OpenWebRequest {
     overflow: 'truncate',
     stopAfter: '</head>',
   }
+}
+
+/**
+ * A page, or else a file: an HTML page is read up to the end of `<head>` as ever, and a link
+ * to a file of one of `fileTypes` is answered from its headers with no body read at all.
+ */
+export function pageOrFileRequest(url: string, fileTypes: readonly string[]): OpenWebRequest {
+  return { ...pageRequest(url), headersOnly: fileTypes }
 }
 
 /** An oEmbed JSON document. XML oEmbed is refused by the media type. */
@@ -240,6 +260,12 @@ function accepts(accept: readonly string[], mediaType: string): boolean {
   return accept.some((allowed) =>
     allowed.endsWith('/*') ? mediaType.startsWith(allowed.slice(0, -1)) : mediaType === allowed,
   )
+}
+
+/** A length the host declared, if it is a whole number of bytes. */
+function declaredLength(header: string | null): number | null {
+  if (header === null || !/^\d{1,15}$/u.test(header.trim())) return null
+  return Number(header.trim())
 }
 
 function concat(first: Uint8Array, second: Uint8Array): Uint8Array {
@@ -431,6 +457,24 @@ export function createOpenWebClient(options: OpenWebClientOptions): OpenWebReade
       }
 
       const { mediaType, charset } = parseContentType(response.headers.get('content-type'))
+      if (
+        !accepts(request.accept, mediaType) &&
+        request.headersOnly !== undefined &&
+        accepts(request.headersOnly, mediaType)
+      ) {
+        // A file: its headers say what it is and how big, and that is all this asks of it.
+        await discard(response)
+        return {
+          status: response.status,
+          url: target.href,
+          mediaType,
+          charset: null,
+          body: new Uint8Array(0),
+          truncated: false,
+          declaredBytes: declaredLength(response.headers.get('content-length')),
+          disposition: response.headers.get('content-disposition'),
+        }
+      }
       if (!accepts(request.accept, mediaType)) {
         await discard(response)
         refuse(

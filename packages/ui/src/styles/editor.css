@@ -781,6 +781,29 @@
 }
 
 /* ------------------------------------------------------------------------
+ * The live title of a link to another document.
+ *
+ * The address is kept in the line, set aside to no width, and the title stands in its
+ * place while the caret is elsewhere (`packages/editor/src/link/live-titles.ts`). It is
+ * drawn like the link the reader will see, so what is written looks like what is read.
+ * ---------------------------------------------------------------------- */
+
+.document-editor-content .link-live-source {
+  display: inline-block;
+  inline-size: 0;
+  overflow: hidden;
+  vertical-align: bottom;
+  white-space: nowrap;
+}
+
+.document-editor-content .link-live-title {
+  color: var(--prose-link-colour, var(--color-foreground));
+  text-decoration: underline;
+  text-decoration-color: var(--prose-link-decoration, var(--color-border-strong));
+  text-underline-offset: var(--prose-link-offset, 0.16em);
+}
+
+/* ------------------------------------------------------------------------
  * Placeholders.
  *
  * An empty document says how to start, and the empty line the caret is on

@@ -483,3 +483,10 @@ export {
   refreshLinkPreview,
   storedPreviewReader,
 } from './link-previews.ts'
+export { DESCRIPTION_MAX_LENGTH, firstParagraph } from './document-description.ts'
+export type {
+  InternalLinkDependencies,
+  InternalLinkQuery,
+  InternalLinkViewer,
+} from './internal-link-previews.ts'
+export { readInternalLinkPreviews } from './internal-link-previews.ts'

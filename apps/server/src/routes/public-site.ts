@@ -8,7 +8,11 @@ import type { DocumentId, WorkspaceId } from '@quill/domain'
 import { visibilityFilter } from '@quill/search'
 import type { FastifyPluginAsync, FastifyReply, FastifyRequest } from 'fastify'
 
-import { fillLinksForPublic, linkPreviewDependencies } from '../application/fill-links.ts'
+import {
+  fillLinksForPublic,
+  internalLinks,
+  linkPreviewDependencies,
+} from '../application/fill-links.ts'
 import type { AppDependencies } from '../dependencies.ts'
 import { notFound } from '../errors.ts'
 import { OPEN_WEB_LIMITS } from '../infrastructure/http/open-web-client.ts'
@@ -293,6 +297,8 @@ export function publicSiteRoutes(deps: AppDependencies): FastifyPluginAsync {
     const { html: bodyHtml } = await fillLinksForPublic(
       linkPreviewDependencies(deps),
       rendered.content.html,
+      // Documents published on this site are previewed and linked to their public pages; no others exist here.
+      internalLinks(deps, { kind: 'site', site }),
     )
 
     const stamps = await publishedAt(deps, [document])

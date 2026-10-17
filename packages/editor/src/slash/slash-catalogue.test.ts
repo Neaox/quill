@@ -291,9 +291,9 @@ describe('data and references', () => {
     expectStable(result.markdown)
   })
 
-  it('link to document: by id, with the title as its words', async () => {
+  it('link to document: by id, shown as the document’s live title', async () => {
     const result = await choose(run('document-link', 'See '), 'run')
-    expect(result.markdown).toBe('See [Runbook](/d/doc-1)\n')
+    expect(result.markdown).toBe('See :link[/d/doc-1]{display="inline"}\n')
     expectStable(result.markdown)
   })
 

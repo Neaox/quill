@@ -178,6 +178,7 @@ const attributes: Schema['attributes'] = {
     // directive's own enumerations, `image` has the one value `none`.
     'data-link-slot',
     'data-link-key',
+    'data-link-internal',
     'data-link-words',
     'data-title',
     'data-description',

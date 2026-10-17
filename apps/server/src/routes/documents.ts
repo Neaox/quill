@@ -25,7 +25,12 @@ import {
   requireCollectionAccess,
   requireDocumentAccess,
 } from '../application/authorization.ts'
-import { drawnTag, fillLinksForMember, linkPreviewDependencies } from '../application/fill-links.ts'
+import {
+  drawnTag,
+  fillLinksForMember,
+  internalLinks,
+  linkPreviewDependencies,
+} from '../application/fill-links.ts'
 import { resolveDocumentId } from '../application/references.ts'
 import type { AppDependencies } from '../dependencies.ts'
 import { conflict, lockLost, notFound, unprocessable } from '../errors.ts'
@@ -145,7 +150,8 @@ export function documentRoutes(deps: AppDependencies): FastifyPluginAsync {
       },
       async (request, reply) => {
         const documentId = await resolveDocumentId(deps, request.params.id)
-        await requireDocumentAccess(authorizerFor(deps, request), documentId, 'view')
+        const authorizer = authorizerFor(deps, request)
+        await requireDocumentAccess(authorizer, documentId, 'view')
         const rendered = await renderDocument(deps, {
           documentId,
           revision: request.query.revision as RevisionId | undefined,
@@ -168,6 +174,8 @@ export function documentRoutes(deps: AppDependencies): FastifyPluginAsync {
           linkPreviewDependencies(deps),
           userId,
           rendered.content.html,
+          // The documents it links to are drawn for what this reader may see of them.
+          internalLinks(deps, { kind: 'authorized', authorizer }),
         )
         const etag = drawnTag(rendered.key, rendered.content.html, filled.html)
         reply.header('etag', etag)

@@ -11,7 +11,7 @@ import {
   revokeShareLink,
   shareLinkNavigation,
 } from '@quill/application'
-import type { DocumentRow, ShareLinkRow } from '@quill/application'
+import type { Authorizer, DocumentRow, ShareLinkRow } from '@quill/application'
 import { isUuid, ROLES, SHARE_LINK_ROLES, SHARE_LINK_SCOPES, slugify } from '@quill/domain'
 import type { DocumentId, Role, ShareLinkId, ShareLinkRole, ShareLinkScope } from '@quill/domain'
 import type { FastifyPluginAsync, FastifyReply } from 'fastify'
@@ -22,7 +22,12 @@ import {
   requireSharedDocument,
   SHARE_REFUSAL,
 } from '../application/authorization.ts'
-import { drawnTag, fillLinksForPublic, linkPreviewDependencies } from '../application/fill-links.ts'
+import {
+  drawnTag,
+  fillLinksForPublic,
+  internalLinks,
+  linkPreviewDependencies,
+} from '../application/fill-links.ts'
 import { resolveDocumentId } from '../application/references.ts'
 import type { AppDependencies } from '../dependencies.ts'
 import { AppError, notFound, notModified, unprocessable } from '../errors.ts'
@@ -269,11 +274,16 @@ export function shareLinkRoutes(deps: AppDependencies): FastifyPluginAsync {
   // the route's own response schema, rather than annotated here: the type
   // provider's view of a `$ref` and TypeBox's `Static` of one are not the
   // same type, and the schema is the contract either way.
-  const publishedBody = async (document: DocumentRow) => {
+  const publishedBody = async (document: DocumentRow, authorizer: Authorizer) => {
     const rendered = await renderDocument(deps, { documentId: document.id })
     if (rendered.kind !== 'rendered') throw notFound(SHARE_REFUSAL)
     // Whoever holds the link reads stored previews only; they cannot cause a fetch (ADR-042).
-    const filled = await fillLinksForPublic(linkPreviewDependencies(deps), rendered.content.html)
+    // The documents it links to are shown only if this link reaches them (ADR-042, "Internal links").
+    const filled = await fillLinksForPublic(
+      linkPreviewDependencies(deps),
+      rendered.content.html,
+      internalLinks(deps, { kind: 'authorized', authorizer }),
+    )
     return {
       // The render-cache key is the whole of the body's identity: what it was
       // rendered from, and the render version (ADR-031); and what was drawn into it.
@@ -394,7 +404,7 @@ export function shareLinkRoutes(deps: AppDependencies): FastifyPluginAsync {
         if (resolved === null) throw notFound(SHARE_REFUSAL)
 
         const access = await requireSharedDocument(authorizer, resolved.document.id, request.log)
-        const { body } = await publishedBody(access.document)
+        const { body } = await publishedBody(access.document, authorizer)
         await recordShareLinkUse(deps, {
           link: resolved.link,
           documentId: access.document.id,
@@ -433,7 +443,7 @@ export function shareLinkRoutes(deps: AppDependencies): FastifyPluginAsync {
         const documentId = await sharedDocumentId(request.params.id)
         if (documentId === null) throw notFound(SHARE_REFUSAL)
         const access = await requireSharedDocument(authorizer, documentId, request.log)
-        const { body, etag } = await publishedBody(access.document)
+        const { body, etag } = await publishedBody(access.document, authorizer)
         await recordShareLinkUse(deps, {
           link: resolved.link,
           documentId: access.document.id,

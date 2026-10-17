@@ -28,6 +28,8 @@ export const LINK_PREVIEW_LAYERS = [
   'open-graph',
   'twitter-card',
   'page',
+  /** A document of this instance, resolved by id when read and never stored (ADR-042, "Internal links"). */
+  'internal',
 ] as const
 
 export type LinkPreviewLayer = (typeof LINK_PREVIEW_LAYERS)[number]

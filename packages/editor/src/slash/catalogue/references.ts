@@ -1,7 +1,6 @@
 import { DEFAULT_CHILD_DEPTH, DEFAULT_TOC_MAX, DEFAULT_TOC_MIN } from '@quill/markdown'
 import { DocumentIcon, FootnoteIcon, LinkIcon, OutlineIcon, SmallPrintIcon } from '@quill/ui'
 
-import { insertLink } from '../../document/commands.ts'
 import { cardLinkNode, inlineLinkNode, previewableAddress } from '../../link/new-link.ts'
 import {
   insertBlock,
@@ -18,6 +17,11 @@ import type { SlashContribution, SlashEnvironment, SlashItem } from '../slash-it
  * by the document's id (`/d/<id>`, AGENTS.md rule 8), so it survives the
  * document being renamed or moved; finding the document is the
  * application's, which owns search.
+ *
+ * It is an inline `:link` whose words are its address, which the reader draws as
+ * the document's *live* title, for what that reader may see (ADR-042, "Internal
+ * links"). Words typed in beside it would be the author's, and so would never
+ * follow a rename.
  */
 
 function documentLinkItem(
@@ -51,7 +55,7 @@ function documentLinkItem(
           }))
         },
       },
-      choose: (option) => insertLink({ href: `/d/${option.id}`, text: option.label }),
+      choose: (option) => insertInline((schema) => inlineLinkNode(schema, `/d/${option.id}`)),
     },
     (place) => place.state.selection.$from.parent.inlineContent,
   )

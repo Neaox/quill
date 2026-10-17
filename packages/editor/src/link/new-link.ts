@@ -1,6 +1,7 @@
 import { UNCHOSEN, linkDirective } from '@quill/markdown'
 import type { Link } from '@quill/markdown'
 import type { Node as PMNode, Schema } from '@tiptap/pm/model'
+import type { Command } from '@tiptap/pm/state'
 
 import { nodeType } from '../schema/node-type.ts'
 
@@ -40,6 +41,22 @@ export function cardLinkNode(schema: Schema, url: string): PMNode {
     name: 'link',
     attributes: linkDirective.serialize(modelOf(url, 'card')).attributes,
   })
+}
+
+/**
+ * A pasted link to another document: an inline link by its id, with the caret after it. Its
+ * words are its address, which the reader draws as the document's live title.
+ */
+export function pasteDocumentLink(address: string): Command {
+  return (state, dispatch) => {
+    const node = inlineLinkNode(state.schema, address)
+    const { $from } = state.selection
+    if (!$from.parent.canReplaceWith($from.index(), $from.indexAfter(), node.type)) return false
+    dispatch?.(
+      state.tr.replaceSelectionWith(node, false).setMeta('uiEvent', 'paste').scrollIntoView(),
+    )
+    return true
+  }
 }
 
 /** An address worth previewing: an absolute web address, which is all a preview can be made of. */

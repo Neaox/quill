@@ -1,4 +1,4 @@
-import type { ExtractedText, PublicNavigationNode } from '@quill/application'
+import type { PublicNavigationNode } from '@quill/application'
 import { publicPageHref } from '@quill/application'
 import type { Snippet } from '@quill/search'
 
@@ -263,6 +263,11 @@ export function renderBotPage(view: BotPageView): string {
           <li>
             If your site is a known embed provider, or the page advertises one, its oEmbed JSON.
           </li>
+          <li>
+            If the address is a file (a PDF, a video, a document, a picture), only the response
+            headers: its type, its size and its name. None of the file is downloaded. For a
+            picture, a small thumbnail is also fetched and stored, within the same size limit.
+          </li>
         </ul>
 
         <h2>What it does not do</h2>
@@ -357,29 +362,8 @@ function publicSiteLink(siteSlug: string): string {
   return `/s/${siteSlug}`
 }
 
-/**
- * The description a crawler and a chat client's unfurl show: the document's
- * first paragraph (use case 29).
- *
- * The extracted text is the prose of the document, one block per line, with
- * authoring scaffolding and presenter notes already gone (ADR-031), so the
- * first line is the first paragraph. It is trimmed to a length that survives a
- * search result and an unfurl, cut at a word rather than mid-word, with an
- * ellipsis so a reader can see it was cut.
- */
-export const DESCRIPTION_MAX_LENGTH = 200
-
-export function firstParagraph(text: ExtractedText): string | null {
-  const paragraph = text.body
-    .split('\n')
-    .find((line) => line.trim().length > 0)
-    ?.trim()
-  if (paragraph === undefined || paragraph.length === 0) return null
-  if (paragraph.length <= DESCRIPTION_MAX_LENGTH) return paragraph
-  const cut = paragraph.slice(0, DESCRIPTION_MAX_LENGTH)
-  const lastSpace = cut.lastIndexOf(' ')
-  return `${(lastSpace > 0 ? cut.slice(0, lastSpace) : cut).trimEnd()}…`
-}
+// The description helper lives with the use cases, which link cards use too (ADR-042).
+export { DESCRIPTION_MAX_LENGTH, firstParagraph } from '@quill/application'
 
 /**
  * `Article` structured data (schema.org), for the crawler that wants it.

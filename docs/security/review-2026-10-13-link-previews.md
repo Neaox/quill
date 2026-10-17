@@ -187,6 +187,50 @@ The web bundle is unaffected: the web app imports only `@quill/markdown` subpath
 - Policy storage and the settings screens (step 5) are still to build; the audience is the default for everyone until then.
 - `GET /bot` states the limits of the default configuration. If an operator changes them, the page should read them from configuration.
 
+## Addendum: links to documents and links to files (2026-10-17)
+
+Two additions to the preview layers, reviewed against `docs/security/checklist.md` (permissions, rendering, outbound requests). One decides who is told what about a document; the other decides what an unfamiliar host can make the server read.
+
+### Internal links must never leak a title
+
+An internal link (`/d/<id>`) is resolved by id when a page is read. The rendered body is cached and shared between readers, so the body carries only the address; every title, description and place is added per reader, by `readInternalLinkPreviews`, after the cache. The places a title could leak, and what closes each:
+
+| Where a title could escape                           | What closes it |
+| ---------------------------------------------------- | -------------- |
+| The shared render cache                              | The body holds the slot (`/d/<id>` and the author's words) and nothing resolved; a test pins that an unfilled body has no title. |
+| A reader who may not view the document               | The authorizer (ADR-012) is asked for `view` on that document, for a member and for a share-link holder alike; a refusal draws the author's own words, else "Document unavailable", in a `span` with no link, no address and no title (`link-unavailable`). |
+| The difference between "denied" and "does not exist" | Both are `blocked`, the same view and the same label, in the fill and in the editor's lookup (`POST /api/link-previews/resolve`), so the answer cannot be used to find which ids exist. A test asserts the two are equal. Response timing is not equalised: a missing id skips the permission walk. The ids are UUIDs and the lookup is rate limited, so this is recorded and accepted. |
+| The description                                      | It costs a render of the target, and is asked **only for documents the reader may view** and only for links that will show it (a card, with no description of the author's own). A test asserts a denied document is never rendered on the reader's behalf. |
+| The place (collection name)                          | Named only if the reader may also view the collection; a grant on the document alone does not reveal the collection's name. |
+| The anonymous public site                            | The site's own `pages` decide: a document not published on *this* site is `blocked`, whichever site publishes it, and a published one links to its public page, never to the app's `/d/<id>`. The finished page is cached per site and path, which is safe because everything on it is public to every anonymous reader of that site. |
+| The conditional-request tag                          | The tag hashes the filled body, so a reader with different access has a different tag; the response stays `private, no-cache`. |
+| A fetch started on an anonymous reader's behalf      | Internal links never fetch and never queue; they are not counted as pending, and the publish-time warming skips them. |
+| Markup                                               | The title is text in a hast `text` node (escaped on output), never HTML; the slot's `href` is rebuilt from a pattern that admits only letters, digits, `%`, `_` and `-` after `/d/`; the one new attribute (`data-link-internal`) is an empty marker in the sanitiser's allowlist. |
+
+Cost is bounded: a body's links are capped at 50 per fill, the target rows are found in at most two queries, and the authorizer memoises the scope chain, so documents under one collection share the walk. That is one permission check per distinct document, which is the price of the answer being per reader.
+
+An export keeps the plain `/d/<id>` link, as it keeps every link, so nothing resolved can leave through it.
+
+### File links: what an unfamiliar host can make the server read
+
+A file is recognised in the **same request** that would have fetched a page, from the response headers, and the body is never read.
+
+| Concern                                 | Bound |
+| --------------------------------------- | ----- |
+| Downloading a large file to describe it | None of it is read: the transfer is cancelled as soon as the headers are in (`headersOnly`), so the bytes read are zero and a 4 GiB video costs one round trip. A test serves a body that never ends. |
+| Which types                             | A fixed allowlist (`FILE_MEDIA_TYPE_PATTERNS`: images, video, audio, PDF, office and OpenDocument files, CSV, plain text and Markdown, common archives). `application/octet-stream` and executables stay `content_type_not_allowed`. |
+| Every existing limit                    | Unchanged and applied to this path: the address check on every hop, 5 redirects, the 6 s total budget, ports 80 and 443, no credentials, and the organisation's policy asked on every hop. |
+| A thumbnail                             | Only for PNG, JPEG, GIF or WebP, through the existing image pipeline with every cap it has (5 MiB, sniffed from bytes, isolated decode, re-encode, stored by hash). If the host declares a size over the cap the second request is not made. `text` mode makes none. |
+| SVG                                     | Inert: it is a file card with an icon, never fetched for a thumbnail, never drawn, never served. |
+| The declared size                       | Read only if it is 1 to 15 digits; anything else is "unknown". It is a label, not a limit anything relies on. |
+| The file name                           | A stranger's text: taken from `filename*` or `filename`, cut to its last path segment (so `../../x` and `C:\x` cannot imply a path), cleaned of control and direction characters, and capped at 120 characters. It is displayed, never used to write anywhere. |
+| The media type                          | The host's claim, shown as a label and an icon; a host can say a thing is a PDF that is not. Nothing is opened, rendered or served from it, and the link is followed by the reader like any other external link, with `rel="noopener noreferrer"`. |
+
+### Left open
+
+- The permission check is per distinct linked document; a page of 50 links to 50 documents in 50 collections costs 50 chains. A batched authorizer would replace it if that ever shows in the budgets.
+- A share-link reader's internal links point at the app's `/d/<id>`, which they cannot open; they see the title only for a document their link reaches. A share-link-aware address is a later improvement.
+
 ## Open items
 
 1. ~~Rate limits and de-duplication~~ Done (step 3, extended 2026-10-17).

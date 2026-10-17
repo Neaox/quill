@@ -1,5 +1,5 @@
-import { linkDirective } from '@quill/markdown'
-import { LinkIcon } from '@quill/ui'
+import { fileKindOf, fileMeta, linkDirective } from '@quill/markdown'
+import { DocumentIcon, FileIcon, LinkIcon } from '@quill/ui'
 import { NodeViewContent, NodeViewWrapper } from '@tiptap/react'
 import { useEffect } from 'react'
 import type { NodeViewProps } from '@tiptap/react'
@@ -7,6 +7,7 @@ import { tv } from 'tailwind-variants'
 
 import { directiveAttributes } from '../schema/directive-attributes.ts'
 import { useLinkPreviewSource } from './link-preview-context.tsx'
+import type { EditorLinkPreview } from './link-preview-context.tsx'
 
 /**
  * A link card as it is written (ADR-042): the same card the reader will see, drawn
@@ -50,11 +51,21 @@ const card = tv({
 })
 
 function hostOf(address: string): string {
+  // A document of this instance is named by its id; until its title arrives, say what it is.
+  if (address.startsWith('/d/')) return 'Document'
   try {
     return new URL(address).host
   } catch {
     return address
   }
+}
+
+/** The small icon in front of a card's site line or a compact line: a document's, a file's, or a link's. */
+function LeadingIcon({ preview }: { readonly preview: EditorLinkPreview | null }) {
+  const kind = preview?.file === undefined ? null : fileKindOf(preview.file.mediaType)
+  if (kind !== null) return <FileIcon kind={kind} className="size-3.5" />
+  if (preview?.layer === 'internal') return <DocumentIcon className="size-3.5 shrink-0" />
+  return <LinkIcon className="size-3.5" />
 }
 
 export function LinkCardBlock({ node, selected }: NodeViewProps) {
@@ -77,8 +88,12 @@ export function LinkCardBlock({ node, selected }: NodeViewProps) {
   const host = hostOf(link.url)
 
   const title = link.choice.title ?? link.text ?? preview?.title ?? link.url
-  const description = link.choice.description ?? preview?.description ?? null
+  const file = preview?.file
+  // A file has no description of its own: it says what it is and how big, as the reader's card does.
+  const description =
+    link.choice.description ?? preview?.description ?? (file === undefined ? null : fileMeta(file))
   const picture = link.choice.showImage ? (preview?.thumbnail ?? null) : null
+  const fileKind = file === undefined ? null : fileKindOf(file.mediaType)
 
   if (link.choice.display === 'compact') {
     return (
@@ -92,7 +107,7 @@ export function LinkCardBlock({ node, selected }: NodeViewProps) {
         <NodeViewContent className="hidden" />
         <span className="flex min-w-0 items-center gap-2" contentEditable={false}>
           {preview?.favicon == null ? (
-            <LinkIcon className="size-3.5 shrink-0" />
+            <LeadingIcon preview={preview} />
           ) : (
             <img
               className={styles.icon()}
@@ -120,6 +135,11 @@ export function LinkCardBlock({ node, selected }: NodeViewProps) {
       {/* The author's own words live here, and are shown as the title above. Without this the
           editor makes a content line of its own, which would be an empty line above the card. */}
       <NodeViewContent className="hidden" />
+      {fileKind === null || picture !== null ? null : (
+        <span className="flex items-center ps-4 text-muted" contentEditable={false}>
+          <FileIcon kind={fileKind} className="size-9" />
+        </span>
+      )}
       <div className={styles.body()} contentEditable={false}>
         <p className={styles.title()}>{title}</p>
         {description === null || description === '' ? null : (
@@ -130,7 +150,7 @@ export function LinkCardBlock({ node, selected }: NodeViewProps) {
         ) : null}
         <p className={styles.site()}>
           {preview?.favicon == null ? (
-            <LinkIcon className="size-3.5" />
+            <LeadingIcon preview={preview} />
           ) : (
             <img
               className={styles.icon()}

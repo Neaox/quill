@@ -123,6 +123,13 @@ export {
   type IconProps,
 } from './components/icons.tsx'
 export {
+  FILE_ICON_KINDS,
+  FileIcon,
+  fileIconPaths,
+  type FileIconKind,
+  type FileIconProps,
+} from './components/file-icons.tsx'
+export {
   ParagraphIcon,
   Heading1Icon,
   Heading2Icon,

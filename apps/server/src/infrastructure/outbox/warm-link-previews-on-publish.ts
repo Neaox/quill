@@ -5,6 +5,7 @@ import {
   renderDocument,
 } from '@quill/application'
 import type { LinkPreviewDependencies, RenderDocumentDependencies } from '@quill/application'
+import { isInternalAddress } from '@quill/domain'
 import { scanLinkSlots } from '@quill/markdown'
 
 import type { OutboxConsumer } from './consumer.ts'
@@ -34,7 +35,10 @@ export function createWarmLinkPreviewsOnPublishConsumer(
           revision: event.revision,
         })
         if (rendered.kind !== 'rendered') return
-        const urls = scanLinkSlots(rendered.content.html).keys
+        // Documents of this instance are read when a page is, never fetched, so there is nothing to warm.
+        const urls = scanLinkSlots(rendered.content.html).keys.filter(
+          (key) => !isInternalAddress(key),
+        )
         if (urls.length > 0) await getLinkPreviews(deps, { userId: event.publishedBy, urls })
       } catch {
         // A head start, not a duty; see above.

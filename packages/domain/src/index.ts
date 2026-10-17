@@ -135,6 +135,20 @@ export { materialiseEffectivePermissions } from './permissions/materialise.ts'
 
 export { MAX_URL_LENGTH, normaliseUrl } from './link-preview/normalise-url.ts'
 export {
+  FILE_KINDS,
+  FILE_MEDIA_TYPE_PATTERNS,
+  fileKindOf,
+  fileMeta,
+  fileTypeLabel,
+  formatFileSize,
+} from './link-preview/file-kind.ts'
+export type { FileKind } from './link-preview/file-kind.ts'
+export {
+  internalDocumentAddress,
+  internalReference,
+  isInternalAddress,
+} from './link-preview/internal-address.ts'
+export {
   LINK_PREVIEW_FAILURES,
   LINK_PREVIEW_KINDS,
   LINK_PREVIEW_LAYERS,
