@@ -1,10 +1,12 @@
 /**
- * The shapes of the fake API's routes, in a module of their own so the helpers that build routes
- * (`fake-tree-routes.ts`) and the fake client that serves them (`testing.ts`) can both name them
- * without importing each other. `testing.ts` re-exports them: that is where tests import from.
+ * The shapes of a fake route table, in a module of their own so the fake
+ * client (`testing.ts`) and the routes derived for it (`fake-tree-routes.ts`)
+ * can both depend on them without depending on each other.
+ *
+ * A route key is `"METHOD /api/path/{param}"`, matching the path syntax
+ * `@quill/api-client`'s `paths` type already uses, so a test route reads like
+ * the route it fakes.
  */
-
-/** Answers one faked request; `params` are the `{param}` segments of its route key. */
 export type FakeRouteHandler = (
   request: Request,
   params: Readonly<Record<string, string>>,

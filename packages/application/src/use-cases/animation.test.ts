@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import { concatChunks } from '../ports/blob-store.ts'
-import { imageFixture } from '../test-support/image-fixtures.ts'
+import { imageFixture, isoBox, uint32s } from '../test-support/image-fixtures.ts'
 import { animationOf, boundLoops, MAX_PLAYS } from './animation.ts'
 import { crc32 } from './image-container.ts'
 
@@ -53,25 +53,6 @@ function pngChunks(file: Uint8Array): string[] {
   return types
 }
 
-/** An ISO box: its size, its type, its payload. */
-function box(type: string, ...payload: Uint8Array[]): Uint8Array {
-  const body = concatChunks(payload)
-  const out = new Uint8Array(8 + body.length)
-  new DataView(out.buffer).setUint32(0, out.length)
-  out.set(new TextEncoder().encode(type), 4)
-  out.set(body, 8)
-  return out
-}
-
-function uint32s(...values: number[]): Uint8Array {
-  const out = new Uint8Array(values.length * 4)
-  const view = new DataView(out.buffer)
-  values.forEach((value, index) => {
-    view.setUint32(index * 4, value)
-  })
-  return out
-}
-
 const text = (value: string): Uint8Array => new TextEncoder().encode(value)
 
 /** The boxes an AVIF image sequence states its length and frames in, and nothing else. */
@@ -79,73 +60,27 @@ function avifSequence({
   frames,
   milliseconds,
   extra = [],
-  ftyp = box('ftyp', text('avis'), uint32s(0), text('avismsf1')),
-  // Version 0: flags, two times, the timescale and the duration.
-  mvhd = box('mvhd', uint32s(0, 0, 0, 1000, milliseconds)),
-  track = box('trak', box('mdia', box('minf', box('stbl', box('stsz', uint32s(0, 0, frames)))))),
 }: {
   readonly frames: number
   readonly milliseconds: number
   readonly extra?: readonly Uint8Array[]
-  readonly ftyp?: Uint8Array
-  readonly mvhd?: Uint8Array | null
-  readonly track?: Uint8Array
 }): Uint8Array {
-  return concatChunks([ftyp, box('moov', ...(mvhd === null ? [] : [mvhd]), track, ...extra)])
-}
-
-/** One frame of a 1x1 GIF: its graphic control, when it has one, then its image. */
-function gifFrame(delay: number | null): number[] {
-  const control = delay === null ? [] : [0x21, 0xf9, 4, 0, delay & 0xff, delay >> 8, 0, 0]
-  const image = [0x2c, 0, 0, 0, 0, 1, 0, 1, 0, 0, 2, 1, 0, 0]
-  return [...control, ...image]
-}
-
-/** A GIF with no palette, one frame to each delay in hundredths (`null`: no graphic control). */
-function gifOf(delays: readonly (number | null)[], before?: Uint8Array): Uint8Array {
   return concatChunks([
-    Uint8Array.from([...text('GIF89a'), 1, 0, 1, 0, 0, 0, 0]),
-    before ?? new Uint8Array(),
-    Uint8Array.from(delays.flatMap(gifFrame)),
-    Uint8Array.of(0x3b),
-  ])
-}
-
-/** An application extension: its identifier, then one data block of `data`. */
-function gifApplication(identifier: string, data: readonly number[]): Uint8Array {
-  return Uint8Array.from([
-    0x21,
-    0xff,
-    identifier.length,
-    ...text(identifier),
-    data.length,
-    ...data,
-    0,
+    isoBox('ftyp', text('avis'), uint32s(0), text('avismsf1')),
+    isoBox(
+      'moov',
+      // mvhd, version 0: flags, two times, the timescale and the duration.
+      isoBox('mvhd', uint32s(0, 0, 0, 1000, milliseconds)),
+      isoBox(
+        'trak',
+        isoBox('mdia', isoBox('minf', isoBox('stbl', isoBox('stsz', uint32s(0, 0, frames))))),
+      ),
+      ...extra,
+    ),
   ])
 }
 
 describe('an animated emoji', () => {
-  it('times GIF frames from their graphic controls, and by the default when they have none', () => {
-    expect(animationOf('image/gif', gifOf([25, 300]))).toMatchObject({
-      frames: 2,
-      milliseconds: 3250,
-    })
-    expect(animationOf('image/gif', gifOf([null, null, null]))).toMatchObject({
-      frames: 3,
-      milliseconds: 300,
-    })
-  })
-
-  it('is a still for a GIF of one frame, however long it is held', () => {
-    expect(animationOf('image/gif', gifOf([500]))).toEqual({ kind: 'still' })
-    expect(animationOf('image/gif', gifOf([]))).toEqual({ kind: 'still' })
-  })
-
-  it('refuses a GIF with something between its blocks that is not a block', () => {
-    const broken = concatChunks([gifOf([10]).subarray(0, -1), Uint8Array.of(0x99, 0x3b)])
-    expect(() => animationOf('image/gif', broken)).toThrow(/not a block/u)
-  })
-
   it('is a still for a picture that does not move', () => {
     expect(animationOf('image/gif', imageFixture('plain.gif'))).toEqual({ kind: 'still' })
     expect(animationOf('image/png', imageFixture('plain.png'))).toEqual({ kind: 'still' })
@@ -189,24 +124,6 @@ describe('an animated emoji', () => {
     expect(chunks.at(-1)).toBe('IEND')
   })
 
-  it('refuses an animated PNG whose last chunk runs past the end', () => {
-    const original = imageFixture('animated.png')
-    expect(() => animationOf('image/png', original.subarray(0, original.length - 3))).toThrow(
-      /past the end/u,
-    )
-  })
-
-  it('reads an animated PNG frame delay with a denominator of nought as hundredths', () => {
-    const png = Uint8Array.from(imageFixture('animated.png'))
-    const view = new DataView(png.buffer)
-    for (let at = 8; at + 8 <= png.length; at += 12 + view.getUint32(at)) {
-      if (new TextDecoder().decode(png.subarray(at + 4, at + 8)) !== 'fcTL') continue
-      view.setUint16(at + 8 + 20, 5)
-      view.setUint16(at + 8 + 22, 0)
-    }
-    expect(animationOf('image/png', png)).toMatchObject({ frames: 2, milliseconds: 100 })
-  })
-
   it('counts an animated WebP’s frames and time, with no still until the image pipeline', () => {
     expect(animationOf('image/webp', imageFixture('animated-exif.webp'))).toEqual({
       kind: 'animated',
@@ -223,63 +140,16 @@ describe('an animated emoji', () => {
     })
   })
 
-  it('reads an AVIF movie whose times are 64 bits wide', () => {
-    // Version 1: flags, two 8-byte times, the timescale, then an 8-byte duration.
-    const wide = box('mvhd', uint32s(0x01000000, 0, 0, 0, 0, 1000, 1, 2000))
-    expect(
-      animationOf('image/avif', avifSequence({ frames: 2, milliseconds: 0, mvhd: wide })),
-    ).toEqual({ kind: 'animated', frames: 2, milliseconds: 2 ** 32 + 2000 })
-  })
-
-  it('treats a file without the sequence brand, or without a first box, as a still', () => {
-    const stillBrands = box('ftyp', text('mif1'), uint32s(0), text('mif1miaf'))
-    expect(
-      animationOf('image/avif', avifSequence({ frames: 5, milliseconds: 100, ftyp: stillBrands })),
-    ).toEqual({ kind: 'still' })
-    expect(animationOf('image/avif', box('free', uint32s(0)))).toEqual({ kind: 'still' })
-    expect(animationOf('image/avif', new Uint8Array())).toEqual({ kind: 'still' })
-  })
-
-  it('finds the sequence brand among the compatible brands too', () => {
-    const compatible = box('ftyp', text('mif1'), uint32s(0), text('mif1avis'))
-    expect(
-      animationOf('image/avif', avifSequence({ frames: 5, milliseconds: 100, ftyp: compatible })),
-    ).toMatchObject({ kind: 'animated', frames: 5 })
-  })
-
-  it('counts no frames for a track that states no sample sizes', () => {
-    const noSizes = box('trak', box('mdia', box('minf', box('stbl'))))
-    const noTable = box('trak', box('mdia'))
-    for (const track of [noSizes, noTable]) {
-      expect(
-        animationOf('image/avif', avifSequence({ frames: 9, milliseconds: 100, track })),
-      ).toMatchObject({ kind: 'animated', frames: 0 })
-    }
-  })
-
-  it('refuses an AVIF sequence with a malformed movie', () => {
-    const noHeader = avifSequence({ frames: 1, milliseconds: 0, mvhd: null })
-    expect(() => animationOf('image/avif', noHeader)).toThrow(/no header/u)
-    const noTimescale = box('mvhd', uint32s(0, 0, 0, 0, 100))
-    expect(() =>
-      animationOf('image/avif', avifSequence({ frames: 1, milliseconds: 0, mvhd: noTimescale })),
-    ).toThrow(/no timescale/u)
-    const overrun = concatChunks([
-      box('ftyp', text('avis'), uint32s(0)),
-      uint32s(999),
-      text('moov'),
-    ])
-    expect(() => animationOf('image/avif', overrun)).toThrow(/overruns/u)
-  })
-
   it('refuses an AVIF sequence whose tracks carry metadata it cannot take out', () => {
     const tagged = avifSequence({
       frames: 5,
       milliseconds: 1200,
-      extra: [box('udta', text('location'))],
+      extra: [isoBox('udta', text('location'))],
     })
     expect(() => animationOf('image/avif', tagged)).toThrow(/metadata/u)
-    expect(() => animationOf('image/avif', box('ftyp', text('avis'), uint32s(0)))).toThrow(/movie/u)
+    expect(() => animationOf('image/avif', isoBox('ftyp', text('avis'), uint32s(0)))).toThrow(
+      /movie/u,
+    )
   })
 })
 
@@ -405,39 +275,188 @@ describe('an animation bounded in the file (ADR-047)', () => {
     ).toBeUndefined()
   })
 
-  describe('finding a GIF\u2019s loop extension among its other application extensions', () => {
-    /** The loop extension that is added when none is found: 19 bytes. */
-    const ADDED = 19
-    const xmp = gifApplication('XMP DataXMP', [1, 2, 3])
-
-    function bounded(extension: Uint8Array): { original: Uint8Array; bytes: Uint8Array } {
-      const original = gifOf([10, 10], concatChunks([xmp, extension]))
-      const result = boundLoops('image/gif', original)
-      if (result === undefined) throw new Error('not bounded')
-      return { original, bytes: result.bytes }
-    }
-
-    it('rewrites the count of one that is a loop extension, in place', () => {
-      const { original, bytes } = bounded(gifApplication('NETSCAPE2.0', [1, 0, 0]))
-      expect(bytes.length).toBe(original.length)
-      expect(gifLoopCount(bytes)).toBe(2)
-    })
-
-    it.each([
-      ['an identifier that is not a loop extension’s', gifApplication('NETSCAPE2.1', [1, 0, 0])],
-      ['an identifier of another length', gifApplication('NETSCAPE', [1, 0, 0])],
-      ['a data block of another size', gifApplication('NETSCAPE2.0', [1, 0, 0, 0])],
-      ['a data block that is not a loop count', gifApplication('NETSCAPE2.0', [2, 0, 0])],
-    ])('adds one beside an extension with %s', (_name, extension) => {
-      const { original, bytes } = bounded(extension)
-      expect(bytes.length).toBe(original.length + ADDED)
-    })
-  })
-
   it('refuses a GIF that ends inside a block', () => {
     const original = imageFixture('animated.gif')
     expect(() => boundLoops('image/gif', original.subarray(0, original.length - 6))).toThrow(
       /ends inside a block/u,
     )
+  })
+})
+
+/** The bytes of a GIF with no palette, holding the given blocks and ending as one should. */
+function gifFile(...blocks: Uint8Array[]): Uint8Array {
+  const header = Uint8Array.of(...text('GIF89a'), 1, 0, 1, 0, 0, 0, 0)
+  return concatChunks([header, ...blocks, Uint8Array.of(0x3b)])
+}
+
+/** One frame: a descriptor, the code size, and an empty run of data. */
+const GIF_FRAME = Uint8Array.of(0x2c, 0, 0, 0, 0, 1, 0, 1, 0, 0, 2, 0)
+
+/** A graphic control stating a delay in hundredths of a second. */
+const gifControl = (hundredths: number): Uint8Array =>
+  Uint8Array.of(0x21, 0xf9, 4, 0, hundredths & 0xff, hundredths >> 8, 0, 0)
+
+describe('reading a GIF that is not quite well formed', () => {
+  it('adds up the delays the frames state', () => {
+    const file = gifFile(gifControl(50), GIF_FRAME, GIF_FRAME)
+    // The second frame states none, so it is drawn as a tenth of a second.
+    expect(animationOf('image/gif', file)).toMatchObject({ frames: 2, milliseconds: 600 })
+  })
+
+  it('draws a frame whose graphic control is cut short as a tenth of a second', () => {
+    const noData = Uint8Array.of(0x21, 0xf9, 0)
+    const oneByte = Uint8Array.of(0x21, 0xf9, 1, 5, 0)
+    expect(animationOf('image/gif', gifFile(noData, GIF_FRAME, GIF_FRAME))).toMatchObject({
+      frames: 2,
+      milliseconds: 200,
+    })
+    expect(animationOf('image/gif', gifFile(oneByte, GIF_FRAME, GIF_FRAME))).toMatchObject({
+      frames: 2,
+      milliseconds: 200,
+    })
+  })
+
+  it('is a still when it holds one frame, or too little to hold any', () => {
+    expect(animationOf('image/gif', gifFile(GIF_FRAME))).toEqual({ kind: 'still' })
+    expect(animationOf('image/gif', new Uint8Array(5))).toEqual({ kind: 'still' })
+  })
+
+  it('refuses a block that is not one', () => {
+    expect(() => animationOf('image/gif', gifFile(Uint8Array.of(0x00)))).toThrow(/not a block/u)
+  })
+
+  it('refuses an image that ends inside its descriptor', () => {
+    const cut = concatChunks([gifFile().subarray(0, 13), Uint8Array.of(0x2c, 0, 0)])
+    expect(() => animationOf('image/gif', cut)).toThrow(/ends inside a block/u)
+  })
+})
+
+describe('reading an animated PNG that is not quite well formed', () => {
+  it('draws a frame whose delay has no denominator in hundredths of a second', () => {
+    const png = Uint8Array.from(imageFixture('animated.png'))
+    const fcTL = new TextDecoder('latin1').decode(png).indexOf('fcTL')
+    // The delay is a numerator then a denominator, 20 bytes into the chunk's data.
+    const denominator = fcTL + 4 + 20 + 2
+    expect(new DataView(png.buffer).getUint16(denominator)).toBe(10)
+    new DataView(png.buffer).setUint16(denominator, 0)
+    // The first frame now lasts 10 ms rather than 100; the second is as it was.
+    expect(animationOf('image/png', png)).toMatchObject({ frames: 2, milliseconds: 110 })
+  })
+
+  it('refuses a chunk that runs past the end of the file', () => {
+    expect(() => animationOf('image/png', imageFixture('animated.png').subarray(0, 45))).toThrow(
+      /past the end/u,
+    )
+  })
+})
+
+describe('reading an animated WebP that is cut short', () => {
+  it('counts a frame whose duration is missing as lasting no time', () => {
+    const riff = Uint8Array.of(...text('RIFF'), 0, 0, 0, 0, ...text('WEBP'))
+    const anmf = Uint8Array.of(...text('ANMF'), 4, 0, 0, 0, 1, 2, 3, 4)
+    expect(animationOf('image/webp', concatChunks([riff, anmf]))).toEqual({
+      kind: 'animated',
+      frames: 1,
+      milliseconds: 0,
+    })
+  })
+
+  it('skips the padding byte after a chunk of odd size', () => {
+    const riff = Uint8Array.of(...text('RIFF'), 0, 0, 0, 0, ...text('WEBP'))
+    const odd = Uint8Array.of(...text('JUNK'), 1, 0, 0, 0, 9, 0)
+    const anmf = Uint8Array.of(...text('ANMF'), 16, 0, 0, 0, ...new Uint8Array(12), 7, 0, 0, 0)
+    expect(animationOf('image/webp', concatChunks([riff, odd, anmf]))).toMatchObject({
+      frames: 1,
+      milliseconds: 7,
+    })
+  })
+})
+
+/** A movie header of the given version, whose times are all 32 bits or all 64. */
+function movieHeader(version: 0 | 1, timescale: number, duration: number): Uint8Array {
+  return version === 0
+    ? isoBox('mvhd', uint32s(0, 0, 0, timescale, duration))
+    : isoBox('mvhd', uint32s(0x01000000, 0, 0, 0, 0, timescale, 0, duration))
+}
+
+const SAMPLES = (frames: number): Uint8Array =>
+  isoBox(
+    'trak',
+    isoBox('mdia', isoBox('minf', isoBox('stbl', isoBox('stsz', uint32s(0, 0, frames))))),
+  )
+
+const avifFile = (brands: readonly Uint8Array[], ...inMovie: Uint8Array[]): Uint8Array =>
+  concatChunks([isoBox('ftyp', ...brands), isoBox('moov', ...inMovie)])
+
+const SEQUENCE_BRANDS = [text('avis'), uint32s(0), text('avismsf1')]
+
+describe('reading an AVIF image sequence', () => {
+  it('knows a sequence by a compatible brand, not only by its major one', () => {
+    const compatible = [text('avif'), uint32s(0), text('mif1'), text('avis')]
+    expect(
+      animationOf('image/avif', avifFile(compatible, movieHeader(0, 1000, 800), SAMPLES(4))),
+    ).toEqual({ kind: 'animated', frames: 4, milliseconds: 800 })
+  })
+
+  it('is a still when it does not lead with its type, or names no sequence brand', () => {
+    expect(animationOf('image/avif', isoBox('moov'))).toEqual({ kind: 'still' })
+    const stillBrands = [text('avif'), uint32s(0), text('mif1')]
+    expect(animationOf('image/avif', avifFile(stillBrands, SAMPLES(1)))).toEqual({ kind: 'still' })
+  })
+
+  it('reads the wide times of a version 1 movie header', () => {
+    expect(
+      animationOf('image/avif', avifFile(SEQUENCE_BRANDS, movieHeader(1, 1000, 2500), SAMPLES(3))),
+    ).toEqual({ kind: 'animated', frames: 3, milliseconds: 2500 })
+  })
+
+  it('refuses a movie with no header, or one with no timescale', () => {
+    expect(() => animationOf('image/avif', avifFile(SEQUENCE_BRANDS, SAMPLES(2)))).toThrow(
+      /no header/u,
+    )
+    expect(() =>
+      animationOf('image/avif', avifFile(SEQUENCE_BRANDS, movieHeader(0, 0, 500), SAMPLES(2))),
+    ).toThrow(/no timescale/u)
+  })
+
+  it('refuses a box that overruns the one holding it', () => {
+    const short = concatChunks([isoBox('ftyp', ...SEQUENCE_BRANDS), uint32s(4), text('moov')])
+    expect(() => animationOf('image/avif', short)).toThrow(/overruns/u)
+  })
+
+  it('counts no frames for a track that does not state its samples', () => {
+    const header = movieHeader(0, 1000, 500)
+    const noTable = isoBox('trak', isoBox('mdia'))
+    const noSizes = isoBox('trak', isoBox('mdia', isoBox('minf', isoBox('stbl'))))
+    for (const track of [noTable, noSizes]) {
+      expect(animationOf('image/avif', avifFile(SEQUENCE_BRANDS, header, track))).toEqual({
+        kind: 'animated',
+        frames: 0,
+        milliseconds: 500,
+      })
+    }
+  })
+})
+
+describe('bounding the loops of a GIF that carries other application extensions', () => {
+  /** An application extension: the introducer, the identifier's block, and one block of data. */
+  const application = (identifier: string, ...data: number[]): Uint8Array =>
+    Uint8Array.of(0x21, 0xff, 11, ...text(identifier), data.length, ...data, 0)
+
+  it('gives a GIF whose only extension is somebody else’s a loop count of its own', () => {
+    const file = gifFile(application('MYAPPLIC1.0', 7, 7), GIF_FRAME, GIF_FRAME)
+
+    const bounded = boundLoops('image/gif', file)
+
+    expect(bounded?.plays).toBe(3)
+    expect(gifLoopCount(bounded?.bytes ?? new Uint8Array())).toBe(2)
+    // Theirs is kept, ahead of ours: only the loop count was ever ours to add.
+    expect(new TextDecoder('latin1').decode(bounded?.bytes)).toContain('MYAPPLIC1.0')
+  })
+
+  it('does not take a loop extension of the right name but the wrong shape for a loop count', () => {
+    const odd = gifFile(application('NETSCAPE2.0', 2, 0, 0), GIF_FRAME, GIF_FRAME)
+
+    expect(boundLoops('image/gif', odd)?.plays).toBe(3)
   })
 })

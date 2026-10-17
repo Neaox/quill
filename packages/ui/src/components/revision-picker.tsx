@@ -91,20 +91,24 @@ export interface RevisionPickerProps {
   readonly className?: string | undefined
 }
 
+function spoken(choice: RevisionChoice | undefined): string {
+  if (choice === undefined) return 'none'
+  const at = choice.at === undefined ? undefined : toMoment(choice.at)
+  return at === undefined ? choice.label : `${choice.label}, ${formatMoment(at, 'date')}`
+}
+
 /**
- * Open on the version already chosen, as a select does, so the arrows move
- * from where the person is rather than from the top.
+ * Opens the menu on the version already chosen, as a select does, so the
+ * arrows move from where the person is rather than from the top.
  *
- * Radix's menu honours `onOpenAutoFocus` when it opens, but its public types
- * for menu content leave the prop out (it is one of the content's private
- * props), so it is passed as a spread rather than as a named attribute. The
- * test "opens on the chosen version" is what holds the behaviour in place: a
- * Radix release that stopped honouring the prop fails it, rather than silently
- * sending the focus back to the first item.
+ * The menu does honour `onOpenAutoFocus` (it is the focus scope's), but
+ * Radix's dropdown typings leave it out, so it is passed as a spread, which
+ * the compiler does not check against a component's declared props.
  */
-const OPEN_ON_THE_CHOSEN = {
-  onOpenAutoFocus(event: Event): void {
+const openOnChosen = {
+  onOpenAutoFocus: (event: Event) => {
     const content = event.currentTarget
+    /* v8 ignore next -- Radix hands the menu's own element; the check only narrows `EventTarget`. */
     const checked =
       content instanceof HTMLElement
         ? content.querySelector<HTMLElement>('[role="menuitemradio"][aria-checked="true"]')
@@ -113,12 +117,6 @@ const OPEN_ON_THE_CHOSEN = {
     event.preventDefault()
     checked.focus()
   },
-}
-
-function spoken(choice: RevisionChoice | undefined): string {
-  if (choice === undefined) return 'none'
-  const at = choice.at === undefined ? undefined : toMoment(choice.at)
-  return at === undefined ? choice.label : `${choice.label}, ${formatMoment(at, 'date')}`
 }
 
 export function RevisionPicker({
@@ -154,7 +152,7 @@ export function RevisionPicker({
           sideOffset={6}
           collisionPadding={8}
           aria-labelledby={headingId}
-          {...OPEN_ON_THE_CHOSEN}
+          {...openOnChosen}
           className={styles.content()}
         >
           <DropdownMenu.Label id={headingId} className={styles.heading()}>

@@ -195,6 +195,16 @@ describe('the DOM the editor gives the schema', () => {
     ])
   })
 
+  it('reads a pasted details as open only when it was open', () => {
+    const read = (open: string) => {
+      const html = document.createElement('div')
+      html.innerHTML = `<details${open}><summary>Title</summary><p>Body.</p></details>`
+      return parser.parse(html).firstChild?.attrs['attributes']
+    }
+    expect(read(' open')).toEqual({ open: '' })
+    expect(read('')).toEqual({})
+  })
+
   it('leaves an extension it has no DOM for alone', () => {
     const before = withDom([])
     expect(before).toEqual([])

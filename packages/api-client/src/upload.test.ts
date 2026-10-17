@@ -3,83 +3,76 @@ import { describe, expect, it } from 'vitest'
 import { createApiClient } from './index.ts'
 import { reviseAttachment, uploadAttachment, uploadEmojiImage } from './upload.ts'
 
-/** A client whose fetch records the request it was given and answers `201`. */
-function recordingClient() {
-  const requests: Request[] = []
+/** What the fake server saw: the request, with its multipart body read back. */
+interface Seen {
+  readonly method: string
+  readonly url: string
+  readonly file: File
+}
+
+/** A client whose `fetch` records the request and answers `201` with the given JSON. */
+function recordingClient(answer: unknown) {
+  const seen: Seen[] = []
   const client = createApiClient({
     baseUrl: 'http://quill.test',
     fetch: async (input) => {
       if (!(input instanceof Request)) throw new Error('openapi-fetch hands fetch a Request')
-      requests.push(input)
-      return Response.json({}, { status: 201 })
+      const request = input
+      const form = await request.formData()
+      const file = form.get('file')
+      if (!(file instanceof File)) throw new Error('the body had no file field')
+      seen.push({ method: request.method, url: request.url, file })
+      return Response.json(answer, { status: 201 })
     },
   })
-  const sent = (): Request => {
-    const [request] = requests
-    if (request === undefined) throw new Error('no request was sent')
-    return request
-  }
-  return { client, sent }
-}
-
-async function sentFile(request: Request): Promise<File> {
-  const file = (await request.formData()).get('file')
-  if (!(file instanceof File)) throw new Error('the body carries no file field')
-  return file
+  return { client, seen }
 }
 
 describe('uploadAttachment', () => {
-  it('posts the file as multipart under the given name to the document', async () => {
-    const { client, sent } = recordingClient()
+  it('sends the file as a multipart field called file, under its filename', async () => {
+    const { client, seen } = recordingClient({ id: 'att-1' })
 
-    await uploadAttachment(client, {
-      documentId: 'DOC-1',
-      file: new Blob(['hello']),
-      filename: 'greeting.txt',
+    const result = await uploadAttachment(client, {
+      documentId: 'doc-1',
+      file: new Blob(['hello'], { type: 'text/plain' }),
+      filename: 'notes.txt',
     })
 
-    const request = sent()
-    expect(request.method).toBe('POST')
-    expect(new URL(request.url).pathname).toBe('/api/documents/DOC-1/attachments')
-    const file = await sentFile(request)
-    expect(file.name).toBe('greeting.txt')
-    expect(await file.text()).toBe('hello')
+    expect(result.response.status).toBe(201)
+    expect(seen).toHaveLength(1)
+    expect(seen[0]?.method).toBe('POST')
+    expect(seen[0]?.url).toBe('http://quill.test/api/documents/doc-1/attachments')
+    expect(seen[0]?.file.name).toBe('notes.txt')
+    expect(await seen[0]?.file.text()).toBe('hello')
   })
 })
 
 describe('reviseAttachment', () => {
-  it('puts the new bytes with the version they replace', async () => {
-    const { client, sent } = recordingClient()
+  it('puts the new bytes at the attachment with the version they were made from', async () => {
+    const { client, seen } = recordingClient({ id: 'att-1' })
 
     await reviseAttachment(client, {
-      attachmentId: 'ATT-1',
+      attachmentId: 'att-1',
       expectedVersion: 3,
       file: new Blob(['v4']),
-      filename: 'diagram.png',
+      filename: 'notes.txt',
     })
 
-    const request = sent()
-    expect(request.method).toBe('PUT')
-    const url = new URL(request.url)
-    expect(url.pathname).toBe('/api/attachments/ATT-1')
-    expect(url.searchParams.get('expectedVersion')).toBe('3')
-    const file = await sentFile(request)
-    expect(file.name).toBe('diagram.png')
-    expect(await file.text()).toBe('v4')
+    expect(seen[0]?.method).toBe('PUT')
+    expect(seen[0]?.url).toBe('http://quill.test/api/attachments/att-1?expectedVersion=3')
+    expect(await seen[0]?.file.text()).toBe('v4')
   })
 })
 
 describe('uploadEmojiImage', () => {
-  it('posts the image to the organisation emoji endpoint', async () => {
-    const { client, sent } = recordingClient()
+  it('posts the image to the organisation emoji images', async () => {
+    const { client, seen } = recordingClient({ hash: 'abc' })
 
-    await uploadEmojiImage(client, new File(['png'], 'party.png'))
+    const result = await uploadEmojiImage(client, new Blob(['png-bytes']))
 
-    const request = sent()
-    expect(request.method).toBe('POST')
-    expect(new URL(request.url).pathname).toBe('/api/settings/organisation/emoji-images')
-    const file = await sentFile(request)
-    expect(file.name).toBe('party.png')
-    expect(await file.text()).toBe('png')
+    expect(result.response.status).toBe(201)
+    expect(seen[0]?.method).toBe('POST')
+    expect(seen[0]?.url).toBe('http://quill.test/api/settings/organisation/emoji-images')
+    expect(await seen[0]?.file.text()).toBe('png-bytes')
   })
 })

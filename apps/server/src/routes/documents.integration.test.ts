@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { parseDocument } from '@quill/markdown'
-import { revisionId } from '@quill/domain'
+import { createGrant } from '@quill/application'
+import { revisionId, userId } from '@quill/domain'
 import type { DocumentId, WorkspaceId } from '@quill/domain'
 
 import { createServerHarness, HARNESS_NOW } from '../test-support/harness.ts'
@@ -351,6 +352,8 @@ describe('the content journey', () => {
           kind: 'write',
           documentId: id,
           path: document?.path ?? '',
+          // Documents are addressed by the `id` in their front matter, so a sync that left it off
+          // would have deleted the document as far as the store can tell.
           markdown: `---\nid: ${id}\n---\n\n# Externally edited\n\nSomebody else was here.\n`,
         },
       ],
@@ -699,6 +702,108 @@ describe('the content journey', () => {
     expect(compared.json().summary.added).toBeGreaterThan(0)
   })
 
+  it('404s the source comparison and a revert preview that name a revision this document never had', async () => {
+    const id = await createDocument('Unknown base')
+    await writeDraft(id, '# Unknown base\n\nBody.\n', 0)
+    const published = await publish(id, await baseOf(id))
+    const unknown = 'f'.repeat(40)
+
+    const source = await get(
+      `/api/documents/${id}/compare/source?from=${unknown}&to=${published.json().revision}`,
+      viewer,
+    )
+    const reverted = await harness.app.inject({
+      method: 'POST',
+      url: `/api/documents/${id}/draft/revert-preview`,
+      cookies: editor,
+      payload: { from: unknown, draftVersion: 1, changes: ['c1'] },
+    })
+
+    expect(source.statusCode).toBe(404)
+    expect(reverted.statusCode).toBe(404)
+  })
+
+  it('404s a comparison with, and a revert preview of, a draft that is not there', async () => {
+    const id = await createDocument('Draft gone')
+    await writeDraft(id, '# Draft gone\n\nBody.\n', 0)
+    const published = await publish(id, await baseOf(id))
+    await harness.database.pool.query('DELETE FROM drafts WHERE document_id = $1', [id])
+
+    const compared = await get(
+      `/api/documents/${id}/compare?from=${published.json().revision}&to=draft`,
+      editor,
+    )
+    const reverted = await harness.app.inject({
+      method: 'POST',
+      url: `/api/documents/${id}/draft/revert-preview`,
+      cookies: editor,
+      payload: { from: published.json().revision, draftVersion: 1, changes: ['c1'] },
+    })
+
+    expect(compared.statusCode).toBe(404)
+    expect(compared.json().error.message).toBe('This document has no draft to compare with')
+    expect(reverted.statusCode).toBe(404)
+  })
+
+  it('lists the properties that were added and removed between two revisions', async () => {
+    const id = await createDocument('Properties')
+    await writeDraft(id, '---\nowner: ada\nstage: idea\n---\n\n# Properties\n\nBody.\n', 0)
+    const first = await publish(id, await baseOf(id))
+    await writeDraft(id, '---\nowner: ada\nreviewer: bob\n---\n\n# Properties\n\nBody.\n', 1)
+    const second = await publish(id, first.json().revision)
+
+    const compared = await get(
+      `/api/documents/${id}/compare?from=${first.json().revision}&to=${second.json().revision}`,
+      viewer,
+    )
+
+    expect(compared.statusCode).toBe(200)
+    expect(compared.json().properties).toEqual(
+      expect.arrayContaining([
+        { name: 'stage', before: 'idea' },
+        { name: 'reviewer', after: 'bob' },
+      ]),
+    )
+  })
+
+  it('places a change above the first heading in no section', async () => {
+    const id = await createDocument('Preamble')
+    await writeDraft(id, 'Before any heading.\n\n# Preamble\n\nBody.\n', 0)
+    const first = await publish(id, await baseOf(id))
+    await writeDraft(id, 'Before any heading, edited.\n\n# Preamble\n\nBody.\n', 1)
+    const second = await publish(id, first.json().revision)
+
+    const compared = await get(
+      `/api/documents/${id}/compare?from=${first.json().revision}&to=${second.json().revision}`,
+      viewer,
+    )
+
+    expect(compared.statusCode).toBe(200)
+    expect(compared.json().changes).toHaveLength(1)
+    expect(compared.json().changes[0]).not.toHaveProperty('section')
+  })
+
+  it('still names the change of an author who has gone, without a name', async () => {
+    const id = await createDocument('Departed author')
+    await writeDraft(id, '# Departed author\n\nFirst.\n', 0)
+    const published = await publish(id, await baseOf(id))
+    await writeDraft(id, '# Departed author\n\nFirst.\n\nSecond.\n', 1)
+    const gone = '00000000-0000-4000-8000-00000000dead'
+    await harness.database.pool.query(
+      `UPDATE drafts SET authorship = replace(authorship::text, $2, $3)::jsonb WHERE document_id = $1`,
+      [id, tenancy.editor, gone],
+    )
+
+    const compared = await get(
+      `/api/documents/${id}/compare?from=${published.json().revision}&to=draft`,
+      editor,
+    )
+
+    expect(compared.statusCode).toBe(200)
+    expect(compared.json().changes).toMatchObject([{ change: 'added', author: { id: gone } }])
+    expect(compared.json().changes[0].author).not.toHaveProperty('name')
+  })
+
   it('reports the live envelope, including health signals', async () => {
     const id = await createDocument('Envelope')
     await writeDraft(
@@ -727,6 +832,7 @@ describe('the content journey', () => {
       view: true,
       comment: false,
       edit: false,
+      publish: false,
       manage: false,
     })
     expect(envelope.json().lastPublished).toMatchObject({ author: 'Editor' })
@@ -755,6 +861,63 @@ describe('permissions on the content routes', () => {
     const refused = await publish(id, null, viewer)
     expect(refused.statusCode).toBe(403)
     expect(refused.json().error.code).toBe('forbidden')
+  })
+
+  it('lets a contributor write a draft but not make it live, and says so in the envelope', async () => {
+    const contributorId = userId('00000000-0000-4000-8000-00000000a005')
+    const { repos } = harness.deps.uow
+    await repos.users.create({
+      id: contributorId,
+      email: 'contributor@example.com',
+      displayName: 'Contributor',
+      now: harness.clock.now(),
+    })
+    await repos.users.markEmailVerified(contributorId, harness.clock.now())
+    const granted = await createGrant(harness.deps, {
+      principalKind: 'user',
+      principalId: contributorId,
+      scopeKind: 'workspace',
+      scopeId: tenancy.workspaceId,
+      role: 'contributor',
+      effect: 'allow',
+      createdBy: tenancy.admin,
+    })
+    expect(granted.kind).toBe('created')
+    const contributor = await harness.cookiesFor(contributorId)
+
+    const id = await createDocument('Proposed change', {}, contributor)
+    const acquired = await harness.app.inject({
+      method: 'POST',
+      url: `/api/documents/${id}/lock/acquire`,
+      cookies: contributor,
+    })
+    expect(acquired.statusCode).toBe(200)
+    const written = await harness.app.inject({
+      method: 'PUT',
+      url: `/api/documents/${id}/draft`,
+      cookies: contributor,
+      payload: { ast: draftOf('# Proposed change\n\nWords.\n'), expectedVersion: 0 } as Record<
+        string,
+        unknown
+      >,
+    })
+    expect(written.statusCode).toBe(200)
+    await harness.app.inject({
+      method: 'DELETE',
+      url: `/api/documents/${id}/lock`,
+      cookies: contributor,
+    })
+
+    const refused = await publish(id, null, contributor)
+    expect(refused.statusCode).toBe(403)
+    expect(refused.json().error.message).toMatch(/publish/)
+
+    const asContributor = await get(`/api/documents/${id}/envelope`, contributor)
+    expect(asContributor.json().permissions).toMatchObject({ edit: true, publish: false })
+    const asEditor = await get(`/api/documents/${id}/envelope`, editor)
+    expect(asEditor.json().permissions).toMatchObject({ edit: true, publish: true })
+    // An editor can, and the contributor's words go live.
+    expect((await publish(id, null, editor)).statusCode).toBe(200)
   })
 
   it('lets an instance admin do what no grant gives them', async () => {

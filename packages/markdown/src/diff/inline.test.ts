@@ -6,16 +6,6 @@ import { describe, expect, it } from 'vitest'
 import { parseMarkdown } from '../pipeline/processor.ts'
 import { mergePhrasing, wholly } from './inline.ts'
 
-function withoutRemovals(nodes: readonly PhrasingContent[]): PhrasingContent[] {
-  return nodes
-    .filter((node) => node.type !== 'diffDeletion')
-    .map((node) =>
-      'children' in node
-        ? ({ ...node, children: withoutRemovals(node.children) } as PhrasingContent)
-        : node,
-    )
-}
-
 function phrasing(markdown: string): PhrasingContent[] {
   const [first] = parseMarkdown(markdown).children
   if (first?.type !== 'paragraph') throw new Error('expected a paragraph')
@@ -50,6 +40,16 @@ function show(nodes: readonly (PhrasingContent | RootContent)[]): string {
       }
     })
     .join('')
+}
+
+function withoutRemovals(nodes: readonly PhrasingContent[]): PhrasingContent[] {
+  return nodes
+    .filter((node) => node.type !== 'diffDeletion')
+    .map((node) =>
+      'children' in node
+        ? ({ ...node, children: withoutRemovals(node.children) } as PhrasingContent)
+        : node,
+    )
 }
 
 function merge(before: string, after: string): string {

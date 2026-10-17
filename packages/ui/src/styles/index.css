@@ -1,14 +1,19 @@
 /*
+ * Three surfaces keep their stylesheets out of this one, because most readers
+ * never open them and a stylesheet in the entry is paid for on every page
+ * (quill-plan.md section 31): the writing surface (`./editor.css`),
+ * presentation mode (`./present.css`) and the comparison of two versions
+ * (`@quill/design-css/comparison.css`). The first two are exported as
+ * `@quill/ui/styles/editor.css` and `@quill/ui/styles/present.css`, and the
+ * routes and views that need them import them, so they load with the route's own chunk,
+ * after this sheet, which is the order their unlayered rules rely on.
+ */
+
+/*
  * The design system stylesheet. An application imports this once, after
  * `@import 'tailwindcss'`, and gets the type set, the generated palettes for
  * every identity, the syntax token colours, the layout grid, the reading
  * typography, and the structure behind the signature components.
- *
- * Not here: `./editor.css`, `./present.css` and `@quill/design-css/comparison.css`.
- * Each belongs to a surface a reader of a document does not open (the editor,
- * the presentation, the revision comparison), and the code that draws that
- * surface imports its stylesheet, so it arrives with the surface's chunk and
- * not in the reading route's first render (`docs/operations/bundle-budget.md`).
  */
 @import './fonts.css';
 @import './tokens.css';
@@ -21,3 +26,4 @@
  * the design system declares its own sources. Paths are relative to this file.
  */
 @source '../../src';
+@source not '../../src/**/*.test.{ts,tsx}';

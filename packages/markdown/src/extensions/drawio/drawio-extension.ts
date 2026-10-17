@@ -1,5 +1,4 @@
 import { BRAND } from '@quill/brand'
-
 import { defineExtension } from '../contract.ts'
 import { isDrawioDrawing, renderDrawioDrawing } from './drawio-svg.ts'
 

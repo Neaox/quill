@@ -386,7 +386,7 @@ describe('a document carved out of the site', () => {
     })
     expect(denied.kind).toBe('created')
     // Nothing tells the cache by hand. The grant announced itself when it
-    // committed (ADR-052), and the page is gone on the very next request —
+    // committed (ADR-056), and the page is gone on the very next request —
     // not after the time to live, which is what a stale permission cache
     // would have been.
     expect((await get(path)).statusCode).toBe(404)

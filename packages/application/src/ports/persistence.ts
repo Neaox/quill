@@ -13,6 +13,9 @@ import type {
 import type { EventRecorder } from './events.ts'
 import type { Contributor } from './search-index.ts'
 import type { RenderedContent } from './document-format.ts'
+import type { DocumentViewRepository } from './document-views.ts'
+import type { NotificationRepository } from './notifications.ts'
+import type { ReviewRepository } from './reviews.ts'
 import type { SecretsRepository } from './secrets.ts'
 
 /**
@@ -68,6 +71,11 @@ export interface UserRepository {
   /** Several at once, in no particular order; an id that names nobody is simply absent. */
   listByIds(ids: readonly UserId[]): Promise<readonly UserRow[]>
   findByEmail(email: string): Promise<UserRow | null>
+  /**
+   * People whose display name or email starts with `query`, ignoring case,
+   * ordered by name and cut at `limit`: the admin's people picker.
+   */
+  searchByPrefix(query: string, limit: number): Promise<readonly UserRow[]>
   markEmailVerified(id: UserId, now: Date): Promise<void>
   setInstanceAdmin(id: UserId, isInstanceAdmin: boolean): Promise<void>
 }
@@ -270,6 +278,8 @@ export interface UnitRepository {
    * `findById` at a time.
    */
   listAncestors(id: UnitId): Promise<readonly UnitRow[]>
+  /** Every unit, for the screens that show a path for each (groups, in one query). */
+  listAll(): Promise<readonly UnitRow[]>
   rename(id: UnitId, name: string): Promise<UnitRow>
   delete(id: UnitId): Promise<void>
 }
@@ -291,6 +301,15 @@ export interface GroupRepository {
     readonly now: Date
   }): Promise<GroupRow>
   findById(id: GroupId): Promise<GroupRow | null>
+  list(): Promise<readonly GroupRow[]>
+  /** Members per group in one query; a group with nobody in it is absent. */
+  countMembers(): Promise<ReadonlyMap<GroupId, number>>
+  /** How many groups nest directly under this one. */
+  countChildren(id: GroupId): Promise<number>
+  listMemberIds(groupId: GroupId): Promise<readonly UserId[]>
+  rename(id: GroupId, name: string): Promise<GroupRow>
+  /** Removes the group and its memberships; grants that name it are the caller's to remove. */
+  delete(id: GroupId): Promise<void>
   addMember(input: {
     readonly groupId: GroupId
     readonly userId: UserId
@@ -487,6 +506,13 @@ export interface DocumentRow {
   readonly templateVersion: number | null
   /** The revision this document was last published at, or null before its first publish. */
   readonly headRevision: RevisionId | null
+  /**
+   * Who created it. Null for a document that predates the column, and never
+   * guessed afterwards (ADR-053): "mine" is an id, not an email match.
+   */
+  readonly createdBy: UserId | null
+  /** Who last published, restored, renamed or moved it; null until somebody does. */
+  readonly updatedBy: UserId | null
   readonly createdAt: Date
   readonly updatedAt: Date
 }
@@ -518,6 +544,8 @@ export interface CreateDocumentInput {
   readonly status: DocumentStatus
   readonly templateId: string | null
   readonly templateVersion: number | null
+  /** Who is creating it; omitted is recorded as nobody. */
+  readonly createdBy?: UserId | null
   readonly now: Date
 }
 
@@ -529,6 +557,8 @@ export interface UpdateDocumentPatch {
   readonly parentId?: DocumentId | null
   readonly collectionId?: CollectionId | null
   readonly headRevision?: RevisionId | null
+  /** Who made this change; stamped with it, so "last changed by" never drifts from the change. */
+  readonly updatedBy?: UserId | null
 }
 
 /**
@@ -908,6 +938,8 @@ export interface RevisionIndexRow {
   readonly revision: RevisionId
   readonly authorName: string
   readonly authorEmail: string
+  /** The publisher's id; null for a revision recorded before the column existed (ADR-053). */
+  readonly authorUserId: UserId | null
   readonly timestamp: Date
   readonly summary: string
   readonly changeNote: string | null
@@ -921,6 +953,8 @@ export interface AppendRevisionInput {
   readonly revision: RevisionId
   readonly authorName: string
   readonly authorEmail: string
+  /** Omitted is recorded as nobody. */
+  readonly authorUserId?: UserId | null
   readonly timestamp: Date
   readonly summary: string
   readonly changeNote: string | null
@@ -1263,8 +1297,11 @@ export interface RepositoryBundle {
   readonly secrets: SecretsRepository
   readonly attachments: AttachmentRepository
   readonly personPreferences: PersonPreferencesRepository
+  readonly reviews: ReviewRepository
+  readonly documentViews: DocumentViewRepository
+  readonly notifications: NotificationRepository
   /**
-   * The one way to emit an event (ADR-052): the outbox row in this transaction, and the
+   * The one way to emit an event (ADR-056): the outbox row in this transaction, and the
    * announcement to the bus once it commits. The bare `OutboxWriter` is not on the bundle.
    */
   readonly events: EventRecorder

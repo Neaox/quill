@@ -12,12 +12,8 @@ import {
   tv,
 } from '@quill/ui'
 
-import {
-  ApiError,
-  useDraft,
-  useRenderedDocument,
-  type ComparisonRange,
-} from '../../lib/api/index.ts'
+import { ApiError, useRenderedDocument, type ComparisonRange } from '../../lib/api/index.ts'
+import { useDraft } from '../../lib/api/drafts.ts'
 import { isDocumentTree, readDraftContent } from '../../lib/documents/draft-content.ts'
 import { summariseDraft, type DraftSummary } from '../../lib/documents/draft-summary.ts'
 import type { LabelledRevision } from '../../lib/documents/revision-labels.ts'
@@ -31,8 +27,8 @@ import { PreviewLink } from './preview-link.tsx'
  * never ask for, so it is its own chunk: the reading route's first load does
  * not carry it (quill-plan.md section 31).
  */
-const ComparisonView = lazy(async () => ({
-  default: (await import('./comparison-view.tsx')).ComparisonView,
+const RevisionDiffView = lazy(async () => ({
+  default: (await import('./revision-diff-view.tsx')).RevisionDiffView,
 }))
 
 export const documentReaderStyles = tv({
@@ -117,14 +113,11 @@ export function DocumentReader({
             </div>
           }
         >
-          <ComparisonView
+          <RevisionDiffView
             documentId={documentId}
-            workspaceSlug={workspaceSlug}
-            revisions={revisions}
             range={compare}
             fromLabel={labelOf(revisions, compare.from)}
             toLabel={labelOf(revisions, compare.to)}
-            className={styles.body()}
           />
         </Suspense>
       </>

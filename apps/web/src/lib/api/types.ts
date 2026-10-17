@@ -78,6 +78,26 @@ export interface WorkspaceSummaryDto extends WorkspaceDto {
   }
 }
 
+/** `GET /api/home`: the signed-in home's figures and its two short lists, already bounded. */
+export type HomeSummaryDto = GetBody<'/api/home'>
+
+/** `GET /api/documents/:id/review`: the open review request on a document, or its latest closed one (ADR-052). */
+export type ReviewRequestDto = NonNullable<GetBody<'/api/documents/{id}/review'>['request']>
+
+/** One reviewer's place on a request: a person or a group, and whether they have answered. */
+export type ReviewAssignmentDto = ReviewRequestDto['assignments'][number]
+
+/** `GET /api/documents/:id/reviewer-candidates`: the people and groups who could be asked. */
+export type ReviewerCandidates = GetBody<'/api/documents/{id}/reviewer-candidates'>
+
+/** `GET /api/me/attention`: what is waiting on the signed-in person (ADR-053). */
+export type AttentionItem = GetBody<'/api/me/attention'>['items'][number]
+
+/** `GET /api/me/notifications`: what has happened that concerns the signed-in person (ADR-052). */
+export type NotificationsDto = GetBody<'/api/me/notifications'>
+
+export type NotificationItem = NotificationsDto['items'][number]
+
 export interface DocumentDto {
   readonly id: string
   /** The document's ten-character public handle, stable for its lifetime (ADR-035). */
@@ -382,3 +402,9 @@ export type SharedNode = components['schemas']['SharedNode']
 
 /** What a reader is told about the link they are holding: nothing about who made it. */
 export type SharedLink = SharedDocument['link']
+
+/** `GET /api/groups`: one group with the unit it belongs to and how many people are in it. */
+export type GroupSummaryDto = GetBody<'/api/groups'>['groups'][number]
+
+/** `GET /api/people`: somebody an administrator can add to a group. */
+export type PersonDto = GetBody<'/api/people'>['people'][number]

@@ -4,6 +4,8 @@ import { createPortal } from 'react-dom'
 
 import { cx, Prose } from '@quill/ui'
 
+import { enhanceBody } from './body-enhancers.ts'
+
 export interface DocumentBodyProps {
   /** The cached body from `GET /documents/:id/rendered` (ADR-031). */
   readonly html: string
@@ -81,7 +83,8 @@ export function DocumentBody({
      the lightbox every diagram opens in, every table's reading tools
      (ADR-040), the details a link or find points into (ADR-048), and the
      animated emoji that play briefly and then rest (ADR-047), and, where a surface asks for it,
-     the pictures that open in the viewer. Keyed on the
+     the pictures that open in the viewer. Each enhancer is loaded only when the body has what it
+     enhances (`body-enhancers.ts`). Keyed on the
      parsed body, which is what a new revision changes — a restore that
      reproduces an earlier body is the same body, and correctly repaints nothing. The eyebrow is part of what is
      mounted, so moving the document to another collection remounts it too. */
@@ -92,25 +95,13 @@ export function DocumentBody({
     article.replaceChildren(...body.blocks)
     addEyebrow(article, eyebrow)
 
-    // The words are readable now; the behaviours arrive with their module
-    // (`document-enhancements.ts`). A body replaced or unmounted before it
-    // loads must not be enhanced late, and `onMounted` keeps its meaning of
-    // "drawn and enhanced" by waiting for them.
-    let disposers: readonly (() => void)[] = []
-    let current = true
-    import('./document-enhancements.ts')
-      .then(({ enhanceDocument }) => {
-        if (current) disposers = enhanceDocument(article, { expandImages })
-      })
-      // The reading is complete without them; a failed chunk load is not a failed document.
-      .catch(() => undefined)
-      .finally(() => {
-        if (current) mounted()
-      })
-    return () => {
-      current = false
-      for (const dispose of disposers) dispose()
-    }
+    const enhancement = enhanceBody(article, { expandImages })
+    // A chunk that fails to load leaves the body readable but unenhanced, and
+    // surfaces as an unhandled rejection, which is how the browser reports it.
+    void enhancement.ready.then((applied) => {
+      if (applied) mounted()
+    })
+    return enhancement.dispose
   }, [body, eyebrow, expandImages])
 
   return (

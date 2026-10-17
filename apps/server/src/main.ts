@@ -72,7 +72,7 @@ const database = createDatabase({ connectionString: config.databaseUrl })
 await runMigrations(database.pool)
 
 // What a transaction recorded is announced here once it has committed
-// (ADR-052). A listener that fails is logged and never fails the request that
+// (ADR-056). A listener that fails is logged and never fails the request that
 // made the change, which has already happened; `app` exists by the time any
 // request can.
 const eventBus = createEventBus({

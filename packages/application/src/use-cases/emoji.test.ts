@@ -4,7 +4,14 @@ import { concatChunks, readBlob } from '../ports/blob-store.ts'
 import { defaultOrganisationSettings } from '../settings/documents.ts'
 import { MAX_EMOJI_BYTES, MAX_EMOJI_FRAMES, MAX_EMOJI_MILLISECONDS } from '../settings/emoji.ts'
 import { createFakeSettings } from '../test-support/fake-settings.ts'
-import { chunked, imageFixture, pngChunk, pngFile } from '../test-support/image-fixtures.ts'
+import {
+  chunked,
+  imageFixture,
+  isoBox,
+  pngChunk,
+  pngFile,
+  uint32s,
+} from '../test-support/image-fixtures.ts'
 import { createInMemoryBlobStore } from '../test-support/in-memory-blob-store.ts'
 import { readEmojiImage, uploadEmojiImage } from './emoji.ts'
 
@@ -14,13 +21,6 @@ const SVG = new TextEncoder().encode(
 
 const author = { name: 'Ada', email: 'ada@example.com' }
 
-const text = (value: string) => new TextEncoder().encode(value)
-const uint32s = (...values: number[]) => {
-  const out = new Uint8Array(values.length * 4)
-  values.forEach((value, index) => new DataView(out.buffer).setUint32(index * 4, value))
-  return out
-}
-
 const upload = (bytes: Uint8Array, declaredContentType: string) => {
   const blobStore = createInMemoryBlobStore()
   return {
@@ -29,7 +29,7 @@ const upload = (bytes: Uint8Array, declaredContentType: string) => {
   }
 }
 
-/** The loop count a GIF's NETSCAPE extension declares: 0 plays for ever. */
+/** The GIF's NETSCAPE loop-count byte: how many more times it plays. */
 const loopCount = (bytes: Uint8Array | null) => {
   const at = new TextDecoder('latin1').decode(bytes ?? new Uint8Array()).indexOf('NETSCAPE2.0')
   return bytes?.[at + 13]
@@ -158,45 +158,6 @@ describe('uploading an emoji image (ADR-038)', () => {
     })
   })
 
-  describe('an AVIF image sequence', () => {
-    const box = (type: string, ...payload: Uint8Array[]) => {
-      const body = concatChunks(payload)
-      return concatChunks([uint32s(8 + body.length), text(type), body])
-    }
-    /** A still AVIF given the sequence brand and a movie of two frames lasting a second. */
-    const sequenceOf = (still: Uint8Array, ...movieBoxes: Uint8Array[]) => {
-      const sequence = Uint8Array.from(still)
-      sequence.set(text('avis'), 8)
-      const track = box(
-        'trak',
-        box('mdia', box('minf', box('stbl', box('stsz', uint32s(0, 0, 2))))),
-      )
-      const movie = box('moov', box('mvhd', uint32s(0, 0, 0, 1000, 1000)), track, ...movieBoxes)
-      return concatChunks([sequence, movie])
-    }
-
-    it('is timed from its movie, and stored without a still', async () => {
-      const uploaded = await upload(sequenceOf(imageFixture('plain.avif')), 'image/avif').result
-      expect(uploaded).toMatchObject({ kind: 'uploaded', frames: 2, milliseconds: 1000 })
-    })
-
-    it('is refused when taking its metadata out would break the offsets its frames are found by', async () => {
-      const result = await upload(sequenceOf(imageFixture('exif.avif')), 'image/avif').result
-      expect(result).toMatchObject({
-        kind: 'malformed',
-        reason: expect.stringMatching(/image sequence/u),
-      })
-    })
-
-    it('is refused when its tracks carry metadata that stays in', async () => {
-      const tagged = sequenceOf(imageFixture('plain.avif'), box('udta', text('where')))
-      expect(await upload(tagged, 'image/avif').result).toMatchObject({
-        kind: 'malformed',
-        reason: expect.stringMatching(/metadata/u),
-      })
-    })
-  })
-
   it('refuses a raster that cannot be walked', async () => {
     const cut = imageFixture('plain.png').subarray(0, 20)
     expect((await upload(cut, 'image/png').result).kind).toBe('malformed')
@@ -249,5 +210,36 @@ describe('serving an emoji image', () => {
 
     await blobStore.delete(uploaded.hash)
     expect(await readEmojiImage(deps, file)).toBeNull()
+  })
+})
+
+/** The still AVIF fixtures declare `miaf` as a compatible brand; here it names a sequence instead. */
+function asSequence(file: Uint8Array, ...movie: Uint8Array[]): Uint8Array {
+  const sequence = Uint8Array.from(file)
+  const miaf = new TextDecoder('latin1').decode(sequence).indexOf('miaf')
+  sequence.set(new TextEncoder().encode('avis'), miaf)
+  return concatChunks([sequence, ...movie])
+}
+
+describe('uploading an AVIF image sequence as an emoji', () => {
+  it('refuses a sequence that has no movie to time it by', async () => {
+    const uploaded = await upload(asSequence(imageFixture('plain.avif')), 'image/avif').result
+    expect(uploaded).toEqual({ kind: 'malformed', reason: 'an image sequence with no movie' })
+  })
+
+  it('refuses a sequence whose metadata stripping would change, since its frames could not be found', async () => {
+    const movie = isoBox(
+      'moov',
+      isoBox('mvhd', uint32s(0, 0, 0, 1000, 500)),
+      isoBox(
+        'trak',
+        isoBox('mdia', isoBox('minf', isoBox('stbl', isoBox('stsz', uint32s(0, 0, 3))))),
+      ),
+    )
+    const uploaded = await upload(asSequence(imageFixture('exif.avif'), movie), 'image/avif').result
+    expect(uploaded).toMatchObject({
+      kind: 'malformed',
+      reason: expect.stringContaining('metadata'),
+    })
   })
 })

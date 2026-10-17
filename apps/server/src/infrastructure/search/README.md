@@ -128,7 +128,7 @@ briefly unreachable is asked again rather than being written off.
 - **`tag:` is containment over `tag_paths`**: every tag and every ancestor of
   every tag (`area/billing` yields `area` and `area/billing`), computed by
   `expandTagPaths` in `@quill/search` when a row is written and by the
-  migration 0017 backfill for rows that already existed. The adapter never
+  migration 0020 backfill for rows that already existed. The adapter never
   reads a tag itself; it stores that function's answer and binds
   `normaliseTag(value)` as the parameter.
 - **`prop:key=value` is containment over `properties`** (`jsonb`, GIN with

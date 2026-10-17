@@ -105,6 +105,7 @@ class ImageActionsView implements NodeView {
   }
 
   update(node: PMNode): boolean {
+    /* v8 ignore next -- ProseMirror offers a view only nodes of the type it was made for. */
     if (node.type !== this.node.type) return false
     this.node = node
     this.render()

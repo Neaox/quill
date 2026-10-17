@@ -1,7 +1,7 @@
 import type { EventDefinition, EventPayloadInput } from '../events/define-event.ts'
 
 /**
- * The two ports of the event system (ADR-052), declared with the other ports
+ * The two ports of the event system (ADR-056), declared with the other ports
  * because the application layer depends on them and not on how they are
  * implemented: a use case records an event, and what is told about it is not
  * its concern.

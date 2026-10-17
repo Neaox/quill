@@ -1,4 +1,4 @@
-# ADR-052: Events: the outbox is the truth, the bus is the signal
+# ADR-056: Events: the outbox is the truth, the bus is the signal
 
 **Status:** Accepted
 **Date:** 2026-10-13

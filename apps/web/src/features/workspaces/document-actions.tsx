@@ -10,22 +10,14 @@ import {
 } from 'react'
 
 import { useDocument, useDocumentEnvelope, useTreePosition } from '../../lib/api/index.ts'
-import { lazyDialog } from '../dialogs/lazy-dialog.tsx'
+import { MountOnFirstOpen } from '../../lib/mount-on-first-open.tsx'
 
-/*
- * Moving and deleting are dialogs behind a press, so their code (the
- * destination picker, the child-count warning, the dialog machinery) is
- * fetched the first time one opens rather than with the reading page.
- */
-const MoveDocumentDialog = lazyDialog(
-  async () => ({ default: (await import('./move-document-dialog.tsx')).MoveDocumentDialog }),
-  'Opening move',
-)
-
-const DeleteDocumentDialog = lazyDialog(
-  async () => ({ default: (await import('./delete-document-dialog.tsx')).DeleteDocumentDialog }),
-  'Opening delete',
-)
+const DeleteDocumentDialog = lazy(async () => ({
+  default: (await import('./delete-document-dialog.tsx')).DeleteDocumentDialog,
+}))
+const MoveDocumentDialog = lazy(async () => ({
+  default: (await import('./move-document-dialog.tsx')).MoveDocumentDialog,
+}))
 
 /**
  * Sharing is its own chunk, and its own module graph — the link list, the
@@ -160,24 +152,28 @@ export function DocumentActionsProvider({
             address bar (ADR-035): the API resolves either, but the cache
             entries a move or a delete has to disturb are keyed by the id.
           */}
-          <MoveDocumentDialog
-            open={moveOpen}
-            onOpenChange={setMoveOpen}
-            workspaceId={workspaceId}
-            documentId={resolvedDocumentId ?? documentId}
-            documentTitle={document.data.title}
-            currentCollectionId={document.data.collectionId}
-            currentParentId={document.data.parentId}
-          />
-          <DeleteDocumentDialog
-            open={deleteOpen}
-            onOpenChange={setDeleteOpen}
-            workspaceSlug={workspaceSlug}
-            workspaceId={workspaceId}
-            documentId={resolvedDocumentId ?? documentId}
-            title={document.data.title}
-            childCount={position.data?.childCount ?? 0}
-          />
+          <MountOnFirstOpen open={moveOpen}>
+            <MoveDocumentDialog
+              open={moveOpen}
+              onOpenChange={setMoveOpen}
+              workspaceId={workspaceId}
+              documentId={resolvedDocumentId ?? documentId}
+              documentTitle={document.data.title}
+              currentCollectionId={document.data.collectionId}
+              currentParentId={document.data.parentId}
+            />
+          </MountOnFirstOpen>
+          <MountOnFirstOpen open={deleteOpen}>
+            <DeleteDocumentDialog
+              open={deleteOpen}
+              onOpenChange={setDeleteOpen}
+              workspaceSlug={workspaceSlug}
+              workspaceId={workspaceId}
+              documentId={resolvedDocumentId ?? documentId}
+              title={document.data.title}
+              childCount={position.data?.childCount ?? 0}
+            />
+          </MountOnFirstOpen>
           {shareOpenings === 0 ? undefined : (
             <Suspense fallback={null}>
               <ShareDialog

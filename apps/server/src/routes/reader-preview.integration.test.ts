@@ -409,4 +409,15 @@ describe('the preview of a draft', () => {
     expect((await preview(ref, editor)).body).not.toContain('Not out yet.')
     expect((await previewDraft(ref, editor)).body).toContain('Not out yet.')
   })
+
+  it('answers a document with no draft to show as one with nothing to preview', async () => {
+    const created = await createDocument('Draftless')
+    const ref = documentReference({ title: 'Draftless', shortId: created.shortId })
+    await harness.database.pool.query('DELETE FROM drafts WHERE document_id = $1', [created.id])
+
+    const response = await previewDraft(ref, editor)
+
+    expect(response.statusCode).toBe(404)
+    expect(response.body).toBe((await previewDraft('nothing-k000000000', editor)).body)
+  })
 })

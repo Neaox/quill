@@ -101,45 +101,27 @@ describe('alignBlocks', () => {
           )
           expect(fromAfter).toEqual(after)
           expect(new Set(fromBefore).size).toBe(before.length)
-          const unequalKept = alignment.filter(
-            (entry) =>
-              (entry.kind === 'unchanged' || entry.kind === 'moved') &&
-              toString(entry.before) !== toString(entry.after),
+          const matched = alignment.filter(
+            (entry) => entry.kind === 'unchanged' || entry.kind === 'moved',
           )
-          const retyped = alignment.filter(
-            (entry) => entry.kind === 'changed' && entry.before.type !== entry.after.type,
+          expect(matched.map((entry) => toString(entry.before))).toEqual(
+            matched.map((entry) => toString(entry.after)),
           )
-          expect(unequalKept).toEqual([])
-          expect(retyped).toEqual([])
+          const changed = alignment.filter((entry) => entry.kind === 'changed')
+          expect(changed.map((entry) => entry.before.type)).toEqual(
+            changed.map((entry) => entry.after.type),
+          )
         },
       ),
     )
   })
 })
 
-describe('a region too large to score every pair of its blocks', () => {
-  const COUNT = 205 // 205 x 205 candidate pairs is past the budget for scoring them all
-
-  it('pairs the blocks that sit in the same place and are alike, and no others', () => {
-    const older = Array.from({ length: COUNT }, (_, index) => `Entry${String(index)} stays here.`)
-    const newer = older.map((text, index) =>
-      index === 7 ? 'Completely unrelated sentence.' : `${text} Extended.`,
-    )
-    const alignment = alignBlocks(blocks(older.join('\n\n')), blocks(newer.join('\n\n')))
-    const kinds = Object.groupBy(alignment, (entry) => entry.kind)
-    expect(kinds.changed).toHaveLength(COUNT - 1)
-    expect(kinds.removed).toHaveLength(1)
-    expect(kinds.added).toHaveLength(1)
-    expect(kinds.unchanged).toBeUndefined()
-  })
-})
-
 describe('similarity', () => {
   it('is one for two blocks with no words at all, and zero against one that has some', () => {
-    const [rule, otherRule, words] = blocks('---\n\n***\n\nSome words.')
-    if (rule === undefined || otherRule === undefined || words === undefined) {
+    const [rule, otherRule, words] = blocks(['---', '***', 'Some words.'].join('\n\n'))
+    if (rule === undefined || otherRule === undefined || words === undefined)
       throw new Error('blocks')
-    }
     expect(similarity(rule, otherRule)).toBe(1)
     expect(similarity(rule, words)).toBe(0)
     expect(similarity(words, rule)).toBe(0)

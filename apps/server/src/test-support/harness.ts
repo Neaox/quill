@@ -264,7 +264,7 @@ export async function createServerHarness(options: HarnessOptions = {}): Promise
   // exercises the real delivery path rather than a shortcut (ADR-011).
   registerOutboxConsumers(jobRunner, { deps, mailer })
   // And the same subscription that tells the cache, so a test sees it cleared
-  // by a commit exactly as a running server does (ADR-052).
+  // by a commit exactly as a running server does (ADR-056).
   subscribePublicSiteInvalidation(eventBus, publicSiteCache)
   jobRunner.schedule(createSweepJob({ uow, clock, session: config.session }))
 

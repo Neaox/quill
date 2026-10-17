@@ -25,7 +25,7 @@ import { grantChange, grantCreated } from './events.ts'
  * fixture all go through here, which is what keeps a deny above document scope
  * out of the database in the first place.
  *
- * Creating one is announced (`GrantCreated`, ADR-052) in the transaction that
+ * Creating one is announced (`GrantCreated`, ADR-056) in the transaction that
  * stores it, so what is derived from who may read what — the public site's
  * cache now, the effective-permission table later — is told in the same
  * breath and cannot be left to catch up on a clock.

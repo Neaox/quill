@@ -33,6 +33,7 @@ export function combineConsumers(
     eventType,
 
     async handle(payload: unknown): Promise<void> {
+      // oxlint-disable-next-line quill/no-independent-await-in-loop -- consumers run in registration order and the first failure stops the rest (see the module doc)
       for (const consumer of consumers) await consumer.handle(payload)
     },
 

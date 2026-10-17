@@ -14,7 +14,7 @@ import type { PublicSiteCache } from './cache.ts'
 
 /**
  * What tells the public site's in-process cache that something it holds is no
- * longer true (ADR-023, ADR-052).
+ * longer true (ADR-023, ADR-056).
  *
  * The cache is this process's own, so it is told by the bus rather than by an
  * outbox consumer: an outbox event is claimed by exactly one poller, which is

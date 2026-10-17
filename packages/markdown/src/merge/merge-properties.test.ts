@@ -168,12 +168,10 @@ describe('mergeDocuments: properties', () => {
         expect(lostFromMine).toEqual([])
         expect(lostFromTheirs).toEqual([])
         // What a side removed stays removed, unless the removal is in a conflict.
-        const resurrected = [...inBase].filter(
-          (word) =>
-            (!inMine.has(word) || !inTheirs.has(word)) &&
-            merged.has(word) &&
-            !conflicted.base.has(word),
-        )
+        const resurrected = [...inBase].filter((word) => {
+          const removed = !inMine.has(word) || !inTheirs.has(word)
+          return removed && merged.has(word) && !conflicted.base.has(word)
+        })
         expect(resurrected).toEqual([])
       }),
       RUNS,

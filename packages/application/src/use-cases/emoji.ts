@@ -125,11 +125,9 @@ export async function uploadEmojiImage(
     animation = animationOf(sniffed, kept)
   } catch (error) {
     if (error instanceof MalformedImage) return { kind: 'malformed', reason: error.reason }
-    // The bytes are already in memory, so walking them can only fail by being malformed; any
-    // other error is a bug in a walker, which is thrown rather than blamed on the upload.
-    /* v8 ignore else -- the unexpected-error path has no input that reaches it. */
+    /* v8 ignore else -- the rethrow below says why. */
     if (error instanceof ContainerFault) return { kind: 'malformed', reason: error.message }
-    /* v8 ignore next */
+    /* v8 ignore next -- the walkers throw only the two faults above; anything else is a bug and must surface. */
     throw error
   }
   if (animation.kind === 'animated') {

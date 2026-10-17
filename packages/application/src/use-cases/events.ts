@@ -1,5 +1,14 @@
 import { ROLES } from '@quill/domain'
-import type { DocumentId, RevisionId, Role, UserId, WorkspaceId } from '@quill/domain'
+import type {
+  DocumentId,
+  ReviewDecision,
+  ReviewerKind,
+  ReviewStatus,
+  RevisionId,
+  Role,
+  UserId,
+  WorkspaceId,
+} from '@quill/domain'
 
 import { defineEvent } from '../events/define-event.ts'
 import type { EventPayloadInput } from '../events/define-event.ts'
@@ -13,7 +22,7 @@ import type {
 } from '../ports/persistence.ts'
 
 /**
- * Every event Quill emits (plan §22, ADR-052).
+ * Every event Quill emits (plan §22, ADR-056).
  *
  * Each is one `defineEvent`: its type name, the version this release writes,
  * and a reader for every version ever shipped (ADR-033) — an event written by
@@ -61,6 +70,14 @@ export const COLLECTION_DELETED = 'CollectionDeleted'
  */
 export const GRANT_CREATED = 'GrantCreated'
 export const GRANT_REVOKED = 'GrantRevoked'
+
+/**
+ * Review requests (ADR-052). Payloads name ids and never the message or a
+ * comment, which are read from the request when something needs them.
+ */
+export const REVIEW_REQUESTED = 'ReviewRequested'
+export const REVIEW_DECIDED = 'ReviewDecided'
+export const REVIEW_WITHDRAWN = 'ReviewWithdrawn'
 
 export const EVENT_PAYLOAD_VERSION = 1
 
@@ -134,6 +151,36 @@ export interface GrantChangedPayload {
   readonly scopeId: string | null
   readonly role: Role
   readonly effect: GrantEffect
+}
+
+export interface ReviewRequestedPayload {
+  readonly version: number
+  readonly requestId: string
+  readonly documentId: DocumentId
+  readonly workspaceId: WorkspaceId
+  readonly requestedBy: UserId
+  readonly reviewers: readonly { readonly kind: ReviewerKind; readonly id: string }[]
+}
+
+export interface ReviewDecidedPayload {
+  readonly version: number
+  readonly requestId: string
+  readonly documentId: DocumentId
+  readonly workspaceId: WorkspaceId
+  readonly decidedBy: UserId
+  readonly decision: ReviewDecision
+  /** Where the request stands after this answer. */
+  readonly status: ReviewStatus
+}
+
+export interface ReviewWithdrawnPayload {
+  readonly version: number
+  readonly requestId: string
+  readonly documentId: DocumentId
+  readonly workspaceId: WorkspaceId
+  readonly withdrawnBy: UserId
+  /** `superseded` when the author asked again; `withdrawn` when they took it back. */
+  readonly reason: 'withdrawn' | 'superseded'
 }
 
 /**
@@ -376,6 +423,76 @@ export const mailRequested = defineEvent<MailRequestedPayload>(
   { announced: false },
 )
 
+const REVIEWER_KINDS = ['user', 'group'] as const
+const REVIEW_DECISIONS = ['approve', 'request_changes'] as const
+
+export const reviewRequested = defineEvent<ReviewRequestedPayload>(REVIEW_REQUESTED, {
+  [EVENT_PAYLOAD_VERSION]: (payload) => {
+    const requestId = readString(payload, 'requestId')
+    const documentId = readString(payload, 'documentId')
+    const workspaceId = readString(payload, 'workspaceId')
+    const requestedBy = readString(payload, 'requestedBy')
+    const reviewers = readField(payload, 'reviewers')
+    if (requestId === null || documentId === null || workspaceId === null) return null
+    if (requestedBy === null || !Array.isArray(reviewers)) return null
+    const readable = reviewers.flatMap((reviewer: unknown) => {
+      if (typeof reviewer !== 'object' || reviewer === null) return []
+      const kind = readMember(reviewer, 'kind', REVIEWER_KINDS)
+      const id = readString(reviewer, 'id')
+      return kind !== null && id !== null ? [{ kind, id }] : []
+    })
+    return {
+      version: EVENT_PAYLOAD_VERSION,
+      requestId,
+      documentId: documentId as DocumentId,
+      workspaceId: workspaceId as WorkspaceId,
+      requestedBy: requestedBy as UserId,
+      reviewers: readable,
+    }
+  },
+})
+
+export const reviewDecided = defineEvent<ReviewDecidedPayload>(REVIEW_DECIDED, {
+  [EVENT_PAYLOAD_VERSION]: (payload) => {
+    const requestId = readString(payload, 'requestId')
+    const documentId = readString(payload, 'documentId')
+    const workspaceId = readString(payload, 'workspaceId')
+    const decidedBy = readString(payload, 'decidedBy')
+    const decision = readMember(payload, 'decision', REVIEW_DECISIONS)
+    const status = readString(payload, 'status')
+    if (requestId === null || documentId === null || workspaceId === null) return null
+    if (decidedBy === null || status === null || decision === null) return null
+    return {
+      version: EVENT_PAYLOAD_VERSION,
+      requestId,
+      documentId: documentId as DocumentId,
+      workspaceId: workspaceId as WorkspaceId,
+      decidedBy: decidedBy as UserId,
+      decision,
+      status: status as ReviewStatus,
+    }
+  },
+})
+
+export const reviewWithdrawn = defineEvent<ReviewWithdrawnPayload>(REVIEW_WITHDRAWN, {
+  [EVENT_PAYLOAD_VERSION]: (payload) => {
+    const requestId = readString(payload, 'requestId')
+    const documentId = readString(payload, 'documentId')
+    const workspaceId = readString(payload, 'workspaceId')
+    const withdrawnBy = readString(payload, 'withdrawnBy')
+    if (requestId === null || documentId === null || workspaceId === null) return null
+    if (withdrawnBy === null) return null
+    return {
+      version: EVENT_PAYLOAD_VERSION,
+      requestId,
+      documentId: documentId as DocumentId,
+      workspaceId: workspaceId as WorkspaceId,
+      withdrawnBy: withdrawnBy as UserId,
+      reason: readString(payload, 'reason') === 'superseded' ? 'superseded' : 'withdrawn',
+    }
+  },
+})
+
 /**
  * Each payload, or null when it is not one this release can read. An
  * unreadable event is left for a release that understands it rather than
@@ -387,3 +504,6 @@ export const parseDocumentPublished = documentPublished.parse
 export const parseDocumentRenamed = documentRenamed.parse
 export const parseDocumentMoved = documentMoved.parse
 export const parseAttachmentRevised = attachmentRevised.parse
+export const parseReviewRequested = reviewRequested.parse
+export const parseReviewDecided = reviewDecided.parse
+export const parseReviewWithdrawn = reviewWithdrawn.parse

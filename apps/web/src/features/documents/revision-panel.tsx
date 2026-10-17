@@ -1,20 +1,27 @@
 import { useNavigate } from '@tanstack/react-router'
-import { useState, type FormEvent } from 'react'
+import { lazy, useRef, useState, type FormEvent } from 'react'
 
-import { Button, formatMoment, RevisionTimeline, Spinner, toMoment, tv } from '@quill/ui'
+import {
+  Button,
+  formatMoment,
+  RevisionTimeline,
+  Spinner,
+  toMoment,
+  toast,
+  tv,
+  type ToastId,
+} from '@quill/ui'
 
 import type { LabelledRevision } from '../../lib/documents/revision-labels.ts'
+import { MountOnFirstOpen } from '../../lib/mount-on-first-open.tsx'
 import { SelectField } from '../../lib/forms/select-field.tsx'
+import { useRestoreRevision } from '../../lib/api/index.ts'
 import { documentLink } from '../../lib/routing/document-reference.ts'
 import { RouterLink } from '../../lib/routing/router-link.tsx'
-import { lazyDialog } from '../dialogs/lazy-dialog.tsx'
 
-const RestoreRevisionDialog = lazyDialog(
-  async () => ({
-    default: (await import('./restore-revision-dialog.tsx')).RestoreRevisionDialog,
-  }),
-  'Opening restore',
-)
+const RestoreRevisionDialog = lazy(async () => ({
+  default: (await import('./restore-revision-dialog.tsx')).RestoreRevisionDialog,
+}))
 
 export const revisionPanelStyles = tv({
   slots: {
@@ -76,7 +83,11 @@ export function RevisionPanel({
   className,
 }: RevisionPanelProps) {
   const navigate = useNavigate()
+  const restore = useRestoreRevision()
   const [confirming, setConfirming] = useState<LabelledRevision | undefined>(undefined)
+  // One promise toast per process (`docs/design/feedback.md`): a retry passes
+  // the previous id back so it replaces that toast instead of stacking one.
+  const restoreToastId = useRef<ToastId | undefined>(undefined)
   const head = revisions[0]
   const styles = revisionPanelStyles()
 
@@ -127,6 +138,61 @@ export function RevisionPanel({
       params: { workspaceSlug, documentId },
       search: { from, to },
     })
+  }
+
+  /**
+   * Restoring publishes a new revision (ADR-015), which is one of the three
+   * cases `docs/design/feedback.md` names for a promise toast: it lands on the
+   * page the person is looking at, and it takes long enough that they may have
+   * looked away. The button pressed keeps its own spinner; this says how it
+   * ended wherever they are by then, with the one action that follows.
+   */
+  function restoreRevision(revision: LabelledRevision) {
+    const { promise, resolve, reject } = Promise.withResolvers<void>()
+    restoreToastId.current = toast.promise(
+      promise,
+      {
+        loading: `Restoring ${revision.label}`,
+        success: {
+          title: `Restored ${revision.label}`,
+          action: { label: 'Read it', onClick: openHead },
+        },
+        error: (reason) => ({
+          title:
+            reason instanceof Error
+              ? reason.message
+              : `Couldn't restore ${revision.label}. Nothing was changed; try again.`,
+        }),
+      },
+      restoreToastId.current === undefined ? {} : { id: restoreToastId.current },
+    )
+
+    restore.mutate(
+      {
+        documentId,
+        revision: revision.revision,
+        changeNote: `Restored ${revision.label}`,
+      },
+      {
+        onSuccess: (result) => {
+          if (result.kind !== 'published') {
+            // A restore answered with a merge is a restore that did not
+            // happen: somebody published between reading this revision and
+            // pressing the button.
+            reject(
+              new Error(
+                `${revision.label} was not restored: somebody else published first. Reload and try again.`,
+              ),
+            )
+            return
+          }
+          resolve()
+          setConfirming(undefined)
+          openHead()
+        },
+        onError: reject,
+      },
+    )
   }
 
   const selected = currentRevision ?? head.revision
@@ -187,15 +253,17 @@ export function RevisionPanel({
         </Button>
       ) : undefined}
 
-      <RestoreRevisionDialog
-        open={confirming !== undefined}
-        onOpenChange={(open) => {
-          if (!open) setConfirming(undefined)
-        }}
-        documentId={documentId}
-        revision={confirming}
-        onRestored={openHead}
-      />
+      <MountOnFirstOpen open={confirming !== undefined}>
+        <RestoreRevisionDialog
+          revision={confirming}
+          isRestoring={restore.isPending}
+          error={restore.error}
+          onCancel={() => {
+            setConfirming(undefined)
+          }}
+          onRestore={restoreRevision}
+        />
+      </MountOnFirstOpen>
     </div>
   )
 }

@@ -9,6 +9,7 @@ import classnameDiscipline from './rules/classname-discipline.js'
 import effectNeedsReason from './rules/effect-needs-reason.js'
 import injectSystemDependencies from './rules/inject-system-dependencies.js'
 import noBrandLiteral from './rules/no-brand-literal.js'
+import noIndependentAwaitInLoop from './rules/no-independent-await-in-loop.js'
 import noInertControl from './rules/no-inert-control.js'
 import noPatternSuffix from './rules/no-pattern-suffix.js'
 import noRelativeImportWithoutExtension from './rules/no-relative-import-without-extension.js'
@@ -32,6 +33,7 @@ export default {
     'inject-system-dependencies': injectSystemDependencies,
     'no-pattern-suffix': noPatternSuffix,
     'no-inert-control': noInertControl,
+    'no-independent-await-in-loop': noIndependentAwaitInLoop,
     'tagged-todo': taggedTodo,
     'no-secret-in-log': noSecretInLog,
     'no-relative-import-without-extension': noRelativeImportWithoutExtension,

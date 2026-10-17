@@ -30,18 +30,18 @@ const SAVED =
 
 const EXISTING: DrawioDiagram = { attachmentId: 'a1', url: '/api/attachments/a1', version: 3 }
 
-function showModal(this: HTMLDialogElement): void {
+function showModal(this: HTMLDialogElement) {
   this.setAttribute('open', '')
 }
 
-function close(this: HTMLDialogElement): void {
+function closeDialog(this: HTMLDialogElement) {
   this.removeAttribute('open')
 }
 
 beforeAll(() => {
   // jsdom has no modal dialogs; the shims do what the browser's do, minus the top layer.
   HTMLDialogElement.prototype.showModal = showModal
-  HTMLDialogElement.prototype.close = close
+  HTMLDialogElement.prototype.close = closeDialog
 })
 
 afterEach(() => {
@@ -64,7 +64,8 @@ function fakeFiles(overrides: Partial<DrawioFiles> = {}): DrawioFiles {
   }
 }
 
-function messageFrom(message: object, origin: string, source: Window): void {
+/** A message from draw.io: its origin, its window. */
+function speak(drawio: Window, message: object, origin = ORIGIN, source: Window = drawio) {
   act(() => {
     window.dispatchEvent(
       new MessageEvent('message', { data: JSON.stringify(message), origin, source }),
@@ -94,10 +95,7 @@ function open(props: Partial<DrawioEditorProps> = {}) {
   if (frame === null || drawio === null || drawio === undefined) throw new Error('no frame')
   const sent = vi.spyOn(drawio, 'postMessage').mockImplementation(() => {})
 
-  /** A message from draw.io: its origin, its window. */
-  const say = (message: object, origin = ORIGIN, source: Window = drawio) => {
-    messageFrom(message, origin, source)
-  }
+  const say = speak.bind(null, drawio)
   const actions = () =>
     sent.mock.calls.map(([data, origin]) => ({ ...JSON.parse(String(data)), to: origin }))
   const lastAction = () => actions().at(-1)
@@ -399,7 +397,7 @@ describe('the draw.io editor', () => {
     })
     notDrawio.say({ event: 'init' })
     expect(
-      await screen.findByText('This file holds no draw.io diagram that can be opened here.'),
+      await screen.findByText('This file holds no draw.io diagram Quill can open.'),
     ).toBeInTheDocument()
     notDrawio.unmount()
 
@@ -422,6 +420,42 @@ describe('the draw.io editor', () => {
     say({ event: 'load' })
     say({ event: 'save', xml: 'not a diagram' })
     await waitFor(() => expect(lastAction()?.action).toBe('export'))
+  })
+
+  it('ignores a save draw.io sends after the session has closed', async () => {
+    const { say, actions, onClose } = open()
+    say({ event: 'load' })
+    say({ event: 'exit', modified: false })
+    expect(onClose).toHaveBeenCalledOnce()
+    const before = actions().length
+
+    say({ event: 'save', xml: SAVED })
+
+    expect(actions()).toHaveLength(before)
+  })
+
+  it('writes nothing for an export it did not ask for', async () => {
+    const { say, actions, files } = open()
+    say({ event: 'configure' })
+
+    say({ event: 'export', format: 'svg', data: EXPORTED })
+
+    expect(actions().at(-1)).toMatchObject({ action: 'spinner', show: false })
+    expect(files.create).not.toHaveBeenCalled()
+    expect(files.revise).not.toHaveBeenCalled()
+  })
+
+  it('closes from the prompt that says the diagram did not open', async () => {
+    const read = vi.fn<DrawioFiles['read']>().mockRejectedValueOnce(new Error('offline'))
+    const { say, onClose } = open({
+      files: fakeFiles({ read }),
+      target: { kind: 'existing', diagram: EXISTING, title: 'x' },
+    })
+    say({ event: 'init' })
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Close' }))
+
+    expect(onClose).toHaveBeenCalledOnce()
   })
 
   it('tells the writer when the editor is diagrams.net’s', () => {

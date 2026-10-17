@@ -3,7 +3,7 @@ import type { IdGenerator } from '../ports/system.ts'
 import type { EventRecorder, RecordedEvent } from '../ports/events.ts'
 
 /**
- * The recorder (ADR-052), implementing the `EventRecorder` port.
+ * The recorder (ADR-056), implementing the `EventRecorder` port.
  */
 export interface EventRecorderDependencies {
   /** Bound to the same transaction as the change the event reports. */

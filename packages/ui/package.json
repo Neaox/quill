@@ -12,8 +12,8 @@
     ".": "./src/index.ts",
     "./theme": "./src/theme/theme-id.ts",
     "./styles.css": "./src/styles/index.css",
-    "./editor.css": "./src/styles/editor.css",
-    "./present.css": "./src/styles/present.css",
+    "./styles/editor.css": "./src/styles/editor.css",
+    "./styles/present.css": "./src/styles/present.css",
     "./testing/axe": "./testing/axe.ts",
     "./styles/public-site": "./src/styles/public-site.ts"
   },

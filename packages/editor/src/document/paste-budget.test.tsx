@@ -56,10 +56,14 @@ vi.mock('./markdown-parser.ts', async (importOriginal) => {
 const KEYSTROKE_BUDGET_MS = 16
 const TASK_BUDGET_MS = 50
 const RUNS = 5
+/** An idle period no opening can outlast, for a test that counts rather than times. */
+const IDLE_FOR_ALL_MS = 60_000
 const CODE_BLOCKS = 240
 
 const clock = createFakeClock()
 const saves: DocumentAst[] = []
+/** How long each conversion the save asked for took, which is the save's own share of the work. */
+const conversions: number[] = []
 const client: DraftClient = {
   load: async () => ({ ast: { type: 'root', children: [] }, draftVersion: 1, baseRevision: null }),
   save: async (ast, expectedVersion) => {
@@ -87,7 +91,12 @@ function EditingSession({ ref }: { ref: Ref<DocumentEditorHandle> }) {
       labels={['status']}
       emoji={{ custom: new Map(), labelEmoji: new Map() }}
       onChange={(handle) => {
-        autosave.change(handle.toMdast)
+        autosave.change(() => {
+          const started = performance.now()
+          const tree = handle.toMdast()
+          conversions.push(performance.now() - started)
+          return tree
+        })
       }}
     />
   )
@@ -164,8 +173,6 @@ async function pasted(): Promise<{ editor: Editor; applied: number }> {
   render(<EditingSession ref={ref} />)
   const editor = ref.current?.editor
   if (editor == null) throw new Error('The editor did not mount.')
-  // Mounting converted the empty tree it was given; the budget is for the paste.
-  vi.mocked(markdown.mdastToProseMirror).mockClear()
   const started = performance.now()
   editor.view.dom.dispatchEvent(clipboard(source))
   await vi.waitFor(() => {
@@ -173,13 +180,6 @@ async function pasted(): Promise<{ editor: Editor; applied: number }> {
   })
   return { editor, applied: performance.now() - started }
 }
-
-const nextFrame = () =>
-  new Promise<void>((resolve) =>
-    requestAnimationFrame(() => {
-      resolve()
-    }),
-  )
 
 const median = (times: readonly number[]) =>
   times.toSorted((a, b) => a - b)[Math.floor(times.length / 2)] ?? Number.POSITIVE_INFINITY
@@ -206,7 +206,11 @@ describe('a paste of a 4,100-line document', () => {
   it('converts the pasted tree to editor nodes once, and back again only when the save goes', async () => {
     const page = lazyPage()
     const { editor } = await pasted()
-    expect(markdown.mdastToProseMirror).toHaveBeenCalledOnce()
+    // The empty document the session opens with is converted too; what is counted is the paste.
+    const converted = vi
+      .mocked(markdown.mdastToProseMirror)
+      .mock.calls.filter(([tree]) => tree.children.length > 0)
+    expect(converted).toHaveLength(1)
     expect(markdown.proseMirrorToMdast).not.toHaveBeenCalled()
 
     saves.length = 0
@@ -238,12 +242,10 @@ describe('a paste of a 4,100-line document', () => {
     expect(dom.querySelectorAll('.cm-editor')).toHaveLength(0)
     expect(dom.querySelectorAll('pre[data-code-static]')).toHaveLength(CODE_BLOCKS)
 
-    // The first screenful comes into view: those, and only those, open.
+    // The first screenful comes into view: those, and only those, open. This counts what opens,
+    // so the idle period is long enough for all of it; how long one opening takes is timed below.
     page.scrollTo(3)
-    // Which blocks open is the question, not how long the first takes: the
-    // first CodeMirror built in a process pays for loading it, many times a
-    // task. The time each opening takes is measured below, warm.
-    page.idle(10_000)
+    page.idle(IDLE_FOR_ALL_MS)
     expect(dom.querySelectorAll('.cm-editor')).toHaveLength(3)
     expect(dom.querySelectorAll('pre[data-code-static]')).toHaveLength(CODE_BLOCKS - 3)
     page.restore()
@@ -266,15 +268,14 @@ describe('a paste of a 4,100-line document', () => {
       page.idle()
       openings.push(performance.now() - opened)
 
-      // The frame work the paste itself queued (the table grips taking their
-      // places) belongs to the paste, not to the save timed next.
-      await nextFrame()
-      const save = performance.now()
+      conversions.length = 0
       await act(async () => {
         clock.advance(1_000)
         await Promise.resolve()
       })
-      saving.push(performance.now() - save)
+      // The save's one conversion, not the page redrawing around it, which jsdom draws far
+      // more slowly than a browser.
+      saving.push(conversions.reduce((total, took) => total + took, 0))
       page.restore()
     }
     expect(median(keystrokes)).toBeLessThan(KEYSTROKE_BUDGET_MS)

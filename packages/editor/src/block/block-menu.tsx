@@ -149,6 +149,7 @@ export function BlockMenu({ editor, onComment, className }: BlockMenuProps) {
     if (!open) return undefined
     const dismiss = (event: PointerEvent): void => {
       const target = event.target
+      /* v8 ignore next -- a press listened for on the document always lands on a node; the check narrows the type. */
       if (!(target instanceof Node)) return
       if (menuRef.current?.contains(target) === true) return
       if (triggerRef.current?.contains(target) === true) return

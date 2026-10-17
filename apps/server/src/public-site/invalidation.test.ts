@@ -19,7 +19,7 @@ import { subscribePublicSiteInvalidation } from './invalidation.ts'
 
 /**
  * What empties the public site's cache, and — as much to the point — what does
- * not. The cache is process-local, so it is told by the bus (ADR-052): an
+ * not. The cache is process-local, so it is told by the bus (ADR-056): an
  * outbox consumer is claimed by one poller, which is the wrong number of
  * processes to tell.
  */

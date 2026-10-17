@@ -1307,6 +1307,7 @@ export interface paths {
                                 comment: boolean;
                                 edit: boolean;
                                 manage: boolean;
+                                publish: boolean;
                                 view: boolean;
                             };
                             review: {
@@ -1720,6 +1721,284 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/documents/{id}/review": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            request: {
+                                assignments: {
+                                    comment: string | null;
+                                    decidedAt: string | null;
+                                    decidedBy: {
+                                        id: string;
+                                        name: string;
+                                    } | null;
+                                    id: string;
+                                    reviewer: {
+                                        id: string;
+                                        kind: "user" | "group";
+                                        memberCount?: number;
+                                        name: string;
+                                    };
+                                    state: "pending" | "approved" | "changes_requested";
+                                }[];
+                                canDecide: boolean;
+                                canWithdraw: boolean;
+                                /** Format: date-time */
+                                createdAt: string;
+                                documentId: string;
+                                draftVersion: number;
+                                id: string;
+                                message: string | null;
+                                requestedBy: {
+                                    id: string;
+                                    name: string;
+                                };
+                                stale: boolean;
+                                status: "open" | "approved" | "changes_requested" | "withdrawn" | "superseded" | "published";
+                            } | null;
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        message?: string;
+                        reviewers: {
+                            id: string;
+                            kind: "user" | "group";
+                        }[];
+                    };
+                };
+            };
+            responses: {
+                /** @description Default Response */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            assignments: {
+                                comment: string | null;
+                                decidedAt: string | null;
+                                decidedBy: {
+                                    id: string;
+                                    name: string;
+                                } | null;
+                                id: string;
+                                reviewer: {
+                                    id: string;
+                                    kind: "user" | "group";
+                                    memberCount?: number;
+                                    name: string;
+                                };
+                                state: "pending" | "approved" | "changes_requested";
+                            }[];
+                            canDecide: boolean;
+                            canWithdraw: boolean;
+                            /** Format: date-time */
+                            createdAt: string;
+                            documentId: string;
+                            draftVersion: number;
+                            id: string;
+                            message: string | null;
+                            requestedBy: {
+                                id: string;
+                                name: string;
+                            };
+                            stale: boolean;
+                            status: "open" | "approved" | "changes_requested" | "withdrawn" | "superseded" | "published";
+                        };
+                    };
+                };
+            };
+        };
+        delete: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/documents/{id}/review/decision": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        comment?: string;
+                        decision: "approve" | "request_changes";
+                    };
+                };
+            };
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            assignments: {
+                                comment: string | null;
+                                decidedAt: string | null;
+                                decidedBy: {
+                                    id: string;
+                                    name: string;
+                                } | null;
+                                id: string;
+                                reviewer: {
+                                    id: string;
+                                    kind: "user" | "group";
+                                    memberCount?: number;
+                                    name: string;
+                                };
+                                state: "pending" | "approved" | "changes_requested";
+                            }[];
+                            canDecide: boolean;
+                            canWithdraw: boolean;
+                            /** Format: date-time */
+                            createdAt: string;
+                            documentId: string;
+                            draftVersion: number;
+                            id: string;
+                            message: string | null;
+                            requestedBy: {
+                                id: string;
+                                name: string;
+                            };
+                            stale: boolean;
+                            status: "open" | "approved" | "changes_requested" | "withdrawn" | "superseded" | "published";
+                        };
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/documents/{id}/reviewer-candidates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: {
+                    q?: string;
+                };
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            groups: {
+                                canView: boolean;
+                                id: string;
+                                memberCount: number;
+                                name: string;
+                            }[];
+                            people: {
+                                canView: boolean;
+                                email: string;
+                                id: string;
+                                name: string;
+                            }[];
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/documents/{id}/share-links": {
         parameters: {
             query?: never;
@@ -1835,6 +2114,41 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/documents/{id}/view": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/extensions/drawio": {
         parameters: {
             query?: never;
@@ -1858,6 +2172,335 @@ export interface paths {
                     };
                     content: {
                         "application/json": components["schemas"]["DrawioEditor"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/groups": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            groups: {
+                                id: string;
+                                memberCount: number;
+                                name: string;
+                                parentGroupId: string | null;
+                                unitId: string;
+                                unitPath: string;
+                            }[];
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        name: string;
+                        parentGroupId?: string;
+                        unitId: string;
+                    };
+                };
+            };
+            responses: {
+                /** @description Default Response */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            id: string;
+                            name: string;
+                            parentGroupId: string | null;
+                            unitId: string;
+                        };
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/groups/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            grants: number;
+                            members: number;
+                        };
+                    };
+                };
+            };
+        };
+        options?: never;
+        head?: never;
+        patch: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        name: string;
+                    };
+                };
+            };
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            id: string;
+                            name: string;
+                            parentGroupId: string | null;
+                            unitId: string;
+                        };
+                    };
+                };
+            };
+        };
+        trace?: never;
+    };
+    "/api/groups/{id}/members": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            members: {
+                                email: string;
+                                id: string;
+                                name: string;
+                            }[];
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/groups/{id}/members/{userId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                    userId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        post?: never;
+        delete: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                    userId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/home": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: {
+                    scope?: "mine" | "everywhere";
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            anyPublished: boolean;
+                            drafts: {
+                                items: {
+                                    id: string;
+                                    shortId: string;
+                                    slug: string;
+                                    title: string;
+                                    /** Format: date-time */
+                                    updatedAt: string;
+                                    workspaceId: string;
+                                }[];
+                                total: number;
+                            };
+                            hasHistory: boolean;
+                            jumpBackIn: {
+                                id: string;
+                                shortId: string;
+                                slug: string;
+                                title: string;
+                                /** Format: date-time */
+                                viewedAt: string;
+                                workspaceId: string;
+                            }[];
+                            recent: {
+                                id: string;
+                                shortId: string;
+                                slug: string;
+                                title: string;
+                                /** Format: date-time */
+                                updatedAt: string;
+                                updatedBy: {
+                                    id: string;
+                                    name: string;
+                                } | null;
+                                workspaceId: string;
+                            }[];
+                            scope: "mine" | "everywhere";
+                            stats: {
+                                documentCount: number;
+                                draftCount: number;
+                                engagement: number;
+                                updatedAt: string | null;
+                                workspaceId: string;
+                            }[];
+                        };
                     };
                 };
             };
@@ -1897,6 +2540,188 @@ export interface paths {
         };
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/me/attention": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            items: {
+                                /** Format: date-time */
+                                at: string;
+                                by: {
+                                    id: string;
+                                    name: string;
+                                };
+                                document: {
+                                    id: string;
+                                    shortId: string;
+                                    title: string;
+                                    workspaceId: string;
+                                };
+                                kind: "review-requested" | "changes-requested" | "review-approved";
+                                requestId: string;
+                            }[];
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/me/history": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/me/notifications": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: {
+                    before?: string;
+                    limit?: number;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            items: {
+                                actor: {
+                                    id: string;
+                                    name: string;
+                                };
+                                /** Format: date-time */
+                                at: string;
+                                document: {
+                                    id: string;
+                                    shortId: string;
+                                    title: string;
+                                    workspaceId: string;
+                                };
+                                id: string;
+                                kind: "review-requested" | "changes-requested" | "review-approved" | "review-withdrawn";
+                                readAt: string | null;
+                            }[];
+                            next?: string;
+                            unread: number;
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/me/notifications/read": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        ids?: string[];
+                    };
+                };
+            };
+            responses: {
+                /** @description Default Response */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
         delete?: never;
         options?: never;
         head?: never;
@@ -1960,6 +2785,49 @@ export interface paths {
                 };
             };
         };
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/people": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: {
+                    q?: string;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            people: {
+                                email: string;
+                                id: string;
+                                name: string;
+                            }[];
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
         post?: never;
         delete?: never;
         options?: never;
@@ -2656,6 +3524,7 @@ export interface paths {
         get: {
             parameters: {
                 query?: {
+                    all?: boolean;
                     parentId?: string;
                 };
                 header?: never;

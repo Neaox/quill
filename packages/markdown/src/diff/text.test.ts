@@ -1,45 +1,56 @@
-import type { Image, ImageReference } from 'mdast'
+import type { Nodes, Text } from 'mdast'
 import { describe, expect, it } from 'vitest'
 
-import type { DiffCode } from './nodes.ts'
 import { plainText } from './text.ts'
 
-describe('the words a node shows', () => {
-  it('is the alternative text of an image, and nothing when it has none', () => {
-    const described: Image = { type: 'image', url: 'a.png', alt: 'A diagram' }
-    const bare: Image = { type: 'image', url: 'a.png' }
-    const reference: ImageReference = {
-      type: 'imageReference',
-      identifier: 'a',
-      referenceType: 'full',
-    }
-    expect(plainText(described)).toBe('A diagram')
-    expect(plainText(bare)).toBe('')
-    expect(plainText(reference)).toBe('')
+const text = (value: string): Text => ({ type: 'text', value })
+
+describe('plainText', () => {
+  it('reads a picture as its alt text, and as nothing when it has none', () => {
+    expect(plainText({ type: 'image', url: '/a.png', alt: 'a chart' })).toBe('a chart')
+    expect(plainText({ type: 'image', url: '/a.png' })).toBe('')
+    expect(plainText({ type: 'imageReference', identifier: 'a', referenceType: 'full' })).toBe('')
   })
 
-  it('is the lines of a code block with changes, whichever side each part is from', () => {
-    const code: DiffCode = {
-      type: 'diffCode',
-      lines: [
-        {
-          change: 'removed',
-          before: 1,
-          segments: [
-            { change: 'equal', text: 'port = ' },
-            { change: 'removed', text: '3000' },
-          ],
-        },
-        {
-          change: 'added',
-          after: 1,
-          segments: [
-            { change: 'equal', text: 'port = ' },
-            { change: 'added', text: '3001' },
-          ],
-        },
+  it('joins the words of a line as they are and separates blocks with a space', () => {
+    const list: Nodes = {
+      type: 'list',
+      children: [
+        { type: 'listItem', children: [{ type: 'paragraph', children: [text('one')] }] },
+        { type: 'listItem', children: [{ type: 'paragraph', children: [text('two')] }] },
       ],
     }
-    expect(plainText(code)).toBe('port = 3000\nport = 3001')
+
+    expect(plainText(list)).toBe('one two')
+    expect(
+      plainText({
+        type: 'paragraph',
+        children: [text('a'), { type: 'emphasis', children: [text('b')] }],
+      }),
+    ).toBe('ab')
+  })
+
+  it('reads a changed code block as its lines, with the segments of each line joined', () => {
+    expect(
+      plainText({
+        type: 'diffCode',
+        lines: [
+          {
+            change: 'equal',
+            before: 1,
+            after: 1,
+            segments: [
+              { change: 'equal', text: 'const b = ' },
+              { change: 'added', text: '3' },
+            ],
+          },
+          { change: 'added', after: 2, segments: [{ change: 'added', text: 'return b' }] },
+        ],
+      }),
+    ).toBe('const b = 3\nreturn b')
+  })
+
+  it('reads a node with neither text nor children as nothing', () => {
+    expect(plainText({ type: 'thematicBreak' })).toBe('')
   })
 })

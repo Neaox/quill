@@ -196,6 +196,7 @@ export async function rotateMasterKey(
     })
     const last = page.at(-1)
     if (last === undefined) break
+    // oxlint-disable-next-line quill/no-independent-await-in-loop -- one secret at a time: the rotation shares the pool and the key service with live requests, and the page is already its bound
     for (const row of page) {
       const outcome = await rewrapOne(deps, row)
       if (outcome === 'rewrapped') rewrapped += 1

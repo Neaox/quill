@@ -18,6 +18,7 @@ import type {
 import type { Clock, IdGenerator } from '../ports/system.ts'
 import { canonicaliseLinks } from './canonical-links.ts'
 import { documentPublished, documentRenamed } from './events.ts'
+import { closeReviewOnPublish } from './review.ts'
 import { createVersionedReader } from './versioned-reader.ts'
 
 /**
@@ -231,9 +232,23 @@ export async function recordPublish(
 
     const row = await tx.documents.update(
       document.id,
-      { headRevision: revision, status: 'published', ...(renamed ? { title } : {}) },
+      {
+        headRevision: revision,
+        status: 'published',
+        updatedBy: input.author.userId,
+        ...(renamed ? { title } : {}),
+      },
       now,
     )
+
+    // Whatever was being reviewed has now gone live, so the review is over:
+    // closed here, in the publish's own transaction (ADR-052).
+    await closeReviewOnPublish(tx, {
+      documentId: document.id,
+      publishedBy: input.author.userId,
+      now,
+      ids: deps.ids,
+    })
 
     // TODO(M3): a publish that wrote to the content store and then failed
     // here leaves the two stores disagreeing until someone republishes. The
@@ -249,6 +264,7 @@ export async function recordPublish(
         revision,
         authorName: input.author.name,
         authorEmail: input.author.email,
+        authorUserId: input.author.userId,
         timestamp: now,
         summary: input.summary,
         changeNote: input.changeNote,

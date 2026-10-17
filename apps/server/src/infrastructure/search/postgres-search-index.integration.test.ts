@@ -922,7 +922,7 @@ describe('the PostgreSQL search index: people and teams', () => {
     expect(await found('by:zzzz')).toEqual([])
   })
 
-  it('fills a row indexed before this existed from the revisions it came from (migration 0016)', async () => {
+  it('fills a row indexed before this existed from the revisions it came from (migration 0019)', async () => {
     const published = (n: number, name: string, email: string, at: number) =>
       fixture.uow.repos.revisions.append({
         id: `backfill-${n}`,
@@ -949,7 +949,7 @@ describe('the PostgreSQL search index: people and teams', () => {
 
     // The statement itself, out of the migration file that will run in production.
     const migration = readFileSync(
-      new URL('../../../drizzle/0016_people_search.sql', import.meta.url),
+      new URL('../../../drizzle/0019_people_search.sql', import.meta.url),
       'utf8',
     )
     const backfill = migration
@@ -1191,7 +1191,7 @@ describe('the PostgreSQL search index: hierarchical tags', () => {
     ])
   })
 
-  it('backfills tag paths for existing rows exactly as the one function reads a tag (migration 0017)', async () => {
+  it('backfills tag paths for existing rows exactly as the one function reads a tag (migration 0020)', async () => {
     const original = await database.pool.query<{
       document_id: string
       tags: string[]
@@ -1206,7 +1206,7 @@ describe('the PostgreSQL search index: hierarchical tags', () => {
 
     try {
       const migration = readFileSync(
-        new URL('../../../drizzle/0017_tags_properties.sql', import.meta.url),
+        new URL('../../../drizzle/0020_tags_properties.sql', import.meta.url),
         'utf8',
       )
       const backfill = migration

@@ -1,7 +1,7 @@
 import type { EventBus, RecordedEvent } from '../ports/events.ts'
 
 /**
- * The in-process bus (ADR-052), implementing the `EventBus` port.
+ * The in-process bus (ADR-056), implementing the `EventBus` port.
  */
 
 export interface EventBusOptions {
@@ -36,6 +36,7 @@ export function createEventBus(options: EventBusOptions): EventBus {
 
     async publish(event) {
       // A copy, so a listener that unsubscribes does not skip the one after it.
+      // oxlint-disable-next-line quill/no-independent-await-in-loop -- listeners are delivered in the order they subscribed, each awaited before the next (the bus's contract)
       for (const delivery of Array.from(deliveries.get(event.type) ?? [])) {
         await delivery(event)
       }

@@ -117,13 +117,17 @@ export interface LabelsEditorProps {
  * removing a label and adding another is the honest way to rename one, and
  * documents that still say the old name fall back to their literal text.
  */
+/** Stable defaults: a fresh `[]` or `Map` per render would defeat memoised children. */
+const NO_EMOJI: NonNullable<LabelsEditorProps['emoji']> = []
+const NO_EMOJI_SOURCES: NonNullable<LabelsEditorProps['emojiSources']> = new Map()
+
 export function LabelsEditor({
   labels,
   generated,
   light,
   dark,
-  emoji = [],
-  emojiSources = new Map(),
+  emoji = NO_EMOJI,
+  emojiSources = NO_EMOJI_SOURCES,
   onLabelsChange,
 }: LabelsEditorProps) {
   const entries = labels ?? []

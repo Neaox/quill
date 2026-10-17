@@ -1,13 +1,4 @@
-import type {
-  BlockContent,
-  Blockquote,
-  DefinitionContent,
-  Html,
-  Paragraph,
-  PhrasingContent,
-  Root,
-  RootContent,
-} from 'mdast'
+import type { Blockquote, Html, Paragraph, PhrasingContent, Root, RootContent } from 'mdast'
 
 import type { DirectiveAttributes, DirectiveContent } from '../directives/definition.ts'
 import { splitFirstLine } from '../pipeline/first-line.ts'
@@ -103,8 +94,26 @@ function tagsOf(node: Html): Located[] | undefined {
   return tags.length === 0 ? undefined : tags
 }
 
-/** Every node type a flow container may hold; the record is exhaustive, so a new mdast type is a compile error here. */
-const FLOW_TYPES: Readonly<Record<(BlockContent | DefinitionContent)['type'], true>> = {
+/** A details being read: opened, perhaps summarised, gathering its body until it is closed. */
+interface Frame {
+  readonly open: boolean
+  readonly openLine: number
+  readonly blankLinesBefore: number | undefined
+  /** The opening as written so far, and the line it ends on. */
+  opening: string
+  openingEndLine: number
+  summary: PhrasingContent[] | undefined
+  readonly children: FlowContent[]
+  /** The lines the first thing in the frame started on and the last ended on. */
+  firstLine: number | undefined
+  lastLine: number
+}
+
+/** A block a flow container holds, which is what a details can hold. */
+type FlowContent = DirectiveContent[number]
+
+/** Every type of block, which the compiler keeps complete as extensions add more. */
+const FLOW_TYPES: Readonly<Record<FlowContent['type'], true>> = {
   blockquote: true,
   code: true,
   codeGroup: true,
@@ -123,23 +132,8 @@ const FLOW_TYPES: Readonly<Record<(BlockContent | DefinitionContent)['type'], tr
   thematicBreak: true,
 }
 
-function isFlowContent(node: RootContent): node is BlockContent | DefinitionContent {
+function isFlowContent(node: RootContent): node is FlowContent {
   return Object.hasOwn(FLOW_TYPES, node.type)
-}
-
-/** A details being read: opened, perhaps summarised, gathering its body until it is closed. */
-interface Frame {
-  readonly open: boolean
-  readonly openLine: number
-  readonly blankLinesBefore: number | undefined
-  /** The opening as written so far, and the line it ends on. */
-  opening: string
-  openingEndLine: number
-  summary: PhrasingContent[] | undefined
-  readonly children: DirectiveContent
-  /** The lines the first thing in the frame started on and the last ended on. */
-  firstLine: number | undefined
-  lastLine: number
 }
 
 interface Item {
@@ -148,17 +142,11 @@ interface Item {
   readonly endLine: number
 }
 
-/** Puts a block in the body of the details being read, noting the lines the body spans. */
-function record(top: Frame, node: BlockContent | DefinitionContent, item: Item): void {
-  top.children.push(node)
-  top.firstLine ??= item.line
-  top.lastLine = item.endLine
-}
-
 /**
  * The siblings of one flow container with every complete details made one
- * node; undefined when its tags do not balance, or a summary is out of place,
- * in which case nothing at this level is read as details.
+ * node; undefined when its tags do not balance, a summary is out of place, or
+ * something other than a block would go inside one, in which case nothing at
+ * this level is read as details.
  */
 function readHtmlSiblings(
   children: readonly RootContent[],
@@ -168,15 +156,18 @@ function readHtmlSiblings(
     return undefined
   const out: RootContent[] = []
   const stack: Frame[] = []
-  /** The line the last thing read ended on; only read once something has been, so the start is moot. */
-  let previousLine = 0
+  let previousLine: number | undefined
 
-  /** False when the node cannot stand in a details' body, which is then not read as one. */
+  /** Places an item at the current level; false when it cannot stand inside the open details. */
   const place = (item: Item): boolean => {
     const top = stack.at(-1)
     if (top === undefined) out.push(item.node)
-    else if (isFlowContent(item.node)) record(top, item.node, item)
-    else return false
+    else if (!isFlowContent(item.node)) return false
+    else {
+      top.children.push(item.node)
+      top.firstLine ??= item.line
+      top.lastLine = item.endLine
+    }
     previousLine = item.endLine
     return true
   }
@@ -189,18 +180,21 @@ function readHtmlSiblings(
       if (!place({ node: child, line: start, endLine: end })) return undefined
       continue
     }
-    let previousEnd = 0
     for (const [index, tag] of tags.entries()) {
       const { token } = tag
-      const between = index === 0 ? '' : child.value.slice(previousEnd, tag.start)
-      previousEnd = tag.end
       const top = stack.at(-1)
       if (token.kind === 'open') {
         const recorded = child.data?.sourceForm?.blankLines
         stack.push({
           open: token.open,
           openLine: tag.line,
-          blankLinesBefore: index === 0 ? recorded : tag.line - previousLine - 1,
+          /* v8 ignore next 5 -- an earlier tag in this node has always set `previousLine`. */
+          blankLinesBefore:
+            index === 0
+              ? recorded
+              : previousLine === undefined
+                ? undefined
+                : tag.line - previousLine - 1,
           opening: child.value.slice(tag.start, tag.end),
           openingEndLine: tag.endLine,
           summary: undefined,
@@ -218,6 +212,9 @@ function readHtmlSiblings(
         if (inline === undefined) return undefined
         const gap =
           index === 0 ? `\n${'\n'.repeat(Math.max(tag.line - top.openingEndLine - 1, 0))}` : ''
+        /* v8 ignore next 2 -- the tag before this one is always in the node. */
+        const between =
+          index === 0 ? '' : child.value.slice(tags[index - 1]?.end ?? tag.start, tag.start)
         top.opening = `${top.opening}${gap}${between}${child.value.slice(tag.start, tag.end)}`
         top.openingEndLine = tag.endLine
         top.lastLine = tag.endLine
@@ -227,12 +224,10 @@ function readHtmlSiblings(
       }
       const closing = stack.pop()
       if (closing === undefined) return undefined
-      // A details is flow content, so it stands in any body and is never refused.
-      const finished = { node: finish(closing, tag), line: closing.openLine, endLine: tag.endLine }
-      const outer = stack.at(-1)
-      if (outer === undefined) out.push(finished.node)
-      else record(outer, finished.node, finished)
       previousLine = tag.endLine
+      /* v8 ignore next 2 -- a details is itself a block, so it always fits inside another. */
+      if (!place({ node: finish(closing, tag), line: closing.openLine, endLine: tag.endLine }))
+        return undefined
     }
   }
   return stack.length === 0 ? out : undefined

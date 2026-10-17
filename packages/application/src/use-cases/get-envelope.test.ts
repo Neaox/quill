@@ -127,6 +127,7 @@ describe('getEnvelope', () => {
       view: true,
       comment: true,
       edit: true,
+      publish: true,
       manage: false,
     })
   })
@@ -364,17 +365,7 @@ describe('the draft an editor has not published', () => {
     expect(await draftOf(id)).toEqual({ savedAt: NOW })
   })
 
-  it('is not reported when there is no draft to differ, or one this release cannot read', async () => {
-    const id = await published('# Overview\nPublished.')
-    clock.advance(60_000)
-    await uow.repos.drafts.init({
-      documentId: id,
-      baseRevision: null,
-      ast: { version: 999 },
-      now: clock.now(),
-    })
-    expect(await draftOf(id)).toBeNull()
-
+  it('is not reported for a document with no draft at all', async () => {
     const bare = documentId('00000000-0000-4000-8000-000000000301')
     await uow.repos.documents.create({
       id: bare,
@@ -390,7 +381,20 @@ describe('the draft an editor has not published', () => {
       templateVersion: null,
       now: NOW,
     })
+
     expect(await draftOf(bare)).toBeNull()
+  })
+
+  it('is not reported when what was saved is not a draft this release can read', async () => {
+    const id = await draft('Overview', '# Overview\nNot out yet.')
+    await uow.repos.drafts.init({
+      documentId: id,
+      baseRevision: null,
+      ast: { version: 99, somethingNew: true },
+      now: NOW,
+    })
+
+    expect(await draftOf(id)).toBeNull()
   })
 
   it('is not reported to somebody who cannot edit, who has no business with it', async () => {

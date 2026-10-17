@@ -227,14 +227,20 @@ test('a document is written, published, revised, compared, and restored', async 
 
   // --- Compare the two revisions -------------------------------------------
   await page.getByText('Compare', { exact: true }).first().click()
-  await page.getByLabel('From').selectOption({ index: 1 })
-  await page.getByLabel('To').selectOption({ index: 0 })
+  // `exact`: "To" is also a substring of every heading's "Link to this section" anchor.
+  await page.getByLabel('From', { exact: true }).selectOption({ index: 1 })
+  await page.getByLabel('To', { exact: true }).selectOption({ index: 0 })
   await page.getByRole('button', { name: 'Compare' }).click()
 
+  // The page as it reads, with what changed marked where it is (ADR-031's comparison).
   await expect(page.getByRole('heading', { name: 'Comparing v1 with v2' })).toBeVisible()
-  const compared = page.getByRole('article', { name: /compared with/ })
-  await expect(compared).toContainText('on-call engineer')
-  await expect(compared.locator('[data-change]').first()).toBeVisible()
+  const comparison = page.getByRole('article', { name: 'Comparison' })
+  await expect(comparison).toContainText('on-call engineer')
+  // The sentence was added to a paragraph, so the block is changed and the words are inserted.
+  await expect(comparison.locator('[data-change="changed"]').first()).toBeVisible()
+  await expect(comparison.locator('ins[data-diff="added"]').first()).toContainText(
+    'on-call engineer',
+  )
 
   // --- Restore the first revision ------------------------------------------
   await page.getByRole('link', { name: 'Back to the document' }).click()

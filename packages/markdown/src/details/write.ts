@@ -1,9 +1,9 @@
-import type { Blockquote, Paragraph, PhrasingContent, Text } from 'mdast'
+import type { Blockquote, Paragraph, PhrasingContent, RootContent, Text } from 'mdast'
 import type { ContainerDirective } from 'mdast-util-directive'
 import type { Handle, Join } from 'mdast-util-to-markdown'
 
-import { flag } from '../directives/definition.ts'
 import type { DirectiveContent } from '../directives/definition.ts'
+import { flag } from '../directives/definition.ts'
 import { rawMdast } from '../pipeline/raw-mdast.ts'
 import type { ToMarkdownExtension } from '../pipeline/raw-mdast.ts'
 import type { Details } from './details.ts'
@@ -67,7 +67,7 @@ function fitsOneLine(children: readonly PhrasingContent[], html: boolean): boole
   })
 }
 
-function isSummary(node: DirectiveContent[number] | undefined): node is Paragraph {
+function isSummary(node: RootContent | undefined): node is Paragraph {
   return node?.type === 'paragraph' && node.data?.directiveLabel === true
 }
 
@@ -80,19 +80,15 @@ function bodyOf(node: Details): DirectiveContent {
   return node.children.filter((child) => !isSummary(child))
 }
 
-/** The kind a callout's marker can say, or undefined when the details has none that fits. */
-function markerKindOf(node: Details): string | undefined {
-  const type = node.attributes['type']
-  return typeof type === 'string' && MARKER_KIND.test(type) ? type : undefined
-}
-
 /** Whether the details can still be written in the syntax it was read in. */
 export function keepsSyntax(node: Details): boolean {
   const attributes = Object.entries(node.attributes)
   if (!attributes.every(([name]) => CARRIES[node.syntax].has(name))) return false
   const html = node.syntax === 'html'
   if (!fitsOneLine(summaryOf(node)?.children ?? [], html)) return false
-  return html || markerKindOf(node) !== undefined
+  if (html) return true
+  const type = node.attributes['type']
+  return typeof type === 'string' && MARKER_KIND.test(type)
 }
 
 /** The same details as Quill's own directive, which can say everything any form can. */
@@ -146,12 +142,13 @@ const LINE_BREAK: Text = { type: 'text', value: '\n' }
 
 function writeCallout(
   node: Details,
-  kind: string,
   parent: Parameters<Handle>[1],
   state: State,
   info: Info,
 ): string {
   const source = node.source?.syntax === 'callout' ? node.source : undefined
+  /* v8 ignore next -- `keepsSyntax` has already required a kind. */
+  const kind = node.attributes['type'] ?? ''
   const marker =
     source !== undefined && source.read === calloutMarkerRead(node.attributes)
       ? source.marker
@@ -176,12 +173,10 @@ function writeCallout(
 }
 
 const writeDetails: Handle = (node: Details, parent, state, info) => {
-  const asDirective = (): string => state.handle(detailsDirectiveOf(node), parent, state, info)
-  if (node.syntax === 'html') {
-    return keepsSyntax(node) ? writeHtml(node, state, info) : asDirective()
-  }
-  const kind = keepsSyntax(node) ? markerKindOf(node) : undefined
-  return kind === undefined ? asDirective() : writeCallout(node, kind, parent, state, info)
+  if (!keepsSyntax(node)) return state.handle(detailsDirectiveOf(node), parent, state, info)
+  return node.syntax === 'html'
+    ? writeHtml(node, state, info)
+    : writeCallout(node, parent, state, info)
 }
 
 /**

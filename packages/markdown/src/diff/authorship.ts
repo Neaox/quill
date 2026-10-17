@@ -50,7 +50,7 @@ function digest(node: RootContent): string {
   let h1 = 0xdeadbeef
   let h2 = 0x41c6ce57
   for (const character of nodeKey(node)) {
-    /* v8 ignore next -- iterating a string yields whole code points, never an empty one. */
+    /* v8 ignore next -- a character of a string always has a code point. */
     const code = character.codePointAt(0) ?? 0
     h1 = Math.imul(h1 ^ code, 2654435761)
     h2 = Math.imul(h2 ^ code, 1597334677)
@@ -130,17 +130,16 @@ export function stampEdit(
 /** Who last wrote this block, when the ledger knows. */
 export function writtenBy(
   authorship: Authorship | undefined,
-  block: RootContent | undefined,
+  block: RootContent,
 ): Stamp | undefined {
-  return block === undefined ? undefined : authorship?.blocks[digest(block)]
+  return authorship?.blocks[digest(block)]
 }
 
 /** Who took this block out, when the ledger knows. */
 export function removedBy(
   authorship: Authorship | undefined,
-  block: RootContent | undefined,
+  block: RootContent,
 ): Stamp | undefined {
-  if (block === undefined) return undefined
   const key = digest(block)
   const entry = authorship?.removed.findLast((each) => each.key === key)
   return entry === undefined ? undefined : { by: entry.by, at: entry.at }
@@ -161,10 +160,14 @@ export function attributeChanges(
   const draft = blocksOf(context.draft)
   const named = context.comparison.changes.flatMap((change): [string, Stamp][] => {
     if (!aligned.has(change.id)) return []
+    const block = change.change === 'removed' ? change.previous : draft[change.at]
+    /* v8 ignore next 6 -- `revertibleChanges` has already found the block at each place. */
     const stamp =
-      change.change === 'removed'
-        ? removedBy(authorship, change.previous)
-        : writtenBy(authorship, draft[change.at])
+      block === undefined
+        ? undefined
+        : change.change === 'removed'
+          ? removedBy(authorship, block)
+          : writtenBy(authorship, block)
     return stamp === undefined ? [] : [[change.id, stamp]]
   })
   return new Map(named)

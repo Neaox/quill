@@ -65,4 +65,8 @@ describe('linesOf', () => {
     expect(linesOf('')).toEqual([])
     expect(linesOf('a\nb')).toEqual(['a', 'b'])
   })
+
+  it('keeps the last line of a text that does not end in a newline', () => {
+    expect(linesOf('a\nb')).toEqual(['a', 'b'])
+  })
 })

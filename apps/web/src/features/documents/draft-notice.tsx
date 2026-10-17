@@ -1,4 +1,5 @@
 import { Link } from '@tanstack/react-router'
+import type { ReactNode } from 'react'
 
 import { Block, buttonClassName, Callout, LayoutGrid, RelativeTime } from '@quill/ui'
 
@@ -25,9 +26,11 @@ export interface DraftNoticeProps {
   readonly documentId: string
   /** When the draft was last saved, as an ISO timestamp. */
   readonly savedAt: string
+  /** More to do with the draft, beside the two here: a phone's way to ask for a review. */
+  readonly actions?: ReactNode
 }
 
-export function DraftNotice({ workspaceSlug, documentId, savedAt }: DraftNoticeProps) {
+export function DraftNotice({ workspaceSlug, documentId, savedAt, actions }: DraftNoticeProps) {
   return (
     <LayoutGrid className="pt-6">
       <Block>
@@ -44,6 +47,7 @@ export function DraftNotice({ workspaceSlug, documentId, savedAt }: DraftNoticeP
               Resume editing
             </Link>
             <PreviewLink documentRef={documentId} draft variant="ghost" size="sm" />
+            {actions}
           </p>
         </Callout>
       </Block>

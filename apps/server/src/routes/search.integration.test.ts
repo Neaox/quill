@@ -11,11 +11,11 @@ import { parseDocument } from '@quill/markdown'
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 
 import { reindex } from '../scripts/reindex.ts'
-import { aDrawioSvg } from '../test-support/drawio.ts'
 import { createServerHarness } from '../test-support/harness.ts'
 import type { ServerHarness } from '../test-support/harness.ts'
 import { seedTenancy } from '../test-support/tenancy-fixture.ts'
 import type { TenancyFixture } from '../test-support/tenancy-fixture.ts'
+import { drawioFixture } from '../test-support/drawio-fixture.ts'
 
 /**
  * Search end to end (ADR-010, use case 20): publish a document, let the outbox
@@ -514,7 +514,7 @@ describe('finding a draw.io diagram by its labels (ADR-043)', () => {
       method: 'POST',
       url: `/api/documents/${id}/attachments`,
       cookies: editor,
-      ...multipart(aDrawioSvg('Reconciliationengine')),
+      ...multipart(drawioFixture('Reconciliationengine')),
     })
     expect(uploaded.statusCode).toBe(201)
     const attachment = uploaded.json() as { id: string; url: string }
@@ -528,7 +528,7 @@ describe('finding a draw.io diagram by its labels (ADR-043)', () => {
       method: 'PUT',
       url: `/api/attachments/${attachment.id}?expectedVersion=1`,
       cookies: editor,
-      ...multipart(aDrawioSvg('Settlementledger')),
+      ...multipart(drawioFixture('Settlementledger')),
     })
     expect(revised.statusCode).toBe(200)
     await harness.drainOutbox()

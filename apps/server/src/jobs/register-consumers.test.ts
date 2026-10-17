@@ -9,6 +9,9 @@ import {
   GRANT_CREATED,
   GRANT_REVOKED,
   MAIL_REQUESTED,
+  REVIEW_DECIDED,
+  REVIEW_REQUESTED,
+  REVIEW_WITHDRAWN,
 } from '@quill/application'
 import { describe, expect, it } from 'vitest'
 
@@ -32,6 +35,9 @@ const EMITTED = [
   GRANT_CREATED,
   GRANT_REVOKED,
   MAIL_REQUESTED,
+  REVIEW_DECIDED,
+  REVIEW_REQUESTED,
+  REVIEW_WITHDRAWN,
 ]
 
 function registered(): readonly OutboxConsumer[] {

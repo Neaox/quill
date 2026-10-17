@@ -105,6 +105,7 @@ export const EnvelopeSchema = Type.Object({
     view: Type.Boolean(),
     comment: Type.Boolean(),
     edit: Type.Boolean(),
+    publish: Type.Boolean(),
     manage: Type.Boolean(),
   }),
   lock: Type.Union([

@@ -7,7 +7,7 @@ import type {
   RevisionIndexRow,
   RevisionsIndexRepository,
 } from '@quill/application'
-import type { DocumentId, RevisionId, WorkspaceId } from '@quill/domain'
+import type { DocumentId, RevisionId, UserId, WorkspaceId } from '@quill/domain'
 
 import { revisionsIndex } from '../db/schema.ts'
 import type { DrizzleClient } from '../db/types.ts'
@@ -30,6 +30,7 @@ function toRevisionRow(row: typeof revisionsIndex.$inferSelect): RevisionIndexRo
     revision: row.revision as RevisionId,
     authorName: row.authorName,
     authorEmail: row.authorEmail,
+    authorUserId: row.authorUserId as UserId | null,
     timestamp: row.timestamp,
     summary: row.summary,
     changeNote: row.changeNote,
@@ -58,6 +59,7 @@ export function createRevisionsIndexRepository(db: DrizzleClient): RevisionsInde
           revision: input.revision,
           authorName: input.authorName,
           authorEmail: input.authorEmail,
+          authorUserId: input.authorUserId ?? null,
           timestamp: input.timestamp,
           summary: input.summary,
           changeNote: input.changeNote,

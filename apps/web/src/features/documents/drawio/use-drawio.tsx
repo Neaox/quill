@@ -90,8 +90,8 @@ export function useDrawio({ documentId, place }: UseDrawioOptions): DrawioIntegr
   useEffect(() => {
     if (attachments.data !== undefined) store.replace(attachments.data)
   }, [attachments.data, store])
-  // Tells the same store whether the instance has an editor at all, so the
-  // slash item and image actions built once above appear or go.
+  // Synchronises the diagram store, which the editor's image views and slash
+  // menu subscribe to outside React, with whether the instance has an editor.
   useEffect(() => {
     store.enable(editor !== null)
   }, [editor, store])

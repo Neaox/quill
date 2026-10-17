@@ -36,13 +36,14 @@ function signedIn(isInstanceAdmin: boolean, extra: FakeRoutes = {}) {
   })
 }
 
-const row = () => screen.getByRole('menuitem', { name: /^Appearance:/u })
 const trigger = () => screen.findByRole('button', { name: 'Account menu for Ada Writer' })
 
 afterEach(() => {
   localStorage.clear()
   document.documentElement.removeAttribute('data-theme')
 })
+
+const appearanceRow = () => screen.getByRole('menuitem', { name: /^Appearance:/u })
 
 describe('the person menu', () => {
   it('replaces the bare name with a menu button that says whose session it is', async () => {
@@ -136,16 +137,16 @@ describe('the person menu', () => {
 
     await userEvent.click(await screen.findByRole('menuitem', { name: /^Appearance:\s*System$/u }))
     expect(document.documentElement).toHaveAttribute('data-theme', 'light')
-    expect(row()).toHaveTextContent('Light')
-    await userEvent.click(row())
+    expect(appearanceRow()).toHaveTextContent('Light')
+    await userEvent.click(appearanceRow())
     expect(document.documentElement).toHaveAttribute('data-theme', 'dark')
-    expect(row()).toHaveTextContent('Dark')
+    expect(appearanceRow()).toHaveTextContent('Dark')
     expect(localStorage.getItem('theme-preference')).toBe('dark')
     expect(screen.getByRole('menu')).toBeInTheDocument()
 
-    await userEvent.click(row())
+    await userEvent.click(appearanceRow())
     expect(document.documentElement).not.toHaveAttribute('data-theme')
-    expect(row()).toHaveTextContent('System')
+    expect(appearanceRow()).toHaveTextContent('System')
   })
 
   it('cycles the scheme from the keyboard with Enter, and says the new one', async () => {

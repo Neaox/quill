@@ -68,7 +68,6 @@ function inlineCodeRule(schema: Schema): InputRule {
   return new InputRule(INLINE_CODE, (state, match, start, end) => {
     const [, before = '', words = ''] = match
     const from = start + before.length
-    if (state.doc.resolve(from).parent.type.spec.code === true) return null
     if (state.doc.rangeHasMark(from, end, code)) return null
     const tr = state.tr.replaceWith(from, end, schema.text(words, [code.create()]))
     // What is typed after the closing backtick is the words around the chip, not more of it.

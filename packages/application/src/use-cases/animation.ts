@@ -1,11 +1,9 @@
 import { concatChunks } from '../ports/blob-store.ts'
 import {
   ascii,
-  byteAt,
   ContainerFault,
   crc32,
   readUint16,
-  readUint16LittleEndian,
   readUint32,
   readUint32LittleEndian,
 } from './image-container.ts'
@@ -100,7 +98,7 @@ function pastSubBlocks(bytes: Uint8Array, offset: number): number {
 
 /** A graphic control's delay, in hundredths of a second, as a browser draws it. */
 function gifDelay(control: Uint8Array | undefined): number {
-  const delay = control === undefined ? 0 : readUint16LittleEndian(control, 4)
+  const delay = control === undefined ? 0 : readUint32LittleEndian(control, 4) & 0xffff
   return delay < GIF_SHORTEST_DELAY ? GIF_DEFAULT_DELAY : delay
 }
 
@@ -115,7 +113,7 @@ interface GifBlock {
 
 /** Where a GIF's blocks begin: past its header, its screen and its global palette. */
 function gifHead(bytes: Uint8Array): number {
-  return GIF_HEAD + colourTableLength(byteAt(bytes, 10))
+  return GIF_HEAD + colourTableLength(bytes[10] ?? 0)
 }
 
 /** The blocks of a GIF, up to its trailer. */
@@ -123,7 +121,7 @@ function* gifBlocks(bytes: Uint8Array): Generator<GifBlock> {
   for (let offset = gifHead(bytes); offset < bytes.length && bytes[offset] !== GIF_TRAILER;) {
     const introducer = bytes[offset]
     if (introducer === GIF_IMAGE_DESCRIPTOR) {
-      const descriptorEnd = offset + 10 + colourTableLength(byteAt(bytes, offset + 9))
+      const descriptorEnd = offset + 10 + colourTableLength(bytes[offset + 9] ?? 0)
       const end = pastSubBlocks(bytes, descriptorEnd + 1)
       yield { start: offset, end, introducer, label: undefined }
       offset = end
@@ -224,7 +222,7 @@ function webpAnimation(bytes: Uint8Array): Animation {
     if (ascii(bytes, offset, offset + 4) === 'ANMF') {
       const at = offset + RIFF_CHUNK_HEADER + ANMF_DURATION
       frames += 1
-      milliseconds += readUint16LittleEndian(bytes, at) | (byteAt(bytes, at + 2) << 16)
+      milliseconds += readUint32LittleEndian(bytes, at) & 0xffffff
     }
     offset += RIFF_CHUNK_HEADER + size + (size % 2)
   }
@@ -304,7 +302,7 @@ function avifAnimation(bytes: Uint8Array): Animation {
 
   const mvhd = child(bytes, moov, 'mvhd')
   if (mvhd === undefined) throw new ContainerFault('a movie with no header')
-  const version = byteAt(bytes, mvhd.payload)
+  const version = bytes[mvhd.payload]
   // Version 1 widens both times and the duration to 64 bits.
   const timescaleAt = mvhd.payload + FULL_BOX + (version === 1 ? 16 : 8)
   const timescale = readUint32(bytes, timescaleAt)
@@ -423,7 +421,7 @@ function boundGifLoops(bytes: Uint8Array): BoundedLoops {
       plays: MAX_PLAYS,
     }
   }
-  const stated = readUint16LittleEndian(bytes, at)
+  const stated = readUint32LittleEndian(bytes, at) & 0xffff
   if (stated !== 0 && stated < MAX_PLAYS) return { bytes, plays: stated + 1 }
   const bounded = Uint8Array.from(bytes)
   bounded.set([repeats & 0xff, repeats >> 8], at)

@@ -19,6 +19,7 @@ import { canonicaliseLinks } from './canonical-links.ts'
 import { readDraftContent } from './publish-document.ts'
 import { readSource } from './read-published.ts'
 import { RENDER_VERSION, renderDigest, renderInputFor } from './render-document.ts'
+import type { DrawnRenderInput } from './render-document.ts'
 
 /**
  * Comparing two versions of one document (ADR-015): two published revisions,
@@ -221,11 +222,8 @@ async function draftSide(
   }
 }
 
-/** A render input as `renderInputFor` builds it: always with its drawings, empty when it shows none. */
-type ReadInput = Awaited<ReturnType<typeof renderInputFor>>['input']
-
 /** What both sides are drawn with: every title either links to, every drawing either shows. */
-function bothSides(before: ReadInput, after: ReadInput): CompareContext {
+function bothSides(before: DrawnRenderInput, after: DrawnRenderInput): CompareContext {
   return {
     linkTitles: new Map([...before.linkTitles, ...after.linkTitles]),
     drawings: new Map([...before.drawings, ...after.drawings]),

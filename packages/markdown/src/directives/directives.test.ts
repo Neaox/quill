@@ -75,7 +75,8 @@ describe('definition helpers', () => {
     expect(flag(first(':::optional{title=A added}\nx\n:::\n'), 'added')).toBe(true)
     expect(flag(first(':::optional{title=A}\nx\n:::\n'), 'added')).toBe(false)
     expect(flag(first(':::optional{title=A added=false}\nx\n:::\n'), 'added')).toBe(false)
-    expect(flag({}, 'added')).toBe(false)
+    const bare: ContainerDirective = { type: 'containerDirective', name: 'a', children: [] }
+    expect(flag(bare, 'added')).toBe(false)
   })
 
   it('reads a label from any of the three shapes', () => {

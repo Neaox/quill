@@ -7,7 +7,7 @@ import { mdastToProseMirror } from '../prosemirror/from-mdast.ts'
 import { schema } from '../prosemirror/schema.ts'
 import { proseMirrorToMdast } from '../prosemirror/to-mdast.ts'
 import { parseMarkdown, stringifyMdast } from '../pipeline/processor.ts'
-import type { Details } from './details.ts'
+import type { Details, DetailsDirective } from './details.ts'
 import { accordionDirective, detailsDirective, detailsModel, isDetails } from './details.ts'
 import { readDetails } from './read.ts'
 
@@ -49,7 +49,7 @@ const fresh = (
 
 describe('a details with no attributes at all', () => {
   it('is a closed section nobody has named or typed', () => {
-    const bare: ContainerDirective = { type: 'containerDirective', name: 'details', children: [] }
+    const bare: DetailsDirective = { type: 'containerDirective', name: 'details', children: [] }
     expect(detailsModel(bare)).toMatchObject({
       open: false,
       name: undefined,

@@ -1,127 +1,135 @@
-/**
- * The reading surface of a comparison: long unchanged stretches folded away so the
- * changes are what a reader meets, and a way to go to one.
- *
- * A comparison is the whole document with its changes marked, and most of a long
- * document did not change. Each stretch of unchanged top-level blocks keeps one block of
- * context beside every change and folds the rest behind a button that says what it holds.
- * Folding is the `hidden` attribute, which also keeps the folded words from a screen
- * reader; the buttons and attributes it adds are undone by `dispose`.
- */
+/** Blocks of an unchanged stretch kept on each side of a change, so a change is read in place. */
+const CONTEXT_BLOCKS = 1
 
-/** Fewer hidden blocks than this are not worth a button: showing them costs less than finding it. */
-const MINIMUM_FOLDED = 3
-
-const CHANGED = '[data-change], ins[data-diff], del[data-diff]'
+/** The fewest blocks worth hiding: folding two paragraphs costs a click and saves nothing. */
+const MIN_FOLDED = 4
 
 export interface ComparisonSurface {
-  /** Marks a change as the current one, focuses it and scrolls it into view. */
+  /** Marks the change as the current one, brings it into view and puts focus on it. */
   readonly goTo: (changeId: string) => void
-  /** Unfolds whatever hides the element, for a link (the contents) that points into the folded part. */
+  /** Opens the fold that hides `target`, for the contents or a find that points into it. */
   readonly reveal: (target: Element | null) => void
-  /** Puts the surface back as the server drew it. */
+  /** Puts the page back as it was handed over: no folds, no marks, nothing focusable added. */
   readonly dispose: () => void
 }
 
 interface Fold {
-  readonly button: HTMLButtonElement
   readonly blocks: readonly HTMLElement[]
+  readonly button: HTMLButtonElement
 }
 
-function isChanged(block: HTMLElement): boolean {
-  return block.matches(CHANGED) || block.querySelector(CHANGED) !== null
-}
+const isChange = (block: HTMLElement) =>
+  block.hasAttribute('data-change') || block.querySelector('[data-change]') !== null
 
-function describe(blocks: readonly HTMLElement[]): string {
+/** "Show 6 unchanged paragraphs", or "blocks" when the stretch is not all paragraphs. */
+function foldLabel(blocks: readonly HTMLElement[]): string {
   const noun = blocks.every((block) => block.tagName === 'P') ? 'paragraphs' : 'blocks'
   return `Show ${String(blocks.length)} unchanged ${noun}`
 }
 
-/** The stretches of unchanged blocks to hide: all but one block beside each change. */
-function stretchesToFold(blocks: readonly HTMLElement[]): readonly (readonly HTMLElement[])[] {
-  const changed = blocks.map(isChanged)
-  if (!changed.includes(true)) return []
-
-  const stretches: HTMLElement[][] = []
-  let start = 0
-  while (start < blocks.length) {
-    if (changed[start] === true) {
-      start += 1
-      continue
+/** The stretches of unchanged blocks, as [first, last] indices. */
+function unchangedStretches(blocks: readonly HTMLElement[]): [number, number][] {
+  const stretches: [number, number][] = []
+  let start: number | undefined
+  blocks.forEach((block, index) => {
+    if (isChange(block)) {
+      if (start !== undefined) stretches.push([start, index - 1])
+      start = undefined
+    } else {
+      start ??= index
     }
-    let end = start
-    while (end < blocks.length && changed[end] !== true) end += 1
-    const from = start > 0 ? start + 1 : start
-    const to = end < blocks.length ? end - 1 : end
-    if (to - from >= MINIMUM_FOLDED) stretches.push(blocks.slice(from, to))
-    start = end
-  }
+  })
+  if (start !== undefined) stretches.push([start, blocks.length - 1])
   return stretches
 }
 
+/**
+ * Makes a rendered comparison readable at length (the comparison stylesheet draws the changes;
+ * this decides what to show of the rest).
+ *
+ * A long unchanged stretch is folded behind a button that says what it holds, leaving one block
+ * of context on each side of a change, because what a reader came for is what changed. Nothing is
+ * folded when nothing changed. The changes are reached by `goTo`, which unfolds nothing (a change
+ * is never folded) but marks and focuses it; `reveal` opens whichever fold hides a target the page
+ * links into. `dispose` undoes all of it, so the same markup can be enhanced again.
+ *
+ * It works on the DOM it is given, because the comparison's body is the server's rendered HTML
+ * mounted by `DocumentBody` rather than something React draws.
+ */
 export function enhanceComparison(root: HTMLElement): ComparisonSurface {
-  const folds = new Set<Fold>()
-  const focusable = new Set<HTMLElement>()
-  let current: Element | null = null
+  const blocks = [...root.children].filter(
+    (child): child is HTMLElement => child instanceof HTMLElement,
+  )
+  const added = new Set<HTMLElement>()
+  const folds: Fold[] = []
 
-  function focusOn(element: HTMLElement): void {
-    if (!element.hasAttribute('tabindex')) {
-      element.setAttribute('tabindex', '-1')
-      focusable.add(element)
-    }
-    element.focus()
-  }
-
-  function unfold(fold: Fold): void {
+  function unfold(fold: Fold, andFocus: boolean) {
     for (const block of fold.blocks) block.removeAttribute('hidden')
     fold.button.remove()
-    folds.delete(fold)
+    folds.splice(folds.indexOf(fold), 1)
+    const first = fold.blocks[0]
+    if (andFocus && first !== undefined) {
+      first.setAttribute('tabindex', '-1')
+      added.add(first)
+      first.focus()
+    }
   }
 
-  for (const blocks of stretchesToFold(
-    [...root.children].filter((e) => e instanceof HTMLElement),
-  )) {
-    const first = blocks[0]
-    if (first === undefined) continue
-    const button = root.ownerDocument.createElement('button')
-    button.type = 'button'
-    button.className = 'comparison-fold'
-    button.textContent = describe(blocks)
-    for (const block of blocks) block.setAttribute('hidden', '')
-    first.before(button)
+  if (blocks.some(isChange)) {
+    for (const [first, last] of unchangedStretches(blocks)) {
+      const from = first === 0 ? first : first + CONTEXT_BLOCKS
+      const to = last === blocks.length - 1 ? last : last - CONTEXT_BLOCKS
+      const hidden = blocks.slice(from, to + 1)
+      const lead = hidden[0]
+      if (lead === undefined || hidden.length < MIN_FOLDED) continue
 
-    const fold: Fold = { button, blocks }
-    button.addEventListener('click', () => {
-      unfold(fold)
-      focusOn(first)
-    })
-    folds.add(fold)
+      const button = root.ownerDocument.createElement('button')
+      button.type = 'button'
+      button.className = 'comparison-fold'
+      button.textContent = foldLabel(hidden)
+      const fold: Fold = { blocks: hidden, button }
+      button.addEventListener('click', () => {
+        unfold(fold, true)
+      })
+      for (const block of hidden) block.setAttribute('hidden', '')
+      lead.before(button)
+      folds.push(fold)
+    }
   }
 
-  return {
-    goTo(changeId) {
-      const target = [...root.querySelectorAll<HTMLElement>('[data-change-id]')].find(
-        (candidate) => candidate.dataset['changeId'] === changeId,
-      )
-      if (target === undefined) return
-      current?.removeAttribute('data-change-current')
-      target.setAttribute('data-change-current', '')
-      current = target
-      focusOn(target)
-      target.scrollIntoView({ block: 'center' })
-    },
-    reveal(target) {
-      if (target === null) return
-      for (const fold of Array.from(folds)) {
-        if (fold.blocks.some((block) => block.contains(target))) unfold(fold)
-      }
-    },
-    dispose() {
-      for (const fold of Array.from(folds)) unfold(fold)
-      for (const element of focusable) element.removeAttribute('tabindex')
-      focusable.clear()
-      current?.removeAttribute('data-change-current')
-      current = null
-    },
+  function reveal(target: Element | null) {
+    if (target === null) return
+    const fold = folds.find(({ blocks: hidden }) =>
+      hidden.some((block) => block === target || block.contains(target)),
+    )
+    if (fold !== undefined) unfold(fold, false)
   }
+
+  function goTo(changeId: string) {
+    for (const current of root.querySelectorAll('[data-change-current]')) {
+      current.removeAttribute('data-change-current')
+    }
+    const target = root.querySelector<HTMLElement>(`[data-change-id="${CSS.escape(changeId)}"]`)
+    if (target === null) return
+    target.setAttribute('data-change-current', '')
+    reveal(target)
+    if (!target.hasAttribute('tabindex')) {
+      target.setAttribute('tabindex', '-1')
+      added.add(target)
+    }
+    target.focus({ preventScroll: true })
+    target.scrollIntoView({ block: 'center' })
+  }
+
+  function dispose() {
+    // Each unfold takes its fold out of the list, so the first is always the next one.
+    for (let fold = folds[0]; fold !== undefined; fold = folds[0]) unfold(fold, false)
+    for (const current of root.querySelectorAll('[data-change-current]')) {
+      current.removeAttribute('data-change-current')
+    }
+    for (const block of added) block.removeAttribute('tabindex')
+    added.clear()
+  }
+
+  return { goTo, reveal, dispose }
 }

@@ -19,7 +19,7 @@ import { Spinner } from './spinner.tsx'
  * it belongs to the field, scrolls with it, and is the next thing in reading
  * order after it.
  *
- * The `inline` variant is a field that sits in a toolbar and shows a value — a
+ * The `flow` variant lays the popup in the document flow, for a field in a dialog. The `inline` variant is a field that sits in a toolbar and shows a value — a
  * code block's language — rather than a form row: its label is for assistive
  * technology only, and its popup is raised into the top layer (`popover`) and
  * anchored to the field with CSS anchor positioning, because a toolbar's card
@@ -42,6 +42,12 @@ export const comboboxStyles = tv({
   variants: {
     variant: {
       field: {},
+      /*
+       * The popup takes its place in the layout, under the field, rather than hanging over what
+       * follows: for a field inside a dialog, whose scrolling body would otherwise clip a popup
+       * that runs past its edge and leave the options below the fold.
+       */
+      flow: { popup: 'static inset-auto' },
       inline: {
         label: 'sr-only',
         control: [

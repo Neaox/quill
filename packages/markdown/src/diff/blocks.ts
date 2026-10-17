@@ -1,6 +1,5 @@
 import type { Nodes } from 'mdast'
 
-import { itemAt } from './at.ts'
 import { nodeKey } from './keys.ts'
 import { plainText } from './text.ts'
 import { isWord, tokenize } from './runs.ts'
@@ -58,10 +57,8 @@ export function alignBlocks<T extends Nodes>(
   const edits = diffSequences(
     before.map((_, index) => index),
     after.map((_, index) => index + before.length),
-    (index) =>
-      index < before.length
-        ? itemAt(beforeKeys, index, '')
-        : itemAt(afterKeys, index - before.length, ''),
+    /* v8 ignore next -- every index is one of the two lists */
+    (index) => (index < before.length ? beforeKeys[index] : afterKeys[index - before.length]) ?? '',
   )
 
   // Regions between anchors: the unmatched indices on each side.
@@ -88,7 +85,8 @@ export function alignBlocks<T extends Nodes>(
     for (const index of region.removed) {
       const node = before[index]
       if (node === undefined || !substantial(node)) continue
-      const name = itemAt(beforeKeys, index, '')
+      /* v8 ignore next -- every index has a key */
+      const name = beforeKeys[index] ?? ''
       departed.set(name, [...(departed.get(name) ?? []), index])
     }
   }
@@ -96,7 +94,8 @@ export function alignBlocks<T extends Nodes>(
   const movedAway = new Set<number>()
   for (const region of regions) {
     for (const index of region.added) {
-      const candidates = departed.get(itemAt(afterKeys, index, ''))
+      /* v8 ignore next -- every index has a key */
+      const candidates = departed.get(afterKeys[index] ?? '')
       const origin = candidates?.shift()
       if (origin === undefined) continue
       movedFrom.set(index, origin)
@@ -109,7 +108,7 @@ export function alignBlocks<T extends Nodes>(
     if (region.anchor !== undefined) {
       const older = before[region.anchor.before]
       const newer = after[region.anchor.after]
-      /* v8 ignore next -- an anchor's indices come from the sequence itself. */
+      /* v8 ignore else -- an anchor is a pair of indices from the two lists. */
       if (older !== undefined && newer !== undefined) {
         alignment.push({ kind: 'unchanged', before: older, after: newer })
       }
@@ -216,9 +215,14 @@ function pairScores<T extends Nodes>(
   added: readonly number[],
 ): readonly (readonly [number, number])[] {
   if (removed.length === 0 || added.length === 0) return []
+  // Every position asked for is inside the list, so these fallbacks only satisfy the types.
+  /* v8 ignore next -- see above */
+  const removedAt = (i: number): number => removed[i] ?? -1
+  /* v8 ignore next -- see above */
+  const addedAt = (j: number): number => added[j] ?? -1
   const score = (i: number, j: number) => {
-    const older = before[itemAt(removed, i, -1)]
-    const newer = after[itemAt(added, j, -1)]
+    const older = before[removedAt(i)]
+    const newer = after[addedAt(j)]
     if (older === undefined || newer === undefined || older.type !== newer.type) return 0
     const value = similarity(older, newer)
     return value >= PAIRING_THRESHOLD ? value : 0
@@ -227,22 +231,21 @@ function pairScores<T extends Nodes>(
   if (removed.length * added.length > PAIRING_BUDGET) {
     return Array.from({ length: Math.min(removed.length, added.length) }, (_, index) => index)
       .filter((index) => score(index, index) > 0)
-      .map((index): readonly [number, number] => [
-        itemAt(removed, index, -1),
-        itemAt(added, index, -1),
-      ])
+      .map((index): readonly [number, number] => [removedAt(index), addedAt(index)])
   }
 
   const rows = removed.length + 1
   const columns = added.length + 1
   const best = new Float64Array(rows * columns)
+  /* v8 ignore next -- the table has a cell for every row and column asked of it. */
+  const bestAt = (row: number, column: number): number => best[row * columns + column] ?? 0
   for (let i = removed.length - 1; i >= 0; i -= 1) {
     for (let j = added.length - 1; j >= 0; j -= 1) {
       const pair = score(i, j)
       best[i * columns + j] = Math.max(
-        itemAt(best, (i + 1) * columns + j, 0),
-        itemAt(best, i * columns + j + 1, 0),
-        pair > 0 ? pair + itemAt(best, (i + 1) * columns + j + 1, 0) : 0,
+        bestAt(i + 1, j),
+        bestAt(i, j + 1),
+        pair > 0 ? pair + bestAt(i + 1, j + 1) : 0,
       )
     }
   }
@@ -251,13 +254,13 @@ function pairScores<T extends Nodes>(
   let i = 0
   let j = 0
   while (i < removed.length && j < added.length) {
-    const here = itemAt(best, i * columns + j, 0)
+    const here = bestAt(i, j)
     const pair = score(i, j)
-    if (pair > 0 && here === pair + itemAt(best, (i + 1) * columns + j + 1, 0)) {
-      pairs.push([itemAt(removed, i, -1), itemAt(added, j, -1)])
+    if (pair > 0 && here === pair + bestAt(i + 1, j + 1)) {
+      pairs.push([removedAt(i), addedAt(j)])
       i += 1
       j += 1
-    } else if (here === itemAt(best, (i + 1) * columns + j, 0)) {
+    } else if (here === bestAt(i + 1, j)) {
       i += 1
     } else {
       j += 1
@@ -266,11 +269,11 @@ function pairScores<T extends Nodes>(
   return pairs
 }
 
-/** A block's words, lower-cased. */
-const wordsOf = (node: Nodes): string[] =>
-  tokenize(plainText(node))
+function lowercaseWords(node: Nodes): string[] {
+  return tokenize(plainText(node))
     .filter(isWord)
     .map((word) => word.toLowerCase())
+}
 
 /**
  * How much two blocks share: the Dice coefficient of their words, as a
@@ -278,17 +281,17 @@ const wordsOf = (node: Nodes): string[] =>
  * two images with no description — are the same thing in a different state.
  */
 export function similarity(left: Nodes, right: Nodes): number {
-  const leftWords = wordsOf(left)
-  const rightWords = wordsOf(right)
+  const leftWords = lowercaseWords(left)
+  const rightWords = lowercaseWords(right)
   if (leftWords.length === 0 && rightWords.length === 0) return 1
   const counts = new Map<string, number>()
   for (const word of leftWords) counts.set(word, (counts.get(word) ?? 0) + 1)
   let shared = 0
   for (const word of rightWords) {
-    const remaining = counts.get(word) ?? 0
-    if (remaining > 0) {
+    const available = counts.get(word) ?? 0
+    if (available > 0) {
       shared += 1
-      counts.set(word, remaining - 1)
+      counts.set(word, available - 1)
     }
   }
   return (2 * shared) / (leftWords.length + rightWords.length)

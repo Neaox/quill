@@ -13,7 +13,6 @@ import { withDerivedTreeRoutes } from './fake-tree-routes.ts'
  * /api/path/{param}"`, matching the path syntax `@quill/api-client`'s
  * `paths` type already uses, so a test route reads like the route it fakes.
  */
-// The route types live in `fake-routes.ts`; tests import them from here.
 export type { FakeRouteHandler, FakeRoutes }
 
 export function jsonResponse(status: number, body: unknown): Response {

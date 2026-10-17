@@ -19,29 +19,30 @@ function merged(base: string, mine: string, theirs: string): string {
   return markdownOf(result.merged)
 }
 
+const blocksOf = (blocks: readonly Root['children'][number][]): string =>
+  markdownOf({ type: 'root', children: [...blocks] })
+
 // A tree from another release can hold a node of a known type in an unknown
 // shape; the merge refuses to guess, and offers both.
 const odd = (...children: object[]): Root => ({ type: 'root', children: children as never })
-const named = (name: string): Root => ({
-  type: 'root',
-  children: [{ type: 'thematicBreak', data: { hName: name } }],
-})
-const withData = (data: Record<string, string>): Root => ({
+
+/** A document of one thematic break, with the given data. */
+const thematicBreak = (data: Record<string, string>): Root => ({
   type: 'root',
   children: [{ type: 'thematicBreak', data }],
 })
-const markedParagraph = (form: string, words: string): Root => ({
+
+/** A one-paragraph document whose paragraph remembers the marker it was written with. */
+const markedParagraph = (marker: string, words: string): Root => ({
   type: 'root',
   children: [
     {
       type: 'paragraph',
-      data: { sourceForm: { marker: form } } as never,
+      data: { sourceForm: { marker } } as never,
       children: [{ type: 'text', value: words }],
     },
   ],
 })
-const blocksOf = (blocks: readonly Root['children'][number][]): string =>
-  markdownOf({ type: 'root', children: [...blocks] })
 
 describe('mergeDocuments: whole documents', () => {
   const base = tree('# Title\n\nOne.\n')
@@ -166,7 +167,7 @@ describe('mergeDocuments: blocks', () => {
   })
 
   it('matches a block to itself whatever source form each side remembers for it', () => {
-    const withMarker = (markdown: string, form: Record<string, unknown>): Root => {
+    const withForm = (markdown: string, form: Record<string, unknown>): Root => {
       const root = tree(markdown)
       const [first, ...rest] = root.children
       return first === undefined
@@ -174,9 +175,9 @@ describe('mergeDocuments: blocks', () => {
         : { ...root, children: [{ ...first, data: { sourceForm: form } as never }, ...rest] }
     }
     const result = mergeDocuments(
-      withMarker('Same.\n\nTwo.\n', { blankLines: 1 }),
-      withMarker('Same.\n\nTwo, mine.\n', { blankLines: 2 }),
-      withMarker('Theirs.\n\nSame.\n\nTwo.\n', { blankLines: 3 }),
+      withForm('Same.\n\nTwo.\n', { blankLines: 1 }),
+      withForm('Same.\n\nTwo, mine.\n', { blankLines: 2 }),
+      withForm('Theirs.\n\nSame.\n\nTwo.\n', { blankLines: 3 }),
     )
     expect(result.conflicts).toEqual([])
     expect(markdownOf(result.merged)).toBe('Theirs.\n\nSame.\n\nTwo, mine.\n')
@@ -506,14 +507,20 @@ describe('mergeDocuments: inside a block both sides changed', () => {
   })
 
   it('makes a conflict of a leaf with no value that both sides changed', () => {
-    expect(mergeDocuments(named('a'), named('b'), named('c')).conflicts).toHaveLength(1)
+    expect(
+      mergeDocuments(
+        thematicBreak({ hName: 'a' }),
+        thematicBreak({ hName: 'b' }),
+        thematicBreak({ hName: 'c' }),
+      ).conflicts,
+    ).toHaveLength(1)
   })
 
   it('merges a leaf with no value by its fields', () => {
     const result = mergeDocuments(
-      withData({ a: '1', b: '1' }),
-      withData({ a: '2', b: '1' }),
-      withData({ a: '1', b: '2' }),
+      thematicBreak({ a: '1', b: '1' }),
+      thematicBreak({ a: '2', b: '1' }),
+      thematicBreak({ a: '1', b: '2' }),
     )
     expect(result.conflicts).toEqual([])
     expect(result.merged.children[0]).toEqual({ type: 'thematicBreak', data: { a: '2', b: '2' } })

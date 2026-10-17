@@ -33,7 +33,7 @@ import type { Clock, PublicSite, ResolvedPublicMenu } from '@quill/application'
  *
  * **Events.** Publishing, renaming and moving a document all change what a
  * site shows, and all three are outbox events this server already consumes
- * (`public-site/invalidation.ts`, subscribed to the in-process bus, ADR-052). Publishing or
+ * (`public-site/invalidation.ts`, subscribed to the in-process bus, ADR-056). Publishing or
  * unpublishing a collection, and saving the organisation's settings, are
  * writes this server makes, and they invalidate on the way out.
  *

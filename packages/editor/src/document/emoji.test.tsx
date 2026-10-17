@@ -168,8 +168,8 @@ describe('emoji in the editor (ADR-038)', () => {
       expect(picture?.getAttribute('data-state')).not.toBeNull()
     })
     unmount()
-    // Given back as it came once the editor goes. TipTap destroys an unmounted
-    // editor on a timer (so a remount in strict mode keeps it), hence the wait.
+    // Given back as it came once the editor goes (the editor lets its view go a tick after the
+    // component does, so it is waited for).
     await waitFor(() => {
       expect(source?.getAttribute('media')).toBe('(prefers-reduced-motion: reduce)')
     })

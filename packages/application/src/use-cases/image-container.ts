@@ -113,15 +113,6 @@ export class ContainerFault extends Error {
   }
 }
 
-/**
- * The byte at an offset, nought past the end. A walker checks lengths where a
- * short read would mislead it; where one cannot, a missing byte reading as
- * nought keeps the arithmetic total instead of NaN.
- */
-export function byteAt(bytes: Uint8Array, offset: number): number {
-  return bytes[offset] ?? 0
-}
-
 export function readUint16(bytes: Uint8Array, offset: number): number {
   return ((bytes[offset] as number) << 8) | (bytes[offset + 1] as number)
 }
@@ -144,10 +135,6 @@ export function readUint32LittleEndian(bytes: Uint8Array, offset: number): numbe
       (bytes[offset] as number)) >>>
     0
   )
-}
-
-export function readUint16LittleEndian(bytes: Uint8Array, offset: number): number {
-  return byteAt(bytes, offset) | (byteAt(bytes, offset + 1) << 8)
 }
 
 export function writeUint32LittleEndian(value: number): Uint8Array {

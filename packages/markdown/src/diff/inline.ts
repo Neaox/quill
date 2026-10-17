@@ -66,23 +66,19 @@ export function mergePhrasing(
  */
 function pickOutChanges(children: PhrasingContent[]): PhrasingContent[] {
   const result: PhrasingContent[] = []
-  let replaced = false
-  for (const [index, child] of children.entries()) {
-    // The insertion of a pair was written with its deletion.
-    if (replaced) {
-      replaced = false
-      continue
-    }
+  for (let index = 0; index < children.length; index += 1) {
+    const removed = children[index]
     const added = children[index + 1]
     const pair =
-      child.type === 'diffDeletion' && added?.type === 'diffInsertion'
-        ? replacement(child, added)
+      removed?.type === 'diffDeletion' && added?.type === 'diffInsertion'
+        ? replacement(removed, added)
         : undefined
     if (pair === undefined) {
-      result.push(child)
+      /* v8 ignore next -- the loop only visits indices the children have. */
+      result.push(...(removed === undefined ? [] : [removed]))
     } else {
       result.push(...pair)
-      replaced = true
+      index += 1
     }
   }
   return result
@@ -118,8 +114,9 @@ function replacement(
   ]
 }
 
-/** A run of text as phrasing, or nothing for an empty run. */
-const textOf = (value: string): PhrasingContent[] => (value === '' ? [] : [{ type: 'text', value }])
+function textNodes(value: string): PhrasingContent[] {
+  return value === '' ? [] : [{ type: 'text', value }]
+}
 
 /**
  * A word as its shared beginning, the characters that changed, and its shared end. The
@@ -128,9 +125,9 @@ const textOf = (value: string): PhrasingContent[] => (value === '' ? [] : [{ typ
 function split(characters: readonly string[], start: number, end: number): PhrasingContent[] {
   const middle = characters.slice(start, characters.length - end).join('')
   return [
-    ...textOf(characters.slice(0, start).join('')),
-    { type: 'diffChars', children: textOf(middle) } satisfies DiffChars,
-    ...textOf(characters.slice(characters.length - end).join('')),
+    ...textNodes(characters.slice(0, start).join('')),
+    { type: 'diffChars', children: textNodes(middle) } satisfies DiffChars,
+    ...textNodes(characters.slice(characters.length - end).join('')),
   ]
 }
 
@@ -195,12 +192,6 @@ function atomsOf(nodes: readonly PhrasingContent[], marks: readonly Mark[] = [])
   })
 }
 
-/** The node atoms are added to: the stack is never emptied of the root, which is the fallback only for the types. */
-function innermost(stack: readonly Open[], root: Open): Open {
-  /* v8 ignore next -- `rebuild` never pops the root. */
-  return stack.at(-1) ?? root
-}
-
 /** A change's wrapper on the path of the atoms in its run: one object per run. */
 interface RunWrapper {
   readonly type: 'run'
@@ -236,10 +227,13 @@ function rebuild(runs: readonly Run<Atom>[]): PhrasingContent[] {
       stack.length = shared + 1
       for (const step of path.slice(shared)) {
         const children: PhrasingContent[] = []
-        innermost(stack, root).children.push(shell(step, children))
+        /* v8 ignore next -- the stack always holds the root. */
+        const parent = stack.at(-1) ?? root
+        parent.children.push(shell(step, children))
         stack.push({ by: step, children })
       }
-      append(innermost(stack, root).children, atom.leaf)
+      /* v8 ignore next -- the stack always holds the root. */
+      append((stack.at(-1) ?? root).children, atom.leaf)
     }
   }
   return root.children

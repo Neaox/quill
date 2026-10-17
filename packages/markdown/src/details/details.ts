@@ -103,8 +103,14 @@ export const ACCORDION = 'accordion'
  */
 export const DETAILS_NAME = /^[A-Za-z0-9][\w-]{0,31}$/u
 
+/** A `:::details` container directive. */
+export type DetailsDirective = ContainerDirective & { readonly name: typeof DETAILS }
+
+/** A `:::accordion` container directive grouping details. */
+export type AccordionDirective = ContainerDirective & { readonly name: typeof ACCORDION }
+
 /** Any of the three syntaxes, as the tree holds it. */
-export type DetailsNode = Details | ContainerDirective
+export type DetailsNode = Details | DetailsDirective
 
 export function isDetails(node: { readonly type: string }): node is Details {
   return node.type === 'details'
@@ -117,18 +123,18 @@ function isNamedContainer(
   return node.type === 'containerDirective' && node.name === name
 }
 
-/**
- * A details in any syntax: a `details` node, or a `:::details` container
- * directive. Deliberately not a type predicate: asked of a container
- * directive, a predicate's false branch would narrow every other container
- * directive to `never`.
- */
-export function isDetailsNode(node: { readonly type: string; readonly name?: unknown }): boolean {
+/** A details in any syntax: a `details` node, or a `:::details` container directive. */
+export function isDetailsNode(node: {
+  readonly type: string
+  readonly name?: unknown
+}): node is DetailsNode {
   return isDetails(node) || isNamedContainer(node, DETAILS)
 }
 
-/** An `:::accordion` container directive; not a type predicate, for the reason `isDetailsNode` is not. */
-export function isAccordion(node: { readonly type: string; readonly name?: unknown }): boolean {
+export function isAccordion(node: {
+  readonly type: string
+  readonly name?: unknown
+}): node is AccordionDirective {
   return isNamedContainer(node, ACCORDION)
 }
 

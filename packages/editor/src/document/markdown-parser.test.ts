@@ -22,7 +22,7 @@ function fakeWorker() {
   }
   let terminated = false
   const worker: WorkerLike = {
-    postMessage: (request) => {
+    postMessage: (request, _options) => {
       sent.push(request)
     },
     addEventListener: (type, listener) => {

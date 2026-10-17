@@ -152,6 +152,24 @@ describe('publishDocument', () => {
     })
   })
 
+  it('records the publisher on the document and on the revision', async () => {
+    const id = await newDocument()
+    await writeDraft(id, '# Authentication architecture\n\nIt signs tokens.')
+
+    const result = await publishDocument(deps, {
+      documentId: id,
+      base: null,
+      author,
+      sessionId: SESSION,
+    })
+    expect(result.kind === 'published' && result.document).toMatchObject({
+      createdBy: AUTHOR,
+      updatedBy: AUTHOR,
+    })
+    const [revision] = await uow.repos.revisions.listForDocument(id, { limit: 10 })
+    expect(revision?.authorUserId).toBe(AUTHOR)
+  })
+
   it('carries the change note onto the revision', async () => {
     const id = await newDocument()
     await writeDraft(id, '# Authentication architecture')

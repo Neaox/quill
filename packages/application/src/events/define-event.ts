@@ -2,7 +2,7 @@ import { createVersionedReader } from '../use-cases/versioned-reader.ts'
 import type { VersionReader } from '../use-cases/versioned-reader.ts'
 
 /**
- * An event, defined once (ADR-052).
+ * An event, defined once (ADR-056).
  *
  * The type name, the version this release writes, and the reader for every
  * version ever shipped (ADR-033) are one value, so the constant, the parse

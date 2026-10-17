@@ -65,6 +65,7 @@ async function applyPendingMigrations(
   const appliedTags = new Set(alreadyApplied.rows.map((row) => row.tag))
 
   const applied: string[] = []
+  // oxlint-disable-next-line quill/no-independent-await-in-loop -- each migration file builds on the schema the previous one produced, so they apply in journal order
   for (const entry of journal.entries) {
     if (appliedTags.has(entry.tag)) {
       continue

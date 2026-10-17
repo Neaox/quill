@@ -81,33 +81,25 @@ Four things hold that, and each will fail this gate if it is undone:
   rare call that arrives first. Importing `sonner` anywhere else puts it back
   in the first-render graph.
 
-### 2026-10-17: back under budget after the writing-surface landing
+## Second reduction (the dashboard redesign)
 
-Commit 761059c took the reading route to **278.3 KB** (the `--sourcemap`
-attribution of the route's graph: the app entry, 111 KB gzipped, is React DOM,
-the router and the query core and is not negotiable; what had crept in was code
-a reader only needs *after* the words are on screen, or only behind a press).
+The redesign took the route to **288.3 KB** and a failing gate; the pass
+that followed brought it to **246.0 KB**. What it moved out of the first load,
+none of it removed, each loaded the first time it is needed:
 
 | Step | Reading route (gzip) |
 | --- | --- |
-| Before | 278.3 KB |
-| 1. Body enhancements (`document-enhancements.ts`: tables, lightbox, code blocks, details, animated emoji, diagrams, highlighting, picture viewer) loaded with a dynamic `import()` after the HTML is mounted | 259.1 KB |
-| 2. `editor.css`, `present.css` and `comparison.css` imported by the surfaces that use them instead of by `@quill/ui/styles.css` | 254.3 KB |
-| 3. `lazyDialog` for the sidebar's and the document's dialogs (new document, collections, move, delete, attachments) | 246.9 KB |
-| 4. The restore confirmation split out of the revision panel (`restore-revision-dialog.tsx`), which removed the Radix dialog from the graph | 243.3 KB |
+| Before | 288.3 KB |
+| 1. Document-body enhancers (`body-enhancers.ts`): code cards and highlighting, diagrams, lightbox, table tools, details, animated emoji, picture viewer, each loaded only when the body contains what it enhances | 272.6 KB |
+| 2. Dialogs and panels opened from their own chunks (`MountOnFirstOpen`): new document, collections, move, delete, attachments, request review, review panel | 259.8 KB |
+| 3. The editor's and the presentation's stylesheets (`@quill/ui/styles/editor.css`, `present.css`) imported by their routes rather than the entry sheet | 255.4 KB |
+| 4. The restore confirmation, the comparison stylesheet, the notifications list, and the API modules only the editor and the dialogs use, imported directly rather than through the `lib/api` barrel (a barrel re-export of a module any chunk uses puts it in the entry chunk) | 250.0 KB |
+| 5. `ui-base` chunk (`vite.config.ts`): the primitives nearly every screen uses, merged rather than split into a tiny chunk per sharing set | 246.0 KB |
 
-Rules that fall out of it, each of which this gate will fail if undone:
-
-- **A document's behaviours are an enhancement, not first paint.**
-  `DocumentBody` mounts the HTML synchronously and `onMounted` now fires once
-  the enhancements have been applied, which is a moment later than before.
-  Import design-css enhancers from `document-enhancements.ts` only.
-- **A stylesheet belongs to the code that draws its surface.** Do not add an
-  `@import` to `packages/ui/src/styles/index.css` for a surface a reader does
-  not open.
-- **A dialog is loaded on first open.** Use `lazyDialog`
-  (`features/dialogs/lazy-dialog.tsx`) for any dialog the reading route or its
-  shell can open, rather than a static import.
+Two rules fall out of it. A stylesheet only one surface draws is imported by
+that surface, not by the entry sheet. A component a reader may never open (a
+dialog, a side panel, a popover's body) is a `lazy` import behind
+`MountOnFirstOpen`, or behind the popover that holds it.
 
 ## If it fails
 

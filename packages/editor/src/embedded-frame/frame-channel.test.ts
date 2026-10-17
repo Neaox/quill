@@ -13,7 +13,8 @@ const Inbound = Type.Union([
 
 type Outbound = { readonly action: 'load'; readonly xml: string }
 
-function dispatchMessage(data: unknown, origin: string, source: unknown): void {
+/** A message event as the browser delivers it to the page; by default it comes from `frame`. */
+function deliver(frame: unknown, data: unknown, origin = ORIGIN, source: unknown = frame) {
   window.dispatchEvent(
     new MessageEvent('message', { data, origin, source: source as MessageEventSource }),
   )
@@ -34,9 +35,7 @@ function setup() {
     onMessage: (message) => received.push(message),
     onReject: (reason) => rejected.push(reason),
   })
-  const post = (data: unknown, origin = ORIGIN, source: unknown = frame) => {
-    dispatchMessage(data, origin, source)
-  }
+  const post = deliver.bind(null, frame)
   return { frame, channel, received, rejected, post }
 }
 

@@ -21,13 +21,14 @@ import {
   createRecordMoveRedirectConsumer,
   createRecordRenameRedirectConsumer,
 } from '../infrastructure/outbox/record-public-redirect.ts'
+import { createNotifyOnReviewConsumers } from '../infrastructure/outbox/notify-on-review.ts'
 import { createRenderOnPublishConsumer } from '../infrastructure/outbox/render-on-publish.ts'
 import { createSendMailConsumer } from '../infrastructure/outbox/send-mail.ts'
 import type { JobRunner } from './job-runner.ts'
 
 /**
  * Every durable consumer, registered once for both the server and the test
- * harness (ADR-052). One place says what is done about each event, so an
+ * harness (ADR-056). One place says what is done about each event, so an
  * integration test exercises the real delivery path rather than a copy of it
  * (ADR-011), and so the question "does every event Quill emits have a
  * consumer?" has one place to be asked.
@@ -78,6 +79,9 @@ export function registerOutboxConsumers(
   // Delivery happens here rather than on the request path, so an address that
   // has an account costs no more than one that does not (ADR-011).
   jobRunner.register(createSendMailConsumer(mailer))
+  // A review request, an answer and a withdrawal each tell the people they
+  // concern, in the app, from the committed event (ADR-053).
+  for (const consumer of createNotifyOnReviewConsumers(deps)) jobRunner.register(consumer)
 
   jobRunner.register(
     createAcknowledgingConsumer(

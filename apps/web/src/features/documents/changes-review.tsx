@@ -1,6 +1,8 @@
 import { useState, useTransition } from 'react'
 import type { KeyboardEvent } from 'react'
 
+import '@quill/design-css/comparison.css'
+
 import {
   Badge,
   Button,
@@ -13,7 +15,6 @@ import {
   tv,
   type BadgeTone,
 } from '@quill/ui'
-import '@quill/design-css/comparison.css'
 
 import { DRAFT_SIDE, useComparison } from '../../lib/api/content.ts'
 import type { ComparisonChange } from '../../lib/api/types.ts'

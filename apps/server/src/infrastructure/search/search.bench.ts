@@ -229,15 +229,15 @@ async function seed(): Promise<void> {
     process.stdout.write(`  seeded workspace ${w + 1}/${WORKSPACES}\n`)
   }
 
-  // The tag paths come from the very statement migration 0017 runs over rows
+  // The tag paths come from the very statement migration 0020 runs over rows
   // indexed before it existed, so the bench measures it at 50,000 rows too.
   const backfill = readFileSync(
-    new URL('../../../drizzle/0017_tags_properties.sql', import.meta.url),
+    new URL('../../../drizzle/0020_tags_properties.sql', import.meta.url),
     'utf8',
   )
     .split('--> statement-breakpoint')
     .find((statement) => statement.includes('UPDATE "document_search"'))
-  if (backfill === undefined) throw new Error('migration 0017 has no backfill')
+  if (backfill === undefined) throw new Error('migration 0020 has no backfill')
   const backfilling = performance.now()
   await handle.pool.query(backfill)
   process.stdout.write(
