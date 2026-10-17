@@ -28,9 +28,11 @@ const ACME = {
 
 const UPLOAD = 'POST /api/settings/organisation/emoji-images'
 
+const NO_SERVED: ReadonlyMap<string, ServedEmoji> = new Map()
+
 function Harness({
   initial,
-  served = new Map(),
+  served = NO_SERVED,
 }: {
   readonly initial?: CustomEmojiList | undefined
   readonly served?: ReadonlyMap<string, ServedEmoji>
