@@ -1,6 +1,6 @@
 import { parseMarkdown, renderHtml } from '@quill/markdown'
 import { render, screen } from '@testing-library/react'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
 import { expectNoAccessibilityViolations } from '@quill/ui/testing/axe'
 
@@ -20,5 +20,7 @@ describe('the details specimens (ADR-048)', () => {
     }
     expect(container.querySelectorAll('details.details').length).toBeGreaterThan(6)
     await expectNoAccessibilityViolations(container)
+    // The bodies load the enhancers they need on demand; the test does not end until they have.
+    await vi.dynamicImportSettled()
   })
 })
