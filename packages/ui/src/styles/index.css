@@ -26,3 +26,4 @@
  * the design system declares its own sources. Paths are relative to this file.
  */
 @source '../../src';
+@source not '../../src/**/*.test.{ts,tsx}';
