@@ -1,5 +1,5 @@
 import { getRouteApi, Link } from '@tanstack/react-router'
-import { useState } from 'react'
+import { lazy, useState } from 'react'
 
 import { Button, buttonClassName, Menu, PresentIcon, ShareIcon, type MenuItem } from '@quill/ui'
 
@@ -18,13 +18,17 @@ import { useDocumentActions } from '../workspaces/document-actions.tsx'
 import { RenameDocumentControl } from '../workspaces/rename-document-control.tsx'
 import { ShellActions, ShellAside } from '../workspaces/shell-slots.tsx'
 import { ReviewActions } from '../review/review-actions.tsx'
-import { AttachmentsPanel } from './attachments-panel.tsx'
+import { MountOnFirstOpen } from '../../lib/mount-on-first-open.tsx'
 import { DraftNotice } from './draft-notice.tsx'
 import { DocumentReader } from './document-reader.tsx'
 import { HealthSignals } from './health-signals.tsx'
 import { PreviewLink } from './preview-link.tsx'
 import { RevisionPanel } from './revision-panel.tsx'
 import { TableOfContents } from './table-of-contents.tsx'
+
+const AttachmentsPanel = lazy(async () => ({
+  default: (await import('./attachments-panel.tsx')).AttachmentsPanel,
+}))
 
 const routeApi = getRouteApi('/_authenticated/w/$workspaceSlug/d/$documentId/')
 
@@ -187,12 +191,14 @@ export function DocumentPage() {
         ) : undefined}
       </ShellActions>
 
-      <AttachmentsPanel
-        documentId={documentId}
-        open={showingAttachments}
-        onOpenChange={setShowingAttachments}
-        canEdit={permissions?.edit === true}
-      />
+      <MountOnFirstOpen open={showingAttachments}>
+        <AttachmentsPanel
+          documentId={documentId}
+          open={showingAttachments}
+          onOpenChange={setShowingAttachments}
+          canEdit={permissions?.edit === true}
+        />
+      </MountOnFirstOpen>
 
       {/*
         Only above a page that exists: a document never published has no

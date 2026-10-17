@@ -2,6 +2,7 @@ import { getRouteApi, useNavigate } from '@tanstack/react-router'
 import { useEffect, useRef, useState, useTransition } from 'react'
 
 import { BRAND } from '@quill/brand'
+import '@quill/ui/styles/editor.css'
 import { Block, Button, Callout, LayoutGrid, Spinner, toast, tv, type ToastId } from '@quill/ui'
 import {
   DocumentEditor,

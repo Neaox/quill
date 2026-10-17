@@ -3,8 +3,7 @@ import { lazy, Suspense, useState, type ReactNode } from 'react'
 import { Badge, Button, tv } from '@quill/ui'
 
 import { useReview } from '../../lib/api/index.ts'
-import { RequestReviewDialog } from './request-review-dialog.tsx'
-import { ReviewPanel } from './review-panel.tsx'
+import { MountOnFirstOpen } from '../../lib/mount-on-first-open.tsx'
 import { summariseReview } from './review-summary.ts'
 
 /**
@@ -13,6 +12,13 @@ import { summariseReview } from './review-summary.ts'
  */
 const ChangesReview = lazy(async () => ({
   default: (await import('../documents/changes-review.tsx')).ChangesReview,
+}))
+
+const RequestReviewDialog = lazy(async () => ({
+  default: (await import('./request-review-dialog.tsx')).RequestReviewDialog,
+}))
+const ReviewPanel = lazy(async () => ({
+  default: (await import('./review-panel.tsx')).ReviewPanel,
 }))
 
 /** Where the request button shows: the header from `sm`, or the phone's notice below it. */
@@ -102,38 +108,42 @@ export function ReviewActions({
       ) : undefined}
 
       {canEdit ? (
-        <RequestReviewDialog
-          documentId={documentId}
-          title={title}
-          open={asking}
-          onOpenChange={setAsking}
-          current={current}
-          canPublish={canPublish}
-          beforeSubmit={beforeRequest}
-          summary={summary}
-        />
+        <MountOnFirstOpen open={asking}>
+          <RequestReviewDialog
+            documentId={documentId}
+            title={title}
+            open={asking}
+            onOpenChange={setAsking}
+            current={current}
+            canPublish={canPublish}
+            beforeSubmit={beforeRequest}
+            summary={summary}
+          />
+        </MountOnFirstOpen>
       ) : undefined}
 
       {surface === 'notice' || current === null || status === undefined ? undefined : (
-        <ReviewPanel
-          documentId={documentId}
-          title={title}
-          open={reading}
-          onOpenChange={setReading}
-          review={current}
-          onAskAgain={
-            canEdit
-              ? () => {
-                  setReading(false)
-                  setAsking(true)
-                }
-              : undefined
-          }
-          onSeeChanges={() => {
-            setReading(false)
-            setComparing(true)
-          }}
-        />
+        <MountOnFirstOpen open={reading}>
+          <ReviewPanel
+            documentId={documentId}
+            title={title}
+            open={reading}
+            onOpenChange={setReading}
+            review={current}
+            onAskAgain={
+              canEdit
+                ? () => {
+                    setReading(false)
+                    setAsking(true)
+                  }
+                : undefined
+            }
+            onSeeChanges={() => {
+              setReading(false)
+              setComparing(true)
+            }}
+          />
+        </MountOnFirstOpen>
       )}
 
       {comparing && current !== null ? (

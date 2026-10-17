@@ -11,8 +11,6 @@
  * the reading route's first load is budgeted). Every `load` is a dynamic
  * import, which is what keeps the code out of the route's static graph.
  */
-import { languageLabel } from '@quill/markdown/code-languages'
-
 /** Stops one enhancement and puts the DOM back as it found it. */
 type Disposer = () => void
 
@@ -38,12 +36,17 @@ const ENHANCERS: readonly BodyEnhancer[] = [
   {
     appliesTo: 'pre, .code-group',
     load: async () => {
-      const [{ enhanceCodeBlocks }, { createBrowserHighlighting }, { applyHighlighting }] =
-        await Promise.all([
-          import('@quill/design-css/code-blocks'),
-          import('@quill/highlight/browser'),
-          import('@quill/highlight/client'),
-        ])
+      const [
+        { enhanceCodeBlocks },
+        { createBrowserHighlighting },
+        { applyHighlighting },
+        { languageLabel },
+      ] = await Promise.all([
+        import('@quill/design-css/code-blocks'),
+        import('@quill/highlight/browser'),
+        import('@quill/highlight/client'),
+        import('@quill/markdown/code-languages'),
+      ])
       return (article) => {
         const { environment, rootOf } = createBrowserHighlighting(window)
         return [
