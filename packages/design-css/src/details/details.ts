@@ -63,6 +63,7 @@ export function textFragments(url: string): string[] {
       const [start] = parts.filter(
         (part, index) => !(index === 0 && part.endsWith('-') && parts.length > 1),
       )
+      /* v8 ignore next -- dropping a prefix leaves at least the start, which `parts.length > 1` guards. */
       const text = start === undefined ? undefined : decode(start)
       return text === undefined || text === '' ? [] : [text]
     })
@@ -95,7 +96,7 @@ function reveal(node: Node): boolean {
 
 /** The element a fragment names, inside `root`, by its id or the id the renderer prefixed. */
 function targetOf(root: ParentNode, document: Document, hash: string): Element | undefined {
-  const id = decode(hash.replace(/^#/u, '').split(':~:')[0] ?? '')
+  const id = decode(hash.replace(/^#/u, '').replace(/:~:.*$/su, ''))
   if (id === undefined || id === '') return undefined
   const found = document.getElementById(id) ?? document.getElementById(`${ID_PREFIX}${id}`)
   return found !== null && root.contains(found) ? found : undefined
@@ -107,9 +108,11 @@ function scrollTo(element: Element): void {
 
 /** Enhances every details in `root`. Returns what takes the enhancement away again. */
 export function enhanceDetails(root: ParentNode & Node, options: DetailsOptions = {}): () => void {
-  const document = root.ownerDocument ?? (root instanceof Document ? root : undefined)
-  const view = document?.defaultView
-  if (document === undefined || view === null || view === undefined) return () => undefined
+  // Only a document has no owner, and a document that is not shown (one made to hold a template)
+  // has no window to listen on.
+  const view = (root instanceof Document ? root : root.ownerDocument)?.defaultView
+  if (view === null || view === undefined) return () => undefined
+  const { document } = view
 
   const all = (): HTMLDetailsElement[] => [...root.querySelectorAll('details')]
 
@@ -124,7 +127,7 @@ export function enhanceDetails(root: ParentNode & Node, options: DetailsOptions 
       .map(comparable)
     if (wanted.length === 0) return
     for (const details of all()) {
-      const text = comparable(details.textContent ?? '')
+      const text = comparable(details.textContent)
       if (!details.open && wanted.some((fragment) => text.includes(fragment))) {
         details.open = true
         reveal(details)
@@ -143,6 +146,7 @@ export function enhanceDetails(root: ParentNode & Node, options: DetailsOptions 
   }
 
   const onBeforeMatch = (event: Event): void => {
+    /* v8 ignore next -- the root only hears events from nodes below it; this narrows `EventTarget`. */
     if (event.target instanceof view.Node) reveal(event.target)
   }
 
