@@ -132,6 +132,22 @@ describe('VirtualTree', () => {
     expect(pinned()).toEqual(['Runbooks'])
   })
 
+  it('never pins a collection over the heading of an empty one above it', () => {
+    // An empty collection at the top is a heading with another heading straight below it. The
+    // one below must not be pinned over it: its name, and the controls to fill or delete it,
+    // would be hidden under a heading that has nothing to say about them.
+    const rows = [
+      section('a', 'Archive'),
+      section('b', 'Guides'),
+      ...Array.from({ length: 5 }, (_, n) => node(n + 1)),
+    ]
+
+    open(rows)
+
+    expect(pinned()).toEqual(['Archive'])
+    expect(screen.getAllByRole('listitem').map((item) => item.textContent)).toContain('Guides')
+  })
+
   it('says where each row is among its siblings and how deep, since the rows around it are not drawn', () => {
     open([node(3, { depth: 2, position: 3, siblings: 40 })])
 
@@ -185,6 +201,49 @@ describe('VirtualTree', () => {
     open([{ kind: 'status', id: 'loading-a', depth: 1, label: 'Loading…', busy: true }])
 
     expect(screen.getByText('Loading…')).toBeVisible()
+  })
+
+  it('says what it is not waiting for in a row of its own, without a spinner', () => {
+    const { container } = open([
+      { kind: 'status', id: 'empty-a', depth: 1, label: 'Nothing here yet', busy: false },
+    ])
+
+    expect(screen.getByText('Nothing here yet')).toHaveAttribute('aria-busy', 'false')
+    expect(container.querySelector('svg')).toBeNull()
+  })
+
+  it('assumes a height for the window when the region cannot be measured', () => {
+    aWindowOf(0)
+    const rows = Array.from({ length: 5000 }, (_, n) => node(n + 1))
+
+    open(rows)
+
+    const drawn = screen.getAllByRole('listitem').length
+    expect(drawn).toBeGreaterThan(5)
+    expect(drawn).toBeLessThan(80)
+  })
+
+  it('leaves the view where the reader put it once they have scrolled with the wheel', () => {
+    const rows = Array.from({ length: 2000 }, (_, n) => node(n + 1))
+    const { rerender, onToggle, onMore } = open(rows, { currentId: 'doc-1500' })
+    const scroller = screen.getByRole('navigation', { name: 'Documents' }).firstElementChild
+    if (scroller === null) throw new Error('The tree has no scrolling region.')
+    expect(scroller.scrollTop).toBeGreaterThan(40_000)
+
+    fireEvent.wheel(scroller)
+    scroller.scrollTop = 0
+    // Rows arrive above the document being read, which moves it, and the reader is not followed.
+    rerender(
+      <VirtualTree
+        label="Documents"
+        rows={[node(0), ...rows]}
+        currentId="doc-1500"
+        onToggle={onToggle}
+        onMore={onMore}
+      />,
+    )
+
+    expect(scroller.scrollTop).toBe(0)
   })
 
   it('gives a collection its name, its “new document” control and its menu', async () => {

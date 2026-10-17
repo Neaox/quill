@@ -40,6 +40,7 @@ import {
   createRecordRenameRedirectConsumer,
 } from '../infrastructure/outbox/record-public-redirect.ts'
 import { createInvalidatePublicSiteConsumers } from '../infrastructure/outbox/invalidate-public-site.ts'
+import { createNotifyOnReviewConsumers } from '../infrastructure/outbox/notify-on-review.ts'
 import { createRenderOnPublishConsumer } from '../infrastructure/outbox/render-on-publish.ts'
 import { createWarmLinkPreviewsOnPublishConsumer } from '../infrastructure/outbox/warm-link-previews-on-publish.ts'
 import { createPostgresSearchIndex } from '../infrastructure/search/postgres-search-index.ts'
@@ -324,6 +325,7 @@ export async function createServerHarness(options: HarnessOptions = {}): Promise
   )
   jobRunner.register(createSendMailConsumer(mailer))
   jobRunner.lane(createFetchLinkPreviewConsumer({ uow, clock, ids, ...deps.linkPreviewPorts }))
+  for (const consumer of createNotifyOnReviewConsumers(deps)) jobRunner.register(consumer)
   jobRunner.register(
     createAcknowledgingConsumer(DOCUMENT_CREATED, 'Nothing acts on a creation yet.'),
   )

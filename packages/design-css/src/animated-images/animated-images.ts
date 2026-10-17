@@ -122,6 +122,12 @@ interface Player {
 
 const players = new WeakMap<Document, Player>()
 
+function stopTimer(item: Animated): void {
+  if (item.timer === undefined) return
+  clearTimeout(item.timer)
+  item.timer = undefined
+}
+
 function createPlayer(document: Document): Player {
   const animated = new Map<Element, Animated>()
   const hidden = () => document.visibilityState === 'hidden'
@@ -131,16 +137,10 @@ function createPlayer(document: Document): Player {
     item.picture.setAttribute('data-state', playing ? 'playing' : 'resting')
   }
 
-  const stopTimer = (item: Animated) => {
-    if (item.timer === undefined) return
-    clearTimeout(item.timer)
-    item.timer = undefined
-  }
-
   /** Plays what is left of its turn, if it is in view on a page being looked at. */
   const resume = (item: Animated) => {
     if (item.remaining <= 0 || item.timer !== undefined || !item.inView || hidden()) return
-    item.startedAt = Date.now()
+    item.startedAt = performance.now()
     item.timer = setTimeout(() => {
       item.timer = undefined
       item.remaining = 0
@@ -153,7 +153,7 @@ function createPlayer(document: Document): Player {
   const pause = (item: Animated) => {
     if (item.timer === undefined) return
     stopTimer(item)
-    item.remaining -= Date.now() - item.startedAt
+    item.remaining -= performance.now() - item.startedAt
     show(item, false)
   }
 

@@ -6,46 +6,53 @@ import { expectNoAccessibilityViolations } from '../../testing/axe.ts'
 import { Textarea } from './textarea.tsx'
 
 describe('Textarea', () => {
-  it('associates its label with the field and accepts typing, line breaks included', async () => {
-    const { container } = render(<Textarea label="Blocked sites" />)
+  it('associates its label with the field and accepts typing', async () => {
+    const { container } = render(<Textarea label="Message" />)
 
-    const field = screen.getByLabelText('Blocked sites')
-    await userEvent.type(field, 'a.example{enter}b.example')
+    await userEvent.type(screen.getByLabelText('Message'), 'Please look at section two')
 
-    expect(field).toHaveValue('a.example\nb.example')
+    expect(screen.getByLabelText('Message')).toHaveValue('Please look at section two')
     await expectNoAccessibilityViolations(container)
   })
 
-  it('is valid and undescribed when it has neither description nor error', () => {
-    render(<Textarea label="Blocked sites" />)
+  it('describes the field with its description and marks it invalid with its error', () => {
+    render(<Textarea label="Message" description="Optional." error="Too long." />)
 
-    const field = screen.getByLabelText('Blocked sites')
-    expect(field).toHaveAttribute('aria-invalid', 'false')
-    expect(field).not.toHaveAttribute('aria-describedby')
+    const field = screen.getByLabelText('Message')
+    expect(field).toHaveAttribute('aria-invalid', 'true')
+    expect(field).toHaveAccessibleDescription('Optional. Too long.')
+    expect(screen.getByRole('alert')).toHaveTextContent('Too long.')
   })
 
-  it('describes the field with its description, then its error, and marks it invalid', async () => {
-    const { container } = render(
+  it('says how much is left when it has a limit', async () => {
+    render(<Textarea label="Message" maxLength={20} defaultValue="Hello" />)
+
+    expect(screen.getByText('15 left')).toBeInTheDocument()
+    await userEvent.type(screen.getByLabelText('Message'), '!!')
+    expect(screen.getByText('13 left')).toBeInTheDocument()
+  })
+
+  it('counts what a controlled field holds, and tells the owner of each change', async () => {
+    const changes: string[] = []
+    render(
       <Textarea
-        label="Blocked sites"
-        description="One pattern per line."
-        error={
-          <ul>
-            <li>Line 2 is not a host.</li>
-          </ul>
-        }
+        label="Message"
+        maxLength={20}
+        value="Hello"
+        onChange={(event) => changes.push(event.target.value)}
       />,
     )
 
-    const field = screen.getByLabelText('Blocked sites')
-    expect(field).toHaveAttribute('aria-invalid', 'true')
-    expect(field).toHaveAccessibleDescription('One pattern per line. Line 2 is not a host.')
-    expect(screen.getByRole('alert')).toHaveTextContent('Line 2 is not a host.')
-    await expectNoAccessibilityViolations(container)
+    expect(screen.getByText('15 left')).toBeInTheDocument()
+    await userEvent.type(screen.getByLabelText('Message'), '!')
+    expect(changes).toEqual(['Hello!'])
+    expect(screen.getByText('15 left')).toBeInTheDocument()
   })
 
-  it('can be disabled', () => {
-    render(<Textarea label="Blocked sites" disabled />)
-    expect(screen.getByLabelText('Blocked sites')).toBeDisabled()
+  it('marks a required field for sight and for the browser, not for the label read aloud', () => {
+    render(<Textarea label="Message" required />)
+
+    expect(screen.getByRole('textbox', { name: 'Message' })).toBeRequired()
+    expect(screen.getByText('*')).toHaveAttribute('aria-hidden', 'true')
   })
 })

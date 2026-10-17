@@ -119,6 +119,24 @@ describe('restoreRevision', () => {
     expect(restored.document.headRevision).toBe(restored.revision)
   })
 
+  it('records who restored it, on the document and on the new revision', async () => {
+    const id = await newDocument()
+    const first = await publish(id, '# Overview\n\nThe original.')
+    await publish(id, '# Overview\n\nA regrettable edit.')
+    const restorer = userId('00000000-0000-4000-8000-000000000002')
+
+    const restored = await restoreRevision(deps, {
+      documentId: id,
+      revision: first,
+      author: { userId: restorer, name: 'Grace', email: 'grace@example.com' },
+      sessionId: SESSION,
+    })
+
+    expect(restored.kind === 'published' && restored.document.updatedBy).toBe(restorer)
+    const [newest] = await uow.repos.revisions.listForDocument(id, { limit: 1 })
+    expect(newest?.authorUserId).toBe(restorer)
+  })
+
   it('restores the title the old revision carried', async () => {
     const id = await newDocument()
     const first = await publish(id, '# Overview', 'Overview')

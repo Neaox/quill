@@ -124,9 +124,9 @@ export class TableView implements NodeView {
     else delete this.dom.dataset['layout']
     const map = TableMap.get(this.node)
     const shares = sharesOf(this.attributes, map.width)
-    const cols = Array.from({ length: shares === undefined ? 0 : map.width }, (_, index) => {
+    const cols = (shares ?? []).map((share) => {
       const col = document.createElement('col')
-      col.style.width = `${shares?.[index] ?? 0}%`
+      col.style.width = `${share}%`
       return col
     })
     this.colgroup.replaceChildren(...cols)

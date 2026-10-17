@@ -99,6 +99,13 @@ describe('the editor keyboard map', () => {
     expect(press(table, 'Alt-ArrowDown', 15)).toContain('| e | f |' + NL + '| c | d |')
   })
 
+  it('moves a table’s column with Alt+Left and Alt+Right, and spends them outside one', () => {
+    const NL = String.fromCharCode(10)
+    const table = '| a | b |' + NL + '| - | - |' + NL + '| c | d |' + NL
+    expect(press(table, 'Alt-ArrowRight', 4)).toContain('| b | a |')
+    expect(press('A paragraph.' + NL, 'Alt-ArrowLeft', 3)).toBeNull()
+  })
+
   it('leaves Enter to the document outside a list', () => {
     expect(press('A paragraph.\n', 'Enter', 3)).toBeNull()
   })

@@ -1,11 +1,11 @@
 import type {
-  MenuTargetIds,
   PublicMenu,
   PublicMenuGroup,
   PublicMenuItem,
   PublicMenuLink,
   PublicMenuTarget,
 } from '../../../lib/api/index.ts'
+import type { MenuTargetIds } from '../../../lib/api/public-menu.ts'
 
 /**
  * The public menu as the editor changes it: pure functions from one menu to

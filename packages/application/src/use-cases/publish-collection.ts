@@ -187,6 +187,7 @@ export async function unpublishCollection(
     const written = await tx.collections.setPublicSite(collection.id, { ...site, enabled: false })
     /* v8 ignore next -- the address is this collection's already, so it cannot be taken. */
     if (written.kind === 'slug-taken') return { kind: 'not-published' }
+    // oxlint-disable-next-line quill/no-independent-await-in-loop -- a collection holds one public grant (grantPublicViewer), and inside the transaction the deletes share its single connection anyway
     for (const grant of await publicViewerGrants(tx, collection.id)) {
       await tx.grants.delete(grant.id)
     }

@@ -208,3 +208,20 @@ export type {
   LinkConnector,
   LinkConnectorRegistry,
 } from './link-connectors.ts'
+export type { DocumentViewRepository, DocumentViewRow, WorkspaceViews } from './document-views.ts'
+export type {
+  NewNotification,
+  NotificationCursor,
+  NotificationKind,
+  NotificationRepository,
+  NotificationRow,
+} from './notifications.ts'
+export { NOTIFICATION_KINDS } from './notifications.ts'
+export type {
+  NewReviewRequest,
+  ReviewAssignmentId,
+  ReviewAssignmentRow,
+  ReviewRepository,
+  ReviewRequestId,
+  ReviewRequestRow,
+} from './reviews.ts'

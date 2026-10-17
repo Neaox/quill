@@ -195,6 +195,16 @@ After.
     expect(decorated(state).some((each) => each.className.includes('table-row-header'))).toBe(true)
   })
 
+  it('follows a change to a wrapper’s caption, which is not the table', () => {
+    const captioned = `:::table[A caption]
+${TABLE}:::
+`
+    let state = withPlugin(captioned)
+    state = state.apply(state.tr.insertText('Sales ', textAt(state, 'A caption')))
+
+    expect(decorated(state)).toEqual(fresh(state))
+  })
+
   it('follows a table being wrapped, and a row being added', () => {
     let state = withPlugin(`${TABLE}
 After.

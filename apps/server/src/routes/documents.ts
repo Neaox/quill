@@ -7,6 +7,7 @@ import {
   getEnvelope,
   getHistory,
   getTreePosition,
+  isAssignedReviewer,
   publishDocument,
   readPublished,
   deleteDocument,
@@ -34,7 +35,7 @@ import {
 import { linkEmbedRegistry } from '../infrastructure/link-preview/embed-config.ts'
 import { resolveDocumentId } from '../application/references.ts'
 import type { AppDependencies } from '../dependencies.ts'
-import { conflict, lockLost, notFound, unprocessable } from '../errors.ts'
+import { conflict, forbidden, lockLost, notFound, unprocessable } from '../errors.ts'
 import { notModified } from '../errors.ts'
 import { requireAuthenticatedSession } from '../plugins/session.ts'
 import {
@@ -247,7 +248,7 @@ export function documentRoutes(deps: AppDependencies): FastifyPluginAsync {
       async (request, reply) => {
         const documentId = await resolveDocumentId(deps, request.params.id)
         const session = requireAuthenticatedSession(request)
-        await requireDocumentAccess(authorizerFor(deps, request), documentId, 'edit')
+        await requireDocumentAccess(authorizerFor(deps, request), documentId, 'publish')
         const result = await publishDocument(deps, {
           documentId,
           base: readBase(request.body.base),
@@ -312,7 +313,7 @@ export function documentRoutes(deps: AppDependencies): FastifyPluginAsync {
       async (request, reply) => {
         const documentId = await resolveDocumentId(deps, request.params.id)
         const session = requireAuthenticatedSession(request)
-        await requireDocumentAccess(authorizerFor(deps, request), documentId, 'edit')
+        await requireDocumentAccess(authorizerFor(deps, request), documentId, 'publish')
         const result = await restoreRevision(deps, {
           documentId,
           revision: revisionId(request.body.revision),
@@ -516,6 +517,7 @@ export function documentRoutes(deps: AppDependencies): FastifyPluginAsync {
         const result = await updateDocument(deps, {
           documentId,
           sessionId: session.sessionId,
+          updatedBy: session.userId,
           patch: {
             ...(patch.title === undefined ? {} : { title: patch.title }),
             ...(patch.slug === undefined ? {} : { slug: patch.slug }),
@@ -583,7 +585,7 @@ export function documentRoutes(deps: AppDependencies): FastifyPluginAsync {
 /**
  * What a comparison request asks to compare, once the reader is allowed to
  * see both sides: `view` for revisions, and `edit` for the draft, which is
- * what reading a draft requires everywhere else.
+ * what reading a draft requires everywhere else, or being asked to review it.
  */
 async function comparisonRange(
   deps: AppDependencies,
@@ -592,7 +594,15 @@ async function comparisonRange(
   documentId: DocumentId,
 ): Promise<Omit<CompareRevisionsCommand, 'known'>> {
   const toDraft = query.to === DRAFT
-  await requireDocumentAccess(authorizerFor(deps, request), documentId, toDraft ? 'edit' : 'view')
+  const access = await requireDocumentAccess(authorizerFor(deps, request), documentId, 'view')
+  // The draft is read with `edit`, or by somebody asked to review it: they get
+  // this comparison and nothing else about the draft (ADR-052).
+  if (toDraft && !access.capabilities.edit) {
+    const session = requireAuthenticatedSession(request)
+    if (!(await isAssignedReviewer(deps, documentId, session.userId))) {
+      throw forbidden('You do not have permission to edit this')
+    }
+  }
   return {
     documentId,
     from: readBase(query.from),
@@ -601,11 +611,15 @@ async function comparisonRange(
 }
 
 function comparisonRefused(kind: 'not-found' | 'revision-not-found' | 'no-draft'): Error {
-  if (kind === 'revision-not-found')
-    return notFound('That revision does not exist for this document')
-  if (kind === 'no-draft') return notFound('This document has no draft to compare with')
-  /* v8 ignore next -- the authorizer has already loaded this document. */
-  return notFound('Document not found')
+  switch (kind) {
+    case 'revision-not-found':
+      return notFound('That revision does not exist for this document')
+    case 'no-draft':
+      return notFound('This document has no draft to compare with')
+    /* v8 ignore next 2 -- the authorizer has already loaded this document. */
+    case 'not-found':
+      return notFound('Document not found')
+  }
 }
 
 function readBase(value: string | null | undefined): RevisionId | null {

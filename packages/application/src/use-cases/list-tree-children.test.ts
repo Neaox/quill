@@ -230,3 +230,15 @@ describe('listTreeChildren', () => {
     })
   })
 })
+
+describe('listTreeChildren: a tree that cannot be walked', () => {
+  it('reports it rather than guessing what the reader may see', async () => {
+    // A document whose parent is not in the workspace leaves its place in the tree unknown.
+    await aDocument(1, 'Orphan', id(99))
+
+    expect(await ask({ seesEverything: false })).toEqual({
+      kind: 'broken-tree',
+      failure: { kind: 'unknown-document', documentId: id(99) },
+    })
+  })
+})

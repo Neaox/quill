@@ -1,4 +1,4 @@
-import fc from 'fast-check'
+import * as fc from 'fast-check'
 import type { RootContent } from 'mdast'
 import { toString } from 'mdast-util-to-string'
 import { describe, expect, it } from 'vitest'
@@ -101,12 +101,16 @@ describe('alignBlocks', () => {
           )
           expect(fromAfter).toEqual(after)
           expect(new Set(fromBefore).size).toBe(before.length)
-          for (const entry of alignment) {
-            if (entry.kind === 'unchanged' || entry.kind === 'moved') {
-              expect(toString(entry.before)).toBe(toString(entry.after))
-            }
-            if (entry.kind === 'changed') expect(entry.before.type).toBe(entry.after.type)
-          }
+          const matched = alignment.filter(
+            (entry) => entry.kind === 'unchanged' || entry.kind === 'moved',
+          )
+          expect(matched.map((entry) => toString(entry.before))).toEqual(
+            matched.map((entry) => toString(entry.after)),
+          )
+          const changed = alignment.filter((entry) => entry.kind === 'changed')
+          expect(changed.map((entry) => entry.before.type)).toEqual(
+            changed.map((entry) => entry.after.type),
+          )
         },
       ),
     )

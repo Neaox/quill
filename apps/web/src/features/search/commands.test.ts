@@ -29,6 +29,7 @@ describe('the palette’s commands', () => {
       'Links',
       'Secrets and sign-in',
       'Units and workspaces',
+      'People and groups',
       'Sign out',
     ])
   })

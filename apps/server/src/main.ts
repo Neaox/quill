@@ -55,6 +55,7 @@ import { createLinkPreviewRateLimits } from './infrastructure/link-preview/rate-
 import { linkPreviewUserAgent } from './infrastructure/link-preview/user-agent.ts'
 import { createFetchLinkPreviewConsumer } from './infrastructure/outbox/fetch-link-preview.ts'
 import { pollOutboxLane } from './infrastructure/outbox/lane.ts'
+import { createNotifyOnReviewConsumers } from './infrastructure/outbox/notify-on-review.ts'
 import { createRenderOnPublishConsumer } from './infrastructure/outbox/render-on-publish.ts'
 import { createPostgresSearchIndex } from './infrastructure/search/postgres-search-index.ts'
 import { createVisibleDocumentResolver } from './infrastructure/search/visible-documents.ts'
@@ -380,6 +381,7 @@ jobRunner.lane(createFetchLinkPreviewConsumer({ uow, clock, ids, ...linkPreviewP
 // Delivery happens here rather than on the request path, so an address that
 // has an account costs no more than one that does not (ADR-011).
 jobRunner.register(createSendMailConsumer(mailer))
+for (const consumer of createNotifyOnReviewConsumers(deps)) jobRunner.register(consumer)
 // Every type something emits has a consumer, even when the consumer does
 // nothing yet: the poller claims only registered types, so an unregistered
 // one would accumulate for ever (review finding H6).

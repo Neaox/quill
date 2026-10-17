@@ -28,13 +28,15 @@ const standInElement = {
   textContent: '',
 }
 
-/** Gives `scope` a `document` that makes the stand-in element, where it has none. */
-export function standInForDocument(scope: object): void {
-  if ('document' in scope) return
+/** Gives `scope` a `document` that makes the stand-in element, where it has none; whether it did. */
+export function standInForDocument(scope: object): boolean {
+  if ('document' in scope) return false
   Object.defineProperty(scope, 'document', {
     configurable: true,
     value: { createElement: () => standInElement },
   })
+  return true
 }
 
-standInForDocument(globalThis)
+/** Installed as this module evaluates, so whoever imports it first has a `document` to find. */
+export const standInInstalled = standInForDocument(globalThis)

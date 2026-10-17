@@ -1,5 +1,5 @@
 import { useNavigate } from '@tanstack/react-router'
-import { useEffect, useId, useState } from 'react'
+import { lazy, useEffect, useId, useState } from 'react'
 
 import {
   Callout,
@@ -18,15 +18,23 @@ import {
 import { useMe, useTreeCollections } from '../../lib/api/index.ts'
 import { workspaceLink } from '../../lib/routing/document-reference.ts'
 import { RouterLink } from '../../lib/routing/router-link.tsx'
-import {
-  CreateCollectionDialog,
-  DeleteCollectionDialog,
-  RenameCollectionDialog,
-} from './collection-dialogs.tsx'
+import { MountOnFirstOpen } from '../../lib/mount-on-first-open.tsx'
 import { useDocumentActions } from './document-actions.tsx'
-import { NewDocumentDialog } from './new-document-dialog.tsx'
 import { useTreeRows } from './use-tree-rows.ts'
 import { WorkspaceSwitcher } from './workspace-switcher.tsx'
+
+const CreateCollectionDialog = lazy(async () => ({
+  default: (await import('./collection-dialogs.tsx')).CreateCollectionDialog,
+}))
+const RenameCollectionDialog = lazy(async () => ({
+  default: (await import('./collection-dialogs.tsx')).RenameCollectionDialog,
+}))
+const DeleteCollectionDialog = lazy(async () => ({
+  default: (await import('./collection-dialogs.tsx')).DeleteCollectionDialog,
+}))
+const NewDocumentDialog = lazy(async () => ({
+  default: (await import('./new-document-dialog.tsx')).NewDocumentDialog,
+}))
 
 export const workspaceNavigationStyles = tv({
   slots: {
@@ -89,7 +97,7 @@ type CollectionDialog =
       readonly kind: 'delete'
       readonly id: string
       readonly name: string
-      readonly documentCount: number
+      readonly documentCount: number | undefined
     }
 
 export interface WorkspaceTreeProps {
@@ -192,12 +200,13 @@ export function WorkspaceTree({
         {
           label: 'Delete…',
           onSelect: () => {
-            // Whether it is empty is the server's to say: the tree knows a page at a time.
+            // Whether it is empty is the server's to say: the tree knows a page at a time, so the
+            // count is not known here and the dialog says so rather than claiming none.
             setCollectionDialog({
               kind: 'delete',
               id: collection.id,
               name: collection.name,
-              documentCount: 0,
+              documentCount: undefined,
             })
           },
         },
@@ -261,57 +270,65 @@ export function WorkspaceTree({
             </Tooltip>
           </TooltipProvider>
 
-          <NewDocumentDialog
-            // A fresh instance per preset, keyed on the destination it opens
-            // to: `open` flipping true from *outside* is not something the
-            // dialog's own `onOpenChange` fires for, so remounting is what
-            // guarantees `initialCollectionId`/`initialParentId` seed the
-            // form correctly on every distinct entry point.
-            key={
-              preset === undefined
-                ? 'closed'
-                : `${preset.collectionId ?? ''}:${preset.parentId ?? ''}`
-            }
-            workspaceId={workspaceId}
-            workspaceSlug={workspaceSlug}
-            open={preset !== undefined}
-            onOpenChange={(open) => {
-              if (!open) setPreset(undefined)
-            }}
-            {...(preset?.collectionId === undefined
-              ? {}
-              : { initialCollectionId: preset.collectionId })}
-            {...(preset?.parentId === undefined ? {} : { initialParentId: preset.parentId })}
-          />
-
-          <CreateCollectionDialog
-            open={collectionDialog?.kind === 'create'}
-            onOpenChange={(open) => {
-              if (!open) setCollectionDialog(undefined)
-            }}
-            workspaceId={workspaceId}
-          />
-          {collectionDialog?.kind === 'rename' ? (
-            <RenameCollectionDialog
-              open
+          <MountOnFirstOpen open={preset !== undefined}>
+            <NewDocumentDialog
+              // A fresh instance per preset, keyed on the destination it opens
+              // to: `open` flipping true from *outside* is not something the
+              // dialog's own `onOpenChange` fires for, so remounting is what
+              // guarantees `initialCollectionId`/`initialParentId` seed the
+              // form correctly on every distinct entry point.
+              key={
+                preset === undefined
+                  ? 'closed'
+                  : `${preset.collectionId ?? ''}:${preset.parentId ?? ''}`
+              }
+              workspaceId={workspaceId}
+              workspaceSlug={workspaceSlug}
+              open={preset !== undefined}
               onOpenChange={(open) => {
-                if (!open) setCollectionDialog(undefined)
+                if (!open) setPreset(undefined)
               }}
-              collectionId={collectionDialog.id}
-              currentName={collectionDialog.name}
+              {...(preset?.collectionId === undefined
+                ? {}
+                : { initialCollectionId: preset.collectionId })}
+              {...(preset?.parentId === undefined ? {} : { initialParentId: preset.parentId })}
             />
-          ) : undefined}
-          {collectionDialog?.kind === 'delete' ? (
-            <DeleteCollectionDialog
-              open
+          </MountOnFirstOpen>
+
+          <MountOnFirstOpen open={collectionDialog?.kind === 'create'}>
+            <CreateCollectionDialog
+              open={collectionDialog?.kind === 'create'}
               onOpenChange={(open) => {
                 if (!open) setCollectionDialog(undefined)
               }}
               workspaceId={workspaceId}
-              collectionId={collectionDialog.id}
-              name={collectionDialog.name}
-              documentCount={collectionDialog.documentCount}
             />
+          </MountOnFirstOpen>
+          {collectionDialog?.kind === 'rename' ? (
+            <MountOnFirstOpen open>
+              <RenameCollectionDialog
+                open
+                onOpenChange={(open) => {
+                  if (!open) setCollectionDialog(undefined)
+                }}
+                collectionId={collectionDialog.id}
+                currentName={collectionDialog.name}
+              />
+            </MountOnFirstOpen>
+          ) : undefined}
+          {collectionDialog?.kind === 'delete' ? (
+            <MountOnFirstOpen open>
+              <DeleteCollectionDialog
+                open
+                onOpenChange={(open) => {
+                  if (!open) setCollectionDialog(undefined)
+                }}
+                workspaceId={workspaceId}
+                collectionId={collectionDialog.id}
+                name={collectionDialog.name}
+                documentCount={collectionDialog.documentCount}
+              />
+            </MountOnFirstOpen>
           ) : undefined}
         </>
       )}

@@ -10,6 +10,7 @@ import {
 } from '@quill/ui'
 
 import { useMe, useSignOut } from '../../lib/api/index.ts'
+import { NotificationsBell } from '../notifications/notifications-bell.tsx'
 import { RouterLink } from '../../lib/routing/router-link.tsx'
 import {
   ORGANISATION_SETTINGS_HOME,
@@ -149,25 +150,28 @@ export function SignedInHeader() {
   ]
 
   return (
-    <MenuButton
-      label={`Account menu for ${displayName}`}
-      linkComponent={RouterLink}
-      header={
-        <span className={styles.who()}>
-          <span aria-hidden="true" className={styles.whoAvatar()}>
-            {initialsOf(displayName)}
+    <>
+      <NotificationsBell />
+      <MenuButton
+        label={`Account menu for ${displayName}`}
+        linkComponent={RouterLink}
+        header={
+          <span className={styles.who()}>
+            <span aria-hidden="true" className={styles.whoAvatar()}>
+              {initialsOf(displayName)}
+            </span>
+            <span className={styles.whoText()}>
+              <span className={styles.headerName()}>{displayName}</span>
+              <span className={styles.headerEmail()}>{email}</span>
+            </span>
           </span>
-          <span className={styles.whoText()}>
-            <span className={styles.headerName()}>{displayName}</span>
-            <span className={styles.headerEmail()}>{email}</span>
-          </span>
-        </span>
-      }
-      sections={sections}
-    >
-      <span className={styles.avatar()}>{initialsOf(displayName)}</span>
-      <span className={styles.name()}>{displayName}</span>
-      <ChevronDownIcon className={styles.chevron()} />
-    </MenuButton>
+        }
+        sections={sections}
+      >
+        <span className={styles.avatar()}>{initialsOf(displayName)}</span>
+        <span className={styles.name()}>{displayName}</span>
+        <ChevronDownIcon className={styles.chevron()} />
+      </MenuButton>
+    </>
   )
 }

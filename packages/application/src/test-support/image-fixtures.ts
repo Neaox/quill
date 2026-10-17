@@ -232,3 +232,23 @@ export function pngChunk(type: string, data: Uint8Array): Uint8Array {
   view.setUint32(8 + data.length, crc32(chunk.subarray(4, 8 + data.length)))
   return chunk
 }
+
+/** An ISO base media box as the file carries it: its size, its type, then its payload. */
+export function isoBox(type: string, ...payload: Uint8Array[]): Uint8Array {
+  const body = concatChunks(payload)
+  const out = new Uint8Array(8 + body.length)
+  new DataView(out.buffer).setUint32(0, out.length)
+  out.set(new TextEncoder().encode(type), 4)
+  out.set(body, 8)
+  return out
+}
+
+/** Big-endian 32-bit integers, one after another. */
+export function uint32s(...values: number[]): Uint8Array {
+  const out = new Uint8Array(values.length * 4)
+  const view = new DataView(out.buffer)
+  values.forEach((value, index) => {
+    view.setUint32(index * 4, value)
+  })
+  return out
+}

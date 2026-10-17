@@ -112,21 +112,14 @@ export class FilesystemBlobStore implements BlobStore {
       return 0
     }
 
-    let swept = 0
-    for (const entry of entries) {
-      if (!entry.endsWith(TEMPORARY_SUFFIX)) continue
-      const path = join(directory, entry)
-      try {
-        const info = await stat(path)
-        if (now.getTime() - info.mtimeMs < olderThanMs) continue
-        await rm(path, { force: true })
-        swept += 1
-      } catch {
-        // Another process removed it between the listing and now, which is
-        // the outcome this was after anyway.
-      }
-    }
-    return swept
+    // Together rather than one by one: the directory holds one file per
+    // upload that was in flight when a process died, so the fan-out is small.
+    const swept = await Promise.all(
+      entries
+        .filter((entry) => entry.endsWith(TEMPORARY_SUFFIX))
+        .map((entry) => sweepOne(join(directory, entry), olderThanMs, now)),
+    )
+    return swept.filter(Boolean).length
   }
 
   /**
@@ -152,6 +145,20 @@ async function exists(path: string): Promise<boolean> {
     await stat(path)
     return true
   } catch {
+    return false
+  }
+}
+
+/** Removes one temporary file if it is old enough; whether it did. */
+async function sweepOne(path: string, olderThanMs: number, now: Date): Promise<boolean> {
+  try {
+    const info = await stat(path)
+    if (now.getTime() - info.mtimeMs < olderThanMs) return false
+    await rm(path, { force: true })
+    return true
+  } catch {
+    // Another process removed it between the listing and now, which is
+    // the outcome this was after anyway.
     return false
   }
 }

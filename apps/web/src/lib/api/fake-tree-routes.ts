@@ -1,4 +1,4 @@
-import type { FakeRouteHandler, FakeRoutes } from './testing.ts'
+import type { FakeRouteHandler, FakeRoutes } from './fake-routes.ts'
 
 /**
  * The routes a navigation tree that opens a level at a time asks for, answered from the one

@@ -1,5 +1,5 @@
 import { REQUEST_IN_FLIGHT_FOR_MS, retryAfter } from '@quill/domain'
-import type { DocumentId, ShortId } from '@quill/domain'
+import type { DocumentId, ShortId, UserId } from '@quill/domain'
 
 import type {
   AttachmentRepository,
@@ -13,6 +13,8 @@ import type {
   DocumentLinkRow,
   DocumentLinksRepository,
   DocumentLockRow,
+  DocumentViewRepository,
+  DocumentViewRow,
   DocumentRepository,
   DocumentRow,
   DraftRepository,
@@ -26,6 +28,8 @@ import type {
   LockRepository,
   MagicLinkRepository,
   MagicLinkTokenRow,
+  NotificationRepository,
+  NotificationRow,
   OutboxEventRow,
   OutboxWriter,
   LinkPreviewRepository,
@@ -37,6 +41,9 @@ import type {
   RenderCacheRepository,
   RenderCacheRow,
   RepositoryBundle,
+  ReviewAssignmentRow,
+  ReviewRepository,
+  ReviewRequestRow,
   RevisionIndexRow,
   RevisionsIndexRepository,
   SecretCursor,
@@ -103,6 +110,11 @@ function identityKey(issuer: string, subject: string): string {
 function rowId(scope: string, key: string): string {
   return `${scope}\n${key}`
 }
+const isActiveReview = (row: ReviewRequestRow): boolean => row.closedAt === null
+const newestFirst = (left: ReviewRequestRow, right: ReviewRequestRow): number =>
+  right.createdAt.getTime() - left.createdAt.getTime() || (left.id < right.id ? 1 : -1)
+const matchesName = (name: string, query: string): boolean =>
+  name.toLowerCase().includes(query.toLowerCase())
 
 export function createInMemoryUnitOfWork(): InMemoryUnitOfWork {
   const users = new Map<string, UserRow>()
@@ -122,7 +134,7 @@ export function createInMemoryUnitOfWork(): InMemoryUnitOfWork {
   const grants = new Map<string, GrantRow>()
   const shareLinks = new Map<string, ShareLinkRow>()
   const groups = new Map<string, GroupRow>()
-  const memberships = new Map<string, Set<string>>()
+  const memberships = new Map<UserId, Set<string>>()
   const collections = new Map<string, CollectionRow>()
   const revisions: RevisionIndexRow[] = []
   const renders = new Map<string, RenderCacheRow>()
@@ -136,6 +148,11 @@ export function createInMemoryUnitOfWork(): InMemoryUnitOfWork {
   const secrets = new Map<string, SecretRow>()
   const personPreferences = new Map<string, PersonPreferencesRow>()
   const linkPreviewRows = new Map<string, LinkPreviewRow>()
+  const reviewRequests: ReviewRequestRow[] = []
+  const reviewAssignments: ReviewAssignmentRow[] = []
+  /** Keyed by `(userId, documentId)`, which is what the primary key makes unique. */
+  const documentViews = new Map<string, DocumentViewRow>()
+  const notifications: NotificationRow[] = []
 
   const userRepository: UserRepository = {
     async create(input) {
@@ -163,6 +180,17 @@ export function createInMemoryUnitOfWork(): InMemoryUnitOfWork {
       // has a row — the `?? null` fallback exists only to satisfy the return type.
       /* v8 ignore next */
       return id === undefined ? null : (users.get(id) ?? null)
+    },
+    async searchByPrefix(query, limit) {
+      const prefix = query.toLowerCase()
+      return [...users.values()]
+        .filter(
+          (user) =>
+            user.displayName.toLowerCase().startsWith(prefix) ||
+            user.email.toLowerCase().startsWith(prefix),
+        )
+        .toSorted((a, b) => a.displayName.localeCompare(b.displayName))
+        .slice(0, limit)
     },
     async markEmailVerified(id, now) {
       const existing = users.get(id)
@@ -381,6 +409,9 @@ export function createInMemoryUnitOfWork(): InMemoryUnitOfWork {
       }
       return chain
     },
+    async listAll() {
+      return [...units.values()]
+    },
     async rename(id, name) {
       const existing = units.get(id)
       if (existing === undefined) {
@@ -442,6 +473,8 @@ export function createInMemoryUnitOfWork(): InMemoryUnitOfWork {
       const row: DocumentRow = {
         ...input,
         headRevision: null,
+        createdBy: input.createdBy ?? null,
+        updatedBy: null,
         createdAt: input.now,
         updatedAt: input.now,
       }
@@ -699,6 +732,33 @@ export function createInMemoryUnitOfWork(): InMemoryUnitOfWork {
     async findById(id) {
       return groups.get(id) ?? null
     },
+    async list() {
+      return [...groups.values()]
+    },
+    async countMembers() {
+      const counts = new Map<string, number>()
+      for (const held of memberships.values()) {
+        for (const groupId of held) counts.set(groupId, (counts.get(groupId) ?? 0) + 1)
+      }
+      return counts
+    },
+    async countChildren(id) {
+      return [...groups.values()].filter((group) => group.parentGroupId === id).length
+    },
+    async listMemberIds(groupId) {
+      return [...memberships].filter(([, held]) => held.has(groupId)).map(([member]) => member)
+    },
+    async rename(id, name) {
+      const existing = groups.get(id)
+      if (existing === undefined) throw new Error(`rename: group ${id} not found`)
+      const updated = { ...existing, name }
+      groups.set(id, updated)
+      return updated
+    },
+    async delete(id) {
+      groups.delete(id)
+      for (const held of memberships.values()) held.delete(id)
+    },
     async addMember({ groupId, userId: member }) {
       const current = memberships.get(member) ?? new Set<string>()
       current.add(groupId)
@@ -830,7 +890,11 @@ export function createInMemoryUnitOfWork(): InMemoryUnitOfWork {
 
   const revisionsRepository: RevisionsIndexRepository = {
     async append(input) {
-      const row: RevisionIndexRow = { ...input, createdAt: input.now }
+      const row: RevisionIndexRow = {
+        ...input,
+        authorUserId: input.authorUserId ?? null,
+        createdAt: input.now,
+      }
       revisions.unshift(row)
       return row
     },
@@ -1034,6 +1098,157 @@ export function createInMemoryUnitOfWork(): InMemoryUnitOfWork {
     },
   }
 
+  /** Every group nested inside `rootId`, itself included; a loop in the tree stops where it started. */
+  function groupAndDescendants(rootId: string): ReadonlySet<string> {
+    const found = new Set([rootId])
+    for (let grew = true; grew;) {
+      grew = false
+      for (const group of groups.values()) {
+        if (
+          group.parentGroupId !== null &&
+          found.has(group.parentGroupId) &&
+          !found.has(group.id)
+        ) {
+          found.add(group.id)
+          grew = true
+        }
+      }
+    }
+    return found
+  }
+
+  const reviewRepository: ReviewRepository = {
+    async create(input) {
+      const row: ReviewRequestRow = {
+        id: input.id,
+        documentId: input.documentId,
+        requestedBy: input.requestedBy,
+        draftVersion: input.draftVersion,
+        message: input.message,
+        status: 'open',
+        createdAt: input.now,
+        closedAt: null,
+      }
+      reviewRequests.push(row)
+      for (const reviewer of input.reviewers) {
+        reviewAssignments.push({
+          id: reviewer.id,
+          requestId: input.id,
+          principalKind: reviewer.kind,
+          principalId: reviewer.principalId,
+          state: 'pending',
+          decidedBy: null,
+          comment: null,
+          decidedAt: null,
+        })
+      }
+      return row
+    },
+    async findById(id) {
+      return reviewRequests.find((row) => row.id === id) ?? null
+    },
+    async findActiveForDocument(documentId) {
+      return (
+        reviewRequests.find((row) => row.documentId === documentId && isActiveReview(row)) ?? null
+      )
+    },
+    async findLatestForDocument(documentId) {
+      return (
+        reviewRequests
+          .filter((row) => row.documentId === documentId)
+          .toSorted((left, right) =>
+            isActiveReview(left) === isActiveReview(right)
+              ? newestFirst(left, right)
+              : isActiveReview(left)
+                ? -1
+                : 1,
+          )[0] ?? null
+      )
+    },
+    async setStatus(id, status, now) {
+      const index = reviewRequests.findIndex((row) => row.id === id)
+      const existing = reviewRequests[index]
+      if (existing === undefined) return null
+      const closing = status === 'withdrawn' || status === 'superseded' || status === 'published'
+      const updated: ReviewRequestRow = {
+        ...existing,
+        status,
+        closedAt: closing ? now : null,
+      }
+      reviewRequests[index] = updated
+      return updated
+    },
+    async listAssignments(requestIds) {
+      const wanted = new Set(requestIds)
+      return reviewAssignments.filter((row) => wanted.has(row.requestId))
+    },
+    async recordDecision({ assignmentIds, state, decidedBy, comment, now }) {
+      const wanted = new Set(assignmentIds)
+      reviewAssignments.forEach((row, index) => {
+        if (wanted.has(row.id)) {
+          reviewAssignments[index] = { ...row, state, decidedBy, comment, decidedAt: now }
+        }
+      })
+    },
+    async listAwaiting({ userId, groupIds, limit }) {
+      const held = new Set(groupIds)
+      const waiting = new Set(
+        reviewAssignments
+          .filter(
+            (row) =>
+              row.state === 'pending' &&
+              (row.principalKind === 'user'
+                ? row.principalId === userId
+                : held.has(row.principalId)),
+          )
+          .map((row) => row.requestId),
+      )
+      return reviewRequests
+        .filter((row) => isActiveReview(row) && waiting.has(row.id) && row.requestedBy !== userId)
+        .toSorted(newestFirst)
+        .slice(0, limit)
+    },
+    async listAnswered({ userId, limit }) {
+      return reviewRequests
+        .filter(
+          (row) =>
+            row.requestedBy === userId &&
+            (row.status === 'approved' || row.status === 'changes_requested'),
+        )
+        .toSorted(newestFirst)
+        .slice(0, limit)
+    },
+    async searchPeople(query, limit) {
+      return [...users.values()]
+        .filter((user) => matchesName(user.displayName, query))
+        .toSorted((left, right) => left.displayName.localeCompare(right.displayName))
+        .slice(0, limit)
+    },
+    async searchGroups(query, limit) {
+      return [...groups.values()]
+        .filter((group) => matchesName(group.name, query))
+        .toSorted((left, right) => left.name.localeCompare(right.name))
+        .slice(0, limit)
+    },
+    async countGroupMembers(groupIds) {
+      const counts = new Map<string, number>()
+      for (const groupId of groupIds) {
+        const within = groupAndDescendants(groupId)
+        const members = [...memberships].filter(([, held]) =>
+          [...held].some((id) => within.has(id)),
+        )
+        if (members.length > 0) counts.set(groupId, members.length)
+      }
+      return counts
+    },
+    async listMemberIdsDeep(groupIds) {
+      const within = new Set(groupIds.flatMap((groupId) => [...groupAndDescendants(groupId)]))
+      return [...memberships]
+        .filter(([, held]) => [...held].some((id) => within.has(id)))
+        .map(([member]) => member)
+    },
+  }
+
   const auditWriter: AuditWriter = {
     async write({ id, type, actorUserId, targetType, targetId, metadata, now }) {
       auditEvents.push({
@@ -1045,6 +1260,110 @@ export function createInMemoryUnitOfWork(): InMemoryUnitOfWork {
         metadata,
         createdAt: now,
       })
+    },
+  }
+
+  const documentViewRepository: DocumentViewRepository = {
+    async touch({ userId, documentId, workspaceId, now, debounceBefore }) {
+      const key = JSON.stringify([userId, documentId])
+      const existing = documentViews.get(key)
+      if (existing !== undefined && existing.lastViewedAt.getTime() >= debounceBefore.getTime()) {
+        return false
+      }
+      documentViews.set(key, {
+        userId,
+        documentId,
+        workspaceId,
+        lastViewedAt: now,
+        views: (existing?.views ?? 0) + 1,
+      })
+      return true
+    },
+    async listRecent({ userId, since, limit }) {
+      return [...documentViews.values()]
+        .filter((row) => row.userId === userId && row.lastViewedAt.getTime() >= since.getTime())
+        .toSorted((a, b) => b.lastViewedAt.getTime() - a.lastViewedAt.getTime())
+        .slice(0, limit)
+    },
+    async sumByWorkspace({ userId, since }) {
+      const mine = [...documentViews.values()].filter(
+        (row) => row.userId === userId && row.lastViewedAt.getTime() >= since.getTime(),
+      )
+      return [...Map.groupBy(mine, (row) => row.workspaceId)].map(([workspaceId, rows]) => ({
+        workspaceId,
+        views: rows.reduce((sum, row) => sum + row.views, 0),
+      }))
+    },
+    async deleteForUser(userId) {
+      const doomed = [...documentViews].filter(([, row]) => row.userId === userId)
+      for (const [key] of doomed) documentViews.delete(key)
+      return doomed.length
+    },
+    async deleteOlderThan(cutoff) {
+      const doomed = [...documentViews].filter(
+        ([, row]) => row.lastViewedAt.getTime() < cutoff.getTime(),
+      )
+      for (const [key] of doomed) documentViews.delete(key)
+      return doomed.length
+    },
+  }
+
+  const notificationRepository: NotificationRepository = {
+    async insertMany(rows) {
+      let written = 0
+      for (const row of rows) {
+        const exists = notifications.some(
+          (held) =>
+            held.requestId === row.requestId &&
+            held.recipientUserId === row.recipientUserId &&
+            held.kind === row.kind &&
+            held.actorUserId === row.actorUserId,
+        )
+        if (exists) continue
+        notifications.push({ ...row, readAt: null })
+        written += 1
+      }
+      return written
+    },
+    async markRequestKindRead({ requestId, kind, now }) {
+      const unread = notifications.filter(
+        (row) => row.requestId === requestId && row.kind === kind && row.readAt === null,
+      )
+      for (const row of unread) notifications[notifications.indexOf(row)] = { ...row, readAt: now }
+      return unread.length
+    },
+    async listForUser({ userId, after, limit }) {
+      return notifications
+        .filter((row) => row.recipientUserId === userId)
+        .toSorted(
+          (a, b) => b.createdAt.getTime() - a.createdAt.getTime() || b.id.localeCompare(a.id),
+        )
+        .filter(
+          (row) =>
+            after === null ||
+            row.createdAt.getTime() < after.createdAt.getTime() ||
+            (row.createdAt.getTime() === after.createdAt.getTime() && row.id < after.id),
+        )
+        .slice(0, limit)
+    },
+    async countUnread(userId) {
+      return notifications.filter((row) => row.recipientUserId === userId && row.readAt === null)
+        .length
+    },
+    async markRead({ userId, ids, now }) {
+      const unread = notifications.filter(
+        (row) =>
+          row.recipientUserId === userId &&
+          row.readAt === null &&
+          (ids === undefined || ids.includes(row.id)),
+      )
+      for (const row of unread) notifications[notifications.indexOf(row)] = { ...row, readAt: now }
+      return unread.length
+    },
+    async deleteOlderThan(cutoff) {
+      const doomed = notifications.filter((row) => row.createdAt.getTime() < cutoff.getTime())
+      for (const row of doomed) notifications.splice(notifications.indexOf(row), 1)
+      return doomed.length
     },
   }
 
@@ -1234,6 +1553,9 @@ export function createInMemoryUnitOfWork(): InMemoryUnitOfWork {
     attachments: attachmentRepository,
     personPreferences: personPreferencesRepository,
     linkPreviews: linkPreviewRepository,
+    reviews: reviewRepository,
+    documentViews: documentViewRepository,
+    notifications: notificationRepository,
     outbox: outboxWriter,
     audit: auditWriter,
   }

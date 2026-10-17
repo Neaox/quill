@@ -108,6 +108,7 @@ export async function pollOutboxOnce(
     let failed = 0
     let deadLettered = 0
 
+    // oxlint-disable-next-line quill/no-independent-await-in-loop -- events are handled in created_at order, and the whole batch is one transaction on one connection
     for (const row of rows) {
       // The query claimed only types this map has, so every row has one.
       const consumer = requireRow(consumers.get(row.type), `poll: no consumer for ${row.type}`)

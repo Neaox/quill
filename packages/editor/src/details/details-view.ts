@@ -93,7 +93,7 @@ export class DetailsNodeView implements NodeView {
   }
 
   private render(): void {
-    const summary = this.node.firstChild?.textContent ?? ''
+    const summary = this.node.child(0).textContent
     const kind = kindOf(this.node)
     this.dom.className = [
       'details',

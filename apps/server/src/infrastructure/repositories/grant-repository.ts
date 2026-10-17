@@ -1,4 +1,5 @@
 import { and, eq, isNull, or, type SQL } from 'drizzle-orm'
+import { chunk } from 'remeda'
 
 import type {
   CreateGrantInput,
@@ -160,28 +161,22 @@ export function createGrantRepository(db: DrizzleClient, ids: IdGenerator): Gran
     async listForScopes(scopes): Promise<readonly GrantRow[]> {
       if (scopes.length === 0) return []
 
-      const rows: {
-        grant: typeof grants.$inferSelect
-        principal: typeof principals.$inferSelect
-      }[] = []
-      for (let from = 0; from < scopes.length; from += SCOPES_PER_QUERY) {
-        const conditions = scopes
-          .slice(from, from + SCOPES_PER_QUERY)
-          .map((scope): SQL | undefined =>
+      const batches = await Promise.all(
+        chunk(scopes, SCOPES_PER_QUERY).map((batch) => {
+          const conditions = batch.map((scope): SQL | undefined =>
             scope.id === null
               ? and(eq(grants.scopeKind, scope.kind), isNull(grants.scopeId))
               : and(eq(grants.scopeKind, scope.kind), eq(grants.scopeId, scope.id)),
           )
-        rows.push(
-          ...(await db
+          return db
             .select({ grant: grants, principal: principals })
             .from(grants)
             .innerJoin(principals, eq(grants.principalId, principals.id))
-            .where(or(...conditions))),
-        )
-      }
+            .where(or(...conditions))
+        }),
+      )
 
-      return rows.map(({ grant, principal }) =>
+      return batches.flat().map(({ grant, principal }) =>
         toGrantRow(grant, {
           id: principal.id,
           kind: principal.kind as PrincipalKind,

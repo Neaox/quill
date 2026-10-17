@@ -118,6 +118,8 @@ export {
   SuccessIcon,
   SwapIcon,
   UserIcon,
+  BellIcon,
+  UsersIcon,
   WarningIcon,
   WorkspacesIcon,
   type IconProps,
@@ -180,7 +182,6 @@ export {
   TrashIcon,
 } from './components/table-icons.tsx'
 export { Input, type InputProps, type InputSize } from './components/input.tsx'
-export { Textarea, type TextareaProps } from './components/textarea.tsx'
 export {
   Menu,
   MenuButton,
@@ -344,6 +345,13 @@ export {
   type VirtualTreeProps,
   type VirtualTreeRow,
 } from './components/virtual-tree.tsx'
+export { Popover, popoverStyles, type PopoverProps } from './components/popover.tsx'
+export { Textarea, textareaStyles, type TextareaProps } from './components/textarea.tsx'
+export {
+  VirtualRows,
+  virtualRowsStyles,
+  type VirtualRowsProps,
+} from './components/virtual-rows.tsx'
 
 export {
   applyThemePreference,
