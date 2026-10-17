@@ -311,7 +311,11 @@ describe('adding a property', () => {
     const items = (await screen.findAllByRole('menuitem')).map((item) => item.textContent)
     expect(items).toEqual(['Owners', 'Lifecycle', 'Type', 'Tags', 'Review', 'Layout'])
     await user.click(screen.getByRole('menuitem', { name: 'Lifecycle' }))
-    await user.click(await screen.findByRole('menuitemradio', { name: /^In review/u }))
+    // The second menu opens once the first has closed; on a loaded CI machine
+    // that takes longer than findBy's default second.
+    await user.click(
+      await screen.findByRole('menuitemradio', { name: /^In review/u }, { timeout: 5000 }),
+    )
     expect(onRecord.mock.lastCall?.[0]).toEqual({ id: 'doc-1', status: 'in-review' })
     expect(screen.getByRole('button', { name: 'Lifecycle: In review' })).toBeInTheDocument()
     // Two menus open and close in turn; generous, for a loaded machine.
