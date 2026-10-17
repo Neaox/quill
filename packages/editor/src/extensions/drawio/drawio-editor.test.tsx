@@ -422,6 +422,42 @@ describe('the draw.io editor', () => {
     await waitFor(() => expect(lastAction()?.action).toBe('export'))
   })
 
+  it('ignores a save draw.io sends after the session has closed', async () => {
+    const { say, actions, onClose } = open()
+    say({ event: 'load' })
+    say({ event: 'exit', modified: false })
+    expect(onClose).toHaveBeenCalledOnce()
+    const before = actions().length
+
+    say({ event: 'save', xml: SAVED })
+
+    expect(actions()).toHaveLength(before)
+  })
+
+  it('writes nothing for an export it did not ask for', async () => {
+    const { say, actions, files } = open()
+    say({ event: 'configure' })
+
+    say({ event: 'export', format: 'svg', data: EXPORTED })
+
+    expect(actions().at(-1)).toMatchObject({ action: 'spinner', show: false })
+    expect(files.create).not.toHaveBeenCalled()
+    expect(files.revise).not.toHaveBeenCalled()
+  })
+
+  it('closes from the prompt that says the diagram did not open', async () => {
+    const read = vi.fn<DrawioFiles['read']>().mockRejectedValueOnce(new Error('offline'))
+    const { say, onClose } = open({
+      files: fakeFiles({ read }),
+      target: { kind: 'existing', diagram: EXISTING, title: 'x' },
+    })
+    say({ event: 'init' })
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Close' }))
+
+    expect(onClose).toHaveBeenCalledOnce()
+  })
+
   it('tells the writer when the editor is diagrams.net’s', () => {
     const { say } = open({ thirdParty: true })
     say({ event: 'load' })

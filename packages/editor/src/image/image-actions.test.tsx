@@ -60,6 +60,17 @@ function open(actions: readonly ImageAction[], source = SOURCE) {
   return { ...view, editor, markdown }
 }
 
+/** Where the first image in the document is. */
+function firstImage(editor: { readonly state: EditorState }): number {
+  let at = -1
+  editor.state.doc.descendants((node, pos) => {
+    if (at === -1 && node.type.name === 'image') at = pos
+    return at === -1
+  })
+  if (at === -1) throw new Error('There is no image.')
+  return at
+}
+
 describe('image actions', () => {
   it('offers "Edit diagram" on a draw.io diagram, not on a photo, and passes axe', async () => {
     const onEdit = vi.fn<(image: ImageRef) => void>()
@@ -129,6 +140,36 @@ describe('image actions', () => {
     expect(screen.queryByRole('button', { name: 'Edit diagram' })).not.toBeInTheDocument()
     expect(document.querySelector('.image-actions')).toBeNull()
     expect(screen.getByRole('img', { name: 'A photo' })).toHaveAttribute('src', PHOTO)
+  })
+
+  it('draws an image that has no address or no words as an empty one', () => {
+    const { editor } = open([drawioImageAction({ isDiagram: () => false, onEdit: () => {} })])
+    const image = editor().schema.nodes['image']
+    if (image === undefined) throw new Error('no image node')
+
+    act(() => {
+      editor().view.dispatch(editor().state.tr.insert(1, image.create()))
+    })
+
+    const drawn = [...document.querySelectorAll('.image-actions img')]
+    expect(drawn[0]).toHaveAttribute('src', '')
+    expect(drawn[0]).toHaveAttribute('alt', '')
+    expect(drawn[0]).not.toHaveAttribute('title')
+  })
+
+  it('runs nothing from a button whose image has left the document', () => {
+    const onEdit = vi.fn<(image: ImageRef) => void>()
+    const { editor } = open([drawioImageAction({ isDiagram: () => true, onEdit })])
+    const [stale] = screen.getAllByRole('button', { name: 'Edit diagram' })
+    if (stale === undefined) throw new Error('no button')
+
+    const at = firstImage(editor())
+    act(() => {
+      editor().view.dispatch(editor().state.tr.delete(at, at + 1))
+    })
+    stale.click()
+
+    expect(onEdit).not.toHaveBeenCalled()
   })
 
   it('works without a way to hear about changes', () => {

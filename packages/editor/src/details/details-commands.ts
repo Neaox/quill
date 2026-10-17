@@ -106,8 +106,7 @@ function unwrap(found: InDetails, caretAtEnd: boolean): Command {
     const blocks = unwrapped(state.schema, details)
     if (dispatch !== undefined) {
       const tr = state.tr.replaceWith(pos, pos + details.nodeSize, Fragment.from(blocks))
-      const summary = details.firstChild
-      const at = pos + 1 + (caretAtEnd ? (summary?.content.size ?? 0) : 0)
+      const at = pos + 1 + (caretAtEnd ? details.child(0).content.size : 0)
       dispatch(tr.setSelection(TextSelection.create(tr.doc, at)).scrollIntoView())
     }
     return true
@@ -126,7 +125,7 @@ export const enterFromSummary: Command = (state, dispatch) => {
   if (dispatch !== undefined) {
     // A line does not start with the space the caret was in front of.
     const rest = $from.parent.textBetween($from.parentOffset, $from.parent.content.size, '', '￼')
-    const spaces = /^\s*/u.exec(rest)?.[0].length ?? 0
+    const spaces = rest.length - rest.trimStart().length
     const after = $from.parent.content.cut($from.parentOffset + spaces)
     const bodyStart = $from.after()
     const first = found.details.maybeChild(1)
@@ -157,7 +156,7 @@ export const backspaceInDetails: Command = (state, dispatch) => {
   const bodyIsEmpty = details.childCount === 2 && $from.parent.content.size === 0
   if (bodyIsEmpty) return unwrap(found, true)(state, dispatch)
   if (dispatch !== undefined) {
-    const summaryEnd = found.pos + 1 + (details.firstChild?.nodeSize ?? 2) - 1
+    const summaryEnd = found.pos + 1 + details.child(0).nodeSize - 1
     dispatch(state.tr.setSelection(TextSelection.create(state.doc, summaryEnd)))
   }
   return true

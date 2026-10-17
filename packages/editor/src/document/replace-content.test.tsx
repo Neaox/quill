@@ -90,4 +90,15 @@ describe('replacing what the editor holds', () => {
 
     expect(onChange).not.toHaveBeenCalled()
   })
+
+  it('replaces the right stretch when what was added repeats the block beside it', () => {
+    const { handle } = open('Same.\n')
+    const repeated = 'Same.\n\nSame.\n'
+
+    act(() => {
+      handle().replaceContent(parseDocument(repeated).ast)
+    })
+
+    expect(written(handle())).toBe(repeated)
+  })
 })

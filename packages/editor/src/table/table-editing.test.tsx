@@ -386,6 +386,35 @@ describe('a right-click on a handle', () => {
     expect(corner?.dataset['state']).toBeUndefined()
   })
 
+  it('keeps the table selected when it is on the corner again', () => {
+    const opened = open()
+    rest(opened, 'eu')
+    const corner = handles(opened, '.table-grip[data-axis="table"]')[0]
+    rightClick(corner)
+    const editor = opened.ref.current?.editor
+    if (editor === null || editor === undefined) throw new Error('The editor did not mount.')
+    const selection = editor.state.selection
+
+    rightClick(corner)
+
+    expect(editor.state.selection.eq(selection)).toBe(true)
+    expect(corner?.dataset['state']).toBe('selected')
+  })
+
+  it('does not select a row or column by a press of another button than the main one', () => {
+    const opened = open()
+    rest(opened, 'eu')
+    const [row] = handles(opened, '.table-grip[data-axis="row"]')
+    const [column] = handles(opened, '.table-grip[data-axis="column"]')
+
+    for (const grip of [row, column]) {
+      if (grip === undefined) throw new Error('There is no grip.')
+      fireEvent.pointerDown(grip, { button: 2 })
+      fireEvent.pointerUp(grip, { button: 2 })
+      expect(grip.dataset['state']).toBeUndefined()
+    }
+  })
+
   it('on a "+" leaves the selection as it was', () => {
     const opened = open()
     rest(opened, 'eu')
@@ -697,5 +726,43 @@ describe('the handles’ place', () => {
     fireEvent.scroll(scroller)
     await placed()
     expect(columns[0]?.style.getPropertyValue('--start')).toBe('-30px')
+  })
+})
+
+describe('the handles of a table that has gone', () => {
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  it('do nothing when they are pressed, since there is no table to act on', () => {
+    layOut()
+    const opened = open(`Before.\n\n${TABLE}`)
+    const editor = opened.ref.current?.editor
+    if (editor === null || editor === undefined) throw new Error('The editor did not mount.')
+    const everything = handles(
+      opened,
+      '.table-grip, .table-insert, .table-column-border, .table-width-handle',
+    )
+    expect(everything.length).toBeGreaterThan(0)
+    let table = -1
+    let size = 0
+    editor.state.doc.descendants((node, pos) => {
+      if (table === -1 && node.type.name === 'table') {
+        table = pos
+        size = node.nodeSize
+      }
+    })
+    act(() => {
+      editor.view.dispatch(editor.state.tr.delete(table, table + size))
+    })
+    const before = markdown(opened)
+
+    for (const handle of everything) {
+      fireEvent.pointerDown(handle, { pointerId: 1, clientX: 0, clientY: 0 })
+      fireEvent.pointerUp(handle, { pointerId: 1, clientX: 0, clientY: 0 })
+      fireEvent.click(handle)
+    }
+
+    expect(markdown(opened)).toBe(before)
   })
 })

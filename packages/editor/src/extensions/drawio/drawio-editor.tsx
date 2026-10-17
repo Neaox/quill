@@ -285,6 +285,7 @@ export function DrawioEditor({
                   variant="primary"
                   onClick={() => {
                     transition({ type: 'copy-requested' })
+                    /* v8 ignore else -- a conflict is only ever raised by writing an export, so one is held. */
                     if (exported.current !== null) void write(exported.current, true)
                   }}
                 >
@@ -347,8 +348,12 @@ export function DrawioEditor({
 
   function retry(): void {
     const next = transition({ type: 'retried' })
-    if (next.status === 'loading') void open()
-    else if (next.status === 'saving' && exported.current !== null) {
+    if (next.status === 'loading') {
+      void open()
+      return
+    }
+    /* v8 ignore else -- Try again is offered only after a failed open or a failed write, which leaves an export held. */
+    if (next.status === 'saving' && exported.current !== null) {
       void write(exported.current, false)
     }
   }

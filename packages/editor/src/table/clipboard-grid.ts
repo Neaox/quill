@@ -38,13 +38,12 @@ function span(element: Element, name: 'colspan' | 'rowspan'): number {
 }
 
 function textOf(element: Element): string {
-  return (element.textContent ?? '').replace(/\s+/gu, ' ').trim()
+  return element.textContent.replace(/\s+/gu, ' ').trim()
 }
 
 /** Drops empty rows and columns from the grid's end, which spreadsheets copy along. */
 function trim(rows: PastedCell[][]): PastedCell[][] {
-  const kept = [...rows]
-  while (kept.length > 0 && (kept.at(-1) ?? []).every((cell) => cell.text === '')) kept.pop()
+  const kept = rows.slice(0, rows.findLastIndex((row) => row.some((cell) => cell.text !== '')) + 1)
   const width = kept.reduce(
     (widest, row) => Math.max(widest, row.findLastIndex((cell) => cell.text !== '') + 1),
     0,
@@ -91,7 +90,7 @@ export function gridFromHtml(html: string, doc: Document): PastedGrid | undefine
       cells[column] = EMPTY
       column += 1
     }
-    grid.push(Array.from({ length: cells.length }, (_, index) => cells[index] ?? EMPTY))
+    grid.push(cells)
     rowIndex += 1
   }
   const rows = trim(grid)
@@ -106,13 +105,13 @@ export function gridFromHtml(html: string, doc: Document): PastedGrid | undefine
  */
 export function gridFromText(text: string): PastedGrid | undefined {
   if (!text.includes('\t')) return undefined
-  const rows: string[][] = [[]]
+  let current: string[] = []
+  const rows: string[][] = [current]
   let field = ''
   let quoted = false
   const source = text.replace(/\r\n?/gu, '\n').replace(/\n$/u, '')
   for (let index = 0; index < source.length; index += 1) {
     const char = source[index]
-    const current = rows.at(-1) ?? []
     if (quoted) {
       if (char === '"' && source[index + 1] === '"') {
         field += '"'
@@ -126,10 +125,11 @@ export function gridFromText(text: string): PastedGrid | undefined {
     } else if (char === '\n') {
       current.push(field)
       field = ''
-      rows.push([])
+      current = []
+      rows.push(current)
     } else field += char
   }
-  ;(rows.at(-1) ?? []).push(field)
+  current.push(field)
   const cells = trim(
     rows.map((row) =>
       row.map((value) => ({ element: null, text: value.replace(/\s+/gu, ' ').trim() })),
