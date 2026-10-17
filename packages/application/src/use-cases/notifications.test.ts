@@ -266,6 +266,44 @@ describe('a review request', () => {
   })
 })
 
+describe('events about a request that cannot be found', () => {
+  const stranger = userId('00000000-0000-4000-8000-0000000000ff')
+
+  it('writes nothing for a request that was never stored', async () => {
+    await ask([{ kind: 'user', id: ADA }])
+    const requested = parseReviewRequested(uow.events[0]?.payload)
+    if (requested === null) throw new Error('expected a readable event')
+
+    expect(await notifyReviewRequested(deps, { ...requested, requestId: 'never-stored' })).toBe(0)
+    expect(await rowsFor(ADA)).toEqual([])
+  })
+
+  it('tells nobody of a decision on a request that was never stored', async () => {
+    expect(
+      await notifyReviewDecided(deps, {
+        version: 1,
+        requestId: 'never-stored',
+        documentId: DOC,
+        workspaceId: WORKSPACE,
+        decidedBy: ADA,
+        decision: 'approve',
+        status: 'approved',
+      }),
+    ).toBe(0)
+    expect(await rowsFor(AUTHOR)).toEqual([])
+  })
+
+  it('names no actor when the person who asked has gone', async () => {
+    await ask([{ kind: 'user', id: ADA }])
+    const requested = parseReviewRequested(uow.events[0]?.payload)
+    if (requested === null) throw new Error('expected a readable event')
+
+    await notifyReviewRequested(deps, { ...requested, requestedBy: stranger })
+
+    expect(await rowsFor(ADA)).toMatchObject([{ kind: 'review-requested', actorUserId: null }])
+  })
+})
+
 describe('a decision', () => {
   beforeEach(async () => {
     await ask([
@@ -376,6 +414,9 @@ describe('events delivered out of order', () => {
   })
 })
 
+/** A cursor as the server would have issued it for these contents. */
+const issued = (value: string) => Buffer.from(value).toString('base64url')
+
 describe('listNotifications', () => {
   async function seed(count: number, documents: readonly DocumentId[] = [DOC]) {
     await uow.repos.notifications.insertMany(
@@ -442,6 +483,13 @@ describe('listNotifications', () => {
   it('refuses a cursor it did not issue', async () => {
     expect(await list(2, 'not-a-cursor')).toEqual({ kind: 'bad-cursor' })
     expect(decodeNotificationCursor('')).toBeNull()
+    // Not a date at all, and a date written some way other than the one a cursor is issued in.
+    expect(decodeNotificationCursor(issued('yesterday|n-1'))).toBeNull()
+    expect(decodeNotificationCursor(issued('2026-01-01|n-1'))).toBeNull()
+    expect(decodeNotificationCursor(issued(`${NOW.toISOString()}|n-1`))).toEqual({
+      createdAt: NOW,
+      id: 'n-1',
+    })
   })
 
   it('names a gone actor as a former member', async () => {

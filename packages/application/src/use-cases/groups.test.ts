@@ -153,6 +153,33 @@ describe('listGroups', () => {
   })
 })
 
+describe('listGroups: ordering and gaps', () => {
+  it('orders groups of one unit by name, ignoring case', async () => {
+    const acme = await unit('Acme')
+    await group(acme, 'oncall')
+    await group(acme, 'Design')
+    await group(acme, 'Billing')
+
+    expect((await listGroups(deps)).map((entry) => entry.name)).toEqual([
+      'Billing',
+      'Design',
+      'oncall',
+    ])
+  })
+
+  it('shows an empty unit path for a group whose unit is no longer there', async () => {
+    await uow.repos.groups.create({
+      id: 'orphan',
+      unitId: 'gone',
+      parentGroupId: null,
+      name: 'Orphan',
+      now: NOW,
+    })
+
+    expect(await listGroups(deps)).toMatchObject([{ name: 'Orphan', unitPath: '', memberCount: 0 }])
+  })
+})
+
 describe('renameGroup', () => {
   it('renames and audits both names', async () => {
     const acme = await unit('Acme')

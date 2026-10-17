@@ -3,6 +3,7 @@ import { documentId, revisionId, userId, workspaceId } from '@quill/domain'
 
 import {
   EVENT_PAYLOAD_VERSION,
+  parseAttachmentRevised,
   parseDocumentMoved,
   parseDocumentPublished,
   parseDocumentRenamed,
@@ -195,5 +196,67 @@ describe('review events', () => {
     expect(parseReviewDecided({ ...decided, decision: 'maybe' })).toBeNull()
     expect(parseReviewDecided({ ...decided, status: undefined })).toBeNull()
     expect(parseReviewWithdrawn({ ...withdrawn, withdrawnBy: null })).toBeNull()
+  })
+})
+
+describe('parseAttachmentRevised', () => {
+  const revised = {
+    version: EVENT_PAYLOAD_VERSION,
+    attachmentId: 'att-1',
+    documentId: DOC,
+    workspaceId: WORKSPACE,
+    attachmentVersion: 3,
+  }
+
+  it('reads a revision', () => {
+    expect(parseAttachmentRevised(revised)).toEqual(revised)
+  })
+
+  it('refuses a payload that names no attachment, document or workspace', () => {
+    expect(parseAttachmentRevised({ ...revised, attachmentId: '' })).toBeNull()
+    expect(parseAttachmentRevised({ ...revised, documentId: '' })).toBeNull()
+    expect(parseAttachmentRevised({ ...revised, workspaceId: '' })).toBeNull()
+  })
+
+  it('refuses a payload whose attachment version is not a number', () => {
+    expect(parseAttachmentRevised({ ...revised, attachmentVersion: '3' })).toBeNull()
+    expect(parseAttachmentRevised({ ...revised, attachmentVersion: undefined })).toBeNull()
+  })
+
+  it('refuses a version nothing shipped can read', () => {
+    expect(parseAttachmentRevised({ ...revised, version: 99 })).toBeNull()
+  })
+})
+
+describe('review events missing what they identify', () => {
+  const decided = {
+    version: EVENT_PAYLOAD_VERSION,
+    requestId: 'r1',
+    documentId: DOC,
+    workspaceId: WORKSPACE,
+    decidedBy: USER,
+    decision: 'request_changes',
+    status: 'changes_requested',
+  }
+  const withdrawn = {
+    version: EVENT_PAYLOAD_VERSION,
+    requestId: 'r1',
+    documentId: DOC,
+    workspaceId: WORKSPACE,
+    withdrawnBy: USER,
+  }
+
+  it('refuses a decision that names no request, document or workspace', () => {
+    expect(parseReviewDecided(decided)?.decision).toBe('request_changes')
+    for (const missing of ['requestId', 'documentId', 'workspaceId', 'decidedBy']) {
+      expect(parseReviewDecided({ ...decided, [missing]: '' })).toBeNull()
+    }
+  })
+
+  it('refuses a withdrawal that names no request, document or workspace', () => {
+    expect(parseReviewWithdrawn(withdrawn)).not.toBeNull()
+    for (const missing of ['requestId', 'documentId', 'workspaceId']) {
+      expect(parseReviewWithdrawn({ ...withdrawn, [missing]: '' })).toBeNull()
+    }
   })
 })

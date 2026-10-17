@@ -141,6 +141,101 @@ describe('createFakeDocumentFormat: render and read', () => {
   })
 })
 
+/** A published text with no front matter, as the comparison reads it. */
+const text = (body: string) => serialise({}, body)
+
+describe('createFakeDocumentFormat: compare', () => {
+  const context = { linkTitles: new Map() }
+
+  it('pairs lines by position and names each as added, removed or changed', () => {
+    const compared = format.compare({
+      before: text('one\ntwo\nthree'),
+      after: text('one\nTWO'),
+      context,
+    })
+    expect(compared.changes.map(({ id, change, excerpt }) => ({ id, change, excerpt }))).toEqual([
+      { id: 'c2', change: 'changed', excerpt: 'TWO' },
+      { id: 'c3', change: 'removed', excerpt: 'three' },
+    ])
+    expect(compared.summary).toMatchObject({ changed: 1, removed: 1, added: 0 })
+    expect(compared.summary.wordsAdded).toBe(1)
+    expect(compared.summary.wordsRemoved).toBe(2)
+
+    const grown = format.compare({ before: text('one'), after: text('one\ntwo'), context })
+    expect(grown.changes).toMatchObject([{ id: 'c2', change: 'added', wordsAdded: 1 }])
+    expect(grown.changes[0]?.wordsRemoved).toBe(0)
+  })
+
+  it('has no sections for identical texts', () => {
+    const compared = format.compare({ before: text('same'), after: text('same'), context })
+    expect(compared.changes).toEqual([])
+    expect(compared.summary.sections).toBe(0)
+  })
+
+  it('draws each change on its own only when asked to', () => {
+    const input = { before: text('a'), after: text('b'), context }
+    expect(format.compare(input).changes[0]?.html).toBeUndefined()
+    expect(format.compare({ ...input, patches: true }).changes[0]?.html).toBe('b')
+    expect(
+      format.compare({ before: text('a'), after: text(''), context, patches: true }).changes[0]
+        ?.html,
+    ).toBe('a')
+  })
+
+  it('marks changes revertible and names their author only for a draft with a record', () => {
+    const base = { before: text('a'), after: text('b'), context }
+    const stamp = { by: 'user-1', at: '2026-01-01T00:00:00.000Z' }
+    expect(format.compare(base).changes[0]).not.toHaveProperty('revertible')
+
+    const withDraft = format.compare({ ...base, draft: draft('b') })
+    expect(withDraft.changes[0]?.revertible).toBe(true)
+    expect(withDraft.changes[0]?.author).toBeUndefined()
+
+    const stamped = format.compare({ ...base, draft: draft('b'), authorship: stamp })
+    expect(stamped.changes[0]?.author).toEqual({ userId: 'user-1', at: stamp.at })
+
+    // A record only counts alongside the draft it describes.
+    expect(format.compare({ ...base, authorship: stamp }).changes[0]?.author).toBeUndefined()
+    // And only when it is a record this fake wrote.
+    expect(
+      format.compare({ ...base, draft: draft('b'), authorship: 'nope' }).changes[0]?.author,
+    ).toBeUndefined()
+    expect(
+      format.compare({ ...base, draft: draft('b'), authorship: null }).changes[0]?.author,
+    ).toBeUndefined()
+    expect(
+      format.compare({ ...base, draft: draft('b'), authorship: { by: 'x' } }).changes[0]?.author,
+    ).toBeUndefined()
+  })
+})
+
+describe('createFakeDocumentFormat: revert', () => {
+  it('puts a changed line back and takes an added one out, whatever order the ids come in', () => {
+    const reverted = format.revert({
+      before: text('one\ntwo'),
+      after: text('ONE\ntwo\nthree'),
+      draft: draft('ONE\ntwo\nthree'),
+      changes: ['c1', 'c3'],
+    })
+    expect(reverted.ast).toEqual({ body: 'one\ntwo' })
+  })
+
+  it('puts a removed line back at its place, or at the end when the draft is shorter', () => {
+    const before = text('one\ntwo\nthree')
+    expect(
+      format.revert({
+        before,
+        after: text('one\nthree'),
+        draft: draft('one\nthree'),
+        changes: ['c2'],
+      }).ast,
+    ).toEqual({ body: 'one\ntwo' })
+    expect(
+      format.revert({ before, after: text('one'), draft: draft('one'), changes: ['c3'] }).ast,
+    ).toEqual({ body: 'one\nthree' })
+  })
+})
+
 describe('the fake clock and id generator', () => {
   it('advances and resets only when told to', () => {
     const start = new Date('2026-01-01T00:00:00.000Z')

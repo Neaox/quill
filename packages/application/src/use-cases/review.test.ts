@@ -714,3 +714,215 @@ describe('getAttention', () => {
     expect(await attention(ADA)).toEqual([])
   })
 })
+
+describe('a document that cannot be placed in the tree', () => {
+  const ORPHAN = documentId('00000000-0000-4000-8000-000000000301')
+  const LOST_WORKSPACE = workspaceId('00000000-0000-4000-8000-0000000001ff')
+  const LOOPING_WORKSPACE = workspaceId('00000000-0000-4000-8000-000000000102')
+
+  const inWorkspace = (id: DocumentId, workspace: typeof WORKSPACE) =>
+    uow.repos.documents.create({
+      id,
+      shortId: aShortId(),
+      workspaceId: workspace,
+      collectionId: null,
+      parentId: null,
+      slug: 'orphan',
+      path: 'orphan.md',
+      title: 'Orphan',
+      status: 'draft',
+      templateId: null,
+      templateVersion: null,
+      now: NOW,
+    })
+
+  it('has no access probe when its workspace is gone', async () => {
+    await inWorkspace(ORPHAN, LOST_WORKSPACE)
+
+    expect(await createReviewerAccessProbe(uow.repos, ORPHAN)).toBeNull()
+  })
+
+  it('has no access probe when the units above it loop', async () => {
+    await uow.repos.units.create({
+      id: 'loop',
+      parentId: 'loop',
+      name: 'Loop',
+      slug: 'loop',
+      label: 'team',
+      now: NOW,
+    })
+    await uow.repos.workspaces.create({
+      id: LOOPING_WORKSPACE,
+      unitId: 'loop',
+      name: 'Looping',
+      slug: 'looping',
+      now: NOW,
+    })
+    await inWorkspace(ORPHAN, LOOPING_WORKSPACE)
+
+    expect(await createReviewerAccessProbe(uow.repos, ORPHAN)).toBeNull()
+  })
+
+  it('cannot be asked about, the same as one that is not there', async () => {
+    await inWorkspace(ORPHAN, LOST_WORKSPACE)
+
+    expect(
+      await requestReview(deps, {
+        documentId: ORPHAN,
+        requestedBy: AUTHOR,
+        canManage: false,
+        reviewers: [{ kind: 'user', id: ADA }],
+      }),
+    ).toEqual({ kind: 'not-found' })
+  })
+})
+
+describe('a request as people and groups since gone leave it', () => {
+  const STRANGER = userId('00000000-0000-4000-8000-0000000000ff')
+
+  it('names a requester who is no longer known as a former member', async () => {
+    const view = await asked([{ kind: 'user', id: ADA }], { requestedBy: STRANGER })
+
+    expect(view.kind === 'requested' && view.review.requestedBy).toEqual({
+      id: STRANGER,
+      name: 'Former member',
+    })
+  })
+
+  it('names a group that has been deleted as a former member', async () => {
+    await review([{ kind: 'group', id: 'reviewers' }])
+    await uow.repos.groups.delete('reviewers')
+
+    const read = await getReview(deps, {
+      documentId: DOC,
+      userId: AUTHOR,
+      canEdit: true,
+      canManage: false,
+    })
+
+    expect(read?.assignments[0]?.reviewer).toMatchObject({
+      kind: 'group',
+      id: 'reviewers',
+      name: 'Former member',
+    })
+  })
+
+  it('counts no members for a group that has none', async () => {
+    await uow.repos.groups.create({
+      id: 'empty',
+      unitId: 'acme',
+      parentGroupId: null,
+      name: 'Empty',
+      now: NOW,
+    })
+    await grant('group', 'empty', 'viewer')
+
+    const view = await review([{ kind: 'group', id: 'empty' }])
+
+    expect(view.assignments[0]?.reviewer).toMatchObject({ name: 'Empty', memberCount: 0 })
+  })
+})
+
+describe('a request for a document with no draft', () => {
+  it('is made against version nothing, and is not stale', async () => {
+    const bare = documentId('00000000-0000-4000-8000-000000000302')
+    await uow.repos.documents.create({
+      id: bare,
+      shortId: aShortId(),
+      workspaceId: WORKSPACE,
+      collectionId: 'architecture',
+      parentId: null,
+      slug: 'bare',
+      path: 'architecture/bare.md',
+      title: 'Bare',
+      status: 'draft',
+      templateId: null,
+      templateVersion: null,
+      now: NOW,
+    })
+
+    const result = await requestReview(deps, {
+      documentId: bare,
+      requestedBy: AUTHOR,
+      canManage: false,
+      reviewers: [{ kind: 'user', id: ADA }],
+    })
+
+    expect(result.kind === 'requested' && result.review).toMatchObject({
+      draftVersion: 0,
+      stale: false,
+    })
+  })
+})
+
+describe('getAttention: several things waiting', () => {
+  const authorizerFor = (user: UserId) =>
+    createAuthorizer(
+      uow.repos,
+      { userId: user, shareLinkToken: null },
+      {
+        uow,
+        clock,
+        ids: createFakeIdGenerator(),
+        tokens: createFakeTokenService(),
+        shareLinkPolicy: { allowed: () => true },
+      },
+    )
+  const attention = (user: UserId) =>
+    getAttention(deps, { userId: user, authorizer: authorizerFor(user) })
+
+  it('lists the newest first across documents', async () => {
+    await review([{ kind: 'user', id: ADA }])
+    clock.advance(1000)
+    await requestReview(deps, {
+      documentId: OTHER_DOC,
+      requestedBy: AUTHOR,
+      canManage: false,
+      reviewers: [{ kind: 'user', id: ADA }],
+    })
+
+    expect((await attention(ADA)).map((item) => item.document.id)).toEqual([OTHER_DOC, DOC])
+  })
+
+  it('credits an approval to whoever gave the last of them', async () => {
+    await review([
+      { kind: 'user', id: ADA },
+      { kind: 'user', id: GRACE },
+    ])
+    await answer(ADA, 'approve')
+    clock.advance(1000)
+    await answer(GRACE, 'approve')
+
+    expect((await attention(AUTHOR)).map((item) => [item.kind, item.by.name])).toEqual([
+      ['review-approved', 'Grace'],
+    ])
+  })
+
+  it('names a requester who is no longer known as a former member', async () => {
+    const stranger = userId('00000000-0000-4000-8000-0000000000ff')
+    await asked([{ kind: 'user', id: ADA }], { requestedBy: stranger })
+
+    expect((await attention(ADA)).map((item) => item.by.name)).toEqual(['Former member'])
+  })
+})
+
+describe('getAttention: an answered request with no answers to be found', () => {
+  it('says nothing about it', async () => {
+    const view = await review([{ kind: 'user', id: ADA }])
+    // A status the assignments do not bear out, as a half-applied migration could leave.
+    await uow.repos.reviews.setStatus(view.id, 'approved', NOW)
+    const authorizer = createAuthorizer(
+      uow.repos,
+      { userId: AUTHOR, shareLinkToken: null },
+      {
+        uow,
+        clock,
+        ids: createFakeIdGenerator(),
+        tokens: createFakeTokenService(),
+        shareLinkPolicy: { allowed: () => true },
+      },
+    )
+
+    expect(await getAttention(deps, { userId: AUTHOR, authorizer })).toEqual([])
+  })
+})

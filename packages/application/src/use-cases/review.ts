@@ -139,7 +139,6 @@ async function buildViews(
   rows: readonly ReviewRequestRow[],
   viewer: Viewer,
 ): Promise<readonly ReviewRequestView[]> {
-  if (rows.length === 0) return []
   const assignments = await repos.reviews.listAssignments(rows.map((row) => row.id))
   const groupIds = await heldGroupIds(repos, viewer.userId)
 
@@ -460,6 +459,7 @@ export async function decideReview(
       metadata: { documentId: command.documentId, decision: command.decision, status },
       now,
     })
+    /* v8 ignore next -- the request was read in this transaction, so it is still there to update. */
     return updated ?? request
   })
 
@@ -682,19 +682,20 @@ export async function getAttention(
   for (const request of answered) {
     const wanted: AssignmentState = request.status === 'approved' ? 'approved' : 'changes_requested'
     const latest = answers
-      .filter(
-        (answer) =>
-          answer.requestId === request.id && answer.state === wanted && answer.decidedAt !== null,
+      .flatMap((answer) =>
+        answer.requestId === request.id &&
+        answer.state === wanted &&
+        answer.decidedBy !== null &&
+        answer.decidedAt !== null
+          ? [{ by: answer.decidedBy, at: answer.decidedAt }]
+          : [],
       )
-      .toSorted(
-        (left, right) => (right.decidedAt?.getTime() ?? 0) - (left.decidedAt?.getTime() ?? 0),
-      )[0]
-    if (latest === undefined || latest.decidedBy === null || latest.decidedAt === null) continue
+      .toSorted((left, right) => right.at.getTime() - left.at.getTime())[0]
+    if (latest === undefined) continue
     candidates.push({
       kind: request.status === 'approved' ? 'review-approved' : 'changes-requested',
       request,
-      by: latest.decidedBy,
-      at: latest.decidedAt,
+      ...latest,
     })
   }
 

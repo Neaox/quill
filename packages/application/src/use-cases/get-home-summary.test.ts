@@ -1,5 +1,12 @@
 import { beforeEach, describe, expect, it } from 'vitest'
-import { PUBLIC_PRINCIPAL, revisionId, userId, userPrincipal, workspaceId } from '@quill/domain'
+import {
+  documentId as toDocumentId,
+  PUBLIC_PRINCIPAL,
+  revisionId,
+  userId,
+  userPrincipal,
+  workspaceId,
+} from '@quill/domain'
 import type { DocumentId, Principal, UserId } from '@quill/domain'
 
 import { aShortId } from '../test-support/fakes.ts'
@@ -174,6 +181,37 @@ describe('getHomeSummary', () => {
     expect(result.recent.map((row) => row.title)).toEqual(
       Array.from({ length: 10 }, (_, index) => `Page ${index + 1}`),
     )
+  })
+
+  it('leaves a workspace without figures when its tree cannot be walked, and shows the rest', async () => {
+    await addWorkspace(1)
+    await addWorkspace(2)
+    await addDocument(2, 'Fine', 1)
+    // A document under a parent that is not there: the workspace's tree is broken.
+    const orphan = await addDocument(1, 'Orphan', 1)
+    await uow.repos.documents.update(
+      orphan,
+      { parentId: toDocumentId('00000000-0000-4000-8000-0000000009ff') },
+      NOW,
+    )
+    for (const n of [1, 2]) {
+      await uow.repos.grants.create({
+        id: `grant-${String(n)}`,
+        principalKind: 'user',
+        principalId: READER,
+        scopeKind: 'workspace',
+        scopeId: workspaceAt(n),
+        role: 'viewer',
+        effect: 'allow',
+        createdBy: null,
+        now: NOW,
+      })
+    }
+
+    const result = await summary(false)
+
+    expect(result.stats.map((stat) => stat.workspaceId)).toEqual([workspaceAt(2)])
+    expect(result.recent.map((change) => change.title)).toEqual(['Fine'])
   })
 
   describe('what is mine', () => {

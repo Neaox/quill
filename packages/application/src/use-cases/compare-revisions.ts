@@ -19,6 +19,7 @@ import { canonicaliseLinks } from './canonical-links.ts'
 import { readDraftContent } from './publish-document.ts'
 import { readSource } from './read-published.ts'
 import { RENDER_VERSION, renderDigest, renderInputFor } from './render-document.ts'
+import type { DrawnRenderInput } from './render-document.ts'
 
 /**
  * Comparing two versions of one document (ADR-015): two published revisions,
@@ -222,10 +223,10 @@ async function draftSide(
 }
 
 /** What both sides are drawn with: every title either links to, every drawing either shows. */
-function bothSides(before: RenderInput, after: RenderInput): CompareContext {
+function bothSides(before: DrawnRenderInput, after: DrawnRenderInput): CompareContext {
   return {
     linkTitles: new Map([...before.linkTitles, ...after.linkTitles]),
-    drawings: new Map([...(before.drawings ?? []), ...(after.drawings ?? [])]),
+    drawings: new Map([...before.drawings, ...after.drawings]),
     labels: after.labels,
     emoji: after.emoji,
     labelEmoji: after.labelEmoji,

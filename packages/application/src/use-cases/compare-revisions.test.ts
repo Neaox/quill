@@ -262,3 +262,89 @@ describe('compareRevisionSources', () => {
     expect(result.source.lines.some((line) => line.change === 'added')).toBe(true)
   })
 })
+
+describe('compareRevisions: naming the authors of changes', () => {
+  /** A draft saved with the record of who wrote it, the way the editing service keeps one. */
+  async function saveWithRecord(id: DocumentId, body: string, by: string): Promise<void> {
+    await writeDraft(id, body)
+    await uow.repos.locks.acquire({ documentId: id, userId: AUTHOR, sessionId: SESSION, now: NOW })
+    const saved = await uow.repos.drafts.find(id)
+    await uow.repos.drafts.write({
+      documentId: id,
+      sessionId: SESSION,
+      expectedVersion: saved?.draftVersion ?? 0,
+      ast: saved?.ast,
+      authorship: { by, at: NOW.toISOString() },
+      now: NOW,
+    })
+  }
+
+  it('leaves unnamed a change the record cannot attribute, and names the others', async () => {
+    const id = await aDocument()
+    const head = await publish(id, '# Runbook\nRestart nightly.\nCheck the queue.')
+    await uow.repos.users.create({
+      id: AUTHOR,
+      email: 'ada@example.com',
+      displayName: 'Ada Lovelace',
+      now: NOW,
+    })
+    await saveWithRecord(id, '# Runbook\nRestart weekly.\nCheck the pager.', AUTHOR)
+    // A format may know the author of some blocks and not of others.
+    const format = createFakeDocumentFormat()
+    const partial = {
+      ...format,
+      compare: (input: Parameters<typeof format.compare>[0]) => {
+        const compared = format.compare(input)
+        return {
+          ...compared,
+          changes: compared.changes.map((change, index) =>
+            index === 0 ? change : { ...change, author: undefined },
+          ),
+        }
+      },
+    }
+
+    const result = await compareRevisions(
+      { ...deps, format: partial },
+      { documentId: id, from: head, to: 'draft' },
+    )
+
+    if (result.kind !== 'compared') throw new Error(result.kind)
+    expect(result.content.changes).toHaveLength(2)
+    expect(result.content.changes[0]?.author?.name).toBe('Ada Lovelace')
+    expect(result.content.changes[1]?.author).toBeUndefined()
+  })
+
+  it('keeps an author the record names by something that is not a user id, without a name', async () => {
+    const id = await aDocument()
+    const head = await publish(id, '# Runbook\nRestart nightly.')
+    await saveWithRecord(id, '# Runbook\nRestart weekly.', 'imported-from-wiki')
+
+    const result = await compareRevisions(deps, { documentId: id, from: head, to: 'draft' })
+
+    if (result.kind !== 'compared') throw new Error(result.kind)
+    expect(result.content.changes[0]?.author).toEqual({
+      userId: 'imported-from-wiki',
+      at: NOW.toISOString(),
+    })
+    expect(result.content.changes[0]?.author?.name).toBeUndefined()
+  })
+})
+
+describe('compareRevisionSources: what it cannot compare', () => {
+  it('refuses a document that does not exist', async () => {
+    expect(
+      await compareRevisionSources(deps, { documentId: MISSING, from: null, to: 'draft' }),
+    ).toEqual({ kind: 'not-found', documentId: MISSING })
+  })
+
+  it('refuses a revision that is not in the document’s history', async () => {
+    const id = await aDocument()
+    const first = await publish(id, 'one')
+    const stranger = revisionId('f'.repeat(40))
+
+    expect(
+      await compareRevisionSources(deps, { documentId: id, from: stranger, to: first }),
+    ).toEqual({ kind: 'revision-not-found', revision: stranger })
+  })
+})
