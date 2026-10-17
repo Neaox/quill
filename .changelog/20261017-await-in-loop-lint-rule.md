@@ -1,0 +1,2 @@
+Changed: The lint rule against awaiting inside a loop now reports only loops whose iterations are independent, so it is quiet for the many places that are sequential on purpose (migrations, consumers run in order, stateful streams) and errors in production code where a loop could be run in parallel.
+Fixed: The label editor and the emoji editor no longer start from a new empty list and map on every render.
