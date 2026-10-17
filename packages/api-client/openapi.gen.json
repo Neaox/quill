@@ -7819,7 +7819,8 @@
                                           "oembed",
                                           "open-graph",
                                           "twitter-card",
-                                          "page"
+                                          "page",
+                                          "internal"
                                         ],
                                         "type": "string"
                                       },
@@ -8179,7 +8180,8 @@
                                 "oembed",
                                 "open-graph",
                                 "twitter-card",
-                                "page"
+                                "page",
+                                "internal"
                               ],
                               "type": "string"
                             },

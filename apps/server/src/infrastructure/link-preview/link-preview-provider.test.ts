@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs'
 import { createFakeClock, createInMemoryBlobStore } from '@quill/application/test-support'
-import { compileLinkPolicy, createEmbedRegistry } from '@quill/domain'
+import { FILE_MEDIA_TYPE_PATTERNS, compileLinkPolicy, createEmbedRegistry } from '@quill/domain'
 import type { CompiledLinkPolicy, LinkPreviewPolicy, PreviewImage } from '@quill/domain'
 import sharp from 'sharp'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -686,5 +686,185 @@ describe('resolve: embeds (ADR-042, "Embeds are an allowlist")', () => {
       <link rel="alternate" type="application/json+oembed" href="https://evil.example/o.json">`
     const result = await resolverFor(EMBEDS, { [video]: page(video, hostile) }).resolve(video)
     expect(result.ok && result.value.embed).toEqual(embed)
+  })
+})
+
+/** The answer the open-web client gives for a file: its headers, and no body at all. */
+function file(
+  url: string,
+  mediaType: string,
+  overrides: Partial<OpenWebResponse> = {},
+): OpenWebResponse {
+  return {
+    status: 200,
+    url,
+    mediaType,
+    charset: null,
+    body: new Uint8Array(0),
+    truncated: false,
+    declaredBytes: null,
+    disposition: null,
+    ...overrides,
+  }
+}
+
+describe('resolve: a link to a file', () => {
+  const PDF = 'https://files.example/reports/q3.pdf'
+  const PHOTO = 'https://cdn.example/photos/team.jpg'
+
+  it('is a file preview from the headers alone: type, size and name, with no body and no image', async () => {
+    const { provider, get, ingest } = setUp({
+      [PDF]: file(PDF, 'application/pdf', {
+        declaredBytes: 482_113,
+        disposition: 'attachment; filename="Q3 report.pdf"',
+      }),
+    })
+    const result = await provider.resolve(PDF)
+    expect(result).toEqual({
+      ok: true,
+      value: {
+        url: PDF,
+        canonicalUrl: PDF,
+        title: 'Q3 report.pdf',
+        description: null,
+        siteName: 'files.example',
+        kind: 'website',
+        thumbnail: null,
+        favicon: null,
+        layer: 'page',
+        fetchedAt: '2026-10-13T09:00:00.000Z',
+        file: { mediaType: 'application/pdf', bytes: 482_113, name: 'Q3 report.pdf' },
+      },
+    })
+    expect(get).toHaveBeenCalledOnce()
+    expect(ingest).not.toHaveBeenCalled()
+  })
+
+  it('asks the client to answer a file from its headers, naming the types a card is made for', async () => {
+    const { provider, get } = setUp({ [PDF]: file(PDF, 'application/pdf') })
+    await provider.resolve(PDF)
+    const request = get.mock.calls[0]?.[0]
+    expect(request?.headersOnly).toEqual(FILE_MEDIA_TYPE_PATTERNS)
+    expect(request?.headersOnly).not.toContain('application/octet-stream')
+  })
+
+  it('names the file from its address when the host suggests nothing, and leaves a size it was not told', async () => {
+    const { provider } = setUp({ [PDF]: file(PDF, 'application/pdf') })
+    const result = await provider.resolve(PDF)
+    expect(result.ok && result.value.file).toEqual({
+      mediaType: 'application/pdf',
+      bytes: null,
+      name: 'q3.pdf',
+    })
+  })
+
+  it('titles a file with no name by the site it is on', async () => {
+    const bare = 'https://files.example/'
+    const { provider } = setUp({ [bare]: file(bare, 'application/pdf') })
+    const result = await provider.resolve(bare)
+    expect(result.ok && result.value).toMatchObject({
+      title: 'files.example',
+      file: { name: null },
+    })
+  })
+
+  it('follows the address the client ended at for the name and the canonical address', async () => {
+    const short = 'https://go.example/r/1'
+    const { provider } = setUp({
+      [short]: file(short, 'application/pdf', { url: 'https://cdn.example/final/handbook.pdf' }),
+    })
+    const result = await provider.resolve(short)
+    expect(result.ok && result.value).toMatchObject({
+      url: short,
+      canonicalUrl: 'https://cdn.example/final/handbook.pdf',
+      title: 'handbook.pdf',
+    })
+  })
+
+  it.each([
+    ['video/mp4', 'https://v.example/clip.mp4', 'video'],
+    ['audio/mpeg', 'https://a.example/song.mp3', 'audio'],
+    ['text/csv', 'https://d.example/data.csv', 'website'],
+    [
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      'https://d.example/spec.docx',
+      'website',
+    ],
+  ])('reads %s as a %s', async (mediaType, url, kind) => {
+    const { provider, ingest } = setUp({ [url]: file(url, mediaType) })
+    const result = await provider.resolve(url)
+    expect(result.ok && result.value).toMatchObject({ kind, file: { mediaType } })
+    expect(ingest).not.toHaveBeenCalled()
+  })
+
+  it('stores a thumbnail of a picture through the image pipeline, at the thumbnail size', async () => {
+    const { provider, ingest } = setUp({
+      [PHOTO]: file(PHOTO, 'image/jpeg', { declaredBytes: 2_000_000 }),
+    })
+    const result = await provider.resolve(PHOTO)
+    expect(result.ok && result.value).toMatchObject({
+      kind: 'image',
+      thumbnail: { hash: `hash:${PHOTO}`, width: 640 },
+      file: { mediaType: 'image/jpeg', bytes: 2_000_000, name: 'team.jpg' },
+    })
+    expect(ingest).toHaveBeenCalledWith(PHOTO, { maxWidth: 640, maxHeight: 640 }, undefined)
+  })
+
+  it('keeps the file card when the picture cannot be made into a thumbnail', async () => {
+    const { provider } = setUp({ [PHOTO]: file(PHOTO, 'image/png') }, [PHOTO])
+    const result = await provider.resolve(PHOTO)
+    expect(result.ok && result.value).toMatchObject({
+      thumbnail: null,
+      file: { mediaType: 'image/png' },
+    })
+  })
+
+  it.each([
+    ['an SVG, which is inert and never drawn', 'image/svg+xml', 'https://cdn.example/logo.svg'],
+    ['a format the pipeline does not read', 'image/tiff', 'https://cdn.example/scan.tiff'],
+  ])('makes no thumbnail of %s', async (_name, mediaType, url) => {
+    const { provider, ingest } = setUp({ [url]: file(url, mediaType) })
+    const result = await provider.resolve(url)
+    expect(result.ok && result.value).toMatchObject({ thumbnail: null, kind: 'image' })
+    expect(ingest).not.toHaveBeenCalled()
+  })
+
+  it('does not even ask for a picture the host says is over the size cap', async () => {
+    const { provider, ingest } = setUp({
+      [PHOTO]: file(PHOTO, 'image/jpeg', { declaredBytes: 6 * 1024 * 1024 }),
+    })
+    const result = await provider.resolve(PHOTO)
+    expect(result.ok && result.value.thumbnail).toBeNull()
+    expect(ingest).not.toHaveBeenCalled()
+  })
+
+  it('stores no thumbnail in text mode, and says so to the image step', async () => {
+    const { provider, ingest } = setUp({ [PHOTO]: file(PHOTO, 'image/jpeg') })
+    const policy = compile({ mode: 'text', allow: [], block: [] })
+    const result = await provider.resolve(PHOTO, { policy })
+    expect(result.ok && result.value).toMatchObject({ thumbnail: null, file: { name: 'team.jpg' } })
+    expect(ingest).not.toHaveBeenCalled()
+  })
+
+  it('hands the policy to the picture request, as to every other', async () => {
+    const { provider, ingest } = setUp({ [PHOTO]: file(PHOTO, 'image/jpeg') })
+    const policy = compile({ mode: 'rich', allow: [], block: [] })
+    await provider.resolve(PHOTO, { policy })
+    expect(ingest.mock.calls[0]?.[2]).toBeTypeOf('function')
+  })
+
+  it('cleans a name a stranger chose', async () => {
+    const { provider } = setUp({
+      [PDF]: file(PDF, 'application/pdf', {
+        disposition: 'attachment; filename="../../a‮bad\u0000.pdf"',
+      }),
+    })
+    const result = await provider.resolve(PDF)
+    expect(result.ok && result.value.file?.name).toBe('abad .pdf')
+  })
+
+  it('still reports a missing file as not a page', async () => {
+    const { provider } = setUp({ [PDF]: file(PDF, '', { status: 404 }) })
+    expect(await provider.resolve(PDF)).toEqual({ ok: false, error: 'not_a_page' })
   })
 })

@@ -1932,7 +1932,7 @@ export interface paths {
                                 /** @enum {string} */
                                 kind: "website" | "article" | "video" | "audio" | "image" | "profile" | "repository" | "issue";
                                 /** @enum {string} */
-                                layer: "connector" | "oembed" | "open-graph" | "twitter-card" | "page";
+                                layer: "connector" | "oembed" | "open-graph" | "twitter-card" | "page" | "internal";
                                 siteName: string | null;
                                 status?: {
                                     label: string;
@@ -2037,7 +2037,7 @@ export interface paths {
                                         /** @enum {string} */
                                         kind: "website" | "article" | "video" | "audio" | "image" | "profile" | "repository" | "issue";
                                         /** @enum {string} */
-                                        layer: "connector" | "oembed" | "open-graph" | "twitter-card" | "page";
+                                        layer: "connector" | "oembed" | "open-graph" | "twitter-card" | "page" | "internal";
                                         siteName: string | null;
                                         status?: {
                                             label: string;

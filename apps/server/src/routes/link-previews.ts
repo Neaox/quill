@@ -1,11 +1,17 @@
 import type { TypeBoxTypeProvider } from '@fastify/type-provider-typebox'
-import { MAX_LINKS_PER_READ, getLinkPreviews, refreshLinkPreview } from '@quill/application'
+import {
+  MAX_LINKS_PER_READ,
+  getLinkPreviews,
+  readInternalLinkPreviews,
+  refreshLinkPreview,
+} from '@quill/application'
 import {
   LINK_PREVIEW_FAILURES,
   LINK_PREVIEW_KINDS,
   LINK_PREVIEW_LAYERS,
   MAX_URL_LENGTH,
   PREVIEW_TONES,
+  internalDocumentAddress,
 } from '@quill/domain'
 import type {
   LinkPreviewFailure,
@@ -16,7 +22,8 @@ import type {
 import { Type } from '@sinclair/typebox'
 import type { FastifyPluginAsync } from 'fastify'
 
-import { linkPreviewDependencies } from '../application/fill-links.ts'
+import { authorizerFor } from '../application/authorization.ts'
+import { internalLinks, linkPreviewDependencies } from '../application/fill-links.ts'
 import type { AppDependencies } from '../dependencies.ts'
 import { forbidden, rateLimited, unprocessable } from '../errors.ts'
 import { requireAuthenticatedSession } from '../plugins/session.ts'
@@ -96,9 +103,15 @@ const ViewSchema = Type.Union([
 
 const UrlSchema = Type.String({ minLength: 1, maxLength: MAX_URL_LENGTH })
 
+/** What a link the read gave no answer for is: one that cannot be previewed. */
+const UNAVAILABLE = { state: 'unavailable', reason: 'invalid_url' } as const
+
 export function linkPreviewRoutes(deps: AppDependencies): FastifyPluginAsync {
   /** The shared dependencies plus the three ports the composition root chose. */
   const previews = linkPreviewDependencies(deps)
+  /** The address of this instance's own pages, so a pasted app URL reads as the document it names. */
+  const withoutAppOrigin = (url: string): string =>
+    url.startsWith(`${deps.config.appUrl}/`) ? url.slice(deps.config.appUrl.length) : url
   return async (rawApp) => {
     const app = rawApp.withTypeProvider<TypeBoxTypeProvider>()
     app.setValidatorCompiler(strictValidator())
@@ -123,8 +136,36 @@ export function linkPreviewRoutes(deps: AppDependencies): FastifyPluginAsync {
         const { userId } = requireAuthenticatedSession(request)
         // Looking up is cheap, but not free, and polling is a loop a script can run flat out.
         if (!previews.limits.allowRead(userId)) throw rateLimited(1_000)
-        const readings = await getLinkPreviews(previews, { userId, urls: request.body.urls })
-        return { previews: readings.map(({ url, view }) => ({ url, view })) }
+
+        // A link to a document of this instance is answered for this reader by id: allowed, it is
+        // the document's live title; otherwise `blocked`, the same as one that does not exist.
+        const asked = request.body.urls.map((url) => ({
+          url,
+          address: internalDocumentAddress(withoutAppOrigin(url)),
+        }))
+        const documentLinks = internalLinks(deps, {
+          kind: 'authorized',
+          authorizer: authorizerFor(deps, request),
+        })
+        const keys = asked.flatMap(({ address }) => address ?? [])
+        const [documents, readings] = await Promise.all([
+          readInternalLinkPreviews(documentLinks.deps, {
+            viewer: documentLinks.viewer,
+            keys,
+            described: new Set(keys),
+          }),
+          getLinkPreviews(previews, {
+            userId,
+            urls: asked.flatMap(({ url, address }) => (address === null ? [url] : [])),
+          }),
+        ])
+        const pages = readings.values()
+        return {
+          previews: asked.map(({ url, address }) => {
+            const view = address === null ? pages.next().value?.view : documents.get(address)
+            return { url, view: view ?? UNAVAILABLE }
+          }),
+        }
       },
     )
 

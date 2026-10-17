@@ -145,6 +145,11 @@ export {
   DEFAULT_LINK_DISPLAY,
   LINK_DISPLAYS,
   UNCHOSEN,
+  fileKindOf,
+  fileMeta,
+  fileTypeLabel,
+  formatFileSize,
+  internalDocumentAddress,
   isBlockDisplay,
   nearestEmbedRatio,
 } from '@quill/domain'

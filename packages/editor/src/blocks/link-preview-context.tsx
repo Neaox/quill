@@ -29,6 +29,10 @@ export interface EditorLinkPreview {
   readonly status?: EditorLinkStatus | undefined
   /** From a connector, for a permalink to lines of source. */
   readonly code?: EditorLinkCode | undefined
+  /** Which layer answered; `internal` is another document of this instance, drawn with a document's icon. */
+  readonly layer?: string | undefined
+  /** Present when the link is a file rather than a page: drawn with an icon for its type, its type and size. */
+  readonly file?: EditorLinkFile | undefined
 }
 
 export interface EditorLinkStatus {
@@ -49,6 +53,13 @@ export interface EditorLinkEmbed {
   readonly provider: string
   /** Width over height. */
   readonly aspectRatio: number
+}
+
+export interface EditorLinkFile {
+  readonly mediaType: string
+  /** Null when the host did not say. */
+  readonly bytes: number | null
+  readonly name: string | null
 }
 
 export interface EditorLinkImage {

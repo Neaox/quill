@@ -485,3 +485,10 @@ export {
 } from './link-previews.ts'
 
 export { createLinkConnectorRegistry } from './link-connectors.ts'
+export { DESCRIPTION_MAX_LENGTH, firstParagraph } from './document-description.ts'
+export type {
+  InternalLinkDependencies,
+  InternalLinkQuery,
+  InternalLinkViewer,
+} from './internal-link-previews.ts'
+export { readInternalLinkPreviews } from './internal-link-previews.ts'

@@ -8,20 +8,22 @@ import type {
   LinkConnector,
   LinkConnectorRegistry,
 } from '@quill/application'
-import { err, normaliseUrl, ok } from '@quill/domain'
+import { FILE_MEDIA_TYPE_PATTERNS, err, fileKindOf, normaliseUrl, ok } from '@quill/domain'
 import type {
   CompiledLinkPolicy,
   EmbedRegistry,
   LinkPreview,
   LinkPreviewFailure,
+  LinkPreviewKind,
   PreviewImage,
   Result,
 } from '@quill/domain'
 
 import { decodeHtml } from '../http/decode-html.ts'
-import { pageRequest } from '../http/open-web-client.ts'
-import type { OpenWebReader, UrlPermit } from '../http/open-web-client.ts'
+import { OPEN_WEB_LIMITS, pageOrFileRequest } from '../http/open-web-client.ts'
+import type { OpenWebReader, OpenWebResponse, UrlPermit } from '../http/open-web-client.ts'
 import { OutboundRequestError } from '../http/outbound-client.ts'
+import { fileNameOf } from './file-name.ts'
 import type { ImageIngestor } from './image-ingestor.ts'
 import { FAVICON_SPEC, THUMBNAIL_SPEC } from './image-transcoder.ts'
 import { MARKUP_LAYERS } from './markup-layers.ts'
@@ -37,6 +39,11 @@ import type { PreviewDraft, TitledDraft } from './preview-draft.ts'
  * Resolves a URL to a `LinkPreview` (ADR-042): the layered resolution, the one
  * place that knows the order.
  *
+ * 0. **A file.** The one request that fetches the page is also how a file is
+ *    recognised: its media type, from the headers, before any body is read. A
+ *    PDF, a video, a document or a picture is answered from those headers alone
+ *    (type, size, name) and no body is read; only a raster picture is fetched a
+ *    second time, through the image pipeline, to store a thumbnail.
  * 1. **A known oEmbed provider**, asked directly, before the page is fetched.
  * 2. **The page itself**, fetched once and shared: Open Graph, then Twitter
  *    Card, then its own tags and JSON-LD.
@@ -124,7 +131,15 @@ interface FetchedPage {
   readonly finalUrl: string
 }
 
-type PageOutcome = Result<FetchedPage, LinkPreviewFailure>
+/** A link to a file: what its headers said, and where the fetch ended up. */
+interface FetchedFile {
+  readonly response: OpenWebResponse
+}
+
+type PageOutcome = Result<
+  { readonly page: FetchedPage } | { readonly file: FetchedFile },
+  LinkPreviewFailure
+>
 
 /** Reasons that mean this is not a URL a preview can ever be made for. */
 const UNPREVIEWABLE: ReadonlySet<string> = new Set([
@@ -172,6 +187,27 @@ function extensionsOf(draft: ConnectorExtensions): ConnectorExtensions {
   }
 }
 
+/** The pictures the image pipeline reads; SVG is inert and never drawn, so it never gets a thumbnail. */
+const RASTER_IMAGES: ReadonlySet<string> = new Set([
+  'image/png',
+  'image/jpeg',
+  'image/gif',
+  'image/webp',
+])
+const IMAGE_CAP_BYTES = OPEN_WEB_LIMITS.imageMiB * 1024 * 1024
+
+/** A picture worth fetching again: one the pipeline reads, which the host does not say is over the cap. */
+function worthAThumbnail(mediaType: string, declaredBytes: number | null): boolean {
+  return (
+    RASTER_IMAGES.has(mediaType) && (declaredBytes === null || declaredBytes <= IMAGE_CAP_BYTES)
+  )
+}
+
+function previewKindOfFile(mediaType: string): LinkPreviewKind {
+  const kind = fileKindOf(mediaType)
+  return kind === 'image' || kind === 'video' || kind === 'audio' ? kind : 'website'
+}
+
 function hostWithoutWww(url: string): string {
   return new URL(url).hostname.replace(/^www\./u, '')
 }
@@ -187,13 +223,20 @@ async function fetchPage(
   permit: UrlPermit | undefined,
 ): Promise<PageOutcome> {
   try {
-    const response = await reader.get({ ...pageRequest(url), permit })
+    const response = await reader.get({
+      ...pageOrFileRequest(url, FILE_MEDIA_TYPE_PATTERNS),
+      permit,
+    })
     if (response.status < 200 || response.status > 299)
       return err(failureForStatus(response.status))
+    // A file is answered from its headers: the client has already left its body unread.
+    if (fileKindOf(response.mediaType) !== null) return ok({ file: { response } })
     // A JSON answer was accepted so the oEmbed layer could share this client; as a page it is nothing.
     if (response.mediaType === 'application/json') return err('not_a_page')
     const html = decodeHtml(response.body, response.charset)
-    return ok({ metadata: extractPageMetadata(html, response.url), finalUrl: response.url })
+    return ok({
+      page: { metadata: extractPageMetadata(html, response.url), finalUrl: response.url },
+    })
   } catch (error) {
     return err(failureFor(error))
   }
@@ -292,6 +335,38 @@ export function createLinkPreviewProvider(deps: LinkPreviewProviderDeps): LinkPr
     }
   }
 
+  /**
+   * A link to a file: its card is the type, the size and the name its headers gave. A raster
+   * picture also gets a thumbnail, through the same pipeline as every other image (isolated
+   * decoding, re-encoded, stored by hash, size capped); nothing else is ever downloaded.
+   */
+  async function assembleFile(
+    key: string,
+    response: OpenWebResponse,
+    scope: Scope,
+  ): Promise<LinkPreview> {
+    const bytes = response.declaredBytes ?? null
+    const name = fileNameOf(response.disposition ?? null, response.url)
+    const host = hostWithoutWww(response.url)
+    const thumbnail =
+      scope.images && worthAThumbnail(response.mediaType, bytes)
+        ? await images.ingest(response.url, THUMBNAIL_SPEC, scope.permit)
+        : null
+    return {
+      url: key,
+      canonicalUrl: normaliseUrl(response.url) ?? key,
+      title: name ?? host,
+      description: null,
+      siteName: cleanText(host, SITE_NAME_LIMIT),
+      kind: previewKindOfFile(response.mediaType),
+      thumbnail,
+      favicon: null,
+      layer: 'page',
+      fetchedAt: clock.now().toISOString(),
+      file: { mediaType: response.mediaType, bytes, name },
+    }
+  }
+
   return {
     async resolve(rawUrl, options = {}) {
       const key = normaliseUrl(rawUrl)
@@ -346,7 +421,10 @@ export function createLinkPreviewProvider(deps: LinkPreviewProviderDeps): LinkPr
         const fallback = drafts.find(hasTitle)
         return fallback === undefined ? err(outcome.error) : finish(fallback, null)
       }
-      const page = outcome.value
+      if ('file' in outcome.value) {
+        return ok(await assembleFile(key, outcome.value.file.response, scope))
+      }
+      const { page } = outcome.value
 
       for (const layer of MARKUP_LAYERS) {
         const draft = layer(page.metadata, page.finalUrl)

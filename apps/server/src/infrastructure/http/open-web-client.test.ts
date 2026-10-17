@@ -362,6 +362,111 @@ describe('createOpenWebClient: media types and encodings', () => {
   })
 })
 
+describe('createOpenWebClient: a file, answered from its headers', () => {
+  const FILES = ['application/pdf', 'video/*', 'image/*']
+
+  /** A body that would never end: reading any of it would hang, so the test proves it is not read. */
+  function endless(headers: Record<string, string>): { response: Response; cancelled: () => void } {
+    const cancelled = vi.fn<() => void>()
+    const body = new ReadableStream<Uint8Array>({
+      pull: () => new Promise(() => undefined),
+      cancel: cancelled,
+    })
+    return { response: new Response(body, { status: 200, headers }), cancelled }
+  }
+
+  it('reports the type, the declared size and the suggested name, and reads no body', async () => {
+    const { client, fetchMock } = setUp()
+    const { response, cancelled } = endless({
+      'content-type': 'application/pdf',
+      'content-length': '482113',
+      'content-disposition': 'attachment; filename="q3.pdf"',
+    })
+    fetchMock.mockResolvedValueOnce(response)
+    const result = await client.get({
+      ...pageRequest('https://files.example/q3'),
+      headersOnly: FILES,
+    })
+    expect(result).toMatchObject({
+      status: 200,
+      mediaType: 'application/pdf',
+      declaredBytes: 482_113,
+      disposition: 'attachment; filename="q3.pdf"',
+      truncated: false,
+    })
+    expect(result.body.byteLength).toBe(0)
+    // The transfer is stopped, not left running in the background.
+    expect(cancelled).toHaveBeenCalled()
+  })
+
+  it('matches a family, and says nothing about a size the host did not declare', async () => {
+    const { client, fetchMock } = setUp()
+    fetchMock.mockResolvedValueOnce(endless({ 'content-type': 'video/mp4' }).response)
+    const result = await client.get({
+      ...pageRequest('https://files.example/clip'),
+      headersOnly: FILES,
+    })
+    expect(result).toMatchObject({ mediaType: 'video/mp4', declaredBytes: null, disposition: null })
+  })
+
+  it('does not take a declared size that is not a whole number', async () => {
+    const { client, fetchMock } = setUp()
+    fetchMock.mockResolvedValueOnce(
+      endless({ 'content-type': 'application/pdf', 'content-length': '12e3' }).response,
+    )
+    const result = await client.get({ ...pageRequest('https://a.example/'), headersOnly: FILES })
+    expect(result.declaredBytes).toBeNull()
+  })
+
+  it('still reads a page as a page, for a request that also accepts files', async () => {
+    const { client } = setUp()
+    const result = await client.get({ ...pageRequest('https://a.example/'), headersOnly: FILES })
+    expect(new TextDecoder().decode(result.body)).toBe('<title>hi</title>')
+    expect(result.declaredBytes).toBeUndefined()
+  })
+
+  it('refuses a type that is neither a page nor one of the files asked for', async () => {
+    const { client, fetchMock } = setUp()
+    const { response, cancelled } = endless({ 'content-type': 'application/octet-stream' })
+    fetchMock.mockResolvedValueOnce(response)
+    expect(
+      await failureOf(client.get({ ...pageRequest('https://a.example/'), headersOnly: FILES })),
+    ).toBe('content_type_not_allowed')
+    expect(cancelled).toHaveBeenCalled()
+  })
+
+  it('checks the address and the policy on every hop, as for any other request', async () => {
+    const permit = vi.fn<UrlPermit>(() => false)
+    const { client, fetchMock } = setUp()
+    expect(
+      await failureOf(
+        client.get({ ...pageRequest('https://a.example/f'), headersOnly: FILES, permit }),
+      ),
+    ).toBe('blocked_by_policy')
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('follows a redirect to the file, and reports where it ended', async () => {
+    const { client, fetchMock } = setUp()
+    fetchMock
+      .mockResolvedValueOnce(redirect('https://cdn.example/final.pdf'))
+      .mockResolvedValueOnce(endless({ 'content-type': 'application/pdf' }).response)
+    const result = await client.get({
+      ...pageRequest('https://go.example/r'),
+      headersOnly: FILES,
+    })
+    expect(result.url).toBe('https://cdn.example/final.pdf')
+  })
+
+  it('does not ask for files unless the caller does', async () => {
+    const { client, fetchMock } = setUp()
+    fetchMock.mockResolvedValueOnce(endless({ 'content-type': 'application/pdf' }).response)
+    expect(await failureOf(client.get(pageRequest('https://a.example/')))).toBe(
+      'content_type_not_allowed',
+    )
+  })
+})
+
 describe('createOpenWebClient: how much is read', () => {
   it('stops at </head> and does not read the body of the page', async () => {
     const { client, fetchMock } = setUp()

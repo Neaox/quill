@@ -1,4 +1,10 @@
-import { isCardLayout, isLinkDisplay, normaliseUrl, UNCHOSEN } from '@quill/domain'
+import {
+  internalDocumentAddress,
+  isCardLayout,
+  isLinkDisplay,
+  normaliseUrl,
+  UNCHOSEN,
+} from '@quill/domain'
 import type { LinkChoice, LinkDisplay } from '@quill/domain'
 import { toString } from 'mdast-util-to-string'
 import type { LeafDirective, TextDirective } from 'mdast-util-directive'
@@ -121,11 +127,11 @@ export const linkDirective: DirectiveDefinition<Link, LeafDirective | TextDirect
     if (node.type === 'containerDirective') return []
     const model = parseLink(node)
     const found: DirectiveIssue[] = []
-    if (normaliseUrl(model.url) === null) {
+    if (normaliseUrl(model.url) === null && internalDocumentAddress(model.url) === null) {
       found.push(
         issue(
           'url',
-          'A link needs an http or https address; shown as the text it was written with.',
+          'A link needs an http or https address, or a document address (/d/…); shown as the text it was written with.',
           'warning',
         ),
       )

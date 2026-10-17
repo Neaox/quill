@@ -736,3 +736,278 @@ describe('an embed: a sandboxed, lazy frame from the allowlist (ADR-042)', () =>
     expect(body(markdown)).not.toContain('<iframe')
   })
 })
+
+// ---------------------------------------------------------------------------
+// Internal links (ADR-042, "Internal links")
+// ---------------------------------------------------------------------------
+
+const DOC = '0192f0a4-7c1e-7a3b-8d1e-4a5b6c7d8e9f'
+const DOC_KEY = `/d/${DOC}`
+
+const documentPreview = (overrides: Partial<LinkPreview> = {}): LinkPreview =>
+  previewOf({
+    url: DOC_KEY,
+    canonicalUrl: DOC_KEY,
+    title: 'Deploy runbook',
+    description: 'How to ship.',
+    siteName: 'Engineering',
+    thumbnail: null,
+    favicon: null,
+    layer: 'internal',
+    ...overrides,
+  })
+
+describe('internal links: the body', () => {
+  it('draws a link to a document as a slot keyed by its id address, with no external rel', () => {
+    const html = body(`See :link[${DOC_KEY}]{display=inline} now.`)
+    expect(html).toContain(`href="${DOC_KEY}"`)
+    expect(html).toContain('data-link-slot')
+    expect(html).toContain(`data-link-key="${DOC_KEY}"`)
+    expect(html).toContain('data-link-internal')
+    expect(html).not.toContain('noopener')
+  })
+
+  it('reads the readable and workspace forms as the same key', () => {
+    const html = body(`:link[/w/eng/d/${DOC.toUpperCase()}?x=1#a]{display=inline}`)
+    expect(html).toContain(`data-link-key="${DOC_KEY}"`)
+  })
+
+  it('lists the address among the keys a body will look up', () => {
+    const html = body(`:link[${DOC_KEY}]\n\n::link{url="https://a.example/"}`)
+    expect(linkSlotKeys(html)).toEqual([DOC_KEY, 'https://a.example/'])
+  })
+
+  it('is a plain, working link when it is never filled, as in an export', () => {
+    const html = body(`::link{url="${DOC_KEY}" display=card}`)
+    expect(html).toContain(`<a href="${DOC_KEY}"`)
+    expect(html).not.toContain('link-card')
+  })
+})
+
+describe('internal links: filled', () => {
+  const views = (view: LinkPreviewView) => ({ [DOC_KEY]: view })
+
+  it('is a chip with the live title, linking to the canonical address', () => {
+    const html = fill(`See :link[${DOC_KEY}]{display=inline} now.`, views(ready(documentPreview())))
+    expect(html).toContain('class="link-chip"')
+    expect(html).toContain('>Deploy runbook</span>')
+    expect(html).toContain(`href="${DOC_KEY}"`)
+    expect(html).not.toContain('noopener')
+    expect(html).toContain('data-internal')
+  })
+
+  it('links to the address the preview names, which a public site points at its own page', () => {
+    const html = fill(
+      `:link[${DOC_KEY}]{display=inline}`,
+      views(ready(documentPreview({ canonicalUrl: '/s/docs/eng/deploy-runbook' }))),
+    )
+    expect(html).toContain('href="/s/docs/eng/deploy-runbook"')
+    expect(html).not.toContain(DOC_KEY)
+  })
+
+  it('keeps the author’s words, as for any link', () => {
+    const html = fill(
+      `:link[the runbook]{url="${DOC_KEY}" display=inline}`,
+      views(ready(documentPreview())),
+    )
+    expect(html).toContain('>the runbook</span>')
+    expect(html).not.toContain('Deploy runbook')
+  })
+
+  it('is a card with the title, the first paragraph and the place', () => {
+    const html = fill(`::link{url="${DOC_KEY}" display=card}`, views(ready(documentPreview())))
+    expect(html).toContain('<strong class="link-card-title">Deploy runbook</strong>')
+    expect(html).toContain('How to ship.')
+    expect(html).toContain('Engineering')
+    expect(html).not.toContain('<img')
+  })
+
+  it('is a compact line', () => {
+    const html = fill(`::link{url="${DOC_KEY}" display=compact}`, views(ready(documentPreview())))
+    expect(html).toContain('<span class="link-compact-title">Deploy runbook</span>')
+  })
+
+  it('is a plain unlinked label when the reader may not see the document, and names nothing', () => {
+    const html = fill(`See :link[${DOC_KEY}]{display=inline} now.`, views({ state: 'blocked' }))
+    expect(html).toContain('<span class="link-unavailable">Document unavailable</span>')
+    expect(html).not.toContain('<a ')
+    expect(html).not.toContain(DOC)
+    expect(html).not.toContain('data-link-slot')
+  })
+
+  it('keeps the words the author wrote for a document the reader may not see', () => {
+    const html = fill(`:link[the runbook]{url="${DOC_KEY}"}`, views({ state: 'blocked' }))
+    expect(html).toContain('<span class="link-unavailable">the runbook</span>')
+  })
+
+  it('unlinks a block link as well, and whatever the display or the default', () => {
+    const html = fill(
+      `::link{url="${DOC_KEY}" display=card}\n\n:link[${DOC_KEY}]{display=url}`,
+      views({ state: 'blocked' }),
+      { ...OPTIONS, defaultDisplay: 'url' },
+    )
+    expect(html).not.toContain('<a ')
+    expect(html.match(/link-unavailable/gu)).toHaveLength(2)
+  })
+
+  it('leaves the plain link while the answer is not yet known', () => {
+    const html = fill(`:link[${DOC_KEY}]{display=inline}`, views({ state: 'pending' }))
+    expect(html).toContain('data-link-slot')
+  })
+
+  it('leaves a plain link when the author chose a plain link', () => {
+    const html = fill(`:link[${DOC_KEY}]{display=url}`, views(ready(documentPreview())))
+    expect(html).toContain('data-link-slot')
+  })
+
+  it('escapes a title that is markup', () => {
+    const html = fill(
+      `:link[${DOC_KEY}]{display=inline}`,
+      views(ready(documentPreview({ title: '<img src=x onerror=alert(1)>' }))),
+    )
+    expect(tagsIn(html).has('img')).toBe(false)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// File links (ADR-042, "File links")
+// ---------------------------------------------------------------------------
+
+const FILE_URL = 'https://files.example/reports/q3.pdf'
+
+const filePreview = (overrides: Partial<LinkPreview> = {}): LinkPreview =>
+  previewOf({
+    url: FILE_URL,
+    canonicalUrl: FILE_URL,
+    title: 'Q3 report.pdf',
+    description: null,
+    siteName: 'files.example',
+    kind: 'website',
+    thumbnail: null,
+    favicon: null,
+    file: { mediaType: 'application/pdf', bytes: 482_113, name: 'Q3 report.pdf' },
+    ...overrides,
+  })
+
+describe('file links', () => {
+  const view = (preview: LinkPreview) => ({ [FILE_URL]: ready(preview) })
+
+  it('is a card with the file’s icon by type, its name, its type and size, and its site', () => {
+    const html = fill(`::link{url="${FILE_URL}" display=card}`, view(filePreview()))
+    expect(html).toContain('class="link-card link-file"')
+    expect(html).toContain('data-file-kind="pdf"')
+    expect(html).toContain('<span class="link-file-icon link-file-icon-large"')
+    expect(html).toContain('<strong class="link-card-title">Q3 report.pdf</strong>')
+    expect(html).toContain('<span class="link-card-description">PDF document · 470.8 KB</span>')
+    expect(html).toContain('files.example')
+    expect(html.match(/<a /gu)).toHaveLength(1)
+  })
+
+  it('hides the icon from assistive technology: the type is said in words', () => {
+    const html = fill(`::link{url="${FILE_URL}" display=card}`, view(filePreview()))
+    expect(html).toMatch(/link-file-icon[^>]*aria-hidden="true"/u)
+  })
+
+  it('is a card with its picture for an image, with the type and size beneath the name', () => {
+    const preview = filePreview({
+      title: 'team.jpg',
+      kind: 'image',
+      thumbnail: image('c'.repeat(64), 640, 480),
+      file: { mediaType: 'image/jpeg', bytes: 2_000_000, name: 'team.jpg' },
+    })
+    const html = fill(`::link{url="${FILE_URL}" display=card}`, view(preview))
+    expect(html).toContain('<img class="link-card-image" src="/i/' + 'c'.repeat(64))
+    expect(html).toContain('JPEG image · 1.9 MB')
+    expect(html).not.toContain('link-file-icon')
+    expect(html).toContain('class="link-card"')
+  })
+
+  it('falls back to the icon for an image with no picture, as an SVG is', () => {
+    const preview = filePreview({
+      title: 'logo.svg',
+      kind: 'image',
+      file: { mediaType: 'image/svg+xml', bytes: 900, name: 'logo.svg' },
+    })
+    const html = fill(`::link{url="${FILE_URL}" display=card}`, view(preview))
+    expect(html).toContain('data-file-kind="image"')
+    expect(html).toContain('SVG image · 900 B')
+    expect(html).not.toContain('<img')
+  })
+
+  it('leaves the size out when the host did not say', () => {
+    const preview = filePreview({ file: { mediaType: 'application/pdf', bytes: null, name: null } })
+    expect(fill(`::link{url="${FILE_URL}" display=card}`, view(preview))).toContain(
+      '>PDF document</span>',
+    )
+  })
+
+  it('lets the author’s own description replace the type and size', () => {
+    const html = fill(
+      `::link{url="${FILE_URL}" display=card description="The numbers"}`,
+      view(filePreview()),
+    )
+    expect(html).toContain('>The numbers</span>')
+    expect(html).not.toContain('470.8')
+  })
+
+  it('is an icon and the name in a line', () => {
+    const html = fill(`See :link[${FILE_URL}]{display=inline}.`, view(filePreview()))
+    expect(html).toContain('class="link-chip"')
+    expect(html).toContain('<span class="link-file-icon" data-file-kind="pdf"')
+    expect(html).toContain('>Q3 report.pdf</span>')
+    expect(html).toContain('title="PDF document · 470.8 KB"')
+  })
+
+  it('is an icon, the name and the type on one line when compact', () => {
+    const html = fill(`::link{url="${FILE_URL}" display=compact}`, view(filePreview()))
+    expect(html).toContain('<span class="link-file-icon" data-file-kind="pdf"')
+    expect(html).toContain('<span class="link-compact-title">Q3 report.pdf</span>')
+    expect(html).toContain('<span class="link-compact-site">PDF document · 470.8 KB</span>')
+  })
+
+  it('opens like any external link', () => {
+    const html = fill(`::link{url="${FILE_URL}" display=card}`, view(filePreview()))
+    expect(html).toContain(`href="${FILE_URL}"`)
+    expect(html).toContain('rel="noopener noreferrer"')
+  })
+
+  it('escapes a name a stranger chose', () => {
+    const html = fill(
+      `::link{url="${FILE_URL}" display=card}`,
+      view(filePreview({ title: '<img src=x onerror=alert(1)>.pdf' })),
+    )
+    expect(tagsIn(html).has('img')).toBe(false)
+  })
+
+  it('draws a type it has no icon for as a plain card', () => {
+    const html = fill(
+      `::link{url="${FILE_URL}" display=card}`,
+      view(filePreview({ file: { mediaType: 'application/x-weird', bytes: null, name: 'x' } })),
+    )
+    expect(html).toContain('link-card')
+    expect(html).not.toContain('link-file-icon')
+  })
+})
+
+describe('describedKeys: which links need a description looked up', () => {
+  it('lists the block links that will be drawn as a card, and no others', () => {
+    const html = body(
+      [
+        '::link{url="https://a.example/" display=card}',
+        '',
+        '::link{url="https://b.example/" display=compact}',
+        '',
+        '::link{url="https://c.example/"}',
+        '',
+        '::link{url="https://d.example/" display=card description="Mine"}',
+        '',
+        'In a line :link[https://e.example/]{display=card}.',
+      ].join('\n'),
+    )
+    expect(scanLinkSlots(html).describedKeys('inline')).toEqual(['https://a.example/'])
+    expect(scanLinkSlots(html).describedKeys('card')).toEqual([
+      'https://a.example/',
+      'https://c.example/',
+    ])
+  })
+})

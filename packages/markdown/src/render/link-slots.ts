@@ -1,4 +1,12 @@
-import { isBlockDisplay, isLinkDisplay, nearestEmbedRatio, normaliseUrl } from '@quill/domain'
+import {
+  fileKindOf,
+  fileMeta,
+  internalDocumentAddress,
+  isBlockDisplay,
+  isLinkDisplay,
+  nearestEmbedRatio,
+  normaliseUrl,
+} from '@quill/domain'
 import type {
   EmbedRegistry,
   LinkChoice,
@@ -32,6 +40,7 @@ import type { Link } from '../directives/link.ts'
  */
 
 const SLOT = 'data-link-slot'
+const INTERNAL = 'data-link-internal'
 const BLOCK_CLASS = 'link-slot-block'
 
 type Properties = Element['properties']
@@ -68,12 +77,21 @@ function choiceProperties(link: Link): Properties {
  */
 export function linkSlot(link: Link): ElementContent {
   const words = link.text ?? link.url
-  const key = normaliseUrl(link.url)
+  // A document of this instance is keyed by its id address and linked by it: the same anchor,
+  // marked internal so the page draws it for the reader's own access (ADR-042, "Internal links").
+  const internal = internalDocumentAddress(link.url)
+  const key = internal ?? normaliseUrl(link.url)
   if (key === null) return link.form === 'leaf' ? element('p', {}, [text(words)]) : text(words)
 
   const anchor = element(
     'a',
-    { href: new URL(link.url).href, [SLOT]: '', 'data-link-key': key, ...choiceProperties(link) },
+    {
+      href: internal ?? new URL(link.url).href,
+      [SLOT]: '',
+      'data-link-key': key,
+      ...(internal === null ? {} : { [INTERNAL]: '' }),
+      ...choiceProperties(link),
+    },
     [text(words)],
   )
   return link.form === 'leaf' ? element('p', { className: [BLOCK_CLASS] }, [anchor]) : anchor
@@ -157,6 +175,45 @@ function icon(
 const EXTERNAL_REL = ['noopener', 'noreferrer']
 
 /**
+ * The icon for a file's type: an empty, decorative span the reading stylesheet draws as a mask
+ * (`prose.css`, from the same paths as `FileIcon` in `@quill/ui`). Nothing for a type it has no
+ * icon for. The type is always said in words beside it.
+ */
+function fileIcon(preview: LinkPreview, large: boolean): ElementContent[] {
+  const kind = preview.file === undefined ? null : fileKindOf(preview.file.mediaType)
+  if (kind === null) return []
+  return [
+    element(
+      'span',
+      {
+        className: large ? ['link-file-icon', 'link-file-icon-large'] : ['link-file-icon'],
+        'data-file-kind': kind,
+        'aria-hidden': 'true',
+      },
+      [],
+    ),
+  ]
+}
+
+/** What leads a chip or a compact line: a file's icon, else the page's favicon. */
+function leadingIcon(preview: LinkPreview, options: FillOptions): ElementContent[] {
+  return preview.file === undefined
+    ? icon(preview.favicon, options, 'link-chip-icon')
+    : fileIcon(preview, false)
+}
+
+/**
+ * Where a drawn link goes. A page elsewhere is opened with the usual `rel`. A document of
+ * this instance goes to the address its preview names (the app's, or for a public site its
+ * own page) and is marked, so the stylesheet can set it apart; it is not "external".
+ */
+function destination(slot: Element, preview: LinkPreview): Properties {
+  return preview.layer === 'internal'
+    ? { href: preview.canonicalUrl, 'data-internal': '' }
+    : { href: slot.properties['href'], rel: EXTERNAL_REL }
+}
+
+/**
  * The inline form: the favicon and a title. An author's own words stay, since a
  * link someone wrote words for is not a bare address to be improved on.
  */
@@ -172,12 +229,14 @@ function chip(
     'a',
     {
       className: ['link-chip'],
-      href: slot.properties['href'],
-      rel: EXTERNAL_REL,
-      title: preview.description ?? undefined,
+      ...destination(slot, preview),
+      title:
+        preview.description ??
+        (preview.file === undefined ? undefined : fileMeta(preview.file)) ??
+        undefined,
     },
     [
-      ...icon(preview.favicon, options, 'link-chip-icon'),
+      ...leadingIcon(preview, options),
       element('span', { className: ['link-chip-text'] }, [...label]),
       ...status(preview),
     ],
@@ -208,16 +267,15 @@ function compact(
   choice: LinkChoice,
   options: FillOptions,
 ): Element {
-  return element(
-    'a',
-    { className: ['link-compact'], href: slot.properties['href'], rel: EXTERNAL_REL },
-    [
-      ...icon(preview.favicon, options, 'link-chip-icon'),
-      element('span', { className: ['link-compact-title'] }, [text(choice.title ?? preview.title)]),
-      ...status(preview),
-      element('span', { className: ['link-compact-site'] }, [text(preview.siteName ?? '')]),
-    ],
-  )
+  return element('a', { className: ['link-compact'], ...destination(slot, preview) }, [
+    ...leadingIcon(preview, options),
+    element('span', { className: ['link-compact-title'] }, [text(choice.title ?? preview.title)]),
+    ...status(preview),
+    // A file says what it is and how big where a page says which site it is on.
+    element('span', { className: ['link-compact-site'] }, [
+      text((preview.file === undefined ? null : fileMeta(preview.file)) ?? preview.siteName ?? ''),
+    ]),
+  ])
 }
 
 /** A language name is a class suffix, so only a plain one is used; anything else could add classes. */
@@ -286,18 +344,25 @@ function card(
 ): Element {
   const snippet = codeCard(slot, preview, choice)
   if (snippet !== null) return snippet
-  const description = choice.description ?? preview.description
+  const { file } = preview
+  // A file has no description of its own: beneath its name it says what it is and how big.
+  const description =
+    choice.description ?? preview.description ?? (file === undefined ? null : fileMeta(file))
   const showImage = choice.showImage && preview.thumbnail !== null
+  // A file with no picture to show is led by the icon for its type.
+  const leading = file === undefined || showImage ? [] : fileIcon(preview, true)
+  const kind = file === undefined ? null : fileKindOf(file.mediaType)
   return element(
     'a',
     {
-      className: ['link-card'],
-      href: slot.properties['href'],
-      rel: EXTERNAL_REL,
+      className: leading.length === 0 ? ['link-card'] : ['link-card', 'link-file'],
+      ...destination(slot, preview),
       'data-layout': choice.layout,
       ...(showImage ? { 'data-image': 'yes' } : {}),
+      ...(kind === null ? {} : { 'data-file-kind': kind }),
     },
     [
+      ...leading,
       element('span', { className: ['link-card-body'] }, [
         element('strong', { className: ['link-card-title'] }, [
           text(choice.title ?? preview.title),
@@ -386,6 +451,23 @@ const BLOCK_DRAWERS: Readonly<Partial<Record<LinkDisplay, Drawer>>> = {
   embed,
 }
 
+/** What a link to a document the reader may not see says: the author's words, else that it is unavailable. */
+const UNAVAILABLE_WORDS = 'Document unavailable'
+
+/**
+ * A link to a document the reader may not open, drawn as words and nothing else: no anchor,
+ * no address, no title. A document that does not exist reads identically, so the label cannot
+ * be used to find out which ids exist.
+ */
+function unavailable(slot: Element, isBlock: boolean): Element {
+  const authored = slot.properties[dataProperty('data-link-words')] !== undefined
+  return element(
+    isBlock ? 'p' : 'span',
+    { className: ['link-unavailable'] },
+    authored ? [...slot.children] : [text(UNAVAILABLE_WORDS)],
+  )
+}
+
 /** The replacement for a slot, or null to leave it as the plain link it is. */
 function replacement(
   slot: Element,
@@ -393,6 +475,10 @@ function replacement(
   view: LinkPreviewView | undefined,
   options: FillOptions,
 ): Element | null {
+  // Whatever the display, a link the reader may not follow is not drawn as one.
+  if (view?.state === 'blocked' && slot.properties[dataProperty(INTERNAL)] !== undefined) {
+    return unavailable(slot, isBlock)
+  }
   if (view?.state !== 'ready') return null
   const choice = choiceOf(slot)
   const display = choice.display ?? options.defaultDisplay
@@ -491,6 +577,13 @@ function render(drawn: Element): string {
 export interface LinkSlots {
   /** The addresses the body's slots will look up, in order of appearance, each once. */
   readonly keys: readonly string[]
+  /**
+   * The addresses whose description will be shown, given the display a link takes when the
+   * author chose none: a card, and only where the author did not write the description
+   * themselves. A caller whose descriptions cost something to find (a document's first
+   * paragraph) looks up only these.
+   */
+  describedKeys(defaultDisplay: LinkDisplay): readonly string[]
   /** The body with each slot that has a ready preview drawn with it; the rest as they were. */
   draw(previews: ReadonlyMap<string, LinkPreviewView>, options: FillOptions): string
 }
@@ -506,6 +599,16 @@ export function scanLinkSlots(html: string): LinkSlots {
 
   return {
     keys,
+    describedKeys(defaultDisplay) {
+      const described = slots.flatMap(({ slot, block }) => {
+        const choice = choiceOf(slot)
+        const display = choice.display ?? defaultDisplay
+        const key = slotKey(slot)
+        const isCard = block && (display === 'card' || display === 'embed')
+        return isCard && key !== undefined && choice.description === null ? [key] : []
+      })
+      return [...new Set(described)]
+    },
     draw(previews, options) {
       let result = ''
       let copied = 0

@@ -1,12 +1,20 @@
 import { createHash } from 'node:crypto'
 
-import { getLinkPreviews, peekLinkPreviews } from '@quill/application'
+import {
+  firstParagraph,
+  getLinkPreviews,
+  peekLinkPreviews,
+  readInternalLinkPreviews,
+  renderDocument,
+} from '@quill/application'
 import type {
+  InternalLinkDependencies,
+  InternalLinkViewer,
   LinkPreviewDependencies,
   LinkPreviewFetchDependencies,
   LinkPreviewReading,
 } from '@quill/application'
-import { DEFAULT_LINK_DISPLAY } from '@quill/domain'
+import { DEFAULT_LINK_DISPLAY, isInternalAddress } from '@quill/domain'
 import type { EmbedRegistry, LinkPreviewView, UserId } from '@quill/domain'
 import { scanLinkSlots } from '@quill/markdown'
 
@@ -31,6 +39,30 @@ export function linkPreviewDependencies(deps: AppDependencies): LinkPreviewFetch
   return { uow: deps.uow, clock: deps.clock, ids: deps.ids, ...deps.linkPreviewPorts }
 }
 
+/**
+ * What a reader may see of the documents a body links to (ADR-042, "Internal
+ * links"): the dependencies that look them up and the reader they are looked
+ * up for. Required of every fill, so a caller cannot forget to say who is reading.
+ */
+export interface InternalLinks {
+  readonly deps: InternalLinkDependencies
+  readonly viewer: InternalLinkViewer
+}
+
+/** Links to documents, read for this viewer; a description is the target's first paragraph, rendered from the cache. */
+export function internalLinks(deps: AppDependencies, viewer: InternalLinkViewer): InternalLinks {
+  return {
+    viewer,
+    deps: {
+      uow: deps.uow,
+      describe: async (documentId) => {
+        const rendered = await renderDocument(deps, { documentId, indexLinks: false })
+        return rendered.kind === 'rendered' ? firstParagraph(rendered.content.text) : null
+      },
+    },
+  }
+}
+
 export interface FilledBody {
   readonly html: string
   /** Links whose preview is on its way, so a client knows to look again shortly. */
@@ -47,20 +79,30 @@ async function fill(
   read: Read,
   countPending: boolean,
   embeds: EmbedRegistry,
+  internal: InternalLinks,
 ): Promise<FilledBody> {
   const slots = scanLinkSlots(html)
   if (slots.keys.length === 0) return { html, pending: 0 }
 
-  const readings = await read(slots.keys)
-  const views = new Map<string, LinkPreviewView>()
+  // A link to a document of this instance is answered for the reader, by id, and never stored or
+  // fetched; every other link is read from the snapshots.
+  const documentKeys = slots.keys.filter(isInternalAddress)
+  const pageKeys = slots.keys.filter((key) => !isInternalAddress(key))
+  const [readings, documentViews] = await Promise.all([
+    pageKeys.length === 0 ? [] : read(pageKeys),
+    readInternalLinkPreviews(internal.deps, {
+      viewer: internal.viewer,
+      keys: documentKeys,
+      described: new Set(slots.describedKeys(DEFAULT_LINK_DISPLAY)),
+    }),
+  ])
+  const views = new Map<string, LinkPreviewView>(documentViews)
   for (const { key, view } of readings) if (key !== null) views.set(key, view)
 
   return {
     html: slots.draw(views, { defaultDisplay: DEFAULT_LINK_DISPLAY, imageUrl, embeds }),
     // An anonymous reader has no one to wait for: nothing was queued on their behalf.
-    pending: countPending
-      ? [...views.values()].filter((view) => view.state === 'pending').length
-      : 0,
+    pending: countPending ? readings.filter(({ view }) => view.state === 'pending').length : 0,
   }
 }
 
@@ -81,8 +123,9 @@ export function fillLinksForMember(
   userId: UserId,
   html: string,
   embeds: EmbedRegistry,
+  internal: InternalLinks,
 ): Promise<FilledBody> {
-  return fill(html, (urls) => getLinkPreviews(deps, { userId, urls }), true, embeds)
+  return fill(html, (urls) => getLinkPreviews(deps, { userId, urls }), true, embeds, internal)
 }
 
 /** For anyone else: stored previews are drawn, and nothing is ever queued. */
@@ -90,11 +133,13 @@ export function fillLinksForPublic(
   deps: LinkPreviewDependencies,
   html: string,
   embeds: EmbedRegistry,
+  internal: InternalLinks,
 ): Promise<FilledBody> {
   return fill(
     html,
     (urls) => peekLinkPreviews(deps, { audience: deps.audiences.forPublic(), urls }),
     false,
     embeds,
+    internal,
   )
 }
