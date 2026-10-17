@@ -3522,22 +3522,6 @@ html.lightbox-open {
   max-inline-size: 42em;
   margin-block: 1em;
   margin-inline: 0;
-/* --- A code permalink (ADR-042) ------------------------------------------- */
-
-/*
- * Lines of source from a connector, as a figure: the caption is the one link, the lines are
- * text. It reuses the code block's surface and tab size (`.prose pre`) so a snippet reads as
- * code, and the card's border so it reads as a link. Line numbers are generated from
- * `data-line`, which keeps them out of a copy. Nothing here is highlighted.
- */
-.prose figure.link-code {
-  inline-size: 100%;
-  max-inline-size: 42em;
-  margin-block: 1em;
-  overflow: hidden;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  background-color: var(--color-surface-raised);
   font-family: var(--font-sans);
   font-size: 0.9em;
   line-height: 1.4;
@@ -3602,6 +3586,29 @@ html.lightbox-open {
 /* On a slide the frame takes the width the slide gives it, and scales with it. */
 [data-surface='present'] .prose figure.link-embed {
   max-inline-size: none;
+}
+
+/* --- A code permalink (ADR-042) ------------------------------------------- */
+
+/*
+ * Lines of source from a connector, as a figure: the caption is the one link, the lines are
+ * text. It reuses the code block's surface and tab size (`.prose pre`) so a snippet reads as
+ * code, and the card's border so it reads as a link. Line numbers are generated from
+ * `data-line`, which keeps them out of a copy. Nothing here is highlighted.
+ */
+.prose figure.link-code {
+  inline-size: 100%;
+  max-inline-size: 42em;
+  margin-block: 1em;
+  overflow: hidden;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background-color: var(--color-surface-raised);
+  font-family: var(--font-sans);
+  font-size: 0.9em;
+  line-height: 1.4;
+}
+
 .prose figure.link-code > figcaption {
   display: flex;
   flex-wrap: wrap;
