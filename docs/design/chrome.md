@@ -125,3 +125,9 @@ and versions aligned without a monospace face.
 
 Themes are unaffected in kind: every colour, face and radius above is a token,
 so an identity changes how the chrome looks without changing these rules.
+
+## Editing a template
+
+The writing surface has a second mode for templates, carried by the address, a
+band above the page, the page's edge, its own fields and panel, and how
+template blocks are drawn. The rules are in [`templates.md`](templates.md).

@@ -29,6 +29,10 @@ narrows.
 
 [`home.md`](home.md) defines the three first pages (signed-in home, workspace home, public site home), who each is for, and what M2 ships of them.
 
+## Templates
+
+[`templates.md`](templates.md) sets how editing a template is told apart from editing a document, the wording for publishing and sharing a template, the template panel on a document made from one, and the gallery.
+
 ## Product
 
 [`../product/`](../product/README.md) holds the personas, the use cases with their acceptance criteria, and the surface map these screens are designed against.

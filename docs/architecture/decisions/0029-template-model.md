@@ -1,6 +1,6 @@
 # ADR-029: Template model
 
-**Status:** Accepted
+**Status:** Accepted (amended 2026-10-17 by ADR-054)
 **Date:** 2026-09-12
 **Related:** quill-plan.md section 16 and milestone M5; ADR-002, ADR-005, ADR-006
 
@@ -105,3 +105,13 @@ Required sections are marked beside their heading and tracked in the template pa
 - The template blocks and the `template:` front matter schema are implemented in `packages/markdown` in M2 alongside the other directives, so the writing surface is designed with them from the start. The gallery, built-in templates, and template editor ship in M5.
 - Guidance and placeholders are author-facing scaffolding and never reach a published revision, the public site, presentation mode, or export.
 - Interactive capabilities (ADR-006) are scaffolded by templates rather than configured by hand.
+
+## Amendment (2026-10-17)
+
+[ADR-054](0054-template-library-and-authoring.md) settles what this ADR left open about where templates live, who may change them, and how authoring looks. Three statements above change:
+
+- **"Stored in a Templates collection."** A template is now a kind of its own (`documents.kind = 'template'`). It is stored at `.quill/templates/<slug>.md` in its home workspace, kept in a template library, and never part of a collection, the reading tree, search or the public site. It starts private to its owner and is shared with a workspace or a unit on purpose. A shared template is changed by its owner, its maintainers and the workspace's managers. Documents in an existing `templates` collection are read as templates and moved into the library.
+- **"Guidance and presenter notes are removed"** at publish. Presenter notes are not removed. `:::notes` stays in the published source, hidden from readers, because the presenter window reads it from there (ADR-050), and `stripAuthoringBlocks` already leaves it in place. Publish removes guidance and placeholders.
+- **"Validated on publish."** Validation fails the publish of a *template*: a broken template harms everyone who uses it. Required sections in *documents* remain indicated, not enforced.
+
+ADR-054 also adds a title pattern, numbered sequences, follow-up questions (`when` on a question), `$creator` as a default, and section fingerprints so that changing an answer leaves the writer's work alone.

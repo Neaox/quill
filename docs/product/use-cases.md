@@ -1,6 +1,6 @@
 # Use cases
 
-Forty-two use cases, grouped by persona and situation. Each one names the job,
+Forty-nine use cases, grouped by persona and situation. Each one names the job,
 the flow as the person experiences it, acceptance criteria an end-to-end
 journey can assert, the milestone that ships it, and the spec that proves it.
 
@@ -33,6 +33,12 @@ Status is taken from the plan's Delivery status table, which is authoritative.
 | 10 | Delete a document and an empty collection | Workspace lead | Signed in, internal | M2 | Built | `organise.spec.ts` |
 | 11 | Write a draft with autosave | Writer | Signed in, internal | M2 | Built | `journey.spec.ts` |
 | 12 | Start from a template | Writer | Signed in, internal | M2 / M5 | Built / planned | `templates.spec.ts` |
+| 44 | Make a template and try it | Template author | Signed in, internal | M5 | Planned | `template-authoring.spec.ts` |
+| 45 | Turn a good document into a template | Template author | Signed in, internal | M5 | Planned | `template-authoring.spec.ts` |
+| 46 | Share a template with the team | Template author, workspace lead | Signed in, internal | M5 | Planned | `template-sharing.spec.ts` |
+| 47 | Improve a shared template | Template author, workspace lead | Signed in, internal | M5 | Planned | `template-authoring.spec.ts` |
+| 48 | Set a collection's default template | Workspace lead | Signed in, internal | M5 | Planned | `templates.spec.ts` |
+| 49 | Change an answer, and take a template's new sections | Writer | Signed in, internal | M5 | Planned | `templates.spec.ts` |
 | 13 | Meet another writer's lock | Writer | Signed in, internal | M2 | Built | `locking.spec.ts` |
 | 14 | Publish a revision | Writer | Signed in, internal | M2 | Built | `journey.spec.ts` |
 | 15 | Publish over a changed base | Writer | Signed in, internal | M2 | Built (API) | `merge.spec.ts` |
@@ -398,29 +404,217 @@ Signed in, internal. The editor is the surface the product is judged on.
 - **Job:** get to a good document quickly, without being trapped by the
   template.
 - **Milestone:** M2 for the blocks and schema; **M5** for the gallery,
-  built-ins, and template editor (ADR-029) — **Built / planned**
-- **Surfaces:** editor
+  built-ins, and template editor (ADR-029, ADR-054) — **Built / planned**
+- **Surfaces:** signed-in app, editor
 - **Journey:** `e2e/templates.spec.ts` (planned)
 
 **Flow**
 
-1. Choose a template when creating the document.
-2. Answer the template's questions. Optional ones can be skipped and answered
+1. Press "New", or "New" on a collection that has a default template. The
+   gallery offers Blank, recently used templates, the collection's default,
+   then the workspace's, the unit's and the built-in templates by category,
+   each with a preview of its sections.
+2. Choose one and answer its questions in one form, beside a live list of the
+   sections the answers produce. Optional questions can be skipped and answered
    later.
-3. The document opens with its sections in place, some marked required, and
-   metadata already stamped in front matter.
-4. Rename, reorder, or delete any section; add anything anywhere.
+3. Create. The editor opens with the cursor in the first placeholder, the
+   title already numbered ("ADR-042: …"), metadata stamped in front matter,
+   and the template panel showing which required sections are still to write.
+4. Write over the placeholders, dismiss the guidance, add optional and
+   repeated sections, and rename, reorder, or delete anything.
+5. Publish. If a required section still holds only a placeholder, the summary
+   names it with a link to it, and publishes when asked.
 
 **Acceptance**
 
 - Given a template with a conditional section, when its question is answered
   yes, then that section exists in the new document; and no, then it does not.
+- Given the gallery, when a document is created from a template, then the
+  editor opens on it with the cursor in its first placeholder.
+- Given a template with a title pattern and a sequence, when two documents are
+  created from it, then their titles carry consecutive numbers.
 - Given a required section still holding a placeholder, when the author
   publishes, then the summary names it and the publish succeeds anyway.
 - Given a published document, when its Markdown is exported, then no
   template-only directive appears in it.
 - Given a document created from a template, when every section is deleted, then
   the document is still valid.
+- Given a document made from a template, when it is edited, then the slash
+  menu offers no template blocks and the page carries no template band.
+- Given a document that is still empty, when "Start from a template" is
+  chosen from its empty state, then the same two steps fill it in place.
+
+### 44. Make a template and try it
+
+- **Persona:** template author (any editor)
+- **Situation:** the team keeps writing the same kind of document from memory
+- **Job:** capture the shape once, with the prompts and questions that make it
+  quick to fill, and check it before anyone else uses it.
+- **Milestone:** M5 — **Planned** (ADR-054)
+- **Surfaces:** template library, template editor
+- **Journey:** `e2e/template-authoring.spec.ts` (planned)
+
+**Flow**
+
+1. Open Templates from the workspace and press "New template", or duplicate a
+   built-in.
+2. The template editor opens. The address is under `/templates`, the
+   breadcrumb says Templates, a band above the page says "Template" with its
+   name and state, and the page has a dashed edge.
+3. Write the sections. Insert placeholders, guidance, repeated and optional
+   sections, an "Only when" frame and answer tokens from the slash menu.
+4. In Template setup, add questions, mark sections required, and set the
+   metadata to stamp, the title pattern and a sequence.
+5. Press "Try it", answer the questions, and see the draft they produce.
+   Change an answer and watch a conditional section come and go.
+6. Press "Publish v1". The template is published and still private.
+
+**Acceptance**
+
+- Given the template editor, when it is open, then the band names it as a
+  template in words, its address is under `/templates`, and the title field is
+  labelled "Template name".
+- Given a template whose `when` names a question that does not exist, when it
+  is published, then the publish is refused and names the frame, with a link
+  to it.
+- Given "Try it", when the questions are answered, then the resolved draft is
+  shown and no document is created.
+- Given a new template, when it is published, then it appears in its author's
+  gallery and in no one else's.
+- Given a template, when the workspace's tree, search, or public site is read,
+  then the template is not in it.
+
+### 45. Turn a good document into a template
+
+- **Persona:** template author
+- **Situation:** a postmortem came out well and should be the pattern
+- **Job:** make a template from it without retyping it.
+- **Milestone:** M5 — **Planned** (ADR-054)
+- **Surfaces:** editor, template editor
+- **Journey:** `e2e/template-authoring.spec.ts` (planned)
+
+**Flow**
+
+1. From the document's menu, choose "Save as template".
+2. A new private template opens in the template editor with the document's
+   content. The document is untouched.
+3. Turn the specifics into placeholders, add guidance, mark the sections that
+   must always be there as required, and publish.
+
+**Acceptance**
+
+- Given a document, when "Save as template" is chosen, then a new template is
+  created with a new id, owned by the person who chose it, and the document is
+  unchanged.
+- Given the new template, when it is opened, then it is in the template
+  editor, not the document editor.
+
+### 46. Share a template with the team
+
+- **Persona:** template author, workspace lead, unit administrator
+- **Situation:** a private template has proved itself
+- **Job:** let everyone in the workspace, or every workspace in the unit,
+  start from it, without letting everyone change it.
+- **Milestone:** M5 — **Planned** (ADR-054)
+- **Surfaces:** template library, template overview
+- **Journey:** `e2e/template-sharing.spec.ts` (planned)
+
+**Flow**
+
+1. From the template's overview, open Share.
+2. Choose "Everyone in Platform". A unit administrator can choose the unit.
+3. Optionally name maintainers who may change it too.
+4. Unshare, or retire it, later from the same place.
+
+**Acceptance**
+
+- Given a template shared with the workspace, when another editor opens the
+  gallery, then it is offered to them; and when they open it, then they can
+  duplicate it but not change it.
+- Given a maintainer, when they open the shared template, then they can edit
+  and publish it.
+- Given a retired template, when the gallery is opened, then it is not
+  offered, and documents made from it are unchanged.
+- Given someone without `manage` on the unit, when they share a template, then
+  the unit is not offered as an audience.
+
+### 47. Improve a shared template
+
+- **Persona:** template author, workspace lead
+- **Situation:** the ADR template needs a Rollback plan section
+- **Job:** change what new documents get, knowing exactly what it affects.
+- **Milestone:** M5 — **Planned** (ADR-054)
+- **Surfaces:** template editor
+- **Journey:** `e2e/template-authoring.spec.ts` (planned)
+
+**Flow**
+
+1. Open the template from the library, or from "Edit template" in a document
+   made from it.
+2. Edit. The band says "Editing v4 draft · v3 in use"; the gallery keeps
+   using v3 until v4 is published.
+3. Press "Publish v4". The confirmation says how many documents were made
+   from earlier versions, that they will not change, and which sections their
+   authors will be offered.
+
+**Acceptance**
+
+- Given a draft of a shared template, when the gallery is used, then new
+  documents are made from the last published version.
+- Given a published new version, when a document made from an earlier one is
+  opened, then its content is unchanged.
+
+### 48. Set a collection's default template
+
+- **Persona:** workspace lead
+- **Situation:** every page in Decisions is an ADR
+- **Job:** make the right template the obvious start, without forcing it.
+- **Milestone:** M5 — **Planned** (ADR-054)
+- **Surfaces:** workspace settings, gallery
+- **Journey:** `e2e/templates.spec.ts` (planned)
+
+**Flow**
+
+1. In the workspace's settings, choose a default template for Decisions.
+2. "New" on Decisions opens the gallery with the ADR template chosen and Blank
+   one step away.
+
+**Acceptance**
+
+- Given a collection with a default template, when "New" is pressed on it,
+  then the gallery opens with that template chosen.
+- Given the `c` shortcut, when it is pressed, then a blank document is
+  started, whatever the collection's default.
+- Given a built-in template the workspace has hidden, when the gallery is
+  opened, then it is not offered, and it can still be duplicated from the
+  library by a lead who unhides it.
+
+### 49. Change an answer, and take a template's new sections
+
+- **Persona:** writer
+- **Situation:** the decision turns out to touch secrets after all; later, the
+  template gains a section
+- **Job:** have the document follow, without losing anything written.
+- **Milestone:** M5 — **Planned** (ADR-029, ADR-054)
+- **Surfaces:** editor
+- **Journey:** `e2e/templates.spec.ts` (planned)
+
+**Flow**
+
+1. In the template panel, press "Change" beside an answer and change it.
+2. Sections that depend on it are added, or removed if the writer has not
+   touched them. A touched section stays, with a note saying so.
+3. When the template has published a version with sections this document
+   lacks, the panel offers them. Adding one puts it where the template does.
+
+**Acceptance**
+
+- Given an untouched conditional section, when its answer changes to no, then
+  the section is removed, and one undo brings it back.
+- Given a conditional section with the writer's text in it, when its answer
+  changes to no, then the section stays and the panel says why.
+- Given a template that has gained a section, when the document is opened,
+  then the section is offered and nothing changes until it is accepted.
 
 ### 13. Meet another writer's lock
 
