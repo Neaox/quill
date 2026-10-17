@@ -249,6 +249,29 @@ Two runtime dependencies are added to the server (AGENTS.md rule 11):
 - Previews depend on the snapshot store and job runner from ADR-032, so they land with M5's live blocks. Connector-backed previews follow the connectors idea.
 - Some hosts will block or degrade bots. A link always remains a working link.
 
+## Amendment: a link is a link (2026-10-17)
+
+**What changed.** The first version of this ADR stored a display choice as a directive (`:link[…]{display=card}`, `::link{url="…"}`). That degrades to *readable* text outside Quill but not to a *working link*: GitHub, a diff, Obsidian and every other Markdown tool show a line of syntax with an address in quotes that cannot be clicked. A link is the most portable thing a document holds, so it must stay one.
+
+**The form.** The document holds an ordinary Markdown link. A presentation the author chose is an HTML comment beside it:
+
+```markdown
+[the design doc](https://example.com/design) <!-- quill:link display=card layout=top -->
+
+See [the doc](https://example.com/design)<!-- quill:link display=inline --> now.
+```
+
+- A link with no comment is a plain link, which is what it already means.
+- A paragraph holding only a link and its comment is a **block** (card, compact, embed). A link with a comment inside a line of text is **inline** (a chip). The first paragraph of a list item stays inline, because a block cannot go there.
+- The attributes are the directive's: `display`, `layout`, `image=none`, `title`, `description`, and any this release does not know, which survive (rule 7). The address is the link's own and is never repeated. A value that is not a plain word is quoted, and every hyphen in it is escaped, so a value can never contain the `--` that ends a comment early.
+- Outside Quill a tool shows the plain link and hides the comment; a tool that drops comments shows the plain link. Nothing is lost that was a link.
+
+**Where it lives.** One module at the Markdown boundary (`packages/markdown/src/directives/link-comment.ts`) turns a link and its comment into the `link` directive node the editor, the renderer and the slot fill already use, and turns that node back on writing. Nothing else was told. The body, the slots, the export rule (an unfilled body is plain links) and the editor model are unchanged.
+
+**Compatibility.** Files written with the directive form still read, and are written back as they were until an author changes that link, so no document is reformatted by this release. A comment whose attributes read as the same attributes is written back as it was. A link made or changed in the editor is written in the new form.
+
+**What stays Quill-only.** Embeds, status chips, code snippets and live internal-document titles need Quill to draw them; elsewhere they are the plain link, which is the right fallback. An internal link is `[/d/<id>](/d/<id>)` with the id as its words so that Quill can show the live title; outside Quill it shows the id.
+
 ## Delivery
 
 1. The open-web outbound client, with its tests and the ADR-011 amendment. *Built.*

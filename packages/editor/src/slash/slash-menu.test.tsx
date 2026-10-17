@@ -577,7 +577,7 @@ describe('pickers', () => {
     const option = await screen.findByRole('option', { name: /Runbook/ })
     expect(option).toHaveTextContent('Engineering')
     await user.keyboard('{Enter}')
-    expect(markdown(ref)).toBe(':link[/d/doc-1]{display="inline"}\n')
+    expect(markdown(ref)).toBe('[/d/doc-1](/d/doc-1)<!-- quill:link display=inline -->\n')
     expect(searchDocuments).toHaveBeenCalledWith('run', expect.any(AbortSignal))
   })
 

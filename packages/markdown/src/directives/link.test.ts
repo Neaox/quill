@@ -39,7 +39,11 @@ function canonical(markdown: string): string {
 function roundTrip(markdown: string): string {
   const [first] = parseMarkdown(markdown).children
   const node = first?.type === 'leafDirective' ? leaf(markdown) : inline(markdown)
-  const written = linkDirective.serialize(linkDirective.parse(node))
+  // As a file written in this form carries (`link-comment.ts`): it is written back the way it was.
+  const written = {
+    ...linkDirective.serialize(linkDirective.parse(node)),
+    data: { sourceForm: { directiveForm: true as const } },
+  }
   const tree: Root =
     written.type === 'leafDirective'
       ? { type: 'root', children: [written] }

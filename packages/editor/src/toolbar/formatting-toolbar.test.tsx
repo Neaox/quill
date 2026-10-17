@@ -406,7 +406,7 @@ describe('how a link is shown', () => {
     select(opened, 'the docs', 3)
     await opened.user.click(display('Inline'))
     expect(markdown(opened)).toBe(
-      'Read :link[the docs]{url="https://example.com/guide" display="inline"} now.\n',
+      'Read [the docs](https://example.com/guide)<!-- quill:link display=inline --> now.\n',
     )
     expect(display('Inline')).toHaveAttribute('aria-pressed', 'true')
     await opened.user.click(display('Link'))
@@ -419,13 +419,13 @@ describe('how a link is shown', () => {
     await opened.user.click(display('Card'))
     const bar = toolbar('Link')
     await opened.user.click(within(bar).getByRole('button', { name: 'Image above' }))
-    expect(markdown(opened)).toContain('layout="top"')
+    expect(markdown(opened)).toContain('layout=top')
     await opened.user.click(within(bar).getByRole('button', { name: 'Image' }))
-    expect(markdown(opened)).toContain('image="none"')
+    expect(markdown(opened)).toContain('image=none')
   })
 
   describe('a card', () => {
-    const card = '::link{url="https://example.com/guide" display=card}\n'
+    const card = '<https://example.com/guide> <!-- quill:link display=card -->\n'
 
     /** Selects the card as a block, which is what pressing it does. */
     function selectCard(opened: Opened): void {
@@ -468,7 +468,7 @@ describe('how a link is shown', () => {
 
     it('goes back to what the page says in one press, and gives up on Escape', async () => {
       const opened = open(
-        '::link{url="https://example.com/guide" display=card title="Mine" description="Mine too"}' +
+        '<https://example.com/guide> <!-- quill:link display=card title=Mine description="Mine too" -->' +
           String.fromCharCode(10),
       )
       selectCard(opened)
@@ -476,7 +476,7 @@ describe('how a link is shown', () => {
         within(toolbar('Link')).getByRole('button', { name: 'Preview details…' }),
       )
       await opened.user.keyboard('{Escape}')
-      expect(markdown(opened)).toContain('title="Mine"')
+      expect(markdown(opened)).toContain('title=Mine')
       await opened.user.click(
         within(toolbar('Link')).getByRole('button', { name: 'Preview details…' }),
       )

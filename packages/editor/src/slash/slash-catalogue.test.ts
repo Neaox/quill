@@ -293,25 +293,31 @@ describe('data and references', () => {
 
   it('link to document: by id, shown as the document’s live title', async () => {
     const result = await choose(run('document-link', 'See '), 'run')
-    expect(result.markdown).toBe('See :link[/d/doc-1]{display="inline"}\n')
+    expect(result.markdown).toBe('See [/d/doc-1](/d/doc-1)<!-- quill:link display=inline -->\n')
     expectStable(result.markdown)
   })
 
   it('link card: a web address as a card, on a line of its own', async () => {
     const result = await choose(run('link-card'), 'https://blog.example/post')
-    expect(result.markdown).toContain('::link{url="https://blog.example/post" display="card"}')
+    expect(result.markdown).toContain(
+      '<https://blog.example/post> <!-- quill:link display=card -->',
+    )
     expectStable(roundTrip(result.markdown))
   })
 
   it('compact link: a web address as one line of its own', async () => {
     const result = await choose(run('link-compact'), 'https://blog.example/post')
-    expect(result.markdown).toContain('::link{url="https://blog.example/post" display="compact"}')
+    expect(result.markdown).toContain(
+      '<https://blog.example/post> <!-- quill:link display=compact -->',
+    )
     expectStable(roundTrip(result.markdown))
   })
 
   it('link with preview: a web address inline, spelling itself', async () => {
     const result = await choose(run('link-inline', 'See '), 'https://blog.example/post')
-    expect(result.markdown).toBe('See :link[https://blog.example/post]{display="inline"}\n')
+    expect(result.markdown).toBe(
+      'See <https://blog.example/post><!-- quill:link display=inline -->\n',
+    )
     expectStable(result.markdown)
   })
 

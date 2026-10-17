@@ -91,7 +91,7 @@ describe('the offer that follows a pasted address', () => {
     const opened = open('See')
     pasteAtEnd(opened, ADDRESS)
     await opened.user.click(within(offer()).getByRole('button', { name: 'Inline' }))
-    expect(markdown(opened)).toContain(`:link[${ADDRESS}]{display="inline"}`)
+    expect(markdown(opened)).toContain(`<${ADDRESS}><!-- quill:link display=inline -->`)
     expect(screen.queryByRole('group', { name: 'Show pasted link as' })).toBeNull()
   })
 
@@ -99,7 +99,7 @@ describe('the offer that follows a pasted address', () => {
     const opened = open('See')
     pasteAtEnd(opened, ADDRESS)
     await opened.user.click(within(offer()).getByRole('button', { name: 'Card' }))
-    expect(markdown(opened)).toContain(`::link{url="${ADDRESS}" display="card"}`)
+    expect(markdown(opened)).toContain(`<${ADDRESS}> <!-- quill:link display=card -->`)
   })
 
   describe('Embed', () => {
@@ -119,7 +119,7 @@ describe('the offer that follows a pasted address', () => {
         expect(embedButton()).toBeEnabled()
       })
       await opened.user.click(embedButton())
-      expect(markdown(opened)).toContain(`::link{url="${ADDRESS}" display="embed"}`)
+      expect(markdown(opened)).toContain(`<${ADDRESS}> <!-- quill:link display=embed -->`)
     })
   })
 

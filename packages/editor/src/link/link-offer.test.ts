@@ -89,7 +89,7 @@ describe('pasting an address', () => {
     editor.view.dispatch(closeHistory(editor.state.tr))
     caretAt(editor, (linkOfferAt(editor.state)?.from ?? 0) + 2)
     showLinkAs('inline')(editor.state, editor.view.dispatch)
-    expect(markdownOf(editor)).toContain(`:link[${ADDRESS}]{display="inline"}`)
+    expect(markdownOf(editor)).toContain(`<${ADDRESS}><!-- quill:link display=inline -->`)
     expect(linkOfferAt(editor.state)).toBeNull()
     undo(editor.state, editor.view.dispatch)
     expect(markdownOf(editor)).toBe(`See <${ADDRESS}>`)

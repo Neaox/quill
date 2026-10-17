@@ -82,7 +82,7 @@ describe('the command palette’s entries for the link at the cursor', () => {
     act(() => {
       card?.run()
     })
-    expect(markdown()).toContain(`::link[the post]{url="${ADDRESS}" display="card"}`)
+    expect(markdown()).toContain(`[the post](${ADDRESS}) <!-- quill:link display=card -->`)
     expect(editor.isFocused).toBe(true)
   })
 
@@ -92,7 +92,7 @@ describe('the command palette’s entries for the link at the cursor', () => {
     act(() => {
       inline?.run()
     })
-    expect(markdown()).toContain(':link[the post]')
+    expect(markdown()).toContain('[the post](' + ADDRESS + ')')
     editor.view.focus()
     await userEvent.keyboard('{Control>}z{/Control}')
     expect(markdown()).toBe(`See [the post](${ADDRESS}) now.\n`)

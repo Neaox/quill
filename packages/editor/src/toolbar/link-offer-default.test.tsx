@@ -94,6 +94,6 @@ describe('the organisation’s default display in the paste offer', () => {
     const opened = open('inline')
     pasteAtEnd(opened, ADDRESS)
     await opened.user.click(within(offer()).getByRole('button', { name: 'Inline' }))
-    expect(markdown(opened)).toContain(`:link[${ADDRESS}]{display="inline"}`)
+    expect(markdown(opened)).toContain(`<${ADDRESS}><!-- quill:link display=inline -->`)
   })
 })

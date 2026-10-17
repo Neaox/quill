@@ -82,7 +82,7 @@ describe('the link box offers how the link is shown', () => {
     await opened.user.click(screen.getByRole('button', { name: 'Apply' }))
 
     expect(markdown(opened)).toBe(
-      'Say :link[something]{url="https://example.com" display="inline"} clever.\n',
+      'Say [something](https://example.com)<!-- quill:link display=inline --> clever.\n',
     )
     expect(screen.queryByRole('textbox', { name: 'Link address' })).not.toBeInTheDocument()
   })
@@ -96,7 +96,9 @@ describe('the link box offers how the link is shown', () => {
     await opened.user.click(screen.getByRole('button', { name: 'Apply' }))
 
     const written = markdown(opened)
-    expect(written).toContain('::link[something]{url="https://example.com/page" display="card"}')
+    expect(written).toContain(
+      '[something](https://example.com/page) <!-- quill:link display=card -->',
+    )
     expect(written).toContain('Say')
     expect(written).toContain('clever.')
   })
@@ -129,7 +131,7 @@ describe('the link box offers how the link is shown', () => {
     await opened.user.keyboard('{Enter}')
 
     expect(markdown(opened)).toContain(
-      ':link[something]{url="https://example.com" display="inline"}',
+      '[something](https://example.com)<!-- quill:link display=inline -->',
     )
   })
 
@@ -144,7 +146,7 @@ describe('the link box offers how the link is shown', () => {
     )
 
     expect(markdown(opened)).toContain(
-      ':link[something]{url="https://example.com" display="inline"}',
+      '[something](https://example.com)<!-- quill:link display=inline -->',
     )
   })
 
@@ -158,7 +160,7 @@ describe('the link box offers how the link is shown', () => {
 
   it('starts from the display the link already has, and changes only that', async () => {
     const opened = open(
-      'See :link[the post]{url="https://blog.example/post" display="inline"} now.\n',
+      'See [the post](https://blog.example/post)<!-- quill:link display=inline --> now.\n',
     )
     select(opened, 'the post', 3)
     await opened.user.keyboard('{Control>}k{/Control}')
@@ -172,7 +174,7 @@ describe('the link box offers how the link is shown', () => {
 
   it('does not let the address of a link written as a directive be edited here', async () => {
     const opened = open(
-      'See :link[the post]{url="https://blog.example/post" display="inline"} now.\n',
+      'See [the post](https://blog.example/post)<!-- quill:link display=inline --> now.\n',
     )
     select(opened, 'the post', 3)
     await opened.user.keyboard('{Control>}k{/Control}')

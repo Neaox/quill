@@ -8,6 +8,7 @@ import type { PhrasingContent, Root } from 'mdast'
 import { EXIT, visit } from 'unist-util-visit'
 
 import { groupCodeBlocks } from '../code-group/code-group.ts'
+import { readLinkComments, writeLinkComments } from '../directives/link-comment.ts'
 import { readDetails } from '../details/read.ts'
 import { linksOf, markAutolinkLiterals, withBareAutolinks } from './autolink-literal.ts'
 import { withAlertMarkers } from './github-alert.ts'
@@ -82,7 +83,9 @@ function normalise(markdown: string): string {
 export function parseMarkdown(markdown: string): Root {
   const source = normalise(markdown)
   const tree = markSourceForm(processor.parse(source), source, readAttributes)
-  return readDetails(groupCodeBlocks(markAutolinkLiterals(tree, source), source), readSummary)
+  return readLinkComments(
+    readDetails(groupCodeBlocks(markAutolinkLiterals(tree, source), source), readSummary),
+  )
 }
 
 /**
@@ -120,7 +123,8 @@ function readAttributes(block: string): string | undefined {
  * otherwise the whole tree is written in the ordinary form, which always
  * reads back as itself.
  */
-export function stringifyMdast(tree: Root): string {
+export function stringifyMdast(document: Root): string {
+  const tree = writeLinkComments(document)
   const writer = hasReferenceTargets(tree) ? processor : writerWithoutReferences
   const alerts = withAlertMarkers(tree)
   const { tree: bare, bare: count } = withBareAutolinks(alerts)

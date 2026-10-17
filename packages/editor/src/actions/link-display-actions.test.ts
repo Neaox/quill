@@ -44,7 +44,7 @@ function apply(state: EditorState, action: EditorAction): string {
 }
 
 const PLAIN = 'See [the doc](https://blog.example/post).'
-const CARD = '::link{url="https://blog.example/post" display=card}'
+const CARD = '<https://blog.example/post> <!-- quill:link display=card -->'
 
 describe('the link display actions', () => {
   it('lists every way a link can be shown, embed last', () => {
@@ -79,7 +79,7 @@ describe('the link display actions', () => {
 
   it('changes the display when one is chosen', () => {
     expect(apply(caretIn(PLAIN, 'doc'), linkDisplayAction('inline'))).toBe(
-      'See :link[the doc]{url="https://blog.example/post" display="inline"}.',
+      'See [the doc](https://blog.example/post)<!-- quill:link display=inline -->.',
     )
   })
 
@@ -117,7 +117,7 @@ describe('the link display actions', () => {
       expect(actionState(embed, state).enabled).toBe(true)
       expect(embed.whyUnavailable?.(state)).toBeUndefined()
       expect(apply(state, embed)).toContain(
-        '::link[the doc]{url="https://blog.example/post" display="embed"}',
+        '[the doc](https://blog.example/post) <!-- quill:link display=embed -->',
       )
     })
 
@@ -134,9 +134,11 @@ describe('the link display actions', () => {
     })
 
     it('is shown as chosen on an embed, and a card can be chosen from it', () => {
-      const state = told(selectCard('::link{url="https://blog.example/post" display=embed}'))
+      const state = told(
+        selectCard('<https://blog.example/post> <!-- quill:link display=embed -->'),
+      )
       expect(actionState(embed, state).checked).toBe(true)
-      expect(apply(state, linkDisplayAction('card'))).toContain('display="card"')
+      expect(apply(state, linkDisplayAction('card'))).toContain('display=card')
     })
 
     it('has nothing to say away from a link', () => {
@@ -150,14 +152,14 @@ describe('the link display actions', () => {
     expect(side?.label).toBe('Image beside')
     expect(top?.label).toBe('Image above')
     expect(actionState(side as EditorAction, state).checked).toBe(true)
-    expect(apply(state, top as EditorAction)).toContain('layout="top"')
+    expect(apply(state, top as EditorAction)).toContain('layout=top')
   })
 
   it('offers a card its image, which can be taken away and put back', () => {
     const state = selectCard(CARD)
     expect(actionState(CARD_IMAGE, state).checked).toBe(true)
     const without = apply(state, CARD_IMAGE)
-    expect(without).toContain('image="none"')
+    expect(without).toContain('image=none')
     expect(actionState(CARD_IMAGE, selectCard(without)).checked).toBe(false)
     expect(apply(selectCard(without), CARD_IMAGE)).not.toContain('image=')
   })

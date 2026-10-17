@@ -51,7 +51,7 @@ describe('linkTargetAt', () => {
   it('finds an inline link directive and the display it was given', () => {
     const target = linkTargetAt(
       caretIn(
-        'See :link[the design doc]{url="https://blog.example/post" display="inline"}.',
+        'See [the design doc](https://blog.example/post)<!-- quill:link display=inline -->.',
         'design',
       ),
     )
@@ -64,17 +64,19 @@ describe('linkTargetAt', () => {
 
   it('finds a card, and a directive that chose nothing as the default', () => {
     expect(
-      linkTargetAt(selectLeaf('::link{url="https://blog.example/post" display="card"}'))?.display,
+      linkTargetAt(selectLeaf('<https://blog.example/post> <!-- quill:link display=card -->'))
+        ?.display,
     ).toBe('card')
-    expect(linkTargetAt(caretIn('See :link[https://blog.example/post].', 'blog'))?.display).toBe(
-      'inline',
-    )
+    expect(
+      linkTargetAt(caretIn('See <https://blog.example/post><!-- quill:link -->.', 'blog'))?.display,
+    ).toBe('inline')
   })
 
   it('shows a display this release does not know as a plain link', () => {
     expect(
-      linkTargetAt(caretIn('See :link[x]{url="https://blog.example/post" display=hologram}.', 'x'))
-        ?.display,
+      linkTargetAt(
+        caretIn('See [x](https://blog.example/post)<!-- quill:link display=hologram -->.', 'x'),
+      )?.display,
     ).toBe('url')
   })
 
@@ -89,13 +91,13 @@ describe('showLinkAs', () => {
     const { ok, markdown } = run(caretIn(PLAIN, 'design'), showLinkAs('inline'))
     expect(ok).toBe(true)
     expect(markdown).toBe(
-      'See :link[the design doc]{url="https://blog.example/post" display="inline"} now.',
+      'See [the design doc](https://blog.example/post)<!-- quill:link display=inline --> now.',
     )
   })
 
   it('turns a bare address into an inline one that spells the address', () => {
     const { markdown } = run(caretIn(BARE, 'blog'), showLinkAs('inline'))
-    expect(markdown).toBe('See :link[https://blog.example/post]{display="inline"} now.')
+    expect(markdown).toBe('See <https://blog.example/post><!-- quill:link display=inline --> now.')
   })
 
   it('turns a link alone in its paragraph into a card', () => {
@@ -103,19 +105,19 @@ describe('showLinkAs', () => {
       caretIn('[https://blog.example/post](https://blog.example/post)', 'blog'),
       showLinkAs('card'),
     )
-    expect(markdown).toBe('::link{url="https://blog.example/post" display="card"}')
+    expect(markdown).toBe('<https://blog.example/post> <!-- quill:link display=card -->')
   })
 
   it('takes a card out of the middle of a paragraph, leaving the words either side', () => {
     const { markdown } = run(caretIn(PLAIN, 'design'), showLinkAs('card'))
     expect(markdown).toBe(
-      'See\n\n::link[the design doc]{url="https://blog.example/post" display="card"}\n\nnow.',
+      'See\n\n[the design doc](https://blog.example/post) <!-- quill:link display=card -->\n\nnow.',
     )
   })
 
   it('turns a card back into the plain link', () => {
     const { markdown } = run(
-      selectLeaf('::link{url="https://blog.example/post" display="card" layout="top"}'),
+      selectLeaf('<https://blog.example/post> <!-- quill:link display=card layout=top -->'),
       showLinkAs('url'),
     )
     // The address spelled as itself is the autolink, which is the same link.
@@ -125,7 +127,7 @@ describe('showLinkAs', () => {
   it('turns an inline link back into the plain link with the author’s words', () => {
     const { markdown } = run(
       caretIn(
-        'See :link[the design doc]{url="https://blog.example/post" display="inline"} now.',
+        'See [the design doc](https://blog.example/post)<!-- quill:link display=inline --> now.',
         'design',
       ),
       showLinkAs('url'),
@@ -135,15 +137,19 @@ describe('showLinkAs', () => {
 
   it('turns an inline link into a card, and a card into an inline link', () => {
     const asCard = run(
-      caretIn('See :link[https://blog.example/post]{display="inline"}.', 'blog'),
+      caretIn('See <https://blog.example/post><!-- quill:link display=inline -->.', 'blog'),
       showLinkAs('card'),
     )
-    expect(asCard.markdown).toContain('::link{url="https://blog.example/post" display="card"}')
+    expect(asCard.markdown).toContain(
+      '<https://blog.example/post> <!-- quill:link display=card -->',
+    )
     const asInline = run(
-      selectLeaf('::link{url="https://blog.example/post" display="card"}'),
+      selectLeaf('<https://blog.example/post> <!-- quill:link display=card -->'),
       showLinkAs('inline'),
     )
-    expect(asInline.markdown).toContain(':link[https://blog.example/post]{display="inline"}')
+    expect(asInline.markdown).toContain(
+      '<https://blog.example/post><!-- quill:link display=inline -->',
+    )
   })
 
   it('is the same link when it is asked to be shown as it already is', () => {
@@ -183,7 +189,7 @@ describe('showLinkAs', () => {
       const { ok, markdown } = run(told(caretIn(PLAIN, 'design'), ADDRESS), showLinkAs('embed'))
       expect(ok).toBe(true)
       expect(markdown).toContain(
-        '::link[the design doc]{url="https://blog.example/post" display="embed"}',
+        '[the design doc](https://blog.example/post) <!-- quill:link display=embed -->',
       )
     })
 
@@ -197,14 +203,14 @@ describe('showLinkAs', () => {
 
     it('can be taken back to a card, an inline link or a plain link', () => {
       const embedded = told(selectLeaf(`::link{url="${ADDRESS}" display="embed"}`), ADDRESS)
-      expect(run(embedded, showLinkAs('card')).markdown).toContain('display="card"')
-      expect(run(embedded, showLinkAs('inline')).markdown).toContain('display="inline"')
+      expect(run(embedded, showLinkAs('card')).markdown).toContain('display=card')
+      expect(run(embedded, showLinkAs('inline')).markdown).toContain('display=inline')
     })
   })
 })
 
 describe('setLinkChoice', () => {
-  const CARD = '::link{url="https://blog.example/post" display="card"}'
+  const CARD = '<https://blog.example/post> <!-- quill:link display=card -->'
 
   it('writes the choices of a card in the order the file keeps them', () => {
     const { ok, markdown } = run(
@@ -213,12 +219,14 @@ describe('setLinkChoice', () => {
     )
     expect(ok).toBe(true)
     expect(markdown).toBe(
-      '::link{url="https://blog.example/post" display="card" layout="top" image="none" title="Mine" description}',
+      '<https://blog.example/post> <!-- quill:link display=card layout=top image=none title=Mine description -->',
     )
   })
 
   it('puts a replaced title back when it is cleared', () => {
-    const state = selectLeaf(`::link{url="https://blog.example/post" display="card" title="Mine"}`)
+    const state = selectLeaf(
+      `<https://blog.example/post> <!-- quill:link display=card title=Mine -->`,
+    )
     expect(run(state, setLinkChoice({ title: null })).markdown).toBe(CARD)
   })
 
@@ -227,7 +235,9 @@ describe('setLinkChoice', () => {
   })
 
   it('keeps what this release does not know', () => {
-    const state = selectLeaf('::link{url="https://blog.example/post" display="card" future="yes"}')
-    expect(run(state, setLinkChoice({ layout: 'top' })).markdown).toContain('future="yes"')
+    const state = selectLeaf(
+      '<https://blog.example/post> <!-- quill:link display=card future=yes -->',
+    )
+    expect(run(state, setLinkChoice({ layout: 'top' })).markdown).toContain('future=yes')
   })
 })

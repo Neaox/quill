@@ -226,6 +226,8 @@ export function showLinkAs(display: LinkDisplay): Command {
         // Already a block of its own: only what it is shown as changes (card, compact, embed).
         tr.setNodeMarkup(target.from, undefined, {
           ...target.node.attrs,
+          // Changed by an author, so it is written as a link and a comment from here on.
+          sourceForm: null,
           attributes: linkDirective.serialize(model).attributes,
         })
         dispatch?.(tr.scrollIntoView())
@@ -266,6 +268,8 @@ export function setLinkChoice(patch: Partial<LinkChoice>): Command {
     dispatch?.(
       state.tr.setNodeMarkup(target.from, undefined, {
         ...target.node.attrs,
+        // Changed by an author, so it is written as a link and a comment from here on.
+        sourceForm: null,
         attributes: linkDirective.serialize(model).attributes,
       }),
     )
