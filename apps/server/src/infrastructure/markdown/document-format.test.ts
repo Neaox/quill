@@ -438,7 +438,8 @@ describe('createDocumentFormat: render and read', () => {
     expect(rendered.html).toContain(
       '<span class="emoji" role="img" aria-label="thumbs up">👍</span>',
     )
-    expect(rendered.html).toContain(`<img class="emoji" src="${src}" alt=":airbnb:"`)
+    // Described by its name, with the shortcode kept as the title, never read out as ":airbnb:".
+    expect(rendered.html).toContain(`<img class="emoji" src="${src}" alt="airbnb" title=":airbnb:"`)
     expect(rendered.html).toContain(
       `<span class="badge" data-label="airbnb"><img class="emoji" src="${src}" alt=""`,
     )
