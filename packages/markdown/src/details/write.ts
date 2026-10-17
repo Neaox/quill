@@ -147,10 +147,12 @@ function writeCallout(
   info: Info,
 ): string {
   const source = node.source?.syntax === 'callout' ? node.source : undefined
+  /* v8 ignore next -- `keepsSyntax` has already required a kind. */
+  const kind = node.attributes['type'] ?? ''
   const marker =
     source !== undefined && source.read === calloutMarkerRead(node.attributes)
       ? source.marker
-      : `[!${node.attributes['type'] ?? ''}]${flag(node, 'open') ? '+' : '-'}`
+      : `[!${kind}]${flag(node, 'open') ? '+' : '-'}`
   const title = summaryOf(node)?.children ?? []
   const body = bodyOf(node)
   const [lead, ...rest] = body

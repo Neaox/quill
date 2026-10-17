@@ -74,6 +74,7 @@ function pickOutChanges(children: PhrasingContent[]): PhrasingContent[] {
         ? replacement(removed, added)
         : undefined
     if (pair === undefined) {
+      /* v8 ignore next -- the loop only visits indices the children have. */
       result.push(...(removed === undefined ? [] : [removed]))
     } else {
       result.push(...pair)
@@ -226,9 +227,12 @@ function rebuild(runs: readonly Run<Atom>[]): PhrasingContent[] {
       stack.length = shared + 1
       for (const step of path.slice(shared)) {
         const children: PhrasingContent[] = []
-        ;(stack.at(-1) ?? root).children.push(shell(step, children))
+        /* v8 ignore next -- the stack always holds the root. */
+        const parent = stack.at(-1) ?? root
+        parent.children.push(shell(step, children))
         stack.push({ by: step, children })
       }
+      /* v8 ignore next -- the stack always holds the root. */
       append((stack.at(-1) ?? root).children, atom.leaf)
     }
   }

@@ -188,6 +188,7 @@ function readHtmlSiblings(
         stack.push({
           open: token.open,
           openLine: tag.line,
+          /* v8 ignore next 5 -- an earlier tag in this node has always set `previousLine`. */
           blankLinesBefore:
             index === 0
               ? recorded
@@ -211,6 +212,7 @@ function readHtmlSiblings(
         if (inline === undefined) return undefined
         const gap =
           index === 0 ? `\n${'\n'.repeat(Math.max(tag.line - top.openingEndLine - 1, 0))}` : ''
+        /* v8 ignore next 2 -- the tag before this one is always in the node. */
         const between =
           index === 0 ? '' : child.value.slice(tags[index - 1]?.end ?? tag.start, tag.start)
         top.opening = `${top.opening}${gap}${between}${child.value.slice(tag.start, tag.end)}`
@@ -223,6 +225,7 @@ function readHtmlSiblings(
       const closing = stack.pop()
       if (closing === undefined) return undefined
       previousLine = tag.endLine
+      /* v8 ignore next 2 -- a details is itself a block, so it always fits inside another. */
       if (!place({ node: finish(closing, tag), line: closing.openLine, endLine: tag.endLine }))
         return undefined
     }

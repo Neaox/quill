@@ -170,6 +170,7 @@ export function compareDocuments(before: Root, after: Root): DocumentComparison 
       wordsAdded: merged.added,
       wordsRemoved: merged.removed,
       index: children.length,
+      /* v8 ignore next -- `placesInNewer` gives every entry of the alignment a place. */
       at: standsAt[index] ?? blocksOf(after).length,
       previous: entry.kind === 'added' ? undefined : oldWas.get(entry.before),
       nodes: markFirst(merged.nodes, { change }),
@@ -221,6 +222,7 @@ function placesInNewer(
   const places: number[] = []
   let next = end
   for (const entry of alignment.toReversed()) {
+    /* v8 ignore next -- every block of the newer alignment is one the newer document read. */
     if (entry.kind !== 'removed') next = stands.get(entry.after) ?? next
     places.push(next)
   }
