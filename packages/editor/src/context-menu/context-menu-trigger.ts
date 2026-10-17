@@ -81,8 +81,12 @@ export function targetNode(view: EditorView, target: EventTarget | null): Node {
 
 /** Puts the selection where the pointer is, unless the pointer is inside it. */
 function selectAt(view: EditorView, left: number, top: number, target: Node): number {
-  const found = pointAt(view, left, top, target)
   const { state } = view
+  // A table's handle selects what it stands for (the corner, the whole table) before the menu opens.
+  if (target instanceof Element && target.closest('.table-handles') !== null) {
+    return state.selection.from
+  }
+  const found = pointAt(view, left, top, target)
   const { from, to, empty } = state.selection
   if (!empty && found.pos >= from && found.pos <= to) return from
   if (found.inside >= 0) {

@@ -29,7 +29,7 @@ describe('the animated emoji specimen (ADR-047)', () => {
     expect(screen.getByRole('region', { name: ANIMATION_SPECIMEN.label })).toHaveTextContent(
       ANIMATION_SPECIMEN.note,
     )
-    expect(screen.getAllByRole('img', { name: ':spinner:' }).length).toBeGreaterThan(0)
+    expect(screen.getAllByRole('img', { name: 'spinner' }).length).toBeGreaterThan(0)
     expect(screen.getByRole('img', { name: 'The spinner’s still' })).toHaveAttribute(
       'src',
       SPINNER.still,

@@ -111,6 +111,40 @@ afterAll(async () => {
   await harness.close()
 })
 
+const previewDraft = (reference: string, cookies?: Record<string, string>) =>
+  harness.app.inject({
+    method: 'GET',
+    url: `/preview/d/${reference}?draft`,
+    ...(cookies === undefined ? {} : { cookies }),
+  })
+
+/** Saves a draft that says more than what is published, as autosave would. */
+async function saveDraft(id: DocumentId, markdown: string): Promise<void> {
+  const taken = await harness.app.inject({
+    method: 'POST',
+    url: `/api/documents/${id}/lock/acquire`,
+    cookies: editor,
+  })
+  expect(taken.statusCode).toBe(200)
+  const current = await harness.app.inject({
+    method: 'GET',
+    url: `/api/documents/${id}/draft`,
+    cookies: editor,
+  })
+  const { frontMatter, ast } = parseDocument(markdown)
+  const write = await harness.app.inject({
+    method: 'PUT',
+    url: `/api/documents/${id}/draft`,
+    cookies: editor,
+    payload: {
+      ast: { version: 1, frontMatter, ast },
+      expectedVersion: (current.json() as { draftVersion: number }).draftVersion,
+    },
+  })
+  expect(write.statusCode).toBe(200)
+  await harness.app.inject({ method: 'DELETE', url: `/api/documents/${id}/lock`, cookies: editor })
+}
+
 describe('the reader preview', () => {
   it('renders the document through the public site’s chrome, unpublished collection and all', async () => {
     const response = await preview(overviewRef, viewer)
@@ -298,5 +332,82 @@ describe('the reader preview', () => {
     expect(response.statusCode).toBe(200)
     expect(response.body).toContain('Nothing has been published yet')
     expect(response.body).toContain('site-preview')
+  })
+})
+
+describe('the preview of a draft', () => {
+  const DRAFT_LINE = 'A sentence that is only in the draft.'
+
+  beforeAll(async () => {
+    await saveDraft(overview, `${OVERVIEW_MARKDOWN}\n\n${DRAFT_LINE}\n`)
+  })
+
+  it('shows what an editor has saved and not published, as the page it would become', async () => {
+    const response = await previewDraft(overviewRef, editor)
+
+    expect(response.statusCode).toBe(200)
+    expect(response.body).toContain(DRAFT_LINE)
+    expect(response.body).toContain('<article class="layout-grid prose"')
+    expect(response.body).toContain('<nav class="site-toc"')
+  })
+
+  it('leaves the page everybody else sees as it is published', async () => {
+    expect((await preview(overviewRef, editor)).body).not.toContain(DRAFT_LINE)
+    expect((await preview(overviewRef, viewer)).body).not.toContain(DRAFT_LINE)
+  })
+
+  it('says it is the unpublished draft, and leads back to editing it', async () => {
+    const body = (await previewDraft(overviewRef, editor)).body
+
+    expect(body).toContain('Unpublished changes')
+    expect(body).toContain(`href="/w/engineering/d/${overviewRef}/edit"`)
+    expect(body).toContain(`href="/w/engineering/d/${overviewRef}"`)
+  })
+
+  it('is as private as the published preview, and never indexed', async () => {
+    const response = await previewDraft(overviewRef, editor)
+
+    expect(response.headers['cache-control']).toBe('private, no-store')
+    expect(response.headers['x-robots-tag']).toBe('noindex, nofollow')
+    expect(response.body).toContain('<meta name="robots" content="noindex,nofollow" />')
+  })
+
+  it('is for somebody who may edit, and answers one who may only read as it answers a missing document', async () => {
+    const refused = await previewDraft(overviewRef, viewer)
+    const missing = await previewDraft('nothing-k000000000', viewer)
+
+    expect(refused.statusCode).toBe(404)
+    expect(refused.body).toBe(missing.body)
+    expect(refused.body).not.toContain(DRAFT_LINE)
+    expect((await previewDraft(overviewRef, outsider)).statusCode).toBe(404)
+  })
+
+  it('sends somebody who is not signed in to sign in, and back to the draft', async () => {
+    const response = await previewDraft(overviewRef)
+
+    expect(response.statusCode).toBe(303)
+    expect(response.headers['location']).toBe(
+      `/sign-in?redirect=${encodeURIComponent(`/preview/d/${overviewRef}?draft`)}`,
+    )
+  })
+
+  it('shows a document nobody has published, which the published preview has nothing to show of', async () => {
+    const created = await createDocument('Brand new')
+    const ref = documentReference({ title: 'Brand new', shortId: created.shortId })
+    await saveDraft(created.id, '# Brand new\n\nNot out yet.\n')
+
+    expect((await preview(ref, editor)).body).not.toContain('Not out yet.')
+    expect((await previewDraft(ref, editor)).body).toContain('Not out yet.')
+  })
+
+  it('answers a document with no draft to show as one with nothing to preview', async () => {
+    const created = await createDocument('Draftless')
+    const ref = documentReference({ title: 'Draftless', shortId: created.shortId })
+    await harness.database.pool.query('DELETE FROM drafts WHERE document_id = $1', [created.id])
+
+    const response = await previewDraft(ref, editor)
+
+    expect(response.statusCode).toBe(404)
+    expect(response.body).toBe((await previewDraft('nothing-k000000000', editor)).body)
   })
 })

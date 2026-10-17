@@ -8,7 +8,10 @@ import {
   getHistory,
   isAssignedReviewer,
   publishDocument,
+  putBackDraftChanges,
   readPublished,
+  replaceDraftContent,
+  revertDraftChanges,
   deleteDocument,
   renderDocument,
   restoreRevision,
@@ -47,8 +50,13 @@ import {
   PublishedSchema,
   RenderedQuerySchema,
   RenderedSchema,
+  PutBackDraftSchema,
   RestoreBodySchema,
+  RevertDraftChangesBodySchema,
+  RevertedDraftSchema,
   SourceComparisonSchema,
+  UndoneRevertSchema,
+  UndoRevertBodySchema,
   sourceComparisonResponse,
 } from './document-schemas.ts'
 import { DocumentStatusSchema } from './document-schemas.ts'
@@ -358,6 +366,7 @@ export function documentRoutes(deps: AppDependencies): FastifyPluginAsync {
         const result = await compareRevisions(deps, {
           ...range,
           appOrigins: [deps.config.appOrigin],
+          patches: request.query.patches === true,
           known: typeof etag === 'string' ? etag.replaceAll('"', '') : undefined,
         })
         if (result.kind === 'not-modified') {
@@ -368,6 +377,130 @@ export function documentRoutes(deps: AppDependencies): FastifyPluginAsync {
         reply.header('etag', `"${result.key}"`)
         reply.header('cache-control', 'private, no-cache')
         return comparisonResponse(result.content)
+      },
+    )
+
+    /**
+     * Some of what changed since a revision, put back in the draft: the draft as it would
+     * then be, not a write. An editor that has the draft open takes it as an edit of its
+     * own, where it can be undone and is saved like anything else typed. It is worked out
+     * against the draft as saved, so the caller names its version and is told with a `409`
+     * when that is no longer the draft.
+     */
+    app.post(
+      '/api/documents/:id/draft/revert-preview',
+      {
+        preHandler: app.requireVerifiedSession,
+        schema: {
+          params: IdParamsSchema,
+          body: RevertDraftChangesBodySchema,
+          response: { 200: RevertedDraftSchema },
+        },
+      },
+      async (request) => {
+        const documentId = await resolveDocumentId(deps, request.params.id)
+        await requireDocumentAccess(authorizerFor(deps, request), documentId, 'edit')
+        const result = await revertDraftChanges(deps, {
+          documentId,
+          from: readBase(request.body.from),
+          draftVersion: request.body.draftVersion,
+          changes: request.body.changes,
+          appOrigins: [deps.config.appOrigin],
+        })
+        switch (result.kind) {
+          case 'reverted':
+            return { draftVersion: result.draftVersion, ast: { ...result.content } }
+          case 'stale':
+            throw staleDraft(result.currentVersion)
+          case 'not-revertible':
+            throw notRevertible(result.changes)
+          default:
+            throw comparisonRefused(result.kind)
+        }
+      },
+    )
+
+    /**
+     * The same, saved: the comparison of the published page with the draft puts a change
+     * back from outside the editor. Written as a rename is, refused with `423` while another
+     * session is editing (ADR-021), and answered with what the draft held before, which
+     * `revert/undo` puts back.
+     */
+    app.post(
+      '/api/documents/:id/draft/revert',
+      {
+        preHandler: app.requireVerifiedSession,
+        schema: {
+          params: IdParamsSchema,
+          body: RevertDraftChangesBodySchema,
+          response: { 200: PutBackDraftSchema },
+        },
+      },
+      async (request) => {
+        const session = requireAuthenticatedSession(request)
+        const documentId = await resolveDocumentId(deps, request.params.id)
+        await requireDocumentAccess(authorizerFor(deps, request), documentId, 'edit')
+        const result = await putBackDraftChanges(deps, {
+          documentId,
+          sessionId: session.sessionId,
+          userId: session.userId,
+          from: readBase(request.body.from),
+          draftVersion: request.body.draftVersion,
+          changes: request.body.changes,
+          appOrigins: [deps.config.appOrigin],
+        })
+        switch (result.kind) {
+          case 'replaced':
+            return {
+              draftVersion: result.draft.draftVersion,
+              previous: draftRecord(result.previous),
+            }
+          case 'stale':
+            throw staleDraft(result.currentVersion)
+          case 'not-revertible':
+            throw notRevertible(result.changes)
+          case 'lock-lost':
+            throw lockLost(result.holder)
+          default:
+            throw comparisonRefused(result.kind)
+        }
+      },
+    )
+
+    /** Undoing a revert: the draft it handed back, put back over the version it made. */
+    app.post(
+      '/api/documents/:id/draft/revert/undo',
+      {
+        preHandler: app.requireVerifiedSession,
+        schema: {
+          params: IdParamsSchema,
+          body: UndoRevertBodySchema,
+          response: { 200: UndoneRevertSchema },
+        },
+      },
+      async (request) => {
+        const session = requireAuthenticatedSession(request)
+        const documentId = await resolveDocumentId(deps, request.params.id)
+        await requireDocumentAccess(authorizerFor(deps, request), documentId, 'edit')
+        const result = await replaceDraftContent(deps, {
+          documentId,
+          sessionId: session.sessionId,
+          userId: session.userId,
+          draftVersion: request.body.draftVersion,
+          ast: request.body.ast,
+        })
+        switch (result.kind) {
+          case 'replaced':
+            return { draftVersion: result.draft.draftVersion }
+          case 'stale':
+            throw staleDraft(result.currentVersion)
+          case 'lock-lost':
+            throw lockLost(result.holder)
+          case 'unreadable':
+            throw unprocessable('draft_unreadable', 'That is not a draft this release can read')
+          case 'no-draft':
+            throw comparisonRefused(result.kind)
+        }
       },
     )
 
@@ -525,6 +658,22 @@ async function comparisonRange(
     from: readBase(query.from),
     to: toDraft ? DRAFT : revisionId(query.to),
   }
+}
+
+function staleDraft(currentVersion: number): Error {
+  return conflict('stale_version', 'This draft has moved on since you read it', { currentVersion })
+}
+
+function notRevertible(changes: readonly string[]): Error {
+  return unprocessable('not_revertible', 'Some of these changes cannot be put back in the draft', {
+    changes,
+  })
+}
+
+/** A draft row's content as the wire carries it: an object, which a readable draft always is. */
+function draftRecord(value: unknown): Record<string, unknown> {
+  /* v8 ignore next -- the draft was read as content just before it was replaced. */
+  return typeof value === 'object' && value !== null ? { ...value } : {}
 }
 
 function comparisonRefused(kind: 'not-found' | 'revision-not-found' | 'no-draft'): Error {

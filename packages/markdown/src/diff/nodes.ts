@@ -27,6 +27,18 @@ export interface DiffDeletion extends Parent {
 }
 
 /**
+ * The characters of a changed word that are what changed, inside the insertion or deletion
+ * that holds the word: `Mon` in `Monday` becoming `Tuesday`. A single character changed in
+ * a long word is the hardest change to see, so these are drawn more strongly than the word.
+ * Empty when the other side has characters here and this side has none: the place where
+ * one was taken out or put in, drawn as a tick.
+ */
+export interface DiffChars extends Parent {
+  type: 'diffChars'
+  children: PhrasingContent[]
+}
+
+/**
  * A code block whose lines changed, drawn line by line. A code block is
  * compared by line (ADR-021's amendment), and a line is the unit a developer
  * reads a change to code in.
@@ -41,6 +53,7 @@ declare module 'mdast' {
   interface PhrasingContentMap {
     diffInsertion: DiffInsertion
     diffDeletion: DiffDeletion
+    diffChars: DiffChars
   }
   interface BlockContentMap {
     diffCode: DiffCode
@@ -48,6 +61,7 @@ declare module 'mdast' {
   interface RootContentMap {
     diffInsertion: DiffInsertion
     diffDeletion: DiffDeletion
+    diffChars: DiffChars
     diffCode: DiffCode
   }
 }

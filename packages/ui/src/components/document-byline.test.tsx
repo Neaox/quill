@@ -1,5 +1,5 @@
 import { render, screen, within } from '@testing-library/react'
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { expectNoAccessibilityViolations } from '../../testing/axe.ts'
 import { Avatar, initialsOf } from './avatar.tsx'
@@ -25,6 +25,10 @@ const FULL: DocumentBylineProps = {
     search: { q: `tag:${tag}` },
   }),
 }
+
+afterEach(() => {
+  vi.useRealTimers()
+})
 
 describe('Avatar', () => {
   it('takes the initials of a name, and of an address before its @', () => {
@@ -108,10 +112,21 @@ describe('DocumentByline', () => {
   })
 
   it('says when, relatively, with the exact date in the element and its tooltip', () => {
+    vi.useFakeTimers({ now: NOW, toFake: ['Date'] })
     const { container } = render(<DocumentByline {...FULL} />)
     const times = [...container.querySelectorAll('time')]
+    const updated = FULL.updatedAt ?? NOW
     expect(times.map((time) => [time.textContent, time.dateTime, time.title])).toEqual([
-      ['3 days ago', '2026-10-14', '14 Oct 2026'],
+      // When it was published is a moment, said as every other "how long ago" in the
+      // application is (`RelativeTime`), with the whole moment on hover.
+      [
+        '3 days ago',
+        updated.toISOString(),
+        new Intl.DateTimeFormat(undefined, { dateStyle: 'full', timeStyle: 'long' }).format(
+          updated,
+        ),
+      ],
+      // A review is a day in the calendar, not a moment: counted in whole days.
       ['3 months ago', '2026-07-12', '12 Jul 2026'],
       ['in 2 months', '2027-01-12', '12 Jan 2027'],
     ])

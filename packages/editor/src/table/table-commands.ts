@@ -385,6 +385,23 @@ export function moveColumn(from: number, to: number, tablePos?: number): Command
   }
 }
 
+/** Selects every cell of the table at `tablePos`, as its corner does. */
+export function selectTable(tablePos: number): Command {
+  return (state, dispatch) => {
+    const context = tableAt(state, tablePos)
+    if (context === undefined) return false
+    if (dispatch === undefined) return true
+    const { map } = context
+    const start = context.tablePos + 1
+    const first = map.map[0]
+    const last = map.map.at(-1)
+    /* v8 ignore next -- a table has a first and a last cell. */
+    if (first === undefined || last === undefined) return false
+    dispatch(state.tr.setSelection(CellSelection.create(state.doc, start + first, start + last)))
+    return true
+  }
+}
+
 /** Selects a whole row or column, as a grip does. */
 export function selectLine(kind: 'row' | 'column', index: number, tablePos: number): Command {
   return (state, dispatch) => {
@@ -443,6 +460,30 @@ function inLastCell(state: EditorState, context: TableContext): boolean {
     context.rect.right === context.map.width &&
     state.selection.empty
   )
+}
+
+/**
+ * Alt+Shift+Arrow: the neighbouring cell at once, however far into its text
+ * the caret is (the plain arrows go a character at a time), with the caret at
+ * the start of the cell it arrives in. At the table's edge the key is spent
+ * doing nothing, rather than moving the caret out of the table by surprise.
+ */
+export function goToCell(direction: 'up' | 'down' | 'left' | 'right'): Command {
+  return (state, dispatch) => {
+    const context = tableContext(state)
+    if (context === undefined) return false
+    const { rect, map } = context
+    const row = direction === 'up' ? rect.top - 1 : direction === 'down' ? rect.bottom : rect.top
+    const column =
+      direction === 'left' ? rect.left - 1 : direction === 'right' ? rect.right : rect.left
+    const inside = row >= 0 && row < map.height && column >= 0 && column < map.width
+    const offset = inside ? map.map[row * map.width + column] : undefined
+    if (offset !== undefined && dispatch !== undefined) {
+      const start = context.tablePos + 1 + offset + 1
+      dispatch(state.tr.setSelection(TextSelection.near(state.doc.resolve(start))).scrollIntoView())
+    }
+    return true
+  }
 }
 
 /** Tab: the next cell, and in the last cell a new row, as a spreadsheet does. */

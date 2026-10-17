@@ -21,6 +21,8 @@ afterEach(() => {
   })
 })
 
+const colourSchemeToggle = () => screen.getByRole('button', { name: /^Colour scheme:/u })
+
 describe('DesignPage', () => {
   it('is the shell it is showing, with every region in a landmark', () => {
     render(<DesignPage />)
@@ -218,7 +220,7 @@ describe('DesignPage theme controls', () => {
   it('follows the system scheme and the default identity until either is chosen', () => {
     render(<DesignPage />)
 
-    expect(screen.getByRole('radio', { name: 'System' })).toBeChecked()
+    expect(screen.getByRole('button', { name: 'Colour scheme: System' })).toBeInTheDocument()
     expect(screen.getAllByRole('radio', { name: 'Instrument' })[0]).toBeChecked()
     expect(document.documentElement.hasAttribute(THEME_ATTRIBUTE)).toBe(false)
     expect(document.documentElement.hasAttribute(THEME_ID_ATTRIBUTE)).toBe(false)
@@ -227,29 +229,28 @@ describe('DesignPage theme controls', () => {
   it('sets data-theme when a scheme is chosen, and remembers it', async () => {
     render(<DesignPage />)
 
-    await userEvent.click(screen.getByRole('radio', { name: 'Dark' }))
+    await userEvent.click(colourSchemeToggle())
+    await waitFor(() => {
+      expect(document.documentElement.getAttribute(THEME_ATTRIBUTE)).toBe('light')
+    })
 
+    await userEvent.click(colourSchemeToggle())
     await waitFor(() => {
       expect(document.documentElement.getAttribute(THEME_ATTRIBUTE)).toBe('dark')
     })
     expect(globalThis.localStorage.getItem('theme-preference')).toBe('dark')
-
-    await userEvent.click(screen.getByRole('radio', { name: 'Light' }))
-
-    await waitFor(() => {
-      expect(document.documentElement.getAttribute(THEME_ATTRIBUTE)).toBe('light')
-    })
   })
 
   it('returns to following the system scheme', async () => {
     render(<DesignPage />)
 
-    await userEvent.click(screen.getByRole('radio', { name: 'Dark' }))
+    await userEvent.click(colourSchemeToggle())
+    await userEvent.click(colourSchemeToggle())
     await waitFor(() => {
       expect(document.documentElement.getAttribute(THEME_ATTRIBUTE)).toBe('dark')
     })
 
-    await userEvent.click(screen.getByRole('radio', { name: 'System' }))
+    await userEvent.click(colourSchemeToggle())
 
     await waitFor(() => {
       expect(document.documentElement.hasAttribute(THEME_ATTRIBUTE)).toBe(false)
@@ -261,7 +262,7 @@ describe('DesignPage theme controls', () => {
 
     render(<DesignPage />)
 
-    expect(screen.getByRole('radio', { name: 'Dark' })).toBeChecked()
+    expect(screen.getByRole('button', { name: 'Colour scheme: Dark' })).toBeInTheDocument()
   })
 
   it('sets data-theme-id when another identity is chosen', async () => {
@@ -308,14 +309,5 @@ describe('DesignPage theme controls', () => {
     await waitFor(() => {
       expect(document.documentElement.hasAttribute(THEME_ID_ATTRIBUTE)).toBe(false)
     })
-  })
-
-  it('moves between scheme options with the arrow keys', async () => {
-    render(<DesignPage />)
-
-    screen.getByRole('radio', { name: 'System' }).focus()
-    await userEvent.keyboard('{ArrowRight}')
-
-    expect(screen.getByRole('radio', { name: 'Light' })).toBeChecked()
   })
 })

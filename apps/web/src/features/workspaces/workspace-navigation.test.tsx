@@ -430,3 +430,50 @@ describe('WorkspaceTree loading a slice at a time', () => {
     expect(asked.at(-1)).toContain('parent=doc-2')
   })
 })
+
+describe('WorkspaceTree when a slice cannot be had', () => {
+  it('says the documents could not be loaded, and loads them when asked to try again', async () => {
+    // A document no other test opens: what is opened by hand is remembered for the session.
+    let attempts = 0
+    renderTree(
+      {},
+      {
+        'GET /api/workspaces/{id}/tree': () =>
+          jsonResponse(200, {
+            collections: [
+              {
+                id: 'col-guides',
+                name: 'Guides',
+                slug: 'guides',
+                documentCount: 1,
+                documentsOffset: 0,
+                total: 3,
+                documents: [{ ...treeNode('doc-9', 'Policies'), childCount: 2, childrenOffset: 0 }],
+              },
+            ],
+          }),
+        'GET /api/workspaces/{id}/tree/children': () => {
+          attempts += 1
+          return attempts === 1
+            ? jsonResponse(503, { code: 'unavailable', message: 'Try later' })
+            : jsonResponse(200, {
+                total: 2,
+                offset: 0,
+                documents: [
+                  { ...treeNode('doc-4', 'Benefits'), childCount: 0, childrenOffset: 0 },
+                  { ...treeNode('doc-5', 'Leave'), childCount: 0, childrenOffset: 0 },
+                ],
+              })
+        },
+      },
+    )
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Expand Policies' }))
+    expect(await screen.findByText('Couldn’t load the documents in Policies')).toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Try again, in Policies' }))
+    expect(await screen.findByRole('link', { name: 'Leave' })).toBeInTheDocument()
+    expect(attempts).toBe(2)
+  })
+})
+

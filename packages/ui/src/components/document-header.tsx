@@ -6,6 +6,7 @@ import { tv } from '../lib/class-names.ts'
 import { PlainLink, type LinkComponent } from '../lib/link.tsx'
 import { useThemeVariants } from '../theme/theme-variants.tsx'
 import { Breadcrumb, type BreadcrumbItem } from './breadcrumb.tsx'
+import { RelativeTime } from './relative-time.tsx'
 
 /**
  * The publication state is a `data-state` attribute on the flag rather than a
@@ -100,7 +101,7 @@ export interface DocumentStatus {
   readonly path: readonly BreadcrumbItem[]
   /** The published revision, as a reader sees it: `v12`. */
   readonly version?: string | undefined
-  /** The revision date, as `YYYY-MM-DD`, for a `<time datetime>`. */
+  /** When the document was last changed, as an ISO date or timestamp: said as how long ago, in full on hover. */
   readonly updated?: string | undefined
   readonly owner?: string | undefined
   readonly state?: DocumentState | undefined
@@ -234,9 +235,7 @@ export function DocumentHeader({
               <dd>
                 {status.version}
                 {status.version === undefined || status.updated === undefined ? undefined : ' · '}
-                {status.updated === undefined ? undefined : (
-                  <time dateTime={status.updated}>{status.updated}</time>
-                )}
+                {status.updated === undefined ? undefined : <RelativeTime value={status.updated} />}
               </dd>
             </div>
           )}

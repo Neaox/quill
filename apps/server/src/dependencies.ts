@@ -101,7 +101,7 @@ export interface AppDependencies {
    */
   readonly publicSiteCache: PublicSiteCache
   /**
-   * The subtrees child pages lists are drawn from (ADR-054), invalidated by
+   * The subtrees child pages lists are drawn from (ADR-056), invalidated by
    * the outbox. Omitted, every list reads its subtree afresh.
    */
   readonly childPagesCache?: ServerChildPagesCache | undefined

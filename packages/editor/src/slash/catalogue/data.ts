@@ -2,8 +2,16 @@ import { BADGE_SHORTHANDS } from '@quill/markdown'
 import type { BadgeTone } from '@quill/markdown'
 import { BadgeIcon, EmojiIcon, LabelIcon, TableIcon } from '@quill/ui'
 
+import { emojiCatalogue } from '../../emoji/emoji-catalogue.ts'
+import type { EmojiEntry } from '../../emoji/emoji-catalogue.ts'
 import { createTable } from '../../schema/tables.ts'
-import { insertBlock, insertInline, insertText, textDirective } from '../slash-commands.ts'
+import {
+  insertBlock,
+  insertInline,
+  insertShortcode,
+  insertText,
+  textDirective,
+} from '../slash-commands.ts'
 import { commandItem, pickerItem } from '../slash-item.ts'
 import type {
   SlashContribution,
@@ -75,28 +83,25 @@ function labelItem(labels: readonly string[]): SlashItem {
   )
 }
 
+/** An emoji as the picker lists it: a custom one by its shortcode, a standard one by what it is. */
+function pickerOption(entry: EmojiEntry): SlashPickerOption {
+  const { name, names, description } = entry
+  if ('image' in entry) return { id: name, label: `:${name}:`, description, image: entry.image }
+  return {
+    id: name,
+    label: description.charAt(0).toUpperCase() + description.slice(1),
+    description: names.map((other) => `:${other}:`).join(' '),
+    keywords: names,
+    glyph: entry.glyph,
+  }
+}
+
 async function emojiOptions(
   environment: SlashEnvironment,
   query: string,
 ): Promise<readonly SlashPickerOption[]> {
-  const { standardEmojiList } = await import('@quill/markdown/emoji-shortcodes')
-  const custom = [...(environment.customEmoji ?? new Map())].map(([name, image]) => ({
-    id: name,
-    label: `:${name}:`,
-    description: 'Your organisation’s',
-    image: image.src,
-  }))
-  const standard = standardEmojiList().map((emoji) => {
-    const [shortcode = ''] = emoji.names
-    return {
-      id: shortcode,
-      label: emoji.description.charAt(0).toUpperCase() + emoji.description.slice(1),
-      description: emoji.names.map((name) => `:${name}:`).join(' '),
-      keywords: emoji.names,
-      glyph: emoji.character,
-    }
-  })
-  return rankMatches(query, [...custom, ...standard])
+  const catalogue = await emojiCatalogue(environment.customEmoji ?? new Map())
+  return rankMatches(query, catalogue.map(pickerOption))
     .slice(0, PICKER_LIMIT)
     .map(({ item }) => item)
 }
@@ -155,7 +160,7 @@ export const dataItems: SlashContribution = {
         placeholder: 'Search emoji',
         empty: (query) => `No emoji matches “${query}”`,
         source: { kind: 'search', search: (query) => emojiOptions(environment, query) },
-        choose: (option) => insertText(`:${option.id}:`),
+        choose: (option) => insertShortcode(option.id),
       },
       (place) => insertText(':')(place.state),
     ),

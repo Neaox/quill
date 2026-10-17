@@ -1,10 +1,25 @@
-import { ChevronDownIcon, MenuButton, isThemePreference, tv, type MenuSection } from '@quill/ui'
+import {
+  ChevronDownIcon,
+  MenuButton,
+  SettingsIcon,
+  SignOutIcon,
+  UserIcon,
+  UsersIcon,
+  WorkspacesIcon,
+  tv,
+  type MenuSection,
+} from '@quill/ui'
 
 import { useMe, useSignOut } from '../../lib/api/index.ts'
 import { NotificationsBell } from '../notifications/notifications-bell.tsx'
 import { RouterLink } from '../../lib/routing/router-link.tsx'
-import { ORGANISATION_DESTINATIONS } from '../admin/organisation-destinations.ts'
-import { COLOUR_SCHEMES } from '../theme/colour-schemes.ts'
+import {
+  ORGANISATION_PEOPLE,
+  ORGANISATION_SETTINGS_HOME,
+  ORGANISATION_STRUCTURE,
+} from '../admin/organisation-destinations.ts'
+import { colourSchemeLabel, nextColourScheme } from '../theme/colour-schemes.ts'
+import { SCHEME_ICONS } from '../theme/theme-toggle.tsx'
 import { useThemePreference } from '../theme/use-theme-preference.ts'
 
 export const signedInHeaderStyles = tv({
@@ -21,6 +36,13 @@ export const signedInHeaderStyles = tv({
      */
     name: 'hidden max-w-40 truncate font-medium sm:block',
     chevron: 'hidden size-3.5 shrink-0 text-muted sm:block',
+    // Who is signed in, at the top of the panel: the initials larger, the name and email beside them.
+    who: 'flex min-w-0 items-center gap-3',
+    whoAvatar: [
+      'flex size-9 shrink-0 items-center justify-center rounded-full bg-accent-subtle',
+      'text-xs font-semibold text-foreground ring-1 ring-border',
+    ],
+    whoText: 'flex min-w-0 flex-col',
     headerName: 'truncate text-sm font-medium text-foreground',
     headerEmail: 'truncate text-xs text-muted',
   },
@@ -44,16 +66,19 @@ export function initialsOf(name: string): string {
  * The person menu: who is signed in, and everything that belongs to them
  * rather than to the page (`docs/design/chrome.md`, "Reaching settings").
  *
- * - **Appearance**, the person's own colour scheme (ADR-028, layer 3). It
- *   lives here rather than as a switch in every bar because it is set once
- *   and then left alone, and because a phone-width bar has no room for it —
- *   in the menu it is reachable at every width.
- * - **Organisation**, for an instance administrator only: the settings
- *   screens and the unit tree. The same `isInstanceAdmin` the `/admin`
- *   routes gate on, so nobody is offered a page that would answer not-found.
+ * - **Who**, first: the initials, the name and the email, so a person with
+ *   two accounts can tell which one this is.
  * - **Preferences**, the person's own settings that follow them to every
- *   device (ADR-034), such as how animated images play (ADR-047). Beside
- *   Sign out, where people look for their account's settings.
+ *   device (ADR-034), such as how animated images play (ADR-047), and
+ *   **Appearance**, their colour scheme (ADR-028, layer 3): one row that goes
+ *   round System, Light and Dark each time it is pressed, with the scheme it
+ *   is on beside it. It is set once and left alone, so it lives here, and the
+ *   menu stays open so the change can be seen and pressed again.
+ * - **Organisation**, for an instance administrator only, in three items:
+ *   its settings, whose screens have a navigation of their own, its units and
+ *   workspaces, and its people and groups. The same `isInstanceAdmin` the `/admin` routes gate on, so
+ *   nobody is offered a page that would answer not-found. The palette and the
+ *   home page still list each screen by name.
  * - **Sign out**, last, where every product puts it.
  *
  * Rendered only inside a signed-in surface, where `me` is already loaded by
@@ -70,15 +95,22 @@ export function SignedInHeader() {
 
   const sections: readonly MenuSection[] = [
     {
-      id: 'appearance',
+      id: 'person',
       entries: [
         {
-          kind: 'choice',
+          kind: 'link',
+          label: 'Preferences',
+          icon: <UserIcon />,
+          target: { to: '/preferences' },
+        },
+        {
+          kind: 'action',
           label: 'Appearance',
-          value: preference,
-          options: COLOUR_SCHEMES,
-          onValueChange: (value) => {
-            if (isThemePreference(value)) setPreference(value)
+          icon: SCHEME_ICONS[preference],
+          hint: colourSchemeLabel(preference),
+          keepOpen: true,
+          onSelect: () => {
+            setPreference(nextColourScheme(preference))
           },
         },
       ],
@@ -87,16 +119,27 @@ export function SignedInHeader() {
       id: 'organisation',
       label: 'Organisation',
       entries: isInstanceAdmin
-        ? ORGANISATION_DESTINATIONS.map((destination) => ({
-            kind: 'link' as const,
-            label: destination.label,
-            target: { to: destination.to },
-          }))
+        ? [
+            {
+              kind: 'link' as const,
+              label: 'Organisation settings',
+              icon: <SettingsIcon />,
+              target: { to: ORGANISATION_SETTINGS_HOME },
+            },
+            {
+              kind: 'link' as const,
+              label: 'Units and workspaces',
+              icon: <WorkspacesIcon />,
+              target: { to: ORGANISATION_STRUCTURE },
+            },
+            {
+              kind: 'link' as const,
+              label: 'People and groups',
+              icon: <UsersIcon />,
+              target: { to: ORGANISATION_PEOPLE },
+            },
+          ]
         : [],
-    },
-    {
-      id: 'person',
-      entries: [{ kind: 'link', label: 'Preferences', target: { to: '/preferences' } }],
     },
     {
       id: 'session',
@@ -104,6 +147,7 @@ export function SignedInHeader() {
         {
           kind: 'action',
           label: 'Sign out',
+          icon: <SignOutIcon />,
           disabled: signOut.isPending,
           onSelect: () => {
             signOut.mutate()
@@ -120,10 +164,15 @@ export function SignedInHeader() {
         label={`Account menu for ${displayName}`}
         linkComponent={RouterLink}
         header={
-          <>
-            <span className={styles.headerName()}>{displayName}</span>
-            <span className={styles.headerEmail()}>{email}</span>
-          </>
+          <span className={styles.who()}>
+            <span aria-hidden="true" className={styles.whoAvatar()}>
+              {initialsOf(displayName)}
+            </span>
+            <span className={styles.whoText()}>
+              <span className={styles.headerName()}>{displayName}</span>
+              <span className={styles.headerEmail()}>{email}</span>
+            </span>
+          </span>
         }
         sections={sections}
       >

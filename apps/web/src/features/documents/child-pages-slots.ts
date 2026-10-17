@@ -3,7 +3,7 @@ import type { ChildPagesQuery } from '@quill/markdown/child-pages-slot'
 import { buttonClassName } from '@quill/ui'
 
 /**
- * Fills the child pages slots of a mounted body (ADR-032, ADR-054).
+ * Fills the child pages slots of a mounted body (ADR-032, ADR-056).
  *
  * The body is cached for every reader (ADR-031), so a `::children` block
  * arrives as a slot holding a fallback line. This asks the server for each

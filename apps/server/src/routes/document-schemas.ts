@@ -159,7 +159,7 @@ export const FactsSchema = Type.Object({
   lastReviewed: Type.Optional(Type.String({ format: 'date' })),
 })
 
-/** What an outsider is shown: no people, no internal review cadence (ADR-055). */
+/** What an outsider is shown: no people, no internal review cadence (ADR-057). */
 export const PublicFactsSchema = Type.Object({
   /** A status from before the lifecycle. Kept for compatibility (ADR-033) and shown by nothing. */
   status: Type.Optional(DocumentStatusSchema),
@@ -203,6 +203,11 @@ export const EnvelopeSchema = Type.Object({
    * publication state. Only ever true for someone who may edit.
    */
   unpublishedChanges: Type.Boolean(),
+  /**
+   * The draft waiting to be published, for somebody who may edit: saved since the last
+   * publish, or the draft of a document never published. Null for everybody else.
+   */
+  draft: Type.Union([Type.Object({ savedAt: Type.String({ format: 'date-time' }) }), Type.Null()]),
 })
 
 /** What the publish summary states plainly and publishes anyway (ADR-029). */
@@ -266,7 +271,42 @@ export const CompareQuerySchema = Type.Object({
   from: Type.Optional(RevisionSchema),
   /** A revision, or `draft`: the document as its next publish would write it. */
   to: Type.Union([RevisionSchema, Type.Literal('draft')]),
+  /** Draw each change on its own too, and say which can be put back in the draft. */
+  patches: Type.Optional(Type.Boolean()),
 })
+
+/** Some changes since a revision, to be put back in the draft the caller is looking at. */
+export const RevertDraftChangesBodySchema = Type.Object({
+  /** The revision the changes are since; omitted for a document never published. */
+  from: Type.Optional(RevisionSchema),
+  /** The version of the draft the caller is looking at. */
+  draftVersion: Type.Integer({ minimum: 0 }),
+  /** The ids the comparison named them by. */
+  changes: Type.Array(Type.String({ pattern: '^c\\d{1,6}$' }), { minItems: 1, maxItems: 500 }),
+})
+
+/** The draft as it would be with those changes put back: not saved, for the editor to apply. */
+export const RevertedDraftSchema = Type.Object({
+  draftVersion: Type.Integer(),
+  ast: Type.Record(Type.String(), Type.Unknown()),
+})
+
+/**
+ * The draft with those changes put back and saved: its new version, and what it held
+ * before, which undoing the revert sends back.
+ */
+export const PutBackDraftSchema = Type.Object({
+  draftVersion: Type.Integer(),
+  previous: Type.Record(Type.String(), Type.Unknown()),
+})
+
+/** Undoing a revert: the draft as it was, replacing the version the revert made. */
+export const UndoRevertBodySchema = Type.Object({
+  draftVersion: Type.Integer({ minimum: 0 }),
+  ast: Type.Record(Type.String(), Type.Unknown()),
+})
+
+export const UndoneRevertSchema = Type.Object({ draftVersion: Type.Integer() })
 
 const ChangeKindSchema = Type.Union([
   Type.Literal('added'),
@@ -309,6 +349,19 @@ export const ComparisonSchema = Type.Object({
       wordsAdded: Type.Integer(),
       wordsRemoved: Type.Integer(),
       section: Type.Optional(Type.Object({ id: Type.String(), title: Type.String() })),
+      /** The change drawn on its own; only with `patches`. */
+      html: Type.Optional(Type.String()),
+      /** Whether it can be put back in the draft; only in a comparison with the draft. */
+      revertible: Type.Optional(Type.Boolean()),
+      /** Who made it, when the draft's record knows; only in a comparison with the draft. */
+      author: Type.Optional(
+        Type.Object({
+          id: Type.String(),
+          /** Absent when the account is gone. */
+          name: Type.Optional(Type.String()),
+          at: Type.String({ format: 'date-time' }),
+        }),
+      ),
     }),
   ),
   sections: Type.Array(
@@ -576,6 +629,7 @@ export function envelopeResponse(
     })),
     facts: factsResponse(envelope.facts, replacement),
     unpublishedChanges: envelope.unpublishedChanges,
+    draft: envelope.draft === null ? null : { savedAt: envelope.draft.savedAt.toISOString() },
   }
 }
 
@@ -596,9 +650,20 @@ export function comparisonResponse(content: ComparedContent): Static<typeof Comp
   return {
     html: content.html,
     summary: { ...content.summary },
-    changes: content.changes.map(({ section, ...change }) => ({
+    changes: content.changes.map(({ section, html, revertible, author, ...change }) => ({
       ...change,
+      ...(author === undefined
+        ? {}
+        : {
+            author: {
+              id: author.userId,
+              at: author.at,
+              ...(author.name === undefined ? {} : { name: author.name }),
+            },
+          }),
       ...(section === undefined ? {} : { section: { ...section } }),
+      ...(html === undefined ? {} : { html }),
+      ...(revertible === undefined ? {} : { revertible }),
     })),
     sections: content.sections.map((section) => ({ ...section })),
     properties: content.properties.map(({ name, before, after }) => ({

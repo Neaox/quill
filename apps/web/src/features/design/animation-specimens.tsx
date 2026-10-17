@@ -30,7 +30,7 @@ export const ANIMATION_SPECIMEN: TableSpecimen = {
   label: 'Animated emoji',
   note: 'plays briefly when seen, again on hover, focus or a tap, and rests on its still',
   markdown: 'Deploying :spinner: now. Hover the spinner, or tap it, to play it again.',
-  html: `<article><p>Deploying <picture class="emoji" data-frames="8" data-loop-ms="960"><source srcset="${spinnerStill}" media="(prefers-reduced-motion: reduce)"><img class="emoji" src="${spinner}" alt=":spinner:" title=":spinner:" width="20" height="20"></picture> now. Hover the spinner, or tap it, to play it again.</p></article>`,
+  html: `<article><p>Deploying <picture class="emoji" data-frames="8" data-loop-ms="960"><source srcset="${spinnerStill}" media="(prefers-reduced-motion: reduce)"><img class="emoji" src="${spinner}" alt="spinner" title=":spinner:" width="20" height="20"></picture> now. Hover the spinner, or tap it, to play it again.</p></article>`,
 }
 
 const stillStyles = tv({

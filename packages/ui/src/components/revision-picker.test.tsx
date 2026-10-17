@@ -25,10 +25,13 @@ function Harness({ initial = 'v2' }: { readonly initial?: string }) {
   return <RevisionPicker label="From" value={value} choices={CHOICES} onValueChange={setValue} />
 }
 
+const said = (iso: string): string =>
+  new Intl.DateTimeFormat(undefined, { dateStyle: 'medium' }).format(new Date(iso))
+
 describe('RevisionPicker', () => {
   it('names the side and the version it is set to', async () => {
     const { container } = render(<Harness />)
-    const trigger = screen.getByRole('button', { name: 'From: v2, 2026-09-21' })
+    const trigger = screen.getByRole('button', { name: `From: v2, ${said('2026-09-21')}` })
     expect(trigger).toHaveAttribute('aria-haspopup', 'menu')
     expect(trigger).toHaveAttribute('aria-expanded', 'false')
     await expectNoAccessibilityViolations(container)
@@ -44,9 +47,9 @@ describe('RevisionPicker', () => {
     expect(options[2]).toHaveAttribute('aria-checked', 'true')
     expect(within(options[1] ?? menu).getByText(/Ada · Tightened the steps/)).toBeInTheDocument()
     expect(within(options[1] ?? menu).getByText('Latest')).toBeInTheDocument()
-    expect(within(options[3] ?? menu).getByText('2026-09-01')).toHaveAttribute(
+    expect(within(options[3] ?? menu).getByRole('time')).toHaveAttribute(
       'datetime',
-      '2026-09-01',
+      new Date('2026-09-01').toISOString(),
     )
     await expectNoAccessibilityViolations(menu)
   })
@@ -101,6 +104,18 @@ describe('RevisionPicker', () => {
     await userEvent.click(trigger)
     const menu = await screen.findByRole('menu', { name: 'From' })
     expect(within(menu).queryByRole('menuitemradio', { checked: true })).not.toBeInTheDocument()
+  })
+
+  it('names a version by its label alone when its date is not one', () => {
+    render(
+      <RevisionPicker
+        label="To"
+        value="odd"
+        choices={[{ id: 'odd', label: 'v9', at: 'not a date' }]}
+        onValueChange={() => undefined}
+      />,
+    )
+    expect(screen.getByRole('button', { name: 'To: v9' })).toBeInTheDocument()
   })
 
   it('names a draft, which has no publish date, by its label alone', () => {

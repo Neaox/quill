@@ -1,6 +1,7 @@
-import { getRouteApi, Link } from '@tanstack/react-router'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { getRouteApi, Link, useRouter } from '@tanstack/react-router'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
+import { BRAND } from '@quill/brand'
 import '@quill/ui/styles/present.css'
 import {
   Button,
@@ -25,12 +26,23 @@ import {
 } from '../../../lib/api/index.ts'
 import { useFollowLink } from '../../../lib/routing/use-follow-link.ts'
 import { DocumentBody } from '../document-body.tsx'
-import { commandForKey, presentReducer, stepFromSearch, type StepEvent } from './present-state.ts'
+import {
+  commandForKey,
+  presentReducer,
+  stepFromSearch,
+  type SlideEntry,
+  type StepEvent,
+} from './present-state.ts'
 import { splitSteps } from './present-steps.ts'
+import { enterSlide, scrollSlide, slideScroller } from './slide-scroll.ts'
 import { notesForSteps } from './presenter-notes.ts'
-import { PresenterNotesPanel } from './presenter-notes-panel.tsx'
+import { targetOwnsKey } from './key-owner.ts'
+import { PresenterView } from './presenter-view.tsx'
 import { useFullscreen } from './use-fullscreen.ts'
 import { useIdle } from './use-idle.ts'
+import { useWheelStep } from './use-wheel-step.ts'
+import { createDetailsStore, useShareDetails } from './shared-details.ts'
+import { usePresentSync } from './use-present-sync.ts'
 
 const routeApi = getRouteApi('/_authenticated/w/$workspaceSlug_/d/$documentId/present')
 
@@ -88,7 +100,9 @@ export const presentStyles = tv({
  */
 export function PresentRoute() {
   const { workspaceSlug, documentId } = routeApi.useParams()
-  const { step } = routeApi.useSearch()
+  const { step, view } = routeApi.useSearch()
+  const isPresenter = view === 'presenter'
+  const router = useRouter()
   const navigate = routeApi.useNavigate()
 
   // Both were awaited by the route's loader, so neither has a pending state
@@ -101,12 +115,13 @@ export function PresentRoute() {
   const loadLinks = useDocumentLinksLoader()
 
   const [goToOpen, setGoToOpen] = useState(false)
-  const [notesOpen, setNotesOpen] = useState(false)
-  // Notes cost a request, and most presentations never ask for them, so the
-  // published source is fetched the first time somebody presses `n` and kept
-  // from then on (it is immutable for a revision, so once is enough).
-  const [notesAsked, setNotesAsked] = useState(false)
-  const notesQuery = usePublishedContent(notesAsked ? documentId : undefined)
+  // Which end of a slide the next one shown starts at: the one the person arrived from.
+  const arriving = useRef<SlideEntry>('top')
+  // The notes are the presenter window's alone (ADR-050): they cost a request, and the window the
+  // room sees never asks for them, so it never has them to draw.
+  const notesQuery = usePublishedContent(isPresenter ? documentId : undefined)
+  // The browser refused the second window; the presenter is told, with what to do about it.
+  const [blocked, setBlocked] = useState(false)
 
   const idle = useIdle(IDLE_AFTER_MS)
 
@@ -128,19 +143,102 @@ export function PresentRoute() {
   const index = stepFromSearch(step, count)
   const current = steps[index]
 
-  const goTo = useCallback(
-    (next: number) => {
-      void navigate({ to: '.', search: { step: next + 1 }, replace: true })
+  // Moves this window, and only this one: what the other window told it to do ends here.
+  const moveTo = useCallback(
+    (next: number, entry: SlideEntry = 'top') => {
+      arriving.current = entry
+      void navigate({
+        to: '.',
+        search: (previous) => ({ ...previous, step: next + 1 }),
+        replace: true,
+        // Where the new slide starts is this route's to say (`enterSlide`), not the router's, which
+        // would put the page back at its top after the slide had been placed.
+        resetScroll: false,
+      })
     },
     [navigate],
   )
 
-  const dispatch = useCallback(
-    (event: StepEvent) => {
-      const next = presentReducer({ index, count }, event)
-      if (next.index !== index) goTo(next.index)
+  // Whether the room's screen is black. Both windows have it: the presenter blanks the room from
+  // either, and the audience window is the one that draws it (ADR-050).
+  const [blank, setBlank] = useState(false)
+
+  // What is open in each slide, kept here so it survives a slide being drawn again and can be told
+  // to a window that opens late.
+  const [details] = useState(createDetailsStore)
+
+  const sync = usePresentSync({
+    documentId,
+    role: isPresenter ? 'presenter' : 'audience',
+    revision,
+    index,
+    blank,
+    onFollow: moveTo,
+    onBlank: setBlank,
+    onDetails: details.remember,
+    openedDetails: details.remembered,
+    onClosePresenter: () => {
+      window.close()
     },
-    [index, count, goTo],
+  })
+
+  // What a person opens or folds in one window is opened or folded in the other.
+  useShareDetails(details, sync.announceDetails)
+
+  // Moves this window and tells the other, which follows it.
+  const goTo = useCallback(
+    (next: number, entry: SlideEntry = 'top') => {
+      moveTo(next, entry)
+      sync.announce(next, entry)
+    },
+    [moveTo, sync],
+  )
+
+  /** Blanks the room's screen, or brings it back, here and in the other window. */
+  const blankTo = useCallback(
+    (next: boolean) => {
+      setBlank(next)
+      sync.announceBlank(next)
+    },
+    [sync],
+  )
+
+  const dispatch = useCallback(
+    (event: StepEvent, entry: SlideEntry = 'top') => {
+      // Going on from a black screen brings the room back to the section it was on, and goes on.
+      if (blank) blankTo(false)
+      const next = presentReducer({ index, count }, event)
+      if (next.index !== index) goTo(next.index, entry)
+    },
+    [index, count, goTo, blank, blankTo],
+  )
+
+  // The scroll wheel is a remote too: a turn forward is the next section, unless something under
+  // the pointer (the notes, a tall section) still has room to scroll. Going back arrives at the
+  // foot of the previous section, so scrolling on up reads it from the end.
+  useWheelStep((direction) => {
+    dispatch({ type: direction }, direction === 'previous' ? 'bottom' : 'top')
+  }, !goToOpen)
+
+  /** Opens the other window of this presentation, or brings it forward when it is already there. */
+  const openWindow = useCallback(
+    (role: 'audience' | 'presenter') => {
+      const href = router.buildLocation({
+        to: '/w/$workspaceSlug/d/$documentId/present',
+        params: { workspaceSlug, documentId },
+        search: {
+          step: index + 1,
+          ...(role === 'presenter' ? { view: 'presenter' as const } : {}),
+        },
+      }).href
+      const opened = window.open(
+        href,
+        `${BRAND.slug}-present-${role}-${documentId}`,
+        role === 'presenter' ? 'popup,width=1280,height=800' : undefined,
+      )
+      setBlocked(opened === null)
+    },
+    [router, workspaceSlug, documentId, index],
   )
 
   const leave = useCallback(() => {
@@ -166,11 +264,6 @@ export function PresentRoute() {
    */
   const fullscreen = useFullscreen({ onBrowserExit: leave })
 
-  const toggleNotes = useCallback(() => {
-    setNotesAsked(true)
-    setNotesOpen((open) => !open)
-  }, [])
-
   /* Synchronises with the window's keyboard. A presentation is driven from a
      remote or from the keyboard with nothing in particular focused, so the
      window is where the keys arrive; while the go-to overlay is open it owns
@@ -178,24 +271,45 @@ export function PresentRoute() {
   useEffect(() => {
     if (goToOpen) return undefined
     const onKeyDown = (event: KeyboardEvent): void => {
+      // A key that is the focused control's, or the picture viewer's, is not a step.
+      if (targetOwnsKey(event.target, event.key)) return
       const command = commandForKey(event)
       if (command === undefined) return
       event.preventDefault()
       if (command.kind === 'step') dispatch(command.event)
-      else if (command.kind === 'exit') leave()
-      else if (command.kind === 'go-to') setGoToOpen(true)
-      else toggleNotes()
+      else if (command.kind === 'scroll') {
+        // Down and up are one surface made of slides: scroll this one while there is more of it,
+        // then arrive at the top of the next, or the foot of the previous.
+        const forward = command.direction === 'forward'
+        const scrolled = scrollSlide(slideScroller(), command.direction, command.distance)
+        // A held key keeps scrolling, but never runs on through the deck.
+        if (!scrolled && !command.repeat) {
+          dispatch({ type: forward ? 'next' : 'previous' }, forward ? 'top' : 'bottom')
+        }
+      } else if (command.kind === 'blank') blankTo(!blank)
+      else if (command.kind === 'exit') {
+        // Escape first brings a black screen back, as it does in every presenting tool.
+        if (blank) blankTo(false)
+        else if (isPresenter) window.close()
+        else leave()
+      } else if (command.kind === 'go-to') setGoToOpen(true)
+      // The presenter window is where the presenter view already is.
+      else if (!isPresenter) openWindow('presenter')
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [goToOpen, dispatch, leave, toggleNotes])
+  }, [goToOpen, dispatch, leave, openWindow, isPresenter, blank, blankTo])
 
   /* Synchronises with the DOM's focus, which React does not render: a new
      step has to put the keyboard inside the section it just showed, or the
      next Tab starts from wherever the last one left off. */
   useEffect(() => {
-    if (current === undefined) return
-    globalThis.document.getElementById(`present-step-${index}`)?.focus()
+    if (current === undefined) return undefined
+    // Without scrolling to it: where the slide starts is what the person arrived from, said next.
+    globalThis.document.getElementById(`present-step-${index}`)?.focus({ preventScroll: true })
+    const stopWatching = enterSlide(arriving.current)
+    arriving.current = 'top'
+    return stopWatching
   }, [current, index])
 
   if (rendered.isError) {
@@ -231,6 +345,36 @@ export function PresentRoute() {
     )
   }
 
+  if (isPresenter) {
+    return (
+      <PresenterView
+        documentTitle={title}
+        workspaceSlug={workspaceSlug}
+        documentId={documentId}
+        steps={steps}
+        index={index}
+        onSlideDrawn={details.draw}
+        notes={notes}
+        notesPending={notesQuery.isPending}
+        peer={sync.peer}
+        blank={blank}
+        onToggleBlank={() => {
+          blankTo(!blank)
+        }}
+        goToOpen={goToOpen}
+        onStep={(event) => {
+          dispatch({ type: event })
+        }}
+        onGoTo={goTo}
+        onToggleGoTo={setGoToOpen}
+        onOpenAudience={() => {
+          openWindow('audience')
+        }}
+        blocked={blocked}
+      />
+    )
+  }
+
   return (
     <div data-surface="present" className={styles.root()}>
       <PresentProgress value={index + 1} max={count} />
@@ -241,6 +385,7 @@ export function PresentRoute() {
             <section
               key={`${revision}-${section.id}`}
               id={`present-step-${position}`}
+              data-step={position}
               tabIndex={-1}
               aria-label={section.title}
               hidden={position !== index}
@@ -249,6 +394,7 @@ export function PresentRoute() {
               <DocumentBody
                 html={section.html}
                 label={section.title}
+                onMounted={details.draw}
                 onFollowLink={followLink}
                 loadLinks={loadLinks}
               />
@@ -262,23 +408,15 @@ export function PresentRoute() {
         {`Section ${index + 1} of ${count}: ${current?.title ?? ''}`}
       </p>
 
-      <PresentRail items={steps} currentIndex={index} onSelect={goTo} />
+      <PresentRail
+        items={steps}
+        currentIndex={index}
+        onSelect={(selected) => {
+          goTo(selected)
+        }}
+      />
 
-      {notesOpen ? (
-        <PresenterNotesPanel
-          position={index + 1}
-          sectionTitle={current?.title ?? ''}
-          notes={current === undefined ? undefined : notes[current.id]}
-          isPending={notesQuery.isPending}
-          onClose={toggleNotes}
-        />
-      ) : undefined}
-
-      <PresentBar
-        title={title}
-        position={`${index + 1} of ${count}`}
-        idle={idle && !goToOpen && !notesOpen}
-      >
+      <PresentBar title={title} position={`${index + 1} of ${count}`} idle={idle && !goToOpen}>
         <PresentHint
           keys={
             <>
@@ -289,8 +427,38 @@ export function PresentRoute() {
         >
           Sections
         </PresentHint>
-        <PresentHint keys={<PresentKey>N</PresentKey>}>Notes</PresentHint>
+        <PresentHint keys={<PresentKey>P</PresentKey>}>Presenter view</PresentHint>
         <PresentHint keys={<PresentKey>G</PresentKey>}>Go to</PresentHint>
+        <PresentHint keys={<PresentKey>B</PresentKey>}>Black screen</PresentHint>
+        {/* Which way this is being presented, said and chosen in one place (ADR-050). */}
+        <div role="group" aria-label="Presenting from" className="inline-flex items-center gap-1">
+          <Button
+            size="sm"
+            variant={sync.peer === 'alone' ? 'secondary' : 'ghost'}
+            aria-pressed={sync.peer === 'alone'}
+            onClick={sync.closePresenter}
+          >
+            Single window
+          </Button>
+          <Button
+            size="sm"
+            variant={sync.peer === 'alone' ? 'ghost' : 'secondary'}
+            aria-pressed={sync.peer !== 'alone'}
+            onClick={() => {
+              openWindow('presenter')
+            }}
+          >
+            {sync.peer === 'alone' ? 'Presenter view' : 'Presenter view open'}
+          </Button>
+        </div>
+        {blocked ? (
+          <span role="alert" className="text-2xs text-warning">
+            Your browser blocked the window. Allow pop-ups for this site.
+          </span>
+        ) : undefined}
+        {sync.peer === 'other-revision' ? (
+          <span className="text-2xs text-warning">The presenter window shows another version.</span>
+        ) : undefined}
         {fullscreen.supported ? (
           <Button
             size="sm"
@@ -310,6 +478,21 @@ export function PresentRoute() {
           Exit
         </Link>
       </PresentBar>
+
+      {/* Said in words for anyone who cannot see the room's screen go dark (or come back). */}
+      <p role="status" className="sr-only">
+        {blank ? 'Screen blanked. Press B, Escape or any key to bring it back.' : ''}
+      </p>
+      {blank ? (
+        <button
+          type="button"
+          aria-label="Bring the screen back"
+          className="fixed inset-0 z-50 cursor-none bg-black"
+          onClick={() => {
+            blankTo(false)
+          }}
+        />
+      ) : undefined}
 
       <PresentGoTo
         open={goToOpen}

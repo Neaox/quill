@@ -40,7 +40,17 @@ import {
 export const treeStyles = tv({
   slots: {
     root: 'flex flex-col gap-5 py-3',
-    sectionHeader: 'group/section flex min-h-7 items-center justify-between gap-2 pe-1 pb-0.5',
+    /*
+     * In the sidebar a collection's heading stays at the top of the scrolling
+     * region while its documents pass beneath it, on the page's own ground so
+     * they do not show through: a reader deep in a long list still knows which
+     * collection it is in, and the next one's heading pushes it off as it
+     * arrives, because each is pinned only within its own collection.
+     */
+    sectionHeader: [
+      'group/section flex min-h-7 items-center justify-between gap-2 pe-1 pb-0.5',
+      'data-pinned:sticky data-pinned:top-0 data-pinned:z-10 data-pinned:bg-background',
+    ],
     /*
      * The section's label is its disclosure: one press target the width of
      * the label, announced as "Guides, 12 documents, expanded". The chevron
@@ -131,6 +141,12 @@ export const treeStyles = tv({
     ],
     moreCount: 'font-normal tabular-nums',
     loading: 'ms-5 px-1.5 py-1 text-2xs text-muted',
+    failed: 'ms-5 flex flex-wrap items-center gap-x-2 px-1.5 py-1 text-2xs text-muted',
+    retry: [
+      'cursor-pointer rounded-sm font-medium text-foreground-soft underline underline-offset-2',
+      'hover:text-foreground',
+      'focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus-ring',
+    ],
   },
   variants: {
     /** Only a nested list carries the indent guide; the top level is flush. */
@@ -276,6 +292,11 @@ export interface TreeProps {
    * so a caller should drop a request it already has in flight.
    */
   readonly onLoad?: ((request: TreeLoadRequest) => void) | undefined
+  /**
+   * Whether the last request for a list failed. Such a list says so, with a
+   * "Try again" that asks `onLoad` once more, rather than "Loading…" for ever.
+   */
+  readonly loadFailed?: ((owner: TreeLoadRequest['owner']) => boolean) | undefined
   readonly className?: string | undefined
 }
 
@@ -301,6 +322,7 @@ interface TreeScope {
   readonly windowOf: (key: string, length: number) => TreeWindow
   readonly showMore: (key: string, window: TreeWindow, focusId: string | undefined) => void
   readonly onLoad: ((request: TreeLoadRequest) => void) | undefined
+  readonly loadFailed: ((owner: TreeLoadRequest['owner']) => boolean) | undefined
 }
 
 /** The id the DOM gives a branch's list, for its disclosure's `aria-controls`. */
@@ -375,6 +397,11 @@ const Branch = memo(function Branch({
   )
 
   const { onLoad } = scope
+  const failed = missing !== undefined && scope.loadFailed?.({ kind: ownerKind, id: ownerId }) === true
+  // A window that does not draw the whole list says where each row is in it,
+  // which the nested list alone would count from the first drawn row.
+  const firstShown = Math.max(window.start, loadedFrom)
+  const windowed = shown.length !== total
   const missingStart = missing?.start
   const missingEnd = missing?.end
   // Asks the caller for what the window wants and was not given: the server
@@ -412,11 +439,34 @@ const Branch = memo(function Branch({
         </button>
       )}
       <ul id={branchDomId(scope.baseId, branchKey)} className={styles.branch()}>
-        {shown.map((node) => (
-          <Row key={node.id} node={node} depth={depth} scope={scope} />
+        {shown.map((node, index) => (
+          <Row
+            key={node.id}
+            node={node}
+            depth={depth}
+            scope={scope}
+            place={windowed ? { position: firstShown + index + 1, size: total } : undefined}
+          />
         ))}
       </ul>
-      {missing === undefined || scope.onLoad === undefined ? undefined : (
+      {missing === undefined || onLoad === undefined ? undefined : failed ? (
+        <div className={styles.failed()}>
+          <p role="status">{`Couldn’t load the documents in ${owner}`}</p>
+          <button
+            type="button"
+            className={styles.retry()}
+            onClick={() => {
+              onLoad({
+                owner: { kind: ownerKind, id: ownerId },
+                offset: missing.start,
+                limit: missing.end - missing.start,
+              })
+            }}
+          >
+            Try again<span className="sr-only">{`, in ${owner}`}</span>
+          </button>
+        </div>
+      ) : (
         <p className={styles.loading()} role="status" aria-busy="true">
           <span className="sr-only">{`Loading documents in ${owner}`}</span>
           <span aria-hidden="true">Loading…</span>
@@ -450,10 +500,13 @@ const Row = memo(function Row({
   node,
   depth,
   scope,
+  place,
 }: {
   readonly node: TreeNode
   readonly depth: number
   readonly scope: TreeScope
+  /** Where the row is among all its siblings, for a branch drawn a window at a time. */
+  readonly place?: { readonly position: number; readonly size: number } | undefined
 }) {
   const styles = treeStyles()
   const { link: Link } = scope
@@ -464,7 +517,12 @@ const Row = memo(function Row({
   const open = childCount > 0 && scope.isOpen(key)
 
   return (
-    <li data-node-id={node.id}>
+    <li
+      data-node-id={node.id}
+      {...(place === undefined
+        ? {}
+        : { 'aria-posinset': place.position, 'aria-setsize': place.size })}
+    >
       <div className={styles.row()}>
         {childCount === 0 ? (
           <span className={styles.leaf()} aria-hidden="true" />
@@ -529,19 +587,20 @@ const Row = memo(function Row({
   )
 })
 
-/** Whether an element is inside the visible part of its scroll container and of the window. */
-function isInView(element: HTMLElement): boolean {
-  const box = element.getBoundingClientRect()
-  let container = element.parentElement
-  while (container !== null) {
+/** The nearest ancestor that scrolls on its own, if the element is in one. */
+function scrollContainerOf(element: HTMLElement): HTMLElement | undefined {
+  for (let container = element.parentElement; container !== null; ) {
     const overflow = getComputedStyle(container).overflowY
-    if (overflow === 'auto' || overflow === 'scroll') break
+    if (overflow === 'auto' || overflow === 'scroll') return container
     container = container.parentElement
   }
-  const frame = container?.getBoundingClientRect() ?? {
-    top: 0,
-    bottom: globalThis.innerHeight,
-  }
+  return undefined
+}
+
+/** Whether an element is inside the visible part of its scroll container and of the window. */
+function isInView(element: HTMLElement, container: HTMLElement): boolean {
+  const box = element.getBoundingClientRect()
+  const frame = container.getBoundingClientRect()
   return (
     box.top >= Math.max(frame.top, 0) &&
     box.bottom <= Math.min(frame.bottom, globalThis.innerHeight)
@@ -621,6 +680,7 @@ export function Tree({
   pageSize = TREE_PAGE_SIZE,
   persistenceKey,
   onLoad,
+  loadFailed,
   className,
 }: TreeProps) {
   const variants = useThemeVariants()
@@ -701,10 +761,21 @@ export function Tree({
       const row = [...container.querySelectorAll<HTMLElement>('[data-node-id]')].find(
         (element) => element.dataset['nodeId'] === scrollTarget,
       )
-      if (row === undefined || typeof row.scrollIntoView !== 'function') return
+      if (row === undefined) return
+      // Only the tree's own region is scrolled (the sidebar, the phone's sheet, a picker's
+      // list), never the page around it: `scrollIntoView` would scroll every ancestor, so a
+      // tree in a page — a specimen on the design page — would carry the whole page to its open
+      // row, and again whenever the layout settles. A tree in no region of its own is left be.
+      const region = scrollContainerOf(row)
+      if (region === undefined || typeof region.scrollTo !== 'function') return
       // Left alone when it is already in view — a row just clicked does not
       // jump — and brought to the middle when it is not, with context around it.
-      if (!isInView(row)) row.scrollIntoView({ block: 'center', inline: 'nearest' })
+      if (isInView(row, region)) return
+      const box = row.getBoundingClientRect()
+      const frame = region.getBoundingClientRect()
+      region.scrollTo({
+        top: region.scrollTop + box.top - frame.top - (region.clientHeight - box.height) / 2,
+      })
     }
     // In the next frame, when the browser lays the page out anyway, rather
     // than forcing a layout of its own straight after the commit.
@@ -775,6 +846,7 @@ export function Tree({
         ),
       showMore,
       onLoad,
+      loadFailed,
     }
   }, [
     currentId,
@@ -792,6 +864,7 @@ export function Tree({
     ancestorLevels,
     showMore,
     onLoad,
+    loadFailed,
     persistenceKey,
   ])
   const { setOpen } = scope
@@ -809,7 +882,11 @@ export function Tree({
         const listId = branchDomId(baseId, key)
         return (
           <div key={section.id}>
-            <div className={styles.sectionHeader()}>
+            <div
+              data-section-header=""
+              {...(selectable ? {} : { 'data-pinned': '' })}
+              className={styles.sectionHeader()}
+            >
               <button
                 type="button"
                 className={styles.sectionToggle()}

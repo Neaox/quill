@@ -150,7 +150,10 @@ function toDom({ tagName, attributes, text, animation }: EmojiMarkup): HTMLEleme
 
 /**
  * The decorations for a state: each emoji drawn, and its shortcode hidden,
- * except where the selection touches it.
+ * except where the selection is on it or inside it. A caret just past the
+ * closing colon is not: that is where it is left by typing the shortcode or
+ * choosing it from the menu, and the emoji is what was just written, so it is
+ * drawn without waiting for another key.
  */
 export function emojiDecorations(state: EditorState, found: readonly Found[]): DecorationSet {
   const { from, to } = state.selection
@@ -163,16 +166,26 @@ export function emojiDecorations(state: EditorState, found: readonly Found[]): D
         }),
       ]
     }
-    if (from <= end && to >= start) return []
+    if (from < end && to >= start) return []
     return [
       Decoration.widget(start, () => toDom(emojiMarkup(emoji, 'text')), {
         side: -1,
         key: `emoji:${emoji.name}`,
       }),
-      Decoration.inline(start, end, { class: 'emoji-source' }),
+      Decoration.inline(start, end, { class: 'emoji-source' }, { emojiSource: true }),
     ]
   })
   return DecorationSet.create(state.doc, decorations)
+}
+
+/** The shortcode an emoji is drawn over that ends at the caret, if there is one. */
+function drawnShortcodeEndingAt(state: EditorState): { from: number; to: number } | undefined {
+  const { empty, from } = state.selection
+  if (!empty) return undefined
+  const drawn = emojiShortcodesKey
+    .getState(state)
+    ?.find(from, from, (spec) => spec['emojiSource'] === true)
+  return drawn?.find((decoration) => decoration.to === from)
 }
 
 /** The emoji plugin's key, whose state is what is drawn. */
@@ -216,7 +229,18 @@ export function emojiShortcodes(options: EditorEmojiOptions): Extension {
               ? emojiDecorations(state, foundIn(state.doc, { doc: before.doc, transaction }))
               : previous,
         },
-        props: { decorations: (state) => key.getState(state) },
+        props: {
+          decorations: (state) => key.getState(state),
+          // An emoji drawn over its shortcode is one thing to the eye, so Backspace takes it whole
+          // rather than a colon of it, which would leave `:tada` where there was a picture.
+          handleKeyDown: (view, event) => {
+            const shortcode =
+              event.key === 'Backspace' ? drawnShortcodeEndingAt(view.state) : undefined
+            if (shortcode === undefined) return false
+            view.dispatch(view.state.tr.delete(shortcode.from, shortcode.to))
+            return true
+          },
+        },
         view: (view) => {
           let open = true
           // Animated emoji play briefly and rest, as the reader's do (ADR-047).

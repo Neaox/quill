@@ -39,14 +39,14 @@ export const DOCUMENT_MOVED = 'DocumentMoved'
 
 /**
  * A document was nested under another parent, or lifted to the top, inside
- * its own collection (ADR-054). Nothing on the web moves — `DocumentMoved`
+ * its own collection (ADR-056). Nothing on the web moves — `DocumentMoved`
  * covers a change of collection — but the pages listed under both parents
  * change, which is what a child pages list shows.
  */
 export const DOCUMENT_NESTED = 'DocumentNested'
 
 /**
- * A document was deleted (ADR-054). Its children were lifted to the top of
+ * A document was deleted (ADR-056). Its children were lifted to the top of
  * its collection by the same delete, so every list that showed it, or showed
  * them under it, has changed.
  */

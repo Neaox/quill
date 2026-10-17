@@ -1,5 +1,6 @@
 import { useEffect, useId, useRef, useState } from 'react'
 
+import { nameAsWords } from '@quill/markdown/emoji-names'
 import { Button, Callout, Input, PlusIcon, tv } from '@quill/ui'
 import { EMOJI_NAME_PATTERN, type TokenMap } from '@quill/theme'
 
@@ -29,6 +30,18 @@ const MAX_EMOJI = 100
 const MAX_PIXELS = 1024
 
 const EMOJI_NAME = new RegExp(EMOJI_NAME_PATTERN, 'u')
+
+/** As long as the settings file allows (`MAX_EMOJI_DESCRIPTION`). */
+const MAX_DESCRIPTION = 120
+
+const ALT_TEXT_HELP =
+  'What the picture shows, in a few words. A screen reader says it in place of the picture.'
+
+/** The entry with its alt text set, or without one when it is emptied: the file holds none that is empty. */
+function withDescription(entry: CustomEmoji, text: string): CustomEmoji {
+  const { description: _previous, ...rest } = entry
+  return text === '' ? rest : { ...rest, description: text }
+}
 
 /** "PNG, JPEG or SVG". */
 function listed(names: readonly string[]): string {
@@ -84,12 +97,13 @@ const sampleStyles = tv({
 
 interface EmojiSampleProps {
   readonly scheme: 'light' | 'dark'
-  readonly name: string
+  /** What the picture shows, which is its alternative text. */
+  readonly alt: string
   readonly image: ServedEmoji
   readonly page: TokenMap
 }
 
-function EmojiSample({ scheme, name, image, page }: EmojiSampleProps) {
+function EmojiSample({ scheme, alt, image, page }: EmojiSampleProps) {
   const styles = sampleStyles()
   return (
     <span
@@ -106,8 +120,7 @@ function EmojiSample({ scheme, name, image, page }: EmojiSampleProps) {
         ref={useCustomProperty('--preview-ink', page['--palette-body'])}
         className={styles.sentence()}
       >
-        Inline with text <EmojiImage className={styles.image()} image={image} alt={`:${name}:`} />{' '}
-        like this
+        Inline with text <EmojiImage className={styles.image()} image={image} alt={alt} /> like this
       </span>
     </span>
   )
@@ -241,6 +254,7 @@ export function EmojiEditor({
           {entries.map((entry) => {
             const image = sourceOf(entry)
             const still = image?.still
+            const alt = entry.description ?? nameAsWords(entry.name)
             return (
               <li key={entry.name} className={styles.item()}>
                 <div className={styles.header()}>
@@ -264,14 +278,32 @@ export function EmojiEditor({
                     Remove
                   </Button>
                 </div>
+                <Input
+                  label={`Alt text for :${entry.name}:`}
+                  value={entry.description ?? ''}
+                  placeholder={nameAsWords(entry.name)}
+                  maxLength={MAX_DESCRIPTION}
+                  autoComplete="off"
+                  className="w-full"
+                  description={ALT_TEXT_HELP}
+                  onChange={(event) => {
+                    replace(
+                      entries.map((other) =>
+                        other.name === entry.name
+                          ? withDescription(other, event.target.value)
+                          : other,
+                      ),
+                    )
+                  }}
+                />
                 {image === undefined ? undefined : (
                   <div
                     className={styles.previews()}
                     role="group"
                     aria-label={`Preview of :${entry.name}: at text size`}
                   >
-                    <EmojiSample scheme="light" name={entry.name} image={image} page={light} />
-                    <EmojiSample scheme="dark" name={entry.name} image={image} page={dark} />
+                    <EmojiSample scheme="light" alt={alt} image={image} page={light} />
+                    <EmojiSample scheme="dark" alt={alt} image={image} page={dark} />
                   </div>
                 )}
                 {still === undefined ? undefined : (
@@ -280,18 +312,8 @@ export function EmojiEditor({
                     role="group"
                     aria-label={`Preview of :${entry.name}: still, for reduced motion`}
                   >
-                    <EmojiSample
-                      scheme="light"
-                      name={entry.name}
-                      image={{ src: still }}
-                      page={light}
-                    />
-                    <EmojiSample
-                      scheme="dark"
-                      name={entry.name}
-                      image={{ src: still }}
-                      page={dark}
-                    />
+                    <EmojiSample scheme="light" alt={alt} image={{ src: still }} page={light} />
+                    <EmojiSample scheme="dark" alt={alt} image={{ src: still }} page={dark} />
                     <p className={styles.caption()}>
                       Still, as readers who ask for less motion see it.
                     </p>
@@ -332,6 +354,7 @@ function EmojiAdder({ existing, readFrames, onAdd }: EmojiAdderProps) {
   // the settings, have no revision, and are never saved on their own.
   const [file, setFile] = useState<File | undefined>(undefined)
   const [name, setName] = useState('')
+  const [description, setDescription] = useState('')
   const [tooLarge, setTooLarge] = useState(false)
   const picker = useRef<HTMLInputElement>(null)
   const id = useId()
@@ -425,6 +448,7 @@ function EmojiAdder({ existing, readFrames, onAdd }: EmojiAdderProps) {
         mediaType,
         ...animation,
         ...(await uploadPoster()),
+        description: description.trim(),
         width: 0,
         height: 0,
       }
@@ -442,6 +466,7 @@ function EmojiAdder({ existing, readFrames, onAdd }: EmojiAdderProps) {
     current.current.file = undefined
     setFile(undefined)
     setName('')
+    setDescription('')
     if (picker.current !== null) picker.current.value = ''
   }
 
@@ -504,6 +529,17 @@ function EmojiAdder({ existing, readFrames, onAdd }: EmojiAdderProps) {
           setName(event.target.value.trim().toLowerCase())
         }}
       />
+      <Input
+        label="Alt text"
+        value={description}
+        maxLength={MAX_DESCRIPTION}
+        autoComplete="off"
+        className="w-full"
+        description={ALT_TEXT_HELP}
+        onChange={(event) => {
+          setDescription(event.target.value)
+        }}
+      />
       {tooLarge ? (
         <Callout tone="danger" title="That image is too large">
           An emoji image may be at most 256 KB. Export a smaller one and choose that.
@@ -519,7 +555,13 @@ function EmojiAdder({ existing, readFrames, onAdd }: EmojiAdderProps) {
         variant="secondary"
         iconStart={<PlusIcon />}
         loading={upload.isPending}
-        disabled={file === undefined || tooLarge || name === '' || problem !== undefined}
+        disabled={
+          file === undefined ||
+          tooLarge ||
+          name === '' ||
+          problem !== undefined ||
+          description.trim() === ''
+        }
         onClick={() => {
           if (file !== undefined) void add(file)
         }}

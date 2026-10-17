@@ -8,7 +8,7 @@ import { seedTenancy } from '../test-support/tenancy-fixture.ts'
 import type { TenancyFixture } from '../test-support/tenancy-fixture.ts'
 
 /**
- * `GET /api/documents/:id/children` over a real database (ADR-054): the
+ * `GET /api/documents/:id/children` over a real database (ADR-056): the
  * list a `::children` slot is filled with in the app, for this reader, and
  * kept fresh by the outbox.
  */

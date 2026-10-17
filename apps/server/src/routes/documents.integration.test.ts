@@ -530,13 +530,178 @@ describe('the content journey', () => {
     expect((await get(`/api/documents/${id}/compare?${range}`, viewer)).statusCode).toBe(403)
   })
 
+  it('draws each change on its own, and says which can be put back, when asked', async () => {
+    const id = await createDocument('Patches')
+    await writeDraft(id, '# Patches\n\nRestart the queue first.\n\nCheck the dashboard.\n', 0)
+    const published = await publish(id, await baseOf(id))
+    await writeDraft(
+      id,
+      '# Patches\n\nRestart the queue first, then wait.\n\nCheck the dashboard.\n',
+      1,
+    )
+    const range = `from=${published.json().revision}&to=draft`
+
+    const plain = (await get(`/api/documents/${id}/compare?${range}`, editor)).json()
+    const detailed = (
+      await get(`/api/documents/${id}/compare?${range}&patches=true`, editor)
+    ).json()
+
+    expect(plain.changes[0]).not.toHaveProperty('html')
+    expect(detailed.changes).toMatchObject([
+      {
+        change: 'changed',
+        revertible: true,
+        html: expect.stringContaining('<ins data-diff="added">'),
+      },
+    ])
+  })
+
+  it('answers with the draft as it would be with a change put back, and saves nothing', async () => {
+    const id = await createDocument('Reverting')
+    await writeDraft(id, '# Reverting\n\nRestart the queue first.\n', 0)
+    const published = await publish(id, await baseOf(id))
+    await writeDraft(id, '# Reverting\n\nRestart the queue first, then wait.\n', 1)
+    const range = `from=${published.json().revision}&to=draft&patches=true`
+    const [change] = (await get(`/api/documents/${id}/compare?${range}`, editor)).json().changes
+
+    const reverted = await harness.app.inject({
+      method: 'POST',
+      url: `/api/documents/${id}/draft/revert-preview`,
+      cookies: editor,
+      payload: { from: published.json().revision, draftVersion: 2, changes: [change.id] },
+    })
+
+    expect(reverted.statusCode).toBe(200)
+    expect(JSON.stringify(reverted.json().ast)).toContain('Restart the queue first.')
+    expect(JSON.stringify(reverted.json().ast)).not.toContain('then wait')
+    const saved = (await get(`/api/documents/${id}/draft`, editor)).json()
+    expect(JSON.stringify(saved.ast)).toContain('then wait')
+  })
+
+  it('refuses to put changes back for a draft that has moved on, or a change it does not have', async () => {
+    const id = await createDocument('Refusing')
+    await writeDraft(id, '# Refusing\n\nOne.\n', 0)
+    const published = await publish(id, await baseOf(id))
+    await writeDraft(id, '# Refusing\n\nOne, edited.\n', 1)
+    const revert = async (draftVersion: number, changes: string[], cookies = editor) =>
+      await harness.app.inject({
+        method: 'POST',
+        url: `/api/documents/${id}/draft/revert-preview`,
+        cookies,
+        payload: { from: published.json().revision, draftVersion, changes },
+      })
+
+    expect((await revert(1, ['c1'])).statusCode).toBe(409)
+    expect((await revert(2, ['c9'])).statusCode).toBe(422)
+    expect((await revert(2, ['nope'])).statusCode).toBe(400)
+    expect((await revert(2, ['c1'], viewer)).statusCode).toBe(403)
+  })
+
+  it('names who made each change in the draft, by the one who saved it', async () => {
+    const id = await createDocument('Authors')
+    await writeDraft(id, '# Authors\n\nRestart the queue first.\n', 0)
+    const published = await publish(id, await baseOf(id))
+    await writeDraft(id, '# Authors\n\nRestart the queue first.\n\nPage the manager.\n', 1)
+
+    const compared = await get(
+      `/api/documents/${id}/compare?from=${published.json().revision}&to=draft`,
+      editor,
+    )
+
+    expect(compared.json().changes).toMatchObject([
+      { change: 'added', author: { id: expect.any(String), at: expect.any(String) } },
+    ])
+    // The record is cleared by publishing: from then the draft says what is published.
+    const again = await publish(id, await baseOf(id))
+    const afterwards = await get(
+      `/api/documents/${id}/compare?from=${again.json().revision}&to=draft`,
+      editor,
+    )
+    expect(afterwards.json().changes).toEqual([])
+  })
+
+  it('puts a change back in the draft and saves it, and undoes that with what it hands back', async () => {
+    const id = await createDocument('Putting back')
+    await writeDraft(id, '# Putting back\n\nRestart the queue first.\n', 0)
+    const published = await publish(id, await baseOf(id))
+    await writeDraft(id, '# Putting back\n\nRestart the queue first, then wait.\n', 1)
+    const from = published.json().revision
+    const range = `from=${from}&to=draft&patches=true`
+    const [change] = (await get(`/api/documents/${id}/compare?${range}`, editor)).json().changes
+
+    const put = await harness.app.inject({
+      method: 'POST',
+      url: `/api/documents/${id}/draft/revert`,
+      cookies: editor,
+      payload: { from, draftVersion: 2, changes: [change.id] },
+    })
+
+    expect(put.statusCode).toBe(200)
+    expect(put.json().draftVersion).toBe(3)
+    const saved = (await get(`/api/documents/${id}/draft`, editor)).json()
+    expect(JSON.stringify(saved.ast)).not.toContain('then wait')
+    expect((await get(`/api/documents/${id}/compare?${range}`, editor)).json().changes).toEqual([])
+
+    const undone = await harness.app.inject({
+      method: 'POST',
+      url: `/api/documents/${id}/draft/revert/undo`,
+      cookies: editor,
+      payload: { draftVersion: 3, ast: put.json().previous },
+    })
+
+    expect(undone.statusCode).toBe(200)
+    expect(undone.json().draftVersion).toBe(4)
+    expect(JSON.stringify((await get(`/api/documents/${id}/draft`, editor)).json().ast)).toContain(
+      'then wait',
+    )
+  })
+
+  it('refuses to put a change back while somebody else is editing, or for a reader', async () => {
+    const id = await createDocument('Held elsewhere')
+    await writeDraft(id, '# Held elsewhere\n\nOne.\n', 0)
+    const published = await publish(id, await baseOf(id))
+    await writeDraft(id, '# Held elsewhere\n\nOne, edited.\n', 1)
+    const from = published.json().revision
+    const putBack = async (cookies: Record<string, string>, draftVersion = 2) =>
+      await harness.app.inject({
+        method: 'POST',
+        url: `/api/documents/${id}/draft/revert`,
+        cookies,
+        payload: { from, draftVersion, changes: ['c1'] },
+      })
+    const undo = async (cookies: Record<string, string>, ast: unknown) =>
+      await harness.app.inject({
+        method: 'POST',
+        url: `/api/documents/${id}/draft/revert/undo`,
+        cookies,
+        payload: { draftVersion: 2, ast } as Record<string, unknown>,
+      })
+
+    expect((await putBack(viewer)).statusCode).toBe(403)
+    expect((await putBack(editor, 1)).statusCode).toBe(409)
+    expect((await undo(editor, { version: 99 })).statusCode).toBe(422)
+    expect((await undo(viewer, draftOf('# Held elsewhere\n'))).statusCode).toBe(403)
+
+    // Another person's session holds the document: the write would land under them.
+    const other = admin
+    const held = await harness.app.inject({
+      method: 'POST',
+      url: `/api/documents/${id}/lock/acquire`,
+      cookies: other,
+    })
+    expect(held.statusCode).toBe(200)
+    expect((await putBack(editor)).statusCode).toBe(423)
+    expect((await undo(editor, draftOf('# Held elsewhere\n'))).statusCode).toBe(423)
+    await harness.app.inject({ method: 'DELETE', url: `/api/documents/${id}/lock`, cookies: other })
+  })
+
   it('revalidates a comparison by its tag', async () => {
     const id = await createDocument('Tagged comparison')
     await writeDraft(id, '# Tagged comparison\n\nBody.\n', 0)
     const published = await publish(id, await baseOf(id))
     const path = `/api/documents/${id}/compare?to=${published.json().revision}`
     const first = await get(path, viewer)
-    expect(first.headers.etag).toMatch(/^"[0-9a-f]{64}:\d+:compare-1"$/)
+    expect(first.headers.etag).toMatch(/^"[0-9a-f]{64}:\d+:compare-2"$/)
 
     const again = await harness.app.inject({
       method: 'GET',
@@ -653,6 +818,27 @@ describe('the content journey', () => {
     expect(compared.statusCode).toBe(200)
     expect(compared.json().changes).toHaveLength(1)
     expect(compared.json().changes[0]).not.toHaveProperty('section')
+  })
+
+  it('still names the change of an author who has gone, without a name', async () => {
+    const id = await createDocument('Departed author')
+    await writeDraft(id, '# Departed author\n\nFirst.\n', 0)
+    const published = await publish(id, await baseOf(id))
+    await writeDraft(id, '# Departed author\n\nFirst.\n\nSecond.\n', 1)
+    const gone = '00000000-0000-4000-8000-00000000dead'
+    await harness.database.pool.query(
+      `UPDATE drafts SET authorship = replace(authorship::text, $2, $3)::jsonb WHERE document_id = $1`,
+      [id, tenancy.editor, gone],
+    )
+
+    const compared = await get(
+      `/api/documents/${id}/compare?from=${published.json().revision}&to=draft`,
+      editor,
+    )
+
+    expect(compared.statusCode).toBe(200)
+    expect(compared.json().changes).toMatchObject([{ change: 'added', author: { id: gone } }])
+    expect(compared.json().changes[0].author).not.toHaveProperty('name')
   })
 
   it('reports the live envelope, including health signals', async () => {
@@ -787,6 +973,11 @@ describe('the lifecycle in the envelope (ADR-005 amendment)', () => {
     expect((await get(`/api/documents/${id}/envelope`, viewer)).json().unpublishedChanges).toBe(
       false,
     )
+    // When it was saved, for the notice above the page, to the same people.
+    expect((await get(`/api/documents/${id}/envelope`, editor)).json().draft).toEqual({
+      savedAt: expect.any(String),
+    })
+    expect((await get(`/api/documents/${id}/envelope`, viewer)).json().draft).toBeNull()
   })
 })
 

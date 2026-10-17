@@ -1024,6 +1024,7 @@ export interface paths {
             parameters: {
                 query: {
                     from?: string;
+                    patches?: boolean;
                     to: string | "draft";
                 };
                 header?: never;
@@ -1042,10 +1043,18 @@ export interface paths {
                     content: {
                         "application/json": {
                             changes: {
+                                author?: {
+                                    /** Format: date-time */
+                                    at: string;
+                                    id: string;
+                                    name?: string;
+                                };
                                 block: string;
                                 change: "added" | "removed" | "changed" | "moved";
                                 excerpt: string;
+                                html?: string;
                                 id: string;
+                                revertible?: boolean;
                                 section?: {
                                     id: string;
                                     title: string;
@@ -1098,6 +1107,7 @@ export interface paths {
             parameters: {
                 query: {
                     from?: string;
+                    patches?: boolean;
                     to: string | "draft";
                 };
                 header?: never;
@@ -1243,6 +1253,154 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/documents/{id}/draft/revert": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        changes: string[];
+                        draftVersion: number;
+                        from?: string;
+                    };
+                };
+            };
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            draftVersion: number;
+                            previous: {
+                                [key: string]: unknown;
+                            };
+                        };
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/documents/{id}/draft/revert-preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        changes: string[];
+                        draftVersion: number;
+                        from?: string;
+                    };
+                };
+            };
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            ast: {
+                                [key: string]: unknown;
+                            };
+                            draftVersion: number;
+                        };
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/documents/{id}/draft/revert/undo": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        ast: {
+                            [key: string]: unknown;
+                        };
+                        draftVersion: number;
+                    };
+                };
+            };
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            draftVersion: number;
+                        };
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/documents/{id}/envelope": {
         parameters: {
             query?: never;
@@ -1268,6 +1426,10 @@ export interface paths {
                     };
                     content: {
                         "application/json": {
+                            draft: {
+                                /** Format: date-time */
+                                savedAt: string;
+                            } | null;
                             facts: {
                                 /** Format: date */
                                 lastReviewed?: string;
@@ -4403,6 +4565,7 @@ export interface components {
         };
         OrganisationSettings: {
             emoji?: {
+                description?: string;
                 frames?: number;
                 hash: string;
                 height: number;
@@ -5030,6 +5193,7 @@ export interface components {
                 [key: string]: string;
             };
             emoji: {
+                description?: string;
                 frames?: number;
                 height: number;
                 milliseconds?: number;

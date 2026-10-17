@@ -96,6 +96,126 @@ describe('SignInPage', () => {
     expect(screen.getByRole('heading', { level: 1, name: 'Sign in' })).toBeInTheDocument()
   })
 
+  describe('checking the form before it is sent', () => {
+    it('asks for both fields when neither is filled in, and sends nothing', async () => {
+      let sent = 0
+      renderApp('/sign-in', {
+        'POST /api/auth/sign-in': () => {
+          sent += 1
+          return jsonResponse(200, { userId: 'user-1' })
+        },
+      })
+      await screen.findByRole('heading', { level: 1, name: 'Sign in' })
+
+      await userEvent.click(screen.getByRole('button', { name: 'Sign in' }))
+
+      const email = screen.getByLabelText('Email', { exact: false })
+      expect(email).toHaveAccessibleDescription('Enter your email address.')
+      expect(email).toBeInvalid()
+      expect(screen.getByLabelText('Password', { exact: false })).toHaveAccessibleDescription(
+        'Enter your password.',
+      )
+      // Focus is on the first thing to fix, so a keyboard user is not left at the button.
+      expect(email).toHaveFocus()
+      expect(sent).toBe(0)
+    })
+
+    it('says what an address should look like, instead of the validator’s wording', async () => {
+      renderApp('/sign-in', {})
+      await screen.findByRole('heading', { level: 1, name: 'Sign in' })
+
+      await userEvent.type(screen.getByLabelText('Email', { exact: false }), 'admin')
+      await userEvent.type(screen.getByLabelText('Password', { exact: false }), 'secret')
+      await userEvent.click(screen.getByRole('button', { name: 'Sign in' }))
+
+      expect(screen.getByLabelText('Email', { exact: false })).toHaveAccessibleDescription(
+        'Enter a valid email address, like name@example.com.',
+      )
+      expect(screen.queryByText(/must match format/)).not.toBeInTheDocument()
+    })
+
+    it('stops saying so once the field is being corrected', async () => {
+      renderApp('/sign-in', {})
+      await screen.findByRole('heading', { level: 1, name: 'Sign in' })
+      await userEvent.click(screen.getByRole('button', { name: 'Sign in' }))
+      const email = screen.getByLabelText('Email', { exact: false })
+      expect(email).toHaveAttribute('aria-invalid', 'true')
+
+      await userEvent.type(email, 'a')
+
+      // The attribute, not the browser's own validity: 'a' is not an address yet.
+      expect(email).toHaveAttribute('aria-invalid', 'false')
+      expect(screen.getByLabelText('Password', { exact: false })).toHaveAttribute(
+        'aria-invalid',
+        'true',
+      )
+    })
+
+    it('sends the address without the spaces around it', async () => {
+      const bodies: unknown[] = []
+      renderApp('/sign-in', {
+        'POST /api/auth/sign-in': async (request) => {
+          bodies.push(await request.json())
+          return jsonResponse(200, { userId: 'user-1' })
+        },
+      })
+      await screen.findByRole('heading', { level: 1, name: 'Sign in' })
+
+      await fillAndSubmit('  reader@example.com ', 'correct horse battery staple')
+
+      await waitFor(() => {
+        expect(bodies).toEqual([
+          { email: 'reader@example.com', password: 'correct horse battery staple' },
+        ])
+      })
+    })
+
+    it('has no axe violations while it is showing errors', async () => {
+      const { container } = renderApp('/sign-in', {})
+      await screen.findByRole('heading', { level: 1, name: 'Sign in' })
+      await userEvent.click(screen.getByRole('button', { name: 'Sign in' }))
+
+      await expectNoAccessibilityViolations(container)
+    })
+  })
+
+  describe('when the server refuses', () => {
+    it('puts its complaint on the field it names, in plain words', async () => {
+      renderApp('/sign-in', {
+        'POST /api/auth/sign-in': () =>
+          errorResponse(400, 'validation_error', 'body/email must match format "email"', [
+            { instancePath: '/email', keyword: 'format', params: { format: 'email' } },
+          ]),
+      })
+      await screen.findByRole('heading', { level: 1, name: 'Sign in' })
+
+      // Passes the form's own check, so only the server can say no.
+      await fillAndSubmit('a@b.c', 'secret')
+
+      expect(await screen.findByLabelText('Email', { exact: false })).toHaveAccessibleDescription(
+        'Enter a valid email address, like name@example.com.',
+      )
+      expect(screen.queryByText(/must match format/)).not.toBeInTheDocument()
+      // Said once, on the field, rather than again above the button.
+      expect(screen.queryByText(/Some of what you entered/)).not.toBeInTheDocument()
+    })
+
+    it('says the server could not be reached when the request fails outright', async () => {
+      renderApp('/sign-in', {
+        'POST /api/auth/sign-in': () => {
+          throw new TypeError('Failed to fetch')
+        },
+      })
+      await screen.findByRole('heading', { level: 1, name: 'Sign in' })
+
+      await fillAndSubmit('reader@example.com', 'secret')
+
+      expect(await screen.findByRole('alert')).toHaveTextContent(
+        'Could not reach the server. Check your connection and try again.',
+      )
+    })
+  })
+
   it('names the product above the card', async () => {
     renderApp('/sign-in')
     expect(await screen.findByText(BRAND.name)).toBeInTheDocument()

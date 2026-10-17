@@ -9,6 +9,7 @@ import {
   moveColumn,
   moveRow,
   selectLine,
+  selectTable,
   setTableAttributeAt,
 } from './table-commands.ts'
 
@@ -17,6 +18,8 @@ import {
  *
  * - a grip above every column and beside every row: a click selects it, and
  *   a drag moves it;
+ * - a corner where the two rows of grips meet: a click selects every cell,
+ *   so the table can be copied, cut or cleared whole;
  * - a "+" on every boundary between them, and at both ends: it inserts a
  *   row or column there, and while the pointer is on it a line across the
  *   table shows where;
@@ -148,6 +151,7 @@ interface Placement {
 export class TableHandles {
   readonly layer: HTMLElement
   private readonly grips: Record<Axis, HTMLElement[]> = { row: [], column: [] }
+  private readonly corner: HTMLButtonElement
   private readonly inserts: Record<Axis, HTMLButtonElement[]> = { row: [], column: [] }
   private readonly borders: HTMLElement[] = []
   private readonly edge: HTMLElement
@@ -186,12 +190,13 @@ export class TableHandles {
     this.layer = element('div', 'table-handles')
     this.layer.contentEditable = 'false'
     this.layer.setAttribute('aria-hidden', 'true')
+    this.corner = this.makeCorner()
     this.edge = element('div', 'table-width-handle')
     this.readout = element('div', 'table-readout')
     this.readout.hidden = true
     this.ghost = element('div', 'table-drag-ghost')
     this.line = element('div', 'table-drop-line')
-    this.layer.append(this.edge, this.readout, this.ghost, this.line)
+    this.layer.append(this.corner, this.edge, this.readout, this.ghost, this.line)
     this.edge.addEventListener('pointerdown', (event) => {
       this.resizeWidth(event)
     })
@@ -226,6 +231,31 @@ export class TableHandles {
       list.push(made)
       this.layer.append(made)
     }
+  }
+
+  /**
+   * The corner: a button, named for the pointer's tooltip, and out of the tab
+   * order as every handle is (the menu's Select table and Ctrl+A are the
+   * keyboard's). A right-click selects the table too, before the context menu
+   * the editor opens for it, so the menu is about the whole table.
+   */
+  private makeCorner(): HTMLButtonElement {
+    const corner = element('button', 'table-grip table-grip-table')
+    corner.type = 'button'
+    corner.tabIndex = -1
+    corner.title = 'Select table'
+    const selectAll = (): void => {
+      this.withTable((pos) => selectTable(pos)(this.view.state, this.view.dispatch))
+      this.view.focus()
+    }
+    corner.addEventListener('pointerdown', (event) => {
+      if (event.button !== 0) return
+      // The caret stays where it was until the selection is made, as for a grip.
+      event.preventDefault()
+      selectAll()
+    })
+    corner.addEventListener('contextmenu', selectAll)
+    return corner
   }
 
   private grip(axis: Axis, index: number): HTMLElement {

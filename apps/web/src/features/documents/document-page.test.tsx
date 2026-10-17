@@ -1,8 +1,9 @@
 import { act, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, onTestFinished, vi } from 'vitest'
 
 import { packRanges } from '@quill/highlight'
+import { toast } from '@quill/ui'
 import { expectNoAccessibilityViolations } from '@quill/ui/testing/axe'
 
 import { intersectionObservers } from '../../../testing/browser-shims.ts'
@@ -166,6 +167,18 @@ describe('the reading view records that it was opened', () => {
   })
 })
 
+const text = (value: string) => ({ type: 'text', value })
+const draftOf =
+  (...children: readonly object[]) =>
+  () =>
+    jsonResponse(200, {
+      documentId: 'doc-1',
+      draftVersion: 3,
+      baseRevision: null,
+      updatedAt: '2026-02-03T00:00:00.000Z',
+      ast: { version: 1, frontMatter: {}, ast: { type: 'root', children } },
+    })
+
 describe('the reading view', () => {
   it('renders the published body on the reading grid, with breakout widths intact', async () => {
     renderApp(READING_PATH, readingRoutes())
@@ -272,6 +285,72 @@ describe('the reading view', () => {
     expect(screen.queryByRole('link', { name: 'Edit' })).not.toBeInTheDocument()
   })
 
+  it('tells an editor about changes that are saved and not published, and how to go on', async () => {
+    renderApp(
+      READING_PATH,
+      readingRoutes({
+        'GET /api/documents/{id}/envelope': envelope({
+          draft: { savedAt: '2026-02-04T09:30:00.000Z' },
+        }),
+      }),
+    )
+
+    const notice = await screen.findByRole('group', { name: 'Note: You have unpublished changes' })
+
+    expect(within(notice).getByText(/Readers still see the published page/u)).toBeInTheDocument()
+    expect(within(notice).getByRole('link', { name: 'Resume editing' })).toHaveAttribute(
+      'href',
+      `${READING_PATH}/edit`,
+    )
+    const preview = within(notice).getByRole('link', {
+      name: /^Preview\s+your unpublished changes/u,
+    })
+    expect(preview).toHaveAttribute('href', `/preview/d/regional-failover-${KEY}?draft`)
+    expect(preview).toHaveAttribute('target', '_blank')
+    // When it was saved, said as how long ago and in full on hover, by the platform.
+    const saved = within(notice).getByRole('time')
+    expect(saved).toHaveAttribute('datetime', '2026-02-04T09:30:00.000Z')
+    expect(saved).toHaveAttribute('title')
+  })
+
+  it('has nothing to say when there are no unpublished changes', async () => {
+    renderApp(READING_PATH, readingRoutes())
+
+    await screen.findByRole('article', { name: 'Regional failover' })
+
+    expect(screen.queryByText('You have unpublished changes')).not.toBeInTheDocument()
+  })
+
+  it('has nothing to say to somebody who may not edit, whatever the envelope holds', async () => {
+    renderApp(
+      READING_PATH,
+      readingRoutes({
+        'GET /api/documents/{id}/envelope': envelope({
+          permissions: { view: true, comment: false, edit: false, publish: false, manage: false },
+          draft: { savedAt: '2026-02-04T09:30:00.000Z' },
+        }),
+      }),
+    )
+
+    await screen.findByRole('article', { name: 'Regional failover' })
+
+    expect(screen.queryByText('You have unpublished changes')).not.toBeInTheDocument()
+  })
+
+  it('is accessible with the notice showing', async () => {
+    const { container } = renderApp(
+      READING_PATH,
+      readingRoutes({
+        'GET /api/documents/{id}/envelope': envelope({
+          draft: { savedAt: '2026-02-04T09:30:00.000Z' },
+        }),
+      }),
+    )
+    await screen.findByRole('group', { name: 'Note: You have unpublished changes' })
+
+    await expectNoAccessibilityViolations(container)
+  })
+
   it('says who is editing, when someone is', async () => {
     renderApp(
       READING_PATH,
@@ -323,6 +402,112 @@ describe('the reading view', () => {
     )
     // The title still has to come from somewhere when the body cannot.
     expect(screen.getByRole('heading', { level: 1, name: 'Regional failover' })).toBeInTheDocument()
+  })
+
+  describe('a document that was never published', () => {
+    const unpublished = (extra: FakeRoutes = {}) =>
+      readingRoutes({
+        'GET /api/documents/{id}/rendered': () =>
+          errorResponse(404, 'not_found', 'This document has no published revision'),
+        'GET /api/documents/{id}/history': () => jsonResponse(200, { revisions: [] }),
+        ...extra,
+      })
+
+    it('says what is waiting to be published when there is a draft with writing in it, rather than that nothing is there', async () => {
+      renderApp(
+        READING_PATH,
+        unpublished({
+          'GET /api/documents/{id}/draft': draftOf(
+            { type: 'heading', depth: 2, children: [text('Overview')] },
+            {
+              type: 'paragraph',
+              children: [text('Three tiers and a cache in front of the slow one.')],
+            },
+            { type: 'heading', depth: 2, children: [text('Steps')] },
+          ),
+        }),
+      )
+
+      const note = await screen.findByRole('group', {
+        name: 'Note: Written, but not published yet',
+      })
+
+      expect(note).toHaveTextContent('Your draft has 2 sections and about 11 words')
+      expect(note).toHaveTextContent('Readers see nothing until you publish it')
+      expect(within(note).getByRole('link', { name: 'Continue writing' })).toHaveAttribute(
+        'href',
+        `${READING_PATH}/edit`,
+      )
+    })
+
+    it('offers a look at the draft as readers will see it, and does not claim readers still see a published page', async () => {
+      renderApp(
+        READING_PATH,
+        unpublished({
+          'GET /api/documents/{id}/envelope': envelope({
+            lastPublished: null,
+            draft: { savedAt: '2026-02-04T09:30:00.000Z' },
+          }),
+          'GET /api/documents/{id}/draft': draftOf({
+            type: 'paragraph',
+            children: [text('Three tiers and a cache in front of the slow one.')],
+          }),
+        }),
+      )
+
+      const note = await screen.findByRole('group', {
+        name: 'Note: Written, but not published yet',
+      })
+
+      expect(
+        within(note).getByRole('link', { name: /^Preview\s+your unpublished changes/u }),
+      ).toHaveAttribute('href', `/preview/d/regional-failover-${KEY}?draft`)
+      // There is no published page for readers to still be seeing.
+      expect(
+        screen.queryByRole('group', { name: 'Note: You have unpublished changes' }),
+      ).not.toBeInTheDocument()
+    })
+
+    it('says so when the draft is only a template’s sections, with nothing written in them yet', async () => {
+      renderApp(
+        READING_PATH,
+        unpublished({
+          'GET /api/documents/{id}/draft': draftOf(
+            { type: 'heading', depth: 2, children: [text('Context')] },
+            {
+              type: 'containerDirective',
+              name: 'guidance',
+              children: [
+                { type: 'paragraph', children: [text('Say why in two or three sentences.')] },
+              ],
+            },
+            { type: 'heading', depth: 2, children: [text('Decision')] },
+          ),
+        }),
+      )
+
+      const note = await screen.findByRole('group', { name: 'Note: Nothing written yet' })
+
+      expect(note).toHaveTextContent('Your draft has 2 sections and no writing in them yet')
+      expect(within(note).getByRole('link', { name: 'Start writing' })).toBeInTheDocument()
+    })
+
+    it('says only that it has not been published to somebody who cannot write it, and offers them nothing to do', async () => {
+      renderApp(
+        READING_PATH,
+        unpublished({
+          'GET /api/documents/{id}/envelope': envelope({
+            permissions: { view: true, comment: false, edit: false, publish: false, manage: false },
+          }),
+        }),
+      )
+
+      const note = await screen.findByRole('group', { name: 'Note: Nothing published yet' })
+
+      expect(note).toHaveTextContent('has not been published yet')
+      expect(note).not.toHaveTextContent('write something')
+      expect(within(note).queryByRole('link')).toBeNull()
+    })
   })
 
   it('reports a real failure as one, with a way to try again', async () => {
@@ -618,6 +803,218 @@ describe('comparing two revisions', () => {
   })
 })
 
+describe('comparing the published page with the draft', () => {
+  const COMPARING_DRAFT = `${READING_PATH}?from=${B}&to=draft`
+  const withDraftChanges = () =>
+    jsonResponse(200, {
+      html: COMPARISON_HTML,
+      summary: {
+        sections: 2,
+        added: 1,
+        removed: 0,
+        changed: 1,
+        moved: 1,
+        wordsAdded: 6,
+        wordsRemoved: 1,
+      },
+      changes: [
+        {
+          id: 'c1',
+          change: 'changed',
+          block: 'paragraph',
+          excerpt: 'Move traffic west.',
+          wordsAdded: 1,
+          wordsRemoved: 1,
+          section: { id: 'regional-failover', title: 'Regional failover' },
+          revertible: true,
+          author: { id: 'user-2', name: 'Ada', at: '2026-02-04T09:30:00.000Z' },
+        },
+        {
+          id: 'c2',
+          change: 'added',
+          block: 'paragraph',
+          excerpt: 'Tell the on-call engineer.',
+          wordsAdded: 5,
+          wordsRemoved: 0,
+          section: { id: 'afterwards', title: 'Afterwards' },
+          revertible: true,
+        },
+        {
+          id: 'c3',
+          change: 'moved',
+          block: 'paragraph',
+          excerpt: 'Check the dashboard.',
+          wordsAdded: 0,
+          wordsRemoved: 0,
+          section: { id: 'afterwards', title: 'Afterwards' },
+          revertible: false,
+        },
+      ],
+      sections: [
+        { id: 'regional-failover', depth: 1, title: 'Regional failover', changes: 1 },
+        { id: 'afterwards', depth: 2, title: 'Afterwards', changes: 2 },
+      ],
+      properties: [],
+    })
+
+  function draftRoutes(extra: FakeRoutes = {}): FakeRoutes {
+    return readingRoutes({
+      'GET /api/documents/{id}/compare': withDraftChanges,
+      'GET /api/documents/{id}/draft': draftOf({ type: 'paragraph', children: [text('Draft.')] }),
+      ...extra,
+    })
+  }
+
+  /** The list of changes, once the draft it reverts into has been read. */
+  async function changeList() {
+    const list = await screen.findByRole('navigation', { name: 'Changes (3)' })
+    await waitFor(() => {
+      expect(
+        within(list).getByRole('button', { name: /^Revert: Edited Paragraph/u }),
+      ).not.toHaveAttribute('aria-disabled')
+    })
+    return list
+  }
+
+  it('says who made each change and when, from the draft’s record', async () => {
+    renderApp(COMPARING_DRAFT, draftRoutes())
+
+    const list = await screen.findByRole('navigation', { name: 'Changes (3)' })
+    const changed = within(list).getByRole('button', { name: /^Edited Paragraph/u })
+    expect(changed).toHaveTextContent('Ada ·')
+    expect(within(changed).getByRole('time')).toHaveAttribute(
+      'datetime',
+      '2026-02-04T09:30:00.000Z',
+    )
+  })
+
+  it('keeps Revert on a change that cannot be reverted, disabled, and says why', async () => {
+    renderApp(COMPARING_DRAFT, draftRoutes())
+
+    const list = await changeList()
+    const moved = within(list).getByRole('button', { name: /^Revert: Moved Paragraph/u })
+    expect(moved).toHaveAttribute('aria-disabled', 'true')
+    expect(moved).toHaveAccessibleDescription(/A move can’t be reverted/u)
+    expect(moved).toHaveAttribute('title', expect.stringMatching(/only its place differs/u))
+    expect(within(list).getByText('A move can’t be reverted')).toBeVisible()
+    expect(within(list).getByRole('checkbox', { name: /^Select: Moved Paragraph/u })).toBeDisabled()
+  })
+
+  it('reverts one change in the draft, as one save, and offers to undo it', async () => {
+    const success = vi.spyOn(toast, 'success')
+    onTestFinished(() => {
+      success.mockRestore()
+    })
+    const bodies: unknown[] = []
+    const undone: unknown[] = []
+    renderApp(
+      COMPARING_DRAFT,
+      draftRoutes({
+        'POST /api/documents/{id}/draft/revert': async (request) => {
+          bodies.push(await request.json())
+          return jsonResponse(200, { draftVersion: 4, previous: { version: 1, kept: true } })
+        },
+        'POST /api/documents/{id}/draft/revert/undo': async (request) => {
+          undone.push(await request.json())
+          return jsonResponse(200, { draftVersion: 5 })
+        },
+      }),
+    )
+
+    const list = await changeList()
+    await userEvent.click(within(list).getByRole('button', { name: /^Revert: Edited Paragraph/u }))
+
+    await waitFor(() => {
+      expect(bodies).toEqual([{ from: B, draftVersion: 3, changes: ['c1'] }])
+    })
+    // The toast host is the shell's; what the toast offers is what is checked here.
+    await waitFor(() => {
+      expect(success).toHaveBeenCalledWith('Change reverted in your draft', expect.anything())
+    })
+    const offered = success.mock.calls[0]?.[1]
+    act(() => {
+      offered?.action?.onClick()
+    })
+    await waitFor(() => {
+      expect(undone).toEqual([{ draftVersion: 4, ast: { version: 1, kept: true } }])
+    })
+  })
+
+  it('reverts the changes picked, all in one save, and every revertible one at once', async () => {
+    const bodies: unknown[] = []
+    renderApp(
+      COMPARING_DRAFT,
+      draftRoutes({
+        'POST /api/documents/{id}/draft/revert': async (request) => {
+          bodies.push(await request.json())
+          return jsonResponse(200, { draftVersion: 4, previous: { version: 1 } })
+        },
+      }),
+    )
+
+    const list = await changeList()
+    const selected = within(list).getByRole('button', { name: /^Revert selected/u })
+    expect(selected).toHaveAttribute('aria-disabled', 'true')
+    expect(selected).toHaveAccessibleDescription('Select the changes to revert')
+
+    await userEvent.click(within(list).getByRole('checkbox', { name: 'Select all revertible' }))
+    await userEvent.click(within(list).getByRole('button', { name: 'Revert 2 selected' }))
+
+    await waitFor(() => {
+      expect(bodies).toEqual([{ from: B, draftVersion: 3, changes: ['c1', 'c2'] }])
+    })
+  })
+
+  it('says why, when somebody else is editing the document', async () => {
+    const danger = vi.spyOn(toast, 'danger')
+    onTestFinished(() => {
+      danger.mockRestore()
+    })
+    renderApp(
+      COMPARING_DRAFT,
+      draftRoutes({
+        'POST /api/documents/{id}/draft/revert': () =>
+          errorResponse(423, 'lock_lost', 'You do not hold a valid lock on this document'),
+      }),
+    )
+
+    const list = await changeList()
+    await userEvent.click(within(list).getByRole('button', { name: /^Revert: Edited Paragraph/u }))
+
+    await waitFor(() => {
+      expect(danger).toHaveBeenCalledWith(expect.stringMatching(/edited in another session/u))
+    })
+  })
+
+  it('offers nothing to revert to somebody who may not edit', async () => {
+    renderApp(
+      COMPARING_DRAFT,
+      draftRoutes({
+        'GET /api/documents/{id}/envelope': envelope({
+          permissions: { view: true, comment: true, edit: false, publish: false, manage: false },
+        }),
+      }),
+    )
+
+    const list = await screen.findByRole('navigation', { name: 'Changes (3)' })
+    expect(within(list).queryByRole('button', { name: /^Revert/u })).not.toBeInTheDocument()
+  })
+
+  it('offers nothing to revert between two published revisions', async () => {
+    renderApp(COMPARING, draftRoutes())
+
+    const list = await screen.findByRole('navigation', { name: 'Changes (3)' })
+    expect(within(list).queryByRole('button', { name: /^Revert/u })).not.toBeInTheDocument()
+  })
+
+  it('has no axe violations with the authors and the revert controls showing', async () => {
+    const { container } = renderApp(COMPARING_DRAFT, draftRoutes())
+    await changeList()
+
+    await expectNoAccessibilityViolations(container)
+  })
+})
+
 /*
  * On a phone the bar keeps the tree's button, Edit and the person menu, and
  * folds the rest into the document's "…" menu (2026-10-17): at 320 pixels the
@@ -669,6 +1066,44 @@ describe('the document bar on a phone', () => {
       expect(items).toEqual(
         expect.arrayContaining(['Rename…', 'Present', 'Preview as a reader', 'Share…']),
       )
+    } finally {
+      restore()
+    }
+  })
+
+  it('offers a request for review in the menu, which the bar has no room for', async () => {
+    const restore = onAPhone()
+    try {
+      renderApp(
+        READING_PATH,
+        readingRoutes({
+          'GET /api/documents/{id}/envelope': envelope({
+            draft: { savedAt: '2026-02-04T09:30:00.000Z' },
+          }),
+        }),
+      )
+
+      expect(await screen.findByRole('link', { name: 'Edit' })).toBeInTheDocument()
+      const bar = within(screen.getByRole('banner'))
+      await userEvent.click(bar.getByRole('button', { name: 'More actions for Regional failover' }))
+      await userEvent.click(await screen.findByRole('menuitem', { name: 'Request review…' }))
+
+      expect(await screen.findByRole('dialog', { name: 'Request a review' })).toBeInTheDocument()
+    } finally {
+      restore()
+    }
+  })
+
+  it('does not offer a review when the draft holds nothing new', async () => {
+    const restore = onAPhone()
+    try {
+      renderApp(READING_PATH, readingRoutes())
+
+      expect(await screen.findByRole('link', { name: 'Edit' })).toBeInTheDocument()
+      const bar = within(screen.getByRole('banner'))
+      await userEvent.click(bar.getByRole('button', { name: 'More actions for Regional failover' }))
+      await screen.findByRole('menu')
+      expect(screen.queryByRole('menuitem', { name: 'Request review…' })).not.toBeInTheDocument()
     } finally {
       restore()
     }

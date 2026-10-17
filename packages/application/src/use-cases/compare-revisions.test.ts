@@ -127,6 +127,72 @@ describe('compareRevisions', () => {
     ])
   })
 
+  it('draws each change on its own only when asked', async () => {
+    const id = await aDocument()
+    const head = await publish(id, '# Runbook\nRestart nightly.')
+    await writeDraft(id, '# Runbook\nRestart weekly.')
+
+    const plain = await compareRevisions(deps, { documentId: id, from: head, to: 'draft' })
+    const detailed = await compareRevisions(deps, {
+      documentId: id,
+      from: head,
+      to: 'draft',
+      patches: true,
+    })
+
+    if (plain.kind !== 'compared' || detailed.kind !== 'compared') throw new Error('not compared')
+    expect(plain.content.changes[0]).not.toHaveProperty('html')
+    expect(detailed.content.changes[0]).toMatchObject({ html: 'Restart weekly.', revertible: true })
+    // Another answer, so a caller holding the first is not told it still has this one.
+    expect(detailed.key).not.toBe(plain.key)
+  })
+
+  it('names who made each change, from the record the draft keeps', async () => {
+    const id = await aDocument()
+    const head = await publish(id, '# Runbook\nRestart nightly.')
+    await uow.repos.users.create({
+      id: AUTHOR,
+      email: 'ada@example.com',
+      displayName: 'Ada Lovelace',
+      now: NOW,
+    })
+    // A save by Ada, with the record the editing service keeps beside it.
+    await writeDraft(id, '# Runbook\nRestart weekly.')
+    await uow.repos.locks.acquire({ documentId: id, userId: AUTHOR, sessionId: SESSION, now: NOW })
+    const saved = await uow.repos.drafts.find(id)
+    await uow.repos.drafts.write({
+      documentId: id,
+      sessionId: SESSION,
+      expectedVersion: saved?.draftVersion ?? 0,
+      ast: saved?.ast,
+      authorship: { by: AUTHOR, at: NOW.toISOString() },
+      now: NOW,
+    })
+
+    const result = await compareRevisions(deps, { documentId: id, from: head, to: 'draft' })
+
+    expect(result.kind === 'compared' && result.content.changes[0]?.author).toEqual({
+      userId: AUTHOR,
+      at: NOW.toISOString(),
+      name: 'Ada Lovelace',
+    })
+  })
+
+  it('does not say what can be put back for two published revisions, which are not a draft', async () => {
+    const id = await aDocument()
+    const first = await publish(id, 'one')
+    const second = await publish(id, 'two')
+
+    const result = await compareRevisions(deps, {
+      documentId: id,
+      from: first,
+      to: second,
+      patches: true,
+    })
+
+    expect(result.kind === 'compared' && result.content.changes[0]).not.toHaveProperty('revertible')
+  })
+
   it('answers "not modified" when the caller already holds this comparison', async () => {
     const id = await aDocument()
     const first = await publish(id, 'one')
@@ -194,6 +260,74 @@ describe('compareRevisionSources', () => {
     expect(result.kind).toBe('compared')
     if (result.kind !== 'compared') return
     expect(result.source.lines.some((line) => line.change === 'added')).toBe(true)
+  })
+})
+
+describe('compareRevisions: naming the authors of changes', () => {
+  /** A draft saved with the record of who wrote it, the way the editing service keeps one. */
+  async function saveWithRecord(id: DocumentId, body: string, by: string): Promise<void> {
+    await writeDraft(id, body)
+    await uow.repos.locks.acquire({ documentId: id, userId: AUTHOR, sessionId: SESSION, now: NOW })
+    const saved = await uow.repos.drafts.find(id)
+    await uow.repos.drafts.write({
+      documentId: id,
+      sessionId: SESSION,
+      expectedVersion: saved?.draftVersion ?? 0,
+      ast: saved?.ast,
+      authorship: { by, at: NOW.toISOString() },
+      now: NOW,
+    })
+  }
+
+  it('leaves unnamed a change the record cannot attribute, and names the others', async () => {
+    const id = await aDocument()
+    const head = await publish(id, '# Runbook\nRestart nightly.\nCheck the queue.')
+    await uow.repos.users.create({
+      id: AUTHOR,
+      email: 'ada@example.com',
+      displayName: 'Ada Lovelace',
+      now: NOW,
+    })
+    await saveWithRecord(id, '# Runbook\nRestart weekly.\nCheck the pager.', AUTHOR)
+    // A format may know the author of some blocks and not of others.
+    const format = createFakeDocumentFormat()
+    const partial = {
+      ...format,
+      compare: (input: Parameters<typeof format.compare>[0]) => {
+        const compared = format.compare(input)
+        return {
+          ...compared,
+          changes: compared.changes.map((change, index) =>
+            index === 0 ? change : { ...change, author: undefined },
+          ),
+        }
+      },
+    }
+
+    const result = await compareRevisions(
+      { ...deps, format: partial },
+      { documentId: id, from: head, to: 'draft' },
+    )
+
+    if (result.kind !== 'compared') throw new Error(result.kind)
+    expect(result.content.changes).toHaveLength(2)
+    expect(result.content.changes[0]?.author?.name).toBe('Ada Lovelace')
+    expect(result.content.changes[1]?.author).toBeUndefined()
+  })
+
+  it('keeps an author the record names by something that is not a user id, without a name', async () => {
+    const id = await aDocument()
+    const head = await publish(id, '# Runbook\nRestart nightly.')
+    await saveWithRecord(id, '# Runbook\nRestart weekly.', 'imported-from-wiki')
+
+    const result = await compareRevisions(deps, { documentId: id, from: head, to: 'draft' })
+
+    if (result.kind !== 'compared') throw new Error(result.kind)
+    expect(result.content.changes[0]?.author).toEqual({
+      userId: 'imported-from-wiki',
+      at: NOW.toISOString(),
+    })
+    expect(result.content.changes[0]?.author?.name).toBeUndefined()
   })
 })
 

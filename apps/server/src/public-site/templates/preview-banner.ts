@@ -17,6 +17,12 @@ export interface PreviewBannerView {
   readonly closeHref: string
   /** Where an anonymous reader finds the page today, or null when it is not on the web. */
   readonly publicHref: string | null
+  /**
+   * Present when what is shown is the draft rather than the published page: where to
+   * go on writing it. What the web shows is then not what is being looked at, so
+   * the banner does not say.
+   */
+  readonly draft?: { readonly editHref: string } | undefined
 }
 
 const CLOSE_ICON = html`<svg
@@ -40,9 +46,11 @@ export function renderPreviewBanner(view: PreviewBannerView): Html {
     <span class="site-preview-badge">Preview</span>
     <span class="site-preview-status">
       ${
-        view.publicHref === null
-          ? html`Not on the public web`
-          : html`Live on the web · <a href="${view.publicHref}">View the live page</a>`
+        view.draft !== undefined
+          ? html`Unpublished changes · <a href="${view.draft.editHref}">Resume editing</a>`
+          : view.publicHref === null
+            ? html`Not on the public web`
+            : html`Live on the web · <a href="${view.publicHref}">View the live page</a>`
       }
     </span>
     <a class="site-preview-close" href="${view.closeHref}" title="Close preview"

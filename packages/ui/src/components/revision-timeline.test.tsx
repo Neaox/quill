@@ -46,7 +46,10 @@ describe('RevisionTimeline', () => {
     const region = screen.getByRole('region', { name: 'Revisions' })
     expect(region).toHaveAttribute('data-history', 'timeline')
     expect(within(region).getAllByRole('listitem')).toHaveLength(3)
-    expect(within(region).getByText('2026-07-02')).toHaveAttribute('datetime', '2026-07-02')
+    expect(within(region).getAllByRole('time')[1]).toHaveAttribute(
+      'datetime',
+      new Date('2026-07-02').toISOString(),
+    )
     await expectNoAccessibilityViolations(container)
   })
 

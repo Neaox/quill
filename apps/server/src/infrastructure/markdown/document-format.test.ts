@@ -403,7 +403,7 @@ describe('createDocumentFormat: render and read', () => {
     expect(rendered.incompleteRequiredSections).toEqual(['Decision'])
   })
 
-  it('draws a table of contents into the body and lists each child pages slot (ADR-054)', () => {
+  it('draws a table of contents into the body and lists each child pages slot (ADR-056)', () => {
     const rendered = format.render({
       markdown: '# Title\n\n::toc\n\n## Install\n\n::children{depth=2}\n',
       linkTitles: new Map(),
@@ -448,7 +448,7 @@ describe('createDocumentFormat: render and read', () => {
     expect(rendered.html).toContain(
       '<span class="emoji" role="img" aria-label="thumbs up">👍</span>',
     )
-    expect(rendered.html).toContain(`<img class="emoji" src="${src}" alt=":airbnb:"`)
+    expect(rendered.html).toContain(`<img class="emoji" src="${src}" alt="airbnb" title=":airbnb:"`)
     expect(rendered.html).toContain(
       `<span class="badge" data-label="airbnb"><img class="emoji" src="${src}" alt=""`,
     )
@@ -608,5 +608,38 @@ describe('createDocumentFormat: compare', () => {
       },
     })
     expect(compared.html).toContain('<svg viewBox="0 0 1 1"')
+  })
+
+  it('names who wrote each change of a draft that has a record, and none without one', () => {
+    const before = 'Kept.\n'
+    const previous = draftOf(before)
+    const next = draftOf('Kept.\n\nAdded by Ada.\n')
+    const authorship = format.stampAuthorship({
+      previous,
+      next,
+      authorship: undefined,
+      by: 'ada',
+      at: '2026-01-01T00:00:00.000Z',
+    })
+    const after = 'Kept.\n\nAdded by Ada.\n'
+
+    const stamped = format.compare({ before, after, context, draft: next, authorship })
+    expect(stamped.changes.map(({ revertible, author }) => ({ revertible, author }))).toEqual([
+      { revertible: true, author: { userId: 'ada', at: '2026-01-01T00:00:00.000Z' } },
+    ])
+
+    const unrecorded = format.compare({ before, after, context, draft: next })
+    expect(unrecorded.changes.map(({ revertible, author }) => ({ revertible, author }))).toEqual([
+      { revertible: true },
+    ])
+  })
+
+  it('puts a change back in the draft, and leaves the rest as the draft has it', () => {
+    const before = 'Kept.\n\nRestart nightly.\n'
+    const after = 'Kept.\n\nRestart weekly.\n'
+    const reverted = format.revert({ before, after, draft: draftOf(after), changes: ['c1'] })
+
+    expect(JSON.stringify(reverted.ast)).toContain('nightly')
+    expect(JSON.stringify(reverted.ast)).not.toContain('weekly')
   })
 })

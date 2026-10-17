@@ -599,7 +599,7 @@ export interface DocumentRepository {
   listAncestors(id: DocumentId): Promise<readonly DocumentRow[]>
   /**
    * Every document nested under this one, at most `depth` levels down, in one
-   * query however many there are: a child pages list's subtree (ADR-054).
+   * query however many there are: a child pages list's subtree (ADR-056).
    * The document itself is not included.
    */
   listDescendants(id: DocumentId, depth: number): Promise<readonly DocumentRow[]>
@@ -612,6 +612,8 @@ export interface DraftRow {
   readonly draftVersion: number
   readonly baseRevision: RevisionId | null
   readonly ast: unknown
+  /** Who wrote what is waiting in the draft; absent for a draft with no record (ADR-033). */
+  readonly authorship?: unknown
   readonly updatedAt: Date
 }
 
@@ -648,6 +650,8 @@ export interface DraftRepository {
     readonly sessionId: SessionId
     readonly expectedVersion: number
     readonly ast: unknown
+    /** The record of who wrote what, as it is after this write; omitted leaves it as it was. */
+    readonly authorship?: unknown
     readonly now: Date
   }): Promise<WriteDraftResult>
   /**
@@ -661,11 +665,18 @@ export interface DraftRepository {
    * content bumps the draft version, so an editor that was open when the
    * restore happened is told its write is stale and re-reads (ADR-021);
    * leaving the content alone leaves the version alone with it.
+   *
+   * The record of who wrote what is cleared when the base moves, because from there the
+   * draft says what is published, and kept when it does not (a rename, a revert), unless
+   * `authorship` gives the record as it now is. With `expectedVersion`, nothing is written
+   * unless the draft is at that version, and null says so.
    */
   rebase(input: {
     readonly documentId: DocumentId
     readonly baseRevision: RevisionId | null
     readonly ast?: unknown
+    readonly authorship?: unknown
+    readonly expectedVersion?: number
     readonly now: Date
   }): Promise<DraftRow | null>
 }
@@ -1241,7 +1252,7 @@ export interface AuditWriter {
 // ---------------------------------------------------------------------------
 
 /**
- * What a list shows under a document's title (ADR-054): its summary — the
+ * What a list shows under a document's title (ADR-056): its summary — the
  * `description`, or the first paragraph — and its icon, as the search
  * projection of its published head holds them. A document never published
  * has none.

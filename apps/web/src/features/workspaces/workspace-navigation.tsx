@@ -246,6 +246,12 @@ export function WorkspaceTree({
     },
     [loadSlice],
   )
+  const failedSlice = tree.loadFailed
+  const loadFailed = useCallback(
+    (owner: TreeLoadRequest['owner']) =>
+      failedSlice({ kind: owner.kind === 'section' ? 'collection' : 'document', id: owner.id }),
+    [failedSlice],
+  )
   // Moving and deleting the open document are the shell's, not this tree's:
   // the same two dialogs answer the document header's menu (`document-actions.tsx`).
   const documentActions = useDocumentActions()
@@ -453,6 +459,7 @@ export function WorkspaceTree({
           nodeActions={nodeActions}
           linkComponent={RouterLink}
           onLoad={onLoad}
+          loadFailed={loadFailed}
           {...(currentDocumentId === undefined ? {} : { currentId: currentDocumentId })}
         />
       )}

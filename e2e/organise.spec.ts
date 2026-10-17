@@ -167,16 +167,12 @@ test('a unit, a workspace, collections, documents, nesting, moving and deleting'
   await fillAndConfirm(newChild, 'Title', 'Appendix', 'Create')
   await expect(page.getByRole('heading', { level: 1, name: 'Appendix' })).toBeVisible()
 
-  // Nesting is the tree's structure. The tree is a window onto flat rows (ADR-049), so a child is
-  // one level deeper than its parent rather than inside its row.
-  const rowOf = (name: string) =>
-    tree(page)
-      .getByRole('listitem')
-      .filter({ has: page.getByRole('link', { name, exact: true }) })
-      .first()
-  await expect(rowOf('Appendix')).toBeVisible()
-  const parentLevel = Number(await rowOf('Quarterly plan').getAttribute('aria-level'))
-  await expect(rowOf('Appendix')).toHaveAttribute('aria-level', String(parentLevel + 1))
+  // Nesting is the tree's structure: the child's row is inside the parent's.
+  const parentItem = tree(page)
+    .getByRole('listitem')
+    .filter({ has: page.getByRole('link', { name: 'Quarterly plan' }) })
+    .first()
+  await expect(parentItem.getByRole('link', { name: 'Appendix' })).toBeVisible()
 
   // --- Rename both ----------------------------------------------------------
   await header(page).getByRole('button', { name: 'Rename "Appendix"' }).click()
@@ -193,9 +189,6 @@ test('a unit, a workspace, collections, documents, nesting, moving and deleting'
   // --- Write it and publish it ----------------------------------------------
   // After the renames, where use case 8 puts it: a publish carries the name
   // the document has now, rather than restoring the one it was created with.
-  // The tree shows the renamed parent closed (it loads a level at a time, ADR-049), so it is
-  // opened to reach its child.
-  await tree(page).getByRole('button', { name: 'Expand Quarterly plan 2026' }).click()
   await tree(page).getByRole('link', { name: 'Appendix A' }).click()
   // The shell keeps the page it is leaving on screen until the next one's
   // loader resolves (a progress bar, not a blank), so the header — and its
@@ -212,7 +205,7 @@ test('a unit, a workspace, collections, documents, nesting, moving and deleting'
   const titleHeading = surface.getByRole('heading', { level: 1 }).first()
   await expect(titleHeading).toHaveText('Appendix A')
   // The pointer is still where the Edit link was, which is over Publish once the editor is
-  // open: its changes card opens under it, and covers the middle of the heading.
+  // open: whatever that opens on hover must not cover the middle of the heading.
   await page.mouse.move(0, 400)
   await caretAtEndOf(surface, titleHeading)
   await page.keyboard.press('Enter')
@@ -237,13 +230,13 @@ test('a unit, a workspace, collections, documents, nesting, moving and deleting'
   // puts the word in a second button's accessible name.
   await move.getByRole('button', { name: 'Move', exact: true }).click()
 
-  // It has left Guides and its parent, and arrived at the top level of Archive: one row for it
-  // now, at the level the collection's own documents sit at (the tree is flat rows, ADR-049).
-  await expect(tree(page).getByRole('link', { name: 'Appendix A' })).toHaveCount(1)
-  await expect(rowOf('Appendix A')).toHaveAttribute(
-    'aria-level',
-    (await rowOf('Quarterly plan 2026').getAttribute('aria-level')) ?? '',
-  )
+  // It has left Guides and arrived in Archive, at the top level of it.
+  const archiveSection = tree(page)
+    .locator('div')
+    .filter({ has: page.getByText('Archive', { exact: true }) })
+    .first()
+  await expect(archiveSection.getByRole('link', { name: 'Appendix A' })).toBeVisible()
+  await expect(parentItem.getByRole('link', { name: 'Appendix A' })).toBeHidden()
 
   // --- Delete the child ------------------------------------------------------
   await header(page).getByRole('button', { name: 'More actions for Appendix A' }).click()
@@ -279,10 +272,6 @@ test('a collection that still holds documents says so instead of being deleted',
   await menu(page).getByRole('menuitem', { name: 'Delete…' }).click()
 
   const dialog = page.getByRole('dialog', { name: /Delete .Guides/ })
-  // The tree has not loaded what is in Guides, so the dialog does not claim it is empty: it asks,
-  // and the server's refusal brings the reason and the way out in place of Delete.
-  await expect(dialog.getByText(/This collection is empty/)).toHaveCount(0)
-  await dialog.getByRole('button', { name: 'Delete' }).click()
   await expect(dialog.getByText(/still holds/)).toBeVisible()
   await expect(dialog.getByRole('button', { name: 'Move documents first' })).toBeVisible()
   await expect(dialog.getByRole('button', { name: 'Delete' })).toHaveCount(0)
@@ -294,8 +283,9 @@ test('the organise controls are reachable on a phone', async ({ page }) => {
   await page.goto('/admin/organisation')
   await page.getByRole('link', { name: WORKSPACE }).click()
 
-  // The sidebar stacks above the page at this width rather than disappearing,
-  // so every organise entry point is still there.
+  // At this width the sidebar is a sheet behind the header's "Browse documents"
+  // (`document-shell.tsx`), so every organise entry point is one press away.
+  await page.getByRole('button', { name: 'Browse documents' }).click()
   await expect(newCollection(page)).toBeVisible()
   await expect(page.getByRole('button', { name: 'New', exact: true })).toBeVisible()
   await expect(tree(page).getByRole('link', { name: 'Quarterly plan 2026' })).toBeVisible()

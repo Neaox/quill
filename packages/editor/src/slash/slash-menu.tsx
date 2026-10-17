@@ -11,8 +11,8 @@ import { flatten } from './slash-sections.ts'
 import { useWindowedList } from './windowed-list.ts'
 import type { SlashMenuState, SlashStore } from './slash-store.ts'
 import {
+  BLOCK_WORDING,
   LIST_PADDING,
-  countMessage,
   listViewport,
   placementStyle,
   slashMenuClasses as classes,
@@ -104,6 +104,7 @@ function rowsOf(sections: SlashMenuState['sections']): readonly Row[] {
 function SlashList({ state, store, editor, className }: SlashListProps) {
   const baseId = useId()
   const listId = `${baseId}-list`
+  const wording = state.wording ?? BLOCK_WORDING
   const matches = flatten(state.sections)
   const distinct = new Set(matches.map(({ item }) => item.id)).size
   const rows = useMemo(() => rowsOf(state.sections), [state.sections])
@@ -213,13 +214,13 @@ function SlashList({ state, store, editor, className }: SlashListProps) {
       data-sheet={placement.sheet || undefined}
     >
       {matches.length === 0 ? (
-        <p className={classes.empty}>No blocks match “{state.query.trim()}”</p>
+        <p className={classes.empty}>{wording.empty(state.query.trim())}</p>
       ) : (
         <div
           ref={listRef}
           id={listId}
           role="listbox"
-          aria-label="Insert a block"
+          aria-label={wording.name}
           className={classes.list}
           onScroll={onScroll}
         >
@@ -250,7 +251,7 @@ function SlashList({ state, store, editor, className }: SlashListProps) {
         </div>
       )}
       <p role="status" aria-live="polite" className="sr-only">
-        {countMessage(distinct)}
+        {wording.count(distinct)}
       </p>
     </div>
   )
@@ -278,7 +279,6 @@ function SlashOption({
   onActivate,
   onChoose,
 }: SlashOptionProps) {
-  const Icon = item.icon
   return (
     <div
       id={id}
@@ -301,7 +301,7 @@ function SlashOption({
       }}
     >
       <span className={classes.icon}>
-        <Icon />
+        <ItemMark item={item} />
       </span>
       <span className={classes.text}>
         <span className={classes.label}>
@@ -320,4 +320,15 @@ function SlashOption({
       {item.shortcut === undefined ? null : <kbd className={classes.kbd}>{item.shortcut}</kbd>}
     </div>
   )
+}
+
+/**
+ * What stands before an item's label. An emoji's character or picture is
+ * decoration: the words beside it are what is read, and say what it is.
+ */
+function ItemMark({ item }: { readonly item: SlashItem }) {
+  if (item.glyph !== undefined) return <span aria-hidden="true">{item.glyph}</span>
+  if (item.image !== undefined) return <img src={item.image} alt="" className={classes.image} />
+  const Icon = item.icon
+  return Icon === undefined ? null : <Icon />
 }

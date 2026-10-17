@@ -3849,6 +3849,11 @@
                   "pattern": "^[0-9a-f]{64}$",
                   "type": "string"
                 },
+                "description": {
+                  "minLength": 1,
+                  "maxLength": 120,
+                  "type": "string"
+                },
                 "width": {
                   "minimum": 1,
                   "maximum": 1024,
@@ -6895,6 +6900,9 @@
                 "milliseconds": {
                   "minimum": 1,
                   "type": "integer"
+                },
+                "description": {
+                  "type": "string"
                 },
                 "width": {
                   "minimum": 1,
@@ -9949,7 +9957,8 @@
                     "review",
                     "health",
                     "facts",
-                    "unpublishedChanges"
+                    "unpublishedChanges",
+                    "draft"
                   ],
                   "properties": {
                     "permissions": {
@@ -10232,6 +10241,25 @@
                     },
                     "unpublishedChanges": {
                       "type": "boolean"
+                    },
+                    "draft": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "required": [
+                            "savedAt"
+                          ],
+                          "properties": {
+                            "savedAt": {
+                              "format": "date-time",
+                              "type": "string"
+                            }
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
                     }
                   }
                 }
@@ -10718,6 +10746,14 @@
           },
           {
             "schema": {
+              "type": "boolean"
+            },
+            "in": "query",
+            "name": "patches",
+            "required": false
+          },
+          {
+            "schema": {
               "type": "string"
             },
             "in": "path",
@@ -10848,6 +10884,31 @@
                                 "type": "string"
                               }
                             }
+                          },
+                          "html": {
+                            "type": "string"
+                          },
+                          "revertible": {
+                            "type": "boolean"
+                          },
+                          "author": {
+                            "type": "object",
+                            "required": [
+                              "id",
+                              "at"
+                            ],
+                            "properties": {
+                              "id": {
+                                "type": "string"
+                              },
+                              "name": {
+                                "type": "string"
+                              },
+                              "at": {
+                                "format": "date-time",
+                                "type": "string"
+                              }
+                            }
                           }
                         }
                       }
@@ -10906,6 +10967,208 @@
         }
       }
     },
+    "/api/documents/{id}/draft/revert-preview": {
+      "post": {
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "draftVersion",
+                  "changes"
+                ],
+                "properties": {
+                  "from": {
+                    "pattern": "^[0-9a-f]{40}$",
+                    "type": "string"
+                  },
+                  "draftVersion": {
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "changes": {
+                    "minItems": 1,
+                    "maxItems": 500,
+                    "type": "array",
+                    "items": {
+                      "pattern": "^c\\d{1,6}$",
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "draftVersion",
+                    "ast"
+                  ],
+                  "properties": {
+                    "draftVersion": {
+                      "type": "integer"
+                    },
+                    "ast": {
+                      "type": "object",
+                      "additionalProperties": {}
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/documents/{id}/draft/revert": {
+      "post": {
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "draftVersion",
+                  "changes"
+                ],
+                "properties": {
+                  "from": {
+                    "pattern": "^[0-9a-f]{40}$",
+                    "type": "string"
+                  },
+                  "draftVersion": {
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "changes": {
+                    "minItems": 1,
+                    "maxItems": 500,
+                    "type": "array",
+                    "items": {
+                      "pattern": "^c\\d{1,6}$",
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "draftVersion",
+                    "previous"
+                  ],
+                  "properties": {
+                    "draftVersion": {
+                      "type": "integer"
+                    },
+                    "previous": {
+                      "type": "object",
+                      "additionalProperties": {}
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/documents/{id}/draft/revert/undo": {
+      "post": {
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "draftVersion",
+                  "ast"
+                ],
+                "properties": {
+                  "draftVersion": {
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "ast": {
+                    "type": "object",
+                    "additionalProperties": {}
+                  }
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "draftVersion"
+                  ],
+                  "properties": {
+                    "draftVersion": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/documents/{id}/compare/source": {
       "get": {
         "parameters": [
@@ -10936,6 +11199,14 @@
             "in": "query",
             "name": "to",
             "required": true
+          },
+          {
+            "schema": {
+              "type": "boolean"
+            },
+            "in": "query",
+            "name": "patches",
+            "required": false
           },
           {
             "schema": {

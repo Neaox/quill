@@ -1,6 +1,6 @@
 # Navigation blocks
 
-Source: written for ADR-054, with every option of the table of contents and the child pages block.
+Source: written for ADR-056, with every option of the table of contents and the child pages block.
 
 ::toc
 

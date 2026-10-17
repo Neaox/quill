@@ -9,7 +9,12 @@ import {
   isTemplateDeclaration,
   linesOf,
   parseDocument,
+  attributeChanges,
+  readAuthorship,
   renderComparison,
+  revertChanges,
+  revertibleChanges,
+  stampEdit,
   renderDocument,
   resolveTemplate,
   serializeDocument,
@@ -48,6 +53,8 @@ import type {
   RenderedContent,
   RenderInput,
   RetitleInput,
+  RevertInput,
+  StampAuthorshipInput,
 } from '@quill/application'
 
 import { documentTitle, retitleDocument } from './document-title.ts'
@@ -172,7 +179,7 @@ export function createDocumentFormat(options: DocumentFormatOptions = {}): Docum
         text: { title: text.title, headings: text.headings, body: text.body },
         links: extractLinks(ast).map(toLink),
         // The slots a page fills as it is assembled (ADR-032): today the
-        // child pages lists (ADR-054). The live-block registry adds its own
+        // child pages lists (ADR-056). The live-block registry adds its own
         // types in M5.
         slots: childPagesSlots(ast),
         incompleteRequiredSections: incompleteRequiredSections(
@@ -198,29 +205,70 @@ export function createDocumentFormat(options: DocumentFormatOptions = {}): Docum
      * same options a body is rendered with, so a comparison looks like the
      * document it compares (`@quill/markdown`'s `renderComparison`).
      */
-    compare({ before, after, context }: CompareInput): ComparedContent {
+    compare({ before, after, context, patches, draft, authorship }: CompareInput): ComparedContent {
       const older = parseDocument(before)
       const newer = parseDocument(after)
-      const rendered = renderComparison(compareDocuments(older.ast, newer.ast), {
-        highlighter,
-        frontMatter: newer.frontMatter,
-        drawings: new Map(
-          [...(context.drawings ?? [])].map(([url, drawing]) => [url, drawing.markup]),
-        ),
-        extensions,
-        labels: context.labels,
-        standardEmoji,
-        emoji: context.emoji,
-        labelEmoji: context.labelEmoji,
-      })
+      const comparison = compareDocuments(older.ast, newer.ast)
+      const compared =
+        draft === undefined ? undefined : { draft: toTree(draft.ast), after: newer.ast, comparison }
+      const revertible = compared === undefined ? undefined : revertibleChanges(compared)
+      const authors =
+        compared === undefined ? undefined : attributeChanges(compared, readAuthorship(authorship))
+      const rendered = renderComparison(
+        comparison,
+        {
+          highlighter,
+          frontMatter: newer.frontMatter,
+          drawings: new Map(
+            [...(context.drawings ?? [])].map(([url, drawing]) => [url, drawing.markup]),
+          ),
+          extensions,
+          labels: context.labels,
+          standardEmoji,
+          emoji: context.emoji,
+          labelEmoji: context.labelEmoji,
+        },
+        { patches: patches === true },
+      )
       return {
         version: COMPARED_CONTENT_VERSION,
         html: rendered.html,
         sections: rendered.sections,
-        changes: rendered.changes,
+        changes:
+          revertible === undefined
+            ? rendered.changes
+            : rendered.changes.map((change) => {
+                const stamp = authors?.get(change.id)
+                return {
+                  ...change,
+                  revertible: revertible.has(change.id),
+                  ...(stamp === undefined ? {} : { author: { userId: stamp.by, at: stamp.at } }),
+                }
+              }),
         summary: rendered.summary,
         properties: compareProperties(older.frontMatter, newer.frontMatter),
       }
+    },
+
+    /**
+     * The draft with some changes between two texts put back: the same comparison the
+     * caller was shown, applied to the draft's own tree where the blocks are the ones it saw.
+     */
+    revert({ before, after, draft, changes }: RevertInput): DraftContent {
+      const newer = parseDocument(after)
+      const comparison = compareDocuments(parseDocument(before).ast, newer.ast)
+      const tree = revertChanges(
+        { draft: toTree(draft.ast), after: newer.ast, comparison },
+        changes,
+      )
+      return { ...draft, ast: tree }
+    },
+
+    stampAuthorship({ previous, next, authorship, by, at }: StampAuthorshipInput): unknown {
+      return stampEdit(readAuthorship(authorship), toTree(previous.ast), toTree(next.ast), {
+        by,
+        at,
+      })
     },
 
     compareSource(before: string, after: string): ComparedSource {

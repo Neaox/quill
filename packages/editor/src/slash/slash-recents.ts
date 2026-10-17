@@ -21,6 +21,11 @@ export const RECENT_LIMIT = 5
 /** The key an editor uses when the application gives none. */
 export const DEFAULT_RECENTS_KEY = 'editor.slash.recent'
 
+/** Where the emoji chosen last are kept: beside the slash menu's own, which are blocks, not emoji. */
+export function emojiRecentsKey(key: string = DEFAULT_RECENTS_KEY): string {
+  return `${key}.emoji`
+}
+
 function parse(stored: string | null): readonly string[] {
   if (stored === null) return []
   try {

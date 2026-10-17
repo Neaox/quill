@@ -222,8 +222,10 @@ test('a document is written, published, revised, compared, and restored', async 
 
   // --- History -------------------------------------------------------------
   const revisions = page.getByRole('region', { name: 'Revisions' })
-  await expect(revisions.getByRole('link', { name: /v2/ })).toBeVisible()
-  await expect(revisions.getByRole('link', { name: /v1/ })).toBeVisible()
+  // Anchored: each publish after the first also has a "Compare v2 with the previous version" link.
+  await expect(revisions.getByRole('link', { name: /^v2 / })).toBeVisible()
+  await expect(revisions.getByRole('link', { name: /^v1 / })).toBeVisible()
+  await expect(revisions.getByRole('link', { name: /^Compare v2 with the previous/ })).toBeVisible()
 
   // --- Compare the two revisions -------------------------------------------
   await page.getByText('Compare', { exact: true }).first().click()

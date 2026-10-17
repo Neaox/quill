@@ -2,6 +2,7 @@ import {
   ChevronDownIcon,
   CommentIcon,
   CopyIcon,
+  SearchIcon,
   Tooltip,
   TurnIntoIcon,
   buttonClassName,
@@ -20,6 +21,8 @@ import type { CommentRequest } from '../block/block-menu.tsx'
 import type { ContextMenuEnvironment } from '../context-menu/context-menu-registry.ts'
 import { anchorOf } from '../context-menu/overlay-store.ts'
 import type { OverlayStore } from '../context-menu/overlay-store.ts'
+import { FIND_IN_DOCUMENT, findSelectionUnavailable, openFindFrom } from '../find/find-menu.ts'
+import { findStateOf } from '../find/find-plugin.ts'
 import { copySectionLink, sectionLinkUnavailable } from '../link/section-link.ts'
 import { CLEAR_FORMATTING, FORMAT_ACTIONS, formatUnavailable } from './format-actions.ts'
 import type { FormatAction } from './format-actions.ts'
@@ -110,9 +113,11 @@ export function describeSelection(state: EditorState): ToolbarModel | null {
   if (inTableOrCode(state)) return null
   const actions = [...FORMAT_ACTIONS, CLEAR_FORMATTING]
   const active = Object.fromEntries(actions.map((action) => [action.id, action.active(state)]))
-  const unavailable = Object.fromEntries(
-    actions.map((action) => [action.id, formatUnavailable(action, state)]),
-  )
+  const unavailable = {
+    ...Object.fromEntries(actions.map((action) => [action.id, formatUnavailable(action, state)])),
+    // Find is looked for within one line (ADR-051); absent in an editor without find.
+    ...(findStateOf(state) === undefined ? {} : { find: findSelectionUnavailable(state) }),
+  }
   const kind = currentKind(state)
   const described = { from: selection.from, to: selection.to, kind, active, unavailable }
   return { ...described, key: JSON.stringify(described) }
@@ -388,6 +393,20 @@ export function SelectionToolbar({
           run(CLEAR_FORMATTING)
         }}
       />
+      {'find' in model.unavailable ? (
+        <ToolbarButton
+          id="find"
+          label={FIND_IN_DOCUMENT}
+          icon={SearchIcon}
+          shortcut={shortcutFor('find')}
+          disabledReason={model.unavailable['find']}
+          first={false}
+          onPress={() => {
+            // The bar takes the keyboard, so the words are not given it back.
+            openFindFrom(editor.view, false)
+          }}
+        />
+      ) : null}
       <span aria-hidden="true" className={styles.divider()} />
       <ToolbarButton
         id="section-link"

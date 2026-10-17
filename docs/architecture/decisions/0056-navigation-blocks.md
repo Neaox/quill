@@ -1,4 +1,4 @@
-# ADR-054: Navigation blocks
+# ADR-056: Navigation blocks
 
 **Status:** Accepted
 **Date:** 2026-10-17

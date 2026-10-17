@@ -108,6 +108,128 @@ describe('the commands behind a block menu', () => {
     expect(apply(caretIn(start, 3), moveBlock(1))).toBeNull()
   })
 
+  describe('moving the list item the caret is in, as Alt+Up and Alt+Down do', () => {
+    const LIST = ['- one', '  - nested', '- two', '- three', ''].join('\n')
+
+    /** The caret `into` characters into the first occurrence of `words`. */
+    function inside(source: string, words: string, into = 0): EditorState {
+      const state = harness.state(source)
+      let at = -1
+      state.doc.descendants((node, position) => {
+        const offset = node.isText ? (node.text ?? '').indexOf(words) : -1
+        if (at < 0 && offset >= 0) at = position + offset
+      })
+      if (at < 0) throw new Error(`No ${words}.`)
+      return state.apply(state.tr.setSelection(TextSelection.create(state.doc, at + into)))
+    }
+
+    function markdown(state: EditorState | null): string | null {
+      return state === null ? null : harness.read(documentToMdast(state.doc).tree)
+    }
+
+    it('moves the item whole, with what is nested in it, within its list', () => {
+      expect(markdown(apply(inside(LIST, 'one'), moveBlock(1, 'item')))).toBe(
+        ['- two', '- one', '  - nested', '- three', ''].join('\n'),
+      )
+      expect(markdown(apply(inside(LIST, 'three'), moveBlock(-1, 'item')))).toBe(
+        ['- one', '  - nested', '- three', '- two', ''].join('\n'),
+      )
+    })
+
+    it('moves an item whole even from a second paragraph of it', () => {
+      const loose = ['- one', '', '  more', '', '- two', ''].join('\n')
+
+      expect(markdown(apply(inside(loose, 'more'), moveBlock(1, 'item')))).toBe(
+        ['- two', '', '- one', '', '  more', ''].join('\n'),
+      )
+    })
+
+    it('keeps the caret in the words it was in', () => {
+      const moved = apply(inside(LIST, 'two', 2), moveBlock(-1, 'item'))
+
+      expect(moved?.selection.$from.parent.textContent).toBe('two')
+      expect(moved?.selection.$from.parentOffset).toBe(2)
+    })
+
+    it('declines at the first or last item of its list, rather than leaving it', () => {
+      expect(apply(inside(LIST, 'nested'), moveBlock(-1, 'item'))).toBeNull()
+      expect(apply(inside(LIST, 'one'), moveBlock(-1, 'item'))).toBeNull()
+      expect(moveBlock(-1, 'item')(inside(LIST, 'two'))).toBe(true)
+    })
+
+    it('leaves a selection that runs on into another item alone', () => {
+      const state = inside(LIST, 'one')
+      const spanning = state.apply(
+        state.tr.setSelection(
+          TextSelection.create(state.doc, state.selection.from, inside(LIST, 'two').selection.from),
+        ),
+      )
+
+      expect(apply(spanning, moveBlock(1, 'item'))).toBeNull()
+    })
+
+    it('moves a paragraph within the callout it is in, and no further', () => {
+      const notes = [':::notes', 'First note.', '', 'Second note.', ':::', '', 'After.', ''].join(
+        '\n',
+      )
+
+      expect(markdown(apply(inside(notes, 'First'), moveBlock(1, 'item')))).toBe(
+        [':::notes', 'Second note.', '', 'First note.', ':::', '', 'After.', ''].join('\n'),
+      )
+      expect(apply(inside(notes, 'Second'), moveBlock(1, 'item'))).toBeNull()
+      expect(apply(inside(notes, 'First'), moveBlock(-1, 'item'))).toBeNull()
+    })
+
+    it('moves a paragraph within the body of a details block', () => {
+      const details = [':::details[Summary]', 'One.', '', 'Two.', ':::', ''].join('\n')
+
+      expect(markdown(apply(inside(details, 'Two'), moveBlock(-1, 'item')))).toBe(
+        [':::details[Summary]', 'Two.', '', 'One.', ':::', ''].join('\n'),
+      )
+    })
+
+    it('keeps a title or a summary first, and does not move it', () => {
+      const details = [':::details[Summary]', 'One.', '', 'Two.', ':::', ''].join('\n')
+      const titled = [':::callout[A title]{type=tip}', 'Body.', '', 'More.', ':::', ''].join('\n')
+
+      expect(apply(inside(details, 'One'), moveBlock(-1, 'item'))).toBeNull()
+      expect(apply(inside(titled, 'Body'), moveBlock(-1, 'item'))).toBeNull()
+      expect(apply(inside(titled, 'A title'), moveBlock(1, 'item'))).toBeNull()
+    })
+
+    it('moves a paragraph within a quote, keeping the caret in its words', () => {
+      const quote = ['> First.', '>', '> Second.', ''].join('\n')
+      const moved = apply(inside(quote, 'Second', 3), moveBlock(-1, 'item'))
+
+      expect(markdown(moved)).toBe(['> Second.', '>', '> First.', ''].join('\n'))
+      expect(moved?.selection.$from.parent.textContent).toBe('Second.')
+      expect(moved?.selection.$from.parentOffset).toBe(3)
+    })
+
+    it('leaves a table cell to the table’s own row and column moves', () => {
+      const table = ['| One | Two |', '| - | - |', '| a | b |', ''].join('\n')
+
+      expect(apply(inside(table, 'One'), moveBlock(1, 'item'))).toBeNull()
+    })
+
+    it('moves the top-level block outside a list', () => {
+      expect(text(apply(caretIn(harness.state(DOCUMENT), 1), moveBlock(-1, 'item')))).toEqual([
+        'Second.',
+        'First.',
+        '',
+        'Third.',
+      ])
+    })
+
+    it('moves the whole list for the block menu, which points at the top-level block', () => {
+      const source = ['Before.', '', LIST].join('\n')
+
+      expect(markdown(apply(inside(source, 'two'), moveBlock(-1)))).toBe(
+        [LIST.trimEnd(), '', 'Before.', ''].join('\n'),
+      )
+    })
+  })
+
   it('duplicates a block directly after itself', () => {
     expect(text(apply(caretIn(harness.state(DOCUMENT), 0), duplicateBlock))).toEqual([
       'First.',

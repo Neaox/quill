@@ -14,6 +14,8 @@ import { createFakeClock } from '../drafts/clock.ts'
 import { createFakeConnectivity } from '../drafts/connectivity.ts'
 import { createMemoryRecoveryStore } from '../drafts/recovery-store.ts'
 import { useAutosave } from '../drafts/use-autosave.ts'
+import { editFind, openFind } from '../find/find-commands.ts'
+import { findStateOf } from '../find/find-plugin.ts'
 import { longDocumentMarkdown } from '../testing/long-document.ts'
 import { DocumentEditor } from './document-editor.tsx'
 import type { DocumentEditorHandle } from './document-editor.tsx'
@@ -229,6 +231,23 @@ describe('a keystroke in a 4,100-line document', () => {
       expect(counts).toEqual({ traversals: 0, serialisations: 0 })
     },
   )
+
+  it('walks the whole document zero times with the find bar open and finding', () => {
+    const { editor, keystroke } = open()
+    act(() => {
+      openFind(false)(editor.state, editor.view.dispatch)
+      editFind({ query: 'the' })(editor.state, editor.view.dispatch)
+    })
+    const found = findStateOf(editor.state)?.found.matches.length ?? 0
+    // Common enough that every block has some: a search from scratch would be the whole document.
+    expect(found).toBeGreaterThan(500)
+    const counts = countWholeDocumentWalks()
+    act(() => {
+      for (let typed = 0; typed < KEYSTROKES; typed += 1) keystroke()
+    })
+    expect(counts).toEqual({ traversals: 0, serialisations: 0 })
+    expect(findStateOf(editor.state)?.found.matches.length).toBe(found)
+  })
 
   it('reads the layout zero times in a paragraph, frames included', async () => {
     const { keystroke } = open()

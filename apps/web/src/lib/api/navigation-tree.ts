@@ -1,4 +1,4 @@
-import { useCallback, useRef } from 'react'
+import { useCallback, useRef, useState } from 'react'
 import { keepPreviousData, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query'
 
 import type { ApiClient } from '@quill/api-client'
@@ -241,6 +241,9 @@ export function useNavigationTree(workspaceId: string | undefined, focus: string
   })
 
   const inFlight = useRef(new Set<string>())
+  // The lists whose last page could not be had, so the tree can say so and offer to try again
+  // rather than show them loading for ever.
+  const [failed, setFailed] = useState<ReadonlySet<string>>(() => new Set())
   const load = useCallback(
     (
       owner: { readonly kind: 'collection' | 'document'; readonly id: string },
@@ -252,14 +255,24 @@ export function useNavigationTree(workspaceId: string | undefined, focus: string
       const asked = `${listId}@${String(offset)}+${String(limit)}`
       if (inFlight.current.has(asked)) return
       inFlight.current.add(asked)
-      void loadPage(queryClient, client, workspaceId, owner, offset, limit).finally(() => {
-        inFlight.current.delete(asked)
-      })
+      setFailed((now) => (now.has(listId) ? new Set([...now].filter((key) => key !== listId)) : now))
+      void loadPage(queryClient, client, workspaceId, owner, offset, limit)
+        .then((loaded) => {
+          if (!loaded) setFailed((now) => new Set(now).add(listId))
+        })
+        .finally(() => {
+          inFlight.current.delete(asked)
+        })
     },
     [client, queryClient, workspaceId],
   )
+  const loadFailed = useCallback(
+    (owner: { readonly kind: 'collection' | 'document'; readonly id: string }) =>
+      failed.has(listKey[owner.kind](owner.id)),
+    [failed],
+  )
 
-  return { ...tree, load }
+  return { ...tree, load, loadFailed }
 }
 
 /** Whether a document, by id or by reference, is among the loaded nodes. */
@@ -276,7 +289,7 @@ async function loadPage(
   owner: { readonly kind: 'collection' | 'document'; readonly id: string },
   offset: number,
   limit: number,
-): Promise<void> {
+): Promise<boolean> {
   const page = await request<TreeChildrenResponse>(
     client.GET('/api/workspaces/{id}/tree/children', {
       params: {
@@ -290,8 +303,9 @@ async function loadPage(
       },
     }),
   ).catch(() => undefined)
-  if (page === undefined) return
+  if (page === undefined) return false
   queryClient.setQueryData<NavigationTree>(navigationKey(workspaceId), (current) =>
     current === undefined ? current : withPage(current, listKey[owner.kind](owner.id), page),
   )
+  return true
 }

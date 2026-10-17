@@ -5,7 +5,7 @@ import type { SlashContribution } from '../slash/slash-item.ts'
 import { insertNavigationBlock } from './navigation-commands.ts'
 
 /**
- * The slash menu's way into the navigation blocks (ADR-054), contributed to
+ * The slash menu's way into the navigation blocks (ADR-056), contributed to
  * the registry as any feature's items are. Confluence's names find them
  * first: "toc" and "contents", "children" and "subpages".
  */

@@ -6,14 +6,16 @@ import { useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react
 import type { Ref } from 'react'
 
 import { BlockMenu } from '../block/block-menu.tsx'
+import { FindBar } from '../find/find-bar.tsx'
 import type { CommentRequest } from '../block/block-menu.tsx'
 import type { ChildPagesPreview } from '../navigation/navigation-view.ts'
 import type { ImageAction } from '../image/image-actions.ts'
 import { BlockInserter } from '../slash/block-inserter.tsx'
 import type { DocumentLinkTarget, SlashContribution, SlashRequest } from '../slash/slash-item.ts'
 import { SlashMenu } from '../slash/slash-menu.tsx'
+import { ShortcutsDialog } from '../shortcuts/shortcuts-dialog.tsx'
 import { TableToolbar } from '../table/table-toolbar.tsx'
-import { createSlashRecents } from '../slash/slash-recents.ts'
+import { createSlashRecents, emojiRecentsKey } from '../slash/slash-recents.ts'
 import { createSlashRegistry } from '../slash/slash-registry.ts'
 import { createSlashStore } from '../slash/slash-store.ts'
 import { builtInContextMenu } from '../context-menu/built-in-contributions.ts'
@@ -33,6 +35,7 @@ import { documentFromMdast, documentToMdast } from './ast.ts'
 import type { LoadedDocument } from './ast.ts'
 import { buildExtensions } from './extensions.ts'
 import { isPasteLanding } from './paste.ts'
+import { replaceDocument } from './replace-document.ts'
 
 /**
  * The writing surface (ADR-003).
@@ -53,6 +56,13 @@ import { isPasteLanding } from './paste.ts'
 export interface DocumentEditorHandle {
   /** The document as mdast, with any warning the conversion produced. */
   toMdast(): DocumentAst
+  /**
+   * Makes the editor hold `ast` as an edit of its own: only the stretch that
+   * differs is replaced, the caret outside it stays put, and it is one step
+   * that Undo reverses (putting changes back from a review, say). Not a reset:
+   * for a different document, remount with a new `key`.
+   */
+  replaceContent(ast: DocumentAst): void
   readonly warnings: readonly Warning[]
   readonly editor: Editor | null
 }
@@ -128,7 +138,7 @@ export interface DocumentEditorProps {
    */
   searchDocuments?(query: string, signal: AbortSignal): Promise<readonly DocumentLinkTarget[]>
   /**
-   * Lists this page's children for a child pages block's preview (ADR-054);
+   * Lists this page's children for a child pages block's preview (ADR-056);
    * the request is the application's. Omitted, the block says in words what
    * it will list. Whether it is given is read once, when the editor is built.
    */
@@ -163,7 +173,17 @@ export interface EditorClipboard extends ClipboardReader {
 }
 
 function handleFor(editor: Editor, warnings: readonly Warning[]): DocumentEditorHandle {
-  return { toMdast: () => documentToMdast(editor.state.doc).tree, warnings, editor }
+  return {
+    toMdast: () => documentToMdast(editor.state.doc).tree,
+    replaceContent: (ast) => {
+      replaceDocument(
+        editor,
+        documentFromMdast(ast, { softBreaks: 'collapse', schema: editor.schema }).doc,
+      )
+    },
+    warnings,
+    editor,
+  }
 }
 
 export function DocumentEditor({
@@ -196,6 +216,8 @@ export function DocumentEditor({
   const overlays = useMemo(() => createOverlayStore(), [])
   // Nothing to focus until the toolbar is drawn: the key is the page's.
   const focusToolbar = useRef<() => boolean>(() => false)
+  // Every keyboard shortcut, listed on Ctrl+/.
+  const [shortcutsOpen, setShortcutsOpen] = useState(false)
   const [contextMenu] = useState(() =>
     createContextMenuRegistry([
       ...builtInContextMenu(imageActions),
@@ -244,6 +266,8 @@ export function DocumentEditor({
     }),
     recents: createSlashRecents(recentsKey),
   }))
+  // The emoji chosen last, kept beside the person's blocks under a key of their own.
+  const [emojiRecents] = useState(() => createSlashRecents(emojiRecentsKey(recentsKey)))
 
   // Built once, as everything above says, and handed to `useEditor` as the same objects on every
   // render: it compares its options by identity, so a fresh list, content or props each time
@@ -255,6 +279,10 @@ export function DocumentEditor({
       ...(labels === undefined ? {} : { labels }),
       ...(emoji === undefined ? {} : { emoji }),
       ...(imageActions === undefined ? {} : { imageActions }),
+      emojiRecents,
+      onShowShortcuts: () => {
+        setShortcutsOpen(true)
+      },
       files: {
         onFiles: (request) => {
           latest.current.onFiles?.(request)
@@ -356,6 +384,7 @@ export function DocumentEditor({
 
   return (
     <div className={cx('document-editor relative', className)}>
+      <FindBar editor={editor} />
       <BlockMenu editor={editor} {...(onComment === undefined ? {} : { onComment })} />
       {editable ? <BlockInserter editor={editor} /> : null}
       {editable ? <TableToolbar editor={editor} /> : null}
@@ -372,6 +401,15 @@ export function DocumentEditor({
           {...(searchDocuments === undefined ? {} : { searchDocuments })}
         />
       ) : null}
+      <ShortcutsDialog
+        open={shortcutsOpen}
+        onOpenChange={setShortcutsOpen}
+        onCloseAutoFocus={(event) => {
+          // Back to the words, not to the page's first control.
+          event.preventDefault()
+          editor.commands.focus()
+        }}
+      />
     </div>
   )
 }

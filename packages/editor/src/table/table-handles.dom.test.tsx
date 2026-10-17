@@ -185,6 +185,54 @@ describe('the handles', () => {
     expect(selection instanceof CellSelection && selection.isColSelection()).toBe(true)
   })
 
+  it('select the whole table from the corner where the row and column grips meet', async () => {
+    const { layer, editor } = await open()
+    const corner = only(layer, '.table-grip-table')
+
+    expect(corner.tagName).toBe('BUTTON')
+    expect(corner).toHaveAttribute('title', 'Select table')
+    // A pointer's handle, as the grips and the "+"s are: the toolbar, the menu and Ctrl+A are the keyboard's.
+    expect(corner.tabIndex).toBe(-1)
+
+    fireEvent.pointerDown(corner, { button: 0 })
+
+    const { selection } = editor.state
+    expect(selection instanceof CellSelection && selection.isRowSelection()).toBe(true)
+    expect(selection instanceof CellSelection && selection.isColSelection()).toBe(true)
+    expect(editor.view.hasFocus()).toBe(true)
+  })
+
+  it('select the whole table before a right-click on the corner opens the menu on it', async () => {
+    const { layer, editor } = await open()
+
+    fireEvent.contextMenu(only(layer, '.table-grip-table'))
+
+    const { selection } = editor.state
+    expect(selection instanceof CellSelection && selection.isColSelection()).toBe(true)
+    expect(selection instanceof CellSelection && selection.isRowSelection()).toBe(true)
+  })
+
+  it('leave the corner alone for a press of another button', async () => {
+    const { layer, editor } = await open()
+    const before = editor.state.selection
+
+    fireEvent.pointerDown(only(layer, '.table-grip-table'), { button: 1 })
+
+    expect(editor.state.selection.eq(before)).toBe(true)
+  })
+
+  it('mark the table whose every cell is selected, so the corner can say so', async () => {
+    const { layer, editor, container } = await open()
+
+    fireEvent.pointerDown(only(layer, '.table-grip-table'), { button: 0 })
+
+    expect(container.querySelector('.table-editor')).toHaveAttribute('data-selected', 'table')
+    act(() => {
+      editor.commands.setTextSelection(4)
+    })
+    expect(container.querySelector('.table-editor')).not.toHaveAttribute('data-selected')
+  })
+
   it('resize two columns by the border between them, with both shares read out', async () => {
     const { layer, container, written } = await open()
     const border = only(layer, '.table-column-border', 0)

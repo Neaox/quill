@@ -62,6 +62,7 @@ export function draftRoutes(deps: AppDependencies): FastifyPluginAsync {
           request,
           documentId: await resolveDocumentId(deps, request.params.id),
           sessionId: session.sessionId,
+          userId: session.userId,
           expectedVersion: request.body.expectedVersion,
           ast: request.body.ast,
         })

@@ -2,6 +2,7 @@ import { Placeholder } from '@tiptap/extension-placeholder'
 import type { Extensions } from '@tiptap/core'
 import type { Node as PMNode } from '@tiptap/pm/model'
 
+import { CalloutTitle } from '../callout/callout-title.ts'
 import { withCalloutViews } from '../callout/callout-view.ts'
 import type { CalloutViewOptions } from '../callout/callout-view.ts'
 import { withCodeBlockView } from '../code-block/code-block-view.ts'
@@ -11,13 +12,18 @@ import type { MenusKeymapOptions } from '../context-menu/menus-keymap.ts'
 import { DetailsEditing, withDetailsView } from '../details/details-extension.ts'
 import { CodeGroupReveal, withCodeGroupView } from '../code-block/code-group-view.ts'
 import { Autoformat } from './autoformat.ts'
+import { FindAndReplace } from '../find/find-extension.ts'
 import { withImageActions } from '../image/image-actions.ts'
+import { HeldSelection } from '../link/held-selection.ts'
 import type { ImageAction } from '../image/image-actions.ts'
 import { NavigationBlocks, withNavigationViews } from '../navigation/navigation-extension.ts'
 import type { NavigationViewOptions } from '../navigation/navigation-view.ts'
 import { withFrontMatterView } from '../properties/front-matter-view.ts'
 import { withLabels } from '../schema/dom.ts'
 import { baseExtensions } from '../schema/editor-schema.ts'
+import { emojiSuggestion } from '../emoji/emoji-suggestion.ts'
+import { createSlashRecents, emojiRecentsKey } from '../slash/slash-recents.ts'
+import type { SlashRecents } from '../slash/slash-recents.ts'
 import { slashMenu } from '../slash/slash-extension.ts'
 import type { SlashMenuOptions } from '../slash/slash-extension.ts'
 import { withDirectiveViews } from '../template/directive-view.ts'
@@ -26,12 +32,17 @@ import { PlaceholderTyping } from '../template/placeholder-typing.ts'
 import { RequiredSections } from '../template/required-markers.ts'
 import { fileDrop } from './files.ts'
 import type { FileDropOptions } from './files.ts'
+import { CaretContext } from './caret-context.ts'
+import { HoldStopsAtBlockEdge } from './hold-guard.ts'
 import { KeyboardShortcuts } from './keymap.ts'
 import { MarkdownPaste } from './paste.ts'
+import { WordSelection } from '../selection/word-selection.ts'
+import { shortcutsHelp } from '../shortcuts/shortcuts-help.ts'
 import { withTableViews } from '../table/table-extension.ts'
 import { TaskToggle, withTaskItemView } from '../task/task-item-view.ts'
 import { FootnoteNumbers, withFootnoteView } from '../footnote/footnote-view.ts'
 import { TableDecorations } from '../table/table-decorations.ts'
+import { TableCopy } from '../table/table-copy.ts'
 import { TablePaste } from '../table/table-paste.ts'
 import type { EditorEmojiOptions } from './emoji.ts'
 import { emojiShortcodes } from './emoji.ts'
@@ -72,6 +83,10 @@ export interface EditorExtensionOptions {
    * "Edit diagram" (ADR-043). Omitted, an image is drawn as before.
    */
   readonly imageActions?: readonly ImageAction[]
+  /** Asked for when the writer presses Ctrl+/; omitted, the key does nothing. */
+  readonly onShowShortcuts?: () => void
+  /** What the emoji menu offers first: the emoji chosen last. Omitted, none are remembered. */
+  readonly emojiRecents?: SlashRecents
   /** What a callout's type button opens (`callout/callout-view.ts`). */
   readonly callouts?: CalloutViewOptions
   /**
@@ -80,7 +95,7 @@ export interface EditorExtensionOptions {
    */
   readonly menus?: MenusKeymapOptions
   /**
-   * What a child pages block previews (ADR-054): the application's list of
+   * What a child pages block previews (ADR-056): the application's list of
    * this page's children. Omitted, the block says in words what it will list.
    */
   readonly navigation?: NavigationViewOptions
@@ -108,6 +123,9 @@ export function placeholderFor(
 }
 
 const NO_CUSTOM_EMOJI: EditorEmojiOptions = { custom: new Map(), labelEmoji: new Map() }
+
+/** Remembers nothing beyond the page, for an editor not told where to keep what it remembers. */
+const FORGETFUL = createSlashRecents(emojiRecentsKey(), null)
 
 export function buildExtensions(options: EditorExtensionOptions = {}): Extensions {
   const views = withImageActions(
@@ -141,9 +159,21 @@ export function buildExtensions(options: EditorExtensionOptions = {}): Extension
     CodeGroupReveal,
     DetailsEditing,
     KeyboardShortcuts,
+    // A callout's title is a line of its own: Enter goes on to the body.
+    CalloutTitle,
+    // A held Backspace or Delete stops at the block's edge rather than eating the next one.
+    HoldStopsAtBlockEdge,
+    // The cell, callout, notes or details the caret is in, ringed after caret-moving keys.
+    CaretContext,
+    // A double click selects the word, not the space Windows adds after it.
+    WordSelection,
+    // Find and replace (ADR-051): Ctrl+F, Ctrl+H, F3; nothing per keystroke while its bar is closed.
+    FindAndReplace,
+    // The words a link is being made of, drawn as selected while its box has the keyboard.
+    HeldSelection,
     TaskToggle,
     FootnoteNumbers,
-    // The headings a table of contents lists, and the block selected whole (ADR-054).
+    // The headings a table of contents lists, and the block selected whole (ADR-056).
     NavigationBlocks,
     Autoformat,
     // Before the Markdown paste handler: a pasted picture carries a file and
@@ -151,6 +181,8 @@ export function buildExtensions(options: EditorExtensionOptions = {}): Extension
     ...(options.files === undefined ? [] : [fileDrop(options.files)]),
     // A pasted spreadsheet becomes a clean table, before anything else reads it.
     TablePaste,
+    // A copy of cells is tabs and lines as plain text, which a spreadsheet reads as a grid.
+    TableCopy,
     // A table's header, footer, row headers and columns, as the reader draws them.
     TableDecorations,
     MarkdownPaste,
@@ -164,7 +196,19 @@ export function buildExtensions(options: EditorExtensionOptions = {}): Extension
         options.placeholder ?? 'Write something, or press / to insert a block',
       ),
     }),
-    ...(options.slash === undefined ? [] : [slashMenu(options.slash)]),
+    // Ctrl+/ asks whoever mounted the editor to list every keyboard shortcut.
+    ...(options.onShowShortcuts === undefined ? [] : [shortcutsHelp(options.onShowShortcuts)]),
+    ...(options.slash === undefined
+      ? []
+      : [
+          slashMenu(options.slash),
+          // `:` and a few letters offer the emoji they could mean, in the slash menu's own list.
+          emojiSuggestion({
+            store: options.slash.store,
+            custom: (options.emoji ?? NO_CUSTOM_EMOJI).custom,
+            recents: options.emojiRecents ?? FORGETFUL,
+          }),
+        ]),
     // The context menu, the link popover's Ctrl+K and the toolbar's Alt+F10.
     ...(options.menus === undefined
       ? []

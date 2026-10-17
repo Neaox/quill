@@ -125,8 +125,8 @@ export const queryKeys = {
   sharedBody: (token: string, reference: string) => ['shared-body', token, reference] as const,
   publishedContent: (documentId: string) => ['published-content', documentId] as const,
   history: (documentId: string) => ['history', documentId] as const,
-  comparison: (documentId: string, from: string | null, to: string) =>
-    ['comparison', documentId, from, to] as const,
+  comparison: (documentId: string, from: string | null, to: string, version?: number) =>
+    ['comparison', documentId, from, to, version] as const,
   sourceComparison: (documentId: string, from: string | null, to: string) =>
     ['comparison-source', documentId, from, to] as const,
   /**

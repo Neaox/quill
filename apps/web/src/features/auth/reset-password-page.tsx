@@ -1,23 +1,47 @@
 import { getRouteApi, Link } from '@tanstack/react-router'
-import { useState, type FormEvent } from 'react'
+import type { FormEvent } from 'react'
 
 import { Button, buttonClassName, Callout, Input, textLinkClassName } from '@quill/ui'
 
 import { useConfirmPasswordReset, useRequestPasswordReset } from '../../lib/api/index.ts'
 import { AuthCard } from './auth-card.tsx'
 import { FormError } from '../../lib/forms/form-error.tsx'
+import { formValues } from '../../lib/forms/form-values.ts'
+import { schemaFromRules } from '../../lib/forms/standard-schema.ts'
+import { useFormValidation } from '../../lib/forms/use-form-validation.ts'
+import {
+  allOf,
+  emailRule,
+  MIN_PASSWORD_LENGTH,
+  minLengthRule,
+  requiredRule,
+} from '../../lib/forms/validation.ts'
 
 const routeApi = getRouteApi('/reset-password')
-const MIN_PASSWORD_LENGTH = 8
+
+const REQUEST_SCHEMA = schemaFromRules({ email: emailRule })
+const CONFIRM_SCHEMA = schemaFromRules({
+  newPassword: allOf(requiredRule('Choose a new password.'), minLengthRule(MIN_PASSWORD_LENGTH)),
+})
 
 function ConfirmReset({ token }: { readonly token: string }) {
   const confirmReset = useConfirmPasswordReset()
-  const [newPassword, setNewPassword] = useState('')
+  const validation = useFormValidation(CONFIRM_SCHEMA)
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
-    if (newPassword.length < MIN_PASSWORD_LENGTH) return
-    confirmReset.mutate({ token, newPassword })
+    const form = event.currentTarget
+    void validation.validate(formValues(form), form).then((values) => {
+      if (values === undefined) return
+      confirmReset.mutate(
+        { token, newPassword: values['newPassword'] ?? '' },
+        {
+          onError: (failure) => {
+            validation.adopt(failure, form)
+          },
+        },
+      )
+    })
   }
 
   if (confirmReset.isSuccess) {
@@ -36,22 +60,23 @@ function ConfirmReset({ token }: { readonly token: string }) {
       title="Choose a new password"
       description="Pick a password you do not use anywhere else."
     >
-      <form onSubmit={handleSubmit} className="flex flex-col gap-5" noValidate>
+      <form
+        onSubmit={handleSubmit}
+        onChange={validation.clearOnChange}
+        className="flex flex-col gap-5"
+        noValidate
+      >
         <Input
           size="lg"
           label="New password"
           type="password"
-          name="new-password"
+          name="newPassword"
           autoComplete="new-password"
           required
-          minLength={MIN_PASSWORD_LENGTH}
-          description="At least 8 characters."
-          value={newPassword}
-          onChange={(event) => {
-            setNewPassword(event.target.value)
-          }}
+          description={`At least ${MIN_PASSWORD_LENGTH} characters.`}
+          error={validation.errors['newPassword']}
         />
-        <FormError error={confirmReset.error} />
+        <FormError error={validation.formLevel(confirmReset.error)} />
         <Button type="submit" size="lg" loading={confirmReset.isPending} className="mt-2 w-full">
           Update password
         </Button>
@@ -62,11 +87,19 @@ function ConfirmReset({ token }: { readonly token: string }) {
 
 function RequestReset() {
   const requestReset = useRequestPasswordReset()
-  const [email, setEmail] = useState('')
+  const validation = useFormValidation(REQUEST_SCHEMA)
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
-    requestReset.mutate(email)
+    const form = event.currentTarget
+    void validation.validate(formValues(form), form).then((values) => {
+      if (values === undefined) return
+      requestReset.mutate((values['email'] ?? '').trim(), {
+        onError: (failure) => {
+          validation.adopt(failure, form)
+        },
+      })
+    })
   }
 
   if (requestReset.isSuccess) {
@@ -80,7 +113,7 @@ function RequestReset() {
         }
       >
         <Callout tone="success">
-          If an account exists for {email}, a password reset link is on its way.
+          If an account exists for {requestReset.variables}, a password reset link is on its way.
         </Callout>
       </AuthCard>
     )
@@ -96,7 +129,12 @@ function RequestReset() {
         </Link>
       }
     >
-      <form onSubmit={handleSubmit} className="flex flex-col gap-5" noValidate>
+      <form
+        onSubmit={handleSubmit}
+        onChange={validation.clearOnChange}
+        className="flex flex-col gap-5"
+        noValidate
+      >
         <Input
           size="lg"
           label="Email"
@@ -104,12 +142,9 @@ function RequestReset() {
           name="email"
           autoComplete="email"
           required
-          value={email}
-          onChange={(event) => {
-            setEmail(event.target.value)
-          }}
+          error={validation.errors['email']}
         />
-        <FormError error={requestReset.error} />
+        <FormError error={validation.formLevel(requestReset.error)} />
         <Button type="submit" size="lg" loading={requestReset.isPending} className="mt-2 w-full">
           Send reset link
         </Button>

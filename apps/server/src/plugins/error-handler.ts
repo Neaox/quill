@@ -13,6 +13,32 @@ interface ErrorBody {
   }
 }
 
+type ValidationIssue = NonNullable<FastifyError['validation']>[number]
+
+/**
+ * The dotted path to the field a problem is about. A missing property has no
+ * path of its own, only the schema's name for it, which is added to the path of
+ * the object it is missing from.
+ */
+function field({ instancePath, params }: ValidationIssue): string {
+  const missing = params['missingProperty']
+  const steps = instancePath.split('/').filter((step) => step !== '')
+  return (typeof missing === 'string' ? [...steps, missing] : steps).join('.')
+}
+
+/**
+ * What a person reads when a request fails its schema: the fields at fault,
+ * not the validator's phrasing (`body/email must match format "email"`),
+ * which names a request body nobody on the other end wrote. The validator's
+ * own findings stay in `details`, for a client that wants to place them.
+ */
+function describeValidation(validation: readonly ValidationIssue[]): string {
+  const fields = new Set(validation.map(field).filter((name) => name !== ''))
+  return fields.size === 0
+    ? 'The request was not valid.'
+    : `The request was not valid: ${[...fields].join(', ')}.`
+}
+
 /**
  * The stable codes for the client errors Fastify raises itself, before a
  * route runs; any other 4xx is `bad_request`. Keyed by Fastify's own error
@@ -75,7 +101,11 @@ export function registerErrorHandler(app: FastifyInstance): void {
 
     if (error.validation !== undefined) {
       reply.status(400).send({
-        error: { code: 'validation_error', message: error.message, details: error.validation },
+        error: {
+          code: 'validation_error',
+          message: describeValidation(error.validation),
+          details: error.validation,
+        },
       })
       return
     }

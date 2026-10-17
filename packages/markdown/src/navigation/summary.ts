@@ -6,7 +6,7 @@ import { stripPresenterNotes } from '../directives/strip-presenter-notes.ts'
 
 /**
  * What a document says it is about, for the lists that show it under its
- * title (ADR-054): its front matter's `description`, or else its first
+ * title (ADR-056): its front matter's `description`, or else its first
  * top-level paragraph, as plain words. Cut at a word near `SUMMARY_LIMIT`
  * characters, so a long opening paragraph is a line or two, not a page.
  */

@@ -1,5 +1,5 @@
 import { render, screen } from '@testing-library/react'
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { PlainLink } from '@quill/ui'
 import { expectNoAccessibilityViolations } from '@quill/ui/testing/axe'
@@ -8,8 +8,14 @@ import { FactsByline, PublicFactsByline } from './facts-byline.tsx'
 
 const NOW = new Date(Date.UTC(2026, 9, 17, 9))
 
+afterEach(() => {
+  vi.useRealTimers()
+})
+
 describe('the byline a member reads', () => {
   it('states the published facts, with a review due and tags that find their kind', async () => {
+    // "Updated" is a live relative time, which reads the wall clock rather than `now`.
+    vi.useFakeTimers({ now: NOW, toFake: ['Date'] })
     const { container } = render(
       <FactsByline
         workspaceSlug="engineering"

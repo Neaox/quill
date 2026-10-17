@@ -149,7 +149,7 @@ describe('parseDocumentMoved', () => {
   })
 })
 
-describe('parseDocumentNested and parseDocumentDeleted (ADR-054)', () => {
+describe('parseDocumentNested and parseDocumentDeleted (ADR-056)', () => {
   const nested = {
     version: EVENT_PAYLOAD_VERSION,
     documentId: DOC,

@@ -27,6 +27,11 @@ export { buildExtensions } from './document/extensions.ts'
 export type { EditorExtensionOptions } from './document/extensions.ts'
 export type { EditorEmojiOptions } from './document/emoji.ts'
 export { keyboardShortcuts } from './document/keymap.ts'
+export { selectNextOccurrence } from './document/select-next-occurrence.ts'
+// Find and replace (ADR-051): the commands, for an application that opens it from its own controls.
+export { closeFind, findNext, findPrevious, openFind } from './find/find-commands.ts'
+export { findStateOf } from './find/find-plugin.ts'
+export type { FindState } from './find/find-state.ts'
 export { choosePaste } from './document/paste.ts'
 export type { PasteAction, PasteInput } from './document/paste.ts'
 export { chooseFiles, fileDrop } from './document/files.ts'
@@ -277,6 +282,6 @@ export type {
   Replies,
 } from './testing/harness.ts'
 
-// The navigation blocks: a table of contents and the pages under this one (ADR-054)
+// The navigation blocks: a table of contents and the pages under this one (ADR-056)
 export type { ChildPagesPreview } from './navigation/navigation-view.ts'
 export { navigationItems } from './navigation/navigation-slash.ts'

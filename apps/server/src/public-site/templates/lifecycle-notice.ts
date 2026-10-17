@@ -5,7 +5,7 @@ import { html, type Html } from '../html.ts'
 /**
  * "This page is deprecated." under a public page's byline, with the page
  * that replaces it when the reader may follow it there (ADR-005 amendment,
- * ADR-055).
+ * ADR-057).
  *
  * The same markup as `LifecycleNotice` in `@quill/ui`, styled by the one
  * stylesheet both read (`@quill/design-css/byline.css`), so the application,

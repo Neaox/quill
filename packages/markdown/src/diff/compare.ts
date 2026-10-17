@@ -17,7 +17,7 @@ import { visit } from 'unist-util-visit'
 
 import { calloutDirective, isCalloutType } from '../directives/callout.ts'
 import { claims } from '../directives/definition.ts'
-import { stripPresenterNotes } from '../directives/strip-presenter-notes.ts'
+import { isPresenterNotes, stripPresenterNotes } from '../directives/strip-presenter-notes.ts'
 import { ALERT_MARKER } from '../pipeline/github-alert.ts'
 import { DIAGRAM_LANGUAGES } from '../render/handlers.ts'
 import type { BlockAlignment } from './blocks.ts'
@@ -78,6 +78,16 @@ export interface ComparedChange {
   readonly wordsRemoved: number
   /** The top-level position in the comparison tree where this change starts. */
   readonly index: number
+  /**
+   * Where the change stands among the newer document's own top-level blocks, counted as
+   * written (presenter notes included): the block's place when it is there, and for a
+   * removal the place of the block that followed it, which is where it would go back.
+   */
+  readonly at: number
+  /** The older block, as written, when the older document had one. */
+  readonly previous?: RootContent | undefined
+  /** What the comparison tree holds for this change: its marked blocks, in order. */
+  readonly nodes: readonly RootContent[]
 }
 
 export interface DocumentComparison {
@@ -89,60 +99,135 @@ const EXCERPT_LENGTH = 90
 
 const NEWLINE = '\n'
 
+/**
+ * Whether a top-level node is a block a reader could point at: not the front matter, which
+ * is compared as properties and which a draft keeps apart from its tree, and not an empty
+ * paragraph, which is the editor's blank line and which no Markdown writes or reads back.
+ */
+function isBlock(node: RootContent): boolean {
+  return node.type !== 'yaml' && !(node.type === 'paragraph' && node.children.length === 0)
+}
+
+/** A document's top-level blocks, as a comparison counts them. */
+export function blocksOf(root: Root): RootContent[] {
+  return root.children.filter(isBlock)
+}
+
+/** Where each of `blocksOf(root)` stands among `root.children`, which also hold what it leaves out. */
+export function blockPositions(root: Root): number[] {
+  return root.children.flatMap((node, index) => (isBlock(node) ? [index] : []))
+}
+
+/** A top-level block as the comparison reads it, and where it stands in the document as written. */
+interface ReadBlock {
+  readonly block: Flow
+  readonly written: number
+  readonly original: RootContent
+}
+
+/**
+ * A document's blocks as the comparison reads them: presenter notes are left out, and so
+ * is anything that is not flow. Each keeps the place it has in the document as written,
+ * and the block as written, which is what a revert puts back.
+ */
+function readBlocks(root: Root): readonly ReadBlock[] {
+  const body = blocksOf(root)
+  const stripped = stripPresenterNotes({ ...root, children: body }).children
+  const kept = body.flatMap((original, written) =>
+    isPresenterNotes(original) ? [] : [{ original, written }],
+  )
+  return stripped.flatMap((block, index) => {
+    const at = kept[index]
+    return at !== undefined && isFlow(block) ? [{ block, ...at }] : []
+  })
+}
+
 export function compareDocuments(before: Root, after: Root): DocumentComparison {
-  const older = stripPresenterNotes(before).children.filter(isFlow)
-  const newer = stripPresenterNotes(after).children.filter(isFlow)
+  const older = readBlocks(before)
+  const newer = readBlocks(after)
+  const oldWas = new Map(older.map(({ block, original }) => [block, original]))
+  const newStands = new Map(newer.map(({ block, written }) => [block, written]))
+  const alignment = alignBlocks(
+    older.map(({ block }) => block),
+    newer.map(({ block }) => block),
+  )
+  const standsAt = placesInNewer(alignment, newStands, blocksOf(after).length)
 
   const children: RootContent[] = []
   const changes: ComparedChange[] = []
-  const record = (
+  const draw = (
     entry: BlockAlignment<Flow>,
+    index: number,
     change: BlockChange,
-    words: { readonly added: number; readonly removed: number },
+    merged: Merged<Flow>,
   ) => {
     const node = entry.kind === 'removed' ? entry.before : entry.after
+    const id = `c${changes.length + 1}`
     changes.push({
-      id: `c${changes.length + 1}`,
+      id,
       change,
       block: blockKind(node),
       excerpt: excerpt(node),
-      wordsAdded: words.added,
-      wordsRemoved: words.removed,
+      wordsAdded: merged.added,
+      wordsRemoved: merged.removed,
       index: children.length,
+      /* v8 ignore next -- `placesInNewer` gives every entry of the alignment a place. */
+      at: standsAt[index] ?? blocksOf(after).length,
+      previous: entry.kind === 'added' ? undefined : oldWas.get(entry.before),
+      nodes: markFirst(merged.nodes, { change }),
     })
-    return `c${changes.length}`
+    children.push(...markFirst(merged.nodes, { change, id }))
   }
 
-  for (const entry of alignBlocks(older, newer)) {
+  for (const [index, entry] of alignment.entries()) {
     switch (entry.kind) {
       case 'unchanged':
         children.push(entry.after)
         break
-      case 'added': {
-        const id = record(entry, 'added', { added: wordsIn(entry.after), removed: 0 })
-        children.push(marked(wrapped(entry.after, 'added'), { change: 'added', id }))
+      case 'added':
+        draw(entry, index, 'added', {
+          nodes: [wrapped(entry.after, 'added')],
+          added: wordsIn(entry.after),
+          removed: 0,
+        })
         break
-      }
-      case 'removed': {
-        const id = record(entry, 'removed', { added: 0, removed: wordsIn(entry.before) })
-        children.push(marked(wrapped(entry.before, 'removed'), { change: 'removed', id }))
+      case 'removed':
+        draw(entry, index, 'removed', {
+          nodes: [wrapped(entry.before, 'removed')],
+          added: 0,
+          removed: wordsIn(entry.before),
+        })
         break
-      }
-      case 'moved': {
-        const id = record(entry, 'moved', { added: 0, removed: 0 })
-        children.push(marked(entry.after, { change: 'moved', id }))
+      case 'moved':
+        draw(entry, index, 'moved', { nodes: [entry.after], added: 0, removed: 0 })
         break
-      }
-      case 'changed': {
-        const merged = mergeBlock(entry.before, entry.after)
-        const id = record(entry, 'changed', merged)
-        children.push(...markFirst(merged.nodes, { change: 'changed', id }))
+      case 'changed':
+        draw(entry, index, 'changed', mergeBlock(entry.before, entry.after))
         break
-      }
     }
   }
 
   return { tree: { type: 'root', children }, changes }
+}
+
+/**
+ * Where each entry of an alignment stands among the newer document's blocks as written:
+ * its own place when the newer document has it, and for a removal the place of the next
+ * block the newer document does have, which is where the removal would go back.
+ */
+function placesInNewer(
+  alignment: readonly BlockAlignment<Flow>[],
+  stands: ReadonlyMap<Flow, number>,
+  end: number,
+): readonly number[] {
+  const places: number[] = []
+  let next = end
+  for (const entry of alignment.toReversed()) {
+    /* v8 ignore next -- every block of the newer alignment is one the newer document read. */
+    if (entry.kind !== 'removed') next = stands.get(entry.after) ?? next
+    places.push(next)
+  }
+  return places.toReversed()
 }
 
 // ---------------------------------------------------------------------------

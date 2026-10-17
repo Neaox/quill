@@ -1,7 +1,16 @@
 import { Link } from '@tanstack/react-router'
 import { useCallback, useState, type ReactNode } from 'react'
 
-import { Block, Button, buttonClassName, Callout, LayoutGrid, Spinner, tv } from '@quill/ui'
+import {
+  Block,
+  Button,
+  buttonClassName,
+  Callout,
+  LayoutGrid,
+  LocalTime,
+  Spinner,
+  tv,
+} from '@quill/ui'
 
 import {
   ApiError,
@@ -9,11 +18,15 @@ import {
   useDocumentLinksLoader,
   useRenderedDocument,
 } from '../../lib/api/index.ts'
+import { useDraft } from '../../lib/api/drafts.ts'
+import { isDocumentTree, readDraftContent } from '../../lib/documents/draft-content.ts'
+import { summariseDraft, type DraftSummary } from '../../lib/documents/draft-summary.ts'
 import type { LabelledRevision } from '../../lib/documents/revision-labels.ts'
 import { useFollowLink } from '../../lib/routing/use-follow-link.ts'
 import { shortRevision } from '../../lib/documents/revision-labels.ts'
 import { NewDocumentDialog } from '../workspaces/new-document-dialog.tsx'
 import { DocumentBody } from './document-body.tsx'
+import { PreviewLink } from './preview-link.tsx'
 
 export const documentReaderStyles = tv({
   slots: {
@@ -42,7 +55,7 @@ export interface DocumentReaderProps {
   readonly eyebrow?: string | undefined
   /**
    * Where a child page of this one is created, for the "Create a child page"
-   * an empty child pages list offers an editor (ADR-054). Omitted, none is offered.
+   * an empty child pages list offers an editor (ADR-056). Omitted, none is offered.
    */
   readonly placement?:
     | { readonly workspaceId: string; readonly collectionId: string | undefined }
@@ -117,6 +130,10 @@ function PublishedBody({
     setCreatingChild(true)
   }, [setCreatingChild])
   const canCreateChild = canEdit && placement !== undefined
+  // What is waiting to be published, for somebody who can write it, when there is nothing to read.
+  const draft = useDraft(canEdit && rendered.isError ? documentId : undefined)
+  const tree = readDraftContent(draft.data?.ast)?.ast
+  const draftSummary = summariseDraft(isDocumentTree(tree) ? tree : undefined)
 
   if (rendered.isPending) {
     return (
@@ -138,21 +155,12 @@ function PublishedBody({
         </Block>
         <Block className="mt-6">
           {notPublished ? (
-            <Callout tone="info" title="Nothing published yet">
-              This document has never been published, so there is no revision to read. Open it in
-              the editor, write something, and publish.
-              {canEdit ? (
-                <p className="pt-3">
-                  <Link
-                    to="/w/$workspaceSlug/d/$documentId/edit"
-                    params={{ workspaceSlug, documentId }}
-                    className={buttonClassName({ size: 'sm' })}
-                  >
-                    Start writing
-                  </Link>
-                </p>
-              ) : undefined}
-            </Callout>
+            <NotPublished
+              documentId={documentId}
+              workspaceSlug={workspaceSlug}
+              canEdit={canEdit}
+              draft={draftSummary}
+            />
           ) : (
             <Callout tone="danger" title="Couldn't load this document">
               {rendered.error instanceof ApiError ? rendered.error.message : 'Please try again.'}
@@ -193,9 +201,10 @@ function PublishedBody({
           <Block>
             <div className={styles.banner()}>
               <p className={styles.bannerText()}>
-                {`reading ${labelOf(revisions, onScreen)} · published ${
-                  revisions.find((candidate) => candidate.revision === onScreen)?.date ?? '—'
-                }`}
+                {`reading ${labelOf(revisions, onScreen)} · published `}
+                <OnScreenDate
+                  date={revisions.find((candidate) => candidate.revision === onScreen)?.date}
+                />
               </p>
               <Link
                 to="/w/$workspaceSlug/d/$documentId"
@@ -248,4 +257,80 @@ function PublishedBody({
       ) : undefined}
     </>
   )
+}
+
+/**
+ * What a document that has never been published says in place of its body.
+ *
+ * "Nothing published yet" is true and not much help: a document with a draft is not empty, only not
+ * out yet, and one made from a template has its sections and no writing in them. So somebody who
+ * can write it is told what is waiting (its sections and how many words), and which of the two
+ * it is changes what the button says. Somebody who cannot write it is told only that it has not
+ * been published: advice to open the editor is not for them. Nothing here claims readers see a
+ * page, because there is none.
+ */
+function NotPublished({
+  documentId,
+  workspaceSlug,
+  canEdit,
+  draft,
+}: {
+  readonly documentId: string
+  readonly workspaceSlug: string
+  readonly canEdit: boolean
+  readonly draft: DraftSummary | undefined
+}) {
+  const written = draft !== undefined && draft.words > 0
+  const sections =
+    draft === undefined
+      ? ''
+      : `${String(draft.sections)} ${draft.sections === 1 ? 'section' : 'sections'}`
+  const [title, words, action] = !canEdit
+    ? [
+        'Nothing published yet',
+        'This document has not been published yet. It will appear here once it is.',
+        undefined,
+      ]
+    : written
+      ? [
+          'Written, but not published yet',
+          `Your draft has ${sections} and about ${String(draft.words)} words. Readers see nothing until you publish it.`,
+          'Continue writing',
+        ]
+      : draft !== undefined
+        ? [
+            'Nothing written yet',
+            `Your draft has ${sections} and no writing in them yet. Open it to fill them in, then publish.`,
+            'Start writing',
+          ]
+        : [
+            'Nothing published yet',
+            'This document has never been published, so there is no revision to read. Open it in the editor, write something, and publish.',
+            'Start writing',
+          ]
+  return (
+    <Callout tone="info" title={title}>
+      {words}
+      {action === undefined ? undefined : (
+        <p className="flex flex-wrap items-center gap-2 pt-3">
+          <Link
+            to="/w/$workspaceSlug/d/$documentId/edit"
+            params={{ workspaceSlug, documentId }}
+            className={buttonClassName({ size: 'sm' })}
+          >
+            {action}
+          </Link>
+          {/* Only a draft with writing in it has anything to look at. */}
+          {written ? (
+            <PreviewLink documentRef={documentId} draft variant="ghost" size="sm" />
+          ) : undefined}
+        </p>
+      )}
+    </Callout>
+  )
+}
+
+/** When the revision on screen was published, in the reader's own language (`LocalTime`). */
+function OnScreenDate({ date }: { readonly date: string | undefined }) {
+  return date === undefined ? '—' : <LocalTime value={date} />
 }

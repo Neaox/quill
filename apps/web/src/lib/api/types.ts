@@ -169,6 +169,11 @@ export interface DraftDto {
   readonly updatedAt: string
 }
 
+/** `POST /documents/:id/draft/revert`: the draft's new version, and what it held before. */
+export type PutBackResponse = Json<
+  NonNullable<paths['/api/documents/{id}/draft/revert']['post']>['responses'][200]
+>
+
 export interface SaveDraftResponse {
   readonly draftVersion: number
   readonly updatedAt: string
@@ -204,7 +209,7 @@ export type OutlineEntry = components['schemas']['OutlineEntry']
 /** `GET /documents/:id/rendered`: the cached body, outline, and live-block slots (ADR-031). */
 export type RenderedDocument = GetBody<'/api/documents/{id}/rendered'>
 
-/** `GET /documents/:id/children`: what fills a child pages slot, for this reader (ADR-054). */
+/** `GET /documents/:id/children`: what fills a child pages slot, for this reader (ADR-056). */
 export type ChildPagesList = GetBody<'/api/documents/{id}/children'>
 
 /** `GET /documents/:id/envelope`: everything that is a property of now, not of the revision. */

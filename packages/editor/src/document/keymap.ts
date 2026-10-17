@@ -9,9 +9,18 @@ import type { Command } from '@tiptap/pm/state'
 
 import { markType, nodeType } from '../schema/node-type.ts'
 import { tableCommands } from '../schema/tables.ts'
+import { moveBlock } from '../block/commands.ts'
 import { tableKeymap } from '../table/table-actions.ts'
-import { enterInTable, nextCellOrNewRow } from '../table/table-commands.ts'
+import { enterInTable, goToCell, nextCellOrNewRow } from '../table/table-commands.ts'
+import { tableContext } from '../table/table-context.ts'
 import { insertHardBreak } from './commands.ts'
+import { enterTable } from './enter-table.ts'
+import { leaveEnd, leaveStart } from './exit-block.ts'
+import { selectOutward } from './select-outward.ts'
+import { selectNextOccurrence } from './select-next-occurrence.ts'
+import { SHORTCUTS } from '../format/shortcuts.ts'
+import { currentKind, turnInto } from '../format/turn-into.ts'
+import type { TurnIntoTarget } from '../format/turn-into.ts'
 
 /**
  * The editor's keyboard map.
@@ -33,10 +42,35 @@ const MARK_KEYS: Readonly<Record<string, string>> = {
   'Mod-e': 'code',
 }
 
-const LIST_KEYS: Readonly<Record<string, string>> = {
-  'Mod-Shift-7': 'orderedList',
-  'Mod-Shift-8': 'bulletList',
-  'Mod-Shift-9': 'taskList',
+const LIST_KEYS: Readonly<Record<string, ListKind>> = {
+  'Mod-Shift-7': { node: 'orderedList', kind: 'numbered-list' },
+  'Mod-Shift-8': { node: 'bulletList', kind: 'bullet-list' },
+  'Mod-Shift-9': { node: 'taskList', kind: 'task-list' },
+}
+
+interface ListKind {
+  readonly node: string
+  readonly kind: TurnIntoTarget
+}
+
+const LIST_KINDS: ReadonlySet<TurnIntoTarget> = new Set(
+  Object.values(LIST_KEYS).map(({ kind }) => kind),
+)
+
+/**
+ * A list's key is a switch, as the toolbar's list buttons are: it makes the
+ * line that list, turns it back into text in that list, and changes another
+ * kind of list into this one rather than nesting one in the other.
+ */
+function toggleList(schema: Schema, { node, kind }: ListKind): Command {
+  return (state, dispatch, view) => {
+    const current = currentKind(state)
+    if (current === kind) return turnInto('paragraph')(state, dispatch, view)
+    if (current !== undefined && LIST_KINDS.has(current)) {
+      return turnInto(kind)(state, dispatch, view)
+    }
+    return wrapInList(nodeType(schema, node))(state, dispatch, view)
+  }
 }
 
 const ITEM_NODES = ['listItem', 'taskItem'] as const
@@ -44,6 +78,17 @@ const ITEM_NODES = ['listItem', 'taskItem'] as const
 /** One command per list item type, tried in turn, so both kinds of list work. */
 function acrossItemTypes(schema: Schema, make: (type: NodeType) => Command): Command {
   return chainCommands(...ITEM_NODES.map((name) => make(nodeType(schema, name))))
+}
+
+/**
+ * The table's command while the selection is in a table, which may decline
+ * (a first row has nowhere up to go), and `elsewhere` everywhere else.
+ */
+function inTableOr(inTable: Command | undefined, elsewhere: Command): Command {
+  return (state, dispatch, view) =>
+    tableContext(state) === undefined
+      ? elsewhere(state, dispatch, view)
+      : (inTable?.(state, dispatch, view) ?? false)
 }
 
 export function keyboardShortcuts(schema: Schema): Readonly<Record<string, Command>> {
@@ -57,8 +102,9 @@ export function keyboardShortcuts(schema: Schema): Readonly<Record<string, Comma
     Object.entries(MARK_KEYS).map(([key, name]) => [key, toggleMark(markType(schema, name))]),
   )
   const lists = Object.fromEntries(
-    Object.entries(LIST_KEYS).map(([key, name]) => [key, wrapInList(nodeType(schema, name))]),
+    Object.entries(LIST_KEYS).map(([key, list]) => [key, toggleList(schema, list)]),
   )
+  const table = tableKeymap()
 
   return {
     ...marks,
@@ -72,8 +118,28 @@ export function keyboardShortcuts(schema: Schema): Readonly<Record<string, Comma
     Enter: chainCommands(enterInTable, acrossItemTypes(schema, splitListItem)),
     Tab: chainCommands(nextCellOrNewRow, acrossItemTypes(schema, sinkListItem)),
     // Inserting, moving and deleting rows and columns, as the table toolbar lists them.
-    ...tableKeymap(),
+    ...table,
+    // In a table Alt+Up and Alt+Down move its rows; anywhere else, the list
+    // item or the block (`block/commands.ts`), as an outliner's do.
+    'Alt-ArrowUp': inTableOr(table['Alt-ArrowUp'], moveBlock(-1, 'item')),
+    'Alt-ArrowDown': inTableOr(table['Alt-ArrowDown'], moveBlock(1, 'item')),
+    // One cell at a time, however far into the text the caret is (the plain arrows go a character).
+    'Alt-Shift-ArrowUp': goToCell('up'),
+    'Alt-Shift-ArrowDown': goToCell('down'),
+    'Alt-Shift-ArrowLeft': goToCell('left'),
+    'Alt-Shift-ArrowRight': goToCell('right'),
+    // Out of a block that has the end or the start of the document, which
+    // has nowhere to go (exit-block.ts), and into a table beside the caret,
+    // which Firefox's own caret cannot find (enter-table.ts).
+    ArrowDown: chainCommands(leaveEnd('down'), enterTable('down')),
+    ArrowRight: chainCommands(leaveEnd('right'), enterTable('right')),
+    ArrowUp: chainCommands(leaveStart('up'), enterTable('up')),
+    ArrowLeft: chainCommands(leaveStart('left'), enterTable('left')),
     'Shift-Tab': chainCommands(tableCommands.previousCell, acrossItemTypes(schema, liftListItem)),
+    // The block first, then what is around it, and last the document (select-outward.ts).
+    'Mod-a': selectOutward,
+    // The word at the caret, then each next place it comes (select-next-occurrence.ts).
+    [SHORTCUTS.selectNextOccurrence]: selectNextOccurrence,
     'Mod-z': undo,
     'Mod-y': redo,
     'Mod-Shift-z': redo,

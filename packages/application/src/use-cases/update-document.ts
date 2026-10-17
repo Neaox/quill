@@ -207,7 +207,7 @@ export async function updateDocument(
       await auditMove(deps, tx, { document, updated, now, sessionId: command.sessionId })
     } else if (updated.parentId !== document.parentId) {
       // A re-nesting inside the collection moves nothing on the web, but it
-      // changes the pages listed under both parents (ADR-054).
+      // changes the pages listed under both parents (ADR-056).
       const payload: DocumentNestedPayload = {
         version: EVENT_PAYLOAD_VERSION,
         documentId: document.id,
@@ -396,7 +396,7 @@ export async function deleteDocument(
   }
   await deps.uow.run(async (tx) => {
     await tx.documents.delete(command.documentId)
-    // The pages listed under its parent, and the ones it lifted, have changed (ADR-054).
+    // The pages listed under its parent, and the ones it lifted, have changed (ADR-056).
     await tx.outbox.write({
       id: deps.ids.uuid(),
       type: DOCUMENT_DELETED,

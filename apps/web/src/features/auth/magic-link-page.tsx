@@ -1,14 +1,20 @@
 import { getRouteApi, Link } from '@tanstack/react-router'
-import { useState, type FormEvent } from 'react'
+import type { FormEvent } from 'react'
 
 import { Button, buttonClassName, Callout, Input, Spinner, textLinkClassName } from '@quill/ui'
 
 import { ApiError, useConsumeMagicLink, useRequestMagicLink } from '../../lib/api/index.ts'
 import { AuthCard } from './auth-card.tsx'
 import { FormError } from '../../lib/forms/form-error.tsx'
+import { formValues } from '../../lib/forms/form-values.ts'
+import { schemaFromRules } from '../../lib/forms/standard-schema.ts'
+import { useFormValidation } from '../../lib/forms/use-form-validation.ts'
+import { emailRule } from '../../lib/forms/validation.ts'
 import { useConsumeOnMount } from './use-consume-on-mount.ts'
 
 const routeApi = getRouteApi('/magic-link')
+
+const REQUEST_SCHEMA = schemaFromRules({ email: emailRule })
 
 function ConsumeMagicLink({ token }: { readonly token: string }) {
   const consume = useConsumeMagicLink()
@@ -51,11 +57,22 @@ function ConsumeMagicLink({ token }: { readonly token: string }) {
 
 function RequestMagicLink() {
   const requestLink = useRequestMagicLink()
-  const [email, setEmail] = useState('')
+  const validation = useFormValidation(REQUEST_SCHEMA)
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
-    requestLink.mutate({ email, purpose: 'sign-in' })
+    const form = event.currentTarget
+    void validation.validate(formValues(form), form).then((values) => {
+      if (values === undefined) return
+      requestLink.mutate(
+        { email: (values['email'] ?? '').trim(), purpose: 'sign-in' },
+        {
+          onError: (failure) => {
+            validation.adopt(failure, form)
+          },
+        },
+      )
+    })
   }
 
   if (requestLink.isSuccess) {
@@ -69,7 +86,7 @@ function RequestMagicLink() {
         }
       >
         <Callout tone="success">
-          If an account exists for {email}, a sign-in link is on its way.
+          If an account exists for {requestLink.variables.email}, a sign-in link is on its way.
         </Callout>
       </AuthCard>
     )
@@ -85,7 +102,12 @@ function RequestMagicLink() {
         </Link>
       }
     >
-      <form onSubmit={handleSubmit} className="flex flex-col gap-5" noValidate>
+      <form
+        onSubmit={handleSubmit}
+        onChange={validation.clearOnChange}
+        className="flex flex-col gap-5"
+        noValidate
+      >
         <Input
           size="lg"
           label="Email"
@@ -93,12 +115,9 @@ function RequestMagicLink() {
           name="email"
           autoComplete="email"
           required
-          value={email}
-          onChange={(event) => {
-            setEmail(event.target.value)
-          }}
+          error={validation.errors['email']}
         />
-        <FormError error={requestLink.error} />
+        <FormError error={validation.formLevel(requestLink.error)} />
         <Button type="submit" size="lg" loading={requestLink.isPending} className="mt-2 w-full">
           Send link
         </Button>

@@ -22,6 +22,18 @@ export const SHORTCUTS = {
   contextMenuKey: 'ContextMenu',
   moveUp: 'Mod-Shift-ArrowUp',
   moveDown: 'Mod-Shift-ArrowDown',
+  /** Find and replace (ADR-051), with VS Code's keys; Mod-Alt-f because a Mac's Command+H hides the window. */
+  find: 'Mod-f',
+  replace: 'Mod-h',
+  replaceAlternative: 'Mod-Alt-f',
+  findNext: 'F3',
+  findNextAlternative: 'Mod-g',
+  findPrevious: 'Shift-F3',
+  findPreviousAlternative: 'Mod-Shift-g',
+  /** The word at the caret, then each next place it comes. */
+  selectNextOccurrence: 'Mod-d',
+  /** Lists every keyboard shortcut (`shortcuts/shortcuts-dialog.tsx`). */
+  shortcuts: 'Mod-/',
 } as const
 
 export type ShortcutName = keyof typeof SHORTCUTS

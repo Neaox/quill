@@ -23,6 +23,8 @@ function show(nodes: readonly (PhrasingContent | RootContent)[]): string {
           return `{+${show(node.children)}}`
         case 'diffDeletion':
           return `{-${show(node.children)}}`
+        case 'diffChars':
+          return `‹${show(node.children)}›`
         case 'emphasis':
           return `*${show(node.children)}*`
         case 'strong':
@@ -55,7 +57,9 @@ function withoutRemovals(nodes: readonly PhrasingContent[]): PhrasingContent[] {
 
 describe('mergePhrasing', () => {
   it('marks words, keeping the text around them', () => {
-    expect(merge('Deploy on Monday.', 'Deploy on Tuesday.')).toBe('Deploy on {-Monday}{+Tuesday}.')
+    expect(merge('Deploy on Monday.', 'Deploy on Tuesday.')).toBe(
+      'Deploy on {-‹Mon›day}{+‹Tues›day}.',
+    )
   })
 
   it('keeps formatting around and inside a change', () => {
@@ -103,5 +107,35 @@ describe('mergePhrasing', () => {
         expect(toString(paragraph)).toBe(toString({ type: 'paragraph', children: phrasing(after) }))
       }),
     )
+  })
+})
+
+describe('the characters of a replaced word that changed', () => {
+  const merged = (before: string, after: string) =>
+    show(mergePhrasing(phrasing(before), phrasing(after)).children)
+
+  it('picks out one character that was added to a long word, which a whole-word mark hides', () => {
+    expect(merged('The colour is red.', 'The color is red.')).toBe(
+      'The {-colo‹u›r}{+colo‹›r} is red.',
+    )
+  })
+
+  it('picks out the characters that are not shared by a beginning or an end', () => {
+    expect(merged('Restart nightly.', 'Restart weekly.')).toBe('Restart {-‹night›ly}{+‹week›ly}.')
+    expect(merged('See version 1.2.3.', 'See version 1.2.4.')).toBe(
+      'See version {-1.2.‹3›}{+1.2.‹4›}.',
+    )
+  })
+
+  it('leaves a word that shares nothing with the one that replaced it as it was', () => {
+    expect(merged('Use the queue.', 'Use the stack.')).toBe('Use the {-queue}{+stack}.')
+  })
+
+  it('leaves several words as they were, since there is no one word to compare', () => {
+    expect(merged('Restart the queue.', 'Restart the old queue.')).toBe('Restart the {+old }queue.')
+  })
+
+  it('takes a character as a person does, not as the encoding does', () => {
+    expect(merged('A naïve 👍 plan.', 'A naïve 👎 plan.')).toBe('A naïve {-👍}{+👎} plan.')
   })
 })

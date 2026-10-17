@@ -13,12 +13,14 @@ import {
   deleteColumns,
   deleteRows,
   enterInTable,
+  goToCell,
   insertLine,
   moveColumn,
   moveRow,
   nextCellOrNewRow,
   normalise,
   selectLine,
+  selectTable,
   setColumnAlign,
   setHeaders,
   setTableAttribute,
@@ -315,6 +317,64 @@ describe('the wrapper', () => {
     expect(markdown(run(inCell(source, 'eu'), setTableAttribute('width', undefined)))).toBe(
       `:::table[Budgets]\n${TABLE}:::\n`,
     )
+  })
+})
+
+describe('selecting the whole table', () => {
+  it('selects every cell of a table, as its corner does', () => {
+    const state = harness.state(TABLE)
+    const all = run(state, selectTable(0)).selection
+
+    expect(all).toBeInstanceOf(CellSelection)
+    expect(all instanceof CellSelection && all.isRowSelection() && all.isColSelection()).toBe(true)
+    expect(tableContext(run(state, selectTable(0)))?.rect).toMatchObject({
+      top: 0,
+      left: 0,
+      bottom: 3,
+      right: 3,
+    })
+    expect(selectTable(0)(state)).toBe(true)
+    expect(declines(state, selectTable(1))).toBe(true)
+    expect(declines(harness.state('Prose.\n'), selectTable(0))).toBe(true)
+  })
+})
+
+describe('moving between cells at once', () => {
+  it.each([
+    ['up', 'Data', 'Platform'],
+    ['down', 'Owner', 'Platform'],
+    ['left', 'Data', 'us'],
+    ['right', 'Data', '90'],
+  ] as const)('goes %s from %s to %s, whatever the caret was beside', (direction, from, to) => {
+    expect(caretCell(run(inCell(TABLE, from, 2), goToCell(direction)))).toBe(to)
+  })
+
+  it('puts the caret at the start of the cell it arrives in', () => {
+    const arrived = run(inCell(TABLE, 'Platform', 5), goToCell('left'))
+
+    expect(arrived.selection.$from.parentOffset).toBe(0)
+  })
+
+  it.each([
+    ['up', 'Region'],
+    ['left', 'Region'],
+    ['down', '90'],
+    ['right', '90'],
+  ] as const)(
+    'stays where it is at the %s edge, and keeps the key from doing anything else',
+    (direction, text) => {
+      const at = inCell(TABLE, text, 1)
+      const dispatched: unknown[] = []
+
+      const spent = goToCell(direction)(at, (tr) => dispatched.push(tr))
+
+      expect(spent).toBe(true)
+      expect(dispatched).toEqual([])
+    },
+  )
+
+  it('declines outside a table, so the key goes on to what else it does', () => {
+    expect(declines(harness.state('Prose.\n'), goToCell('down'))).toBe(true)
   })
 })
 

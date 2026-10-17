@@ -16,6 +16,7 @@ import { tv } from 'tailwind-variants'
 import type { ContextMenuEnvironment } from '../context-menu/context-menu-registry.ts'
 import type { LinkOverlay, OverlayStore } from '../context-menu/overlay-store.ts'
 import type { DocumentLinkTarget } from '../slash/slash-item.ts'
+import { holdSelection } from './held-selection.ts'
 import { applyLink, documentHref, linkAt, normaliseHref, unlink } from './link-commands.ts'
 
 /**
@@ -85,6 +86,17 @@ export function LinkPopover({
   // What the search said about what is typed now; an answer to older words is not one.
   const found = searchable && answer.query === address ? answer.targets : []
   const searching = searchable && answer.query !== address
+
+  const { from: heldFrom, to: heldTo } = range
+  // Synchronises the editor's view, an external system, with this box being
+  // open: the words being linked stay drawn as selected while the fields have
+  // the keyboard, and are let go when it closes.
+  useEffect(() => {
+    holdSelection(editor.view, { from: heldFrom, to: heldTo })
+    return () => {
+      if (!editor.isDestroyed) holdSelection(editor.view, null)
+    }
+  }, [editor, heldFrom, heldTo])
 
   // Asks the application's search — a request, an external system — once
   // typing rests, abandoning an answer the next keystroke has made stale.

@@ -201,7 +201,7 @@ export interface PublishedDocumentView {
  * request and never stored, so this names the contract a reader of one can
  * rely on rather than a format a cache must keep readable.
  */
-export const COMPARED_CONTENT_VERSION = 1
+export const COMPARED_CONTENT_VERSION = 2
 
 /** Everything a comparison is drawn with besides the two texts: what a render takes. */
 export type CompareContext = Omit<RenderInput, 'markdown'>
@@ -212,6 +212,34 @@ export interface CompareInput {
   readonly before: string
   readonly after: string
   readonly context: CompareContext
+  /** Draw each change on its own as well, for a view that shows one change at a time. */
+  readonly patches?: boolean
+  /** The record of who wrote what in the draft, when the newer text is it. */
+  readonly authorship?: unknown
+  /**
+   * The draft, when the newer text is the draft as it would publish: which changes can be put
+   * back in it is then part of the answer. Changes are put back in the draft, not in a text.
+   */
+  readonly draft?: DraftContent
+}
+
+export interface StampAuthorshipInput {
+  readonly previous: DraftContent
+  readonly next: DraftContent
+  readonly authorship: unknown
+  /** The user who saved. */
+  readonly by: string
+  /** When, as an ISO date and time. */
+  readonly at: string
+}
+
+/** Some of the changes between two texts, put back in the draft the newer one came from. */
+export interface RevertInput {
+  readonly before: string
+  readonly after: string
+  readonly draft: DraftContent
+  /** The ids of the changes, as `compare` named them. */
+  readonly changes: readonly string[]
 }
 
 /** What happened to one block. */
@@ -229,6 +257,14 @@ export interface ComparedChange {
   readonly wordsRemoved: number
   /** The section it starts in; absent before the first heading. */
   readonly section?: { readonly id: string; readonly title: string } | undefined
+  /** The change drawn on its own, when asked for. */
+  readonly html?: string | undefined
+  /** Whether it can be put back in the draft, when the draft was given. */
+  readonly revertible?: boolean | undefined
+  /** Who made it and when, when the draft's record knows. The format gives the user's id; the use case names them. */
+  readonly author?:
+    | { readonly userId: string; readonly at: string; readonly name?: string | undefined }
+    | undefined
 }
 
 /** A heading of the compared document, and how many changes start under it. */
@@ -330,6 +366,17 @@ export interface DocumentFormat {
    * version is stored reaches the result.
    */
   compare(input: CompareInput): ComparedContent
+  /**
+   * The record of who wrote what in a draft, after `by` saved `next` over `previous`:
+   * what they added or edited is theirs, and what they took out is remembered. The record
+   * the draft held is `authorship`, which may be none.
+   */
+  stampAuthorship(input: StampAuthorshipInput): unknown
+  /**
+   * The draft with some of the changes between two texts put back, to be saved by the
+   * caller. A change that cannot be put back there is left as it is.
+   */
+  revert(input: RevertInput): DraftContent
   /** Two versions' Markdown compared by line, for the comparison's source view. */
   compareSource(before: string, after: string): ComparedSource
 }

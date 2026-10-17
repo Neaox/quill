@@ -46,6 +46,18 @@ describe('ranking what the author typed', () => {
     expect(labels('warn call')).toEqual([])
   })
 
+  it('can be asked for names that start with what was typed and nothing scattered', () => {
+    const names = ['tada', 'tipping_hand', 'thumbsup'].map((label) => ({ label }))
+
+    expect(rankMatches('tad', names).map(({ item }) => item.label)).toEqual([
+      'tada',
+      'tipping_hand',
+    ])
+    expect(rankMatches('tad', names, { scattered: false }).map(({ item }) => item.label)).toEqual([
+      'tada',
+    ])
+  })
+
   it('needs two letters before it matches letters scattered through a label', () => {
     expect(labels('z')).toEqual([])
     expect(labels('q')).toEqual([])

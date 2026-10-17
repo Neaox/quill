@@ -236,10 +236,13 @@ function MenuButtonEntry({
       return (
         <DropdownMenu.Item
           disabled={entry.disabled === true}
-          onSelect={entry.onSelect}
+          onSelect={(event) => {
+            if (entry.keepOpen === true) event.preventDefault()
+            entry.onSelect()
+          }}
           className={styles.item()}
         >
-          {entry.label}
+          <RowContent entry={entry} />
         </DropdownMenu.Item>
       )
     case 'link':
@@ -249,7 +252,7 @@ function MenuButtonEntry({
         // browser's own "open in new tab" still works on it.
         <DropdownMenu.Item asChild>
           <LinkElement {...entry.target} className={styles.item()}>
-            {entry.label}
+            <RowContent entry={entry} />
           </LinkElement>
         </DropdownMenu.Item>
       )
@@ -283,4 +286,35 @@ function MenuButtonEntry({
         </DropdownMenu.RadioGroup>
       )
   }
+}
+
+/**
+ * The inside of a row: its icon, its words, and what it is set to. The hint is read after the
+ * words with a colon ("Appearance: System") and is a polite live region, because a row that
+ * cycles a setting keeps the focus, and a change of name under a focused item is not reliably read.
+ */
+function RowContent({
+  entry,
+}: {
+  readonly entry: Extract<MenuEntry, { readonly kind: 'action' | 'link' }>
+}) {
+  const styles = menuStyles({ size: 'md' })
+  return (
+    <>
+      {entry.icon === undefined ? undefined : (
+        <span aria-hidden="true" className={styles.rowIcon()}>
+          {entry.icon}
+        </span>
+      )}
+      <span className={styles.rowLabel()}>
+        {entry.label}
+        {entry.hint === undefined ? undefined : <span className="sr-only">{': '}</span>}
+      </span>
+      {entry.hint === undefined ? undefined : (
+        <span aria-live="polite" className={styles.rowHint()}>
+          {entry.hint}
+        </span>
+      )}
+    </>
+  )
 }

@@ -51,11 +51,12 @@ export function caretRect(view: EditorView): SlashRect | null {
 }
 
 /**
- * Whether a slash at `range.from` starts a query: in a line of text that is
- * not code, outside inline code and links, and at the start of the line or
- * after whitespace.
+ * Whether a trigger character at `range.from` starts a query: in a line of
+ * text that is not code, outside inline code and links, and at the start of
+ * the line or after whitespace. The slash and the emoji colon share the rule,
+ * because both are asking for something only where a writer means to ask.
  */
-export function slashAllowed(state: EditorState, range: SlashRange): boolean {
+export function triggerAllowed(state: EditorState, range: SlashRange): boolean {
   const $slash = state.doc.resolve(range.from)
   const line = $slash.parent
   if (
@@ -138,7 +139,7 @@ export function slashMenu(options: SlashMenuOptions): Extension {
           char: '/',
           allowSpaces: true,
           allowedPrefixes: null,
-          allow: ({ state, range }) => slashAllowed(state, range),
+          allow: ({ state, range }) => triggerAllowed(state, range),
           shouldShow: ({ query, editor: current }) =>
             queryContinues(query, registry.available(current.state)),
           items: ({ editor: current }) => [...registry.available(current.state)],

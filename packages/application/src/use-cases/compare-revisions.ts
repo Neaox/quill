@@ -1,4 +1,5 @@
-import type { DocumentId, RevisionId } from '@quill/domain'
+import { userId } from '@quill/domain'
+import type { DocumentId, RevisionId, UserId } from '@quill/domain'
 
 import type { BlobStore } from '../ports/blob-store.ts'
 import type { ContentStore } from '../ports/content-store.ts'
@@ -7,6 +8,7 @@ import type {
   ComparedContent,
   ComparedSource,
   DocumentFormat,
+  DraftContent,
   RenderInput,
 } from '../ports/document-format.ts'
 import { COMPARED_CONTENT_VERSION } from '../ports/document-format.ts'
@@ -59,6 +61,8 @@ export interface CompareRevisionsCommand {
    * them is this application's own address, stored relative (ADR-035).
    */
   readonly appOrigins?: readonly string[] | undefined
+  /** Draw each change on its own too, and say which can be put back in the draft. */
+  readonly patches?: boolean | undefined
 }
 
 type Failure =
@@ -75,11 +79,18 @@ export type CompareSourcesResult =
   | { readonly kind: 'compared'; readonly source: ComparedSource }
   | Failure
 
-interface Sides {
+export interface Sides {
   readonly kind: 'sides'
   readonly document: DocumentRow
   readonly before: string
   readonly after: string
+  /** The draft, when it is the newer side: what it holds and the version it is at. */
+  readonly draft?: {
+    readonly content: DraftContent
+    readonly version: number
+    /** Who wrote what in it, as the draft row holds it. */
+    readonly authorship: unknown
+  }
 }
 
 export async function compareRevisions(
@@ -88,20 +99,61 @@ export async function compareRevisions(
 ): Promise<CompareRevisionsResult> {
   const sides = await readSides(deps, command)
   if (sides.kind !== 'sides') return sides
+  return compareSides(deps, sides, command)
+}
 
+/** Two texts already read, compared: the part of `compareRevisions` after the reading. */
+export async function compareSides(
+  deps: CompareRevisionsDependencies,
+  sides: Sides,
+  command: Pick<CompareRevisionsCommand, 'known' | 'patches'>,
+): Promise<CompareRevisionsResult> {
   const [before, after] = await Promise.all([
     renderInputFor(deps, sides.document, sides.before),
     renderInputFor(deps, sides.document, sides.after),
   ])
-  const key = comparisonKey(deps, before.input, after.input)
+  const patches = command.patches === true
+  const key = comparisonKey(deps, before.input, after.input, sides.draft, patches)
   if (command.known === key) return { kind: 'not-modified', key }
 
   const content = deps.format.compare({
     before: sides.before,
     after: sides.after,
     context: bothSides(before.input, after.input),
+    ...(patches ? { patches: true } : {}),
+    ...(sides.draft === undefined
+      ? {}
+      : { draft: sides.draft.content, authorship: sides.draft.authorship }),
   })
-  return { kind: 'compared', key, content }
+  return { kind: 'compared', key, content: await withAuthorNames(deps, content) }
+}
+
+/** A user id from a ledger, which is a record and may hold what is not one: nothing then. */
+function recordedUser(value: string): UserId[] {
+  try {
+    return [userId(value)]
+  } catch {
+    return []
+  }
+}
+
+/** The changes' authors named: one lookup for all of them, however many changes there are. */
+async function withAuthorNames(
+  deps: Pick<CompareRevisionsDependencies, 'uow'>,
+  content: ComparedContent,
+): Promise<ComparedContent> {
+  const ids = [...new Set(content.changes.flatMap(({ author }) => author?.userId ?? []))]
+  if (ids.length === 0) return content
+  const people = await deps.uow.repos.users.listByIds(ids.flatMap(recordedUser))
+  const names = new Map<string, string>(people.map(({ id, displayName }) => [id, displayName]))
+  return {
+    ...content,
+    changes: content.changes.map((change) =>
+      change.author === undefined
+        ? change
+        : { ...change, author: { ...change.author, name: names.get(change.author.userId) } },
+    ),
+  }
 }
 
 export async function compareRevisionSources(
@@ -118,29 +170,41 @@ export async function compareRevisionSources(
  * content store is asked for it (ADR-014: the index is the record), and read
  * together: one waiting for the other is a round trip nobody needs.
  */
-async function readSides(
+export async function readSides(
   deps: Pick<CompareRevisionsDependencies, 'uow' | 'contentStore' | 'format'>,
-  command: Omit<CompareRevisionsCommand, 'known'>,
+  command: Pick<CompareRevisionsCommand, 'documentId' | 'from' | 'to' | 'appOrigins'>,
 ): Promise<Sides | Failure> {
   const document = await deps.uow.repos.documents.findById(command.documentId)
   if (document === null) return { kind: 'not-found', documentId: command.documentId }
 
-  const published = async (revision: RevisionId): Promise<string | Failure> => {
+  const published = async (revision: RevisionId): Promise<Side | Failure> => {
     const source = await readSource(deps, document.workspaceId, {
       documentId: document.id,
       revision,
     })
-    return source === null ? { kind: 'revision-not-found', revision } : source.markdown
+    return source === null
+      ? { kind: 'revision-not-found', revision }
+      : { kind: 'side', markdown: source.markdown }
   }
   const [before, after] = await Promise.all([
-    command.from === null ? '' : published(command.from),
-    command.to === DRAFT
-      ? draftMarkdown(deps, document, command.appOrigins)
-      : published(command.to),
+    command.from === null ? { kind: 'side' as const, markdown: '' } : published(command.from),
+    command.to === DRAFT ? draftSide(deps, document, command.appOrigins) : published(command.to),
   ])
-  if (typeof before !== 'string') return before
-  if (typeof after !== 'string') return after
-  return { kind: 'sides', document, before, after }
+  if (before.kind !== 'side') return before
+  if (after.kind !== 'side') return after
+  return {
+    kind: 'sides',
+    document,
+    before: before.markdown,
+    after: after.markdown,
+    ...(after.draft === undefined ? {} : { draft: after.draft }),
+  }
+}
+
+interface Side {
+  readonly kind: 'side'
+  readonly markdown: string
+  readonly draft?: Sides['draft']
 }
 
 /**
@@ -148,16 +212,20 @@ async function readSides(
  * their canonical form. Compared as anything else would be, so a link pasted
  * in its readable form is not a change the publish would not make.
  */
-async function draftMarkdown(
+async function draftSide(
   deps: Pick<CompareRevisionsDependencies, 'uow' | 'format'>,
   document: DocumentRow,
   appOrigins: readonly string[] | undefined,
-): Promise<string | Failure> {
+): Promise<Side | Failure> {
   const draft = await deps.uow.repos.drafts.find(document.id)
   const content = draft === null ? null : readDraftContent(draft.ast)
-  if (content === null) return { kind: 'no-draft', documentId: document.id }
+  if (draft === null || content === null) return { kind: 'no-draft', documentId: document.id }
   const prepared = deps.format.prepareForPublish({ documentId: document.id, content })
-  return canonicaliseLinks(deps.uow.repos.documents, prepared.markdown, appOrigins)
+  return {
+    kind: 'side',
+    markdown: await canonicaliseLinks(deps.uow.repos.documents, prepared.markdown, appOrigins),
+    draft: { content, version: draft.draftVersion, authorship: draft.authorship },
+  }
 }
 
 /** What both sides are drawn with: every title either links to, every drawing either shows. */
@@ -171,11 +239,19 @@ function bothSides(before: DrawnRenderInput, after: DrawnRenderInput): CompareCo
   }
 }
 
+/**
+ * A comparison drawn change by change is a different answer from one that is not, and one
+ * that says which changes can be put back in the draft depends on the draft as well as on
+ * what it would publish, so its key carries both.
+ */
 function comparisonKey(
   deps: Pick<CompareRevisionsDependencies, 'hasher' | 'format'>,
   before: RenderInput,
   after: RenderInput,
+  draft: Sides['draft'],
+  patches: boolean,
 ): string {
   const digest = `${renderDigest(before, deps.format.extensions)}\u0003${renderDigest(after, deps.format.extensions)}`
-  return `${deps.hasher.contentHash(digest)}:${RENDER_VERSION}:compare-${COMPARED_CONTENT_VERSION}`
+  const detail = `${patches ? ':patches' : ''}${draft === undefined ? '' : `:draft-${String(draft.version)}`}`
+  return `${deps.hasher.contentHash(digest)}:${RENDER_VERSION}:compare-${COMPARED_CONTENT_VERSION}${detail}`
 }

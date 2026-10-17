@@ -56,10 +56,14 @@ describe('the assembled extension list', () => {
       },
     })
     expect(names(withMenu)).toContain('slashMenu')
-    // Ahead of every keymap, so Enter chooses an item rather than splitting the line.
-    const others = withMenu.filter((extension) => extension.name !== 'slashMenu').map(priority)
-    const slash = withMenu.filter((extension) => extension.name === 'slashMenu').map(priority)
-    expect(Math.min(...slash)).toBeGreaterThan(Math.max(...others))
+    // Ahead of every keymap, so Enter chooses an item rather than splitting the line. The emoji
+    // suggestion is the same menu's second trigger and stands where it does.
+    const menus = new Set(['slashMenu', 'emojiSuggestion'])
+    expect(names(withMenu)).toContain('emojiSuggestion')
+    const others = withMenu.filter((extension) => !menus.has(extension.name)).map(priority)
+    const ahead = withMenu.filter((extension) => menus.has(extension.name)).map(priority)
+    expect(Math.min(...ahead)).toBeGreaterThan(Math.max(...others))
+    expect(names(buildExtensions())).not.toContain('emojiSuggestion')
   })
 
   it('takes the placeholder text it is given', () => {

@@ -4,6 +4,7 @@ import type { Link, PhrasingContent, Root, Text } from 'mdast'
 import { visit } from 'unist-util-visit'
 
 import { rewriteTree } from '../tree.ts'
+import { nameAsWords } from './names.ts'
 import type { StandardEmoji } from './shortcodes.ts'
 
 /**
@@ -57,6 +58,12 @@ export interface CustomEmoji {
    */
   readonly frames?: number | undefined
   readonly milliseconds?: number | undefined
+  /**
+   * What the picture shows, in words: its alternative text. Absent, its name
+   * is said instead (`describeEmoji`), which is better than a shortcode
+   * read out as "colon acme colon" and worse than saying what it is.
+   */
+  readonly description?: string | undefined
   /** The image's own size, which gives its proportions; it is drawn at text size. */
   readonly width: number
   readonly height: number
@@ -124,6 +131,16 @@ export function* findShortcodes(text: string, lookup: EmojiLookup): Generator<Sh
   }
 }
 
+/**
+ * What an emoji is, in words, for a reader who cannot see it: a standard
+ * emoji by GitHub's description, a custom one by what its organisation said
+ * it shows or, failing that, its name as words (`globex_logo` is "globex logo").
+ */
+export function describeEmoji(emoji: ResolvedEmoji): string {
+  if (emoji.kind === 'standard') return emoji.description
+  return emoji.image.description ?? nameAsWords(emoji.name)
+}
+
 /** The height every custom image is declared at, before the stylesheet sets it to the text's. */
 const DECLARED_SIZE = 20
 
@@ -176,15 +193,15 @@ export interface EmojiMarkup {
 /**
  * How an emoji is drawn. In running text it means something, so it is named:
  * a standard emoji by its description (`role="img"`), a custom one by its
- * shortcode as alternative text, which is what a reader sees if the image
- * cannot load. Leading a label's pill it is decoration, because the label's
+ * description as alternative text, which is also what a reader sees if the
+ * image cannot load; its shortcode is the tooltip, for the author. Leading a label's pill it is decoration, because the label's
  * own words already say what it is.
  */
 export function emojiMarkup(emoji: ResolvedEmoji, use: 'text' | 'decoration'): EmojiMarkup {
   const meaning = use === 'text'
   if (emoji.kind === 'standard') {
     const attributes = meaning
-      ? { class: 'emoji', role: 'img', 'aria-label': emoji.description }
+      ? { class: 'emoji', role: 'img', 'aria-label': describeEmoji(emoji) }
       : { class: 'emoji', 'aria-hidden': 'true' }
     return { tagName: 'span', attributes, text: emoji.character }
   }
@@ -196,7 +213,7 @@ export function emojiMarkup(emoji: ResolvedEmoji, use: 'text' | 'decoration'): E
     attributes: {
       class: 'emoji',
       src: image.src,
-      alt: meaning ? shortcode : '',
+      alt: meaning ? describeEmoji(emoji) : '',
       ...(meaning ? { title: shortcode } : {}),
       width: String(width),
       height: String(DECLARED_SIZE),

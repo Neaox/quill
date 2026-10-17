@@ -9,6 +9,12 @@
  * nothing here knows about the router.
  */
 
+/** Where a slide starts when it is arrived at: its top from before it, its bottom from after it. */
+export type SlideEntry = 'top' | 'bottom'
+export type ScrollDirection = 'forward' | 'back'
+/** An arrow key moves a line or so; Page Down, Page Up and Space move most of a screen. */
+export type ScrollDistance = 'line' | 'page'
+
 export interface StepState {
   /** The step being presented, counted from zero. */
   readonly index: number
@@ -83,23 +89,54 @@ export type PresentCommand =
   | { readonly kind: 'step'; readonly event: StepEvent }
   | { readonly kind: 'exit' }
   | { readonly kind: 'go-to' }
-  | { readonly kind: 'notes' }
+  /** The room's screen to black and back: `B`, and the `.` most clickers send for it. */
+  | { readonly kind: 'blank' }
+  /** The presenter view, in a window of its own: where the notes are (ADR-050). */
+  | { readonly kind: 'presenter' }
+  /**
+   * Down or up a slide: scrolls a slide taller than its window, and goes to the next or previous
+   * slide when there is no more of this one that way (`slide-scroll.ts`). `repeat` is a held key,
+   * which keeps scrolling but must not run on through the deck.
+   */
+  | {
+      readonly kind: 'scroll'
+      readonly direction: ScrollDirection
+      readonly distance: ScrollDistance
+      readonly repeat: boolean
+    }
 
 export interface KeyPress {
   readonly key: string
+  readonly shiftKey?: boolean
   readonly ctrlKey?: boolean
   readonly metaKey?: boolean
   readonly altKey?: boolean
+  /** The key is being held: the event is the keyboard's repeat, not another press. */
+  readonly repeat?: boolean
 }
 
+/** Keys that go to a slide as such, and so arrive at its top. */
 const STEP_KEYS: Readonly<Record<string, StepEvent>> = {
   ArrowRight: { type: 'next' },
-  PageDown: { type: 'next' },
-  ' ': { type: 'next' },
   ArrowLeft: { type: 'previous' },
-  PageUp: { type: 'previous' },
   Home: { type: 'first' },
   End: { type: 'last' },
+}
+
+/**
+ * Keys that move through the long surface the slides make, a line or a page at a time. Most
+ * presentation remotes send Page Down and Page Up for next and previous, so on a slide that fits its
+ * window they are exactly that; on one taller than its window they scroll it first, which is what
+ * a browser does with them and the only way a remote can reach the foot of a long slide.
+ */
+const SCROLL_KEYS: Readonly<
+  Record<string, { direction: ScrollDirection; distance: ScrollDistance }>
+> = {
+  ArrowDown: { direction: 'forward', distance: 'line' },
+  ArrowUp: { direction: 'back', distance: 'line' },
+  PageDown: { direction: 'forward', distance: 'page' },
+  PageUp: { direction: 'back', distance: 'page' },
+  ' ': { direction: 'forward', distance: 'page' },
 }
 
 /**
@@ -113,8 +150,17 @@ const STEP_KEYS: Readonly<Record<string, StepEvent>> = {
 export function commandForKey(press: KeyPress): PresentCommand | undefined {
   if (press.ctrlKey === true || press.metaKey === true || press.altKey === true) return undefined
 
+  const scroll = SCROLL_KEYS[press.key]
+  if (scroll !== undefined) {
+    // Shift turns Space around, as it does in a browser.
+    const direction = press.key === ' ' && press.shiftKey === true ? 'back' : scroll.direction
+    return { kind: 'scroll', direction, distance: scroll.distance, repeat: press.repeat === true }
+  }
+
   const step = STEP_KEYS[press.key]
-  if (step !== undefined) return { kind: 'step', event: step }
+  // A clicker held down for a moment repeats its key, and a repeat is not a second press: it
+  // would run through the deck. A step is one press, however long it was held.
+  if (step !== undefined) return press.repeat === true ? undefined : { kind: 'step', event: step }
 
   switch (press.key.toLowerCase()) {
     case 'escape': {
@@ -123,8 +169,14 @@ export function commandForKey(press: KeyPress): PresentCommand | undefined {
     case 'g': {
       return { kind: 'go-to' }
     }
-    case 'n': {
-      return { kind: 'notes' }
+    case 'b':
+    case '.': {
+      return { kind: 'blank' }
+    }
+    // `n` is where the notes used to be asked for, and still opens where they are now.
+    case 'n':
+    case 'p': {
+      return { kind: 'presenter' }
     }
     default: {
       return undefined

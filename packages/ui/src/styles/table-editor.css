@@ -173,6 +173,53 @@
 }
 
 /*
+ * The corner selects the whole table. It sits where the row and column grips
+ * meet, just outside the table's top-left corner, drawn as a small square
+ * where they are bars, and stands above the "+"s at both ends of the first
+ * boundaries, whose dots stay clear of it. Its target reaches further out
+ * than it is drawn, up and to the left, where the pointer comes from.
+ */
+.table-grip-table {
+  z-index: 2;
+  inset-block-start: calc(-1 * var(--table-grip-lift));
+  inset-inline-start: calc(-1 * var(--table-grip-reach));
+  width: calc(var(--table-grip-reach) - 2px);
+  height: calc(var(--table-grip-lift) - 2px);
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
+}
+
+.table-grip-table::before {
+  inset: auto 0.125rem 0.125rem auto;
+  width: 0.4375rem;
+  height: 0.4375rem;
+  border-radius: 2px;
+}
+
+.table-grip-table::after {
+  content: '';
+  position: absolute;
+  inset: -0.5rem 0 0 -0.5rem;
+}
+
+.table-editor[data-selected='table'] > .table-handles .table-grip-table::before {
+  background-color: var(--color-accent);
+}
+
+@media (forced-colors: active) {
+  .table-grip-table::before {
+    background-color: ButtonText;
+  }
+
+  .table-grip-table:hover::before,
+  .table-editor[data-selected='table'] > .table-handles .table-grip-table::before {
+    background-color: Highlight;
+  }
+}
+
+/*
  * A "+" on each boundary between grips: a dot at rest, the "+" under the
  * pointer, with a line across the table where the row or column will go.
  */

@@ -1,7 +1,7 @@
 /*
  * The byline: the one quiet line under a document's title that says who owns
  * it, what state it is in, and whether it is current
- * (`docs/design/properties.md`, ADR-055).
+ * (`docs/design/properties.md`, ADR-057).
  *
  * Plain CSS in this package because two renderers draw the same markup: React
  * (`DocumentByline` in `@quill/ui`, in the reading view, the share page and the

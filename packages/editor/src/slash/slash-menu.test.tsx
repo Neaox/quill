@@ -409,6 +409,36 @@ describe('inserting', () => {
   })
 })
 
+describe('what stands before an item', () => {
+  it('is its icon, an emoji’s character or its picture, or nothing for an item that has none', async () => {
+    const contribution: SlashContribution = {
+      id: 'acme.marks',
+      items: () =>
+        [
+          { id: 'plain', label: 'Plain mark' },
+          { id: 'glyph', label: 'Glyph mark', glyph: '🎉' },
+          { id: 'picture', label: 'Picture mark', image: '/api/emoji/a.0123456789abcdef.svg' },
+        ].map((item) => ({
+          description: 'Marked',
+          group: 'Marks',
+          keywords: ['mark'],
+          run: () => undefined,
+          ...item,
+        })),
+    }
+    const { user, ref } = open('\n', { slashContributions: [contribution] })
+    await slash(user, ref, 'mark')
+
+    const marks = within(menu())
+      .getAllByRole('option')
+      .map((option) => option.firstElementChild)
+    expect(marks.map((mark) => mark?.childElementCount)).toEqual([0, 1, 1])
+    // The words beside it are what is read: the mark itself says nothing more.
+    expect(menu().querySelector('[aria-hidden="true"]')).toHaveTextContent('🎉')
+    expect(menu().querySelector('img')).toHaveAttribute('alt', '')
+  })
+})
+
 describe('recently used blocks', () => {
   it('come first when nothing is typed, remembered per key', async () => {
     const { user, ref } = open('\n\n', { recentsKey: 'editor.slash.recent.ada' })

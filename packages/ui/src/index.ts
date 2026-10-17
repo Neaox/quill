@@ -126,13 +126,16 @@ export {
   PreviewIcon,
   RestoreIcon,
   SearchIcon,
+  SettingsIcon,
   ShareIcon,
+  SignOutIcon,
   SuccessIcon,
   SwapIcon,
   UserIcon,
   BellIcon,
   UsersIcon,
   WarningIcon,
+  WorkspacesIcon,
   type IconProps,
 } from './components/icons.tsx'
 export {
@@ -376,6 +379,7 @@ export {
   type ToasterProps,
   type ToastTone,
 } from './components/toaster.tsx'
+export { HoverCard, hoverCardStyles, type HoverCardProps } from './components/hover-card.tsx'
 export {
   InfoPopover,
   infoPopoverStyles,

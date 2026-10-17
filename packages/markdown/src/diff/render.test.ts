@@ -14,9 +14,16 @@ describe('renderComparison', () => {
     const { html } = render('Deploy on Monday.\n', 'Deploy on Tuesday.\n')
     expect(html).toBe(
       '<article><p data-change="changed" data-change-id="c1">Deploy on ' +
-        '<del data-diff="removed"><span data-diff-label="">Removed: </span>Monday</del>' +
-        '<ins data-diff="added"><span data-diff-label="">Added: </span>Tuesday</ins>.</p></article>',
+        '<del data-diff="removed"><span data-diff-label="">Removed: </span><span data-diff-char="">Mon</span>day</del>' +
+        '<ins data-diff="added"><span data-diff-label="">Added: </span><span data-diff-char="">Tues</span>day</ins>.</p></article>',
     )
+  })
+
+  it('marks the place where a character was taken out, on the side that no longer has it', () => {
+    const { html } = render('The colour is red.\n', 'The color is red.\n')
+
+    expect(html).toContain('colo<span data-diff-char="">u</span>r</del>')
+    expect(html).toContain('colo<span data-diff-char=""></span>r</ins>')
   })
 
   it('tells a deletion from the document’s own strikethrough', () => {

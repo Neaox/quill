@@ -1,6 +1,7 @@
 import { blockMenu } from '../block/block-context-menu.ts'
 import { calloutMenu } from '../callout/callout-menu.ts'
 import { codeBlockMenu } from '../code-block/code-block-menu.ts'
+import { findMenu } from '../find/find-menu.ts'
 import { textMenu, turnIntoMenu } from '../format/text-menu.ts'
 import { imageMenu } from '../image/image-context-menu.ts'
 import type { ImageAction } from '../image/image-actions.ts'
@@ -24,6 +25,7 @@ export function builtInContextMenu(
     tableMenu,
     calloutMenu,
     codeBlockMenu,
+    findMenu,
     blockMenu,
   ]
 }

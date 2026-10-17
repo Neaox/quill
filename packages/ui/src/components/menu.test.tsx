@@ -221,6 +221,80 @@ describe('MenuButton', () => {
   })
 })
 
+function renderRows(onCycle = vi.fn<() => void>()) {
+  render(
+    <MenuButton
+      label="Account menu for Ada Writer"
+      sections={[
+        {
+          id: 'person',
+          entries: [
+            {
+              kind: 'link',
+              label: 'Preferences',
+              target: { to: '/preferences' },
+              icon: <svg data-testid="prefs-icon" />,
+            },
+            {
+              kind: 'action',
+              label: 'Appearance',
+              icon: <svg data-testid="scheme-icon" />,
+              hint: 'System',
+              keepOpen: true,
+              onSelect: onCycle,
+            },
+          ],
+        },
+      ]}
+    >
+      <span>Ada Writer</span>
+    </MenuButton>,
+  )
+  return onCycle
+}
+
+describe('MenuButton rows', () => {
+  it('draws an icon before a row, which says nothing the words do not and is hidden from assistive technology', async () => {
+    renderRows()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Account menu for Ada Writer' }))
+
+    const item = await screen.findByRole('menuitem', { name: 'Preferences' })
+    expect(item).toContainElement(screen.getByTestId('prefs-icon'))
+    expect(screen.getByTestId('prefs-icon').closest('[aria-hidden="true"]')).not.toBeNull()
+  })
+
+  it('says what a row is set to after its name, as a reader hears it: "Appearance: System"', async () => {
+    renderRows()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Account menu for Ada Writer' }))
+
+    expect(
+      await screen.findByRole('menuitem', { name: /^Appearance:\s*System$/u }),
+    ).toBeInTheDocument()
+  })
+
+  it('announces a change of the setting politely, since the row keeps the focus', async () => {
+    renderRows()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Account menu for Ada Writer' }))
+    const hint = (await screen.findByText('System')).closest('[aria-live]')
+
+    expect(hint).toHaveAttribute('aria-live', 'polite')
+  })
+
+  it('keeps the panel open on a row that asks to, so it can be pressed again', async () => {
+    const onCycle = renderRows()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Account menu for Ada Writer' }))
+    await userEvent.click(await screen.findByRole('menuitem', { name: /^Appearance:\s*System$/u }))
+    await userEvent.keyboard('{Enter}')
+
+    expect(onCycle).toHaveBeenCalledTimes(2)
+    expect(screen.getByRole('menu')).toBeInTheDocument()
+  })
+})
+
 /*
  * The machinery behind a menu arrives on demand (quill-plan.md section 31):
  * the page draws the closed trigger, and a press that lands before the module

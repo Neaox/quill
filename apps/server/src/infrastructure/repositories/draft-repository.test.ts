@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
-import { documentId, userId } from '@quill/domain'
+import { documentId, revisionId, userId } from '@quill/domain'
 
 import { createTestDatabase, type TestDatabase } from '../db/test-database.ts'
 import { createDraftRepository } from './draft-repository.ts'
@@ -164,6 +164,106 @@ describe('optimistic draft versions', () => {
       now: t0,
     })
     expect(result).toEqual({ ok: false, reason: 'not_found' })
+  })
+})
+
+describe('the record of who wrote what', () => {
+  const record = {
+    version: 1,
+    blocks: { abc: { by: 'alice', at: '2026-01-01T00:00:01.000Z' } },
+    removed: [],
+  }
+  const PUBLISHED = revisionId('a'.repeat(40))
+
+  async function aSavedDraft() {
+    const t0 = at(0)
+    await locks.acquire({ documentId: DOC, userId: ALICE, sessionId: 'alice-tab-1', now: t0 })
+    await drafts.init({ documentId: DOC, baseRevision: null, ast: { text: '' }, now: t0 })
+    await drafts.write({
+      documentId: DOC,
+      sessionId: 'alice-tab-1',
+      expectedVersion: 0,
+      ast: { text: 'one' },
+      authorship: record,
+      now: at(1000),
+    })
+  }
+
+  it('is kept beside the draft, and kept through a save that leaves it as it was', async () => {
+    await aSavedDraft()
+
+    await drafts.write({
+      documentId: DOC,
+      sessionId: 'alice-tab-1',
+      expectedVersion: 1,
+      ast: { text: 'two' },
+      now: at(2000),
+    })
+
+    expect((await drafts.find(DOC))?.authorship).toEqual(record)
+  })
+
+  it('is cleared when the draft is moved onto a new base, because it then says what is published', async () => {
+    await aSavedDraft()
+
+    await drafts.rebase({ documentId: DOC, baseRevision: PUBLISHED, now: at(3000) })
+
+    expect((await drafts.find(DOC))?.authorship).toBeNull()
+  })
+
+  it('is kept when the content changes on the same base, as a rename or a revert does', async () => {
+    await aSavedDraft()
+
+    await drafts.rebase({ documentId: DOC, baseRevision: null, ast: { text: 'x' }, now: at(3000) })
+
+    expect((await drafts.find(DOC))?.authorship).toEqual(record)
+  })
+
+  it('is replaced when a rebase gives it as it now is', async () => {
+    await aSavedDraft()
+    const next = { ...record, removed: [{ key: 'k', by: 'bob', at: '2026-01-01T00:00:03.000Z' }] }
+
+    await drafts.rebase({
+      documentId: DOC,
+      baseRevision: null,
+      ast: { text: 'x' },
+      authorship: next,
+      now: at(3000),
+    })
+
+    expect((await drafts.find(DOC))?.authorship).toEqual(next)
+  })
+
+  it('is cleared when the draft is started afresh', async () => {
+    await aSavedDraft()
+
+    await drafts.init({ documentId: DOC, baseRevision: null, ast: { text: 'new' }, now: at(3000) })
+
+    expect((await drafts.find(DOC))?.authorship).toBeNull()
+  })
+})
+
+describe('a rebase that names the version it expects', () => {
+  it('writes nothing, and says so, when the draft is at another version', async () => {
+    await drafts.init({ documentId: DOC, baseRevision: null, ast: { text: 'a' }, now: at(0) })
+
+    const refused = await drafts.rebase({
+      documentId: DOC,
+      baseRevision: null,
+      ast: { text: 'b' },
+      expectedVersion: 7,
+      now: at(1000),
+    })
+    const written = await drafts.rebase({
+      documentId: DOC,
+      baseRevision: null,
+      ast: { text: 'c' },
+      expectedVersion: 0,
+      now: at(2000),
+    })
+
+    expect(refused).toBeNull()
+    expect(written).toMatchObject({ draftVersion: 1, ast: { text: 'c' } })
   })
 })
 

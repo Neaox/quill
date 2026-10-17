@@ -34,7 +34,10 @@ describe('DocumentHeader', () => {
     expect(screen.getByText('authentication')).toBeInTheDocument()
     expect(screen.getByText('Published')).toBeInTheDocument()
     expect(screen.getByText('owner: platform')).toBeInTheDocument()
-    expect(screen.getByText('2026-08-15')).toHaveAttribute('datetime', '2026-08-15')
+    expect(screen.getByRole('time')).toHaveAttribute(
+      'datetime',
+      new Date('2026-08-15').toISOString(),
+    )
     await expectNoAccessibilityViolations(container)
   })
 

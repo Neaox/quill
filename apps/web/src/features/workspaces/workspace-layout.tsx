@@ -5,7 +5,6 @@ import { DocumentShell, type DocumentStatus } from '@quill/ui'
 
 import { useDocument, useDocumentEnvelope, useLoadedWorkspace } from '../../lib/api/index.ts'
 import { documentState } from '../../lib/documents/document-state.ts'
-import { revisionDate } from '../../lib/documents/revision-labels.ts'
 import { workspaceLink } from '../../lib/routing/document-reference.ts'
 import { RouterLink } from '../../lib/routing/router-link.tsx'
 import { SignedInHeader } from '../auth/signed-in-header.tsx'
@@ -89,7 +88,7 @@ export function WorkspaceLayout() {
       ? {}
       : {
           state: documentState(currentDocument, envelope.data?.unpublishedChanges),
-          updated: revisionDate(currentDocument.updatedAt),
+          updated: currentDocument.updatedAt,
         }),
   }
 

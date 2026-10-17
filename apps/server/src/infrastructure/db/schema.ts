@@ -441,10 +441,10 @@ export const drafts = pgTable('drafts', {
   baseRevision: text('base_revision'),
   ast: jsonb('ast').notNull().default({}),
   /**
-   * Who wrote what is waiting in the draft, kept beside the tree (migration
-   * 0014). Nothing in this line of work reads or writes it yet; it is declared
-   * so the schema matches every database migrated from main, where it was
-   * added, and null for a draft that has none.
+   * Who wrote what is waiting in the draft (`packages/markdown`'s `Authorship`), kept beside
+   * the tree (migration 0014) and cleared whenever the draft is moved onto a new base,
+   * because from then it says what is published. Versioned, and null for a draft that has
+   * none.
    */
   authorship: jsonb('authorship'),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull(),
@@ -756,11 +756,11 @@ export const documentSearch = pgTable(
     status: text('status').notNull(),
     /**
      * What the document says it is about, in a sentence or two: its
-     * `description`, or else its first paragraph (ADR-054). Shown under its
+     * `description`, or else its first paragraph (ADR-056). Shown under its
      * title in a child pages list; null for a row projected before it existed.
      */
     summary: text('summary'),
-    /** The document's own icon from its front matter, an emoji (ADR-054). */
+    /** The document's own icon from its front matter, an emoji (ADR-056). */
     icon: text('icon'),
     /**
      * The author's lifecycle from front matter `status` (`in-review`,

@@ -11,6 +11,7 @@ import {
   ChevronUpIcon,
   LayoutGrid,
   LinkIcon,
+  RelativeTime,
   RestoreIcon,
   RevisionPicker,
   Spinner,
@@ -44,6 +45,7 @@ import { DocumentBody } from '../document-body.tsx'
 import { RestoreRevisionDialog } from '../restore-revision-dialog.tsx'
 import { enhanceComparison, type ComparisonSurface } from './comparison-surface.ts'
 import { blockName, changeName, comparisonTitle, sideLabel, summarise } from './comparison-words.ts'
+import { RevertBar, RevertOne, RevertPick, useRevert, type Revert } from './revert-changes.tsx'
 import { foldSource } from './source-hunks.ts'
 import { SourceViewPanel } from './source-view.tsx'
 
@@ -100,6 +102,8 @@ export const comparisonPageStyles = tv({
       'data-[change=changed]:bg-warning-subtle data-[change=moved]:bg-accent-subtle',
     ],
     changeText: 'line-clamp-2 text-muted',
+    changeRow: 'flex items-start gap-1',
+    changeBy: 'text-2xs text-muted',
     sectionList: 'flex flex-col border-s border-border text-xs leading-snug',
     section: [
       '-ms-px flex items-baseline justify-between gap-2 border-s border-transparent py-1 ps-3',
@@ -122,7 +126,7 @@ export interface ComparisonPageProps {
   readonly range: ComparisonRange
   readonly view: ComparisonView
   readonly layout: ComparisonLayout
-  /** May edit: may compare with the draft. */
+  /** May edit: may compare with the draft, and put a change in it back as it was published. */
   readonly canEdit: boolean
   /** May publish, which a restore does (ADR-015, ADR-052). */
   readonly canRestore: boolean
@@ -215,6 +219,7 @@ export function ComparisonPage({
   const sourceRef = useRef<HTMLDivElement | null>(null)
   const [current, setCurrent] = useState(-1)
   const [restoring, setRestoring] = useState<LabelledRevision | undefined>(undefined)
+  const revert = useRevert(documentId, range, canEdit)
 
   const heading = comparisonTitle(revisions, range)
   const head = revisions[0]
@@ -505,6 +510,7 @@ export function ComparisonPage({
           {changes.length === 0 ? undefined : (
             <ChangeList
               changes={changes}
+              revert={revert}
               current={view === 'changes' ? current : -1}
               onChoose={(index) => {
                 if (view !== 'changes') go({ view: 'changes' })
@@ -623,12 +629,24 @@ function Summary({
   )
 }
 
+/** Who made a change, and when, as the draft's record says: "Ada · 2 minutes ago". */
+function ChangeAuthor({ author }: { readonly author: NonNullable<ComparisonChange['author']> }) {
+  const styles = comparisonPageStyles()
+  return (
+    <span className={styles.changeBy()}>
+      {author.name ?? 'Someone'} · <RelativeTime value={author.at} />
+    </span>
+  )
+}
+
 function ChangeList({
   changes,
+  revert,
   current,
   onChoose,
 }: {
   readonly changes: readonly ComparisonChange[]
+  readonly revert?: Revert | undefined
   readonly current: number
   readonly onChoose: (index: number) => void
 }) {
@@ -638,9 +656,11 @@ function ChangeList({
       <h2 id="comparison-changes" className={styles.railHeading()}>
         {`Changes (${changes.length})`}
       </h2>
+      {revert === undefined ? undefined : <RevertBar revert={revert} changes={changes} />}
       <ol className={styles.changeList()}>
         {changes.map((change, index) => (
-          <li key={change.id}>
+          <li key={change.id} className={styles.changeRow()}>
+            {revert === undefined ? undefined : <RevertPick revert={revert} change={change} />}
             <button
               type="button"
               aria-current={index === current ? 'true' : undefined}
@@ -672,7 +692,14 @@ function ChangeList({
                   <span className={styles.changeText()}>{change.excerpt}</span>
                 </>
               )}
+              {change.author === undefined ? undefined : (
+                <>
+                  {' '}
+                  <ChangeAuthor author={change.author} />
+                </>
+              )}
             </button>
+            {revert === undefined ? undefined : <RevertOne revert={revert} change={change} />}
           </li>
         ))}
       </ol>

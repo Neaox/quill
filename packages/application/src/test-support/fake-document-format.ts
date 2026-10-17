@@ -156,7 +156,7 @@ export function createFakeDocumentFormat(options: FakeDocumentFormatOptions = {}
      * changed, one only the newer body has is added, one only the older has
      * is removed. Enough to see a use case hand the right two texts over.
      */
-    compare({ before, after }): ComparedContent {
+    compare({ before, after, patches, draft, authorship }): ComparedContent {
       const older = parse(before)
         .body.split(NEWLINE)
         .filter((line) => line !== '')
@@ -178,6 +178,11 @@ export function createFakeDocumentFormat(options: FakeDocumentFormatOptions = {}
             excerpt: shown,
             wordsAdded: now === undefined ? 0 : 1,
             wordsRemoved: was === undefined ? 0 : 1,
+            ...(patches === true ? { html: shown } : {}),
+            ...(draft === undefined ? {} : { revertible: true }),
+            ...(draft === undefined || !isFakeStamp(authorship)
+              ? {}
+              : { author: { userId: authorship.by, at: authorship.at } }),
           }
         },
       ).filter((change) => change !== undefined)
@@ -199,6 +204,31 @@ export function createFakeDocumentFormat(options: FakeDocumentFormatOptions = {}
         },
         properties: [],
       }
+    },
+
+    /**
+     * By position, as `compare` pairs lines: a changed line goes back to what it was, an
+     * added one is taken out, a removed one is put back at its place.
+     */
+    revert({ before, draft, changes }): DraftContent {
+      const older = parse(before)
+        .body.split(NEWLINE)
+        .filter((line) => line !== '')
+      const lines = bodyOf(draft)
+        .split(NEWLINE)
+        .filter((line) => line !== '')
+      const places = changes.map((id) => Number(id.slice(1)) - 1).toSorted((a, b) => b - a)
+      for (const place of places) {
+        const was = older[place]
+        if (was === undefined) lines.splice(place, 1)
+        else lines.splice(place, place < lines.length ? 1 : 0, was)
+      }
+      return { ...draft, ast: { body: lines.join(NEWLINE) } }
+    },
+
+    /** One stamp for the whole body: the fake has no blocks to tell apart. */
+    stampAuthorship({ next, by, at }): unknown {
+      return { version: 1, body: bodyOf(next), by, at }
     },
 
     compareSource(before, after): ComparedSource {
@@ -252,6 +282,10 @@ function labelled(labels: RenderInput['labels']): string {
 }
 
 /** The emoji a body was rendered with, and each label's leading one (ADR-038). */
+function isFakeStamp(value: unknown): value is { by: string; at: string } {
+  return typeof value === 'object' && value !== null && 'by' in value && 'at' in value
+}
+
 function emojiShown(emoji: RenderInput['emoji'], leading: RenderInput['labelEmoji']): string {
   const images = [...(emoji ?? new Map())].map(
     ([name, image]) => `<emoji name="${name}" src="${image.src}"/>`,

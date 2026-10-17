@@ -54,6 +54,9 @@ export const MAX_EMOJI_BYTES = 256 * 1024
 export const MAX_EMOJI_FRAMES = 300
 export const MAX_EMOJI_MILLISECONDS = 10_000
 
+/** Alternative text is a phrase, not a paragraph. */
+export const MAX_EMOJI_DESCRIPTION = 120
+
 const Pixels = Type.Integer({ minimum: 1, maximum: MAX_EMOJI_PIXELS })
 
 const Hash = Type.String({ pattern: '^[0-9a-f]{64}$' })
@@ -109,6 +112,13 @@ export const CustomEmojiSchema = Type.Object(
      * play count was changed. Kept as the source; never served.
      */
     original: Type.Optional(Hash),
+    /**
+     * What the picture shows, in words: its alternative text, which a screen
+     * reader says in place of the picture and which stands in for it when it
+     * does not load. Optional so every file written before it reads as it did;
+     * left out, the renderer says the emoji's name as words instead.
+     */
+    description: Type.Optional(Type.String({ minLength: 1, maxLength: MAX_EMOJI_DESCRIPTION })),
     /** The image's own size, for its proportions; it is drawn at the text's height. */
     width: Pixels,
     height: Pixels,
@@ -188,6 +198,8 @@ export interface RenderedEmoji {
   /** An animation's frame count and loop length, for the reader's brief play (ADR-047). */
   readonly frames?: number
   readonly milliseconds?: number
+  /** What the picture shows, in words: its alternative text. */
+  readonly description?: string
   readonly width: number
   readonly height: number
 }
@@ -206,6 +218,7 @@ export function customEmojiByName(
           ...(still === undefined ? {} : { still }),
           ...(entry.frames === undefined ? {} : { frames: entry.frames }),
           ...(entry.milliseconds === undefined ? {} : { milliseconds: entry.milliseconds }),
+          ...(entry.description === undefined ? {} : { description: entry.description }),
           width: entry.width,
           height: entry.height,
         },

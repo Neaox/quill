@@ -20,6 +20,7 @@ import { standardEmoji } from './shortcodes.ts'
 
 const ACME: CustomEmoji = {
   src: '/api/emoji/acme.0123456789abcdef.svg',
+  description: 'Acme logo',
   width: 64,
   height: 64,
 }
@@ -43,7 +44,7 @@ const THUMBS_UP = '<span class="emoji" role="img" aria-label="thumbs up">👍</s
 const SMILE =
   '<span class="emoji" role="img" aria-label="grinning face with smiling eyes">😄</span>'
 const ACME_IMAGE =
-  '<img class="emoji" src="/api/emoji/acme.0123456789abcdef.svg" alt=":acme:" title=":acme:" width="20" height="20">'
+  '<img class="emoji" src="/api/emoji/acme.0123456789abcdef.svg" alt="Acme logo" title=":acme:" width="20" height="20">'
 
 const render = (
   markdown: string,
@@ -168,6 +169,15 @@ describe('standard shortcodes (ADR-038)', () => {
 })
 
 describe('custom emoji (ADR-038)', () => {
+  it('is named by its description, which is its alternative text', () => {
+    expect(paragraph(':acme:\n')).toContain('alt="Acme logo" title=":acme:"')
+  })
+
+  it('is named by its name in words when it has no description, never by its shortcode', () => {
+    expect(paragraph(':globex_logo:\n')).toContain('alt="globex logo"')
+    expect(paragraph(':globex_logo:\n')).not.toContain('alt=":')
+  })
+
   it('draw the organisation’s image at text size, named by its shortcode', () => {
     expect(paragraph('Inline with :acme:\n')).toBe(`Inline with ${ACME_IMAGE}`)
     expect(paragraph(':globex_logo:\n')).toContain('width="40" height="20"')
@@ -176,7 +186,7 @@ describe('custom emoji (ADR-038)', () => {
   it('win over a standard emoji only where the names collide', () => {
     const custom = new Map([['smile', { ...ACME, src: '/api/emoji/smile.0123456789abcdef.png' }]])
     expect(paragraph(':smile: :+1:\n', { emoji: custom })).toBe(
-      `<img class="emoji" src="/api/emoji/smile.0123456789abcdef.png" alt=":smile:" title=":smile:" width="20" height="20"> ${THUMBS_UP}`,
+      `<img class="emoji" src="/api/emoji/smile.0123456789abcdef.png" alt="Acme logo" title=":smile:" width="20" height="20"> ${THUMBS_UP}`,
     )
   })
 
@@ -200,14 +210,14 @@ describe('custom emoji (ADR-038)', () => {
   it('draw an animation still for a reader who asks for less motion', () => {
     const party = new Map([['party', PARTY]])
     expect(paragraph(':party:\n', { emoji: party })).toBe(
-      '<picture class="emoji"><source srcset="/api/emoji/party.bbbbbbbbbbbbbbbb.gif" media="(prefers-reduced-motion: reduce)"><img class="emoji" src="/api/emoji/party.aaaaaaaaaaaaaaaa.gif" alt=":party:" title=":party:" width="20" height="20"></picture>',
+      '<picture class="emoji"><source srcset="/api/emoji/party.bbbbbbbbbbbbbbbb.gif" media="(prefers-reduced-motion: reduce)"><img class="emoji" src="/api/emoji/party.aaaaaaaaaaaaaaaa.gif" alt="party" title=":party:" width="20" height="20"></picture>',
     )
   })
 
   it('carry an animation’s timing on its picture, for the reader’s brief play (ADR-047)', () => {
     const party = new Map([['party', { ...PARTY, frames: 12, milliseconds: 1200 }]])
     expect(paragraph(':party:\n', { emoji: party })).toBe(
-      '<picture class="emoji" data-frames="12" data-loop-ms="1200"><source srcset="/api/emoji/party.bbbbbbbbbbbbbbbb.gif" media="(prefers-reduced-motion: reduce)"><img class="emoji" src="/api/emoji/party.aaaaaaaaaaaaaaaa.gif" alt=":party:" title=":party:" width="20" height="20"></picture>',
+      '<picture class="emoji" data-frames="12" data-loop-ms="1200"><source srcset="/api/emoji/party.bbbbbbbbbbbbbbbb.gif" media="(prefers-reduced-motion: reduce)"><img class="emoji" src="/api/emoji/party.aaaaaaaaaaaaaaaa.gif" alt="party" title=":party:" width="20" height="20"></picture>',
     )
     // Timing out of bounds is not drawn at all, rather than drawn and stripped.
     const wild = new Map([['party', { ...PARTY, frames: 2.5, milliseconds: 1e9 }]])
@@ -217,7 +227,7 @@ describe('custom emoji (ADR-038)', () => {
   it('draw an animation without a still that is not this server’s', () => {
     const party = new Map([['party', { ...PARTY, still: 'https://example.com/x.gif' }]])
     expect(paragraph(':party:\n', { emoji: party })).toBe(
-      '<img class="emoji" src="/api/emoji/party.aaaaaaaaaaaaaaaa.gif" alt=":party:" title=":party:" width="20" height="20">',
+      '<img class="emoji" src="/api/emoji/party.aaaaaaaaaaaaaaaa.gif" alt="party" title=":party:" width="20" height="20">',
     )
   })
 

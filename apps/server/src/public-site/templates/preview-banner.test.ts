@@ -26,6 +26,21 @@ describe('the reader preview banner', () => {
     expect(html).not.toContain('Not on the public web')
   })
 
+  it('says it is the unpublished draft, and leads back to editing it, when it is one', () => {
+    const html = renderPreviewBanner({
+      closeHref: '/w/eng/d/overview-k1',
+      publicHref: '/s/acme/guides/overview',
+      draft: { editHref: '/w/eng/d/overview-k1/edit' },
+    }).value
+
+    expect(html).toContain('Unpublished changes')
+    expect(html).toContain('href="/w/eng/d/overview-k1/edit"')
+    expect(html).toContain('Resume editing')
+    // What the web shows is what is published, which is not what is being looked at.
+    expect(html).not.toContain('Live on the web')
+    expect(html).not.toContain('Not on the public web')
+  })
+
   it('escapes the addresses it is given', () => {
     const html = renderPreviewBanner({ closeHref: '"><script>', publicHref: null }).value
     expect(html).not.toContain('<script>')

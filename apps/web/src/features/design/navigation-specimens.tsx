@@ -4,7 +4,7 @@ import type { TableSpecimen } from './table-specimens.gen.ts'
 import { TableSpecimenFrame } from './table-specimens.tsx'
 
 /**
- * The navigation blocks (ADR-054), each as Markdown and the HTML the reader
+ * The navigation blocks (ADR-056), each as Markdown and the HTML the reader
  * is shown, mounted as a reader sees it. A table of contents is part of the
  * body; a child pages list is the slot filled with the pages below, as the
  * page would fill it. `navigation-specimens.test.tsx` renders each Markdown

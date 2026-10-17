@@ -72,6 +72,8 @@ export const ThemeSummarySchema = Type.Object(
           /** An animation's frames and loop length, for the reader's brief play (ADR-047). */
           frames: Type.Optional(Type.Integer({ minimum: 1 })),
           milliseconds: Type.Optional(Type.Integer({ minimum: 1 })),
+          /** What the picture shows, in words: its alternative text. */
+          description: Type.Optional(Type.String()),
           width: Type.Integer({ minimum: 1 }),
           height: Type.Integer({ minimum: 1 }),
         },

@@ -116,7 +116,7 @@ function toCoreFrontMatter(
     ...(isDocumentStatus(status) || isLifecycleState(status) ? { status } : {}),
     tags: strings(frontMatter['tags']),
     owners: strings(frontMatter['owners']),
-    // What a child pages list shows under the title (ADR-054).
+    // What a child pages list shows under the title (ADR-056).
     ...listed(frontMatter),
   }
 }

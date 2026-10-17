@@ -203,6 +203,44 @@
   background-color: var(--color-selection);
 }
 
+/* ------------------------------------------------------------------------
+ * Find and replace (`packages/editor/src/find/`, ADR-051).
+ *
+ * Every match is tinted in the warning colour, which is not the
+ * selection's, so it reads as "found" and not "selected"; the one the
+ * selection is on is stronger and outlined, so it can be told apart from
+ * the rest without colour alone. While the bar has the keyboard the browser
+ * stops painting the selection, so find draws it (`selection-held`), and
+ * the stretch a search in a selection looks in (`find-scope`).
+ * ---------------------------------------------------------------------- */
+
+.document-editor-content .selection-held,
+.document-editor-content .find-scope {
+  background-color: var(--color-selection);
+}
+
+.document-editor-content .find-match {
+  border-radius: var(--radius-sm);
+  background-color: color-mix(in oklch, var(--color-warning) 28%, transparent);
+}
+
+.document-editor-content .find-match-current {
+  border-radius: var(--radius-sm);
+  background-color: color-mix(in oklch, var(--color-warning) 55%, transparent);
+  outline: 2px solid var(--color-warning);
+}
+
+@media (forced-colors: active) {
+  .document-editor-content .find-match {
+    background-color: Mark;
+    color: MarkText;
+  }
+
+  .document-editor-content .find-match-current {
+    outline-color: Highlight;
+  }
+}
+
 /* ---------------------------------------------------------------------- *
  * Image actions (`packages/editor/src/image/image-actions.ts`)
  *
@@ -412,6 +450,34 @@
 @media (prefers-reduced-motion: reduce) {
   .document-editor-content .details-editor-toggle svg {
     transition: none;
+  }
+}
+
+/* ------------------------------------------------------------------------
+ * Where the caret is, for someone using the keyboard
+ * (`packages/editor/src/document/caret-context.ts`).
+ *
+ * The cell, or the callout, notes or details, the caret is in, in the focus
+ * ring's colour. The editor adds the class only while the keyboard was the
+ * last thing used, as `:focus-visible` does for a control, so a click does
+ * not leave a ring behind. A cell is ringed inside its own edges, where the
+ * next cell's ring does not cover it.
+ * ---------------------------------------------------------------------- */
+
+.document-editor-content :is(td, th).has-caret {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: -2px;
+}
+
+.document-editor-content :not(td, th).has-caret {
+  border-radius: var(--radius-sm);
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 2px;
+}
+
+@media (forced-colors: active) {
+  .document-editor-content .has-caret {
+    outline-color: Highlight;
   }
 }
 

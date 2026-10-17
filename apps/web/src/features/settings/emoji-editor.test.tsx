@@ -22,6 +22,7 @@ const ACME = {
   name: 'acme',
   hash: HASH,
   mediaType: 'image/svg+xml',
+  description: 'Acme logo',
   width: 64,
   height: 64,
 } as const
@@ -101,7 +102,7 @@ describe('EmojiEditor (ADR-038)', () => {
     const preview = screen.getByRole('group', { name: 'Preview of :acme: at text size' })
     expect(within(preview).getByText('Light')).toBeInTheDocument()
     expect(within(preview).getByText('Dark')).toBeInTheDocument()
-    expect(within(preview).getAllByRole('img', { name: ':acme:' })).toHaveLength(2)
+    expect(within(preview).getAllByRole('img', { name: 'Acme logo' })).toHaveLength(2)
     // Neutral words around it, so any organisation's emoji reads naturally.
     expect(within(preview).getAllByText(/Inline with text/u)).toHaveLength(2)
     await expectNoAccessibilityViolations(container)
@@ -133,7 +134,7 @@ describe('EmojiEditor (ADR-038)', () => {
     const still = screen.getByRole('group', {
       name: 'Preview of :party: still, for reduced motion',
     })
-    expect(within(still).getAllByRole('img', { name: ':party:' })[0]).toHaveAttribute(
+    expect(within(still).getAllByRole('img', { name: 'Acme logo' })[0]).toHaveAttribute(
       'src',
       `/api/emoji/party.${STILL.slice(0, 16)}.gif`,
     )
@@ -161,11 +162,20 @@ describe('EmojiEditor (ADR-038)', () => {
       screen.getByLabelText('Image'),
       new File(['GIF89a'], 'party.gif', { type: 'image/gif' }),
     )
+    await user.type(screen.getByLabelText('Alt text'), 'A dancing parrot')
     await user.click(screen.getByRole('button', { name: 'Add emoji' }))
 
     await vi.waitFor(() => {
       expect(saved()).toEqual([
-        { name: 'party', hash: HASH, mediaType: 'image/gif', still: STILL, width: 64, height: 64 },
+        {
+          name: 'party',
+          hash: HASH,
+          mediaType: 'image/gif',
+          still: STILL,
+          description: 'A dancing parrot',
+          width: 64,
+          height: 64,
+        },
       ])
     })
   })
@@ -220,6 +230,7 @@ describe('EmojiEditor (ADR-038)', () => {
       fireEvent.change(await screen.findByRole('slider', { name: 'Poster frame' }), {
         target: { value: '3' },
       })
+      await user.type(screen.getByLabelText('Alt text'), 'A dancing parrot')
       await user.click(screen.getByRole('button', { name: 'Add emoji' }))
 
       await vi.waitFor(() => {
@@ -230,6 +241,7 @@ describe('EmojiEditor (ADR-038)', () => {
             still: POSTER,
             stillType: 'image/png',
             poster: 2,
+            description: 'A dancing parrot',
             width: 64,
             height: 64,
           },
@@ -246,10 +258,13 @@ describe('EmojiEditor (ADR-038)', () => {
       renderEditor({ readFrames }, { [UPLOAD]: () => jsonResponse(201, ANIMATION) })
       await user.upload(screen.getByLabelText('Image'), partyGif())
       await screen.findByRole('slider', { name: 'Poster frame' })
+      await user.type(screen.getByLabelText('Alt text'), 'A dancing parrot')
       await user.click(screen.getByRole('button', { name: 'Add emoji' }))
 
       await vi.waitFor(() => {
-        expect(saved()).toEqual([{ ...ANIMATION, name: 'party', width: 64, height: 64 }])
+        expect(saved()).toEqual([
+          { ...ANIMATION, name: 'party', description: 'A dancing parrot', width: 64, height: 64 },
+        ])
       })
       expect(close).toHaveBeenCalled()
     })
@@ -307,18 +322,50 @@ describe('EmojiEditor (ADR-038)', () => {
 
     await user.clear(screen.getByLabelText('Name'))
     await user.type(screen.getByLabelText('Name'), 'acme_mark')
+    // A picture says nothing to someone who cannot see it, so what it shows is asked for.
+    expect(add).toBeDisabled()
+    await user.type(screen.getByLabelText('Alt text'), 'Acme’s roadrunner mark')
     await user.click(add)
 
     await vi.waitFor(() => {
       expect(saved()).toEqual([
-        { name: 'acme_mark', hash: HASH, mediaType: 'image/svg+xml', width: 64, height: 64 },
+        {
+          name: 'acme_mark',
+          hash: HASH,
+          mediaType: 'image/svg+xml',
+          description: 'Acme’s roadrunner mark',
+          width: 64,
+          height: 64,
+        },
       ])
     })
     // Shown from the file itself until it is saved and served.
-    expect(screen.getAllByRole('img', { name: ':acme_mark:' })[0]).toHaveAttribute(
+    expect(screen.getAllByRole('img', { name: 'Acme’s roadrunner mark' })[0]).toHaveAttribute(
       'src',
       'blob:preview',
     )
+  })
+
+  it('lets the alt text of a saved emoji be written, and said in words from its name until it is', async () => {
+    const user = userEvent.setup()
+    const { name, hash, mediaType, width, height } = ACME
+    renderEditor({
+      initial: [{ name, hash, mediaType, width, height }],
+      served: new Map([['acme', { src: `/api/emoji/acme.${HASH.slice(0, 16)}.svg` }]]),
+    })
+    const field = screen.getByLabelText('Alt text for :acme:')
+
+    // Undescribed, it is read out as its name, which the field offers as the place to start.
+    expect(field).toHaveValue('')
+    expect(field).toHaveAttribute('placeholder', 'acme')
+    expect(screen.getAllByRole('img', { name: 'acme' }).length).toBeGreaterThan(0)
+
+    await user.type(field, 'Acme logo')
+    expect(saved()).toEqual([{ ...ACME, description: 'Acme logo' }])
+    expect(screen.getAllByRole('img', { name: 'Acme logo' }).length).toBeGreaterThan(0)
+
+    await user.clear(field)
+    expect(saved()).toEqual([{ name, hash, mediaType, width, height }])
   })
 
   it('opens the file picker from its button', async () => {
@@ -344,6 +391,7 @@ describe('EmojiEditor (ADR-038)', () => {
     expect(screen.getByRole('button', { name: 'Add emoji' })).toBeDisabled()
 
     await user.upload(screen.getByLabelText('Image'), svgFile('logo.svg'))
+    await user.type(screen.getByLabelText('Alt text'), 'A logo')
     await user.click(screen.getByRole('button', { name: 'Add emoji' }))
     expect(await screen.findByText('That image could not be added')).toBeInTheDocument()
   })

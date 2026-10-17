@@ -15,7 +15,12 @@ import { emojiDecorations, emojiShortcodesKey, findEmoji, loadStandardEmoji } fr
 import { buildExtensions } from './extensions.ts'
 
 const harness = createEditorTestHarness()
-const AIRBNB = { src: '/api/emoji/airbnb.0123456789abcdef.svg', width: 32, height: 32 }
+const AIRBNB = {
+  src: '/api/emoji/airbnb.0123456789abcdef.svg',
+  description: 'Airbnb logo',
+  width: 32,
+  height: 32,
+}
 const custom = new Map([['airbnb', AIRBNB]])
 const lookup = emojiLookup(custom, standardEmoji)
 const leads = new Map([['airbnb', 'airbnb']])
@@ -73,6 +78,20 @@ describe('emoji in the editor (ADR-038)', () => {
     expect(emojiDecorations(inside, matches).find()).toHaveLength(0)
   })
 
+  it('draws the emoji as soon as the caret is past its closing colon, and shows the shortcode while the caret is in it', () => {
+    const state = harness.state('a :+1: b' + String.fromCharCode(10))
+    const matches = findEmoji(state.doc, lookup, leads)
+    const caretAt = (position: number) =>
+      state.apply(state.tr.setSelection(TextSelection.create(state.doc, position)))
+
+    // `:+1:` is positions 3 to 7. Just past it, the emoji is drawn: it is what was just written.
+    expect(emojiDecorations(caretAt(7), matches).find()).toHaveLength(2)
+    expect(emojiDecorations(caretAt(8), matches).find()).toHaveLength(2)
+    // On it, at its start or inside it, the shortcode is there to be edited.
+    expect(emojiDecorations(caretAt(3), matches).find()).toHaveLength(0)
+    expect(emojiDecorations(caretAt(5), matches).find()).toHaveLength(0)
+  })
+
   it.each([
     ':smile: :+1: :airbnb:',
     'a:b:c and 10:30:00 and status:ok',
@@ -101,7 +120,7 @@ describe('emoji in the editor (ADR-038)', () => {
       />,
     )
     // Custom emoji at once, GitHub's once its table has loaded.
-    expect(container.querySelector('img.emoji[alt=":airbnb:"]')).not.toBeNull()
+    expect(container.querySelector('img.emoji[alt="Airbnb logo"]')).not.toBeNull()
     await waitFor(() => {
       expect(container.querySelector('span.emoji[aria-label="party popper"]')).not.toBeNull()
     })
@@ -114,7 +133,7 @@ describe('emoji in the editor (ADR-038)', () => {
     // The caret on a shortcode shows its text; typing, moving and an
     // unrelated transaction each redraw only when they must.
     editor.commands.setTextSelection(8)
-    expect(container.querySelector('img.emoji[alt=":airbnb:"]')).toBeNull()
+    expect(container.querySelector('img.emoji[alt="Airbnb logo"]')).toBeNull()
     editor.view.dispatch(editor.state.tr.setMeta('unrelated', true))
     editor.commands.insertContentAt(1, 'A ')
     expect(serializeDocument({ frontMatter: {}, ast: handle.toMdast() })).toContain(':tada:')
@@ -149,7 +168,8 @@ describe('emoji in the editor (ADR-038)', () => {
       expect(picture?.getAttribute('data-state')).not.toBeNull()
     })
     unmount()
-    // Given back as it came once the editor goes, which Tiptap does on a later tick.
+    // Given back as it came once the editor goes (the editor lets its view go a tick after the
+    // component does, so it is waited for).
     await waitFor(() => {
       expect(source?.getAttribute('media')).toBe('(prefers-reduced-motion: reduce)')
     })

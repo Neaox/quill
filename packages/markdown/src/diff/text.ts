@@ -32,4 +32,5 @@ const INLINE_PARENTS = new Set([
   'textDirective',
   'diffInsertion',
   'diffDeletion',
+  'diffChars',
 ])

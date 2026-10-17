@@ -264,6 +264,25 @@ export {
 export type { RestoreRevisionCommand, RestoreRevisionResult } from './restore-revision.ts'
 export { restoreRevision } from './restore-revision.ts'
 
+export type { RenderDraftCommand, RenderDraftResult } from './render-draft.ts'
+export { renderDraft } from './render-draft.ts'
+
+export type {
+  RevertDraftChangesCommand,
+  RevertDraftChangesDependencies,
+  RevertDraftChangesResult,
+} from './revert-draft-changes.ts'
+export { revertDraftChanges } from './revert-draft-changes.ts'
+export { stampDraftAuthorship } from './stamp-draft-authorship.ts'
+export type {
+  PutBackDraftChangesCommand,
+  PutBackDraftChangesDependencies,
+  PutBackDraftChangesResult,
+  ReplaceDraftContentCommand,
+  ReplaceDraftContentResult,
+} from './put-back-draft-changes.ts'
+export { putBackDraftChanges, replaceDraftContent } from './put-back-draft-changes.ts'
+
 export type {
   ReadPublishedCommand,
   ReadPublishedDependencies,

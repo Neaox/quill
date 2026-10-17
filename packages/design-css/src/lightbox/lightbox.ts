@@ -136,7 +136,7 @@ const ICONS = {
   in: icon('M3.5 8h9M8 3.5v9'),
 } as const
 
-interface Opened {
+export interface Opened {
   readonly dialog: HTMLDialogElement
   readonly close: () => void
 }
@@ -163,7 +163,7 @@ export function shortName(text: string): string {
   return first.trim()
 }
 
-function captionOf(container: Element): string | null {
+export function captionOf(container: Element): string | null {
   return container.querySelector(':scope > figcaption')?.textContent?.trim() ?? null
 }
 
@@ -178,6 +178,22 @@ function midpoint([first, second]: readonly [Point, Point]): Point {
 /** The lightbox's own controls, in the order they sit; the viewer adds Close. */
 const CONTROL_ORDER = ['out', 'zoom', 'in'] as const
 type ControlAction = (typeof CONTROL_ORDER)[number]
+
+/** What the lightbox shows, zoomed and panned: a drawing, a picture. */
+export interface Zoomable {
+  /** The dialog's accessible name. */
+  readonly label: string
+  /** The caption at the foot, or null for none. */
+  readonly caption: string | null
+  /** What is zoomed and panned, drawn on the canvas. */
+  readonly frame: HTMLElement
+  /** Clearly landscape, so a phone is told to turn. */
+  readonly wide: boolean
+  /** Where focus returns. */
+  readonly trigger: HTMLElement
+  /** Runs as the lightbox closes, before focus returns. */
+  readonly onClose?: (() => void) | undefined
+}
 
 /*
  * Zooming in and out are used all the time, so at a limit they stay where
@@ -195,19 +211,14 @@ function limit(button: HTMLButtonElement, reached: boolean, reason: string): voi
   }
 }
 
-function open(
-  diagram: HTMLElement,
-  container: HTMLElement,
-  trigger: HTMLButtonElement,
-): Opened | null {
-  const svg = drawingOf(diagram)
-  if (svg === null) return null
-  const doc = diagram.ownerDocument
-  const caption = captionOf(container)
-  // Named by the caption when there is one, else the alternative text's
-  // first sentence; the caption describes it in full (`aria-describedby`).
-  const label = caption ?? shortName(labelOf(diagram) ?? 'Diagram')
-
+/**
+ * Opens `subject` in the lightbox, with its zoom and pan controls. The one lightbox a diagram and
+ * a picture share, so both zoom, pan and close the same way.
+ */
+export function openZoomable(
+  doc: Document,
+  { label, caption, frame, wide, trigger, onClose }: Zoomable,
+): Opened {
   const buttons: Readonly<Record<ControlAction, HTMLButtonElement>> = {
     out: viewerControl(doc, 'out', 'Zoom out', ICONS.out),
     zoom: viewerControl(doc, 'zoom', READOUT('100%'), '100%'),
@@ -221,13 +232,6 @@ function open(
 
   const canvas = doc.createElement('div')
   canvas.className = 'lightbox-canvas'
-  const frame = doc.createElement('div')
-  frame.className = 'diagram'
-  frame.dataset['diagram'] = diagram.dataset['diagram'] ?? 'svg'
-  frame.dataset['state'] = 'drawn'
-  const placeholder = doc.createComment('diagram in the lightbox')
-  svg.replaceWith(placeholder)
-  frame.append(svg)
   canvas.append(frame)
 
   const { dialog, stage } = openViewer(doc, {
@@ -235,10 +239,10 @@ function open(
     caption,
     controls: CONTROL_ORDER.map((action) => buttons[action]),
     content: [canvas],
-    hint: (device) => gestureHint({ ...device, wide: isWide(svg) }),
+    hint: (device) => gestureHint({ ...device, wide }),
     trigger,
     onClose: () => {
-      placeholder.replaceWith(svg)
+      onClose?.()
       // Closed mid-drag (Escape), the drag is over too.
       delete doc.documentElement.dataset['dragging']
     },
@@ -374,6 +378,37 @@ function open(
   stage.addEventListener('pointercancel', release)
 
   return { dialog, close: () => dialog.close() }
+}
+
+function open(
+  diagram: HTMLElement,
+  container: HTMLElement,
+  trigger: HTMLButtonElement,
+): Opened | null {
+  const svg = drawingOf(diagram)
+  if (svg === null) return null
+  const doc = diagram.ownerDocument
+  const caption = captionOf(container)
+  // Named by the caption when there is one, else the alternative text's first sentence; the
+  // caption describes it in full (`aria-describedby`). Read before the drawing is moved.
+  const label = caption ?? shortName(labelOf(diagram) ?? 'Diagram')
+  const frame = doc.createElement('div')
+  frame.className = 'diagram'
+  frame.dataset['diagram'] = diagram.dataset['diagram'] ?? 'svg'
+  frame.dataset['state'] = 'drawn'
+  const placeholder = doc.createComment('diagram in the lightbox')
+  svg.replaceWith(placeholder)
+  frame.append(svg)
+  return openZoomable(doc, {
+    label,
+    caption,
+    frame,
+    wide: isWide(svg),
+    trigger,
+    onClose: () => {
+      placeholder.replaceWith(svg)
+    },
+  })
 }
 
 /**

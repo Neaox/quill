@@ -5,7 +5,7 @@ import { html, type Html } from '../html.ts'
 /**
  * The byline under a public page's title: the facts a document states about
  * itself that an outsider may see — its lifecycle (in review, verified and
- * when, deprecated), when it was last reviewed, and its tags (ADR-055,
+ * when, deprecated), when it was last reviewed, and its tags (ADR-057,
  * `docs/design/properties.md`). Never its owners, nor who verified it: they
  * are people. A status from before the lifecycle is never shown.
  *

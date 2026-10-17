@@ -1,7 +1,7 @@
 import { useNavigate } from '@tanstack/react-router'
 import { lazy, useState, type ReactNode } from 'react'
 
-import { Badge, Button, tv } from '@quill/ui'
+import { Badge, Button } from '@quill/ui'
 
 import { DRAFT_SIDE } from '../../lib/api/content.ts'
 import { useReview } from '../../lib/api/index.ts'
@@ -15,11 +15,6 @@ const RequestReviewDialog = lazy(async () => ({
 const ReviewPanel = lazy(async () => ({
   default: (await import('./review-panel.tsx')).ReviewPanel,
 }))
-
-/** Where the request button shows: the header from `sm`, or the phone's notice below it. */
-const requestButton = tv({
-  variants: { surface: { notice: 'sm:hidden', header: 'max-sm:hidden' } },
-})
 
 export interface ReviewActionsProps {
   readonly workspaceSlug: string
@@ -39,11 +34,13 @@ export interface ReviewActionsProps {
    */
   readonly primary?: boolean | undefined
   /**
-   * Where it is drawn. The header holds the status chip and, from `sm`, the request button; a
-   * phone's bar has no room for both, so there the button lives in the notice that says there
-   * are unpublished changes (`'notice'`), which shows only below `sm`.
+   * Whether the request dialog is open, for a page that opens it from somewhere else too. The
+   * request button shows from `sm`: a phone's bar has no room for it, so there the page offers
+   * it in the document's menu and opens the dialog through this. Omitted, the button's own
+   * press opens it.
    */
-  readonly surface?: 'header' | 'notice' | undefined
+  readonly requesting?: boolean | undefined
+  readonly onRequestingChange?: ((open: boolean) => void) | undefined
 }
 
 /**
@@ -63,11 +60,14 @@ export function ReviewActions({
   beforeRequest,
   summary,
   primary = false,
-  surface = 'header',
+  requesting,
+  onRequestingChange,
 }: ReviewActionsProps) {
   const review = useReview(documentId)
   const navigate = useNavigate()
-  const [asking, setAsking] = useState(false)
+  const [askingHere, setAskingHere] = useState(false)
+  const asking = requesting ?? askingHere
+  const setAsking = onRequestingChange ?? setAskingHere
   const [reading, setReading] = useState(false)
   const current = review.data ?? null
   const status = summariseReview(current)
@@ -75,7 +75,7 @@ export function ReviewActions({
 
   return (
     <>
-      {surface === 'notice' || status === undefined || current === null ? undefined : (
+      {status === undefined || current === null ? undefined : (
         <Button
           variant={current.canDecide ? 'secondary' : 'ghost'}
           size="sm"
@@ -95,7 +95,7 @@ export function ReviewActions({
         <Button
           variant={primary ? 'primary' : 'secondary'}
           size="sm"
-          className={requestButton({ surface })}
+          className="max-sm:hidden"
           onClick={() => {
             setAsking(true)
           }}
@@ -119,7 +119,7 @@ export function ReviewActions({
         </MountOnFirstOpen>
       ) : undefined}
 
-      {surface === 'notice' || current === null || status === undefined ? undefined : (
+      {current === null || status === undefined ? undefined : (
         <MountOnFirstOpen open={reading}>
           <ReviewPanel
             documentId={documentId}

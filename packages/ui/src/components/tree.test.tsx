@@ -509,23 +509,52 @@ describe('a tree that folds and pages', () => {
     expect(screen.getByRole('link', { name: 'Entry 12250' })).toHaveFocus()
   })
 
-  it('scrolls the open document into view when it is out of sight', async () => {
-    const scrolled = vi.fn<(this: Element, options?: ScrollIntoViewOptions) => void>()
+  it('scrolls the open document to the middle of its region when it is out of sight', async () => {
+    const scrolled = vi.fn<(this: Element, options?: ScrollToOptions) => void>()
+    const measure = vi
+      .spyOn(Element.prototype, 'getBoundingClientRect')
+      .mockImplementation(function (this: Element) {
+        return this instanceof HTMLLIElement
+          ? new DOMRect(0, 5_000, 200, 28)
+          : new DOMRect(0, 100, 200, 600)
+      })
+    Element.prototype.scrollTo = scrolled
+    try {
+      render(
+        <div data-testid="region" style={{ overflowY: 'auto' }}>
+          <Tree label="Documents" sections={[stressSection(3)]} currentId="deep-5" />
+        </div>,
+      )
+      // Far below the window: the region alone is scrolled, in the next frame, so the page
+      // around it stays where it is.
+      await waitFor(() => {
+        expect(scrolled.mock.contexts).toContain(screen.getByTestId('region'))
+      })
+      expect(scrolled.mock.contexts.every((element) => element === screen.getByTestId('region'))).toBe(
+        true,
+      )
+    } finally {
+      measure.mockRestore()
+      Reflect.deleteProperty(Element.prototype, 'scrollTo')
+    }
+  })
+
+  it('leaves the page where it is when the tree is part of the page rather than a region of its own', async () => {
+    const scrolled = vi.fn<(this: Element, options?: ScrollToOptions) => void>()
     const measure = vi
       .spyOn(Element.prototype, 'getBoundingClientRect')
       .mockReturnValue(new DOMRect(0, 5_000, 200, 28))
-    Element.prototype.scrollIntoView = scrolled
+    Element.prototype.scrollTo = scrolled
     try {
+      // A tree on a long page, say: bringing its open row into view would scroll the page
+      // away from wherever the reader is, and again whenever the layout settles.
       render(<Tree label="Documents" sections={[stressSection(3)]} currentId="deep-5" />)
-      // Far below the window: brought to the middle of its container, in the
-      // next frame.
-      await waitFor(() => {
-        expect(scrolled.mock.contexts.map((element) => element.textContent)).toEqual(['Deep 5'])
-      })
-      expect(scrolled).toHaveBeenCalledWith({ block: 'center', inline: 'nearest' })
+      await new Promise((resolve) => requestAnimationFrame(resolve))
+      await new Promise((resolve) => requestAnimationFrame(resolve))
+      expect(scrolled).not.toHaveBeenCalled()
     } finally {
       measure.mockRestore()
-      Reflect.deleteProperty(Element.prototype, 'scrollIntoView')
+      Reflect.deleteProperty(Element.prototype, 'scrollTo')
     }
   })
 
@@ -632,5 +661,69 @@ describe('a tree given only part of its lists', () => {
     expect(screen.getAllByRole('button', { name: /^Show 17 earlier, in Level \d$/ })).toHaveLength(
       3,
     )
+  })
+
+  it('says that a list could not be loaded, and asks again when the reader says to', async () => {
+    const onLoad = vi.fn<(request: TreeLoadRequest) => void>()
+    const { container } = render(
+      <Tree
+        label="Documents"
+        sections={lazy()}
+        onLoad={onLoad}
+        loadFailed={(owner) => owner.kind === 'node' && owner.id === 'top-0'}
+      />,
+    )
+
+    await userEvent.click(screen.getByRole('button', { name: 'Expand Top 0' }))
+    expect(screen.queryByText('Loading…')).not.toBeInTheDocument()
+    expect(screen.getByRole('status')).toHaveTextContent('Couldn’t load the documents in Top 0')
+    onLoad.mockClear()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Try again, in Top 0' }))
+    expect(onLoad).toHaveBeenCalledWith({
+      owner: { kind: 'node', id: 'top-0' },
+      offset: 0,
+      limit: 3,
+    })
+    await expectNoAccessibilityViolations(container)
+  })
+})
+
+describe('a tree drawn a window at a time', () => {
+  it('says where each drawn document is among all of its siblings, which the list alone cannot', () => {
+    render(
+      <Tree
+        label="Documents"
+        sections={[stressSection(20_000)]}
+        currentId="entry-12345"
+        pageSize={50}
+      />,
+    )
+
+    const current = screen.getByRole('link', { name: 'Entry 12345' }).closest('li')
+    expect(current).toHaveAttribute('aria-posinset', '12346')
+    expect(current).toHaveAttribute('aria-setsize', '20001')
+  })
+
+  it('leaves a list that is drawn whole to say its own count', () => {
+    render(<Tree label="Documents" sections={SECTIONS} />)
+
+    for (const item of screen.getAllByRole('listitem')) {
+      expect(item).not.toHaveAttribute('aria-posinset')
+      expect(item).not.toHaveAttribute('aria-setsize')
+    }
+  })
+
+  it('keeps the collection being scrolled through pinned at the top of the sidebar', () => {
+    const { container, rerender } = render(<Tree label="Documents" sections={SECTIONS} />)
+    for (const header of container.querySelectorAll('[data-section-header]')) {
+      expect(header).toHaveAttribute('data-pinned')
+    }
+
+    // A picker in a dialog scrolls on another ground, and its sections are places, not headings.
+    rerender(<Tree label="Documents" sections={SECTIONS} selectable onSelect={() => undefined} />)
+    for (const header of container.querySelectorAll('[data-section-header]')) {
+      expect(header).not.toHaveAttribute('data-pinned')
+    }
   })
 })

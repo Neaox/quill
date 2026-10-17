@@ -5,7 +5,7 @@ import type { ApiClient } from '@quill/api-client'
 import { useApiClient } from './client-context.tsx'
 import { request } from './http.ts'
 import { queryKeys } from './query-keys.ts'
-import type { DocumentEnvelope, DraftDto, SaveDraftResponse } from './types.ts'
+import type { DocumentEnvelope, DraftDto, PutBackResponse, SaveDraftResponse } from './types.ts'
 
 /**
  * Shared by the hook below and by the editor's `DraftClient.load`
@@ -61,18 +61,112 @@ export function useSaveDraft() {
           body: { ast, expectedVersion },
         }),
       ),
-    onSuccess: (_result, variables) => {
+    onSuccess: (result, variables) => {
       void queryClient.invalidateQueries({ queryKey: queryKeys.draft(variables.documentId) })
       // A saved draft is ahead of what was published, which the header says
-      // ("Published, with unpublished changes"). Known here without asking:
-      // the envelope is set rather than fetched again on every autosave.
+      // ("Published, with unpublished changes") and the notice above the page
+      // dates. Known here without asking: the envelope is set rather than
+      // fetched again on every autosave.
       queryClient.setQueryData<DocumentEnvelope>(
         queryKeys.envelope(variables.documentId),
         (envelope) =>
-          envelope === undefined || envelope.unpublishedChanges
+          envelope === undefined
             ? envelope
-            : { ...envelope, unpublishedChanges: true },
+            : {
+                ...envelope,
+                unpublishedChanges: envelope.lastPublished !== null,
+                draft: { savedAt: result.updatedAt },
+              },
       )
     },
+  })
+}
+
+export interface PutBackInput {
+  readonly documentId: string
+  /** The revision the changes are since: the published page; null before the first publish. */
+  readonly from: string | null
+  /** The version of the draft that was compared. */
+  readonly draftVersion: number
+  /** The changes, by the ids the comparison gave them. */
+  readonly changes: readonly string[]
+}
+
+export interface UndoPutBackInput {
+  readonly documentId: string
+  /** The version the put back made. */
+  readonly draftVersion: number
+  /** What the draft held before, as the put back handed it back. */
+  readonly ast: Record<string, unknown>
+}
+
+/**
+ * Everything that reads the draft is out of date once a change is put back in it from
+ * outside the editor: the draft, the envelope that dates it, and every comparison with it.
+ */
+function forgetDraft(queryClient: ReturnType<typeof useQueryClient>, documentId: string): void {
+  void queryClient.invalidateQueries({ queryKey: queryKeys.draft(documentId) })
+  void queryClient.invalidateQueries({ queryKey: queryKeys.envelope(documentId) })
+  void queryClient.invalidateQueries({ queryKey: ['comparison', documentId] })
+  void queryClient.invalidateQueries({ queryKey: ['comparison-source', documentId] })
+}
+
+/**
+ * `POST /documents/:id/draft/revert`: changes since the published page put back in the
+ * draft and saved, from the comparison page. Refused with `423 lock_lost` while somebody
+ * else is editing, and `409 stale_version` when the draft is no longer the one compared.
+ */
+export function usePutBackChanges() {
+  const client = useApiClient()
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({ documentId, from, draftVersion, changes }: PutBackInput) =>
+      request<PutBackResponse>(
+        client.POST('/api/documents/{id}/draft/revert', {
+          params: { path: { id: documentId } },
+          body: { draftVersion, changes: [...changes], ...(from === null ? {} : { from }) },
+        }),
+      ),
+    onSuccess: (_result, { documentId }) => {
+      forgetDraft(queryClient, documentId)
+    },
+  })
+}
+
+/** `POST /documents/:id/draft/revert/undo`: a put back undone, with what it handed back. */
+export function useUndoPutBack() {
+  const client = useApiClient()
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({ documentId, draftVersion, ast }: UndoPutBackInput) =>
+      request<{ readonly draftVersion: number }>(
+        client.POST('/api/documents/{id}/draft/revert/undo', {
+          params: { path: { id: documentId } },
+          body: { draftVersion, ast },
+        }),
+      ),
+    onSuccess: (_result, { documentId }) => {
+      forgetDraft(queryClient, documentId)
+    },
+  })
+}
+
+/**
+ * The draft as it would be with some changes put back (`POST /documents/:id/draft/revert-preview`).
+ *
+ * Not a write: an open editor applies the answer as an edit of its own, so it can be undone
+ * and is saved the way anything typed is. A `409` means the draft moved on under the person
+ * looking at it.
+ */
+export function useRevertPreview() {
+  const client = useApiClient()
+  return useMutation({
+    mutationFn: ({ documentId, from, draftVersion, changes }: PutBackInput) =>
+      request<{ readonly draftVersion: number; readonly ast: Record<string, unknown> }>(
+        client.POST('/api/documents/{id}/draft/revert-preview', {
+          params: { path: { id: documentId } },
+          body: { draftVersion, changes: [...changes], ...(from === null ? {} : { from }) },
+        }),
+      ),
   })
 }

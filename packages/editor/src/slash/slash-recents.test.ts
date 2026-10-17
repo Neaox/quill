@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest'
 
-import { DEFAULT_RECENTS_KEY, RECENT_LIMIT, createSlashRecents } from './slash-recents.ts'
+import {
+  DEFAULT_RECENTS_KEY,
+  RECENT_LIMIT,
+  createSlashRecents,
+  emojiRecentsKey,
+} from './slash-recents.ts'
 
 /** A `Storage` that refuses everything, as a blocked site's does. */
 const REFUSING: Storage = {
@@ -33,6 +38,11 @@ describe('recently used slash items', () => {
     expect(createSlashRecents().read()).toEqual([])
     createSlashRecents().remember('quote')
     expect(localStorage.getItem(DEFAULT_RECENTS_KEY)).toBe('["quote"]')
+  })
+
+  it('keeps the emoji chosen last beside a person’s blocks, under a key of their own', () => {
+    expect(emojiRecentsKey('editor.slash.recent.ada')).toBe('editor.slash.recent.ada.emoji')
+    expect(emojiRecentsKey()).toBe(`${DEFAULT_RECENTS_KEY}.emoji`)
   })
 
   it('forgets rather than fails when storage is refused, missing, or holds nonsense', () => {

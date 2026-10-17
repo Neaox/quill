@@ -2,6 +2,7 @@ import type { CSSProperties } from 'react'
 import { tv } from 'tailwind-variants'
 
 import type { MenuPlacement } from './slash-position.ts'
+import type { SlashMenuWording } from './slash-store.ts'
 
 /**
  * The parts of the menu in one definition. Which item is active is said
@@ -31,6 +32,8 @@ export const slashMenuStyles = tv({
       'ms-auto shrink-0 rounded-sm border border-border-strong bg-surface px-1.5 font-mono ' +
       'text-2xs leading-5 text-foreground-soft',
     empty: 'px-3 py-3 text-sm text-foreground-soft',
+    // An emoji's own picture, drawn where a block's icon is.
+    image: 'size-5 object-contain',
   },
 })
 
@@ -77,6 +80,13 @@ export function countMessage(count: number, noun = 'block'): string {
   return count === 1 ? `1 ${noun}` : `${String(count)} ${noun}s`
 }
 
+/** What the insert menu says: it lists blocks. */
+export const BLOCK_WORDING: SlashMenuWording = {
+  name: 'Insert a block',
+  empty: (query) => `No blocks match “${query}”`,
+  count: countMessage,
+}
+
 const slots = slashMenuStyles()
 
 /**
@@ -89,6 +99,7 @@ export const slashMenuClasses = {
   heading: slots.heading(),
   option: slots.option(),
   icon: slots.icon(),
+  image: slots.image(),
   text: slots.text(),
   label: slots.label(),
   mark: slots.mark(),

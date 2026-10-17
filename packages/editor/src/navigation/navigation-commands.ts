@@ -15,7 +15,7 @@ import type { Command } from '@tiptap/pm/state'
 import { nodeType } from '../schema/node-type.ts'
 
 /**
- * The navigation blocks in the editor (ADR-054): `::toc` and `::children`
+ * The navigation blocks in the editor (ADR-056): `::toc` and `::children`
  * are leaf directives, so they are the Markdown package's existing node and
  * round-trip through it byte for byte. These read a node into the block's
  * model with the directive's own parser, so the editor and the reader can

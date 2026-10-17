@@ -51,8 +51,7 @@ describe('AuthCard', () => {
   it('lets a visitor choose light or dark before they have an account', () => {
     renderCard()
 
-    const theme = screen.getByRole('group', { name: 'Theme' })
-    expect(within(theme).getByRole('radio', { name: 'Dark' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Colour scheme: System' })).toBeInTheDocument()
   })
 
   it('leaves the description and footer out when a step has none', () => {

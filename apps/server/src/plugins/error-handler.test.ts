@@ -34,6 +34,19 @@ function buildTestApp() {
     ok: true,
   }))
 
+  app.post(
+    '/formatted',
+    {
+      schema: {
+        body: Type.Object({
+          email: Type.String({ format: 'email' }),
+          address: Type.Object({ postcode: Type.String({ minLength: 3 }) }),
+        }),
+      },
+    },
+    async () => ({ ok: true }),
+  )
+
   return app
 }
 
@@ -60,6 +73,63 @@ describe('registerErrorHandler', () => {
     const body = response.json()
     expect(body.error.code).toBe('validation_error')
     expect(Array.isArray(body.error.details)).toBe(true)
+  })
+
+  it('names the fields at fault in the message, not the validator’s phrasing', async () => {
+    const missing = await app.inject({ method: 'POST', url: '/validated', payload: {} })
+    expect(missing.json().error.message).toBe('The request was not valid: name.')
+
+    const wrong = await app.inject({
+      method: 'POST',
+      url: '/formatted',
+      payload: { email: 'nope', address: { postcode: 'xyz' } },
+    })
+    expect(wrong.json().error.message).toBe('The request was not valid: email.')
+
+    const nested = await app.inject({
+      method: 'POST',
+      url: '/formatted',
+      payload: { email: 'a@example.com', address: { postcode: 'x' } },
+    })
+    expect(nested.json().error.message).toBe('The request was not valid: address.postcode.')
+  })
+
+  it('adds a missing property to the object it is missing from', async () => {
+    const response = await app.inject({
+      method: 'POST',
+      url: '/formatted',
+      payload: { email: 'a@example.com', address: {} },
+    })
+
+    expect(response.json().error.message).toBe('The request was not valid: address.postcode.')
+  })
+
+  it('says only that the request was not valid when no field is at fault', async () => {
+    const response = await app.inject({
+      method: 'POST',
+      url: '/validated',
+      headers: { 'content-type': 'application/json' },
+      payload: '"not an object"',
+    })
+
+    expect(response.statusCode).toBe(400)
+    expect(response.json().error.message).toBe('The request was not valid.')
+  })
+
+  it('keeps the validator’s own findings in details, for a client that wants them', async () => {
+    const response = await app.inject({
+      method: 'POST',
+      url: '/formatted',
+      payload: { email: 'nope', address: { postcode: 'xyz' } },
+    })
+
+    expect(response.json().error.details).toEqual([
+      expect.objectContaining({
+        instancePath: '/email',
+        keyword: 'format',
+        params: { format: 'email' },
+      }),
+    ])
   })
 
   /**

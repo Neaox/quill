@@ -70,9 +70,9 @@ own distinct settings):
 
 | Whose | What | Where it lives | How a person gets there |
 | --- | --- | --- | --- |
-| **The person's** | Colour scheme: System, Light or Dark (ADR-028, layer 3) | The person menu's **Appearance** group, applied at once and remembered in the browser | The avatar and name at the end of every signed-in bar |
+| **The person's** | Colour scheme: System, Light or Dark (ADR-028, layer 3), and Preferences | The person menu's **Appearance** row, which goes round the three, applied at once and remembered in the browser; and **Preferences** | The avatar and name at the end of every signed-in bar |
 | **The workspace's** | Its layout, within the organisation's lock | `/w/<workspace>/settings` | The workspace's own overflow menu |
-| **The organisation's** | Organisation settings, Theme, Labels and emoji, Layout, Secrets and sign-in, and the unit and workspace tree | `/admin/settings/*` and `/admin/organisation`, instance administrators only | The person menu's **Organisation** group; the command palette; the home page's **Organisation** section and set-up checklist |
+| **The organisation's** | Organisation settings, Theme, Labels and emoji, Layout, Secrets and sign-in, the unit and workspace tree, and people and groups | `/admin/settings/*`, `/admin/organisation` and `/admin/groups`, instance administrators only | The person menu's **Organisation** group, in three items: **Organisation settings** (whose screens have a navigation of their own), **Units and workspaces**, and **People and groups**; the command palette, which lists every screen; the home page's **Organisation** section and set-up checklist |
 
 The rules behind that:
 
@@ -81,14 +81,21 @@ The rules behind that:
    arrow opens it onto its first item, the arrows and type-ahead move through
    it, Escape closes it and gives focus back. Its accessible name is "Account
    menu for" and the person's name, so it contains the words it shows. It
-   opens with the person's name and email, then Appearance, then (for an
-   administrator) Organisation, then Sign out, last, as everywhere else.
-2. **The colour scheme is not a bar control.** It is set once and left alone,
-   and a phone's bar has no room for three segments; in the menu it is
-   reachable at every width, and choosing one keeps the menu open so the
-   change can be seen and undone. The signed-out pages and the design
-   showcase, which have no person menu, keep the segmented switch. Both read
-   one list of schemes (`features/theme/colour-schemes.ts`).
+   opens with who is signed in (the initials, the name and the email), then
+   Preferences and Appearance, then (for an administrator) the Organisation
+   group, then Sign out, last, as everywhere else. A row may carry an icon
+   before its words, which is decoration, and what it is set to after them.
+2. **The colour scheme is one button that goes round the three.** It is set
+   once and left alone, so it is not a control in every bar: in the person
+   menu it is one row, **Appearance**, whose icon and trailing word say what it
+   is on and which each press moves to System, Light, Dark and back; the menu
+   stays open so the change can be seen and pressed again. The signed-out
+   pages and the design showcase, which have no person menu, show the same
+   thing as a single icon button. Both are named by the scheme they are on
+   ("Colour scheme: Dark", "Appearance: Dark"), say the new scheme politely
+   when it changes, since the focus stays where it was, and read one list
+   (`features/theme/colour-schemes.ts`), so they cannot name or order the
+   schemes differently.
 3. **Administration is offered only to whoever can use it.** The
    Organisation group, the palette's Organisation commands, the home page's
    Organisation section and the set-up checklist are all decided by

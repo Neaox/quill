@@ -269,7 +269,7 @@ const invalidationOf = (eventType: string) => {
   return consumer
 }
 
-// The child pages lists (ADR-054) are invalidated by six events, each a
+// The child pages lists (ADR-056) are invalidated by six events, each a
 // subtree's worth of entries at most.
 const invalidateChildPages = new Map(
   createInvalidateChildPagesConsumers(childPagesCache, deps).map((consumer) => [
@@ -343,10 +343,10 @@ for (const consumer of createNotifyOnReviewConsumers(deps)) jobRunner.register(c
 // Every type something emits has a consumer, even when the consumer does
 // nothing yet: the poller claims only registered types, so an unregistered
 // one would accumulate for ever (review finding H6).
-// A new page changes the child pages lists above it (ADR-054); it has
+// A new page changes the child pages lists above it (ADR-056); it has
 // nothing to index or render until it is published.
 jobRunner.register(childPagesOf(DOCUMENT_CREATED))
-// Nesting and deleting change the lists and the public navigation (ADR-054).
+// Nesting and deleting change the lists and the public navigation (ADR-056).
 for (const eventType of [DOCUMENT_NESTED, DOCUMENT_DELETED]) {
   jobRunner.register(
     combineConsumers(eventType, childPagesOf(eventType), invalidationOf(eventType)),

@@ -115,7 +115,17 @@ export {
   type NavigationNode,
   type NavigationTree,
 } from './navigation-tree.ts'
-export { draftQueryOptions, useDraft, useSaveDraft, type SaveDraftInput } from './drafts.ts'
+export {
+  draftQueryOptions,
+  useDraft,
+  usePutBackChanges,
+  useRevertPreview,
+  useSaveDraft,
+  useUndoPutBack,
+  type PutBackInput,
+  type SaveDraftInput,
+  type UndoPutBackInput,
+} from './drafts.ts'
 export { useAcquireLock, useHeartbeatLock, useReleaseLock, useTakeoverLock } from './locks.ts'
 export {
   renderedQueryOptions,

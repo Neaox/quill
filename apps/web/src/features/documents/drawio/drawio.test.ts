@@ -5,6 +5,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { declared } from '../../../lib/api/attachments.ts'
 import { createDiagramStore, isDiagramAttachment } from './diagram-store.ts'
 import { createDrawioFiles } from './drawio-files.ts'
+import { interfaceLanguage } from './use-drawio.tsx'
 
 function attachment(overrides: Partial<Attachment> = {}): Attachment {
   return {
@@ -190,5 +191,17 @@ describe('declared', () => {
     expect(declared(png)).toBe(png)
     const unknown = new File(['x'], 'notes.txt')
     expect(declared(unknown)).toBe(unknown)
+  })
+})
+
+describe('the language draw.io is asked to speak', () => {
+  it('is the page’s own, which is the language the application speaks', () => {
+    const root = document.createElement('html')
+    root.lang = 'de-DE'
+    expect(interfaceLanguage(root)).toBe('de-DE')
+  })
+
+  it('is left to draw.io when the page does not say', () => {
+    expect(interfaceLanguage(document.createElement('html'))).toBeUndefined()
   })
 })

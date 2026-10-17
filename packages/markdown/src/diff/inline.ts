@@ -1,6 +1,6 @@
 import type { PhrasingContent } from 'mdast'
 
-import type { DiffDeletion, DiffInsertion } from './nodes.ts'
+import type { DiffChars, DiffDeletion, DiffInsertion } from './nodes.ts'
 import type { Change, Run } from './runs.ts'
 import { changeRuns, isWord, tokenize } from './runs.ts'
 import { nodeKey } from './keys.ts'
@@ -51,10 +51,84 @@ export function mergePhrasing(
       .filter((run) => run.change === change)
       .reduce((total, run) => total + run.items.reduce((sum, atom) => sum + atom.words, 0), 0)
   return {
-    children: rebuild(runs),
+    children: pickOutChanges(rebuild(runs)),
     wordsAdded: words('added'),
     wordsRemoved: words('removed'),
   }
+}
+
+/**
+ * A word that was replaced by a word that shares its beginning or its end, with the
+ * characters that are not shared picked out: `color` becoming `colour`, `Monday` becoming
+ * `Tuesday`. Replacing one character in a long word is the change that is hardest to see
+ * at word level, since a word is marked whole either way; the characters are marked too.
+ * Only a removal followed directly by an insertion of one word each is a replacement.
+ */
+function pickOutChanges(children: PhrasingContent[]): PhrasingContent[] {
+  const result: PhrasingContent[] = []
+  for (let index = 0; index < children.length; index += 1) {
+    const removed = children[index]
+    const added = children[index + 1]
+    const pair =
+      removed?.type === 'diffDeletion' && added?.type === 'diffInsertion'
+        ? replacement(removed, added)
+        : undefined
+    if (pair === undefined) {
+      /* v8 ignore next -- the loop only visits indices the children have. */
+      result.push(...(removed === undefined ? [] : [removed]))
+    } else {
+      result.push(...pair)
+      index += 1
+    }
+  }
+  return result
+}
+
+/** The one word a removal or insertion holds, when it holds exactly one. */
+function wordOf(node: DiffDeletion | DiffInsertion): string | undefined {
+  const [only] = node.children
+  return node.children.length === 1 && only?.type === 'text' && /^\S+$/u.test(only.value)
+    ? only.value
+    : undefined
+}
+
+function replacement(
+  removed: DiffDeletion,
+  added: DiffInsertion,
+): [DiffDeletion, DiffInsertion] | undefined {
+  const before = wordOf(removed)
+  const after = wordOf(added)
+  if (before === undefined || after === undefined) return undefined
+  const [older, newer] = [Array.from(before), Array.from(after)]
+  const shortest = Math.min(older.length, newer.length)
+  let start = 0
+  while (start < shortest && older[start] === newer[start]) start += 1
+  let end = 0
+  while (end < shortest - start && older.at(-1 - end) === newer.at(-1 - end)) end += 1
+  if (start + end === 0) return undefined
+  // A side with nothing of its own between the shared parts still marks the place, so that
+  // where a character was taken out or put in can be seen on the side that has no character.
+  return [
+    { ...removed, children: split(older, start, end) },
+    { ...added, children: split(newer, start, end) },
+  ]
+}
+
+function textNodes(value: string): PhrasingContent[] {
+  return value === '' ? [] : [{ type: 'text', value }]
+}
+
+/**
+ * A word as its shared beginning, the characters that changed, and its shared end. The
+ * characters that changed may be none: that is a mark with nothing in it, at the place.
+ */
+function split(characters: readonly string[], start: number, end: number): PhrasingContent[] {
+  const middle = characters.slice(start, characters.length - end).join('')
+  return [
+    ...textNodes(characters.slice(0, start).join('')),
+    { type: 'diffChars', children: textNodes(middle) } satisfies DiffChars,
+    ...textNodes(characters.slice(characters.length - end).join('')),
+  ]
 }
 
 /** Phrasing wrapped whole as an addition or a removal: a block that only one side has. */

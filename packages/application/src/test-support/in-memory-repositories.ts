@@ -87,7 +87,7 @@ export interface InMemoryUnitOfWork extends UnitOfWork {
   readonly auditEvents: readonly AuditEventRow[]
   /** Every attachment state a revision replaced, oldest first: the attachments' history. */
   readonly attachmentHistory: readonly AttachmentRow[]
-  /** What the search projection would hold for each published document (ADR-054); a test sets it. */
+  /** What the search projection would hold for each published document (ADR-056); a test sets it. */
   readonly summaries: Map<DocumentId, DocumentSummaryRow>
   /** Drops a document's draft row, as a document imported or seeded without one has none. */
   forgetDraft(documentId: DocumentId): void
@@ -600,7 +600,7 @@ export function createInMemoryUnitOfWork(): InMemoryUnitOfWork {
         ? null
         : { baseRevision: draft.baseRevision, updatedAt: draft.updatedAt }
     },
-    async write({ documentId, sessionId, expectedVersion, ast, now }) {
+    async write({ documentId, sessionId, expectedVersion, ast, authorship, now }) {
       const lock = locks.get(documentId) ?? null
       const holdsValidLock =
         lock !== null && lock.holderSessionId === sessionId && lock.expiresAt >= now
@@ -617,18 +617,22 @@ export function createInMemoryUnitOfWork(): InMemoryUnitOfWork {
       const updated: DraftRow = {
         ...draft,
         ast,
+        ...(authorship === undefined ? {} : { authorship }),
         draftVersion: draft.draftVersion + 1,
         updatedAt: now,
       }
       drafts.set(documentId, updated)
       return { ok: true, draft: updated }
     },
-    async rebase({ documentId, baseRevision, ast, now }) {
+    async rebase({ documentId, baseRevision, ast, authorship, expectedVersion, now }) {
       const draft = drafts.get(documentId)
       if (draft === undefined) return null
+      if (expectedVersion !== undefined && draft.draftVersion !== expectedVersion) return null
       const updated: DraftRow = {
         ...draft,
         baseRevision,
+        // From a new base the record says what is published, so it is let go.
+        authorship: authorship ?? (baseRevision === draft.baseRevision ? draft.authorship : null),
         updatedAt: now,
         // Replacing the content bumps the version, so an editor that was open
         // when a restore landed is told its next write is stale (ADR-021).

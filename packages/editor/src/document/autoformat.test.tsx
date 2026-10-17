@@ -9,8 +9,9 @@ import { EditorState, TextSelection } from '@tiptap/pm/state'
 import { EditorView } from '@tiptap/pm/view'
 
 import { editorSchema } from '../schema/editor-schema.ts'
+import { markType, nodeType } from '../schema/node-type.ts'
 import { documentFromMdast, documentToMdast } from './ast.ts'
-import { AUTOFORMAT_HINTS, autoformatRules } from './autoformat.ts'
+import { AUTOFORMAT_HINTS, autoformatRules, leaveInlineCode } from './autoformat.ts'
 import { DocumentEditor } from './document-editor.tsx'
 import type { DocumentEditorHandle } from './document-editor.tsx'
 import { EMPTY_LINE_HINT, placeholderFor } from './extensions.ts'
@@ -152,5 +153,142 @@ describe('the rules, typed straight into a view', () => {
     expect(typeInto(before, 3, '-').handled).toBe(false)
     const heading = docOf('# --\n')
     expect(typeInto(heading, endOfText(heading), '-').handled).toBe(false)
+  })
+})
+
+describe('Inline code typed between backticks', () => {
+  it('becomes code as the closing backtick is typed, and what follows is plain', async () => {
+    expect(await type('Run `pnpm check` before you push')).toBe(
+      'Run `pnpm check` before you push\n',
+    )
+  })
+
+  it('is code with the backticks gone, not text between them', async () => {
+    const ref = createRef<DocumentEditorHandle>()
+    render(<DocumentEditor ast={parseDocument('\n').ast} ref={ref} />)
+    const user = userEvent.setup()
+    await user.click(screen.getByRole('textbox', { name: 'Document' }))
+    await user.keyboard('say `hi`')
+
+    expect(screen.getByText('hi').tagName).toBe('CODE')
+    expect(screen.getByRole('textbox', { name: 'Document' })).toHaveTextContent('say hi')
+  })
+
+  it('gives back what was typed when Backspace follows at once', async () => {
+    const written = await type('say `hi`{Backspace}')
+
+    expect(written).not.toContain('`hi`\n')
+    expect(written).toContain('say ')
+    expect(written).toContain('hi')
+  })
+
+  it('leaves a pair of backticks round spaces, which is not what anyone meant', async () => {
+    expect(await type('a ` b ` c')).toBe('a \\` b \\` c\n')
+  })
+
+  it('leaves a backtick that is escaped', async () => {
+    expect(await type('a \\`b` c')).toBe('a \\\\\\`b\\` c\n')
+  })
+
+  it('does not fire in a code block, where backticks are code', () => {
+    const doc = docOf('```\nfoo `bar\n```\n')
+
+    expect(typeInto(doc, endOfText(doc), '`').handled).toBe(false)
+  })
+
+  it('does not take over a triple backtick fence', async () => {
+    expect(await type('```ts ')).toBe('```ts\n```\n')
+  })
+
+  it('goes on at the end of code, which is how words are added to it', async () => {
+    const written = await type('{ArrowLeft}', 'See `code` now\n')
+    expect(written).toBe('See `code` now\n')
+  })
+})
+
+async function typeAfterArrow(presses: number, typed: string) {
+  const ref = createRef<DocumentEditorHandle>()
+  render(<DocumentEditor ast={parseDocument('See `code` now\n').ast} ref={ref} />)
+  const user = userEvent.setup()
+  await user.click(screen.getByRole('textbox', { name: 'Document' }))
+  const editor = ref.current?.editor
+  if (editor === null || editor === undefined) throw new Error('No editor.')
+  // The caret at the end of the code, where code would go on.
+  let end = 0
+  editor.state.doc.descendants((child, position) => {
+    if (child.isText && child.marks.some((mark) => mark.type.name === 'code')) {
+      end = position + child.nodeSize
+    }
+  })
+  act(() => {
+    editor.commands.setTextSelection(end)
+  })
+  await user.keyboard('{ArrowRight}'.repeat(presses) + typed)
+  return serializeDocument({
+    frontMatter: {},
+    ast: ref.current?.toMdast() ?? { type: 'root', children: [] },
+  })
+}
+
+describe('Leaving inline code with ArrowRight', () => {
+  it('goes on in code at its end, until told otherwise', async () => {
+    expect(await typeAfterArrow(0, 'X')).toBe('See `codeX` now\n')
+  })
+
+  it('steps out of it first, so the next character is plain, and does not move the caret', async () => {
+    expect(await typeAfterArrow(1, 'X')).toBe('See `code`X now\n')
+  })
+
+  it('moves on as usual on the second press', async () => {
+    expect(await typeAfterArrow(2, 'X')).toBe('See `code` Xnow\n')
+  })
+})
+
+describe('Leaving inline code, asked of a state', () => {
+  const code = markType(editorSchema, 'code')
+
+  function codeParagraphDoc(text: string) {
+    const line = nodeType(editorSchema, 'paragraph').create(
+      null,
+      editorSchema.text(text, [code.create()]),
+    )
+    return nodeType(editorSchema, 'doc').create(null, [line])
+  }
+
+  function caretAt(at: number): EditorState {
+    const doc = codeParagraphDoc('code')
+    const state = EditorState.create({ schema: editorSchema, doc })
+    return state.apply(state.tr.setSelection(TextSelection.create(doc, at)))
+  }
+
+  it('lets an arrow move through the middle of code, where code goes on', () => {
+    expect(leaveInlineCode(caretAt(3))).toBe(false)
+  })
+
+  it('lets an arrow move once the code has been left at its end', () => {
+    const state = caretAt(5)
+    expect(leaveInlineCode(state)).toBe(true)
+    const out = state.apply(state.tr.setStoredMarks([markType(editorSchema, 'bold').create()]))
+    expect(leaveInlineCode(out)).toBe(false)
+  })
+
+  it('leaves an arrow alone over a selection, and outside code', () => {
+    const doc = codeParagraphDoc('code')
+    const state = EditorState.create({ schema: editorSchema, doc })
+    const selected = state.apply(state.tr.setSelection(TextSelection.create(doc, 1, 4)))
+    expect(leaveInlineCode(selected)).toBe(false)
+
+    const plain = nodeType(editorSchema, 'doc').create(null, [
+      nodeType(editorSchema, 'paragraph').create(null, editorSchema.text('plain')),
+    ])
+    expect(leaveInlineCode(EditorState.create({ schema: editorSchema, doc: plain }))).toBe(false)
+  })
+
+  it('does not turn text already marked as code into more of it as a closing backtick is typed', () => {
+    const marked = codeParagraphDoc('`foo')
+    const result = typeInto(marked, endOfText(marked), '`')
+    expect(result.handled).toBe(false)
+    // Nothing was made of it: the document is as it was, a span of code that holds a backtick.
+    expect(result.markdown).toBe('`` `foo ``\n')
   })
 })

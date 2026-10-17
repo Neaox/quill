@@ -1,6 +1,6 @@
 import type { Element, ElementContent, Properties } from 'hast'
 import type { Schema } from 'hast-util-sanitize'
-import type { Heading, Nodes, RootContent } from 'mdast'
+import type { Heading, Nodes, Root, RootContent } from 'mdast'
 import { visit } from 'unist-util-visit'
 
 import type { Handlers, State } from '../render/handlers.ts'
@@ -46,6 +46,8 @@ export interface ComparisonSection {
 export interface SectionedChange extends ComparedChange {
   /** The section the change starts in; absent before the first heading. */
   readonly section?: { readonly id: string; readonly title: string } | undefined
+  /** The change drawn on its own, as `html` draws it among the rest; only when asked for. */
+  readonly html?: string | undefined
 }
 
 export interface ComparisonSummary {
@@ -71,16 +73,27 @@ const SECTION_DEPTH = 3
 
 const NEWLINE = '\n'
 
+export interface ComparisonDetail {
+  /** Draw each change on its own too, for a view that shows one change at a time. */
+  readonly patches?: boolean
+}
+
 export function renderComparison(
   comparison: DocumentComparison,
   options: RenderOptions = {},
+  detail: ComparisonDetail = {},
 ): RenderedComparison {
-  const html = renderHtmlWith(comparison.tree, options, {
-    handlers: comparisonHandlers,
-    schema: COMPARISON_SCHEMA,
-  })
+  const drawn = (tree: Root): string =>
+    renderHtmlWith(tree, options, { handlers: comparisonHandlers, schema: COMPARISON_SCHEMA })
   const { sections, changes } = sectionsOf(comparison)
-  return { html, sections, changes, summary: summarise(changes) }
+  const detailed =
+    detail.patches === true
+      ? changes.map((change) => ({
+          ...change,
+          html: drawn({ type: 'root', children: [...change.nodes] }),
+        }))
+      : changes
+  return { html: drawn(comparison.tree), sections, changes: detailed, summary: summarise(changes) }
 }
 
 // ---------------------------------------------------------------------------
@@ -255,6 +268,7 @@ function comparisonHandlers(handlers: Handlers): Handlers {
     ...carryingMarks(handlers),
     diffInsertion: (state, node) => changeElement('added', state.all(node)),
     diffDeletion: (state, node) => changeElement('removed', state.all(node)),
+    diffChars: (state, node) => element('span', { 'data-diff-char': '' }, state.all(node)),
     diffCode: (_state, node) => diffCode(node),
   }
 }
@@ -290,7 +304,13 @@ const COMPARISON_SCHEMA: Schema = {
     ),
     ins: widened('ins', ['data-diff', 'added'], ['data-line', '']),
     del: widened('del', ['data-diff', 'removed'], ['data-line', '']),
-    span: widened('span', ['data-diff-label', ''], ['data-diff-word', ''], ['data-line', '']),
+    span: widened(
+      'span',
+      ['data-diff-label', ''],
+      ['data-diff-word', ''],
+      ['data-diff-char', ''],
+      ['data-line', ''],
+    ),
     pre: widened('pre', ['data-diff-code', '']),
   },
 }

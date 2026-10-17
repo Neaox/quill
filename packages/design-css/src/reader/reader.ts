@@ -34,7 +34,7 @@ import { enhanceTables } from '../tables/tables.ts'
  *   setting says; reduced motion is the picture's own and needs none of this.
  * - **"On this page" follows the reader** (`../contents-spy/contents-spy.ts`):
  *   the section being read is marked in the contents, as in the app, and in
- *   every table of contents block the body holds (ADR-054).
+ *   every table of contents block the body holds (ADR-056).
  * - **The site header is measured** (`../sticky-chrome/sticky-chrome.ts`), so
  *   a hanging table header and an anchor target clear it however it wraps.
  *

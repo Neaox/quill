@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { useEffect, useEffectEvent, useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 
 import { enhanceCodeBlocks } from '@quill/design-css/code-blocks'
@@ -31,7 +31,7 @@ export interface DocumentBodyProps {
    */
   readonly enhance?: ((article: HTMLElement) => () => void) | undefined
   /**
-   * Answers the body's child pages slots for this reader (ADR-054). Omitted
+   * Answers the body's child pages slots for this reader (ADR-056). Omitted
    * — a shared link, a specimen — the slots keep their fallback line. Keep it
    * stable: a new function asks again.
    */
@@ -61,6 +61,17 @@ export interface DocumentBodyProps {
    * asks again.
    */
   readonly loadLinks?: DocumentLinksLoader | undefined
+  /**
+   * Pictures open in the full-screen viewer, to zoom and pan: for a surface whose picture is read
+   * at a distance or shared on a screen, such as the presenter's (ADR-050).
+   */
+  readonly expandImages?: boolean | undefined
+  /**
+   * Called each time the body has been drawn into the page and given its layout enhancements: for
+   * a surface that has to give what it mounted a state of its own (the presentation's open
+   * sections, ADR-050), which the HTML cannot carry.
+   */
+  readonly onMounted?: (() => void) | undefined
   readonly className?: string | undefined
 }
 
@@ -91,6 +102,8 @@ export function DocumentBody({
   afterTitle,
   onFollowLink,
   loadLinks,
+  expandImages = false,
+  onMounted,
   className,
 }: DocumentBodyProps) {
   const host = useRef<HTMLDivElement | null>(null)
@@ -101,6 +114,9 @@ export function DocumentBody({
     slot.dataset['bylineSlot'] = ''
     return slot
   })
+  const mounted = useEffectEvent(() => {
+    onMounted?.()
+  })
   const childPages = useRef({ loadChildPages, onCreateChildPage, loadLinks })
   const followLink = useRef(onFollowLink)
   /* Synchronises the box the mounted body's link listener reads with the
@@ -108,7 +124,7 @@ export function DocumentBody({
   useEffect(() => {
     followLink.current = onFollowLink
   }, [onFollowLink])
-  /* Synchronises the box the mounted body's child pages slots read (ADR-054),
+  /* Synchronises the box the mounted body's child pages slots read (ADR-056),
      outside React, with the latest props: read when a body is mounted and
      when a list arrives, so permissions arriving later cause no remount. */
   useEffect(() => {
@@ -121,7 +137,8 @@ export function DocumentBody({
      its code blocks (ADR-030), the diagrams drawn into its diagram slots,
      the lightbox every diagram opens in, every table's reading tools
      (ADR-040), the details a link or find points into (ADR-048), and the
-     animated emoji that play briefly and then rest (ADR-047). Keyed on the
+     animated emoji that play briefly and then rest (ADR-047), and, where a
+     surface asks for it, the pictures that open in the viewer. Keyed on the
      HTML itself, which is what a new revision changes — a restore that reproduces an earlier body is the same
      body, and correctly repaints nothing. The eyebrow is part of what is
      mounted, so moving the document to another collection remounts it too. */
@@ -138,12 +155,12 @@ export function DocumentBody({
       enhanceTables(article),
       enhanceDetails(article),
       // Every table of contents in the body marks the section being read,
-      // as the rail beside it does (ADR-054).
+      // as the rail beside it does (ADR-056).
       enhanceContents(article.ownerDocument, {
         links: 'article nav.toc a[href^="#"]',
         topInset: () => SHELL_HEADER_HEIGHT_PX,
       }),
-      // The pages under this one, for this reader (ADR-032, ADR-054).
+      // The pages under this one, for this reader (ADR-032, ADR-056).
       ...(childPages.current.loadChildPages === undefined
         ? []
         : [
@@ -166,26 +183,27 @@ export function DocumentBody({
     // shifts; the code's ranges, the diagrams and the animated emoji follow from
     // their own chunk (`deferred-enhancements.ts`), which is normally here
     // already — it is asked for when this module loads, below.
+    mounted()
     let afterDrawing: readonly (() => void)[] = []
-    let mounted = true
+    let attached = true
     const deferred = deferredEnhancements.current()
     if (deferred === undefined) {
       deferredEnhancements.load().then(
         (arrived) => {
-          if (mounted) afterDrawing = arrived.enhanceAfterDrawing(article)
+          if (attached) afterDrawing = arrived.enhanceAfterDrawing(article, { expandImages })
         },
         // Without the chunk the body still reads; it is asked for again on
         // the next mount.
         () => undefined,
       )
     } else {
-      afterDrawing = deferred.enhanceAfterDrawing(article)
+      afterDrawing = deferred.enhanceAfterDrawing(article, { expandImages })
     }
     return () => {
-      mounted = false
+      attached = false
       for (const dispose of [...disposers, ...afterDrawing].toReversed()) dispose()
     }
-  }, [html, eyebrow, enhance, titleSlot])
+  }, [html, eyebrow, enhance, expandImages, titleSlot])
 
   return (
     <div ref={host} className={cx(className)}>

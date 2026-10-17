@@ -1,4 +1,4 @@
-import { eq, sql } from 'drizzle-orm'
+import { and, eq, sql } from 'drizzle-orm'
 import type pg from 'pg'
 
 import type {
@@ -19,6 +19,7 @@ interface RawDraftRow {
   draft_version: number
   base_revision: string | null
   ast: unknown
+  authorship: unknown
   updated_at: Date
 }
 
@@ -37,6 +38,7 @@ function toDraftRow(row: RawDraftRow): DraftRow {
     draftVersion: row.draft_version,
     baseRevision: row.base_revision as RevisionId | null,
     ast: row.ast,
+    authorship: row.authorship,
     updatedAt: row.updated_at,
   }
 }
@@ -58,6 +60,7 @@ function toDraftRowFrom(row: typeof drafts.$inferSelect): DraftRow {
     draftVersion: row.draftVersion,
     baseRevision: row.baseRevision as RevisionId | null,
     ast: row.ast,
+    authorship: row.authorship,
     updatedAt: row.updatedAt,
   }
 }
@@ -94,6 +97,7 @@ export function createDraftRepository(db: DrizzleClient, pool: pg.Pool): DraftRe
           set: {
             baseRevision,
             ast,
+            authorship: null,
             draftVersion: sql`${drafts.draftVersion} + 1`,
             updatedAt: now,
           },
@@ -124,22 +128,46 @@ export function createDraftRepository(db: DrizzleClient, pool: pg.Pool): DraftRe
      * Moving the base alone leaves the content and the version alone; moving
      * the content as well — a restore — bumps the version, so an editor that
      * was open when it landed is told its next write is stale (ADR-021).
+     * The record of who wrote what goes with a base that moves, and stays
+     * with one that does not, unless the caller gives it as it now is.
      */
-    async rebase({ documentId, baseRevision, ast, now }): Promise<DraftRow | null> {
+    async rebase({
+      documentId,
+      baseRevision,
+      ast,
+      authorship,
+      expectedVersion,
+      now,
+    }): Promise<DraftRow | null> {
       const rows = await db
         .update(drafts)
         .set({
           baseRevision,
           updatedAt: now,
+          authorship:
+            authorship === undefined
+              ? sql`CASE WHEN ${drafts.baseRevision} IS NOT DISTINCT FROM ${baseRevision}::text THEN ${drafts.authorship} ELSE NULL END`
+              : authorship,
           ...(ast === undefined ? {} : { ast, draftVersion: sql`${drafts.draftVersion} + 1` }),
         })
-        .where(eq(drafts.documentId, documentId))
+        .where(
+          expectedVersion === undefined
+            ? eq(drafts.documentId, documentId)
+            : and(eq(drafts.documentId, documentId), eq(drafts.draftVersion, expectedVersion)),
+        )
         .returning()
       const row = rows[0]
       return row === undefined ? null : toDraftRowFrom(row)
     },
 
-    async write({ documentId, sessionId, expectedVersion, ast, now }): Promise<WriteDraftResult> {
+    async write({
+      documentId,
+      sessionId,
+      expectedVersion,
+      ast,
+      authorship,
+      now,
+    }): Promise<WriteDraftResult> {
       const client = await pool.connect()
       try {
         await client.query('BEGIN')
@@ -179,10 +207,16 @@ export function createDraftRepository(db: DrizzleClient, pool: pg.Pool): DraftRe
 
         const updated = await client.query<RawDraftRow>(
           `UPDATE drafts
-           SET ast = $2::jsonb, draft_version = draft_version + 1, updated_at = $3::timestamptz
+           SET ast = $2::jsonb, draft_version = draft_version + 1, updated_at = $3::timestamptz,
+               authorship = COALESCE($4::jsonb, authorship)
            WHERE document_id = $1
            RETURNING *`,
-          [documentId, JSON.stringify(ast), now],
+          [
+            documentId,
+            JSON.stringify(ast),
+            now,
+            authorship === undefined ? null : JSON.stringify(authorship),
+          ],
         )
         await client.query('COMMIT')
         return {

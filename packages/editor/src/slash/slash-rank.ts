@@ -90,6 +90,7 @@ function score<T extends Rankable>(
   item: T,
   needle: string,
   terms: readonly string[],
+  scattered: boolean,
 ): Omit<Scored<T>, 'order'> | undefined {
   const label = labelWords(item.label)
   const aliases = item.aliases ?? []
@@ -101,13 +102,21 @@ function score<T extends Rankable>(
   if (starts !== undefined) return { item, tier: 1, ranges: starts }
   const names = [...(item.keywords ?? []), ...aliases]
   if (names.some((name) => name.startsWith(needle))) return { item, tier: 2, ranges: [] }
-  if (needle.length < 2) return undefined
+  if (needle.length < 2 || !scattered) return undefined
   // Letters in order, starting at the start of a word: `bllst` finds
   // Bulleted list, but `code` does not find Placeholder.
   const letters = subsequence(label.lower, needle)
   return letters?.[0] === undefined || !label.starts.includes(letters[0].start)
     ? undefined
     : { item, tier: 3, ranges: letters }
+}
+
+export interface RankOptions {
+  /**
+   * Whether letters scattered through a label match (`bllst` finds Bulleted list). A list of
+   * names, such as emoji, is better without: `tad` is `tada`, not `tipping_hand`.
+   */
+  readonly scattered?: boolean
 }
 
 /**
@@ -117,13 +126,14 @@ function score<T extends Rankable>(
 export function rankMatches<T extends Rankable>(
   query: string,
   items: readonly T[],
+  { scattered = true }: RankOptions = {},
 ): readonly RankedMatch<T>[] {
   const needle = query.trim().toLowerCase().replaceAll(/\s+/g, ' ')
   if (needle === '') return items.map((item) => ({ item, ranges: [] }))
   const terms = needle.split(' ')
   const scored: Scored<T>[] = []
   for (const [order, item] of items.entries()) {
-    const found = score(item, needle, terms)
+    const found = score(item, needle, terms, scattered)
     if (found !== undefined) scored.push({ ...found, order })
   }
   return scored

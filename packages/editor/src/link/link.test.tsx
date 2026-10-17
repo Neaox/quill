@@ -197,6 +197,19 @@ describe('Ctrl+K', () => {
     expect(editor().view.hasFocus()).toBe(true)
   })
 
+  it('keeps the words drawn as selected while the box has the keyboard, and lets go after', async () => {
+    const { select, user, container } = open('Link these words.\n')
+    select('these')
+    await user.keyboard('{Control>}k{/Control}')
+    await screen.findByRole('dialog', { name: 'Add link' })
+
+    const held = container.querySelectorAll('.selection-held')
+    expect([...held].map((element) => element.textContent).join('')).toBe('these')
+
+    await user.keyboard('{Escape}')
+    expect(container.querySelector('.selection-held')).toBeNull()
+  })
+
   it('does nothing in a code block', async () => {
     const { editor, user } = open('```\ncode\n```\n')
     act(() => {

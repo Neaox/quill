@@ -182,10 +182,23 @@ function comparisonQuery(range: ComparisonRange) {
  * immutable, so their comparison is too; a comparison with the draft is
  * asked for again whenever it is shown, because the draft is being written.
  */
-export function useComparison(documentId: string, range: ComparisonRange) {
+export function useComparison(
+  documentId: string,
+  range: ComparisonRange,
+  options: {
+    /**
+     * The version of the draft the answer is for, when the caller follows a draft being
+     * written: a new version is a new question, and between one and the next the last
+     * answer is the best there is, which keeps a summary of it from flickering.
+     */
+    readonly version?: number
+  } = {},
+) {
   const client = useApiClient()
   return useQuery({
-    queryKey: queryKeys.comparison(documentId, range.from, range.to),
+    queryKey: queryKeys.comparison(documentId, range.from, range.to, options.version),
+    placeholderData: (previous: Comparison | undefined) =>
+      options.version === undefined ? undefined : previous,
     queryFn: () =>
       request<Comparison>(
         client.GET('/api/documents/{id}/compare', {

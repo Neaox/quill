@@ -15,6 +15,7 @@ import {
   EMPTY_DIAGRAM,
   drawioCodec,
   drawioEditorUrl,
+  drawioLanguage,
 } from './drawio-protocol.ts'
 import type { DrawioMessage } from './drawio-protocol.ts'
 import type { DrawioSessionEvent, DrawioSessionState } from './drawio-session.ts'
@@ -78,6 +79,11 @@ export interface DrawioEditorProps {
   readonly thirdParty: boolean
   /** The reader's colour scheme, which the editor matches. */
   readonly dark: boolean
+  /**
+   * The language of the interface around the editor, as a BCP 47 tag (the
+   * page's `lang`), which draw.io is asked to speak. Omitted, draw.io guesses.
+   */
+  readonly lang?: string | undefined
   readonly target: DrawioTarget
   readonly files: DrawioFiles
   onSaved(saved: DrawioSaved): void
@@ -116,6 +122,7 @@ export function DrawioEditor({
   origin,
   thirdParty,
   dark,
+  lang,
   target,
   files,
   onSaved,
@@ -132,7 +139,12 @@ export function DrawioEditor({
   const exported = useRef('')
   /** A save's labels were converted to SVG text and reloaded; the export follows the `load` answer. */
   const converting = useRef(false)
-  const [src] = useState(() => drawioEditorUrl(editorUrl, { dark }))
+  const [src] = useState(() =>
+    drawioEditorUrl(editorUrl, {
+      dark,
+      lang: lang === undefined ? undefined : drawioLanguage(lang),
+    }),
+  )
 
   function transition(event: DrawioSessionEvent): DrawioSessionState {
     const next = drawioSessionReducer(session.current, event)

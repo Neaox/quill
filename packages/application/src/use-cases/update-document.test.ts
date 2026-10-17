@@ -255,7 +255,7 @@ describe('updateDocument', () => {
     ])
   })
 
-  it('announces a change of parent inside the collection as a nesting (ADR-054)', async () => {
+  it('announces a change of parent inside the collection as a nesting (ADR-056)', async () => {
     await updateDocument(deps, { documentId: CHILD, sessionId: SESSION, patch: { parentId: null } })
     await updateDocument(deps, { documentId: CHILD, sessionId: SESSION, patch: { parentId: null } })
     expect(uow.events.filter((event) => event.type === DOCUMENT_NESTED)).toMatchObject([
@@ -633,7 +633,7 @@ describe('deleteDocument', () => {
     })
   })
 
-  it('announces the delete, with where the document was, for the lists that showed it (ADR-054)', async () => {
+  it('announces the delete, with where the document was, for the lists that showed it (ADR-056)', async () => {
     await deleteDocument(deps, { documentId: CHILD, deletedBy: ACTOR })
     expect(uow.events.filter((event) => event.type === DOCUMENT_DELETED)).toMatchObject([
       {

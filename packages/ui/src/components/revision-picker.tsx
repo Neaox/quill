@@ -3,6 +3,9 @@ import { DropdownMenu } from 'radix-ui'
 
 import { tv } from '../lib/class-names.ts'
 import { CheckIcon, ChevronDownIcon } from './icons.tsx'
+import { formatMoment, toMoment } from '../lib/time/moment.ts'
+import { LocalTime } from './local-time.tsx'
+import { RelativeTime } from './relative-time.tsx'
 
 /**
  * Choosing one version of a document: one end of a comparison.
@@ -67,7 +70,7 @@ export interface RevisionChoice {
   readonly id: string
   /** What a reader calls it: `v12`, or "Your draft". */
   readonly label: string
-  /** `YYYY-MM-DD`, for a `<time datetime>`; absent for a draft, which has no publish date. */
+  /** When it was published, as an ISO date or timestamp; absent for a draft, which has no publish date. */
   readonly at?: string | undefined
   readonly author?: string | undefined
   /** The change note it was published with. */
@@ -90,7 +93,8 @@ export interface RevisionPickerProps {
 
 function spoken(choice: RevisionChoice | undefined): string {
   if (choice === undefined) return 'none'
-  return choice.at === undefined ? choice.label : `${choice.label}, ${choice.at}`
+  const at = choice.at === undefined ? undefined : toMoment(choice.at)
+  return at === undefined ? choice.label : `${choice.label}, ${formatMoment(at, 'date')}`
 }
 
 export function RevisionPicker({
@@ -132,7 +136,7 @@ export function RevisionPicker({
           <span className={styles.value()}>
             {current?.label ?? 'Choose a version'}
             {current?.at === undefined ? undefined : (
-              <span className={styles.valueDate()}>{current.at}</span>
+              <LocalTime value={current.at} className={styles.valueDate()} />
             )}
           </span>
         </span>
@@ -173,9 +177,7 @@ export function RevisionPicker({
                       </span>
                     )}
                     {choice.at === undefined ? undefined : (
-                      <time dateTime={choice.at} className={styles.date()}>
-                        {choice.at}
-                      </time>
+                      <RelativeTime value={choice.at} className={styles.date()} />
                     )}
                   </span>
                   {choice.author === undefined && choice.note === undefined ? undefined : (

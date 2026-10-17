@@ -53,6 +53,12 @@ export interface HealthSignal {
   readonly detail?: string | undefined
 }
 
+/** A draft that holds what nothing has published (an editor's to see and to resume). */
+export interface DraftView {
+  /** When it was last saved. */
+  readonly savedAt: Date
+}
+
 export interface EnvelopeView {
   readonly permissions: {
     readonly view: boolean
@@ -81,6 +87,13 @@ export interface EnvelopeView {
    * document is simply a draft.
    */
   readonly unpublishedChanges: boolean
+  /**
+   * The draft waiting to be published, for somebody who may edit: one saved since the
+   * last publish, or any draft of a document never published. Null for everybody else
+   * and when there is none. Read from the same two columns as `unpublishedChanges`, so the
+   * header and the notice under it never disagree.
+   */
+  readonly draft: DraftView | null
 }
 
 /** What a document with nothing published states. */
@@ -132,8 +145,11 @@ export async function getEnvelope(
       : { revision: latest.revision, author: latest.authorName, at: latest.timestamp }
   // A publish moves the draft onto what it published at the publish's own
   // moment (`recordPublish`), so a draft written since is ahead of it.
-  const unpublishedChanges =
-    draft !== null && latest !== null && draft.updatedAt.getTime() > latest.timestamp.getTime()
+  const waiting =
+    draft !== null && (latest === null || draft.updatedAt.getTime() > latest.timestamp.getTime())
+      ? { savedAt: draft.updatedAt }
+      : null
+  const unpublishedChanges = waiting !== null && latest !== null
 
   if (source === null) {
     return {
@@ -146,6 +162,7 @@ export async function getEnvelope(
         health: [],
         facts: NO_FACTS,
         unpublishedChanges,
+        draft: waiting,
       },
     }
   }
@@ -162,6 +179,7 @@ export async function getEnvelope(
       health: await healthOf(deps, document, source, frontMatter, review),
       facts: await factsOf(deps, frontMatter),
       unpublishedChanges,
+      draft: waiting,
     },
   }
 }

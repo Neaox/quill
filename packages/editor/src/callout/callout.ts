@@ -61,7 +61,8 @@ function stringAttributes(node: PMNode): Readonly<Record<string, string>> {
   )
 }
 
-function labelParagraph(node: PMNode): PMNode | undefined {
+/** A callout block's title paragraph, `:::callout[Title]`, or undefined when it has none. */
+export function labelParagraph(node: PMNode): PMNode | undefined {
   const first = node.firstChild
   return first?.type.name === 'paragraph' && first.attrs['directiveLabel'] === true
     ? first

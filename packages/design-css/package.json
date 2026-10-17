@@ -11,6 +11,7 @@
   "exports": {
     ".": "./src/index.ts",
     "./lightbox": "./src/lightbox/lightbox.ts",
+    "./image-viewer": "./src/lightbox/images.ts",
     "./code-blocks": "./src/code-blocks/code-blocks.ts",
     "./copy": "./src/code-blocks/copy.ts",
     "./details": "./src/details/details.ts",

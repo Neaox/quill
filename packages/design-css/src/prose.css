@@ -601,13 +601,39 @@
   font-variant-ligatures: none;
 }
 
+/*
+ * Inline code, as a chip.
+ *
+ * It is set in full ink where the text around it is the middle one, on the code ground and
+ * inside a hairline, so it is plain without colour that it is a literal thing to type or
+ * to find, and it reads the same in a heading, a list, a quote and a callout. The radius is
+ * in `em`, so a chip in a heading is rounded as much as one in a paragraph. Wrapped, each
+ * line is a chip of its own, with both of its ends (`clone`), rather than one box cut in
+ * two with a seam where it broke.
+ *
+ * A link's own colour is the link's, and code in one keeps it: it is the link that says
+ * what it is.
+ */
 .prose :not(pre) > code {
   background-color: var(--color-code-background);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-sm);
-  padding: 0.1em 0.35em;
+  border: 1px solid color-mix(in oklab, var(--color-border) 75%, transparent);
+  border-radius: 0.35em;
+  padding: 0.08em 0.4em;
+  color: var(--color-foreground);
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
   /* A long identifier wraps rather than pushing the measure out on a phone. */
   overflow-wrap: break-word;
+}
+
+.prose a :not(pre) > code,
+.prose a > code {
+  color: inherit;
+}
+
+/* A heading is bold; the chip in it is a weight lighter, or it shouts over the words it explains. */
+.prose :is(h1, h2, h3, h4, h5, h6) > code {
+  font-weight: 500;
 }
 
 .prose pre {
@@ -3345,6 +3371,38 @@ html.lightbox-open {
   overflow: visible;
 }
 
+/*
+ * A picture in the lightbox (`lightbox/images.ts`): fitted to the stage, whatever its size, and
+ * clear of the controls floating over the top corner, like a drawing.
+ */
+.lightbox-stage.prose .lightbox-canvas > .lightbox-picture {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: 100%;
+  padding: clamp(1rem, 4vw, 2.5rem);
+  padding-block-start: max(clamp(1rem, 4vw, 2.5rem), 3.75rem);
+}
+
+.lightbox-stage.prose .lightbox-picture img {
+  max-width: 100%;
+  max-height: 100%;
+  width: auto;
+  height: auto;
+  margin: 0;
+  object-fit: contain;
+}
+
+/* A picture that opens says so under the pointer, and shows the keyboard where it is. */
+.prose img[data-expandable='true'] {
+  cursor: zoom-in;
+}
+
+.prose img[data-expandable='true']:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 2px;
+}
+
 .lightbox-stage.prose .lightbox-canvas > .diagram[data-diagram] svg {
   width: 100%;
   height: 100%;
@@ -3446,7 +3504,7 @@ html.lightbox-open {
   }
 }
 
-/* --- Navigation blocks (ADR-054) ------------------------------------------ */
+/* --- Navigation blocks (ADR-056) ------------------------------------------ */
 
 /*
  * A table of contents: a quiet card of links, nested as the headings are,

@@ -122,7 +122,13 @@ export interface SlashItem {
   readonly keywords: readonly string[]
   /** Other names for the same thing, the way a writer from elsewhere would say it: `h2`, `ul`, `hr`. */
   readonly aliases?: readonly string[]
-  readonly icon: ComponentType<IconProps>
+  /**
+   * What stands before the label: an icon for a block; for an emoji, its
+   * character or its picture, which says what it is without one.
+   */
+  readonly icon?: ComponentType<IconProps>
+  readonly glyph?: string
+  readonly image?: string
   /** The Markdown autoformat that makes the same block, shown beside it: `##`, `-`, `[]`. */
   readonly shortcut?: string
   /**

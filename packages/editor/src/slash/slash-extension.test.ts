@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest'
 
 import { documentFromMdast } from '../document/ast.ts'
 import { editorSchema } from '../schema/editor-schema.ts'
-import { caretRect, queryContinues, rectOf, slashAllowed } from './slash-extension.ts'
+import { caretRect, queryContinues, rectOf, triggerAllowed } from './slash-extension.ts'
 import { createSlashRegistry } from './slash-registry.ts'
 
 function stateOf(markdown: string): EditorState {
@@ -27,7 +27,7 @@ function slashIn(state: EditorState): { from: number; to: number } {
 
 function allowed(markdown: string): boolean {
   const state = stateOf(markdown)
-  return slashAllowed(state, slashIn(state))
+  return triggerAllowed(state, slashIn(state))
 }
 
 describe('where a slash starts a query', () => {

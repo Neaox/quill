@@ -7,6 +7,11 @@ import { describe, expect, it, vi } from 'vitest'
 import { expectNoAccessibilityViolations } from '@quill/ui/testing/axe'
 
 import { DRAFT_CONTENT_VERSION } from '../../lib/documents/draft-content.ts'
+import {
+  broadcastRevertTransport,
+  createRevertChannel,
+  revertChannelName,
+} from '../../lib/documents/revert-channel.ts'
 import { renderApp } from '../../lib/api/render-app.tsx'
 import { errorResponse, jsonResponse, type FakeRoutes } from '../../lib/api/testing.ts'
 import { createFakeIndexedDb } from '../../lib/recovery/testing.ts'
@@ -1059,5 +1064,142 @@ describe('the editor keeps the author’s work through failures', () => {
     } finally {
       vi.unstubAllGlobals()
     }
+  })
+})
+
+describe('what is waiting to be published, before it is', () => {
+  const ONE_CHANGE = () =>
+    jsonResponse(200, {
+      html: '<article><p data-change="changed" data-change-id="c1">Move traffic west.</p></article>',
+      summary: {
+        sections: 1,
+        added: 0,
+        removed: 0,
+        changed: 1,
+        moved: 0,
+        wordsAdded: 1,
+        wordsRemoved: 1,
+      },
+      changes: [
+        {
+          id: 'c1',
+          change: 'changed',
+          block: 'paragraph',
+          excerpt: 'Move traffic west.',
+          wordsAdded: 1,
+          wordsRemoved: 1,
+          revertible: true,
+          author: { id: 'user-1', name: 'Writer', at: '2026-02-03T00:00:00.000Z' },
+        },
+      ],
+      sections: [],
+      properties: [],
+    })
+
+  const withChanges = (overrides: FakeRoutes = {}) =>
+    editorRoutes({
+      'GET /api/documents/{id}/compare': ONE_CHANGE,
+      'GET /api/documents/{id}/history': () => jsonResponse(200, { revisions: [] }),
+      ...overrides,
+    })
+
+  it('says how many changes there are since the page was published, and opens their comparison', async () => {
+    await openEditor(withChanges())
+
+    const changes = await screen.findByRole('button', { name: 'Changes since published: 1' })
+    await userEvent.click(changes)
+
+    expect(
+      await screen.findByRole('heading', { level: 1, name: /^Changes between .* and Your draft$/u }),
+    ).toBeInTheDocument()
+  })
+
+  it('tells what Publish would send, in its description', async () => {
+    await openEditor(withChanges())
+
+    const publish = screen.getByRole('button', { name: 'Publish' })
+    await waitFor(() => {
+      expect(publish).toHaveAccessibleDescription(/1 block changed/u)
+    })
+  })
+
+  it('previews the draft as readers will see it, from the bar', async () => {
+    await openEditor(withChanges())
+
+    expect(
+      screen.getByRole('link', { name: /^Preview\s+your unpublished changes/u }),
+    ).toHaveAttribute('href', `/preview/d/regional-failover-${KEY}?draft`)
+  })
+
+  describe('reverting from a comparison open in another tab', () => {
+    const REVERTED = {
+      version: DRAFT_CONTENT_VERSION,
+      frontMatter: { title: 'Regional failover' },
+      ast: {
+        type: 'root',
+        children: [
+          { type: 'paragraph', children: [{ type: 'text', value: 'Move traffic north.' }] },
+        ],
+      },
+    }
+
+    function anotherTab() {
+      return createRevertChannel(
+        broadcastRevertTransport(revertChannelName(`regional-failover-${KEY}`)),
+        { claimMs: 2000 },
+      )
+    }
+
+    it('applies the revert as an edit of its own, saves it, and says it went', async () => {
+      const previews: unknown[] = []
+      const saves: unknown[] = []
+      await openEditor(
+        withChanges({
+          'POST /api/documents/{id}/draft/revert-preview': async (request) => {
+            previews.push(await request.json())
+            return jsonResponse(200, { draftVersion: 3, ast: REVERTED })
+          },
+          'PUT /api/documents/{id}/draft': async (request) => {
+            saves.push(await request.json())
+            return jsonResponse(200, { draftVersion: 4, updatedAt: '2026-02-03T00:05:00.000Z' })
+          },
+        }),
+      )
+      await screen.findByRole('button', { name: 'Publish' })
+
+      const answer = await anotherTab().ask({
+        from: 'a'.repeat(40),
+        draftVersion: 3,
+        changes: ['c1'],
+      })
+
+      expect(answer).toEqual({ ok: true })
+      expect(previews).toEqual([{ from: 'a'.repeat(40), draftVersion: 3, changes: ['c1'] }])
+      expect(
+        within(screen.getByRole('textbox', { name: 'Regional failover' })).getByText(
+          'Move traffic north.',
+        ),
+      ).toBeInTheDocument()
+      expect(JSON.stringify(saves.at(-1))).toContain('Move traffic north.')
+    })
+
+    it('refuses a revert of a draft other than the one it holds, and changes nothing', async () => {
+      const previews: unknown[] = []
+      await openEditor(
+        withChanges({
+          'POST /api/documents/{id}/draft/revert-preview': async (request) => {
+            previews.push(await request.json())
+            return jsonResponse(200, { draftVersion: 3, ast: REVERTED })
+          },
+        }),
+      )
+      await screen.findByRole('button', { name: 'Publish' })
+
+      const answer = await anotherTab().ask({ from: 'a'.repeat(40), draftVersion: 2, changes: ['c1'] })
+
+      expect(answer).toMatchObject({ ok: false, message: expect.stringMatching(/draft changed/u) })
+      expect(previews).toEqual([])
+      expect(screen.getByText('Move traffic east.')).toBeInTheDocument()
+    })
   })
 })

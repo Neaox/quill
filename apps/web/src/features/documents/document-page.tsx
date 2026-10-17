@@ -18,6 +18,7 @@ import {
   useLoadedDocument,
   useRenderedDocument,
   useNavigationTree,
+  useReview,
   type ComparisonRange,
   type OutlineEntry,
 } from '../../lib/api/index.ts'
@@ -32,6 +33,7 @@ import { ShellActions, ShellAside } from '../workspaces/shell-slots.tsx'
 import { ReviewActions } from '../review/review-actions.tsx'
 import { MountOnFirstOpen } from '../../lib/mount-on-first-open.tsx'
 import { DocumentReader } from './document-reader.tsx'
+import { DraftNotice } from './draft-notice.tsx'
 import { FactsByline } from './properties/facts-byline.tsx'
 import { HealthSignals } from './health-signals.tsx'
 import { PreviewLink, readerPreviewHref } from './preview-link.tsx'
@@ -85,6 +87,8 @@ export function DocumentPage() {
   const actions = useDocumentActions()
   const [showingAttachments, setShowingAttachments] = useState(false)
   const [renaming, setRenaming] = useState(false)
+  const [requestingReview, setRequestingReview] = useState(false)
+  const review = useReview(documentId)
   // A phone's bar holds the tree's button, Edit and the person menu; the
   // document's other controls fold into its "…" menu there, offered under the
   // same conditions as in the bar.
@@ -98,6 +102,10 @@ export function DocumentPage() {
   const lastPublished = envelope.data?.lastPublished ?? null
   const permissions = envelope.data?.permissions
   const lock = envelope.data?.lock ?? null
+  // What is waiting in the draft, for somebody who may edit; null for everybody else.
+  const waiting = permissions?.edit === true ? (envelope.data?.draft ?? null) : null
+  // Only a draft that holds what is not published is worth a review, and only one at a time.
+  const canRequestReview = waiting !== null
   const compare: ComparisonRange | undefined =
     to === undefined ? undefined : { from: from ?? null, to }
   const title = document.data.title
@@ -151,6 +159,17 @@ export function DocumentPage() {
             ]),
         ...(actions.canManage
           ? [{ label: 'Share…', onSelect: actions.openShare, disabled: actions.isOpeningShare }]
+          : []),
+        // The header's request button gives way below `sm`, so a phone asks from here.
+        ...(canRequestReview && review.data?.status !== 'open'
+          ? [
+              {
+                label: 'Request review…',
+                onSelect: () => {
+                  setRequestingReview(true)
+                },
+              },
+            ]
           : []),
       ]
     : []
@@ -236,10 +255,11 @@ export function DocumentPage() {
             workspaceSlug={workspaceSlug}
             documentId={documentId}
             title={title}
-            // Only a draft that says something the published page does not is worth a review.
-            canEdit={permissions.edit && envelope.data?.unpublishedChanges === true}
+            canEdit={canRequestReview}
             canPublish={permissions.publish}
             published={lastPublished?.revision ?? null}
+            requesting={requestingReview}
+            onRequestingChange={setRequestingReview}
           />
         )}
         {permissions?.edit === true ? (
@@ -275,6 +295,13 @@ export function DocumentPage() {
 
       {compare === undefined ? (
         <>
+          {waiting !== null && lastPublished !== null && rev === undefined ? (
+            <DraftNotice
+              workspaceSlug={workspaceSlug}
+              documentId={documentId}
+              savedAt={waiting.savedAt}
+            />
+          ) : undefined}
           <DocumentReader
             documentId={documentId}
             workspaceSlug={workspaceSlug}

@@ -8,12 +8,14 @@ import {
   publishedAt,
   readPublicFacts,
   renderDocument,
+  renderDraft,
   resolveDocumentReferences,
 } from '@quill/application'
 import type {
   ChildPagesAudience,
   PublicNavigationNode,
   ReaderPreview,
+  RenderedContent,
   Replacement,
 } from '@quill/application'
 import type { DocumentId } from '@quill/domain'
@@ -76,6 +78,14 @@ export function readerPreviewHref(reference: string): string {
 
 const PreviewParams = Type.Object({ documentRef: Type.String({ minLength: 1, maxLength: 400 }) })
 
+/** `?draft` previews what has been saved and not published, instead of what is. */
+const PreviewQuery = Type.Object({ draft: Type.Optional(Type.String()) })
+
+/** The preview of the draft of a document, by its readable reference. */
+export function draftPreviewHref(reference: string): string {
+  return `${readerPreviewHref(reference)}?draft`
+}
+
 const NOT_FOR_INDEXING = 'noindex,nofollow'
 
 /** The headers every answer carries, the redirect and the refusals included. */
@@ -131,31 +141,71 @@ export function readerPreviewRoutes(deps: AppDependencies): FastifyPluginAsync {
       : { href: readerPreviewHref(shown.path), title: shown.title }
   }
 
-  const pageOf = async (preview: ReaderPreview, audience: ChildPagesAudience): Promise<string> => {
-    const { document, collection, workspace, organisation } = preview
+  /** What is drawn in the page's body: the published revision, or the draft saved since. */
+  interface Shown {
+    readonly content: RenderedContent | null
+    readonly title: string
+    readonly updatedAt: Date | null
+    readonly draft: boolean
+  }
+
+  const published = async (preview: ReaderPreview): Promise<Shown> => {
+    const { document } = preview
     const rendered = await renderDocument(deps, { documentId: document.id, indexLinks: false })
+    if (rendered.kind !== 'rendered') {
+      return { content: null, title: document.title, updatedAt: null, draft: false }
+    }
+    const at = await publishedAt(deps, [document])
+    return {
+      content: rendered.content,
+      title: document.title,
+      /* v8 ignore next -- `publishedAt` answers for every document it is given. */
+      updatedAt: at.get(document.id) ?? document.updatedAt,
+      draft: false,
+    }
+  }
+
+  /** The draft as it was last saved, or null when there is none to show. */
+  const drafted = async (preview: ReaderPreview): Promise<Shown | null> => {
+    const rendered = await renderDraft(deps, {
+      documentId: preview.document.id,
+      appOrigins: [deps.config.appOrigin],
+    })
+    if (rendered.kind !== 'rendered') return null
+    return {
+      content: rendered.content,
+      title: rendered.title,
+      updatedAt: rendered.savedAt,
+      draft: true,
+    }
+  }
+
+  const pageOf = async (
+    preview: ReaderPreview,
+    audience: ChildPagesAudience,
+    shown: Shown,
+  ): Promise<string> => {
+    const { document, collection, workspace, organisation } = preview
+    const { content, updatedAt } = shown
     // The pages under this one, as this reader may see them, each opening its
-    // own preview (ADR-054).
+    // own preview (ADR-056).
     const bodyHtml =
-      rendered.kind === 'rendered'
-        ? await fillChildPages(deps, {
-            html: rendered.content.html,
+      content === null
+        ? ''
+        : await fillChildPages(deps, {
+            html: content.html,
             parent: document,
             workspace,
             audience,
             hrefOf: (child) => readerPreviewHref(documentReference(child)),
           })
-        : ''
-    let updatedAt: Date | null = null
-    if (rendered.kind === 'rendered') {
-      const published = await publishedAt(deps, [document])
-      /* v8 ignore next -- `publishedAt` answers for every document it is given. */
-      updatedAt = published.get(document.id) ?? document.updatedAt
-    }
     // The facts a public reader would see, as they would see them; a preview
-    // has no search, so its tags are words (ADR-055).
+    // has no search, so its tags are words (ADR-057). They are the published
+    // page's, so a preview of the draft, which may say otherwise, has none.
     const facts =
-      rendered.kind === 'rendered' ? await readPublicFacts(deps, document, deps.clock.now()) : null
+      content === null || shown.draft
+        ? null
+        : await readPublicFacts(deps, document, deps.clock.now())
     const notice =
       facts?.lifecycle?.state === 'deprecated'
         ? renderLifecycleNotice(await previewReplacement(preview, facts.lifecycle.supersededBy))
@@ -189,7 +239,7 @@ export function readerPreviewRoutes(deps: AppDependencies): FastifyPluginAsync {
           open: section.collection.id === collection.id,
         }),
       ),
-      title: `Preview: ${document.title}`,
+      title: `Preview: ${shown.title}`,
       description: null,
       canonical: null,
       robots: NOT_FOR_INDEXING,
@@ -201,12 +251,12 @@ export function readerPreviewRoutes(deps: AppDependencies): FastifyPluginAsync {
       ]),
       scriptHref: schemeScript.href,
       readerHref: readerScript.href,
-      outline: rendered.kind === 'rendered' ? rendered.content.outline : [],
+      outline: content === null ? [] : content.outline,
       main:
-        rendered.kind === 'rendered'
+        content !== null
           ? renderDocumentMain({
               collectionName: collection.name,
-              title: document.title,
+              title: shown.title,
               bodyHtml,
               rules: organisation.layout.default.rules,
               byline:
@@ -214,13 +264,16 @@ export function readerPreviewRoutes(deps: AppDependencies): FastifyPluginAsync {
                   ? undefined
                   : html`${renderByline({ facts, tagHref: null })}${notice}`,
             })
-          : renderUnpublishedMain({ collectionName: collection.name, title: document.title }),
+          : renderUnpublishedMain({ collectionName: collection.name, title: shown.title }),
       updatedAt,
       structuredData: null,
       query: null,
       preview: renderPreviewBanner({
         closeHref: `/w/${workspace.slug}/d/${documentReference(document)}`,
         publicHref,
+        draft: shown.draft
+          ? { editHref: `/w/${workspace.slug}/d/${documentReference(document)}/edit` }
+          : undefined,
       }),
     })
   }
@@ -234,12 +287,14 @@ export function readerPreviewRoutes(deps: AppDependencies): FastifyPluginAsync {
         // Read when there is one, so a request without a session can be sent
         // to sign in rather than answered with the API's JSON 401.
         preHandler: app.optionalSession,
-        schema: { params: PreviewParams, hide: true },
+        schema: { params: PreviewParams, querystring: PreviewQuery, hide: true },
       },
       async (request, reply) => {
         privately(reply)
+        const wantsDraft = request.query.draft !== undefined
         if (request.session === undefined) {
-          const back = readerPreviewHref(request.params.documentRef)
+          const reference = request.params.documentRef
+          const back = wantsDraft ? draftPreviewHref(reference) : readerPreviewHref(reference)
           return reply.redirect(`/sign-in?redirect=${encodeURIComponent(back)}`, 303)
         }
 
@@ -250,6 +305,10 @@ export function readerPreviewRoutes(deps: AppDependencies): FastifyPluginAsync {
         const access = await authorizer.document(documentId)
         if (!access.ok && access.error.kind === 'document-not-found') return nothingToPreview(reply)
         if (access.ok && !access.value.capabilities.view) return nothingToPreview(reply)
+        // A draft is an editor's: somebody who may only read has no business with it.
+        if (wantsDraft && access.ok && !access.value.capabilities.edit) {
+          return nothingToPreview(reply)
+        }
         // Anything else is the tenancy tree contradicting itself, which the
         // shared mapping answers as the server fault it is.
         const granted = await requireDocumentAccess(authorizer, documentId, 'view')
@@ -260,16 +319,19 @@ export function readerPreviewRoutes(deps: AppDependencies): FastifyPluginAsync {
           seesEverything: granted.isInstanceAdmin,
         })
         switch (loaded.kind) {
-          case 'preview':
-            return sendHtml(
-              reply,
-              200,
-              await pageOf(loaded.preview, {
-                kind: 'reader',
-                identities: await authorizer.identities(),
-                seesEverything: granted.isInstanceAdmin,
-              }),
-            )
+          case 'preview': {
+            const shown = wantsDraft
+              ? await drafted(loaded.preview)
+              : await published(loaded.preview)
+            // A document with no draft to show is answered as one with nothing to preview.
+            if (shown === null) return nothingToPreview(reply)
+            const audience: ChildPagesAudience = {
+              kind: 'reader',
+              identities: await authorizer.identities(),
+              seesEverything: granted.isInstanceAdmin,
+            }
+            return sendHtml(reply, 200, await pageOf(loaded.preview, audience, shown))
+          }
           /* v8 ignore next 2 -- the authorizer has just loaded this document. */
           case 'not-found':
             return nothingToPreview(reply)

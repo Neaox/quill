@@ -136,6 +136,12 @@ describe('the draw.io editor', () => {
     await expectNoAccessibilityViolations(container.ownerDocument.body, { iframes: false })
   })
 
+  it('speaks the language of the interface around it', () => {
+    const { frame } = open({ lang: 'pt-BR' })
+
+    expect(new URL(frame.getAttribute('src') ?? '').searchParams.get('lang')).toBe('pt-br')
+  })
+
   it('inserts: configures, loads an empty diagram, and saves it as a new .drawio.svg', async () => {
     const { say, save, actions, lastAction, files, onSaved } = open()
 

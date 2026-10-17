@@ -1,4 +1,4 @@
-import { openDraft } from '@quill/application'
+import { openDraft, stampDraftAuthorship } from '@quill/application'
 import type {
   AcquireLockResult,
   DraftRow,
@@ -7,7 +7,7 @@ import type {
   TakeoverResult,
   WriteDraftResult,
 } from '@quill/application'
-import type { DocumentId } from '@quill/domain'
+import type { DocumentId, UserId } from '@quill/domain'
 import type { FastifyRequest } from 'fastify'
 
 import type { AppDependencies } from '../dependencies.ts'
@@ -130,16 +130,28 @@ export function createEditingService(deps: AppDependencies) {
       readonly request: FastifyRequest
       readonly documentId: DocumentId
       readonly sessionId: SessionId
+      /** Who is saving, whose name the blocks they add or edit will carry. */
+      readonly userId: UserId
       readonly expectedVersion: number
       readonly ast: unknown
     }): Promise<WriteDraftResult> {
       await requireEdit(input.request, input.documentId, input.sessionId)
+      const now = deps.clock.now()
+      // Compared with what the draft holds now. The write is refused unless that is still
+      // the version this one was based on, so the record is never built on another's draft;
+      // a save that merges offline changes in is compared with the draft it merged into, so
+      // what the merge kept keeps its author and what it brought is the saver's.
+      const previous = await drafts.find(input.documentId)
       return drafts.write({
         documentId: input.documentId,
         sessionId: input.sessionId,
         expectedVersion: input.expectedVersion,
         ast: input.ast,
-        now: deps.clock.now(),
+        authorship: stampDraftAuthorship(deps.format, previous, input.ast, {
+          by: input.userId,
+          at: now,
+        }),
+        now,
       })
     },
   }

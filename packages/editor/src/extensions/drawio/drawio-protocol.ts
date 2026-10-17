@@ -118,6 +118,25 @@ export const DRAWIO_ALLOW = 'clipboard-read; clipboard-write'
 export interface DrawioUrlOptions {
   /** Matches the reader's light or dark mode. */
   readonly dark: boolean
+  /** The interface language, as draw.io names it (`drawioLanguage`), when the application knows it. */
+  readonly lang?: string | undefined
+}
+
+/**
+ * The language draw.io is asked to speak, from a BCP 47 tag such as the page's
+ * own `lang`: its primary subtag, lower case, except the two languages draw.io
+ * splits by region, Brazilian Portuguese (`pt-br`) and traditional Chinese
+ * (`zh-tw`). Nothing for a tag that names no language, so draw.io keeps its own
+ * guess rather than being told something it cannot use.
+ */
+export function drawioLanguage(tag: string): string | undefined {
+  const [primary = '', ...rest] = tag.trim().toLowerCase().split(/[-_]/)
+  if (!/^[a-z]{2,3}$/.test(primary)) return undefined
+  if (primary === 'pt' && rest.includes('br')) return 'pt-br'
+  if (primary === 'zh' && rest.some((part) => ['hant', 'tw', 'hk', 'mo'].includes(part))) {
+    return 'zh-tw'
+  }
+  return primary
 }
 
 /**
@@ -127,7 +146,8 @@ export interface DrawioUrlOptions {
  * - `spin=1`: draw.io shows its own spinner while it loads;
  * - `saveAndExit=1&noSaveBtn=0`: both "Save" and "Save & Exit";
  * - `configure=1`: waits for the configuration before `init`;
- * - `dark=1|0`: the reader's colour scheme.
+ * - `dark=1|0`: the reader's colour scheme;
+ * - `lang`: the interface language, when known.
  */
 export function drawioEditorUrl(base: string, options: DrawioUrlOptions): string {
   const url = new URL(base)
@@ -138,6 +158,7 @@ export function drawioEditorUrl(base: string, options: DrawioUrlOptions): string
   url.searchParams.set('noSaveBtn', '0')
   url.searchParams.set('configure', '1')
   url.searchParams.set('dark', options.dark ? '1' : '0')
+  if (options.lang !== undefined) url.searchParams.set('lang', options.lang)
   return url.href
 }
 

@@ -333,10 +333,10 @@ export async function createServerHarness(options: HarnessOptions = {}): Promise
   )
   jobRunner.register(createSendMailConsumer(mailer))
   for (const consumer of createNotifyOnReviewConsumers(deps)) jobRunner.register(consumer)
-  // A new page changes the child pages lists above it (ADR-054); it has
+  // A new page changes the child pages lists above it (ADR-056); it has
   // nothing to index or render until it is published.
   jobRunner.register(childPagesOf(DOCUMENT_CREATED))
-  // Nesting and deleting change the lists and the public navigation (ADR-054).
+  // Nesting and deleting change the lists and the public navigation (ADR-056).
   for (const eventType of [DOCUMENT_NESTED, DOCUMENT_DELETED]) {
     jobRunner.register(
       combineConsumers(eventType, childPagesOf(eventType), invalidationOf(eventType)),

@@ -88,11 +88,32 @@ export function insertInline(make: NodeFactory): Command {
   }
 }
 
-/** Types text at the caret, as if the author had: an emoji's shortcode. */
+/** Types text at the caret, as if the author had. */
 export function insertText(text: string): Command {
   return (state, dispatch) => {
     if (!state.selection.$from.parent.inlineContent) return false
     dispatch?.(state.tr.insertText(text).scrollIntoView())
+    return true
+  }
+}
+
+/**
+ * An emoji's shortcode at the caret, with the caret after it, where the editor already draws the
+ * emoji. When words follow, the caret goes on past a space: the one that is there, or one this adds
+ * so the shortcode stands apart. At the end of a line nothing is added, because Markdown writes a
+ * line's last space as an entity.
+ */
+export function insertShortcode(name: string): Command {
+  return (state, dispatch) => {
+    if (!state.selection.$from.parent.inlineContent) return false
+    if (dispatch !== undefined) {
+      const tr = state.tr.insertText(`:${name}:`)
+      const end = tr.selection.from
+      const next = tr.doc.textBetween(end, Math.min(end + 1, tr.doc.content.size))
+      if (/^\s$/u.test(next)) tr.setSelection(TextSelection.create(tr.doc, end + 1))
+      else if (next !== '') tr.insertText(' ', end)
+      dispatch(tr.scrollIntoView())
+    }
     return true
   }
 }

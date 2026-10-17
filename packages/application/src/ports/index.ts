@@ -64,6 +64,8 @@ export type { Settings, SettingsRead, SettingsWrite, WriteSettingsInput } from '
 export type {
   CompareContext,
   CompareInput,
+  RevertInput,
+  StampAuthorshipInput,
   ComparedChange,
   ComparedChangeKind,
   ComparedContent,

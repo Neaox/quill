@@ -5,7 +5,7 @@ import { Plugin, PluginKey } from '@tiptap/pm/state'
 import type { EditorState, Transaction } from '@tiptap/pm/state'
 import { AttrStep } from '@tiptap/pm/transform'
 import { Decoration, DecorationSet } from '@tiptap/pm/view'
-import { isInTable, selectedRect, TableMap } from 'prosemirror-tables'
+import { CellSelection, isInTable, selectedRect, TableMap } from 'prosemirror-tables'
 
 import { alignOf } from './table-commands.ts'
 import { isTableWrapper, wrapperAttributes } from './table-context.ts'
@@ -142,11 +142,22 @@ function redecorate(set: DecorationSet, tr: Transaction): DecorationSet {
   return next
 }
 
-/** The table the selection is in, marked so its handles stay shown while the pointer is elsewhere. */
+/**
+ * The table the selection is in, marked so its handles stay shown while the
+ * pointer is elsewhere, and `data-selected="table"` when every cell of it is
+ * selected, which the corner handle shows. Read from the selection alone.
+ */
 function activeTable(state: EditorState): Decoration[] {
   if (!isInTable(state)) return []
-  const { tableStart, table } = selectedRect(state)
-  return [Decoration.node(tableStart - 1, tableStart - 1 + table.nodeSize, { 'data-active': '' })]
+  const { tableStart, table, map, left, top, right, bottom } = selectedRect(state)
+  const whole =
+    state.selection instanceof CellSelection &&
+    left === 0 &&
+    top === 0 &&
+    right === map.width &&
+    bottom === map.height
+  const attributes = whole ? { 'data-active': '', 'data-selected': 'table' } : { 'data-active': '' }
+  return [Decoration.node(tableStart - 1, tableStart - 1 + table.nodeSize, attributes)]
 }
 
 export const TableDecorations = Extension.create({

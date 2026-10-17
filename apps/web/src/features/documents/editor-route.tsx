@@ -35,17 +35,25 @@ import {
   type DocumentPermissions,
   type MergeRequired,
 } from '../../lib/api/index.ts'
-import { useDraft } from '../../lib/api/drafts.ts'
+import { useDraft, useRevertPreview } from '../../lib/api/drafts.ts'
+import { DRAFT_SIDE } from '../../lib/api/content.ts'
 import { useDraftClient, useLockClient } from '../../lib/api/editor-clients.ts'
 // By its own path rather than through `lib/api`'s barrel: see the note there.
 // Uploading is the editor's alone, and the reading route pays for whatever the
 // barrel reaches.
 import { ATTACHMENT_MAX_BYTES, useUploadAttachment } from '../../lib/api/attachments.ts'
 import { isDocumentTree, readDraftContent } from '../../lib/documents/draft-content.ts'
+import {
+  broadcastRevertTransport,
+  createRevertChannel,
+  revertChannelName,
+  type RevertOutcome,
+  type RevertRequest,
+} from '../../lib/documents/revert-channel.ts'
 import { FormError } from '../../lib/forms/form-error.tsx'
 import type { PersistentRecoveryStore } from '../../lib/recovery/indexeddb-recovery-store.ts'
 import { useRecoveryStore } from '../../lib/recovery/use-recovery-store.ts'
-import { documentLink } from '../../lib/routing/document-reference.ts'
+import { comparisonLink, documentLink } from '../../lib/routing/document-reference.ts'
 import { RouteNotice } from '../workspaces/route-notice.tsx'
 import { ShellActions } from '../workspaces/shell-slots.tsx'
 import { EditorStatus, OFFLINE_LABEL } from './editor-status.tsx'
@@ -55,6 +63,9 @@ import { MergeConflicts } from './merge-conflicts.tsx'
 import { MergeDialog } from './merge-dialog.tsx'
 import { openEditorLink, sectionAddress } from './editor-links.ts'
 import { ReviewActions } from '../review/review-actions.tsx'
+import { DraftPreviewLink } from './draft-preview-link.tsx'
+import { PublishButton } from './publish-button.tsx'
+import { ReviewButton } from './review-button.tsx'
 import { useDocumentLinkSearch } from './use-document-link-search.ts'
 import { DocumentPropertiesPanel } from './properties/document-properties-panel.tsx'
 import { useDraftFrontMatter } from './properties/draft-front-matter.ts'
@@ -300,7 +311,7 @@ function EditingSession({
   // Whether the dialog was asked for a picture or for an SVG drawing.
   const [imagePurpose, setImagePurpose] = useState<'image' | 'drawing'>('image')
   const searchDocuments = useDocumentLinkSearch(workspaceSlug)
-  // What a child pages block previews: this page's children, for this person (ADR-054).
+  // What a child pages block previews: this page's children, for this person (ADR-056).
   const childPages = useChildPagesOf(documentId)
   // What the slash menu remembers is this person's, so it is kept under their id.
   const recentsKey = me.data === undefined ? undefined : `editor.slash.recent.${me.data.id}`
@@ -328,6 +339,22 @@ function EditingSession({
 
   function openReadingView() {
     void navigate(documentLink(workspaceSlug, documentId))
+  }
+
+  /**
+   * The published page against the draft, where each change is read and can be reverted.
+   * What was typed is sent first, so the comparison is of the draft the author sees; leaving
+   * lets the lock go, so a revert made there is written to the draft directly.
+   */
+  function openComparison() {
+    void autosave.flush().then(() =>
+      navigate(
+        comparisonLink(workspaceSlug, documentId, {
+          ...(published === null ? {} : { from: published }),
+          to: DRAFT_SIDE,
+        }),
+      ),
+    )
   }
 
   /**
@@ -469,6 +496,63 @@ function EditingSession({
     place((editor) => insertImage({ src, alt })(editor.state, editor.view.dispatch))
   }
 
+  const revertPreview = useRevertPreview()
+  /**
+   * Changes reverted from a comparison open in another tab (`revert-channel.ts`): this
+   * editor holds the draft, so the revert is an edit of its own, one transaction that Undo
+   * reverses, saved the way anything typed is. Only while it can save, and only on the
+   * draft the comparison was made with: anything else is said back, never guessed at.
+   */
+  async function revertFromComparison(request: RevertRequest): Promise<RevertOutcome> {
+    if (!canEdit) {
+      return {
+        ok: false,
+        message: 'The editor you have open can’t save right now. Check it, then try again.',
+      }
+    }
+    if (autosave.unsaved) {
+      await autosave.flush()
+      return {
+        ok: false,
+        message:
+          'Your latest edits were still being saved in the editor. The comparison now shows them; try again.',
+      }
+    }
+    if (autosave.draftVersion !== request.draftVersion) {
+      return {
+        ok: false,
+        message:
+          'The draft changed while you were looking. The changes shown are the latest; try again.',
+      }
+    }
+    const reverted = await revertPreview.mutateAsync({ documentId, ...request })
+    const content = readDraftContent(reverted.ast)
+    const handle = editorRef.current
+    if (handle === null || !isDocumentTree(content?.ast)) {
+      return { ok: false, message: 'Couldn’t revert that. Your draft is as it was.' }
+    }
+    handle.replaceContent(content.ast)
+    autosave.change(handle.toMdast)
+    await autosave.flush()
+    toast.success(
+      request.changes.length === 1
+        ? 'Reverted a change from the comparison. Undo brings it back.'
+        : `Reverted ${String(request.changes.length)} changes from the comparison. Undo brings them back.`,
+    )
+    return { ok: true }
+  }
+  // The latest of it for the channel's listener, which outlives any one render.
+  const revertHandler = useRef(revertFromComparison)
+  revertHandler.current = revertFromComparison
+  const [revertChannel] = useState(() =>
+    createRevertChannel(broadcastRevertTransport(revertChannelName(documentId))),
+  )
+  // Synchronises with the other tabs of this browser, which React does not own.
+  useEffect(
+    () => revertChannel.serve((request) => revertHandler.current(request)),
+    [revertChannel],
+  )
+
   /** Runs a command against the live editor and queues the save every edit queues. */
   function place(command: (editor: NonNullable<DocumentEditorHandle['editor']>) => void) {
     const handle = editorRef.current
@@ -521,15 +605,36 @@ function EditingSession({
             if (autosave.unsaved) await autosave.flush()
           }}
         />
+        {/* What a publish would send, read before it is sent: the draft as readers will see
+            it, and what has changed since the page was published. */}
+        <DraftPreviewLink
+          documentId={documentId}
+          published={published}
+          saved={autosave.draftVersion}
+          unsaved={autosave.unsaved}
+          beforeOpen={() => autosave.flush()}
+          onReview={openComparison}
+        />
+        {published === null ? undefined : (
+          <ReviewButton
+            documentId={documentId}
+            published={published}
+            saved={autosave.draftVersion}
+            unsaved={autosave.unsaved}
+            onReview={openComparison}
+          />
+        )}
         {permissions?.publish === false ? undefined : (
-          <Button
-            size="sm"
+          <PublishButton
+            documentId={documentId}
+            published={published}
+            saved={autosave.draftVersion}
+            unsaved={autosave.unsaved}
             loading={publish.isPending}
-            disabled={!canPublish}
-            onClick={handlePublish}
-          >
-            Publish
-          </Button>
+            blocked={!canPublish}
+            onPublish={handlePublish}
+            onReview={openComparison}
+          />
         )}
       </ShellActions>
 

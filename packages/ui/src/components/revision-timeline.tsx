@@ -8,6 +8,7 @@ import { PlainLink, type LinkComponent, type LinkTarget } from '../lib/link.tsx'
 import { useThemeVariants } from '../theme/theme-variants.tsx'
 import { buttonClassName } from './button.tsx'
 import { CompareIcon, HistoryIcon } from './icons.tsx'
+import { RelativeTime } from './relative-time.tsx'
 
 /**
  * The revision on screen is the only tick marked `aria-current`, and that
@@ -56,7 +57,7 @@ export interface Revision {
   readonly id: string
   /** What a reader calls it: `v12`. */
   readonly label: string
-  /** `YYYY-MM-DD`, for a `<time datetime>`. */
+  /** When it was published, as an ISO date or timestamp: said as how long ago, in full on hover. */
   readonly at: string
   /** Where the revision is read, as a route and its parameters — never a built `href`. */
   readonly link: LinkTarget
@@ -110,9 +111,7 @@ function Ticks({
             >
               <span aria-hidden="true" className={styles.dot()} />
               <span className={styles.version()}>{revision.label}</span>
-              <time dateTime={revision.at} className={styles.date()}>
-                {revision.at}
-              </time>
+              <RelativeTime value={revision.at} className={styles.date()} />
               {isCurrent ? <span className="sr-only">current revision</span> : undefined}
             </Link>
             {revision.compare === undefined ? undefined : (

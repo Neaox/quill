@@ -9,9 +9,9 @@ import {
 import { Fragment } from '@tiptap/pm/model'
 import type { Schema } from '@tiptap/pm/model'
 import type { Plugin } from '@tiptap/pm/state'
-import { TextSelection } from '@tiptap/pm/state'
+import { TextSelection, type Command } from '@tiptap/pm/state'
 
-import { nodeType } from '../schema/node-type.ts'
+import { markType, nodeType } from '../schema/node-type.ts'
 
 /**
  * Markdown typed at the start of a line becomes the block it means: `## `
@@ -50,6 +50,49 @@ function dividerRule(schema: Schema): InputRule {
   })
 }
 
+/**
+ * Text between single backticks becomes inline code as the closing one is typed, as it does in
+ * Slack and in every editor a writer who knows Markdown comes from: `` `pnpm check` `` is a chip,
+ * the backticks are gone, and what is typed next is plain. Backspace straight after gives back
+ * what was typed.
+ *
+ * The words inside must start and end on something that is not a space (or a backtick, which
+ * is how a fence is typed), so a stray pair of
+ * backticks in a sentence is left alone, and a backslash before the first escapes it. It does not
+ * fire in a code block, where backticks are code, or over code that is already code.
+ */
+const INLINE_CODE = /(^|[^`\\])`([^\s`](?:[^`\n]*[^\s`])?)`$/
+
+function inlineCodeRule(schema: Schema): InputRule {
+  const code = markType(schema, 'code')
+  return new InputRule(INLINE_CODE, (state, match, start, end) => {
+    const [, before = '', words = ''] = match
+    const from = start + before.length
+    if (state.doc.rangeHasMark(from, end, code)) return null
+    const tr = state.tr.replaceWith(from, end, schema.text(words, [code.create()]))
+    // What is typed after the closing backtick is the words around the chip, not more of it.
+    return tr.removeStoredMark(code)
+  })
+}
+
+/**
+ * ArrowRight at the end of inline code steps out of it before it moves: the next character typed is
+ * plain. Code goes on at its end (so words can be added to it), and this is how a writer says it
+ * stops, with no mouse and no toggle; a second press moves on as usual.
+ */
+export const leaveInlineCode: Command = (state, dispatch) => {
+  const code = markType(state.schema, 'code')
+  const { selection, storedMarks } = state
+  if (!selection.empty || !selection.$from.marks().some(({ type }) => type === code)) return false
+  const { nodeAfter } = selection.$from
+  // Only where the code ends: in the middle of it, an arrow just moves.
+  if (nodeAfter?.marks.some(({ type }) => type === code) === true) return false
+  // Already out of it: this press is a move.
+  if (storedMarks !== null && !storedMarks.some(({ type }) => type === code)) return false
+  dispatch?.(state.tr.removeStoredMark(code))
+  return true
+}
+
 export function autoformatRules(schema: Schema): Plugin {
   return inputRules({
     rules: [
@@ -69,6 +112,7 @@ export function autoformatRules(schema: Schema): Plugin {
         language: match[1] === '' ? null : match[1],
       })),
       dividerRule(schema),
+      inlineCodeRule(schema),
     ],
   })
 }
@@ -81,6 +125,7 @@ export const Autoformat = Extension.create({
   addKeyboardShortcuts() {
     return {
       Backspace: ({ editor }) => undoInputRule(editor.state, editor.view.dispatch),
+      ArrowRight: ({ editor }) => leaveInlineCode(editor.state, editor.view.dispatch),
     }
   },
 })

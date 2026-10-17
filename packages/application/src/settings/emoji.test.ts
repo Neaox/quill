@@ -113,6 +113,16 @@ describe('custom emoji in the organisation’s settings (ADR-038)', () => {
     expect(issues([{ ...timed, stillType: 'image/svg+xml' }])).not.toEqual([])
   })
 
+  it('say what the picture shows, for a reader who cannot see it, and give it to the renderer', () => {
+    const described = { ...ACME, description: 'Acme, a roadrunner logo' }
+
+    expect(issues([described])).toEqual([])
+    expect(issues([{ ...ACME, description: '' }])).not.toEqual([])
+    expect(issues([{ ...ACME, description: 'x'.repeat(121) }])).not.toEqual([])
+    expect(customEmojiByName([described]).get('acme')?.description).toBe('Acme, a roadrunner logo')
+    expect(customEmojiByName([ACME]).get('acme')).not.toHaveProperty('description')
+  })
+
   it('give the renderer an animation’s timing, for the reader to play it briefly by', () => {
     expect(customEmojiByName([{ ...PARTY, frames: 12, milliseconds: 1200 }]).get('party')).toEqual({
       src: '/api/emoji/party.aaaaaaaaaaaaaaaa.gif',

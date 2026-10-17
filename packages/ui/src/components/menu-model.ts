@@ -45,6 +45,10 @@ export const menuStyles = tv({
     separator: '-mx-1 my-1 h-px bg-border',
     // The accent marks the one chosen option and nothing else in the panel.
     indicator: 'ms-auto text-accent',
+    // A row's own parts: the picture before its words, the words, and what it is set to after them.
+    rowIcon: 'flex size-4 shrink-0 items-center justify-center text-muted',
+    rowLabel: 'min-w-0 flex-1 truncate',
+    rowHint: 'shrink-0 text-xs text-muted',
   },
   variants: {
     /**
@@ -81,23 +85,38 @@ export interface MenuProps {
   readonly className?: string | undefined
 }
 
+/** What an `action` or `link` row can show beside its words. */
+export interface MenuRowDetails {
+  /** A small picture before the words, for finding the row by sight; hidden from assistive technology. */
+  readonly icon?: ReactNode
+  /** What the row is set to, after the words: "Appearance" with "System". Announced when it changes. */
+  readonly hint?: string | undefined
+}
+
 /**
  * One row of a `MenuButton`.
  *
- * - `action` runs something here and now (sign out).
+ * - `action` runs something here and now (sign out), or cycles a setting and
+ *   stays open (`keepOpen`).
  * - `link` goes somewhere, and is rendered as a real anchor through the link
  *   seam, so it can be opened in a new tab and is announced as what it is.
- * - `choice` is a set of mutually exclusive options — the colour scheme —
- *   rendered as `menuitemradio`s with the chosen one checked.
+ * - `choice` is a set of mutually exclusive options, rendered as
+ *   `menuitemradio`s with the chosen one checked.
  */
 export type MenuEntry =
-  | {
+  | (MenuRowDetails & {
       readonly kind: 'action'
       readonly label: string
       readonly onSelect: () => void
       readonly disabled?: boolean | undefined
-    }
-  | { readonly kind: 'link'; readonly label: string; readonly target: LinkTarget }
+      /** Stays open after it runs, for a row that is pressed again: one that cycles a setting. */
+      readonly keepOpen?: boolean | undefined
+    })
+  | (MenuRowDetails & {
+      readonly kind: 'link'
+      readonly label: string
+      readonly target: LinkTarget
+    })
   | {
       readonly kind: 'choice'
       /** Names the group of options, for sight and for assistive technology. */

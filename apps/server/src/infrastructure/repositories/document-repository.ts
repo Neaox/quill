@@ -225,7 +225,7 @@ export function createDocumentRepository(db: DrizzleClient): DocumentRepository 
 
     /**
      * One recursive walk down the document tree, bounded by the depth, for a
-     * child pages list (ADR-054). The cycle guard is the depth itself: a
+     * child pages list (ADR-056). The cycle guard is the depth itself: a
      * parent chain is acyclic (`checkParent`), and a walk can never go
      * further than the six levels a list may ask for.
      */

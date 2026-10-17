@@ -63,6 +63,16 @@ function readerPrefersDark(): boolean {
   return getComputedStyle(document.documentElement).colorScheme.split(' ').at(0) === 'dark'
 }
 
+/**
+ * The language the application speaks to the person, which draw.io is asked
+ * to speak too: the page's own `lang`. Nothing when the page does not say.
+ */
+export function interfaceLanguage(
+  root: HTMLElement = document.documentElement,
+): string | undefined {
+  return root.lang.trim() === '' ? undefined : root.lang
+}
+
 export function useDrawioEditorConfig() {
   const client = useApiClient()
   return useQuery({
@@ -81,6 +91,7 @@ export function useDrawio({ documentId, place }: UseDrawioOptions): DrawioIntegr
   const [describing, setDescribing] = useState(false)
   const [session, setSession] = useState<Session | null>(null)
   const [dark, setDark] = useState(false)
+  const [lang] = useState(() => interfaceLanguage())
 
   const drawioEditor = config.data ?? null
 
@@ -190,6 +201,7 @@ export function useDrawio({ documentId, place }: UseDrawioOptions): DrawioIntegr
             origin={drawioEditor.origin}
             thirdParty={drawioEditor.thirdParty}
             dark={dark}
+            lang={lang}
             target={session}
             files={files}
             onSaved={(result) => saved(result, session)}

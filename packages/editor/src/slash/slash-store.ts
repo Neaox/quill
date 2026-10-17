@@ -21,8 +21,20 @@ export interface SlashRect {
   readonly left: number
 }
 
+/** What the menu calls itself, and says when it is empty or has narrowed: the words of what it lists. */
+export interface SlashMenuWording {
+  /** The listbox's name, read out as it opens. */
+  readonly name: string
+  /** Said when nothing matches, given what was typed. */
+  empty(query: string): string
+  /** Said, politely, as the list narrows. */
+  count(matches: number): string
+}
+
 export interface SlashMenuState {
   readonly mode: 'menu'
+  /** Absent, the menu lists blocks (`BLOCK_WORDING`). */
+  readonly wording?: SlashMenuWording
   readonly query: string
   readonly sections: readonly SlashSection[]
   readonly rect: SlashRect | null

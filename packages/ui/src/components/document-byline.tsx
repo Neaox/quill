@@ -5,6 +5,7 @@ import { absoluteDate, relativeDate } from '../lib/dates.ts'
 import { PlainLink, type LinkComponent, type LinkTarget } from '../lib/link.tsx'
 import { Avatar } from './avatar.tsx'
 import { WarningIcon } from './icons.tsx'
+import { RelativeTime } from './relative-time.tsx'
 
 /**
  * The byline: the one quiet line under a document's title that says who owns
@@ -264,7 +265,15 @@ export function DocumentByline({
             term: 'Updated',
             value: (
               <span>
-                Updated <When date={updatedAt} now={now} />
+                {/* A moment, not a day: said as every other "how long ago" in the application
+                    is, and kept true as time passes. The review's dates are calendar days and
+                    are counted in whole days (`When`). */}
+                Updated{' '}
+                {now === undefined ? (
+                  <When date={updatedAt} now={now} />
+                ) : (
+                  <RelativeTime value={updatedAt} />
+                )}
               </span>
             ),
           } satisfies Fact,

@@ -138,7 +138,7 @@ export function FactsByline({
 /**
  * What someone holding a share link reads: the public facts only, in absolute
  * dates, and tags as words — there is no search on the other side of a link
- * (ADR-055). The server has already left out a lapsed verification and any
+ * (ADR-057). The server has already left out a lapsed verification and any
  * replacement outside the link's scope.
  */
 export function PublicFactsByline({
