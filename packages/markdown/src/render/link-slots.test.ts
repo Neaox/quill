@@ -272,7 +272,7 @@ describe('fillLinkSlots: a block link', () => {
     const permalink = previewOf({
       url: CODE_URL,
       canonicalUrl: CODE_URL,
-      title: 'src/a.ts, lines 3 to 4',
+      title: 'src/a.ts',
       description: 'o/r at abcdef0',
       siteName: 'GitHub',
       kind: 'repository',
@@ -290,7 +290,7 @@ describe('fillLinkSlots: a block link', () => {
         expect.arrayContaining(['figure', 'figcaption', 'a', 'span', 'pre', 'code']),
       )
       expect(html).toContain('<figure class="link-code" data-language="typescript">')
-      expect(html).toContain('>src/a.ts, lines 3 to 4</a>')
+      expect(html).toContain('>src/a.ts</a>')
       expect(html).toContain('<span class="link-code-repository">o/r</span>')
       expect(html).toContain('data-line="3"')
       expect(html).toContain('data-line="4"')

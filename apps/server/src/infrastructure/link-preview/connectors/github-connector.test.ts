@@ -402,7 +402,7 @@ describe('a code permalink', () => {
       repository: 'sindresorhus/is',
     })
     expect(draft).toMatchObject({
-      title: 'source/index.ts, lines 12 to 16',
+      title: 'source/index.ts',
       description: 'sindresorhus/is at e9c026c',
       siteName: 'GitHub',
       kind: 'repository',
@@ -421,7 +421,7 @@ describe('a code permalink', () => {
   it('names a single line as one', async () => {
     const draft = value(await t.resolve(link('#L3')))
     expect(draft.code?.lines).toEqual(['\tClass,'])
-    expect(draft.title).toBe('source/index.ts, line 3')
+    expect(draft.title).toBe('source/index.ts')
   })
 
   it('caps a long range at the most lines a snippet carries', async () => {

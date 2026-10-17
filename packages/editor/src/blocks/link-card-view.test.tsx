@@ -120,9 +120,9 @@ describe('a link card in the writing surface', () => {
       const { container } = open(
         `::link{url="${ADDRESS}" display=card}
 `,
-        source({ ...PREVIEW, title: 'src/index.ts, lines 12 to 16', code: CODE }),
+        source({ ...PREVIEW, title: 'src/index.ts', code: CODE }),
       )
-      const drawn = await card('src/index.ts, lines 12 to 16')
+      const drawn = await card('src/index.ts')
       expect(drawn).toHaveTextContent('o/r')
       const excerpt = drawn.querySelector('pre')
       expect(excerpt?.textContent).toBe('const a = 1\nconst b = 2\nconst c = 3')

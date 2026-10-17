@@ -178,13 +178,6 @@ function languageOf(path: string): string | null {
   return dot < 0 ? null : (LANGUAGES[name.slice(dot + 1).toLowerCase()] ?? null)
 }
 
-function describeLines(range: LineRange | null): string {
-  if (range === null) return ''
-  return range.start === range.end
-    ? `, line ${range.start}`
-    : `, lines ${range.start} to ${range.end}`
-}
-
 function lineAnchor(range: LineRange | null): string {
   if (range === null) return ''
   return range.start === range.end ? `#L${range.start}` : `#L${range.start}-L${range.end}`
@@ -420,7 +413,8 @@ export function createGitHubConnector(deps: GitHubConnectorDeps): LinkConnector 
     if (path === null) return failure('unavailable')
     return ok({
       canonicalUrl: `https://github.com/${target.owner}/${target.repo}/blob/${target.sha}/${encodedPath}${lineAnchor(target.lines)}`,
-      title: `${path}${describeLines(target.lines)}`,
+      // The path, as a developer reads it; the lines are in the gutter and in the link's address.
+      title: path,
       description: cleanText(
         `${repository.fullName} at ${target.sha.slice(0, 7)}`,
         DESCRIPTION_LIMIT,
