@@ -1,9 +1,8 @@
 import { useNavigate } from '@tanstack/react-router'
-import { useRef, useState, type FormEvent } from 'react'
+import { lazy, useRef, useState, type FormEvent } from 'react'
 
 import {
   Button,
-  Dialog,
   formatMoment,
   RevisionTimeline,
   Spinner,
@@ -14,11 +13,15 @@ import {
 } from '@quill/ui'
 
 import type { LabelledRevision } from '../../lib/documents/revision-labels.ts'
-import { FormError } from '../../lib/forms/form-error.tsx'
+import { MountOnFirstOpen } from '../../lib/mount-on-first-open.tsx'
 import { SelectField } from '../../lib/forms/select-field.tsx'
 import { useRestoreRevision } from '../../lib/api/index.ts'
 import { documentLink } from '../../lib/routing/document-reference.ts'
 import { RouterLink } from '../../lib/routing/router-link.tsx'
+
+const RestoreRevisionDialog = lazy(async () => ({
+  default: (await import('./restore-revision-dialog.tsx')).RestoreRevisionDialog,
+}))
 
 export const revisionPanelStyles = tv({
   slots: {
@@ -250,37 +253,17 @@ export function RevisionPanel({
         </Button>
       ) : undefined}
 
-      <Dialog
-        title={`Restore ${confirming?.label ?? ''}`}
-        description="Restoring publishes a new revision whose content is that of the older one. Nothing is erased: the step you are undoing stays in the history."
-        open={confirming !== undefined}
-        onOpenChange={(open) => {
-          if (!open) setConfirming(undefined)
-        }}
-        footer={
-          <>
-            <Button
-              variant="secondary"
-              onClick={() => {
-                setConfirming(undefined)
-              }}
-            >
-              Cancel
-            </Button>
-            <Button
-              loading={restore.isPending}
-              onClick={() => {
-                if (confirming === undefined) return
-                restoreRevision(confirming)
-              }}
-            >
-              Restore
-            </Button>
-          </>
-        }
-      >
-        <FormError error={restore.error} />
-      </Dialog>
+      <MountOnFirstOpen open={confirming !== undefined}>
+        <RestoreRevisionDialog
+          revision={confirming}
+          isRestoring={restore.isPending}
+          error={restore.error}
+          onCancel={() => {
+            setConfirming(undefined)
+          }}
+          onRestore={restoreRevision}
+        />
+      </MountOnFirstOpen>
     </div>
   )
 }

@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react'
 
+import '@quill/design-css/comparison.css'
 import { Block, Button, Callout, LayoutGrid, Spinner, tv } from '@quill/ui'
 
 import { ApiError, useComparison, type ComparisonRange } from '../../lib/api/index.ts'
