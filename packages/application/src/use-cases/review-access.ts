@@ -61,7 +61,7 @@ export async function createReviewerAccessProbe(
     let current: GroupId | null = start
     while (current !== null && !held.includes(current)) {
       held.push(current)
-      // oxlint-disable-next-line no-await-in-loop -- each parent is found from the one before.
+      // Each parent is found from the one before.
       current = ((await repos.groups.findById(current))?.parentGroupId ?? null) as GroupId | null
     }
     return held
