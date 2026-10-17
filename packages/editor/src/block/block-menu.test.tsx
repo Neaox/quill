@@ -106,6 +106,38 @@ describe('the block menu', () => {
     expect(trigger()).toHaveFocus()
   })
 
+  it('closes when the pointer goes down anywhere outside it, and leaves the focus where it was put', async () => {
+    const { user, container } = open()
+    await openMenu(user)
+    const editable = container.querySelector<HTMLElement>('[role="textbox"]')
+    if (editable === null) throw new Error('There is no editor.')
+
+    await user.click(editable)
+
+    expect(screen.queryByRole('menu')).not.toBeInTheDocument()
+    expect(trigger()).toHaveAttribute('aria-expanded', 'false')
+    expect(trigger()).not.toHaveFocus()
+  })
+
+  it('stays open for a press inside it, and for the trigger’s own, which closes it', async () => {
+    const { user } = open()
+    const menu = await openMenu(user)
+
+    await user.click(within(menu).getByRole('group', { name: 'Width' }))
+    expect(screen.getByRole('menu')).toBeInTheDocument()
+
+    await user.click(trigger())
+    expect(screen.queryByRole('menu')).not.toBeInTheDocument()
+  })
+
+  it('does not listen for presses while it is closed', () => {
+    const add = vi.spyOn(document, 'addEventListener')
+    open()
+
+    expect(add).not.toHaveBeenCalledWith('pointerdown', expect.any(Function), expect.anything())
+    add.mockRestore()
+  })
+
   it('ignores a key it does not know', async () => {
     const { user } = open()
     const menu = await openMenu(user)

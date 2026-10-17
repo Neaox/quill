@@ -277,6 +277,6 @@ export type {
   Replies,
 } from './testing/harness.ts'
 
-// The navigation blocks: a table of contents and the pages under this one (ADR-049)
+// The navigation blocks: a table of contents and the pages under this one (ADR-054)
 export type { ChildPagesPreview } from './navigation/navigation-view.ts'
 export { navigationItems } from './navigation/navigation-slash.ts'

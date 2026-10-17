@@ -12,6 +12,10 @@
     ".": "./src/index.ts",
     "./theme": "./src/theme/theme-id.ts",
     "./styles.css": "./src/styles/index.css",
+    "./styles/editor.css": "./src/styles/editor.css",
+    "./styles/table-editor.css": "./src/styles/table-editor.css",
+    "./styles/editor-menus.css": "./src/styles/editor-menus.css",
+    "./styles/present.css": "./src/styles/present.css",
     "./testing/axe": "./testing/axe.ts",
     "./styles/public-site": "./src/styles/public-site.ts"
   },
@@ -33,6 +37,7 @@
     "@quill/design-css": "workspace:*",
     "@quill/highlight": "workspace:*",
     "@quill/theme": "workspace:*",
+    "@tanstack/react-virtual": "^3.14.14",
     "radix-ui": "^1.6.7",
     "sonner": "2.0.8",
     "tailwind-variants": "^3.3.1"

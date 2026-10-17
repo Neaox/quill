@@ -25,6 +25,10 @@ export interface RadixPopoverProps {
   /** The light trigger the panel belongs to. */
   readonly trigger: RefObject<HTMLButtonElement | null>
   readonly contentId: string
+  /** Where the panel sits along the trigger; the end edge unless asked. */
+  readonly align?: 'start' | 'center' | 'end' | undefined
+  readonly sideOffset?: number | undefined
+  readonly collisionPadding?: number | undefined
 }
 
 export function RadixPopover({
@@ -36,6 +40,9 @@ export function RadixPopover({
   onOpenChange,
   trigger,
   contentId,
+  align = 'end',
+  sideOffset = 6,
+  collisionPadding = 8,
 }: RadixPopoverProps) {
   const pressedElsewhere = useRef(false)
 
@@ -47,9 +54,9 @@ export function RadixPopover({
       <Popover.Portal>
         <Popover.Content
           id={contentId}
-          align="end"
-          sideOffset={6}
-          collisionPadding={8}
+          align={align}
+          sideOffset={sideOffset}
+          collisionPadding={collisionPadding}
           aria-label={label}
           className={className}
           onInteractOutside={(event) => {

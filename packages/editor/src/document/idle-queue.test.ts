@@ -145,7 +145,7 @@ describe('the idle queue', () => {
 describe('the browser idle host', () => {
   it('asks for idle callbacks with a deadline, and cancels them', () => {
     const requestIdleCallback = vi.fn<(callback: IdleRequestCallback) => number>(() => 7)
-    const cancelIdleCallback = vi.fn<() => void>()
+    const cancelIdleCallback = vi.fn<(handle: number) => void>()
     const host = browserIdleHost({
       requestIdleCallback,
       cancelIdleCallback,
@@ -153,7 +153,7 @@ describe('the browser idle host', () => {
       clearTimeout,
       performance,
     })
-    const callback = vi.fn<() => void>()
+    const callback = vi.fn<(deadline: IdleDeadlineLike) => void>()
     const cancel = host.request(callback)
     expect(requestIdleCallback).toHaveBeenCalledWith(callback, { timeout: 250 })
     cancel()

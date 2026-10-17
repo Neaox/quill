@@ -142,15 +142,40 @@ Costed on 2026-10-17 and left for the people working in those files:
   entry chunk whoever uses it: the editor's draft and lock clients alone are
   0.6 KB there. Importing editor- and admin-only hooks from their own files,
   and dropping them from the barrel, takes out a few KB.
-- `revision-panel.tsx` imports the restore dialog's form statically (about
-  0.5 KB).
-- The stylesheet is one file for every route, and it is now 35 KB of the
-  total. `editor.css`, `table-editor.css` and `editor-menus.css` (about 2.7 KB
-  gzipped on their own), `present.css` and `comparison.css` could be imported
-  by the chunks that use them, and the utilities generated only for
-  `packages/editor` (`@source` in `globals.css`) belong with the editor; that
-  needs care with Tailwind's cascade order, which is why it is a step of its
-  own.
+- The utilities generated only for `packages/editor` (`@source` in
+  `globals.css`) belong with the editor; that needs care with Tailwind's
+  cascade order, which is why it is a step of its own.
+
+When the two lines of work merged, two of the items costed here were taken
+the way the second reduction below took them: the restore dialog loads behind
+`MountOnFirstOpen`, and the writing surface's stylesheets (`editor.css`,
+`table-editor.css`, `editor-menus.css`), `present.css` and `comparison.css`
+are imported by the routes and views that draw them rather than by the entry
+sheet.
+The merge kept `deferred-enhancements.ts` (above) for the body's enhancers
+rather than the second reduction's `body-enhancers.ts`; whether each
+enhancer should also load only when the body has what it enhances is still
+open.
+
+## Second reduction (the dashboard redesign)
+
+The redesign took the route to **288.3 KB** and a failing gate; the pass
+that followed brought it to **246.0 KB**. What it moved out of the first load,
+none of it removed, each loaded the first time it is needed:
+
+| Step | Reading route (gzip) |
+| --- | --- |
+| Before | 288.3 KB |
+| 1. Document-body enhancers (`body-enhancers.ts`): code cards and highlighting, diagrams, lightbox, table tools, details, animated emoji, picture viewer, each loaded only when the body contains what it enhances | 272.6 KB |
+| 2. Dialogs and panels opened from their own chunks (`MountOnFirstOpen`): new document, collections, move, delete, attachments, request review, review panel | 259.8 KB |
+| 3. The editor's and the presentation's stylesheets (`@quill/ui/styles/editor.css`, `present.css`) imported by their routes rather than the entry sheet | 255.4 KB |
+| 4. The restore confirmation, the comparison stylesheet, the notifications list, and the API modules only the editor and the dialogs use, imported directly rather than through the `lib/api` barrel (a barrel re-export of a module any chunk uses puts it in the entry chunk) | 250.0 KB |
+| 5. `ui-base` chunk (`vite.config.ts`): the primitives nearly every screen uses, merged rather than split into a tiny chunk per sharing set | 246.0 KB |
+
+Two rules fall out of it. A stylesheet only one surface draws is imported by
+that surface, not by the entry sheet. A component a reader may never open (a
+dialog, a side panel, a popover's body) is a `lazy` import behind
+`MountOnFirstOpen`, or behind the popover that holds it.
 
 ## If it fails
 

@@ -1,0 +1,14 @@
+{
+  "collection": "Guides",
+  "title": "Authentication",
+  "type": "guide",
+  "owners": ["marcus@acme.example", "aisha@acme.example"],
+  "tags": ["api", "tokens", "security"],
+  "review": "90d",
+  "status": "published",
+  "notes": [
+    "First version: bearer tokens and scopes",
+    "Added token expiry and rotation for 2026.10"
+  ],
+  "frontMatter": {}
+}

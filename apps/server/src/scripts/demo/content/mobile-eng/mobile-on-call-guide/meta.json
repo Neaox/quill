@@ -1,0 +1,11 @@
+{
+  "collection": "Runbooks",
+  "title": "Mobile on-call guide",
+  "type": "runbook",
+  "owners": ["marcus@acme.example", "jonas@acme.example"],
+  "tags": ["skiff", "mobile", "on-call"],
+  "review": "6m",
+  "status": "published",
+  "notes": ["First version, agreed with the mobile team after the September rota review"],
+  "frontMatter": {}
+}

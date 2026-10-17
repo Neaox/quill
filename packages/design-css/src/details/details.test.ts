@@ -264,3 +264,65 @@ describe('taking it away', () => {
     expect({ ...window.localStorage }).toEqual(before)
   })
 })
+
+describe('where it is put', () => {
+  it('works on a whole document as well as on an element of one', () => {
+    window.history.replaceState(null, '', '#user-content-deep')
+    page(details('Outer', '<h2 id="user-content-deep">Deep</h2>'))
+
+    enhance(document)
+
+    expect(openOf(document)).toEqual([true])
+  })
+
+  it('does nothing in a document that is not shown, which has no window to listen on', () => {
+    const detached = document.implementation.createHTMLDocument('Template')
+    detached.body.innerHTML = details('Outer', '<p>x</p>')
+
+    const dispose = enhanceDetails(detached.body)
+    dispose()
+
+    expect(openOf(detached)).toEqual([false])
+  })
+
+  it('does nothing for a click that did not land on an element', () => {
+    const root = page('<p>Plain</p>' + details('Outer', 'x'))
+    enhance(root)
+
+    root.querySelector('p')?.firstChild?.dispatchEvent(new Event('click', { bubbles: true }))
+
+    expect(openOf(root)).toEqual([false])
+  })
+})
+
+describe('asking the browser whether it groups details by name', () => {
+  const prototype = HTMLDetailsElement.prototype
+  const held = Object.getOwnPropertyDescriptor(prototype, 'name')
+
+  afterEach(() => {
+    if (held === undefined) Reflect.deleteProperty(prototype, 'name')
+    else Object.defineProperty(prototype, 'name', held)
+  })
+
+  const openSecond = (): boolean[] => {
+    const root = page(
+      details('A', 'a', ' name="user-content-faq" open') +
+        details('B', 'b', ' name="user-content-faq"'),
+    )
+    enhance(root)
+    toggle([...root.querySelectorAll('details')][1], true)
+    return openOf(root)
+  }
+
+  it('leaves the others open when the browser does it', () => {
+    Object.defineProperty(prototype, 'name', { configurable: true, get: () => '' })
+
+    expect(openSecond()).toEqual([true, true])
+  })
+
+  it('closes the others itself when the browser cannot', () => {
+    Reflect.deleteProperty(prototype, 'name')
+
+    expect(openSecond()).toEqual([false, true])
+  })
+})

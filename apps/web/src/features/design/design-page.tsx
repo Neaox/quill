@@ -243,7 +243,7 @@ export function DesignPage() {
               id="details"
               overline="Details"
               title="Details and accordions"
-              description="ADR-048: the browser's own details, in Quill's directive, GitHub's HTML and Obsidian's foldable callouts, drawn by the theme's rules. Open one in an accordion and the others close; a link or find into a closed one opens it."
+              description={`ADR-048: the browser's own details, in ${BRAND.name}'s directive, GitHub's HTML and Obsidian's foldable callouts, drawn by the theme's rules. Open one in an accordion and the others close; a link or find into a closed one opens it.`}
             >
               <p className="text-xs leading-relaxed text-muted">
                 Each specimen's Markdown is under it.
@@ -273,7 +273,7 @@ export function DesignPage() {
               id="navigation-blocks"
               overline="Navigation blocks"
               title="Contents and child pages"
-              description="ADR-049: a table of contents drawn from the page's own headings, and the pages under this one, filled for each reader as the page is assembled. Scroll the page and the section being read is marked in every contents."
+              description="ADR-054: a table of contents drawn from the page's own headings, and the pages under this one, filled for each reader as the page is assembled. Scroll the page and the section being read is marked in every contents."
             >
               <p className="text-xs leading-relaxed text-muted">
                 Each specimen's Markdown is under it.

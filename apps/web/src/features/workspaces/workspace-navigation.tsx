@@ -196,7 +196,7 @@ type CollectionDialog =
       readonly kind: 'delete'
       readonly id: string
       readonly name: string
-      readonly documentCount: number
+      readonly documentCount: number | undefined
     }
 
 export interface WorkspaceTreeProps {

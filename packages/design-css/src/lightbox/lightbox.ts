@@ -179,6 +179,22 @@ function midpoint([first, second]: readonly [Point, Point]): Point {
 const CONTROL_ORDER = ['out', 'zoom', 'in'] as const
 type ControlAction = (typeof CONTROL_ORDER)[number]
 
+/*
+ * Zooming in and out are used all the time, so at a limit they stay where
+ * they are, disabled with the reason (`docs/design/feedback.md`, "Disable
+ * or hide"): `aria-disabled`, not `disabled`, so they stay focusable and
+ * the reason can be read.
+ */
+function limit(button: HTMLButtonElement, reached: boolean, reason: string): void {
+  if (reached) {
+    button.setAttribute('aria-disabled', 'true')
+    button.title = reason
+  } else {
+    button.removeAttribute('aria-disabled')
+    button.removeAttribute('title')
+  }
+}
+
 function open(
   diagram: HTMLElement,
   container: HTMLElement,
@@ -229,21 +245,6 @@ function open(
   })
 
   let view: View = FIT
-  /*
-   * Zooming in and out are used all the time, so at a limit they stay where
-   * they are, disabled with the reason (`docs/design/feedback.md`, "Disable
-   * or hide"): `aria-disabled`, not `disabled`, so they stay focusable and
-   * the reason can be read.
-   */
-  const limit = (button: HTMLButtonElement, reached: boolean, reason: string): void => {
-    if (reached) {
-      button.setAttribute('aria-disabled', 'true')
-      button.title = reason
-    } else {
-      button.removeAttribute('aria-disabled')
-      button.removeAttribute('title')
-    }
-  }
   const limits = (): void => {
     limit(buttons.out, view.scale <= MIN_SCALE, 'Already fitted to the screen')
     limit(buttons.in, view.scale >= MAX_SCALE, 'Already at the largest size')

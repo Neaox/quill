@@ -1,0 +1,37 @@
+{
+  "collection": "Templates",
+  "title": "Support playbook",
+  "type": "template",
+  "owners": ["tom@acme.example"],
+  "tags": ["template", "playbook"],
+  "status": "published",
+  "notes": ["First version of the playbook template"],
+  "frontMatter": {
+    "type": "template",
+    "template": {
+      "name": "Support playbook",
+      "category": "Support",
+      "version": 1,
+      "questions": [
+        {
+          "id": "situation",
+          "label": "What situation does this playbook cover?",
+          "type": "text",
+          "default": "a customer problem"
+        },
+        {
+          "id": "customerFacing",
+          "label": "Do agents send the customer prepared wording?",
+          "type": "boolean",
+          "default": true
+        }
+      ],
+      "sections": [
+        { "heading": "When to use this", "required": true },
+        { "heading": "Steps", "required": true },
+        { "heading": "Example wording", "when": "customerFacing", "optional": true },
+        { "heading": "When to escalate", "required": true }
+      ]
+    }
+  }
+}

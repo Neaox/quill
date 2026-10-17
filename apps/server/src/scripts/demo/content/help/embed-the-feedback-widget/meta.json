@@ -1,0 +1,11 @@
+{
+  "collection": "Roadmaps",
+  "title": "Embed the feedback widget",
+  "type": "guide",
+  "owners": ["tom@acme.example"],
+  "tags": ["widget", "javascript", "tidepool"],
+  "review": "180d",
+  "status": "published",
+  "notes": ["First version"],
+  "frontMatter": {}
+}

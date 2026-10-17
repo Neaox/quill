@@ -1,0 +1,11 @@
+{
+  "collection": "Roadmap",
+  "title": "Q1 2027 themes and bets",
+  "type": "design",
+  "owners": ["priya@acme.example", "marcus@acme.example"],
+  "tags": ["roadmap", "planning", "q1-2027"],
+  "review": "90d",
+  "status": "draft-ahead",
+  "notes": ["Themes, sizing and risks for Q1 planning", "Added dated checkpoints"],
+  "frontMatter": {}
+}

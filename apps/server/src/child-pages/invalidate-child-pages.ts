@@ -13,7 +13,7 @@ import type { OutboxConsumer } from '../infrastructure/outbox/consumer.ts'
 import type { ServerChildPagesCache } from './cache.ts'
 
 /**
- * What tells the child pages cache a subtree changed (ADR-049).
+ * What tells the child pages cache a subtree changed (ADR-054).
  *
  * Six events change a list: a page created under a parent, published (its
  * title, summary or status), renamed, moved between collections, nested under

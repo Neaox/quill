@@ -42,7 +42,7 @@ export interface DocumentReaderProps {
   readonly eyebrow?: string | undefined
   /**
    * Where a child page of this one is created, for the "Create a child page"
-   * an empty child pages list offers an editor (ADR-049). Omitted, none is offered.
+   * an empty child pages list offers an editor (ADR-054). Omitted, none is offered.
    */
   readonly placement?:
     | { readonly workspaceId: string; readonly collectionId: string | undefined }

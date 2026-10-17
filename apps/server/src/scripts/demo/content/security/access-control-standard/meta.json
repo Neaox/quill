@@ -1,0 +1,14 @@
+{
+  "collection": "Policies",
+  "title": "Access control standard",
+  "type": "policy",
+  "owners": ["aisha@acme.example"],
+  "tags": ["access", "standard", "soc2", "cc6"],
+  "review": "6m",
+  "status": "published",
+  "notes": [
+    "First version, tiers and joiner-mover-leaver timings",
+    "Replaced standing replica access with the four-hour access broker and ended SMS codes from 1 November"
+  ],
+  "frontMatter": {}
+}

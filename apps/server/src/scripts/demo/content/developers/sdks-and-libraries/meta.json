@@ -1,0 +1,11 @@
+{
+  "collection": "API reference",
+  "title": "SDKs and libraries",
+  "type": "reference",
+  "owners": ["marcus@acme.example"],
+  "tags": ["sdk", "typescript", "python", "go"],
+  "review": "90d",
+  "status": "published",
+  "notes": ["First version"],
+  "frontMatter": {}
+}

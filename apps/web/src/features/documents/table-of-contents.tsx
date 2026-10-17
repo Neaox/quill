@@ -1,8 +1,10 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 
 import { ANCHOR_OFFSET_PX, tv } from '@quill/ui'
 
 import type { OutlineEntry } from '../../lib/api/index.ts'
+import { activeHeading, positionOf } from '../../lib/documents/active-heading.ts'
+import type { BandPosition } from '../../lib/documents/active-heading.ts'
 
 /*
  * The quietest list on the page: the headings in the faintest ink down a
@@ -89,7 +91,6 @@ export function TableOfContents({
   const entries = useMemo(() => flatten(sections(outline)), [outline])
   const headingIds = useMemo(() => entries.map((entry) => entry.id), [entries])
   const [currentId, setCurrentId] = useState<string | undefined>(undefined)
-  const visible = useRef<Set<string>>(new Set())
 
   /* Synchronises with the browser's IntersectionObserver over the headings of
      the body that `DocumentBody` has just mounted — an external system, and
@@ -101,18 +102,14 @@ export function TableOfContents({
   useEffect(() => {
     if (headingIds.length === 0) return undefined
 
-    const seen = visible.current
-    seen.clear()
+    // Where each heading is relative to the band, kept for as long as this
+    // observer lives. The observer reports only what *changed*, so the rest has
+    // to be remembered: "which heading is current" depends on all of them.
+    const positions = new Map<string, BandPosition>()
     const observer = new IntersectionObserver(
       (records) => {
-        for (const record of records) {
-          if (record.isIntersecting) seen.add(record.target.id)
-          else seen.delete(record.target.id)
-        }
-        const first = headingIds.find((id) => seen.has(id))
-        // Nothing intersecting means the reader is between two headings; the
-        // last one they passed is still the section they are in.
-        if (first !== undefined) setCurrentId(first)
+        for (const record of records) positions.set(record.target.id, positionOf(record))
+        setCurrentId(activeHeading(headingIds, positions))
       },
       // The band is the top of the viewport: a heading counts as "being read"
       // from the moment it reaches the place it would be scrolled to — the
@@ -127,7 +124,6 @@ export function TableOfContents({
     }
     return () => {
       observer.disconnect()
-      seen.clear()
     }
   }, [headingIds])
 

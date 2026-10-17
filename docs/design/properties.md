@@ -4,7 +4,7 @@ A document's properties are the facts it states about itself in its front
 matter (ADR-005): its lifecycle, its owners, its type, its tags, how often it is
 reviewed and when it last was, and the answers to its template's questions.
 This page says what those facts are for, who needs them, and how each surface
-shows them. ADR-052 records the two decisions in here that are architectural:
+shows them. ADR-055 records the two decisions in here that are architectural:
 what a public reader sees, and how tags relate to labels.
 
 ## What properties are for
@@ -64,7 +64,7 @@ verification with its date but never who made it, and only while it stands),
 when it was last reviewed, and tags as plain words (or, on the public site,
 links to the site's own search). They never see owners, verifiers or review
 due dates: an owner is a person, and the organisation's review cadence is
-internal process (ADR-052).
+internal process (ADR-055).
 
 **Deprecated pages say so.** Under the byline of a deprecated page, on every
 reading surface, a notice: "This page is deprecated. Use *Replacement*

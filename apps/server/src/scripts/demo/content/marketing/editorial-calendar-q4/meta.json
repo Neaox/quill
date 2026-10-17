@@ -1,0 +1,14 @@
+{
+  "collection": "Content",
+  "title": "Editorial calendar Q4",
+  "type": "reference",
+  "owners": ["ravi@acme.example"],
+  "tags": ["calendar", "content", "q4"],
+  "review": "90d",
+  "status": "published",
+  "notes": [
+    "First version of the Q4 calendar",
+    "Moved the webinar to 18 November, added the podcast sponsorship and marked the 14 October story ready"
+  ],
+  "frontMatter": {}
+}

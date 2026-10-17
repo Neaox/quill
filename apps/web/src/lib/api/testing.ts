@@ -3,6 +3,8 @@ import { QueryClient } from '@tanstack/react-query'
 import { createApiClient, type ApiClient } from '@quill/api-client'
 
 import type { RouterContext } from '../../app/router-context.ts'
+import type { FakeRouteHandler, FakeRoutes } from './fake-routes.ts'
+import { withDerivedTreeRoutes } from './fake-tree-routes.ts'
 
 /**
  * A fake `fetch` for component tests, built from a small route table instead
@@ -11,12 +13,7 @@ import type { RouterContext } from '../../app/router-context.ts'
  * /api/path/{param}"`, matching the path syntax `@quill/api-client`'s
  * `paths` type already uses, so a test route reads like the route it fakes.
  */
-export type FakeRouteHandler = (
-  request: Request,
-  params: Readonly<Record<string, string>>,
-) => Response | Promise<Response>
-
-export type FakeRoutes = Readonly<Record<string, FakeRouteHandler>>
+export type { FakeRouteHandler, FakeRoutes }
 
 export function jsonResponse(status: number, body: unknown): Response {
   return new Response(JSON.stringify(body), {
@@ -79,7 +76,9 @@ function compileRoute(key: string, handler: FakeRouteHandler): CompiledRoute {
 const FAKE_ORIGIN = 'http://fake-api.test'
 
 export function createFakeApiClient(routes: FakeRoutes): ApiClient {
-  const compiled = Object.entries(routes).map(([key, handler]) => compileRoute(key, handler))
+  const compiled = Object.entries(withDerivedTreeRoutes(routes)).map(([key, handler]) =>
+    compileRoute(key, handler),
+  )
 
   const fakeFetch: typeof fetch = async (input) => {
     // Always a `Request` in practice — `openapi-fetch` never calls `fetch`

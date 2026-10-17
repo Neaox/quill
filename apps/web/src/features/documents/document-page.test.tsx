@@ -1,4 +1,4 @@
-import { act, screen, within } from '@testing-library/react'
+import { act, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it } from 'vitest'
 
@@ -94,7 +94,7 @@ const renderedAt = (request: Request) =>
 function envelope(overrides: Record<string, unknown> = {}) {
   return () =>
     jsonResponse(200, {
-      permissions: { view: true, comment: true, edit: true, manage: false },
+      permissions: { view: true, comment: true, edit: true, publish: true, manage: false },
       lock: null,
       lastPublished: { revision: 'b'.repeat(40), author: 'Ada', at: '2026-02-03T00:00:00.000Z' },
       review: null,
@@ -133,6 +133,38 @@ function readingRoutes(overrides: FakeRoutes = {}): FakeRoutes {
     ...overrides,
   }
 }
+
+describe('the reading view records that it was opened', () => {
+  it('tells the server once, for the person’s own history', async () => {
+    const opened: string[] = []
+    renderApp(
+      READING_PATH,
+      readingRoutes({
+        'POST /api/documents/{id}/view': (_request, params) => {
+          opened.push(String(params['id']))
+          return new Response(undefined, { status: 204 })
+        },
+      }),
+    )
+
+    await screen.findByRole('article', { name: 'Regional failover' })
+
+    await waitFor(() => {
+      expect(opened).toHaveLength(1)
+    })
+  })
+
+  it('reads fine when the record cannot be kept', async () => {
+    renderApp(
+      READING_PATH,
+      readingRoutes({
+        'POST /api/documents/{id}/view': () => errorResponse(500, 'internal', 'Boom'),
+      }),
+    )
+
+    expect(await screen.findByRole('article', { name: 'Regional failover' })).toBeInTheDocument()
+  })
+})
 
 describe('the reading view', () => {
   it('renders the published body on the reading grid, with breakout widths intact', async () => {
@@ -231,7 +263,7 @@ describe('the reading view', () => {
       READING_PATH,
       readingRoutes({
         'GET /api/documents/{id}/envelope': envelope({
-          permissions: { view: true, comment: false, edit: false, manage: false },
+          permissions: { view: true, comment: false, edit: false, publish: false, manage: false },
         }),
       }),
     )
@@ -340,6 +372,18 @@ describe('reading an older revision', () => {
       'href',
       READING_PATH,
     )
+  })
+
+  it('does not offer to restore a revision to somebody who cannot publish', async () => {
+    renderApp(`${READING_PATH}?rev=${'a'.repeat(40)}`, {
+      ...readingRoutes(),
+      'GET /api/documents/{id}/envelope': envelope({
+        permissions: { view: true, comment: true, edit: true, publish: false, manage: false },
+      }),
+    })
+
+    await screen.findByRole('article', { name: 'Regional failover' })
+    expect(screen.queryByRole('button', { name: 'Restore this revision' })).not.toBeInTheDocument()
   })
 
   it('restores it, which publishes a new revision and returns to the current one', async () => {

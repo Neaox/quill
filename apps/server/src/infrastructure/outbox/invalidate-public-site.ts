@@ -33,7 +33,7 @@ import type { OutboxConsumer } from './consumer.ts'
  * that is right when the consumer *does* something with the payload; this one
  * only needs to know that something happened.
  *
- * Nesting a page under another and deleting one (ADR-049) change the site's
+ * Nesting a page under another and deleting one (ADR-054) change the site's
  * navigation and its child pages lists too, so they empty it as well.
  */
 export function createInvalidatePublicSiteConsumers(

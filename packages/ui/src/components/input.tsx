@@ -58,7 +58,7 @@ export interface InputProps extends Omit<ComponentPropsWithoutRef<'input'>, 'chi
   /** Help shown under the field, before it has been used. */
   readonly description?: string
   /** Validation message. Its presence is what marks the field invalid. */
-  readonly error?: string
+  readonly error?: string | undefined
 }
 
 /**

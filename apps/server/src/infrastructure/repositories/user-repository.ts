@@ -39,6 +39,15 @@ export function createUserRepository(db: DrizzleClient): UserRepository {
       return row === undefined ? null : toUserRow(row)
     },
 
+    async listByIds(ids: readonly UserId[]): Promise<readonly UserRow[]> {
+      if (ids.length === 0) return []
+      const rows = await db
+        .select()
+        .from(users)
+        .where(inArray(users.id, [...ids]))
+      return rows.map(toUserRow)
+    },
+
     async findByEmail(email: string): Promise<UserRow | null> {
       const rows = await db.select().from(users).where(eq(users.email, email))
       const row = rows[0]
@@ -77,6 +86,23 @@ export function createUserRepository(db: DrizzleClient): UserRepository {
           ),
         )
         .orderBy(asc(users.displayName))
+        .limit(limit)
+      return rows.map(toUserRow)
+    },
+
+    async searchByPrefix(query: string, limit: number): Promise<readonly UserRow[]> {
+      // `%`, `_` and the escape character are literal in what an admin types.
+      const pattern = `${query.toLowerCase().replace(/[\\%_]/g, String.raw`\$&`)}%`
+      const rows = await db
+        .select()
+        .from(users)
+        .where(
+          or(
+            sql`lower(${users.displayName}) LIKE ${pattern}`,
+            sql`lower(${users.email}) LIKE ${pattern}`,
+          ),
+        )
+        .orderBy(asc(users.displayName), asc(users.email))
         .limit(limit)
       return rows.map(toUserRow)
     },

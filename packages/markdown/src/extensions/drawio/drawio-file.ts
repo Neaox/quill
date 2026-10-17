@@ -161,6 +161,7 @@ const ATTRIBUTE = /([\w:.-]+)\s*=\s*(["'])([\s\S]*?)\2/g
 const ELEMENT_START = /<[A-Za-z]/g
 
 function attributesOf(source: string): ReadonlyMap<string, string> {
+  /* v8 ignore start -- a match of the pattern always has a name and one of its two quoted values. */
   return new Map(
     Array.from(source.matchAll(ATTRIBUTE), (match) => [
       // Groups the pattern always captures.
@@ -168,6 +169,7 @@ function attributesOf(source: string): ReadonlyMap<string, string> {
       decodeEntities(String(match[3])),
     ]),
   )
+  /* v8 ignore stop */
 }
 
 /**

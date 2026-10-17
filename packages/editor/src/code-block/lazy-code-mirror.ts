@@ -210,8 +210,8 @@ export function createLazyCodeMirror(options: LazyCodeMirrorOptions): LazyCodeMi
 
   const open = (): CodeMirrorHost => {
     if (live !== undefined) return live
-    stopWatching()
-    unpaint()
+    stopWatching?.()
+    unpaint?.()
     pre.remove()
     opening.delete(pre)
     live = createCodeMirror({ ...options, text, language, editable, painting })
@@ -267,8 +267,8 @@ export function createLazyCodeMirror(options: LazyCodeMirrorOptions): LazyCodeMi
     },
     destroy() {
       destroyed = true
-      stopWatching()
-      unpaint()
+      stopWatching?.()
+      unpaint?.()
       live?.destroy()
     },
   }

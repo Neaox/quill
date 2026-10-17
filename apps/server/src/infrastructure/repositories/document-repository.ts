@@ -8,7 +8,14 @@ import type {
   DocumentRow,
   UpdateDocumentPatch,
 } from '@quill/application'
-import type { DocumentId, DocumentStatus, RevisionId, ShortId, WorkspaceId } from '@quill/domain'
+import type {
+  DocumentId,
+  DocumentStatus,
+  RevisionId,
+  ShortId,
+  UserId,
+  WorkspaceId,
+} from '@quill/domain'
 
 import { documents } from '../db/schema.ts'
 import type { DrizzleClient } from '../db/types.ts'
@@ -28,6 +35,8 @@ function toDocumentRow(row: typeof documents.$inferSelect): DocumentRow {
     templateId: row.templateId,
     templateVersion: row.templateVersion,
     headRevision: row.headRevision as RevisionId | null,
+    createdBy: row.createdBy as UserId | null,
+    updatedBy: row.updatedBy as UserId | null,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
   }
@@ -46,6 +55,8 @@ interface DocumentRecord extends Record<string, unknown> {
   template_id: string | null
   template_version: number | null
   head_revision: string | null
+  created_by: string | null
+  updated_by: string | null
   /**
    * Drizzle reads a timestamp in raw SQL as the driver's text, not as the
    * `Date` its query builder returns, so a recursive query's rows arrive with
@@ -73,6 +84,8 @@ function fromRecord(record: DocumentRecord): DocumentRow {
     templateId: record.template_id,
     templateVersion: record.template_version,
     headRevision: record.head_revision as RevisionId | null,
+    createdBy: record.created_by as UserId | null,
+    updatedBy: record.updated_by as UserId | null,
     createdAt: toDate(record.created_at),
     updatedAt: toDate(record.updated_at),
   }
@@ -95,6 +108,7 @@ export function createDocumentRepository(db: DrizzleClient): DocumentRepository 
           status: input.status,
           templateId: input.templateId,
           templateVersion: input.templateVersion,
+          createdBy: input.createdBy ?? null,
           createdAt: input.now,
           updatedAt: input.now,
         })
@@ -128,6 +142,7 @@ export function createDocumentRepository(db: DrizzleClient): DocumentRepository 
           status: input.status,
           templateId: input.templateId,
           templateVersion: input.templateVersion,
+          createdBy: input.createdBy ?? null,
           createdAt: input.now,
           updatedAt: input.now,
         })
@@ -210,7 +225,7 @@ export function createDocumentRepository(db: DrizzleClient): DocumentRepository 
 
     /**
      * One recursive walk down the document tree, bounded by the depth, for a
-     * child pages list (ADR-049). The cycle guard is the depth itself: a
+     * child pages list (ADR-054). The cycle guard is the depth itself: a
      * parent chain is acyclic (`checkParent`), and a walk can never go
      * further than the six levels a list may ask for.
      */

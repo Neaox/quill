@@ -140,6 +140,32 @@ describe('updateDocument', () => {
     })
   })
 
+  it('records who renamed or moved it, and leaves the editor alone when nobody is named', async () => {
+    const renamed = await updateDocument(deps, {
+      documentId: CHILD,
+      sessionId: SESSION,
+      updatedBy: ACTOR,
+      patch: { title: 'Renamed' },
+    })
+    expect(renamed.kind === 'updated' && renamed.document.updatedBy).toBe(ACTOR)
+
+    const moved = await updateDocument(deps, {
+      documentId: CHILD,
+      sessionId: SESSION,
+      patch: { collectionId: RUNBOOKS },
+    })
+    expect(moved.kind === 'updated' && moved.document.updatedBy).toBe(ACTOR)
+
+    const another = userId('00000000-0000-4000-8000-000000000002')
+    const movedAgain = await updateDocument(deps, {
+      documentId: CHILD,
+      sessionId: SESSION,
+      updatedBy: another,
+      patch: { collectionId: ARCHITECTURE },
+    })
+    expect(movedAgain.kind === 'updated' && movedAgain.document.updatedBy).toBe(another)
+  })
+
   it('answers not-found for a document that does not exist', async () => {
     expect(
       await updateDocument(deps, {
@@ -229,7 +255,7 @@ describe('updateDocument', () => {
     ])
   })
 
-  it('announces a change of parent inside the collection as a nesting (ADR-049)', async () => {
+  it('announces a change of parent inside the collection as a nesting (ADR-054)', async () => {
     await updateDocument(deps, { documentId: CHILD, sessionId: SESSION, patch: { parentId: null } })
     await updateDocument(deps, { documentId: CHILD, sessionId: SESSION, patch: { parentId: null } })
     expect(uow.events.filter((event) => event.type === DOCUMENT_NESTED)).toMatchObject([
@@ -607,7 +633,7 @@ describe('deleteDocument', () => {
     })
   })
 
-  it('announces the delete, with where the document was, for the lists that showed it (ADR-049)', async () => {
+  it('announces the delete, with where the document was, for the lists that showed it (ADR-054)', async () => {
     await deleteDocument(deps, { documentId: CHILD, deletedBy: ACTOR })
     expect(uow.events.filter((event) => event.type === DOCUMENT_DELETED)).toMatchObject([
       {

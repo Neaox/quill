@@ -172,7 +172,7 @@ export function createDocumentFormat(options: DocumentFormatOptions = {}): Docum
         text: { title: text.title, headings: text.headings, body: text.body },
         links: extractLinks(ast).map(toLink),
         // The slots a page fills as it is assembled (ADR-032): today the
-        // child pages lists (ADR-049). The live-block registry adds its own
+        // child pages lists (ADR-054). The live-block registry adds its own
         // types in M5.
         slots: childPagesSlots(ast),
         incompleteRequiredSections: incompleteRequiredSections(

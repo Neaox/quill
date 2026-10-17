@@ -92,6 +92,31 @@ function accepts(host: string, port: number): Promise<boolean> {
   })
 }
 
+/** The design system's modules that nearly every screen uses (see the `ui-base` chunk below). */
+const UI_BASE_MODULES = [
+  'components/badge.tsx',
+  'components/button.tsx',
+  'components/callout.tsx',
+  'components/icons.tsx',
+  'components/layout-grid.tsx',
+  'components/local-time.tsx',
+  'components/relative-time.tsx',
+  'components/scroll-group.tsx',
+  'components/spinner.tsx',
+  'components/text-link.tsx',
+  'components/toast-tone.tsx',
+  'components/toast.ts',
+  'lib/class-names.ts',
+  'lib/link.tsx',
+  'lib/time/',
+]
+
+/** Module ids use the platform's separator, so compare on forward slashes. */
+function isUiBase(moduleId: string): boolean {
+  const path = moduleId.replaceAll('\\', '/')
+  return UI_BASE_MODULES.some((module) => path.includes(`packages/ui/src/${module}`))
+}
+
 export default defineConfig({
   plugins: [
     // Before `react()`, as the plugin requires: it generates
@@ -124,6 +149,25 @@ export default defineConfig({
     // `dist/.vite/manifest.json` to resolve each route's static import graph
     // without guessing chunk names from hashed filenames.
     manifest: true,
+    rolldownOptions: {
+      output: {
+        codeSplitting: {
+          groups: [
+            {
+              // The primitives nearly every screen draws. Left to the automatic
+              // split, each is its own tiny chunk shared by whichever route
+              // components happen to use it, and a screen pays a request and a
+              // gzip header for each; together they compress far better than
+              // apart (quill-plan.md section 31: the reading route's budget is
+              // measured in gzipped bytes). Radix-backed components stay out,
+              // because they are what a route can choose not to load.
+              name: 'ui-base',
+              test: isUiBase,
+            },
+          ],
+        },
+      },
+    },
   },
   server: {
     port: 5173,

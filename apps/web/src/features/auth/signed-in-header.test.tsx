@@ -83,6 +83,7 @@ describe('the person menu', () => {
       ['Layout', '/admin/settings/layout'],
       ['Secrets and sign-in', '/admin/settings/secrets'],
       ['Units and workspaces', '/admin/organisation'],
+      ['People and groups', '/admin/groups'],
     ])
     // The panel is portalled to the end of the body, outside every landmark,
     // as every popover is; it is checked on its own and the page on its own.

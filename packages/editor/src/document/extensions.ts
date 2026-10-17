@@ -80,7 +80,7 @@ export interface EditorExtensionOptions {
    */
   readonly menus?: MenusKeymapOptions
   /**
-   * What a child pages block previews (ADR-049): the application's list of
+   * What a child pages block previews (ADR-054): the application's list of
    * this page's children. Omitted, the block says in words what it will list.
    */
   readonly navigation?: NavigationViewOptions
@@ -143,7 +143,7 @@ export function buildExtensions(options: EditorExtensionOptions = {}): Extension
     KeyboardShortcuts,
     TaskToggle,
     FootnoteNumbers,
-    // The headings a table of contents lists, and the block selected whole (ADR-049).
+    // The headings a table of contents lists, and the block selected whole (ADR-054).
     NavigationBlocks,
     Autoformat,
     // Before the Markdown paste handler: a pasted picture carries a file and

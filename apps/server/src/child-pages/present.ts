@@ -2,7 +2,7 @@ import type { ChildPageNode, DocumentRow } from '@quill/application'
 import type { ChildPage } from '@quill/markdown'
 
 /**
- * The use case's tree in the template's terms (ADR-049): each page with the
+ * The use case's tree in the template's terms (ADR-054): each page with the
  * address the surface reads it at — its reading address in the app, by its
  * short key (ADR-035),
  * a site path on the public site — and a draft marked as one.

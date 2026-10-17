@@ -190,7 +190,7 @@ describe('enhanceContents', () => {
     expect(current()).toEqual([])
   })
 
-  it('marks every link to the section in a table of contents block as well as the rail (ADR-049)', () => {
+  it('marks every link to the section in a table of contents block as well as the rail (ADR-054)', () => {
     const { Observer, created } = fakeObserver()
     page()
     // A block in the body lists a subset, and lists it first in the page.

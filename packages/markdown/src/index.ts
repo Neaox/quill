@@ -269,5 +269,5 @@ export { contentKey, mergeDocuments, resolveMerge } from './merge/merge-document
 export type { MarkdownMerge } from './merge/merge-markdown.ts'
 export { mergeMarkdown } from './merge/merge-markdown.ts'
 
-// Navigation blocks: a table of contents, and the pages under this one (ADR-049)
+// Navigation blocks: a table of contents, and the pages under this one (ADR-054)
 export * from './navigation/index.ts'

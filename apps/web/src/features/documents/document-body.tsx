@@ -31,7 +31,7 @@ export interface DocumentBodyProps {
    */
   readonly enhance?: ((article: HTMLElement) => () => void) | undefined
   /**
-   * Answers the body's child pages slots for this reader (ADR-049). Omitted
+   * Answers the body's child pages slots for this reader (ADR-054). Omitted
    * — a shared link, a specimen — the slots keep their fallback line. Keep it
    * stable: a new function asks again.
    */
@@ -108,7 +108,7 @@ export function DocumentBody({
   useEffect(() => {
     followLink.current = onFollowLink
   }, [onFollowLink])
-  /* Synchronises the box the mounted body's child pages slots read (ADR-049),
+  /* Synchronises the box the mounted body's child pages slots read (ADR-054),
      outside React, with the latest props: read when a body is mounted and
      when a list arrives, so permissions arriving later cause no remount. */
   useEffect(() => {
@@ -138,12 +138,12 @@ export function DocumentBody({
       enhanceTables(article),
       enhanceDetails(article),
       // Every table of contents in the body marks the section being read,
-      // as the rail beside it does (ADR-049).
+      // as the rail beside it does (ADR-054).
       enhanceContents(article.ownerDocument, {
         links: 'article nav.toc a[href^="#"]',
         topInset: () => SHELL_HEADER_HEIGHT_PX,
       }),
-      // The pages under this one, for this reader (ADR-032, ADR-049).
+      // The pages under this one, for this reader (ADR-032, ADR-054).
       ...(childPages.current.loadChildPages === undefined
         ? []
         : [

@@ -154,8 +154,8 @@ export function useDrawio({ documentId, place }: UseDrawioOptions): DrawioIntegr
     store.saved(result.diagram)
     if (result.kind === 'created') {
       const { url } = result.diagram
-      place((editor) =>
-        insertImage({ src: url, alt: current.title })(editor.state, editor.view.dispatch),
+      place((target) =>
+        insertImage({ src: url, alt: current.title })(target.state, target.view.dispatch),
       )
       // Every later save from this session revises what it just created.
       setSession({ kind: 'existing', diagram: result.diagram, title: current.title })
@@ -163,10 +163,10 @@ export function useDrawio({ documentId, place }: UseDrawioOptions): DrawioIntegr
     }
     if (result.kind === 'copied' && current.kind === 'existing') {
       const replaced = current.diagram.url
-      place((editor) => {
-        const position = imagePosition(editor, replaced, current.pos)
+      place((target) => {
+        const position = imagePosition(target, replaced, current.pos)
         if (position === undefined) return
-        setImageSource(position, result.diagram.url)(editor.state, editor.view.dispatch)
+        setImageSource(position, result.diagram.url)(target.state, target.view.dispatch)
       })
       setSession({ kind: 'existing', diagram: result.diagram, title: current.title })
     }

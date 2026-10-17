@@ -1,4 +1,4 @@
-import { and, eq, sql } from 'drizzle-orm'
+import { and, count, eq, sql } from 'drizzle-orm'
 
 import type { GroupId, GroupRepository, GroupRow, UnitId } from '@quill/application'
 import type { UserId } from '@quill/domain'
@@ -55,6 +55,46 @@ export function createGroupRepository(db: DrizzleClient): GroupRepository {
       const rows = await db.select().from(groups).where(eq(groups.id, id))
       const row = rows[0]
       return row === undefined ? null : toGroupRow(row)
+    },
+
+    async list(): Promise<readonly GroupRow[]> {
+      const rows = await db.select().from(groups)
+      return rows.map(toGroupRow)
+    },
+
+    async countMembers(): Promise<ReadonlyMap<GroupId, number>> {
+      const rows = await db
+        .select({ groupId: groupMembers.groupId, members: count() })
+        .from(groupMembers)
+        .groupBy(groupMembers.groupId)
+      return new Map(rows.map((row) => [row.groupId as GroupId, row.members]))
+    },
+
+    async countChildren(id: GroupId): Promise<number> {
+      const rows = await db
+        .select({ children: count() })
+        .from(groups)
+        .where(eq(groups.parentId, id))
+      /* v8 ignore next -- an aggregate without GROUP BY always yields exactly one row; the fallback only satisfies noUncheckedIndexedAccess. */
+      return rows[0]?.children ?? 0
+    },
+
+    async listMemberIds(groupId: GroupId): Promise<readonly UserId[]> {
+      const rows = await db
+        .select({ userId: groupMembers.userId })
+        .from(groupMembers)
+        .where(eq(groupMembers.groupId, groupId))
+      return rows.map((row) => row.userId as UserId)
+    },
+
+    async rename(id: GroupId, name: string): Promise<GroupRow> {
+      const rows = await db.update(groups).set({ name }).where(eq(groups.id, id)).returning()
+      return toGroupRow(requireRow(rows[0], 'rename: group not found'))
+    },
+
+    /** `group_members` cascades from the group, so the memberships go in the same statement. */
+    async delete(id: GroupId): Promise<void> {
+      await db.delete(groups).where(eq(groups.id, id))
     },
 
     async addMember({ groupId, userId, now }): Promise<void> {

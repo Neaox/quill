@@ -42,6 +42,7 @@ import {
   createRecordRenameRedirectConsumer,
 } from '../infrastructure/outbox/record-public-redirect.ts'
 import { createInvalidatePublicSiteConsumers } from '../infrastructure/outbox/invalidate-public-site.ts'
+import { createNotifyOnReviewConsumers } from '../infrastructure/outbox/notify-on-review.ts'
 import { createRenderOnPublishConsumer } from '../infrastructure/outbox/render-on-publish.ts'
 import { createPostgresSearchIndex } from '../infrastructure/search/postgres-search-index.ts'
 import { createVisibleDocumentResolver } from '../infrastructure/search/visible-documents.ts'
@@ -331,10 +332,11 @@ export async function createServerHarness(options: HarnessOptions = {}): Promise
     ),
   )
   jobRunner.register(createSendMailConsumer(mailer))
-  // A new page changes the child pages lists above it (ADR-049); it has
+  for (const consumer of createNotifyOnReviewConsumers(deps)) jobRunner.register(consumer)
+  // A new page changes the child pages lists above it (ADR-054); it has
   // nothing to index or render until it is published.
   jobRunner.register(childPagesOf(DOCUMENT_CREATED))
-  // Nesting and deleting change the lists and the public navigation (ADR-049).
+  // Nesting and deleting change the lists and the public navigation (ADR-054).
   for (const eventType of [DOCUMENT_NESTED, DOCUMENT_DELETED]) {
     jobRunner.register(
       combineConsumers(eventType, childPagesOf(eventType), invalidationOf(eventType)),

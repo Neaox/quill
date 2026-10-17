@@ -36,6 +36,7 @@ import {
   createRecordRenameRedirectConsumer,
 } from './infrastructure/outbox/record-public-redirect.ts'
 import { createInvalidatePublicSiteConsumers } from './infrastructure/outbox/invalidate-public-site.ts'
+import { createNotifyOnReviewConsumers } from './infrastructure/outbox/notify-on-review.ts'
 import { createRenderOnPublishConsumer } from './infrastructure/outbox/render-on-publish.ts'
 import { createPostgresSearchIndex } from './infrastructure/search/postgres-search-index.ts'
 import { createVisibleDocumentResolver } from './infrastructure/search/visible-documents.ts'
@@ -268,7 +269,7 @@ const invalidationOf = (eventType: string) => {
   return consumer
 }
 
-// The child pages lists (ADR-049) are invalidated by six events, each a
+// The child pages lists (ADR-054) are invalidated by six events, each a
 // subtree's worth of entries at most.
 const invalidateChildPages = new Map(
   createInvalidateChildPagesConsumers(childPagesCache, deps).map((consumer) => [
@@ -326,16 +327,26 @@ jobRunner.register(
     invalidationOf(ATTACHMENT_REVISED),
   ),
 )
+// A re-saved diagram (ADR-043) changes the words and the picture of every
+// published body that shows it, without a publish.
+jobRunner.register(
+  combineConsumers(
+    ATTACHMENT_REVISED,
+    createIndexOnAttachmentRevisedConsumer(deps),
+    invalidationOf(ATTACHMENT_REVISED),
+  ),
+)
 // Delivery happens here rather than on the request path, so an address that
 // has an account costs no more than one that does not (ADR-011).
 jobRunner.register(createSendMailConsumer(mailer))
+for (const consumer of createNotifyOnReviewConsumers(deps)) jobRunner.register(consumer)
 // Every type something emits has a consumer, even when the consumer does
 // nothing yet: the poller claims only registered types, so an unregistered
 // one would accumulate for ever (review finding H6).
-// A new page changes the child pages lists above it (ADR-049); it has
+// A new page changes the child pages lists above it (ADR-054); it has
 // nothing to index or render until it is published.
 jobRunner.register(childPagesOf(DOCUMENT_CREATED))
-// Nesting and deleting change the lists and the public navigation (ADR-049).
+// Nesting and deleting change the lists and the public navigation (ADR-054).
 for (const eventType of [DOCUMENT_NESTED, DOCUMENT_DELETED]) {
   jobRunner.register(
     combineConsumers(eventType, childPagesOf(eventType), invalidationOf(eventType)),

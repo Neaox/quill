@@ -10,7 +10,7 @@ import { Decoration, DecorationSet } from '@tiptap/pm/view'
 
 /**
  * The document's headings, as a table of contents in the editor sees them
- * (ADR-049): the ids the reader will give them, by the same slugger in the
+ * (ADR-054): the ids the reader will give them, by the same slugger in the
  * same order, and where each one is in the editor, so a click on an entry
  * puts the caret there.
  *

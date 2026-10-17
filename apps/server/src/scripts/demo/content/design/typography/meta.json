@@ -1,0 +1,11 @@
+{
+  "collection": "Foundations",
+  "title": "Typography",
+  "type": "reference",
+  "owners": ["sofia@acme.example"],
+  "tags": ["typography", "tokens", "foundations"],
+  "review": "1y",
+  "status": "published",
+  "notes": ["First published"],
+  "frontMatter": {}
+}

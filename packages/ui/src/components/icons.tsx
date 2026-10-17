@@ -288,3 +288,67 @@ export function RestoreIcon({ className }: IconProps) {
     </Glyph>
   )
 }
+
+/** Settings: two sliders, which says "adjust" more plainly at 16 pixels than a gear. */
+export function SettingsIcon({ className }: IconProps) {
+  return (
+    <Glyph className={className}>
+      <path d="M2.5 4.5h5.25M12.25 4.5h1.25M2.5 11.5h1.25M8.25 11.5h5.25" />
+      <circle cx="10" cy="4.5" r="1.75" />
+      <circle cx="6" cy="11.5" r="1.75" />
+    </Glyph>
+  )
+}
+
+/** A person: a head and shoulders. */
+export function UserIcon({ className }: IconProps) {
+  return (
+    <Glyph className={className}>
+      <circle cx="8" cy="5.5" r="2.5" />
+      <path d="M3 13.25c.6-2.3 2.6-3.5 5-3.5s4.4 1.2 5 3.5" />
+    </Glyph>
+  )
+}
+
+/** Notifications: a bell. */
+export function BellIcon({ className }: IconProps) {
+  return (
+    <Glyph className={className}>
+      <path d="M3.75 11.25h8.5l-1-1.5V6.5a3.25 3.25 0 0 0-6.5 0v3.25l-1 1.5Z" />
+      <path d="M6.5 13.25a1.5 1.5 0 0 0 3 0" />
+    </Glyph>
+  )
+}
+
+/** A group: two heads and shoulders, one behind the other. */
+export function UsersIcon({ className }: IconProps) {
+  return (
+    <Glyph className={className}>
+      <circle cx="6" cy="5.75" r="2.25" />
+      <path d="M1.75 13c.5-2 2.2-3.1 4.25-3.1s3.75 1.1 4.25 3.1" />
+      <path d="M10.25 3.75a2.25 2.25 0 0 1 0 4M11.25 10.1c1.6.4 2.7 1.4 3 2.9" />
+    </Glyph>
+  )
+}
+
+/** Leave: an arrow going out through a door. */
+export function SignOutIcon({ className }: IconProps) {
+  return (
+    <Glyph className={className}>
+      <path d="M6.5 2.75h-3a.75.75 0 0 0-.75.75v9c0 .41.34.75.75.75h3" />
+      <path d="M10 5.25 12.75 8 10 10.75M12.5 8H6.25" />
+    </Glyph>
+  )
+}
+
+/** The organisation's units and workspaces: four places. */
+export function WorkspacesIcon({ className }: IconProps) {
+  return (
+    <Glyph className={className}>
+      <rect x="2.5" y="2.5" width="4.5" height="4.5" rx="1" />
+      <rect x="9" y="2.5" width="4.5" height="4.5" rx="1" />
+      <rect x="2.5" y="9" width="4.5" height="4.5" rx="1" />
+      <rect x="9" y="9" width="4.5" height="4.5" rx="1" />
+    </Glyph>
+  )
+}

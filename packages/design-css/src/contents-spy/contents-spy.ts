@@ -26,7 +26,7 @@ export type IntersectionObserverClass = new (
 
 /**
  * The contents lists followed by default: the public site's "On this page"
- * rail, and every table of contents block in a body (ADR-049). One heading
+ * rail, and every table of contents block in a body (ADR-054). One heading
  * may be linked from both, and every link to it is marked.
  */
 export const CONTENTS_LINKS = '.site-toc a[href^="#"], nav.toc a[href^="#"]'

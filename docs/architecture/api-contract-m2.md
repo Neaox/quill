@@ -13,7 +13,7 @@ All routes are under `/api`, require a session unless stated, and use the error 
 | `GET /documents/:id` | Metadata | `Document` (id, shortId, workspaceId, collectionId, parentId, slug, path, title, status, templateId?, templateVersion?, updatedAt, headRevision?) |
 | `GET /documents/:id/content` | Published source | `{ revision, markdown, frontMatter }` or 404 before first publish |
 | `GET /documents/:id/rendered?revision=` | Rendered body from the render cache (ADR-031) | `{ revision, html, outline: OutlineEntry[], slots: SlotKey[] }` |
-| `GET /documents/:id/children?depth=&sort=&excerpts=&icons=` | What fills a `::children` slot for this reader (ADR-049): `depth` 1–6, `sort` `manual`, `title` or `updated`. Never lists a page the reader may not read; `private, no-cache` | `{ html, count }` |
+| `GET /documents/:id/children?depth=&sort=&excerpts=&icons=` | What fills a `::children` slot for this reader (ADR-054): `depth` 1–6, `sort` `manual`, `title` or `updated`. Never lists a page the reader may not read; `private, no-cache` | `{ html, count }` |
 | `GET /documents/:id/envelope` | The live envelope (ADR-031) | `{ permissions: { view, comment, edit, manage }, lock: { holderUserId, holderName, expiresAt } \| null, lastPublished: { revision, author, at } \| null, review: { dueAt, overdue } \| null, health: HealthSignal[] }` |
 | `POST /documents/:id/publish` | Publish the current draft | body `{ base: revision \| null, changeNote? }` → `{ kind: 'published', revision }` or `409 { kind: 'merge-required', current, conflicts }`; `423 lock_lost`; `422 stale_base` |
 | `GET /documents/:id/history?limit=&cursor=` | Revisions touching this document | `{ revisions: RevisionSummary[], nextCursor? }` |

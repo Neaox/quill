@@ -101,6 +101,14 @@ describe('createDocument: paths', () => {
 })
 
 describe('createDocument', () => {
+  it('records who created it, and nobody as its last editor yet', async () => {
+    const result = await createDocument(deps, command)
+    expect(result.kind === 'created' && result.document).toMatchObject({
+      createdBy: AUTHOR,
+      updatedBy: null,
+    })
+  })
+
   it('creates a blank document, its draft, and a DocumentCreated event', async () => {
     const result = await createDocument(deps, command)
     expect(result.kind).toBe('created')

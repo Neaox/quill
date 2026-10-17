@@ -1,6 +1,7 @@
 import { Link, useNavigate } from '@tanstack/react-router'
 import { useCallback, useEffect, useRef, useState, type RefObject } from 'react'
 
+import '@quill/design-css/comparison.css'
 import {
   Block,
   Button,
@@ -121,8 +122,10 @@ export interface ComparisonPageProps {
   readonly range: ComparisonRange
   readonly view: ComparisonView
   readonly layout: ComparisonLayout
-  /** May edit: may compare with the draft, and restore (ADR-015). */
+  /** May edit: may compare with the draft. */
   readonly canEdit: boolean
+  /** May publish, which a restore does (ADR-015, ADR-052). */
+  readonly canRestore: boolean
 }
 
 const VIEWS = [
@@ -198,6 +201,7 @@ export function ComparisonPage({
   view,
   layout,
   canEdit,
+  canRestore,
 }: ComparisonPageProps) {
   const styles = comparisonPageStyles()
   const navigate = useNavigate()
@@ -318,7 +322,7 @@ export function ComparisonPage({
     range.to === DRAFT_SIDE ? head : toIndex === -1 ? undefined : revisions[toIndex + 1]
   const canSwap = range.from !== null && range.to !== DRAFT_SIDE
   const restorable =
-    canEdit && range.from !== null && range.from !== head?.revision
+    canRestore && range.from !== null && range.from !== head?.revision
       ? revisions.find((revision) => revision.revision === range.from)
       : undefined
 

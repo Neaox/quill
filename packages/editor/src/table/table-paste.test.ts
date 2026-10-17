@@ -5,8 +5,9 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { documentToMdast } from '../document/ast.ts'
 import { createEditorTestHarness } from '../testing/harness.ts'
-import { handleGridPaste, pasteGrid, UNMERGED_MESSAGE } from './table-paste.ts'
-import { gridFromText } from './clipboard-grid.ts'
+import { editorSchema } from '../schema/editor-schema.ts'
+import { handleGridPaste, pasteGrid, tableFromGrid, UNMERGED_MESSAGE } from './table-paste.ts'
+import { gridFromHtml, gridFromText } from './clipboard-grid.ts'
 
 const harness = createEditorTestHarness()
 
@@ -118,5 +119,21 @@ describe('pasting a grid', () => {
     if (grid === undefined) throw new Error('no grid')
 
     expect(pasteGrid(state, grid)).toBeUndefined()
+  })
+})
+
+describe('making a table from a grid', () => {
+  it('keeps a cell whose markup holds no words as an empty line', () => {
+    const grid = gridFromHtml(
+      '<table><tr><td>a</td><td><span></span></td></tr><tr><td>b</td><td>c</td></tr></table>',
+      document,
+    )
+    if (grid === undefined) throw new Error('There is no grid.')
+
+    const table = tableFromGrid(editorSchema, grid)
+
+    expect(table.child(0).child(1).childCount).toBe(1)
+    expect(table.child(0).child(1).firstChild?.type.name).toBe('paragraph')
+    expect(table.child(0).child(1).textContent).toBe('')
   })
 })

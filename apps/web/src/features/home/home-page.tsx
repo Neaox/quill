@@ -1,91 +1,119 @@
 import { Link } from '@tanstack/react-router'
 import { useState, type ReactNode } from 'react'
 
-import { Callout, ChevronRightIcon, Spinner, textLinkClassName, tv } from '@quill/ui'
+import {
+  Button,
+  Callout,
+  DocumentIcon,
+  LocalTime,
+  RelativeTime,
+  textLinkClassName,
+  tv,
+} from '@quill/ui'
 
-import { useMe, useWorkspaceList, type WorkspaceSummaryDto } from '../../lib/api/index.ts'
+import {
+  useMe,
+  useWorkspaceList,
+  type HomeScope,
+  type WorkspaceSummaryDto,
+} from '../../lib/api/index.ts'
 import { now } from '../../lib/time/clock.ts'
-import { relativeTime } from '../../lib/time/relative-time.ts'
 import { ORGANISATION_DESTINATIONS } from '../admin/organisation-destinations.ts'
 import { AppPage } from '../layout/app-page.tsx'
 import { SearchField } from '../search/search-field.tsx'
-import { SetupChecklist } from './setup-checklist.tsx'
+import { SegmentedControl } from '../theme/segmented-control.tsx'
+import { groupByDay } from './group-by-day.ts'
+import { SetupChecklist, useSetupChecklist, type SetupChecklistState } from './setup-checklist.tsx'
 import {
   useHomeSections,
+  type HomeAttention,
   type HomeDocument,
   type HomeSections,
-  type HomeWorkspace,
 } from './use-home-sections.ts'
+import { WorkspacePlaces } from './workspace-places.tsx'
 
 export const homePageStyles = tv({
   slots: {
-    intro: 'flex flex-col gap-5',
+    intro: 'flex flex-col gap-6',
     // The field keeps to a comfortable reading width on a wide window
     // rather than stretching across the whole dashboard.
     search: 'max-w-2xl',
     /*
-     * Two columns from `lg`: the long lists (set-up, what changed) on the
-     * left, the short ones (unfinished work, where to go, the organisation)
-     * on the right, so neither column runs on while the other stands empty
-     * and a wide window is used as one composition (`AppPage` caps it).
+     * The page reads top to bottom as the person's day does: set-up (until
+     * done), the work they left unfinished, then what changed beside where
+     * they might go, and the organisation's settings last and quietest.
      *
-     * On a phone the columns dissolve (`contents`) and every section becomes
-     * one item of a single column, in the order a person needs them:
-     * set-up, unfinished work, where to go, what changed, the organisation.
+     * From `lg` the last two sit side by side: the feed on the left, the
+     * places on the right. On a phone they stack with places first, because
+     * a short list of destinations beats a feed there.
      */
-    board: [
-      'flex flex-col gap-10',
-      'lg:grid lg:grid-cols-[minmax(0,5fr)_minmax(0,3fr)] lg:items-start lg:gap-x-12',
-      '2xl:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]',
-    ],
-    column: 'flex flex-col gap-10 max-lg:contents',
-    checklist: 'max-lg:order-1',
-    drafts: 'max-lg:order-2',
-    workspaces: 'max-lg:order-3',
-    recent: 'max-lg:order-4',
-    organisation: 'max-lg:order-5',
+    board: 'flex flex-col gap-12',
+    columns:
+      'flex flex-col gap-12 lg:grid lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)] lg:items-start lg:gap-x-14',
+    feed: 'lg:col-start-1',
+    places: 'max-lg:order-first lg:col-start-2 lg:row-start-1',
     eyebrow: 'text-sm text-muted',
-    greeting: 'mt-1 text-2xl font-semibold tracking-tight text-balance text-foreground',
-    sectionHead: 'flex items-baseline gap-1.5',
+    greeting:
+      'mt-1 text-3xl font-semibold tracking-tight text-balance text-foreground max-sm:text-2xl',
+    sectionHead: 'flex items-baseline gap-2',
     sectionTitle: 'section-label text-sm',
     sectionCount: 'section-count text-sm tabular-nums',
-    sectionNote: 'mt-1 text-xs text-muted',
     // A container, so a row drops its workspace name by the room the list
     // has rather than the window's: the same list sits in a wide column and
     // in a narrow one.
-    list: 'mt-3 flex flex-col @container',
+    feedDays: 'mt-4 flex flex-col gap-5 @container',
+    dayLabel: 'px-2.5 text-xs font-medium text-muted',
+    dayList: 'mt-1 flex flex-col',
     row: [
-      'group -mx-2.5 flex items-center gap-4 rounded-md px-2.5 py-2 text-sm',
+      'group flex items-center gap-4 rounded-md px-2.5 py-2 text-sm',
       'transition-colors ease-standard hover:bg-surface',
       'focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-focus-ring',
     ],
     rowTitle: 'min-w-0 grow truncate font-medium text-foreground',
-    rowMeta: 'flex shrink-0 items-center gap-2 text-xs text-muted tabular-nums',
-    rowWorkspace: 'hidden max-w-40 truncate @sm:block',
-    cards: 'mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-1',
-    card: [
-      'group flex h-full flex-col gap-3 rounded-lg border border-border bg-surface-raised p-4',
+    rowMeta: 'flex shrink-0 items-center gap-3 text-xs text-muted tabular-nums',
+    rowWorkspace: 'hidden max-w-40 truncate @md:block',
+    jump: 'mt-3 flex flex-wrap gap-2',
+    jumpLink: [
+      'flex max-w-72 items-center gap-2 rounded-md border border-border bg-surface-raised px-3 py-1.5 text-sm',
+      'transition-colors ease-standard hover:border-border-strong hover:bg-surface',
+      'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring',
+    ],
+    // What is asked of the person, in the one place that is allowed to ask for attention: the
+    // accent edge says "this is for you" and the rest of the page stays quiet.
+    attention: 'mt-3 flex flex-col gap-2',
+    attentionRow: [
+      'flex items-center gap-4 rounded-md border border-border border-s-2 border-s-accent',
+      'bg-surface-raised px-3 py-2.5 text-sm shadow-raised @container',
+      'transition-colors ease-standard hover:border-border-strong hover:border-s-accent',
+      'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring',
+    ],
+    attentionText: 'min-w-0 grow truncate text-foreground-soft',
+    // Drafts are the person's own unfinished work, so they are the one place
+    // on the page that is a card: it is the thing to pick back up.
+    drafts: 'mt-4 grid gap-3 [grid-template-columns:repeat(auto-fill,minmax(min(100%,16rem),1fr))]',
+    draft: [
+      'group flex h-full min-h-28 flex-col gap-3 rounded-lg border border-border bg-surface-raised p-4',
       'shadow-raised transition-colors ease-standard hover:border-border-strong',
       'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring',
     ],
-    cardHead: 'flex items-start justify-between gap-3',
-    cardName: 'block truncate font-medium text-foreground',
-    cardUnit: 'mt-0.5 block truncate text-xs text-muted',
-    cardArrow: [
-      'mt-0.5 text-muted transition-transform ease-standard',
-      'group-hover:translate-x-0.5 group-hover:text-foreground motion-reduce:transition-none',
+    draftIcon: 'size-4 text-muted transition-colors ease-standard group-hover:text-accent-ink',
+    draftTitle: 'line-clamp-2 font-medium leading-snug text-balance text-foreground',
+    draftMeta: 'mt-auto flex items-center gap-1.5 text-xs text-muted tabular-nums',
+    // What stands where a list will be: said in a sentence, in a quiet frame
+    // that holds the column's place so the page does not look broken.
+    empty: [
+      'mt-4 flex flex-col items-start gap-2 rounded-lg border border-dashed border-border',
+      'px-4 py-5 text-sm text-muted',
     ],
-    cardFacts: 'mt-auto flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted tabular-nums',
-    destinations: [
-      'mt-3 flex flex-col divide-y divide-border rounded-lg border border-border',
-      'bg-surface-raised shadow-raised',
-    ],
+    emptyTitle: 'font-medium text-foreground',
+    destinations: 'mt-3 flex flex-wrap gap-2',
     destination: [
-      'group flex items-center justify-between gap-3 px-4 py-2.5 text-sm text-foreground',
-      'transition-colors ease-standard hover:bg-surface',
-      'in-first:rounded-t-lg in-last:rounded-b-lg',
-      'focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-focus-ring',
+      'rounded-full border border-border px-3 py-1 text-sm text-foreground-soft',
+      'transition-colors ease-standard hover:border-border-strong hover:bg-surface hover:text-foreground',
+      'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring',
     ],
+    skeleton: 'mt-4 flex flex-col gap-4',
+    bar: 'block h-3.5 animate-pulse rounded-sm bg-surface motion-reduce:animate-none',
   },
 })
 
@@ -116,11 +144,16 @@ export function greetingFor(hour: number): string {
  * 2. Search, the page's first action: the palette also lists every place to
  *    go, so it is how anything is reached from here.
  * 3. The set-up checklist, for an administrator, until the instance is set up.
- * 4. Continue writing: drafts that have never been published.
- * 5. Workspaces, as cards with what is in each.
- * 6. Recently updated: the newest published changes.
- * 7. Organisation, for an administrator: every settings screen, the same
- *    list the person menu and the palette offer.
+ * 4. Continue writing: drafts that have never been published, as cards.
+ * 5. Recently updated: the newest published changes under the day they
+ *    happened, beside Workspaces: every place, however many there are.
+ * 6. Organisation, for an administrator: every settings screen as quiet
+ *    links, the same list the person menu and the palette offer.
+ *
+ * It holds for an organisation of any size because what it shows is bounded by
+ * the server (`GET /api/home`), and for an empty instance because every part
+ * has a state of its own: bars while loading, a sentence and a way forward
+ * when there is nothing, and a retry when a part fails.
  *
  * A person with exactly one workspace never sees this page: the route sends
  * them straight into it.
@@ -128,7 +161,9 @@ export function greetingFor(hour: number): string {
 export function HomePage() {
   const me = useMe()
   const workspaces = useWorkspaceList()
-  const sections = useHomeSections(workspaces.data ?? [])
+  // Undefined until the person chooses: the server picks the sensible one for their history.
+  const [scope, setScope] = useState<HomeScope | undefined>(undefined)
+  const sections = useHomeSections(workspaces.data ?? [], scope)
   // Captured once: the greeting and the "3 days ago"s do not tick while
   // somebody reads them (`lib/time/clock.ts`).
   const [renderedAt] = useState(now)
@@ -151,90 +186,141 @@ export function HomePage() {
       </div>
 
       {workspaces.isPending ? (
-        <p className="flex items-center gap-2 text-sm text-muted" aria-busy="true">
-          <Spinner /> Loading your workspaces
-        </p>
+        <HomeSkeleton />
       ) : workspaces.isError ? (
         <Callout tone="danger" title="Your workspaces could not be loaded">
-          Reload the page to try again. If it keeps failing, tell your administrator.
+          <span className="flex flex-wrap items-center gap-x-3 gap-y-2">
+            Something went wrong reaching the server.
+            <Button
+              size="sm"
+              variant="secondary"
+              onClick={() => {
+                void workspaces.refetch()
+              }}
+            >
+              Try again
+            </Button>
+          </span>
         </Callout>
-      ) : (
-        <Board
-          isInstanceAdmin={isInstanceAdmin}
+      ) : isInstanceAdmin ? (
+        <AdministratorBoard
           workspaces={workspaces.data}
           sections={sections}
           renderedAt={renderedAt}
+          onScope={setScope}
+        />
+      ) : (
+        <Board
+          workspaces={workspaces.data}
+          sections={sections}
+          renderedAt={renderedAt}
+          onScope={setScope}
+          setup={undefined}
         />
       )}
     </AppPage>
   )
 }
 
-function Board({
-  isInstanceAdmin,
-  workspaces,
-  sections,
-  renderedAt,
-}: {
-  readonly isInstanceAdmin: boolean
+/** The board with the administrator's set-up checklist, which needs its own state. */
+function AdministratorBoard(props: {
   readonly workspaces: readonly WorkspaceSummaryDto[]
   readonly sections: HomeSections
   readonly renderedAt: number
+  readonly onScope: (scope: HomeScope) => void
+}) {
+  const { sections } = props
+  const setup = useSetupChecklist(
+    props.workspaces,
+    sections.anyPublished,
+    sections.isPending || sections.isError ? 'unknown' : 'known',
+  )
+  return <Board {...props} setup={setup} />
+}
+
+function Board({
+  workspaces,
+  sections,
+  renderedAt,
+  onScope,
+  setup,
+}: {
+  readonly workspaces: readonly WorkspaceSummaryDto[]
+  readonly sections: HomeSections
+  readonly renderedAt: number
+  readonly onScope: (scope: HomeScope) => void
+  /** Present for an administrator only. */
+  readonly setup: SetupChecklistState | undefined
 }) {
   const styles = homePageStyles()
-  const hasWorkspace = workspaces.length > 0
+  const shownDrafts = sections.continueWith.length
 
   return (
     <div className={styles.board()}>
-      <div className={styles.column()}>
-        {isInstanceAdmin ? (
-          <SetupChecklist
-            workspaces={workspaces}
-            anyPublished={sections.anyPublished}
-            className={styles.checklist()}
-          />
-        ) : undefined}
-        {hasWorkspace ? (
+      {setup === undefined ? undefined : <SetupChecklist setup={setup} workspaces={workspaces} />}
+      {sections.attention.length === 0 ? undefined : (
+        <HomeSection id="attention" title="Needs your attention" count={sections.attention.length}>
+          <ul className={styles.attention()}>
+            {sections.attention.map((item) => (
+              <li key={item.requestId + item.kind}>
+                <AttentionRow item={item} />
+              </li>
+            ))}
+          </ul>
+        </HomeSection>
+      )}
+      {shownDrafts === 0 ? undefined : (
+        <HomeSection
+          id="continue"
+          title="Continue writing"
+          count={
+            sections.draftTotal > shownDrafts
+              ? `${shownDrafts} of ${sections.draftTotal}`
+              : sections.draftTotal
+          }
+        >
+          <ul className={styles.drafts()}>
+            {sections.continueWith.map((document) => (
+              <li key={document.id}>
+                <DraftCard document={document} />
+              </li>
+            ))}
+          </ul>
+        </HomeSection>
+      )}
+      {sections.jumpBackIn.length === 0 ? undefined : (
+        <HomeSection id="jump-back-in" title="Jump back in">
+          <ul className={styles.jump()}>
+            {sections.jumpBackIn.map((document) => (
+              <li key={document.id}>
+                <JumpLink document={document} />
+              </li>
+            ))}
+          </ul>
+        </HomeSection>
+      )}
+      {workspaces.length > 0 ? (
+        <div className={styles.columns()}>
           <RecentlyUpdated
             sections={sections}
             renderedAt={renderedAt}
-            className={styles.recent()}
+            onScope={onScope}
+            className={styles.feed()}
           />
-        ) : (
-          <NoWorkspaces isInstanceAdmin={isInstanceAdmin} className={styles.recent()} />
-        )}
-      </div>
-
-      <div className={styles.column()}>
-        {sections.continueWith.length === 0 ? undefined : (
-          <HomeSection
-            id="continue"
-            className={styles.drafts()}
-            title="Continue writing"
-            count={sections.draftTotal}
-            note="Drafts that have never been published, newest first."
-          >
-            <DocumentList documents={sections.continueWith} renderedAt={renderedAt} />
-          </HomeSection>
-        )}
-        {hasWorkspace ? (
           <HomeSection
             id="your-workspaces"
-            className={styles.workspaces()}
+            className={styles.places()}
             title="Workspaces"
             count={sections.workspaces.length}
           >
-            <ul className={styles.cards()}>
-              {sections.workspaces.map((card) => (
-                <li key={card.workspace.id}>
-                  <WorkspaceCard card={card} renderedAt={renderedAt} />
-                </li>
-              ))}
-            </ul>
+            <WorkspacePlaces cards={sections.workspaces} />
           </HomeSection>
-        ) : undefined}
-        {isInstanceAdmin ? <OrganisationLinks className={styles.organisation()} /> : undefined}
-      </div>
+        </div>
+      ) : // The checklist already says there is no workspace, and how to make one.
+      setup?.visible === true ? undefined : (
+        <NoWorkspaces isInstanceAdmin={setup !== undefined} />
+      )}
+      {setup === undefined ? undefined : <OrganisationLinks />}
     </div>
   )
 }
@@ -242,46 +328,92 @@ function Board({
 function RecentlyUpdated({
   sections,
   renderedAt,
+  onScope,
   className,
 }: {
   readonly sections: HomeSections
   readonly renderedAt: number
+  readonly onScope: (scope: HomeScope) => void
   readonly className: string
 }) {
-  if (sections.recentlyUpdated.length > 0) {
-    return (
-      <HomeSection
-        id="recently-updated"
-        className={className}
-        title="Recently updated"
-        note="The newest published changes across your workspaces."
-      >
-        <DocumentList documents={sections.recentlyUpdated} renderedAt={renderedAt} />
-      </HomeSection>
-    )
-  }
-  // Never "nothing yet" while the lists are still arriving.
-  return sections.isPending ? undefined : (
-    <HomeSection id="recently-updated" className={className} title="Recently updated">
-      <p className="mt-2 text-sm text-muted">
-        Nothing has been published yet. Published documents appear here, newest first.
-      </p>
+  const styles = homePageStyles()
+  const choosing = sections.hasHistory && sections.scope !== undefined
+
+  return (
+    <HomeSection
+      id="recently-updated"
+      className={className}
+      title="Recently updated"
+      action={
+        choosing ? (
+          <SegmentedControl
+            legend="Which places"
+            segments={SCOPES}
+            value={sections.scope}
+            onValueChange={onScope}
+          />
+        ) : undefined
+      }
+    >
+      {sections.recentlyUpdated.length > 0 ? (
+        <div className={styles.feedDays()}>
+          {groupByDay(sections.recentlyUpdated, (row) => row.updatedAt, renderedAt).map((day) => (
+            <section key={day.label} aria-label={day.label}>
+              <h3 className={styles.dayLabel()}>{day.label}</h3>
+              <ul className={styles.dayList()}>
+                {day.items.map((document) => (
+                  <li key={document.id}>
+                    <FeedRow document={document} />
+                  </li>
+                ))}
+              </ul>
+            </section>
+          ))}
+        </div>
+      ) : sections.isPending ? (
+        <FeedSkeleton />
+      ) : sections.isError ? (
+        <div className={styles.empty()}>
+          <p className={styles.emptyTitle()}>Recent changes could not be loaded</p>
+          <Button size="sm" variant="secondary" onClick={sections.retry}>
+            Try again
+          </Button>
+        </div>
+      ) : sections.anyPublished && sections.scope === 'mine' ? (
+        <div className={styles.empty()}>
+          <p className={styles.emptyTitle()}>Nothing new in your places</p>
+          <p>Nobody else has published in the workspaces you work in lately.</p>
+          <Button
+            size="sm"
+            variant="secondary"
+            onClick={() => {
+              onScope('everywhere')
+            }}
+          >
+            Show everywhere
+          </Button>
+        </div>
+      ) : (
+        <div className={styles.empty()}>
+          <p className={styles.emptyTitle()}>Nothing has been published yet</p>
+          <p>Published documents appear here, newest first, under the day they changed.</p>
+        </div>
+      )}
     </HomeSection>
   )
 }
 
 /** Every organisation settings screen, for an administrator: the person menu's list, in place. */
-function OrganisationLinks({ className }: { readonly className: string }) {
+function OrganisationLinks() {
   const styles = homePageStyles()
 
   return (
-    <HomeSection id="organisation" className={className} title="Organisation">
+    <HomeSection id="organisation" title="Organisation">
       <ul className={styles.destinations()}>
         {ORGANISATION_DESTINATIONS.map((destination) => (
           <li key={destination.to}>
             <Link to={destination.to} className={styles.destination()}>
               {destination.label}
-              <ChevronRightIcon className={styles.cardArrow()} />
             </Link>
           </li>
         ))}
@@ -295,15 +427,16 @@ function HomeSection({
   className,
   title,
   count,
-  note,
+  action,
   children,
 }: {
   readonly id: string
   /** Where the section sits on the dashboard's grid. */
-  readonly className: string
+  readonly className?: string | undefined
   readonly title: string
-  readonly count?: number | undefined
-  readonly note?: string | undefined
+  readonly count?: number | string | undefined
+  /** Beside the heading, at the end of its line: a control that changes what the section shows. */
+  readonly action?: ReactNode
   readonly children: ReactNode
 }) {
   const styles = homePageStyles()
@@ -317,99 +450,156 @@ function HomeSection({
         {/* Beside the heading rather than in it: the heading is the
             section's name, and the count is a fact about it. */}
         {count === undefined ? undefined : <span className={styles.sectionCount()}>{count}</span>}
+        {action === undefined ? undefined : <div className="ms-auto self-center">{action}</div>}
       </div>
-      {note === undefined ? undefined : <p className={styles.sectionNote()}>{note}</p>}
       {children}
     </section>
   )
 }
 
-function DocumentList({
-  documents,
-  renderedAt,
-}: {
-  readonly documents: readonly HomeDocument[]
-  readonly renderedAt: number
-}) {
-  const styles = homePageStyles()
+const SCOPES = [
+  { value: 'mine', label: 'Your places' },
+  { value: 'everywhere', label: 'Everywhere' },
+] as const
 
-  return (
-    <ul className={styles.list()}>
-      {documents.map((document) => (
-        <li key={document.id}>
-          <Link
-            to="/w/$workspaceSlug/d/$documentId"
-            params={{ workspaceSlug: document.workspaceSlug, documentId: document.reference }}
-            search={{}}
-            className={styles.row()}
-          >
-            <span className={styles.rowTitle()}>{document.title}</span>
-            <span className={styles.rowMeta()}>
-              <span className={styles.rowWorkspace()}>{document.workspaceName}</span>
-              <time dateTime={document.updatedAt} title={document.updatedAt.slice(0, 10)}>
-                {relativeTime(document.updatedAt, renderedAt)}
-              </time>
-            </span>
-          </Link>
-        </li>
-      ))}
-    </ul>
-  )
-}
-
-function WorkspaceCard({
-  card,
-  renderedAt,
-}: {
-  readonly card: HomeWorkspace
-  readonly renderedAt: number
-}) {
+/** A document the person was just in: a small way back, because "again" is what they want. */
+function JumpLink({ document }: { readonly document: HomeDocument }) {
   const styles = homePageStyles()
-  const { workspace, documentCount, draftCount, updatedAt } = card
 
   return (
     <Link
-      to="/w/$workspaceSlug"
-      params={{ workspaceSlug: card.reference }}
-      className={styles.card()}
+      to="/w/$workspaceSlug/d/$documentId"
+      params={{ workspaceSlug: document.workspaceSlug, documentId: document.reference }}
+      search={{}}
+      className={styles.jumpLink()}
     >
-      <span className={styles.cardHead()}>
-        <span className="min-w-0">
-          <span className={styles.cardName()}>{workspace.name}</span>
-          <span className={styles.cardUnit()}>{workspace.unit.path.join(' / ')}</span>
-        </span>
-        <ChevronRightIcon className={styles.cardArrow()} />
-      </span>
-      {documentCount === undefined ? undefined : (
-        <span className={styles.cardFacts()}>
-          <span>{plural(documentCount, 'document')}</span>
-          {draftCount === undefined || draftCount === 0 ? undefined : (
-            <span>{plural(draftCount, 'draft')}</span>
-          )}
-          {updatedAt === undefined ? undefined : (
-            <span>
-              Updated <time dateTime={updatedAt}>{relativeTime(updatedAt, renderedAt)}</time>
-            </span>
-          )}
-        </span>
-      )}
+      <DocumentIcon className="size-3.5 shrink-0 text-muted" />
+      <span className="truncate font-medium text-foreground">{document.title}</span>
+      <span className="hidden shrink-0 text-xs text-muted sm:inline">{document.workspaceName}</span>
     </Link>
   )
 }
 
-function plural(count: number, noun: string): string {
-  return `${count} ${noun}${count === 1 ? '' : 's'}`
+const ATTENTION_VERB: Record<HomeAttention['kind'], string> = {
+  'review-requested': 'asked you to review',
+  'changes-requested': 'asked for changes to',
+  'review-approved': 'approved',
 }
 
-function NoWorkspaces({
-  isInstanceAdmin,
-  className,
-}: {
-  readonly isInstanceAdmin: boolean
-  readonly className: string
-}) {
+/** One thing waiting on the person, said as a sentence: who, what they ask, and of which document. */
+function AttentionRow({ item }: { readonly item: HomeAttention }) {
+  const styles = homePageStyles()
+  const { document } = item
+
+  return (
+    <Link
+      to="/w/$workspaceSlug/d/$documentId"
+      params={{ workspaceSlug: document.workspaceSlug, documentId: document.reference }}
+      search={{}}
+      className={styles.attentionRow()}
+    >
+      <span className={styles.attentionText()}>
+        {item.by} {ATTENTION_VERB[item.kind]}{' '}
+        <strong className="font-semibold text-foreground">{document.title}</strong>
+      </span>
+      <span className={styles.rowMeta()}>
+        <span className={styles.rowWorkspace()}>{document.workspaceName}</span>
+        <RelativeTime value={item.at} />
+      </span>
+    </Link>
+  )
+}
+
+/** A draft to pick back up: a card, because it is the one thing here that is yours. */
+function DraftCard({ document }: { readonly document: HomeDocument }) {
+  const styles = homePageStyles()
+
+  return (
+    <Link
+      to="/w/$workspaceSlug/d/$documentId"
+      params={{ workspaceSlug: document.workspaceSlug, documentId: document.reference }}
+      search={{}}
+      className={styles.draft()}
+    >
+      <DocumentIcon className={styles.draftIcon()} />
+      <span className={styles.draftTitle()}>{document.title}</span>
+      <span className={styles.draftMeta()}>
+        <span className="truncate">{document.workspaceName}</span>
+        <span aria-hidden="true">·</span>
+        <RelativeTime value={document.updatedAt} className="shrink-0" />
+      </span>
+    </Link>
+  )
+}
+
+/** One change in the feed: its day is the heading above, so only the time of day is said. */
+function FeedRow({ document }: { readonly document: HomeDocument }) {
+  const styles = homePageStyles()
+
+  return (
+    <Link
+      to="/w/$workspaceSlug/d/$documentId"
+      params={{ workspaceSlug: document.workspaceSlug, documentId: document.reference }}
+      search={{}}
+      className={styles.row()}
+    >
+      <span className={styles.rowTitle()}>{document.title}</span>
+      <span className={styles.rowMeta()}>
+        <span className={styles.rowWorkspace()}>{document.workspaceName}</span>
+        <LocalTime value={document.updatedAt} format="time" />
+      </span>
+    </Link>
+  )
+}
+
+/** Differing widths, so the placeholder reads as text rather than as a block. */
+const FEED_BARS = [
+  ['a', 'w-2/3'],
+  ['b', 'w-1/2'],
+  ['c', 'w-3/4'],
+  ['d', 'w-3/5'],
+  ['e', 'w-1/2'],
+] as const
+
+/** Bars where the feed's rows will be, so the page holds its shape while it loads. */
+function FeedSkeleton() {
+  const styles = homePageStyles()
+
+  return (
+    <div className={styles.skeleton({ className: 'px-2.5' })} aria-hidden="true">
+      {FEED_BARS.map(([key, width]) => (
+        <span key={key} className={styles.bar({ className: width })} />
+      ))}
+    </div>
+  )
+}
+
+/** The page's shape while the workspaces load: announced once, drawn as bars. */
+function HomeSkeleton() {
+  const styles = homePageStyles()
+
+  return (
+    <div className={styles.columns()} aria-busy="true">
+      <p className="sr-only" role="status">
+        Loading your workspaces
+      </p>
+      <div className={styles.feed()}>
+        <FeedSkeleton />
+      </div>
+      <div className={styles.places()} aria-hidden="true">
+        <div className={styles.skeleton()}>
+          {['a', 'b', 'c', 'd', 'e', 'f'].map((key) => (
+            <span key={key} className={styles.bar({ className: 'h-8 w-full' })} />
+          ))}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function NoWorkspaces({ isInstanceAdmin }: { readonly isInstanceAdmin: boolean }) {
   return isInstanceAdmin ? (
-    <Callout tone="info" title="No workspaces yet" className={className}>
+    <Callout tone="info" title="No workspaces yet">
       Nothing has been set up. Create the first unit and workspace in{' '}
       <Link to="/admin/organisation" className={textLinkClassName()}>
         Units and workspaces
@@ -417,7 +607,7 @@ function NoWorkspaces({
       .
     </Callout>
   ) : (
-    <Callout tone="info" title="No workspaces yet" className={className}>
+    <Callout tone="info" title="No workspaces yet">
       You have not been given access to a workspace. Ask an administrator of your organisation to
       add you to one.
     </Callout>

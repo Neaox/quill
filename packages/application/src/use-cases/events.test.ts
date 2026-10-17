@@ -10,6 +10,9 @@ import {
   parseDocumentPublished,
   parseDocumentRenamed,
   parseMailRequested,
+  parseReviewDecided,
+  parseReviewRequested,
+  parseReviewWithdrawn,
 } from './events.ts'
 
 const DOC = documentId('00000000-0000-4000-8000-000000000201')
@@ -146,7 +149,7 @@ describe('parseDocumentMoved', () => {
   })
 })
 
-describe('parseDocumentNested and parseDocumentDeleted (ADR-049)', () => {
+describe('parseDocumentNested and parseDocumentDeleted (ADR-054)', () => {
   const nested = {
     version: EVENT_PAYLOAD_VERSION,
     documentId: DOC,
@@ -207,5 +210,93 @@ describe('parseAttachmentRevised (ADR-043)', () => {
     expect(parseAttachmentRevised({ ...revised, version: 99 })).toBeNull()
     expect(parseAttachmentRevised({ ...revised, attachmentId: '' })).toBeNull()
     expect(parseAttachmentRevised({ ...revised, attachmentVersion: '2' })).toBeNull()
+    expect(parseAttachmentRevised({ ...revised, attachmentVersion: undefined })).toBeNull()
+    expect(parseAttachmentRevised({ ...revised, documentId: '' })).toBeNull()
+    expect(parseAttachmentRevised({ ...revised, workspaceId: '' })).toBeNull()
+  })
+})
+
+describe('review events', () => {
+  const requested = {
+    version: EVENT_PAYLOAD_VERSION,
+    requestId: 'r1',
+    documentId: DOC,
+    workspaceId: WORKSPACE,
+    requestedBy: USER,
+    reviewers: [{ kind: 'user', id: 'u1' }],
+  }
+  const decided = {
+    version: EVENT_PAYLOAD_VERSION,
+    requestId: 'r1',
+    documentId: DOC,
+    workspaceId: WORKSPACE,
+    decidedBy: USER,
+    decision: 'approve',
+    status: 'approved',
+  }
+  const withdrawn = {
+    version: EVENT_PAYLOAD_VERSION,
+    requestId: 'r1',
+    documentId: DOC,
+    workspaceId: WORKSPACE,
+    withdrawnBy: USER,
+    reason: 'superseded',
+  }
+
+  it('reads payloads of the version it knows', () => {
+    expect(parseReviewRequested(requested)).toEqual(requested)
+    expect(parseReviewDecided(decided)).toEqual(decided)
+    expect(parseReviewWithdrawn(withdrawn)).toEqual(withdrawn)
+  })
+
+  it('drops reviewers it cannot read and defaults an unknown reason to withdrawn', () => {
+    const messy = {
+      ...requested,
+      reviewers: [null, { kind: 'robot', id: 'x' }, ...requested.reviewers],
+    }
+    expect(parseReviewRequested(messy)?.reviewers).toEqual(requested.reviewers)
+    expect(parseReviewWithdrawn({ ...withdrawn, reason: 'whatever' })?.reason).toBe('withdrawn')
+  })
+
+  it('refuses anything it cannot read', () => {
+    expect(parseReviewRequested({ ...requested, version: 99 })).toBeNull()
+    expect(parseReviewRequested({ ...requested, reviewers: 'nope' })).toBeNull()
+    expect(parseReviewRequested({ ...requested, requestId: '' })).toBeNull()
+    expect(parseReviewDecided({ ...decided, decision: 'maybe' })).toBeNull()
+    expect(parseReviewDecided({ ...decided, status: undefined })).toBeNull()
+    expect(parseReviewWithdrawn({ ...withdrawn, withdrawnBy: null })).toBeNull()
+  })
+})
+
+describe('review events missing what they identify', () => {
+  const decided = {
+    version: EVENT_PAYLOAD_VERSION,
+    requestId: 'r1',
+    documentId: DOC,
+    workspaceId: WORKSPACE,
+    decidedBy: USER,
+    decision: 'request_changes',
+    status: 'changes_requested',
+  }
+  const withdrawn = {
+    version: EVENT_PAYLOAD_VERSION,
+    requestId: 'r1',
+    documentId: DOC,
+    workspaceId: WORKSPACE,
+    withdrawnBy: USER,
+  }
+
+  it('refuses a decision that names no request, document or workspace', () => {
+    expect(parseReviewDecided(decided)?.decision).toBe('request_changes')
+    for (const missing of ['requestId', 'documentId', 'workspaceId', 'decidedBy']) {
+      expect(parseReviewDecided({ ...decided, [missing]: '' })).toBeNull()
+    }
+  })
+
+  it('refuses a withdrawal that names no request, document or workspace', () => {
+    expect(parseReviewWithdrawn(withdrawn)).not.toBeNull()
+    for (const missing of ['requestId', 'documentId', 'workspaceId']) {
+      expect(parseReviewWithdrawn({ ...withdrawn, [missing]: '' })).toBeNull()
+    }
   })
 })

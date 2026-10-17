@@ -54,4 +54,10 @@ Status values: `Proposed` (awaiting a spike or review), `Accepted`, `Superseded 
 | [046](0046-deletion-unpublishing-and-dead-links.md)  | Deletion, unpublishing and dead links         | Accepted               |
 | [047](0047-image-pipeline.md)                         | Image pipeline and format negotiation         | Accepted               |
 | [048](0048-details-and-accordions.md)                 | Details and accordions                        | Accepted               |
-| [049](0049-navigation-blocks.md)                     | Navigation blocks: contents and child pages   | Accepted               |
+| [049](0049-navigation-tree-ordering-and-paging.md)    | Navigation tree: ordering and paging          | Accepted               |
+| [050](0050-presenting-with-two-windows.md)            | Presenting with two windows                   | Accepted               |
+| [051](0051-find-and-replace.md)                       | Find and replace in the editor                | Accepted               |
+| [052](0052-publish-capability-and-review-requests.md) | Publish capability and review requests        | Accepted               |
+| [053](0053-home-relevance.md)                         | What is relevant on the signed-in home        | Accepted               |
+| [054](0054-navigation-blocks.md)                     | Navigation blocks: contents and child pages   | Accepted               |
+| [055](0055-document-properties-on-every-surface.md)  | Document properties on every surface          | Accepted               |

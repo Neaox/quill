@@ -28,7 +28,7 @@ function location() {
 }
 
 describe('projectIndexableDocument', () => {
-  it('carries what a child pages list shows: the summary and the icon (ADR-049)', () => {
+  it('carries what a child pages list shows: the summary and the icon (ADR-054)', () => {
     const result = projectIndexableDocument({
       ...location(),
       frontMatter: { ...MINIMAL_FRONT_MATTER, ...ICON },

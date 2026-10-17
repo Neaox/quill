@@ -1,0 +1,2 @@
+CREATE INDEX "documents_children_idx" ON "documents" USING btree ("workspace_id","collection_id","parent_id","created_at","id");--> statement-breakpoint
+CREATE INDEX "documents_parent_id_idx" ON "documents" USING btree ("parent_id");

@@ -128,7 +128,7 @@ export interface DocumentEditorProps {
    */
   searchDocuments?(query: string, signal: AbortSignal): Promise<readonly DocumentLinkTarget[]>
   /**
-   * Lists this page's children for a child pages block's preview (ADR-049);
+   * Lists this page's children for a child pages block's preview (ADR-054);
    * the request is the application's. Omitted, the block says in words what
    * it will list. Whether it is given is read once, when the editor is built.
    */
@@ -245,8 +245,12 @@ export function DocumentEditor({
     recents: createSlashRecents(recentsKey),
   }))
 
-  const editor = useEditor({
-    extensions: buildExtensions({
+  // Built once, as everything above says, and handed to `useEditor` as the same objects on every
+  // render: it compares its options by identity, so a fresh list, content or props each time
+  // reconfigures the whole document (every plugin and decoration) whenever a parent renders, as
+  // it does on each autosave status change.
+  const [extensions] = useState(() =>
+    buildExtensions({
       ...(placeholder === undefined ? {} : { placeholder }),
       ...(labels === undefined ? {} : { labels }),
       ...(emoji === undefined ? {} : { emoji }),
@@ -288,11 +292,10 @@ export function DocumentEditor({
             },
           }),
     }),
-    content: initial.doc.toJSON(),
-    editable,
-    immediatelyRender: true,
-    shouldRerenderOnTransaction: false,
-    editorProps: {
+  )
+  const [content] = useState(() => initial.doc.toJSON())
+  const editorProps = useMemo(
+    () => ({
       attributes: {
         role: 'textbox',
         'aria-multiline': 'true',
@@ -305,7 +308,17 @@ export function DocumentEditor({
         // distance apart while they are written as when they are read.
         class: 'document-editor-content prose',
       },
-    },
+    }),
+    [label],
+  )
+
+  const editor = useEditor({
+    extensions,
+    content,
+    editable,
+    immediatelyRender: true,
+    shouldRerenderOnTransaction: false,
+    editorProps,
     onUpdate: ({ editor: instance }) => {
       // A large paste lands in batches; the change is heard once, when the
       // last has landed, so a document is never saved half pasted.

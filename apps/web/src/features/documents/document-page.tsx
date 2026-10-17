@@ -21,6 +21,7 @@ import {
   type ComparisonRange,
   type OutlineEntry,
 } from '../../lib/api/index.ts'
+import { useRecordViewOnOpen } from './use-record-view-on-open.ts'
 import { labelRevisions } from '../../lib/documents/revision-labels.ts'
 import { useDocumentActions } from '../workspaces/document-actions.tsx'
 import {
@@ -28,7 +29,8 @@ import {
   RenameDocumentDialog,
 } from '../workspaces/rename-document-control.tsx'
 import { ShellActions, ShellAside } from '../workspaces/shell-slots.tsx'
-import { AttachmentsPanel } from './attachments-panel.tsx'
+import { ReviewActions } from '../review/review-actions.tsx'
+import { MountOnFirstOpen } from '../../lib/mount-on-first-open.tsx'
 import { DocumentReader } from './document-reader.tsx'
 import { FactsByline } from './properties/facts-byline.tsx'
 import { HealthSignals } from './health-signals.tsx'
@@ -38,6 +40,10 @@ import { TableOfContents } from './table-of-contents.tsx'
 
 const ComparisonPage = lazy(async () => ({
   default: (await import('./compare/comparison-page.tsx')).ComparisonPage,
+}))
+
+const AttachmentsPanel = lazy(async () => ({
+  default: (await import('./attachments-panel.tsx')).AttachmentsPanel,
 }))
 
 const routeApi = getRouteApi('/_authenticated/w/$workspaceSlug/d/$documentId/')
@@ -84,6 +90,7 @@ export function DocumentPage() {
   // same conditions as in the bar.
   const narrow = useNarrowScreen()
   const navigate = useNavigate()
+  useRecordViewOnOpen(documentId)
 
   const revisions = labelRevisions(history.data?.revisions ?? [], {
     complete: history.data?.nextCursor === undefined,
@@ -224,6 +231,17 @@ export function DocumentPage() {
             <span className="max-lg:sr-only">Share</span>
           </Button>
         ) : undefined}
+        {permissions === undefined ? undefined : (
+          <ReviewActions
+            workspaceSlug={workspaceSlug}
+            documentId={documentId}
+            title={title}
+            // Only a draft that says something the published page does not is worth a review.
+            canEdit={permissions.edit && envelope.data?.unpublishedChanges === true}
+            canPublish={permissions.publish}
+            published={lastPublished?.revision ?? null}
+          />
+        )}
         {permissions?.edit === true ? (
           <Link
             to="/w/$workspaceSlug/d/$documentId/edit"
@@ -246,12 +264,14 @@ export function DocumentPage() {
         />
       ) : undefined}
 
-      <AttachmentsPanel
-        documentId={documentId}
-        open={showingAttachments}
-        onOpenChange={setShowingAttachments}
-        canEdit={permissions?.edit === true}
-      />
+      <MountOnFirstOpen open={showingAttachments}>
+        <AttachmentsPanel
+          documentId={documentId}
+          open={showingAttachments}
+          onOpenChange={setShowingAttachments}
+          canEdit={permissions?.edit === true}
+        />
+      </MountOnFirstOpen>
 
       {compare === undefined ? (
         <>
@@ -301,7 +321,7 @@ export function DocumentPage() {
                 revisions={revisions}
                 currentRevision={rev}
                 isPending={history.isPending}
-                canRestore={permissions?.edit === true}
+                canRestore={permissions?.publish === true}
                 {...(lastPublished === null ? {} : { lastPublishedBy: lastPublished.author })}
               />
               <HealthSignals signals={envelope.data?.health ?? []} />
@@ -327,6 +347,7 @@ export function DocumentPage() {
             view={view ?? 'changes'}
             layout={layout ?? 'split'}
             canEdit={permissions?.edit === true}
+            canRestore={permissions?.publish === true}
           />
         </Suspense>
       )}

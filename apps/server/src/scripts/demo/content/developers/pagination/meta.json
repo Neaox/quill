@@ -1,0 +1,11 @@
+{
+  "collection": "API reference",
+  "title": "Pagination",
+  "type": "reference",
+  "owners": ["marcus@acme.example"],
+  "tags": ["api", "pagination", "cursor"],
+  "review": "6m",
+  "status": "published",
+  "notes": ["First version"],
+  "frontMatter": {}
+}

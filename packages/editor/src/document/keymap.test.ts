@@ -56,6 +56,13 @@ describe('the editor keyboard map', () => {
     expect(press('- [x] one\n', 'Enter', 4)).toContain('- [x] o')
   })
 
+  it('moves a table’s column with Alt+Left and Alt+Right, and spends them outside one', () => {
+    const NL = String.fromCharCode(10)
+    const table = '| a | b |' + NL + '| - | - |' + NL + '| c | d |' + NL
+    expect(press(table, 'Alt-ArrowRight', 4)).toContain('| b | a |')
+    expect(press('A paragraph.' + NL, 'Alt-ArrowLeft', 3)).toBeNull()
+  })
+
   it('leaves Enter to the document outside a list', () => {
     expect(press('A paragraph.\n', 'Enter', 3)).toBeNull()
   })
@@ -69,6 +76,18 @@ describe('the editor keyboard map', () => {
   it('moves between table cells with Tab', () => {
     const table = ['| A | B |', '| - | - |', '| 1 | 2 |', ''].join('\n')
     expect(press(table, 'Tab', 4)).toBe(table)
+  })
+
+  it('adds a row when Tab leaves the last cell, so a table can be written from the keyboard', () => {
+    const table = ['| A | B |', '| - | - |', '| 1 | 2 |', ''].join('\n')
+    // Position 21 is inside the last cell of the last row.
+    expect(press(table, 'Tab', 21)).toContain('| | |')
+  })
+
+  it('moves down a table with Enter instead of splitting a cell, which GFM cannot hold', () => {
+    const table = ['| A | B |', '| - | - |', '| 1 | 2 |', ''].join('\n')
+    expect(press(table, 'Enter', 4)).toBe(table)
+    expect(press(table, 'Enter', 21)).toContain('| | |')
   })
 
   it('leaves Tab alone where it means neither of those things', () => {

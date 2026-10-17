@@ -53,7 +53,7 @@ describe('an index entry', () => {
     })
   })
 
-  it('carries the summary and icon a child pages list shows, or null for none (ADR-049)', () => {
+  it('carries the summary and icon a child pages list shows, or null for none (ADR-054)', () => {
     expect(
       toIndexRow({
         document: { ...INDEXABLE, summary: 'Promote it.', icon: '🛟' },

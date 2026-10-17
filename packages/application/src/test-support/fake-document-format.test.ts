@@ -141,6 +141,38 @@ describe('createFakeDocumentFormat: render and read', () => {
   })
 })
 
+/** A published text with no front matter, as the comparison reads it. */
+const text = (body: string) => serialise({}, body)
+
+describe('createFakeDocumentFormat: compare', () => {
+  const context = { linkTitles: new Map() }
+
+  it('pairs lines by position and names each as added, removed or changed', () => {
+    const compared = format.compare({
+      before: text('one\ntwo\nthree'),
+      after: text('one\nTWO'),
+      context,
+    })
+    expect(compared.changes.map(({ id, change, excerpt }) => ({ id, change, excerpt }))).toEqual([
+      { id: 'c2', change: 'changed', excerpt: 'TWO' },
+      { id: 'c3', change: 'removed', excerpt: 'three' },
+    ])
+    expect(compared.summary).toMatchObject({ changed: 1, removed: 1, added: 0 })
+    expect(compared.summary.wordsAdded).toBe(1)
+    expect(compared.summary.wordsRemoved).toBe(2)
+
+    const grown = format.compare({ before: text('one'), after: text('one\ntwo'), context })
+    expect(grown.changes).toMatchObject([{ id: 'c2', change: 'added', wordsAdded: 1 }])
+    expect(grown.changes[0]?.wordsRemoved).toBe(0)
+  })
+
+  it('has no sections for identical texts', () => {
+    const compared = format.compare({ before: text('same'), after: text('same'), context })
+    expect(compared.changes).toEqual([])
+    expect(compared.summary.sections).toBe(0)
+  })
+})
+
 describe('the fake clock and id generator', () => {
   it('advances and resets only when told to', () => {
     const start = new Date('2026-01-01T00:00:00.000Z')

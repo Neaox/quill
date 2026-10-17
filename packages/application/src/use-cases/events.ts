@@ -1,4 +1,12 @@
-import type { DocumentId, RevisionId, UserId, WorkspaceId } from '@quill/domain'
+import type {
+  DocumentId,
+  ReviewDecision,
+  ReviewerKind,
+  ReviewStatus,
+  RevisionId,
+  UserId,
+  WorkspaceId,
+} from '@quill/domain'
 
 import type { CollectionId, MagicLinkPurpose } from '../ports/persistence.ts'
 import { createVersionedReader } from './versioned-reader.ts'
@@ -31,14 +39,14 @@ export const DOCUMENT_MOVED = 'DocumentMoved'
 
 /**
  * A document was nested under another parent, or lifted to the top, inside
- * its own collection (ADR-049). Nothing on the web moves — `DocumentMoved`
+ * its own collection (ADR-054). Nothing on the web moves — `DocumentMoved`
  * covers a change of collection — but the pages listed under both parents
  * change, which is what a child pages list shows.
  */
 export const DOCUMENT_NESTED = 'DocumentNested'
 
 /**
- * A document was deleted (ADR-049). Its children were lifted to the top of
+ * A document was deleted (ADR-054). Its children were lifted to the top of
  * its collection by the same delete, so every list that showed it, or showed
  * them under it, has changed.
  */
@@ -51,6 +59,14 @@ export const DOCUMENT_DELETED = 'DocumentDeleted'
  * public site's cached pages — is brought up to date from this.
  */
 export const ATTACHMENT_REVISED = 'AttachmentRevised'
+
+/**
+ * Review requests (ADR-052). Payloads name ids and never the message or a
+ * comment, which are read from the request when something needs them.
+ */
+export const REVIEW_REQUESTED = 'ReviewRequested'
+export const REVIEW_DECIDED = 'ReviewDecided'
+export const REVIEW_WITHDRAWN = 'ReviewWithdrawn'
 
 export const EVENT_PAYLOAD_VERSION = 1
 
@@ -110,6 +126,36 @@ export interface AttachmentRevisedPayload {
   readonly workspaceId: WorkspaceId
   /** The attachment's own version after the revision. */
   readonly attachmentVersion: number
+}
+
+export interface ReviewRequestedPayload {
+  readonly version: number
+  readonly requestId: string
+  readonly documentId: DocumentId
+  readonly workspaceId: WorkspaceId
+  readonly requestedBy: UserId
+  readonly reviewers: readonly { readonly kind: ReviewerKind; readonly id: string }[]
+}
+
+export interface ReviewDecidedPayload {
+  readonly version: number
+  readonly requestId: string
+  readonly documentId: DocumentId
+  readonly workspaceId: WorkspaceId
+  readonly decidedBy: UserId
+  readonly decision: ReviewDecision
+  /** Where the request stands after this answer. */
+  readonly status: ReviewStatus
+}
+
+export interface ReviewWithdrawnPayload {
+  readonly version: number
+  readonly requestId: string
+  readonly documentId: DocumentId
+  readonly workspaceId: WorkspaceId
+  readonly withdrawnBy: UserId
+  /** `superseded` when the author asked again; `withdrawn` when they took it back. */
+  readonly reason: 'withdrawn' | 'superseded'
 }
 
 /**
@@ -301,4 +347,91 @@ export function parseDocumentNested(payload: unknown): DocumentNestedPayload | n
 /** A `DocumentDeleted` payload, or null when it is not one this release can read. */
 export function parseDocumentDeleted(payload: unknown): DocumentDeletedPayload | null {
   return deletedReader.read(payload)
+}
+
+const REVIEWER_KINDS = new Set<string>(['user', 'group'])
+
+const reviewRequestedReader = createVersionedReader<ReviewRequestedPayload>({
+  [EVENT_PAYLOAD_VERSION]: (payload) => {
+    const requestId = readString(payload, 'requestId')
+    const documentId = readString(payload, 'documentId')
+    const workspaceId = readString(payload, 'workspaceId')
+    const requestedBy = readString(payload, 'requestedBy')
+    const reviewers = (payload as Record<string, unknown>)['reviewers']
+    if (requestId === null || documentId === null || workspaceId === null) return null
+    if (requestedBy === null || !Array.isArray(reviewers)) return null
+    const readable = reviewers.flatMap((reviewer: unknown) => {
+      if (typeof reviewer !== 'object' || reviewer === null) return []
+      const kind = readString(reviewer, 'kind')
+      const id = readString(reviewer, 'id')
+      return kind !== null && id !== null && REVIEWER_KINDS.has(kind)
+        ? [{ kind: kind as ReviewerKind, id }]
+        : []
+    })
+    return {
+      version: EVENT_PAYLOAD_VERSION,
+      requestId,
+      documentId: documentId as DocumentId,
+      workspaceId: workspaceId as WorkspaceId,
+      requestedBy: requestedBy as UserId,
+      reviewers: readable,
+    }
+  },
+})
+
+const reviewDecidedReader = createVersionedReader<ReviewDecidedPayload>({
+  [EVENT_PAYLOAD_VERSION]: (payload) => {
+    const requestId = readString(payload, 'requestId')
+    const documentId = readString(payload, 'documentId')
+    const workspaceId = readString(payload, 'workspaceId')
+    const decidedBy = readString(payload, 'decidedBy')
+    const decision = readString(payload, 'decision')
+    const status = readString(payload, 'status')
+    if (requestId === null || documentId === null || workspaceId === null) return null
+    if (decidedBy === null || status === null) return null
+    if (decision !== 'approve' && decision !== 'request_changes') return null
+    return {
+      version: EVENT_PAYLOAD_VERSION,
+      requestId,
+      documentId: documentId as DocumentId,
+      workspaceId: workspaceId as WorkspaceId,
+      decidedBy: decidedBy as UserId,
+      decision,
+      status: status as ReviewStatus,
+    }
+  },
+})
+
+const reviewWithdrawnReader = createVersionedReader<ReviewWithdrawnPayload>({
+  [EVENT_PAYLOAD_VERSION]: (payload) => {
+    const requestId = readString(payload, 'requestId')
+    const documentId = readString(payload, 'documentId')
+    const workspaceId = readString(payload, 'workspaceId')
+    const withdrawnBy = readString(payload, 'withdrawnBy')
+    if (requestId === null || documentId === null || workspaceId === null) return null
+    if (withdrawnBy === null) return null
+    return {
+      version: EVENT_PAYLOAD_VERSION,
+      requestId,
+      documentId: documentId as DocumentId,
+      workspaceId: workspaceId as WorkspaceId,
+      withdrawnBy: withdrawnBy as UserId,
+      reason: readString(payload, 'reason') === 'superseded' ? 'superseded' : 'withdrawn',
+    }
+  },
+})
+
+/** A `ReviewRequested` payload, or null when it is not one this release can read. */
+export function parseReviewRequested(payload: unknown): ReviewRequestedPayload | null {
+  return reviewRequestedReader.read(payload)
+}
+
+/** A `ReviewDecided` payload, or null when it is not one this release can read. */
+export function parseReviewDecided(payload: unknown): ReviewDecidedPayload | null {
+  return reviewDecidedReader.read(payload)
+}
+
+/** A `ReviewWithdrawn` payload, or null when it is not one this release can read. */
+export function parseReviewWithdrawn(payload: unknown): ReviewWithdrawnPayload | null {
+  return reviewWithdrawnReader.read(payload)
 }

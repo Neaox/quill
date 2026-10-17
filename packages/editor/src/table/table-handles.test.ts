@@ -35,6 +35,10 @@ describe('the column borders', () => {
     expect(resized([], 0, 50)).toEqual([])
   })
 
+  it('leaves every width as it was for a border the table does not have', () => {
+    expect(resized([100, 200], 5, 50)).toEqual([100, 200])
+  })
+
   it('writes widths as whole-per-cent proportions', () => {
     expect(proportionsOf([150, 150, 300])).toBe('25fr 25fr 50fr')
     expect(proportionsOf([1, 999])).toBe('1fr 100fr')

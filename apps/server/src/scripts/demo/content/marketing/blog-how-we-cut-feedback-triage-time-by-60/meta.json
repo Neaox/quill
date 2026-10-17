@@ -1,0 +1,10 @@
+{
+  "collection": "Content",
+  "title": "Blog: how we cut feedback triage time by 60%",
+  "type": "article",
+  "owners": ["ravi@acme.example"],
+  "tags": ["blog", "harbourview-health", "tidepool", "draft"],
+  "status": "draft",
+  "notes": [],
+  "frontMatter": {}
+}

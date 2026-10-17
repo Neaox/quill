@@ -13,8 +13,30 @@ export interface OutlineEntry {
   readonly children: readonly OutlineEntry[]
 }
 
+/** A heading before it has been placed in the tree. */
+export type OutlineHeading = Omit<OutlineEntry, 'children'>
+
 interface MutableEntry extends OutlineEntry {
   readonly children: OutlineEntry[]
+}
+
+/**
+ * Nests headings by depth: a heading belongs to the nearest earlier heading that
+ * is shallower than it. Skipping a level (an `h4` straight under an `h2`) is
+ * allowed, because documents do it and a contents list must still list them.
+ */
+export function nestOutline(headings: Iterable<OutlineHeading>): readonly OutlineEntry[] {
+  const roots: OutlineEntry[] = []
+  let open: MutableEntry[] = []
+  for (const heading of headings) {
+    const entry: MutableEntry = { ...heading, children: [] }
+    open = open.filter((candidate) => candidate.depth < entry.depth)
+    const parent = open.at(-1)
+    if (parent === undefined) roots.push(entry)
+    else parent.children.push(entry)
+    open.push(entry)
+  }
+  return roots
 }
 
 /**
@@ -32,23 +54,37 @@ interface MutableEntry extends OutlineEntry {
  */
 export function extractOutline(ast: Root): readonly OutlineEntry[] {
   const slug = createSlugger()
-  const roots: OutlineEntry[] = []
-  let open: MutableEntry[] = []
-
+  const headings: OutlineHeading[] = []
   visit(stripPresenterNotes(ast), 'heading', (node) => {
     const text = toString(node)
-    const entry: MutableEntry = {
-      id: headingId(slug(text)),
-      depth: node.depth,
-      text,
-      children: [],
-    }
-    open = open.filter((candidate) => candidate.depth < entry.depth)
-    const parent = open.at(-1)
-    if (parent === undefined) roots.push(entry)
-    else parent.children.push(entry)
-    open.push(entry)
+    headings.push({ id: headingId(slug(text)), depth: node.depth, text })
   })
+  return nestOutline(headings)
+}
 
-  return roots
+/** Every entry of an outline in document order, without building an array of them. */
+export function* walkOutline(outline: readonly OutlineEntry[]): Generator<OutlineEntry> {
+  for (const entry of outline) {
+    yield entry
+    yield* walkOutline(entry.children)
+  }
+}
+
+/**
+ * The headings between two depths, re-nested.
+ *
+ * Dropping a level splices its children into the level above rather than losing
+ * them: a contents list of `h3`s alone still has to list every `h3`.
+ */
+export function outlineWithin(
+  outline: readonly OutlineEntry[],
+  min: number,
+  max: number,
+): readonly OutlineEntry[] {
+  function* between(): Generator<OutlineEntry> {
+    for (const entry of walkOutline(outline)) {
+      if (entry.depth >= min && entry.depth <= max) yield entry
+    }
+  }
+  return nestOutline(between())
 }

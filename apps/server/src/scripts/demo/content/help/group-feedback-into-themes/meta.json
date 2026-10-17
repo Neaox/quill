@@ -1,0 +1,11 @@
+{
+  "collection": "Feedback and themes",
+  "title": "Group feedback into themes",
+  "type": "guide",
+  "owners": ["tom@acme.example"],
+  "tags": ["themes", "inbox", "tidepool"],
+  "review": "180d",
+  "status": "published",
+  "notes": ["First version", "Added the Suggested themes banner"],
+  "frontMatter": {}
+}

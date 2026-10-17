@@ -30,9 +30,7 @@ describe('tenant labels (ADR-037)', () => {
   })
 
   it('render exactly as before when the renderer is given no labels', () => {
-    expect(renderHtml(parseMarkdown(':acme[Acme]\n'))).toBe(
-      '<article><p>:acme[Acme]</p></article>',
-    )
+    expect(renderHtml(parseMarkdown(':acme[Acme]\n'))).toBe('<article><p>:acme[Acme]</p></article>')
   })
 
   it('need words: a bare name is the author’s text', () => {

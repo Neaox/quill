@@ -7,7 +7,7 @@ import { readSource } from './read-published.ts'
 
 /**
  * The facts a document states about itself, as each kind of reader is shown
- * them (`docs/design/properties.md`, ADR-052).
+ * them (`docs/design/properties.md`, ADR-055).
  *
  * A member reading in the application sees owners as people: the address an
  * author wrote is looked up, and a verified person is shown by name — never

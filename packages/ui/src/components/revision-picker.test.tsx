@@ -85,4 +85,26 @@ describe('RevisionPicker', () => {
       'true',
     )
   })
+
+  it('says so when the value is not among the choices, and opens without a version to land on', async () => {
+    render(
+      <RevisionPicker
+        label="From"
+        value="gone"
+        choices={CHOICES}
+        onValueChange={() => undefined}
+      />,
+    )
+    const trigger = screen.getByRole('button', { name: 'From: none' })
+    expect(trigger).toHaveTextContent('Choose a version')
+
+    await userEvent.click(trigger)
+    const menu = await screen.findByRole('menu', { name: 'From' })
+    expect(within(menu).queryByRole('menuitemradio', { checked: true })).not.toBeInTheDocument()
+  })
+
+  it('names a draft, which has no publish date, by its label alone', () => {
+    render(<Harness initial="draft" />)
+    expect(screen.getByRole('button', { name: 'From: Your draft' })).toBeInTheDocument()
+  })
 })

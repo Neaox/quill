@@ -135,7 +135,7 @@ export function readerPreviewRoutes(deps: AppDependencies): FastifyPluginAsync {
     const { document, collection, workspace, organisation } = preview
     const rendered = await renderDocument(deps, { documentId: document.id, indexLinks: false })
     // The pages under this one, as this reader may see them, each opening its
-    // own preview (ADR-049).
+    // own preview (ADR-054).
     const bodyHtml =
       rendered.kind === 'rendered'
         ? await fillChildPages(deps, {
@@ -153,7 +153,7 @@ export function readerPreviewRoutes(deps: AppDependencies): FastifyPluginAsync {
       updatedAt = published.get(document.id) ?? document.updatedAt
     }
     // The facts a public reader would see, as they would see them; a preview
-    // has no search, so its tags are words (ADR-052).
+    // has no search, so its tags are words (ADR-055).
     const facts =
       rendered.kind === 'rendered' ? await readPublicFacts(deps, document, deps.clock.now()) : null
     const notice =

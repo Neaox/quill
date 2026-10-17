@@ -6,7 +6,7 @@ import { useApiClient } from './client-context.tsx'
 import { request } from './http.ts'
 import type { ChildPagesList } from './types.ts'
 
-/** Lists the pages under a document for one `::children` slot (ADR-049). */
+/** Lists the pages under a document for one `::children` slot (ADR-054). */
 export type ChildPagesLoader = (
   documentId: string,
   query: ChildPagesQuery,
@@ -17,7 +17,7 @@ export type ChildPagesLoader = (
  * `GET /api/documents/:id/children`, as the reading view fills a slot with
  * it. Not a query: the list depends on who is reading and on other
  * documents, so it is asked for afresh each time the body is mounted, and
- * the server keeps the part worth keeping (ADR-049).
+ * the server keeps the part worth keeping (ADR-054).
  */
 export function useChildPagesLoader(): ChildPagesLoader {
   const client = useApiClient()

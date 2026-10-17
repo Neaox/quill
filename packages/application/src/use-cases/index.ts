@@ -19,6 +19,9 @@ export type {
   DocumentPublishedPayload,
   DocumentRenamedPayload,
   MailRequestedPayload,
+  ReviewDecidedPayload,
+  ReviewRequestedPayload,
+  ReviewWithdrawnPayload,
 } from './events.ts'
 export {
   ATTACHMENT_REVISED,
@@ -30,6 +33,9 @@ export {
   DOCUMENT_RENAMED,
   EVENT_PAYLOAD_VERSION,
   MAIL_REQUESTED,
+  REVIEW_DECIDED,
+  REVIEW_REQUESTED,
+  REVIEW_WITHDRAWN,
   parseAttachmentRevised,
   parseDocumentDeleted,
   parseDocumentMoved,
@@ -37,6 +43,9 @@ export {
   parseDocumentPublished,
   parseDocumentRenamed,
   parseMailRequested,
+  parseReviewDecided,
+  parseReviewRequested,
+  parseReviewWithdrawn,
 } from './events.ts'
 
 export type { DocumentPlacement, DocumentReference, PathCandidate } from './document-path.ts'
@@ -226,6 +235,32 @@ export {
   TENANCY_AUDIT_EVENTS,
 } from './tenancy.ts'
 
+export type {
+  AddGroupMemberResult,
+  CreateGroupCommand,
+  CreateGroupResult,
+  DeleteGroupCommand,
+  DeleteGroupResult,
+  GroupMemberCommand,
+  GroupsDependencies,
+  GroupSummary,
+  Person,
+  RenameGroupCommand,
+  RenameGroupResult,
+} from './groups.ts'
+export {
+  addGroupMember,
+  createGroup,
+  deleteGroup,
+  GROUP_AUDIT_EVENTS,
+  listGroupMembers,
+  listGroups,
+  GROUP_PEOPLE_SEARCH_LIMIT,
+  removeGroupMember,
+  renameGroup,
+  searchPeopleForGroups,
+} from './groups.ts'
+
 export type { RestoreRevisionCommand, RestoreRevisionResult } from './restore-revision.ts'
 export { restoreRevision } from './restore-revision.ts'
 
@@ -310,6 +345,51 @@ export {
   type WindowedCollection,
   type WindowedNode,
 } from './tree-window.ts'
+
+export type {
+  GetHomeSummaryCommand,
+  HomeDocument,
+  HomeRecentDocument,
+  HomeScope,
+  HomeSummary,
+  HomeSummaryDependencies,
+  HomeViewedDocument,
+  HomeWorkspaceStats,
+} from './get-home-summary.ts'
+export {
+  getHomeSummary,
+  JUMP_BACK_IN_CANDIDATES,
+  JUMP_BACK_IN_LIMIT,
+  WORKSPACES_IN_FLIGHT,
+} from './get-home-summary.ts'
+
+export type { DocumentViewDependencies, RecordDocumentViewCommand } from './document-views.ts'
+
+export type {
+  ListNotificationsCommand,
+  ListNotificationsResult,
+  MarkNotificationsReadCommand,
+  NotificationDependencies,
+  NotificationItem,
+} from './notifications.ts'
+export {
+  listNotifications,
+  markNotificationsRead,
+  NOTIFICATION_PAGE_DEFAULT,
+  NOTIFICATION_PAGE_MAX,
+  NOTIFICATION_RETENTION_MS,
+  notifyReviewDecided,
+  notifyReviewRequested,
+  notifyReviewWithdrawn,
+  sweepNotifications,
+} from './notifications.ts'
+export {
+  clearDocumentHistory,
+  HISTORY_RETENTION_MS,
+  recordDocumentView,
+  sweepDocumentViews,
+  VIEW_DEBOUNCE_MS,
+} from './document-views.ts'
 
 export type {
   ListVisibleDocumentsCommand,
@@ -480,3 +560,33 @@ export type {
   ListChildPagesResult,
 } from './child-pages.ts'
 export { childPagesKey, listChildPages, MAX_CHILD_PAGES_DEPTH } from './child-pages.ts'
+
+export type { ReviewerAccessProbe, ReviewerRef } from './review-access.ts'
+export { createReviewerAccessProbe } from './review-access.ts'
+export type {
+  AttentionItem,
+  AttentionKind,
+  DecideReviewResult,
+  PersonRef,
+  RequestReviewResult,
+  ReviewAssignmentView,
+  ReviewDependencies,
+  ReviewerCandidates,
+  ReviewRequestView,
+  WithdrawReviewResult,
+} from './review.ts'
+export {
+  ATTENTION_LIMIT,
+  CANDIDATE_LIMIT,
+  MAX_REVIEWERS,
+  MAX_REVIEW_TEXT,
+  REVIEW_AUDIT_EVENTS,
+  closeReviewOnPublish,
+  decideReview,
+  getAttention,
+  getReview,
+  isAssignedReviewer,
+  listReviewerCandidates,
+  requestReview,
+  withdrawReview,
+} from './review.ts'

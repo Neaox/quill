@@ -1,1 +1,0 @@
-ALTER TABLE "document_search" ADD COLUMN "lifecycle" text;

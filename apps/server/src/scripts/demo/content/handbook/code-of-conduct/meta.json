@@ -1,0 +1,11 @@
+{
+  "collection": "Policies",
+  "title": "Code of conduct",
+  "type": "policy",
+  "owners": ["dana@acme.example", "aisha@acme.example"],
+  "tags": ["conduct", "policy", "reporting"],
+  "review": "1y",
+  "status": "published",
+  "notes": ["First version, reviewed by outside counsel"],
+  "frontMatter": {}
+}

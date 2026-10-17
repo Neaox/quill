@@ -1,0 +1,10 @@
+{
+  "collection": "Research",
+  "title": "Interview notes: Northwind Retail",
+  "type": "meeting",
+  "owners": ["priya@acme.example"],
+  "tags": ["interview", "northwind-retail", "skiff"],
+  "status": "published",
+  "notes": ["Notes from the Rotterdam visit"],
+  "frontMatter": {}
+}

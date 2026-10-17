@@ -16,9 +16,10 @@ import { notesDirective } from './notes.ts'
  * one place and a new reader cannot forget it.
  */
 export function stripPresenterNotes(ast: Root): Root {
-  return rewriteTree(ast, (node) =>
-    isDirective(node) && node.type === 'containerDirective' && claims(notesDirective, node)
-      ? []
-      : undefined,
-  )
+  return rewriteTree(ast, (node) => (isPresenterNotes(node) ? [] : undefined))
+}
+
+/** Whether a node is a `:::notes` block, which a reader is never shown. */
+export function isPresenterNotes(node: { readonly type: string }): boolean {
+  return isDirective(node) && node.type === 'containerDirective' && claims(notesDirective, node)
 }

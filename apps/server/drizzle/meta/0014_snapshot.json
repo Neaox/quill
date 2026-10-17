@@ -1,5 +1,5 @@
 {
-  "id": "e49f10c8-5b3b-4b25-9ba4-ded9c6833a51",
+  "id": "87bdd4a9-b12b-458f-a510-75d48f0a8bd9",
   "prevId": "1b8eab5f-4591-4c78-8e86-dc3b9cb797b3",
   "version": "7",
   "dialect": "postgresql",
@@ -908,18 +908,6 @@
           "primaryKey": false,
           "notNull": true
         },
-        "summary": {
-          "name": "summary",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "icon": {
-          "name": "icon",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
         "updated_at": {
           "name": "updated_at",
           "type": "timestamp with time zone",
@@ -1262,6 +1250,12 @@
           "primaryKey": false,
           "notNull": true,
           "default": "'{}'::jsonb"
+        },
+        "authorship": {
+          "name": "authorship",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
         },
         "updated_at": {
           "name": "updated_at",

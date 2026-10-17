@@ -122,11 +122,11 @@ export interface IndexableDocumentV1 {
   readonly lifecycle?: LifecycleState | undefined
   /**
    * What the document is about in a sentence or two — its `description`, or
-   * its first paragraph — for lists that show it under its title (ADR-049).
+   * its first paragraph — for lists that show it under its title (ADR-054).
    * Optional, so a projection written before it existed still reads.
    */
   readonly summary?: string | undefined
-  /** The document's own icon, an emoji from its front matter (ADR-049). */
+  /** The document's own icon, an emoji from its front matter (ADR-054). */
   readonly icon?: string | undefined
 }
 

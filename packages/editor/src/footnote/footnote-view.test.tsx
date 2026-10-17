@@ -7,8 +7,11 @@ import { describe, expect, it } from 'vitest'
 import { DocumentEditor } from '../document/document-editor.tsx'
 import type { DocumentEditorHandle } from '../document/document-editor.tsx'
 import { expectNoAccessibilityViolations } from '../testing/axe.ts'
+import { createEditorTestHarness } from '../testing/harness.ts'
+import { EditorView } from '@tiptap/pm/view'
 import { FootnoteReferenceView } from './footnote-view.ts'
 
+const NL = String.fromCharCode(10)
 const NOTES = 'Claim[^b], then[^a], and again[^b].\n\n[^a]: Alpha.\n\n[^b]: Beta.\n'
 
 function open(source = NOTES) {
@@ -60,6 +63,44 @@ describe('a footnote reference in the editor', () => {
     if (second === undefined) throw new Error('expected a second reference')
     await user.click(second)
     expect(editorOf(ref).state.selection.$from.node(1).attrs['identifier']).toBe('a')
+  })
+
+  it('takes the caret to the right note when notes follow it', async () => {
+    const { ref, user } = open()
+    const second = references()[1]
+    if (second === undefined) throw new Error('expected a second reference')
+
+    await user.click(second)
+
+    const { $from } = editorOf(ref).state.selection
+    expect($from.node(1).attrs['identifier']).toBe('a')
+  })
+
+  it('gives no id to a note nothing refers to', () => {
+    open('Claim[^a].' + NL + NL + '[^a]: Alpha.' + NL + NL + '[^z]: Orphan.' + NL)
+
+    const notes = [...document.querySelectorAll('.footnote-definition')]
+    expect(notes.map((note) => note.hasAttribute('id'))).toEqual([true, false])
+  })
+
+  it('stays where it is when followed to a note that is not there, or a reference with no name', async () => {
+    const { ref, user } = open()
+    const editor = editorOf(ref)
+    const reference = editor.schema.nodes['footnoteReference']
+    if (reference === undefined) throw new Error('no footnote schema')
+    act(() => {
+      editor.view.dispatch(editor.state.tr.insert(1, reference.create({ identifier: 'missing' })))
+      editor.view.dispatch(editor.state.tr.insert(1, reference.create()))
+    })
+    const before = editor.state.selection.from
+
+    const [first, second] = references()
+    if (first === undefined || second === undefined) throw new Error('expected references')
+    await user.click(first)
+    await user.click(second)
+
+    expect(editor.state.selection.from).toBe(before)
+    expect(references()).toHaveLength(5)
   })
 
   it('numbers again when a reference is added before the others', () => {
@@ -162,5 +203,33 @@ describe('a footnote reference in the editor', () => {
   it('has no accessibility violations', async () => {
     const { container } = open()
     await expectNoAccessibilityViolations(container)
+  })
+})
+
+describe('a footnote reference view on its own', () => {
+  function mount() {
+    const state = createEditorTestHarness().state(NOTES)
+    const host = document.createElement('div')
+    document.body.append(host)
+    const view = new EditorView(host, { state })
+    const reference = state.schema.nodes['footnoteReference']?.create({ identifier: 'a' })
+    if (reference === undefined) throw new Error('no footnote schema')
+    return { view, reference, nodeView: new FootnoteReferenceView(reference, view, []) }
+  }
+
+  it('shows a reference no decoration has numbered as a link with no number', () => {
+    const { view, nodeView } = mount()
+    expect(nodeView.dom.querySelector('a')).toHaveAttribute('aria-label', 'Footnote')
+    view.destroy()
+  })
+
+  it('refuses to become a node of another type, and owns every mutation inside itself', () => {
+    const { view, nodeView, reference } = mount()
+    const paragraph = view.state.schema.nodes['paragraph']?.create()
+    if (paragraph === undefined) throw new Error('no paragraph')
+    expect(nodeView.update(paragraph, [])).toBe(false)
+    expect(nodeView.update(reference, [])).toBe(true)
+    expect(nodeView.ignoreMutation()).toBe(true)
+    view.destroy()
   })
 })

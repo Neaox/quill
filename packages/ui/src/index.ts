@@ -129,6 +129,9 @@ export {
   ShareIcon,
   SuccessIcon,
   SwapIcon,
+  UserIcon,
+  BellIcon,
+  UsersIcon,
   WarningIcon,
   type IconProps,
 } from './components/icons.tsx'
@@ -393,6 +396,28 @@ export {
   type TreeProps,
   type TreeSection,
 } from './components/tree.tsx'
+export { RelativeTime, type RelativeTimeProps } from './components/relative-time.tsx'
+export { LocalTime, type LocalTimeProps } from './components/local-time.tsx'
+export {
+  formatMoment,
+  FULL_MOMENT,
+  toMoment,
+  type MomentStyle,
+  type MomentValue,
+} from './lib/time/moment.ts'
+export {
+  VirtualTree,
+  virtualTreeStyles,
+  type VirtualTreeProps,
+  type VirtualTreeRow,
+} from './components/virtual-tree.tsx'
+export { Popover, popoverStyles, type PopoverProps } from './components/popover.tsx'
+export { Textarea, textareaStyles, type TextareaProps } from './components/textarea.tsx'
+export {
+  VirtualRows,
+  virtualRowsStyles,
+  type VirtualRowsProps,
+} from './components/virtual-rows.tsx'
 
 export {
   applyThemePreference,

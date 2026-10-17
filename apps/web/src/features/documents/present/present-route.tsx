@@ -1,6 +1,7 @@
 import { getRouteApi, Link } from '@tanstack/react-router'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 
+import '@quill/ui/styles/present.css'
 import {
   Button,
   buttonClassName,

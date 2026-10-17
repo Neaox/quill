@@ -2,6 +2,7 @@ import type { ThemeVariants } from '@quill/theme'
 
 import { tv } from '../lib/class-names.ts'
 import { useThemeVariants } from '../theme/theme-variants.tsx'
+import { RelativeTime } from './relative-time.tsx'
 
 export const commentsPanelStyles = tv({
   slots: {
@@ -24,7 +25,7 @@ export interface DocumentComment {
   /** Where in the document it is anchored, as a reader sees it: `L18`. */
   readonly anchor: string
   readonly body: string
-  /** `YYYY-MM-DD`, for a `<time datetime>`. */
+  /** When it was written, as an ISO date or timestamp: said as how long ago, in full on hover. */
   readonly at: string
   readonly href: string
 }
@@ -73,7 +74,7 @@ export function CommentsPanel({
           <li key={comment.id}>
             <a href={comment.href} className={styles.link()}>
               <span className={styles.anchor()}>
-                {comment.anchor} <time dateTime={comment.at}>{comment.at}</time>
+                {comment.anchor} <RelativeTime value={comment.at} />
               </span>
               <span>
                 <span className={styles.author()}>{comment.author}</span> {comment.body}

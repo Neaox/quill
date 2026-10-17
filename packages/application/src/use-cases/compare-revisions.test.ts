@@ -196,3 +196,21 @@ describe('compareRevisionSources', () => {
     expect(result.source.lines.some((line) => line.change === 'added')).toBe(true)
   })
 })
+
+describe('compareRevisionSources: what it cannot compare', () => {
+  it('refuses a document that does not exist', async () => {
+    expect(
+      await compareRevisionSources(deps, { documentId: MISSING, from: null, to: 'draft' }),
+    ).toEqual({ kind: 'not-found', documentId: MISSING })
+  })
+
+  it('refuses a revision that is not in the document’s history', async () => {
+    const id = await aDocument()
+    const first = await publish(id, 'one')
+    const stranger = revisionId('f'.repeat(40))
+
+    expect(
+      await compareRevisionSources(deps, { documentId: id, from: stranger, to: first }),
+    ).toEqual({ kind: 'revision-not-found', revision: stranger })
+  })
+})

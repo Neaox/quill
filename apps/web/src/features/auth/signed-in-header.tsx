@@ -1,6 +1,7 @@
 import { ChevronDownIcon, MenuButton, isThemePreference, tv, type MenuSection } from '@quill/ui'
 
 import { useMe, useSignOut } from '../../lib/api/index.ts'
+import { NotificationsBell } from '../notifications/notifications-bell.tsx'
 import { RouterLink } from '../../lib/routing/router-link.tsx'
 import { ORGANISATION_DESTINATIONS } from '../admin/organisation-destinations.ts'
 import { COLOUR_SCHEMES } from '../theme/colour-schemes.ts'
@@ -113,20 +114,23 @@ export function SignedInHeader() {
   ]
 
   return (
-    <MenuButton
-      label={`Account menu for ${displayName}`}
-      linkComponent={RouterLink}
-      header={
-        <>
-          <span className={styles.headerName()}>{displayName}</span>
-          <span className={styles.headerEmail()}>{email}</span>
-        </>
-      }
-      sections={sections}
-    >
-      <span className={styles.avatar()}>{initialsOf(displayName)}</span>
-      <span className={styles.name()}>{displayName}</span>
-      <ChevronDownIcon className={styles.chevron()} />
-    </MenuButton>
+    <>
+      <NotificationsBell />
+      <MenuButton
+        label={`Account menu for ${displayName}`}
+        linkComponent={RouterLink}
+        header={
+          <>
+            <span className={styles.headerName()}>{displayName}</span>
+            <span className={styles.headerEmail()}>{email}</span>
+          </>
+        }
+        sections={sections}
+      >
+        <span className={styles.avatar()}>{initialsOf(displayName)}</span>
+        <span className={styles.name()}>{displayName}</span>
+        <ChevronDownIcon className={styles.chevron()} />
+      </MenuButton>
+    </>
   )
 }

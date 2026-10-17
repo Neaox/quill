@@ -1,0 +1,14 @@
+{
+  "collection": "Getting started",
+  "title": "Invite your team",
+  "type": "guide",
+  "owners": ["tom@acme.example"],
+  "tags": ["getting-started", "tidepool", "members"],
+  "review": "180d",
+  "status": "published",
+  "notes": [
+    "First version",
+    "Members renamed to People in Settings; added the 50-address limit and spam-folder advice"
+  ],
+  "frontMatter": {}
+}

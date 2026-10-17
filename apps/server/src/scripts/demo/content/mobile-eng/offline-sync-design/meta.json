@@ -1,0 +1,16 @@
+{
+  "collection": "Architecture",
+  "title": "Offline sync design",
+  "type": "design",
+  "owners": ["jonas@acme.example"],
+  "tags": ["skiff", "mobile", "sync", "offline"],
+  "review": "6m",
+  "status": "published",
+  "notes": [
+    "First version: outbox, push and pull, conflict rules",
+    "Added voice recording uploads and the attachment table",
+    "Replaced device-clock ordering with base_version after the Lantern Logistics clock incident",
+    "Added September measurements, Retry-After handling and tombstone cleanup; linked RFC-015; dropped two details blocks the text now covers"
+  ],
+  "frontMatter": {}
+}

@@ -110,6 +110,12 @@ export interface UpdateDocumentCommand {
   readonly patch: UpdateDocumentPatchInput
   /** The session asking: a rename is a write, and a write re-validates the lock (ADR-021). */
   readonly sessionId: SessionId
+  /**
+   * Who is asking, recorded as the document's last editor (ADR-053). Omitted
+   * leaves the last editor as it was, which is what a caller with no person
+   * behind it (an import, a repair) should do.
+   */
+  readonly updatedBy?: UserId | undefined
 }
 
 export type UpdateDocumentResult =
@@ -179,7 +185,10 @@ export async function updateDocument(
     }
     const updated = await tx.documents.update(
       command.documentId,
-      toPatch(lift ? { ...patch, parentId: null } : patch),
+      {
+        ...toPatch(lift ? { ...patch, parentId: null } : patch),
+        ...(command.updatedBy === undefined ? {} : { updatedBy: command.updatedBy }),
+      },
       now,
     )
     // Only a change of collection is announced. A public address is the
@@ -198,7 +207,7 @@ export async function updateDocument(
       await auditMove(deps, tx, { document, updated, now, sessionId: command.sessionId })
     } else if (updated.parentId !== document.parentId) {
       // A re-nesting inside the collection moves nothing on the web, but it
-      // changes the pages listed under both parents (ADR-049).
+      // changes the pages listed under both parents (ADR-054).
       const payload: DocumentNestedPayload = {
         version: EVENT_PAYLOAD_VERSION,
         documentId: document.id,
@@ -387,7 +396,7 @@ export async function deleteDocument(
   }
   await deps.uow.run(async (tx) => {
     await tx.documents.delete(command.documentId)
-    // The pages listed under its parent, and the ones it lifted, have changed (ADR-049).
+    // The pages listed under its parent, and the ones it lifted, have changed (ADR-054).
     await tx.outbox.write({
       id: deps.ids.uuid(),
       type: DOCUMENT_DELETED,

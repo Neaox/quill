@@ -151,7 +151,9 @@ describe('the share-link page', () => {
 
     const header = screen.getByRole('banner')
     expect(header).toHaveTextContent('Quill')
-    expect(header).toHaveTextContent('Shared with you · expires 2026-10-01')
+    expect(header).toHaveTextContent(
+      `Shared with you · expires ${new Intl.DateTimeFormat(undefined, { dateStyle: 'medium' }).format(new Date('2026-10-01T00:00:00.000Z'))}`,
+    )
   })
 
   it('says so plainly when the link does not expire', async () => {

@@ -1,5 +1,5 @@
 import { Link } from '@tanstack/react-router'
-import { useState } from 'react'
+import { lazy, useState } from 'react'
 
 import {
   Button,
@@ -14,7 +14,11 @@ import {
 import type { LabelledRevision } from '../../lib/documents/revision-labels.ts'
 import { comparisonLink, documentLink } from '../../lib/routing/document-reference.ts'
 import { RouterLink } from '../../lib/routing/router-link.tsx'
-import { RestoreRevisionDialog } from './restore-revision-dialog.tsx'
+import { MountOnFirstOpen } from '../../lib/mount-on-first-open.tsx'
+
+const RestoreRevisionDialog = lazy(async () => ({
+  default: (await import('./restore-revision-dialog.tsx')).RestoreRevisionDialog,
+}))
 
 export const revisionPanelStyles = tv({
   slots: {
@@ -177,14 +181,16 @@ export function RevisionPanel({
         ) : undefined}
       </div>
 
-      <RestoreRevisionDialog
-        documentId={documentId}
-        workspaceSlug={workspaceSlug}
-        revision={confirming}
-        onClose={() => {
-          setConfirming(undefined)
-        }}
-      />
+      <MountOnFirstOpen open={confirming !== undefined}>
+        <RestoreRevisionDialog
+          documentId={documentId}
+          workspaceSlug={workspaceSlug}
+          revision={confirming}
+          onClose={() => {
+            setConfirming(undefined)
+          }}
+        />
+      </MountOnFirstOpen>
     </div>
   )
 }

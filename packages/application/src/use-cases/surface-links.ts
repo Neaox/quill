@@ -83,7 +83,7 @@ export interface Replacement {
  * named and linked at its address there; anything else — a private page, one
  * outside a share link's scope, a reference that names nothing — is not
  * mentioned at all, because its title is exactly what this reader was never
- * shown (ADR-046, ADR-052).
+ * shown (ADR-046, ADR-055).
  */
 export function surfaceReplacement<T extends SurfaceDocument & { readonly title: string }>(
   reference: string | undefined,

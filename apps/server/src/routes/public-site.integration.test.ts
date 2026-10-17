@@ -319,7 +319,7 @@ describe('a document page', () => {
     expect(response.body).toContain('<time datetime=')
   })
 
-  it('states its public facts under the title, and never who owns it (ADR-052)', async () => {
+  it('states its public facts under the title, and never who owns it (ADR-055)', async () => {
     const body = (await get(path)).body
     expect(body).toMatch(
       /<\/h1><div role="group" aria-label="Document properties" class="byline">/u,

@@ -10,7 +10,7 @@ import { attribute, flag, issue, label, textChildren } from '../directives/defin
 import type { OutlineEntry } from '../render/outline.ts'
 
 /**
- * `::toc`: the document's own headings as a list of links (ADR-049).
+ * `::toc`: the document's own headings as a list of links (ADR-054).
  *
  * `::toc[On this page]{levels=2-4 style=numbered collapsed}`. The label is an
  * optional title; `levels` the heading levels listed, `N` or `N-M` from 1 to

@@ -356,7 +356,8 @@ describe('a paste of a 4,100-line document', { timeout: PASTE_TEST_TIMEOUT }, ()
     expect(dom.querySelectorAll('.cm-editor')).toHaveLength(0)
     expect(dom.querySelectorAll('pre[data-code-static]')).toHaveLength(CODE_BLOCKS)
 
-    // The first screenful comes into view: those, and only those, open.
+    // The first screenful comes into view: those, and only those, open. This counts what opens,
+    // so the idle period is long enough for all of it; how long one opening takes is timed below.
     page.scrollTo(3)
     page.drain()
     expect(dom.querySelectorAll('.cm-editor')).toHaveLength(3)

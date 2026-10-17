@@ -1,6 +1,7 @@
-import { act, render, screen } from '@testing-library/react'
+import { act, fireEvent, render, screen } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { Type } from '@sinclair/typebox'
-import { useRef } from 'react'
+import { useRef, type ReactNode } from 'react'
 import { beforeAll, describe, expect, it, vi } from 'vitest'
 
 import { expectNoAccessibilityViolations } from '../testing/axe.ts'
@@ -94,5 +95,51 @@ describe('useFrameChannel', () => {
     expect(onMessage).not.toHaveBeenCalled()
     unmount()
     expect(send?.(undefined as never)).toBe(false)
+  })
+})
+
+function openFrame(children?: ReactNode) {
+  const onCloseRequest = vi.fn<() => void>()
+  const view = render(
+    <EmbeddedEditorFrame
+      title="Draw.io diagram"
+      src={`${ORIGIN}/`}
+      sandbox="allow-scripts"
+      frameRef={{ current: null }}
+      onCloseRequest={onCloseRequest}
+    >
+      {children}
+    </EmbeddedEditorFrame>,
+  )
+  return { ...view, onCloseRequest }
+}
+
+describe('the embedded editor frame, as a modal', () => {
+  it('names itself, holds the editor’s frame, and stops the page scrolling behind it', () => {
+    const { unmount } = openFrame()
+
+    expect(screen.getByRole('dialog', { name: 'Draw.io diagram' })).toHaveAttribute('open')
+    expect(screen.getByTitle('Draw.io diagram')).toHaveAttribute('src', `${ORIGIN}/`)
+    expect(document.documentElement).toHaveClass('lightbox-open')
+
+    unmount()
+    expect(document.documentElement).not.toHaveClass('lightbox-open')
+  })
+
+  it('draws what it is given to ask over the frame', () => {
+    const asked = openFrame(<p>Close without saving?</p>)
+    expect(asked.getByText('Close without saving?')).toBeInTheDocument()
+  })
+
+  it('turns Escape and the close button into a request, never a close', async () => {
+    const { onCloseRequest } = openFrame()
+
+    const cancel = new Event('cancel', { cancelable: true })
+    fireEvent(screen.getByRole('dialog'), cancel)
+    expect(cancel.defaultPrevented).toBe(true)
+    await userEvent.click(screen.getByRole('button', { name: 'Close Draw.io diagram' }))
+
+    expect(onCloseRequest).toHaveBeenCalledTimes(2)
+    expect(screen.getByRole('dialog')).toHaveAttribute('open')
   })
 })

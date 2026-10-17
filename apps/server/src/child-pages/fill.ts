@@ -22,7 +22,7 @@ export interface FillChildPagesInput {
 
 /**
  * A body with its child pages slots filled, for a page assembled on the
- * server (ADR-032, ADR-049): the public site, and the signed-in reader's
+ * server (ADR-032, ADR-054): the public site, and the signed-in reader's
  * preview of it. Each distinct query is asked once, and a body with no slot
  * costs nothing at all. A tree that cannot be resolved leaves the slots as
  * their fallback rather than failing the page: the page is the point.

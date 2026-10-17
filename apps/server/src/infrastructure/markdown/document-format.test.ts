@@ -403,7 +403,7 @@ describe('createDocumentFormat: render and read', () => {
     expect(rendered.incompleteRequiredSections).toEqual(['Decision'])
   })
 
-  it('draws a table of contents into the body and lists each child pages slot (ADR-049)', () => {
+  it('draws a table of contents into the body and lists each child pages slot (ADR-054)', () => {
     const rendered = format.render({
       markdown: '# Title\n\n::toc\n\n## Install\n\n::children{depth=2}\n',
       linkTitles: new Map(),
@@ -591,5 +591,22 @@ describe('createDocumentFormat: retitle', () => {
       title: 'Recovered',
     })
     expect(renamed.frontMatter).toEqual({ id: DOC, title: 'Recovered' })
+  })
+})
+
+describe('createDocumentFormat: compare', () => {
+  const context = { linkTitles: new Map() }
+
+  it('draws an unchanged SVG drawing from the markup it was handed', () => {
+    const url = '/api/attachments/0b6b0d2c-7f7e-4a39-8a8a-4a5f6d0c1a11'
+    const compared = format.compare({
+      before: `![The loop](${url})\n\nBefore.\n`,
+      after: `![The loop](${url})\n\nAfter.\n`,
+      context: {
+        ...context,
+        drawings: new Map([[url, { sha256: 'a', markup: '<svg viewBox="0 0 1 1"><rect/></svg>' }]]),
+      },
+    })
+    expect(compared.html).toContain('<svg viewBox="0 0 1 1"')
   })
 })

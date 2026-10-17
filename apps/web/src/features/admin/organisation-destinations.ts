@@ -1,4 +1,16 @@
 /**
+ * The settings screens' home. They have a navigation of their own (the settings frame), so the
+ * person menu offers them as one item, "Organisation settings", and this redirects to the first.
+ */
+export const ORGANISATION_SETTINGS_HOME = '/admin/settings'
+
+/** The unit and workspace tree: organisation administration that is not one of the settings screens. */
+export const ORGANISATION_STRUCTURE = '/admin/organisation'
+
+/** The groups people belong to, which a grant can name instead of each person. */
+export const ORGANISATION_PEOPLE = '/admin/groups'
+
+/**
  * Every place an instance administrator goes to change the organisation, in
  * the order the person menu, the command palette and the home page list them
  * (`docs/design/chrome.md`, "Reaching settings").
@@ -7,7 +19,8 @@
  * be reachable from one and missing from the others. The settings screens
  * come first and in the order of their own navigation (`SETTINGS_SECTIONS`,
  * which a test holds this to); the unit and workspace tree follows, because it
- * is organisation administration too but is not a settings screen.
+ * is organisation administration too but is not a settings screen, and the
+ * people and groups come last: who is in a unit comes after what the units are.
  *
  * The first is called "Organisation settings" rather than the navigation's
  * "Organisation": in the settings frame it sits under a "Settings" heading,
@@ -45,9 +58,14 @@ export const ORGANISATION_DESTINATIONS = [
     keywords: ['settings', 'admin', 'sso', 'oidc', 'single sign-on', 'keys', 'providers'],
   },
   {
-    to: '/admin/organisation',
+    to: ORGANISATION_STRUCTURE,
     label: 'Units and workspaces',
     keywords: ['admin', 'organisation', 'manage', 'create', 'new workspace', 'new unit'],
+  },
+  {
+    to: ORGANISATION_PEOPLE,
+    label: 'People and groups',
+    keywords: ['admin', 'groups', 'teams', 'members', 'people', 'users', 'access', 'add'],
   },
 ] as const
 

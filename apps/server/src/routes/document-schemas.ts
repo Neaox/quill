@@ -159,7 +159,7 @@ export const FactsSchema = Type.Object({
   lastReviewed: Type.Optional(Type.String({ format: 'date' })),
 })
 
-/** What an outsider is shown: no people, no internal review cadence (ADR-052). */
+/** What an outsider is shown: no people, no internal review cadence (ADR-055). */
 export const PublicFactsSchema = Type.Object({
   /** A status from before the lifecycle. Kept for compatibility (ADR-033) and shown by nothing. */
   status: Type.Optional(DocumentStatusSchema),
@@ -173,6 +173,7 @@ export const EnvelopeSchema = Type.Object({
     view: Type.Boolean(),
     comment: Type.Boolean(),
     edit: Type.Boolean(),
+    publish: Type.Boolean(),
     manage: Type.Boolean(),
   }),
   lock: Type.Union([

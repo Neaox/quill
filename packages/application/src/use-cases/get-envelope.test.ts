@@ -122,6 +122,7 @@ describe('getEnvelope', () => {
       view: true,
       comment: true,
       edit: true,
+      publish: true,
       manage: false,
     })
   })

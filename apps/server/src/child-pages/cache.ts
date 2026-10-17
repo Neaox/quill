@@ -2,7 +2,7 @@ import type { ChildPagesCache, ChildPagesStructure, Clock } from '@quill/applica
 import type { DocumentId } from '@quill/domain'
 
 /**
- * What a child pages list remembers between requests (ADR-049): the subtree
+ * What a child pages list remembers between requests (ADR-054): the subtree
  * under a page, keyed by the page and the depth, and never anything about
  * who read it — visibility is decided per request, so a new deny applies at
  * once.

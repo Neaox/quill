@@ -1,18 +1,26 @@
 import { useState, type FormEvent } from 'react'
 
-import { Badge, Button, Callout, Dialog, Input, Spinner, tv } from '@quill/ui'
+import {
+  Badge,
+  Button,
+  Callout,
+  Dialog,
+  formatMoment,
+  Input,
+  RelativeTime,
+  Spinner,
+  toMoment,
+  tv,
+} from '@quill/ui'
 
 import {
   ApiError,
-  useCreateShareLink,
   useMe,
-  useRevokeShareLink,
-  useShareLinks,
   type CreatedShareLink,
   type ShareLinkDto,
   type ShareLinkScope,
 } from '../../lib/api/index.ts'
-import { revisionDate } from '../../lib/documents/revision-labels.ts'
+import { useCreateShareLink, useRevokeShareLink, useShareLinks } from '../../lib/api/share-links.ts'
 import { now } from '../../lib/time/clock.ts'
 import { SelectField } from '../../lib/forms/select-field.tsx'
 import { FormError } from '../../lib/forms/form-error.tsx'
@@ -132,17 +140,23 @@ export function scopeLabel(scope: ShareLinkScope): string {
   return SCOPES.find((option) => option.value === scope)?.label ?? scope
 }
 
+/** A date in the reader's own language. */
+const dateOf = (timestamp: string): string => {
+  const moment = toMoment(timestamp)
+  return moment === undefined ? '' : formatMoment(moment, 'date')
+}
+
 /**
  * The link's term, as one phrase: revoked beats expired beats a date, because
  * that is the order in which each stops mattering.
  */
 export function termLabel(link: ShareLinkDto, asOf: number): string {
-  if (link.revokedAt !== null) return `Revoked ${revisionDate(link.revokedAt)}`
+  if (link.revokedAt !== null) return `Revoked ${dateOf(link.revokedAt)}`
   if (link.expiresAt === null) return 'Never expires'
   const expiresAt = Date.parse(link.expiresAt)
   return Number.isNaN(expiresAt) || expiresAt > asOf
-    ? `Expires ${revisionDate(link.expiresAt)}`
-    : `Expired ${revisionDate(link.expiresAt)}`
+    ? `Expires ${dateOf(link.expiresAt)}`
+    : `Expired ${dateOf(link.expiresAt)}`
 }
 
 export interface ShareDialogProps {
@@ -347,13 +361,12 @@ export function ShareDialog({ open, onOpenChange, documentId, title }: ShareDial
                         resolves one to a name, so the only true thing to say
                         is whether it was this person. */}
                     {link.createdBy === me.data?.id ? 'created by you' : 'created by a colleague'}{' '}
-                    <time dateTime={link.createdAt}>{revisionDate(link.createdAt)}</time> ·{' '}
+                    <RelativeTime value={link.createdAt} /> ·{' '}
                     {link.lastUsedAt === null ? (
                       'never opened'
                     ) : (
                       <>
-                        last opened{' '}
-                        <time dateTime={link.lastUsedAt}>{revisionDate(link.lastUsedAt)}</time>
+                        last opened <RelativeTime value={link.lastUsedAt} />
                       </>
                     )}
                   </p>

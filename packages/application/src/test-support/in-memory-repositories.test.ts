@@ -1345,3 +1345,112 @@ describe('secrets', () => {
     ).toEqual(['b', 'c'])
   })
 })
+
+describe('createInMemoryUnitOfWork: renaming a group', () => {
+  it('renames one it holds and refuses one it does not', async () => {
+    const uow = createInMemoryUnitOfWork()
+    await uow.repos.groups.create({
+      id: 'engineering',
+      unitId: 'unit-1',
+      parentGroupId: null,
+      name: 'Engineering',
+      now: NOW,
+    })
+
+    expect((await uow.repos.groups.rename('engineering', 'Platform')).name).toBe('Platform')
+    expect((await uow.repos.groups.findById('engineering'))?.name).toBe('Platform')
+    await expect(uow.repos.groups.rename('ghost', 'x')).rejects.toThrow(
+      'rename: group ghost not found',
+    )
+  })
+})
+
+describe('createInMemoryUnitOfWork: review requests', () => {
+  const later = (minutes: number) => new Date(NOW.getTime() + minutes * 60_000)
+  const request = (id: string, now: Date) => ({
+    id,
+    documentId: DOC_1,
+    requestedBy: USER_1,
+    draftVersion: 1,
+    message: null,
+    reviewers: [],
+    now,
+  })
+
+  it('finds a request by id, or none', async () => {
+    const uow = createInMemoryUnitOfWork()
+    await uow.repos.reviews.create(request('r1', NOW))
+
+    expect((await uow.repos.reviews.findById('r1'))?.id).toBe('r1')
+    expect(await uow.repos.reviews.findById('nope')).toBeNull()
+  })
+
+  it('answers with the active request for a document, else the newest closed one', async () => {
+    const uow = createInMemoryUnitOfWork()
+    expect(await uow.repos.reviews.findLatestForDocument(DOC_1)).toBeNull()
+
+    await uow.repos.reviews.create(request('old', NOW))
+    await uow.repos.reviews.create(request('new', later(5)))
+    await uow.repos.reviews.setStatus('old', 'withdrawn', later(6))
+    await uow.repos.reviews.setStatus('new', 'superseded', later(7))
+    // Both closed: the more recently created one.
+    expect((await uow.repos.reviews.findLatestForDocument(DOC_1))?.id).toBe('new')
+
+    await uow.repos.reviews.create(request('active', later(1)))
+    // An active request wins over a newer closed one, however the two are listed.
+    expect((await uow.repos.reviews.findLatestForDocument(DOC_1))?.id).toBe('active')
+  })
+
+  it('breaks a tie in creation time by id, the later id first', async () => {
+    const uow = createInMemoryUnitOfWork()
+    await uow.repos.reviews.create(request('a', NOW))
+    await uow.repos.reviews.create(request('b', NOW))
+    await uow.repos.reviews.setStatus('a', 'withdrawn', later(1))
+    await uow.repos.reviews.setStatus('b', 'withdrawn', later(1))
+
+    expect((await uow.repos.reviews.findLatestForDocument(DOC_1))?.id).toBe('b')
+  })
+
+  it('closes a request when its status ends it, and ignores an unknown id', async () => {
+    const uow = createInMemoryUnitOfWork()
+    await uow.repos.reviews.create(request('r1', NOW))
+
+    const closed = await uow.repos.reviews.setStatus('r1', 'published', later(2))
+    expect(closed?.closedAt).toEqual(later(2))
+    expect(await uow.repos.reviews.setStatus('ghost', 'withdrawn', later(2))).toBeNull()
+  })
+})
+
+describe('createInMemoryUnitOfWork: the order review requests are found in', () => {
+  const later = (minutes: number) => new Date(NOW.getTime() + minutes * 60_000)
+  const request = (id: string, now: Date) => ({
+    id,
+    documentId: DOC_1,
+    requestedBy: USER_1,
+    draftVersion: 1,
+    message: null,
+    reviewers: [],
+    now,
+  })
+
+  it('puts the active request first whichever order they were made in', async () => {
+    const uow = createInMemoryUnitOfWork()
+    await uow.repos.reviews.create(request('active-first', NOW))
+    await uow.repos.reviews.create(request('closed-1', later(1)))
+    await uow.repos.reviews.create(request('closed-2', later(2)))
+    await uow.repos.reviews.setStatus('closed-1', 'withdrawn', later(3))
+    await uow.repos.reviews.setStatus('closed-2', 'withdrawn', later(3))
+
+    expect((await uow.repos.reviews.findLatestForDocument(DOC_1))?.id).toBe('active-first')
+  })
+
+  it('orders requests made at the same moment by id, however many there are', async () => {
+    const uow = createInMemoryUnitOfWork()
+    for (const id of ['b', 'c', 'a']) {
+      await uow.repos.reviews.create(request(id, NOW))
+      await uow.repos.reviews.setStatus(id, 'withdrawn', later(1))
+    }
+
+    expect((await uow.repos.reviews.findLatestForDocument(DOC_1))?.id).toBe('c')
+  })
+})

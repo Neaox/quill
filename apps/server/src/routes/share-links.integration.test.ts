@@ -389,7 +389,7 @@ describe('reading through a share link', () => {
     expect(body.rendered.html).toContain('The body of Authentication architecture.')
     expect(body.link).toEqual({ scope: 'document', role: 'viewer', expiresAt: null })
     expect(body.children).toEqual([])
-    // The public facts only: never an owner, who is a person (ADR-052).
+    // The public facts only: never an owner, who is a person (ADR-055).
     expect(body.facts).toEqual({ tags: [] })
 
     // No draft, no lock, no workspace, no collection, no status, and nothing

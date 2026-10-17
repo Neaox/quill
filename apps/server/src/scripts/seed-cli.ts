@@ -22,6 +22,8 @@ import { createSystemClock } from '../infrastructure/system-clock.ts'
 import { createUuidGenerator } from '../infrastructure/uuid-generator.ts'
 import { createPostgresSearchIndex } from '../infrastructure/search/postgres-search-index.ts'
 import { createVisibleDocumentResolver } from '../infrastructure/search/visible-documents.ts'
+import { DEMO_ORGANISATION_NAME, DEMO_PASSWORD } from './demo/structure.ts'
+import { seedDemoData } from './seed-demo.ts'
 import { seedDevelopmentData } from './seed.ts'
 import { pagelessStylesheets } from '../theme/pageless.ts'
 import { createSearchService } from '@quill/search'
@@ -50,6 +52,9 @@ if (process.env['NODE_ENV'] === 'production' && process.env['SEED_ALLOW_PRODUCTI
   process.exit(1)
 }
 
+/** `--demo` adds the demo company (`demo/README.md`) on top of the development seed. */
+const demo = process.argv.includes('--demo')
+
 const config = loadConfig()
 const clock = createSystemClock()
 const ids = createUuidGenerator()
@@ -67,7 +72,7 @@ const searchIndex = createPostgresSearchIndex({
 const secrets = createEnvelopeCipher(await createKeyProvider(config.masterKey))
 
 try {
-  const result = await seedDevelopmentData({
+  const deps = {
     uow,
     searchIndex,
     search: createSearchService(searchIndex),
@@ -102,7 +107,8 @@ try {
       secretResolver: createSecretResolver({ uow, secrets, clock, ids }),
     }),
     config,
-  })
+  }
+  const result = await seedDevelopmentData(deps)
   process.stdout.write(
     [
       `Seeded workspace ${result.workspaceId} (and ${result.secondWorkspaceId})`,
@@ -119,6 +125,18 @@ try {
       '',
     ].join('\n'),
   )
+  if (demo) {
+    const summary = await seedDemoData(deps)
+    process.stdout.write(
+      [
+        `Seeded the ${DEMO_ORGANISATION_NAME} demo: ${summary.documents} new documents in ` +
+          `${summary.workspaces} workspaces (${summary.revisions} revisions, ${summary.publicSites} public sites).`,
+        `Every demo person signs in with ${DEMO_PASSWORD} (priya@acme.example, marcus@acme.example, ...).`,
+        ...summary.problems.map((problem) => `  problem: ${problem}`),
+        '',
+      ].join('\n'),
+    )
+  }
 } finally {
   await database.close()
 }

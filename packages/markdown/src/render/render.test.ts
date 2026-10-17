@@ -319,7 +319,7 @@ describe('renderHtml', () => {
   it('leaves front matter out of the body, dates and all: the byline states it', () => {
     // A body is cached for every reader (ADR-031), and what a document says
     // about itself is shown by each surface's byline, to each reader as they
-    // may see it (ADR-052). A key path such as `review.lastReviewed` in the
+    // may see it (ADR-055). A key path such as `review.lastReviewed` in the
     // body was also read as the page's eyebrow.
     const html = render('Body.\n', {
       frontMatter: {

@@ -1,0 +1,15 @@
+{
+  "collection": "Patterns",
+  "title": "Accessibility checklist",
+  "type": "guide",
+  "owners": ["sofia@acme.example"],
+  "tags": ["accessibility", "wcag", "checklist", "release"],
+  "review": "6m",
+  "status": "published",
+  "notes": [
+    "First published, covering perceivable and operable criteria",
+    "Added forms, content and testing sections, and linked each item to its WCAG criterion",
+    "Moved to WCAG 2.2: added target size, focus not obscured and accessible authentication; fixed the 1.4.11 wording"
+  ],
+  "frontMatter": {}
+}

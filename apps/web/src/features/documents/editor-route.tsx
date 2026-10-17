@@ -2,6 +2,9 @@ import { getRouteApi, useNavigate } from '@tanstack/react-router'
 import { useEffect, useMemo, useRef, useState, useTransition } from 'react'
 
 import { BRAND } from '@quill/brand'
+import '@quill/ui/styles/editor.css'
+import '@quill/ui/styles/table-editor.css'
+import '@quill/ui/styles/editor-menus.css'
 import { Block, Button, Callout, LayoutGrid, Spinner, toast, tv, type ToastId } from '@quill/ui'
 import {
   DocumentEditor,
@@ -25,9 +28,6 @@ import {
   useChildPagesOf,
   useDocument,
   useDocumentEnvelope,
-  useDraft,
-  useDraftClient,
-  useLockClient,
   useMe,
   useOrganisationEmoji,
   useOrganisationLabels,
@@ -35,6 +35,8 @@ import {
   type DocumentPermissions,
   type MergeRequired,
 } from '../../lib/api/index.ts'
+import { useDraft } from '../../lib/api/drafts.ts'
+import { useDraftClient, useLockClient } from '../../lib/api/editor-clients.ts'
 // By its own path rather than through `lib/api`'s barrel: see the note there.
 // Uploading is the editor's alone, and the reading route pays for whatever the
 // barrel reaches.
@@ -52,6 +54,7 @@ import type { ImageRequest } from './image-dialog.tsx'
 import { MergeConflicts } from './merge-conflicts.tsx'
 import { MergeDialog } from './merge-dialog.tsx'
 import { openEditorLink, sectionAddress } from './editor-links.ts'
+import { ReviewActions } from '../review/review-actions.tsx'
 import { useDocumentLinkSearch } from './use-document-link-search.ts'
 import { DocumentPropertiesPanel } from './properties/document-properties-panel.tsx'
 import { useDraftFrontMatter } from './properties/draft-front-matter.ts'
@@ -169,6 +172,7 @@ export function EditorRoute() {
       mergedBy={content?.mergedBy}
       draftVersion={serverVersion}
       baseRevision={draft.data.baseRevision}
+      published={envelope.data?.lastPublished?.revision ?? null}
       permissions={envelope.data?.permissions}
       holderName={envelope.data?.lock?.holderName}
       store={store}
@@ -195,6 +199,8 @@ interface EditingSessionProps {
   readonly mergedBy: DraftAuthor | undefined
   readonly draftVersion: number
   readonly baseRevision: string | null
+  /** The revision readers see now, which a review compares the draft with; null before the first publish. */
+  readonly published: string | null
   readonly permissions: DocumentPermissions | undefined
   readonly holderName: string | undefined
   readonly store: PersistentRecoveryStore
@@ -215,6 +221,7 @@ function EditingSession({
   mergedBy,
   draftVersion,
   baseRevision,
+  published,
   permissions,
   holderName,
   store,
@@ -293,7 +300,7 @@ function EditingSession({
   // Whether the dialog was asked for a picture or for an SVG drawing.
   const [imagePurpose, setImagePurpose] = useState<'image' | 'drawing'>('image')
   const searchDocuments = useDocumentLinkSearch(workspaceSlug)
-  // What a child pages block previews: this page's children, for this person (ADR-049).
+  // What a child pages block previews: this page's children, for this person (ADR-054).
   const childPages = useChildPagesOf(documentId)
   // What the slash menu remembers is this person's, so it is kept under their id.
   const recentsKey = me.data === undefined ? undefined : `editor.slash.recent.${me.data.id}`
@@ -498,14 +505,32 @@ function EditingSession({
           className="me-1 hidden sm:block"
           onRetry={autosave.retry}
         />
-        <Button
-          size="sm"
-          loading={publish.isPending}
-          disabled={!canPublish}
-          onClick={handlePublish}
-        >
-          Publish
-        </Button>
+        {/*
+          A writer who cannot publish asks for a review to get a change live, so for them it is
+          the primary action; one who can asks as a courtesy, beside Publish (ADR-052).
+        */}
+        <ReviewActions
+          workspaceSlug={workspaceSlug}
+          documentId={documentId}
+          title={title}
+          canEdit={canEdit}
+          canPublish={permissions?.publish !== false}
+          published={published}
+          primary={permissions?.publish === false}
+          beforeRequest={async () => {
+            if (autosave.unsaved) await autosave.flush()
+          }}
+        />
+        {permissions?.publish === false ? undefined : (
+          <Button
+            size="sm"
+            loading={publish.isPending}
+            disabled={!canPublish}
+            onClick={handlePublish}
+          >
+            Publish
+          </Button>
+        )}
       </ShellActions>
 
       {!hasNotices ? undefined : (

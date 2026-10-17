@@ -16,10 +16,15 @@ import { documentLinksRoutes } from './routes/document-links.ts'
 import { draftRoutes } from './routes/drafts.ts'
 import { healthRoutes } from './routes/health.ts'
 import { lockRoutes } from './routes/locks.ts'
+import { groupRoutes } from './routes/groups.ts'
+import { historyRoutes } from './routes/history.ts'
+import { homeRoutes } from './routes/home.ts'
 import { meRoutes } from './routes/me.ts'
 import { publicSiteRoutes } from './routes/public-site.ts'
 import { publicMenuRoutes } from './routes/public-menu.ts'
+import { notificationRoutes } from './routes/notifications.ts'
 import { readerPreviewRoutes } from './routes/reader-preview.ts'
+import { reviewRoutes } from './routes/review.ts'
 import { searchRoutes } from './routes/search.ts'
 import { shareLinkRoutes, SHARE_SCHEMAS } from './routes/share-links.ts'
 import { peopleRoutes } from './routes/people.ts'
@@ -166,12 +171,17 @@ export function buildApp(options: AppOptions = {}): FastifyInstance {
     app.register(authRoutes(deps))
     app.register(oidcAuthRoutes(deps))
     app.register(meRoutes(deps))
+    app.register(homeRoutes(deps))
+    app.register(historyRoutes(deps))
     app.register(unitRoutes(deps))
+    app.register(groupRoutes(deps))
     app.register(workspaceRoutes(deps))
     app.register(collectionRoutes(deps))
     app.register(documentRoutes(deps))
     app.register(childPagesRoutes(deps))
     app.register(documentLinksRoutes(deps))
+    app.register(reviewRoutes(deps))
+    app.register(notificationRoutes(deps))
     app.register(attachmentRoutes(deps))
     app.register(drawioRoutes(deps))
     app.register(draftRoutes(deps))

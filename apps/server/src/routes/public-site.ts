@@ -299,7 +299,7 @@ export function publicSiteRoutes(deps: AppDependencies): FastifyPluginAsync {
     const workspace = await deps.uow.repos.workspaces.findById(site.collection.workspaceId)
     /* v8 ignore next -- a collection's workspace cannot be missing: the row cascades from it. */
     if (workspace === null) return notFoundPage(request, reply, site)
-    // The pages under this one, as the site lists them (ADR-049): only
+    // The pages under this one, as the site lists them (ADR-054): only
     // published, public pages, at the site's own addresses. Filled before the
     // page is cached, and the cache is emptied by the same events that change
     // the list.
@@ -323,7 +323,7 @@ export function publicSiteRoutes(deps: AppDependencies): FastifyPluginAsync {
       ),
     )
 
-    // What the page states about itself that a stranger may see (ADR-052):
+    // What the page states about itself that a stranger may see (ADR-055):
     // its tags lead to this site's own search, never into the application.
     const facts = await readPublicFacts(deps, document, deps.clock.now())
     const searchHref = `${publicSiteHref(site.siteSlug)}/search`

@@ -1,0 +1,11 @@
+{
+  "collection": "Launch plans",
+  "title": "Tidepool launch checklist",
+  "type": "guide",
+  "owners": ["ravi@acme.example"],
+  "tags": ["launch", "tidepool", "checklist"],
+  "review": "6m",
+  "status": "published",
+  "notes": ["First version of the checklist, based on the 2026.8 and 2026.9 launches"],
+  "frontMatter": {}
+}

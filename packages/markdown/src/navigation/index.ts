@@ -1,4 +1,4 @@
-/** The navigation blocks (ADR-049): a table of contents, and the pages under this one. */
+/** The navigation blocks (ADR-054): a table of contents, and the pages under this one. */
 export type {
   ChildPagesBlock,
   ChildPagesDepth,
