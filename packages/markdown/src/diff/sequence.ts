@@ -13,6 +13,7 @@
  * person that everything changed. Past that bound the remaining middle is
  * reported as removed and then added, which is what it is.
  */
+import { itemAt } from './at.ts'
 
 export type Edit =
   | { readonly kind: 'equal'; readonly before: number; readonly after: number }
@@ -86,7 +87,7 @@ interface Snapshot {
 }
 
 function reached(snapshot: Snapshot, diagonal: number): number {
-  return snapshot.values[diagonal + snapshot.d + 1] ?? 0
+  return itemAt(snapshot.values, diagonal + snapshot.d + 1, 0)
 }
 
 /** Myers' greedy forward search, or null when the script is longer than the bound. */
@@ -102,9 +103,9 @@ function myers(left: Int32Array, right: Int32Array, offset: number): readonly Ed
     if (d > MAX_EDIT_DISTANCE) return null
     trace.push({ d, values: frontier.slice(centre - d - 1, centre + d + 2) })
     for (let k = -d; k <= d; k += 2) {
-      const down = frontier[centre + k + 1] ?? 0
-      const right_ = frontier[centre + k - 1] ?? 0
-      let x = k === -d || (k !== d && right_ < down) ? down : right_ + 1
+      const down = itemAt(frontier, centre + k + 1, 0)
+      const rightward = itemAt(frontier, centre + k - 1, 0)
+      let x = k === -d || (k !== d && rightward < down) ? down : rightward + 1
       let y = x - k
       while (x < n && y < m && left[x] === right[y]) {
         x += 1
@@ -140,7 +141,7 @@ function myers(left: Int32Array, right: Int32Array, offset: number): readonly Ed
     x = previousX
     y = previousY
   }
-  return edits.reverse()
+  return edits.toReversed()
 }
 
 /**

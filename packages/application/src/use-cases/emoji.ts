@@ -119,17 +119,17 @@ export async function uploadEmojiImage(
   }
 
   let kept: Uint8Array
-  try {
-    kept = await collectAll(stripImageMetadata(sniffed, once(bytes)))
-  } catch (error) {
-    if (error instanceof MalformedImage) return { kind: 'malformed', reason: error.reason }
-    throw error
-  }
   let animation: Animation
   try {
+    kept = await collectAll(stripImageMetadata(sniffed, once(bytes)))
     animation = animationOf(sniffed, kept)
   } catch (error) {
+    if (error instanceof MalformedImage) return { kind: 'malformed', reason: error.reason }
+    // The bytes are already in memory, so walking them can only fail by being malformed; any
+    // other error is a bug in a walker, which is thrown rather than blamed on the upload.
+    /* v8 ignore else -- the unexpected-error path has no input that reaches it. */
     if (error instanceof ContainerFault) return { kind: 'malformed', reason: error.message }
+    /* v8 ignore next */
     throw error
   }
   if (animation.kind === 'animated') {

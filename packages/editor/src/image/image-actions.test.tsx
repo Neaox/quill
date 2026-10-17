@@ -11,7 +11,7 @@ import { drawioImageAction, drawioSlashContribution } from '../extensions/drawio
 import { createSlashRegistry } from '../slash/slash-registry.ts'
 import { editorSchema } from '../schema/editor-schema.ts'
 import { expectNoAccessibilityViolations } from '../testing/axe.ts'
-import type { ImageAction } from './image-actions.ts'
+import type { ImageAction, ImageRef } from './image-actions.ts'
 import { setImageSource } from './image-actions.ts'
 
 const DIAGRAM = '/api/attachments/3c9e1f4a-7b2d-4e8f-a1c6-5d0b9e2f8a17'
@@ -62,7 +62,7 @@ function open(actions: readonly ImageAction[], source = SOURCE) {
 
 describe('image actions', () => {
   it('offers "Edit diagram" on a draw.io diagram, not on a photo, and passes axe', async () => {
-    const onEdit = vi.fn()
+    const onEdit = vi.fn<(image: ImageRef) => void>()
     const store = diagramStore([DIAGRAM])
     const { container, markdown } = open([drawioImageAction({ ...store.options, onEdit })])
 
@@ -139,7 +139,7 @@ describe('image actions', () => {
 
 describe('the draw.io slash item', () => {
   it('is named by the extension, sits with the diagrams, and asks the application to open the editor', () => {
-    const onInsert = vi.fn()
+    const onInsert = vi.fn<() => void>()
     let enabled = false
     const registry = createSlashRegistry({
       contributions: [drawioSlashContribution({ onInsert, enabled: () => enabled })],

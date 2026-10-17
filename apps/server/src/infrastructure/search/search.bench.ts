@@ -1,5 +1,6 @@
+import { readFileSync } from 'node:fs'
 import { performance } from 'node:perf_hooks'
-import { createSearchService, visibilityFilter } from '@quill/search'
+import { createSearchService, shareVisibility, visibilityFilter } from '@quill/search'
 import type { CollectionId, UserId, WorkspaceId } from '@quill/domain'
 import { Pool } from 'pg'
 
@@ -53,6 +54,20 @@ const QUERIES = [
   '"campaign database"',
   'databse failover runbok',
   'tag:runbook',
+  'tag:area/3',
+]
+
+/**
+ * Queries whose matching set is large, for `facets=tag,status,collection`: the
+ * cost of a facet grows with how many documents the query matches, not with
+ * the page, so these run from a few hundred matches to every readable document.
+ */
+const FACET_QUERIES = [
+  'failover',
+  'database failover runbook',
+  'runbook',
+  'tag:area',
+  'status:published',
 ]
 
 const TOPICS = [
@@ -179,7 +194,12 @@ async function seed(): Promise<void> {
       paths.push(`runbooks/document-${written}.md`)
       titles.push(title(written))
       bodies.push(body(written))
-      tags.push(written % 3 === 0 ? 'runbook' : 'guide')
+      // Three tags a document, one of them two levels deep, so the hierarchy
+      // and its expanded paths have a realistic spread: `|` separates them
+      // here only, and the database splits them back into an array.
+      tags.push(
+        `${written % 3 === 0 ? 'runbook' : 'guide'}|team/${written % 25}|area/${written % 8}/${written % 40}`,
+      )
       updatedAt.push(new Date(NOW.getTime() - written * 60_000))
     }
 
@@ -191,7 +211,7 @@ async function seed(): Promise<void> {
     )
     await handle.pool.query(
       `INSERT INTO document_search (document_id, workspace_id, collection_id, path, title, headings, body, tags, owners, status, updated_at, revision, index_version, indexed_at)
-       SELECT id, $2, $3, path, title, 'Procedure Procedure Procedure Procedure Procedure', body, ARRAY[tag], ARRAY['ada lovelace'], 'published', updated_at, $4, 1, $5
+       SELECT id, $2, $3, path, title, 'Procedure Procedure Procedure Procedure Procedure', body, string_to_array(tag, '|'), ARRAY['ada lovelace'], 'published', updated_at, $4, 1, $5
        FROM unnest($1::text[], $6::text[], $7::text[], $8::text[], $9::text[], $10::timestamptz[]) AS t(id, path, title, body, tag, updated_at)`,
       [
         documentIds,
@@ -208,6 +228,22 @@ async function seed(): Promise<void> {
     )
     process.stdout.write(`  seeded workspace ${w + 1}/${WORKSPACES}\n`)
   }
+
+  // The tag paths come from the very statement migration 0017 runs over rows
+  // indexed before it existed, so the bench measures it at 50,000 rows too.
+  const backfill = readFileSync(
+    new URL('../../../drizzle/0017_tags_properties.sql', import.meta.url),
+    'utf8',
+  )
+    .split('--> statement-breakpoint')
+    .find((statement) => statement.includes('UPDATE "document_search"'))
+  if (backfill === undefined) throw new Error('migration 0017 has no backfill')
+  const backfilling = performance.now()
+  await handle.pool.query(backfill)
+  process.stdout.write(
+    `backfilled tag paths in ${Math.round(performance.now() - backfilling)} ms
+`,
+  )
 
   await handle.pool.query(`ANALYZE "${SCHEMA}".document_search`)
   await handle.pool.query(`ANALYZE "${SCHEMA}".documents`)
@@ -269,7 +305,190 @@ async function measure(): Promise<void> {
     process.stdout.write(`| \`${queryText}\` | ${median(timings).toFixed(0)} ms | ${hits} |\n`)
   }
 
+  await measureFacets(service, filter, current, uow)
+  await measurePublic(handle, uow, service)
   await handle.close()
+}
+
+/**
+ * `facets=tag,status,collection` beside the page of the same query. The route
+ * asks for both at once with one shared visibility, so "Together" is the number
+ * a client pays; "Together, unshared" is the same two calls each walking
+ * permissions for itself, which is what the route did before the visibility was
+ * shared.
+ */
+async function measureFacets(
+  service: ReturnType<typeof createSearchService>,
+  filter: ReturnType<typeof visibilityFilter>,
+  current: WorkspaceId,
+  uow: ReturnType<typeof createUnitOfWork>,
+): Promise<void> {
+  process.stdout.write(
+    `
+Facets (tag, status, collection)
+
+| Query | Page, median of ${RUNS} | Facets, median of ${RUNS} | Together, median of ${RUNS} | Together, unshared | Matched |
+| --- | --- | --- | --- | --- | --- |
+`,
+  )
+  const walking: number[] = []
+  const resolver = createVisibleDocumentResolver({ uow })
+  for (let run = 0; run < RUNS + 1; run += 1) {
+    const started = performance.now()
+    await resolver.resolve({ filter, currentWorkspaceId: current, from: 0 })
+    if (run > 0) walking.push(performance.now() - started)
+  }
+  process.stdout.write(`(permission walk for this member alone: ${median(walking).toFixed(0)} ms)
+`)
+  for (const queryText of FACET_QUERIES) {
+    const pages: number[] = []
+    const counted: number[] = []
+    const shared: number[] = []
+    const unshared: number[] = []
+    let matched = 0
+    for (let run = 0; run < RUNS + 1; run += 1) {
+      const pageStarted = performance.now()
+      const page = await service.search({
+        queryText,
+        filter,
+        currentWorkspaceId: current,
+        limit: PAGE,
+      })
+      const pageElapsed = performance.now() - pageStarted
+      if (!page.ok) throw new Error(`query did not parse: ${page.error.message}`)
+
+      const started = performance.now()
+      const facets = await service.facets({
+        queryText,
+        filter,
+        facets: ['tag', 'status', 'collection'],
+        limit: 8,
+      })
+      const elapsed = performance.now() - started
+      if (!facets.ok) throw new Error(`query did not parse: ${facets.error.message}`)
+      const together = (visibility?: ReturnType<typeof shareVisibility>) => {
+        const extra = visibility === undefined ? {} : { visibility }
+        return Promise.all([
+          service.search({ queryText, filter, currentWorkspaceId: current, limit: PAGE, ...extra }),
+          service.facets({
+            queryText,
+            filter,
+            currentWorkspaceId: current,
+            facets: ['tag', 'status', 'collection'],
+            limit: 8,
+            ...extra,
+          }),
+        ])
+      }
+      const sharedStarted = performance.now()
+      await together(shareVisibility(filter))
+      const sharedElapsed = performance.now() - sharedStarted
+      const unsharedStarted = performance.now()
+      await together()
+      const unsharedElapsed = performance.now() - unsharedStarted
+      if (run > 0) {
+        pages.push(pageElapsed)
+        counted.push(elapsed)
+        shared.push(sharedElapsed)
+        unshared.push(unsharedElapsed)
+      }
+      matched = (facets.value.status ?? []).reduce((total, { count }) => total + count, 0)
+    }
+    process.stdout.write(
+      `| \`${queryText}\` | ${median(pages).toFixed(0)} ms | ${median(counted).toFixed(0)} ms | ${median(shared).toFixed(0)} ms | ${median(unshared).toFixed(0)} ms | ${matched} |
+`,
+    )
+  }
+}
+
+/**
+ * The anonymous path (ADR-023: public search is scoped to public content): one
+ * collection of the third workspace, published to the world, searched as the
+ * public principal and scoped to that collection the way a site's search is.
+ *
+ * The grant is written here, once, rather than by the seed, so a corpus built
+ * before this scenario existed is measured too.
+ */
+async function measurePublic(
+  handle: ReturnType<typeof createDatabase>,
+  uow: ReturnType<typeof createUnitOfWork>,
+  service: ReturnType<typeof createSearchService>,
+): Promise<void> {
+  const workspace = (await uow.repos.workspaces.listAll()).find(
+    (candidate) => candidate.slug === `workspace-${READABLE_WORKSPACES}`,
+  )
+  const collection =
+    workspace === undefined
+      ? undefined
+      : (await uow.repos.collections.listByWorkspace(workspace.id))[0]
+  if (workspace === undefined || collection === undefined) {
+    throw new Error('the corpus has no workspace to publish')
+  }
+
+  const { rows } = await handle.pool.query<{ count: string }>(
+    `SELECT count(*)::text AS count FROM grants WHERE principal_kind = 'public' AND scope_id = $1`,
+    [collection.id],
+  )
+  if (rows[0]?.count === '0') {
+    await uow.repos.grants.create({
+      id: ids.uuid() as never,
+      principalKind: 'public',
+      principalId: null,
+      scopeKind: 'collection',
+      scopeId: collection.id,
+      role: 'viewer',
+      effect: 'allow',
+      createdBy: null,
+      now: NOW,
+    })
+  }
+
+  const filter = visibilityFilter([workspace.id as WorkspaceId], [{ kind: 'public' }])
+
+  // The permission walk on its own, because it is what a per-site cache or a
+  // materialised effective-permission table would replace, and the number
+  // that says whether either is worth building.
+  const resolver = createVisibleDocumentResolver({ uow })
+  const walks: number[] = []
+  for (let run = 0; run < RUNS + 1; run += 1) {
+    const started = performance.now()
+    await resolver.resolve({ filter, currentWorkspaceId: workspace.id as WorkspaceId, from: 0 })
+    if (run > 0) walks.push(performance.now() - started)
+  }
+  process.stdout.write(
+    `
+Public permission walk alone (median of ${RUNS}): ${median(walks).toFixed(0)} ms
+`,
+  )
+
+  process.stdout.write(
+    `
+Public site (one collection, ${DOCUMENTS_PER_WORKSPACE} documents)
+
+| Query | Median of ${RUNS} | Hits |
+| --- | --- | --- |
+`,
+  )
+  for (const queryText of QUERIES) {
+    const timings: number[] = []
+    let hits = 0
+    for (let run = 0; run < RUNS + 1; run += 1) {
+      const started = performance.now()
+      const results = await service.search({
+        queryText,
+        filter,
+        currentWorkspaceId: workspace.id as WorkspaceId,
+        scope: { collectionId: collection.id as CollectionId },
+        limit: 50,
+      })
+      const elapsed = performance.now() - started
+      if (!results.ok) throw new Error(`query did not parse: ${results.error.message}`)
+      if (run > 0) timings.push(elapsed)
+      hits = results.value.current.length
+    }
+    process.stdout.write(`| \`${queryText}\` | ${median(timings).toFixed(0)} ms | ${hits} |
+`)
+  }
 }
 
 /**

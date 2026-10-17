@@ -141,6 +141,95 @@ describe('createFakeDocumentFormat: render and read', () => {
   })
 })
 
+describe('createFakeDocumentFormat: compare and revert', () => {
+  const context = { linkTitles: new Map<DocumentId, string>() }
+  const compare = (before: string, after: string, rest: object = {}) =>
+    format.compare({ before: serialise({}, before), after: serialise({}, after), context, ...rest })
+
+  it('pairs lines by position as added, removed and changed, counting a word to each', () => {
+    const compared = compare('a\nb\nc', 'a\nB')
+    expect(compared.changes.map(({ id, change }) => [id, change])).toEqual([
+      ['c2', 'changed'],
+      ['c3', 'removed'],
+    ])
+    expect(compared.changes[1]).toMatchObject({ excerpt: 'c', wordsAdded: 0, wordsRemoved: 1 })
+    expect(compare('a', 'a\nb').changes[0]).toMatchObject({
+      change: 'added',
+      excerpt: 'b',
+      wordsAdded: 1,
+      wordsRemoved: 0,
+    })
+    expect(compared.summary).toMatchObject({ sections: 1, changed: 1, removed: 1, added: 0 })
+  })
+
+  it('finds nothing to report in two equal texts', () => {
+    const compared = compare('a\n\nb', 'a\nb')
+    expect(compared.changes).toEqual([])
+    expect(compared.summary.sections).toBe(0)
+  })
+
+  it('draws each change on its own only when asked', () => {
+    expect(compare('a', 'b').changes[0]).not.toHaveProperty('html')
+    expect(compare('a', 'b', { patches: true }).changes[0]).toMatchObject({ html: 'b' })
+  })
+
+  it('says what can be put back, and by whom it was written, only for a draft', () => {
+    const by = { by: 'user-1', at: '2026-01-01T00:00:00.000Z' }
+    const withDraft = compare('a', 'b', { draft: draft('b'), authorship: by })
+    expect(withDraft.changes[0]).toMatchObject({
+      revertible: true,
+      author: { userId: 'user-1', at: by.at },
+    })
+    // A record this fake did not write names nobody.
+    expect(
+      compare('a', 'b', { draft: draft('b'), authorship: 'unknown' }).changes[0],
+    ).not.toHaveProperty('author')
+    expect(compare('a', 'b', { authorship: by }).changes[0]).not.toHaveProperty('revertible')
+    expect(compare('a', 'b', { authorship: by }).changes[0]).not.toHaveProperty('author')
+  })
+
+  const revert = (before: string, current: string, changes: string[]) => {
+    const reverted = format.revert({
+      before: serialise({}, before),
+      after: serialise({}, current),
+      draft: draft(current),
+      changes,
+    })
+    return reverted.ast
+  }
+
+  it('puts a changed line back, takes an added one out and restores a removed one', () => {
+    expect(revert('a\nb\nc', 'a\nB\nc\nd', ['c2', 'c4'])).toEqual({ body: 'a\nb\nc' })
+    expect(revert('a\nb', 'a', ['c2'])).toEqual({ body: 'a\nb' })
+    expect(revert('a\nb\nc', 'a\nc', ['c2'])).toEqual({ body: 'a\nb' })
+  })
+
+  it('leaves the changes it was not asked about', () => {
+    expect(revert('a\nb', 'A\nB', ['c2'])).toEqual({ body: 'A\nb' })
+  })
+})
+
+describe('createFakeDocumentFormat: authorship and source comparison', () => {
+  it('stamps the whole body with who saved it and when', () => {
+    expect(
+      format.stampAuthorship({
+        previous: draft('old'),
+        next: draft('new'),
+        authorship: null,
+        by: 'user-1',
+        at: '2026-01-01T00:00:00.000Z',
+      }),
+    ).toEqual({ version: 1, body: 'new', by: 'user-1', at: '2026-01-01T00:00:00.000Z' })
+  })
+
+  it('compares source by line, marking what went and what came', () => {
+    const compared = format.compareSource('a\nb', 'b\nc')
+    expect(compared.lines.map(({ change }) => change)).toEqual(['removed', 'equal', 'added'])
+    expect(compared.lines[0]).toMatchObject({ before: 1, segments: [{ text: 'a' }] })
+    expect(compared.lines[2]?.segments).toEqual([{ change: 'added', text: 'c' }])
+  })
+})
+
 describe('the fake clock and id generator', () => {
   it('advances and resets only when told to', () => {
     const start = new Date('2026-01-01T00:00:00.000Z')

@@ -178,6 +178,16 @@ describe('who made each change of a comparison', () => {
     expect(stamps).toEqual({ changed: ADA, added: ADA, removed: GRACE })
   })
 
+  it('names no one for a change the ledger has never heard of', () => {
+    expect(attributeChanges(context(byAda), NO_AUTHORSHIP).size).toBe(0)
+  })
+
+  it('names no one for a block that is not there', () => {
+    const ledger = stampEdit(undefined, published, byAda, ADA)
+    expect(writtenBy(ledger, undefined)).toBeUndefined()
+    expect(removedBy(ledger, undefined)).toBeUndefined()
+  })
+
   it('names no one without a ledger', () => {
     expect(attributeChanges(context(byAda), undefined).size).toBe(0)
   })

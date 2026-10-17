@@ -4,8 +4,7 @@ import { concatChunks, type BlobStore } from '../ports/blob-store.ts'
 import type { DrawingText } from '../ports/drawing-text.ts'
 import type { AttachmentId, AttachmentRow, DocumentRow, UnitOfWork } from '../ports/persistence.ts'
 import type { Clock, IdGenerator } from '../ports/system.ts'
-import { ATTACHMENT_REVISED, EVENT_PAYLOAD_VERSION } from './events.ts'
-import type { AttachmentRevisedPayload } from './events.ts'
+import { attachmentRevised } from './events.ts'
 import { MalformedImage, stripImageMetadata } from './image-metadata.ts'
 import {
   DIAGRAM_SOURCE_MEDIA_TYPE,
@@ -62,8 +61,9 @@ export function attachmentIdsIn(markdown: string): readonly AttachmentId[] {
   if (!markdown.includes(ATTACHMENT_URL_PREFIX)) return []
   return [
     ...new Set(
-      Array.from(markdown.matchAll(ATTACHMENT_REFERENCE), (match) =>
-        (match[1] ?? '').toLowerCase(),
+      // The pattern's one group is the id.
+      Array.from(markdown.matchAll(ATTACHMENT_REFERENCE)).flatMap((match) =>
+        match.slice(1).map((id) => id.toLowerCase()),
       ),
     ),
   ]
@@ -457,14 +457,16 @@ export async function reviseAttachment(
       },
       now,
     })
-    const event: AttachmentRevisedPayload = {
-      version: EVENT_PAYLOAD_VERSION,
-      attachmentId: row.id,
-      documentId: row.documentId,
-      workspaceId: row.workspaceId,
-      attachmentVersion: row.version,
-    }
-    await tx.outbox.write({ id: deps.ids.uuid(), type: ATTACHMENT_REVISED, payload: event, now })
+    await tx.events.record(
+      attachmentRevised,
+      {
+        attachmentId: row.id,
+        documentId: row.documentId,
+        workspaceId: row.workspaceId,
+        attachmentVersion: row.version,
+      },
+      now,
+    )
     return row
   })
 

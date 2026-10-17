@@ -10,8 +10,22 @@ import {
 } from 'react'
 
 import { useDocument, useDocumentEnvelope, useTreePosition } from '../../lib/api/index.ts'
-import { DeleteDocumentDialog } from './delete-document-dialog.tsx'
-import { MoveDocumentDialog } from './move-document-dialog.tsx'
+import { lazyDialog } from '../dialogs/lazy-dialog.tsx'
+
+/*
+ * Moving and deleting are dialogs behind a press, so their code (the
+ * destination picker, the child-count warning, the dialog machinery) is
+ * fetched the first time one opens rather than with the reading page.
+ */
+const MoveDocumentDialog = lazyDialog(
+  async () => ({ default: (await import('./move-document-dialog.tsx')).MoveDocumentDialog }),
+  'Opening move',
+)
+
+const DeleteDocumentDialog = lazyDialog(
+  async () => ({ default: (await import('./delete-document-dialog.tsx')).DeleteDocumentDialog }),
+  'Opening delete',
+)
 
 /**
  * Sharing is its own chunk, and its own module graph — the link list, the

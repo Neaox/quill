@@ -1,4 +1,4 @@
-import { act, screen, within } from '@testing-library/react'
+import { act, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it } from 'vitest'
 
@@ -50,6 +50,18 @@ const document = () =>
     createdAt: '2026-01-01T00:00:00.000Z',
     updatedAt: '2026-02-03T00:00:00.000Z',
   })
+
+const text = (value: string) => ({ type: 'text', value })
+const draftOf =
+  (...children: readonly object[]) =>
+  () =>
+    jsonResponse(200, {
+      documentId: 'doc-1',
+      draftVersion: 3,
+      baseRevision: null,
+      updatedAt: '2026-02-03T00:00:00.000Z',
+      ast: { version: 1, frontMatter: {}, ast: { type: 'root', children } },
+    })
 
 const CODE = 'export const region = "eu"'
 const TOKENS = packRanges([
@@ -156,7 +168,10 @@ describe('the reading view', () => {
 
     // jsdom has no `CSS.highlights`, so the client takes the ADR's markup
     // fallback — the same ranges, painted as spans.
-    expect(code?.querySelectorAll('.tok-keyword')).toHaveLength(2)
+    // The highlighting is an enhancement that loads after the words are on screen.
+    await waitFor(() => {
+      expect(code?.querySelectorAll('.tok-keyword')).toHaveLength(2)
+    })
     expect(code?.textContent).toBe(CODE)
   })
 
@@ -427,18 +442,6 @@ describe('the reading view', () => {
         ...extra,
       })
 
-    const text = (value: string) => ({ type: 'text', value })
-    const draftOf =
-      (...children: readonly object[]) =>
-      () =>
-        jsonResponse(200, {
-          documentId: 'doc-1',
-          draftVersion: 3,
-          baseRevision: null,
-          updatedAt: '2026-02-03T00:00:00.000Z',
-          ast: { version: 1, frontMatter: {}, ast: { type: 'root', children } },
-        })
-
     it('says what is waiting to be published when there is a draft with writing in it, rather than that nothing is there', async () => {
       renderApp(
         READING_PATH,
@@ -608,36 +611,90 @@ describe('reading an older revision', () => {
   })
 })
 
+/** What `GET /documents/:id/compare` answers: the document with its changes marked where they are. */
+const comparison = (html: string, changes: readonly object[] = []) =>
+  jsonResponse(200, {
+    html,
+    summary: {
+      sections: 0,
+      added: changes.length,
+      removed: 0,
+      changed: 0,
+      moved: 0,
+      wordsAdded: changes.length * 2,
+      wordsRemoved: 0,
+    },
+    changes,
+    sections: [],
+    properties: [],
+  })
+
+const ADDED_CHANGE = {
+  id: 'c1',
+  change: 'added',
+  block: 'p',
+  excerpt: 'new line',
+  wordsAdded: 2,
+  wordsRemoved: 0,
+}
+
+const COMPARED_HTML = `<article><p>Kept line.</p><p data-change="added" data-change-id="c1"><ins data-diff="added"><span data-diff-label>Added: </span>new line</ins></p></article>`
+
+const COMPARING = `${READING_PATH}?from=${'a'.repeat(40)}&to=${'b'.repeat(40)}`
+
 describe('comparing two revisions', () => {
-  it('loads the diff view on demand and renders added and removed lines', async () => {
-    renderApp(`${READING_PATH}?from=${'a'.repeat(40)}&to=${'b'.repeat(40)}`, {
+  it('loads the comparison on demand and draws what was added where it is', async () => {
+    const { container } = renderApp(COMPARING, {
       ...readingRoutes(),
-      'GET /api/documents/{id}/diff': () =>
-        jsonResponse(200, {
-          from: 'a'.repeat(40),
-          to: 'b'.repeat(40),
-          unified: '--- a\n+++ b\n@@ -1 +1 @@\n-old line\n+new line',
-          added: 1,
-          removed: 1,
-        }),
+      'GET /api/documents/{id}/compare': () => comparison(COMPARED_HTML, [ADDED_CHANGE]),
     })
 
     expect(await screen.findByRole('heading', { name: 'Comparing v1 with v2' })).toBeInTheDocument()
-    const diff = await screen.findByRole('group', { name: 'Unified diff' })
-    const added = within(diff).getByText('+new line').closest('span')
-    const removed = within(diff).getByText('-old line').closest('span')
-    // The change is an attribute on the line, so it is what the styling and
+    const added = await screen.findByText('new line')
+    // The change is an attribute on the block, so it is what the styling and
     // the screen reader both read (docs/architecture/styling.md).
-    expect(added).toHaveAttribute('data-change', 'added')
-    expect(removed).toHaveAttribute('data-change', 'removed')
-    expect(within(diff).getByText('added:')).toBeInTheDocument()
+    expect(added.closest('[data-change]')).toHaveAttribute('data-change', 'added')
+    expect(screen.getByText('Kept line.')).toBeInTheDocument()
+    await expectNoAccessibilityViolations(container)
+  })
+
+  it('goes from one change to the next', async () => {
+    HTMLElement.prototype.scrollIntoView = () => undefined
+    renderApp(COMPARING, {
+      ...readingRoutes(),
+      'GET /api/documents/{id}/compare': () => comparison(COMPARED_HTML, [ADDED_CHANGE]),
+    })
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Next change' }))
+
+    expect((await screen.findByText('new line')).closest('[data-change]')).toHaveAttribute(
+      'data-change-current',
+    )
+  })
+
+  it('says so when two revisions have the same content', async () => {
+    renderApp(COMPARING, {
+      ...readingRoutes(),
+      'GET /api/documents/{id}/compare': () => comparison('<article></article>'),
+    })
+
+    expect(await screen.findByText('No difference')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Next change' })).toBeDisabled()
+  })
+
+  it('says when the comparison cannot be made', async () => {
+    renderApp(COMPARING, {
+      ...readingRoutes(),
+      'GET /api/documents/{id}/compare': () => errorResponse(500, 'internal', 'It broke'),
+    })
+
+    expect(await screen.findByText("Couldn't compare these revisions")).toBeInTheDocument()
   })
 
   it('compares the two revisions a reader picks', async () => {
     renderApp(READING_PATH, {
       ...readingRoutes(),
-      'GET /api/documents/{id}/diff': () =>
-        jsonResponse(200, { from: null, to: 'b', unified: '', added: 0, removed: 0 }),
+      'GET /api/documents/{id}/compare': () => comparison(COMPARED_HTML, [ADDED_CHANGE]),
     })
 
     await userEvent.click(await screen.findByText('Compare', { selector: 'summary' }))
@@ -646,6 +703,35 @@ describe('comparing two revisions', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Compare' }))
 
     expect(await screen.findByRole('heading', { name: 'Comparing v1 with v2' })).toBeInTheDocument()
+  })
+
+  it('moves an end of the comparison when a reader picks another revision', async () => {
+    renderApp(`${READING_PATH}?to=${'b'.repeat(40)}`, {
+      ...readingRoutes(),
+      'GET /api/documents/{id}/compare': () => comparison(COMPARED_HTML, [ADDED_CHANGE]),
+    })
+    expect(
+      await screen.findByRole('heading', { name: 'Comparing the empty document with v2' }),
+    ).toBeInTheDocument()
+
+    await userEvent.click(await screen.findByRole('button', { name: /^From: none/ }))
+    await userEvent.click(await screen.findByRole('menuitemradio', { name: /v1/ }))
+
+    expect(await screen.findByRole('heading', { name: 'Comparing v1 with v2' })).toBeInTheDocument()
+  })
+
+  it('offers both ends of the comparison to change from the page itself', async () => {
+    renderApp(COMPARING, {
+      ...readingRoutes(),
+      'GET /api/documents/{id}/compare': () => comparison(COMPARED_HTML, [ADDED_CHANGE]),
+    })
+
+    await userEvent.click(await screen.findByRole('button', { name: /^From: v1/ }))
+    // The other end is shown and not choosable.
+    expect(await screen.findByRole('menuitemradio', { name: /v2/ })).toHaveAttribute(
+      'aria-disabled',
+      'true',
+    )
   })
 })
 

@@ -4,6 +4,7 @@ import { SearchPage } from '../../../../features/search/search-page.tsx'
 import { RouteNotice } from '../../../../features/workspaces/route-notice.tsx'
 import {
   queryTooLong,
+  RESULTS_FACETS,
   searchResultsQueryOptions,
   workspaceQueryOptions,
 } from '../../../../lib/api/index.ts'
@@ -43,6 +44,7 @@ export const Route = createFileRoute('/_authenticated/w/$workspaceSlug/search')(
         searchResultsQueryOptions(context.apiClient, {
           query: deps.q,
           workspaceId: workspace.id,
+          facets: RESULTS_FACETS,
         }),
       )
     }

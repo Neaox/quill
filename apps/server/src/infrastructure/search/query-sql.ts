@@ -1,4 +1,5 @@
 import type { FilterClause, PhraseClause, SearchQuery, TermClause } from '@quill/application'
+import { normaliseTag, parsePropertyFilter } from '@quill/search'
 import { sql } from 'drizzle-orm'
 import type { SQL } from 'drizzle-orm'
 
@@ -37,7 +38,12 @@ export interface TranslatedQuery {
   readonly text: string
 }
 
-export function translateQuery(query: SearchQuery): TranslatedQuery {
+/** Who is asking, as far as a filter needs to know: the accounts behind `me`. */
+export interface Asker {
+  readonly userIds: readonly string[]
+}
+
+export function translateQuery(query: SearchQuery, asker: Asker): TranslatedQuery {
   const clauses = [...query.clauses]
   const positive = clauses.filter(isMatchable).filter((clause) => !clause.negated)
   const negative = clauses.filter(isMatchable).filter((clause) => clause.negated)
@@ -50,7 +56,7 @@ export function translateQuery(query: SearchQuery): TranslatedQuery {
     phrases: allOfQueries(phrases),
     hasPhrase: phrases.length > 0,
     widenable: positive.length > 1,
-    predicates: clauses.filter(isFilter).map(toPredicate),
+    predicates: clauses.filter(isFilter).map((clause) => toPredicate(clause, asker)),
     text: positive.map((clause) => clause.value).join(' '),
   }
 }
@@ -100,20 +106,73 @@ function combineQueries(
  * `NOT null` would silently drop every document that has no collection from
  * the answer to `-collection:archive`.
  */
-function toPredicate(clause: FilterClause): SQL {
-  const predicate = filterPredicate(clause)
+function toPredicate(clause: FilterClause, asker: Asker): SQL {
+  const predicate = filterPredicate(clause, asker)
   return clause.negated ? sql`NOT coalesce(${predicate}, false)` : predicate
 }
 
-function filterPredicate(clause: FilterClause): SQL {
+/**
+ * `by:` — who has published a revision of the document.
+ *
+ * Three readings, in this order. `me` is the account the request is made as,
+ * resolved to the address it publishes under. Anything with an `@` is an
+ * address, matched exactly (a part of an address names nobody). Anything else
+ * is a part of a name or an address, matched as plain text: `%` and `_` in it
+ * are characters like any other, escaped so they cannot turn a stranger's
+ * search into a pattern, and the escaped value still travels as a bound
+ * parameter.
+ */
+function publishedBy(value: string, asker: Asker): SQL {
+  const needle = value.trim().toLowerCase()
+  if (needle === 'me') {
+    return sql`${documentSearch.contributorEmails} && ARRAY(SELECT lower(trim(u.email)) FROM users u WHERE u.id = ANY(${sql.param([...asker.userIds])}::text[]))`
+  }
+  if (needle.includes('@')) {
+    return sql`${documentSearch.contributorEmails} @> ARRAY[${needle}]::text[]`
+  }
+  const pattern = `%${needle.replace(/[\\%_]/gu, '\\$&')}%`
+  return sql`${documentSearch.contributorsText} LIKE ${pattern} ESCAPE '\\'`
+}
+
+/**
+ * `team:` — whether anyone in a team has published a revision of the document.
+ *
+ * A team is a group by its name, with the groups nested inside it, or a unit by
+ * its name or slug, with all of its groups: a grant to "Engineering" reaches
+ * "Engineering / Platform" (ADR-012), and so does a search. It is resolved
+ * here, at the moment of the query, from the groups as they stand: nothing
+ * about a team is stored in the index, so a person joining one needs no
+ * reindex. A name that matches nothing is an empty set of people and so
+ * matches no document, never every one.
+ */
+function publishedByTeam(value: string): SQL {
+  const needle = value.trim().toLowerCase()
+  return sql`${documentSearch.contributorEmails} && ARRAY(
+    WITH RECURSIVE team(id) AS (
+      SELECT g.id FROM groups g WHERE lower(g.name) = ${needle}
+      UNION
+      SELECT g.id FROM groups g JOIN organisational_units ou ON ou.id = g.unit_id
+        WHERE lower(ou.name) = ${needle} OR lower(ou.slug) = ${needle}
+      UNION
+      SELECT child.id FROM groups child JOIN team t ON child.parent_id = t.id
+    )
+    SELECT lower(trim(u.email)) FROM users u
+      JOIN group_members gm ON gm.user_id = u.id
+      WHERE gm.group_id IN (SELECT id FROM team)
+  )`
+}
+
+function filterPredicate(clause: FilterClause, asker: Asker): SQL {
   const value = clause.value
   switch (clause.key) {
     case 'title':
       return sql`to_tsvector('english', coalesce(${documentSearch.title}, '')) @@ plainto_tsquery('english', ${value})`
-    // Tags and owners are stored folded to lower case (see `index-entry.ts`),
-    // so containment is both case-insensitive and served by the GIN index.
+    // Tags are a hierarchy: `tag_paths` holds every tag and its ancestors, so
+    // the parent finds its subtree by plain containment, served by GIN.
     case 'tag':
-      return sql`${documentSearch.tags} @> ARRAY[lower(${value})]::text[]`
+      return taggedWith(value)
+    // Owners are stored folded to lower case (see `index-entry.ts`), so
+    // containment is both case-insensitive and served by the GIN index.
     case 'owner':
       return sql`${documentSearch.owners} @> ARRAY[lower(${value})]::text[]`
     case 'status':
@@ -125,5 +184,38 @@ function filterPredicate(clause: FilterClause): SQL {
     // cannot read simply matches nothing (ADR-012).
     case 'in':
       return sql`${documentSearch.workspaceId} IN (SELECT ${workspaces.id} FROM ${workspaces} WHERE ${workspaces.id} = ${value} OR lower(${workspaces.slug}) = lower(${value}) OR lower(${workspaces.name}) = lower(${value}))`
+    case 'by':
+      return publishedBy(value, asker)
+    case 'team':
+      return publishedByTeam(value)
+    case 'prop':
+      return hasProperty(value)
   }
+}
+
+/**
+ * `tag:` — the document carries the tag, or one beneath it.
+ *
+ * The value is read the way a tag is read when it is indexed
+ * (`normaliseTag`), so `Area / Billing` and `area/billing` are one question. A
+ * value that is no tag at all (`/`) is nothing, which matches no document
+ * rather than every one.
+ */
+function taggedWith(value: string): SQL {
+  const tag = normaliseTag(value)
+  return tag === null ? sql`false` : sql`${documentSearch.tagPaths} @> ARRAY[${tag}]::text[]`
+}
+
+/**
+ * `prop:key=value` — a front-matter key that is not a core field holds the
+ * value, by containment in the `properties` document (a `jsonb_path_ops`
+ * index serves it). Key and value travel as bound parameters, folded as the
+ * index folded what it stored. A filter that is not `key=value` is a filter
+ * that matches nothing, never everything.
+ */
+function hasProperty(value: string): SQL {
+  const wanted = parsePropertyFilter(value)
+  return wanted === null
+    ? sql`false`
+    : sql`${documentSearch.properties} @> jsonb_build_object(${wanted.key}::text, jsonb_build_array(${wanted.value}::text))`
 }

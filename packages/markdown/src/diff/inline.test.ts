@@ -1,10 +1,20 @@
-import fc from 'fast-check'
+import * as fc from 'fast-check'
 import type { Paragraph, PhrasingContent, RootContent } from 'mdast'
 import { toString } from 'mdast-util-to-string'
 import { describe, expect, it } from 'vitest'
 
 import { parseMarkdown } from '../pipeline/processor.ts'
-import { mergePhrasing } from './inline.ts'
+import { mergePhrasing, wholly } from './inline.ts'
+
+function withoutRemovals(nodes: readonly PhrasingContent[]): PhrasingContent[] {
+  return nodes
+    .filter((node) => node.type !== 'diffDeletion')
+    .map((node) =>
+      'children' in node
+        ? ({ ...node, children: withoutRemovals(node.children) } as PhrasingContent)
+        : node,
+    )
+}
 
 function phrasing(markdown: string): PhrasingContent[] {
   const [first] = parseMarkdown(markdown).children
@@ -31,6 +41,8 @@ function show(nodes: readonly (PhrasingContent | RootContent)[]): string {
           return `**${show(node.children)}**`
         case 'link':
           return `[${show(node.children)}](${node.url})`
+        case 'linkReference':
+          return `[${show(node.children)}][${node.identifier}]`
         case 'inlineCode':
           return `\`${node.value}\``
         default:
@@ -65,6 +77,16 @@ describe('mergePhrasing', () => {
     expect(merge('See [docs](/a).', 'See [docs](/b).')).toBe('See {-[docs](/a)}{+[docs](/b)}.')
   })
 
+  it('keeps a reference link on each part of a sentence around a change, and sees a change of its reference', () => {
+    const definitions = '\n\n[a]: /a\n[b]: /b'
+    expect(
+      merge('See [the old docs][a] now.' + definitions, 'See [the new docs][a] now.' + definitions),
+    ).toBe('See [the ][a]{-[old][a]}{+[new][a]}[ docs][a] now.')
+    expect(merge('See [docs][a].' + definitions, 'See [docs][b].' + definitions)).toBe(
+      'See {-[docs][a]}{+[docs][b]}.',
+    )
+  })
+
   it('compares inline code whole', () => {
     expect(merge('Run `pnpm test` now.', 'Run `pnpm check` now.')).toBe(
       'Run {-`pnpm test`}{+`pnpm check`} now.',
@@ -89,14 +111,6 @@ describe('mergePhrasing', () => {
         const before = left.length === 0 ? 'x' : left.join(' ')
         const after = right.length === 0 ? 'x' : right.join(' ')
         const merged = mergePhrasing(phrasing(before), phrasing(after))
-        const withoutRemovals = (nodes: readonly PhrasingContent[]): PhrasingContent[] =>
-          nodes
-            .filter((node) => node.type !== 'diffDeletion')
-            .map((node) =>
-              'children' in node
-                ? ({ ...node, children: withoutRemovals(node.children) } as PhrasingContent)
-                : node,
-            )
         const paragraph: Paragraph = {
           type: 'paragraph',
           children: withoutRemovals(merged.children),
@@ -134,5 +148,17 @@ describe('the characters of a replaced word that changed', () => {
 
   it('takes a character as a person does, not as the encoding does', () => {
     expect(merged('A naïve 👍 plan.', 'A naïve 👎 plan.')).toBe('A naïve {-👍}{+👎} plan.')
+  })
+})
+
+describe('phrasing wholly added or removed', () => {
+  it('wraps it as one change', () => {
+    const words: PhrasingContent[] = [{ type: 'text', value: 'New words' }]
+    expect(wholly('added', words)).toEqual([{ type: 'diffInsertion', children: words }])
+    expect(wholly('removed', words)).toEqual([{ type: 'diffDeletion', children: words }])
+  })
+
+  it('is nothing at all when there is no phrasing to wrap', () => {
+    expect(wholly('added', [])).toEqual([])
   })
 })

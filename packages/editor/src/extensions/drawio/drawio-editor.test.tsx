@@ -30,14 +30,18 @@ const SAVED =
 
 const EXISTING: DrawioDiagram = { attachmentId: 'a1', url: '/api/attachments/a1', version: 3 }
 
+function showModal(this: HTMLDialogElement): void {
+  this.setAttribute('open', '')
+}
+
+function close(this: HTMLDialogElement): void {
+  this.removeAttribute('open')
+}
+
 beforeAll(() => {
   // jsdom has no modal dialogs; the shims do what the browser's do, minus the top layer.
-  HTMLDialogElement.prototype.showModal = function showModal(this: HTMLDialogElement) {
-    this.setAttribute('open', '')
-  }
-  HTMLDialogElement.prototype.close = function close(this: HTMLDialogElement) {
-    this.removeAttribute('open')
-  }
+  HTMLDialogElement.prototype.showModal = showModal
+  HTMLDialogElement.prototype.close = close
 })
 
 afterEach(() => {
@@ -46,9 +50,13 @@ afterEach(() => {
 
 function fakeFiles(overrides: Partial<DrawioFiles> = {}): DrawioFiles {
   return {
-    read: vi.fn(async () => ({ file: STORED, version: 3 })),
-    create: vi.fn(async () => ({ attachmentId: 'new', url: '/api/attachments/new', version: 1 })),
-    revise: vi.fn(async (diagram: DrawioDiagram) => ({
+    read: vi.fn<DrawioFiles['read']>(async () => ({ file: STORED, version: 3 })),
+    create: vi.fn<DrawioFiles['create']>(async () => ({
+      attachmentId: 'new',
+      url: '/api/attachments/new',
+      version: 1,
+    })),
+    revise: vi.fn<DrawioFiles['revise']>(async (diagram) => ({
       kind: 'revised' as const,
       diagram: { ...diagram, version: diagram.version + 1 },
     })),
@@ -56,9 +64,17 @@ function fakeFiles(overrides: Partial<DrawioFiles> = {}): DrawioFiles {
   }
 }
 
+function messageFrom(message: object, origin: string, source: Window): void {
+  act(() => {
+    window.dispatchEvent(
+      new MessageEvent('message', { data: JSON.stringify(message), origin, source }),
+    )
+  })
+}
+
 function open(props: Partial<DrawioEditorProps> = {}) {
-  const onSaved = vi.fn()
-  const onClose = vi.fn()
+  const onSaved = vi.fn<DrawioEditorProps['onSaved']>()
+  const onClose = vi.fn<DrawioEditorProps['onClose']>()
   const files = props.files ?? fakeFiles()
   const view = render(
     <DrawioEditor
@@ -80,11 +96,7 @@ function open(props: Partial<DrawioEditorProps> = {}) {
 
   /** A message from draw.io: its origin, its window. */
   const say = (message: object, origin = ORIGIN, source: Window = drawio) => {
-    act(() => {
-      window.dispatchEvent(
-        new MessageEvent('message', { data: JSON.stringify(message), origin, source }),
-      )
-    })
+    messageFrom(message, origin, source)
   }
   const actions = () =>
     sent.mock.calls.map(([data, origin]) => ({ ...JSON.parse(String(data)), to: origin }))
@@ -217,7 +229,10 @@ describe('the draw.io editor', () => {
 
   it('never overwrites a newer revision: it offers a copy, or a reload', async () => {
     const files = fakeFiles({
-      revise: vi.fn(async () => ({ kind: 'conflict' as const, currentVersion: 5 })),
+      revise: vi.fn<DrawioFiles['revise']>(async () => ({
+        kind: 'conflict' as const,
+        currentVersion: 5,
+      })),
     })
     const { say, save, lastAction, onSaved } = open({
       files,
@@ -254,7 +269,10 @@ describe('the draw.io editor', () => {
 
   it('reloads the newer revision when asked, discarding the writer’s changes', async () => {
     const files = fakeFiles({
-      revise: vi.fn(async () => ({ kind: 'conflict' as const, currentVersion: 5 })),
+      revise: vi.fn<DrawioFiles['revise']>(async () => ({
+        kind: 'conflict' as const,
+        currentVersion: 5,
+      })),
     })
     const { say, save, lastAction } = open({
       files,
@@ -374,12 +392,14 @@ describe('the draw.io editor', () => {
 
   it('reports a file that holds no diagram, and one that cannot be read', async () => {
     const notDrawio = open({
-      files: fakeFiles({ read: vi.fn(async () => ({ file: '<svg/>', version: 3 })) }),
+      files: fakeFiles({
+        read: vi.fn<DrawioFiles['read']>(async () => ({ file: '<svg/>', version: 3 })),
+      }),
       target: { kind: 'existing', diagram: EXISTING, title: 'x' },
     })
     notDrawio.say({ event: 'init' })
     expect(
-      await screen.findByText('This file holds no draw.io diagram Quill can open.'),
+      await screen.findByText('This file holds no draw.io diagram that can be opened here.'),
     ).toBeInTheDocument()
     notDrawio.unmount()
 

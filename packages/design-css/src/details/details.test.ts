@@ -56,7 +56,7 @@ describe('opening a details a link points into', () => {
   it('opens the target of a later change of address, and scrolls to it', () => {
     const root = page(details('Outer', '<p id="user-content-block">Here</p>'))
     const target = root.querySelector('p')
-    const scrolled = vi.fn()
+    const scrolled = vi.fn<() => void>()
     if (target !== null) target.scrollIntoView = scrolled
     enhance(root)
 
@@ -139,6 +139,12 @@ describe('text fragments', () => {
   })
 })
 
+const toggle = (element: HTMLDetailsElement | undefined, open: boolean): void => {
+  if (element === undefined) return
+  element.open = open
+  element.dispatchEvent(new Event('toggle'))
+}
+
 describe('accordions', () => {
   const accordion = (): HTMLElement =>
     page(
@@ -146,12 +152,6 @@ describe('accordions', () => {
         details('B', 'b', ' name="user-content-faq"') +
         details('C', 'c', ' name="user-content-other" open'),
     )
-
-  const toggle = (element: HTMLDetailsElement | undefined, open: boolean): void => {
-    if (element === undefined) return
-    element.open = open
-    element.dispatchEvent(new Event('toggle'))
-  }
 
   it('closes the others of a name as one opens, where the browser cannot', () => {
     const root = accordion()

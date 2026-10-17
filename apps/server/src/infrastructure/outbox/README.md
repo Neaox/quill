@@ -17,6 +17,12 @@ a dead letter.
 | `acknowledge.ts` | A consumer that deliberately does nothing, for a type nothing acts on yet. |
 | `combine.ts` | Several consumers of one event type, as the one consumer the runner registers. |
 
+Which consumers are registered, for the server and the test harness alike, is `../../jobs/register-consumers.ts`; its test pins that every event type Quill emits has one.
+
+## What is not a consumer
+
+Anything that must happen in *every* process, not once: a cache. A consumer is claimed by one poller, which is the right number of processes for indexing and the wrong one for a cache, and a poll interval is the wrong delay between revoking access and the cache knowing. Those are subscribers of the in-process event bus, told after the commit (ADR-052; `../../public-site/invalidation.ts` is the first).
+
 ## Two things on one event share a failure domain
 
 The job runner keys its registry by event type, because the poller claims only

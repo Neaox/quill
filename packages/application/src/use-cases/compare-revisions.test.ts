@@ -178,6 +178,66 @@ describe('compareRevisions', () => {
     })
   })
 
+  /** A save by `by`, as the editing service records it, over a document published as `head`. */
+  async function aDraftSavedBy(by: string): Promise<{ id: DocumentId; head: RevisionId }> {
+    const id = await aDocument()
+    const head = await publish(id, '# Runbook\nRestart nightly.')
+    await writeDraft(id, '# Runbook\nRestart weekly.')
+    await uow.repos.locks.acquire({ documentId: id, userId: AUTHOR, sessionId: SESSION, now: NOW })
+    const saved = await uow.repos.drafts.find(id)
+    await uow.repos.drafts.write({
+      documentId: id,
+      sessionId: SESSION,
+      expectedVersion: saved?.draftVersion ?? 0,
+      ast: saved?.ast,
+      authorship: { by, at: NOW.toISOString() },
+      now: NOW,
+    })
+    return { id, head }
+  }
+
+  it('leaves unnamed an author whose record holds something that is not a user id', async () => {
+    const { id, head } = await aDraftSavedBy('imported-from-elsewhere')
+
+    const result = await compareRevisions(deps, { documentId: id, from: head, to: 'draft' })
+
+    expect(result.kind === 'compared' && result.content.changes[0]?.author).toEqual({
+      userId: 'imported-from-elsewhere',
+      at: NOW.toISOString(),
+      name: undefined,
+    })
+  })
+
+  it('leaves a change nobody is recorded as having written without an author', async () => {
+    const { id, head } = await aDraftSavedBy(AUTHOR)
+    await uow.repos.users.create({
+      id: AUTHOR,
+      email: 'ada@example.com',
+      displayName: 'Ada Lovelace',
+      now: NOW,
+    })
+    const format = createFakeDocumentFormat()
+    const unattributed = {
+      ...format,
+      compare: (input: Parameters<typeof format.compare>[0]) => {
+        const compared = format.compare(input)
+        const [first, ...rest] = compared.changes
+        if (first === undefined) throw new Error('nothing to compare')
+        const { author: _author, ...bare } = first
+        return { ...compared, changes: [bare, { ...first, id: 'c9' }, ...rest] }
+      },
+    }
+
+    const result = await compareRevisions(
+      { ...deps, format: unattributed },
+      { documentId: id, from: head, to: 'draft' },
+    )
+
+    if (result.kind !== 'compared') throw new Error(result.kind)
+    expect(result.content.changes[0]).not.toHaveProperty('author')
+    expect(result.content.changes[1]?.author).toMatchObject({ name: 'Ada Lovelace' })
+  })
+
   it('does not say what can be put back for two published revisions, which are not a draft', async () => {
     const id = await aDocument()
     const first = await publish(id, 'one')
@@ -260,5 +320,11 @@ describe('compareRevisionSources', () => {
     expect(result.kind).toBe('compared')
     if (result.kind !== 'compared') return
     expect(result.source.lines.some((line) => line.change === 'added')).toBe(true)
+  })
+
+  it('refuses what cannot be compared, as a comparison does', async () => {
+    expect(
+      await compareRevisionSources(deps, { documentId: MISSING, from: null, to: 'draft' }),
+    ).toEqual({ kind: 'not-found', documentId: MISSING })
   })
 })

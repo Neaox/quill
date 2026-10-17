@@ -66,18 +66,23 @@ export function mergePhrasing(
  */
 function pickOutChanges(children: PhrasingContent[]): PhrasingContent[] {
   const result: PhrasingContent[] = []
-  for (let index = 0; index < children.length; index += 1) {
-    const removed = children[index]
+  let replaced = false
+  for (const [index, child] of children.entries()) {
+    // The insertion of a pair was written with its deletion.
+    if (replaced) {
+      replaced = false
+      continue
+    }
     const added = children[index + 1]
     const pair =
-      removed?.type === 'diffDeletion' && added?.type === 'diffInsertion'
-        ? replacement(removed, added)
+      child.type === 'diffDeletion' && added?.type === 'diffInsertion'
+        ? replacement(child, added)
         : undefined
     if (pair === undefined) {
-      result.push(...(removed === undefined ? [] : [removed]))
+      result.push(child)
     } else {
       result.push(...pair)
-      index += 1
+      replaced = true
     }
   }
   return result
@@ -113,17 +118,19 @@ function replacement(
   ]
 }
 
+/** A run of text as phrasing, or nothing for an empty run. */
+const textOf = (value: string): PhrasingContent[] => (value === '' ? [] : [{ type: 'text', value }])
+
 /**
  * A word as its shared beginning, the characters that changed, and its shared end. The
  * characters that changed may be none: that is a mark with nothing in it, at the place.
  */
 function split(characters: readonly string[], start: number, end: number): PhrasingContent[] {
   const middle = characters.slice(start, characters.length - end).join('')
-  const text = (value: string): PhrasingContent[] => (value === '' ? [] : [{ type: 'text', value }])
   return [
-    ...text(characters.slice(0, start).join('')),
-    { type: 'diffChars', children: text(middle) } satisfies DiffChars,
-    ...text(characters.slice(characters.length - end).join('')),
+    ...textOf(characters.slice(0, start).join('')),
+    { type: 'diffChars', children: textOf(middle) } satisfies DiffChars,
+    ...textOf(characters.slice(characters.length - end).join('')),
   ]
 }
 
@@ -188,6 +195,12 @@ function atomsOf(nodes: readonly PhrasingContent[], marks: readonly Mark[] = [])
   })
 }
 
+/** The node atoms are added to: the stack is never emptied of the root, which is the fallback only for the types. */
+function innermost(stack: readonly Open[], root: Open): Open {
+  /* v8 ignore next -- `rebuild` never pops the root. */
+  return stack.at(-1) ?? root
+}
+
 /** A change's wrapper on the path of the atoms in its run: one object per run. */
 interface RunWrapper {
   readonly type: 'run'
@@ -223,10 +236,10 @@ function rebuild(runs: readonly Run<Atom>[]): PhrasingContent[] {
       stack.length = shared + 1
       for (const step of path.slice(shared)) {
         const children: PhrasingContent[] = []
-        ;(stack.at(-1) ?? root).children.push(shell(step, children))
+        innermost(stack, root).children.push(shell(step, children))
         stack.push({ by: step, children })
       }
-      append((stack.at(-1) ?? root).children, atom.leaf)
+      append(innermost(stack, root).children, atom.leaf)
     }
   }
   return root.children

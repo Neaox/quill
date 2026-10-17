@@ -168,8 +168,11 @@ describe('emoji in the editor (ADR-038)', () => {
       expect(picture?.getAttribute('data-state')).not.toBeNull()
     })
     unmount()
-    // Given back as it came once the editor goes.
-    expect(source?.getAttribute('media')).toBe('(prefers-reduced-motion: reduce)')
+    // Given back as it came once the editor goes. TipTap destroys an unmounted
+    // editor on a timer (so a remount in strict mode keeps it), hence the wait.
+    await waitFor(() => {
+      expect(source?.getAttribute('media')).toBe('(prefers-reduced-motion: reduce)')
+    })
   })
 
   it('keeps its emoji right while the document is edited, block by block', async () => {

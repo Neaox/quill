@@ -3,6 +3,7 @@ import { QueryClient } from '@tanstack/react-query'
 import { createApiClient, type ApiClient } from '@quill/api-client'
 
 import type { RouterContext } from '../../app/router-context.ts'
+import type { FakeRouteHandler, FakeRoutes } from './fake-routes.ts'
 import { withDerivedTreeRoutes } from './fake-tree-routes.ts'
 
 /**
@@ -12,12 +13,8 @@ import { withDerivedTreeRoutes } from './fake-tree-routes.ts'
  * /api/path/{param}"`, matching the path syntax `@quill/api-client`'s
  * `paths` type already uses, so a test route reads like the route it fakes.
  */
-export type FakeRouteHandler = (
-  request: Request,
-  params: Readonly<Record<string, string>>,
-) => Response | Promise<Response>
-
-export type FakeRoutes = Readonly<Record<string, FakeRouteHandler>>
+// The route types live in `fake-routes.ts`; tests import them from here.
+export type { FakeRouteHandler, FakeRoutes }
 
 export function jsonResponse(status: number, body: unknown): Response {
   return new Response(JSON.stringify(body), {

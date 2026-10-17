@@ -6,6 +6,7 @@ import type {
   AuditEventRow,
   AuditWriter,
   CollectionRepository,
+  Contributor,
   CollectionRow,
   CredentialRepository,
   CredentialRow,
@@ -53,6 +54,8 @@ import type {
   WorkspaceSlugHistoryRepository,
   WorkspaceSlugHistoryRow,
 } from '../ports/index.ts'
+import type { EventBus, RecordedEvent } from '../ports/events.ts'
+import { createEventRecorder } from '../events/event-recorder.ts'
 import { LOCK_TTL_MS } from '../ports/index.ts'
 
 /**
@@ -96,7 +99,14 @@ function identityKey(issuer: string, subject: string): string {
   return JSON.stringify([issuer, subject])
 }
 
-export function createInMemoryUnitOfWork(): InMemoryUnitOfWork {
+export interface InMemoryUnitOfWorkOptions {
+  /** Told of what was recorded once a run has finished, as the real unit of work tells it after commit. */
+  readonly bus?: EventBus
+}
+
+export function createInMemoryUnitOfWork(
+  options: InMemoryUnitOfWorkOptions = {},
+): InMemoryUnitOfWork {
   const users = new Map<string, UserRow>()
   const usersByEmail = new Map<string, string>()
   const credentials = new Map<string, CredentialRow>()
@@ -711,6 +721,10 @@ export function createInMemoryUnitOfWork(): InMemoryUnitOfWork {
       }
       return [...found.values()]
     },
+    async listByUnits(unitIds) {
+      const wanted = new Set(unitIds)
+      return [...groups.values()].filter((row) => wanted.has(row.unitId))
+    },
   }
 
   const collectionRepository: CollectionRepository = {
@@ -749,6 +763,10 @@ export function createInMemoryUnitOfWork(): InMemoryUnitOfWork {
         const row = collections.get(id)
         return row === undefined ? [] : [row]
       })
+    },
+    async listByWorkspaces(workspaceIds) {
+      const wanted = new Set(workspaceIds)
+      return [...collections.values()].filter((row) => wanted.has(row.workspaceId))
     },
     async searchByName(text, limit) {
       const needle = text.toLocaleLowerCase()
@@ -848,6 +866,36 @@ export function createInMemoryUnitOfWork(): InMemoryUnitOfWork {
       return (
         revisions.find((row) => row.documentId === documentId && row.revision === revision) ?? null
       )
+    },
+    async listContributors(documentId) {
+      // The name each address last published under, as the adapter's
+      // `DISTINCT ON` produces, in order of address.
+      const latest = new Map<string, RevisionIndexRow>()
+      for (const row of revisions) {
+        if (row.documentId !== documentId) continue
+        const address = row.authorEmail.trim().toLowerCase()
+        const held = latest.get(address)
+        if (held === undefined || row.timestamp > held.timestamp) latest.set(address, row)
+      }
+      return [...latest]
+        .toSorted(([left], [right]) => left.localeCompare(right))
+        .map(([email, row]) => ({ name: row.authorName.trim(), email }))
+    },
+    async listContributorsForDocuments(documentIds) {
+      const wanted = new Set(documentIds)
+      // Newest first, so the first row met for an address is the name it last used.
+      const newestFirst = revisions
+        .filter((row) => wanted.has(row.documentId))
+        .toSorted((a, b) => b.timestamp.getTime() - a.timestamp.getTime())
+      const byDocument = new Map<DocumentId, Map<string, Contributor>>()
+      for (const row of newestFirst) {
+        const contributors = byDocument.get(row.documentId) ?? new Map<string, Contributor>()
+        const email = row.authorEmail.trim().toLowerCase()
+        if (!contributors.has(email))
+          contributors.set(email, { name: row.authorName.trim(), email })
+        byDocument.set(row.documentId, contributors)
+      }
+      return new Map([...byDocument].map(([id, found]) => [id, [...found.values()]]))
     },
   }
 
@@ -957,6 +1005,9 @@ export function createInMemoryUnitOfWork(): InMemoryUnitOfWork {
       return revised
     },
   }
+
+  /** Sequential and readable in a failing assertion; the real generator draws UUIDs. */
+  const eventIds = { uuid: () => `event-${String(events.length + 1)}` }
 
   const outboxWriter: OutboxWriter = {
     async write({ id, type, payload, now }) {
@@ -1110,7 +1161,7 @@ export function createInMemoryUnitOfWork(): InMemoryUnitOfWork {
     },
   }
 
-  const repos: RepositoryBundle = {
+  const bundleWith = (sink: (event: RecordedEvent) => void): RepositoryBundle => ({
     users: userRepository,
     sessions: sessionRepository,
     credentials: credentialRepository,
@@ -1133,9 +1184,14 @@ export function createInMemoryUnitOfWork(): InMemoryUnitOfWork {
     secrets: secretsRepository,
     attachments: attachmentRepository,
     personPreferences: personPreferencesRepository,
-    outbox: outboxWriter,
+    events: createEventRecorder({ outbox: outboxWriter, ids: eventIds, sink }),
     audit: auditWriter,
-  }
+  })
+
+  /** Outside a run each write commits as it is made, so what it recorded is announced at once. */
+  const repos = bundleWith((event) => {
+    void options.bus?.publish(event)
+  })
 
   return {
     repos,
@@ -1143,7 +1199,12 @@ export function createInMemoryUnitOfWork(): InMemoryUnitOfWork {
     auditEvents,
     attachmentHistory,
     async run(fn) {
-      return fn(repos)
+      const pending: RecordedEvent[] = []
+      const result = await fn(bundleWith((event) => pending.push(event)))
+      // Only after the callback has returned: a callback that throws is a
+      // rolled-back transaction, and its events are never announced.
+      for (const event of pending) await options.bus?.publish(event)
+      return result
     },
   }
 }

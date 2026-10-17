@@ -3,6 +3,7 @@ import { useEffect, useRef, useState, useTransition } from 'react'
 
 import { BRAND } from '@quill/brand'
 import { Block, Button, Callout, LayoutGrid, Spinner, toast, tv, type ToastId } from '@quill/ui'
+import '@quill/ui/editor.css'
 import {
   DocumentEditor,
   applyFrontMatter,

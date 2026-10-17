@@ -16,11 +16,14 @@ const SVG_TEXT = read('../../../corpus/25-drawio-diagram.drawio.svg')
 const HTML_LABELS = read('./fixtures/html-labels.drawio.svg')
 const CORPUS = read('../../../corpus/25-drawio-diagram.md')
 
-const URL_ = '/api/attachments/3c9e1f4a-7b2d-4e8f-a1c6-5d0b9e2f8a17'
+const DRAWING_URL = '/api/attachments/3c9e1f4a-7b2d-4e8f-a1c6-5d0b9e2f8a17'
 const registry = createMarkdownRegistry([drawioExtension])
 
 const render = (markup: string, markdown = CORPUS): string =>
-  renderHtml(parseMarkdown(markdown), { drawings: new Map([[URL_, markup]]), extensions: registry })
+  renderHtml(parseMarkdown(markdown), {
+    drawings: new Map([[DRAWING_URL, markup]]),
+    extensions: registry,
+  })
 
 describe('recognising a draw.io drawing', () => {
   it('claims an SVG that carries a draw.io diagram', () => {
@@ -92,7 +95,7 @@ describe('drawing a draw.io diagram', () => {
     const html = render(HTML_LABELS)
 
     expect(html).toContain(
-      `<div class="diagram" data-diagram="svg"><img src="${URL_}" alt="A browser sends a request to the Quill server" loading="lazy" decoding="async" data-drawio-legacy=""></div>`,
+      `<div class="diagram" data-diagram="svg"><img src="${DRAWING_URL}" alt="A browser sends a request to the Quill server" loading="lazy" decoding="async" data-drawio-legacy=""></div>`,
     )
     expect(html).not.toContain('foreignObject')
     expect(html).not.toContain('<svg')
@@ -115,7 +118,7 @@ describe('drawing a draw.io diagram', () => {
   it('draws an SVG no extension claims exactly as before', () => {
     const plain = '<svg viewBox="0 0 10 10"><rect class="box" width="5" height="5"/></svg>'
     expect(render(plain)).toBe(
-      renderHtml(parseMarkdown(CORPUS), { drawings: new Map([[URL_, plain]]) }),
+      renderHtml(parseMarkdown(CORPUS), { drawings: new Map([[DRAWING_URL, plain]]) }),
     )
   })
 

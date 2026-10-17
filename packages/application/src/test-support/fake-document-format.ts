@@ -168,16 +168,16 @@ export function createFakeDocumentFormat(options: FakeDocumentFormatOptions = {}
         (_, index): ComparedChange | undefined => {
           const was = older[index]
           const now = newer[index]
-          if (was === now) return undefined
-          const change = was === undefined ? 'added' : now === undefined ? 'removed' : 'changed'
+          const text = now ?? was
+          if (text === undefined || was === now) return undefined
           return {
             id: `c${index + 1}`,
-            change,
+            change: was === undefined ? 'added' : now === undefined ? 'removed' : 'changed',
             block: 'paragraph',
-            excerpt: now ?? was ?? '',
+            excerpt: text,
             wordsAdded: now === undefined ? 0 : 1,
             wordsRemoved: was === undefined ? 0 : 1,
-            ...(patches === true ? { html: now ?? was ?? '' } : {}),
+            ...(patches === true ? { html: text } : {}),
             ...(draft === undefined ? {} : { revertible: true }),
             ...(draft === undefined || !isFakeStamp(authorship)
               ? {}

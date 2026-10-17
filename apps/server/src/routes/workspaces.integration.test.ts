@@ -301,6 +301,11 @@ describe('the workspace tree, a level at a time', () => {
     expect(
       (await children(`collectionId=${tenancy.collectionId}&cursor=nonsense`)).statusCode,
     ).toBe(422)
+    // Well formed, but naming something that is not a document.
+    const foreign = Buffer.from(`${new Date().toISOString()}|not-a-document`).toString('base64url')
+    expect(
+      (await children(`collectionId=${tenancy.collectionId}&cursor=${foreign}`)).statusCode,
+    ).toBe(422)
     expect((await children(`collectionId=${tenancy.collectionId}&limit=100000`)).statusCode).toBe(
       400,
     )

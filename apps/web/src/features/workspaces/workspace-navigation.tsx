@@ -18,15 +18,32 @@ import {
 import { useMe, useTreeCollections } from '../../lib/api/index.ts'
 import { workspaceLink } from '../../lib/routing/document-reference.ts'
 import { RouterLink } from '../../lib/routing/router-link.tsx'
-import {
-  CreateCollectionDialog,
-  DeleteCollectionDialog,
-  RenameCollectionDialog,
-} from './collection-dialogs.tsx'
+import { lazyDialog } from '../dialogs/lazy-dialog.tsx'
 import { useDocumentActions } from './document-actions.tsx'
-import { NewDocumentDialog } from './new-document-dialog.tsx'
 import { useTreeRows } from './use-tree-rows.ts'
 import { WorkspaceSwitcher } from './workspace-switcher.tsx'
+
+/*
+ * Every dialog the sidebar opens is fetched the first time it opens: they are
+ * behind a press, and a reader who only reads should not download their forms
+ * with the page (`docs/operations/bundle-budget.md`).
+ */
+const NewDocumentDialog = lazyDialog(
+  async () => ({ default: (await import('./new-document-dialog.tsx')).NewDocumentDialog }),
+  'Opening new document',
+)
+const CreateCollectionDialog = lazyDialog(
+  async () => ({ default: (await import('./collection-dialogs.tsx')).CreateCollectionDialog }),
+  'Opening new collection',
+)
+const RenameCollectionDialog = lazyDialog(
+  async () => ({ default: (await import('./collection-dialogs.tsx')).RenameCollectionDialog }),
+  'Opening rename',
+)
+const DeleteCollectionDialog = lazyDialog(
+  async () => ({ default: (await import('./collection-dialogs.tsx')).DeleteCollectionDialog }),
+  'Opening delete',
+)
 
 export const workspaceNavigationStyles = tv({
   slots: {

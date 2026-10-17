@@ -221,11 +221,14 @@ async function draftSide(
   }
 }
 
+/** A render input as `renderInputFor` builds it: always with its drawings, empty when it shows none. */
+type ReadInput = Awaited<ReturnType<typeof renderInputFor>>['input']
+
 /** What both sides are drawn with: every title either links to, every drawing either shows. */
-function bothSides(before: RenderInput, after: RenderInput): CompareContext {
+function bothSides(before: ReadInput, after: ReadInput): CompareContext {
   return {
     linkTitles: new Map([...before.linkTitles, ...after.linkTitles]),
-    drawings: new Map([...(before.drawings ?? []), ...(after.drawings ?? [])]),
+    drawings: new Map([...before.drawings, ...after.drawings]),
     labels: after.labels,
     emoji: after.emoji,
     labelEmoji: after.labelEmoji,

@@ -1,4 +1,4 @@
-import fc from 'fast-check'
+import * as fc from 'fast-check'
 import { describe, expect, it } from 'vitest'
 import type { Root, RootContent } from 'mdast'
 
@@ -159,17 +159,22 @@ describe('mergeDocuments: properties', () => {
           theirs: conflictWords(result, 'theirs'),
         }
         // What a side wrote is in the result, or offered in a conflict.
-        for (const word of inMine) {
-          if (!inBase.has(word)) expect(merged.has(word) || conflicted.mine.has(word)).toBe(true)
-        }
-        for (const word of inTheirs) {
-          if (!inBase.has(word)) expect(merged.has(word) || conflicted.theirs.has(word)).toBe(true)
-        }
+        const lostFromMine = [...inMine].filter(
+          (word) => !inBase.has(word) && !merged.has(word) && !conflicted.mine.has(word),
+        )
+        const lostFromTheirs = [...inTheirs].filter(
+          (word) => !inBase.has(word) && !merged.has(word) && !conflicted.theirs.has(word),
+        )
+        expect(lostFromMine).toEqual([])
+        expect(lostFromTheirs).toEqual([])
         // What a side removed stays removed, unless the removal is in a conflict.
-        for (const word of inBase) {
-          const removed = !inMine.has(word) || !inTheirs.has(word)
-          if (removed && merged.has(word)) expect(conflicted.base.has(word)).toBe(true)
-        }
+        const resurrected = [...inBase].filter(
+          (word) =>
+            (!inMine.has(word) || !inTheirs.has(word)) &&
+            merged.has(word) &&
+            !conflicted.base.has(word),
+        )
+        expect(resurrected).toEqual([])
       }),
       RUNS,
     )

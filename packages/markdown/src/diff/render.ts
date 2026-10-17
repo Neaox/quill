@@ -9,6 +9,7 @@ import { renderHtmlWith } from '../render/html.ts'
 import type { OutlineEntry } from '../render/outline.ts'
 import { extractOutline } from '../render/outline.ts'
 import { sanitizeSchema } from '../render/sanitize-schema.ts'
+import { itemAt } from './at.ts'
 import type { ComparedChange, DocumentComparison } from './compare.ts'
 import type { DiffCode } from './nodes.ts'
 import { plainText } from './text.ts'
@@ -125,11 +126,12 @@ function sectionsOf(comparison: DocumentComparison): {
   }
   const titled = outline.map((entry, index) => {
     const heading = headings[index]
+    /* v8 ignore next -- the outline and the headings are both walked from the comparison's tree. */
     return { entry, title: heading === undefined ? entry.text : headingTitle(heading) }
   })
 
   const changes = comparison.changes.map((change): SectionedChange => {
-    const at = titled[lastHeadingAt[change.index] ?? -1]
+    const at = titled[itemAt(lastHeadingAt, change.index, -1)]
     return at === undefined ? change : { ...change, section: { id: at.entry.id, title: at.title } }
   })
   const counts = Map.groupBy(changes, (change) => change.section?.id)
@@ -275,28 +277,32 @@ function comparisonHandlers(handlers: Handlers): Handlers {
 const BLOCK_CHANGES = ['added', 'removed', 'changed', 'moved']
 const CHANGE_ID = /^c\d{1,6}$/
 
-const documentAttributes = sanitizeSchema.attributes ?? {}
+/** What the document schema already allows on an element. */
+function allowedOn(tagName: string): NonNullable<Schema['attributes']>[string] {
+  /* v8 ignore next -- the document schema names every element widened below. */
+  return sanitizeSchema.attributes?.[tagName] ?? []
+}
 
 /** The document schema, widened by the comparison's own marks and nothing else. */
 const COMPARISON_SCHEMA: Schema = {
   ...sanitizeSchema,
   attributes: {
-    ...documentAttributes,
+    ...sanitizeSchema.attributes,
     '*': [
-      ...(documentAttributes['*'] ?? []),
+      ...allowedOn('*'),
       ['data-change', ...BLOCK_CHANGES],
       ['data-change-id', CHANGE_ID],
       ['data-side', 'before', 'after'],
     ],
-    ins: [...(documentAttributes['ins'] ?? []), ['data-diff', 'added'], ['data-line', '']],
-    del: [...(documentAttributes['del'] ?? []), ['data-diff', 'removed'], ['data-line', '']],
+    ins: [...allowedOn('ins'), ['data-diff', 'added'], ['data-line', '']],
+    del: [...allowedOn('del'), ['data-diff', 'removed'], ['data-line', '']],
     span: [
-      ...(documentAttributes['span'] ?? []),
+      ...allowedOn('span'),
       ['data-diff-label', ''],
       ['data-diff-word', ''],
       ['data-diff-char', ''],
       ['data-line', ''],
     ],
-    pre: [...(documentAttributes['pre'] ?? []), ['data-diff-code', '']],
+    pre: [...allowedOn('pre'), ['data-diff-code', '']],
   },
 }

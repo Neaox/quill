@@ -1,3 +1,5 @@
+import { BRAND } from '@quill/brand'
+
 import { defineExtension } from '../contract.ts'
 import { isDrawioDrawing, renderDrawioDrawing } from './drawio-svg.ts'
 
@@ -16,7 +18,7 @@ import { isDrawioDrawing, renderDrawioDrawing } from './drawio-svg.ts'
  * platform's drawing allowlist like any other, and the fallback is the
  * platform's own `<img>`.
  */
-export const DRAWIO_EXTENSION_ID = 'quill.drawio'
+export const DRAWIO_EXTENSION_ID = `${BRAND.slug}.drawio`
 
 /** The action on a diagram's image that the editor binds to the draw.io editor. */
 export const EDIT_DIAGRAM = { id: 'edit-diagram', label: 'Edit diagram' } as const

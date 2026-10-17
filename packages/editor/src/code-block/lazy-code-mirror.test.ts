@@ -108,6 +108,36 @@ afterEach(() => {
   document.body.replaceChildren()
 })
 
+describe('the furniture around a block', () => {
+  it('is called for once the block is painted, and not again when it opens', () => {
+    const { mounting, watched } = manualMounting()
+    const given = options()
+    const wanted = vi.fn<() => void>()
+    createLazyCodeMirror({ ...given, mounting, onWanted: wanted })
+    expect(wanted).not.toHaveBeenCalled()
+    const block = watched.get(still(given.parent) ?? given.parent)
+    block?.paint()
+    block?.paint()
+    block?.open()
+    expect(wanted).toHaveBeenCalledOnce()
+  })
+
+  it('is called for when the block is opened before it was ever near', () => {
+    const { mounting, watched } = manualMounting()
+    const given = options()
+    const wanted = vi.fn<() => void>()
+    createLazyCodeMirror({ ...given, mounting, onWanted: wanted })
+    watched.get(still(given.parent) ?? given.parent)?.open()
+    expect(wanted).toHaveBeenCalledOnce()
+  })
+
+  it('is called for at once where every block is opened as it is drawn', () => {
+    const wanted = vi.fn<() => void>()
+    createLazyCodeMirror({ ...options(), mounting: eagerMounting, onWanted: wanted })
+    expect(wanted).toHaveBeenCalledOnce()
+  })
+})
+
 describe('a code block before it is opened', () => {
   it('is the static block, with its text and no editor', () => {
     const { mounting } = manualMounting()
@@ -286,52 +316,54 @@ describe("a static block's colours", () => {
   })
 })
 
+/** An IntersectionObserver the test reports to. */
+function observerHarness() {
+  const observers: { callback: IntersectionObserverCallback; watched: Set<Element> }[] = []
+  class FakeObserver {
+    readonly watched = new Set<Element>()
+    readonly callback: IntersectionObserverCallback
+    constructor(callback: IntersectionObserverCallback) {
+      this.callback = callback
+      observers.push(this)
+    }
+    observe(element: Element) {
+      this.watched.add(element)
+    }
+    unobserve(element: Element) {
+      this.watched.delete(element)
+    }
+  }
+  const report = (element: Element, isIntersecting: boolean) => {
+    for (const observer of observers) {
+      const entry = { target: element, isIntersecting }
+      observer.callback(
+        [entry as unknown as IntersectionObserverEntry],
+        observer as unknown as IntersectionObserver,
+      )
+    }
+  }
+  return { FakeObserver, report, observers }
+}
+
+function idle() {
+  let pending: ((deadline: IdleDeadlineLike) => void) | undefined
+  const queue = createIdleQueue({
+    request: (callback) => {
+      pending = callback
+      return () => {
+        pending = undefined
+      }
+    },
+  })
+  return {
+    queue,
+    run: () => {
+      pending?.({ timeRemaining: () => 50, didTimeout: false })
+    },
+  }
+}
+
 describe('mounting near the viewport', () => {
-  /** An IntersectionObserver the test reports to. */
-  function observerHarness() {
-    const observers: { callback: IntersectionObserverCallback; watched: Set<Element> }[] = []
-    class FakeObserver {
-      readonly watched = new Set<Element>()
-      constructor(readonly callback: IntersectionObserverCallback) {
-        observers.push(this)
-      }
-      observe(element: Element) {
-        this.watched.add(element)
-      }
-      unobserve(element: Element) {
-        this.watched.delete(element)
-      }
-    }
-    const report = (element: Element, isIntersecting: boolean) => {
-      for (const observer of observers) {
-        const entry = { target: element, isIntersecting }
-        observer.callback(
-          [entry as unknown as IntersectionObserverEntry],
-          observer as unknown as IntersectionObserver,
-        )
-      }
-    }
-    return { FakeObserver, report, observers }
-  }
-
-  function idle() {
-    let pending: ((deadline: IdleDeadlineLike) => void) | undefined
-    const queue = createIdleQueue({
-      request: (callback) => {
-        pending = callback
-        return () => {
-          pending = undefined
-        }
-      },
-    })
-    return {
-      queue,
-      run: () => {
-        pending?.({ timeRemaining: () => 50, didTimeout: false })
-      },
-    }
-  }
-
   it('opens a block once it comes near, in idle time, and never one that stays away', () => {
     const { FakeObserver, report } = observerHarness()
     const { queue, run } = idle()

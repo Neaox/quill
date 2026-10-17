@@ -2,19 +2,7 @@ import { useEffect, useEffectEvent, useMemo, useRef } from 'react'
 import type { ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 
-import { enhanceAnimatedImages } from '@quill/design-css/animated-images'
-import { enhanceCodeBlocks } from '@quill/design-css/code-blocks'
-import { enhanceDetails } from '@quill/design-css/details'
-import { enhanceImages } from '@quill/design-css/image-viewer'
-import { enhanceDiagrams } from '@quill/design-css/lightbox'
-import { enhanceTables } from '@quill/design-css/tables'
-import { createBrowserHighlighting } from '@quill/highlight/browser'
-import { applyHighlighting } from '@quill/highlight/client'
-import { languageLabel } from '@quill/markdown/code-languages'
 import { cx, Prose } from '@quill/ui'
-
-import { createBrowserDiagrams } from '../../lib/diagrams/browser-environment.ts'
-import { drawDiagrams } from '../../lib/diagrams/draw-diagrams.ts'
 
 export interface DocumentBodyProps {
   /** The cached body from `GET /documents/:id/rendered` (ADR-031). */
@@ -104,21 +92,23 @@ export function DocumentBody({
     article.replaceChildren(...body.blocks)
     addEyebrow(article, eyebrow)
 
-    const { environment, rootOf } = createBrowserHighlighting(window)
-    // Cards before ranges: a bare block is moved into its card, and ranges
-    // painted before the move would be painted over nothing.
-    const disposers = [
-      enhanceCodeBlocks(article, { languageLabel }),
-      ...applyHighlighting(rootOf(article), environment),
-      drawDiagrams(article, createBrowserDiagrams(window, article)),
-      enhanceDiagrams(article),
-      enhanceTables(article),
-      enhanceDetails(article),
-      enhanceAnimatedImages(article),
-      ...(expandImages ? [enhanceImages(article)] : []),
-    ]
-    mounted()
+    // The words are readable now; the behaviours arrive with their module
+    // (`document-enhancements.ts`). A body replaced or unmounted before it
+    // loads must not be enhanced late, and `onMounted` keeps its meaning of
+    // "drawn and enhanced" by waiting for them.
+    let disposers: readonly (() => void)[] = []
+    let current = true
+    import('./document-enhancements.ts')
+      .then(({ enhanceDocument }) => {
+        if (current) disposers = enhanceDocument(article, { expandImages })
+      })
+      // The reading is complete without them; a failed chunk load is not a failed document.
+      .catch(() => undefined)
+      .finally(() => {
+        if (current) mounted()
+      })
     return () => {
+      current = false
       for (const dispose of disposers) dispose()
     }
   }, [body, eyebrow, expandImages])

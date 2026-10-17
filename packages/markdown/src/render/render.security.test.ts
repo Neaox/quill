@@ -11,6 +11,13 @@ import { parseMarkdown } from '../pipeline/processor.ts'
 import { renderHtml } from './html.ts'
 import { sanitizeSchema } from './sanitize-schema.ts'
 
+const input = (properties: Properties): Element => ({
+  type: 'element',
+  tagName: 'input',
+  properties,
+  children: [],
+})
+
 const render = (markdown: string): string => renderHtml(parseMarkdown(markdown))
 
 // A genuine attribute breakout looks like `"` (closing the value early) then a
@@ -332,12 +339,6 @@ describe('renderHtml: directive attribute injection', () => {
   })
 
   it('admits a name on an input only as text, never another kind of input or a live one', () => {
-    const input = (properties: Properties): Element => ({
-      type: 'element',
-      tagName: 'input',
-      properties,
-      children: [],
-    })
     const tree: HastRoot = {
       type: 'root',
       children: [

@@ -4,7 +4,7 @@ import userEvent from '@testing-library/user-event'
 import { undo } from '@tiptap/pm/history'
 import { DOMParser as ProseMirrorParser } from '@tiptap/pm/model'
 import { TextSelection } from '@tiptap/pm/state'
-import type { EditorState } from '@tiptap/pm/state'
+import type { Command, EditorState } from '@tiptap/pm/state'
 import { createRef } from 'react'
 import { describe, expect, it } from 'vitest'
 
@@ -31,8 +31,8 @@ function written(state: EditorState): string {
 }
 
 /** A state with the caret in the textblock holding `text`, at `offset` within it. */
-function caretIn(markdown: string, text: string, offset = 0): EditorState {
-  const state = harness.state(markdown)
+function caretIn(source: string, text: string, offset = 0): EditorState {
+  const state = harness.state(source)
   let found = -1
   state.doc.descendants((node, pos) => {
     if (found === -1 && node.isTextblock && node.textContent === text) found = pos + 1 + offset
@@ -43,8 +43,8 @@ function caretIn(markdown: string, text: string, offset = 0): EditorState {
 }
 
 /** A state with the caret on the empty line of the body of the details at the top. */
-function caretInEmptyBody(markdown: string, index = 1): EditorState {
-  const state = harness.state(markdown)
+function caretInEmptyBody(source: string, index = 1): EditorState {
+  const state = harness.state(source)
   const details = state.doc.firstChild
   let pos = 1
   details?.forEach((child, offset, at) => {
@@ -53,10 +53,7 @@ function caretInEmptyBody(markdown: string, index = 1): EditorState {
   return state.apply(state.tr.setSelection(TextSelection.create(state.doc, pos)))
 }
 
-function run(
-  state: EditorState,
-  command: (state: EditorState, dispatch: (tr: never) => void) => boolean,
-): EditorState {
+function run(state: EditorState, command: Command): EditorState {
   let next = state
   const ran = command(state, (tr) => {
     next = state.apply(tr)

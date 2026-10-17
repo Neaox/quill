@@ -55,6 +55,7 @@ export function createDetailsRenderer(): DetailsRenderer {
   let accordions = 0
 
   const groupName = (node: DetailsNode, parent: unknown): string | undefined => {
+    /* v8 ignore next -- a handler is always given its parent; the type is `unknown` only because the root has none. */
     const group = typeof parent === 'object' && parent !== null ? names.get(parent) : undefined
     return group ?? detailsModel(node).name
   }

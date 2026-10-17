@@ -15,6 +15,7 @@ import type { ShareLinkDependencies } from './share-links.ts'
 import {
   SHARE_LINK_AUDIT_EVENTS,
   createShareLink,
+  findShareLink,
   listShareLinks,
   recordShareLinkUse,
   resolveShareLink,
@@ -171,6 +172,17 @@ describe('listShareLinks', () => {
       first.id,
     ])
     expect(await listShareLinks(deps, { documentId: CHILD })).toEqual([])
+  })
+})
+
+describe('findShareLink', () => {
+  it('finds one link by its id, and nothing for an id no link has', async () => {
+    const { id } = await create()
+
+    expect((await findShareLink(deps, id))?.id).toBe(id)
+    expect(
+      await findShareLink(deps, '00000000-0000-4000-8000-0000000003ff' as ShareLinkId),
+    ).toBeNull()
   })
 })
 

@@ -95,6 +95,9 @@ export function workerParser(create: () => WorkerLike): ParseMarkdown {
     const id = next++
     const { promise, resolve } = Promise.withResolvers<DocumentAst>()
     waiting.set(id, { markdown, resolve })
+    // A dedicated worker takes no target origin (its second argument is a
+    // transfer list); the rule is written for `window.postMessage`.
+    // oxlint-disable-next-line unicorn/require-post-message-target-origin
     worker.postMessage({ id, markdown })
     return promise
   }

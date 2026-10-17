@@ -17,13 +17,7 @@ import type {
 } from '../ports/persistence.ts'
 import type { Clock, IdGenerator } from '../ports/system.ts'
 import { canonicaliseLinks } from './canonical-links.ts'
-import {
-  DOCUMENT_PUBLISHED,
-  DOCUMENT_RENAMED,
-  EVENT_PAYLOAD_VERSION,
-  type DocumentPublishedPayload,
-  type DocumentRenamedPayload,
-} from './events.ts'
+import { documentPublished, documentRenamed } from './events.ts'
 import { createVersionedReader } from './versioned-reader.ts'
 
 /**
@@ -260,29 +254,28 @@ export async function recordPublish(
         changeNote: input.changeNote,
         now,
       })
-      const published: DocumentPublishedPayload = {
-        version: EVENT_PAYLOAD_VERSION,
-        documentId: document.id,
-        workspaceId: document.workspaceId,
-        revision,
-        publishedBy: input.author.userId,
-      }
-      await tx.outbox.write({
-        id: deps.ids.uuid(),
-        type: DOCUMENT_PUBLISHED,
-        payload: published,
-        now,
-      })
-
-      if (renamed) {
-        const event: DocumentRenamedPayload = {
-          version: EVENT_PAYLOAD_VERSION,
+      await tx.events.record(
+        documentPublished,
+        {
           documentId: document.id,
           workspaceId: document.workspaceId,
-          from: document.title,
-          to: title,
-        }
-        await tx.outbox.write({ id: deps.ids.uuid(), type: DOCUMENT_RENAMED, payload: event, now })
+          revision,
+          publishedBy: input.author.userId,
+        },
+        now,
+      )
+
+      if (renamed) {
+        await tx.events.record(
+          documentRenamed,
+          {
+            documentId: document.id,
+            workspaceId: document.workspaceId,
+            from: document.title,
+            to: title,
+          },
+          now,
+        )
       }
     }
 

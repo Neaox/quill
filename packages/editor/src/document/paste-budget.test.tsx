@@ -120,7 +120,7 @@ function lazyPage() {
     },
   })
   const watched: Element[] = []
-  let report: IntersectionObserverCallback = () => undefined
+  let report: IntersectionObserverCallback | undefined
   class Viewport {
     constructor(callback: IntersectionObserverCallback) {
       report = callback
@@ -140,7 +140,7 @@ function lazyPage() {
     /** The first `count` blocks come into view. */
     scrollTo(count: number) {
       const entries = watched.slice(0, count).map((target) => ({ target, isIntersecting: true }))
-      report(entries as unknown as IntersectionObserverEntry[], {} as IntersectionObserver)
+      report?.(entries as unknown as IntersectionObserverEntry[], {} as IntersectionObserver)
     },
     /** One idle period of `ms`, timing each task in it. */
     idle(ms = 50) {
@@ -164,6 +164,8 @@ async function pasted(): Promise<{ editor: Editor; applied: number }> {
   render(<EditingSession ref={ref} />)
   const editor = ref.current?.editor
   if (editor == null) throw new Error('The editor did not mount.')
+  // Mounting converted the empty tree it was given; the budget is for the paste.
+  vi.mocked(markdown.mdastToProseMirror).mockClear()
   const started = performance.now()
   editor.view.dom.dispatchEvent(clipboard(source))
   await vi.waitFor(() => {
@@ -171,6 +173,13 @@ async function pasted(): Promise<{ editor: Editor; applied: number }> {
   })
   return { editor, applied: performance.now() - started }
 }
+
+const nextFrame = () =>
+  new Promise<void>((resolve) =>
+    requestAnimationFrame(() => {
+      resolve()
+    }),
+  )
 
 const median = (times: readonly number[]) =>
   times.toSorted((a, b) => a - b)[Math.floor(times.length / 2)] ?? Number.POSITIVE_INFINITY
@@ -231,7 +240,10 @@ describe('a paste of a 4,100-line document', () => {
 
     // The first screenful comes into view: those, and only those, open.
     page.scrollTo(3)
-    page.idle()
+    // Which blocks open is the question, not how long the first takes: the
+    // first CodeMirror built in a process pays for loading it, many times a
+    // task. The time each opening takes is measured below, warm.
+    page.idle(10_000)
     expect(dom.querySelectorAll('.cm-editor')).toHaveLength(3)
     expect(dom.querySelectorAll('pre[data-code-static]')).toHaveLength(CODE_BLOCKS - 3)
     page.restore()
@@ -254,6 +266,9 @@ describe('a paste of a 4,100-line document', () => {
       page.idle()
       openings.push(performance.now() - opened)
 
+      // The frame work the paste itself queued (the table grips taking their
+      // places) belongs to the paste, not to the save timed next.
+      await nextFrame()
       const save = performance.now()
       await act(async () => {
         clock.advance(1_000)

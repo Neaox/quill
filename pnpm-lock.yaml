@@ -185,6 +185,9 @@ importers:
       '@quill/markdown':
         specifier: workspace:*
         version: link:../../packages/markdown
+      '@quill/search':
+        specifier: workspace:*
+        version: link:../../packages/search
       '@quill/theme':
         specifier: workspace:*
         version: link:../../packages/theme
@@ -463,6 +466,9 @@ importers:
 
   packages/markdown:
     dependencies:
+      '@quill/brand':
+        specifier: workspace:*
+        version: link:../brand
       '@quill/domain':
         specifier: workspace:*
         version: link:../domain

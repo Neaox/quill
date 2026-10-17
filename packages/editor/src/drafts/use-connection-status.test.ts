@@ -26,16 +26,16 @@ describe('isDisconnected', () => {
   })
 })
 
-describe('useConnectionStatus', () => {
-  function render(clock = createFakeClock(1_000)) {
-    const view = renderHook(
-      (props: { autosave: AutosaveStatus; lock: LockStatus }) =>
-        useConnectionStatus({ ...props, clock }),
-      { initialProps: { autosave: 'saved' as AutosaveStatus, lock: 'held' as LockStatus } },
-    )
-    return { ...view, clock }
-  }
+function render(clock = createFakeClock(1_000)) {
+  const view = renderHook(
+    (props: { autosave: AutosaveStatus; lock: LockStatus }) =>
+      useConnectionStatus({ ...props, clock }),
+    { initialProps: { autosave: 'saved' as AutosaveStatus, lock: 'held' as LockStatus } },
+  )
+  return { ...view, clock }
+}
 
+describe('useConnectionStatus', () => {
   it('is online while saves and heartbeats come back', () => {
     const { result } = render()
     expect(result.current).toEqual({ offline: false, offlineSince: null, othersMayEdit: false })

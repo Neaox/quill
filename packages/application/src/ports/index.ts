@@ -14,15 +14,24 @@ export type {
   RevisionSummary,
   TreeEntry,
 } from './content-store.ts'
+export type { EventBus, EventRecorder, RecordedEvent } from './events.ts'
 export type { BlobRef, BlobStore } from './blob-store.ts'
 export { concatChunks, readBlob } from './blob-store.ts'
 export type {
+  Contributor,
+  FacetCount,
+  FacetCounts,
+  FacetName,
+  FacetsOptions,
   FieldFilterKey,
   FieldWeights,
   FilterClause,
   IndexableDocument,
   IndexableDocumentV1,
+  IndexableDocumentV2,
+  IndexableDocumentV3,
   IndexableHeading,
+  IndexedSuggestionField,
   PhraseClause,
   QueryClause,
   RankingProfile,
@@ -32,10 +41,13 @@ export type {
   SearchIndex,
   SearchIndexQueryOptions,
   SearchQuery,
+  SharedVisibility,
+  SuggestionRequest,
   TermClause,
   VisibilityFilter,
   WorkspaceAffinity,
 } from './search-index.ts'
+export type { SearchSuggestion } from '@quill/domain'
 export type { Clock, Hasher, IdGenerator, TokenService } from './system.ts'
 
 export type {

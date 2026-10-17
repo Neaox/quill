@@ -16,7 +16,7 @@ const promptStyles = tv({
   slots: {
     root: [
       'flex w-[min(28rem,100%)] flex-col gap-3 rounded-lg border border-border',
-      'bg-surface-raised p-5 shadow-dialog focus-visible:outline-none',
+      'bg-surface-raised p-5 shadow-dialog focus-visible:outline-hidden',
     ],
     title: 'text-base leading-snug font-semibold tracking-tight text-foreground',
     body: 'text-xs leading-relaxed text-muted',

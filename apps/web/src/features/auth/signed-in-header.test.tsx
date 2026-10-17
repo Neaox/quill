@@ -36,6 +36,7 @@ function signedIn(isInstanceAdmin: boolean, extra: FakeRoutes = {}) {
   })
 }
 
+const row = () => screen.getByRole('menuitem', { name: /^Appearance:/u })
 const trigger = () => screen.findByRole('button', { name: 'Account menu for Ada Writer' })
 
 afterEach(() => {
@@ -132,7 +133,6 @@ describe('the person menu', () => {
   it('goes round the colour schemes from one row, in place, keeping the menu open, and remembers the one it stops on', async () => {
     signedIn(false)
     await userEvent.click(await trigger())
-    const row = () => screen.getByRole('menuitem', { name: /^Appearance:/u })
 
     await userEvent.click(await screen.findByRole('menuitem', { name: /^Appearance:\s*System$/u }))
     expect(document.documentElement).toHaveAttribute('data-theme', 'light')

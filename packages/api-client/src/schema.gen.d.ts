@@ -1978,6 +1978,7 @@ export interface paths {
             parameters: {
                 query: {
                     cursor?: string;
+                    facets?: string;
                     limit?: number;
                     q: string;
                     workspace?: string;
@@ -1997,6 +1998,10 @@ export interface paths {
                         "application/json": {
                             current: {
                                 breadcrumb: string[];
+                                contributorCount: number;
+                                contributors: {
+                                    name: string;
+                                }[];
                                 documentId: string;
                                 path: string;
                                 score: number;
@@ -2009,12 +2014,19 @@ export interface paths {
                                     }[];
                                     text: string;
                                 };
+                                status: string;
+                                tags: string[];
                                 title: string;
+                                updatedAt: string;
                                 workspaceId: string;
                             }[];
                             elsewhere: {
                                 hits: {
                                     breadcrumb: string[];
+                                    contributorCount: number;
+                                    contributors: {
+                                        name: string;
+                                    }[];
                                     documentId: string;
                                     path: string;
                                     score: number;
@@ -2027,7 +2039,10 @@ export interface paths {
                                         }[];
                                         text: string;
                                     };
+                                    status: string;
+                                    tags: string[];
                                     title: string;
+                                    updatedAt: string;
                                     workspaceId: string;
                                 }[];
                                 workspace: {
@@ -2036,8 +2051,71 @@ export interface paths {
                                     slug: string;
                                 };
                             }[];
+                            facets?: {
+                                collection?: {
+                                    count: number;
+                                    label: string;
+                                    value: string;
+                                }[];
+                                status?: {
+                                    count: number;
+                                    label: string;
+                                    value: string;
+                                }[];
+                                tag?: {
+                                    count: number;
+                                    label: string;
+                                    value: string;
+                                }[];
+                            };
                             nextCursor?: string;
                             query: string;
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/search/suggestions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query: {
+                    field: "by" | "team" | "tag" | "collection" | "in" | "status";
+                    limit?: number;
+                    prefix?: string;
+                    workspace?: string;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            field: string;
+                            suggestions: {
+                                label: string;
+                                value: string;
+                            }[];
                         };
                     };
                 };

@@ -9,8 +9,9 @@ import type {
 } from '../ports/persistence.ts'
 import type { Settings } from '../ports/settings.ts'
 import type { Clock, IdGenerator } from '../ports/system.ts'
-import { createGrant } from './create-grant.ts'
+import { createGrantIn } from './create-grant.ts'
 import { namedSlug } from './document-path.ts'
+import { grantChange, grantRevoked } from './events.ts'
 import { readOrganisationSettings } from './settings.ts'
 import type { SettingsDependencies } from './settings.ts'
 
@@ -189,6 +190,7 @@ export async function unpublishCollection(
     if (written.kind === 'slug-taken') return { kind: 'not-published' }
     for (const grant of await publicViewerGrants(tx, collection.id)) {
       await tx.grants.delete(grant.id)
+      await tx.events.record(grantRevoked, grantChange(grant), deps.clock.now())
     }
     await audit(deps, tx, {
       type: PUBLIC_PUBLISHING_AUDIT_EVENTS.unpublished,
@@ -204,7 +206,7 @@ export async function unpublishCollection(
  * The viewer grant to the public principal at this collection, if it is not
  * already there.
  *
- * Written through `createGrant` like every other grant, so the domain's rules
+ * Written through `createGrantIn` like every other grant, so the domain's rules
  * — the public principal never above viewer, a deny only at document scope —
  * are checked here too rather than being bypassed by the one command that
  * creates public access (ADR-012).
@@ -216,22 +218,15 @@ async function grantPublicViewer(
   createdBy: UserId,
 ): Promise<void> {
   if ((await publicViewerGrants(tx, collectionId)).length > 0) return
-  await createGrant(
-    // `createGrant` reads `repos` and never opens a transaction of its own;
-    // `run` is here because `UnitOfWork` declares it, and it stays inside the
-    // one already open rather than starting a second.
-    /* v8 ignore next */
-    { ...deps, uow: { repos: tx, run: (fn) => fn(tx) } },
-    {
-      principalKind: 'public',
-      principalId: null,
-      scopeKind: 'collection',
-      scopeId: collectionId,
-      role: 'viewer',
-      effect: 'allow',
-      createdBy,
-    },
-  )
+  await createGrantIn(deps, tx, {
+    principalKind: 'public',
+    principalId: null,
+    scopeKind: 'collection',
+    scopeId: collectionId,
+    role: 'viewer',
+    effect: 'allow',
+    createdBy,
+  })
 }
 
 /** Every allow held by the public principal at this collection. */

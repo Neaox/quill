@@ -7,7 +7,12 @@ import { createFakeContentStore } from '../test-support/fake-content-store.ts'
 import type { FakeContentStore } from '../test-support/fake-content-store.ts'
 import { createInMemoryBlobStore } from '../test-support/in-memory-blob-store.ts'
 import { createFakeDocumentFormat, serialise } from '../test-support/fake-document-format.ts'
-import { createFakeClock, createFakeHasher, createFakeIdGenerator } from '../test-support/fakes.ts'
+import {
+  aShortId,
+  createFakeClock,
+  createFakeHasher,
+  createFakeIdGenerator,
+} from '../test-support/fakes.ts'
 import type { FakeClock } from '../test-support/fakes.ts'
 import { createInMemoryUnitOfWork } from '../test-support/in-memory-repositories.ts'
 import type { InMemoryUnitOfWork } from '../test-support/in-memory-repositories.ts'
@@ -357,6 +362,35 @@ describe('the draft an editor has not published', () => {
     const id = await draft('Overview', '# Overview\nNot out yet.')
 
     expect(await draftOf(id)).toEqual({ savedAt: NOW })
+  })
+
+  it('is not reported when there is no draft to differ, or one this release cannot read', async () => {
+    const id = await published('# Overview\nPublished.')
+    clock.advance(60_000)
+    await uow.repos.drafts.init({
+      documentId: id,
+      baseRevision: null,
+      ast: { version: 999 },
+      now: clock.now(),
+    })
+    expect(await draftOf(id)).toBeNull()
+
+    const bare = documentId('00000000-0000-4000-8000-000000000301')
+    await uow.repos.documents.create({
+      id: bare,
+      shortId: aShortId(),
+      workspaceId: WORKSPACE,
+      collectionId: 'architecture',
+      parentId: null,
+      slug: 'bare',
+      path: 'architecture/bare.md',
+      title: 'Bare',
+      status: 'draft',
+      templateId: null,
+      templateVersion: null,
+      now: NOW,
+    })
+    expect(await draftOf(bare)).toBeNull()
   })
 
   it('is not reported to somebody who cannot edit, who has no business with it', async () => {

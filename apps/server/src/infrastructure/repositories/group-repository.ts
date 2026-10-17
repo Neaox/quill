@@ -1,4 +1,4 @@
-import { and, eq, sql } from 'drizzle-orm'
+import { and, eq, inArray, sql } from 'drizzle-orm'
 
 import type { GroupId, GroupRepository, GroupRow, UnitId } from '@quill/application'
 import type { UserId } from '@quill/domain'
@@ -90,6 +90,15 @@ export function createGroupRepository(db: DrizzleClient): GroupRepository {
         SELECT * FROM held
       `)
       return rows.map(fromRecord)
+    },
+
+    async listByUnits(unitIds: readonly UnitId[]): Promise<readonly GroupRow[]> {
+      if (unitIds.length === 0) return []
+      const rows = await db
+        .select()
+        .from(groups)
+        .where(inArray(groups.unitId, [...unitIds]))
+      return rows.map(toGroupRow)
     },
   }
 }

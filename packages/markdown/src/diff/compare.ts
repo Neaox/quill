@@ -17,8 +17,9 @@ import { visit } from 'unist-util-visit'
 
 import { calloutDirective, isCalloutType } from '../directives/callout.ts'
 import { claims } from '../directives/definition.ts'
-import { isPresenterNotes, stripPresenterNotes } from '../directives/strip-presenter-notes.ts'
+import { stripPresenterNotes } from '../directives/strip-presenter-notes.ts'
 import { DIAGRAM_LANGUAGES } from '../render/handlers.ts'
+import { itemAt } from './at.ts'
 import type { BlockAlignment } from './blocks.ts'
 import { alignBlocks } from './blocks.ts'
 import { hasChanges, mergePhrasing, wholly } from './inline.ts'
@@ -130,14 +131,10 @@ interface ReadBlock {
  * and the block as written, which is what a revert puts back.
  */
 function readBlocks(root: Root): readonly ReadBlock[] {
-  const body = blocksOf(root)
-  const stripped = stripPresenterNotes({ ...root, children: body }).children
-  const kept = body.flatMap((original, written) =>
-    isPresenterNotes(original) ? [] : [{ original, written }],
-  )
-  return stripped.flatMap((block, index) => {
-    const at = kept[index]
-    return at !== undefined && isFlow(block) ? [{ block, ...at }] : []
+  return blocksOf(root).flatMap((original, written) => {
+    // Stripped on its own, so a block of presenter notes is what comes back empty.
+    const [block] = stripPresenterNotes({ ...root, children: [original] }).children
+    return block !== undefined && isFlow(block) ? [{ block, original, written }] : []
   })
 }
 
@@ -150,7 +147,8 @@ export function compareDocuments(before: Root, after: Root): DocumentComparison 
     older.map(({ block }) => block),
     newer.map(({ block }) => block),
   )
-  const standsAt = placesInNewer(alignment, newStands, blocksOf(after).length)
+  const end = blocksOf(after).length
+  const standsAt = placesInNewer(alignment, newStands, end)
 
   const children: RootContent[] = []
   const changes: ComparedChange[] = []
@@ -170,7 +168,7 @@ export function compareDocuments(before: Root, after: Root): DocumentComparison 
       wordsAdded: merged.added,
       wordsRemoved: merged.removed,
       index: children.length,
-      at: standsAt[index] ?? blocksOf(after).length,
+      at: itemAt(standsAt, index, end),
       previous: entry.kind === 'added' ? undefined : oldWas.get(entry.before),
       nodes: markFirst(merged.nodes, { change }),
     })
@@ -221,6 +219,7 @@ function placesInNewer(
   const places: number[] = []
   let next = end
   for (const entry of alignment.toReversed()) {
+    /* v8 ignore next -- every block of the newer document has a place in `stands`; `next` only satisfies the types. */
     if (entry.kind !== 'removed') next = stands.get(entry.after) ?? next
     places.push(next)
   }
@@ -464,10 +463,13 @@ function mergeList(before: List, after: List): { node: List; added: number; remo
  * table, and is shown before and after instead (`undefined`).
  */
 function mergeTable(before: Table, after: Table): Merged<Table> | undefined {
-  const width = (table: Table) => table.children[0]?.children.length ?? 0
   const [olderHead, ...olderBody] = before.children
   const [newerHead, ...newerBody] = after.children
-  if (width(before) !== width(after) || olderHead === undefined || newerHead === undefined) {
+  if (
+    olderHead === undefined ||
+    newerHead === undefined ||
+    olderHead.children.length !== newerHead.children.length
+  ) {
     return undefined
   }
 
@@ -567,11 +569,12 @@ function wordsIn(node: Nodes): number {
   return countWords(plainText(node))
 }
 
+const withoutBlankText = (children: readonly PhrasingContent[]): PhrasingContent[] =>
+  children.filter((child) => !(child.type === 'text' && child.value.trim() === ''))
+
 /** A paragraph that is only a picture: an image, perhaps with a link around it. */
 function isImageParagraph(node: Paragraph): boolean {
-  const meaningful = (children: readonly PhrasingContent[]): PhrasingContent[] =>
-    children.filter((child) => !(child.type === 'text' && child.value.trim() === ''))
-  const content = meaningful(node.children)
+  const content = withoutBlankText(node.children)
   return (
     content.length > 0 &&
     content.every(
@@ -579,7 +582,7 @@ function isImageParagraph(node: Paragraph): boolean {
         child.type === 'image' ||
         child.type === 'imageReference' ||
         (child.type === 'link' &&
-          meaningful(child.children).every(
+          withoutBlankText(child.children).every(
             (inner) => inner.type === 'image' || inner.type === 'imageReference',
           )),
     )
@@ -611,7 +614,6 @@ function blockKind(node: Flow): ChangedBlock {
       return 'table'
     case 'code':
       return isDiagram(node) ? 'diagram' : 'code'
-    case 'diffCode':
     case 'codeGroup':
       return 'code'
     case 'blockquote':

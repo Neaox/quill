@@ -232,9 +232,9 @@ test('a document is written, published, revised, compared, and restored', async 
   await page.getByRole('button', { name: 'Compare' }).click()
 
   await expect(page.getByRole('heading', { name: 'Comparing v1 with v2' })).toBeVisible()
-  const diff = page.getByRole('group', { name: 'Unified diff' })
-  await expect(diff).toContainText('on-call engineer')
-  await expect(diff.locator('[data-change="added"]').first()).toBeVisible()
+  const compared = page.getByRole('article', { name: /compared with/ })
+  await expect(compared).toContainText('on-call engineer')
+  await expect(compared.locator('[data-change]').first()).toBeVisible()
 
   // --- Restore the first revision ------------------------------------------
   await page.getByRole('link', { name: 'Back to the document' }).click()

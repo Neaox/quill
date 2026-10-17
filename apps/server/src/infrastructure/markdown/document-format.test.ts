@@ -438,7 +438,8 @@ describe('createDocumentFormat: render and read', () => {
     expect(rendered.html).toContain(
       '<span class="emoji" role="img" aria-label="thumbs up">👍</span>',
     )
-    expect(rendered.html).toContain(`<img class="emoji" src="${src}" alt=":airbnb:"`)
+    // Undescribed, a custom emoji is named by its name as words; the shortcode is the tooltip.
+    expect(rendered.html).toContain(`<img class="emoji" src="${src}" alt="airbnb" title=":airbnb:"`)
     expect(rendered.html).toContain(
       `<span class="badge" data-label="airbnb"><img class="emoji" src="${src}" alt=""`,
     )
@@ -581,5 +582,47 @@ describe('createDocumentFormat: retitle', () => {
       title: 'Recovered',
     })
     expect(renamed.frontMatter).toEqual({ id: DOC, title: 'Recovered' })
+  })
+})
+
+describe('createDocumentFormat: compare', () => {
+  const before = '# Title\n\nOne.\n'
+  const after = '# Title\n\nOne, and two.\n'
+
+  it('compares two texts with no drawings to draw', () => {
+    const compared = format.compare({ before, after, context: { linkTitles: new Map() } })
+
+    expect(compared.summary).toMatchObject({ changed: 1 })
+    expect(compared.changes[0]).not.toHaveProperty('revertible')
+  })
+
+  it('draws the drawings it was handed on both sides of the comparison', () => {
+    const url = '/api/attachments/0b6b0d2c-7f7e-4a39-8a8a-4a5f6d0c1a11'
+    const compared = format.compare({
+      before: `# Title\n\n![The loop](${url})\n`,
+      after: `# Title\n\n![The loop](${url})\n\nAnd more.\n`,
+      context: {
+        linkTitles: new Map(),
+        drawings: new Map([[url, { sha256: 'a', markup: '<svg viewBox="0 0 1 1"><rect/></svg>' }]]),
+      },
+    })
+
+    expect(compared.html).toContain(
+      '<div class="diagram" data-diagram="svg"><svg viewBox="0 0 1 1"',
+    )
+  })
+
+  it('says which changes can be put back in a draft, and names no author the record does not know', () => {
+    const compared = format.compare({
+      before,
+      after,
+      context: { linkTitles: new Map() },
+      draft: draftOf(after),
+      authorship: null,
+      patches: true,
+    })
+
+    expect(compared.changes).toMatchObject([{ change: 'changed', revertible: true }])
+    expect(compared.changes[0]).not.toHaveProperty('author')
   })
 })

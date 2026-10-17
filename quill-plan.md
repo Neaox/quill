@@ -434,7 +434,7 @@ Deferred to a later wave but constrained now:
 
 ## 22. Events, jobs, and notifications
 
-- An **outbox table** written in the same transaction as the change is the single event mechanism. Consumers: search indexing, effective-permission rebuild, notifications, remote sync, webhooks, audit.
+- An **outbox table** written in the same transaction as the change is the single event mechanism, and an in-process `EventBus` announces what a transaction recorded once it commits, for reactions that are safe to lose (a process's own caches). One `defineEvent` per event; use cases emit through `tx.events.record` (ADR-052). Consumers: search indexing, effective-permission rebuild, notifications, remote sync, webhooks, audit.
 - A small in-process job runner with Postgres-backed queues serves the first release; a separate worker process is a deployment option, not a code change.
 - Notifications are in-app first, email second. Event names: `DocumentCreated`, `DocumentPublished`, `DocumentMoved`, `DocumentDeleted`, `RevisionRestored`, `CommentCreated`, `CommentResolved`, `ShareLinkCreated`, `GrantChanged`, `MemberAdded`.
 - No event sourcing.

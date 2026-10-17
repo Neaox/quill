@@ -37,6 +37,8 @@ export function useFrameChannel<Inbound extends TSchema, Outbound>(
   const latest = useRef(options)
   const channel = useRef<FrameChannel<Outbound> | null>(null)
 
+  // The window listener and timer below outlive a render and read the newest
+  // options through this ref, so it is updated once a render has committed.
   useEffect(() => {
     latest.current = options
   })

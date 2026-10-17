@@ -27,6 +27,7 @@ import { requireAuthenticatedSession } from '../plugins/session.ts'
 import {
   CreateDocumentBodySchema,
   CreatedDocumentSchema,
+  DEFAULT_CHILDREN_PAGE,
   DocumentSchema,
   IdParamsSchema,
   TreeChildrenQuerySchema,
@@ -258,7 +259,7 @@ export function workspaceRoutes(deps: AppDependencies): FastifyPluginAsync {
         const target = await resolveWorkspaceId(deps, request.params.id)
         const authorizer = authorizerFor(deps, request)
         const access = await requireWorkspaceAccess(authorizer, target, 'view')
-        const { collectionId, parentId, cursor, limit } = request.query
+        const { collectionId, parentId, cursor, limit = DEFAULT_CHILDREN_PAGE } = request.query
         const after = cursor === undefined ? null : readCursor(cursor)
         if (after === undefined)
           throw unprocessable('invalid_cursor', 'That page is not one to resume from')
@@ -267,7 +268,7 @@ export function workspaceRoutes(deps: AppDependencies): FastifyPluginAsync {
           collectionId: collectionId as CollectionId,
           parentId: parentId === undefined ? null : await resolveDocumentId(deps, parentId),
           after,
-          limit: limit ?? DEFAULT_CHILDREN_PAGE,
+          limit,
           identities: await authorizer.identities(),
           seesEverything: access.isInstanceAdmin,
         })
@@ -377,8 +378,6 @@ export function workspaceRoutes(deps: AppDependencies): FastifyPluginAsync {
   }
 }
 
-const DEFAULT_CHILDREN_PAGE = 50
-
 /** A page's resume point as the opaque string a client hands back: where the last row stood. */
 function writeCursor(cursor: { readonly createdAt: Date; readonly id: string }): string {
   return Buffer.from(`${cursor.createdAt.toISOString()}|${cursor.id}`).toString('base64url')
@@ -388,8 +387,8 @@ function writeCursor(cursor: { readonly createdAt: Date; readonly id: string }):
 function readCursor(
   value: string,
 ): { readonly createdAt: Date; readonly id: DocumentId } | undefined {
-  const [at, id, ...rest] = Buffer.from(value, 'base64url').toString().split('|')
-  const createdAt = new Date(at ?? '')
+  const [at = '', id, ...rest] = Buffer.from(value, 'base64url').toString().split('|')
+  const createdAt = new Date(at)
   if (id === undefined || rest.length > 0 || Number.isNaN(createdAt.getTime())) return undefined
   try {
     return { createdAt, id: documentId(id) }

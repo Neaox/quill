@@ -160,7 +160,10 @@ describe('presenting a document', () => {
     const article = within(step).getByRole('article', { name: 'Steps' })
 
     expect(article.querySelector(':scope > .layout-wide')).not.toBeNull()
-    expect(article.querySelector('code')?.querySelectorAll('.tok-keyword')).toHaveLength(1)
+    // The highlighting is an enhancement that loads after the words are on screen.
+    await waitFor(() => {
+      expect(article.querySelector('code')?.querySelectorAll('.tok-keyword')).toHaveLength(1)
+    })
     expect(article.querySelector('.table-scroll')).toHaveAttribute('role', 'group')
   })
 

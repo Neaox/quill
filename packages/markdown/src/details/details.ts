@@ -117,18 +117,18 @@ function isNamedContainer(
   return node.type === 'containerDirective' && node.name === name
 }
 
-/** A details in any syntax: a `details` node, or a `:::details` container directive. */
-export function isDetailsNode(node: {
-  readonly type: string
-  readonly name?: unknown
-}): node is DetailsNode {
+/**
+ * A details in any syntax: a `details` node, or a `:::details` container
+ * directive. Deliberately not a type predicate: asked of a container
+ * directive, a predicate's false branch would narrow every other container
+ * directive to `never`.
+ */
+export function isDetailsNode(node: { readonly type: string; readonly name?: unknown }): boolean {
   return isDetails(node) || isNamedContainer(node, DETAILS)
 }
 
-export function isAccordion(node: {
-  readonly type: string
-  readonly name?: unknown
-}): node is ContainerDirective {
+/** An `:::accordion` container directive; not a type predicate, for the reason `isDetailsNode` is not. */
+export function isAccordion(node: { readonly type: string; readonly name?: unknown }): boolean {
   return isNamedContainer(node, ACCORDION)
 }
 

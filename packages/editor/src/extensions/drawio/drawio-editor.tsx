@@ -171,7 +171,7 @@ export function DrawioEditor({
       if (source.kind !== 'source') {
         transition({
           type: 'failed',
-          message: 'This file holds no draw.io diagram Quill can open.',
+          message: 'This file holds no draw.io diagram that can be opened here.',
           retry: 'none',
         })
         return
@@ -264,6 +264,11 @@ export function DrawioEditor({
     }
   }
 
+  function reload(): void {
+    transition({ type: 'reload-requested' })
+    void open()
+  }
+
   const prompt = (() => {
     switch (state.status) {
       case 'conflict':
@@ -338,11 +343,6 @@ export function DrawioEditor({
         return undefined
     }
   })()
-
-  function reload(): void {
-    transition({ type: 'reload-requested' })
-    void open()
-  }
 
   function retry(): void {
     const next = transition({ type: 'retried' })

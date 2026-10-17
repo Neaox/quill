@@ -13,8 +13,16 @@ const Inbound = Type.Union([
 
 type Outbound = { readonly action: 'load'; readonly xml: string }
 
+function dispatchMessage(data: unknown, origin: string, source: unknown): void {
+  window.dispatchEvent(
+    new MessageEvent('message', { data, origin, source: source as MessageEventSource }),
+  )
+}
+
 function setup() {
-  const frame = { postMessage: vi.fn() }
+  const frame = {
+    postMessage: vi.fn<(message: unknown, target?: string | WindowPostMessageOptions) => void>(),
+  }
   const received: unknown[] = []
   const rejected: FrameRejection[] = []
   const channel = createFrameChannel({
@@ -27,9 +35,7 @@ function setup() {
     onReject: (reason) => rejected.push(reason),
   })
   const post = (data: unknown, origin = ORIGIN, source: unknown = frame) => {
-    window.dispatchEvent(
-      new MessageEvent('message', { data, origin, source: source as MessageEventSource }),
-    )
+    dispatchMessage(data, origin, source)
   }
   return { frame, channel, received, rejected, post }
 }

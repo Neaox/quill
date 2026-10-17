@@ -105,6 +105,20 @@ export interface ComboboxProps {
    * it included) or on Enter.
    */
   readonly opens?: 'on-focus' | 'on-request' | undefined
+  /**
+   * Whether choosing this option leaves the popup open. Closing is right for a
+   * final answer; it is wrong for a step toward one, such as choosing a
+   * filter's name when its values are what comes next. The caller changes the
+   * options in the same update, so the popup shows the next step at once.
+   */
+  readonly keepsOpen?: ((optionId: string) => boolean) | undefined
+  /**
+   * Whether the first option is the active one before the arrows are used.
+   * `true`, the default, makes Enter choose it. `false` makes Enter the form's
+   * until the arrows have reached an option, for suggestions that must not
+   * hijack a search somebody has finished typing.
+   */
+  readonly preselect?: boolean | undefined
 }
 
 /**
@@ -147,9 +161,11 @@ export function Combobox({
   className,
   variant = 'field',
   opens = 'on-focus',
+  keepsOpen,
+  preselect = true,
 }: ComboboxProps) {
   const id = useId()
-  const cursor = useListboxCursor(groups)
+  const cursor = useListboxCursor(groups, { preselect })
   const [expanded, setExpanded] = useState(false)
   const field = inputStyles()
   const styles = comboboxStyles({ variant })
@@ -169,7 +185,8 @@ export function Combobox({
     .join(' ')
 
   function choose(optionId: string): void {
-    setExpanded(false)
+    setExpanded(keepsOpen?.(optionId) === true)
+    cursor.reset()
     onSelect(optionId)
   }
 

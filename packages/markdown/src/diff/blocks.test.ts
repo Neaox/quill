@@ -1,4 +1,4 @@
-import fc from 'fast-check'
+import * as fc from 'fast-check'
 import type { RootContent } from 'mdast'
 import { toString } from 'mdast-util-to-string'
 import { describe, expect, it } from 'vitest'
@@ -101,19 +101,50 @@ describe('alignBlocks', () => {
           )
           expect(fromAfter).toEqual(after)
           expect(new Set(fromBefore).size).toBe(before.length)
-          for (const entry of alignment) {
-            if (entry.kind === 'unchanged' || entry.kind === 'moved') {
-              expect(toString(entry.before)).toBe(toString(entry.after))
-            }
-            if (entry.kind === 'changed') expect(entry.before.type).toBe(entry.after.type)
-          }
+          const unequalKept = alignment.filter(
+            (entry) =>
+              (entry.kind === 'unchanged' || entry.kind === 'moved') &&
+              toString(entry.before) !== toString(entry.after),
+          )
+          const retyped = alignment.filter(
+            (entry) => entry.kind === 'changed' && entry.before.type !== entry.after.type,
+          )
+          expect(unequalKept).toEqual([])
+          expect(retyped).toEqual([])
         },
       ),
     )
   })
 })
 
+describe('a region too large to score every pair of its blocks', () => {
+  const COUNT = 205 // 205 x 205 candidate pairs is past the budget for scoring them all
+
+  it('pairs the blocks that sit in the same place and are alike, and no others', () => {
+    const older = Array.from({ length: COUNT }, (_, index) => `Entry${String(index)} stays here.`)
+    const newer = older.map((text, index) =>
+      index === 7 ? 'Completely unrelated sentence.' : `${text} Extended.`,
+    )
+    const alignment = alignBlocks(blocks(older.join('\n\n')), blocks(newer.join('\n\n')))
+    const kinds = Object.groupBy(alignment, (entry) => entry.kind)
+    expect(kinds.changed).toHaveLength(COUNT - 1)
+    expect(kinds.removed).toHaveLength(1)
+    expect(kinds.added).toHaveLength(1)
+    expect(kinds.unchanged).toBeUndefined()
+  })
+})
+
 describe('similarity', () => {
+  it('is one for two blocks with no words at all, and zero against one that has some', () => {
+    const [rule, otherRule, words] = blocks('---\n\n***\n\nSome words.')
+    if (rule === undefined || otherRule === undefined || words === undefined) {
+      throw new Error('blocks')
+    }
+    expect(similarity(rule, otherRule)).toBe(1)
+    expect(similarity(rule, words)).toBe(0)
+    expect(similarity(words, rule)).toBe(0)
+  })
+
   it('is one for equal text and zero for nothing in common', () => {
     const [left, right, other] = blocks('Same words.\n\nSame words.\n\nDifferent things.')
     if (left === undefined || right === undefined || other === undefined) throw new Error('blocks')

@@ -14,6 +14,7 @@ import {
   PresentRail,
   tv,
 } from '@quill/ui'
+import '@quill/ui/present.css'
 
 import {
   ApiError,

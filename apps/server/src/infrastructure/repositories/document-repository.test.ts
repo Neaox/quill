@@ -203,6 +203,31 @@ describe('DocumentRepository', () => {
     ).rejects.toThrow('update: document not found')
   })
 
+  it('counts the children under each parent in one query, and none for a parent with none', async () => {
+    const child = (n: number) => ({
+      ...baseInput(now),
+      id: documentId(`00000000-0000-4000-8000-0000000000e${n}`),
+      shortId: aShortId(10 + n),
+      parentId: DOC,
+      slug: `child-${n}`,
+      path: `/getting-started/child-${n}`,
+    })
+    const childless = documentId('00000000-0000-4000-8000-0000000000f1')
+    await documents.create(baseInput(now))
+    await documents.create({
+      ...baseInput(now),
+      id: childless,
+      shortId: aShortId(2),
+      slug: 'childless',
+      path: '/childless',
+    })
+    await documents.create(child(1))
+    await documents.create(child(2))
+
+    expect(await documents.countChildren([DOC, childless])).toEqual(new Map([[DOC, 2]]))
+    expect(await documents.countChildren([])).toEqual(new Map())
+  })
+
   it('deletes a document', async () => {
     await documents.create(baseInput(now))
     await documents.delete(DOC)

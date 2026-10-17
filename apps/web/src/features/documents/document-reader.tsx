@@ -12,7 +12,12 @@ import {
   tv,
 } from '@quill/ui'
 
-import { ApiError, useDraft, useRenderedDocument, type DiffRange } from '../../lib/api/index.ts'
+import {
+  ApiError,
+  useDraft,
+  useRenderedDocument,
+  type ComparisonRange,
+} from '../../lib/api/index.ts'
 import { isDocumentTree, readDraftContent } from '../../lib/documents/draft-content.ts'
 import { summariseDraft, type DraftSummary } from '../../lib/documents/draft-summary.ts'
 import type { LabelledRevision } from '../../lib/documents/revision-labels.ts'
@@ -26,8 +31,8 @@ import { PreviewLink } from './preview-link.tsx'
  * never ask for, so it is its own chunk: the reading route's first load does
  * not carry it (quill-plan.md section 31).
  */
-const RevisionDiffView = lazy(async () => ({
-  default: (await import('./revision-diff-view.tsx')).RevisionDiffView,
+const ComparisonView = lazy(async () => ({
+  default: (await import('./comparison-view.tsx')).ComparisonView,
 }))
 
 export const documentReaderStyles = tv({
@@ -52,7 +57,7 @@ export interface DocumentReaderProps {
    */
   readonly onScreen: string
   /** Two revisions named in the URL; absent means read rather than compare. */
-  readonly compare: DiffRange | undefined
+  readonly compare: ComparisonRange | undefined
   readonly revisions: readonly LabelledRevision[]
   readonly canEdit: boolean
   /** The collection the document sits in, shown above its title (`DocumentBody`). */
@@ -112,8 +117,10 @@ export function DocumentReader({
             </div>
           }
         >
-          <RevisionDiffView
+          <ComparisonView
             documentId={documentId}
+            workspaceSlug={workspaceSlug}
+            revisions={revisions}
             range={compare}
             fromLabel={labelOf(revisions, compare.from)}
             toLabel={labelOf(revisions, compare.to)}

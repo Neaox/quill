@@ -57,3 +57,4 @@ Status values: `Proposed` (awaiting a spike or review), `Accepted`, `Superseded 
 | [049](0049-navigation-tree-ordering-and-paging.md)    | Navigation tree: ordering and paging          | Accepted               |
 | [050](0050-presenting-with-two-windows.md)            | Presenting with two windows                   | Accepted               |
 | [051](0051-find-and-replace.md)                       | Find and replace in the editor                | Accepted               |
+| [052](0052-events-outbox-and-bus.md)                  | Events: the outbox is the truth, the bus the signal | Accepted         |

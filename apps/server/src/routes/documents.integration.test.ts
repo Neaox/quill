@@ -341,7 +341,8 @@ describe('the content journey', () => {
 
     // An edit arriving through Git sync rather than through this API: the
     // content store moves on, and the draft's base is now behind it. The same
-    // rule governs both (ADR-015).
+    // rule governs both (ADR-015). It keeps the front matter, as a Git user's
+    // edit does: a file without its `id` is not this document any more.
     const document = await harness.deps.uow.repos.documents.findById(id)
     await harness.deps.contentStore.publish({
       workspaceId: tenancy.workspaceId,
@@ -350,7 +351,7 @@ describe('the content journey', () => {
           kind: 'write',
           documentId: id,
           path: document?.path ?? '',
-          markdown: '# Externally edited\n\nSomebody else was here.\n',
+          markdown: `---\nid: ${id}\n---\n\n# Externally edited\n\nSomebody else was here.\n`,
         },
       ],
       author: { name: 'Grace', email: 'grace@example.com' },
@@ -591,6 +592,44 @@ describe('the content journey', () => {
     expect((await revert(2, ['c9'])).statusCode).toBe(422)
     expect((await revert(2, ['nope'])).statusCode).toBe(400)
     expect((await revert(2, ['c1'], viewer)).statusCode).toBe(403)
+  })
+
+  it('404s a comparison with a draft that is not there, whichever way it is asked for', async () => {
+    const id = await createDocument('Draft lost')
+    await writeDraft(id, '# Draft lost\n\nBody.\n', 0)
+    const published = await publish(id, await baseOf(id))
+    await harness.database.pool.query('DELETE FROM drafts WHERE document_id = $1', [id])
+    const range = `from=${published.json().revision}&to=draft`
+
+    expect((await get(`/api/documents/${id}/compare?${range}`, editor)).statusCode).toBe(404)
+    expect((await get(`/api/documents/${id}/compare/source?${range}`, editor)).statusCode).toBe(404)
+    const revert = await harness.app.inject({
+      method: 'POST',
+      url: `/api/documents/${id}/draft/revert-preview`,
+      cookies: editor,
+      payload: { from: published.json().revision, draftVersion: 1, changes: ['c1'] },
+    })
+    expect(revert.statusCode).toBe(404)
+  })
+
+  it('404s a source comparison and a revert from a revision this document never had', async () => {
+    const id = await createDocument('Unknown base')
+    await writeDraft(id, '# Unknown base\n\nBody.\n', 0)
+    const published = await publish(id, await baseOf(id))
+    const unknown = 'f'.repeat(40)
+
+    const source = await get(
+      `/api/documents/${id}/compare/source?from=${unknown}&to=${published.json().revision}`,
+      viewer,
+    )
+    expect(source.statusCode).toBe(404)
+    const revert = await harness.app.inject({
+      method: 'POST',
+      url: `/api/documents/${id}/draft/revert-preview`,
+      cookies: editor,
+      payload: { from: unknown, draftVersion: 1, changes: ['c1'] },
+    })
+    expect(revert.statusCode).toBe(404)
   })
 
   it('names who made each change in the draft, by the one who saved it', async () => {

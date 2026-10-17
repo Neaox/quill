@@ -108,7 +108,7 @@ export async function readDrawioModels(
   if (!DRAWIO_ROOT.test(source)) return { kind: 'not-drawio' }
   if (!/<mxfile\b/.test(source.slice(0, 1024))) return { kind: 'models', models: [source] }
 
-  const pages = [...source.matchAll(DIAGRAM_PAGE)].map((match) => (match[1] ?? '').trim())
+  const pages = [...source.matchAll(DIAGRAM_PAGE)].map(([, inner = '']) => inner.trim())
   if (pages.length > limits.maxPages) return { kind: 'refused', reason: 'too-many-pages' }
 
   let budget = limits.maxInflatedBytes
@@ -158,11 +158,20 @@ const ATTRIBUTE = /([\w:.-]+)\s*=\s*(?:"([^"]*)"|'([^']*)')/g
 /** Every element start in a model, for the element budget. */
 const ELEMENT_START = /<[A-Za-z]/g
 
+/** How many elements a model starts, counted without holding the matches. */
+function countElements(model: string): number {
+  let count = 0
+  // The pattern is global, so each exec resumes where the last match ended.
+  while (ELEMENT_START.exec(model) !== null) count += 1
+  return count
+}
+
 function attributesOf(source: string): ReadonlyMap<string, string> {
   return new Map(
-    Array.from(source.matchAll(ATTRIBUTE), (match) => [
-      match[1] ?? '',
-      decodeEntities(match[2] ?? match[3] ?? ''),
+    // Exactly one of the two quoted forms matched.
+    Array.from(source.matchAll(ATTRIBUTE), ([, name = '', double = '', single = '']) => [
+      name,
+      decodeEntities(double + single),
     ]),
   )
 }
@@ -172,9 +181,9 @@ function attributesOf(source: string): ReadonlyMap<string, string> {
  * them: an HTML label's markup removed, its line breaks kept as spaces.
  */
 export function labelsOfModel(model: string): readonly string[] {
-  return Array.from(model.matchAll(LABELLED_ELEMENT), (match) => {
-    const attributes = attributesOf(match[2] ?? '')
-    const raw = match[1] === 'mxCell' ? attributes.get('value') : attributes.get('label')
+  return Array.from(model.matchAll(LABELLED_ELEMENT), ([, tag, source = '']) => {
+    const attributes = attributesOf(source)
+    const raw = tag === 'mxCell' ? attributes.get('value') : attributes.get('label')
     return raw === undefined ? '' : plainText(raw)
   }).filter((label) => label !== '')
 }
@@ -193,10 +202,7 @@ export async function readDrawioLabels(
   const read = await readDrawioModels(source, inflate, limits)
   if (read.kind !== 'models') return read
 
-  const elements = read.models.reduce(
-    (total, model) => total + (model.match(ELEMENT_START)?.length ?? 0),
-    0,
-  )
+  const elements = read.models.reduce((total, model) => total + countElements(model), 0)
   if (elements > limits.maxElements) return { kind: 'refused', reason: 'too-many-elements' }
 
   const labels: string[] = []
@@ -286,7 +292,8 @@ export async function editableDrawioSource(
   // `id` and `name`; an empty page stays empty.
   const xml = source.replaceAll(DIAGRAM_PAGE, (whole, inner: string | undefined) => {
     if (inner === undefined || inner.trim() === '') return whole
-    const model = models.shift() ?? ''
+    // Every page that is not empty has a model, read in the same order.
+    const [model = ''] = models.splice(0, 1)
     const start = whole.slice(0, whole.length - inner.length - '</diagram>'.length)
     return `${start}${withSvgLabelCells(model)}</diagram>`
   })

@@ -570,28 +570,31 @@ describe('renaming, which is a write to the document', () => {
 })
 
 describe('deleteDocument', () => {
-  it('deletes it and records how many children were lifted to the root', async () => {
-    const audited: unknown[] = []
-    const withAudit = {
-      ...deps,
-      uow: {
-        ...uow,
-        repos: {
-          ...uow.repos,
-          audit: {
-            async write(input: unknown): Promise<void> {
-              audited.push(input)
-            },
-          },
-        },
-      },
-    }
+  it('announces it, with the collection it was in, so what was derived from it follows', async () => {
+    const before = uow.events.length
+    await deleteDocument(deps, { documentId: PARENT, deletedBy: ACTOR })
+    const emitted = uow.events.slice(before)
+    expect(emitted.map((event) => event.type)).toEqual(['DocumentDeleted'])
+    expect(emitted[0]?.payload).toMatchObject({
+      documentId: PARENT,
+      workspaceId: WORKSPACE,
+      collectionId: ARCHITECTURE,
+      deletedBy: ACTOR,
+    })
+  })
 
-    expect(await deleteDocument(withAudit, { documentId: PARENT, deletedBy: ACTOR })).toEqual({
+  it('announces nothing for a document that was not there', async () => {
+    const before = uow.events.length
+    await deleteDocument(deps, { documentId: MISSING, deletedBy: ACTOR })
+    expect(uow.events.slice(before)).toEqual([])
+  })
+
+  it('deletes it and records how many children were lifted to the root', async () => {
+    expect(await deleteDocument(deps, { documentId: PARENT, deletedBy: ACTOR })).toEqual({
       kind: 'deleted',
     })
     expect(await uow.repos.documents.findById(PARENT)).toBeNull()
-    expect(audited[0]).toMatchObject({
+    expect(uow.auditEvents[0]).toMatchObject({
       type: DOCUMENT_AUDIT_EVENTS.deleted,
       targetType: 'document',
       targetId: PARENT,

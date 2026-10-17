@@ -9,14 +9,14 @@ import {
   useLoadedDocument,
   useRenderedDocument,
   useTreeCollections,
-  type DiffRange,
+  type ComparisonRange,
   type OutlineEntry,
 } from '../../lib/api/index.ts'
 import { labelRevisions } from '../../lib/documents/revision-labels.ts'
+import { lazyDialog } from '../dialogs/lazy-dialog.tsx'
 import { useDocumentActions } from '../workspaces/document-actions.tsx'
 import { RenameDocumentControl } from '../workspaces/rename-document-control.tsx'
 import { ShellActions, ShellAside } from '../workspaces/shell-slots.tsx'
-import { AttachmentsPanel } from './attachments-panel.tsx'
 import { DraftNotice } from './draft-notice.tsx'
 import { DocumentReader } from './document-reader.tsx'
 import { HealthSignals } from './health-signals.tsx'
@@ -25,6 +25,15 @@ import { RevisionPanel } from './revision-panel.tsx'
 import { TableOfContents } from './table-of-contents.tsx'
 
 const routeApi = getRouteApi('/_authenticated/w/$workspaceSlug/d/$documentId/')
+
+/*
+ * The attachments list is a dialog behind a press, so it is fetched the first
+ * time it opens (`docs/operations/bundle-budget.md`), and so is its query.
+ */
+const AttachmentsPanel = lazyDialog(
+  async () => ({ default: (await import('./attachments-panel.tsx')).AttachmentsPanel }),
+  'Opening attachments',
+)
 
 /** A stable empty outline, so the contents' memo is not redone on every render. */
 const NO_OUTLINE: readonly OutlineEntry[] = []
@@ -68,7 +77,8 @@ export function DocumentPage() {
   const lastPublished = envelope.data?.lastPublished ?? null
   const permissions = envelope.data?.permissions
   const lock = envelope.data?.lock ?? null
-  const compare: DiffRange | undefined = to === undefined ? undefined : { from: from ?? null, to }
+  const compare: ComparisonRange | undefined =
+    to === undefined ? undefined : { from: from ?? null, to }
   const title = document.data.title
   const collectionName = collections.data?.find(
     (collection) => collection.id === document.data.collectionId,

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { readBlob } from '../ports/blob-store.ts'
+import { concatChunks, readBlob } from '../ports/blob-store.ts'
 import { defaultOrganisationSettings } from '../settings/documents.ts'
 import { MAX_EMOJI_BYTES, MAX_EMOJI_FRAMES, MAX_EMOJI_MILLISECONDS } from '../settings/emoji.ts'
 import { createFakeSettings } from '../test-support/fake-settings.ts'
@@ -14,12 +14,25 @@ const SVG = new TextEncoder().encode(
 
 const author = { name: 'Ada', email: 'ada@example.com' }
 
+const text = (value: string) => new TextEncoder().encode(value)
+const uint32s = (...values: number[]) => {
+  const out = new Uint8Array(values.length * 4)
+  values.forEach((value, index) => new DataView(out.buffer).setUint32(index * 4, value))
+  return out
+}
+
 const upload = (bytes: Uint8Array, declaredContentType: string) => {
   const blobStore = createInMemoryBlobStore()
   return {
     blobStore,
     result: uploadEmojiImage({ blobStore }, { declaredContentType, body: chunked(bytes) }),
   }
+}
+
+/** The loop count a GIF's NETSCAPE extension declares: 0 plays for ever. */
+const loopCount = (bytes: Uint8Array | null) => {
+  const at = new TextDecoder('latin1').decode(bytes ?? new Uint8Array()).indexOf('NETSCAPE2.0')
+  return bytes?.[at + 13]
 }
 
 describe('uploading an emoji image (ADR-038)', () => {
@@ -72,10 +85,6 @@ describe('uploading an emoji image (ADR-038)', () => {
     expect(uploaded).toMatchObject({ frames: 2, milliseconds: 200, plays: 3 })
     if (uploaded.original === undefined) throw new Error('no original')
 
-    const loopCount = (bytes: Uint8Array | null) => {
-      const at = new TextDecoder('latin1').decode(bytes ?? new Uint8Array()).indexOf('NETSCAPE2.0')
-      return bytes?.[at + 13]
-    }
     expect(loopCount(await readBlob(blobStore, uploaded.hash))).toBe(2)
     expect(loopCount(await readBlob(blobStore, uploaded.original))).toBe(0)
   })
@@ -146,6 +155,45 @@ describe('uploading an emoji image (ADR-038)', () => {
     expect(await upload(new Uint8Array(MAX_EMOJI_BYTES + 1), 'image/png').result).toEqual({
       kind: 'too-large',
       maxBytes: MAX_EMOJI_BYTES,
+    })
+  })
+
+  describe('an AVIF image sequence', () => {
+    const box = (type: string, ...payload: Uint8Array[]) => {
+      const body = concatChunks(payload)
+      return concatChunks([uint32s(8 + body.length), text(type), body])
+    }
+    /** A still AVIF given the sequence brand and a movie of two frames lasting a second. */
+    const sequenceOf = (still: Uint8Array, ...movieBoxes: Uint8Array[]) => {
+      const sequence = Uint8Array.from(still)
+      sequence.set(text('avis'), 8)
+      const track = box(
+        'trak',
+        box('mdia', box('minf', box('stbl', box('stsz', uint32s(0, 0, 2))))),
+      )
+      const movie = box('moov', box('mvhd', uint32s(0, 0, 0, 1000, 1000)), track, ...movieBoxes)
+      return concatChunks([sequence, movie])
+    }
+
+    it('is timed from its movie, and stored without a still', async () => {
+      const uploaded = await upload(sequenceOf(imageFixture('plain.avif')), 'image/avif').result
+      expect(uploaded).toMatchObject({ kind: 'uploaded', frames: 2, milliseconds: 1000 })
+    })
+
+    it('is refused when taking its metadata out would break the offsets its frames are found by', async () => {
+      const result = await upload(sequenceOf(imageFixture('exif.avif')), 'image/avif').result
+      expect(result).toMatchObject({
+        kind: 'malformed',
+        reason: expect.stringMatching(/image sequence/u),
+      })
+    })
+
+    it('is refused when its tracks carry metadata that stays in', async () => {
+      const tagged = sequenceOf(imageFixture('plain.avif'), box('udta', text('where')))
+      expect(await upload(tagged, 'image/avif').result).toMatchObject({
+        kind: 'malformed',
+        reason: expect.stringMatching(/metadata/u),
+      })
     })
   })
 

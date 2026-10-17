@@ -62,10 +62,16 @@ function trimTrailing(lines: readonly string[]): string[] {
 /** `??? type "Title"`, `???+ type`, extra classes after the type allowed. */
 const MKDOCS_DETAILS = /^(\s*)\?\?\?(\+)?(?:\s+([\w-]+)(?:\s+[\w-]+)*)?(?:\s+"([^"]*)")?\s*$/u
 
+/** The groups of a line that `find` has already matched against `pattern`. */
+function groupsOf(pattern: RegExp, line: string): readonly (string | undefined)[] {
+  /* v8 ignore next -- only called with the opening line a `find` accepted. */
+  return pattern.exec(line) ?? []
+}
+
 function mkdocsEnd(rest: readonly string[]): number | undefined {
-  const opening = MKDOCS_DETAILS.exec(firstOf(rest))
-  if (opening === null) return undefined
-  const depth = (opening[1] ?? '').length + 4
+  const opening = firstOf(rest)
+  if (!MKDOCS_DETAILS.test(opening)) return undefined
+  const depth = indentOf(opening) + 4
   let end: number | undefined
   for (const [index, line] of rest.entries()) {
     if (index === 0 || line.trim() === '') continue
@@ -76,7 +82,7 @@ function mkdocsEnd(rest: readonly string[]): number | undefined {
 }
 
 function mkdocsDetails(block: readonly string[]): string {
-  const [, indent = '', open, type, title] = MKDOCS_DETAILS.exec(firstOf(block)) ?? []
+  const [, indent = '', open, type, title] = groupsOf(MKDOCS_DETAILS, firstOf(block))
   const depth = indent.length + 4
   const content = block.slice(1).map((line) => line.slice(depth))
   const body = importMkDocsDetails(content.join('\n')).split('\n')
@@ -101,9 +107,9 @@ export function importMkDocsDetails(markdown: string): string {
 const VITEPRESS_DETAILS = /^(\s*)(:{3,})\s*details(?:\s+(.*?))?\s*$/u
 
 function vitepressEnd(rest: readonly string[]): number | undefined {
-  const opening = VITEPRESS_DETAILS.exec(firstOf(rest))
-  if (opening === null) return undefined
-  const length = (opening[2] ?? '').length
+  const opening = firstOf(rest)
+  if (!VITEPRESS_DETAILS.test(opening)) return undefined
+  const length = opening.trimStart().search(/[^:]/u)
   // markdown-it-container closes at the first line of at least as many colons.
   const end = rest.findIndex(
     (line, index) => index > 0 && /^\s*:+\s*$/u.test(line) && line.trim().length >= length,
@@ -112,7 +118,7 @@ function vitepressEnd(rest: readonly string[]): number | undefined {
 }
 
 function vitepressDetails(block: readonly string[]): string {
-  const [, indent = '', colons = ':::', title] = VITEPRESS_DETAILS.exec(firstOf(block)) ?? []
+  const [, indent = '', colons = ':::', title] = groupsOf(VITEPRESS_DETAILS, firstOf(block))
   const body = importVitePressDetails(block.slice(1, -1).join('\n'))
   return [`${indent}${colons}details${label(title)}`, body, `${indent}${colons}`].join('\n')
 }
@@ -130,7 +136,7 @@ const GROUP_OPEN = /^\s*<(?:Accordions|AccordionGroup)(\s[^>]*)?>\s*$/u
 const GROUP_CLOSE = /^\s*<\/(?:Accordions|AccordionGroup)>\s*$/u
 
 function accordion(block: readonly string[]): string {
-  const [, attributes = ''] = ACCORDION_OPEN.exec(firstOf(block)) ?? []
+  const [, attributes = ''] = groupsOf(ACCORDION_OPEN, firstOf(block))
   const body = trimTrailing(dedent(block.slice(1, -1)))
   return container('details', '', label(jsxAttribute(attributes, 'title')), body)
 }

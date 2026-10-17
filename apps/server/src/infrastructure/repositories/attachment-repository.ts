@@ -87,42 +87,44 @@ export function createAttachmentRepository(db: DrizzleClient): AttachmentReposit
     },
 
     async revise(input): Promise<AttachmentRow | null> {
-      // The update is the compare-and-set: guarded on the version the writer
-      // edited, so of two saves racing from the same version exactly one
-      // matches, and the other writes nothing. The state it replaces is read
-      // first and kept only once the update has won.
+      // Compare-and-set on the version the writer edited. The read locks the
+      // row it matched, so of two saves racing from the same version one waits
+      // for the other and then no longer matches, and writes nothing; the
+      // state replaced is kept in the same transaction as the update that
+      // replaces it, so neither can land without the other.
       const live = and(
         eq(attachments.id, input.id),
         eq(attachments.version, input.expectedVersion),
         isNull(attachments.deletedAt),
       )
-      const [previous] = await db.select().from(attachments).where(live).limit(1)
-      if (previous === undefined) return null
-      const [revised] = await db
-        .update(attachments)
-        .set({
-          contentType: input.contentType,
-          size: input.size,
-          sha256: input.sha256,
-          searchText: input.searchText,
-          version: input.expectedVersion + 1,
-          revisedBy: input.revisedBy,
-          revisedAt: input.now,
+      return await db.transaction(async (tx) => {
+        const [previous] = await tx.select().from(attachments).where(live).limit(1).for('update')
+        if (previous === undefined) return null
+        const revised = await tx
+          .update(attachments)
+          .set({
+            contentType: input.contentType,
+            size: input.size,
+            sha256: input.sha256,
+            searchText: input.searchText,
+            version: input.expectedVersion + 1,
+            revisedBy: input.revisedBy,
+            revisedAt: input.now,
+          })
+          .where(live)
+          .returning()
+        await tx.insert(attachmentRevisions).values({
+          attachmentId: previous.id,
+          version: previous.version,
+          contentType: previous.contentType,
+          size: previous.size,
+          sha256: previous.sha256,
+          savedBy: previous.revisedBy ?? previous.uploadedBy,
+          savedAt: previous.revisedAt ?? previous.createdAt,
+          replacedAt: input.now,
         })
-        .where(live)
-        .returning()
-      if (revised === undefined) return null
-      await db.insert(attachmentRevisions).values({
-        attachmentId: previous.id,
-        version: previous.version,
-        contentType: previous.contentType,
-        size: previous.size,
-        sha256: previous.sha256,
-        savedBy: previous.revisedBy ?? previous.uploadedBy,
-        savedAt: previous.revisedAt ?? previous.createdAt,
-        replacedAt: input.now,
+        return toAttachmentRow(requireRow(revised[0], 'revise: expected the revised row back'))
       })
-      return toAttachmentRow(revised)
     },
   }
 }
