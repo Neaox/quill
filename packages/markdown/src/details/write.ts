@@ -2,6 +2,7 @@ import type { Blockquote, Paragraph, PhrasingContent, RootContent, Text } from '
 import type { ContainerDirective } from 'mdast-util-directive'
 import type { Handle, Join } from 'mdast-util-to-markdown'
 
+import type { DirectiveContent } from '../directives/definition.ts'
 import { flag } from '../directives/definition.ts'
 import { rawMdast } from '../pipeline/raw-mdast.ts'
 import type { ToMarkdownExtension } from '../pipeline/raw-mdast.ts'
@@ -75,7 +76,7 @@ function summaryOf(node: Details): Paragraph | undefined {
   return isSummary(first) ? first : undefined
 }
 
-function bodyOf(node: Details): RootContent[] {
+function bodyOf(node: Details): DirectiveContent {
   return node.children.filter((child) => !isSummary(child))
 }
 
@@ -146,10 +147,12 @@ function writeCallout(
   info: Info,
 ): string {
   const source = node.source?.syntax === 'callout' ? node.source : undefined
+  /* v8 ignore next -- `keepsSyntax` has already required a kind. */
+  const kind = node.attributes['type'] ?? ''
   const marker =
     source !== undefined && source.read === calloutMarkerRead(node.attributes)
       ? source.marker
-      : `[!${node.attributes['type'] ?? ''}]${flag(node, 'open') ? '+' : '-'}`
+      : `[!${kind}]${flag(node, 'open') ? '+' : '-'}`
   const title = summaryOf(node)?.children ?? []
   const body = bodyOf(node)
   const [lead, ...rest] = body

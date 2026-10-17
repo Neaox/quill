@@ -38,7 +38,7 @@ describe('the idle queue', () => {
   it('runs nothing until the browser is idle', () => {
     const fake = fakeHost()
     const queue = createIdleQueue(fake.host)
-    const task = vi.fn()
+    const task = vi.fn<() => void>()
     queue.schedule(task)
     expect(task).not.toHaveBeenCalled()
     expect(queue.size).toBe(1)
@@ -80,7 +80,7 @@ describe('the idle queue', () => {
   it('runs one task even in a period with no time left, so work cannot starve', () => {
     const fake = fakeHost()
     const queue = createIdleQueue(fake.host)
-    const task = vi.fn()
+    const task = vi.fn<() => void>()
     queue.schedule(task)
     queue.schedule(task)
     fake.idle(0, true)
@@ -90,7 +90,7 @@ describe('the idle queue', () => {
   it('forgets a task that is cancelled before it runs, and stops asking when none is left', () => {
     const fake = fakeHost()
     const queue = createIdleQueue(fake.host)
-    const task = vi.fn()
+    const task = vi.fn<() => void>()
     const cancel = queue.schedule(task)
     cancel()
     cancel()
@@ -103,8 +103,8 @@ describe('the idle queue', () => {
   it('still runs the others when one of them is cancelled', () => {
     const fake = fakeHost()
     const queue = createIdleQueue(fake.host)
-    const kept = vi.fn()
-    const dropped = vi.fn()
+    const kept = vi.fn<() => void>()
+    const dropped = vi.fn<() => void>()
     queue.schedule(kept, 'background')
     queue.schedule(dropped, 'background')()
     fake.idle(10)
@@ -115,10 +115,10 @@ describe('the idle queue', () => {
   it('lets a running task cancel one that has not run yet', () => {
     const fake = fakeHost()
     const queue = createIdleQueue(fake.host)
-    const later = vi.fn()
-    let cancelLater = (): void => undefined
+    const later = vi.fn<() => void>()
+    let cancelLater: (() => void) | undefined
     queue.schedule(() => {
-      cancelLater()
+      cancelLater?.()
     })
     cancelLater = queue.schedule(later)
     fake.idle(10)
@@ -129,7 +129,7 @@ describe('the idle queue', () => {
   it('reports a task that throws and carries on with the rest in the next period', () => {
     const fake = fakeHost()
     const queue = createIdleQueue(fake.host)
-    const after = vi.fn()
+    const after = vi.fn<() => void>()
     queue.schedule(() => {
       throw new Error('broken')
     })
@@ -144,8 +144,8 @@ describe('the idle queue', () => {
 
 describe('the browser idle host', () => {
   it('asks for idle callbacks with a deadline, and cancels them', () => {
-    const requestIdleCallback = vi.fn((_callback: IdleRequestCallback) => 7)
-    const cancelIdleCallback = vi.fn()
+    const requestIdleCallback = vi.fn<(callback: IdleRequestCallback) => number>(() => 7)
+    const cancelIdleCallback = vi.fn<(handle: number) => void>()
     const host = browserIdleHost({
       requestIdleCallback,
       cancelIdleCallback,
@@ -153,7 +153,7 @@ describe('the browser idle host', () => {
       clearTimeout,
       performance,
     })
-    const callback = vi.fn()
+    const callback = vi.fn<(deadline: IdleDeadlineLike) => void>()
     const cancel = host.request(callback)
     expect(requestIdleCallback).toHaveBeenCalledWith(callback, { timeout: 250 })
     cancel()

@@ -22,7 +22,11 @@ const CreateUnitBody = Type.Object({
 
 const RenameUnitBody = Type.Object({ name: Type.String({ minLength: 1 }) })
 
-const ListUnitsQuery = Type.Object({ parentId: Type.Optional(Type.String()) })
+const ListUnitsQuery = Type.Object({
+  parentId: Type.Optional(Type.String()),
+  /** Every unit at every depth, flat, for a picker that needs the whole tree in one request. */
+  all: Type.Optional(Type.Boolean()),
+})
 
 const IdParams = Type.Object({ id: Type.String() })
 
@@ -65,6 +69,7 @@ export function unitRoutes(deps: AppDependencies): FastifyPluginAsync {
       { preHandler: app.requireSession, schema: { querystring: ListUnitsQuery } },
       async (request) => {
         await requireAdmin(request)
+        if (request.query.all === true) return deps.uow.repos.units.listAll()
         const parentId = request.query.parentId ?? null
         return deps.uow.repos.units.listChildren(parentId)
       },

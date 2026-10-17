@@ -187,3 +187,20 @@ export type {
   WriteDraftResult,
 } from './persistence.ts'
 export { LOCK_HEARTBEAT_MS, LOCK_TTL_MS } from './persistence.ts'
+export type { DocumentViewRepository, DocumentViewRow, WorkspaceViews } from './document-views.ts'
+export type {
+  NewNotification,
+  NotificationCursor,
+  NotificationKind,
+  NotificationRepository,
+  NotificationRow,
+} from './notifications.ts'
+export { NOTIFICATION_KINDS } from './notifications.ts'
+export type {
+  NewReviewRequest,
+  ReviewAssignmentId,
+  ReviewAssignmentRow,
+  ReviewRepository,
+  ReviewRequestId,
+  ReviewRequestRow,
+} from './reviews.ts'

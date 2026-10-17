@@ -243,23 +243,23 @@ export function useAutosave(options: UseAutosaveOptions): Autosave {
         apply({ type: 'stale', currentVersion })
         return
       }
-      let loaded
+      let latest
       try {
-        loaded = await client.load()
+        latest = await client.load()
       } catch {
         retryLater(null)
         return
       }
       const ours = candidates.find(
         (sent) =>
-          loaded.draftVersion === sent.expectedVersion + 1 && sameTree(loaded.ast, sent.ast),
+          latest.draftVersion === sent.expectedVersion + 1 && sameTree(latest.ast, sent.ast),
       )
       if (ours === undefined) {
         unconfirmedRef.current = []
-        apply({ type: 'stale', currentVersion: loaded.draftVersion })
+        apply({ type: 'stale', currentVersion: latest.draftVersion })
         return
       }
-      acknowledge(ours, loaded.draftVersion, clock.now())
+      acknowledge(ours, latest.draftVersion, clock.now())
     },
     [acknowledge, apply, client, clock, retryLater],
   )

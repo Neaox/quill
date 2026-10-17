@@ -18,6 +18,7 @@ import {
   moveColumn,
   moveRow,
   nextCellOrNewRow,
+  normalise,
   selectLine,
   selectTable,
   setColumnAlign,
@@ -376,5 +377,41 @@ describe('the keyboard', () => {
     const undone = run(added, undo)
 
     expect(markdown(undone)).toBe(TABLE)
+  })
+})
+
+describe('commands that are only asked', () => {
+  it('say they would insert a line without inserting it', () => {
+    expect(insertLine('row', 2, 0)(inCell(TABLE, 'eu'))).toBe(true)
+    expect(insertLine('column', 1, 0)(inCell(TABLE, 'eu'))).toBe(true)
+  })
+
+  it('say they would select a line or the table without selecting it', () => {
+    expect(selectLine('row', 1, 0)(inCell(TABLE, 'eu'))).toBe(true)
+    expect(selectTable(0)(inCell(TABLE, 'eu'))).toBe(true)
+  })
+
+  it('say they would not move the caret, outside a table', () => {
+    expect(goToCell('up')(harness.state('A paragraph.' + String.fromCharCode(10)))).toBe(false)
+  })
+
+  it('say Enter would go to the cell below, or add a row from the last one', () => {
+    expect(enterInTable(inCell(TABLE, 'eu'))).toBe(true)
+    expect(enterInTable(inCell(TABLE, 'us'))).toBe(true)
+  })
+
+  it('say Tab would add a row from the last cell', () => {
+    expect(nextCellOrNewRow(inCell(TABLE, '90'))).toBe(true)
+  })
+})
+
+describe('restoring a table’s invariants', () => {
+  it('gives the alignments one entry per column, keeping those already there', () => {
+    const state = inCell(TABLE, 'eu')
+    const tr = state.tr.setNodeAttribute(0, 'align', ['left'])
+
+    normalise(tr, 0)
+
+    expect(alignOf(tr.doc.nodeAt(0) ?? state.doc)).toEqual(['left', null, null])
   })
 })

@@ -400,6 +400,13 @@ export const documents = pgTable(
     templateVersion: integer('template_version'),
     /** The revision this document was last published at (ADR-015). */
     headRevision: text('head_revision'),
+    /**
+     * Who created it and who last published, restored, renamed or moved it
+     * (ADR-053). Null for rows that predate the columns and never guessed
+     * afterwards: "mine" is an id, not an email match.
+     */
+    createdBy: text('created_by').references(() => users.id, { onDelete: 'set null' }),
+    updatedBy: text('updated_by').references(() => users.id, { onDelete: 'set null' }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull(),
   },
@@ -479,6 +486,8 @@ export const revisionsIndex = pgTable(
     revision: text('revision').notNull(),
     authorName: text('author_name').notNull(),
     authorEmail: text('author_email').notNull(),
+    /** The publisher's id (ADR-053); null for a revision recorded before the column existed. */
+    authorUserId: text('author_user_id').references(() => users.id, { onDelete: 'set null' }),
     timestamp: timestamp('timestamp', { withTimezone: true }).notNull(),
     summary: text('summary').notNull(),
     changeNote: text('change_note'),
@@ -857,3 +866,137 @@ export const personPreferences = pgTable('person_preferences', {
   document: jsonb('document').notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull(),
 })
+
+/**
+ * A request for other people's eyes on a draft (ADR-052). `draft_version` is
+ * the draft the request was made about: the draft is stale when its version
+ * has moved on, which needs no write. A request is *active* until `closed_at`
+ * is set (withdrawn, superseded or published), and at most one is active per
+ * document. Statuses are plain text so they can grow without a migration.
+ */
+export const reviewRequests = pgTable(
+  'review_requests',
+  {
+    id: text('id').primaryKey(),
+    documentId: text('document_id')
+      .notNull()
+      .references(() => documents.id, { onDelete: 'cascade' }),
+    requestedBy: text('requested_by')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    draftVersion: integer('draft_version').notNull(),
+    message: text('message'),
+    status: text('status').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull(),
+    closedAt: timestamp('closed_at', { withTimezone: true }),
+  },
+  (table) => [
+    // One active request per document, enforced where it cannot be raced.
+    uniqueIndex('review_requests_one_active_idx')
+      .on(table.documentId)
+      .where(sql`${table.closedAt} IS NULL`),
+    index('review_requests_document_idx').on(table.documentId, table.createdAt),
+    // "My requests that have been answered" is what home reads.
+    index('review_requests_requested_by_idx').on(table.requestedBy),
+  ],
+)
+
+/**
+ * One person or group asked to review a request. A group is answered by any
+ * one member, so `decided_by` names the member who did. `principal_id` is a
+ * user or group id by `principal_kind`, with no foreign key because it points
+ * at two tables; a removed user or group simply stops matching anyone.
+ */
+export const reviewAssignments = pgTable(
+  'review_assignments',
+  {
+    id: text('id').primaryKey(),
+    requestId: text('request_id')
+      .notNull()
+      .references(() => reviewRequests.id, { onDelete: 'cascade' }),
+    position: integer('position').notNull(),
+    principalKind: text('principal_kind').notNull(),
+    principalId: text('principal_id').notNull(),
+    state: text('state').notNull(),
+    decidedBy: text('decided_by').references(() => users.id, { onDelete: 'set null' }),
+    comment: text('comment'),
+    decidedAt: timestamp('decided_at', { withTimezone: true }),
+  },
+  (table) => [
+    unique('review_assignments_request_principal_key').on(
+      table.requestId,
+      table.principalKind,
+      table.principalId,
+    ),
+    // Finding what is waiting on a person starts from the principal.
+    index('review_assignments_principal_idx').on(table.principalKind, table.principalId),
+  ],
+)
+
+/**
+ * What a person has opened (ADR-053): their own record, one row per person and
+ * document, read only by that person and kept 90 days. `workspace_id` is where
+ * the document was when it was opened, so a workspace's engagement is one
+ * grouped read of the person's rows. Goes with the person and with the document.
+ */
+export const documentViews = pgTable(
+  'document_views',
+  {
+    userId: text('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    documentId: text('document_id')
+      .notNull()
+      .references(() => documents.id, { onDelete: 'cascade' }),
+    workspaceId: text('workspace_id')
+      .notNull()
+      .references(() => workspaces.id, { onDelete: 'cascade' }),
+    lastViewedAt: timestamp('last_viewed_at', { withTimezone: true }).notNull(),
+    views: integer('views').notNull().default(1),
+  },
+  (table) => [
+    primaryKey({ columns: [table.userId, table.documentId] }),
+    // Everything the home asks is "this person's, newest first".
+    index('document_views_user_recent_idx').on(table.userId, table.lastViewedAt.desc()),
+    // The 90-day cleanup walks by age across everybody.
+    index('document_views_last_viewed_idx').on(table.lastViewedAt),
+  ],
+)
+
+/**
+ * In-app notifications (ADR-053): one person's own row about a review request
+ * they were asked to look at, or asked someone to look at. Read only by the
+ * recipient and kept 90 days. `kind` is plain text so it can grow without a
+ * migration. The unique key is what makes an outbox event idempotent: a
+ * redelivered event finds its rows and writes none. `actor_user_id` is null
+ * once that person has gone; the row goes with its recipient, its document and
+ * its request.
+ */
+export const notifications = pgTable(
+  'notifications',
+  {
+    id: text('id').primaryKey(),
+    recipientUserId: text('recipient_user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    kind: text('kind').notNull(),
+    documentId: text('document_id')
+      .notNull()
+      .references(() => documents.id, { onDelete: 'cascade' }),
+    requestId: text('request_id')
+      .notNull()
+      .references(() => reviewRequests.id, { onDelete: 'cascade' }),
+    actorUserId: text('actor_user_id').references(() => users.id, { onDelete: 'set null' }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull(),
+    readAt: timestamp('read_at', { withTimezone: true }),
+  },
+  (table) => [
+    unique('notifications_event_key')
+      .on(table.requestId, table.recipientUserId, table.kind, table.actorUserId)
+      .nullsNotDistinct(),
+    // The list is "this person's, newest first".
+    index('notifications_recipient_recent_idx').on(table.recipientUserId, table.createdAt.desc()),
+    // The 90-day cleanup walks by age across everybody.
+    index('notifications_created_idx').on(table.createdAt),
+  ],
+)

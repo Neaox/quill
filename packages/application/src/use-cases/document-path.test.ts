@@ -40,6 +40,8 @@ const parent: DocumentRow = {
   templateId: null,
   templateVersion: null,
   headRevision: null,
+  createdBy: null,
+  updatedBy: null,
   createdAt: NOW,
   updatedAt: NOW,
 }

@@ -79,11 +79,10 @@ function filledTable(
   const map = TableMap.get(table)
   const height = Math.max(map.height, top + grid.rows.length)
   const width = Math.max(map.width, left + Math.max(...grid.rows.map((row) => row.length)))
-  const existing = (row: number, column: number): PMNode | undefined => {
-    if (row >= map.height || column >= map.width) return undefined
-    const offset = map.map[row * map.width + column]
-    return offset === undefined ? undefined : (table.nodeAt(offset) ?? undefined)
-  }
+  const existing = (row: number, column: number): PMNode | null =>
+    row >= map.height || column >= map.width
+      ? null
+      : table.nodeAt(map.positionAt(row, column, table))
   const rows = Array.from({ length: height }, (_row, row) =>
     nodeType(schema, 'tableRow').create(
       null,

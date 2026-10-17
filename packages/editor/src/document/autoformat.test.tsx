@@ -9,8 +9,9 @@ import { EditorState, TextSelection } from '@tiptap/pm/state'
 import { EditorView } from '@tiptap/pm/view'
 
 import { editorSchema } from '../schema/editor-schema.ts'
+import { markType, nodeType } from '../schema/node-type.ts'
 import { documentFromMdast, documentToMdast } from './ast.ts'
-import { AUTOFORMAT_HINTS, autoformatRules } from './autoformat.ts'
+import { AUTOFORMAT_HINTS, autoformatRules, leaveInlineCode } from './autoformat.ts'
 import { DocumentEditor } from './document-editor.tsx'
 import type { DocumentEditorHandle } from './document-editor.tsx'
 import { EMPTY_LINE_HINT, placeholderFor } from './extensions.ts'
@@ -240,5 +241,54 @@ describe('Leaving inline code with ArrowRight', () => {
 
   it('moves on as usual on the second press', async () => {
     expect(await typeAfterArrow(2, 'X')).toBe('See `code` Xnow\n')
+  })
+})
+
+describe('Leaving inline code, asked of a state', () => {
+  const code = markType(editorSchema, 'code')
+
+  function codeParagraphDoc(text: string) {
+    const line = nodeType(editorSchema, 'paragraph').create(
+      null,
+      editorSchema.text(text, [code.create()]),
+    )
+    return nodeType(editorSchema, 'doc').create(null, [line])
+  }
+
+  function caretAt(at: number): EditorState {
+    const doc = codeParagraphDoc('code')
+    const state = EditorState.create({ schema: editorSchema, doc })
+    return state.apply(state.tr.setSelection(TextSelection.create(doc, at)))
+  }
+
+  it('lets an arrow move through the middle of code, where code goes on', () => {
+    expect(leaveInlineCode(caretAt(3))).toBe(false)
+  })
+
+  it('lets an arrow move once the code has been left at its end', () => {
+    const state = caretAt(5)
+    expect(leaveInlineCode(state)).toBe(true)
+    const out = state.apply(state.tr.setStoredMarks([markType(editorSchema, 'bold').create()]))
+    expect(leaveInlineCode(out)).toBe(false)
+  })
+
+  it('leaves an arrow alone over a selection, and outside code', () => {
+    const doc = codeParagraphDoc('code')
+    const state = EditorState.create({ schema: editorSchema, doc })
+    const selected = state.apply(state.tr.setSelection(TextSelection.create(doc, 1, 4)))
+    expect(leaveInlineCode(selected)).toBe(false)
+
+    const plain = nodeType(editorSchema, 'doc').create(null, [
+      nodeType(editorSchema, 'paragraph').create(null, editorSchema.text('plain')),
+    ])
+    expect(leaveInlineCode(EditorState.create({ schema: editorSchema, doc: plain }))).toBe(false)
+  })
+
+  it('does not turn text already marked as code into more of it as a closing backtick is typed', () => {
+    const marked = codeParagraphDoc('`foo')
+    const result = typeInto(marked, endOfText(marked), '`')
+    expect(result.handled).toBe(false)
+    // Nothing was made of it: the document is as it was, a span of code that holds a backtick.
+    expect(result.markdown).toBe('`` `foo ``\n')
   })
 })

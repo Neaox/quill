@@ -74,6 +74,7 @@ function pickOutChanges(children: PhrasingContent[]): PhrasingContent[] {
         ? replacement(removed, added)
         : undefined
     if (pair === undefined) {
+      /* v8 ignore next -- the loop only visits indices the children have. */
       result.push(...(removed === undefined ? [] : [removed]))
     } else {
       result.push(...pair)
@@ -113,17 +114,20 @@ function replacement(
   ]
 }
 
+function textNodes(value: string): PhrasingContent[] {
+  return value === '' ? [] : [{ type: 'text', value }]
+}
+
 /**
  * A word as its shared beginning, the characters that changed, and its shared end. The
  * characters that changed may be none: that is a mark with nothing in it, at the place.
  */
 function split(characters: readonly string[], start: number, end: number): PhrasingContent[] {
   const middle = characters.slice(start, characters.length - end).join('')
-  const text = (value: string): PhrasingContent[] => (value === '' ? [] : [{ type: 'text', value }])
   return [
-    ...text(characters.slice(0, start).join('')),
-    { type: 'diffChars', children: text(middle) } satisfies DiffChars,
-    ...text(characters.slice(characters.length - end).join('')),
+    ...textNodes(characters.slice(0, start).join('')),
+    { type: 'diffChars', children: textNodes(middle) } satisfies DiffChars,
+    ...textNodes(characters.slice(characters.length - end).join('')),
   ]
 }
 
@@ -223,9 +227,12 @@ function rebuild(runs: readonly Run<Atom>[]): PhrasingContent[] {
       stack.length = shared + 1
       for (const step of path.slice(shared)) {
         const children: PhrasingContent[] = []
-        ;(stack.at(-1) ?? root).children.push(shell(step, children))
+        /* v8 ignore next -- the stack always holds the root. */
+        const parent = stack.at(-1) ?? root
+        parent.children.push(shell(step, children))
         stack.push({ by: step, children })
       }
+      /* v8 ignore next -- the stack always holds the root. */
       append((stack.at(-1) ?? root).children, atom.leaf)
     }
   }

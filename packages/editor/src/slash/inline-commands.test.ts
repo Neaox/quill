@@ -4,7 +4,15 @@ import { describe, expect, it } from 'vitest'
 
 import { documentToMdast } from '../document/ast.ts'
 import { createEditorTestHarness } from '../testing/harness.ts'
-import { insertShortcode, insertText } from './slash-commands.ts'
+import { nodeType } from '../schema/node-type.ts'
+import {
+  insertBlock,
+  insertFootnote,
+  insertInline,
+  insertShortcode,
+  insertText,
+  paragraph,
+} from './slash-commands.ts'
 
 const harness = createEditorTestHarness()
 const NL = String.fromCharCode(10)
@@ -67,5 +75,31 @@ describe('typing text at the caret', () => {
     expect(
       insertText(':')(state.apply(state.tr.setSelection(TextSelection.create(state.doc, 4)))),
     ).toBe(true)
+  })
+})
+
+describe('what cannot be inserted where the caret is', () => {
+  const inCode = (): EditorState => {
+    const opened = harness.state('```' + NL + 'code' + NL + '```' + NL)
+    return opened.apply(opened.tr.setSelection(TextSelection.create(opened.doc, 2)))
+  }
+  const onBlock = (): EditorState => {
+    const opened = harness.state('---' + NL)
+    return opened.apply(opened.tr.setSelection(NodeSelection.create(opened.doc, 0)))
+  }
+
+  it('is not a block when the caret is not in a line of text', () => {
+    expect(insertBlock((schema) => paragraph(schema, 'x'))(onBlock())).toBe(false)
+  })
+
+  it('is not an inline node in a code block, which holds only text', () => {
+    const emoji = insertInline((schema) =>
+      nodeType(schema, 'footnoteReference').create({ identifier: '1' }),
+    )
+    expect(emoji(inCode())).toBe(false)
+  })
+
+  it('is not a footnote in a code block either', () => {
+    expect(insertFootnote('Note')(inCode())).toBe(false)
   })
 })

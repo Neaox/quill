@@ -18,18 +18,22 @@ function closeDialog(this: HTMLDialogElement): void {
 
 const TITLED = '<article><h1 id="the-sync-map">The sync map</h1><p>How things move.</p></article>'
 
+/** Renders a body and waits until it is drawn *and* enhanced (the enhancers arrive as chunks). */
 async function mounted(html: string, eyebrow?: string) {
+  const onMounted = vi.fn<() => void>()
   const view = render(
     <DocumentBody
       html={html}
       label="The sync map"
+      onMounted={onMounted}
       {...(eyebrow === undefined ? {} : { eyebrow })}
     />,
   )
   const article = screen.getByRole('article', { name: 'The sync map' })
   await waitFor(() => {
-    expect(article.childElementCount).toBeGreaterThan(0)
+    expect(onMounted).toHaveBeenCalled()
   })
+  expect(article.childElementCount).toBeGreaterThan(0)
   return { ...view, article }
 }
 

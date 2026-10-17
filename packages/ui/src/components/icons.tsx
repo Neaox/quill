@@ -300,6 +300,27 @@ export function UserIcon({ className }: IconProps) {
   )
 }
 
+/** Notifications: a bell. */
+export function BellIcon({ className }: IconProps) {
+  return (
+    <Glyph className={className}>
+      <path d="M3.75 11.25h8.5l-1-1.5V6.5a3.25 3.25 0 0 0-6.5 0v3.25l-1 1.5Z" />
+      <path d="M6.5 13.25a1.5 1.5 0 0 0 3 0" />
+    </Glyph>
+  )
+}
+
+/** A group: two heads and shoulders, one behind the other. */
+export function UsersIcon({ className }: IconProps) {
+  return (
+    <Glyph className={className}>
+      <circle cx="6" cy="5.75" r="2.25" />
+      <path d="M1.75 13c.5-2 2.2-3.1 4.25-3.1s3.75 1.1 4.25 3.1" />
+      <path d="M10.25 3.75a2.25 2.25 0 0 1 0 4M11.25 10.1c1.6.4 2.7 1.4 3 2.9" />
+    </Glyph>
+  )
+}
+
 /** Leave: an arrow going out through a door. */
 export function SignOutIcon({ className }: IconProps) {
   return (

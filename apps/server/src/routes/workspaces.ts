@@ -27,6 +27,7 @@ import { requireAuthenticatedSession } from '../plugins/session.ts'
 import {
   CreateDocumentBodySchema,
   CreatedDocumentSchema,
+  DEFAULT_CHILDREN_PAGE,
   DocumentSchema,
   IdParamsSchema,
   TreeChildrenQuerySchema,
@@ -267,6 +268,7 @@ export function workspaceRoutes(deps: AppDependencies): FastifyPluginAsync {
           collectionId: collectionId as CollectionId,
           parentId: parentId === undefined ? null : await resolveDocumentId(deps, parentId),
           after,
+          /* v8 ignore next -- the schema default means `limit` is always present by here. */
           limit: limit ?? DEFAULT_CHILDREN_PAGE,
           identities: await authorizer.identities(),
           seesEverything: access.isInstanceAdmin,
@@ -377,8 +379,6 @@ export function workspaceRoutes(deps: AppDependencies): FastifyPluginAsync {
   }
 }
 
-const DEFAULT_CHILDREN_PAGE = 50
-
 /** A page's resume point as the opaque string a client hands back: where the last row stood. */
 function writeCursor(cursor: { readonly createdAt: Date; readonly id: string }): string {
   return Buffer.from(`${cursor.createdAt.toISOString()}|${cursor.id}`).toString('base64url')
@@ -389,6 +389,7 @@ function readCursor(
   value: string,
 ): { readonly createdAt: Date; readonly id: DocumentId } | undefined {
   const [at, id, ...rest] = Buffer.from(value, 'base64url').toString().split('|')
+  /* v8 ignore next -- `split` always yields a first element; the fallback is for the type. */
   const createdAt = new Date(at ?? '')
   if (id === undefined || rest.length > 0 || Number.isNaN(createdAt.getTime())) return undefined
   try {

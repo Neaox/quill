@@ -125,6 +125,12 @@ function element<K extends keyof HTMLElementTagNameMap>(
 
 type Axis = 'row' | 'column'
 
+/** The cells of the table's first row, which stand for its columns. */
+function columnCells(table: HTMLTableElement): HTMLTableCellElement[] {
+  /* v8 ignore next -- a table the handles belong to always has a first row. */
+  return [...(table.rows[0]?.cells ?? [])]
+}
+
 export class TableHandles {
   readonly layer: HTMLElement
   private readonly grips: Record<Axis, HTMLButtonElement[]> = { row: [], column: [] }
@@ -193,7 +199,7 @@ export class TableHandles {
       const border = element('div', 'table-column-border')
       const index = this.borders.length
       border.addEventListener('pointerdown', (event) => {
-        this.resizeColumns(event, index)
+        this.resizeColumns(event, border, index)
       })
       this.borders.push(border)
       this.layer.append(border)
@@ -230,6 +236,7 @@ export class TableHandles {
    * so the menu opens on a selection and does not take one away.
    */
   private select(event: MouseEvent): void {
+    /* v8 ignore next -- the layer is made of elements, so a contextmenu on it targets one. */
     const handle = event.target instanceof Element ? event.target.closest('.table-grip') : null
     const pos = this.tablePos()
     if (!(handle instanceof HTMLElement) || pos === undefined) return
@@ -238,11 +245,13 @@ export class TableHandles {
     const { axis } = handle.dataset
     if (axis === 'table') {
       if (!whole) selectTable(pos)(state, dispatch)
-    } else if (axis === 'row' || axis === 'column') {
-      const index = Number(handle.dataset['index'])
-      const covered = lines?.axis === axis && index >= lines.from && index < lines.to
-      if (!covered) selectLine(axis, index, pos)(state, dispatch)
+      return
     }
+    /* v8 ignore next -- every grip is made with an axis. */
+    if (axis !== 'row' && axis !== 'column') return
+    const index = Number(handle.dataset['index'])
+    const covered = lines?.axis === axis && index >= lines.from && index < lines.to
+    if (!covered) selectLine(axis, index, pos)(state, dispatch)
   }
 
   /** The grips of a whole row or column that is selected say so: that is what the toolbar is about. */
@@ -270,7 +279,7 @@ export class TableHandles {
       grip.dataset['axis'] = axis
       grip.dataset['index'] = String(index)
       grip.addEventListener('pointerdown', (event) => {
-        if (event.button === 0) this.drag(event, axis, index)
+        if (event.button === 0) this.drag(event, grip, axis, index)
       })
       list.push(grip)
       this.layer.append(grip)
@@ -303,12 +312,14 @@ export class TableHandles {
     const above = this.inserts.row[0]
     if (above !== undefined) above.hidden = this.headerRowFirst()
     const before = this.inserts.column[0]
+    /* v8 ignore else -- a table has a first column, so there are at least two column borders. */
     if (before !== undefined) before.hidden = true
   }
 
   /** Whether the table's first row is its header row, which GFM keeps first. */
   private headerRowFirst(): boolean {
     const pos = this.tablePos()
+    /* v8 ignore next -- the handles are rendered in the document, where the table has a position. */
     const context = pos === undefined ? undefined : tableAt(this.view.state, pos)
     return context !== undefined && headersOf(context).row
   }
@@ -339,7 +350,7 @@ export class TableHandles {
   /** Every read first, then every write: the grips follow the cells. */
   private place(): void {
     const rows = [...this.table.rows]
-    const cells = [...(rows[0]?.cells ?? [])]
+    const cells = columnCells(this.table)
     const scrollLeft = this.scroller.scrollLeft
     const columns = cells.map((cell) => ({
       start: cell.offsetLeft - scrollLeft,
@@ -390,12 +401,11 @@ export class TableHandles {
    * A grip pressed: a click selects its row or column; a drag moves it. The
    * extents are read once, at the press; the ghost moves by transform.
    */
-  private drag(event: PointerEvent, axis: Axis, index: number): void {
+  private drag(event: PointerEvent, grip: HTMLElement, axis: Axis, index: number): void {
     const pos = this.tablePos()
     if (pos === undefined) return
     event.preventDefault()
-    const grip = event.currentTarget instanceof HTMLElement ? event.currentTarget : undefined
-    grip?.setPointerCapture?.(event.pointerId)
+    grip.setPointerCapture?.(event.pointerId)
     const rows = [...this.table.rows]
     const extents =
       axis === 'row'
@@ -403,11 +413,12 @@ export class TableHandles {
             start: this.table.offsetTop + row.offsetTop,
             size: row.offsetHeight,
           }))
-        : [...(rows[0]?.cells ?? [])].map((cell) => ({
+        : columnCells(this.table).map((cell) => ({
             start: this.table.offsetLeft + cell.offsetLeft,
             size: cell.offsetWidth,
           }))
     const origin = axis === 'row' ? event.clientY : event.clientX
+    /* v8 ignore next -- a grip stands for a line the table has. */
     const own = extents[index] ?? { start: 0, size: 0 }
     let target = index
     let moved = false
@@ -423,6 +434,7 @@ export class TableHandles {
         extents.map((extent) => extent.start),
         at,
       )
+      /* v8 ignore next -- `dropIndex` answers one of the lines. */
       const landing = extents[target] ?? own
       this.ghost.style.setProperty('--start', `${own.start + delta}px`)
       this.ghost.style.setProperty('--size', `${own.size}px`)
@@ -432,9 +444,9 @@ export class TableHandles {
       )
     }
     const end = (): void => {
-      grip?.removeEventListener('pointermove', move)
-      grip?.removeEventListener('pointerup', end)
-      grip?.removeEventListener('pointercancel', end)
+      grip.removeEventListener('pointermove', move)
+      grip.removeEventListener('pointerup', end)
+      grip.removeEventListener('pointercancel', end)
       this.dragging(undefined)
       const { state, dispatch } = this.view
       if (!moved) selectLine(axis, index, pos)(state, dispatch)
@@ -443,21 +455,20 @@ export class TableHandles {
       }
       this.view.focus()
     }
-    grip?.addEventListener('pointermove', move)
-    grip?.addEventListener('pointerup', end)
-    grip?.addEventListener('pointercancel', end)
+    grip.addEventListener('pointermove', move)
+    grip.addEventListener('pointerup', end)
+    grip.addEventListener('pointercancel', end)
   }
 
   /** A border dragged: its two columns resize as proportions, previewed in the column group. */
-  private resizeColumns(event: PointerEvent, border: number): void {
+  private resizeColumns(event: PointerEvent, handle: HTMLElement, border: number): void {
     const pos = this.tablePos()
-    const handle = event.currentTarget instanceof HTMLElement ? event.currentTarget : undefined
-    if (pos === undefined || handle === undefined) return
+    if (pos === undefined) return
     event.preventDefault()
     handle.setPointerCapture?.(event.pointerId)
-    const widths = [...(this.table.rows[0]?.cells ?? [])].map((cell) => cell.offsetWidth)
+    const widths = columnCells(this.table).map((cell) => cell.offsetWidth)
     const total = widths.reduce((sum, each) => sum + each, 0)
-    const cols = () => [...this.table.querySelectorAll(':scope > colgroup > col')]
+    const cols = () => [...this.table.querySelectorAll<HTMLElement>(':scope > colgroup > col')]
     let current = widths
     this.dragging('border')
     const preview = (next: readonly number[]): void => {
@@ -467,10 +478,14 @@ export class TableHandles {
         group?.replaceChildren(...next.map(() => document.createElement('col')))
         this.table.classList.add('table-proportional')
       }
+      const widthOf = (index: number): number => {
+        /* v8 ignore next -- there is a width for every column the table has. */
+        return ((next[index] ?? 0) / total) * 100
+      }
       cols().forEach((col, index) => {
-        if (col instanceof HTMLElement) col.style.width = `${((next[index] ?? 0) / total) * 100}%`
+        col.style.width = `${widthOf(index)}%`
       })
-      const share = (index: number): number => Math.round(((next[index] ?? 0) / total) * 100)
+      const share = (index: number): number => Math.round(widthOf(index))
       this.readout.textContent = `${share(border)}% · ${share(border + 1)}%`
       this.readout.hidden = false
     }

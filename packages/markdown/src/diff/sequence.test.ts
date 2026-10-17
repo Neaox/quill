@@ -1,10 +1,27 @@
-import fc from 'fast-check'
+import * as fc from 'fast-check'
 import { describe, expect, it } from 'vitest'
 
 import type { Edit } from './sequence.ts'
 import { diffSequences } from './sequence.ts'
 
 const identity = (value: string) => value
+
+/** The length of the longest common subsequence of two lists. */
+function lcs(left: readonly string[], right: readonly string[]): number {
+  const table = Array.from({ length: left.length + 1 }, () =>
+    Array.from({ length: right.length + 1 }, () => 0),
+  )
+  for (let i = left.length - 1; i >= 0; i -= 1) {
+    for (let j = right.length - 1; j >= 0; j -= 1) {
+      const row = table[i] ?? []
+      row[j] =
+        left[i] === right[j]
+          ? (table[i + 1]?.[j + 1] ?? 0) + 1
+          : Math.max(table[i + 1]?.[j] ?? 0, row[j + 1] ?? 0)
+    }
+  }
+  return table[0]?.[0] ?? 0
+}
 
 /** Replays an edit script: what `before` becomes when the script is applied. */
 function apply(before: readonly string[], after: readonly string[], edits: readonly Edit[]) {
@@ -56,19 +73,16 @@ describe('diffSequences', () => {
         const edits = diffSequences(before, after, identity)
         expect(apply(before, after, edits)).toEqual(after)
         // Every equal pair really is equal, and both sides are walked in order.
-        let lastBefore = -1
-        let lastAfter = -1
-        for (const edit of edits) {
-          if (edit.kind === 'equal') expect(before[edit.before]).toBe(after[edit.after])
-          if (edit.kind !== 'added') {
-            expect(edit.before).toBe(lastBefore + 1)
-            lastBefore = edit.before
-          }
-          if (edit.kind !== 'removed') {
-            expect(edit.after).toBe(lastAfter + 1)
-            lastAfter = edit.after
-          }
-        }
+        const equalPairs = edits.filter((edit) => edit.kind === 'equal')
+        expect(equalPairs.map((edit) => before[edit.before])).toEqual(
+          equalPairs.map((edit) => after[edit.after]),
+        )
+        const walkedBefore = edits.flatMap((edit) => (edit.kind === 'added' ? [] : [edit.before]))
+        const walkedAfter = edits.flatMap((edit) => (edit.kind === 'removed' ? [] : [edit.after]))
+        expect(walkedBefore).toEqual(walkedBefore.map((_, index) => index))
+        expect(walkedAfter).toEqual(walkedAfter.map((_, index) => index))
+        const lastBefore = walkedBefore.length - 1
+        const lastAfter = walkedAfter.length - 1
         expect(lastBefore).toBe(before.length - 1)
         expect(lastAfter).toBe(after.length - 1)
       }),
@@ -76,21 +90,6 @@ describe('diffSequences', () => {
   })
 
   it('finds a shortest script: no fewer equal pairs than the longest common subsequence', () => {
-    const lcs = (left: readonly string[], right: readonly string[]) => {
-      const table = Array.from({ length: left.length + 1 }, () =>
-        Array.from({ length: right.length + 1 }, () => 0),
-      )
-      for (let i = left.length - 1; i >= 0; i -= 1) {
-        for (let j = right.length - 1; j >= 0; j -= 1) {
-          const row = table[i] ?? []
-          row[j] =
-            left[i] === right[j]
-              ? (table[i + 1]?.[j + 1] ?? 0) + 1
-              : Math.max(table[i + 1]?.[j] ?? 0, row[j + 1] ?? 0)
-        }
-      }
-      return table[0]?.[0] ?? 0
-    }
     const items = fc.array(fc.constantFrom('a', 'b', 'c'), { maxLength: 25 })
     fc.assert(
       fc.property(items, items, (before, after) => {

@@ -32,7 +32,8 @@ test.describe('documents', () => {
 
     // Creating navigates straight to the new document.
     await expect(page.getByRole('heading', { level: 1, name: title })).toBeVisible()
-    await expect(page.getByRole('group', { name: 'Note: Nothing published yet' })).toBeVisible()
+    // A new document has a draft with its title and nothing written under it yet.
+    await expect(page.getByRole('group', { name: 'Note: Nothing written yet' })).toBeVisible()
 
     // The navigation tree (`WorkspaceTree`, `@quill/ui`'s `Tree`) shows it,
     // marked as the current document.

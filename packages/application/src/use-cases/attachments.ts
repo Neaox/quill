@@ -62,9 +62,10 @@ export function attachmentIdsIn(markdown: string): readonly AttachmentId[] {
   if (!markdown.includes(ATTACHMENT_URL_PREFIX)) return []
   return [
     ...new Set(
+      // The pattern's one group is the id; slicing it out of the match leaves no `undefined` to guard.
       Array.from(markdown.matchAll(ATTACHMENT_REFERENCE), (match) =>
-        (match[1] ?? '').toLowerCase(),
-      ),
+        match.slice(1, 2).map((id) => id.toLowerCase()),
+      ).flat(),
     ),
   ]
 }

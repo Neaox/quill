@@ -15,6 +15,8 @@
  * application mounts it, which is this one.
  */
 @source '../../../../packages/editor/src';
+@source not '../**/*.test.{ts,tsx}';
+@source not '../../../../packages/editor/src/**/*.test.{ts,tsx}';
 
 /*
  * The writing surface is the reading surface (ADR-003, ADR-027).

@@ -17,6 +17,8 @@ export const queryKeys = {
   /** The sign-in page's provider buttons (ADR-011). One list per instance. */
   oidcProviders: ['oidc-providers'] as const,
   units: (parentId?: string) => ['units', parentId ?? null] as const,
+  /** Every unit at every depth, flat: what a unit picker reads. */
+  allUnits: () => ['units', 'all'] as const,
   /**
    * The organisation's settings (ADR-034). One entry for the instance: every
    * screen that renders with the theme, the navigation or the policies reads
@@ -49,6 +51,20 @@ export const queryKeys = {
   /** Every secret's name and key id. Never a value: none is ever sent. */
   secrets: () => ['secrets'] as const,
   workspaceList: () => ['workspace-list'] as const,
+  /** Every group, with its unit path and member count (instance admin). */
+  groups: () => ['groups'] as const,
+  /** Who is in one group. */
+  groupMembers: (groupId: string) => ['groups', groupId, 'members'] as const,
+  /** People whose name or email starts with what was typed, for adding to a group. */
+  people: (query: string) => ['people', query] as const,
+  /**
+   * The signed-in home's summary. One entry per session; the home page asks
+   * again every time it is opened (`staleTime` is zero), so no write needs to
+   * reach it.
+   */
+  home: (scope?: string) => ['home', scope ?? 'default'] as const,
+  /** Every scope of the home summary, for a write that changes all of them. */
+  homeAll: () => ['home'] as const,
   /**
    * A workspace is addressable two ways — its id and its slug (ADR-035) — and
    * a query is keyed by whichever spelling asked for it. `workspaces` is the
@@ -96,6 +112,15 @@ export const queryKeys = {
   envelope: (documentId: string) => ['envelope', documentId] as const,
   /** Every share link on one document, as the share dialog lists them. */
   shareLinks: (documentId: string) => ['share-links', documentId] as const,
+  /** A document's review request (ADR-052): one entry, replaced by what the server answers to a write. */
+  review: (documentId: string) => ['review', documentId] as const,
+  /** Who could be asked to review a document, for what was typed. */
+  reviewerCandidates: (documentId: string, query: string) =>
+    ['reviewer-candidates', documentId, query] as const,
+  /** What is waiting on the signed-in person: review requests and the answers to theirs. */
+  attention: () => ['attention'] as const,
+  /** The notification list and its unread count. */
+  notifications: () => ['notifications'] as const,
   /**
    * The anonymous reading surface, keyed by the token that is the whole of
    * the capability. Its own top-level segments, sharing nothing with the

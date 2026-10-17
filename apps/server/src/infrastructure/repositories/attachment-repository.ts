@@ -111,6 +111,7 @@ export function createAttachmentRepository(db: DrizzleClient): AttachmentReposit
         })
         .where(live)
         .returning()
+      /* v8 ignore next -- only a writer that lands between the read above and this update can make it match nothing; the window cannot be held open from a test. */
       if (revised === undefined) return null
       await db.insert(attachmentRevisions).values({
         attachmentId: previous.id,

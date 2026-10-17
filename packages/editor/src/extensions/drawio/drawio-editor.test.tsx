@@ -30,14 +30,18 @@ const SAVED =
 
 const EXISTING: DrawioDiagram = { attachmentId: 'a1', url: '/api/attachments/a1', version: 3 }
 
+function showModal(this: HTMLDialogElement) {
+  this.setAttribute('open', '')
+}
+
+function closeDialog(this: HTMLDialogElement) {
+  this.removeAttribute('open')
+}
+
 beforeAll(() => {
   // jsdom has no modal dialogs; the shims do what the browser's do, minus the top layer.
-  HTMLDialogElement.prototype.showModal = function showModal(this: HTMLDialogElement) {
-    this.setAttribute('open', '')
-  }
-  HTMLDialogElement.prototype.close = function close(this: HTMLDialogElement) {
-    this.removeAttribute('open')
-  }
+  HTMLDialogElement.prototype.showModal = showModal
+  HTMLDialogElement.prototype.close = closeDialog
 })
 
 afterEach(() => {
@@ -46,9 +50,13 @@ afterEach(() => {
 
 function fakeFiles(overrides: Partial<DrawioFiles> = {}): DrawioFiles {
   return {
-    read: vi.fn(async () => ({ file: STORED, version: 3 })),
-    create: vi.fn(async () => ({ attachmentId: 'new', url: '/api/attachments/new', version: 1 })),
-    revise: vi.fn(async (diagram: DrawioDiagram) => ({
+    read: vi.fn<DrawioFiles['read']>(async () => ({ file: STORED, version: 3 })),
+    create: vi.fn<DrawioFiles['create']>(async () => ({
+      attachmentId: 'new',
+      url: '/api/attachments/new',
+      version: 1,
+    })),
+    revise: vi.fn<DrawioFiles['revise']>(async (diagram) => ({
       kind: 'revised' as const,
       diagram: { ...diagram, version: diagram.version + 1 },
     })),
@@ -56,9 +64,18 @@ function fakeFiles(overrides: Partial<DrawioFiles> = {}): DrawioFiles {
   }
 }
 
+/** A message from draw.io: its origin, its window. */
+function speak(drawio: Window, message: object, origin = ORIGIN, source: Window = drawio) {
+  act(() => {
+    window.dispatchEvent(
+      new MessageEvent('message', { data: JSON.stringify(message), origin, source }),
+    )
+  })
+}
+
 function open(props: Partial<DrawioEditorProps> = {}) {
-  const onSaved = vi.fn()
-  const onClose = vi.fn()
+  const onSaved = vi.fn<DrawioEditorProps['onSaved']>()
+  const onClose = vi.fn<DrawioEditorProps['onClose']>()
   const files = props.files ?? fakeFiles()
   const view = render(
     <DrawioEditor
@@ -78,14 +95,7 @@ function open(props: Partial<DrawioEditorProps> = {}) {
   if (frame === null || drawio === null || drawio === undefined) throw new Error('no frame')
   const sent = vi.spyOn(drawio, 'postMessage').mockImplementation(() => {})
 
-  /** A message from draw.io: its origin, its window. */
-  const say = (message: object, origin = ORIGIN, source: Window = drawio) => {
-    act(() => {
-      window.dispatchEvent(
-        new MessageEvent('message', { data: JSON.stringify(message), origin, source }),
-      )
-    })
-  }
+  const say = speak.bind(null, drawio)
   const actions = () =>
     sent.mock.calls.map(([data, origin]) => ({ ...JSON.parse(String(data)), to: origin }))
   const lastAction = () => actions().at(-1)
@@ -217,7 +227,10 @@ describe('the draw.io editor', () => {
 
   it('never overwrites a newer revision: it offers a copy, or a reload', async () => {
     const files = fakeFiles({
-      revise: vi.fn(async () => ({ kind: 'conflict' as const, currentVersion: 5 })),
+      revise: vi.fn<DrawioFiles['revise']>(async () => ({
+        kind: 'conflict' as const,
+        currentVersion: 5,
+      })),
     })
     const { say, save, lastAction, onSaved } = open({
       files,
@@ -254,7 +267,10 @@ describe('the draw.io editor', () => {
 
   it('reloads the newer revision when asked, discarding the writer’s changes', async () => {
     const files = fakeFiles({
-      revise: vi.fn(async () => ({ kind: 'conflict' as const, currentVersion: 5 })),
+      revise: vi.fn<DrawioFiles['revise']>(async () => ({
+        kind: 'conflict' as const,
+        currentVersion: 5,
+      })),
     })
     const { say, save, lastAction } = open({
       files,
@@ -374,7 +390,9 @@ describe('the draw.io editor', () => {
 
   it('reports a file that holds no diagram, and one that cannot be read', async () => {
     const notDrawio = open({
-      files: fakeFiles({ read: vi.fn(async () => ({ file: '<svg/>', version: 3 })) }),
+      files: fakeFiles({
+        read: vi.fn<DrawioFiles['read']>(async () => ({ file: '<svg/>', version: 3 })),
+      }),
       target: { kind: 'existing', diagram: EXISTING, title: 'x' },
     })
     notDrawio.say({ event: 'init' })
@@ -402,6 +420,42 @@ describe('the draw.io editor', () => {
     say({ event: 'load' })
     say({ event: 'save', xml: 'not a diagram' })
     await waitFor(() => expect(lastAction()?.action).toBe('export'))
+  })
+
+  it('ignores a save draw.io sends after the session has closed', async () => {
+    const { say, actions, onClose } = open()
+    say({ event: 'load' })
+    say({ event: 'exit', modified: false })
+    expect(onClose).toHaveBeenCalledOnce()
+    const before = actions().length
+
+    say({ event: 'save', xml: SAVED })
+
+    expect(actions()).toHaveLength(before)
+  })
+
+  it('writes nothing for an export it did not ask for', async () => {
+    const { say, actions, files } = open()
+    say({ event: 'configure' })
+
+    say({ event: 'export', format: 'svg', data: EXPORTED })
+
+    expect(actions().at(-1)).toMatchObject({ action: 'spinner', show: false })
+    expect(files.create).not.toHaveBeenCalled()
+    expect(files.revise).not.toHaveBeenCalled()
+  })
+
+  it('closes from the prompt that says the diagram did not open', async () => {
+    const read = vi.fn<DrawioFiles['read']>().mockRejectedValueOnce(new Error('offline'))
+    const { say, onClose } = open({
+      files: fakeFiles({ read }),
+      target: { kind: 'existing', diagram: EXISTING, title: 'x' },
+    })
+    say({ event: 'init' })
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Close' }))
+
+    expect(onClose).toHaveBeenCalledOnce()
   })
 
   it('tells the writer when the editor is diagrams.net’s', () => {

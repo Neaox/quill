@@ -152,12 +152,12 @@ describe('the floating toolbar over selected text', () => {
   })
 })
 
-describe('the toolbar over selected text, laid out as other editors lay one out', () => {
-  const names = (bar: HTMLElement): string[] =>
-    within(bar)
-      .getAllByRole('button')
-      .map((button) => button.getAttribute('aria-label') ?? button.textContent ?? '')
+const names = (bar: HTMLElement): string[] =>
+  within(bar)
+    .getAllByRole('button')
+    .map((button) => button.getAttribute('aria-label') ?? button.textContent ?? '')
 
+describe('the toolbar over selected text, laid out as other editors lay one out', () => {
   it('goes: style, marks, link, lists and quote, comment, more', () => {
     const opened = open('Say something clever.\n', () => undefined)
     select(opened, 'something')

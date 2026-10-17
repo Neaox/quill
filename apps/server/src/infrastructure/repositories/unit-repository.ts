@@ -84,6 +84,11 @@ export function createUnitRepository(db: DrizzleClient): UnitRepository {
       return rows.map(fromRecord)
     },
 
+    async listAll(): Promise<readonly UnitRow[]> {
+      const rows = await db.select().from(organisationalUnits)
+      return rows.map(toUnitRow)
+    },
+
     async rename(id: UnitId, name: string): Promise<UnitRow> {
       const rows = await db
         .update(organisationalUnits)

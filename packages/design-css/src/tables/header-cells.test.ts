@@ -16,9 +16,9 @@ const RULES = ['hairline', 'double', 'cards', 'plain'] as const
 const SCHEMES = ['light', 'dark'] as const
 
 beforeAll(() => {
-  const style = document.createElement('style')
-  style.textContent = readFileSync(styleSheetPath('prose.css'), 'utf8')
-  document.head.append(style)
+  const sheet = document.createElement('style')
+  sheet.textContent = readFileSync(styleSheetPath('prose.css'), 'utf8')
+  document.head.append(sheet)
 })
 
 afterEach(() => {

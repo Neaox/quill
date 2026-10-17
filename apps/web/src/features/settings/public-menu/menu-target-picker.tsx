@@ -2,12 +2,8 @@ import { useCallback, useState } from 'react'
 
 import { Combobox, type ListboxGroup } from '@quill/ui'
 
-import {
-  queryTooLong,
-  useCollectionCandidates,
-  useSearch,
-  type PublicMenuLink,
-} from '../../../lib/api/index.ts'
+import { queryTooLong, useSearch, type PublicMenuLink } from '../../../lib/api/index.ts'
+import { useCollectionCandidates } from '../../../lib/api/public-menu.ts'
 import { SearchHitDetail } from '../../search/search-hit.tsx'
 import { useDebouncedValue } from '../../search/use-debounced-value.ts'
 import { labelForAddress, looksLikeAddress, urlError } from './menu-model.ts'

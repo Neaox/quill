@@ -31,7 +31,11 @@ export const dialogStyles = tv({
       'text-muted transition-colors hover:bg-surface hover:text-foreground',
       'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring',
     ],
-    body: 'mt-4 min-h-0 grow overflow-y-auto text-xs leading-relaxed text-foreground [&>*+*]:mt-3',
+    // A scrolling region clips on every side, not only the one that scrolls, so a focus ring
+    // (2px outline and 2px offset) on a field at its edge would be cut off. The padding is the
+    // room the ring needs, and the negative margin gives back the space it takes, so the
+    // content sits where it always did.
+    body: '-mx-1 mt-3 min-h-0 grow overflow-y-auto px-1 py-1 text-xs leading-relaxed text-foreground [&>*+*]:mt-3',
     footer: 'mt-6 flex shrink-0 flex-wrap justify-end gap-2 border-t border-border pt-4',
   },
   variants: {

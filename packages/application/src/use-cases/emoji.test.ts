@@ -1,10 +1,17 @@
 import { describe, expect, it } from 'vitest'
 
-import { readBlob } from '../ports/blob-store.ts'
+import { concatChunks, readBlob } from '../ports/blob-store.ts'
 import { defaultOrganisationSettings } from '../settings/documents.ts'
 import { MAX_EMOJI_BYTES, MAX_EMOJI_FRAMES, MAX_EMOJI_MILLISECONDS } from '../settings/emoji.ts'
 import { createFakeSettings } from '../test-support/fake-settings.ts'
-import { chunked, imageFixture, pngChunk, pngFile } from '../test-support/image-fixtures.ts'
+import {
+  chunked,
+  imageFixture,
+  isoBox,
+  pngChunk,
+  pngFile,
+  uint32s,
+} from '../test-support/image-fixtures.ts'
 import { createInMemoryBlobStore } from '../test-support/in-memory-blob-store.ts'
 import { readEmojiImage, uploadEmojiImage } from './emoji.ts'
 
@@ -20,6 +27,12 @@ const upload = (bytes: Uint8Array, declaredContentType: string) => {
     blobStore,
     result: uploadEmojiImage({ blobStore }, { declaredContentType, body: chunked(bytes) }),
   }
+}
+
+/** The GIF's NETSCAPE loop-count byte: how many more times it plays. */
+const loopCount = (bytes: Uint8Array | null) => {
+  const at = new TextDecoder('latin1').decode(bytes ?? new Uint8Array()).indexOf('NETSCAPE2.0')
+  return bytes?.[at + 13]
 }
 
 describe('uploading an emoji image (ADR-038)', () => {
@@ -72,10 +85,6 @@ describe('uploading an emoji image (ADR-038)', () => {
     expect(uploaded).toMatchObject({ frames: 2, milliseconds: 200, plays: 3 })
     if (uploaded.original === undefined) throw new Error('no original')
 
-    const loopCount = (bytes: Uint8Array | null) => {
-      const at = new TextDecoder('latin1').decode(bytes ?? new Uint8Array()).indexOf('NETSCAPE2.0')
-      return bytes?.[at + 13]
-    }
     expect(loopCount(await readBlob(blobStore, uploaded.hash))).toBe(2)
     expect(loopCount(await readBlob(blobStore, uploaded.original))).toBe(0)
   })
@@ -201,5 +210,36 @@ describe('serving an emoji image', () => {
 
     await blobStore.delete(uploaded.hash)
     expect(await readEmojiImage(deps, file)).toBeNull()
+  })
+})
+
+/** The still AVIF fixtures declare `miaf` as a compatible brand; here it names a sequence instead. */
+function asSequence(file: Uint8Array, ...movie: Uint8Array[]): Uint8Array {
+  const sequence = Uint8Array.from(file)
+  const miaf = new TextDecoder('latin1').decode(sequence).indexOf('miaf')
+  sequence.set(new TextEncoder().encode('avis'), miaf)
+  return concatChunks([sequence, ...movie])
+}
+
+describe('uploading an AVIF image sequence as an emoji', () => {
+  it('refuses a sequence that has no movie to time it by', async () => {
+    const uploaded = await upload(asSequence(imageFixture('plain.avif')), 'image/avif').result
+    expect(uploaded).toEqual({ kind: 'malformed', reason: 'an image sequence with no movie' })
+  })
+
+  it('refuses a sequence whose metadata stripping would change, since its frames could not be found', async () => {
+    const movie = isoBox(
+      'moov',
+      isoBox('mvhd', uint32s(0, 0, 0, 1000, 500)),
+      isoBox(
+        'trak',
+        isoBox('mdia', isoBox('minf', isoBox('stbl', isoBox('stsz', uint32s(0, 0, 3))))),
+      ),
+    )
+    const uploaded = await upload(asSequence(imageFixture('exif.avif'), movie), 'image/avif').result
+    expect(uploaded).toMatchObject({
+      kind: 'malformed',
+      reason: expect.stringContaining('metadata'),
+    })
   })
 })

@@ -218,8 +218,12 @@ export function DocumentEditor({
   // What was chosen last from the emoji menu, kept apart from the slash menu's blocks.
   const [emojiRecents] = useState(() => createSlashRecents(emojiRecentsKey(recentsKey)))
 
-  const editor = useEditor({
-    extensions: buildExtensions({
+  // Built once, as everything above says, and handed to `useEditor` as the same objects on every
+  // render: it compares its options by identity, so a fresh list, content or props each time
+  // reconfigures the whole document (every plugin and decoration) whenever a parent renders, as
+  // it does on each autosave status change.
+  const [extensions] = useState(() =>
+    buildExtensions({
       ...(placeholder === undefined ? {} : { placeholder }),
       ...(labels === undefined ? {} : { labels }),
       ...(emoji === undefined ? {} : { emoji }),
@@ -241,11 +245,10 @@ export function DocumentEditor({
         },
       },
     }),
-    content: initial.doc.toJSON(),
-    editable,
-    immediatelyRender: true,
-    shouldRerenderOnTransaction: false,
-    editorProps: {
+  )
+  const [content] = useState(() => initial.doc.toJSON())
+  const editorProps = useMemo(
+    () => ({
       attributes: {
         role: 'textbox',
         'aria-multiline': 'true',
@@ -258,7 +261,17 @@ export function DocumentEditor({
         // distance apart while they are written as when they are read.
         class: 'document-editor-content prose',
       },
-    },
+    }),
+    [label],
+  )
+
+  const editor = useEditor({
+    extensions,
+    content,
+    editable,
+    immediatelyRender: true,
+    shouldRerenderOnTransaction: false,
+    editorProps,
     onUpdate: ({ editor: instance }) => {
       latest.current.onChange?.(handleFor(instance, initial.warnings))
     },

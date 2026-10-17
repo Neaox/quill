@@ -119,6 +119,15 @@ describe('the language picker', () => {
     expect(recent.read()).toEqual(['rust'])
   })
 
+  it('does not remember a language the block would not take', async () => {
+    const recent = memoryRecents()
+    const { field, onChoose, user } = picker('ts', recent)
+    onChoose.mockReturnValue(false)
+    await user.type(field, 'rust{Enter}')
+    expect(onChoose).toHaveBeenCalledWith('rust')
+    expect(recent.read()).toEqual([])
+  })
+
   it('keeps a fence name it does not know, as written', async () => {
     const { field, onChoose, user } = picker()
     await user.type(field, 'PowerShell{Enter}')

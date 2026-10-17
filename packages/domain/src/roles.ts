@@ -25,12 +25,21 @@ export function canView(role: Role): boolean {
   return roleAtLeast(role, 'viewer')
 }
 
-/** Contributors may comment and propose changes but not publish. */
+/**
+ * Contributors comment and write drafts but do not publish: they ask for a
+ * review, and somebody who can publish makes the change live (ADR-052).
+ */
 export function canComment(role: Role): boolean {
   return roleAtLeast(role, 'contributor')
 }
 
+/** Write the draft: take its lock, change it, attach to it. Making it live is `canPublish`. */
 export function canEdit(role: Role): boolean {
+  return roleAtLeast(role, 'contributor')
+}
+
+/** Make a draft a revision readers see: publish, and restore, which publishes. */
+export function canPublish(role: Role): boolean {
   return roleAtLeast(role, 'editor')
 }
 

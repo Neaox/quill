@@ -35,6 +35,21 @@ export function useUnits(parentId?: string) {
 }
 
 /**
+ * Every unit at every depth in one request, for a picker that offers the
+ * whole tree (a new group's unit). Each carries its `parentId`, so a path is
+ * built from the list itself.
+ */
+export function useAllUnits(options: { readonly enabled?: boolean } = {}) {
+  const client = useApiClient()
+  return useQuery({
+    queryKey: queryKeys.allUnits(),
+    queryFn: () =>
+      request<readonly UnitDto[]>(client.GET('/api/units', { params: { query: { all: true } } })),
+    enabled: options.enabled ?? true,
+  })
+}
+
+/**
  * Invalidates the lists a unit write can have changed: the children of its
  * parent, and — because a unit's own children list is keyed separately — the
  * whole `units` prefix. The unit tree is a handful of rows at M2's scale, so

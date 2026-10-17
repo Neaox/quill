@@ -14,6 +14,7 @@ a dead letter.
 | `render-on-publish.ts` | Renders the published body so the first reader never pays for a render (ADR-031). |
 | `index-on-publish.ts` | Puts the published document into the search index, and re-indexes a renamed one (ADR-010). |
 | `send-mail.ts` | Delivers queued mail, and redacts the token out of the row afterwards (ADR-011). |
+| `notify-on-review.ts` | Writes in-app notifications for review requests, answers and withdrawals (ADR-052, ADR-053); idempotent per request, recipient, kind and actor. |
 | `acknowledge.ts` | A consumer that deliberately does nothing, for a type nothing acts on yet. |
 | `combine.ts` | Several consumers of one event type, as the one consumer the runner registers. |
 

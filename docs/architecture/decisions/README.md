@@ -57,3 +57,5 @@ Status values: `Proposed` (awaiting a spike or review), `Accepted`, `Superseded 
 | [049](0049-navigation-tree-ordering-and-paging.md)    | Navigation tree: ordering and paging          | Accepted               |
 | [050](0050-presenting-with-two-windows.md)            | Presenting with two windows                   | Accepted               |
 | [051](0051-find-and-replace.md)                       | Find and replace in the editor                | Accepted               |
+| [052](0052-publish-capability-and-review-requests.md) | Publish capability and review requests        | Accepted               |
+| [053](0053-home-relevance.md)                         | What is relevant on the signed-in home        | Accepted               |

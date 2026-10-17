@@ -23,6 +23,11 @@ const blocks: SequenceMergeOptions<Item> = {
   pairKey: ({ type }) => type,
 }
 
+const neverSimilar = () => 0
+const similarByInitial = (before: Item, after: Item) => (before.text[0] === after.text[0] ? 1 : 0)
+const mostlySimilarByInitial = (before: Item, after: Item) =>
+  before.text[0] === after.text[0] ? 0.9 : 0
+
 describe('matchSequences', () => {
   it('matches a common prefix, a common suffix, and the longest run between', () => {
     expect([...matchSequences(['a', 'b', 'x', 'c', 'd'], ['a', 'b', 'c', 'y', 'd'])]).toEqual([
@@ -82,23 +87,25 @@ describe('mergeSequences', () => {
     const base = Array.from({ length: size }, (_, index) => item(`p:b${index}`))
     const mine = Array.from({ length: size }, (_, index) => item(`p:m${index}`))
     const theirs = [...base, item('p:extra')]
-    const similarity = () => 0
     const merged = cleanItems(
-      mergeSequences(base, mine, theirs, { ...blocks, similarity, detectMoves: true }),
+      mergeSequences(base, mine, theirs, {
+        ...blocks,
+        similarity: neverSimilar,
+        detectMoves: true,
+      }),
     )
     // Paired by type, each base item is a modification by mine: mine wins.
     expect(show(merged)).toBe(show([...mine, item('p:extra')]))
   })
 
   it('treats replaced items that share nothing as a deletion and an insertion', () => {
-    const similarity = (before: Item, after: Item) => (before.text[0] === after.text[0] ? 1 : 0)
     const merged = mergeSequences(
       items('p:apple p:kiwi'),
       items('p:zebra p:kiwi'),
       items('p:avocado p:kiwi'),
       {
         ...blocks,
-        similarity,
+        similarity: similarByInitial,
       },
     )
     // Mine deleted the apple (and wrote a zebra); theirs edited it: a conflict.
@@ -120,8 +127,7 @@ describe('mergeSequences', () => {
   })
 
   it('follows an edited move with the other side’s edit, or conflicts if the two cannot merge', () => {
-    const similarity = (before: Item, after: Item) => (before.text[0] === after.text[0] ? 0.9 : 0)
-    const options = { ...blocks, similarity, detectMoves: true }
+    const options = { ...blocks, similarity: mostlySimilarByInitial, detectMoves: true }
     const base = items('p:alpha p:bravo p:charlie')
     const mine = items('p:bravo p:charlie p:alpha2')
     const theirs = items('p:alpha3 p:bravo p:charlie')

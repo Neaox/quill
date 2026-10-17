@@ -38,6 +38,29 @@ describe('the preferences page', () => {
     await expectNoAccessibilityViolations(container)
   })
 
+  it('lets a person clear what Quill remembers of the documents they opened', async () => {
+    let cleared = 0
+    const success = vi.spyOn(toast, 'success')
+    renderApp(
+      PATH,
+      routes({
+        'DELETE /api/me/history': () => {
+          cleared += 1
+          return new Response(undefined, { status: 204 })
+        },
+      }),
+    )
+
+    const heading = await screen.findByRole('heading', { level: 2, name: 'Viewing history' })
+    expect(heading.parentElement).toHaveTextContent('Nobody else sees it, administrators included')
+    await userEvent.click(screen.getByRole('button', { name: 'Clear viewing history' }))
+
+    await waitFor(() => {
+      expect(cleared).toBe(1)
+    })
+    expect(success).toHaveBeenCalledWith('Viewing history cleared')
+  })
+
   it('saves a choice as it is made, says so, and applies it to the page', async () => {
     const bodies: unknown[] = []
     let stored = 'brief'

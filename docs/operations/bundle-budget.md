@@ -81,6 +81,26 @@ Four things hold that, and each will fail this gate if it is undone:
   rare call that arrives first. Importing `sonner` anywhere else puts it back
   in the first-render graph.
 
+## Second reduction (the dashboard redesign)
+
+The redesign took the route to **288.3 KB** and a failing gate; the pass
+that followed brought it to **246.0 KB**. What it moved out of the first load,
+none of it removed, each loaded the first time it is needed:
+
+| Step | Reading route (gzip) |
+| --- | --- |
+| Before | 288.3 KB |
+| 1. Document-body enhancers (`body-enhancers.ts`): code cards and highlighting, diagrams, lightbox, table tools, details, animated emoji, picture viewer, each loaded only when the body contains what it enhances | 272.6 KB |
+| 2. Dialogs and panels opened from their own chunks (`MountOnFirstOpen`): new document, collections, move, delete, attachments, request review, review panel | 259.8 KB |
+| 3. The editor's and the presentation's stylesheets (`@quill/ui/styles/editor.css`, `present.css`) imported by their routes rather than the entry sheet | 255.4 KB |
+| 4. The restore confirmation, the comparison stylesheet, the notifications list, and the API modules only the editor and the dialogs use, imported directly rather than through the `lib/api` barrel (a barrel re-export of a module any chunk uses puts it in the entry chunk) | 250.0 KB |
+| 5. `ui-base` chunk (`vite.config.ts`): the primitives nearly every screen uses, merged rather than split into a tiny chunk per sharing set | 246.0 KB |
+
+Two rules fall out of it. A stylesheet only one surface draws is imported by
+that surface, not by the entry sheet. A component a reader may never open (a
+dialog, a side panel, a popover's body) is a `lazy` import behind
+`MountOnFirstOpen`, or behind the popover that holds it.
+
 ## If it fails
 
 Read the five largest files the script prints. If the regression is a package

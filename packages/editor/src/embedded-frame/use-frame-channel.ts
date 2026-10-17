@@ -37,6 +37,8 @@ export function useFrameChannel<Inbound extends TSchema, Outbound>(
   const latest = useRef(options)
   const channel = useRef<FrameChannel<Outbound> | null>(null)
 
+  // The window listener below lives outside React and reads this box when a
+  // message arrives; after every render it is brought up to date.
   useEffect(() => {
     latest.current = options
   })

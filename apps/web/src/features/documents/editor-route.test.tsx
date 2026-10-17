@@ -74,7 +74,14 @@ function draft(overrides: Record<string, unknown> = {}) {
 function envelope(permissions: Record<string, boolean> = {}) {
   return () =>
     jsonResponse(200, {
-      permissions: { view: true, comment: true, edit: true, manage: false, ...permissions },
+      permissions: {
+        view: true,
+        comment: true,
+        edit: true,
+        publish: true,
+        manage: false,
+        ...permissions,
+      },
       lock: null,
       lastPublished: { revision: 'a'.repeat(40), author: 'Ada', at: '2026-02-03T00:00:00.000Z' },
       review: null,
@@ -283,7 +290,7 @@ describe('the editor route', () => {
           }),
         'GET /api/documents/{id}/envelope': () =>
           jsonResponse(200, {
-            permissions: { view: true, comment: true, edit: true, manage: false },
+            permissions: { view: true, comment: true, edit: true, publish: true, manage: false },
             lock: {
               holderUserId: 'user-2',
               holderName: 'Grace',
@@ -301,6 +308,29 @@ describe('the editor route', () => {
     ).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /^Take over from/u })).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Publish' })).toBeDisabled()
+  })
+
+  it('gives a contributor the way to get a change live: asking for a review, not publishing', async () => {
+    await openEditor(
+      editorRoutes({
+        'GET /api/documents/{id}/envelope': envelope({ publish: false }),
+        'GET /api/documents/{id}/review': () => jsonResponse(200, { request: null }),
+      }),
+    )
+
+    expect(await screen.findByRole('button', { name: 'Request review' })).toBeEnabled()
+    expect(screen.queryByRole('button', { name: 'Publish' })).not.toBeInTheDocument()
+  })
+
+  it('lets an editor ask for a review too, beside Publish', async () => {
+    await openEditor(
+      editorRoutes({
+        'GET /api/documents/{id}/review': () => jsonResponse(200, { request: null }),
+      }),
+    )
+
+    expect(await screen.findByRole('button', { name: 'Request review' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Publish' })).toBeInTheDocument()
   })
 
   it('offers a workspace admin the takeover ADR-021 reserves for them', async () => {
@@ -511,13 +541,30 @@ describe('the editor route', () => {
         'POST /api/documents/{id}/publish': () =>
           jsonResponse(409, { kind: 'merge-required', current: 'c'.repeat(40), conflicts: [] }),
         'GET /api/documents/{id}/history': () => jsonResponse(200, { revisions: [] }),
-        'GET /api/documents/{id}/diff': () =>
+        'GET /api/documents/{id}/compare': () =>
           jsonResponse(200, {
-            from: 'a'.repeat(40),
-            to: 'c'.repeat(40),
-            unified: '@@ -1 +1 @@\n-was\n+is',
-            added: 1,
-            removed: 1,
+            html: '<article><p data-change="changed" data-change-id="c1">It <del data-diff="removed">was</del><ins data-diff="added">is</ins>.</p></article>',
+            summary: {
+              sections: 1,
+              added: 0,
+              removed: 0,
+              changed: 1,
+              moved: 0,
+              wordsAdded: 1,
+              wordsRemoved: 1,
+            },
+            changes: [
+              {
+                id: 'c1',
+                change: 'changed',
+                block: 'paragraph',
+                excerpt: 'It is.',
+                wordsAdded: 1,
+                wordsRemoved: 1,
+              },
+            ],
+            sections: [],
+            properties: [],
           }),
       }),
     )
@@ -526,7 +573,7 @@ describe('the editor route', () => {
     const dialog = await screen.findByRole('dialog', { name: 'Someone else published first' })
     await userEvent.click(within(dialog).getByRole('button', { name: 'See what changed' }))
 
-    expect(await screen.findByRole('group', { name: 'Unified diff' })).toBeInTheDocument()
+    expect(await screen.findByRole('article', { name: 'Comparison' })).toBeInTheDocument()
   })
 
   it('refuses to open a draft written by a newer release rather than losing it', async () => {

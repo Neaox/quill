@@ -1,7 +1,7 @@
 import { readdirSync, readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 
-import fc from 'fast-check'
+import * as fc from 'fast-check'
 import type { Nodes, Root, RootContent } from 'mdast'
 import { toString } from 'mdast-util-to-string'
 import { describe, expect, it } from 'vitest'

@@ -51,6 +51,27 @@ function control(action: string): HTMLButtonElement {
   return button
 }
 
+/** A ResizeObserver whose callbacks run when the test says. */
+function observer() {
+  const callbacks: (() => void)[] = []
+  class Observer {
+    constructor(callback: () => void) {
+      callbacks.push(callback)
+    }
+    observe = vi.fn<(target: Element) => void>()
+    disconnect = vi.fn<() => void>()
+  }
+  return { Observer, resize: () => callbacks.forEach((callback) => callback()) }
+}
+
+function sizes(stageWidth: number, tableWidth: number): void {
+  const stage = document.querySelector<HTMLElement>('.lightbox-stage')
+  const table = document.querySelector('dialog table')
+  if (stage === null || table === null) throw new Error('no stage')
+  Object.defineProperty(stage, 'clientWidth', { value: stageWidth, configurable: true })
+  Object.defineProperty(table, 'scrollWidth', { value: tableWidth, configurable: true })
+}
+
 describe('the table viewer', () => {
   it('gives the table an expand button named by its caption', () => {
     mount()
@@ -169,27 +190,6 @@ describe('the table viewer', () => {
       )
     })
   })
-
-  /** A ResizeObserver whose callbacks run when the test says. */
-  function observer() {
-    const callbacks: (() => void)[] = []
-    class Observer {
-      constructor(callback: () => void) {
-        callbacks.push(callback)
-      }
-      observe = vi.fn<(target: Element) => void>()
-      disconnect = vi.fn<() => void>()
-    }
-    return { Observer, resize: () => callbacks.forEach((callback) => callback()) }
-  }
-
-  function sizes(stageWidth: number, tableWidth: number): void {
-    const stage = document.querySelector<HTMLElement>('.lightbox-stage')
-    const table = document.querySelector('dialog table')
-    if (stage === null || table === null) throw new Error('no stage')
-    Object.defineProperty(stage, 'clientWidth', { value: stageWidth, configurable: true })
-    Object.defineProperty(table, 'scrollWidth', { value: tableWidth, configurable: true })
-  }
 
   it('offers Fit width only while the table is wider than the stage, and fits it', () => {
     const { block, scroller } = mount()

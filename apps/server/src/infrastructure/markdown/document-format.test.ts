@@ -438,7 +438,8 @@ describe('createDocumentFormat: render and read', () => {
     expect(rendered.html).toContain(
       '<span class="emoji" role="img" aria-label="thumbs up">👍</span>',
     )
-    expect(rendered.html).toContain(`<img class="emoji" src="${src}" alt=":airbnb:"`)
+    // Described by its name, with the shortcode kept as the title, never read out as ":airbnb:".
+    expect(rendered.html).toContain(`<img class="emoji" src="${src}" alt="airbnb" title=":airbnb:"`)
     expect(rendered.html).toContain(
       `<span class="badge" data-label="airbnb"><img class="emoji" src="${src}" alt=""`,
     )
@@ -581,5 +582,46 @@ describe('createDocumentFormat: retitle', () => {
       title: 'Recovered',
     })
     expect(renamed.frontMatter).toEqual({ id: DOC, title: 'Recovered' })
+  })
+})
+
+describe('createDocumentFormat: compare', () => {
+  const context = { linkTitles: new Map() }
+
+  it('draws an unchanged SVG drawing from the markup it was handed', () => {
+    const url = '/api/attachments/0b6b0d2c-7f7e-4a39-8a8a-4a5f6d0c1a11'
+    const compared = format.compare({
+      before: `![The loop](${url})\n\nBefore.\n`,
+      after: `![The loop](${url})\n\nAfter.\n`,
+      context: {
+        ...context,
+        drawings: new Map([[url, { sha256: 'a', markup: '<svg viewBox="0 0 1 1"><rect/></svg>' }]]),
+      },
+    })
+    expect(compared.html).toContain('<svg viewBox="0 0 1 1"')
+  })
+
+  it('names who wrote each change of a draft that has a record, and none without one', () => {
+    const before = 'Kept.\n'
+    const previous = draftOf(before)
+    const next = draftOf('Kept.\n\nAdded by Ada.\n')
+    const authorship = format.stampAuthorship({
+      previous,
+      next,
+      authorship: undefined,
+      by: 'ada',
+      at: '2026-01-01T00:00:00.000Z',
+    })
+    const after = 'Kept.\n\nAdded by Ada.\n'
+
+    const stamped = format.compare({ before, after, context, draft: next, authorship })
+    expect(stamped.changes.map(({ revertible, author }) => ({ revertible, author }))).toEqual([
+      { revertible: true, author: { userId: 'ada', at: '2026-01-01T00:00:00.000Z' } },
+    ])
+
+    const unrecorded = format.compare({ before, after, context, draft: next })
+    expect(unrecorded.changes.map(({ revertible, author }) => ({ revertible, author }))).toEqual([
+      { revertible: true },
+    ])
   })
 })

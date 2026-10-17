@@ -1,6 +1,8 @@
 import { useState, useTransition } from 'react'
 import type { KeyboardEvent } from 'react'
 
+import '@quill/design-css/comparison.css'
+
 import {
   Badge,
   Button,

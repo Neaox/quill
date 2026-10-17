@@ -50,6 +50,7 @@ function digest(node: RootContent): string {
   let h1 = 0xdeadbeef
   let h2 = 0x41c6ce57
   for (const character of nodeKey(node)) {
+    /* v8 ignore next -- a character of a string always has a code point. */
     const code = character.codePointAt(0) ?? 0
     h1 = Math.imul(h1 ^ code, 2654435761)
     h2 = Math.imul(h2 ^ code, 1597334677)
@@ -160,6 +161,7 @@ export function attributeChanges(
   const named = context.comparison.changes.flatMap((change): [string, Stamp][] => {
     if (!aligned.has(change.id)) return []
     const block = change.change === 'removed' ? change.previous : draft[change.at]
+    /* v8 ignore next 6 -- `revertibleChanges` has already found the block at each place. */
     const stamp =
       block === undefined
         ? undefined

@@ -360,4 +360,19 @@ describe('the code block node view itself', () => {
     nodeView.destroy()
     view.destroy()
   })
+
+  it('writes no language onto a block that is no longer in the document', async () => {
+    const { view, nodeView } = mount(SOURCE, () => undefined)
+    document.body.append(nodeView.dom)
+    const user = userEvent.setup()
+    const before = view.state.doc.toString()
+
+    await user.click(await screen.findByRole('combobox', { name: 'Code block language' }))
+    await user.keyboard('python{Enter}')
+
+    expect(view.state.doc.toString()).toBe(before)
+    expect(view.state.doc.child(0).attrs['language']).toBe('ts')
+    nodeView.destroy()
+    view.destroy()
+  })
 })

@@ -301,6 +301,10 @@ describe('the workspace tree, a level at a time', () => {
     expect(
       (await children(`collectionId=${tenancy.collectionId}&cursor=nonsense`)).statusCode,
     ).toBe(422)
+    const wrongId = Buffer.from('2026-01-01T00:00:00.000Z|not-a-document').toString('base64url')
+    expect(
+      (await children(`collectionId=${tenancy.collectionId}&cursor=${wrongId}`)).statusCode,
+    ).toBe(422)
     expect((await children(`collectionId=${tenancy.collectionId}&limit=100000`)).statusCode).toBe(
       400,
     )

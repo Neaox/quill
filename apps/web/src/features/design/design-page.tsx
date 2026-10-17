@@ -240,7 +240,7 @@ export function DesignPage() {
               id="details"
               overline="Details"
               title="Details and accordions"
-              description="ADR-048: the browser's own details, in Quill's directive, GitHub's HTML and Obsidian's foldable callouts, drawn by the theme's rules. Open one in an accordion and the others close; a link or find into a closed one opens it."
+              description={`ADR-048: the browser's own details, in ${BRAND.name}'s directive, GitHub's HTML and Obsidian's foldable callouts, drawn by the theme's rules. Open one in an accordion and the others close; a link or find into a closed one opens it.`}
             >
               <p className="text-xs leading-relaxed text-muted">
                 Each specimen's Markdown is under it.

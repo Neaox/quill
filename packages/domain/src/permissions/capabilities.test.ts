@@ -8,6 +8,15 @@ describe('capabilitiesForRole', () => {
       view: true,
       comment: false,
       edit: false,
+      publish: false,
+      manage: false,
+      own: false,
+    })
+    expect(capabilitiesForRole('contributor')).toEqual({
+      view: true,
+      comment: true,
+      edit: true,
+      publish: false,
       manage: false,
       own: false,
     })
@@ -15,6 +24,7 @@ describe('capabilitiesForRole', () => {
       view: true,
       comment: true,
       edit: true,
+      publish: true,
       manage: true,
       own: true,
     })

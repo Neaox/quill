@@ -159,12 +159,14 @@ const ATTRIBUTE = /([\w:.-]+)\s*=\s*(?:"([^"]*)"|'([^']*)')/g
 const ELEMENT_START = /<[A-Za-z]/g
 
 function attributesOf(source: string): ReadonlyMap<string, string> {
+  /* v8 ignore start -- a match of the pattern always has a name and one of its two quoted values. */
   return new Map(
     Array.from(source.matchAll(ATTRIBUTE), (match) => [
       match[1] ?? '',
       decodeEntities(match[2] ?? match[3] ?? ''),
     ]),
   )
+  /* v8 ignore stop */
 }
 
 /**
@@ -173,6 +175,7 @@ function attributesOf(source: string): ReadonlyMap<string, string> {
  */
 export function labelsOfModel(model: string): readonly string[] {
   return Array.from(model.matchAll(LABELLED_ELEMENT), (match) => {
+    /* v8 ignore next -- the pattern's attribute group takes part in every match, empty or not. */
     const attributes = attributesOf(match[2] ?? '')
     const raw = match[1] === 'mxCell' ? attributes.get('value') : attributes.get('label')
     return raw === undefined ? '' : plainText(raw)
@@ -286,6 +289,7 @@ export async function editableDrawioSource(
   // `id` and `name`; an empty page stays empty.
   const xml = source.replaceAll(DIAGRAM_PAGE, (whole, inner: string | undefined) => {
     if (inner === undefined || inner.trim() === '') return whole
+    /* v8 ignore next -- a page was read for every page that is replaced. */
     const model = models.shift() ?? ''
     const start = whole.slice(0, whole.length - inner.length - '</diagram>'.length)
     return `${start}${withSvgLabelCells(model)}</diagram>`

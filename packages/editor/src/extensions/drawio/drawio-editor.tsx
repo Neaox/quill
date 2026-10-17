@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react'
 
+import { BRAND } from '@quill/brand'
 import { drawioFilename, editableDrawioSource } from '@quill/markdown/drawio'
 import { Button } from '@quill/ui'
 
@@ -171,7 +172,7 @@ export function DrawioEditor({
       if (source.kind !== 'source') {
         transition({
           type: 'failed',
-          message: 'This file holds no draw.io diagram Quill can open.',
+          message: `This file holds no draw.io diagram ${BRAND.name} can open.`,
           retry: 'none',
         })
         return
@@ -264,6 +265,11 @@ export function DrawioEditor({
     }
   }
 
+  function reload(): void {
+    transition({ type: 'reload-requested' })
+    void open()
+  }
+
   const prompt = (() => {
     switch (state.status) {
       case 'conflict':
@@ -279,6 +285,7 @@ export function DrawioEditor({
                   variant="primary"
                   onClick={() => {
                     transition({ type: 'copy-requested' })
+                    /* v8 ignore else -- a conflict is only ever raised by writing an export, so one is held. */
                     if (exported.current !== null) void write(exported.current, true)
                   }}
                 >
@@ -339,15 +346,14 @@ export function DrawioEditor({
     }
   })()
 
-  function reload(): void {
-    transition({ type: 'reload-requested' })
-    void open()
-  }
-
   function retry(): void {
     const next = transition({ type: 'retried' })
-    if (next.status === 'loading') void open()
-    else if (next.status === 'saving' && exported.current !== null) {
+    if (next.status === 'loading') {
+      void open()
+      return
+    }
+    /* v8 ignore else -- Try again is offered only after a failed open or a failed write, which leaves an export held. */
+    if (next.status === 'saving' && exported.current !== null) {
       void write(exported.current, false)
     }
   }

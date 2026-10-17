@@ -129,6 +129,7 @@ export async function createDocument(
         status: 'draft',
         templateId: command.templateId ?? null,
         templateVersion: templateVersion(created.content),
+        createdBy: command.createdBy,
         now,
       })
       if (claimed.kind === 'path-taken') continue

@@ -4,6 +4,9 @@ import { createElapsedClock, type ElapsedClockHost } from './elapsed-clock.ts'
 
 const START = Date.UTC(2026, 0, 1, 12, 0, 0)
 
+/** A signed 32-bit count of milliseconds: a timer set for more wraps round and fires at once. */
+const LONGEST_TIMER_MS = 2 ** 31 - 1
+
 /** A host whose time and timers are the test's: time moves only when it is told to. */
 function aHost() {
   let now = START
@@ -152,5 +155,93 @@ describe('the elapsed clock', () => {
     advance(50)
 
     expect(pending()).toBeLessThanOrEqual(1)
+  })
+
+  it('never sets a timer longer than a timer can be, for a time whose saying is weeks from changing', () => {
+    const delays: number[] = []
+    const { host } = aHost()
+    const clock = createElapsedClock({
+      now: host.now,
+      schedule: (run, delayMs) => {
+        delays.push(delayMs)
+        return host.schedule(run, delayMs)
+      },
+    })
+
+    // "2 years ago" next reads differently half a year from now.
+    clock.subscribe(ago(2 * 365 * 86_400), 'en', vi.fn<() => void>())
+
+    expect(delays.length).toBeGreaterThan(0)
+    expect(Math.max(...delays)).toBeLessThanOrEqual(LONGEST_TIMER_MS)
+  })
+
+  it('sets no timer for a time that is not one, which never reads differently', () => {
+    const { host, pending } = aHost()
+    const clock = createElapsedClock(host)
+
+    clock.subscribe(Number.NaN, 'en', vi.fn<() => void>())
+
+    expect(pending()).toBe(0)
+    expect(clock.read(Number.NaN, 'en')).toBe('')
+  })
+
+  it('lets a listener stop listening when it is woken, without the others missing theirs', () => {
+    const { host, advance, pending } = aHost()
+    const clock = createElapsedClock(host)
+    const woken: string[] = []
+    const stop = clock.subscribe(ago(10), 'en', () => {
+      woken.push('first')
+      stop()
+    })
+    clock.subscribe(ago(10), 'en', () => woken.push('second'))
+
+    advance(36_000)
+
+    expect(woken).toEqual(['first', 'second'])
+    expect(clock.listeners()).toBe(1)
+    expect(pending()).toBe(1)
+  })
+
+  it('sets no timer when the last listener stops while the timer is running', () => {
+    const { host, advance, pending } = aHost()
+    const clock = createElapsedClock(host)
+    const stop = clock.subscribe(ago(10), 'en', () => {
+      stop()
+    })
+
+    advance(36_000)
+
+    expect(clock.listeners()).toBe(0)
+    expect(pending()).toBe(0)
+  })
+
+  it('stays quiet, and keeps watching, when a time comes due and still reads the same', () => {
+    const { host, advance, pending } = aHost()
+    const clock = createElapsedClock(host)
+    const listener = vi.fn<() => void>()
+    // A little over an hour ahead: it is due again 148 seconds on, and is still "in 1 hour".
+    const ahead = START + 3748 * 1000
+    clock.subscribe(ahead, 'en', listener)
+    const said = clock.read(ahead, 'en')
+
+    advance(148_100)
+
+    expect(listener).not.toHaveBeenCalled()
+    expect(clock.read(ahead, 'en')).toBe(said)
+    expect(pending()).toBe(1)
+  })
+
+  it('sets no timer when all that is left is a time that never reads differently', () => {
+    const { host, advance, pending } = aHost()
+    const clock = createElapsedClock(host)
+    clock.subscribe(Number.NaN, 'en', vi.fn<() => void>())
+    const stop = clock.subscribe(ago(10), 'en', () => {
+      stop()
+    })
+
+    advance(36_000)
+
+    expect(clock.listeners()).toBe(1)
+    expect(pending()).toBe(0)
   })
 })

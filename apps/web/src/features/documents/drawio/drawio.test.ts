@@ -25,7 +25,7 @@ function attachment(overrides: Partial<Attachment> = {}): Attachment {
 describe('the document’s diagrams', () => {
   it('are its .drawio.svg attachments, and nothing is offered until there is an editor', () => {
     const store = createDiagramStore()
-    const listener = vi.fn()
+    const listener = vi.fn<() => void>()
     const unsubscribe = store.subscribe(listener)
     store.replace([
       attachment(),
@@ -79,31 +79,33 @@ describe('the document’s diagrams', () => {
   })
 })
 
-describe('createDrawioFiles', () => {
-  const response = (status: number, body: unknown) =>
-    new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } })
+const response = (status: number, body: unknown) =>
+  new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } })
 
-  function files(answer: Response, fetchFile = vi.fn<typeof fetch>()) {
-    const send = vi.fn(async () => ({
+function files(answer: Response, fetchFile = vi.fn<typeof fetch>()) {
+  const send = vi.fn<() => Promise<{ data: unknown; error: unknown; response: Response }>>(
+    async () => ({
       data: answer.ok ? await answer.clone().json() : undefined,
       error: answer.ok ? undefined : await answer.clone().json(),
       response: answer,
-    }))
-    const client = { POST: send, PUT: send } as unknown as ApiClient
-    const onWritten = vi.fn()
-    return {
-      send,
+    }),
+  )
+  const client = { POST: send, PUT: send } as unknown as ApiClient
+  const onWritten = vi.fn<() => void>()
+  return {
+    send,
+    onWritten,
+    files: createDrawioFiles({
+      client,
+      documentId: 'd1',
+      versionOf: async () => 7,
       onWritten,
-      files: createDrawioFiles({
-        client,
-        documentId: 'd1',
-        versionOf: async () => 7,
-        onWritten,
-        fetch: fetchFile,
-      }),
-    }
+      fetch: fetchFile,
+    }),
   }
+}
 
+describe('createDrawioFiles', () => {
   const DIAGRAM = { attachmentId: 'a1', url: '/api/attachments/a1', version: 2 }
 
   it('reads the newest file, fresh, with the version the list gives', async () => {

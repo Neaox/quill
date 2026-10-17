@@ -43,6 +43,16 @@ describe('Combobox', () => {
     expect(screen.queryByRole('listbox')).toBeNull()
   })
 
+  it('can lay its popup in the flow, so inside a scrolling dialog it pushes content down instead of being clipped', async () => {
+    render(<Harness variant="flow" />)
+
+    await userEvent.click(field())
+
+    const popup = screen.getByRole('listbox').parentElement
+    expect(popup).toHaveClass('static')
+    expect(popup).not.toHaveClass('absolute')
+  })
+
   it('opens as somebody types, and walks the options with the arrows without leaving the field', async () => {
     const user = userEvent.setup()
     const onSelect = vi.fn<(id: string) => void>()

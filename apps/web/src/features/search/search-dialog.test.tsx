@@ -525,6 +525,7 @@ describe('the search palette', () => {
         'Layout',
         'Secrets and sign-in',
         'Units and workspaces',
+        'People and groups',
       ])
 
       await userEvent.keyboard('theme')

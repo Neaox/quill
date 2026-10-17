@@ -115,6 +115,7 @@ function toDecorations(ranges: readonly TokenRange[]): DecorationSet {
   const builder = new RangeSetBuilder<Decoration>()
   for (const range of ranges) {
     const mark = MARKS.get(range.type)
+    /* v8 ignore else -- MARKS has a mark for every token class a tokenizer can return. */
     if (mark !== undefined) builder.add(range.start, range.end, mark)
   }
   return builder.finish()
@@ -142,6 +143,7 @@ export function paintedRanges(state: EditorState, from = 0, to = state.doc.lengt
   const ranges: TokenRange[] = []
   state.facet(blockTokens).between(from, to, (start, end, mark) => {
     const type = CLASS_OF.get(mark)
+    /* v8 ignore else -- the facet holds only marks made from MARKS. */
     if (type !== undefined) ranges.push({ start, end, type })
   })
   return ranges
@@ -155,6 +157,7 @@ function drawnText(view: EditorView): TextSegment[] {
   )
   const segments: TextSegment[] = []
   for (let node = walker.nextNode(); node !== null; node = walker.nextNode()) {
+    /* v8 ignore else -- a SHOW_TEXT walker yields only text nodes; the check narrows the type. */
     if (node instanceof Text) segments.push({ node, start: view.posAtDOM(node, 0) })
   }
   return segments

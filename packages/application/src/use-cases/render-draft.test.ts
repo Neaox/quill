@@ -128,6 +128,20 @@ describe('rendering a document’s draft', () => {
     expect(await uow.repos.documentLinks.listForDocument(id)).toEqual(before)
   })
 
+  it('titles a draft that names no title after the document', async () => {
+    const id = await documentWith('placeholder')
+    await uow.repos.drafts.init({
+      documentId: id,
+      baseRevision: null,
+      ast: { version: 1, frontMatter: {}, ast: { body: 'No heading, no title.' } },
+      now: NOW,
+    })
+
+    const result = await renderDraft(deps, { documentId: id })
+
+    expect(result.kind === 'rendered' && result.title).toBe('Runbook')
+  })
+
   it('says so when there is no draft', async () => {
     const bare = documentId('00000000-0000-4000-8000-000000000301')
     await uow.repos.documents.create({

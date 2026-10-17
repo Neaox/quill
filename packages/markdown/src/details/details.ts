@@ -103,8 +103,14 @@ export const ACCORDION = 'accordion'
  */
 export const DETAILS_NAME = /^[A-Za-z0-9][\w-]{0,31}$/u
 
+/** A `:::details` container directive. */
+export type DetailsDirective = ContainerDirective & { readonly name: typeof DETAILS }
+
+/** A `:::accordion` container directive grouping details. */
+export type AccordionDirective = ContainerDirective & { readonly name: typeof ACCORDION }
+
 /** Any of the three syntaxes, as the tree holds it. */
-export type DetailsNode = Details | ContainerDirective
+export type DetailsNode = Details | DetailsDirective
 
 export function isDetails(node: { readonly type: string }): node is Details {
   return node.type === 'details'
@@ -128,7 +134,7 @@ export function isDetailsNode(node: {
 export function isAccordion(node: {
   readonly type: string
   readonly name?: unknown
-}): node is ContainerDirective {
+}): node is AccordionDirective {
   return isNamedContainer(node, ACCORDION)
 }
 

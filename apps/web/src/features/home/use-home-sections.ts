@@ -1,18 +1,12 @@
-import { useQueries } from '@tanstack/react-query'
-
 import {
-  useApiClient,
-  workspaceDocumentsQueryOptions,
-  type DocumentDto,
+  useAttention,
+  useHomeSummary,
+  type AttentionItem,
+  type HomeScope,
+  type HomeSummaryDto,
   type WorkspaceSummaryDto,
 } from '../../lib/api/index.ts'
 import { documentReference, workspaceReference } from '../../lib/routing/document-reference.ts'
-
-/** How many drafts **Continue writing** shows: the few somebody can act on today. */
-export const CONTINUE_LIMIT = 5
-
-/** How many rows **Recently updated** shows before it stops being a summary. */
-export const RECENT_LIMIT = 8
 
 export interface HomeDocument {
   readonly id: string
@@ -26,20 +20,39 @@ export interface HomeDocument {
   readonly workspaceName: string
 }
 
-/** A workspace card's facts, counted from the same document list the workspace reads. */
+/** A workspace's row: its facts come from the summary, and are absent until it has arrived. */
 export interface HomeWorkspace {
   readonly workspace: WorkspaceSummaryDto
   /** The workspace's own address, for the link (ADR-035). */
   readonly reference: string
-  /** `undefined` until its document list has arrived: a count is never guessed. */
+  /** `undefined` until the summary has arrived: a count is never guessed. */
   readonly documentCount: number | undefined
   readonly draftCount: number | undefined
   /** The newest change to any document in it, or `undefined` for none yet. */
   readonly updatedAt: string | undefined
+  /** How much the person has been in it lately (opens and documents created); 0 for none. */
+  readonly engagement: number
+}
+
+/** Something waiting on the person: a review asked of them, or an answer to one they asked. */
+export interface HomeAttention {
+  readonly requestId: string
+  readonly kind: AttentionItem['kind']
+  readonly by: string
+  readonly at: string
+  readonly document: HomeDocument
 }
 
 export interface HomeSections {
-  /** Documents with work in them that has never been published, newest first. */
+  /** Which places the feed covers, as the server applied it. */
+  readonly scope: HomeScope | undefined
+  /** The person has been in places of their own, so there is a choice between theirs and everyone's. */
+  readonly hasHistory: boolean
+  /** What they opened most recently, newest first. */
+  readonly jumpBackIn: readonly HomeDocument[]
+  /** What is waiting on them, newest first: the first thing the page says. */
+  readonly attention: readonly HomeAttention[]
+  /** The newest documents never published, newest first: what the person may pick back up. */
   readonly continueWith: readonly HomeDocument[]
   /** How many there are in all, which the section says when it shows fewer. */
   readonly draftTotal: number
@@ -49,79 +62,92 @@ export interface HomeSections {
   /** Whether anything at all has been published yet — the set-up checklist's last step. */
   readonly anyPublished: boolean
   readonly isPending: boolean
+  /** The summary could not be had; the workspaces are still listed, without figures. */
+  readonly isError: boolean
+  /** Asks for the summary again after it failed. */
+  readonly retry: () => void
 }
-
-function newestFirst(a: HomeDocument, b: HomeDocument): number {
-  return b.updatedAt.localeCompare(a.updatedAt)
-}
-
-const neverPublished = (document: DocumentDto) => document.headRevision === null
 
 /**
  * The signed-in home's sections (`docs/design/home.md`).
  *
- * There is no cross-workspace document route, so each workspace's list is
- * fetched on its own — `useQueries` runs them in parallel and they are the
- * same cache entries the workspace pages read, so opening a workspace
- * afterwards costs nothing. The lists are small (a workspace's documents, not
- * its revisions) and this is the only page that fans out. Every section and
- * every card's counts are derived from those lists in one pass; nothing is
- * stored.
+ * The server answers in one bounded request (`GET /api/home`): a row of
+ * figures per workspace and the two short lists, already limited and already
+ * restricted to what this person may open. That is what lets the page cost the
+ * same for a team of five and an organisation of five hundred workspaces; it
+ * used to fetch every workspace's whole document list and count in the
+ * browser. Here the answer is only joined to the workspace list the rest of
+ * the app shares, so a row can say its workspace's name and address.
  *
- * What the list DTO can answer, and what it cannot: it carries `status` and
- * `headRevision`, so "never published" is exactly knowable and is what
- * **Continue writing** is built from. It does **not** carry the lock holder or
- * the draft's revision, so "the draft is ahead of what is published" cannot be
- * asked of it — that lives in each document's own envelope (ADR-031), which
- * would be one request per document.
+ * What it cannot say: whether a published document has a newer draft, or who
+ * holds a lock — those are each document's envelope.
  */
-export function useHomeSections(workspaces: readonly WorkspaceSummaryDto[]): HomeSections {
-  const client = useApiClient()
+export function useHomeSections(
+  workspaces: readonly WorkspaceSummaryDto[],
+  scope?: HomeScope,
+): HomeSections {
+  const summary = useHomeSummary(scope)
+  const attention = useAttention()
+  const data = summary.data
+  const byId = new Map(workspaces.map((workspace) => [workspace.id, workspace]))
+  const stats = new Map(data?.stats.map((row) => [row.workspaceId, row]))
 
-  const results = useQueries({
-    queries: workspaces.map((workspace) => workspaceDocumentsQueryOptions(client, workspace.id)),
-  })
-
-  const drafts: HomeDocument[] = []
-  const published: HomeDocument[] = []
-  const cards = workspaces.map((workspace, index): HomeWorkspace => {
-    const documents = results[index]?.data
-    const reference = workspaceReference(workspace)
-    let draftCount = 0
-    let updatedAt: string | undefined
-    for (const document of documents ?? []) {
-      const row: HomeDocument = {
-        id: document.id,
-        reference: documentReference(document),
-        title: document.title,
-        updatedAt: document.updatedAt,
-        workspaceId: workspace.id,
-        workspaceSlug: reference,
-        workspaceName: workspace.name,
-      }
-      if (neverPublished(document)) {
-        draftCount += 1
-        drafts.push(row)
-      } else {
-        published.push(row)
-      }
-      if (updatedAt === undefined || document.updatedAt > updatedAt) updatedAt = document.updatedAt
-    }
-    return {
-      workspace,
-      reference,
-      documentCount: documents?.length,
-      draftCount: documents === undefined ? undefined : draftCount,
-      updatedAt,
-    }
-  })
+  const row = (
+    document: Pick<HomeSummaryDto['recent'][number], 'id' | 'shortId' | 'title' | 'workspaceId'> &
+      Partial<Pick<HomeSummaryDto['recent'][number], 'updatedAt'>>,
+  ): HomeDocument[] => {
+    const workspace = byId.get(document.workspaceId)
+    return workspace === undefined
+      ? []
+      : [
+          {
+            id: document.id,
+            reference: documentReference(document),
+            title: document.title,
+            updatedAt: document.updatedAt ?? '',
+            workspaceId: workspace.id,
+            workspaceSlug: workspaceReference(workspace),
+            workspaceName: workspace.name,
+          },
+        ]
+  }
 
   return {
-    continueWith: drafts.toSorted(newestFirst).slice(0, CONTINUE_LIMIT),
-    draftTotal: drafts.length,
-    recentlyUpdated: published.toSorted(newestFirst).slice(0, RECENT_LIMIT),
-    workspaces: cards,
-    anyPublished: published.length > 0,
-    isPending: results.some((result) => result.isPending),
+    attention:
+      attention.data?.flatMap((item) =>
+        row(item.document).map((document) => ({
+          requestId: item.requestId,
+          kind: item.kind,
+          by: item.by.name,
+          at: item.at,
+          document: { ...document, updatedAt: item.at },
+        })),
+      ) ?? [],
+    scope: data?.scope,
+    hasHistory: data?.hasHistory ?? false,
+    jumpBackIn:
+      data?.jumpBackIn.flatMap((item) =>
+        row(item).map((document) => ({ ...document, updatedAt: item.viewedAt })),
+      ) ?? [],
+    continueWith: data?.drafts.items.flatMap(row) ?? [],
+    draftTotal: data?.drafts.total ?? 0,
+    recentlyUpdated: data?.recent.flatMap(row) ?? [],
+    workspaces: workspaces.map((workspace): HomeWorkspace => {
+      const figures = stats.get(workspace.id)
+      return {
+        workspace,
+        reference: workspaceReference(workspace),
+        documentCount: figures?.documentCount,
+        draftCount: figures?.draftCount,
+        updatedAt: figures?.updatedAt ?? undefined,
+        engagement: figures?.engagement ?? 0,
+      }
+    }),
+    anyPublished: data?.anyPublished ?? false,
+    isPending: summary.isPending,
+    isError: summary.isError,
+    retry: () => {
+      void summary.refetch()
+    },
   }
 }

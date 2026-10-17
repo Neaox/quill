@@ -41,18 +41,18 @@ const SWITCH_STYLES = ['bullet-list', 'ordered-list', 'task-list', 'blockquote']
  */
 export const BLOCK_SWITCHES: readonly EditorAction[] = SWITCH_STYLES.flatMap((id) => {
   const style = TEXT_STYLES.find((candidate) => candidate.id === id)
-  return style === undefined
-    ? []
-    : [
-        {
-          id: `switch-${style.id}`,
-          label: style.label,
-          ...(style.key === undefined ? {} : { keys: style.key }),
-          kind: 'check' as const,
-          command: toggleTextStyle(style),
-          isChecked: style.isActive,
-        },
-      ]
+  /* v8 ignore next -- SWITCH_STYLES names styles TEXT_STYLES defines; the check only narrows the type. */
+  if (style === undefined) return []
+  return [
+    {
+      id: `switch-${style.id}`,
+      label: style.label,
+      ...(style.key === undefined ? {} : { keys: style.key }),
+      kind: 'check' as const,
+      command: toggleTextStyle(style),
+      isChecked: style.isActive,
+    },
+  ]
 })
 
 export const CLEAR_FORMATTING: EditorAction = {

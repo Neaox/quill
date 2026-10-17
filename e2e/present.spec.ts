@@ -134,23 +134,26 @@ test('a document is presented to a room with the keyboard', async ({ page }) => 
   await expect(goTo).toBeHidden()
   await expect(onScreen(page)).toHaveAttribute('aria-label', 'Failure modes')
 
-  // --- Presenter notes -----------------------------------------------------
-  await page.keyboard.press('n')
-  const notes = page.getByRole('complementary', { name: 'Presenter notes' })
-  await expect(notes).toBeVisible()
-  // The seeded document carries no `:::notes`, and the panel says so rather
-  // than showing an empty card. What M4 will build is disabled, with its
-  // reason beside it (`docs/design/feedback.md`).
-  await expect(notes.getByText('No presenter notes for this section')).toBeVisible()
-  await expect(notes.getByRole('button', { name: 'Note for later' })).toBeDisabled()
-  await page.keyboard.press('n')
-  await expect(notes).toBeHidden()
-
   // --- The chrome gets out of the way, and comes back ----------------------
   const bar = page.locator('.present-bar')
   await expect(bar).toHaveAttribute('data-idle', '')
   await page.mouse.move(700, 500)
   await expect(bar).not.toHaveAttribute('data-idle', '')
+
+  // --- Presenter notes -----------------------------------------------------
+  // They live in the presenter window (ADR-050), opened from this one, so the room never sees
+  // what only the presenter should.
+  const [presenter] = await Promise.all([page.waitForEvent('popup'), page.keyboard.press('n')])
+  const notes = presenter.getByRole('complementary', { name: 'Presenter notes' })
+  await expect(notes).toBeVisible()
+  // The seeded document carries no `:::notes`, and the panel says so rather than showing an
+  // empty card. What M4 will build is disabled, with its reason beside it
+  // (`docs/design/feedback.md`).
+  await expect(notes.getByText('No presenter notes for this section')).toBeVisible()
+  await expect(notes.getByRole('button', { name: 'Note for later' })).toBeDisabled()
+  await expect(page.getByRole('complementary', { name: 'Presenter notes' })).toHaveCount(0)
+  await presenter.close()
+  await page.bringToFront()
 
   // --- Leaving, at the section that was on screen --------------------------
   await page.keyboard.press('Escape')

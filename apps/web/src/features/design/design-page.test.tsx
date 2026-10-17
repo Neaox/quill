@@ -21,6 +21,8 @@ afterEach(() => {
   })
 })
 
+const colourSchemeToggle = () => screen.getByRole('button', { name: /^Colour scheme:/u })
+
 describe('DesignPage', () => {
   it('is the shell it is showing, with every region in a landmark', () => {
     render(<DesignPage />)
@@ -227,14 +229,12 @@ describe('DesignPage theme controls', () => {
   it('sets data-theme when a scheme is chosen, and remembers it', async () => {
     render(<DesignPage />)
 
-    const toggle = () => screen.getByRole('button', { name: /^Colour scheme:/u })
-
-    await userEvent.click(toggle())
+    await userEvent.click(colourSchemeToggle())
     await waitFor(() => {
       expect(document.documentElement.getAttribute(THEME_ATTRIBUTE)).toBe('light')
     })
 
-    await userEvent.click(toggle())
+    await userEvent.click(colourSchemeToggle())
     await waitFor(() => {
       expect(document.documentElement.getAttribute(THEME_ATTRIBUTE)).toBe('dark')
     })
@@ -244,14 +244,13 @@ describe('DesignPage theme controls', () => {
   it('returns to following the system scheme', async () => {
     render(<DesignPage />)
 
-    const toggle = () => screen.getByRole('button', { name: /^Colour scheme:/u })
-    await userEvent.click(toggle())
-    await userEvent.click(toggle())
+    await userEvent.click(colourSchemeToggle())
+    await userEvent.click(colourSchemeToggle())
     await waitFor(() => {
       expect(document.documentElement.getAttribute(THEME_ATTRIBUTE)).toBe('dark')
     })
 
-    await userEvent.click(toggle())
+    await userEvent.click(colourSchemeToggle())
 
     await waitFor(() => {
       expect(document.documentElement.hasAttribute(THEME_ATTRIBUTE)).toBe(false)

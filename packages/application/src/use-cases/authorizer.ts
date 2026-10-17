@@ -349,7 +349,10 @@ async function loadIdentity(
     identity: {
       isAnonymous: false,
       user: { id: account.row.id, name: account.row.displayName, email: account.row.email },
-      groupIds: groupsById.keys(),
+      // An array, not the map's one-shot iterator: this identity answers every
+      // check the request makes, and a second check would find it spent and
+      // lose the access a group grants.
+      groupIds: [...groupsById.keys()],
       groupsById,
       shareLinkId,
     },
@@ -390,7 +393,7 @@ async function loadAccount(
 }
 
 /** The document, its ancestors, its collection, its workspace, its units, the instance. */
-async function documentChain(
+export async function documentChain(
   repos: AuthorizerRepositories,
   document: DocumentRow,
   workspace: WorkspaceRow,
@@ -434,7 +437,7 @@ async function workspaceChain(
   ])
 }
 
-function toSelector(scope: Scope): ScopeSelector {
+export function toSelector(scope: Scope): ScopeSelector {
   switch (scope.kind) {
     case 'unit':
       return { kind: 'unit', id: scope.unitId }

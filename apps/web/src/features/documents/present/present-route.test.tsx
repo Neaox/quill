@@ -160,7 +160,10 @@ describe('presenting a document', () => {
     const article = within(step).getByRole('article', { name: 'Steps' })
 
     expect(article.querySelector(':scope > .layout-wide')).not.toBeNull()
-    expect(article.querySelector('code')?.querySelectorAll('.tok-keyword')).toHaveLength(1)
+    // The enhancers arrive as chunks of their own, so they land a moment after the body.
+    await waitFor(() => {
+      expect(article.querySelector('code')?.querySelectorAll('.tok-keyword')).toHaveLength(1)
+    })
     expect(article.querySelector('.table-scroll')).toHaveAttribute('role', 'group')
   })
 

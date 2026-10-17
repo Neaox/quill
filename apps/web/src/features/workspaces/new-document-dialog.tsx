@@ -5,11 +5,11 @@ import { Button, Callout, Dialog, Input, Spinner, Tree, type TreeSection } from 
 
 import {
   usePublishedContent,
-  useCreateCollection,
   useCreateDocument,
   useWorkspaceTree,
   type TreeCollectionDto,
 } from '../../lib/api/index.ts'
+import { useCreateCollection } from '../../lib/api/collections.ts'
 import {
   answersToSend,
   defaultAnswers,

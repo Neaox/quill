@@ -46,6 +46,7 @@ function thenFix(command: Command, fix: (tr: Transaction, before: TableContext) 
     const ran = command(state, (tr) => {
       captured = tr
     })
+    /* v8 ignore next -- the context above is a table, where every command given here applies. */
     if (!ran || captured === undefined) return false
     fix(captured, before)
     normalise(captured, before.tablePos)
@@ -172,8 +173,11 @@ function unwrapIfEmpty(tr: Transaction, wrapperPos: number): void {
   const $from = tr.doc.resolve(wrapperPos + 1)
   const $to = tr.doc.resolve(wrapperPos + wrapper.nodeSize - 1)
   const range = $from.blockRange($to)
-  const target = range === null ? null : liftTarget(range)
-  if (range !== null && target !== null) tr.lift(range, target)
+  /* v8 ignore next -- the wrapper's own content spans a block range. */
+  if (range === null) return
+  const target = liftTarget(range)
+  /* v8 ignore else -- what a wrapper holds is allowed wherever the wrapper is. */
+  if (target !== null) tr.lift(range, target)
 }
 
 /** Header row and header column, as GFM and the `headers` attribute can say them. */
@@ -329,7 +333,7 @@ export const deleteRows: Command = (state, dispatch) => {
 
 function writeColumns(tr: Transaction, before: TableContext, shares: readonly number[]): void {
   const context = { ...before, wrapper: before.wrapper }
-  applyAttribute(tr, context, 'columns', shares.length === 0 ? undefined : writeProportions(shares))
+  applyAttribute(tr, context, 'columns', writeProportions(shares))
 }
 
 /**
@@ -370,8 +374,7 @@ export function moveColumn(from: number, to: number, tablePos?: number): Command
     if (captured === undefined) return false
     const move = <T>(values: readonly T[]): T[] => {
       const next = [...values]
-      const [moved] = next.splice(from, 1)
-      if (moved !== undefined) next.splice(to, 0, moved)
+      next.splice(to, 0, ...next.splice(from, 1))
       return next
     }
     captured.setNodeAttribute(context.tablePos, 'align', move(alignOf(context.table)))
@@ -453,8 +456,10 @@ export function insertLine(kind: 'row' | 'column', at: number, tablePos: number)
     if (dispatch === undefined) return add(picked)
     return add(picked, (tr) => {
       const table = tr.doc.nodeAt(tablePos)
+      /* v8 ignore next -- the insertion has just made the line, in the table where it was. */
       const map = table === null ? undefined : TableMap.get(table)
       const offset = map?.map[kind === 'row' ? at * map.width : at]
+      /* v8 ignore else -- see above: the line is there, so it has a cell. */
       if (offset !== undefined) {
         tr.setSelection(TextSelection.near(tr.doc.resolve(tablePos + 1 + offset + 1)))
       }

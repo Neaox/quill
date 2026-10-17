@@ -1,3 +1,4 @@
+import { sweepDocumentViews, sweepNotifications } from '@quill/application'
 import type { Clock, UnitOfWork } from '@quill/application'
 
 import type { SessionConfig } from '../config.ts'
@@ -5,7 +6,9 @@ import type { ScheduledJob } from './job-runner.ts'
 
 /**
  * Housekeeping for credentials that have stopped being credentials
- * (ADR-011, review finding M15).
+ * (ADR-011, review finding M15), and for per-person records that have outlived
+ * their window (ADR-053: what a person opened, and their notifications, are kept
+ * 90 days).
  *
  * Both clocks are already enforced on the way in: a session past its absolute
  * or idle deadline is deleted when somebody presents it, and a spent or
@@ -29,6 +32,8 @@ export interface SweepDependencies {
 export interface SweepOutcome {
   readonly sessions: number
   readonly magicLinks: number
+  readonly documentViews: number
+  readonly notifications: number
 }
 
 /** Hourly: the rows are cheap to keep for an hour and there is no urgency. */
@@ -42,6 +47,8 @@ export async function sweepExpired(deps: SweepDependencies, now: Date): Promise<
   return {
     sessions: await repos.sessions.deleteExpired({ now, idleCutoff }),
     magicLinks: await repos.magicLinks.deleteSpent(now),
+    documentViews: await sweepDocumentViews(deps, now),
+    notifications: await sweepNotifications(deps, now),
   }
 }
 

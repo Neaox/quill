@@ -1,4 +1,4 @@
-import fc from 'fast-check'
+import * as fc from 'fast-check'
 import type { Paragraph, PhrasingContent, RootContent } from 'mdast'
 import { toString } from 'mdast-util-to-string'
 import { describe, expect, it } from 'vitest'
@@ -38,6 +38,16 @@ function show(nodes: readonly (PhrasingContent | RootContent)[]): string {
       }
     })
     .join('')
+}
+
+function withoutRemovals(nodes: readonly PhrasingContent[]): PhrasingContent[] {
+  return nodes
+    .filter((node) => node.type !== 'diffDeletion')
+    .map((node) =>
+      'children' in node
+        ? ({ ...node, children: withoutRemovals(node.children) } as PhrasingContent)
+        : node,
+    )
 }
 
 function merge(before: string, after: string): string {
@@ -89,14 +99,6 @@ describe('mergePhrasing', () => {
         const before = left.length === 0 ? 'x' : left.join(' ')
         const after = right.length === 0 ? 'x' : right.join(' ')
         const merged = mergePhrasing(phrasing(before), phrasing(after))
-        const withoutRemovals = (nodes: readonly PhrasingContent[]): PhrasingContent[] =>
-          nodes
-            .filter((node) => node.type !== 'diffDeletion')
-            .map((node) =>
-              'children' in node
-                ? ({ ...node, children: withoutRemovals(node.children) } as PhrasingContent)
-                : node,
-            )
         const paragraph: Paragraph = {
           type: 'paragraph',
           children: withoutRemovals(merged.children),

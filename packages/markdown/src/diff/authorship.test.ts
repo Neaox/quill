@@ -182,6 +182,10 @@ describe('who made each change of a comparison', () => {
     expect(attributeChanges(context(byAda), undefined).size).toBe(0)
   })
 
+  it('names no one for changes the ledger has no record of', () => {
+    expect(attributeChanges(context(byAda), NO_AUTHORSHIP).size).toBe(0)
+  })
+
   it('names no one for a draft that is not what was compared', () => {
     const ledger = stampEdit(undefined, published, byAda, ADA)
     const drifted = { ...context(byAda), draft: document('Something else entirely.') }

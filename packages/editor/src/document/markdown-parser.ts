@@ -52,7 +52,8 @@ export function inThreadParser(): ParseMarkdown {
 
 /** The slice of a `Worker` the parser uses. */
 export interface WorkerLike {
-  postMessage(request: ParseRequest): void
+  /** A dedicated worker has no origin to name; the options carry transfers, and there are none. */
+  postMessage(request: ParseRequest, options: StructuredSerializeOptions): void
   addEventListener(type: 'message', listener: (event: MessageEvent<ParseResponse>) => void): void
   addEventListener(type: 'error', listener: () => void): void
   terminate(): void
@@ -95,7 +96,7 @@ export function workerParser(create: () => WorkerLike): ParseMarkdown {
     const id = next++
     const { promise, resolve } = Promise.withResolvers<DocumentAst>()
     waiting.set(id, { markdown, resolve })
-    worker.postMessage({ id, markdown })
+    worker.postMessage({ id, markdown }, {})
     return promise
   }
 }

@@ -30,6 +30,13 @@ function Popup({ locate, active = true }: { locate: Locate; active?: boolean }) 
   )
 }
 
+/** A popup whose ref is never attached to anything. */
+function Unattached() {
+  const ref = useRef<HTMLDivElement | null>(null)
+  useFloatingPlacement(ref, true, () => ({ top: 100, right: 150, bottom: 120, left: 100 }))
+  return <div data-testid="popup">popup</div>
+}
+
 const popup = (): HTMLElement => screen.getByTestId('popup')
 
 describe('useFloatingPlacement', () => {
@@ -45,6 +52,19 @@ describe('useFloatingPlacement', () => {
     expect(popup().style.left).toBe('100px')
     expect(popup().style.maxHeight).toBe('600px')
     expect(popup().dataset['side']).toBe('below')
+  })
+
+  it('places nothing for an element it has not been given', () => {
+    render(<Unattached />)
+    expect(popup().style.top).toBe('')
+  })
+
+  it('places nothing while it is not showing', () => {
+    render(
+      <Popup active={false} locate={() => ({ top: 100, right: 150, bottom: 120, left: 100 })} />,
+    )
+    expect(popup().style.top).toBe('')
+    expect(popup().dataset['side']).toBeUndefined()
   })
 
   it('flips above an anchor near the bottom, rather than running off the page', () => {
