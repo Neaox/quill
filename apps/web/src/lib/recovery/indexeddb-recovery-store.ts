@@ -1,5 +1,5 @@
 import { BRAND } from '@quill/brand'
-import type { PendingDraft, RecoveryStore } from '@quill/editor'
+import type { DraftBase, PendingDraft, RecoveryStore } from '@quill/editor'
 
 /**
  * The local recovery buffer of ADR-021, in IndexedDB.
@@ -23,6 +23,31 @@ import type { PendingDraft, RecoveryStore } from '@quill/editor'
 
 const DATABASE_VERSION = 1
 const OBJECT_STORE = 'pending-drafts'
+
+/**
+ * What one document's row holds, in the format this release writes. The row
+ * is a persisted format, so it carries its version and the reader dispatches
+ * on it (ADR-033, AGENTS.md rule 17):
+ *
+ * - **Format 1** (no `format` field) is the unsent edit itself, as releases
+ *   before ADR-021's amendment of 2026-10-11 wrote it. It is read as an edit
+ *   with no base, and the merge it might need runs against an empty ancestor:
+ *   everything both sides hold is offered, nothing is overwritten.
+ * - **Format 2** keeps the unsent edit beside its base — the draft as this
+ *   browser last agreed it with the server — so a reconnect can merge three
+ *   ways. A row with a base and no edit is kept; one with neither is deleted.
+ *
+ * The object store and the database version are unchanged: the format lives
+ * in the row, so a row is upgraded the next time it is written, and an older
+ * release reading a format 2 row finds no edit rather than a wrong one.
+ */
+const RECORD_FORMAT = 2
+
+interface StoredRecord {
+  readonly format: typeof RECORD_FORMAT
+  readonly pending?: PendingDraft
+  readonly base?: DraftBase
+}
 
 /** One database per install, named for the product rather than for a feature. */
 const DEFAULT_DATABASE_NAME = `${BRAND.slug}-recovery`
@@ -69,9 +94,42 @@ function openDatabase(factory: IDBFactory, name: string): Promise<IDBDatabase> {
 }
 
 function isPendingDraft(value: unknown): value is PendingDraft {
-  if (typeof value !== 'object' || value === null) return false
-  const candidate = value as { expectedVersion?: unknown; savedAt?: unknown }
-  return typeof candidate.expectedVersion === 'number' && typeof candidate.savedAt === 'number'
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    'expectedVersion' in value &&
+    typeof value.expectedVersion === 'number' &&
+    'savedAt' in value &&
+    typeof value.savedAt === 'number'
+  )
+}
+
+function isDraftBase(value: unknown): value is DraftBase {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    'draftVersion' in value &&
+    typeof value.draftVersion === 'number' &&
+    'ast' in value &&
+    typeof value.ast === 'object' &&
+    value.ast !== null
+  )
+}
+
+interface RecoveredRow {
+  readonly pending: PendingDraft | undefined
+  readonly base: DraftBase | undefined
+}
+
+/** A stored row, whichever format wrote it. */
+export function readRow(value: unknown): RecoveredRow {
+  if (typeof value === 'object' && value !== null && 'format' in value) {
+    if (value.format !== RECORD_FORMAT) return { pending: undefined, base: undefined }
+    const pending = 'pending' in value && isPendingDraft(value.pending) ? value.pending : undefined
+    const base = 'base' in value && isDraftBase(value.base) ? value.base : undefined
+    return { pending, base }
+  }
+  return { pending: isPendingDraft(value) ? value : undefined, base: undefined }
 }
 
 export function createIndexedDbRecoveryStore(
@@ -81,6 +139,7 @@ export function createIndexedDbRecoveryStore(
   const databaseName = options.databaseName ?? DEFAULT_DATABASE_NAME
 
   let entry: PendingDraft | undefined
+  let base: DraftBase | undefined
   // A write that happens while the database is still opening must win: the
   // author's current edit is never replaced by one recovered from disk.
   let written = false
@@ -112,8 +171,10 @@ export function createIndexedDbRecoveryStore(
     const stored = await toPromise(
       opened.transaction(OBJECT_STORE, 'readonly').objectStore(OBJECT_STORE).get(documentId),
     ).catch(() => undefined)
+    const row = readRow(stored)
+    base ??= row.base
     if (written) return entry
-    if (isPendingDraft(stored)) entry = stored
+    entry = row.pending
     return entry
   })
 
@@ -133,18 +194,37 @@ export function createIndexedDbRecoveryStore(
       })
   }
 
+  /** Mirrors the edit and the base as one row, so the two never disagree on disk. */
+  function mirror(): void {
+    const row: StoredRecord = {
+      format: RECORD_FORMAT,
+      ...(entry === undefined ? {} : { pending: entry }),
+      ...(base === undefined ? {} : { base }),
+    }
+    enqueue((store) =>
+      entry === undefined && base === undefined
+        ? store.delete(documentId)
+        : store.put(row, documentId),
+    )
+  }
+
   return {
     ready,
     read: () => entry,
     write(next) {
       written = true
       entry = next
-      enqueue((store) => store.put(next, documentId))
+      mirror()
     },
     clear() {
       written = true
       entry = undefined
-      enqueue((store) => store.delete(documentId))
+      mirror()
+    },
+    readBase: () => base,
+    writeBase(next) {
+      base = next
+      mirror()
     },
     close() {
       closed = true

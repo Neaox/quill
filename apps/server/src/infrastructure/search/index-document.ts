@@ -1,7 +1,7 @@
-import { readPublished } from '@quill/application'
+import { attachmentIdsIn, readPublished } from '@quill/application'
 import type { ReadPublishedDependencies, SearchIndex } from '@quill/application'
-import { isDocumentStatus } from '@quill/domain'
-import type { CollectionId, DocumentId, DocumentStatus, RevisionId } from '@quill/domain'
+import { isDocumentStatus, isLifecycleState } from '@quill/domain'
+import type { CollectionId, DocumentId, RevisionId, WorkspaceId } from '@quill/domain'
 import { parseDocument } from '@quill/markdown'
 import type { CoreFrontMatter } from '@quill/markdown'
 import { projectIndexableDocument } from '@quill/search'
@@ -49,6 +49,7 @@ export async function indexDocument(
   }
 
   const { frontMatter, ast } = parseDocument(published.markdown)
+  const drawingText = await drawingWords(deps, document.workspaceId, published.markdown)
   await deps.searchIndex.index(
     projectIndexableDocument({
       documentId,
@@ -59,10 +60,29 @@ export async function indexDocument(
       updatedAt: document.updatedAt,
       frontMatter: toCoreFrontMatter(documentId, frontMatter, document.title),
       ast,
+      drawingText,
     }),
   )
 
   return { kind: 'indexed', documentId, revision: published.revision }
+}
+
+/**
+ * The words of the drawings a body shows, in the order it shows them
+ * (ADR-043): a draw.io diagram's labels, read once on upload and kept on the
+ * attachment, so indexing costs one query for every drawing a body has. Only
+ * this document's workspace is asked, as the renderer asks it.
+ */
+async function drawingWords(
+  deps: IndexDocumentDependencies,
+  workspaceId: WorkspaceId,
+  markdown: string,
+): Promise<readonly string[]> {
+  const ids = attachmentIdsIn(markdown)
+  if (ids.length === 0) return []
+  const rows = await deps.uow.repos.attachments.listLiveInWorkspace(workspaceId, ids)
+  const words = new Map(rows.map((row) => [row.id, row.searchText]))
+  return ids.flatMap((id) => words.get(id) ?? [])
 }
 
 /**
@@ -92,9 +112,21 @@ function toCoreFrontMatter(
   return {
     id: documentId,
     title,
-    ...(isDocumentStatus(status) ? { status: status satisfies DocumentStatus } : {}),
+    // A legacy status or a lifecycle state; the projection tells them apart.
+    ...(isDocumentStatus(status) || isLifecycleState(status) ? { status } : {}),
     tags: strings(frontMatter['tags']),
     owners: strings(frontMatter['owners']),
+    // What a child pages list shows under the title (ADR-049).
+    ...listed(frontMatter),
+  }
+}
+
+/** The description and icon, each only when it is text, as the projection reads them. */
+function listed(frontMatter: Record<string, unknown>): { description?: string; icon?: string } {
+  const { description, icon } = frontMatter
+  return {
+    ...(typeof description === 'string' ? { description } : {}),
+    ...(typeof icon === 'string' ? { icon } : {}),
   }
 }
 

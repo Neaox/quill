@@ -43,7 +43,7 @@ const BODY_HTML = `<article>
 <p>How to move traffic between regions.</p>
 <h2 id="steps">Steps<a class="heading-anchor" href="#steps" aria-label="Permalink: Steps">#</a></h2>
 <pre><code data-lang="ts" data-tokens="${TOKENS}">${CODE}</code></pre>
-<div class="layout-wide"><table><thead><tr><th scope="col">Region</th></tr></thead><tbody><tr><td>eu</td></tr></tbody></table></div>
+<div class="layout-wide"><div class="table-scroll" tabindex="0" role="group" aria-label="Table"><table><thead><tr><th scope="col">Region</th></tr></thead><tbody><tr><td>eu</td></tr></tbody></table></div></div>
 <h2 id="afterwards">Afterwards<a class="heading-anchor" href="#afterwards" aria-label="Permalink: Afterwards">#</a></h2>
 <p>Tell the on-call engineer.</p>
 </article>`

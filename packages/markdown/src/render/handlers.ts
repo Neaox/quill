@@ -1,25 +1,47 @@
 import { toString } from 'mdast-util-to-string'
 import type { Element, ElementContent, Properties } from 'hast'
-import type { AlignType, Code, Heading, Image, Paragraph, Table, TableRow } from 'mdast'
+import type { Blockquote, Code, Heading, Image, Paragraph, PhrasingContent, Table } from 'mdast'
 import type { ContainerDirective, LeafDirective, TextDirective } from 'mdast-util-directive'
-import type { Options as ToHastOptions } from 'remark-rehype'
 
-import { calloutDirective } from '../directives/callout.ts'
-import type { DirectiveAttributes } from '../directives/definition.ts'
+import type { CodeGroup } from '../code-group/code-group.ts'
+import { codeBlockCaption, codeCard, codeGroupElement } from '../code-group/render.ts'
+import type { Details } from '../details/details.ts'
+import { accordionDirective, detailsDirective } from '../details/details.ts'
+import { createDetailsRenderer } from '../details/render.ts'
+import { badgeDirective } from '../directives/badge.ts'
+import type { CalloutType } from '../directives/callout.ts'
+import { calloutDirective, isCalloutType } from '../directives/callout.ts'
+import { cardsDirective } from '../directives/cards.ts'
+import type { DirectiveAttributes, DirectiveContent } from '../directives/definition.ts'
 import { claims } from '../directives/definition.ts'
+import { figureDirective } from '../directives/figure.ts'
 import { guidanceDirective } from '../directives/guidance.ts'
 import { kbdDirective } from '../directives/kbd.ts'
+import { isLabel } from '../directives/label.ts'
 import { layoutDirective } from '../directives/layout.ts'
 import { optionalDirective } from '../directives/optional.ts'
 import { placeholderDirective } from '../directives/placeholder.ts'
 import { repeatDirective } from '../directives/repeat.ts'
+import { smallDirective } from '../directives/small.ts'
+import type { TableOptions } from '../directives/table.ts'
+import { DEFAULT_TABLE_OPTIONS, tableDirective, tableOf } from '../directives/table.ts'
+import type { ResolvedEmoji } from '../emoji/emoji.ts'
+import { emojiElement } from '../emoji/emoji.ts'
+import type { MarkdownRegistry } from '../extensions/registry.ts'
+import { ALERT_MARKER } from '../pipeline/github-alert.ts'
+import { drawingElement } from './drawing-element.ts'
 import type { Slugger } from './slug.ts'
-import { headingId } from './slug.ts'
+import { HEADING_ID_PREFIX, headingId } from './slug.ts'
+import type { Handlers, State } from './hast-state.ts'
+import { createTableRenderer } from './table-block.ts'
+import { childrenDirective } from '../navigation/children.ts'
+import { childPagesSlotElement, tableOfContentsElement } from '../navigation/render.ts'
+import { tableOfContentsEntries, tocDirective } from '../navigation/toc.ts'
+import type { OutlineEntry } from './outline.ts'
+import { listItem } from './task-list.ts'
 
-/** The handler map `remark-rehype` takes, and the state it passes each handler. */
-export type Handlers = NonNullable<ToHastOptions['handlers']>
-type Handler = NonNullable<Handlers['heading']>
-type State = Parameters<Handler>[0]
+/** The handler map and its state, defined beside the other parts that render (`hast-state.ts`). */
+export type { Handlers, State } from './hast-state.ts'
 
 /**
  * A highlighted block: the packed token ranges, and the language the tokenizer
@@ -54,9 +76,101 @@ export type Highlighter = (text: string, language: string) => string | Highlight
  */
 const FENCE_LANGUAGE = /^[A-Za-z0-9][\w+#.-]{0,31}$/
 
+/**
+ * Fence tags whose source is a diagram to be drawn, not code to be read. The
+ * server cannot draw one (Mermaid lays text out in a browser), so the block
+ * keeps its source and gains a slot the reader draws into; without JavaScript
+ * the reader still sees the source, which is what Mermaid is written to be
+ * readable as.
+ */
+export const DIAGRAM_LANGUAGES: ReadonlySet<string> = new Set(['mermaid'])
+
+/**
+ * A GitHub alert's kind, and its body with the marker taken off; or undefined
+ * when the blockquote is not one. The Markdown is left as written — an alert
+ * is a blockquote to every parser, which is what makes it degrade — and only
+ * its rendering changes.
+ */
+function alertOf(
+  node: Blockquote,
+): { kind: CalloutType; body: Blockquote['children'] } | undefined {
+  const [first, ...rest] = node.children
+  if (first?.type !== 'paragraph') return undefined
+  const [opening, ...inline] = first.children
+  if (opening?.type !== 'text') return undefined
+  const match = ALERT_MARKER.exec(opening.value)
+  const kind = match?.[1]?.toLowerCase()
+  if (match === null || !isCalloutType(kind)) return undefined
+  const remainder = opening.value.slice(match[0].length)
+  const children = remainder.length === 0 ? inline : [{ ...opening, value: remainder }, ...inline]
+  const lead: Paragraph[] = children.length === 0 ? [] : [{ ...first, children }]
+  return { kind, body: [...lead, ...rest] }
+}
+
+/** Whether inline content is drawn as a pill: a badge, or one of the organisation's labels. */
+function isPill(child: PhrasingContent | undefined, labels: ReadonlySet<string>): boolean {
+  return (
+    child?.type === 'textDirective' && (claims(badgeDirective, child) || isLabel(child, labels))
+  )
+}
+
+/**
+ * Whether a table cell's inline content belongs to the status line that opens
+ * it: badges and labels, the short code terms that qualify them (`in`,
+ * `out`), and the spaces between.
+ */
+function isStatusPart(child: PhrasingContent, labels: ReadonlySet<string>): boolean {
+  if (child.type === 'textDirective') return isPill(child, labels)
+  if (child.type === 'inlineCode') return true
+  return child.type === 'text' && child.value.trim().length === 0
+}
+
+/** A cell's opening status line and the detail after it; no status unless a pill leads. */
+function splitStatus(
+  children: readonly PhrasingContent[],
+  labels: ReadonlySet<string>,
+): {
+  readonly status: PhrasingContent[]
+  readonly detail: PhrasingContent[]
+} {
+  const end = isPill(children[0], labels)
+    ? children.findIndex((child) => !isStatusPart(child, labels))
+    : 0
+  const split = end === -1 ? children.length : end
+  const status = children.slice(0, split)
+  const lastSpoken = status.findLastIndex((child) => child.type !== 'text')
+  const [opening, ...rest] = children.slice(split)
+  const detail =
+    opening?.type === 'text' ? [{ ...opening, value: opening.value.trimStart() }, ...rest] : rest
+  return { status: status.slice(0, lastSpoken + 1), detail }
+}
+
 export interface HandlerOptions {
   readonly slug: Slugger
   readonly highlighter?: Highlighter | undefined
+  /** SVG drawings by the image URL that shows them (`RenderOptions.drawings`). */
+  readonly drawings?: ReadonlyMap<string, string> | undefined
+  /**
+   * The installed Markdown extensions (ADR-039), asked how each drawing is
+   * drawn; without them every drawing is drawn as ADR-036 draws it.
+   */
+  readonly extensions?: MarkdownRegistry | undefined
+  /**
+   * Where each drawing placed in the body is collected, sanitised, in document
+   * order: the slot is emitted here and filled after the document sanitiser
+   * has run (`html.ts`), so that sanitiser never has to admit SVG.
+   */
+  readonly placed?: Element[] | undefined
+  /** The organisation's label names (`RenderOptions.labels`). */
+  readonly labels?: ReadonlySet<string> | undefined
+  /** The emoji a label's pill leads with, by label name (`RenderOptions.labelEmoji`). */
+  readonly labelEmoji: (label: string) => ResolvedEmoji | undefined
+  /**
+   * The document's headings, for a table of contents (ADR-049): taken from
+   * the same tree the headings are rendered from, so every entry links to the
+   * id its heading carries. Asked only when the body holds one.
+   */
+  readonly outline?: (() => readonly OutlineEntry[]) | undefined
 }
 
 function element(tagName: string, properties: Properties, children: ElementContent[]): Element {
@@ -72,8 +186,35 @@ function altText(value: string | null | undefined): string {
   return typeof value === 'string' ? value : ''
 }
 
-function alignClass(align: AlignType | undefined): string[] {
-  return align === null || align === undefined ? [] : [`align-${align}`]
+/**
+ * The table a figure shows, when it shows exactly one: a bare table, or a
+ * `:::table` without a caption of its own, with its options.
+ */
+function captionedTable(
+  subject: DirectiveContent,
+): { readonly table: Table; readonly options: TableOptions } | undefined {
+  const [only] = subject
+  if (subject.length !== 1 || only === undefined) return undefined
+  if (only.type === 'table') return { table: only, options: DEFAULT_TABLE_OPTIONS }
+  if (only.type !== 'containerDirective' || !claims(tableDirective, only)) return undefined
+  const table = tableOf(only)
+  const model = tableDirective.parse(only)
+  return table === undefined || model.caption !== undefined ? undefined : { table, options: model }
+}
+
+/**
+ * The caption of a figure, as the content of a table's `<caption>`: one
+ * paragraph's words, or several paragraphs as they were written.
+ */
+function captionContent(
+  state: State,
+  node: ContainerDirective,
+  caption: DirectiveContent,
+): ElementContent[] {
+  const [only] = caption
+  return caption.length === 1 && only?.type === 'paragraph'
+    ? state.all(only)
+    : state.all({ ...node, children: caption })
 }
 
 function capitalise(value: string): string {
@@ -139,11 +280,30 @@ function directiveSource(
  * position or colour alone (AGENTS.md rule 14).
  */
 export function createHandlers(options: HandlerOptions): Handlers {
-  const { slug, highlighter } = options
+  const {
+    slug,
+    highlighter,
+    drawings,
+    extensions,
+    placed = [],
+    labels = new Set<string>(),
+    labelEmoji,
+    outline = () => [],
+  } = options
 
+  /**
+   * A heading, and the permalink after its words. The heading is named by
+   * its words alone (`aria-labelledby`): named from its content it would
+   * take the anchor's name too, and a list of headings would read "Steps
+   * Link to this section: Steps". The anchor stays inside the heading, so it
+   * sits on the heading's line and the outline the presenter splits on is
+   * untouched. A slug holds no dot, so `title.<slug>` never meets a heading's
+   * own id; the sanitiser prefixes both the id and the reference to it.
+   */
   const heading = (state: State, node: Heading): Element => {
     const label = toString(node)
     const id = slug(label)
+    const title = `title.${id}`
     const anchor = element(
       'a',
       {
@@ -151,14 +311,17 @@ export function createHandlers(options: HandlerOptions): Handlers {
         // The sanitiser prefixes the `id` it lets through and never the `href`
         // that points at it, so the anchor adds the prefix itself (./slug.ts).
         href: `#${headingId(id)}`,
-        'aria-label': `Permalink: ${label}`,
+        'aria-label': `Link to this section: ${label}`,
       },
-      [text('#')],
+      [element('span', { 'aria-hidden': 'true' }, [text('#')])],
     )
-    return element(`h${node.depth}`, { id }, [...state.all(node), anchor])
+    return element(`h${node.depth}`, { id, ariaLabelledBy: [title] }, [
+      element('span', { id: title }, state.all(node)),
+      anchor,
+    ])
   }
 
-  const code = (_state: State, node: Code): Element => {
+  const pre = (node: Code): Element => {
     const fence = node.lang ?? ''
     // ADR-030: the server tokenizes and the reader applies ranges, so the block holds
     // exactly one text node and the highlighting is injected, never imported.
@@ -175,6 +338,20 @@ export function createHandlers(options: HandlerOptions): Handlers {
     return element('pre', {}, [element('code', properties, [text(node.value)])])
   }
 
+  /** A fenced block in its card (ADR-041), or a diagram slot holding its source. */
+  const code = (_state: State, node: Code): Element => {
+    const fence = node.lang ?? ''
+    return DIAGRAM_LANGUAGES.has(fence)
+      ? element('div', { className: ['diagram'], 'data-diagram': fence }, [pre(node)])
+      : codeCard(pre(node), codeBlockCaption(node))
+  }
+
+  /** Fences shown as tabs (ADR-041); without script, every panel stacked under its name. */
+  const codeGroup = (_state: State, node: CodeGroup): Element => codeGroupElement(node, pre)
+
+  /** The browser's own details, in any syntax, and accordions of them (ADR-048). */
+  const detailsRenderer = createDetailsRenderer()
+
   const image = (_state: State, node: Image): Element =>
     element('img', { src: node.url, alt: altText(node.alt), title: node.title ?? undefined }, [])
 
@@ -184,7 +361,44 @@ export function createHandlers(options: HandlerOptions): Handlers {
       element('figcaption', {}, [text(caption)]),
     ])
 
+  /**
+   * An SVG image on its own line, drawn inline as a diagram so it takes the
+   * page's colours (`drawing.ts` says why, and what is removed on the way).
+   * Its alternative text names the drawing and its title captions it, as
+   * they would an image. Undefined when there is no drawing to place.
+   */
+  const drawingFigure = (node: Image): Element | undefined => {
+    const markup = drawings?.get(node.url)
+    if (markup === undefined) return undefined
+    const rendering = extensions?.drawing({ markup }) ?? {
+      kind: 'inline',
+      markup,
+      naturalSize: false,
+      data: {},
+    }
+    const drawing = drawingElement(rendering, {
+      url: node.url,
+      idPrefix: `${HEADING_ID_PREFIX}d${placed.length + 1}-`,
+      label: altText(node.alt),
+    })
+    if (drawing === null) return undefined
+    placed.push(drawing)
+    const caption =
+      typeof node.title === 'string' && node.title.length > 0
+        ? [element('figcaption', {}, [text(node.title)])]
+        : []
+    return element('figure', {}, [
+      element('div', { className: ['diagram'], 'data-diagram': 'svg' }, []),
+      ...caption,
+    ])
+  }
+
   const paragraph = (state: State, node: Paragraph): ElementContent | ElementContent[] => {
+    const [only] = node.children
+    if (node.children.length === 1 && only?.type === 'image') {
+      const drawn = drawingFigure(only)
+      if (drawn !== undefined) return drawn
+    }
     const captioned = node.children.flatMap((child) =>
       child.type === 'image' && typeof child.title === 'string' && child.title.length > 0
         ? [{ image: child, caption: child.title }]
@@ -196,62 +410,84 @@ export function createHandlers(options: HandlerOptions): Handlers {
     return element('p', {}, state.all(node))
   }
 
-  const cellProperties = (align: AlignType | undefined, head: boolean): Properties => {
-    const classes = alignClass(align)
-    const properties: Properties = head ? { scope: 'col' } : {}
-    if (classes.length > 0) properties['className'] = classes
-    return properties
-  }
-
-  const row = (state: State, node: TableRow, align: readonly AlignType[], head: boolean): Element =>
-    element(
-      'tr',
-      {},
-      state.wrap(
-        node.children.map((cell, index) =>
-          element(head ? 'th' : 'td', cellProperties(align[index], head), state.all(cell)),
-        ),
-        true,
-      ),
-    )
-
-  const table = (state: State, node: Table): Element => {
-    const align = node.align ?? []
-    const head = node.children.slice(0, 1)
-    const body = node.children.slice(1)
-    const sections = [
-      ...head.map((first) =>
-        element('thead', {}, state.wrap([row(state, first, align, true)], true)),
-      ),
-      ...(body.length > 0
-        ? [
+  /**
+   * A body cell that opens with badges sets them on a line of their own above
+   * its detail, the way a status column reads: what state, then why. Any
+   * other cell is left exactly as written.
+   */
+  const cellContent = (state: State, children: readonly PhrasingContent[]): ElementContent[] => {
+    const { status, detail } = splitStatus(children, labels)
+    if (status.length === 0) return state.all({ type: 'paragraph', children: [...children] })
+    const detailBlock =
+      detail.length === 0
+        ? []
+        : [
             element(
-              'tbody',
-              {},
-              state.wrap(
-                body.map((each) => row(state, each, align, false)),
-                true,
-              ),
+              'span',
+              { className: ['cell-detail'] },
+              state.all({ type: 'paragraph', children: detail }),
             ),
           ]
-        : []),
+    return [
+      element(
+        'span',
+        { className: ['cell-status'] },
+        state.all({ type: 'paragraph', children: status }),
+      ),
+      ...detailBlock,
     ]
-    return element('table', {}, state.wrap(sections, true))
+  }
+
+  const tableBlock = createTableRenderer({ cellContent })
+
+  const table = (state: State, node: Table): Element =>
+    tableBlock(state, node, DEFAULT_TABLE_OPTIONS)
+
+  let callouts = 0
+
+  /**
+   * A callout, in words as well as colour (WCAG 1.4.1): its title is always
+   * shown, and names it. Untitled, the title is its type ("Warning"); with
+   * the author's label, the type is still said first ("Tip: Before you
+   * begin"), hidden from sight where the colour and icon already show it.
+   * Named by reference to the title, so a screen reader says it once.
+   */
+  const calloutAside = (
+    state: State,
+    type: CalloutType,
+    label: string | undefined,
+    body: ElementContent[],
+  ): Element => {
+    const id = `callout.${(callouts += 1)}`
+    const kind = capitalise(type)
+    const words =
+      label === undefined
+        ? [text(kind)]
+        : [element('span', { className: ['sr-only'] }, [text(`${kind}: `)]), text(label)]
+    return element(
+      'aside',
+      { className: ['callout', `callout-${type}`], role: 'note', ariaLabelledBy: [id] },
+      state.wrap([element('p', { className: ['callout-label'], id }, words), ...body], true),
+    )
   }
 
   const callout = (state: State, node: ContainerDirective): Element => {
     const model = calloutDirective.parse(node)
-    const label = model.label ?? capitalise(model.type)
-    const labelBlock =
-      model.label === undefined
-        ? []
-        : [element('p', { className: ['callout-label'] }, [text(model.label)])]
-    const body = state.all({ ...node, children: model.children })
-    return element(
-      'aside',
-      { className: ['callout', `callout-${model.type}`], role: 'note', 'aria-label': label },
-      state.wrap([...labelBlock, ...body], true),
+    return calloutAside(
+      state,
+      model.type,
+      model.label,
+      state.all({ ...node, children: model.children }),
     )
+  }
+
+  /** A GitHub alert (`> [!WARNING]`) is a callout, titled with its kind as GitHub titles it. */
+  const blockquote = (state: State, node: Blockquote): Element => {
+    const alert = alertOf(node)
+    if (alert === undefined) {
+      return element('blockquote', {}, state.wrap(state.all(node), true))
+    }
+    return calloutAside(state, alert.kind, undefined, state.all({ ...node, children: alert.body }))
   }
 
   const labelledAside = (
@@ -278,10 +514,61 @@ export function createHandlers(options: HandlerOptions): Handlers {
       state.wrap(state.all(node), true),
     )
 
+  const figureBlock = (state: State, node: ContainerDirective): Element => {
+    const model = figureDirective.parse(node)
+    // A figure of one table and its caption is a captioned table: the caption
+    // becomes the table's own, which names it, so the two ways of writing a
+    // table caption read identically (ADR-040).
+    const captioned = captionedTable(model.subject)
+    if (captioned !== undefined && model.caption.length > 0) {
+      return tableBlock(
+        state,
+        captioned.table,
+        captioned.options,
+        captionContent(state, node, model.caption),
+      )
+    }
+    const subject = state.all({ ...node, children: model.subject })
+    const caption =
+      model.caption.length === 0
+        ? []
+        : [element('figcaption', {}, state.wrap(state.all({ ...node, children: model.caption })))]
+    return element('figure', {}, state.wrap([...subject, ...caption], true))
+  }
+
+  const cards = (state: State, node: ContainerDirective): Element => {
+    const model = cardsDirective.parse(node)
+    const sections = model.cards.map((card) =>
+      element(
+        'section',
+        { className: ['card'] },
+        state.wrap(state.all({ ...node, children: card })),
+      ),
+    )
+    return element(
+      'div',
+      { className: ['cards'], 'data-variant': model.variant },
+      state.wrap(sections, true),
+    )
+  }
+
   const containerDirective = (
     state: State,
     node: ContainerDirective,
+    parent: unknown,
   ): ElementContent | ElementContent[] => {
+    if (claims(detailsDirective, node)) return detailsRenderer.details(state, node, parent)
+    if (claims(accordionDirective, node)) return detailsRenderer.accordion(state, node)
+    if (claims(figureDirective, node)) return figureBlock(state, node)
+    if (claims(cardsDirective, node)) return cards(state, node)
+    if (claims(tableDirective, node)) {
+      const wrapped = tableOf(node)
+      // Anything but exactly one table is shown as written (ADR-002).
+      if (wrapped === undefined) return state.all(node)
+      const model = tableDirective.parse(node)
+      const caption = model.caption === undefined ? [] : state.all(model.caption)
+      return tableBlock(state, wrapped, model, caption)
+    }
     if (claims(layoutDirective, node)) {
       return element(
         'div',
@@ -311,6 +598,22 @@ export function createHandlers(options: HandlerOptions): Handlers {
 
   const textDirective = (state: State, node: TextDirective): ElementContent | ElementContent[] => {
     if (claims(kbdDirective, node)) return element('kbd', {}, state.all(node))
+    // A badge with no label is the author's own text — `status:ok` parses as
+    // a directive named `ok` — so it is written back as it was typed.
+    if (claims(badgeDirective, node) && toString(node).trim().length > 0) {
+      const model = badgeDirective.parse(node)
+      return element('span', { className: ['badge'], 'data-tone': model.tone }, [text(model.label)])
+    }
+    if (isLabel(node, labels)) {
+      // A label whose organisation gave it an emoji leads with it in place
+      // of the colour dot (ADR-038); the words still say what it is.
+      const lead = labelEmoji(node.name)
+      return element('span', { className: ['badge'], 'data-label': node.name }, [
+        ...(lead === undefined ? [] : [emojiElement(lead, 'decoration')]),
+        text(toString(node)),
+      ])
+    }
+    if (claims(smallDirective, node)) return element('small', {}, state.all(node))
     if (claims(placeholderDirective, node)) {
       return element('span', { className: ['placeholder'] }, state.all(node))
     }
@@ -328,7 +631,33 @@ export function createHandlers(options: HandlerOptions): Handlers {
    * the parameters as text, which is exactly what ADR-002 asks an unknown
    * directive to degrade to.
    */
+  let contents = 0
+  let childPages = 0
+
+  /**
+   * The navigation blocks (ADR-049): a table of contents drawn from the
+   * outline, and the slot a child pages list is filled into as the page is
+   * assembled (ADR-032).
+   */
+  const navigationBlock = (node: LeafDirective): Element | undefined => {
+    if (claims(tocDirective, node)) {
+      const model = tocDirective.parse(node)
+      contents += 1
+      return tableOfContentsElement(
+        model,
+        tableOfContentsEntries(outline(), model.levels),
+        contents,
+      )
+    }
+    if (claims(childrenDirective, node)) {
+      childPages += 1
+      return childPagesSlotElement(childrenDirective.parse(node), childPages)
+    }
+    return undefined
+  }
+
   const leafDirective = (state: State, node: LeafDirective): Element =>
+    navigationBlock(node) ??
     element(
       'section',
       {
@@ -341,8 +670,13 @@ export function createHandlers(options: HandlerOptions): Handlers {
 
   return {
     yaml: frontMatter,
+    blockquote,
     heading,
+    listItem,
     code,
+    codeGroup,
+    details: (state: State, node: Details, parent: unknown) =>
+      detailsRenderer.details(state, node, parent),
     image,
     paragraph,
     table,

@@ -3,102 +3,75 @@ import { describe, expect, it, vi } from 'vitest'
 import type { PendingDraft } from '@quill/editor'
 
 import { createIndexedDbRecoveryStore } from './indexeddb-recovery-store.ts'
-
-/**
- * A fake IndexedDB, small enough to read and real enough to be worth
- * testing against: requests are event targets that settle on a microtask,
- * exactly like the real thing, which is what makes the ordering this module
- * depends on (open, then read back, then mirror every write in order)
- * actually exercised rather than assumed.
- */
-class FakeRequest<T> extends EventTarget {
-  result!: T
-  error: Error | null = null
-
-  settle(work: () => T, upgrade?: () => void): this {
-    queueMicrotask(() => {
-      try {
-        if (upgrade !== undefined) {
-          upgrade()
-          this.dispatchEvent(new Event('upgradeneeded'))
-        }
-        this.result = work()
-        this.dispatchEvent(new Event('success'))
-      } catch (error) {
-        this.error = error instanceof Error ? error : new Error(String(error))
-        this.dispatchEvent(new Event('error'))
-      }
-    })
-    return this
-  }
-}
-
-interface FakeOptions {
-  /** Rejects `open`, as a browser in private mode or out of quota does. */
-  readonly refuseToOpen?: boolean
-  /** Fails every write, as a quota refusal mid-session does. */
-  readonly refuseWrites?: boolean
-}
-
-function createFakeIndexedDb(
-  rows: Map<string, unknown> = new Map(),
-  options: FakeOptions = {},
-): { factory: IDBFactory; rows: Map<string, unknown>; isOpen: () => boolean } {
-  let open = false
-  const stores = new Set<string>()
-
-  const objectStore = {
-    get: (key: string) => new FakeRequest<unknown>().settle(() => rows.get(key)),
-    put: (value: unknown, key: string) =>
-      new FakeRequest<unknown>().settle(() => {
-        if (options.refuseWrites === true) throw new Error('Quota exceeded')
-        rows.set(key, value)
-        return undefined
-      }),
-    delete: (key: string) =>
-      new FakeRequest<unknown>().settle(() => {
-        rows.delete(key)
-        return undefined
-      }),
-  }
-
-  const database = {
-    objectStoreNames: { contains: (name: string) => stores.has(name) },
-    createObjectStore: (name: string) => {
-      stores.add(name)
-      return objectStore
-    },
-    transaction: () => ({ objectStore: () => objectStore }),
-    close: () => {
-      open = false
-    },
-  }
-
-  const factory = {
-    open: () =>
-      new FakeRequest<unknown>().settle(
-        () => {
-          if (options.refuseToOpen === true) throw new Error('Refused')
-          open = true
-          return database
-        },
-        () => {
-          if (options.refuseToOpen !== true) stores.add('pending-drafts')
-        },
-      ),
-  }
-
-  // The fake implements exactly the slice of `IDBFactory` this module uses;
-  // the cast is the boundary of that, and every member it reaches for is
-  // above.
-  return { factory: factory as unknown as IDBFactory, rows, isOpen: () => open }
-}
+import { createFakeIndexedDb } from './testing.ts'
 
 const EDIT: PendingDraft = {
   ast: { type: 'root', children: [] },
   expectedVersion: 4,
   savedAt: 1_700_000_000_000,
 }
+
+const BASE = { ast: { type: 'root' as const, children: [] }, draftVersion: 3 }
+
+describe('createIndexedDbRecoveryStore: the edit and its base (row format 2)', () => {
+  it('reads a row an earlier release wrote, as an edit with no base', async () => {
+    const { factory } = createFakeIndexedDb(new Map([['doc-1', EDIT]]))
+    const store = createIndexedDbRecoveryStore({ documentId: 'doc-1', factory })
+    expect(await store.ready).toEqual(EDIT)
+    expect(store.readBase()).toBeUndefined()
+  })
+
+  it('reads back an edit and the base it was written on', async () => {
+    const { factory } = createFakeIndexedDb(
+      new Map([['doc-1', { format: 2, pending: EDIT, base: BASE }]]),
+    )
+    const store = createIndexedDbRecoveryStore({ documentId: 'doc-1', factory })
+    expect(await store.ready).toEqual(EDIT)
+    expect(store.readBase()).toEqual(BASE)
+  })
+
+  it('keeps the base when the edit is acknowledged, and both in one row', async () => {
+    const { factory, rows } = createFakeIndexedDb()
+    const store = createIndexedDbRecoveryStore({ documentId: 'doc-1', factory })
+    await store.ready
+    store.writeBase(BASE)
+    store.write(EDIT)
+    await vi.waitFor(() => {
+      expect(rows.get('doc-1')).toEqual({ format: 2, pending: EDIT, base: BASE })
+    })
+    store.clear()
+    await vi.waitFor(() => {
+      expect(rows.get('doc-1')).toEqual({ format: 2, base: BASE })
+    })
+  })
+
+  it('reads nothing from a row of a format it does not know, rather than guess', async () => {
+    const { factory } = createFakeIndexedDb(new Map([['doc-1', { format: 9, pending: EDIT }]]))
+    const store = createIndexedDbRecoveryStore({ documentId: 'doc-1', factory })
+    expect(await store.ready).toBeUndefined()
+    expect(store.readBase()).toBeUndefined()
+  })
+
+  it('ignores the parts of a row that are not what they claim', async () => {
+    const { factory } = createFakeIndexedDb(
+      new Map([
+        ['doc-1', { format: 2, pending: { ast: null }, base: { draftVersion: 1, ast: null } }],
+      ]),
+    )
+    const store = createIndexedDbRecoveryStore({ documentId: 'doc-1', factory })
+    expect(await store.ready).toBeUndefined()
+    expect(store.readBase()).toBeUndefined()
+  })
+
+  it('keeps a base written while the database was opening over the one on disk', async () => {
+    const { factory } = createFakeIndexedDb(new Map([['doc-1', { format: 2, base: BASE }]]))
+    const store = createIndexedDbRecoveryStore({ documentId: 'doc-1', factory })
+    const newer = { ...BASE, draftVersion: 9 }
+    store.writeBase(newer)
+    await store.ready
+    expect(store.readBase()).toEqual(newer)
+  })
+})
 
 describe('createIndexedDbRecoveryStore', () => {
   it('hands back the edit a previous session never managed to send', async () => {
@@ -126,7 +99,7 @@ describe('createIndexedDbRecoveryStore', () => {
     // The buffer answers straight away; the mirror catches up.
     expect(store.read()).toEqual(EDIT)
     await vi.waitFor(() => {
-      expect(rows.get('doc-1')).toEqual(EDIT)
+      expect(rows.get('doc-1')).toEqual({ format: 2, pending: EDIT })
     })
   })
 

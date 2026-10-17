@@ -85,6 +85,34 @@
       "when": 1789287487251,
       "tag": "0011_cuddly_adam_destine",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1791683567216,
+      "tag": "0012_attachment_revisions",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1791686658655,
+      "tag": "0013_person_preferences",
+      "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1792176502391,
+      "tag": "0014_document_summaries",
+      "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "7",
+      "when": 1792193550146,
+      "tag": "0015_document_lifecycle",
+      "breakpoints": true
     }
   ]
 }

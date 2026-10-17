@@ -36,7 +36,7 @@ import { GitRepository } from './git/git-repository.ts'
 import { parseContentPath, resolvePath, setPath, walkTree } from './git/tree-path.ts'
 import { KeyedMutex } from './keyed-mutex.ts'
 import type { ObjectStore, ObjectStoreProvider } from './object-store.ts'
-import { threeWayMerge } from './three-way-merge.ts'
+import { conflictMarkers, threeWayMerge } from './three-way-merge.ts'
 import { unifiedDiff } from './unified-diff.ts'
 
 export class ContentStoreError extends Error {
@@ -514,7 +514,7 @@ function conflictOf(
       ours,
       theirs: theirs.markdown,
       base,
-      conflicted: conflicted ?? threeWayMerge(base, ours, theirs.markdown).text,
+      conflicted: conflicted ?? conflictMarkers(base, ours, theirs.markdown),
     },
   }
 }

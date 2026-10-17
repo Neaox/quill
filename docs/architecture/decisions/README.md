@@ -41,3 +41,17 @@ Status values: `Proposed` (awaiting a spike or review), `Accepted`, `Superseded 
 | [033](0033-compatibility-and-regression-policy.md)    | Compatibility and regression policy           | Accepted               |
 | [034](0034-configuration-and-data-classification.md)  | Configuration and data classification         | Accepted               |
 | [035](0035-human-readable-urls.md)                    | Human-readable URLs: slug plus short key      | Accepted               |
+| [036](0036-diagrams-and-reading-blocks.md)            | Diagrams and reading blocks                   | Accepted               |
+| [037](0037-tenant-labels.md)                         | Tenant labels                                 | Accepted               |
+| [038](0038-emoji.md)                                  | Emoji shortcodes and custom emoji             | Accepted               |
+| [039](0039-markdown-extensions.md)                    | Markdown extensions                           | Accepted               |
+| [040](0040-tables.md)                                 | Tables                                        | Accepted               |
+| [041](0041-code-blocks-copy-and-groups.md)          | Code blocks: copy and groups                  | Accepted               |
+| [042](0042-link-previews.md)                          | Link previews                                 | Accepted               |
+| [043](0043-figma-and-drawio.md)                      | Figma and draw.io                             | Accepted               |
+| [044](0044-deep-links.md)                            | Deep links                                    | Accepted               |
+| [045](0045-access-requests.md)                       | Access requests                               | Accepted               |
+| [046](0046-deletion-unpublishing-and-dead-links.md)  | Deletion, unpublishing and dead links         | Accepted               |
+| [047](0047-image-pipeline.md)                         | Image pipeline and format negotiation         | Accepted               |
+| [048](0048-details-and-accordions.md)                 | Details and accordions                        | Accepted               |
+| [049](0049-navigation-blocks.md)                     | Navigation blocks: contents and child pages   | Accepted               |

@@ -2,13 +2,19 @@ import rehypeSanitize from 'rehype-sanitize'
 import rehypeStringify from 'rehype-stringify'
 import remarkRehype from 'remark-rehype'
 import { unified } from 'unified'
+import { visit } from 'unist-util-visit'
 import type { Element, ElementContent, Root as HastRoot } from 'hast'
+import type { Schema } from 'hast-util-sanitize'
 import type { Root } from 'mdast'
 
 import { stripPresenterNotes } from '../directives/strip-presenter-notes.ts'
+import type { CustomEmoji, StandardLookup } from '../emoji/emoji.ts'
+import { emojiLookup, guardEmojiImages, withEmoji } from '../emoji/emoji.ts'
+import type { MarkdownRegistry } from '../extensions/registry.ts'
 import { escapeRawHtml } from './escape-raw-html.ts'
 import { addExternalLinkRel } from './external-link-rel.ts'
-import type { Highlighter } from './handlers.ts'
+import { prefixFragmentLinks } from './fragment-links.ts'
+import type { Handlers, Highlighter } from './handlers.ts'
 import { createHandlers } from './handlers.ts'
 import type { OutlineEntry } from './outline.ts'
 import { extractOutline } from './outline.ts'
@@ -33,31 +39,49 @@ export interface RenderOptions {
    * block is left for the client to highlight on demand.
    */
   readonly highlighter?: Highlighter | undefined
-  /** Document metadata, so dates are rendered as `time` in the document header. */
+  /**
+   * Document metadata. Accepted and not drawn: what a document states about
+   * itself is the byline's to show, per reader (ADR-052), never the cached
+   * body's. Kept so a caller that still passes it is not refused.
+   */
   readonly frontMatter?: Record<string, unknown> | undefined
-}
-
-const ISO_DATE = /^\d{4}-\d{2}-\d{2}(?:T[\d:.]+(?:Z|[+-]\d{2}:\d{2})?)?$/
-
-interface DateField {
-  readonly path: string
-  readonly value: string
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value)
-}
-
-/** Walks front matter lazily, yielding every field that reads as a date. */
-function* dateFields(value: unknown, path: string): Generator<DateField> {
-  if (typeof value === 'string') {
-    if (ISO_DATE.test(value)) yield { path, value }
-    return
-  }
-  if (!isRecord(value)) return
-  for (const [key, nested] of Object.entries(value)) {
-    yield* dateFields(nested, path === '' ? key : `${path}.${key}`)
-  }
+  /**
+   * The SVG drawings the body shows, by the image URL that names each one.
+   * An image on its own line whose URL is here is drawn inline, sanitised
+   * (`drawing.ts`), instead of being shown as an `<img>`.
+   */
+  readonly drawings?: ReadonlyMap<string, string> | undefined
+  /**
+   * The installed Markdown extensions (`createMarkdownRegistry`, ADR-039),
+   * built once at the composition root. A drawing one of them claims is drawn
+   * as that extension chooses; without them, every drawing is drawn inline as
+   * it is.
+   */
+  readonly extensions?: MarkdownRegistry | undefined
+  /**
+   * The organisation's label names (ADR-037). A text directive named by one,
+   * `:acme[Acme]`, is drawn as a badge carrying `data-label`, which the
+   * theme stylesheet colours; any other unknown directive is written back as
+   * typed. Without it the renderer behaves exactly as it did before labels.
+   */
+  readonly labels?: ReadonlySet<string> | undefined
+  /**
+   * GitHub's shortcodes (ADR-038), `standardEmoji` from
+   * `@quill/markdown/emoji-shortcodes`. Injected, like the highlighter, so a
+   * bundle that imports this package but never renders on the server does
+   * not carry the table; without it only custom emoji are drawn.
+   */
+  readonly standardEmoji?: StandardLookup | undefined
+  /**
+   * The organisation's own emoji, by name (ADR-038): `:acme:` is drawn as
+   * its image. A custom name wins where it is also one of GitHub's.
+   */
+  readonly emoji?: ReadonlyMap<string, CustomEmoji> | undefined
+  /**
+   * The emoji each label's pill leads with, by label name — a custom emoji's
+   * name or one of GitHub's (ADR-038). A label not in it keeps its colour dot.
+   */
+  readonly labelEmoji?: ReadonlyMap<string, string> | undefined
 }
 
 function element(
@@ -66,20 +90,6 @@ function element(
   children: ElementContent[],
 ): Element {
   return { type: 'element', tagName, properties, children }
-}
-
-function documentHeader(frontMatter: Record<string, unknown> | undefined): ElementContent[] {
-  const fields = [...dateFields(frontMatter, '')]
-  if (fields.length === 0) return []
-  const rows = fields.map((field) =>
-    element('div', {}, [
-      element('dt', {}, [{ type: 'text', value: field.path }]),
-      element('dd', {}, [
-        element('time', { dateTime: field.value }, [{ type: 'text', value: field.value }]),
-      ]),
-    ]),
-  )
-  return [element('header', { className: ['document-meta'] }, [element('dl', {}, rows)])]
 }
 
 /**
@@ -97,9 +107,58 @@ function documentHeader(frontMatter: Record<string, unknown> | undefined): Eleme
  * caller can put the result anywhere — including the render cache (ADR-031).
  */
 export function renderHtml(ast: Root, options: RenderOptions = {}): string {
+  return renderHtmlWith(ast, options, {})
+}
+
+/**
+ * What a renderer built on this one may change, and nothing else: handlers
+ * for nodes only it puts in a tree, and the allowlist widened by exactly the
+ * attributes those handlers emit. The comparison view (`diff/render.ts`) is
+ * the one caller; every document a reader is shown goes through `renderHtml`
+ * and the document schema unchanged.
+ */
+export interface RenderOverrides {
+  readonly handlers?: ((handlers: Handlers) => Handlers) | undefined
+  readonly schema?: Schema | undefined
+}
+
+export function renderHtmlWith(
+  ast: Root,
+  options: RenderOptions,
+  overrides: RenderOverrides,
+): string {
+  const placed: Element[] = []
+  const lookup = emojiLookup(
+    options.emoji ?? new Map<string, CustomEmoji>(),
+    options.standardEmoji ?? (() => undefined),
+  )
+  // Taken at most once, and only when a table of contents asks (ADR-049):
+  // from the tree the headings are rendered from, so the ids agree.
+  let outline: readonly OutlineEntry[] | undefined
+  const outlineOf = (): readonly OutlineEntry[] => (outline ??= extractOutline(ast))
   const toHast = unified()
     .use(remarkRehype, {
-      handlers: createHandlers({ slug: createSlugger(), highlighter: options.highlighter }),
+      handlers: (overrides.handlers ?? ((handlers: Handlers) => handlers))(
+        createHandlers({
+          slug: createSlugger(),
+          highlighter: options.highlighter,
+          drawings: options.drawings,
+          extensions: options.extensions,
+          placed,
+          labels: options.labels,
+          outline: outlineOf,
+          labelEmoji: (label) => {
+            const name = options.labelEmoji?.get(label)
+            return name === undefined ? undefined : lookup(name)
+          },
+        }),
+      ),
+      // The sanitiser prefixes every id exactly once (`sanitize-schema.ts`), so
+      // the footnote ids this step mints are left bare; prefixing them here as
+      // well gave `user-content-user-content-fn-1`, and every footnote link
+      // pointed at an id that did not exist. `fragment-links.ts` points the
+      // links at the prefixed ids.
+      clobberPrefix: '',
       // Required for raw HTML to reach the hast tree at all (`escape-raw-html.ts`);
       // it does not by itself make anything unsafe, because nothing downstream is
       // told to trust a `raw` node as real markup (see `stringify` below).
@@ -111,13 +170,40 @@ export function renderHtml(ast: Root, options: RenderOptions = {}): string {
   // source; the rendered body is what readers see, so they are removed before
   // the tree is rendered rather than by a handler, and the outline is taken
   // from the same reduced tree (`extractOutline`) so heading ids still match.
-  const hast: HastRoot = toHast.runSync(stripPresenterNotes(ast))
+  const hast: HastRoot = toHast.runSync(withEmoji(stripPresenterNotes(ast), lookup))
   const body = hast.children.filter((child): child is ElementContent => child.type !== 'doctype')
-  const article = element('article', {}, [...documentHeader(options.frontMatter), ...body])
+  const article = element('article', {}, body)
   const document: HastRoot = { type: 'root', children: [article] }
 
-  const safe = addExternalLinkRel(rehypeSanitize(sanitizeSchema)(escapeRawHtml(document)))
-  return stringify.stringify(safe)
+  const safe = addExternalLinkRel(
+    guardEmojiImages(rehypeSanitize(overrides.schema ?? sanitizeSchema)(escapeRawHtml(document))),
+  )
+  return stringify.stringify(placeDrawings(prefixFragmentLinks(safe), placed))
+}
+
+function isDrawingSlot(node: Element): boolean {
+  const classes = node.properties['className']
+  return (
+    node.tagName === 'div' &&
+    Array.isArray(classes) &&
+    classes.includes('diagram') &&
+    node.properties['data-diagram'] === 'svg'
+  )
+}
+
+/**
+ * Fills each drawing slot with its drawing, in document order, after the
+ * document has been sanitised. Only the renderer emits a slot — an author's
+ * raw HTML was escaped to text before sanitising — and each drawing was
+ * sanitised by its own, SVG-only allowlist when it was placed.
+ */
+function placeDrawings(tree: HastRoot, placed: readonly Element[]): HastRoot {
+  if (placed.length === 0) return tree
+  const queue = [...placed]
+  visit(tree, 'element', (node: Element) => {
+    if (isDrawingSlot(node)) node.children = queue.splice(0, 1)
+  })
+  return tree
 }
 
 export interface RenderedDocument {

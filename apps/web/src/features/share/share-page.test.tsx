@@ -117,6 +117,34 @@ describe('the share-link page', () => {
     expect(screen.getByRole('heading', { level: 1, name: 'Regional failover' })).toBeInTheDocument()
   })
 
+  it('states the public facts under the title, and never who owns it', async () => {
+    renderApp(
+      `/share/${TOKEN}`,
+      shareRoutes({
+        'GET /api/share/{token}': shared({
+          facts: {
+            status: 'archived',
+            lifecycle: {
+              state: 'deprecated',
+              replacement: { href: `/share/${TOKEN}/d/setup-k7m3q9v2rt`, title: 'Setting up' },
+            },
+            tags: ['ops'],
+            lastReviewed: '2026-01-02',
+          },
+        }),
+      }),
+    )
+    const facts = await screen.findByRole('group', { name: 'Document properties' })
+    // A status from before the lifecycle is never shown; the lifecycle is.
+    expect(facts).not.toHaveTextContent('Archived')
+    expect(facts).toHaveTextContent('Deprecated')
+    expect(screen.getByRole('note', { name: 'Deprecated' })).toHaveTextContent(
+      'This page is deprecated. Use Setting up instead.',
+    )
+    expect(facts).toHaveTextContent('Reviewed 2 Jan 2026')
+    expect(facts).toHaveTextContent('ops')
+  })
+
   it('says the reader was given a link, and when it runs out', async () => {
     renderApp(`/share/${TOKEN}`, shareRoutes())
     await screen.findByRole('article', { name: 'Regional failover' })
@@ -158,7 +186,7 @@ describe('the share-link page', () => {
     // The route is outside `_authenticated`, so nothing ever asks who this is.
     expect(asked).toEqual([])
     expect(screen.queryByRole('navigation', { name: 'Documents' })).not.toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'Sign out' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /^Account menu for / })).not.toBeInTheDocument()
     expect(screen.queryByRole('link', { name: /Sign in/ })).not.toBeInTheDocument()
     expect(screen.queryByRole('link', { name: 'Edit' })).not.toBeInTheDocument()
   })

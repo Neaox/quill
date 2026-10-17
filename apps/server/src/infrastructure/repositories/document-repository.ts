@@ -46,8 +46,17 @@ interface DocumentRecord extends Record<string, unknown> {
   template_id: string | null
   template_version: number | null
   head_revision: string | null
-  created_at: Date
-  updated_at: Date
+  /**
+   * Drizzle reads a timestamp in raw SQL as the driver's text, not as the
+   * `Date` its query builder returns, so a recursive query's rows arrive with
+   * strings here and are read into dates below.
+   */
+  created_at: Date | string
+  updated_at: Date | string
+}
+
+function toDate(value: Date | string): Date {
+  return new Date(value)
 }
 
 function fromRecord(record: DocumentRecord): DocumentRow {
@@ -64,8 +73,8 @@ function fromRecord(record: DocumentRecord): DocumentRow {
     templateId: record.template_id,
     templateVersion: record.template_version,
     headRevision: record.head_revision as RevisionId | null,
-    createdAt: record.created_at,
-    updatedAt: record.updated_at,
+    createdAt: toDate(record.created_at),
+    updatedAt: toDate(record.updated_at),
   }
 }
 
@@ -195,6 +204,27 @@ export function createDocumentRepository(db: DrizzleClient): DocumentRepository 
           WHERE chain.depth < 64
         )
         SELECT * FROM chain ORDER BY depth
+      `)
+      return rows.map(fromRecord)
+    },
+
+    /**
+     * One recursive walk down the document tree, bounded by the depth, for a
+     * child pages list (ADR-049). The cycle guard is the depth itself: a
+     * parent chain is acyclic (`checkParent`), and a walk can never go
+     * further than the six levels a list may ask for.
+     */
+    async listDescendants(id: DocumentId, depth: number): Promise<readonly DocumentRow[]> {
+      const { rows } = await db.execute<DocumentRecord & { level: number }>(sql`
+        WITH RECURSIVE subtree AS (
+          SELECT d.*, 1 AS level FROM documents d WHERE d.parent_id = ${id}
+          UNION ALL
+          SELECT child.*, subtree.level + 1
+          FROM documents child
+          JOIN subtree ON child.parent_id = subtree.id
+          WHERE subtree.level < ${depth}
+        )
+        SELECT * FROM subtree ORDER BY level
       `)
       return rows.map(fromRecord)
     },

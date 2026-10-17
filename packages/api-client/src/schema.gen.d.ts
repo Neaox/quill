@@ -31,7 +31,37 @@ export interface paths {
                 };
             };
         };
-        put?: never;
+        put: {
+            parameters: {
+                query: {
+                    expectedVersion: number;
+                };
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "multipart/form-data": {
+                        /** Format: binary */
+                        file: string;
+                    };
+                };
+            };
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Attachment"];
+                    };
+                };
+            };
+        };
         post?: never;
         delete: {
             parameters: {
@@ -938,6 +968,177 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/documents/{id}/children": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query: {
+                    depth: number;
+                    excerpts: boolean;
+                    icons: boolean;
+                    sort: "manual" | "title" | "updated";
+                };
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            count: number;
+                            html: string;
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/documents/{id}/compare": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query: {
+                    from?: string;
+                    to: string | "draft";
+                };
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            changes: {
+                                block: string;
+                                change: "added" | "removed" | "changed" | "moved";
+                                excerpt: string;
+                                id: string;
+                                section?: {
+                                    id: string;
+                                    title: string;
+                                };
+                                wordsAdded: number;
+                                wordsRemoved: number;
+                            }[];
+                            html: string;
+                            properties: {
+                                after?: string;
+                                before?: string;
+                                name: string;
+                            }[];
+                            sections: {
+                                changes: number;
+                                depth: number;
+                                id: string;
+                                title: string;
+                            }[];
+                            summary: {
+                                added: number;
+                                changed: number;
+                                moved: number;
+                                removed: number;
+                                sections: number;
+                                wordsAdded: number;
+                                wordsRemoved: number;
+                            };
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/documents/{id}/compare/source": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query: {
+                    from?: string;
+                    to: string | "draft";
+                };
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            lines: {
+                                after?: number;
+                                before?: number;
+                                change: "equal" | "added" | "removed";
+                                segments: {
+                                    change: "equal" | "added" | "removed";
+                                    text: string;
+                                }[];
+                            }[];
+                            wordsAdded: number;
+                            wordsRemoved: number;
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/documents/{id}/content": {
         parameters: {
             query?: never;
@@ -968,52 +1169,6 @@ export interface paths {
                             };
                             markdown: string;
                             revision: string;
-                        };
-                    };
-                };
-            };
-        };
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/documents/{id}/diff": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get: {
-            parameters: {
-                query: {
-                    from?: string;
-                    to: string;
-                };
-                header?: never;
-                path: {
-                    id: string;
-                };
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description Default Response */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            added: number;
-                            from: string | null;
-                            removed: number;
-                            to: string;
-                            unified: string;
                         };
                     };
                 };
@@ -1113,6 +1268,39 @@ export interface paths {
                     };
                     content: {
                         "application/json": {
+                            facts: {
+                                /** Format: date */
+                                lastReviewed?: string;
+                                lifecycle?: {
+                                    /** @enum {string} */
+                                    state: "in-review";
+                                } | {
+                                    /** @enum {string} */
+                                    state: "verified";
+                                    /** Format: date */
+                                    verifiedAt?: string;
+                                    verifiedBy?: {
+                                        label: string;
+                                        person: boolean;
+                                    };
+                                } | {
+                                    replacement?: {
+                                        href: string;
+                                        title: string;
+                                    };
+                                    /** @enum {string} */
+                                    state: "deprecated";
+                                };
+                                owners: {
+                                    label: string;
+                                    person: boolean;
+                                }[];
+                                reviewInterval?: string;
+                                /** @enum {string} */
+                                status?: "draft" | "published" | "archived";
+                                tags: string[];
+                                type?: string;
+                            };
                             health: {
                                 detail?: string;
                                 kind: "no-owner" | "review-overdue" | "required-section-empty" | "broken-link";
@@ -1140,6 +1328,7 @@ export interface paths {
                                 dueAt: string;
                                 overdue: boolean;
                             } | null;
+                            unpublishedChanges: boolean;
                         };
                     };
                 };
@@ -1340,6 +1529,52 @@ export interface paths {
                 };
             };
         };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/documents/{id}/people": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: {
+                    email?: string | string[];
+                    q?: string;
+                };
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            people: {
+                                detail: string;
+                                name: string;
+                                value: string;
+                            }[];
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -1620,6 +1855,87 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/documents/links": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        references: string[];
+                    };
+                };
+            };
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            links: {
+                                href: string;
+                                reference: string;
+                            }[];
+                        };
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/extensions/drawio": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["DrawioEditor"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/me": {
         parameters: {
             query?: never;
@@ -1646,6 +1962,70 @@ export interface paths {
             };
         };
         put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/me/preferences": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            animatedImages: "brief" | "hover" | "never";
+                        };
+                    };
+                };
+            };
+        };
+        put: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        animatedImages?: "brief" | "hover" | "never";
+                    };
+                };
+            };
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            animatedImages: "brief" | "hover" | "never";
+                        };
+                    };
+                };
+            };
+        };
         post?: never;
         delete?: never;
         options?: never;
@@ -1824,6 +2204,163 @@ export interface paths {
                 };
             };
         };
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/settings/organisation/emoji-images": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "multipart/form-data": {
+                        /** Format: binary */
+                        file: string;
+                    };
+                };
+            };
+            responses: {
+                /** @description Default Response */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["EmojiImage"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/settings/organisation/public-menu/collections": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query: {
+                    limit?: number;
+                    q: string;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            collections: components["schemas"]["PublicMenuCollectionCandidate"][];
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/settings/organisation/public-menu/targets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: {
+                    collection?: string[];
+                    document?: string[];
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            targets: components["schemas"]["PublicMenuTarget"][];
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/settings/organisation/theme": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["OrganisationThemeSummary"];
+                    };
+                };
+            };
+        };
+        put?: never;
         post?: never;
         delete?: never;
         options?: never;
@@ -2018,6 +2555,29 @@ export interface paths {
                                 /** Format: date-time */
                                 updatedAt: string;
                             };
+                            facts: {
+                                /** Format: date */
+                                lastReviewed?: string;
+                                lifecycle?: {
+                                    /** @enum {string} */
+                                    state: "in-review";
+                                } | {
+                                    /** @enum {string} */
+                                    state: "verified";
+                                    /** Format: date */
+                                    verifiedAt?: string;
+                                } | {
+                                    replacement?: {
+                                        href: string;
+                                        title: string;
+                                    };
+                                    /** @enum {string} */
+                                    state: "deprecated";
+                                };
+                                /** @enum {string} */
+                                status?: "draft" | "published" | "archived";
+                                tags: string[];
+                            };
                             link: {
                                 expiresAt: string | null;
                                 /** @enum {string} */
@@ -2077,6 +2637,29 @@ export interface paths {
                                 title: string;
                                 /** Format: date-time */
                                 updatedAt: string;
+                            };
+                            facts: {
+                                /** Format: date */
+                                lastReviewed?: string;
+                                lifecycle?: {
+                                    /** @enum {string} */
+                                    state: "in-review";
+                                } | {
+                                    /** @enum {string} */
+                                    state: "verified";
+                                    /** Format: date */
+                                    verifiedAt?: string;
+                                } | {
+                                    replacement?: {
+                                        href: string;
+                                        title: string;
+                                    };
+                                    /** @enum {string} */
+                                    state: "deprecated";
+                                };
+                                /** @enum {string} */
+                                status?: "draft" | "published" | "archived";
+                                tags: string[];
                             };
                             rendered: {
                                 html: string;
@@ -2507,11 +3090,12 @@ export interface paths {
                         "application/json": {
                             effective: {
                                 layout: {
+                                    align?: "centre" | "start";
                                     comments: "sidenotes" | "panel";
                                     header: "readout" | "breadcrumb";
                                     history: "timeline" | "menu";
                                     navigation: "tabs" | "tree";
-                                    rules: "double" | "hairline" | "cards";
+                                    rules: "double" | "hairline" | "cards" | "plain";
                                 };
                                 layoutLocked: boolean;
                                 layoutSource: "workspace" | "organisation";
@@ -2520,11 +3104,12 @@ export interface paths {
                             revision: string | null;
                             settings: {
                                 layout?: {
+                                    align?: "centre" | "start";
                                     comments: "sidenotes" | "panel";
                                     header: "readout" | "breadcrumb";
                                     history: "timeline" | "menu";
                                     navigation: "tabs" | "tree";
-                                    rules: "double" | "hairline" | "cards";
+                                    rules: "double" | "hairline" | "cards" | "plain";
                                 };
                                 /** @enum {number} */
                                 version: 1;
@@ -2552,11 +3137,12 @@ export interface paths {
                         expectedRevision: string | null;
                         settings: {
                             layout?: {
+                                align?: "centre" | "start";
                                 comments: "sidenotes" | "panel";
                                 header: "readout" | "breadcrumb";
                                 history: "timeline" | "menu";
                                 navigation: "tabs" | "tree";
-                                rules: "double" | "hairline" | "cards";
+                                rules: "double" | "hairline" | "cards" | "plain";
                             };
                             /** @enum {number} */
                             version: 1;
@@ -2576,11 +3162,12 @@ export interface paths {
                             revision: string;
                             settings: {
                                 layout?: {
+                                    align?: "centre" | "start";
                                     comments: "sidenotes" | "panel";
                                     header: "readout" | "breadcrumb";
                                     history: "timeline" | "menu";
                                     navigation: "tabs" | "tree";
-                                    rules: "double" | "hairline" | "cards";
+                                    rules: "double" | "hairline" | "cards" | "plain";
                                 };
                                 /** @enum {number} */
                                 version: 1;
@@ -2607,7 +3194,11 @@ export interface paths {
         };
         get: {
             parameters: {
-                query?: never;
+                query?: {
+                    depth?: number;
+                    focus?: string;
+                    limit?: number;
+                };
                 header?: never;
                 path: {
                     id: string;
@@ -2624,11 +3215,60 @@ export interface paths {
                     content: {
                         "application/json": {
                             collections: {
+                                documentCount?: number;
                                 documents: components["schemas"]["TreeNode"][];
+                                documentsOffset?: number;
                                 id: string;
                                 name: string;
                                 slug: string;
+                                total?: number;
                             }[];
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/workspaces/{id}/tree/children": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query: {
+                    collection?: string;
+                    limit: number;
+                    offset: number;
+                    parent?: string;
+                };
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            documents: components["schemas"]["TreeNode"][];
+                            offset: number;
+                            total: number;
                         };
                     };
                 };
@@ -2848,7 +3488,7 @@ export interface components {
     schemas: {
         Attachment: {
             /** @enum {string} */
-            contentType: "image/png" | "image/jpeg" | "image/gif" | "image/webp" | "image/avif" | "application/pdf";
+            contentType: "image/png" | "image/jpeg" | "image/gif" | "image/webp" | "image/avif" | "image/svg+xml" | "application/vnd.jgraph.mxfile" | "application/pdf";
             /** Format: date-time */
             createdAt: string;
             documentId: string;
@@ -2858,6 +3498,7 @@ export interface components {
             size: number;
             uploadedBy: string | null;
             url: string;
+            version: number;
         };
         AttachmentList: {
             attachments: components["schemas"]["Attachment"][];
@@ -2871,18 +3512,49 @@ export interface components {
             slug: string;
             workspaceId: string;
         };
+        DrawioEditor: {
+            editor: {
+                origin: string;
+                thirdParty: boolean;
+                url: string;
+            } | null;
+        };
+        EmojiImage: {
+            frames?: number;
+            hash: string;
+            mediaType: "image/png" | "image/jpeg" | "image/gif" | "image/webp" | "image/avif" | "image/svg+xml";
+            milliseconds?: number;
+            original?: string;
+            plays?: number;
+            still?: string;
+        };
         OidcProviderSummary: {
             displayName: string;
             id: string;
         };
         OrganisationSettings: {
+            emoji?: {
+                frames?: number;
+                hash: string;
+                height: number;
+                mediaType: "image/png" | "image/jpeg" | "image/gif" | "image/webp" | "image/avif" | "image/svg+xml";
+                milliseconds?: number;
+                name: string;
+                original?: string;
+                plays?: number;
+                poster?: number;
+                still?: string;
+                stillType?: "image/gif" | "image/png";
+                width: number;
+            }[];
             layout: {
                 default: {
+                    align?: "centre" | "start";
                     comments: "sidenotes" | "panel";
                     header: "readout" | "breadcrumb";
                     history: "timeline" | "menu";
                     navigation: "tabs" | "tree";
-                    rules: "double" | "hairline" | "cards";
+                    rules: "double" | "hairline" | "cards" | "plain";
                 };
                 locked: boolean;
             };
@@ -2897,12 +3569,57 @@ export interface components {
                 publicPublishingAllowed: boolean;
                 shareLinksAllowed: boolean;
             };
-            publicNavigation: {
+            publicMenu: ({
+                id: string;
+                /** @enum {string} */
+                kind: "document";
+                label?: string;
+            } | {
+                id: string;
+                /** @enum {string} */
+                kind: "collection";
+                label?: string;
+            } | {
                 href: string;
+                /** @enum {string} */
+                kind: "url";
                 label: string;
-            }[];
+                referrer?: "hidden" | "sent";
+            } | {
+                href: string;
+                /** @enum {string} */
+                kind: "url";
+                label: string;
+            } | {
+                items: ({
+                    id: string;
+                    /** @enum {string} */
+                    kind: "document";
+                    label?: string;
+                } | {
+                    id: string;
+                    /** @enum {string} */
+                    kind: "collection";
+                    label?: string;
+                } | {
+                    href: string;
+                    /** @enum {string} */
+                    kind: "url";
+                    label: string;
+                    referrer?: "hidden" | "sent";
+                } | {
+                    href: string;
+                    /** @enum {string} */
+                    kind: "url";
+                    label: string;
+                })[];
+                /** @enum {string} */
+                kind: "group";
+                label: string;
+            })[];
             theme: {
-                base?: "press" | "instrument" | "atelier";
+                acknowledged?: string[];
+                base?: "instrument" | "calm" | "editorial" | "grid" | "atelier" | "press";
                 collections?: {
                     [key: string]: {
                         chroma: number;
@@ -2910,6 +3627,13 @@ export interface components {
                     };
                 };
                 id: string;
+                labels?: {
+                    chroma?: number;
+                    emoji?: string;
+                    hue: number;
+                    name: string;
+                    title: string;
+                }[];
                 levers: ("accent" | "tone" | "logo" | "reading-face" | "radius" | "density" | "collection-colours")[];
                 name: string;
                 overrides?: {
@@ -2923,11 +3647,14 @@ export interface components {
                         "--layout-gutter"?: string;
                         "--layout-max"?: string;
                         "--layout-wide"?: string;
+                        "--leading-reading"?: string;
                         "--palette-accent"?: string;
                         "--palette-accent-foreground"?: string;
                         "--palette-accent-hover"?: string;
+                        "--palette-accent-ink"?: string;
                         "--palette-accent-subtle"?: string;
                         "--palette-background"?: string;
+                        "--palette-body"?: string;
                         "--palette-border"?: string;
                         "--palette-border-strong"?: string;
                         "--palette-code-background"?: string;
@@ -2946,11 +3673,49 @@ export interface components {
                         "--palette-surface-raised"?: string;
                         "--palette-warning"?: string;
                         "--palette-warning-subtle"?: string;
+                        "--prose-code-size"?: string;
+                        "--prose-eyebrow-size"?: string;
+                        "--prose-eyebrow-tracking"?: string;
+                        "--prose-eyebrow-weight"?: string;
+                        "--prose-flow-after-heading"?: string;
+                        "--prose-flow-after-title"?: string;
+                        "--prose-flow-block"?: string;
+                        "--prose-flow-object-after"?: string;
+                        "--prose-flow-object-before"?: string;
+                        "--prose-h1-leading"?: string;
+                        "--prose-h1-size"?: string;
+                        "--prose-h1-tracking"?: string;
+                        "--prose-h1-weight"?: string;
+                        "--prose-h2-leading"?: string;
+                        "--prose-h2-size"?: string;
+                        "--prose-h2-space"?: string;
+                        "--prose-h2-tracking"?: string;
+                        "--prose-h2-weight"?: string;
+                        "--prose-h3-leading"?: string;
+                        "--prose-h3-size"?: string;
+                        "--prose-h3-space"?: string;
+                        "--prose-h3-tracking"?: string;
+                        "--prose-h3-weight"?: string;
+                        "--prose-h4-leading"?: string;
+                        "--prose-h4-size"?: string;
+                        "--prose-h4-tracking"?: string;
+                        "--prose-h4-weight"?: string;
+                        "--prose-lede-leading"?: string;
+                        "--prose-lede-size"?: string;
+                        "--prose-link-colour"?: string;
+                        "--prose-link-decoration"?: string;
+                        "--prose-link-offset"?: string;
+                        "--prose-link-thickness"?: string;
+                        "--prose-link-thickness-hover"?: string;
+                        "--prose-table-leading"?: string;
+                        "--prose-table-size"?: string;
                         "--radius-2xl"?: string;
                         "--radius-lg"?: string;
                         "--radius-md"?: string;
                         "--radius-sm"?: string;
                         "--radius-xl"?: string;
+                        "--text-reading"?: string;
+                        "--text-reading--line-height"?: string;
                         "--token-attr-name"?: string;
                         "--token-attr-value"?: string;
                         "--token-bold"?: string;
@@ -2991,11 +3756,14 @@ export interface components {
                         "--layout-gutter"?: string;
                         "--layout-max"?: string;
                         "--layout-wide"?: string;
+                        "--leading-reading"?: string;
                         "--palette-accent"?: string;
                         "--palette-accent-foreground"?: string;
                         "--palette-accent-hover"?: string;
+                        "--palette-accent-ink"?: string;
                         "--palette-accent-subtle"?: string;
                         "--palette-background"?: string;
+                        "--palette-body"?: string;
                         "--palette-border"?: string;
                         "--palette-border-strong"?: string;
                         "--palette-code-background"?: string;
@@ -3014,11 +3782,49 @@ export interface components {
                         "--palette-surface-raised"?: string;
                         "--palette-warning"?: string;
                         "--palette-warning-subtle"?: string;
+                        "--prose-code-size"?: string;
+                        "--prose-eyebrow-size"?: string;
+                        "--prose-eyebrow-tracking"?: string;
+                        "--prose-eyebrow-weight"?: string;
+                        "--prose-flow-after-heading"?: string;
+                        "--prose-flow-after-title"?: string;
+                        "--prose-flow-block"?: string;
+                        "--prose-flow-object-after"?: string;
+                        "--prose-flow-object-before"?: string;
+                        "--prose-h1-leading"?: string;
+                        "--prose-h1-size"?: string;
+                        "--prose-h1-tracking"?: string;
+                        "--prose-h1-weight"?: string;
+                        "--prose-h2-leading"?: string;
+                        "--prose-h2-size"?: string;
+                        "--prose-h2-space"?: string;
+                        "--prose-h2-tracking"?: string;
+                        "--prose-h2-weight"?: string;
+                        "--prose-h3-leading"?: string;
+                        "--prose-h3-size"?: string;
+                        "--prose-h3-space"?: string;
+                        "--prose-h3-tracking"?: string;
+                        "--prose-h3-weight"?: string;
+                        "--prose-h4-leading"?: string;
+                        "--prose-h4-size"?: string;
+                        "--prose-h4-tracking"?: string;
+                        "--prose-h4-weight"?: string;
+                        "--prose-lede-leading"?: string;
+                        "--prose-lede-size"?: string;
+                        "--prose-link-colour"?: string;
+                        "--prose-link-decoration"?: string;
+                        "--prose-link-offset"?: string;
+                        "--prose-link-thickness"?: string;
+                        "--prose-link-thickness-hover"?: string;
+                        "--prose-table-leading"?: string;
+                        "--prose-table-size"?: string;
                         "--radius-2xl"?: string;
                         "--radius-lg"?: string;
                         "--radius-md"?: string;
                         "--radius-sm"?: string;
                         "--radius-xl"?: string;
+                        "--text-reading"?: string;
+                        "--text-reading--line-height"?: string;
                         "--token-attr-name"?: string;
                         "--token-attr-value"?: string;
                         "--token-bold"?: string;
@@ -3059,11 +3865,14 @@ export interface components {
                         "--layout-gutter"?: string;
                         "--layout-max"?: string;
                         "--layout-wide"?: string;
+                        "--leading-reading"?: string;
                         "--palette-accent"?: string;
                         "--palette-accent-foreground"?: string;
                         "--palette-accent-hover"?: string;
+                        "--palette-accent-ink"?: string;
                         "--palette-accent-subtle"?: string;
                         "--palette-background"?: string;
+                        "--palette-body"?: string;
                         "--palette-border"?: string;
                         "--palette-border-strong"?: string;
                         "--palette-code-background"?: string;
@@ -3082,11 +3891,49 @@ export interface components {
                         "--palette-surface-raised"?: string;
                         "--palette-warning"?: string;
                         "--palette-warning-subtle"?: string;
+                        "--prose-code-size"?: string;
+                        "--prose-eyebrow-size"?: string;
+                        "--prose-eyebrow-tracking"?: string;
+                        "--prose-eyebrow-weight"?: string;
+                        "--prose-flow-after-heading"?: string;
+                        "--prose-flow-after-title"?: string;
+                        "--prose-flow-block"?: string;
+                        "--prose-flow-object-after"?: string;
+                        "--prose-flow-object-before"?: string;
+                        "--prose-h1-leading"?: string;
+                        "--prose-h1-size"?: string;
+                        "--prose-h1-tracking"?: string;
+                        "--prose-h1-weight"?: string;
+                        "--prose-h2-leading"?: string;
+                        "--prose-h2-size"?: string;
+                        "--prose-h2-space"?: string;
+                        "--prose-h2-tracking"?: string;
+                        "--prose-h2-weight"?: string;
+                        "--prose-h3-leading"?: string;
+                        "--prose-h3-size"?: string;
+                        "--prose-h3-space"?: string;
+                        "--prose-h3-tracking"?: string;
+                        "--prose-h3-weight"?: string;
+                        "--prose-h4-leading"?: string;
+                        "--prose-h4-size"?: string;
+                        "--prose-h4-tracking"?: string;
+                        "--prose-h4-weight"?: string;
+                        "--prose-lede-leading"?: string;
+                        "--prose-lede-size"?: string;
+                        "--prose-link-colour"?: string;
+                        "--prose-link-decoration"?: string;
+                        "--prose-link-offset"?: string;
+                        "--prose-link-thickness"?: string;
+                        "--prose-link-thickness-hover"?: string;
+                        "--prose-table-leading"?: string;
+                        "--prose-table-size"?: string;
                         "--radius-2xl"?: string;
                         "--radius-lg"?: string;
                         "--radius-md"?: string;
                         "--radius-sm"?: string;
                         "--radius-xl"?: string;
+                        "--text-reading"?: string;
+                        "--text-reading--line-height"?: string;
                         "--token-attr-name"?: string;
                         "--token-attr-value"?: string;
                         "--token-bold"?: string;
@@ -3121,6 +3968,7 @@ export interface components {
                 seeds: {
                     accent: {
                         chroma: number;
+                        darkLightness?: number;
                         hue: number;
                         lightness?: number;
                     };
@@ -3141,6 +3989,26 @@ export interface components {
                     tone: {
                         chroma: number;
                         hue: number;
+                        steps?: {
+                            dark?: {
+                                body?: number;
+                                border?: number;
+                                ink?: number;
+                                muted?: number;
+                                paper?: number;
+                                raised?: number;
+                                surface?: number;
+                            };
+                            light?: {
+                                body?: number;
+                                border?: number;
+                                ink?: number;
+                                muted?: number;
+                                paper?: number;
+                                raised?: number;
+                                surface?: number;
+                            };
+                        };
                     };
                 };
                 shape: {
@@ -3149,7 +4017,7 @@ export interface components {
                 };
                 type: {
                     display: {
-                        id: "inter" | "source-serif-4" | "jetbrains-mono" | "ibm-plex-sans" | "ibm-plex-serif" | "ibm-plex-mono" | "newsreader" | "instrument-sans" | "instrument-serif";
+                        id: "inter" | "source-serif-4" | "jetbrains-mono" | "ibm-plex-sans" | "ibm-plex-serif" | "ibm-plex-mono" | "newsreader" | "instrument-sans" | "instrument-serif" | "figtree";
                         /** @enum {string} */
                         source: "curated";
                     } | {
@@ -3165,7 +4033,7 @@ export interface components {
                         url: string;
                     };
                     interface: {
-                        id: "inter" | "source-serif-4" | "jetbrains-mono" | "ibm-plex-sans" | "ibm-plex-serif" | "ibm-plex-mono" | "newsreader" | "instrument-sans" | "instrument-serif";
+                        id: "inter" | "source-serif-4" | "jetbrains-mono" | "ibm-plex-sans" | "ibm-plex-serif" | "ibm-plex-mono" | "newsreader" | "instrument-sans" | "instrument-serif" | "figtree";
                         /** @enum {string} */
                         source: "curated";
                     } | {
@@ -3180,8 +4048,15 @@ export interface components {
                         source: "uploaded";
                         url: string;
                     };
+                    links?: {
+                        hoverThickness?: number;
+                        offset?: number;
+                        text: "ink" | "accent";
+                        thickness?: number;
+                        underline: "quiet" | "accent" | "current";
+                    };
                     mono: {
-                        id: "inter" | "source-serif-4" | "jetbrains-mono" | "ibm-plex-sans" | "ibm-plex-serif" | "ibm-plex-mono" | "newsreader" | "instrument-sans" | "instrument-serif";
+                        id: "inter" | "source-serif-4" | "jetbrains-mono" | "ibm-plex-sans" | "ibm-plex-serif" | "ibm-plex-mono" | "newsreader" | "instrument-sans" | "instrument-serif" | "figtree";
                         /** @enum {string} */
                         source: "curated";
                     } | {
@@ -3197,7 +4072,7 @@ export interface components {
                         url: string;
                     };
                     reading: {
-                        id: "inter" | "source-serif-4" | "jetbrains-mono" | "ibm-plex-sans" | "ibm-plex-serif" | "ibm-plex-mono" | "newsreader" | "instrument-sans" | "instrument-serif";
+                        id: "inter" | "source-serif-4" | "jetbrains-mono" | "ibm-plex-sans" | "ibm-plex-serif" | "ibm-plex-mono" | "newsreader" | "instrument-sans" | "instrument-serif" | "figtree";
                         /** @enum {string} */
                         source: "curated";
                     } | {
@@ -3212,23 +4087,115 @@ export interface components {
                         source: "uploaded";
                         url: string;
                     };
+                    scale?: {
+                        code?: {
+                            size: number;
+                        };
+                        eyebrow?: {
+                            size: number;
+                            tracking?: number;
+                            weight?: number;
+                        };
+                        flow?: {
+                            afterHeading?: number;
+                            afterTitle?: number;
+                            block?: number;
+                            objectAfter?: number;
+                            objectBefore?: number;
+                        };
+                        h1?: {
+                            lineHeight: number;
+                            size: number;
+                            tracking?: number;
+                            weight?: number;
+                        };
+                        h2?: {
+                            lineHeight: number;
+                            size: number;
+                            tracking?: number;
+                            weight?: number;
+                        };
+                        h3?: {
+                            lineHeight: number;
+                            size: number;
+                            tracking?: number;
+                            weight?: number;
+                        };
+                        h4?: {
+                            lineHeight: number;
+                            size: number;
+                            tracking?: number;
+                            weight?: number;
+                        };
+                        leading?: number;
+                        lede?: {
+                            lineHeight: number;
+                            size: number;
+                        };
+                        measure?: number;
+                        size?: number;
+                        space?: {
+                            h2?: number;
+                            h3?: number;
+                        };
+                        table?: {
+                            leading?: number;
+                            size: number;
+                        };
+                    };
                 };
                 variants: {
+                    align?: "centre" | "start";
                     comments: "sidenotes" | "panel";
                     header: "readout" | "breadcrumb";
                     history: "timeline" | "menu";
                     navigation: "tabs" | "tree";
-                    rules: "double" | "hairline" | "cards";
+                    rules: "double" | "hairline" | "cards" | "plain";
                 };
             };
             /** @enum {number} */
-            version: 1;
+            version: 2;
+        };
+        OrganisationThemeSummary: {
+            attributes: {
+                [key: string]: string;
+            };
+            emoji: {
+                frames?: number;
+                height: number;
+                milliseconds?: number;
+                name: string;
+                src: string;
+                still?: string;
+                width: number;
+            }[];
+            labelEmoji: {
+                [key: string]: string;
+            };
+            labels: string[];
+            stylesheetHref: string;
+            themeId: string;
         };
         OutlineEntry: {
             children: components["schemas"]["OutlineEntry"][];
             depth: number;
             id: string;
             text: string;
+        };
+        PublicMenuCollectionCandidate: {
+            id: string;
+            isPublic: boolean;
+            name: string;
+            workspaceName: string;
+        };
+        PublicMenuTarget: {
+            collectionName: string | null;
+            href: string | null;
+            id: string;
+            kind: "document" | "collection";
+            status: "public" | "not-public" | "missing";
+            title: string | null;
+            workspaceName: string | null;
         };
         PublicSite: {
             enabled: boolean;
@@ -3275,7 +4242,9 @@ export interface components {
             scope: "document" | "subtree";
         };
         TreeNode: {
+            childCount?: number;
             children: components["schemas"]["TreeNode"][];
+            childrenOffset?: number;
             id: string;
             shortId: string;
             slug: string;
@@ -3284,7 +4253,8 @@ export interface components {
             title: string;
         };
         "urn:quill:schema:theme-document": {
-            base?: "press" | "instrument" | "atelier";
+            acknowledged?: string[];
+            base?: "instrument" | "calm" | "editorial" | "grid" | "atelier" | "press";
             collections?: {
                 [key: string]: {
                     chroma: number;
@@ -3292,6 +4262,13 @@ export interface components {
                 };
             };
             id: string;
+            labels?: {
+                chroma?: number;
+                emoji?: string;
+                hue: number;
+                name: string;
+                title: string;
+            }[];
             levers: ("accent" | "tone" | "logo" | "reading-face" | "radius" | "density" | "collection-colours")[];
             name: string;
             overrides?: {
@@ -3305,11 +4282,14 @@ export interface components {
                     "--layout-gutter"?: string;
                     "--layout-max"?: string;
                     "--layout-wide"?: string;
+                    "--leading-reading"?: string;
                     "--palette-accent"?: string;
                     "--palette-accent-foreground"?: string;
                     "--palette-accent-hover"?: string;
+                    "--palette-accent-ink"?: string;
                     "--palette-accent-subtle"?: string;
                     "--palette-background"?: string;
+                    "--palette-body"?: string;
                     "--palette-border"?: string;
                     "--palette-border-strong"?: string;
                     "--palette-code-background"?: string;
@@ -3328,11 +4308,49 @@ export interface components {
                     "--palette-surface-raised"?: string;
                     "--palette-warning"?: string;
                     "--palette-warning-subtle"?: string;
+                    "--prose-code-size"?: string;
+                    "--prose-eyebrow-size"?: string;
+                    "--prose-eyebrow-tracking"?: string;
+                    "--prose-eyebrow-weight"?: string;
+                    "--prose-flow-after-heading"?: string;
+                    "--prose-flow-after-title"?: string;
+                    "--prose-flow-block"?: string;
+                    "--prose-flow-object-after"?: string;
+                    "--prose-flow-object-before"?: string;
+                    "--prose-h1-leading"?: string;
+                    "--prose-h1-size"?: string;
+                    "--prose-h1-tracking"?: string;
+                    "--prose-h1-weight"?: string;
+                    "--prose-h2-leading"?: string;
+                    "--prose-h2-size"?: string;
+                    "--prose-h2-space"?: string;
+                    "--prose-h2-tracking"?: string;
+                    "--prose-h2-weight"?: string;
+                    "--prose-h3-leading"?: string;
+                    "--prose-h3-size"?: string;
+                    "--prose-h3-space"?: string;
+                    "--prose-h3-tracking"?: string;
+                    "--prose-h3-weight"?: string;
+                    "--prose-h4-leading"?: string;
+                    "--prose-h4-size"?: string;
+                    "--prose-h4-tracking"?: string;
+                    "--prose-h4-weight"?: string;
+                    "--prose-lede-leading"?: string;
+                    "--prose-lede-size"?: string;
+                    "--prose-link-colour"?: string;
+                    "--prose-link-decoration"?: string;
+                    "--prose-link-offset"?: string;
+                    "--prose-link-thickness"?: string;
+                    "--prose-link-thickness-hover"?: string;
+                    "--prose-table-leading"?: string;
+                    "--prose-table-size"?: string;
                     "--radius-2xl"?: string;
                     "--radius-lg"?: string;
                     "--radius-md"?: string;
                     "--radius-sm"?: string;
                     "--radius-xl"?: string;
+                    "--text-reading"?: string;
+                    "--text-reading--line-height"?: string;
                     "--token-attr-name"?: string;
                     "--token-attr-value"?: string;
                     "--token-bold"?: string;
@@ -3373,11 +4391,14 @@ export interface components {
                     "--layout-gutter"?: string;
                     "--layout-max"?: string;
                     "--layout-wide"?: string;
+                    "--leading-reading"?: string;
                     "--palette-accent"?: string;
                     "--palette-accent-foreground"?: string;
                     "--palette-accent-hover"?: string;
+                    "--palette-accent-ink"?: string;
                     "--palette-accent-subtle"?: string;
                     "--palette-background"?: string;
+                    "--palette-body"?: string;
                     "--palette-border"?: string;
                     "--palette-border-strong"?: string;
                     "--palette-code-background"?: string;
@@ -3396,11 +4417,49 @@ export interface components {
                     "--palette-surface-raised"?: string;
                     "--palette-warning"?: string;
                     "--palette-warning-subtle"?: string;
+                    "--prose-code-size"?: string;
+                    "--prose-eyebrow-size"?: string;
+                    "--prose-eyebrow-tracking"?: string;
+                    "--prose-eyebrow-weight"?: string;
+                    "--prose-flow-after-heading"?: string;
+                    "--prose-flow-after-title"?: string;
+                    "--prose-flow-block"?: string;
+                    "--prose-flow-object-after"?: string;
+                    "--prose-flow-object-before"?: string;
+                    "--prose-h1-leading"?: string;
+                    "--prose-h1-size"?: string;
+                    "--prose-h1-tracking"?: string;
+                    "--prose-h1-weight"?: string;
+                    "--prose-h2-leading"?: string;
+                    "--prose-h2-size"?: string;
+                    "--prose-h2-space"?: string;
+                    "--prose-h2-tracking"?: string;
+                    "--prose-h2-weight"?: string;
+                    "--prose-h3-leading"?: string;
+                    "--prose-h3-size"?: string;
+                    "--prose-h3-space"?: string;
+                    "--prose-h3-tracking"?: string;
+                    "--prose-h3-weight"?: string;
+                    "--prose-h4-leading"?: string;
+                    "--prose-h4-size"?: string;
+                    "--prose-h4-tracking"?: string;
+                    "--prose-h4-weight"?: string;
+                    "--prose-lede-leading"?: string;
+                    "--prose-lede-size"?: string;
+                    "--prose-link-colour"?: string;
+                    "--prose-link-decoration"?: string;
+                    "--prose-link-offset"?: string;
+                    "--prose-link-thickness"?: string;
+                    "--prose-link-thickness-hover"?: string;
+                    "--prose-table-leading"?: string;
+                    "--prose-table-size"?: string;
                     "--radius-2xl"?: string;
                     "--radius-lg"?: string;
                     "--radius-md"?: string;
                     "--radius-sm"?: string;
                     "--radius-xl"?: string;
+                    "--text-reading"?: string;
+                    "--text-reading--line-height"?: string;
                     "--token-attr-name"?: string;
                     "--token-attr-value"?: string;
                     "--token-bold"?: string;
@@ -3441,11 +4500,14 @@ export interface components {
                     "--layout-gutter"?: string;
                     "--layout-max"?: string;
                     "--layout-wide"?: string;
+                    "--leading-reading"?: string;
                     "--palette-accent"?: string;
                     "--palette-accent-foreground"?: string;
                     "--palette-accent-hover"?: string;
+                    "--palette-accent-ink"?: string;
                     "--palette-accent-subtle"?: string;
                     "--palette-background"?: string;
+                    "--palette-body"?: string;
                     "--palette-border"?: string;
                     "--palette-border-strong"?: string;
                     "--palette-code-background"?: string;
@@ -3464,11 +4526,49 @@ export interface components {
                     "--palette-surface-raised"?: string;
                     "--palette-warning"?: string;
                     "--palette-warning-subtle"?: string;
+                    "--prose-code-size"?: string;
+                    "--prose-eyebrow-size"?: string;
+                    "--prose-eyebrow-tracking"?: string;
+                    "--prose-eyebrow-weight"?: string;
+                    "--prose-flow-after-heading"?: string;
+                    "--prose-flow-after-title"?: string;
+                    "--prose-flow-block"?: string;
+                    "--prose-flow-object-after"?: string;
+                    "--prose-flow-object-before"?: string;
+                    "--prose-h1-leading"?: string;
+                    "--prose-h1-size"?: string;
+                    "--prose-h1-tracking"?: string;
+                    "--prose-h1-weight"?: string;
+                    "--prose-h2-leading"?: string;
+                    "--prose-h2-size"?: string;
+                    "--prose-h2-space"?: string;
+                    "--prose-h2-tracking"?: string;
+                    "--prose-h2-weight"?: string;
+                    "--prose-h3-leading"?: string;
+                    "--prose-h3-size"?: string;
+                    "--prose-h3-space"?: string;
+                    "--prose-h3-tracking"?: string;
+                    "--prose-h3-weight"?: string;
+                    "--prose-h4-leading"?: string;
+                    "--prose-h4-size"?: string;
+                    "--prose-h4-tracking"?: string;
+                    "--prose-h4-weight"?: string;
+                    "--prose-lede-leading"?: string;
+                    "--prose-lede-size"?: string;
+                    "--prose-link-colour"?: string;
+                    "--prose-link-decoration"?: string;
+                    "--prose-link-offset"?: string;
+                    "--prose-link-thickness"?: string;
+                    "--prose-link-thickness-hover"?: string;
+                    "--prose-table-leading"?: string;
+                    "--prose-table-size"?: string;
                     "--radius-2xl"?: string;
                     "--radius-lg"?: string;
                     "--radius-md"?: string;
                     "--radius-sm"?: string;
                     "--radius-xl"?: string;
+                    "--text-reading"?: string;
+                    "--text-reading--line-height"?: string;
                     "--token-attr-name"?: string;
                     "--token-attr-value"?: string;
                     "--token-bold"?: string;
@@ -3503,6 +4603,7 @@ export interface components {
             seeds: {
                 accent: {
                     chroma: number;
+                    darkLightness?: number;
                     hue: number;
                     lightness?: number;
                 };
@@ -3523,6 +4624,26 @@ export interface components {
                 tone: {
                     chroma: number;
                     hue: number;
+                    steps?: {
+                        dark?: {
+                            body?: number;
+                            border?: number;
+                            ink?: number;
+                            muted?: number;
+                            paper?: number;
+                            raised?: number;
+                            surface?: number;
+                        };
+                        light?: {
+                            body?: number;
+                            border?: number;
+                            ink?: number;
+                            muted?: number;
+                            paper?: number;
+                            raised?: number;
+                            surface?: number;
+                        };
+                    };
                 };
             };
             shape: {
@@ -3531,7 +4652,7 @@ export interface components {
             };
             type: {
                 display: {
-                    id: "inter" | "source-serif-4" | "jetbrains-mono" | "ibm-plex-sans" | "ibm-plex-serif" | "ibm-plex-mono" | "newsreader" | "instrument-sans" | "instrument-serif";
+                    id: "inter" | "source-serif-4" | "jetbrains-mono" | "ibm-plex-sans" | "ibm-plex-serif" | "ibm-plex-mono" | "newsreader" | "instrument-sans" | "instrument-serif" | "figtree";
                     /** @enum {string} */
                     source: "curated";
                 } | {
@@ -3547,7 +4668,7 @@ export interface components {
                     url: string;
                 };
                 interface: {
-                    id: "inter" | "source-serif-4" | "jetbrains-mono" | "ibm-plex-sans" | "ibm-plex-serif" | "ibm-plex-mono" | "newsreader" | "instrument-sans" | "instrument-serif";
+                    id: "inter" | "source-serif-4" | "jetbrains-mono" | "ibm-plex-sans" | "ibm-plex-serif" | "ibm-plex-mono" | "newsreader" | "instrument-sans" | "instrument-serif" | "figtree";
                     /** @enum {string} */
                     source: "curated";
                 } | {
@@ -3562,8 +4683,15 @@ export interface components {
                     source: "uploaded";
                     url: string;
                 };
+                links?: {
+                    hoverThickness?: number;
+                    offset?: number;
+                    text: "ink" | "accent";
+                    thickness?: number;
+                    underline: "quiet" | "accent" | "current";
+                };
                 mono: {
-                    id: "inter" | "source-serif-4" | "jetbrains-mono" | "ibm-plex-sans" | "ibm-plex-serif" | "ibm-plex-mono" | "newsreader" | "instrument-sans" | "instrument-serif";
+                    id: "inter" | "source-serif-4" | "jetbrains-mono" | "ibm-plex-sans" | "ibm-plex-serif" | "ibm-plex-mono" | "newsreader" | "instrument-sans" | "instrument-serif" | "figtree";
                     /** @enum {string} */
                     source: "curated";
                 } | {
@@ -3579,7 +4707,7 @@ export interface components {
                     url: string;
                 };
                 reading: {
-                    id: "inter" | "source-serif-4" | "jetbrains-mono" | "ibm-plex-sans" | "ibm-plex-serif" | "ibm-plex-mono" | "newsreader" | "instrument-sans" | "instrument-serif";
+                    id: "inter" | "source-serif-4" | "jetbrains-mono" | "ibm-plex-sans" | "ibm-plex-serif" | "ibm-plex-mono" | "newsreader" | "instrument-sans" | "instrument-serif" | "figtree";
                     /** @enum {string} */
                     source: "curated";
                 } | {
@@ -3594,13 +4722,70 @@ export interface components {
                     source: "uploaded";
                     url: string;
                 };
+                scale?: {
+                    code?: {
+                        size: number;
+                    };
+                    eyebrow?: {
+                        size: number;
+                        tracking?: number;
+                        weight?: number;
+                    };
+                    flow?: {
+                        afterHeading?: number;
+                        afterTitle?: number;
+                        block?: number;
+                        objectAfter?: number;
+                        objectBefore?: number;
+                    };
+                    h1?: {
+                        lineHeight: number;
+                        size: number;
+                        tracking?: number;
+                        weight?: number;
+                    };
+                    h2?: {
+                        lineHeight: number;
+                        size: number;
+                        tracking?: number;
+                        weight?: number;
+                    };
+                    h3?: {
+                        lineHeight: number;
+                        size: number;
+                        tracking?: number;
+                        weight?: number;
+                    };
+                    h4?: {
+                        lineHeight: number;
+                        size: number;
+                        tracking?: number;
+                        weight?: number;
+                    };
+                    leading?: number;
+                    lede?: {
+                        lineHeight: number;
+                        size: number;
+                    };
+                    measure?: number;
+                    size?: number;
+                    space?: {
+                        h2?: number;
+                        h3?: number;
+                    };
+                    table?: {
+                        leading?: number;
+                        size: number;
+                    };
+                };
             };
             variants: {
+                align?: "centre" | "start";
                 comments: "sidenotes" | "panel";
                 header: "readout" | "breadcrumb";
                 history: "timeline" | "menu";
                 navigation: "tabs" | "tree";
-                rules: "double" | "hairline" | "cards";
+                rules: "double" | "hairline" | "cards" | "plain";
             };
         };
     };
@@ -3613,9 +4798,14 @@ export interface components {
 export type SchemaAttachment = components['schemas']['Attachment'];
 export type SchemaAttachmentList = components['schemas']['AttachmentList'];
 export type SchemaCollection = components['schemas']['Collection'];
+export type SchemaDrawioEditor = components['schemas']['DrawioEditor'];
+export type SchemaEmojiImage = components['schemas']['EmojiImage'];
 export type SchemaOidcProviderSummary = components['schemas']['OidcProviderSummary'];
 export type SchemaOrganisationSettings = components['schemas']['OrganisationSettings'];
+export type SchemaOrganisationThemeSummary = components['schemas']['OrganisationThemeSummary'];
 export type SchemaOutlineEntry = components['schemas']['OutlineEntry'];
+export type SchemaPublicMenuCollectionCandidate = components['schemas']['PublicMenuCollectionCandidate'];
+export type SchemaPublicMenuTarget = components['schemas']['PublicMenuTarget'];
 export type SchemaPublicSite = components['schemas']['PublicSite'];
 export type SchemaSecret = components['schemas']['Secret'];
 export type SchemaSessionSummary = components['schemas']['SessionSummary'];

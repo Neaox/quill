@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { OURS_LABEL, THEIRS_LABEL, threeWayMerge } from './three-way-merge.ts'
+import { conflictMarkers, OURS_LABEL, THEIRS_LABEL, threeWayMerge } from './three-way-merge.ts'
 
 const BASE = 'one\ntwo\nthree\nfour\nfive\n'
 
@@ -22,6 +22,16 @@ describe('threeWayMerge', () => {
     expect(threeWayMerge(BASE, both, both)).toEqual({ clean: true, text: both })
   })
 
+  it('combines edits to neighbouring blocks, as the draft merge does (ADR-021)', () => {
+    expect(
+      threeWayMerge(
+        '# Title\n\nAlpha.\n\nBravo.\n',
+        '# Title\n\nAlpha, ours.\n\nBravo.\n',
+        '# Title\n\nAlpha.\n\nBravo, theirs.\n',
+      ),
+    ).toEqual({ clean: true, text: '# Title\n\nAlpha, ours.\n\nBravo, theirs.\n' })
+  })
+
   it('marks a conflict with labelled markers when both sides changed one line', () => {
     const merged = threeWayMerge(
       BASE,
@@ -38,5 +48,27 @@ describe('threeWayMerge', () => {
 
   it('merges an empty base, which is what a new document has', () => {
     expect(threeWayMerge('', '', 'theirs\n').text).toBe('theirs\n')
+  })
+})
+
+describe('conflictMarkers', () => {
+  it('writes the two sides of a clash between markers', () => {
+    expect(conflictMarkers('a\n', 'b\n', 'c\n')).toBe(
+      `<<<<<<< ${OURS_LABEL}\nb\n=======\nc\n>>>>>>> ${THEIRS_LABEL}\n`,
+    )
+  })
+})
+
+describe('threeWayMerge: a conflict only the block merge sees', () => {
+  it('marks it block by block, so the merge view always has markers to show', () => {
+    const merged = threeWayMerge(
+      'Alpha.\n\nBravo.\n\nCharlie.\n',
+      'Bravo.\n\nCharlie.\n\nAlpha.\n',
+      'Bravo.\n\nCharlie.\n',
+    )
+    expect(merged).toEqual({
+      clean: false,
+      text: `Bravo.\n\nCharlie.\n<<<<<<< ${OURS_LABEL}\nAlpha.\n=======\n>>>>>>> ${THEIRS_LABEL}\n`,
+    })
   })
 })

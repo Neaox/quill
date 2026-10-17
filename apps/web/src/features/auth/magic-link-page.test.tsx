@@ -53,7 +53,11 @@ describe('MagicLinkPage', () => {
     })
 
     expect(
-      await screen.findByRole('heading', { level: 1, name: 'Home' }, { timeout: 3000 }),
+      await screen.findByRole(
+        'heading',
+        { level: 1, name: /^Good (morning|afternoon|evening), / },
+        { timeout: 3000 },
+      ),
     ).toBeInTheDocument()
   })
 

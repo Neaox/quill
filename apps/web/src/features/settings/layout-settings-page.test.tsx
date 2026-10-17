@@ -71,7 +71,7 @@ describe('the organisation’s layout settings', () => {
     renderApp(PATH, routes({ 'PUT /api/settings/organisation': recordingPut(bodies) }))
 
     await userEvent.click(
-      await screen.findByRole('checkbox', { name: 'Every workspace uses this arrangement' }),
+      await screen.findByRole('switch', { name: 'Every workspace uses this arrangement' }),
     )
     await userEvent.click(screen.getByRole('button', { name: 'Save' }))
 
@@ -121,7 +121,7 @@ describe('the organisation’s layout settings', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Load their version' }))
 
     expect(
-      screen.getByRole('checkbox', { name: 'Every workspace uses this arrangement' }),
+      screen.getByRole('switch', { name: 'Every workspace uses this arrangement' }),
     ).toBeChecked()
   })
 

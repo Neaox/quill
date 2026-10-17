@@ -1,7 +1,7 @@
 import { getRouteApi, Link } from '@tanstack/react-router'
 import { useState, type FormEvent } from 'react'
 
-import { Button, Callout, Input, Spinner, textLinkClassName } from '@quill/ui'
+import { Button, buttonClassName, Callout, Input, Spinner, textLinkClassName } from '@quill/ui'
 
 import { ApiError, useConsumeMagicLink, useRequestMagicLink } from '../../lib/api/index.ts'
 import { AuthCard } from './auth-card.tsx'
@@ -29,7 +29,10 @@ function ConsumeMagicLink({ token }: { readonly token: string }) {
             ? consume.error.message
             : 'This link is invalid, expired, or already used.'}
         </Callout>
-        <Link to="/magic-link" className={textLinkClassName({ size: 'sm' })}>
+        <Link
+          to="/magic-link"
+          className={buttonClassName({ variant: 'secondary', size: 'lg', className: 'w-full' })}
+        >
           Request a new link
         </Link>
       </AuthCard>
@@ -57,7 +60,14 @@ function RequestMagicLink() {
 
   if (requestLink.isSuccess) {
     return (
-      <AuthCard title="Check your email">
+      <AuthCard
+        title="Check your email"
+        footer={
+          <Link to="/sign-in" className={textLinkClassName()}>
+            Back to sign in
+          </Link>
+        }
+      >
         <Callout tone="success">
           If an account exists for {email}, a sign-in link is on its way.
         </Callout>
@@ -68,14 +78,16 @@ function RequestMagicLink() {
   return (
     <AuthCard
       title="Email me a sign-in link"
+      description="We will send a link that signs you in on this device, with no password to remember."
       footer={
         <Link to="/sign-in" className={textLinkClassName()}>
           Back to sign in
         </Link>
       }
     >
-      <form onSubmit={handleSubmit} className="flex flex-col gap-4" noValidate>
+      <form onSubmit={handleSubmit} className="flex flex-col gap-5" noValidate>
         <Input
+          size="lg"
           label="Email"
           type="email"
           name="email"
@@ -87,7 +99,7 @@ function RequestMagicLink() {
           }}
         />
         <FormError error={requestLink.error} />
-        <Button type="submit" loading={requestLink.isPending} className="w-full">
+        <Button type="submit" size="lg" loading={requestLink.isPending} className="mt-2 w-full">
           Send link
         </Button>
       </form>

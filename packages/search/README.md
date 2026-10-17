@@ -23,7 +23,9 @@ later ones, sharing this package rather than duplicating it.
   where a reader refuses one it has never shipped.
 - **Ranking, as data** (`ranking/`) — `RankingProfile` holds field weights
   (title over headings over body), a recency-decay curve, an exact-phrase
-  boost, and workspace-affinity settings. `DEFAULT_RANKING_PROFILE` is the
+  boost, a deprecation penalty (a page whose lifecycle is `deprecated` scores
+  half, so it still appears but below a current page that matched as well),
+  and workspace-affinity settings. `DEFAULT_RANKING_PROFILE` is the
   one place the defaults live, pinned by a test; an adapter translates the
   profile into its own engine's scoring (a `tsvector` weight letter, a
   Meilisearch ranking rule) rather than inventing its own notion of what

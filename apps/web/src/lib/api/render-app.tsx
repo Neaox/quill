@@ -1,11 +1,21 @@
 import { QueryClientProvider } from '@tanstack/react-query'
 import { RouterProvider, createMemoryHistory } from '@tanstack/react-router'
 import { render } from '@testing-library/react'
+import { StrictMode, type ReactNode } from 'react'
 
 import { createAppRouter, type AppRouter } from '../../app/router.tsx'
 import { ApiClientProvider } from './client-context.tsx'
 import { createQueryClient } from './query-client.ts'
 import { createFakeApiClient, type FakeRoutes } from './testing.ts'
+
+export interface RenderAppOptions {
+  /**
+   * Mounts under `<StrictMode>`, as `main.tsx` does in development: effects
+   * run, clean up and run again. Off by default; the tests that are about
+   * lifecycles turn it on (audit 2026-10-11, P0-3).
+   */
+  readonly strictMode?: boolean
+}
 
 /**
  * Mounts the **application's own router** — `createAppRouter`, the same
@@ -24,7 +34,11 @@ import { createFakeApiClient, type FakeRoutes } from './testing.ts'
  * plugin that writes it: the components are the ones in the route files,
  * loaded eagerly, which is what a test wants anyway.
  */
-export function renderApp(initialPath: string, routes: FakeRoutes = {}) {
+export function renderApp(
+  initialPath: string,
+  routes: FakeRoutes = {},
+  { strictMode = false }: RenderAppOptions = {},
+) {
   const apiClient = createFakeApiClient(routes)
   // The same cycle the real composition root has, wired the same way: the
   // handler closes over a slot the router fills on the next line.
@@ -43,13 +57,14 @@ export function renderApp(initialPath: string, routes: FakeRoutes = {}) {
     createMemoryHistory({ initialEntries: [initialPath] }),
   )
 
-  const view = render(
+  const app: ReactNode = (
     <ApiClientProvider client={apiClient}>
       <QueryClientProvider client={queryClient}>
         <RouterProvider router={router} />
       </QueryClientProvider>
-    </ApiClientProvider>,
+    </ApiClientProvider>
   )
+  const view = render(strictMode ? <StrictMode>{app}</StrictMode> : app)
 
   return { ...view, router, queryClient, apiClient }
 }

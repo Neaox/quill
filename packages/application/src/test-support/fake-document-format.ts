@@ -1,4 +1,7 @@
 import type {
+  ComparedChange,
+  ComparedContent,
+  ComparedSource,
   DocumentFormat,
   DraftContent,
   ExtractedLink,
@@ -9,8 +12,13 @@ import type {
   PublishableDocument,
   PublishedDocumentView,
   RenderedContent,
+  RenderInput,
 } from '../ports/document-format.ts'
-import { DRAFT_CONTENT_VERSION, RENDERED_CONTENT_VERSION } from '../ports/document-format.ts'
+import {
+  COMPARED_CONTENT_VERSION,
+  DRAFT_CONTENT_VERSION,
+  RENDERED_CONTENT_VERSION,
+} from '../ports/document-format.ts'
 import type { DocumentId } from '@quill/domain'
 
 /**
@@ -108,7 +116,7 @@ export function createFakeDocumentFormat(options: FakeDocumentFormatOptions = {}
       }
     },
 
-    render({ markdown, linkTitles }): RenderedContent {
+    render({ markdown, linkTitles, drawings, labels, emoji, labelEmoji }): RenderedContent {
       const { frontMatter, body } = parse(markdown)
       const headings = [...headingsOf(body)]
       return {
@@ -116,7 +124,7 @@ export function createFakeDocumentFormat(options: FakeDocumentFormatOptions = {}
         // The titles are part of the render input, so a body that links to a
         // renamed document renders differently — which is what the cache key
         // covering them is for (ADR-031).
-        html: `<article>${titled(body, linkTitles)}</article>`,
+        html: `<article>${titled(body, linkTitles)}${drawn(drawings)}${labelled(labels)}${emojiShown(emoji, labelEmoji)}</article>`,
         outline: headings.map((text): OutlineEntry => ({
           id: text.toLowerCase().replaceAll(' ', '-'),
           depth: 1,
@@ -142,6 +150,79 @@ export function createFakeDocumentFormat(options: FakeDocumentFormatOptions = {}
       const { frontMatter, body } = parse(markdown)
       return { version: DRAFT_CONTENT_VERSION, frontMatter, ast: { body } }
     },
+
+    /**
+     * Line by line and position by position: a line that differs in place is
+     * changed, one only the newer body has is added, one only the older has
+     * is removed. Enough to see a use case hand the right two texts over.
+     */
+    compare({ before, after }): ComparedContent {
+      const older = parse(before)
+        .body.split(NEWLINE)
+        .filter((line) => line !== '')
+      const newer = parse(after)
+        .body.split(NEWLINE)
+        .filter((line) => line !== '')
+      const changes = Array.from(
+        { length: Math.max(older.length, newer.length) },
+        (_, index): ComparedChange | undefined => {
+          const was = older[index]
+          const now = newer[index]
+          if (was === now) return undefined
+          const change = was === undefined ? 'added' : now === undefined ? 'removed' : 'changed'
+          return {
+            id: `c${index + 1}`,
+            change,
+            block: 'paragraph',
+            excerpt: now ?? was ?? '',
+            wordsAdded: now === undefined ? 0 : 1,
+            wordsRemoved: was === undefined ? 0 : 1,
+          }
+        },
+      ).filter((change) => change !== undefined)
+      const count = (kind: ComparedChange['change']) =>
+        changes.filter((change) => change.change === kind).length
+      return {
+        version: COMPARED_CONTENT_VERSION,
+        html: newer.join(NEWLINE),
+        sections: [],
+        changes,
+        summary: {
+          sections: changes.length === 0 ? 0 : 1,
+          added: count('added'),
+          removed: count('removed'),
+          changed: count('changed'),
+          moved: 0,
+          wordsAdded: changes.reduce((total, change) => total + change.wordsAdded, 0),
+          wordsRemoved: changes.reduce((total, change) => total + change.wordsRemoved, 0),
+        },
+        properties: [],
+      }
+    },
+
+    compareSource(before, after): ComparedSource {
+      const older = before.split(NEWLINE)
+      const newer = new Set(after.split(NEWLINE))
+      const kept = new Set(older)
+      return {
+        lines: [
+          ...older.map((text, index) => ({
+            change: newer.has(text) ? ('equal' as const) : ('removed' as const),
+            before: index + 1,
+            segments: [{ change: 'equal' as const, text }],
+          })),
+          ...after
+            .split(NEWLINE)
+            .filter((text) => !kept.has(text))
+            .map((text) => ({
+              change: 'added' as const,
+              segments: [{ change: 'added' as const, text }],
+            })),
+        ],
+        wordsAdded: 0,
+        wordsRemoved: 0,
+      }
+    },
   }
 }
 
@@ -155,6 +236,29 @@ function titled(body: string, linkTitles: ReadonlyMap<DocumentId, string>): stri
     const title = linkTitles.get(id as DocumentId)
     return title === undefined ? match : `[${title}](/d/${id})`
   })
+}
+
+/** The drawings a body was handed, shown so a test can see which ones reached the renderer. */
+function drawn(drawings: RenderInput['drawings']): string {
+  return [...(drawings ?? new Map())]
+    .map(([url, drawing]) => `<drawing src="${url}">${drawing.markup}</drawing>`)
+    .join('')
+}
+
+/** The label names a body was rendered with, so a test can see they arrived (ADR-037). */
+function labelled(labels: RenderInput['labels']): string {
+  return [...(labels ?? [])].map((name) => `<label name="${name}"/>`).join('')
+}
+
+/** The emoji a body was rendered with, and each label's leading one (ADR-038). */
+function emojiShown(emoji: RenderInput['emoji'], leading: RenderInput['labelEmoji']): string {
+  const images = [...(emoji ?? new Map())].map(
+    ([name, image]) => `<emoji name="${name}" src="${image.src}"/>`,
+  )
+  const leads = [...(leading ?? new Map())].map(
+    ([label, name]) => `<lead label="${label}" emoji="${name}"/>`,
+  )
+  return [...images, ...leads].join('')
 }
 
 /** The Markdown a document with this front matter and body would be written as. */

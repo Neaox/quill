@@ -31,9 +31,9 @@ function declarations(css: string): ReadonlyMap<string, string> {
  *
  * `--anchor-offset` is where a heading lands when it is scrolled to, which is
  * the height of whichever bar is above it: the application shell's in the app,
- * the site header's on the web.
+ * the site header's on the web. `--sticky-chrome-top` is that height.
  */
-const DELIBERATELY_DIFFERENT = new Set(['--anchor-offset'])
+const DELIBERATELY_DIFFERENT = new Set(['--anchor-offset', '--sticky-chrome-top'])
 
 /**
  * Names `tokens.css` declares that the public site deliberately does not.
@@ -110,7 +110,12 @@ describe('the public site stylesheet', () => {
   })
 
   it('names the stylesheets the server serves, in the order they cascade', () => {
-    expect(PUBLIC_SITE_STYLESHEETS).toEqual(['public-site.css', 'layout.css', 'prose.css'])
+    expect(PUBLIC_SITE_STYLESHEETS).toEqual([
+      'public-site.css',
+      'layout.css',
+      'prose.css',
+      'byline.css',
+    ])
   })
 
   it('resolves each of them to a file that exists', () => {

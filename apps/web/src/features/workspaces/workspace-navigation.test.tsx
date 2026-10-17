@@ -147,6 +147,9 @@ describe('WorkspaceTree navigation', () => {
     renderTree()
 
     const parent = await screen.findByRole('link', { name: 'Quarterly plan' })
+    // Closed until opened: a closed branch's children are not drawn at all.
+    expect(screen.queryByRole('link', { name: 'Appendix' })).not.toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Expand Quarterly plan' }))
     const child = screen.getByRole('link', { name: 'Appendix' })
     // The nesting is the list structure, not a class: the child's list is
     // inside the parent's item.
@@ -341,5 +344,89 @@ describe('WorkspaceTree collection flows', () => {
     await waitFor(() => {
       expect(deleted).toEqual(['col-archive'])
     })
+  })
+})
+
+/*
+ * Regression (2026-10-17): the seed's "Stress log" — twenty thousand documents
+ * in one collection — hung every signed-in page. The sidebar drew a router
+ * link and a menu for every one of them, and when the menus' machinery
+ * arrived in idle time every one of those menus became a full Radix menu in
+ * one synchronous commit. The sidebar now draws a page of the collection, and
+ * a menu's machinery mounts only for the menu that is pressed.
+ */
+describe('WorkspaceTree with a very large collection', () => {
+  const STRESS = () =>
+    jsonResponse(200, {
+      collections: [
+        {
+          id: 'col-stress',
+          name: 'Stress log',
+          slug: 'stress-log',
+          documents: Array.from({ length: 20_000 }, (_, index) =>
+            treeNode(`entry-${index + 1}`, `Entry ${index + 1}`),
+          ),
+        },
+      ],
+    })
+
+  it('draws a page of the collection, not every document in it', async () => {
+    renderTree({ currentDocumentId: 'entry-15000' }, { 'GET /api/workspaces/{id}/tree': STRESS })
+
+    const nav = await screen.findByRole('navigation', { name: 'Documents' })
+    expect(await within(nav).findByRole('link', { name: 'Entry 15000' })).toHaveAttribute(
+      'aria-current',
+      'page',
+    )
+    expect(within(nav).getAllByRole('link').length).toBeLessThanOrEqual(50)
+    expect(within(nav).getByRole('button', { name: /^Show 50 more/ })).toBeInTheDocument()
+    expect(screen.getByText('20,000')).toBeInTheDocument()
+  })
+})
+
+describe('WorkspaceTree loading a slice at a time', () => {
+  it('asks for the tree opened down to the open document, and for children as they are opened', async () => {
+    const asked: string[] = []
+    renderTree(
+      { currentDocumentId: 'doc-1' },
+      {
+        'GET /api/workspaces/{id}/tree': (request) => {
+          asked.push(new URL(request.url).search)
+          return jsonResponse(200, {
+            collections: [
+              {
+                id: 'col-guides',
+                name: 'Guides',
+                slug: 'guides',
+                documentCount: 2,
+                documentsOffset: 0,
+                total: 5,
+                documents: [
+                  { ...treeNode('doc-1', 'Quarterly plan'), childCount: 0, childrenOffset: 0 },
+                  { ...treeNode('doc-2', 'Handbook'), childCount: 2, childrenOffset: 0 },
+                ],
+              },
+            ],
+          })
+        },
+        'GET /api/workspaces/{id}/tree/children': (request) => {
+          asked.push(new URL(request.url).search)
+          return jsonResponse(200, {
+            total: 2,
+            offset: 0,
+            documents: [
+              { ...treeNode('doc-4', 'Benefits'), childCount: 0, childrenOffset: 0 },
+              { ...treeNode('doc-5', 'Leave'), childCount: 0, childrenOffset: 0 },
+            ],
+          })
+        },
+      },
+    )
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Expand Handbook' }))
+    expect(await screen.findByRole('link', { name: 'Leave' })).toBeInTheDocument()
+    expect(asked[0]).toContain('depth=1')
+    expect(asked[0]).toContain('focus=doc-1')
+    expect(asked.at(-1)).toContain('parent=doc-2')
   })
 })

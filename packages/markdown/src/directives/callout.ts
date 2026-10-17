@@ -8,7 +8,11 @@ import type {
 } from './definition.ts'
 import { attribute, bodyOf, issue, label, labelParagraph } from './definition.ts'
 
-export const CALLOUT_TYPES = ['note', 'info', 'tip', 'warning', 'caution'] as const
+/**
+ * The callout kinds: GitHub's five alert kinds (`> [!NOTE]`, rendered as
+ * callouts by `handlers.ts`), and `info`, which Quill had first.
+ */
+export const CALLOUT_TYPES = ['note', 'info', 'tip', 'important', 'warning', 'caution'] as const
 
 export type CalloutType = (typeof CALLOUT_TYPES)[number]
 

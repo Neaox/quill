@@ -12,6 +12,8 @@ lost and the idea is not raised again from scratch.
 | Idea | Status | Pick up when |
 | --- | --- | --- |
 | [External Git repositories as read-only document sources](external-git-sources.md) | proposed | A team asks to index docs that live next to code, or remote sync (plan §9.6) is scheduled |
+| [Connectors for work trackers and code hosts](work-tracker-and-code-host-connectors.md) | proposed | Live blocks land (ADR-032, M5), or a team asks for ticket and PR status in documents |
+| [Microsoft 365 connector: Excel ranges as live tables](microsoft-365-connector.md) | proposed | Live blocks and connectors land, or an organisation's documents quote figures kept in Excel |
 
 ## Adding an idea
 

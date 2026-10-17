@@ -20,6 +20,7 @@ export type NeutralRole =
   | 'border'
   | 'borderStrong'
   | 'muted'
+  | 'body'
   | 'ink'
   | 'codeBackground'
   | 'placeholder'
@@ -42,6 +43,7 @@ const CHROMA_FACTORS: Record<NeutralRole, { readonly factor: number; readonly ce
   borderStrong: { factor: 2, ceiling: CHROMA_BUDGET.muted },
   muted: { factor: 2, ceiling: CHROMA_BUDGET.muted },
   placeholder: { factor: 2, ceiling: CHROMA_BUDGET.muted },
+  body: { factor: 2.5, ceiling: 0.025 },
   ink: { factor: 2.5, ceiling: 0.025 },
 }
 
@@ -67,11 +69,21 @@ const chromaFor = (
   return Math.min(scaled, cap(role))
 }
 
-const lightnessFor = (role: NeutralRole, scheme: Scheme): number => {
-  if (role === 'borderStrong' || role === 'codeBackground' || role === 'placeholder') {
-    return EXTRA_TARGETS[role][scheme]
+/**
+ * Where a role starts: the theme's own step when it states one, the shared
+ * register otherwise. The code background follows the theme's surface step,
+ * because it is drawn as a surface and must stay the same distance from it.
+ */
+const lightnessFor = (role: NeutralRole, tone: ToneSeedValue, scheme: Scheme): number => {
+  const steps = tone.steps?.[scheme]
+  if (role === 'codeBackground') {
+    const surface = steps?.surface
+    return surface === undefined
+      ? EXTRA_TARGETS.codeBackground[scheme]
+      : surface + (EXTRA_TARGETS.codeBackground[scheme] - TARGET_LIGHTNESS.surface[scheme])
   }
-  return TARGET_LIGHTNESS[role][scheme]
+  if (role === 'borderStrong' || role === 'placeholder') return EXTRA_TARGETS[role][scheme]
+  return steps?.[role] ?? TARGET_LIGHTNESS[role][scheme]
 }
 
 const seed = (
@@ -80,7 +92,7 @@ const seed = (
   scheme: Scheme,
   cap: ChromaCeiling<NeutralRole>,
 ): Colour => ({
-  lightness: lightnessFor(role, scheme),
+  lightness: lightnessFor(role, tone, scheme),
   chroma: chromaFor(role, tone, scheme, cap),
   hue: tone.hue,
 })
@@ -116,6 +128,21 @@ export const buildNeutralRamp = (
         contrastRatio(candidate, paper) >= floor.ratio &&
         contrastRatio(candidate, surface) >= floor.ratio &&
         apcaLc(candidate, paper) >= floor.lc
+      )
+    }),
+  )
+
+  /*
+   * The reading ink: running text, a visible step lighter than the ink that
+   * headings and emphasis are set in, and held to the full body floor because
+   * it is what a reader reads.
+   */
+  const body = take(
+    settleContrast('body', seed('body', tone, scheme, cap), (candidate) => {
+      const floor = CONTRAST_FLOORS.body
+      return [paper, surface, raised].every(
+        (ground) =>
+          contrastRatio(candidate, ground) >= floor.ratio && apcaLc(candidate, ground) >= floor.lc,
       )
     }),
   )
@@ -156,6 +183,7 @@ export const buildNeutralRamp = (
       border,
       borderStrong,
       muted,
+      body,
       ink,
       codeBackground,
       placeholder,

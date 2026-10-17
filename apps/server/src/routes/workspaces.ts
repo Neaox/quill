@@ -1,6 +1,7 @@
 import { Type } from '@sinclair/typebox'
 import type { TypeBoxTypeProvider } from '@fastify/type-provider-typebox'
 import {
+  childrenPage,
   createDocument,
   createWorkspace,
   deleteWorkspace,
@@ -8,10 +9,13 @@ import {
   listVisibleDocuments,
   listVisibleWorkspaces,
   renameWorkspace,
+  windowTree,
+  type WindowedCollection,
+  type WindowedNode,
 } from '@quill/application'
 import { slugify } from '@quill/domain'
 import type { CollectionId, DocumentId } from '@quill/domain'
-import type { FastifyPluginAsync } from 'fastify'
+import type { FastifyPluginAsync, FastifyRequest } from 'fastify'
 
 import {
   authorizerFor,
@@ -19,7 +23,7 @@ import {
   requireInstanceAdmin,
   requireWorkspaceAccess,
 } from '../application/authorization.ts'
-import { resolveWorkspaceId } from '../application/references.ts'
+import { resolveDocumentId, resolveWorkspaceId } from '../application/references.ts'
 import type { AppDependencies } from '../dependencies.ts'
 import { AppError, conflict, notFound, unprocessable } from '../errors.ts'
 import { requireAuthenticatedSession } from '../plugins/session.ts'
@@ -28,11 +32,17 @@ import {
   CreatedDocumentSchema,
   DocumentSchema,
   IdParamsSchema,
+  TreeChildrenQuerySchema,
+  TreeChildrenSchema,
   WorkspaceIdParamsSchema,
+  WorkspaceTreeQuerySchema,
   WorkspaceTreeSchema,
   documentResponse,
   draftResponse,
 } from './document-schemas.ts'
+
+/** A sidebar's page: what `TREE_PAGE_SIZE` draws before "Show more". */
+const TREE_PAGE_LIMIT = 50
 
 const CreateWorkspaceBody = Type.Object({
   unitId: Type.String(),
@@ -216,24 +226,84 @@ export function workspaceRoutes(deps: AppDependencies): FastifyPluginAsync {
       },
     )
 
+    /** The reader's whole tree: the one pass every cut of it is taken from. */
+    async function readerTree(request: FastifyRequest, workspace: string) {
+      const target = await resolveWorkspaceId(deps, workspace)
+      const authorizer = authorizerFor(deps, request)
+      const access = await requireWorkspaceAccess(authorizer, target, 'view')
+      const tree = await getWorkspaceTree(deps, {
+        workspaceId: target,
+        identities: await authorizer.identities(),
+        seesEverything: access.isInstanceAdmin,
+      })
+      /* v8 ignore next 2 -- the authorizer has already walked this workspace's tree. */
+      if (tree.kind !== 'tree') throw notFound('Workspace not found')
+      return tree.collections
+    }
+
+    /*
+     * Without `depth`, the whole tree, as it has always been answered. With
+     * it, the tree a sidebar draws: that many levels, a page of each list,
+     * and — with `focus` — the way down to the document being read, its page
+     * of siblings at every level, and its own children (ADR-033: additive).
+     */
     app.get(
       '/api/workspaces/:id/tree',
       {
         preHandler: app.requireSession,
-        schema: { params: IdParamsSchema, response: { 200: WorkspaceTreeSchema } },
+        schema: {
+          params: IdParamsSchema,
+          querystring: WorkspaceTreeQuerySchema,
+          response: { 200: WorkspaceTreeSchema },
+        },
       },
       async (request) => {
-        const target = await resolveWorkspaceId(deps, request.params.id)
-        const authorizer = authorizerFor(deps, request)
-        const access = await requireWorkspaceAccess(authorizer, target, 'view')
-        const tree = await getWorkspaceTree(deps, {
-          workspaceId: target,
-          identities: await authorizer.identities(),
-          seesEverything: access.isInstanceAdmin,
+        const collections = await readerTree(request, request.params.id)
+        const { depth, limit, focus } = request.query
+        const focused =
+          focus === undefined
+            ? undefined
+            : // A focus that does not resolve simply opens nothing.
+              await resolveDocumentId(deps, focus).catch(() => undefined)
+        const windowed = windowTree(collections, {
+          depth,
+          limit: depth === undefined ? Number.POSITIVE_INFINITY : (limit ?? TREE_PAGE_LIMIT),
+          focus: focused,
         })
-        /* v8 ignore next 2 -- the authorizer has already walked this workspace's tree. */
-        if (tree.kind !== 'tree') throw notFound('Workspace not found')
-        return { collections: tree.collections.map(toCollectionResponse) }
+        return { collections: windowed.map(toCollectionResponse) }
+      },
+    )
+
+    /*
+     * One page of a list in the tree: a collection's top level or a
+     * document's children, each entry with its count. Cut from the same
+     * reader-filtered tree, so a parent the reader cannot see is not found.
+     */
+    app.get(
+      '/api/workspaces/:id/tree/children',
+      {
+        preHandler: app.requireSession,
+        schema: {
+          params: IdParamsSchema,
+          querystring: TreeChildrenQuerySchema,
+          response: { 200: TreeChildrenSchema },
+        },
+      },
+      async (request) => {
+        const { parent, collection, offset, limit } = request.query
+        if ((parent === undefined) === (collection === undefined)) {
+          throw new AppError(400, 'invalid_query', 'Name exactly one of parent and collection')
+        }
+        const collections = await readerTree(request, request.params.id)
+        const page = childrenPage(
+          collections,
+          collection === undefined
+            ? { kind: 'document', parentId: await resolveDocumentId(deps, parent ?? '') }
+            : { kind: 'collection', collectionId: collection as CollectionId },
+          { offset, limit },
+        )
+        if (page.kind === 'not-found') throw notFound('Not found in this workspace')
+        return { documents: page.documents.map(toTreeNode), total: page.total, offset: page.offset }
       },
     )
 
@@ -333,27 +403,26 @@ export function workspaceRoutes(deps: AppDependencies): FastifyPluginAsync {
   }
 }
 
-function toCollectionResponse(collection: {
-  id: string
-  name: string
-  slug: string
-  documents: readonly TreeNodeView[]
-}): { id: string; name: string; slug: string; documents: TreeNodeResponse[] } {
+function toCollectionResponse(collection: WindowedCollection): CollectionResponse {
   return {
     id: collection.id,
     name: collection.name,
     slug: collection.slug,
     documents: collection.documents.map(toTreeNode),
+    documentCount: collection.documentCount,
+    documentsOffset: collection.documentsOffset,
+    total: collection.total,
   }
 }
 
-interface TreeNodeView {
-  readonly id: string
-  readonly shortId: string
-  readonly title: string
-  readonly slug: string
-  readonly status: ReturnType<typeof documentResponse>['status']
-  readonly children: readonly TreeNodeView[]
+interface CollectionResponse {
+  id: string
+  name: string
+  slug: string
+  documents: TreeNodeResponse[]
+  documentCount: number
+  documentsOffset: number
+  total: number
 }
 
 interface TreeNodeResponse {
@@ -361,12 +430,14 @@ interface TreeNodeResponse {
   shortId: string
   title: string
   slug: string
-  status: TreeNodeView['status']
+  status: WindowedNode['status']
   children: TreeNodeResponse[]
+  childCount: number
+  childrenOffset: number
 }
 
 /** The slug travels derived from the title, exactly as it does on a document (ADR-035). */
-function toTreeNode(node: TreeNodeView): TreeNodeResponse {
+function toTreeNode(node: WindowedNode): TreeNodeResponse {
   return {
     id: node.id,
     shortId: node.shortId,
@@ -374,5 +445,7 @@ function toTreeNode(node: TreeNodeView): TreeNodeResponse {
     slug: slugify(node.title),
     status: node.status,
     children: node.children.map(toTreeNode),
+    childCount: node.childCount,
+    childrenOffset: node.childrenOffset,
   }
 }

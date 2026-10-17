@@ -5,11 +5,13 @@ import type { DocumentId } from '@quill/domain'
 import { LOCK_TTL_MS } from '../ports/persistence.ts'
 import { createFakeContentStore } from '../test-support/fake-content-store.ts'
 import type { FakeContentStore } from '../test-support/fake-content-store.ts'
+import { createInMemoryBlobStore } from '../test-support/in-memory-blob-store.ts'
 import { createFakeDocumentFormat, serialise } from '../test-support/fake-document-format.ts'
 import { createFakeClock, createFakeHasher, createFakeIdGenerator } from '../test-support/fakes.ts'
 import type { FakeClock } from '../test-support/fakes.ts'
 import { createInMemoryUnitOfWork } from '../test-support/in-memory-repositories.ts'
 import type { InMemoryUnitOfWork } from '../test-support/in-memory-repositories.ts'
+import { createFakeSettings } from '../test-support/fake-settings.ts'
 import { createDocument } from './create-document.ts'
 import { getEnvelope, reviewOf } from './get-envelope.ts'
 import type { EnvelopeDependencies } from './get-envelope.ts'
@@ -67,6 +69,8 @@ beforeEach(async () => {
     clock,
     ids: createFakeIdGenerator(),
     hasher: createFakeHasher(),
+    blobStore: createInMemoryBlobStore(),
+    settings: createFakeSettings(),
   }
   await uow.repos.users.create({
     id: AUTHOR,
@@ -130,7 +134,67 @@ describe('getEnvelope', () => {
       lastPublished: null,
       review: null,
       health: [],
+      facts: { status: undefined, owners: [], tags: [] },
     })
+  })
+
+  it('states the published facts, with owners who are people named and never addressed', async () => {
+    await uow.repos.users.markEmailVerified(AUTHOR, NOW)
+    const id = await draft('Overview', '# Overview', {
+      status: 'draft',
+      type: 'Runbook',
+      owners: ['ada@example.com', 'platform'],
+      tags: ['ops'],
+      review: { interval: '6m', lastReviewed: '2026-01-02' },
+    })
+    await publishDocument(deps, { documentId: id, base: null, author, sessionId: SESSION })
+    const result = await getEnvelope(deps, { documentId: id, capabilities: editor })
+    expect(result.kind === 'envelope' && result.envelope.facts).toEqual({
+      status: 'draft',
+      lifecycle: undefined,
+      type: 'Runbook',
+      owners: [
+        { label: 'Ada', person: true },
+        { label: 'platform', person: false },
+      ],
+      tags: ['ops'],
+      reviewInterval: '6m',
+      lastReviewed: '2026-01-02',
+    })
+  })
+
+  it('says whether the draft holds changes nothing has published, to whoever may edit', async () => {
+    const id = await draft('Overview', '# Overview')
+    const envelope = async (capabilities = editor) => {
+      const result = await getEnvelope(deps, { documentId: id, capabilities })
+      if (result.kind !== 'envelope') throw new Error(result.kind)
+      return result.envelope
+    }
+    // Never published: the document is a draft, which is not "changes".
+    expect((await envelope()).unpublishedChanges).toBe(false)
+
+    await publishDocument(deps, { documentId: id, base: null, author, sessionId: SESSION })
+    // The publish moved the draft onto what it published.
+    expect((await envelope()).unpublishedChanges).toBe(false)
+
+    clock.advance(60_000)
+    await uow.repos.locks.acquire({
+      documentId: id,
+      userId: AUTHOR,
+      sessionId: SESSION,
+      now: clock.now(),
+    })
+    const saved = await uow.repos.drafts.find(id)
+    await uow.repos.drafts.write({
+      documentId: id,
+      sessionId: SESSION,
+      expectedVersion: saved?.draftVersion ?? 0,
+      ast: saved?.ast,
+      now: clock.now(),
+    })
+    expect((await envelope()).unpublishedChanges).toBe(true)
+    // A draft is unpublished work: only someone who may write it is told it exists.
+    expect((await envelope(capabilitiesForRole('viewer'))).unpublishedChanges).toBe(false)
   })
 
   it('names the lock holder and the last publish', async () => {

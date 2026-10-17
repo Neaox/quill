@@ -15,6 +15,7 @@
   },
   "dependencies": {
     "@quill/brand": "workspace:*",
+    "@quill/domain": "workspace:*",
     "@sinclair/typebox": "^0.34.52",
     "ajv": "^8.20.0",
     "apca-w3": "^0.1.9",

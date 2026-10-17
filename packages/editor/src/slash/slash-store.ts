@@ -1,4 +1,5 @@
-import type { SlashItem } from './slash-items.ts'
+import type { SlashItem, SlashPicker, SlashPickerOption } from './slash-item.ts'
+import type { SlashSection } from './slash-sections.ts'
 
 /**
  * The bridge between the suggestion plugin and React.
@@ -8,6 +9,10 @@ import type { SlashItem } from './slash-items.ts'
  * `useSyncExternalStore`, so the menu is an ordinary component of an external
  * store rather than a component that sets state from an effect. The store is
  * plain TypeScript and is tested without rendering anything.
+ *
+ * It is in one of three states — closed, the menu, or an item's picker — and
+ * the states are a discriminated union, so a picker with no command to run
+ * cannot be represented.
  */
 
 export interface SlashRect {
@@ -16,29 +21,35 @@ export interface SlashRect {
   readonly left: number
 }
 
-export interface SlashSnapshot {
-  readonly open: boolean
+export interface SlashMenuState {
+  readonly mode: 'menu'
   readonly query: string
-  readonly items: readonly SlashItem[]
+  readonly sections: readonly SlashSection[]
   readonly rect: SlashRect | null
   /** Runs the item and removes the `/query` the author typed. */
   apply(item: SlashItem): void
 }
 
-const CLOSED: SlashSnapshot = {
-  open: false,
-  query: '',
-  items: [],
-  rect: null,
-  apply: () => {},
+export interface SlashPickerState {
+  readonly mode: 'picker'
+  readonly picker: SlashPicker
+  readonly rect: SlashRect | null
+  choose(option: SlashPickerOption): void
+  /** Gives up, inserting nothing, and puts the caret back. */
+  cancel(): void
 }
 
-export type SlashOpenState = Omit<SlashSnapshot, 'open'>
+export type SlashSnapshot = { readonly mode: 'closed' } | SlashMenuState | SlashPickerState
+
+const CLOSED: SlashSnapshot = { mode: 'closed' }
 
 export interface SlashStore {
   subscribe(listener: () => void): () => void
   getSnapshot(): SlashSnapshot
-  open(state: SlashOpenState): void
+  showMenu(state: Omit<SlashMenuState, 'mode'>): void
+  showPicker(state: Omit<SlashPickerState, 'mode'>): void
+  /** Closes the menu; a picker is left alone, because choosing an item that opens one closes the menu. */
+  closeMenu(): void
   close(): void
   /** The menu lends the store its keyboard handling while the menu is shown. */
   setKeyHandler(handler: ((key: string) => boolean) | null): void
@@ -63,17 +74,23 @@ export function createSlashStore(): SlashStore {
       }
     },
     getSnapshot: () => snapshot,
-    open(state) {
-      publish({ ...state, open: true })
+    showMenu(state) {
+      publish({ ...state, mode: 'menu' })
+    },
+    showPicker(state) {
+      publish({ ...state, mode: 'picker' })
+    },
+    closeMenu() {
+      if (snapshot.mode === 'menu') publish(CLOSED)
     },
     close() {
-      if (snapshot.open) publish(CLOSED)
+      if (snapshot.mode !== 'closed') publish(CLOSED)
     },
     setKeyHandler(handler) {
       keyHandler = handler
     },
     handleKey(key) {
-      return snapshot.open && keyHandler !== null ? keyHandler(key) : false
+      return snapshot.mode === 'menu' && keyHandler !== null ? keyHandler(key) : false
     },
   }
 }

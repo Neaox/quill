@@ -167,6 +167,14 @@ describe('optimistic draft versions', () => {
   })
 })
 
+describe('stamp', () => {
+  it('answers when the draft was written and what it is based on, without its tree', async () => {
+    expect(await drafts.stamp(DOC)).toBeNull()
+    await drafts.init({ documentId: DOC, baseRevision: null, ast: { big: 'tree' }, now: at(5) })
+    expect(await drafts.stamp(DOC)).toEqual({ baseRevision: null, updatedAt: at(5) })
+  })
+})
+
 describe('find', () => {
   it('returns null when no draft exists', async () => {
     expect(await drafts.find(DOC)).toBeNull()

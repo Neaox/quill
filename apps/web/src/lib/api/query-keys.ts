@@ -9,6 +9,11 @@
  */
 export const queryKeys = {
   me: ['me'] as const,
+  /**
+   * The signed-in person's own preferences (ADR-034). One entry per session;
+   * signing out clears every entry, so the next person never sees these.
+   */
+  personPreferences: () => ['person-preferences'] as const,
   /** The sign-in page's provider buttons (ADR-011). One list per instance. */
   oidcProviders: ['oidc-providers'] as const,
   units: (parentId?: string) => ['units', parentId ?? null] as const,
@@ -20,11 +25,27 @@ export const queryKeys = {
    */
   organisationSettings: () => ['organisation-settings'] as const,
   /**
+   * The organisation's theme as the page applies it: its identity and the
+   * stylesheet to link (ADR-028). Its own segment, because it is read by
+   * every page — signed in or not — while the settings above need a session,
+   * and a save invalidates it so every open screen re-themes.
+   */
+  organisationTheme: () => ['organisation-theme'] as const,
+  /**
    * A workspace's settings, keyed by the spelling that asked for them — the
    * route carries a slug, a write carries the id — exactly as `workspace`
    * above is. `workspace-settings` is the prefix they share.
    */
   workspaceSettings: (idOrSlug: string) => ['workspace-settings', idOrSlug] as const,
+  /**
+   * What the documents and collections a public menu names are now — title,
+   * place, public or not — keyed by the sorted ids, so reordering a menu
+   * asks nothing new (`public-menu.ts`).
+   */
+  publicMenuTargets: (documents: readonly string[], collections: readonly string[]) =>
+    ['public-menu-targets', documents, collections] as const,
+  /** Collections whose name contains what was typed into a menu link's combobox. */
+  collectionCandidates: (query: string) => ['collection-candidates', query] as const,
   /** Every secret's name and key id. Never a value: none is ever sent. */
   secrets: () => ['secrets'] as const,
   workspaceList: () => ['workspace-list'] as const,
@@ -48,6 +69,8 @@ export const queryKeys = {
   document: (id: string) => ['document', id] as const,
   draft: (documentId: string) => ['draft', documentId] as const,
   attachments: (documentId: string) => ['attachments', documentId] as const,
+  /** Where this instance's draw.io editor is (ADR-043): instance configuration, read once. */
+  drawioEditor: () => ['drawio-editor'] as const,
   lock: (documentId: string) => ['lock', documentId] as const,
   /**
    * The rendered body is content-addressed (ADR-031), so the revision is part
@@ -58,6 +81,12 @@ export const queryKeys = {
   rendered: (documentId: string, revision?: string) =>
     ['rendered', documentId, revision ?? null] as const,
   envelope: (documentId: string) => ['envelope', documentId] as const,
+  /**
+   * The people directory as one document's editor sees it: the names behind
+   * the addresses it holds, and searches for the owner picker. Under the
+   * document, because the server only answers someone who may edit it.
+   */
+  people: (documentId: string) => ['people', documentId] as const,
   /** Every share link on one document, as the share dialog lists them. */
   shareLinks: (documentId: string) => ['share-links', documentId] as const,
   /**
@@ -71,8 +100,10 @@ export const queryKeys = {
   sharedBody: (token: string, reference: string) => ['shared-body', token, reference] as const,
   publishedContent: (documentId: string) => ['published-content', documentId] as const,
   history: (documentId: string) => ['history', documentId] as const,
-  diff: (documentId: string, from: string | null, to: string) =>
-    ['diff', documentId, from, to] as const,
+  comparison: (documentId: string, from: string | null, to: string) =>
+    ['comparison', documentId, from, to] as const,
+  sourceComparison: (documentId: string, from: string | null, to: string) =>
+    ['comparison-source', documentId, from, to] as const,
   /**
    * One page of search results, keyed by the workspace the search was run
    * *from*, the query, and the cursor — the three things that decide what

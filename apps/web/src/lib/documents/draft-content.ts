@@ -14,7 +14,7 @@
  * document's metadata intact through an edit that never looked at it.
  */
 
-import type { DocumentAst } from '@quill/editor'
+import type { DocumentAst, DraftAuthor } from '@quill/editor'
 
 /** The version stamped into every draft this platform writes. */
 export const DRAFT_CONTENT_VERSION = 1
@@ -24,6 +24,31 @@ export interface DraftContent {
   readonly frontMatter: Readonly<Record<string, unknown>>
   /** The document tree, opaque here: only the editor and the server read inside it. */
   readonly ast: unknown
+  /**
+   * Who saved this version, and who last merged offline changes into it
+   * (ADR-021, amendment of 2026-10-11). Added within version 1: a reader
+   * that does not know them ignores them, and every save writes them afresh,
+   * so a merge is announced until the next ordinary save.
+   */
+  readonly writtenBy?: DraftAuthor
+  readonly mergedBy?: DraftAuthor
+}
+
+/** What a save stamps on the draft about who wrote it. */
+export interface DraftStamp {
+  readonly writtenBy?: DraftAuthor
+  readonly mergedBy?: DraftAuthor
+}
+
+function authorOf(value: unknown): DraftAuthor | undefined {
+  return typeof value === 'object' &&
+    value !== null &&
+    'userId' in value &&
+    typeof value.userId === 'string' &&
+    'displayName' in value &&
+    typeof value.displayName === 'string'
+    ? { userId: value.userId, displayName: value.displayName }
+    : undefined
 }
 
 /** A draft row's stored content, or `null` when this release cannot read it. */
@@ -32,7 +57,15 @@ export function readDraftContent(value: unknown): DraftContent | null {
   const candidate = value as Partial<DraftContent>
   if (candidate.version !== DRAFT_CONTENT_VERSION) return null
   if (typeof candidate.frontMatter !== 'object' || candidate.frontMatter === null) return null
-  return { version: candidate.version, frontMatter: candidate.frontMatter, ast: candidate.ast }
+  const writtenBy = authorOf(candidate.writtenBy)
+  const mergedBy = authorOf(candidate.mergedBy)
+  return {
+    version: candidate.version,
+    frontMatter: candidate.frontMatter,
+    ast: candidate.ast,
+    ...(writtenBy === undefined ? {} : { writtenBy }),
+    ...(mergedBy === undefined ? {} : { mergedBy }),
+  }
 }
 
 /**
@@ -49,7 +82,14 @@ export function isDocumentTree(value: unknown): value is DocumentAst {
   )
 }
 
-/** The same draft with a new tree, its version and front matter carried over. */
-export function withDocumentAst(content: DraftContent, ast: unknown): DraftContent {
-  return { version: content.version, frontMatter: content.frontMatter, ast }
+/**
+ * The same draft with a new tree, its version and front matter carried over,
+ * stamped with who wrote it; the previous stamp is not carried over.
+ */
+export function withDocumentAst(
+  content: DraftContent,
+  ast: unknown,
+  stamp: DraftStamp = {},
+): DraftContent {
+  return { version: content.version, frontMatter: content.frontMatter, ast, ...stamp }
 }

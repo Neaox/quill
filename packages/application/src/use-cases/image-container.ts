@@ -145,3 +145,18 @@ export function writeUint32LittleEndian(value: number): Uint8Array {
 export function ascii(bytes: Uint8Array, start: number, end: number): string {
   return String.fromCharCode(...bytes.subarray(start, end))
 }
+
+/**
+ * The CRC-32 a PNG chunk carries over its type and data (ISO 3309, as the
+ * PNG specification states it), for the one place the platform writes a
+ * chunk rather than only reading one: an animation's play count. Bitwise
+ * rather than by table, because what it is run over is a few bytes.
+ */
+export function crc32(bytes: Uint8Array): number {
+  let crc = 0xffffffff
+  for (const byte of bytes) {
+    crc ^= byte
+    for (let bit = 0; bit < 8; bit += 1) crc = crc & 1 ? 0xedb88320 ^ (crc >>> 1) : crc >>> 1
+  }
+  return (crc ^ 0xffffffff) >>> 0
+}

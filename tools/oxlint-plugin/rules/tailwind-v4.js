@@ -61,6 +61,17 @@ const RULES = [
     message: 'bare `backdrop-blur` no longer exists in Tailwind 4; use backdrop-blur-sm.',
   },
   {
+    // Tailwind's ARIA variants are boolean: `aria-current:` is
+    // `[aria-current="true"]`, so it never matches the `"page"` a router's
+    // active link carries, or `"location"`, `"step"`, … The design system's
+    // `current:` variant (`packages/ui/src/styles/tokens.css`) matches any
+    // value but `"false"`.
+    pattern: /(?:^|\s)(?:[\w[\]=-]+:)*(?:group-|peer-)?aria-current:/,
+    message:
+      '`aria-current:` matches only aria-current="true", never "page" or "location"; use current: (or group-current:).',
+    fix: (text) => text.replace(/\b((?:group-|peer-)?)aria-current:/g, '$1current:'),
+  },
+  {
     pattern: token('outline-none'),
     message:
       '`outline-none` now removes the outline entirely; use outline-hidden, and never on a focusable element.',

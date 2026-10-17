@@ -1,6 +1,5 @@
-import { Ajv } from 'ajv'
 import { Type } from '@sinclair/typebox'
-import type { Static, TSchema } from '@sinclair/typebox'
+import type { Static } from '@sinclair/typebox'
 import type { TypeBoxTypeProvider } from '@fastify/type-provider-typebox'
 import {
   deleteSecret,
@@ -15,7 +14,7 @@ import {
 } from '@quill/application'
 import type { ContentAuthor, SecretSummary } from '@quill/application'
 import type { RevisionId } from '@quill/domain'
-import type { FastifyPluginAsync, FastifyRequest, FastifySchemaCompiler } from 'fastify'
+import type { FastifyPluginAsync, FastifyRequest } from 'fastify'
 
 import {
   isInstanceAdmin,
@@ -39,6 +38,7 @@ import {
   UpdatedWorkspaceSettingsSchema,
   WorkspaceSettingsResponseSchema,
 } from './settings-schemas.ts'
+import { strictValidator } from './strict-validator.ts'
 
 /**
  * Settings and secrets (ADR-034, ADR-028).
@@ -71,7 +71,8 @@ export function settingsRoutes(deps: AppDependencies): FastifyPluginAsync {
     const app = rawApp.withTypeProvider<TypeBoxTypeProvider>()
     app.addSchema(OrganisationSettingsDocumentSchema)
     app.addSchema(SecretSchema)
-    app.setValidatorCompiler(strictValidator())
+    // The one schema the bodies reach by `$ref`; the others are inline.
+    app.setValidatorCompiler(strictValidator([OrganisationSettingsDocumentSchema]))
 
     app.get(
       '/api/settings/organisation',
@@ -266,34 +267,6 @@ export function settingsRoutes(deps: AppDependencies): FastifyPluginAsync {
       },
     )
   }
-}
-
-/**
- * Ajv for these routes, and only these.
- *
- * Fastify's default validator is built for forgiveness: it coerces `"1"` to
- * `1` and *removes* a property the schema does not declare rather than
- * refusing it. Neither is right for a settings document. Coercion would let a
- * policy arrive as the string `"false"` and be written into the file as a
- * boolean somebody never chose, and silent removal would answer `200` to a
- * request that asked for something this release does not understand — the
- * exact shape of a client written against a newer version, which should be
- * told rather than quietly given a different result.
- *
- * Set inside this plugin, so it encapsulates: every other route keeps the
- * behaviour it was written against.
- */
-function strictValidator(): FastifySchemaCompiler<TSchema> {
-  const ajv = new Ajv({
-    coerceTypes: false,
-    removeAdditional: false,
-    useDefaults: false,
-    allErrors: false,
-    strict: false,
-  })
-  // The one schema the bodies reach by `$ref`. The others are inline.
-  ajv.addSchema(OrganisationSettingsDocumentSchema)
-  return ({ schema }) => ajv.compile(schema)
 }
 
 function secretResponse(secret: SecretSummary): Static<typeof SecretSchema> {

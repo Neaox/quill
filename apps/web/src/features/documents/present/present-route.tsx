@@ -16,11 +16,13 @@ import {
 
 import {
   ApiError,
+  useDocumentLinksLoader,
   useLoadedDocument,
   usePublishedContent,
   useRenderedDocument,
   type OutlineEntry,
 } from '../../../lib/api/index.ts'
+import { useFollowLink } from '../../../lib/routing/use-follow-link.ts'
 import { DocumentBody } from '../document-body.tsx'
 import { commandForKey, presentReducer, stepFromSearch, type StepEvent } from './present-state.ts'
 import { splitSteps } from './present-steps.ts'
@@ -93,6 +95,9 @@ export function PresentRoute() {
   // been published has none, which is an empty state rather than an error.
   const documentQuery = useLoadedDocument(documentId)
   const rendered = useRenderedDocument(documentId)
+  // A link on a slide to another document moves within the app (ADR-035).
+  const followLink = useFollowLink()
+  const loadLinks = useDocumentLinksLoader()
 
   const [goToOpen, setGoToOpen] = useState(false)
   const [notesOpen, setNotesOpen] = useState(false)
@@ -240,7 +245,12 @@ export function PresentRoute() {
               hidden={position !== index}
               className={styles.step()}
             >
-              <DocumentBody html={section.html} label={section.title} />
+              <DocumentBody
+                html={section.html}
+                label={section.title}
+                onFollowLink={followLink}
+                loadLinks={loadLinks}
+              />
             </section>
           ),
         )}

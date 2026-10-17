@@ -14,13 +14,16 @@
   "dependencies": {
     "@quill/api-client": "workspace:*",
     "@quill/brand": "workspace:*",
+    "@quill/design-css": "workspace:*",
     "@quill/domain": "workspace:*",
     "@quill/editor": "workspace:*",
     "@quill/highlight": "workspace:*",
+    "@quill/markdown": "workspace:*",
     "@quill/theme": "workspace:*",
     "@quill/ui": "workspace:*",
     "@tanstack/react-query": "^5.102.8",
     "@tanstack/react-router": "^1.170.35",
+    "mermaid": "^12.1.0",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
     "tailwind-variants": "^3.3.1"

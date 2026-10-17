@@ -1,4 +1,4 @@
-import { eq } from 'drizzle-orm'
+import { and, asc, eq, ilike, inArray, isNotNull, or, sql } from 'drizzle-orm'
 
 import type { CreateUserInput, UserRepository, UserRow } from '@quill/application'
 import type { UserId } from '@quill/domain'
@@ -43,6 +43,42 @@ export function createUserRepository(db: DrizzleClient): UserRepository {
       const rows = await db.select().from(users).where(eq(users.email, email))
       const row = rows[0]
       return row === undefined ? null : toUserRow(row)
+    },
+
+    async findVerifiedByEmails(emails: readonly string[]): Promise<readonly UserRow[]> {
+      if (emails.length === 0) return []
+      // `lower(email)` is the unique index (`users_email_lower_key`), so this
+      // is one indexed lookup for the whole list.
+      const rows = await db
+        .select()
+        .from(users)
+        .where(
+          and(
+            inArray(
+              sql`lower(${users.email})`,
+              emails.map((email) => email.toLowerCase()),
+            ),
+            isNotNull(users.emailVerifiedAt),
+          ),
+        )
+      return rows.map(toUserRow)
+    },
+
+    async searchVerified(query: string, limit: number): Promise<readonly UserRow[]> {
+      // `%`, `_` and `\` are pattern characters to ILIKE; what was typed is matched literally.
+      const literal = query.replaceAll(/[\\%_]/gu, (character) => `\\${character}`)
+      const rows = await db
+        .select()
+        .from(users)
+        .where(
+          and(
+            isNotNull(users.emailVerifiedAt),
+            or(ilike(users.displayName, `%${literal}%`), ilike(users.email, `%${literal}%`)),
+          ),
+        )
+        .orderBy(asc(users.displayName))
+        .limit(limit)
+      return rows.map(toUserRow)
     },
 
     async markEmailVerified(id: UserId, now: Date): Promise<void> {

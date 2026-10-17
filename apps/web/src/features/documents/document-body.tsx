@@ -1,15 +1,66 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { createPortal } from 'react-dom'
 
-import { applyHighlighting } from '@quill/highlight/client'
-import { cx, Prose, proseTableStyles, scrollGroupStyles } from '@quill/ui'
+import { enhanceCodeBlocks } from '@quill/design-css/code-blocks'
+import { enhanceContents } from '@quill/design-css/contents-spy'
+import { enhanceDetails } from '@quill/design-css/details'
+import { enhanceTables } from '@quill/design-css/tables'
+import { languageLabel } from '@quill/markdown/code-languages'
+import { cx, onDemand, Prose, SHELL_HEADER_HEIGHT_PX } from '@quill/ui'
 
-import { createBrowserHighlighting } from '../../lib/highlight/browser-environment.ts'
+import { readableBodyLinks, routeBodyLinks } from './body-links.ts'
+import type { DocumentLinksLoader } from './body-links.ts'
+import { fillChildPageSlots } from './child-pages-slots.ts'
+import type { ChildPagesSlotsOptions } from './child-pages-slots.ts'
 
 export interface DocumentBodyProps {
   /** The cached body from `GET /documents/:id/rendered` (ADR-031). */
   readonly html: string
   /** Names the article region for assistive technology. */
   readonly label: string
+  /**
+   * Where the document sits, shown as its eyebrow when the body opens with its
+   * own title and the author wrote none: normally the collection's name.
+   */
+  readonly eyebrow?: string | undefined
+  /**
+   * One more enhancement, run last over the mounted body, returning its own
+   * undo: the comparison view folds unchanged stretches this way
+   * (`compare/comparison-surface.ts`). Keep it stable — a new function is a
+   * remount.
+   */
+  readonly enhance?: ((article: HTMLElement) => () => void) | undefined
+  /**
+   * Answers the body's child pages slots for this reader (ADR-049). Omitted
+   * — a shared link, a specimen — the slots keep their fallback line. Keep it
+   * stable: a new function asks again.
+   */
+  readonly loadChildPages?: ChildPagesSlotsOptions['load'] | undefined
+  /** Offered in an empty child pages list to someone who can write here. Keep it stable. */
+  readonly onCreateChildPage?: (() => void) | undefined
+  /**
+   * What goes straight under the body's own title: the document's byline
+   * (`docs/design/properties.md`). Rendered by React into a slot the mount
+   * puts after the title, so it can change — the envelope arriving, a
+   * relative date moving on — without the body being mounted again.
+   */
+  readonly afterTitle?: ReactNode
+  /**
+   * Follows a click on a link into the application — another document, a
+   * workspace, a share page — without reloading it: normally the router's
+   * `navigate` (`useFollowLink`). Modifier and middle clicks, targets and
+   * downloads stay the browser's (`body-links.ts`). Omitted, every link is
+   * followed by the browser.
+   */
+  readonly onFollowLink?: ((href: string) => void) | undefined
+  /**
+   * Answers the body's stored links (`/d/<id>`) with their reading addresses
+   * for this reader, in one request (ADR-035), so hovering over or copying a
+   * link shows where it goes. Omitted — a shared link, whose server already
+   * readdressed them — they stay as stored. Keep it stable: a new function
+   * asks again.
+   */
+  readonly loadLinks?: DocumentLinksLoader | undefined
   readonly className?: string | undefined
 }
 
@@ -30,33 +81,136 @@ export interface DocumentBodyProps {
  * what arrives here is the cached artefact of a publish (ADR-031) with no
  * grammar attached (ADR-030).
  */
-export function DocumentBody({ html, label, className }: DocumentBodyProps) {
+export function DocumentBody({
+  html,
+  label,
+  eyebrow,
+  enhance,
+  loadChildPages,
+  onCreateChildPage,
+  afterTitle,
+  onFollowLink,
+  loadLinks,
+  className,
+}: DocumentBodyProps) {
   const host = useRef<HTMLDivElement | null>(null)
+  // One element for the life of the body, so a portal into it survives every
+  // remount of the HTML around it.
+  const [titleSlot] = useState(() => {
+    const slot = document.createElement('div')
+    slot.dataset['bylineSlot'] = ''
+    return slot
+  })
+  const childPages = useRef({ loadChildPages, onCreateChildPage, loadLinks })
+  const followLink = useRef(onFollowLink)
+  /* Synchronises the box the mounted body's link listener reads with the
+     latest prop, so a new function from the caller costs no remount. */
+  useEffect(() => {
+    followLink.current = onFollowLink
+  }, [onFollowLink])
+  /* Synchronises the box the mounted body's child pages slots read (ADR-049),
+     outside React, with the latest props: read when a body is mounted and
+     when a list arrives, so permissions arriving later cause no remount. */
+  useEffect(() => {
+    childPages.current = { loadChildPages, onCreateChildPage, loadLinks }
+  }, [loadChildPages, onCreateChildPage, loadLinks])
 
-  /* Synchronises the DOM with two things React does not render: the server's
-     rendered HTML, and the CSS Custom Highlight API ranges painted over its
-     code blocks (ADR-030). Keyed on the HTML itself, which is what a new
-     revision changes — a restore that reproduces an earlier body is the same
-     body, and correctly repaints nothing. */
+  /* Synchronises the DOM with eight things React does not render: the
+     server's rendered HTML, every code block's copy button and every code
+     group's tabs (ADR-041), the CSS Custom Highlight API ranges painted over
+     its code blocks (ADR-030), the diagrams drawn into its diagram slots,
+     the lightbox every diagram opens in, every table's reading tools
+     (ADR-040), the details a link or find points into (ADR-048), and the
+     animated emoji that play briefly and then rest (ADR-047). Keyed on the
+     HTML itself, which is what a new revision changes — a restore that reproduces an earlier body is the same
+     body, and correctly repaints nothing. The eyebrow is part of what is
+     mounted, so moving the document to another collection remounts it too. */
   useEffect(() => {
     const article = host.current?.querySelector('article')
-    if (article == null) return undefined
+    if (!(article instanceof HTMLElement)) return undefined
 
     article.replaceChildren(...blocksOf(html, article.ownerDocument))
-    makeTablesScrollable(article)
+    addEyebrow(article, eyebrow)
+    article.querySelector(':scope > h1')?.after(titleSlot)
 
-    const { environment, rootOf } = createBrowserHighlighting(window)
-    const disposers = applyHighlighting(rootOf(article), environment)
-    return () => {
-      for (const dispose of disposers) dispose()
+    const disposers = [
+      enhanceCodeBlocks(article, { languageLabel }),
+      enhanceTables(article),
+      enhanceDetails(article),
+      // Every table of contents in the body marks the section being read,
+      // as the rail beside it does (ADR-049).
+      enhanceContents(article.ownerDocument, {
+        links: 'article nav.toc a[href^="#"]',
+        topInset: () => SHELL_HEADER_HEIGHT_PX,
+      }),
+      // The pages under this one, for this reader (ADR-032, ADR-049).
+      ...(childPages.current.loadChildPages === undefined
+        ? []
+        : [
+            fillChildPageSlots(article, {
+              load: childPages.current.loadChildPages,
+              get createChildPage() {
+                return childPages.current.onCreateChildPage
+              },
+            }),
+          ]),
+      // Links into the application are followed by the router (ADR-035).
+      routeBodyLinks(article, () => followLink.current),
+      // Each stored link under its readable address, for this reader.
+      ...(childPages.current.loadLinks === undefined
+        ? []
+        : [readableBodyLinks(article, childPages.current.loadLinks)]),
+      ...(enhance === undefined ? [] : [enhance(article)]),
+    ]
+    // What changes the layout is applied above, with the body, so nothing
+    // shifts; the code's ranges, the diagrams and the animated emoji follow from
+    // their own chunk (`deferred-enhancements.ts`), which is normally here
+    // already — it is asked for when this module loads, below.
+    let afterDrawing: readonly (() => void)[] = []
+    let mounted = true
+    const deferred = deferredEnhancements.current()
+    if (deferred === undefined) {
+      deferredEnhancements.load().then(
+        (arrived) => {
+          if (mounted) afterDrawing = arrived.enhanceAfterDrawing(article)
+        },
+        // Without the chunk the body still reads; it is asked for again on
+        // the next mount.
+        () => undefined,
+      )
+    } else {
+      afterDrawing = deferred.enhanceAfterDrawing(article)
     }
-  }, [html])
+    return () => {
+      mounted = false
+      for (const dispose of [...disposers, ...afterDrawing].toReversed()) dispose()
+    }
+  }, [html, eyebrow, enhance, titleSlot])
 
   return (
     <div ref={host} className={cx(className)}>
       <Prose label={label}>{null}</Prose>
+      {afterTitle === undefined ? undefined : createPortal(afterTitle, titleSlot)}
     </div>
   )
+}
+
+/**
+ * The body's enhancements that wait for it to be drawn
+ * (`deferred-enhancements.ts`), fetched on demand.
+ */
+const deferredEnhancements = onDemand(() => import('./deferred-enhancements.ts'))
+
+/*
+ * Asked for as soon as this module is evaluated, which is when the reading
+ * route's chunk arrives — in parallel with the route's data, and before the
+ * body itself — so a body is normally enhanced in the frame it is drawn in.
+ */
+void deferredEnhancements.load().catch(() => undefined)
+
+/** Waits for those enhancements, for a test that should render as a settled page does. */
+export function preloadDocumentEnhancements(): Promise<unknown> {
+  return deferredEnhancements.load()
 }
 
 /**
@@ -86,29 +240,24 @@ function blocksOf(html: string, ownerDocument: Document): readonly Node[] {
 }
 
 /**
- * ADR-027: "tables are always scrollable horizontally inside their width".
+ * The automatic eyebrow: the part of the documentation a page belongs to, in
+ * the accent's small capitals directly above its title, as the reference
+ * documentation sites do ("Overview" over "The sync map").
  *
- * The Markdown renderer emits a bare `<table>` as a grid item, so the scroll
- * region `ProseTable` gives a *composed* table has to be put around a rendered
- * one here. `ProseTable` itself cannot be: it takes the table as a React
- * child, and this body is mounted DOM rather than elements React owns. What it
- * is made of can still be the same one source of truth, so the classes, the
- * role, and the tab stop are read from the primitive's own style functions
- * rather than copied — a change to `ScrollGroup` reaches a rendered table
- * without anyone remembering this file.
- *
- * TODO(ADR-027): move the wrapper into `packages/markdown`'s table handler, so
- * the public site and HTML export get it without this pass at all.
+ * An author's eyebrow is a short paragraph written immediately before the
+ * title, which the reading surface styles as one (`.prose > p:has(+ h1)` in
+ * `@quill/design-css`). This adds exactly that paragraph, so the automatic one
+ * is styled by the same rule and cannot look different from an authored one.
+ * It is only added when the body *opens* with its title: a body whose title is
+ * preceded by anything already has an eyebrow, or has chosen not to have one
+ * there. A plain paragraph rather than a heading, so the outline, the table of
+ * contents and a screen reader's heading list are untouched.
  */
-function makeTablesScrollable(article: Element): void {
-  const className = cx(proseTableStyles(), scrollGroupStyles())
-  for (const table of article.querySelectorAll('table')) {
-    const region = article.ownerDocument.createElement('div')
-    region.className = className
-    region.tabIndex = 0
-    region.setAttribute('role', 'group')
-    region.setAttribute('aria-label', table.querySelector('caption')?.textContent ?? 'Table')
-    table.replaceWith(region)
-    region.append(table)
-  }
+function addEyebrow(article: Element, eyebrow: string | undefined): void {
+  const title = article.firstElementChild
+  if (eyebrow === undefined || eyebrow === '' || title?.tagName !== 'H1') return
+  const paragraph = article.ownerDocument.createElement('p')
+  paragraph.dataset['eyebrow'] = 'collection'
+  paragraph.textContent = eyebrow
+  title.before(paragraph)
 }

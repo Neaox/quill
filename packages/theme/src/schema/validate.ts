@@ -1,5 +1,6 @@
 import { Ajv, type ErrorObject } from 'ajv'
 import { curatedFace, type FaceRole } from './faces.ts'
+import { isReservedLabelName } from './labels.ts'
 import { ThemeDocumentSchema, type FaceReference, type ThemeDocument } from './theme-document.ts'
 
 export type ThemeIssue = {
@@ -64,9 +65,34 @@ const faceIssues = (role: FaceRole, face: FaceReference): readonly ThemeIssue[] 
       ]
 }
 
+/**
+ * ADR-037: a label may not shadow a built-in directive or a drawing class,
+ * and two labels may not share a name, because the name is the whole of a
+ * label's syntax. Refused rather than resolved, so the tenant renames it.
+ */
+const labelIssues = (document: ThemeDocument): readonly ThemeIssue[] =>
+  (document.labels ?? []).flatMap(({ name }, index, labels): readonly ThemeIssue[] => {
+    const path = `/labels/${index}/name`
+    if (isReservedLabelName(name)) {
+      return [
+        {
+          path,
+          message: `the label "${name}" has the name of a built-in directive or drawing class`,
+          rule: 'label-reserved',
+        },
+      ]
+    }
+    return labels.findIndex((other) => other.name === name) === index
+      ? []
+      : [{ path, message: `there is already a label called "${name}"`, rule: 'label-unique' }]
+  })
+
 const semanticIssues = (document: ThemeDocument): readonly ThemeIssue[] => {
   const roles: readonly FaceRole[] = ['display', 'reading', 'interface', 'mono']
-  return roles.flatMap((role) => faceIssues(role, document.type[role]))
+  return [
+    ...roles.flatMap((role) => faceIssues(role, document.type[role])),
+    ...labelIssues(document),
+  ]
 }
 
 /** Validate an unknown value as a theme document, reporting every problem at once. */

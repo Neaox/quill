@@ -25,8 +25,9 @@ describe('layout metrics', () => {
 
   it('derives the anchor offset the way tokens.css does: the bar plus four spacing steps', () => {
     expect(tokensCss).toContain(
-      '--anchor-offset: calc(var(--spacing-shell-header) + var(--spacing) * 4)',
+      '--anchor-offset: calc(var(--sticky-chrome-top) + var(--spacing) * 4)',
     )
+    expect(tokensCss).toContain('--sticky-chrome-top: var(--spacing-shell-header)')
     // `--spacing` is 0.25rem at the tuned density (see the `--density-baseline`
     // block in the same file).
     const spacingStepPx = 0.25 * ROOT_FONT_SIZE_PX

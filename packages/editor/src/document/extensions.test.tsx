@@ -4,7 +4,8 @@ import { createRef } from 'react'
 import { describe, expect, it } from 'vitest'
 
 import { createSlashStore } from '../slash/slash-store.ts'
-import { SLASH_ITEMS } from '../slash/slash-items.ts'
+import { createSlashRecents } from '../slash/slash-recents.ts'
+import { createSlashRegistry } from '../slash/slash-registry.ts'
 import { DocumentEditor } from './document-editor.tsx'
 import type { DocumentEditorHandle } from './document-editor.tsx'
 import { buildExtensions } from './extensions.ts'
@@ -27,6 +28,11 @@ function pasteText(target: HTMLElement, text: string, html = ''): void {
   target.dispatchEvent(new ClipboardEvent('paste', { clipboardData: data, bubbles: true }))
 }
 
+/** Where an extension sits in TipTap's order; 100 is TipTap's default. */
+function priority(extension: ReturnType<typeof buildExtensions>[number]): number {
+  return extension.config.priority ?? 100
+}
+
 describe('the assembled extension list', () => {
   it('is the published schema plus behaviour, and never a node of its own', () => {
     const assembled = names(buildExtensions())
@@ -42,9 +48,18 @@ describe('the assembled extension list', () => {
   it('has no slash menu unless one is asked for', () => {
     expect(names(buildExtensions())).not.toContain('slashMenu')
     const withMenu = buildExtensions({
-      slash: { store: createSlashStore(), items: SLASH_ITEMS, run: () => {} },
+      slash: {
+        store: createSlashStore(),
+        registry: createSlashRegistry(),
+        recents: createSlashRecents('test', null),
+        request: () => {},
+      },
     })
     expect(names(withMenu)).toContain('slashMenu')
+    // Ahead of every keymap, so Enter chooses an item rather than splitting the line.
+    const others = withMenu.filter((extension) => extension.name !== 'slashMenu').map(priority)
+    const slash = withMenu.filter((extension) => extension.name === 'slashMenu').map(priority)
+    expect(Math.min(...slash)).toBeGreaterThan(Math.max(...others))
   })
 
   it('takes the placeholder text it is given', () => {
@@ -91,14 +106,13 @@ describe('pasting into the editor', () => {
 })
 
 describe('the editor options that may be left out', () => {
-  it('opens with a collapsed soft wrap when asked, and its own slash catalogue', () => {
+  it('opens with a collapsed soft wrap when asked', () => {
     const ref = createRef<DocumentEditorHandle>()
     render(
       <DocumentEditor
         ast={parseDocument('One line\nwrapped in two.\n').ast}
         ref={ref}
         softBreaks="collapse"
-        slashItems={SLASH_ITEMS.slice(0, 1)}
         label="A named document"
         className="extra"
       />,

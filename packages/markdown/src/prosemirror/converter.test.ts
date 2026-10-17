@@ -21,7 +21,7 @@ function toDoc(markdown: string): PMNode {
 describe('the editor schema', () => {
   it('builds headlessly, with no DOM anywhere', () => {
     expect('document' in globalThis).toBe(false)
-    expect(Object.keys(schema.nodes)).toHaveLength(28)
+    expect(Object.keys(schema.nodes)).toHaveLength(31)
     expect(Object.keys(schema.marks)).toHaveLength(5)
   })
 
@@ -268,5 +268,18 @@ describe('layout widths', () => {
     )
 
     expect(lifted.child(0).type.name).toBe('paragraph')
+  })
+
+  it('builds the lifted and the lowered document in the schema it is given', () => {
+    // An editor runs a schema equal to this one but not identical, and a
+    // node from the wrong instance is refused; building straight into it
+    // saves a second round trip through JSON on every open, paste and save.
+    const target = new Schema(schema.spec)
+    const lifted = liftLayout(toDoc(':::wide\nBody.\n:::\n'), target)
+    const lowered = wrapLayout(lifted, target)
+
+    expect(lifted.type.schema).toBe(target)
+    expect(lowered.type.schema).toBe(target)
+    expect(stringifyMdast(proseMirrorToMdast(lowered).tree)).toBe(':::wide\nBody.\n:::\n')
   })
 })

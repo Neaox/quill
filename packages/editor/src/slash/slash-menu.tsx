@@ -1,38 +1,37 @@
 import type { Editor } from '@tiptap/react'
-import { useCallback, useEffect, useId, useSyncExternalStore } from 'react'
-import { tv } from 'tailwind-variants'
+import { Fragment, useCallback, useEffect, useId, useMemo, useSyncExternalStore } from 'react'
 
-import { runAt, useMenuNavigation } from '../menu/use-menu-navigation.ts'
-import type { SlashStore } from './slash-store.ts'
+import { nextIndex, runAt, useMenuNavigation } from '../menu/use-menu-navigation.ts'
+import type { SlashItem } from './slash-item.ts'
+import { SlashPickerPanel } from './slash-picker.tsx'
+import { currentViewport, placeMenu } from './slash-position.ts'
+import { highlight } from './slash-rank.ts'
+import type { RankedMatch } from './slash-rank.ts'
+import { flatten } from './slash-sections.ts'
+import { useWindowedList } from './windowed-list.ts'
+import type { SlashMenuState, SlashStore } from './slash-store.ts'
+import {
+  LIST_PADDING,
+  countMessage,
+  listViewport,
+  placementStyle,
+  slashMenuClasses as classes,
+  slashMenuStyles,
+  windowStyle,
+} from './slash-styles.ts'
 
 /**
  * The insert menu the slash key opens.
  *
- * It is a listbox the caret drives: focus stays in the document, so the editor's
- * own element carries the combobox state â€” expanded, which list, and which
- * option is active â€” and the keys arrive through the suggestion plugin. That is
- * what makes the menu usable without a mouse and announceable by a screen
- * reader, neither of which a floating div with click handlers would be.
+ * It is a listbox the caret drives: focus stays in the document, so the
+ * document's own element carries the active option (`aria-activedescendant`)
+ * and names the list it controls, and the keys arrive through the suggestion
+ * plugin. A screen reader hears the option the arrows land on, and hears how
+ * many blocks match, politely, as the list narrows. A chosen item that needs
+ * more — a language, a document — turns the menu into its picker in place.
  */
 
-/**
- * The parts of the menu in one definition. Which item is active is said once, by
- * the document's `aria-activedescendant`, and the item carries a boolean
- * attribute that the colour follows — never a class chosen in JSX.
- */
-const slashMenu = tv({
-  slots: {
-    root:
-      'slash-menu fixed z-20 max-h-80 min-w-64 overflow-y-auto rounded-md border ' +
-      'border-border-strong/70 bg-surface-raised p-1 shadow-raised',
-    item: 'cursor-pointer rounded-sm px-2 py-1.5 text-sm hover:bg-surface data-active:bg-surface',
-    label: 'font-medium text-foreground',
-    description: 'block text-xs text-foreground-muted',
-    empty: 'px-2 py-1.5 text-sm text-foreground-muted',
-  },
-})
-
-const styles = slashMenu()
+const styles = slashMenuStyles()
 
 export interface SlashMenuProps {
   readonly store: SlashStore
@@ -42,95 +41,283 @@ export interface SlashMenuProps {
 
 export function SlashMenu({ store, editor, className }: SlashMenuProps) {
   const snapshot = useSyncExternalStore(store.subscribe, store.getSnapshot)
+  if (snapshot.mode === 'closed') return null
+  if (snapshot.mode === 'picker') {
+    return (
+      <SlashPickerPanel
+        state={snapshot}
+        placement={placeMenu(snapshot.rect, currentViewport())}
+        className={className}
+      />
+    )
+  }
+  return (
+    <SlashList
+      key={snapshot.query}
+      state={snapshot}
+      store={store}
+      editor={editor}
+      className={className}
+    />
+  )
+}
+
+interface SlashListProps {
+  readonly state: SlashMenuState
+  readonly store: SlashStore
+  readonly editor: Editor | null
+  readonly className?: string | undefined
+}
+
+/**
+ * Each row's height, fixed so the list can be windowed by arithmetic
+ * (`windowed-list.ts`). Set on the rows in pixels, not by the spacing scale:
+ * an organisation's theme can change what `h-11` measures, and rows a few
+ * pixels taller than the arithmetic says leave the last of them out of reach.
+ */
+export const OPTION_HEIGHT = 44
+export const HEADING_HEIGHT = 28
+const OPTION_STYLE = { height: OPTION_HEIGHT } as const
+const HEADING_STYLE = { height: HEADING_HEIGHT } as const
+
+type Row =
+  | { readonly kind: 'heading'; readonly section: number }
+  | {
+      readonly kind: 'option'
+      readonly section: number
+      readonly index: number
+      readonly match: RankedMatch<SlashItem>
+    }
+
+/** The sections as rows: a heading where a section has a title, then its options. */
+function rowsOf(sections: SlashMenuState['sections']): readonly Row[] {
+  let index = -1
+  return sections.flatMap((section, at): Row[] => [
+    ...(section.title === null ? [] : [{ kind: 'heading' as const, section: at }]),
+    ...section.matches.map((match) => {
+      index += 1
+      return { kind: 'option' as const, section: at, index, match }
+    }),
+  ])
+}
+
+function SlashList({ state, store, editor, className }: SlashListProps) {
   const baseId = useId()
   const listId = `${baseId}-list`
+  const matches = flatten(state.sections)
+  const distinct = new Set(matches.map(({ item }) => item.id)).size
+  const rows = useMemo(() => rowsOf(state.sections), [state.sections])
+  const heights = useMemo(
+    () => rows.map((row) => (row.kind === 'heading' ? HEADING_HEIGHT : OPTION_HEIGHT)),
+    [rows],
+  )
+  const placement = placeMenu(state.rect, currentViewport())
+  // The list scrolls inside the panel's border, with its own padding at both
+  // ends; the window and the keyboard's reveal work in that box, not the panel's.
+  const { listRef, window, onScroll, revealRows } = useWindowedList(
+    heights,
+    listViewport(placement.maxHeight),
+    LIST_PADDING,
+  )
 
   const select = useCallback(
     (index: number) => {
       runAt(
-        snapshot.items.map((item) => () => {
-          snapshot.apply(item)
+        matches.map(({ item }) => () => {
+          state.apply(item)
         }),
         index,
       )
     },
-    [snapshot],
+    [matches, state],
   )
 
   const { activeIndex, setActiveIndex, handleKey } = useMenuNavigation({
-    count: snapshot.items.length,
+    count: matches.length,
     onSelect: select,
     onDismiss: store.close,
   })
+
+  // The keyboard moves the list to the option it lands on; the pointer
+  // never does, so the list does not jump under it.
+  const handleListKey = useCallback(
+    (key: string): boolean => {
+      const moved = nextIndex(activeIndex, matches.length, key)
+      if (moved !== null) {
+        const row = rows.findIndex((entry) => entry.kind === 'option' && entry.index === moved)
+        // The first option of a group is shown with its heading.
+        const headed = rows.slice(row - 1, row).some((entry) => entry.kind === 'heading')
+        revealRows(headed ? row - 1 : row, row)
+      }
+      return handleKey(key)
+    },
+    [activeIndex, matches.length, revealRows, rows, handleKey],
+  )
 
   // Wires this menu's key handling into the external SlashStore so the
   // ProseMirror suggestion plugin — which owns the keydown outside React — can
   // route keys to whichever item is active.
   useEffect(() => {
-    store.setKeyHandler(handleKey)
+    store.setKeyHandler(handleListKey)
     return () => {
       store.setKeyHandler(null)
     }
-  }, [store, handleKey])
+  }, [store, handleListKey])
 
-  const activeId = activeIndex < 0 ? null : `${baseId}-${String(activeIndex)}`
+  const visible = rows.slice(window.start, window.end)
+  // Named only while it is drawn: scrolled out of the window it is not in the
+  // document, and a reference to nothing is worse than none. The keyboard
+  // brings it back into view before it moves.
+  const activeDrawn = visible.some((row) => row.kind === 'option' && row.index === activeIndex)
+  const activeId = activeDrawn ? `${baseId}-${String(activeIndex)}` : null
 
   // The active-descendant state belongs on the element that holds focus, which
   // is the document itself; ProseMirror owns that element, so it is set here by
-  // hand. `role="textbox"` only admits `aria-activedescendant` of the three —
-  // `aria-expanded` and `aria-controls` belong to `combobox`, which this
-  // element is not — so the open list and its id are read from the DOM
-  // structure itself rather than said twice.
+  // hand, with `aria-controls` naming the list. `role="textbox"` admits both;
+  // `aria-expanded` belongs to `combobox`, which a multi-line document is not.
   useEffect(() => {
     const dom = editor?.view.dom
     if (dom === undefined) return
-    if (!snapshot.open) return
-    if (activeId !== null) dom.setAttribute('aria-activedescendant', activeId)
+    if (activeId === null) return
+    dom.setAttribute('aria-activedescendant', activeId)
+    dom.setAttribute('aria-controls', listId)
     return () => {
       dom.removeAttribute('aria-activedescendant')
+      dom.removeAttribute('aria-controls')
     }
-  }, [editor, snapshot.open, activeId])
+  }, [editor, activeId, listId])
 
-  if (!snapshot.open) return null
-
-  const position =
-    snapshot.rect === null ? undefined : { top: snapshot.rect.bottom, left: snapshot.rect.left }
+  const option = (row: Extract<Row, { kind: 'option' }>) => (
+    <SlashOption
+      key={`${String(row.index)}-${row.match.item.id}`}
+      id={`${baseId}-${String(row.index)}`}
+      item={row.match.item}
+      ranges={row.match.ranges}
+      position={row.index + 1}
+      count={matches.length}
+      active={row.index === activeIndex}
+      onActivate={() => {
+        setActiveIndex(row.index)
+      }}
+      onChoose={() => {
+        state.apply(row.match.item)
+      }}
+    />
+  )
 
   return (
     <div
-      id={listId}
-      role="listbox"
-      aria-label="Insert"
       className={styles.root({ class: className })}
-      style={position}
+      style={placementStyle(placement)}
+      data-side={placement.side}
+      data-sheet={placement.sheet || undefined}
     >
-      {snapshot.items.length === 0 ? (
-        <p className={styles.empty()}>No matching block</p>
+      {matches.length === 0 ? (
+        <p className={classes.empty}>No blocks match “{state.query.trim()}”</p>
       ) : (
-        snapshot.items.map((item, index) => (
-          <div
-            key={item.id}
-            id={`${baseId}-${String(index)}`}
-            role="option"
-            aria-selected={index === activeIndex}
-            tabIndex={-1}
-            data-active={index === activeIndex || undefined}
-            data-group={item.group}
-            className={styles.item()}
-            onMouseEnter={() => {
-              setActiveIndex(index)
-            }}
-            onMouseDown={(event) => {
-              // The document must keep the selection the item is about to act on.
-              event.preventDefault()
-              snapshot.apply(item)
-            }}
-          >
-            <span className={styles.label()}>{item.label}</span>
-            <span className={styles.description()}>{item.description}</span>
+        <div
+          ref={listRef}
+          id={listId}
+          role="listbox"
+          aria-label="Insert a block"
+          className={classes.list}
+          onScroll={onScroll}
+        >
+          <div style={windowStyle(window)}>
+            {state.sections.map((section, sectionIndex) => {
+              const shown = visible.filter((row) => row.section === sectionIndex)
+              if (shown.length === 0) return null
+              const options = shown.flatMap((row) => (row.kind === 'option' ? [option(row)] : []))
+              if (section.title === null) return <Fragment key="matches">{options}</Fragment>
+              const headingId = `${baseId}-group-${String(sectionIndex)}`
+              return (
+                <div key={section.title} role="group" aria-labelledby={headingId}>
+                  {/* Named even while scrolled out of the window, so the group keeps its name. */}
+                  <div
+                    id={headingId}
+                    role="presentation"
+                    data-offscreen={shown[0]?.kind !== 'heading' || undefined}
+                    className={classes.heading}
+                    style={HEADING_STYLE}
+                  >
+                    {section.title}
+                  </div>
+                  {options}
+                </div>
+              )
+            })}
           </div>
-        ))
+        </div>
       )}
+      <p role="status" aria-live="polite" className="sr-only">
+        {countMessage(distinct)}
+      </p>
+    </div>
+  )
+}
+
+interface SlashOptionProps {
+  readonly id: string
+  readonly item: SlashItem
+  /** Its place in the whole list, which is windowed, so a screen reader can say "3 of 40". */
+  readonly position: number
+  readonly count: number
+  readonly ranges: RankedMatch<SlashItem>['ranges']
+  readonly active: boolean
+  onActivate(): void
+  onChoose(): void
+}
+
+function SlashOption({
+  id,
+  item,
+  ranges,
+  position,
+  count,
+  active,
+  onActivate,
+  onChoose,
+}: SlashOptionProps) {
+  const Icon = item.icon
+  return (
+    <div
+      id={id}
+      role="option"
+      aria-selected={active}
+      aria-posinset={position}
+      aria-setsize={count}
+      tabIndex={-1}
+      data-active={active || undefined}
+      data-group={item.group}
+      className={classes.option}
+      style={OPTION_STYLE}
+      onMouseMove={active ? undefined : onActivate}
+      onMouseDown={(event) => {
+        // Chosen on press, and the press kept from the document, which must
+        // keep the selection the item is about to act on. A finger that
+        // scrolls the list sends no press, so scrolling never chooses.
+        event.preventDefault()
+        onChoose()
+      }}
+    >
+      <span className={classes.icon}>
+        <Icon />
+      </span>
+      <span className={classes.text}>
+        <span className={classes.label}>
+          {highlight(item.label, ranges).map((part) =>
+            part.matched ? (
+              <mark key={part.start} className={classes.mark}>
+                {part.text}
+              </mark>
+            ) : (
+              <Fragment key={part.start}>{part.text}</Fragment>
+            ),
+          )}
+        </span>
+        <span className={classes.description}>{item.description}</span>
+      </span>
+      {item.shortcut === undefined ? null : <kbd className={classes.kbd}>{item.shortcut}</kbd>}
     </div>
   )
 }

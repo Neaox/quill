@@ -376,12 +376,21 @@ describe('reading through a share link', () => {
 
     expect(response.statusCode).toBe(200)
     expect(response.headers['x-robots-tag']).toBe('noindex, nofollow')
+    expect(response.headers['referrer-policy']).toBe('no-referrer')
     const body = response.json()
-    expect(Object.keys(body).toSorted()).toEqual(['children', 'document', 'link', 'rendered'])
+    expect(Object.keys(body).toSorted()).toEqual([
+      'children',
+      'document',
+      'facts',
+      'link',
+      'rendered',
+    ])
     expect(body.document.title).toBe('Authentication architecture')
     expect(body.rendered.html).toContain('The body of Authentication architecture.')
     expect(body.link).toEqual({ scope: 'document', role: 'viewer', expiresAt: null })
     expect(body.children).toEqual([])
+    // The public facts only: never an owner, who is a person (ADR-052).
+    expect(body.facts).toEqual({ tags: [] })
 
     // No draft, no lock, no workspace, no collection, no status, and nothing
     // naming another document (`docs/product/surfaces.md`).
@@ -413,6 +422,7 @@ describe('reading through a share link', () => {
 
     expect(response.statusCode).toBe(200)
     expect(response.headers['x-robots-tag']).toBe('noindex, nofollow')
+    expect(response.headers['referrer-policy']).toBe('no-referrer')
     const etag = response.headers['etag']
     expect(typeof etag).toBe('string')
     expect(response.json().document.title).toBe('Token rotation')

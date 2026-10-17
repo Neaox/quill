@@ -5,7 +5,7 @@ import type { ApiClient } from '@quill/api-client'
 import { useApiClient } from './client-context.tsx'
 import { request } from './http.ts'
 import { queryKeys } from './query-keys.ts'
-import type { DraftDto, SaveDraftResponse } from './types.ts'
+import type { DocumentEnvelope, DraftDto, SaveDraftResponse } from './types.ts'
 
 /**
  * Shared by the hook below and by the editor's `DraftClient.load`
@@ -29,6 +29,10 @@ export function useDraft(documentId: string | undefined) {
   return useQuery({
     ...draftQueryOptions(client, documentId ?? ''),
     enabled: documentId !== undefined,
+    // The open editor owns the draft's content, and a refetched draft never
+    // replaces it; refetching on focus only added chances for a transient
+    // failure while somebody was writing (audit 2026-10-11, P0-2).
+    refetchOnWindowFocus: false,
   })
 }
 
@@ -59,6 +63,16 @@ export function useSaveDraft() {
       ),
     onSuccess: (_result, variables) => {
       void queryClient.invalidateQueries({ queryKey: queryKeys.draft(variables.documentId) })
+      // A saved draft is ahead of what was published, which the header says
+      // ("Published, with unpublished changes"). Known here without asking:
+      // the envelope is set rather than fetched again on every autosave.
+      queryClient.setQueryData<DocumentEnvelope>(
+        queryKeys.envelope(variables.documentId),
+        (envelope) =>
+          envelope === undefined || envelope.unpublishedChanges
+            ? envelope
+            : { ...envelope, unpublishedChanges: true },
+      )
     },
   })
 }

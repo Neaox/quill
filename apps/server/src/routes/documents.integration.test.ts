@@ -180,14 +180,17 @@ describe('the content journey', () => {
     expect(republished.statusCode).toBe(200)
     const secondRevision = republished.json().revision as string
 
-    const diff = await get(
-      `/api/documents/${id}/diff?from=${revision}&to=${secondRevision}`,
+    const compared = await get(
+      `/api/documents/${id}/compare?from=${revision}&to=${secondRevision}`,
       viewer,
     )
-    expect(diff.statusCode).toBe(200)
-    expect(diff.json().unified).toContain('+A second pass.')
-    expect(diff.json()).toMatchObject({ from: revision, to: secondRevision })
-    expect(diff.json().added).toBeGreaterThan(0)
+    expect(compared.statusCode).toBe(200)
+    expect(compared.json().changes).toMatchObject([
+      { id: 'c1', change: 'added', block: 'paragraph', excerpt: 'A second pass.' },
+    ])
+    expect(compared.json().html).toContain(
+      '<ins data-diff="added"><span data-diff-label="">Added: </span>A second pass.</ins>',
+    )
 
     const restored = await harness.app.inject({
       method: 'POST',
@@ -473,16 +476,72 @@ describe('the content journey', () => {
     expect(content.json().markdown).not.toContain('placeholder')
   })
 
-  it('404s a diff against a revision this document never had', async () => {
+  it('404s a comparison with a revision this document never had', async () => {
     const id = await createDocument('Only one revision')
     await writeDraft(id, '# Only one revision\n\nBody.\n', 0)
     const published = await publish(id, await baseOf(id))
 
     const response = await get(
-      `/api/documents/${id}/diff?from=${'f'.repeat(40)}&to=${published.json().revision}`,
+      `/api/documents/${id}/compare?from=${'f'.repeat(40)}&to=${published.json().revision}`,
       viewer,
     )
     expect(response.statusCode).toBe(404)
+  })
+
+  it('compares without a trace of how revisions are stored', async () => {
+    const id = await createDocument('Storage stays hidden')
+    await writeDraft(id, '# Storage stays hidden\n\nPort 3000.\n\n- one\n', 0)
+    const first = await publish(id, await baseOf(id))
+    await writeDraft(id, '# Storage stays hidden\n\nPort 3001.\n\n- one\n- two\n', 1)
+    const second = await publish(id, first.json().revision)
+    const range = `from=${first.json().revision}&to=${second.json().revision}`
+    const row = await harness.deps.uow.repos.documents.findById(id)
+    expect(row?.path).toBeTruthy()
+
+    const responses = await Promise.all(
+      [`/api/documents/${id}/compare?${range}`, `/api/documents/${id}/compare/source?${range}`].map(
+        (path) => get(path, viewer),
+      ),
+    )
+    for (const response of responses) {
+      expect(response.statusCode).toBe(200)
+      // No storage path, no revision hash, no hunk or file header, no Git words.
+      expect(response.body).not.toContain(row?.path)
+      expect(response.body).not.toMatch(/[0-9a-f]{40}/)
+      expect(response.body).not.toContain('@@')
+      expect(response.body).not.toMatch(/(?:---|\+\+\+) [ab]\//)
+      expect(response.body).not.toMatch(/\b(?:commit|diff --git|unified|hunk)\b/i)
+    }
+  })
+
+  it('compares the published document with the draft, for an editor only', async () => {
+    const id = await createDocument('Changes since publish')
+    await writeDraft(id, '# Changes since publish\n\nBody.\n', 0)
+    const published = await publish(id, await baseOf(id))
+    await writeDraft(id, '# Changes since publish\n\nBody, edited.\n', 1)
+    const range = `from=${published.json().revision}&to=draft`
+
+    const forEditor = await get(`/api/documents/${id}/compare?${range}`, editor)
+    expect(forEditor.statusCode).toBe(200)
+    expect(forEditor.json().summary).toMatchObject({ changed: 1, wordsAdded: 1 })
+    expect((await get(`/api/documents/${id}/compare?${range}`, viewer)).statusCode).toBe(403)
+  })
+
+  it('revalidates a comparison by its tag', async () => {
+    const id = await createDocument('Tagged comparison')
+    await writeDraft(id, '# Tagged comparison\n\nBody.\n', 0)
+    const published = await publish(id, await baseOf(id))
+    const path = `/api/documents/${id}/compare?to=${published.json().revision}`
+    const first = await get(path, viewer)
+    expect(first.headers.etag).toMatch(/^"[0-9a-f]{64}:\d+:compare-1"$/)
+
+    const again = await harness.app.inject({
+      method: 'GET',
+      url: path,
+      cookies: viewer,
+      headers: { 'if-none-match': String(first.headers.etag) },
+    })
+    expect(again.statusCode).toBe(304)
   })
 
   it('404s a restore of a revision this document never had', async () => {
@@ -503,9 +562,13 @@ describe('the content journey', () => {
     const id = await createDocument('First revision only')
     await writeDraft(id, '# First revision only\n\nBody.\n', 0)
     const published = await publish(id, await baseOf(id))
-    const diff = await get(`/api/documents/${id}/diff?to=${published.json().revision}`, viewer)
-    expect(diff.statusCode).toBe(200)
-    expect(diff.json()).toMatchObject({ from: null, removed: 0 })
+    const compared = await get(
+      `/api/documents/${id}/compare?to=${published.json().revision}`,
+      viewer,
+    )
+    expect(compared.statusCode).toBe(200)
+    expect(compared.json().summary).toMatchObject({ removed: 0, changed: 0 })
+    expect(compared.json().summary.added).toBeGreaterThan(0)
   })
 
   it('reports the live envelope, including health signals', async () => {
@@ -546,6 +609,99 @@ describe('the content journey', () => {
       'broken-link',
     ])
     expect(envelope.json().lock).toMatchObject({ holderName: 'Editor' })
+    expect(envelope.json().facts).toEqual({ owners: [], tags: [], reviewInterval: '30d' })
+  })
+
+  it('states what the document says about itself, naming owners who are people', async () => {
+    const id = await createDocument('Facts')
+    await writeDraft(
+      id,
+      `---
+id: ${id}
+title: Facts
+status: draft
+owners: [editor@example.com, platform]
+tags: [ops]
+---
+
+# Facts
+`,
+      0,
+    )
+    expect((await publish(id, await baseOf(id))).statusCode).toBe(200)
+    const envelope = await get(`/api/documents/${id}/envelope`, viewer)
+    expect(envelope.json().facts).toEqual({
+      status: 'draft',
+      owners: [
+        { label: 'Editor', person: true },
+        { label: 'platform', person: false },
+      ],
+      tags: ['ops'],
+    })
+    expect(JSON.stringify(envelope.json().facts)).not.toContain('editor@example.com')
+  })
+})
+
+describe('the lifecycle in the envelope (ADR-005 amendment)', () => {
+  it('names who verified a page as a person, never by address', async () => {
+    const id = await createDocument('Verified page')
+    await writeDraft(
+      id,
+      `---\nid: ${id}\nstatus: verified\nverified:\n  by: editor@example.com\n  at: 2026-10-02\n---\n\n# Verified page\n`,
+      0,
+    )
+    expect((await publish(id, await baseOf(id))).statusCode).toBe(200)
+    const facts = (await get(`/api/documents/${id}/envelope`, viewer)).json().facts
+    expect(facts.lifecycle).toEqual({
+      state: 'verified',
+      verifiedBy: { label: 'Editor', person: true },
+      verifiedAt: '2026-10-02',
+    })
+    expect(JSON.stringify(facts)).not.toContain('editor@example.com')
+  })
+
+  it('leads a deprecated page to its replacement only when it names one the reader may open', async () => {
+    const replacement = await createDocument('The new way')
+    const id = await createDocument('The old way')
+    await writeDraft(
+      id,
+      `---\nid: ${id}\nstatus: deprecated\nsupersededBy: ${replacement}\n---\n\n# The old way\n`,
+      0,
+    )
+    expect((await publish(id, await baseOf(id))).statusCode).toBe(200)
+    const lifecycle = (await get(`/api/documents/${id}/envelope`, viewer)).json().facts.lifecycle
+    expect(lifecycle.state).toBe('deprecated')
+    expect(lifecycle.replacement.title).toBe('The new way')
+    expect(lifecycle.replacement.href).toMatch(/^\/w\/[^/]+\/d\/the-new-way-[0-9a-z]{10}$/u)
+
+    const nowhere = await createDocument('Pointing nowhere')
+    await writeDraft(
+      nowhere,
+      `---\nid: ${nowhere}\nstatus: deprecated\nsupersededBy: 00000000-0000-4000-8000-00000000dead\n---\n\n# Pointing nowhere\n`,
+      0,
+    )
+    expect((await publish(nowhere, await baseOf(nowhere))).statusCode).toBe(200)
+    expect(
+      (await get(`/api/documents/${nowhere}/envelope`, viewer)).json().facts.lifecycle,
+    ).toEqual({ state: 'deprecated' })
+  })
+
+  it('tells someone who may edit that the draft holds unpublished changes, and nobody else', async () => {
+    const id = await createDocument('Changing page')
+    await writeDraft(id, '# Changing page\n\nFirst.\n', 0)
+    expect((await publish(id, await baseOf(id))).statusCode).toBe(200)
+    expect((await get(`/api/documents/${id}/envelope`, editor)).json().unpublishedChanges).toBe(
+      false,
+    )
+    // An edit made after the publish, as any edit is.
+    harness.clock.advance(60_000)
+    await writeDraft(id, '# Changing page\n\nSecond.\n', 1)
+    expect((await get(`/api/documents/${id}/envelope`, editor)).json().unpublishedChanges).toBe(
+      true,
+    )
+    expect((await get(`/api/documents/${id}/envelope`, viewer)).json().unpublishedChanges).toBe(
+      false,
+    )
   })
 })
 
@@ -1027,5 +1183,24 @@ describe('addressing a document by its short key', () => {
     const document = (await get(`/api/documents/${key}`, editor)).json()
     expect(document.shortId).toBe(key)
     expect(document.slug).toBe('after-the-rename')
+  })
+})
+
+/*
+ * Regression (2026-10-17): a document with no draft row — imported, seeded,
+ * or older than drafts — answered the editor with "Draft not found". Opening
+ * it now starts the draft, from the published revision when there is one.
+ */
+describe('opening the editor on a document that has no draft yet', () => {
+  it('starts a draft rather than answering not found', async () => {
+    const id = await createDocument('Imported page')
+    await harness.database.pool.query('DELETE FROM drafts WHERE document_id = $1', [id])
+
+    const response = await get(`/api/documents/${id}/draft`, editor)
+
+    expect(response.statusCode).toBe(200)
+    expect(response.json()).toMatchObject({ documentId: id, draftVersion: 0, baseRevision: null })
+    // Readers cannot open one for editing, draft or not.
+    expect((await get(`/api/documents/${id}/draft`, viewer)).statusCode).toBe(403)
   })
 })

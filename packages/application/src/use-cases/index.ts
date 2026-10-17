@@ -11,20 +11,29 @@ export type {
 export { createAuthorizer, toGrants } from './authorizer.ts'
 
 export type {
+  AttachmentRevisedPayload,
   DocumentCreatedPayload,
+  DocumentDeletedPayload,
   DocumentMovedPayload,
+  DocumentNestedPayload,
   DocumentPublishedPayload,
   DocumentRenamedPayload,
   MailRequestedPayload,
 } from './events.ts'
 export {
+  ATTACHMENT_REVISED,
   DOCUMENT_CREATED,
+  DOCUMENT_DELETED,
   DOCUMENT_MOVED,
+  DOCUMENT_NESTED,
   DOCUMENT_PUBLISHED,
   DOCUMENT_RENAMED,
   EVENT_PAYLOAD_VERSION,
   MAIL_REQUESTED,
+  parseAttachmentRevised,
+  parseDocumentDeleted,
   parseDocumentMoved,
+  parseDocumentNested,
   parseDocumentPublished,
   parseDocumentRenamed,
   parseMailRequested,
@@ -50,11 +59,15 @@ export {
   workspaceLinkReferences,
 } from './document-path.ts'
 
-export { canonicaliseLinks } from './canonical-links.ts'
+export { canonicaliseLinks, resolveDocumentReferences } from './canonical-links.ts'
+
+export type { Replacement, SurfaceDocument, SurfaceLink } from './surface-links.ts'
+export { surfaceLinkRewriter, surfaceReplacement } from './surface-links.ts'
 
 export type { AllowedMediaType, ImageMediaType, SniffedMediaType } from './media-types.ts'
 export {
   ALLOWED_MEDIA_TYPES,
+  DIAGRAM_SOURCE_MEDIA_TYPE,
   IMAGE_MEDIA_TYPES,
   isAllowedMediaType,
   isImageMediaType,
@@ -69,10 +82,13 @@ export { MalformedImage, stripImageMetadata } from './image-metadata.ts'
 
 export type {
   AttachmentDependencies,
+  AttachmentRefusal,
   DeleteAttachmentCommand,
   DeleteAttachmentResult,
   GetAttachmentCommand,
   GetAttachmentResult,
+  ReviseAttachmentCommand,
+  ReviseAttachmentResult,
   ServedAttachment,
   UploadAttachmentCommand,
   UploadAttachmentResult,
@@ -80,10 +96,12 @@ export type {
 export {
   ATTACHMENT_AUDIT_EVENTS,
   ATTACHMENT_URL_PREFIX,
+  attachmentIdsIn,
   attachmentUrl,
   deleteAttachment,
   getAttachment,
   listAttachments,
+  reviseAttachment,
   safeFilename,
   uploadAttachment,
 } from './attachments.ts'
@@ -249,6 +267,15 @@ export type {
 } from './get-envelope.ts'
 export { getEnvelope, reviewOf } from './get-envelope.ts'
 
+export type { FactsView, LifecycleView, OwnerView, PersonView } from './document-facts.ts'
+export {
+  factsOf,
+  namePeople,
+  PEOPLE_SEARCH_LIMIT,
+  readPublicFacts,
+  searchPeople,
+} from './document-facts.ts'
+
 export type {
   GetHistoryCommand,
   HistoryDependencies,
@@ -257,8 +284,13 @@ export type {
 } from './get-history.ts'
 export { getHistory, MAX_HISTORY_LIMIT } from './get-history.ts'
 
-export type { DiffDependencies, GetDiffCommand, GetDiffResult } from './get-diff.ts'
-export { getDiff } from './get-diff.ts'
+export type {
+  CompareRevisionsCommand,
+  CompareRevisionsDependencies,
+  CompareRevisionsResult,
+  CompareSourcesResult,
+} from './compare-revisions.ts'
+export { compareRevisions, compareRevisionSources, DRAFT } from './compare-revisions.ts'
 
 export type {
   CollectionTree,
@@ -268,6 +300,16 @@ export type {
   WorkspaceTreeDependencies,
 } from './get-workspace-tree.ts'
 export { getWorkspaceTree } from './get-workspace-tree.ts'
+export { openDraft, type OpenDraftDependencies, type OpenDraftResult } from './open-draft.ts'
+export {
+  childrenPage,
+  windowTree,
+  type ChildrenOwner,
+  type ChildrenPageResult,
+  type TreeWindowOptions,
+  type WindowedCollection,
+  type WindowedNode,
+} from './tree-window.ts'
 
 export type {
   ListVisibleDocumentsCommand,
@@ -346,11 +388,37 @@ export type {
 export {
   loadPublicSite,
   publicDocumentPaths,
+  publicNavigationOf,
   publicPageHref,
   publicSiteHref,
   publishedAt,
   PUBLIC_SITE_PREFIX,
 } from './public-site.ts'
+
+export type {
+  CollectionCandidate,
+  DescribeMenuTargetsCommand,
+  MenuTargetDescription,
+  PublicMenuDependencies,
+  PublicSiteLoader,
+  ResolvedMenuItem,
+  ResolvedMenuLink,
+  ResolvedPublicMenu,
+} from './public-menu.ts'
+export {
+  describeMenuTargets,
+  findCollectionCandidates,
+  isExternalHref,
+  resolvePublicMenu,
+} from './public-menu.ts'
+
+export type {
+  ReaderPreview,
+  ReaderPreviewCommand,
+  ReaderPreviewResult,
+  ReaderPreviewSection,
+} from './reader-preview.ts'
+export { loadReaderPreview } from './reader-preview.ts'
 
 export type {
   PublishCollectionCommand,
@@ -371,3 +439,44 @@ export type {
   RecordRenameRedirectCommand,
 } from './record-public-redirect.ts'
 export { recordMoveRedirect, recordRenameRedirect } from './record-public-redirect.ts'
+
+export type {
+  EmojiImageDependencies,
+  ServedEmojiImage,
+  UploadEmojiImageCommand,
+  UploadEmojiImageResult,
+} from './emoji.ts'
+export { readEmojiImage, uploadEmojiImage } from './emoji.ts'
+
+export type {
+  AnimatedImagePreference,
+  PersonPreferences,
+  PersonPreferencesDependencies,
+  PersonPreferencesInput,
+  UpdatePersonPreferencesCommand,
+} from './person-preferences.ts'
+export {
+  ANIMATED_IMAGE_PREFERENCES,
+  AnimatedImagePreferenceSchema,
+  DEFAULT_PERSON_PREFERENCES,
+  isAnimatedImagePreference,
+  PERSON_PREFERENCES_VERSION,
+  PersonPreferencesInputSchema,
+  personPreferencesReader,
+  PersonPreferencesSchema,
+  readPersonPreferences,
+  updatePersonPreferences,
+} from './person-preferences.ts'
+
+export type {
+  ChildPageNode,
+  ChildPagesAudience,
+  ChildPagesCache,
+  ChildPagesDependencies,
+  ChildPagesOptions,
+  ChildPagesSort,
+  ChildPagesStructure,
+  ListChildPagesCommand,
+  ListChildPagesResult,
+} from './child-pages.ts'
+export { childPagesKey, listChildPages, MAX_CHILD_PAGES_DEPTH } from './child-pages.ts'

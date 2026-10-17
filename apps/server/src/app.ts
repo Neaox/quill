@@ -6,26 +6,36 @@ import type { ServerConfig, TrustProxyConfig } from './config.ts'
 import type { AppDependencies } from './dependencies.ts'
 import { serialiseRequest } from './plugins/logging.ts'
 import { attachmentRoutes } from './routes/attachments.ts'
+import { emojiRoutes } from './routes/emoji.ts'
 import { authRoutes } from './routes/auth.ts'
 import { oidcAuthRoutes } from './routes/auth-oidc.ts'
 import { collectionRoutes } from './routes/collections.ts'
 import { documentRoutes } from './routes/documents.ts'
+import { childPagesRoutes } from './routes/child-pages.ts'
+import { documentLinksRoutes } from './routes/document-links.ts'
 import { draftRoutes } from './routes/drafts.ts'
 import { healthRoutes } from './routes/health.ts'
 import { lockRoutes } from './routes/locks.ts'
 import { meRoutes } from './routes/me.ts'
 import { publicSiteRoutes } from './routes/public-site.ts'
+import { publicMenuRoutes } from './routes/public-menu.ts'
+import { readerPreviewRoutes } from './routes/reader-preview.ts'
 import { searchRoutes } from './routes/search.ts'
 import { shareLinkRoutes, SHARE_SCHEMAS } from './routes/share-links.ts'
+import { peopleRoutes } from './routes/people.ts'
 import { settingsRoutes } from './routes/settings.ts'
+import { themeRoutes } from './routes/theme.ts'
 import { unitRoutes } from './routes/units.ts'
 import { workspaceRoutes } from './routes/workspaces.ts'
+import { registerCompression } from './plugins/compression.ts'
 import { registerCsrfProtection } from './plugins/csrf.ts'
 import { registerErrorHandler } from './plugins/error-handler.ts'
 import { registerOpenApi } from './plugins/openapi.ts'
 import { registerRateLimiting } from './plugins/rate-limit.ts'
 import { createRequestIdGenerator, registerRequestIdHeader } from './plugins/request-id.ts'
 import { registerSecurityHeaders } from './plugins/security-headers.ts'
+import { drawioFrameSources } from './extensions/drawio/drawio-config.ts'
+import { drawioRoutes } from './extensions/drawio/drawio-routes.ts'
 import { registerSessionSupport } from './plugins/session.ts'
 import { SHARED_SCHEMAS } from './routes/document-schemas.ts'
 
@@ -96,13 +106,20 @@ export function buildApp(options: AppOptions = {}): FastifyInstance {
 
   registerErrorHandler(app)
   registerRequestIdHeader(app)
+  // Last of the `onSend` hooks, so it compresses what the others have
+  // finished with; it only reads their headers.
+  registerCompression(app)
 
   if (deps !== undefined) {
     const serveApiDocs = options.serveApiDocs ?? deps.config.serveApiDocs
 
     // Headers first: every response, including a 404 or a validation
     // failure, leaves with the same policy on it (ADR-011).
-    registerSecurityHeaders(app, { https: deps.config.https, serveApiDocs })
+    registerSecurityHeaders(app, {
+      https: deps.config.https,
+      serveApiDocs,
+      frameSources: drawioFrameSources(deps.config.drawio),
+    })
 
     // Registered before any route: `@fastify/swagger` documents the routes of
     // the context it is registered in, and only those registered after it.
@@ -153,13 +170,21 @@ export function buildApp(options: AppOptions = {}): FastifyInstance {
     app.register(workspaceRoutes(deps))
     app.register(collectionRoutes(deps))
     app.register(documentRoutes(deps))
+    app.register(childPagesRoutes(deps))
+    app.register(documentLinksRoutes(deps))
     app.register(attachmentRoutes(deps))
+    app.register(drawioRoutes(deps))
     app.register(draftRoutes(deps))
+    app.register(peopleRoutes(deps))
     app.register(lockRoutes(deps))
     app.register(searchRoutes(deps))
     app.register(shareLinkRoutes(deps))
     app.register(settingsRoutes(deps))
+    app.register(publicMenuRoutes(deps))
+    app.register(themeRoutes(deps))
+    app.register(emojiRoutes(deps))
     app.register(publicSiteRoutes(deps))
+    app.register(readerPreviewRoutes(deps))
   }
 
   return app

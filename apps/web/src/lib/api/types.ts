@@ -125,7 +125,16 @@ export interface TreeCollectionDto {
   readonly name: string
   readonly slug: string
   readonly documents: readonly TreeNode[]
+  /** How many documents sit at the top level; more than `documents` when cut or paged. */
+  readonly documentCount?: number
+  /** Where `documents` starts among them. */
+  readonly documentsOffset?: number
+  /** Every document in the collection the reader can see, nesting included. */
+  readonly total?: number
 }
+
+/** `GET /workspaces/:id/tree/children`'s response: one page of a list in the tree. */
+export type TreeChildrenResponse = GetBody<'/api/workspaces/{id}/tree/children'>
 
 /** `GET /workspaces/:id/tree`'s response (`docs/architecture/api-contract-m2.md`). */
 export interface WorkspaceTreeResponse {
@@ -175,6 +184,9 @@ export type OutlineEntry = components['schemas']['OutlineEntry']
 /** `GET /documents/:id/rendered`: the cached body, outline, and live-block slots (ADR-031). */
 export type RenderedDocument = GetBody<'/api/documents/{id}/rendered'>
 
+/** `GET /documents/:id/children`: what fills a child pages slot, for this reader (ADR-049). */
+export type ChildPagesList = GetBody<'/api/documents/{id}/children'>
+
 /** `GET /documents/:id/envelope`: everything that is a property of now, not of the revision. */
 export type DocumentEnvelope = GetBody<'/api/documents/{id}/envelope'>
 
@@ -189,8 +201,17 @@ export type DocumentHistory = GetBody<'/api/documents/{id}/history'>
 
 export type RevisionSummary = DocumentHistory['revisions'][number]
 
-/** `GET /documents/:id/diff?from=&to=`: a unified diff and its line counts. */
-export type RevisionDiff = GetBody<'/api/documents/{id}/diff'>
+/** `GET /documents/:id/compare?from=&to=`: two versions as one page, and what changed. */
+export type Comparison = GetBody<'/api/documents/{id}/compare'>
+
+export type ComparisonChange = Comparison['changes'][number]
+
+export type ComparisonSection = Comparison['sections'][number]
+
+/** `GET /documents/:id/compare/source?from=&to=`: the two versions' Markdown by line. */
+export type SourceComparison = GetBody<'/api/documents/{id}/compare/source'>
+
+export type SourceLine = SourceComparison['lines'][number]
 
 /** `GET /documents/:id/content`: the published Markdown source. */
 export type PublishedContent = GetBody<'/api/documents/{id}/content'>
@@ -227,11 +248,34 @@ type OrganisationPutResponses = NonNullable<paths['/api/settings/organisation'][
 /** `PUT /settings/organisation`: the saved document, its new revision, and the doctor's verdict. */
 export type SavedOrganisationSettings = Json<OrganisationPutResponses[200]>
 
+/**
+ * `GET /settings/organisation/theme`: the identity `<html>` carries in
+ * `data-theme-id`, and the stylesheet to link (ADR-028, "Delivery"). Public:
+ * every page renders with the theme, share links and sign-in included.
+ */
+export type OrganisationThemeSummary = GetBody<'/api/settings/organisation/theme'>
+
 /** The theme document as the wire carries it; `@quill/theme`'s `ThemeDocument` is the same shape. */
 export type ThemeSettings = OrganisationSettings['theme']
 
-/** One link beside the public site's name. At most eight, `href` rooted or absolute http(s). */
-export type PublicNavigationLink = OrganisationSettings['publicNavigation'][number]
+/**
+ * The public site's header menu (settings version 2): links to documents and
+ * collections by id, to addresses, and dropdown groups of links.
+ */
+export type PublicMenu = OrganisationSettings['publicMenu']
+
+export type PublicMenuItem = PublicMenu[number]
+
+export type PublicMenuGroup = Extract<PublicMenuItem, { kind: 'group' }>
+
+/** A link, standalone or inside a dropdown. */
+export type PublicMenuLink = PublicMenuGroup['items'][number]
+
+/** `GET /settings/organisation/public-menu/targets`: what each document or collection a menu names is now. */
+export type PublicMenuTarget = components['schemas']['PublicMenuTarget']
+
+/** `GET /settings/organisation/public-menu/collections`: a collection a link could point at. */
+export type CollectionCandidate = components['schemas']['PublicMenuCollectionCandidate']
 
 /** ADR-028's bounded set of signature variants, chosen per workspace. */
 export type LayoutSettings = OrganisationSettings['layout']['default']

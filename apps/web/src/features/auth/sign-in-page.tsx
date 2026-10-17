@@ -46,6 +46,7 @@ export function SignInPage() {
   return (
     <AuthCard
       title="Sign in"
+      description="Welcome back. Sign in to reach your workspaces."
       footer={
         <>
           Don&apos;t have an account?{' '}
@@ -61,8 +62,9 @@ export function SignInPage() {
         </p>
       ) : undefined}
       <SignInProviders redirect={redirect} />
-      <form onSubmit={handleSubmit} className="flex flex-col gap-4" noValidate>
+      <form onSubmit={handleSubmit} className="flex flex-col gap-5" noValidate>
         <Input
+          size="lg"
           label="Email"
           type="email"
           name="email"
@@ -74,6 +76,7 @@ export function SignInPage() {
           }}
         />
         <Input
+          size="lg"
           label="Password"
           type="password"
           name="password"
@@ -85,15 +88,15 @@ export function SignInPage() {
           }}
         />
         <FormError error={signIn.error} />
-        <Button type="submit" loading={signIn.isPending} className="mt-1 w-full">
+        <Button type="submit" size="lg" loading={signIn.isPending} className="mt-2 w-full">
           Sign in
         </Button>
       </form>
-      <div className="flex justify-between text-sm">
-        <Link to="/magic-link" className={textLinkClassName()}>
+      <div className="flex flex-wrap justify-between gap-x-4 gap-y-2 text-sm">
+        <Link to="/magic-link" className={textLinkClassName({ tone: 'quiet' })}>
           Email me a link
         </Link>
-        <Link to="/reset-password" className={textLinkClassName()}>
+        <Link to="/reset-password" className={textLinkClassName({ tone: 'quiet' })}>
           Forgot password?
         </Link>
       </div>

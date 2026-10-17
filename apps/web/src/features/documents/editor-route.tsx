@@ -1,26 +1,36 @@
 import { getRouteApi, useNavigate } from '@tanstack/react-router'
-import { useEffect, useRef, useState, useTransition } from 'react'
+import { useEffect, useMemo, useRef, useState, useTransition } from 'react'
 
+import { BRAND } from '@quill/brand'
 import { Block, Button, Callout, LayoutGrid, Spinner, toast, tv, type ToastId } from '@quill/ui'
 import {
   DocumentEditor,
-  applyFrontMatter,
+  createBroadcastDraftChannel,
   insertImage,
   insertLink,
+  pageMergeRunner,
   useAutosave,
+  useConnectionStatus,
   useDocumentLock,
+  useDraftReconciliation,
   useUnsavedChangesGuard,
   type DocumentAst,
   type DocumentEditorHandle,
+  type DraftAuthor,
+  type LoadedDraft,
 } from '@quill/editor'
 
 import {
   ApiError,
+  useChildPagesOf,
   useDocument,
   useDocumentEnvelope,
   useDraft,
   useDraftClient,
   useLockClient,
+  useMe,
+  useOrganisationEmoji,
+  useOrganisationLabels,
   usePublishDocument,
   type DocumentPermissions,
   type MergeRequired,
@@ -36,11 +46,16 @@ import { useRecoveryStore } from '../../lib/recovery/use-recovery-store.ts'
 import { documentLink } from '../../lib/routing/document-reference.ts'
 import { RouteNotice } from '../workspaces/route-notice.tsx'
 import { ShellActions } from '../workspaces/shell-slots.tsx'
-import { EditorStatus } from './editor-status.tsx'
+import { EditorStatus, OFFLINE_LABEL } from './editor-status.tsx'
 import { ImageDialog } from './image-dialog.tsx'
 import type { ImageRequest } from './image-dialog.tsx'
+import { MergeConflicts } from './merge-conflicts.tsx'
 import { MergeDialog } from './merge-dialog.tsx'
+import { openEditorLink, sectionAddress } from './editor-links.ts'
+import { useDocumentLinkSearch } from './use-document-link-search.ts'
 import { DocumentPropertiesPanel } from './properties/document-properties-panel.tsx'
+import { useDraftFrontMatter } from './properties/draft-front-matter.ts'
+import { useDrawio } from './drawio/use-drawio.tsx'
 
 export const editorRouteStyles = tv({
   slots: {
@@ -55,6 +70,15 @@ export const editorRouteStyles = tv({
     properties: 'pt-8',
     surface: 'pt-4 pb-24',
     actionRow: 'flex flex-wrap gap-2 pt-3',
+    offline: '',
+  },
+  variants: {
+    /*
+     * The status in the bar says "offline" on a wide screen; a phone has no
+     * room for it there, so the notice says it instead — until the lock may
+     * have lapsed, which everybody is told.
+     */
+    phoneOnly: { true: { offline: 'sm:hidden' } },
   },
 })
 
@@ -83,6 +107,9 @@ export function EditorRoute() {
   const envelope = useDocumentEnvelope(documentId)
   const recovery = useRecoveryStore(documentId)
   const styles = editorRouteStyles()
+  // Bumped by restoring a set-aside edit, which remounts the session on the
+  // content it should now show (audit 2026-10-11, P0-5).
+  const [generation, setGeneration] = useState(0)
 
   // Both states render in the shell's main column, never over the whole page:
   // the sidebar and the header belong to the layout route and do not move when
@@ -95,7 +122,10 @@ export function EditorRoute() {
     )
   }
 
-  if (document.isError || draft.isError) {
+  // Only a document that never loaded is one that cannot be opened. A failed
+  // *background* refresh keeps the data it had, and must never replace an
+  // editor somebody is typing into (audit 2026-10-11, P0-2).
+  if (document.data === undefined || draft.data === undefined) {
     const error = document.error ?? draft.error
     return (
       <RouteNotice
@@ -110,25 +140,42 @@ export function EditorRoute() {
   }
 
   const content = readDraftContent(draft.data.ast)
-  const initialAst = isDocumentTree(content?.ast) ? content.ast : undefined
+  const serverAst = isDocumentTree(content?.ast) ? content.ast : undefined
+  const { store, setAside } = recovery
+  // An edit that never reached the server is what the author last saw, so it
+  // is what the editor opens on; autosave then sends it. Showing the server's
+  // copy instead would let the next keystroke save over the recovered edit.
+  const initialAst = serverAst === undefined ? undefined : (store.read()?.ast ?? serverAst)
+  const serverVersion = draft.data.draftVersion
+
+  /** Puts a set-aside edit back in the editor, to be saved over the current draft. */
+  function restoreSetAside() {
+    const kept = setAside.read()
+    if (kept === undefined) return
+    store.write({ ...kept, expectedVersion: serverVersion })
+    setAside.clear()
+    setGeneration((current) => current + 1)
+  }
 
   return (
     <EditingSession
-      key={documentId}
+      key={`${documentId}:${generation}`}
       documentId={documentId}
       frontMatter={content?.frontMatter ?? {}}
       workspaceSlug={workspaceSlug}
       title={document.data.title}
       initialAst={initialAst}
-      draftVersion={draft.data.draftVersion}
+      serverAst={serverAst}
+      mergedBy={content?.mergedBy}
+      draftVersion={serverVersion}
       baseRevision={draft.data.baseRevision}
       permissions={envelope.data?.permissions}
       holderName={envelope.data?.lock?.holderName}
-      store={recovery.store}
-      hasRecovered={recovery.recovered !== undefined}
-      onReloadDraft={() => {
-        void draft.refetch()
-      }}
+      store={store}
+      setAside={setAside}
+      hasRecovered={generation === 0 && recovery.recovered !== undefined}
+      refreshFailed={document.isError || draft.isError}
+      onRestoreSetAside={restoreSetAside}
     />
   )
 }
@@ -142,13 +189,20 @@ interface EditingSessionProps {
   readonly frontMatter: Readonly<Record<string, unknown>>
   /** `undefined` when this release cannot read the stored draft (ADR-033). */
   readonly initialAst: DocumentAst | undefined
+  /** The draft as the server holds it: the merge base a fresh session starts from. */
+  readonly serverAst: DocumentAst | undefined
+  /** Who last merged offline changes into this draft, if anyone has since it was last saved. */
+  readonly mergedBy: DraftAuthor | undefined
   readonly draftVersion: number
   readonly baseRevision: string | null
   readonly permissions: DocumentPermissions | undefined
   readonly holderName: string | undefined
   readonly store: PersistentRecoveryStore
+  readonly setAside: PersistentRecoveryStore
   readonly hasRecovered: boolean
-  readonly onReloadDraft: () => void
+  /** A background refresh failed; the session carries on with what it has. */
+  readonly refreshFailed: boolean
+  readonly onRestoreSetAside: () => void
 }
 
 function EditingSession({
@@ -157,40 +211,98 @@ function EditingSession({
   title,
   frontMatter,
   initialAst,
+  serverAst,
+  mergedBy,
   draftVersion,
   baseRevision,
   permissions,
   holderName,
   store,
+  setAside,
   hasRecovered,
-  onReloadDraft,
+  refreshFailed,
+  onRestoreSetAside,
 }: EditingSessionProps) {
   const navigate = useNavigate()
   const styles = editorRouteStyles()
 
-  const draftClient = useDraftClient(documentId)
+  // Who this session saves as, stamped on each draft it writes so a merge can
+  // say whose changes it combined (ADR-021, amendment of 2026-10-11).
+  const me = useMe()
+  const meId = me.data?.id
+  const meName = me.data?.displayName
+  const author = useMemo<DraftAuthor | undefined>(
+    () =>
+      meId === undefined || meName === undefined
+        ? undefined
+        : { userId: meId, displayName: meName },
+    [meId, meName],
+  )
+  const draftClient = useDraftClient(documentId, author)
   const lockClient = useLockClient(documentId)
   const lock = useDocumentLock({ client: lockClient })
   // The lock buttons start async work with no mutation hook behind it, so the
   // transition's pending flag is what puts the spinner on the button pressed
   // (docs/design/feedback.md).
   const [lockActionPending, startLockAction] = useTransition()
+  // The other tabs of this browser on the same document: a save there makes
+  // this tab's draft stale at once, not on its next save (P0-5).
+  const [channel] = useState(() => createBroadcastDraftChannel(`${BRAND.slug}-draft:${documentId}`))
   const autosave = useAutosave({
     client: draftClient,
     store,
     documentVersion: draftVersion,
+    ...(serverAst === undefined ? {} : { documentAst: serverAst }),
     canSave: lock.canAutosave,
+    channel,
   })
-  useUnsavedChangesGuard(autosave.pending !== undefined)
+  // What the editor shows. A merge replaces it, and the editor is remounted
+  // on the new tree — once, after the merge, never while typing.
+  const [content, setContent] = useState(initialAst)
+  const [contentGeneration, setContentGeneration] = useState(0)
+  const reconcile = useDraftReconciliation({
+    lock,
+    autosave,
+    client: draftClient,
+    store,
+    merge: pageMergeRunner(),
+    onReplace: (ast) => {
+      setContent(ast)
+      setContentGeneration((current) => current + 1)
+    },
+    onMerged: (theirs) => {
+      toast.info(`Merged your offline changes with ${whoseDraft(theirs, meId)}`)
+    },
+  })
+  const connection = useConnectionStatus({ autosave: autosave.status, lock: lock.status })
+  // Read once per session: a reload remounts the session with a fresh read.
+  const [setAsideEdit, setSetAsideEdit] = useState(() => setAside.read())
+  useUnsavedChangesGuard(autosave.unsaved)
 
   const editorRef = useRef<DocumentEditorHandle>(null)
+  // Loaded before the editor mounts (the route's loader); a label changed while
+  // somebody is editing reaches their editor on the next visit, which is enough.
+  const labels = useOrganisationLabels()
+  // The properties line's record, following the document's front matter
+  // block so a property change undoes with everything else.
+  const properties = useDraftFrontMatter(documentId, frontMatter, initialAst)
+  const emoji = useOrganisationEmoji()
   const publish = usePublishDocument()
   const [merge, setMerge] = useState<MergeRequired | undefined>(undefined)
   const [insertingImage, setInsertingImage] = useState(false)
+  // Whether the dialog was asked for a picture or for an SVG drawing.
+  const [imagePurpose, setImagePurpose] = useState<'image' | 'drawing'>('image')
+  const searchDocuments = useDocumentLinkSearch(workspaceSlug)
+  // What a child pages block previews: this page's children, for this person (ADR-049).
+  const childPages = useChildPagesOf(documentId)
+  // What the slash menu remembers is this person's, so it is kept under their id.
+  const recentsKey = me.data === undefined ? undefined : `editor.slash.recent.${me.data.id}`
   // The file a drag or a paste brought in, waiting for the alternative text
   // the dialog asks for before anything is uploaded.
   const [droppedFile, setDroppedFile] = useState<File | undefined>(undefined)
   const upload = useUploadAttachment()
+  // draw.io (ADR-043): its slash item, "Edit diagram", and the editor session.
+  const drawio = useDrawio({ documentId, place })
   // One promise toast per publish (`docs/design/feedback.md`): a retry passes
   // the previous id back so it replaces that toast rather than stacking one.
   const publishToastId = useRef<ToastId | undefined>(undefined)
@@ -266,9 +378,20 @@ function EditingSession({
   }
 
   const lockedByOther = lock.status === 'held_by_other'
-  const lockLost = lock.status === 'lost' || autosave.status === 'blocked'
+  const reconciling = reconcile.phase
+  // A lapsed lock is taken again by itself; only one that could not be is the author's to act on.
+  const lockLost =
+    (lock.status === 'lost' || autosave.status === 'blocked') && reconciling.status === 'idle'
+  const conflicted = reconciling.status === 'conflicted' ? reconciling : undefined
   const heldBy = holderName ?? lock.holder?.displayName
-  const canEdit = permissions?.edit !== false && !lockedByOther && !lockLost
+  const canEdit =
+    permissions?.edit !== false && !lockedByOther && !lockLost && conflicted === undefined
+  // Publishing mid-merge would publish a draft that is about to change.
+  const canPublish = canEdit && autosave.status !== 'conflict' && reconciling.status === 'idle'
+  // Told on their next load when somebody merged offline changes into their draft.
+  const mergedInto =
+    mergedBy !== undefined && mergedBy.userId !== meId && autosave.lastSavedAt === null
+  const { phase } = autosave
   /*
    * The notices region takes its space only when it has something in it. A
    * region that is always there puts a band of nothing above the document and
@@ -277,10 +400,23 @@ function EditingSession({
   const hasNotices =
     publish.error !== null ||
     hasRecovered ||
+    refreshFailed ||
+    setAsideEdit !== undefined ||
     lockedByOther ||
     lockLost ||
-    autosave.status === 'stale' ||
+    connection.offline ||
+    mergedInto ||
+    reconciling.status !== 'idle' ||
+    phase.status === 'failed' ||
     initialAst === undefined
+
+  /** The lock is back; send whatever the lost lock held up. */
+  function takeLockAgain(take: () => Promise<void>) {
+    startLockAction(async () => {
+      await take()
+      autosave.retry()
+    })
+  }
 
   /**
    * An image was asked for, from a file or from an address.
@@ -332,22 +468,18 @@ function EditingSession({
     const editor = handle?.editor
     if (handle == null || editor == null) return
     command(editor)
-    autosave.change(handle.toMdast())
+    autosave.change(handle.toMdast)
   }
 
-  /**
-   * A property changed. The draft envelope has the new record by the time this
-   * runs; what is left is to put the same record on the document's own front
-   * matter block — so the YAML the author's file keeps stays in step with it —
-   * and to queue the save the way any other edit does.
-   */
-  function handlePropertiesWritten(next: Record<string, unknown>) {
-    const handle = editorRef.current
-    if (handle === null) return
-    const editor = handle.editor
-    if (editor !== null) applyFrontMatter(next)(editor.state, editor.view.dispatch)
-    autosave.change(handle.toMdast())
-  }
+  /** Why the properties cannot be changed right now, in the words the notices above use. */
+  const propertiesReadOnly =
+    permissions?.edit === false
+      ? 'You can read this document but not edit it.'
+      : lockedByOther
+        ? `${heldBy ?? 'Someone else'} is editing this document.`
+        : lockLost
+          ? 'Your lock was lost. Take the lock again to change properties.'
+          : undefined
 
   return (
     <>
@@ -359,12 +491,19 @@ function EditingSession({
           autosave={autosave.status}
           lock={lock.status}
           holderName={heldBy}
+          reconcile={reconciling.status}
           // A step of air between what the session is doing and what the author
           // can do about it, so the badge reads as a readout rather than as the
           // first of the buttons.
           className="me-1 hidden sm:block"
+          onRetry={autosave.retry}
         />
-        <Button size="sm" loading={publish.isPending} disabled={!canEdit} onClick={handlePublish}>
+        <Button
+          size="sm"
+          loading={publish.isPending}
+          disabled={!canPublish}
+          onClick={handlePublish}
+        >
           Publish
         </Button>
       </ShellActions>
@@ -384,14 +523,61 @@ function EditingSession({
             </Block>
           ) : undefined}
 
+          {connection.offline ? (
+            <Block
+              className={editorRouteStyles({ phoneOnly: !connection.othersMayEdit }).offline()}
+            >
+              <Callout tone="warning" title={OFFLINE_LABEL}>
+                {connection.othersMayEdit
+                  ? 'It has been more than a minute, so someone else may be able to edit this document now. Keep writing: when you are back, your changes are merged with anything they wrote.'
+                  : 'Keep writing. Your changes are saved to the server as soon as the connection is back.'}
+              </Callout>
+            </Block>
+          ) : undefined}
+
+          {mergedInto ? (
+            <Block>
+              <Callout
+                tone="info"
+                title={`${mergedBy.displayName} merged offline changes into this draft`}
+              >
+                Their changes and yours are combined below.
+              </Callout>
+            </Block>
+          ) : undefined}
+
+          {conflicted === undefined ? undefined : (
+            <Block>
+              <MergeConflicts
+                merge={conflicted.merge}
+                otherName={whoseName(conflicted.theirs, meId)}
+                onResolve={reconcile.resolve}
+                onKeepMine={reconcile.keepMine}
+              />
+            </Block>
+          )}
+
+          {reconciling.status === 'failed' ? (
+            <Block>
+              <Callout tone="info" title="Couldn’t reach the server to merge your changes">
+                They are kept on this device, and it tries again in a few seconds.
+              </Callout>
+            </Block>
+          ) : undefined}
+
           {lockedByOther ? (
             <Block>
               <Callout
                 tone="warning"
-                title={`${heldBy ?? 'Someone else'} is editing this document`}
+                title={
+                  autosave.unsaved
+                    ? `${heldBy ?? 'Someone else'} is editing now`
+                    : `${heldBy ?? 'Someone else'} is editing this document`
+                }
               >
-                Autosave is off while someone else holds the lock, so nothing you type here will be
-                saved. Your changes stay in this browser either way.
+                {autosave.unsaved
+                  ? `Your offline changes are kept on this device and will be merged when ${heldBy ?? 'they'} finish${heldBy === undefined ? '' : 'es'}.`
+                  : 'Autosave is off while someone else holds the lock, so nothing you type here will be saved. Your changes stay in this browser either way.'}
                 {permissions?.manage === true ? (
                   <div className={styles.actionRow()}>
                     <Button
@@ -399,7 +585,7 @@ function EditingSession({
                       variant="secondary"
                       loading={lockActionPending}
                       onClick={() => {
-                        startLockAction(() => lock.takeover())
+                        takeLockAgain(lock.takeover)
                       }}
                     >
                       Take over the lock
@@ -420,7 +606,7 @@ function EditingSession({
                     size="sm"
                     loading={lockActionPending}
                     onClick={() => {
-                      startLockAction(() => lock.acquire())
+                      takeLockAgain(lock.acquire)
                     }}
                   >
                     Take the lock again
@@ -431,7 +617,7 @@ function EditingSession({
                       variant="secondary"
                       loading={lockActionPending}
                       onClick={() => {
-                        startLockAction(() => lock.takeover())
+                        takeLockAgain(lock.takeover)
                       }}
                     >
                       Take over
@@ -442,16 +628,48 @@ function EditingSession({
             </Block>
           ) : undefined}
 
-          {autosave.status === 'stale' ? (
+          {setAsideEdit === undefined ? undefined : (
             <Block>
-              <Callout tone="warning" title="This draft changed somewhere else">
-                Another tab or another session saved this draft after you opened it. Reload it and
-                keep writing; your unsent change is still here.
+              <Callout tone="info" title="Your unsaved change was set aside">
+                You reloaded a newer draft. The change you had not saved is kept in this browser.
+                Restoring it puts it back in the editor and saves it over this draft.
                 <div className={styles.actionRow()}>
-                  <Button size="sm" variant="secondary" onClick={onReloadDraft}>
-                    Reload the draft
+                  <Button size="sm" variant="secondary" onClick={onRestoreSetAside}>
+                    Restore my change
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => {
+                      setAside.clear()
+                      setSetAsideEdit(undefined)
+                    }}
+                  >
+                    Discard it
                   </Button>
                 </div>
+              </Callout>
+            </Block>
+          )}
+
+          {phase.status === 'failed' ? (
+            <Block>
+              <Callout tone="danger" title="Couldn’t save your last change">
+                <p>{phase.reason}</p>
+                <p>Your change is kept in this browser, and the next edit tries again.</p>
+                <div className={styles.actionRow()}>
+                  <Button size="sm" variant="secondary" onClick={autosave.retry}>
+                    Retry
+                  </Button>
+                </div>
+              </Callout>
+            </Block>
+          ) : undefined}
+
+          {refreshFailed ? (
+            <Block>
+              <Callout tone="info" title="Couldn’t refresh this document">
+                Keep writing: this does not stop your changes being saved, and it will try again.
               </Callout>
             </Block>
           ) : undefined}
@@ -472,10 +690,13 @@ function EditingSession({
           <Block>
             <DocumentPropertiesPanel
               documentId={documentId}
-              frontMatter={frontMatter}
+              frontMatter={properties}
               headingTitle={title}
               editable={canEdit}
-              onWritten={handlePropertiesWritten}
+              readOnlyReason={propertiesReadOnly}
+              tagSuggestions={labels}
+              searchDocuments={searchDocuments}
+              editor={() => editorRef.current?.editor ?? null}
             />
           </Block>
         </LayoutGrid>
@@ -483,16 +704,36 @@ function EditingSession({
 
       {initialAst === undefined ? undefined : (
         <DocumentEditor
+          // Remounted on a merged tree, and read-only while a merge waits on the author.
+          key={`${contentGeneration}:${conflicted === undefined ? 'editing' : 'resolving'}`}
           ref={editorRef}
-          ast={initialAst}
+          ast={content ?? initialAst}
+          editable={conflicted === undefined}
           label={title}
           placeholder="Write, or press / for blocks"
+          labels={labels}
+          emoji={emoji}
           className={styles.surface()}
           onChange={(handle) => {
-            autosave.change(handle.toMdast())
+            // How to read the tree, not the tree: converting a long document
+            // costs several frames, so autosave reads it once, when a save is
+            // about to go, rather than on every keystroke (P0-6).
+            autosave.change(handle.toMdast)
+            properties.follow(handle.editor)
           }}
+          {...(recentsKey === undefined ? {} : { recentsKey })}
+          slashContributions={drawio.slashContributions}
+          imageActions={drawio.imageActions}
+          searchDocuments={searchDocuments}
+          onOpenLink={(href) => {
+            openEditorLink(href, workspaceSlug)
+          }}
+          linkTo={(fragment) =>
+            sectionAddress(workspaceSlug, documentId, fragment, globalThis.location.origin)
+          }
+          childPages={childPages}
           onRequest={(request) => {
-            if (request.kind !== 'image') return
+            setImagePurpose(request.kind)
             setDroppedFile(undefined)
             upload.reset()
             setInsertingImage(true)
@@ -504,6 +745,7 @@ function EditingSession({
             const [first] = files
             if (first === undefined) return
             upload.reset()
+            setImagePurpose('image')
             setDroppedFile(first)
             setInsertingImage(true)
           }}
@@ -541,7 +783,22 @@ function EditingSession({
         uploading={upload.isPending}
         error={upload.error}
         onSubmit={handleInsertImage}
+        purpose={imagePurpose}
       />
+
+      {drawio.element}
     </>
   )
+}
+
+/** The name to show for whoever wrote the draft merged into; never this person's own. */
+function whoseName(theirs: LoadedDraft, meId: string | undefined): string {
+  const writer = theirs.writtenBy
+  if (writer === undefined) return 'the other editor'
+  return writer.userId === meId ? 'your other tab' : writer.displayName
+}
+
+/** "Sam's", "your other tab's", or "the latest draft", for the toast after a merge. */
+function whoseDraft(theirs: LoadedDraft, meId: string | undefined): string {
+  return theirs.writtenBy === undefined ? 'the latest draft' : `${whoseName(theirs, meId)}’s`
 }

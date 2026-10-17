@@ -13,6 +13,8 @@ import type {
   DocumentLinksRepository,
   DocumentLockRow,
   DocumentRepository,
+  DocumentSummaryRepository,
+  DocumentSummaryRow,
   DocumentRow,
   DraftRepository,
   DraftRow,
@@ -27,6 +29,8 @@ import type {
   MagicLinkTokenRow,
   OutboxEventRow,
   OutboxWriter,
+  PersonPreferencesRepository,
+  PersonPreferencesRow,
   PublicRedirectRepository,
   PublicRedirectRow,
   RenderCacheRepository,
@@ -74,11 +78,21 @@ export interface InMemoryUnitOfWork extends UnitOfWork {
    */
   /** Every audit row written, in order, for the use cases whose trail is part of their behaviour (ADR-011). */
   readonly auditEvents: readonly AuditEventRow[]
+  /** Every attachment state a revision replaced, oldest first: the attachments' history. */
+  readonly attachmentHistory: readonly AttachmentRow[]
+  /** What the search projection would hold for each published document (ADR-049); a test sets it. */
+  readonly summaries: Map<DocumentId, DocumentSummaryRow>
+  /** Drops a document's draft row, as a document imported or seeded without one has none. */
+  forgetDraft(documentId: DocumentId): void
 }
 
 /** The `(created_at, name)` order the secrets rotation pages by. */
 const compareSecretCursors = (left: SecretCursor, right: SecretCursor): number =>
   left.createdAt.getTime() - right.createdAt.getTime() || left.name.localeCompare(right.name)
+
+/** Collections in name order, compared by code point, for the listings the port says are by name. */
+const byName = (a: CollectionRow, b: CollectionRow): number =>
+  a.name < b.name ? -1 : a.name > b.name ? 1 : 0
 
 /** The key the unique index on `(site_slug, path)` makes, as one string. */
 const redirectKey = (siteSlug: string, path: string): string => JSON.stringify([siteSlug, path])
@@ -114,9 +128,21 @@ export function createInMemoryUnitOfWork(): InMemoryUnitOfWork {
   const publicRedirects = new Map<string, PublicRedirectRow>()
   const links = new Map<string, DocumentLinkRow[]>()
   const attachments = new Map<string, AttachmentRow>()
+  const attachmentHistory: AttachmentRow[] = []
   const events: OutboxEventRow[] = []
   const auditEvents: AuditEventRow[] = []
   const secrets = new Map<string, SecretRow>()
+  const personPreferences = new Map<string, PersonPreferencesRow>()
+  const summaries = new Map<DocumentId, DocumentSummaryRow>()
+
+  const documentSummaryRepository: DocumentSummaryRepository = {
+    async listByIds(ids) {
+      return ids.flatMap((id) => {
+        const row = summaries.get(id)
+        return row === undefined ? [] : [row]
+      })
+    },
+  }
 
   const userRepository: UserRepository = {
     async create(input) {
@@ -141,6 +167,24 @@ export function createInMemoryUnitOfWork(): InMemoryUnitOfWork {
       // has a row — the `?? null` fallback exists only to satisfy the return type.
       /* v8 ignore next */
       return id === undefined ? null : (users.get(id) ?? null)
+    },
+    async findVerifiedByEmails(emails) {
+      const wanted = new Set(emails.map((email) => email.toLowerCase()))
+      return [...users.values()].filter(
+        (user) => user.emailVerifiedAt !== null && wanted.has(user.email.toLowerCase()),
+      )
+    },
+    async searchVerified(query, limit) {
+      const needle = query.toLowerCase()
+      return [...users.values()]
+        .filter(
+          (user) =>
+            user.emailVerifiedAt !== null &&
+            (user.displayName.toLowerCase().includes(needle) ||
+              user.email.toLowerCase().includes(needle)),
+        )
+        .toSorted((a, b) => a.displayName.localeCompare(b.displayName))
+        .slice(0, limit)
     },
     async markEmailVerified(id, now) {
       const existing = users.get(id)
@@ -477,6 +521,19 @@ export function createInMemoryUnitOfWork(): InMemoryUnitOfWork {
       }
       return chain
     },
+    async listDescendants(id, depth) {
+      const found: DocumentRow[] = []
+      let level: readonly DocumentId[] = [id]
+      for (let reached = 0; reached < depth && level.length > 0; reached += 1) {
+        const parents = new Set(level)
+        const next = [...documents.values()].filter(
+          (doc) => doc.parentId !== null && parents.has(doc.parentId),
+        )
+        found.push(...next)
+        level = next.map((doc) => doc.id)
+      }
+      return found
+    },
     async update(id, patch, now) {
       const existing = documents.get(id)
       if (existing === undefined) {
@@ -499,6 +556,12 @@ export function createInMemoryUnitOfWork(): InMemoryUnitOfWork {
     },
     async find(documentId) {
       return drafts.get(documentId) ?? null
+    },
+    async stamp(documentId) {
+      const draft = drafts.get(documentId)
+      return draft === undefined
+        ? null
+        : { baseRevision: draft.baseRevision, updatedAt: draft.updatedAt }
     },
     async write({ documentId, sessionId, expectedVersion, ast, now }) {
       const lock = locks.get(documentId) ?? null
@@ -693,7 +756,20 @@ export function createInMemoryUnitOfWork(): InMemoryUnitOfWork {
     async listByWorkspace(workspaceId) {
       return [...collections.values()]
         .filter((row) => row.workspaceId === workspaceId)
-        .toSorted((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0))
+        .toSorted(byName)
+    },
+    async listByIds(ids) {
+      return ids.flatMap((id) => {
+        const row = collections.get(id)
+        return row === undefined ? [] : [row]
+      })
+    },
+    async searchByName(text, limit) {
+      const needle = text.toLocaleLowerCase()
+      return [...collections.values()]
+        .filter((row) => row.name.toLocaleLowerCase().includes(needle))
+        .toSorted(byName)
+        .slice(0, limit)
     },
     async listPublicSites() {
       const sites = [...collections.values()].flatMap((row) =>
@@ -850,6 +926,8 @@ export function createInMemoryUnitOfWork(): InMemoryUnitOfWork {
         contentType: input.contentType,
         size: input.size,
         sha256: input.sha256,
+        version: 1,
+        searchText: input.searchText ?? null,
         createdAt: input.now,
         deletedAt: null,
       }
@@ -864,10 +942,33 @@ export function createInMemoryUnitOfWork(): InMemoryUnitOfWork {
         .filter((row) => row.documentId === documentId && row.deletedAt === null)
         .toSorted((left, right) => left.createdAt.getTime() - right.createdAt.getTime())
     },
+    async listLiveInWorkspace(workspaceId, ids) {
+      const wanted = new Set(ids)
+      return [...attachments.values()].filter(
+        (row) => wanted.has(row.id) && row.workspaceId === workspaceId && row.deletedAt === null,
+      )
+    },
     async softDelete(id, now) {
       const row = attachments.get(id)
       if (row !== undefined && row.deletedAt === null)
         attachments.set(id, { ...row, deletedAt: now })
+    },
+    async revise(input) {
+      const row = attachments.get(input.id)
+      if (row === undefined || row.deletedAt !== null || row.version !== input.expectedVersion) {
+        return null
+      }
+      attachmentHistory.push(row)
+      const revised: AttachmentRow = {
+        ...row,
+        contentType: input.contentType,
+        size: input.size,
+        sha256: input.sha256,
+        searchText: input.searchText,
+        version: row.version + 1,
+      }
+      attachments.set(row.id, revised)
+      return revised
     },
   }
 
@@ -949,6 +1050,17 @@ export function createInMemoryUnitOfWork(): InMemoryUnitOfWork {
     },
   }
 
+  const personPreferencesRepository: PersonPreferencesRepository = {
+    async find(userId) {
+      return personPreferences.get(userId) ?? null
+    },
+    async put({ userId, document, now }) {
+      const row: PersonPreferencesRow = { userId, document, updatedAt: now }
+      personPreferences.set(userId, row)
+      return row
+    },
+  }
+
   /**
    * Secrets as they are stored: ciphertext and a wrapped key, never a value
    * (ADR-034). The fake keeps exactly the columns the table has, so a test of
@@ -1024,6 +1136,7 @@ export function createInMemoryUnitOfWork(): InMemoryUnitOfWork {
     workspaceSlugHistory: workspaceSlugHistoryRepository,
     collections: collectionRepository,
     documents: documentRepository,
+    documentSummaries: documentSummaryRepository,
     drafts: draftRepository,
     locks: lockRepository,
     grants: grantRepository,
@@ -1034,6 +1147,7 @@ export function createInMemoryUnitOfWork(): InMemoryUnitOfWork {
     documentLinks: documentLinksRepository,
     secrets: secretsRepository,
     attachments: attachmentRepository,
+    personPreferences: personPreferencesRepository,
     outbox: outboxWriter,
     audit: auditWriter,
   }
@@ -1042,6 +1156,11 @@ export function createInMemoryUnitOfWork(): InMemoryUnitOfWork {
     repos,
     events,
     auditEvents,
+    attachmentHistory,
+    summaries,
+    forgetDraft(documentId) {
+      drafts.delete(documentId)
+    },
     async run(fn) {
       return fn(repos)
     },

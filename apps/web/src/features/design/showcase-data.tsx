@@ -7,6 +7,7 @@ import {
   type DocumentStatus,
   type IconRailItem,
   type Revision,
+  type TreeNode,
   type TreeSection,
 } from '@quill/ui'
 
@@ -53,6 +54,65 @@ export const TREE_SECTIONS: readonly TreeSection[] = [
       { id: 'adr-019', label: 'adr-019-design-system', link: { to: '#signature' } },
       { id: 'adr-027', label: 'adr-027-block-widths', link: { to: '#layout' } },
       { id: 'adr-028', label: 'adr-028-theming', link: { to: '#colour' } },
+    ],
+  },
+]
+
+/**
+ * A collection the size of a busy team's incident log: two thousand siblings
+ * and a chain twelve deep, the shape that once hung the sidebar. The tree
+ * draws the way to the open document, one page of each long branch, and a
+ * "Show more" for the rest.
+ */
+function deepChain(level: number, depth: number): TreeNode {
+  return {
+    id: `level-${level}`,
+    label: `Level ${level}`,
+    link: { to: '#signature' },
+    ...(level === depth
+      ? {}
+      : {
+          children: [
+            deepChain(level + 1, depth),
+            ...Array.from({ length: 3 }, (_, index) => ({
+              id: `level-${level}-note-${index + 1}`,
+              label: `Level ${level} note ${index + 1}`,
+              link: { to: '#signature' },
+            })),
+          ],
+        }),
+  }
+}
+
+export const LARGE_TREE_SECTIONS: readonly TreeSection[] = [
+  {
+    id: 'runbooks',
+    label: 'runbooks',
+    count: 4,
+    nodes: [
+      {
+        id: 'failover',
+        label: 'failover',
+        link: { to: '#signature' },
+        children: [
+          { id: 'failover-db', label: 'database', link: { to: '#signature' } },
+          { id: 'failover-dns', label: 'dns', link: { to: '#signature' } },
+        ],
+      },
+      { id: 'on-call', label: 'on-call', link: { to: '#signature' } },
+    ],
+  },
+  {
+    id: 'incident-log',
+    label: 'incident log',
+    count: 2_000 + 12 * 4,
+    nodes: [
+      deepChain(1, 12),
+      ...Array.from({ length: 2_000 }, (_, index) => ({
+        id: `incident-${index + 1}`,
+        label: `incident ${String(index + 1).padStart(4, '0')}`,
+        link: { to: '#signature' },
+      })),
     ],
   },
 ]

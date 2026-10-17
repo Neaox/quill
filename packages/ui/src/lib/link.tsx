@@ -46,6 +46,8 @@ export interface LinkRenderProps extends LinkTarget {
   readonly 'aria-current'?: 'page' | 'true' | undefined
   readonly 'aria-label'?: string | undefined
   readonly title?: string | undefined
+  /** A tag named like one of the organisation's labels, which the theme colours (ADR-037). */
+  readonly 'data-label'?: string | undefined
 }
 
 /**

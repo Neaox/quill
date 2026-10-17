@@ -34,9 +34,12 @@ export function SignUpPage() {
 
   if (signUp.isSuccess) {
     return (
-      <AuthCard title="Account created">
+      <AuthCard
+        title="Account created"
+        description="Your account is ready. Sign in with the email and password you just chose."
+      >
         <Callout tone="success">You can now sign in with your new account.</Callout>
-        <Link to="/sign-in" className={buttonClassName({ className: 'w-full' })}>
+        <Link to="/sign-in" className={buttonClassName({ size: 'lg', className: 'w-full' })}>
           Sign in
         </Link>
       </AuthCard>
@@ -46,6 +49,7 @@ export function SignUpPage() {
   return (
     <AuthCard
       title="Create your account"
+      description="One account for every workspace you are invited to here."
       footer={
         <>
           Already have an account?{' '}
@@ -55,8 +59,9 @@ export function SignUpPage() {
         </>
       }
     >
-      <form onSubmit={handleSubmit} className="flex flex-col gap-4" noValidate>
+      <form onSubmit={handleSubmit} className="flex flex-col gap-5" noValidate>
         <Input
+          size="lg"
           label="Name"
           name="name"
           autoComplete="name"
@@ -67,6 +72,7 @@ export function SignUpPage() {
           }}
         />
         <Input
+          size="lg"
           label="Email"
           type="email"
           name="email"
@@ -78,6 +84,7 @@ export function SignUpPage() {
           }}
         />
         <Input
+          size="lg"
           label="Password"
           type="password"
           name="password"
@@ -97,7 +104,7 @@ export function SignUpPage() {
           }}
         />
         <FormError error={signUp.error} />
-        <Button type="submit" loading={signUp.isPending} className="mt-1 w-full">
+        <Button type="submit" size="lg" loading={signUp.isPending} className="mt-2 w-full">
           Create account
         </Button>
       </form>

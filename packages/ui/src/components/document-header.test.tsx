@@ -32,7 +32,7 @@ describe('DocumentHeader', () => {
 
     expect(screen.getByRole('banner')).toBeInTheDocument()
     expect(screen.getByText('authentication')).toBeInTheDocument()
-    expect(screen.getByText('published')).toBeInTheDocument()
+    expect(screen.getByText('Published')).toBeInTheDocument()
     expect(screen.getByText('owner: platform')).toBeInTheDocument()
     expect(screen.getByText('2026-08-15')).toHaveAttribute('datetime', '2026-08-15')
     await expectNoAccessibilityViolations(container)
@@ -106,7 +106,13 @@ describe('DocumentHeader', () => {
   it('says the state in words as well as with the accent dot', () => {
     render(<DocumentHeader status={{ ...STATUS, state: 'draft' }} />)
 
-    expect(screen.getByText('draft')).toBeInTheDocument()
+    expect(screen.getByText('Draft')).toBeInTheDocument()
+  })
+
+  it('says a published document has changes nobody has published yet', () => {
+    render(<DocumentHeader status={{ ...STATUS, state: 'changed' }} />)
+
+    expect(screen.getByText('Published, with unpublished changes')).toBeInTheDocument()
   })
 
   it('renders the mark and the actions only when they are given', () => {
@@ -134,7 +140,7 @@ describe('DocumentHeader', () => {
     expect(screen.queryByRole('term')).not.toBeInTheDocument()
 
     rerender(<DocumentHeader status={{ path: [{ label: 'Engineering' }], state: 'published' }} />)
-    expect(screen.getByText('published')).toBeInTheDocument()
+    expect(screen.getByText('Published')).toBeInTheDocument()
     expect(screen.queryByText(/^owner:/)).not.toBeInTheDocument()
   })
 

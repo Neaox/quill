@@ -9,6 +9,8 @@ import type { Command } from '@tiptap/pm/state'
 
 import { markType, nodeType } from '../schema/node-type.ts'
 import { tableCommands } from '../schema/tables.ts'
+import { tableKeymap } from '../table/table-actions.ts'
+import { enterInTable, nextCellOrNewRow } from '../table/table-commands.ts'
 import { insertHardBreak } from './commands.ts'
 
 /**
@@ -65,8 +67,12 @@ export function keyboardShortcuts(schema: Schema): Readonly<Record<string, Comma
     'Mod-Alt-0': setBlockType(nodeType(schema, 'paragraph')),
     'Mod-Alt-c': setBlockType(nodeType(schema, 'codeBlock')),
     'Shift-Enter': insertHardBreak,
-    Enter: acrossItemTypes(schema, splitListItem),
-    Tab: chainCommands(tableCommands.nextCell, acrossItemTypes(schema, sinkListItem)),
+    // In a table, Enter goes down a cell and adds a row at the end; Tab goes
+    // to the next cell and adds a row from the last (ADR-040).
+    Enter: chainCommands(enterInTable, acrossItemTypes(schema, splitListItem)),
+    Tab: chainCommands(nextCellOrNewRow, acrossItemTypes(schema, sinkListItem)),
+    // Inserting, moving and deleting rows and columns, as the table toolbar lists them.
+    ...tableKeymap(),
     'Shift-Tab': chainCommands(tableCommands.previousCell, acrossItemTypes(schema, liftListItem)),
     'Mod-z': undo,
     'Mod-y': redo,

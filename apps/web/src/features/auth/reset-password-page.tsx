@@ -1,7 +1,7 @@
 import { getRouteApi, Link } from '@tanstack/react-router'
 import { useState, type FormEvent } from 'react'
 
-import { Button, Callout, Input, textLinkClassName } from '@quill/ui'
+import { Button, buttonClassName, Callout, Input, textLinkClassName } from '@quill/ui'
 
 import { useConfirmPasswordReset, useRequestPasswordReset } from '../../lib/api/index.ts'
 import { AuthCard } from './auth-card.tsx'
@@ -24,7 +24,7 @@ function ConfirmReset({ token }: { readonly token: string }) {
     return (
       <AuthCard title="Password updated">
         <Callout tone="success">Your password has been changed.</Callout>
-        <Link to="/sign-in" className={textLinkClassName({ size: 'sm' })}>
+        <Link to="/sign-in" className={buttonClassName({ size: 'lg', className: 'w-full' })}>
           Sign in
         </Link>
       </AuthCard>
@@ -32,9 +32,13 @@ function ConfirmReset({ token }: { readonly token: string }) {
   }
 
   return (
-    <AuthCard title="Choose a new password">
-      <form onSubmit={handleSubmit} className="flex flex-col gap-4" noValidate>
+    <AuthCard
+      title="Choose a new password"
+      description="Pick a password you do not use anywhere else."
+    >
+      <form onSubmit={handleSubmit} className="flex flex-col gap-5" noValidate>
         <Input
+          size="lg"
           label="New password"
           type="password"
           name="new-password"
@@ -48,7 +52,7 @@ function ConfirmReset({ token }: { readonly token: string }) {
           }}
         />
         <FormError error={confirmReset.error} />
-        <Button type="submit" loading={confirmReset.isPending} className="w-full">
+        <Button type="submit" size="lg" loading={confirmReset.isPending} className="mt-2 w-full">
           Update password
         </Button>
       </form>
@@ -67,7 +71,14 @@ function RequestReset() {
 
   if (requestReset.isSuccess) {
     return (
-      <AuthCard title="Check your email">
+      <AuthCard
+        title="Check your email"
+        footer={
+          <Link to="/sign-in" className={textLinkClassName()}>
+            Back to sign in
+          </Link>
+        }
+      >
         <Callout tone="success">
           If an account exists for {email}, a password reset link is on its way.
         </Callout>
@@ -78,14 +89,16 @@ function RequestReset() {
   return (
     <AuthCard
       title="Reset your password"
+      description="Enter the address you signed up with and we will send a link to choose a new password."
       footer={
         <Link to="/sign-in" className={textLinkClassName()}>
           Back to sign in
         </Link>
       }
     >
-      <form onSubmit={handleSubmit} className="flex flex-col gap-4" noValidate>
+      <form onSubmit={handleSubmit} className="flex flex-col gap-5" noValidate>
         <Input
+          size="lg"
           label="Email"
           type="email"
           name="email"
@@ -97,7 +110,7 @@ function RequestReset() {
           }}
         />
         <FormError error={requestReset.error} />
-        <Button type="submit" loading={requestReset.isPending} className="w-full">
+        <Button type="submit" size="lg" loading={requestReset.isPending} className="mt-2 w-full">
           Send reset link
         </Button>
       </form>

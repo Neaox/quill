@@ -1,4 +1,12 @@
-import { CoreFrontMatterSchema, LAYOUT_WIDTHS, isTemplateDeclaration } from '@quill/markdown'
+import {
+  LIFECYCLE_STATES,
+  calendarDate,
+  canMoveLifecycle,
+  isLifecycleState,
+  lifecycleLabel,
+  type LifecycleState,
+} from '@quill/domain'
+import { LAYOUT_WIDTHS, isTemplateDeclaration } from '@quill/markdown'
 import type { TemplateQuestion } from '@quill/markdown'
 
 /**
@@ -17,8 +25,19 @@ import type { TemplateQuestion } from '@quill/markdown'
  * own.
  */
 
-/** How a field is edited. `readonly` is a fact shown, not a control. */
-export type PropertyKind = 'readonly' | 'text' | 'select' | 'list' | 'date'
+/**
+ * How a field is edited. `readonly` is a fact shown, not a control; `people`
+ * and `tags` are lists edited as tokens; `interval` is a review cycle.
+ */
+export type PropertyKind =
+  | 'readonly'
+  | 'text'
+  | 'select'
+  | 'list'
+  | 'date'
+  | 'people'
+  | 'tags'
+  | 'interval'
 
 export interface PropertyOption {
   readonly value: string
@@ -32,10 +51,14 @@ export interface PropertyField {
   readonly kind: PropertyKind
   /** The value as the control shows it; a list is comma-separated. */
   readonly value: string
+  /** A list field's entries, for a control that edits them one by one. */
+  readonly values?: readonly string[]
   readonly options?: readonly PropertyOption[]
   readonly help?: string
   /** A value the schema rejects, said in words beside the field (ADR-005: warn, never discard). */
   readonly error?: string
+  /** A template question that is not optional (ADR-029: shown, never enforced). */
+  readonly required?: boolean
 }
 
 /** A front matter key this release recognises but does not offer a control for. */
@@ -64,6 +87,8 @@ const HANDLED_KEYS: ReadonlySet<string> = new Set([
   'title',
   'type',
   'status',
+  'verified',
+  'supersededBy',
   'owners',
   'tags',
   'review',
@@ -72,17 +97,6 @@ const HANDLED_KEYS: ReadonlySet<string> = new Set([
 ])
 
 const REVIEW_INTERVAL_PATTERN = /^[1-9]\d*[dwmy]$/
-
-/** The statuses the core schema allows, read from the schema rather than copied. */
-export const STATUS_VALUES: readonly string[] = readEnum(CoreFrontMatterSchema, 'status')
-
-function readEnum(schema: { readonly properties: Record<string, unknown> }, key: string): string[] {
-  const property = schema.properties[key]
-  const values = (property as { readonly enum?: unknown } | undefined)?.enum
-  /* v8 ignore next 2 -- the core schema pins `status` as an enum; the guard only keeps this read total. */
-  if (!Array.isArray(values)) return []
-  return values.filter((value) => typeof value === 'string')
-}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -151,11 +165,127 @@ function reviewInterval(frontMatter: Readonly<Record<string, unknown>>): Propert
   return {
     key: 'review.interval',
     label: 'Review every',
-    kind: 'text',
+    kind: 'interval',
     value: interval,
     help: 'A count and a unit, such as 90d, 6m or 1y.',
     ...(invalid ? { error: 'Use a count and a unit, such as 90d, 6m or 1y.' } : {}),
   }
+}
+
+function lastReviewed(frontMatter: Readonly<Record<string, unknown>>): PropertyField {
+  const review = frontMatter['review']
+  const written = isRecord(review) ? review['lastReviewed'] : undefined
+  const value = calendarDate(written) ?? asText(written)
+  const invalid = value.length > 0 && calendarDate(value) === undefined
+  return {
+    key: 'review.lastReviewed',
+    label: 'Last reviewed',
+    kind: 'date',
+    value,
+    ...(invalid ? { error: `“${value}” is not a date.` } : {}),
+  }
+}
+
+/** A choice from a fixed set, and a word on a value that is not one of them. */
+function choiceField(
+  frontMatter: Readonly<Record<string, unknown>>,
+  choice: {
+    readonly key: string
+    readonly label: string
+    readonly values: readonly string[]
+    readonly problem: (value: string) => string
+    readonly help?: string
+  },
+): PropertyField {
+  const value = asText(frontMatter[choice.key])
+  const invalid = value.length > 0 && !choice.values.includes(value)
+  return {
+    key: choice.key,
+    label: choice.label,
+    kind: 'select',
+    value,
+    options: [UNSET, ...optionsOf(choice.values)],
+    ...(choice.help === undefined ? {} : { help: choice.help }),
+    ...(invalid ? { error: choice.problem(value) } : {}),
+  }
+}
+
+/**
+ * The lifecycle (ADR-005 amendment): front matter's `status`, offered under
+ * the name a reader knows it by. A value that is not a lifecycle state, such
+ * as a `draft` or `published` an earlier release wrote, or a word nobody
+ * defined, is not an error: it is kept, shown read-only beside this
+ * (`legacyFields`), and this reads "None".
+ */
+function lifecycleField(frontMatter: Readonly<Record<string, unknown>>): PropertyField {
+  const status = frontMatter['status']
+  return {
+    key: 'status',
+    label: 'Lifecycle',
+    kind: 'select',
+    value: isLifecycleState(status) ? status : '',
+    options: [
+      { value: '', label: 'None' },
+      ...LIFECYCLE_STATES.map((state) => ({ value: state, label: lifecycleLabel(state) })),
+    ],
+  }
+}
+
+/** What the lifecycle carries, each shown as it is written. */
+function lifecycleFacts(frontMatter: Readonly<Record<string, unknown>>): readonly PropertyField[] {
+  const verified = frontMatter['verified']
+  const supersededBy = asText(frontMatter['supersededBy'])
+  return [
+    ...(verified === undefined
+      ? []
+      : [
+          {
+            key: 'verified',
+            label: 'Verified',
+            kind: 'readonly',
+            value: isRecord(verified)
+              ? [asText(verified['by']), calendarDate(verified['at']) ?? asText(verified['at'])]
+                  .filter((part) => part !== '')
+                  .join(', ')
+              : asText(verified),
+          } satisfies PropertyField,
+        ]),
+    ...(supersededBy === ''
+      ? []
+      : [
+          {
+            key: 'supersededBy',
+            label: 'Replaced by',
+            kind: 'readonly',
+            value: supersededBy,
+          } satisfies PropertyField,
+        ]),
+  ]
+}
+
+/** A status from before the lifecycle, or one nobody defined: kept, and said to be. */
+function legacyFields(frontMatter: Readonly<Record<string, unknown>>): readonly PropertyField[] {
+  const status = asText(frontMatter['status'])
+  if (status === '' || isLifecycleState(status)) return []
+  return [
+    {
+      key: 'legacyStatus',
+      label: 'Status',
+      kind: 'readonly',
+      value: status,
+      help: 'Written by an earlier release. It stays in the file and readers never see it; choosing a lifecycle replaces it.',
+    },
+  ]
+}
+
+function listField(
+  frontMatter: Readonly<Record<string, unknown>>,
+  key: string,
+  label: string,
+  kind: 'people' | 'tags',
+): PropertyField {
+  const values = splitList(joinList(frontMatter[key]))
+  return { key, label, kind, value: values.join(', '), values }
 }
 
 function questionField(question: TemplateQuestion, frontMatter: Readonly<Record<string, unknown>>) {
@@ -165,6 +295,7 @@ function questionField(question: TemplateQuestion, frontMatter: Readonly<Record<
     key: question.id,
     label: question.label,
     ...(help === undefined ? {} : { help }),
+    ...(question.optional === true ? {} : { required: true }),
   }
   if (question.type === 'boolean') {
     return {
@@ -184,6 +315,10 @@ function questionField(question: TemplateQuestion, frontMatter: Readonly<Record<
   }
   if (question.type === 'date') {
     return { ...common, kind: 'date', value: asText(answer) } satisfies PropertyField
+  }
+  if (question.type === 'user') {
+    const values = splitList(joinList(answer))
+    return { ...common, kind: 'people', value: values.join(', '), values } satisfies PropertyField
   }
   return { ...common, kind: 'text', value: asText(answer) } satisfies PropertyField
 }
@@ -222,37 +357,21 @@ export function readProperties(
 
   const fields: readonly PropertyField[] = [
     titleField(frontMatter, options.headingTitle),
+    listField(frontMatter, 'owners', 'Owners', 'people'),
+    lifecycleField(frontMatter),
+    ...lifecycleFacts(frontMatter),
     { key: 'type', label: 'Type', kind: 'text', value: asText(frontMatter['type']) },
-    {
-      key: 'status',
-      label: 'Status',
-      kind: 'select',
-      value: asText(frontMatter['status']),
-      options: [UNSET, ...optionsOf(STATUS_VALUES)],
-    },
-    {
-      key: 'owners',
-      label: 'Owners',
-      kind: 'list',
-      value: joinList(frontMatter['owners']),
-      help: 'Separated by commas.',
-    },
-    {
-      key: 'tags',
-      label: 'Tags',
-      kind: 'list',
-      value: joinList(frontMatter['tags']),
-      help: 'Separated by commas.',
-    },
+    listField(frontMatter, 'tags', 'Tags', 'tags'),
     reviewInterval(frontMatter),
-    {
+    lastReviewed(frontMatter),
+    choiceField(frontMatter, {
       key: 'layout',
       label: 'Layout',
-      kind: 'select',
-      value: asText(frontMatter['layout']),
-      options: [UNSET, ...optionsOf(LAYOUT_WIDTHS)],
+      values: LAYOUT_WIDTHS,
+      problem: (value) => `“${value}” is not a layout.`,
       help: 'The width every block takes unless it asks for its own.',
-    },
+    }),
+    ...legacyFields(frontMatter),
   ]
 
   const other: readonly OtherProperty[] = Object.entries(frontMatter)
@@ -266,20 +385,30 @@ export function readProperties(
   }
 }
 
+/** Every field whose value the schema would reject, for a strip that is closed. */
+export function propertyIssues(model: PropertiesModel): readonly PropertyField[] {
+  return [...model.fields, ...model.questions].filter((field) => field.error !== undefined)
+}
+
+/** The template's required questions that have no answer yet (ADR-029). */
+export function unansweredQuestions(model: PropertiesModel): readonly PropertyField[] {
+  return model.questions.filter((question) => question.required === true && question.value === '')
+}
+
 /** The one-line readout the strip shows while it is collapsed. */
 export interface PropertiesSummary {
   readonly type: string | undefined
-  readonly status: string | undefined
+  readonly lifecycle: LifecycleState | undefined
   readonly owners: readonly string[]
   readonly tags: readonly string[]
 }
 
 export function summarise(frontMatter: Readonly<Record<string, unknown>>): PropertiesSummary {
   const type = asText(frontMatter['type'])
-  const status = asText(frontMatter['status'])
+  const status = frontMatter['status']
   return {
     type: type.length === 0 ? undefined : type,
-    status: status.length === 0 ? undefined : status,
+    lifecycle: isLifecycleState(status) ? status : undefined,
     owners: splitList(joinList(frontMatter['owners'])),
     tags: splitList(joinList(frontMatter['tags'])),
   }
@@ -304,11 +433,24 @@ export function writeProperty(
   field: PropertyField,
   raw: string,
 ): Record<string, unknown> {
-  // A field key is `owner` or `review.interval`: one level of nesting at most.
-  const dot = field.key.indexOf('.')
-  const key = dot === -1 ? field.key : field.key.slice(0, dot)
-  const nested = dot === -1 ? undefined : field.key.slice(dot + 1)
-  const value = parseValue(field, raw)
+  return writeValue(frontMatter, field.key, parseValue(field, raw))
+}
+
+/**
+ * One value written back as it is — a list of tags, a list of people — by a
+ * control that already holds it in its final shape. `undefined` or an empty
+ * list removes the key, as an emptied text field does.
+ */
+export function writeValue(
+  frontMatter: Readonly<Record<string, unknown>>,
+  path: string,
+  written: unknown,
+): Record<string, unknown> {
+  const value = Array.isArray(written) && written.length === 0 ? undefined : written
+  // A path is `owners` or `review.interval`: one level of nesting at most.
+  const dot = path.indexOf('.')
+  const key = dot === -1 ? path : path.slice(0, dot)
+  const nested = dot === -1 ? undefined : path.slice(dot + 1)
   if (nested === undefined) return setKey(frontMatter, key, value)
 
   const existing = frontMatter[key]
@@ -328,7 +470,7 @@ export function writeProperty(
 function parseValue(field: PropertyField, raw: string): unknown {
   const trimmed = raw.trim()
   if (trimmed.length === 0) return undefined
-  if (field.kind === 'list') {
+  if (field.kind === 'list' || field.kind === 'people' || field.kind === 'tags') {
     const list = splitList(trimmed)
     return list.length === 0 ? undefined : list
   }
@@ -355,4 +497,52 @@ function setKey(
   }
   if (!written && value !== undefined) next[key] = value
   return next
+}
+
+/** Who is choosing a lifecycle, and what day it is, for a verification's stamp. */
+export interface LifecycleStamp {
+  /** The person, as front matter writes one: their address. */
+  readonly by: string
+  /** `YYYY-MM-DD`. */
+  readonly today: string
+}
+
+/**
+ * The record with a lifecycle chosen: one change, so one step of the undo
+ * history, however many keys it touches (`docs/design/properties.md`).
+ *
+ * - `status` is written where it was, or removed for none; except that a
+ *   status from an earlier release is left exactly as it is when the
+ *   lifecycle is cleared, because clearing something that was never set must
+ *   not delete what an author wrote (AGENTS.md rule 7).
+ * - Verifying stamps who and when (`verified: { by, at }`) and counts as a
+ *   review, so a document whose review was overdue is not verified and lapsed
+ *   in the same moment.
+ * - Leaving a state takes away what it carried: a verification, a
+ *   replacement.
+ * - A move the lifecycle refuses (`canMoveLifecycle`) returns the record as
+ *   it came, unchanged.
+ */
+export function writeLifecycle(
+  frontMatter: Readonly<Record<string, unknown>>,
+  next: LifecycleState | undefined,
+  stamp: LifecycleStamp,
+): Readonly<Record<string, unknown>> {
+  const status = frontMatter['status']
+  const current = isLifecycleState(status) ? status : undefined
+  if (!canMoveLifecycle(current, next)) return frontMatter
+  if (next === undefined && current === undefined) return frontMatter
+
+  let record = writeValue(frontMatter, 'status', next)
+  if (next === 'verified') {
+    record = writeValue(record, 'verified', { by: stamp.by, at: stamp.today })
+    const review = record['review']
+    if (isRecord(review) && review['interval'] !== undefined) {
+      record = writeValue(record, 'review.lastReviewed', stamp.today)
+    }
+  } else {
+    record = writeValue(record, 'verified', undefined)
+  }
+  if (next !== 'deprecated') record = writeValue(record, 'supersededBy', undefined)
+  return record
 }

@@ -1,7 +1,9 @@
 import type { WorkspaceId } from '@quill/domain'
 
 import { loadConfig } from '../config.ts'
+import { createBlobStore } from '../infrastructure/blob/create-blob-store.ts'
 import { createContentStore } from '../infrastructure/content-store.ts'
+import { createSettingsStore } from '../infrastructure/settings-store.ts'
 import { createDatabase } from '../infrastructure/db/connection.ts'
 import { runMigrations } from '../infrastructure/db/migrator.ts'
 import { createHasher } from '../infrastructure/hasher.ts'
@@ -43,6 +45,7 @@ const database = createDatabase({ connectionString: config.databaseUrl })
 await runMigrations(database.pool)
 
 const uow = createUnitOfWork(database.db, database.pool, ids)
+const contentStore = createContentStore(config.contentStore, clock)
 const searchIndex = createPostgresSearchIndex({
   db: database.db,
   visibility: createVisibleDocumentResolver({ uow }),
@@ -54,7 +57,9 @@ try {
     {
       uow,
       searchIndex,
-      contentStore: createContentStore(config.contentStore, clock),
+      contentStore,
+      settings: createSettingsStore(contentStore),
+      blobStore: createBlobStore(config.blobStore),
       format: createDocumentFormat(),
       clock,
       ids,

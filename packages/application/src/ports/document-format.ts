@@ -1,5 +1,7 @@
 import type { DocumentId } from '@quill/domain'
 
+import type { RenderedEmoji } from '../settings/emoji.ts'
+
 /**
  * The Markdown pipeline as a port (ADR-002, ADR-004, ADR-029, ADR-031).
  *
@@ -139,6 +141,34 @@ export interface RenderInput {
   readonly markdown: string
   /** The current title of each document this body links to, by id. */
   readonly linkTitles: ReadonlyMap<DocumentId, string>
+  /**
+   * The SVG drawings this body shows, by the attachment URL that names each
+   * one (ADR-011, amendment of 2026-10-11). The renderer draws them inline,
+   * through its own SVG allowlist; a body that shows none may leave this out.
+   */
+  readonly drawings?: ReadonlyMap<string, DrawingSource> | undefined
+  /**
+   * The organisation's label names (ADR-037): `:acme[Acme]` is drawn as a
+   * label when `acme` is here and written back as typed when it is not.
+   * Names only — a label's colour is the theme stylesheet's, so changing it
+   * re-renders nothing. A body rendered without labels is rendered as before.
+   */
+  readonly labels?: ReadonlySet<string> | undefined
+  /**
+   * The organisation's own emoji by name (ADR-038): `:acme:` is drawn as
+   * its image. GitHub's shortcodes are the renderer's own and need nothing
+   * here. Each image's address carries its hash, so replacing one re-renders
+   * the bodies; a body rendered without any is rendered as before.
+   */
+  readonly emoji?: ReadonlyMap<string, RenderedEmoji> | undefined
+  /** The emoji each label's pill leads with, by label name (ADR-038). */
+  readonly labelEmoji?: ReadonlyMap<string, string> | undefined
+}
+
+/** A drawing's bytes as text, and their address, which is what a cache key covers. */
+export interface DrawingSource {
+  readonly sha256: string
+  readonly markup: string
 }
 
 /**
@@ -166,7 +196,107 @@ export interface PublishedDocumentView {
   readonly title: string | undefined
 }
 
+/**
+ * The version of a comparison's shape (ADR-033). A comparison is computed on
+ * request and never stored, so this names the contract a reader of one can
+ * rely on rather than a format a cache must keep readable.
+ */
+export const COMPARED_CONTENT_VERSION = 1
+
+/** Everything a comparison is drawn with besides the two texts: what a render takes. */
+export type CompareContext = Omit<RenderInput, 'markdown'>
+
+/** Two versions of a document's Markdown, compared for a reader. */
+export interface CompareInput {
+  /** The older text; empty compares against nothing, as a first revision reads. */
+  readonly before: string
+  readonly after: string
+  readonly context: CompareContext
+}
+
+/** What happened to one block. */
+export type ComparedChangeKind = 'added' | 'removed' | 'changed' | 'moved'
+
+/** One change, in reading order, as the list of changes and next/previous read it. */
+export interface ComparedChange {
+  /** Stable within one comparison; the block in `html` carries it as `data-change-id`. */
+  readonly id: string
+  readonly change: ComparedChangeKind
+  /** `heading`, `paragraph`, `list`, `table`, `code`, `image`, `diagram`, `quote`, `callout`, `divider` or `block`. */
+  readonly block: string
+  readonly excerpt: string
+  readonly wordsAdded: number
+  readonly wordsRemoved: number
+  /** The section it starts in; absent before the first heading. */
+  readonly section?: { readonly id: string; readonly title: string } | undefined
+}
+
+/** A heading of the compared document, and how many changes start under it. */
+export interface ComparedSection {
+  readonly id: string
+  readonly depth: number
+  readonly title: string
+  readonly changes: number
+}
+
+export interface ComparisonSummary {
+  readonly sections: number
+  readonly added: number
+  readonly removed: number
+  readonly changed: number
+  readonly moved: number
+  readonly wordsAdded: number
+  readonly wordsRemoved: number
+}
+
+/** A front-matter field that changed, as a reader reads it. */
+export interface ComparedProperty {
+  readonly name: string
+  readonly before?: string | undefined
+  readonly after?: string | undefined
+}
+
+/**
+ * Two versions of a document as one page a reader can follow (ADR-015): the
+ * newer document with the older one's removals put back, every difference
+ * marked, sanitised exactly as a reader's page is.
+ */
+export interface ComparedContent {
+  readonly version: number
+  readonly html: string
+  readonly sections: readonly ComparedSection[]
+  readonly changes: readonly ComparedChange[]
+  readonly summary: ComparisonSummary
+  readonly properties: readonly ComparedProperty[]
+}
+
+/** One line of a source comparison. */
+export interface ComparedLine {
+  readonly change: 'equal' | 'added' | 'removed'
+  /** Line number in the older text, from 1; absent for an added line. */
+  readonly before?: number | undefined
+  /** Line number in the newer text, from 1; absent for a removed line. */
+  readonly after?: number | undefined
+  readonly segments: readonly {
+    readonly change: 'equal' | 'added' | 'removed'
+    readonly text: string
+  }[]
+}
+
+/** Two versions of a document's Markdown, by line, with each changed line's words. */
+export interface ComparedSource {
+  readonly lines: readonly ComparedLine[]
+  readonly wordsAdded: number
+  readonly wordsRemoved: number
+}
+
 export interface DocumentFormat {
+  /**
+   * The installed Markdown extensions' ids and versions (ADR-039), which join
+   * the render cache key, so upgrading one re-renders the bodies. Absent for a
+   * format with none.
+   */
+  readonly extensions?: string
   /** A blank document, or a template instantiated against its answers (ADR-029). */
   create(input: CreateDocumentContentInput): NewDocumentContent
   /**
@@ -194,4 +324,12 @@ export interface DocumentFormat {
    * than leaving their draft on the content the restore undid (ADR-015).
    */
   toDraft(markdown: string): DraftContent
+  /**
+   * Two versions compared for a reader: drawn as the document, words, rows,
+   * items and lines marked (`ComparedContent`). Nothing about where either
+   * version is stored reaches the result.
+   */
+  compare(input: CompareInput): ComparedContent
+  /** Two versions' Markdown compared by line, for the comparison's source view. */
+  compareSource(before: string, after: string): ComparedSource
 }

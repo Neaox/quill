@@ -1,3 +1,4 @@
+import { openDraft } from '@quill/application'
 import type {
   AcquireLockResult,
   DraftRow,
@@ -119,7 +120,10 @@ export function createEditingService(deps: AppDependencies) {
       readonly documentId: DocumentId
     }): Promise<DraftRow | null> {
       await requireDocumentAccess(authorizerFor(deps, input.request), input.documentId, 'edit')
-      return drafts.find(input.documentId)
+      // A document with no draft yet — imported, seeded, or older than
+      // drafts — starts one rather than answering "not found" (`openDraft`).
+      const opened = await openDraft(deps, input.documentId)
+      return opened.kind === 'draft' ? opened.draft : null
     },
 
     async writeDraft(input: {

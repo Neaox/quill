@@ -2,7 +2,7 @@
 
 The routes the reading view, the editor, and the publish flow use. The server implements these with TypeBox schemas so the OpenAPI description and the generated client match this document exactly; if the two disagree, the server's schema wins and this document is corrected.
 
-All routes are under `/api`, require a session unless stated, and use the error shape `{ error: { code, message, details? } }`. Ids are UUIDs. Revisions are 40-character hex strings and are never called commits.
+All routes are under `/api`, require a session unless stated, and use the error shape `{ error: { code, message, details? } }`. A request the framework refuses before any route runs keeps its own 4xx, with the status's standard phrase as the message and a stable code: `invalid_body` (malformed or empty JSON, a bad `Content-Length`), `payload_too_large` (413), `unsupported_media_type` (415), `method_not_allowed`, `not_acceptable`, `request_timeout`, `uri_too_long`, `request_header_fields_too_large`, and `bad_request` for any other. Only a fault of the server's is a `500 internal_error`. Ids are UUIDs. Revisions are 40-character hex strings and are never called commits.
 
 **Readable references (ADR-035).** Everywhere a route takes a document id it also takes that document's short key — ten Crockford base-32 characters, unique across the instance — with or without the title words in front of it: `/api/documents/<uuid>`, `/api/documents/k7m3q9v2xd`, and `/api/documents/authentication-architecture-k7m3q9v2xd` are the same request. The words are advisory and never consulted, so a stale title in a link still resolves. Everywhere a route takes a workspace id it also takes that workspace's slug, including a slug the workspace retired within the last year. The UUID form keeps working for ever (ADR-033).
 
@@ -13,15 +13,35 @@ All routes are under `/api`, require a session unless stated, and use the error 
 | `GET /documents/:id` | Metadata | `Document` (id, shortId, workspaceId, collectionId, parentId, slug, path, title, status, templateId?, templateVersion?, updatedAt, headRevision?) |
 | `GET /documents/:id/content` | Published source | `{ revision, markdown, frontMatter }` or 404 before first publish |
 | `GET /documents/:id/rendered?revision=` | Rendered body from the render cache (ADR-031) | `{ revision, html, outline: OutlineEntry[], slots: SlotKey[] }` |
+| `GET /documents/:id/children?depth=&sort=&excerpts=&icons=` | What fills a `::children` slot for this reader (ADR-049): `depth` 1–6, `sort` `manual`, `title` or `updated`. Never lists a page the reader may not read; `private, no-cache` | `{ html, count }` |
 | `GET /documents/:id/envelope` | The live envelope (ADR-031) | `{ permissions: { view, comment, edit, manage }, lock: { holderUserId, holderName, expiresAt } \| null, lastPublished: { revision, author, at } \| null, review: { dueAt, overdue } \| null, health: HealthSignal[] }` |
 | `POST /documents/:id/publish` | Publish the current draft | body `{ base: revision \| null, changeNote? }` → `{ kind: 'published', revision }` or `409 { kind: 'merge-required', current, conflicts }`; `423 lock_lost`; `422 stale_base` |
 | `GET /documents/:id/history?limit=&cursor=` | Revisions touching this document | `{ revisions: RevisionSummary[], nextCursor? }` |
-| `GET /documents/:id/diff?from=&to=` | Unified diff between two revisions | `{ from, to, unified, added, removed }` |
+| `GET /documents/:id/compare?from=&to=` | Two versions as one page, and what changed (ADR-015) | `{ html, summary, changes: Change[], sections: Section[], properties: PropertyChange[] }` |
+| `GET /documents/:id/compare/source?from=&to=` | The two versions' Markdown, line by line | `{ lines: Line[], wordsAdded, wordsRemoved }` |
 | `PATCH /documents/:id` | Rename a document, and move it | body `{ title?, slug?, path?, status?, collectionId?, parentId? }` → `Document`; `423 lock_lost`; `404`; `409 parent_outside_collection` / `parent_cycle` |
 | `DELETE /documents/:id` | Delete a document, lifting its children to the root of their collection | `204` |
 | `POST /documents/:id/restore` | New revision equal to an older one | body `{ revision, changeNote? }` → `{ kind: 'published', revision }` or `409 { kind: 'merge-required', current, conflicts }`; `423 lock_lost` |
 
 `GET /documents/:id/rendered` sets an `ETag` of the render-cache key — the hash of everything the body was rendered from, plus the render version — and honours `If-None-Match` (ADR-031). The key, rather than the revision, because a rename in a document this body links to changes the body without changing its revision.
+
+`slots` lists the live-block slots a body carries (ADR-032): today `children?depth=…&sort=…[&excerpts][&icons]`, one per distinct `::children` block. The reading view fills each from `GET /documents/:id/children`, whose `html` is the same template the public site fills its pages with, so the two draw a list identically.
+
+### Comparing two versions
+
+`from` is a revision, or absent to compare against an empty document (how a first revision reads). `to` is a revision, or `draft`: the document as its next publish would write it, which needs `edit`, as reading the draft does; a revision needs `view`. A revision that is not in this document's history is `404`, and so is `to=draft` on a document with no draft.
+
+The comparison is the document's own, computed on the server by `@quill/markdown`'s differ (`packages/markdown/src/diff/`), and **says nothing about how revisions are stored**: no path, no hunk header, no `+++`/`---`, no revision hash in the body (`documents.integration.test.ts` holds this). Blocks are matched by content and position, so a paragraph moved elsewhere is `moved`, an edited one `changed`; inside a changed block the comparison goes as deep as the block's structure: words in a paragraph or heading, rows then cells in a table, items in a list, lines in a code block, blocks inside a quote, callout or details. Pictures (an image, a diagram, a leaf directive) are shown before and after.
+
+- `html` is the newer document drawn by the reader's own renderer and sanitiser, with the older one's removals put back. Words are `<ins data-diff="added">` and `<del data-diff="removed">`, each opening with a visually hidden `<span data-diff-label>` ("Added: ", "Removed: "). A top-level block that changed carries `data-change` (`added`, `removed`, `changed`, `moved`); the first block of each change carries `data-change-id`; the halves of a before-and-after carry `data-side`. A changed code block is `div.code-block > pre[data-diff-code]`, a changed line an `ins`/`del` with `data-line`, its changed words `span[data-diff-word]`. A document's own strikethrough is a `del` without `data-diff`.
+- `summary`: `{ sections, added, removed, changed, moved, wordsAdded, wordsRemoved }`, where `sections` counts sections with a change.
+- `changes`: in reading order, `{ id, change, block, excerpt, wordsAdded, wordsRemoved, section?: { id, title } }`. `block` is `heading`, `paragraph`, `list`, `table`, `code`, `image`, `diagram`, `quote`, `callout`, `divider` or `block`.
+- `sections`: the headings to depth 3, `{ id, depth, title, changes }`, whose ids resolve against `html`.
+- `properties`: front-matter fields that changed, `{ name, before?, after? }`, never the document id.
+
+`compare` sets an `ETag` of a digest of both sides' render inputs plus the render and comparison versions, and honours `If-None-Match`. `compare/source` answers `lines` of `{ change: 'equal' | 'added' | 'removed', before?, after?, segments: { change, text }[] }`, with line numbers from 1 on each side; within each stretch of change the removed lines come first and are paired in order with the added ones for their word-level segments.
+
+Revisions are still named by the 40-character id every other route uses: the request carries them, and the response never echoes them.
 
 ### Publishing and restoring: the two failures that are not merges
 

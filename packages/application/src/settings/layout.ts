@@ -26,7 +26,20 @@ export const LayoutSchema = Type.Object(
     history: Type.Union([Type.Literal('timeline'), Type.Literal('menu')]),
     navigation: Type.Union([Type.Literal('tabs'), Type.Literal('tree')]),
     header: Type.Union([Type.Literal('readout'), Type.Literal('breadcrumb')]),
-    rules: Type.Union([Type.Literal('double'), Type.Literal('hairline'), Type.Literal('cards')]),
+    rules: Type.Union([
+      Type.Literal('double'),
+      Type.Literal('hairline'),
+      Type.Literal('cards'),
+      Type.Literal('plain'),
+    ]),
+    /**
+     * Where the reading column sits: centred in the space beside the
+     * navigation, or flush against it as a documentation site with a fixed
+     * sidebar reads (`data-align`, `packages/design-css/src/layout.css`).
+     * Optional, because every layout saved before it existed is centred and
+     * must keep reading that way (ADR-033).
+     */
+    align: Type.Optional(Type.Union([Type.Literal('centre'), Type.Literal('start')])),
   },
   { additionalProperties: false },
 )
@@ -52,4 +65,5 @@ export const LAYOUT_CHOICES = {
   navigation: choicesOf(LayoutSchema.properties.navigation),
   header: choicesOf(LayoutSchema.properties.header),
   rules: choicesOf(LayoutSchema.properties.rules),
+  align: choicesOf(LayoutSchema.properties.align),
 }

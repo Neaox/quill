@@ -1,6 +1,6 @@
 /**
- * The registered Prism grammars, and the mapping from fence-name aliases to
- * the canonical language key `tokenize` looks them up by.
+ * The registered Prism grammars, one per grammar key the language registry
+ * (`languages.ts`) names.
  *
  * Importing this module registers every grammar below as a side effect —
  * `Prism.languages.<key>` is populated the moment it loads — which is why it
@@ -65,85 +65,9 @@ export type { PrismTypes }
 // this reference gives the linter a use it can see, without changing behaviour.
 void prismRuntimeGuard
 
-/** Canonical grammar keys this package registers, in registration order. */
-export const SUPPORTED_LANGUAGES = [
-  'markup',
-  'css',
-  'javascript',
-  'typescript',
-  'jsx',
-  'tsx',
-  'json',
-  'yaml',
-  'bash',
-  'python',
-  'go',
-  'rust',
-  'java',
-  'csharp',
-  'sql',
-  'markdown',
-  'diff',
-  'docker',
-  'toml',
-] as const
-
-export type SupportedLanguage = (typeof SUPPORTED_LANGUAGES)[number]
-
 /**
- * Fence-name aliases (Markdown code-fence tags, file extensions, common
- * shorthand) mapped to the canonical key above. Deliberately independent of
- * whatever aliases the Prism components register for themselves on
- * `Prism.languages` — this is the single source of truth callers resolve
- * against before ever touching a grammar.
+ * The grammar keys and fence-name resolution live in the language registry
+ * (`languages.ts`), which names each grammar without importing it; this
+ * module only registers them. `languages.test.ts` holds the two in step.
  */
-const LANGUAGE_ALIASES: Readonly<Record<string, SupportedLanguage>> = {
-  html: 'markup',
-  htm: 'markup',
-  xhtml: 'markup',
-  xml: 'markup',
-  svg: 'markup',
-  markup: 'markup',
-  css: 'css',
-  js: 'javascript',
-  javascript: 'javascript',
-  mjs: 'javascript',
-  cjs: 'javascript',
-  ts: 'typescript',
-  typescript: 'typescript',
-  jsx: 'jsx',
-  tsx: 'tsx',
-  json: 'json',
-  json5: 'json',
-  jsonc: 'json',
-  yaml: 'yaml',
-  yml: 'yaml',
-  bash: 'bash',
-  sh: 'bash',
-  shell: 'bash',
-  shellscript: 'bash',
-  zsh: 'bash',
-  python: 'python',
-  py: 'python',
-  go: 'go',
-  golang: 'go',
-  rust: 'rust',
-  rs: 'rust',
-  java: 'java',
-  csharp: 'csharp',
-  'c#': 'csharp',
-  cs: 'csharp',
-  sql: 'sql',
-  markdown: 'markdown',
-  md: 'markdown',
-  diff: 'diff',
-  patch: 'diff',
-  docker: 'docker',
-  dockerfile: 'docker',
-  toml: 'toml',
-}
-
-/** Maps a fence-name alias to its canonical grammar key, or null when unknown. */
-export function resolveLanguage(alias: string): SupportedLanguage | null {
-  return LANGUAGE_ALIASES[alias.trim().toLowerCase()] ?? null
-}
+export { SUPPORTED_LANGUAGES, resolveLanguage, type SupportedLanguage } from './languages.ts'

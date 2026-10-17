@@ -12,7 +12,7 @@ import {
   type TokenClass,
   unthemedTokenGroups,
 } from '@quill/highlight'
-import { BUILTIN_THEME_IDS, DEFAULT_THEME } from '@quill/theme'
+import { DEFAULT_THEME, OFFERED_THEME_IDS } from '@quill/theme'
 
 import { THEME_ID_ATTRIBUTE } from '../theme/theme-id.ts'
 import {
@@ -79,11 +79,25 @@ describe('the generated stylesheets', () => {
     )
   })
 
-  it.each(['press', 'atelier'] as const)('scopes %s to its own id alone', (id) => {
+  it.each(['calm', 'grid', 'atelier'] as const)('scopes %s to its own id alone', (id) => {
     expect(themeScope(id)).toBe(`:root[${THEME_ID_ATTRIBUTE}='${id}']`)
   })
 
-  it.each(BUILTIN_THEME_IDS)(
+  it('paints Editorial under the id of Press, which it superseded', () => {
+    expect(themeScope('editorial')).toBe(
+      `:root:is([${THEME_ID_ATTRIBUTE}='editorial'], [${THEME_ID_ATTRIBUTE}='press'])`,
+    )
+  })
+
+  it('writes one stylesheet per offered theme, and none for a superseded one', () => {
+    const paths = generatedStylesheets().map(({ path }) => path)
+    expect(paths).toEqual(
+      expect.arrayContaining(OFFERED_THEME_IDS.map((id) => `generated/${id}.gen.css`)),
+    )
+    expect(paths).not.toContain('generated/press.gen.css')
+  })
+
+  it.each(OFFERED_THEME_IDS)(
     'covers light, the dark media block, and the explicit dark attribute for %s',
     (id) => {
       const css = read(`./generated/${id}.gen.css`)
@@ -116,7 +130,7 @@ describe('the semantic layer and the generated palettes', () => {
     expect(referenced.length).toBeGreaterThanOrEqual(20)
   })
 
-  it.each(BUILTIN_THEME_IDS)('emits every referenced palette name in %s', (id) => {
+  it.each(OFFERED_THEME_IDS)('emits every referenced palette name in %s', (id) => {
     const css = read(`./generated/${id}.gen.css`)
     expect(referenced.filter((name) => !declares(css, name))).toEqual([])
   })
@@ -165,7 +179,7 @@ describe('the syntax token stylesheet', () => {
       for (const tokenClass of classes) {
         expect(css).toContain(`.tok-${tokenClass} {`)
         expect(css).toContain(`::highlight(quill-tok-${tokenClass}) {`)
-        for (const id of BUILTIN_THEME_IDS) {
+        for (const id of OFFERED_THEME_IDS) {
           const themeCss = read(`./generated/${id}.gen.css`)
           const scope = themeScope(id)
           for (const selector of schemeSelectors(scope)) {

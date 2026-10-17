@@ -55,13 +55,53 @@
   margin-inline: auto;
   container-type: inline-size;
   container-name: grid;
+  --layout-breakout: calc((var(--layout-wide) - var(--layout-content)) / 2);
+  --layout-track-lead: minmax(var(--layout-gutter), 1fr);
+  --layout-track-wide-lead: minmax(0, var(--layout-breakout));
+  --layout-track-wide-trail: minmax(0, var(--layout-breakout));
+  --layout-track-trail: minmax(var(--layout-gutter), 1fr);
+
   grid-template-columns:
-    [full-start] minmax(var(--layout-gutter), 1fr)
-    [wide-start] minmax(0, calc((var(--layout-wide) - var(--layout-content)) / 2))
+    [full-start] var(--layout-track-lead)
+    [wide-start] var(--layout-track-wide-lead)
     [content-start] min(var(--layout-content), 100% - var(--layout-gutter) * 2)
-    [content-end] minmax(0, calc((var(--layout-wide) - var(--layout-content)) / 2))
-    [wide-end] minmax(var(--layout-gutter), 1fr)
+    [content-end] var(--layout-track-wide-trail)
+    [wide-end] var(--layout-track-trail)
     [full-end];
+}
+
+/*
+ * Start-aligned reading (`data-align="start"`, a layout variant like
+ * `data-rules`): the text column sits flush beside the navigation instead of
+ * centred in the space, the way a documentation site with a fixed sidebar
+ * reads, and a wide block breaks out to the right only, so its left edge stays
+ * on the text's. The named lines are unchanged, so every block still asks for
+ * `content`, `wide` or `full` by name.
+ */
+:where([data-align='start']) :is(.layout-grid, .document-editor-content),
+:is(.layout-grid, .document-editor-content):where([data-align='start']) {
+  margin-inline: 0;
+  --layout-track-lead: var(--layout-gutter);
+  --layout-track-wide-lead: 0;
+  --layout-track-wide-trail: minmax(0, calc(var(--layout-breakout) * 2));
+}
+
+/*
+ * An alignment set on a region inside the page wins over the page's own,
+ * nearest first, so one page can show both (the design page's table widths).
+ */
+[data-align] [data-align='start'] :is(.layout-grid, .document-editor-content) {
+  margin-inline: 0;
+  --layout-track-lead: var(--layout-gutter);
+  --layout-track-wide-lead: 0;
+  --layout-track-wide-trail: minmax(0, calc(var(--layout-breakout) * 2));
+}
+
+[data-align] [data-align='centre'] :is(.layout-grid, .document-editor-content) {
+  margin-inline: auto;
+  --layout-track-lead: minmax(var(--layout-gutter), 1fr);
+  --layout-track-wide-lead: minmax(0, var(--layout-breakout));
+  --layout-track-wide-trail: minmax(0, var(--layout-breakout));
 }
 
 /* The reading measure is the default; a block opts out explicitly. */
@@ -79,6 +119,124 @@
 .layout-grid > .layout-wide,
 .document-editor-content > [data-layout='wide'] {
   grid-column: wide;
+}
+
+/*
+ * Two blocks are wide unless their author put them somewhere else, because
+ * neither can be read at the measure: a drawing is drawn for a canvas far
+ * wider than a column of text, so its labels would be specks; and a table
+ * set at the measure wraps its cells to a word or two a line. These are the only
+ * blocks whose default is not `content`. An explicit `:::wide` or `:::full`
+ * around either wins, because the block is then no longer a direct child of
+ * the grid.
+ */
+.layout-grid > figure:has(> .diagram[data-diagram='svg']),
+.layout-grid > :is(.table-block, .table-scroll) {
+  grid-column: wide;
+}
+
+/*
+ * A table's own width (`:::table{width=…}`, ADR-040) wins over its default.
+ * A percentage is a share of the full track — the grid's whole width, its
+ * container — never narrower than the reading measure and never wider than
+ * the room it has: centred in the full track, or, start-aligned, from the
+ * text's left edge out to the right. The renderer rounds it to a step of
+ * five, so the stylesheet can say each one: the page's CSP admits no
+ * `style` attribute to carry a free number.
+ */
+.layout-grid > .table-block[data-width='content'] {
+  grid-column: content;
+}
+
+.layout-grid > .table-block[data-width='full'] {
+  grid-column: full;
+}
+
+.layout-grid > .table-block[data-width='percent'] {
+  grid-column: full;
+  justify-self: center;
+  width: clamp(
+    min(var(--layout-content), 100cqi - var(--layout-gutter) * 2),
+    var(--table-percent, 100) * 1cqi,
+    100%
+  );
+}
+
+:where([data-align='start']) .layout-grid > .table-block[data-width='percent'],
+.layout-grid:where([data-align='start']) > .table-block[data-width='percent'] {
+  grid-column: content-start / full-end;
+  justify-self: start;
+}
+
+[data-align] [data-align='start'] .layout-grid > .table-block[data-width='percent'] {
+  grid-column: content-start / full-end;
+  justify-self: start;
+}
+
+[data-align] [data-align='centre'] .layout-grid > .table-block[data-width='percent'] {
+  grid-column: full;
+  justify-self: center;
+}
+
+.table-block[data-percent='5'] {
+  --table-percent: 5;
+}
+.table-block[data-percent='10'] {
+  --table-percent: 10;
+}
+.table-block[data-percent='15'] {
+  --table-percent: 15;
+}
+.table-block[data-percent='20'] {
+  --table-percent: 20;
+}
+.table-block[data-percent='25'] {
+  --table-percent: 25;
+}
+.table-block[data-percent='30'] {
+  --table-percent: 30;
+}
+.table-block[data-percent='35'] {
+  --table-percent: 35;
+}
+.table-block[data-percent='40'] {
+  --table-percent: 40;
+}
+.table-block[data-percent='45'] {
+  --table-percent: 45;
+}
+.table-block[data-percent='50'] {
+  --table-percent: 50;
+}
+.table-block[data-percent='55'] {
+  --table-percent: 55;
+}
+.table-block[data-percent='60'] {
+  --table-percent: 60;
+}
+.table-block[data-percent='65'] {
+  --table-percent: 65;
+}
+.table-block[data-percent='70'] {
+  --table-percent: 70;
+}
+.table-block[data-percent='75'] {
+  --table-percent: 75;
+}
+.table-block[data-percent='80'] {
+  --table-percent: 80;
+}
+.table-block[data-percent='85'] {
+  --table-percent: 85;
+}
+.table-block[data-percent='90'] {
+  --table-percent: 90;
+}
+.table-block[data-percent='95'] {
+  --table-percent: 95;
+}
+.table-block[data-percent='100'] {
+  --table-percent: 100;
 }
 
 .layout-grid > .layout-full,
@@ -100,14 +258,25 @@
 
   .layout-grid > .layout-wide,
   .layout-grid > .layout-full,
+  .layout-grid > figure:has(> .diagram[data-diagram='svg']),
+  .layout-grid > :is(.table-block, .table-scroll),
+  .layout-grid > .table-block[data-width],
   .document-editor-content > [data-layout='wide'],
   .document-editor-content > [data-layout='full'] {
     grid-column: content;
+  }
+
+  .layout-grid > .table-block[data-width='percent'] {
+    width: auto;
+    justify-self: stretch;
   }
 }
 
 @container grid (48rem <= width < 64rem) {
   .layout-grid > .layout-wide,
+  .layout-grid > figure:has(> .diagram[data-diagram='svg']),
+  .layout-grid > :is(.table-block, .table-scroll),
+  .layout-grid > .table-block[data-width='wide'],
   .document-editor-content > [data-layout='wide'] {
     grid-column: full;
   }

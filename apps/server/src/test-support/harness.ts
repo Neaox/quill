@@ -3,8 +3,11 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 import {
+  ATTACHMENT_REVISED,
   DOCUMENT_CREATED,
+  DOCUMENT_DELETED,
   DOCUMENT_MOVED,
+  DOCUMENT_NESTED,
   DOCUMENT_PUBLISHED,
   DOCUMENT_RENAMED,
 } from '@quill/application'
@@ -25,10 +28,12 @@ import { createTestDatabase } from '../infrastructure/db/test-database.ts'
 import type { TestDatabase } from '../infrastructure/db/test-database.ts'
 import { createHasher } from '../infrastructure/hasher.ts'
 import { createDocumentFormat } from '../infrastructure/markdown/document-format.ts'
-import { createAcknowledgingConsumer } from '../infrastructure/outbox/acknowledge.ts'
+import { CHILD_PAGES_CACHE_TTL_MS, createChildPagesCache } from '../child-pages/cache.ts'
+import { createInvalidateChildPagesConsumers } from '../child-pages/invalidate-child-pages.ts'
 import { pollOutboxOnce } from '../infrastructure/outbox/poller.ts'
 import { combineConsumers } from '../infrastructure/outbox/combine.ts'
 import {
+  createIndexOnAttachmentRevisedConsumer,
   createIndexOnPublishConsumer,
   createIndexOnRenameConsumer,
 } from '../infrastructure/outbox/index-on-publish.ts'
@@ -48,6 +53,8 @@ import { createSecretResolver } from '../infrastructure/secrets/resolve-secret.t
 import { createSettingsStore } from '../infrastructure/settings-store.ts'
 import { createPublicSiteCache, PUBLIC_SITE_CACHE_TTL_MS } from '../public-site/cache.ts'
 import { createPublicStylesheets, loadDesignSystemCss } from '../public-site/stylesheet.ts'
+import { loadFaceFiles } from '../theme/face-files.ts'
+import { createThemeStylesheets } from '../theme/theme-stylesheet.ts'
 import { createJobRunner } from '../jobs/job-runner.ts'
 import type { JobRunner } from '../jobs/job-runner.ts'
 import { createSweepJob } from '../jobs/sweep-expired.ts'
@@ -61,6 +68,7 @@ import { createTokenService } from '../auth/tokens.ts'
 import { injectAsBrowser } from './browser-client.ts'
 import { createFakeBreachedPasswordChecker, createRecordingMailer } from './fakes.ts'
 import type { FakeBreachedPasswordChecker, RecordingMailer } from './fakes.ts'
+import { createDrawioText } from '../extensions/drawio/drawing-text.ts'
 
 /**
  * A whole server against a real database, a real content store, and the real
@@ -203,17 +211,26 @@ export async function createServerHarness(options: HarnessOptions = {}): Promise
     clock,
     ttlMs: options.publicSiteCacheTtlMs ?? PUBLIC_SITE_CACHE_TTL_MS,
   })
+  const childPagesCache = createChildPagesCache({ clock, ttlMs: CHILD_PAGES_CACHE_TTL_MS })
+  const faceFiles = await loadFaceFiles()
+  const themeStylesheets = createThemeStylesheets({ hasher, faceFiles })
   const deps: AppDependencies = {
     uow,
     searchIndex,
     search: createSearchService(searchIndex),
     // The real design-system CSS, read once per process, so a public page in a
     // test is styled by the same bytes a deployment serves (ADR-023).
+    // The real faces, read once per process, so a font request in a test is
+    // answered with the bytes a deployment serves.
+    faceFiles,
+    themeStylesheets,
     publicStylesheets: createPublicStylesheets({
       hasher,
+      themeStylesheets,
       designSystemCss: await loadDesignSystemCss(),
     }),
     publicSiteCache,
+    childPagesCache,
     contentStore,
     // The real settings adapter over the real content store: an integration
     // test of a settings write exercises the publish path and its
@@ -232,6 +249,7 @@ export async function createServerHarness(options: HarnessOptions = {}): Promise
     rateLimiter: createRateLimiter({ clock, config: config.rateLimit }),
     oidcRateLimiter: createRateLimiter({ clock, config: config.oidcRateLimit }),
     attachmentRateLimiter: createRateLimiter({ clock, config: config.attachments.rateLimit }),
+    drawingText: createDrawioText(),
     passwords: await createPasswordHasher(),
     identityProviders: createIdentityProviderRegistry({
       providers: config.oidcProviders,
@@ -266,12 +284,26 @@ export async function createServerHarness(options: HarnessOptions = {}): Promise
     return consumer
   }
 
+  const invalidateChildPages = new Map(
+    createInvalidateChildPagesConsumers(childPagesCache, deps).map((consumer) => [
+      consumer.eventType,
+      consumer,
+    ]),
+  )
+  /* v8 ignore next 5 -- one consumer per event type, by construction. */
+  const childPagesOf = (eventType: string) => {
+    const consumer = invalidateChildPages.get(eventType)
+    if (consumer === undefined) throw new Error(`no child pages invalidation for ${eventType}`)
+    return consumer
+  }
+
   jobRunner.register(
     combineConsumers(
       DOCUMENT_PUBLISHED,
       createRenderOnPublishConsumer(deps),
       createIndexOnPublishConsumer(deps),
       invalidationOf(DOCUMENT_PUBLISHED),
+      childPagesOf(DOCUMENT_PUBLISHED),
     ),
   )
   jobRunner.register(
@@ -280,6 +312,7 @@ export async function createServerHarness(options: HarnessOptions = {}): Promise
       createIndexOnRenameConsumer(deps),
       createRecordRenameRedirectConsumer(deps),
       invalidationOf(DOCUMENT_RENAMED),
+      childPagesOf(DOCUMENT_RENAMED),
     ),
   )
   jobRunner.register(
@@ -287,12 +320,26 @@ export async function createServerHarness(options: HarnessOptions = {}): Promise
       DOCUMENT_MOVED,
       createRecordMoveRedirectConsumer(deps),
       invalidationOf(DOCUMENT_MOVED),
+      childPagesOf(DOCUMENT_MOVED),
+    ),
+  )
+  jobRunner.register(
+    combineConsumers(
+      ATTACHMENT_REVISED,
+      createIndexOnAttachmentRevisedConsumer(deps),
+      invalidationOf(ATTACHMENT_REVISED),
     ),
   )
   jobRunner.register(createSendMailConsumer(mailer))
-  jobRunner.register(
-    createAcknowledgingConsumer(DOCUMENT_CREATED, 'Nothing acts on a creation yet.'),
-  )
+  // A new page changes the child pages lists above it (ADR-049); it has
+  // nothing to index or render until it is published.
+  jobRunner.register(childPagesOf(DOCUMENT_CREATED))
+  // Nesting and deleting change the lists and the public navigation (ADR-049).
+  for (const eventType of [DOCUMENT_NESTED, DOCUMENT_DELETED]) {
+    jobRunner.register(
+      combineConsumers(eventType, childPagesOf(eventType), invalidationOf(eventType)),
+    )
+  }
   jobRunner.schedule(createSweepJob({ uow, clock, session: config.session }))
 
   let sessions = 0

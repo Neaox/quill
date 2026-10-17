@@ -120,7 +120,9 @@ describe('lock and draft routes', () => {
     expect(second.json().error.code).toBe('held')
   })
 
-  it('returns 404 for a draft that does not exist', async () => {
+  it('opens a fresh draft for a document that has none', async () => {
+    // A document imported, seeded or older than drafts has no draft row;
+    // reading it starts one (`openDraft`) rather than refusing the editor.
     const id = await newDocument('No draft')
     await harness.database.pool.query('DELETE FROM drafts WHERE document_id = $1', [id])
     const response = await harness.app.inject({
@@ -128,7 +130,7 @@ describe('lock and draft routes', () => {
       url: `/api/documents/${id}/draft`,
       cookies: editor,
     })
-    expect(response.statusCode).toBe(404)
+    expect(response.statusCode).toBe(200)
   })
 
   it('returns 404 on a write when a valid lock exists but the draft row is missing', async () => {

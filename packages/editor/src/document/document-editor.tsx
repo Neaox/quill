@@ -7,14 +7,32 @@ import type { Ref } from 'react'
 
 import { BlockMenu } from '../block/block-menu.tsx'
 import type { CommentRequest } from '../block/block-menu.tsx'
+import type { ChildPagesPreview } from '../navigation/navigation-view.ts'
+import type { ImageAction } from '../image/image-actions.ts'
+import { BlockInserter } from '../slash/block-inserter.tsx'
+import type { DocumentLinkTarget, SlashContribution, SlashRequest } from '../slash/slash-item.ts'
 import { SlashMenu } from '../slash/slash-menu.tsx'
+import { TableToolbar } from '../table/table-toolbar.tsx'
+import { createSlashRecents } from '../slash/slash-recents.ts'
+import { createSlashRegistry } from '../slash/slash-registry.ts'
 import { createSlashStore } from '../slash/slash-store.ts'
-import type { SlashItem, SlashRequest } from '../slash/slash-items.ts'
+import { builtInContextMenu } from '../context-menu/built-in-contributions.ts'
+import { createContextMenuRegistry } from '../context-menu/context-menu-registry.ts'
+import type {
+  ClipboardReader,
+  ContextMenuContribution,
+  ContextMenuEnvironment,
+} from '../context-menu/context-menu-registry.ts'
+import { EditorOverlays } from '../context-menu/editor-overlays.tsx'
+import { anchorOf, createOverlayStore } from '../context-menu/overlay-store.ts'
+import { restoreWrapping } from '../code-block/code-block-menu.ts'
 import type { FileRequest } from './files.ts'
+import type { EditorEmojiOptions } from './emoji.ts'
 import type { DocumentAst } from '../document-ast.ts'
 import { documentFromMdast, documentToMdast } from './ast.ts'
 import type { LoadedDocument } from './ast.ts'
 import { buildExtensions } from './extensions.ts'
+import { isPasteLanding } from './paste.ts'
 
 /**
  * The writing surface (ADR-003).
@@ -44,13 +62,54 @@ export interface DocumentEditorProps {
   readonly ast: DocumentAst
   readonly editable?: boolean
   readonly placeholder?: string
+  /**
+   * How a paragraph wrapped in the source opens. `collapse`, the default, is
+   * what a reader sees: the editing surface keeps whitespace, so a source
+   * newline would otherwise show as a line break the reading view does not
+   * have. Nothing is saved for it until the author edits, and the first save
+   * after that carries the formatting-only normalisation ADR-002 licenses
+   * once. `preserve` keeps the newlines, for a caller that needs the tree as
+   * it came.
+   */
   readonly softBreaks?: SoftBreakMode
+  /**
+   * The organisation's label names (ADR-037), so `:acme[Acme]` is drawn
+   * as a label while it is written and a name that is none of them is
+   * warned about. Read once, when the editor is built; undefined while the
+   * names are not yet known.
+   */
+  readonly labels?: readonly string[] | undefined
+  /**
+   * The organisation's own emoji and each label's leading one (ADR-038), so
+   * `:acme:` is drawn while it is written. Read once, when the editor is
+   * built; GitHub's shortcodes need nothing.
+   */
+  readonly emoji?: EditorEmojiOptions | undefined
   /** Names the editing region for assistive technology. */
   readonly label?: string
-  readonly slashItems?: readonly SlashItem[]
+  /**
+   * Items a feature or a Markdown extension adds to the slash menu, after
+   * Quill's own (ADR-039). Read once, when the editor is built.
+   */
+  readonly slashContributions?: readonly SlashContribution[]
+  /**
+   * Actions on images that an extension owns, such as draw.io's "Edit
+   * diagram" (ADR-043). Read once, when the editor is built.
+   */
+  readonly imageActions?: readonly ImageAction[]
+  /**
+   * Where the slash menu remembers what this person inserted last: a key in
+   * the browser's local storage, which the application makes per person.
+   */
+  readonly recentsKey?: string
   readonly className?: string
   readonly ref?: Ref<DocumentEditorHandle>
-  /** Called after every change, with the same handle the ref exposes. */
+  /**
+   * Called after every change, with the same handle the ref exposes. It runs
+   * on every keystroke, so it must stay cheap: hand `handle.toMdast` on to be
+   * called later rather than calling it here, because converting a long
+   * document takes several frames (quill-plan.md section 31).
+   */
   onChange?(handle: DocumentEditorHandle): void
   /** A comment was asked for on a range; ADR-022 anchoring is the application's. */
   onComment?(request: CommentRequest): void
@@ -62,6 +121,45 @@ export interface DocumentEditorProps {
    * dropped file is left to the browser.
    */
   onFiles?(request: FileRequest): void
+  /**
+   * Finds documents for "Link to document" in the slash menu; the request is
+   * the application's. Omitted, the menu does not offer the item. Whether it
+   * is given is read once, when the editor is built.
+   */
+  searchDocuments?(query: string, signal: AbortSignal): Promise<readonly DocumentLinkTarget[]>
+  /**
+   * Lists this page's children for a child pages block's preview (ADR-049);
+   * the request is the application's. Omitted, the block says in words what
+   * it will list. Whether it is given is read once, when the editor is built.
+   */
+  childPages?: ChildPagesPreview
+  /**
+   * Opens a link the way the application opens links: the router for a
+   * `/d/<id>` link, a new tab for anything else. Omitted, Open is disabled
+   * with its reason in the link card and the menus.
+   */
+  onOpenLink?(href: string): void
+  /**
+   * The address of this document at a fragment, for "Copy link to section".
+   * Omitted, the entry says why it cannot be used.
+   */
+  linkTo?(fragment: string): string | undefined
+  /**
+   * Parts a feature or an extension adds to the context menu, after Quill's
+   * own (`context-menu/context-menu-registry.ts`). Read once, when the editor
+   * is built.
+   */
+  readonly contextMenuContributions?: readonly ContextMenuContribution[]
+  /**
+   * The clipboard the menus copy to and paste from: the browser's own, unless
+   * a caller — a test, an embedding — supplies one.
+   */
+  readonly clipboard?: EditorClipboard | undefined
+}
+
+/** The parts of the browser's Clipboard API the editor's menus use. */
+export interface EditorClipboard extends ClipboardReader {
+  writeText?(text: string): Promise<void>
 }
 
 function handleFor(editor: Editor, warnings: readonly Warning[]): DocumentEditorHandle {
@@ -73,42 +171,86 @@ export function DocumentEditor({
   editable = true,
   placeholder,
   softBreaks,
+  labels,
+  emoji,
   label = 'Document',
-  slashItems,
+  slashContributions,
+  imageActions,
+  recentsKey,
   className,
   ref,
   onChange,
   onComment,
   onRequest,
   onFiles,
+  searchDocuments,
+  childPages,
+  onOpenLink,
+  linkTo,
+  contextMenuContributions,
+  clipboard = globalThis.navigator.clipboard,
 }: DocumentEditorProps) {
   const store = useMemo(() => createSlashStore(), [])
+  // What floats over the document — the context menu, the link popover — and
+  // the toolbar's way of taking focus, which Alt+F10 asks for.
+  const overlays = useMemo(() => createOverlayStore(), [])
+  // Nothing to focus until the toolbar is drawn: the key is the page's.
+  const focusToolbar = useRef<() => boolean>(() => false)
+  const [contextMenu] = useState(() =>
+    createContextMenuRegistry([
+      ...builtInContextMenu(imageActions),
+      ...(contextMenuContributions ?? []),
+    ]),
+  )
 
   // The extension list is built once with the editor, so it reads the current
   // callbacks through a box rather than closing over the first ones it saw.
-  const latest = useRef({ onChange, onRequest, onFiles })
+  const latest = useRef({ onChange, onRequest, onFiles, searchDocuments, childPages })
   // Keeps that box in sync with the latest onChange/onRequest for the ProseMirror
   // extensions built once below (useEditor), which read it instead of closing
   // over stale props.
   useEffect(() => {
-    latest.current = { onChange, onRequest, onFiles }
-  }, [onChange, onRequest, onFiles])
+    latest.current = { onChange, onRequest, onFiles, searchDocuments, childPages }
+  }, [onChange, onRequest, onFiles, searchDocuments, childPages])
 
   // Converted once, by a lazy initial state rather than a memo: the AST is the
   // initial content, and a later value must not re-open the document under the
   // author's caret. See the note above about remounting, which is how a document
   // is genuinely replaced.
   const [initial] = useState<LoadedDocument>(() =>
-    documentFromMdast(ast, softBreaks === undefined ? {} : { softBreaks }),
+    documentFromMdast(ast, { softBreaks: softBreaks ?? 'collapse' }),
   )
 
   /* oxlint-disable react/refs -- the callback box below is read when the author
      acts, never while rendering. The extension list and the editor are built once,
      so a closure over the first callbacks it saw is exactly the staleness this
      box exists to avoid. */
+  // The slash menu's catalogue and memory, built once with the editor from
+  // what is known then: an item that needs the organisation's labels is
+  // offered when there are labels to offer.
+  const [slash] = useState(() => ({
+    registry: createSlashRegistry({
+      ...(slashContributions === undefined ? {} : { contributions: slashContributions }),
+      environment: {
+        ...(labels === undefined ? {} : { labels }),
+        ...(emoji === undefined ? {} : { customEmoji: emoji.custom }),
+        ...(searchDocuments === undefined
+          ? {}
+          : {
+              searchDocuments: async (query: string, signal: AbortSignal) =>
+                (await latest.current.searchDocuments?.(query, signal)) ?? [],
+            }),
+      },
+    }),
+    recents: createSlashRecents(recentsKey),
+  }))
+
   const editor = useEditor({
     extensions: buildExtensions({
       ...(placeholder === undefined ? {} : { placeholder }),
+      ...(labels === undefined ? {} : { labels }),
+      ...(emoji === undefined ? {} : { emoji }),
+      ...(imageActions === undefined ? {} : { imageActions }),
       files: {
         onFiles: (request) => {
           latest.current.onFiles?.(request)
@@ -116,11 +258,35 @@ export function DocumentEditor({
       },
       slash: {
         store,
-        ...(slashItems === undefined ? {} : { items: slashItems }),
-        run: (item, instance) => {
-          item.run({ editor: instance, request: (request) => latest.current.onRequest?.(request) })
+        ...slash,
+        request: (request) => {
+          latest.current.onRequest?.(request)
         },
       },
+      callouts: {
+        onTypeMenu: ({ pos, anchor }) => {
+          overlays.open({
+            kind: 'context-menu',
+            anchor: anchorOf(anchor.getBoundingClientRect()),
+            presentation: 'menu',
+            pos,
+            only: ['callout'],
+            label: 'Callout type',
+            returnFocus: () => {
+              anchor.focus()
+            },
+          })
+        },
+      },
+      ...(editable ? { menus: { store: overlays, focusToolbar } } : {}),
+      ...(childPages === undefined
+        ? {}
+        : {
+            navigation: {
+              childPages: async (query, signal) =>
+                (await latest.current.childPages?.(query, signal)) ?? { html: '', count: 0 },
+            },
+          }),
     }),
     content: initial.doc.toJSON(),
     editable,
@@ -141,6 +307,9 @@ export function DocumentEditor({
       },
     },
     onUpdate: ({ editor: instance }) => {
+      // A large paste lands in batches; the change is heard once, when the
+      // last has landed, so a document is never saved half pasted.
+      if (isPasteLanding(instance.state)) return
       latest.current.onChange?.(handleFor(instance, initial.warnings))
     },
   })
@@ -148,11 +317,48 @@ export function DocumentEditor({
 
   useImperativeHandle(ref, () => handleFor(editor, initial.warnings), [editor, initial.warnings])
 
+  // What the menus may do outside the editor, through the application.
+  const environment = useMemo<ContextMenuEnvironment>(() => {
+    const write = clipboard?.writeText?.bind(clipboard)
+    return {
+      ...(onOpenLink === undefined ? {} : { openLink: onOpenLink }),
+      ...(linkTo === undefined ? {} : { linkTo }),
+      ...(write === undefined ? {} : { copyText: write }),
+      clipboard,
+      ...(onRequest === undefined
+        ? {}
+        : {
+            requestImage: () => {
+              onRequest({ kind: 'image' })
+            },
+          }),
+    }
+  }, [onOpenLink, linkTo, onRequest, clipboard])
+
+  // Puts this person's "wrap long lines" back on the code blocks: a choice
+  // kept in the browser, applied to the editor's DOM.
+  useEffect(() => {
+    restoreWrapping(editor.view)
+  }, [editor])
+
   return (
     <div className={cx('document-editor relative', className)}>
       <BlockMenu editor={editor} {...(onComment === undefined ? {} : { onComment })} />
+      {editable ? <BlockInserter editor={editor} /> : null}
+      {editable ? <TableToolbar editor={editor} /> : null}
       <EditorContent editor={editor} />
       <SlashMenu store={store} editor={editor} />
+      {editable ? (
+        <EditorOverlays
+          editor={editor}
+          store={overlays}
+          registry={contextMenu}
+          environment={environment}
+          focusToolbar={focusToolbar}
+          onComment={onComment}
+          {...(searchDocuments === undefined ? {} : { searchDocuments })}
+        />
+      ) : null}
     </div>
   )
 }

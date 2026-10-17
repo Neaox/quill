@@ -4,20 +4,42 @@ import type { Extension } from '@codemirror/state'
 import { EditorView, keymap, lineNumbers } from '@codemirror/view'
 import type { Command as CodeMirrorCommand } from '@codemirror/view'
 
-import { tokenHighlighting } from './highlight-style.ts'
-import { loadGrammar } from './languages.ts'
+import { createBrowserHighlighting } from '@quill/highlight/browser'
+
 import type { EditorLanguage } from './languages.ts'
+import { frameSchedule, lazyTokenizer, tokenPainting } from './token-painting.ts'
+import type { TokenPaintingOptions } from './token-painting.ts'
 
 /**
  * One CodeMirror editor, hosted inside one code block.
  *
  * The block's text lives in CodeMirror while the block is being written and in
  * the document AST the moment it is saved; this module owns only the first half
- * and hands every change to its caller. Keeping the two compartments — grammar
+ * and hands every change to its caller. Keeping the two compartments — colour
  * and editability — means changing a block's language or making the document
  * read-only reconfigures the editor instead of rebuilding it, so the caret and
- * the undo history survive.
+ * the undo history survive. Colour is the reader's (`token-painting.ts`).
  */
+
+/** How a block is coloured, apart from its language: the reader's tokenizer and paint. */
+export type Painting = Omit<TokenPaintingOptions, 'language'>
+
+/** `@quill/highlight`'s tokenizer, in a chunk of its own with the grammars. */
+const prismTokenizer = lazyTokenizer(() =>
+  import('@quill/highlight').then((highlight) => highlight.tokenize),
+)
+
+let browserPainting: Painting | undefined
+
+/** The page's painting: made once, the first time a block is drawn. */
+export function pagePainting(): Painting {
+  browserPainting ??= {
+    tokenizer: prismTokenizer,
+    environment: createBrowserHighlighting(window).environment,
+    schedule: frameSchedule,
+  }
+  return browserPainting
+}
 
 /** -1 leaves the block before it, 1 after it. */
 export type EscapeDirection = -1 | 1
@@ -37,6 +59,10 @@ export interface CodeMirrorOptions {
   readonly editable: boolean
   onChange(text: string): void
   onEscape(direction: EscapeDirection): void
+  /** Told whenever the selection moves, with whether it is only a caret. */
+  onSelection?(empty: boolean): void
+  /** The page's painting unless a test supplies its own. */
+  readonly painting?: Painting
 }
 
 /**
@@ -84,9 +110,12 @@ export function escapeKeymap(onEscape: (direction: EscapeDirection) => void): Ex
 }
 
 export function createCodeMirror(options: CodeMirrorOptions): CodeMirrorHost {
-  const grammar = new Compartment()
+  const colour = new Compartment()
   const editable = new Compartment()
-  const support = loadGrammar(options.language)
+  const painting = options.painting ?? pagePainting()
+  let grammar = options.language?.grammar
+  const paint = (language: EditorLanguage | undefined): Extension =>
+    tokenPainting({ ...painting, language: language?.grammar })
 
   const view = new EditorView({
     parent: options.parent,
@@ -95,7 +124,6 @@ export function createCodeMirror(options: CodeMirrorOptions): CodeMirrorHost {
       extensions: [
         lineNumbers(),
         history(),
-        tokenHighlighting,
         // CodeMirror gives its content element `role="textbox"`, which requires
         // an accessible name of its own; the toolbar labels the block as a
         // whole, but that label is on a sibling, not an ancestor, so it is not
@@ -103,10 +131,11 @@ export function createCodeMirror(options: CodeMirrorOptions): CodeMirrorHost {
         EditorView.contentAttributes.of({ 'aria-label': 'Code' }),
         escapeKeymap(options.onEscape),
         keymap.of([...defaultKeymap, ...historyKeymap, indentWithTab]),
-        grammar.of(support === undefined ? [] : support),
+        colour.of(paint(options.language)),
         editable.of(EditorView.editable.of(options.editable)),
         EditorView.updateListener.of((update) => {
           if (update.docChanged) options.onChange(update.state.doc.toString())
+          if (update.selectionSet) options.onSelection?.(update.state.selection.main.empty)
         }),
       ],
     }),
@@ -120,8 +149,11 @@ export function createCodeMirror(options: CodeMirrorOptions): CodeMirrorHost {
       view.dispatch({ changes: { from: 0, to: current.length, insert: text } })
     },
     setLanguage(language: EditorLanguage | undefined) {
-      const next = loadGrammar(language)
-      view.dispatch({ effects: grammar.reconfigure(next === undefined ? [] : next) })
+      // Asked on every update of the node around the block; only a different
+      // grammar is worth tokenizing again.
+      if (language?.grammar === grammar) return
+      grammar = language?.grammar
+      view.dispatch({ effects: colour.reconfigure(paint(language)) })
     },
     setEditable(value: boolean) {
       view.dispatch({ effects: editable.reconfigure(EditorView.editable.of(value)) })

@@ -26,6 +26,12 @@ export {
   type ConfirmPasswordResetInput,
 } from './auth.ts'
 export { useOidcProviders, oidcStartPath } from './oidc.ts'
+export {
+  personPreferencesQueryOptions,
+  usePersonPreferences,
+  useSavePersonPreferences,
+  type PersonPreferences,
+} from './preferences.ts'
 
 export {
   unitsQueryOptions,
@@ -76,6 +82,15 @@ export {
   type MoveDocumentInput,
   type DeleteDocumentInput,
 } from './documents.ts'
+export {
+  NAVIGATION_PAGE_SIZE,
+  listKey,
+  useNavigationTree,
+  type NavigationCollection,
+  type NavigationList,
+  type NavigationNode,
+  type NavigationTree,
+} from './navigation-tree.ts'
 export { draftQueryOptions, useDraft, useSaveDraft, type SaveDraftInput } from './drafts.ts'
 export { useAcquireLock, useHeartbeatLock, useReleaseLock, useTakeoverLock } from './locks.ts'
 export {
@@ -84,9 +99,11 @@ export {
   useDocumentHistory,
   usePublishedContent,
   useRenderedDocument,
-  useRevisionDiff,
+  useComparison,
+  useSourceComparison,
+  DRAFT_SIDE,
   type CachedRenderedDocument,
-  type DiffRange,
+  type ComparisonRange,
 } from './content.ts'
 export {
   usePublishDocument,
@@ -133,8 +150,12 @@ export {
 } from './share-reading.ts'
 export {
   organisationSettingsQueryOptions,
+  organisationThemeQueryOptions,
   secretsQueryOptions,
   workspaceSettingsQueryOptions,
+  useOrganisationLabels,
+  useOrganisationEmoji,
+  type OrganisationEmoji,
   useOrganisationSettings,
   useLoadedOrganisationSettings,
   useSaveOrganisationSettings,
@@ -153,6 +174,12 @@ export {
   type SetSecretInput,
   type SettingsIssue,
 } from './settings.ts'
+export {
+  publicMenuTargetsQueryOptions,
+  useCollectionCandidates,
+  usePublicMenuTargets,
+  type MenuTargetIds,
+} from './public-menu.ts'
 
 export type {
   CollectionDto,
@@ -164,9 +191,15 @@ export type {
   OidcProviderSummary,
   OrganisationSettings,
   OrganisationSettingsResponse,
+  OrganisationThemeSummary,
   SavedOrganisationSettings,
   ThemeSettings,
-  PublicNavigationLink,
+  PublicMenu,
+  PublicMenuItem,
+  PublicMenuGroup,
+  PublicMenuLink,
+  PublicMenuTarget,
+  CollectionCandidate,
   LayoutSettings,
   WorkspaceSettingsResponse,
   WorkspaceSettingsDocument,
@@ -184,6 +217,7 @@ export type {
   CreateDocumentResponse,
   CreateDraftDto,
   CreateDocumentWarning,
+  TreeChildrenResponse,
   TreeCollectionDto,
   WorkspaceTreeResponse,
   OutlineEntry,
@@ -193,7 +227,11 @@ export type {
   HealthSignal,
   DocumentHistory,
   RevisionSummary,
-  RevisionDiff,
+  Comparison,
+  ComparisonChange,
+  ComparisonSection,
+  SourceComparison,
+  SourceLine,
   PublishedContent,
   PublishedResult,
   MergeRequired,
@@ -210,3 +248,6 @@ export type {
   SharedLink,
   SharedNode,
 } from './types.ts'
+
+export { useChildPagesLoader, useChildPagesOf, type ChildPagesLoader } from './child-pages.ts'
+export { useDocumentLinksLoader } from './document-links.ts'

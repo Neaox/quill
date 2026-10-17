@@ -28,6 +28,11 @@ import {
 import { ContrastTable } from './contrast-table.tsx'
 import { SampleDocument } from './sample-document.tsx'
 import { SignatureSpecimens } from './signature-specimens.tsx'
+import { AnimationSpecimens } from './animation-specimens.tsx'
+import { DetailsSpecimens } from './details-specimens.tsx'
+import { NavigationBlockSpecimens } from './navigation-specimens.tsx'
+import { PropertySpecimens } from './property-specimens.tsx'
+import { TableSpecimens } from './table-specimens.tsx'
 import { COMMENTS, RAIL_ITEMS, REVISIONS, STATUS, TREE_SECTIONS } from './showcase-data.tsx'
 import { Section, specimenAction } from './specimen-layout.tsx'
 import {
@@ -217,6 +222,76 @@ export function DesignPage() {
                 <SampleDocument />
               </div>
             </Block>
+
+            <Section
+              id="tables"
+              overline="Tables"
+              title="Tables as good as a spreadsheet"
+              description="ADR-040: every table feature, as Markdown and as the renderer draws it, with the reader's own tools. Scroll the page past a long table and its header hangs under the bar; press a header to sort; open any table full screen."
+            >
+              <p className="text-xs leading-relaxed text-muted">
+                Each specimen's Markdown is under it. Switch the alignment to see the widths
+                centred.
+              </p>
+            </Section>
+
+            <Block width="full" className="mt-8">
+              <TableSpecimens />
+            </Block>
+
+            <Section
+              id="details"
+              overline="Details"
+              title="Details and accordions"
+              description="ADR-048: the browser's own details, in Quill's directive, GitHub's HTML and Obsidian's foldable callouts, drawn by the theme's rules. Open one in an accordion and the others close; a link or find into a closed one opens it."
+            >
+              <p className="text-xs leading-relaxed text-muted">
+                Each specimen's Markdown is under it.
+              </p>
+            </Section>
+
+            <Block width="wide" className="mt-8">
+              <DetailsSpecimens />
+            </Block>
+
+            <Section
+              id="animated-emoji"
+              overline="Animation"
+              title="Animated emoji"
+              description="ADR-047: an animated emoji plays when it comes into view, for at most five seconds or three loops, then rests on its still. Hover, focus or tap it to play it again. Readers who ask for less motion see only the still, with no script, and each person can choose play briefly, on hover only, or never."
+            >
+              <p className="text-xs leading-relaxed text-muted">
+                The specimen's Markdown is under it.
+              </p>
+            </Section>
+
+            <Block width="wide" className="mt-8">
+              <AnimationSpecimens />
+            </Block>
+
+            <Section
+              id="navigation-blocks"
+              overline="Navigation blocks"
+              title="Contents and child pages"
+              description="ADR-049: a table of contents drawn from the page's own headings, and the pages under this one, filled for each reader as the page is assembled. Scroll the page and the section being read is marked in every contents."
+            >
+              <p className="text-xs leading-relaxed text-muted">
+                Each specimen's Markdown is under it.
+              </p>
+            </Section>
+
+            <Block width="wide" className="mt-8">
+              <NavigationBlockSpecimens />
+            </Block>
+
+            <Section
+              id="properties"
+              overline="Properties"
+              title="Document properties"
+              description="What a document says about itself: who owns it, its status, when it was last reviewed, and its tags. A reader sees a quiet byline; an author edits each value in place (docs/design/properties.md)."
+            >
+              <PropertySpecimens />
+            </Section>
           </div>
         </DocumentShell>
       </TooltipProvider>

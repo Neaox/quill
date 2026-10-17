@@ -267,10 +267,10 @@ describe('DesignPage theme controls', () => {
   it('sets data-theme-id when another identity is chosen', async () => {
     render(<DesignPage />)
 
-    await userEvent.click(screen.getAllByRole('radio', { name: 'Press' })[0] as HTMLElement)
+    await userEvent.click(screen.getAllByRole('radio', { name: 'Editorial' })[0] as HTMLElement)
 
     await waitFor(() => {
-      expect(document.documentElement.getAttribute(THEME_ID_ATTRIBUTE)).toBe('press')
+      expect(document.documentElement.getAttribute(THEME_ID_ATTRIBUTE)).toBe('editorial')
     })
   })
 
@@ -298,7 +298,7 @@ describe('DesignPage theme controls', () => {
   it('drops back to the default identity without writing its name', async () => {
     render(<DesignPage />)
 
-    await userEvent.click(screen.getAllByRole('radio', { name: 'Press' })[0] as HTMLElement)
+    await userEvent.click(screen.getAllByRole('radio', { name: 'Grid' })[0] as HTMLElement)
     await waitFor(() => {
       expect(document.documentElement.hasAttribute(THEME_ID_ATTRIBUTE)).toBe(true)
     })
@@ -316,6 +316,6 @@ describe('DesignPage theme controls', () => {
     screen.getByRole('radio', { name: 'System' }).focus()
     await userEvent.keyboard('{ArrowRight}')
 
-    expect(screen.getByRole('radio', { name: 'Dark' })).toBeChecked()
+    expect(screen.getByRole('radio', { name: 'Light' })).toBeChecked()
   })
 })

@@ -8,6 +8,7 @@ import { createCollectionRepository } from './collection-repository.ts'
 import { createCredentialRepository } from './credential-repository.ts'
 import { createDocumentRepository } from './document-repository.ts'
 import { createDocumentLinksRepository } from './document-links-repository.ts'
+import { createDocumentSummaryRepository } from './document-summary-repository.ts'
 import { createDraftRepository } from './draft-repository.ts'
 import { createGrantRepository } from './grant-repository.ts'
 import { createGroupRepository } from './group-repository.ts'
@@ -15,6 +16,7 @@ import { createIdentityRepository } from './identity-repository.ts'
 import { createLockRepository } from './lock-repository.ts'
 import { createMagicLinkRepository } from './magic-link-repository.ts'
 import { createOutboxWriter } from './outbox-writer.ts'
+import { createPersonPreferencesRepository } from './person-preferences-repository.ts'
 import { createPublicRedirectRepository } from './public-redirect-repository.ts'
 import { createRenderCacheRepository } from './render-cache-repository.ts'
 import { createRevisionsIndexRepository } from './revisions-index-repository.ts'
@@ -49,6 +51,7 @@ function buildBundle(db: DrizzleClient, pool: pg.Pool, ids: IdGenerator): Reposi
     workspaceSlugHistory: createWorkspaceSlugHistoryRepository(db),
     collections: createCollectionRepository(db),
     documents: createDocumentRepository(db),
+    documentSummaries: createDocumentSummaryRepository(db),
     drafts: createDraftRepository(db, pool),
     locks: createLockRepository(pool),
     grants: createGrantRepository(db, ids),
@@ -59,6 +62,7 @@ function buildBundle(db: DrizzleClient, pool: pg.Pool, ids: IdGenerator): Reposi
     documentLinks: createDocumentLinksRepository(db),
     secrets: createSecretRepository(db),
     attachments: createAttachmentRepository(db),
+    personPreferences: createPersonPreferencesRepository(db),
     outbox: createOutboxWriter(db),
     audit: createAuditWriter(db),
   }

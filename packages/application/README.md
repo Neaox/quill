@@ -20,7 +20,7 @@ The rest are the M2 content path:
 | `readPublished` | The published Markdown of a document at a revision |
 | `renderDocument` | The static body, cached by content hash and render version (ADR-031) |
 | `getEnvelope` | The live half: permissions, lock, last publish, review, health signals |
-| `getHistory` / `getDiff` | The revisions index and the compare view, both paged and both bounded |
+| `getHistory` / `compareRevisions` / `compareRevisionSources` | The revisions index, paged and bounded; two versions (or the head and the draft) compared as a document and as source, with nothing about storage in the answer |
 | `getWorkspaceTree` | Navigation, with visibility resolved for the whole workspace in one pass |
 
 Publishing warns and never blocks: an unfilled placeholder, a required section with nothing in it, or a front-matter field that does not match the schema is reported to the author and published anyway.

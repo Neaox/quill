@@ -14,9 +14,22 @@ To change a screen, edit its working file here and re-assemble the canvas; never
 
 The living design system is in `packages/ui`, with a showcase at `/design` in the web app (`pnpm dev`, then open the design route). The research write-up with the primitives, typography, token, and contrast decisions is `docs/research/r13-frontend.md`.
 
+## Reading chrome
+
+[`chrome.md`](chrome.md) sets the rules for the frame around a document while
+it is read: one face, three inks, section labels as small headings, a soft
+selection for "you are here", and the order things give way as the bar
+narrows.
+
 ## Feedback
 
 [`feedback.md`](feedback.md) sets the vocabulary for inline status, toasts, and blocking dialogs, and when a promise toast is the right way to show background work that concerns the current page.
+
+## Document properties
+
+[`properties.md`](properties.md) sets what a document's properties are for,
+the byline every surface shows under a title, who sees which facts, and how an
+author edits them in place.
 
 ## Home
 

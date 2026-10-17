@@ -21,4 +21,18 @@ describe('textLinkClassName', () => {
     expect(textLinkClassName({ size: 'xs', className: 'text-sm' })).toContain('text-sm')
     expect(textLinkClassName({ size: 'xs', className: 'text-sm' })).not.toContain('text-xs')
   })
+
+  it('is drawn in the accent by default', () => {
+    expect(textLinkClassName()).toContain('text-accent')
+    expect(textLinkClassName()).not.toContain('text-muted')
+  })
+
+  it('has a quiet tone for the secondary ways round a page, which stays underlined on hover', () => {
+    const classes = textLinkClassName({ tone: 'quiet' })
+
+    expect(classes).toContain('text-muted')
+    expect(classes).toContain('hover:text-foreground')
+    expect(classes).not.toContain('text-accent')
+    expect(classes).toContain('hover:decoration-current')
+  })
 })

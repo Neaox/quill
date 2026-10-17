@@ -29,6 +29,29 @@ export const DOCUMENT_RENAMED = 'DocumentRenamed'
  */
 export const DOCUMENT_MOVED = 'DocumentMoved'
 
+/**
+ * A document was nested under another parent, or lifted to the top, inside
+ * its own collection (ADR-049). Nothing on the web moves — `DocumentMoved`
+ * covers a change of collection — but the pages listed under both parents
+ * change, which is what a child pages list shows.
+ */
+export const DOCUMENT_NESTED = 'DocumentNested'
+
+/**
+ * A document was deleted (ADR-049). Its children were lifted to the top of
+ * its collection by the same delete, so every list that showed it, or showed
+ * them under it, has changed.
+ */
+export const DOCUMENT_DELETED = 'DocumentDeleted'
+
+/**
+ * An attachment's bytes were replaced by a new revision under the same URL
+ * (ADR-043). Every published body that shows it changes without being
+ * republished, so what was derived from those bodies — the search index, the
+ * public site's cached pages — is brought up to date from this.
+ */
+export const ATTACHMENT_REVISED = 'AttachmentRevised'
+
 export const EVENT_PAYLOAD_VERSION = 1
 
 export interface DocumentCreatedPayload {
@@ -62,6 +85,31 @@ export interface DocumentMovedPayload {
   /** Null when the document was in no collection, which is a tree the resolver refuses anyway. */
   readonly fromCollectionId: CollectionId | null
   readonly toCollectionId: CollectionId | null
+}
+
+export interface DocumentNestedPayload {
+  readonly version: number
+  readonly documentId: DocumentId
+  readonly workspaceId: WorkspaceId
+  readonly fromParentId: DocumentId | null
+  readonly toParentId: DocumentId | null
+}
+
+export interface DocumentDeletedPayload {
+  readonly version: number
+  readonly documentId: DocumentId
+  readonly workspaceId: WorkspaceId
+  readonly parentId: DocumentId | null
+  readonly collectionId: CollectionId | null
+}
+
+export interface AttachmentRevisedPayload {
+  readonly version: number
+  readonly attachmentId: string
+  readonly documentId: DocumentId
+  readonly workspaceId: WorkspaceId
+  /** The attachment's own version after the revision. */
+  readonly attachmentVersion: number
 }
 
 /**
@@ -145,6 +193,54 @@ const movedReader = createVersionedReader<DocumentMovedPayload>({
   },
 })
 
+const nestedReader = createVersionedReader<DocumentNestedPayload>({
+  [EVENT_PAYLOAD_VERSION]: (payload) => {
+    const documentId = readString(payload, 'documentId')
+    const workspaceId = readString(payload, 'workspaceId')
+    if (documentId === null || workspaceId === null) return null
+    return {
+      version: EVENT_PAYLOAD_VERSION,
+      documentId: documentId as DocumentId,
+      workspaceId: workspaceId as WorkspaceId,
+      fromParentId: readString(payload, 'fromParentId') as DocumentId | null,
+      toParentId: readString(payload, 'toParentId') as DocumentId | null,
+    }
+  },
+})
+
+const deletedReader = createVersionedReader<DocumentDeletedPayload>({
+  [EVENT_PAYLOAD_VERSION]: (payload) => {
+    const documentId = readString(payload, 'documentId')
+    const workspaceId = readString(payload, 'workspaceId')
+    if (documentId === null || workspaceId === null) return null
+    return {
+      version: EVENT_PAYLOAD_VERSION,
+      documentId: documentId as DocumentId,
+      workspaceId: workspaceId as WorkspaceId,
+      parentId: readString(payload, 'parentId') as DocumentId | null,
+      collectionId: readString(payload, 'collectionId'),
+    }
+  },
+})
+
+const revisedReader = createVersionedReader<AttachmentRevisedPayload>({
+  [EVENT_PAYLOAD_VERSION]: (payload) => {
+    const attachmentId = readString(payload, 'attachmentId')
+    const documentId = readString(payload, 'documentId')
+    const workspaceId = readString(payload, 'workspaceId')
+    const attachmentVersion = (payload as Record<string, unknown>)['attachmentVersion']
+    if (attachmentId === null || documentId === null || workspaceId === null) return null
+    if (typeof attachmentVersion !== 'number') return null
+    return {
+      version: EVENT_PAYLOAD_VERSION,
+      attachmentId,
+      documentId: documentId as DocumentId,
+      workspaceId: workspaceId as WorkspaceId,
+      attachmentVersion,
+    }
+  },
+})
+
 const mailReader = createVersionedReader<MailRequestedPayload>({
   [EVENT_PAYLOAD_VERSION]: (payload) => {
     const to = readString(payload, 'to')
@@ -190,4 +286,19 @@ export function parseDocumentRenamed(payload: unknown): DocumentRenamedPayload |
 /** A `DocumentMoved` payload, or null when it is not one this release can read. */
 export function parseDocumentMoved(payload: unknown): DocumentMovedPayload | null {
   return movedReader.read(payload)
+}
+
+/** An `AttachmentRevised` payload, or null when it is not one this release can read. */
+export function parseAttachmentRevised(payload: unknown): AttachmentRevisedPayload | null {
+  return revisedReader.read(payload)
+}
+
+/** A `DocumentNested` payload, or null when it is not one this release can read. */
+export function parseDocumentNested(payload: unknown): DocumentNestedPayload | null {
+  return nestedReader.read(payload)
+}
+
+/** A `DocumentDeleted` payload, or null when it is not one this release can read. */
+export function parseDocumentDeleted(payload: unknown): DocumentDeletedPayload | null {
+  return deletedReader.read(payload)
 }

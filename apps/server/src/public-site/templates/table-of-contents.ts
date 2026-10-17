@@ -10,18 +10,23 @@ import { html, type Html } from '../html.ts'
  * lands somewhere — there is no second pass over the HTML looking for
  * headings, and therefore no way for the two to disagree.
  *
- * Only the top two levels are listed. A table of contents that mirrors every
- * heading is an outline of the document rather than a way to move around it,
- * and on the public site the column it sits in is 13rem wide.
+ * Only second- and third-level headings are listed: the first is the title,
+ * which is not a section of itself, and a list that mirrors every heading is
+ * an outline of the document rather than a way to move around it. And only
+ * once there are enough of them: a column holding one or two links is a
+ * column of nothing, so a short page gives the room back to the text.
  */
 
 /** The deepest heading level the contents lists. */
 export const TABLE_OF_CONTENTS_DEPTH = 3
 
+/** The fewest entries worth a column of their own. */
+export const TABLE_OF_CONTENTS_MINIMUM = 3
+
 export function renderTableOfContents(outline: readonly OutlineEntry[]): Html {
-  const entries = [...flatten(outline)]
-  if (entries.length === 0) return html``
-  return html` <nav class="site-toc" aria-labelledby="site-toc-heading">
+  const entries = [...sections(outline)]
+  if (entries.length < TABLE_OF_CONTENTS_MINIMUM) return html``
+  return html`<nav class="site-toc" aria-labelledby="site-toc-heading">
     <h2 class="site-toc-heading" id="site-toc-heading">On this page</h2>
     <ul>
       ${entries.map(
@@ -34,16 +39,16 @@ export function renderTableOfContents(outline: readonly OutlineEntry[]): Html {
 }
 
 /**
- * The outline as a flat list, deepest level dropped.
+ * The outline as a flat list of its second and third levels.
  *
- * Lazily, because the tree is walked once and the depth cut-off is applied as
- * it goes rather than by materialising every heading and filtering afterwards
+ * Lazily, because the tree is walked once and the levels are chosen as it goes
+ * rather than by materialising every heading and filtering afterwards
  * (AGENTS.md rule 13).
  */
-function* flatten(entries: readonly OutlineEntry[]): Generator<OutlineEntry> {
+function* sections(entries: readonly OutlineEntry[]): Generator<OutlineEntry> {
   for (const entry of entries) {
     if (entry.depth > TABLE_OF_CONTENTS_DEPTH) continue
-    yield entry
-    yield* flatten(entry.children)
+    if (entry.depth >= 2) yield entry
+    yield* sections(entry.children)
   }
 }

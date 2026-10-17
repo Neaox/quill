@@ -75,9 +75,11 @@ describe('SignInPage', () => {
 
     // The signed-in home, which lists the person's workspaces under its own
     // heading (docs/design/home.md).
-    expect(await screen.findByRole('heading', { level: 1, name: 'Home' })).toBeInTheDocument()
     expect(
-      await screen.findByRole('heading', { level: 2, name: 'Your workspaces' }),
+      await screen.findByRole('heading', { level: 1, name: /^Good (morning|afternoon|evening), / }),
+    ).toBeInTheDocument()
+    expect(
+      await screen.findByRole('heading', { level: 2, name: /^Workspaces/ }),
     ).toBeInTheDocument()
   })
 

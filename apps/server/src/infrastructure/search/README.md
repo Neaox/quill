@@ -119,6 +119,8 @@ briefly unreachable is asked again rather than being written off.
 - **An exact phrase** and **the current workspace** are multipliers. The
   workspace boost is applied before the cutoff, not after:
   `groupByWorkspaceAffinity` can only order what came back.
+- **A deprecated page** is a multiplier below one, from the row's `lifecycle`
+  column: demoted below a current page that matched as well, never hidden.
 - **Trigram similarity** is *added*, not multiplied, because a document the
   full-text query did not match has a relevance of zero and would otherwise
   stay at zero however close its title is.

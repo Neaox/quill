@@ -403,6 +403,57 @@ describe('createDocumentFormat: render and read', () => {
     expect(rendered.incompleteRequiredSections).toEqual(['Decision'])
   })
 
+  it('draws a table of contents into the body and lists each child pages slot (ADR-049)', () => {
+    const rendered = format.render({
+      markdown: '# Title\n\n::toc\n\n## Install\n\n::children{depth=2}\n',
+      linkTitles: new Map(),
+    })
+    expect(rendered.html).toContain('<a href="#user-content-install">Install</a>')
+    expect(rendered.html).toContain('data-live-key="children?depth=2&#x26;sort=manual"')
+    expect(rendered.slots).toEqual(['children?depth=2&sort=manual'])
+  })
+
+  it('draws the SVG drawings the body shows, from the markup it was handed', () => {
+    const url = '/api/attachments/0b6b0d2c-7f7e-4a39-8a8a-4a5f6d0c1a11'
+    const rendered = format.render({
+      markdown: `![The loop](${url})
+`,
+      linkTitles: new Map(),
+      drawings: new Map([[url, { sha256: 'a', markup: '<svg viewBox="0 0 1 1"><rect/></svg>' }]]),
+    })
+    expect(rendered.html).toContain(
+      '<div class="diagram" data-diagram="svg"><svg viewBox="0 0 1 1"',
+    )
+  })
+
+  it('draws the organisation’s labels it was handed, and nothing it was not (ADR-037)', () => {
+    const rendered = format.render({
+      markdown: 'On :airbnb[Airbnb] and :vrbo[Vrbo].\n',
+      linkTitles: new Map(),
+      labels: new Set(['airbnb']),
+    })
+    expect(rendered.html).toContain('<span class="badge" data-label="airbnb">Airbnb</span>')
+    expect(rendered.html).toContain(':vrbo[Vrbo]')
+  })
+
+  it('draws emoji, the organisation’s own and GitHub’s, and leads a label with its emoji (ADR-038)', () => {
+    const src = '/api/emoji/airbnb.0123456789abcdef.svg'
+    const rendered = format.render({
+      markdown: ':+1: :airbnb: :airbnb[Airbnb]\n',
+      linkTitles: new Map(),
+      labels: new Set(['airbnb']),
+      emoji: new Map([['airbnb', { src, width: 32, height: 32 }]]),
+      labelEmoji: new Map([['airbnb', 'airbnb']]),
+    })
+    expect(rendered.html).toContain(
+      '<span class="emoji" role="img" aria-label="thumbs up">👍</span>',
+    )
+    expect(rendered.html).toContain(`<img class="emoji" src="${src}" alt=":airbnb:"`)
+    expect(rendered.html).toContain(
+      `<span class="badge" data-label="airbnb"><img class="emoji" src="${src}" alt=""`,
+    )
+  })
+
   it('renders a body whose code blocks the highlighter declines to tokenize', () => {
     const plain = createDocumentFormat({ highlighter: () => null })
     expect(plain.render({ markdown, linkTitles: new Map() }).html).not.toContain('data-tokens')

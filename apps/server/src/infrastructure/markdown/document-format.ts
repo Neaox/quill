@@ -1,15 +1,24 @@
 import {
+  childPagesSlots,
+  compareDocuments,
+  compareLines,
+  compareProperties,
   ensureDocumentId,
   extractLinks,
   extractText,
   isTemplateDeclaration,
+  linesOf,
   parseDocument,
+  renderComparison,
   renderDocument,
   resolveTemplate,
   serializeDocument,
   stripAuthoringBlocks,
   validateFrontMatter,
 } from '@quill/markdown'
+import { standardEmoji } from '@quill/markdown/emoji-shortcodes'
+import { createMarkdownRegistry } from '@quill/markdown/extension'
+import type { MarkdownRegistry } from '@quill/markdown/extension'
 import type {
   Highlighter,
   SerialisableDocument,
@@ -17,8 +26,15 @@ import type {
   TemplateDeclaration,
   Warning,
 } from '@quill/markdown'
-import { RENDERED_CONTENT_VERSION, DRAFT_CONTENT_VERSION } from '@quill/application'
+import {
+  COMPARED_CONTENT_VERSION,
+  RENDERED_CONTENT_VERSION,
+  DRAFT_CONTENT_VERSION,
+} from '@quill/application'
 import type {
+  CompareInput,
+  ComparedContent,
+  ComparedSource,
   CreateDocumentContentInput,
   DocumentFormat,
   DraftContent,
@@ -60,12 +76,20 @@ const REQUIRED_SECTIONS = 'requiredSections'
 
 export interface DocumentFormatOptions {
   readonly highlighter?: Highlighter
+  /**
+   * The installed Markdown extensions (ADR-039). Quill's own — draw.io
+   * (ADR-043) — when not given; built once, here, as the format is.
+   */
+  readonly extensions?: MarkdownRegistry
 }
 
 export function createDocumentFormat(options: DocumentFormatOptions = {}): DocumentFormat {
   const highlighter = options.highlighter ?? createHighlighter()
+  const extensions = options.extensions ?? createMarkdownRegistry()
 
   return {
+    extensions: extensions.signature,
+
     create(input: CreateDocumentContentInput): NewDocumentContent {
       return input.template === undefined
         ? blankDocument(input)
@@ -125,22 +149,32 @@ export function createDocumentFormat(options: DocumentFormatOptions = {}): Docum
      * titles when auto-titled links land, so they travel with the input from
      * now on rather than being bolted on later.
      */
-    render({ markdown }: RenderInput): RenderedContent {
+    render({ markdown, drawings, labels, emoji, labelEmoji }: RenderInput): RenderedContent {
       const { frontMatter, ast } = parseDocument(markdown)
       const text = extractText(ast)
       // One call, one tree: the heading ids in the body and the ids the
       // outline points at are produced by the same slugger, so a table of
       // contents can never drift from the document it describes.
-      const rendered = renderDocument(ast, { highlighter, frontMatter })
+      const rendered = renderDocument(ast, {
+        highlighter,
+        frontMatter,
+        drawings: new Map([...(drawings ?? [])].map(([url, drawing]) => [url, drawing.markup])),
+        extensions,
+        labels,
+        standardEmoji,
+        emoji,
+        labelEmoji,
+      })
       return {
         version: RENDERED_CONTENT_VERSION,
         html: rendered.html,
         outline: rendered.outline.map(toOutlineEntry),
         text: { title: text.title, headings: text.headings, body: text.body },
         links: extractLinks(ast).map(toLink),
-        // The live-block registry arrives in M5 (ADR-032); until a block type
-        // is registered the renderer emits no slots to list.
-        slots: [],
+        // The slots a page fills as it is assembled (ADR-032): today the
+        // child pages lists (ADR-049). The live-block registry adds its own
+        // types in M5.
+        slots: childPagesSlots(ast),
         incompleteRequiredSections: incompleteRequiredSections(
           markdown,
           readStrings(frontMatter[REQUIRED_SECTIONS]),
@@ -157,6 +191,40 @@ export function createDocumentFormat(options: DocumentFormatOptions = {}): Docum
     toDraft(markdown: string): DraftContent {
       const { frontMatter, ast } = parseDocument(markdown)
       return { version: DRAFT_CONTENT_VERSION, frontMatter, ast }
+    },
+
+    /**
+     * Two versions drawn as one page, with the reader's own renderer and the
+     * same options a body is rendered with, so a comparison looks like the
+     * document it compares (`@quill/markdown`'s `renderComparison`).
+     */
+    compare({ before, after, context }: CompareInput): ComparedContent {
+      const older = parseDocument(before)
+      const newer = parseDocument(after)
+      const rendered = renderComparison(compareDocuments(older.ast, newer.ast), {
+        highlighter,
+        frontMatter: newer.frontMatter,
+        drawings: new Map(
+          [...(context.drawings ?? [])].map(([url, drawing]) => [url, drawing.markup]),
+        ),
+        extensions,
+        labels: context.labels,
+        standardEmoji,
+        emoji: context.emoji,
+        labelEmoji: context.labelEmoji,
+      })
+      return {
+        version: COMPARED_CONTENT_VERSION,
+        html: rendered.html,
+        sections: rendered.sections,
+        changes: rendered.changes,
+        summary: rendered.summary,
+        properties: compareProperties(older.frontMatter, newer.frontMatter),
+      }
+    },
+
+    compareSource(before: string, after: string): ComparedSource {
+      return compareLines(linesOf(before), linesOf(after))
     },
   }
 }

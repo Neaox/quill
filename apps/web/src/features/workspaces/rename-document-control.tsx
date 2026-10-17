@@ -1,9 +1,10 @@
 import { useEffect, useId, useRef, useState } from 'react'
 
-import { Button } from '@quill/ui'
+import { Button, PencilIcon } from '@quill/ui'
 
 import { useRenameDocument } from '../../lib/api/index.ts'
 import { FormError } from '../../lib/forms/form-error.tsx'
+import { RenameDialog } from '../dialogs/rename-dialog.tsx'
 
 export interface RenameDocumentControlProps {
   readonly documentId: string
@@ -83,9 +84,9 @@ export function RenameDocumentControl({ documentId, title }: RenameDocumentContr
         }}
         aria-label={`Rename "${title}"`}
         title={`Rename "${title}"`}
-        className="flex size-7 shrink-0 cursor-pointer items-center justify-center rounded-md text-muted transition-colors hover:bg-surface hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring"
+        className="flex size-8 shrink-0 cursor-pointer items-center justify-center rounded-md text-muted transition-colors hover:bg-surface hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring"
       >
-        <span aria-hidden="true">✎</span>
+        <PencilIcon />
       </button>
     )
   }
@@ -134,5 +135,47 @@ export function RenameDocumentControl({ documentId, title }: RenameDocumentContr
         </div>
       ) : undefined}
     </form>
+  )
+}
+
+export interface RenameDocumentDialogProps extends RenameDocumentControlProps {
+  readonly open: boolean
+  readonly onOpenChange: (open: boolean) => void
+}
+
+/**
+ * The same rename as a dialog, for a phone: the bar has no room for a field,
+ * so "Rename…" is in the document's menu there and opens this instead.
+ */
+export function RenameDocumentDialog({
+  documentId,
+  title,
+  open,
+  onOpenChange,
+}: RenameDocumentDialogProps) {
+  const rename = useRenameDocument()
+
+  return (
+    <RenameDialog
+      open={open}
+      onOpenChange={(next) => {
+        if (!next) rename.reset()
+        onOpenChange(next)
+      }}
+      currentName={title}
+      description="Its address follows the new title, and links to the old one still arrive here."
+      isPending={rename.isPending}
+      error={rename.error}
+      onRename={(name) => {
+        rename.mutate(
+          { documentId, title: name },
+          {
+            onSuccess: () => {
+              onOpenChange(false)
+            },
+          },
+        )
+      }}
+    />
   )
 }

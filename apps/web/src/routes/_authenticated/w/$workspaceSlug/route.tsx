@@ -2,12 +2,7 @@ import { createFileRoute, notFound } from '@tanstack/react-router'
 
 import { RouteNotice } from '../../../../features/workspaces/route-notice.tsx'
 import { WorkspaceLayout } from '../../../../features/workspaces/workspace-layout.tsx'
-import {
-  ApiError,
-  queryKeys,
-  workspaceQueryOptions,
-  workspaceTreeQueryOptions,
-} from '../../../../lib/api/index.ts'
+import { ApiError, queryKeys, workspaceQueryOptions } from '../../../../lib/api/index.ts'
 
 /**
  * The workspace shell.
@@ -44,9 +39,10 @@ export const Route = createFileRoute('/_authenticated/w/$workspaceSlug')({
       // The canonical entry, so a component keyed by the id reads what the
       // slug lookup already answered rather than asking again.
       context.queryClient.setQueryData(queryKeys.workspace(workspace.id), workspace)
-      void context.queryClient.prefetchQuery(
-        workspaceTreeQueryOptions(context.apiClient, workspace.id),
-      )
+      // The sidebar's tree is not prefetched here: it is asked for opened
+      // down to the document being read (`useNavigationTree`), which this
+      // layout's loader does not know, and a second request without it would
+      // be thrown away.
       return {
         workspaceId: workspace.id,
         workspaceSlug: workspace.slug,

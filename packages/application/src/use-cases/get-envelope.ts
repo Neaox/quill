@@ -2,6 +2,7 @@ import type { Capabilities, DocumentId, RevisionId, UserId } from '@quill/domain
 
 import type { DocumentSource } from '../ports/content-store.ts'
 import type { DocumentLockRow, DocumentRow } from '../ports/persistence.ts'
+import { factsOf, type FactsView } from './document-facts.ts'
 import type { RenderDocumentDependencies } from './render-document.ts'
 import { renderSource } from './render-document.ts'
 import { readSource } from './read-published.ts'
@@ -63,6 +64,33 @@ export interface EnvelopeView {
   readonly lastPublished: LastPublishedView | null
   readonly review: ReviewView | null
   readonly health: readonly HealthSignal[]
+  /**
+   * What the head revision says about itself, for the byline: who owns it, its
+   * status, its tags and its review cycle (`docs/design/properties.md`). A
+   * property of now like everything else here: a reader of an old revision is
+   * told who to ask *today*.
+   */
+  readonly facts: FactsView
+  /**
+   * Whether the draft holds changes nothing has published: the third answer
+   * to "is this published?" (`document-lifecycle.ts`), which the header's
+   * publication pill says. Only ever true for someone who may edit the
+   * document — a draft is unpublished work, and reading one needs the right
+   * to write it (ADR-021) — and never before a first publish, when the
+   * document is simply a draft.
+   */
+  readonly unpublishedChanges: boolean
+}
+
+/** What a document with nothing published states. */
+const NO_FACTS: FactsView = {
+  status: undefined,
+  lifecycle: undefined,
+  type: undefined,
+  owners: [],
+  tags: [],
+  reviewInterval: undefined,
+  lastReviewed: undefined,
 }
 
 export type GetEnvelopeResult =
@@ -82,10 +110,11 @@ export async function getEnvelope(
   if (document === null) return { kind: 'not-found', documentId: command.documentId }
 
   const now = deps.clock.now()
-  const [lock, latest, source] = await Promise.all([
+  const [lock, latest, source, draft] = await Promise.all([
     repos.locks.find(command.documentId),
     repos.revisions.latestForDocument(command.documentId),
     readSource(deps, document.workspaceId, { documentId: command.documentId }),
+    command.capabilities.edit ? repos.drafts.stamp(command.documentId) : null,
   ])
 
   const permissions = {
@@ -99,11 +128,23 @@ export async function getEnvelope(
     latest === null
       ? null
       : { revision: latest.revision, author: latest.authorName, at: latest.timestamp }
+  // A publish moves the draft onto what it published at the publish's own
+  // moment (`recordPublish`), so a draft written since is ahead of it.
+  const unpublishedChanges =
+    draft !== null && latest !== null && draft.updatedAt.getTime() > latest.timestamp.getTime()
 
   if (source === null) {
     return {
       kind: 'envelope',
-      envelope: { permissions, lock: lockView, lastPublished, review: null, health: [] },
+      envelope: {
+        permissions,
+        lock: lockView,
+        lastPublished,
+        review: null,
+        health: [],
+        facts: NO_FACTS,
+        unpublishedChanges,
+      },
     }
   }
 
@@ -117,6 +158,8 @@ export async function getEnvelope(
       lastPublished,
       review,
       health: await healthOf(deps, document, source, frontMatter, review),
+      facts: await factsOf(deps, frontMatter),
+      unpublishedChanges,
     },
   }
 }

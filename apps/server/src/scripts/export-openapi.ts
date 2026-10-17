@@ -27,7 +27,8 @@ import { createKeyProvider } from '../infrastructure/secrets/key-provider.ts'
 import { createSecretResolver } from '../infrastructure/secrets/resolve-secret.ts'
 import { createSettingsStore } from '../infrastructure/settings-store.ts'
 import { createPublicSiteCache } from '../public-site/cache.ts'
-import { createPublicStylesheets } from '../public-site/stylesheet.ts'
+import { pagelessStylesheets } from '../theme/pageless.ts'
+import { createDrawioText } from '../extensions/drawio/drawing-text.ts'
 
 /**
  * The OpenAPI description of the API, written from the routes themselves.
@@ -69,7 +70,7 @@ async function describableDependencies(): Promise<AppDependencies> {
     search: createSearchService(searchIndex),
     // Describing the API styles nothing: the public site's pages are HTML
     // routes that are not part of the description at all.
-    publicStylesheets: createPublicStylesheets({ hasher, designSystemCss: '' }),
+    ...(await pagelessStylesheets(hasher)),
     publicSiteCache: createPublicSiteCache({ clock, ttlMs: 0 }),
     contentStore,
     settings: createSettingsStore(contentStore),
@@ -90,6 +91,7 @@ async function describableDependencies(): Promise<AppDependencies> {
     rateLimiter: createRateLimiter({ clock, config: config.rateLimit }),
     oidcRateLimiter: createRateLimiter({ clock, config: config.oidcRateLimit }),
     attachmentRateLimiter: createRateLimiter({ clock, config: config.attachments.rateLimit }),
+    drawingText: createDrawioText(),
     passwords: await createPasswordHasher(),
     // Describing the API talks to no provider; the registry is present
     // because the routes read it at registration, and it is empty.

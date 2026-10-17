@@ -1,8 +1,18 @@
 import { Type } from '@sinclair/typebox'
 import { DOCUMENT_STATUSES, slugify } from '@quill/domain'
 import type { Static } from '@sinclair/typebox'
-import type { DocumentRow, DraftRow, EnvelopeView, HistoryPageView } from '@quill/application'
-import type { DocumentStatus } from '@quill/domain'
+import type {
+  ComparedContent,
+  ComparedSource,
+  DocumentRow,
+  DraftRow,
+  EnvelopeView,
+  FactsView,
+  HistoryPageView,
+  LifecycleView,
+  Replacement,
+} from '@quill/application'
+import type { DocumentStatus, PublicDocumentFacts, PublicLifecycle } from '@quill/domain'
 
 /**
  * The shapes of the M2 content API (`docs/architecture/api-contract-m2.md`).
@@ -93,6 +103,71 @@ export const HealthSignalSchema = Type.Object({
   detail: Type.Optional(Type.String()),
 })
 
+/**
+ * What a document states about itself, for the byline under its title
+ * (`docs/design/properties.md`). Owners are labels, never addresses: a person
+ * Quill knows is named, anything else is shown as written.
+ */
+const OwnerSchema = Type.Object({ label: Type.String(), person: Type.Boolean() })
+
+/**
+ * A deprecated document's replacement, at the address this reader follows it
+ * by. Absent when there is none, or when this reader may not open it: its
+ * title is then exactly what they were never shown (ADR-046).
+ */
+const ReplacementSchema = Type.Object({ href: Type.String(), title: Type.String() })
+
+const InReviewSchema = Type.Object({ state: Type.Literal('in-review') })
+const DeprecatedSchema = Type.Object({
+  state: Type.Literal('deprecated'),
+  replacement: Type.Optional(ReplacementSchema),
+})
+
+/**
+ * The lifecycle an author or owner set (ADR-005 amendment): absent when none
+ * is. Whether a verification has lapsed is the client's to work out from the
+ * review cycle at the moment it shows it, never something stored or sent.
+ */
+const LifecycleSchema = Type.Union([
+  InReviewSchema,
+  Type.Object({
+    state: Type.Literal('verified'),
+    verifiedBy: Type.Optional(OwnerSchema),
+    verifiedAt: Type.Optional(Type.String({ format: 'date' })),
+  }),
+  DeprecatedSchema,
+])
+
+/** The lifecycle an outsider is told: never who verified, and a verification only while it stands. */
+const PublicLifecycleSchema = Type.Union([
+  InReviewSchema,
+  Type.Object({
+    state: Type.Literal('verified'),
+    verifiedAt: Type.Optional(Type.String({ format: 'date' })),
+  }),
+  DeprecatedSchema,
+])
+
+export const FactsSchema = Type.Object({
+  /** A status from before the lifecycle. Kept for compatibility (ADR-033) and shown by nothing. */
+  status: Type.Optional(DocumentStatusSchema),
+  lifecycle: Type.Optional(LifecycleSchema),
+  type: Type.Optional(Type.String()),
+  owners: Type.Array(OwnerSchema),
+  tags: Type.Array(Type.String()),
+  reviewInterval: Type.Optional(Type.String()),
+  lastReviewed: Type.Optional(Type.String({ format: 'date' })),
+})
+
+/** What an outsider is shown: no people, no internal review cadence (ADR-052). */
+export const PublicFactsSchema = Type.Object({
+  /** A status from before the lifecycle. Kept for compatibility (ADR-033) and shown by nothing. */
+  status: Type.Optional(DocumentStatusSchema),
+  lifecycle: Type.Optional(PublicLifecycleSchema),
+  tags: Type.Array(Type.String()),
+  lastReviewed: Type.Optional(Type.String({ format: 'date' })),
+})
+
 export const EnvelopeSchema = Type.Object({
   permissions: Type.Object({
     view: Type.Boolean(),
@@ -121,6 +196,12 @@ export const EnvelopeSchema = Type.Object({
     Type.Null(),
   ]),
   health: Type.Array(HealthSignalSchema),
+  facts: FactsSchema,
+  /**
+   * Whether the draft holds changes nothing has published, for the header's
+   * publication state. Only ever true for someone who may edit.
+   */
+  unpublishedChanges: Type.Boolean(),
 })
 
 /** What the publish summary states plainly and publishes anyway (ADR-029). */
@@ -179,18 +260,85 @@ export const HistoryQuerySchema = Type.Object({
   cursor: Type.Optional(Type.String()),
 })
 
-export const DiffQuerySchema = Type.Object({
+export const CompareQuerySchema = Type.Object({
   /** Omitted compares against nothing, which is how a first revision reads. */
   from: Type.Optional(RevisionSchema),
-  to: RevisionSchema,
+  /** A revision, or `draft`: the document as its next publish would write it. */
+  to: Type.Union([RevisionSchema, Type.Literal('draft')]),
 })
 
-export const DiffSchema = Type.Object({
-  from: Nullable(RevisionSchema),
-  to: RevisionSchema,
-  unified: Type.String(),
-  added: Type.Integer(),
-  removed: Type.Integer(),
+const ChangeKindSchema = Type.Union([
+  Type.Literal('added'),
+  Type.Literal('removed'),
+  Type.Literal('changed'),
+  Type.Literal('moved'),
+])
+
+const LineChangeSchema = Type.Union([
+  Type.Literal('equal'),
+  Type.Literal('added'),
+  Type.Literal('removed'),
+])
+
+/**
+ * Two versions of a document as one page (`docs/architecture/api-contract-m2.md`).
+ *
+ * Deliberately Git-free: no path, no revision hash, no hunk header. Each
+ * change names its block by `id`, which the `html` carries as
+ * `data-change-id`; each section names its heading by the id the heading
+ * carries in `html`.
+ */
+export const ComparisonSchema = Type.Object({
+  html: Type.String(),
+  summary: Type.Object({
+    sections: Type.Integer(),
+    added: Type.Integer(),
+    removed: Type.Integer(),
+    changed: Type.Integer(),
+    moved: Type.Integer(),
+    wordsAdded: Type.Integer(),
+    wordsRemoved: Type.Integer(),
+  }),
+  changes: Type.Array(
+    Type.Object({
+      id: Type.String(),
+      change: ChangeKindSchema,
+      block: Type.String(),
+      excerpt: Type.String(),
+      wordsAdded: Type.Integer(),
+      wordsRemoved: Type.Integer(),
+      section: Type.Optional(Type.Object({ id: Type.String(), title: Type.String() })),
+    }),
+  ),
+  sections: Type.Array(
+    Type.Object({
+      id: Type.String(),
+      depth: Type.Integer(),
+      title: Type.String(),
+      changes: Type.Integer(),
+    }),
+  ),
+  properties: Type.Array(
+    Type.Object({
+      name: Type.String(),
+      before: Type.Optional(Type.String()),
+      after: Type.Optional(Type.String()),
+    }),
+  ),
+})
+
+/** The two versions' Markdown by line, each changed line's words marked. */
+export const SourceComparisonSchema = Type.Object({
+  lines: Type.Array(
+    Type.Object({
+      change: LineChangeSchema,
+      before: Type.Optional(Type.Integer()),
+      after: Type.Optional(Type.Integer()),
+      segments: Type.Array(Type.Object({ change: LineChangeSchema, text: Type.String() })),
+    }),
+  ),
+  wordsAdded: Type.Integer(),
+  wordsRemoved: Type.Integer(),
 })
 
 export const RenderedQuerySchema = Type.Object({ revision: Type.Optional(RevisionSchema) })
@@ -228,7 +376,12 @@ export const TreeNodeSchema = Type.Recursive(
       /** Derived from the title on read, exactly as `Document.slug` is. */
       slug: Type.String(),
       status: DocumentStatusSchema,
+      /** A page of the children, or none when the tree was cut above them (`depth`). */
       children: Type.Array(Self),
+      /** How many children the document has in all; more than `children` when cut or paged. */
+      childCount: Type.Optional(Type.Integer({ minimum: 0 })),
+      /** Where `children` starts among them. */
+      childrenOffset: Type.Optional(Type.Integer({ minimum: 0 })),
     }),
   { $id: 'TreeNode' },
 )
@@ -240,8 +393,46 @@ export const WorkspaceTreeSchema = Type.Object({
       name: Type.String(),
       slug: Type.String(),
       documents: Type.Array(Type.Ref(TreeNodeSchema)),
+      /** How many documents sit at the collection's top level. */
+      documentCount: Type.Optional(Type.Integer({ minimum: 0 })),
+      /** Where `documents` starts among them. */
+      documentsOffset: Type.Optional(Type.Integer({ minimum: 0 })),
+      /** Every document in the collection the reader can see, nesting included. */
+      total: Type.Optional(Type.Integer({ minimum: 0 })),
     }),
   ),
+})
+
+/**
+ * `GET /api/workspaces/:id/tree`'s optional cut (ADR-033: additive; without
+ * `depth` the whole tree is answered, as it always has been).
+ */
+export const WorkspaceTreeQuerySchema = Type.Object({
+  /** How many levels below each collection to include. */
+  depth: Type.Optional(Type.Integer({ minimum: 1, maximum: 32 })),
+  /** How many entries of any one list to include, when `depth` is given; 50 when omitted. */
+  limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 500 })),
+  /** A document whose ancestors, page of siblings and children come with the first response. */
+  focus: Type.Optional(Type.String({ minLength: 1 })),
+})
+
+/** `GET /api/workspaces/:id/tree/children`: one page of a list in the tree. */
+export const TreeChildrenQuerySchema = Type.Object({
+  /** The document whose children are listed. Exactly one of `parent` and `collection`. */
+  parent: Type.Optional(Type.String({ minLength: 1 })),
+  /** The collection whose top level is listed. */
+  collection: Type.Optional(Type.String({ minLength: 1 })),
+  offset: Type.Integer({ minimum: 0, default: 0 }),
+  limit: Type.Integer({ minimum: 1, maximum: 500, default: 50 }),
+})
+
+export const TreeChildrenSchema = Type.Object({
+  /** Each with its `childCount` and none of its own children. */
+  documents: Type.Array(Type.Ref(TreeNodeSchema)),
+  /** How many entries the list has in all. */
+  total: Type.Integer({ minimum: 0 }),
+  /** Where `documents` starts among them. */
+  offset: Type.Integer({ minimum: 0 }),
 })
 
 /**
@@ -290,7 +481,72 @@ export function draftResponse(row: DraftRow): Static<typeof CreatedDocumentSchem
   }
 }
 
-export function envelopeResponse(envelope: EnvelopeView): Static<typeof EnvelopeSchema> {
+/** A lifecycle on the wire, with its replacement already resolved for the reader it is going to. */
+function lifecycleResponse(
+  lifecycle: LifecycleView | PublicLifecycle,
+  replacement: Replacement | undefined,
+): Static<typeof LifecycleSchema> {
+  switch (lifecycle.state) {
+    case 'in-review':
+      return { state: 'in-review' }
+    case 'deprecated':
+      return { state: 'deprecated', ...(replacement === undefined ? {} : { replacement }) }
+    case 'verified':
+      return {
+        state: 'verified',
+        ...('verifiedBy' in lifecycle && lifecycle.verifiedBy !== undefined
+          ? {
+              verifiedBy: {
+                label: lifecycle.verifiedBy.label,
+                person: lifecycle.verifiedBy.person,
+              },
+            }
+          : {}),
+        ...(lifecycle.verifiedAt === undefined ? {} : { verifiedAt: lifecycle.verifiedAt }),
+      }
+  }
+}
+
+/**
+ * Facts on the wire: an unstated fact is an absent key, never `undefined` or
+ * `null`. `replacement` is where a deprecated document's replacement is for
+ * this reader, or undefined when there is none they may open.
+ */
+export function factsResponse(
+  facts: FactsView,
+  replacement?: Replacement | undefined,
+): Static<typeof FactsSchema> {
+  return {
+    ...(facts.status === undefined ? {} : { status: facts.status }),
+    ...(facts.lifecycle === undefined
+      ? {}
+      : { lifecycle: lifecycleResponse(facts.lifecycle, replacement) }),
+    ...(facts.type === undefined ? {} : { type: facts.type }),
+    owners: facts.owners.map((owner) => ({ label: owner.label, person: owner.person })),
+    tags: [...facts.tags],
+    ...(facts.reviewInterval === undefined ? {} : { reviewInterval: facts.reviewInterval }),
+    ...(facts.lastReviewed === undefined ? {} : { lastReviewed: facts.lastReviewed }),
+  }
+}
+
+export function publicFactsResponse(
+  facts: PublicDocumentFacts,
+  replacement?: Replacement | undefined,
+): Static<typeof PublicFactsSchema> {
+  return {
+    ...(facts.status === undefined ? {} : { status: facts.status }),
+    ...(facts.lifecycle === undefined
+      ? {}
+      : { lifecycle: lifecycleResponse(facts.lifecycle, replacement) }),
+    tags: [...facts.tags],
+    ...(facts.lastReviewed === undefined ? {} : { lastReviewed: facts.lastReviewed }),
+  }
+}
+
+export function envelopeResponse(
+  envelope: EnvelopeView,
+  replacement?: Replacement | undefined,
+): Static<typeof EnvelopeSchema> {
   return {
     permissions: envelope.permissions,
     lock:
@@ -317,6 +573,8 @@ export function envelopeResponse(envelope: EnvelopeView): Static<typeof Envelope
       kind: signal.kind,
       ...(signal.detail === undefined ? {} : { detail: signal.detail }),
     })),
+    facts: factsResponse(envelope.facts, replacement),
+    unpublishedChanges: envelope.unpublishedChanges,
   }
 }
 
@@ -330,5 +588,37 @@ export function historyResponse(page: HistoryPageView): Static<typeof HistorySch
       ...(entry.changeNote === undefined ? {} : { changeNote: entry.changeNote }),
     })),
     ...(page.nextCursor === undefined ? {} : { nextCursor: page.nextCursor }),
+  }
+}
+
+export function comparisonResponse(content: ComparedContent): Static<typeof ComparisonSchema> {
+  return {
+    html: content.html,
+    summary: { ...content.summary },
+    changes: content.changes.map(({ section, ...change }) => ({
+      ...change,
+      ...(section === undefined ? {} : { section: { ...section } }),
+    })),
+    sections: content.sections.map((section) => ({ ...section })),
+    properties: content.properties.map(({ name, before, after }) => ({
+      name,
+      ...(before === undefined ? {} : { before }),
+      ...(after === undefined ? {} : { after }),
+    })),
+  }
+}
+
+export function sourceComparisonResponse(
+  source: ComparedSource,
+): Static<typeof SourceComparisonSchema> {
+  return {
+    lines: source.lines.map(({ change, before, after, segments }) => ({
+      change,
+      ...(before === undefined ? {} : { before }),
+      ...(after === undefined ? {} : { after }),
+      segments: segments.map((segment) => ({ ...segment })),
+    })),
+    wordsAdded: source.wordsAdded,
+    wordsRemoved: source.wordsRemoved,
   }
 }

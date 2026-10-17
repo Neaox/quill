@@ -47,6 +47,32 @@
   }
 
   /* ------------------------------------------------------------------------
+   * Labels in the chrome, set in the interface face.
+   *
+   * The name of a group of things around a document — a collection in the
+   * sidebar, "On this page", "Revisions" — is a small heading in ink, not a
+   * piece of metadata: the reader uses it to find their way, so it is set like
+   * the words it introduces and one weight heavier. A count beside it is a
+   * fact, and drops to the quietest ink. `docs/design/chrome.md` has the rule
+   * and why the chrome stopped using `.meta` for this.
+   * ---------------------------------------------------------------------- */
+
+  .section-label {
+    font-family: var(--font-sans);
+    font-size: var(--text-xs);
+    line-height: 1.35;
+    font-weight: 600;
+    letter-spacing: var(--tracking-normal);
+    color: var(--color-foreground);
+  }
+
+  .section-count {
+    font-weight: 400;
+    color: var(--color-muted);
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* ------------------------------------------------------------------------
    * The document shell.
    *
    * Five regions in document order, so the tab sequence and the visual order
@@ -116,6 +142,46 @@
     overscroll-behavior: contain;
   }
 
+  /* ------------------------------------------------------------------------
+   * Scrollbars that blend in.
+   *
+   * Overlay scrollbars are the platform's to give, and on Windows no browser
+   * offers them to CSS any more, so this is the nearest the standard
+   * properties come: a thin bar on a clear track, its thumb a tint of the
+   * theme's own muted ink, so it reads as part of the page in every identity
+   * and scheme rather than as the operating system's grey slab.
+   *
+   * The side columns hide even that until they are being used — hovered,
+   * holding focus — because three columns at rest showing three bars beside a
+   * document is chrome about chrome. Their gutter is reserved, so a bar
+   * appearing never moves the text. The page's own bar stays visible: it is
+   * the one a reader uses to see where they are in the document.
+   * ---------------------------------------------------------------------- */
+  :root {
+    --scrollbar-thumb: color-mix(in oklch, var(--color-muted) 45%, transparent);
+    --scrollbar-thumb-active: color-mix(in oklch, var(--color-muted) 70%, transparent);
+  }
+
+  :where(html, body, *) {
+    scrollbar-width: thin;
+    scrollbar-color: var(--scrollbar-thumb) transparent;
+  }
+
+  :where(html, body, *):active {
+    scrollbar-color: var(--scrollbar-thumb-active) transparent;
+  }
+
+  .shell-rail,
+  .shell-nav,
+  .shell-aside {
+    scrollbar-color: transparent transparent;
+    scrollbar-gutter: stable;
+  }
+
+  :is(.shell-rail, .shell-nav, .shell-aside):is(:hover, :focus-within) {
+    scrollbar-color: var(--scrollbar-thumb) transparent;
+  }
+
   @media (width < 64rem) {
     .document-shell {
       grid-template-areas:
@@ -135,14 +201,18 @@
 
   @media (width < 48rem) {
     .document-shell {
+      /*
+       * The tree is not a row here: it is a sheet under the header, opened
+       * from the button at the start of the bar (`document-shell.tsx`), so
+       * the document starts right under the bar. The rail's sections are at
+       * the top of that sheet, so there is no band of chrome here either.
+       */
       grid-template-areas:
         'header'
-        'rail'
-        'nav'
         'main'
         'aside';
       grid-template-columns: minmax(0, 1fr);
-      grid-template-rows: auto auto auto minmax(0, 1fr) auto;
+      grid-template-rows: auto minmax(0, 1fr) auto;
     }
 
     /*
@@ -160,11 +230,9 @@
       overflow-x: auto;
     }
 
-    /* A long tree must not bury the document it belongs to. */
+    /* Open, the sheet is drawn by the component's own utilities. */
     .shell-nav {
-      position: relative;
-      top: auto;
-      max-height: 13rem;
+      grid-area: auto;
     }
   }
 
@@ -174,7 +242,7 @@
    * ---------------------------------------------------------------------- */
 
   .tree-branch {
-    margin-inline-start: 1.3125rem;
+    margin-inline-start: 0.875rem;
     border-inline-start: 1px solid var(--color-border);
   }
 

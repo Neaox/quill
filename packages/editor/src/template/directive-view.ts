@@ -5,6 +5,7 @@ import type { Decoration } from '@tiptap/pm/view'
 import type { EditorView as ProseMirrorView, NodeView } from '@tiptap/pm/view'
 import { tv } from 'tailwind-variants'
 
+import { TableBlockView } from '../table/table-view.ts'
 import { dismiss, isDismissed } from './dismissal.ts'
 
 /**
@@ -72,6 +73,8 @@ const CHROME: Readonly<Record<string, Chrome>> = {
     label: (node) => `Callout: ${attributesOf(node)['type'] ?? 'note'}`,
   },
   placeholder: { tag: 'div', label: () => 'Placeholder' },
+  // Details where opening one closes the others (ADR-048).
+  accordion: { tag: 'div', role: 'group', label: () => 'Accordion' },
 }
 
 const DEFAULT_CHROME: Chrome = {
@@ -196,7 +199,10 @@ const withView: Partial<NodeConfig> = {
   addNodeView:
     () =>
     ({ node, editor, getPos, decorations }) =>
-      new DirectiveNodeView(node, editor.view, getPos, decorations),
+      // A `:::table` wrapper is drawn as the table's card (ADR-040).
+      node.attrs['name'] === 'table'
+        ? new TableBlockView(node)
+        : new DirectiveNodeView(node, editor.view, getPos, decorations),
 }
 
 /** Gives container directives their author-facing chrome. */

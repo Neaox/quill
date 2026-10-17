@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it } from 'vitest'
 
@@ -153,5 +153,108 @@ describe('DocumentShell', () => {
     expect(screen.getByRole('button', { name: 'Edit' })).toBeInTheDocument()
     expect(screen.getByText('MR')).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Skip to the runbook' })).toBeInTheDocument()
+  })
+})
+
+/*
+ * On a phone the tree is behind a button, not a band above the document
+ * (2026-10-17). The CSS hides the button at the medium breakpoint and up and
+ * draws the open tree as a sheet under the header; jsdom lays nothing out, so
+ * these test the behaviour every width shares.
+ */
+/** Answers the medium-breakpoint query as a phone would; returns the undo. */
+function onAPhone(): () => void {
+  Object.defineProperty(globalThis, 'matchMedia', {
+    configurable: true,
+    value: (query: string) => ({
+      matches: query.includes('48rem'),
+      media: query,
+      addEventListener: () => {},
+      removeEventListener: () => {},
+    }),
+  })
+  return () => {
+    Reflect.deleteProperty(globalThis, 'matchMedia')
+  }
+}
+
+describe('DocumentShell on a narrow screen', () => {
+  it('keeps the tree behind a disclosure, and opens it onto the document being read', async () => {
+    const { container } = renderShell()
+
+    const toggle = screen.getByRole('button', { name: 'Browse documents' })
+    expect(toggle).toHaveAttribute('aria-expanded', 'false')
+    expect(container.querySelector('[data-shell-nav]')).toHaveAttribute('data-state', 'closed')
+
+    await userEvent.click(toggle)
+    expect(toggle).toHaveAttribute('aria-expanded', 'true')
+    expect(container.querySelector('[data-shell-nav]')).toHaveAttribute('data-state', 'open')
+    expect(screen.getByRole('link', { name: 'authentication' })).toHaveFocus()
+    await expectNoAccessibilityViolations(container)
+  })
+
+  it('closes on Escape, giving focus back to the button', async () => {
+    renderShell()
+    const toggle = screen.getByRole('button', { name: 'Browse documents' })
+
+    await userEvent.click(toggle)
+    await userEvent.keyboard('{Escape}')
+
+    expect(toggle).toHaveAttribute('aria-expanded', 'false')
+    expect(toggle).toHaveFocus()
+  })
+
+  it('closes when a document in it is chosen', async () => {
+    renderShell()
+    const toggle = screen.getByRole('button', { name: 'Browse documents' })
+
+    await userEvent.click(toggle)
+    await userEvent.click(screen.getByRole('link', { name: 'authentication' }))
+
+    expect(toggle).toHaveAttribute('aria-expanded', 'false')
+  })
+
+  it('has one way in on a phone: the rail’s sections move into the sheet, above the tree', async () => {
+    const restore = onAPhone()
+    try {
+      const { container } = renderShell()
+
+      // No second band of chrome: the rail is not drawn on a phone; its
+      // sections are only in the sheet.
+      const [only] = screen.getAllByRole('navigation', { name: 'Workspace' })
+      expect(screen.getAllByRole('navigation', { name: 'Workspace' })).toHaveLength(1)
+      expect(only?.closest('[data-shell-nav]')).not.toBeNull()
+
+      await userEvent.click(screen.getByRole('button', { name: 'Browse documents' }))
+      const sheet = screen.getByRole('region', { name: 'Browse' })
+      const sections = within(sheet).getByRole('navigation', { name: 'Workspace' })
+      expect(within(sections).getByRole('link', { name: 'Documents' })).toHaveAttribute(
+        'aria-current',
+        'page',
+      )
+      expect(within(sheet).getByRole('navigation', { name: 'Documents' })).toBeInTheDocument()
+      // Opened onto the document being read, not onto the section it is in.
+      expect(within(sheet).getByRole('link', { name: 'authentication' })).toHaveFocus()
+      await expectNoAccessibilityViolations(container)
+    } finally {
+      restore()
+    }
+  })
+
+  it('keeps the rail where it is on a wider screen', () => {
+    renderShell()
+
+    expect(screen.getByRole('navigation', { name: 'Workspace' })).toBeInTheDocument()
+  })
+
+  it('takes the page behind out of reach while the sheet covers it, on a narrow screen only', async () => {
+    const restore = onAPhone()
+    try {
+      renderShell()
+      await userEvent.click(screen.getByRole('button', { name: 'Browse documents' }))
+      expect(screen.getByRole('main', { hidden: true })).toHaveAttribute('inert')
+    } finally {
+      restore()
+    }
   })
 })

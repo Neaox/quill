@@ -1,6 +1,6 @@
-import { render, screen, within } from '@testing-library/react'
+import { act, fireEvent, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { expectNoAccessibilityViolations } from '../../testing/axe.ts'
 import { ThemeVariantsProvider } from '../theme/theme-variants.tsx'
@@ -21,6 +21,25 @@ const StubLink: LinkComponent = ({ to, params, search, hash, children, ...rest }
 )
 
 describe('RevisionTimeline', () => {
+  it('offers each revision a comparison with the one before it', async () => {
+    const { container } = render(
+      <RevisionTimeline
+        revisions={REVISIONS.map((revision, index) =>
+          index === REVISIONS.length - 1
+            ? revision
+            : { ...revision, compare: { to: '#compare', search: { to: revision.id } } },
+        )}
+        currentId="v12"
+      />,
+    )
+
+    expect(
+      screen.getByRole('link', { name: 'Compare v12 with the previous version' }),
+    ).toHaveAttribute('href', '#compare?to=v12')
+    expect(screen.queryByRole('link', { name: 'Compare v10 with the previous version' })).toBeNull()
+    await expectNoAccessibilityViolations(container)
+  })
+
   it('lists every publish in order, as links, under the default identity', async () => {
     const { container } = render(<RevisionTimeline revisions={REVISIONS} currentId="v12" />)
 
@@ -126,5 +145,80 @@ describe('RevisionTimeline', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Revisions' }))
 
     expect(await screen.findByRole('dialog', { name: 'Published revisions' })).toBeInTheDocument()
+  })
+})
+
+/*
+ * The popover's machinery arrives on demand (quill-plan.md section 31). The
+ * tests above run with it already here (`vitest.setup.ts`); this loads a fresh
+ * timeline whose popover has not arrived, and decides when it does.
+ */
+describe('a history popover whose machinery has not arrived yet', () => {
+  afterEach(() => {
+    vi.doUnmock('./popover-panels.tsx')
+  })
+
+  it('draws the closed control, holds a press, and opens once it arrives', async () => {
+    vi.resetModules()
+    const { promise: arrived, resolve: arrive } = Promise.withResolvers<void>()
+    vi.doMock('./popover-panels.tsx', async () => {
+      await arrived
+      return vi.importActual('./popover-panels.tsx')
+    })
+    const { RevisionTimeline: FreshTimeline } = await import('./revision-timeline.tsx')
+    const { container } = render(
+      <FreshTimeline revisions={REVISIONS} currentId="v12" variant="menu" />,
+    )
+
+    const trigger = screen.getByRole('button', { name: 'History' })
+    expect(trigger).toHaveAttribute('aria-haspopup', 'dialog')
+    expect(trigger).toHaveAttribute('aria-expanded', 'false')
+    await expectNoAccessibilityViolations(container)
+
+    await userEvent.click(trigger)
+    expect(screen.getByRole('button', { name: 'History' })).toHaveAttribute('aria-busy', 'true')
+
+    arrive()
+    const panel = await screen.findByRole('dialog', { name: 'Revisions' })
+    expect(within(panel).getAllByRole('listitem')).toHaveLength(3)
+  })
+})
+
+/*
+ * The trigger is never replaced by the machinery (2026-10-17): a press in the
+ * same task as the module arriving lands on the control that is still the
+ * trigger afterwards, which opens, says so, and gets focus back on Escape.
+ */
+describe('a history popover pressed as its machinery arrives', () => {
+  afterEach(() => {
+    vi.doUnmock('./popover-panels.tsx')
+  })
+
+  it('opens from the same trigger element, and returns focus to it', async () => {
+    vi.resetModules()
+    const { promise: arrived, resolve: arrive } = Promise.withResolvers<void>()
+    vi.doMock('./popover-panels.tsx', async () => {
+      await arrived
+      return vi.importActual('./popover-panels.tsx')
+    })
+    const fresh = await import('./revision-timeline.tsx')
+    render(<fresh.RevisionTimeline revisions={REVISIONS} currentId="v12" variant="menu" />)
+    const trigger = screen.getByRole('button', { name: 'History' })
+
+    await act(async () => {
+      const loading = fresh.preloadPopovers()
+      arrive()
+      await loading
+      fireEvent.pointerDown(trigger)
+      fireEvent.click(trigger)
+    })
+
+    expect(await screen.findByRole('dialog', { name: 'Revisions' })).toBeInTheDocument()
+    expect(trigger).toBeInTheDocument()
+    expect(trigger).toHaveAttribute('aria-expanded', 'true')
+
+    await userEvent.keyboard('{Escape}')
+    expect(screen.queryByRole('dialog', { name: 'Revisions' })).not.toBeInTheDocument()
+    expect(trigger).toHaveFocus()
   })
 })

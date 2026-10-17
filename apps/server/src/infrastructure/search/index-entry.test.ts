@@ -53,6 +53,28 @@ describe('an index entry', () => {
     })
   })
 
+  it('carries the summary and icon a child pages list shows, or null for none (ADR-049)', () => {
+    expect(
+      toIndexRow({
+        document: { ...INDEXABLE, summary: 'Promote it.', icon: '🛟' },
+        indexedAt: INDEXED_AT,
+      }),
+    ).toMatchObject({ summary: 'Promote it.', icon: '🛟' })
+    expect(toIndexRow({ document: INDEXABLE, indexedAt: INDEXED_AT })).toMatchObject({
+      summary: null,
+      icon: null,
+    })
+  })
+
+  it('carries the author’s lifecycle, or null for none', () => {
+    expect(
+      toIndexRow({ document: { ...INDEXABLE, lifecycle: 'deprecated' }, indexedAt: INDEXED_AT }),
+    ).toMatchObject({ lifecycle: 'deprecated', status: 'published' })
+    expect(toIndexRow({ document: INDEXABLE, indexedAt: INDEXED_AT })).toMatchObject({
+      lifecycle: null,
+    })
+  })
+
   it('carries a document that belongs to no collection', () => {
     const row = toIndexRow({
       document: { ...INDEXABLE, collectionId: null, headings: [] },

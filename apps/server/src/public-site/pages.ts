@@ -25,18 +25,60 @@ import { html, raw, toDocument, type Html } from './html.ts'
  * `.prose > * + *` never applies, so every breakout table would silently snap
  * back to the reading measure (ADR-027). So the wrapper is unwrapped and
  * replaced with the grid, exactly as the reading view does it in the browser.
+ *
+ * Above the title goes an eyebrow naming the collection, in the grid's
+ * content column so it lines up with the title it belongs to — unless the
+ * author already wrote one (`hasAuthoredEyebrow`).
  */
 export function renderDocumentMain(view: {
   readonly collectionName: string
   readonly title: string
   readonly bodyHtml: string
   readonly rules: string
+  /** The facts under the title (`templates/byline.ts`); empty when it states none. */
+  readonly byline?: Html | undefined
 }): Html {
   const body = unwrapArticle(view.bodyHtml)
-  return html`<p class="site-eyebrow">${view.collectionName}</p>
-    <article class="layout-grid prose" data-rules="${view.rules}">
-      ${hasTopHeading(body) ? '' : html`<h1>${view.title}</h1>`} ${raw(body)}
-    </article>`
+  const byline = view.byline ?? raw('')
+  const eyebrow = hasAuthoredEyebrow(body)
+    ? ''
+    : html`<p class="site-eyebrow">${view.collectionName}</p>`
+  return html`<article class="layout-grid prose" data-rules="${view.rules}">
+    ${eyebrow}
+    ${
+      hasTopHeading(body)
+        ? raw(afterTitle(body, byline.value))
+        : html`<h1>${view.title}</h1>
+            ${byline} ${raw(body)}`
+    }
+  </article>`
+}
+
+/**
+ * The body with the byline straight after its title. The title is the first
+ * `<h1>` (ADR-015), and a heading cannot contain another, so the first
+ * `</h1>` closes it. Both strings are already safe: the body is the
+ * renderer's sanitised output and the byline is escaped by its template.
+ */
+function afterTitle(body: string, byline: string): string {
+  const close = body.search(/<\/h1>/iu)
+  /* v8 ignore next -- only called on a body `hasTopHeading` found an <h1> in. */
+  if (close === -1) return body
+  const end = close + '</h1>'.length
+  return `${body.slice(0, end)}${byline}${body.slice(end)}`
+}
+
+/**
+ * Whether the body opens with a paragraph and then its title.
+ *
+ * That paragraph is the author's own eyebrow — `prose.css` styles a short
+ * paragraph immediately before the `<h1>` as one — and the page must not stack
+ * a second above it. Only at the very start of the body: a paragraph before a
+ * later `<h1>` is ordinary prose. A paragraph cannot contain another, so the
+ * first `</p>` closes the one that opened the body.
+ */
+function hasAuthoredEyebrow(body: string): boolean {
+  return /^\s*<p[\s>][\s\S]*?<\/p>\s*<h1[\s>]/iu.test(body)
 }
 
 /**
@@ -185,6 +227,47 @@ export function renderNoSitePage(): string {
       </main>
     </body>
   </html>`)
+}
+
+/**
+ * The reader preview's answer when there is nothing it may show: a document
+ * that is not there, or one the member may not read.
+ *
+ * One page for both, with nothing taken from the document, so a member cannot
+ * tell a document they are kept out of from one that does not exist — the
+ * same rule every share-link refusal follows (ADR-011). No stylesheet, like
+ * `renderNoSitePage`, because the theme is part of what would be shown.
+ */
+export function renderNoPreviewPage(): string {
+  return toDocument(html`<html lang="en">
+    <head>
+      <meta charset="utf-8" />
+      <meta name="viewport" content="width=device-width, initial-scale=1" />
+      <title>Nothing to preview</title>
+      <meta name="robots" content="noindex,nofollow" />
+    </head>
+    <body>
+      <main>
+        <h1>Nothing to preview</h1>
+        <p>This document does not exist, or you do not have access to it.</p>
+      </main>
+    </body>
+  </html>`)
+}
+
+/** The middle of a preview of a document that has no published revision yet. */
+export function renderUnpublishedMain(view: {
+  readonly collectionName: string
+  readonly title: string
+}): Html {
+  return html`<article class="layout-grid prose">
+    <p class="site-eyebrow">${view.collectionName}</p>
+    <h1>${view.title}</h1>
+    <p>
+      Nothing has been published yet. Readers see the latest published revision, so publish this
+      document to preview it here.
+    </p>
+  </article>`
 }
 
 export function renderNotFoundMain(view: { readonly siteSlug: string }): Html {

@@ -1,0 +1,1 @@
+Fixed: the settings navigation, the shared-document navigation and other "current item" lists show which item is current. Tailwind's `aria-current:` variant only matched `aria-current="true"`, never the "page" a router sets; a `current:` variant now matches any value, and the lint rule rewrites the old spelling.

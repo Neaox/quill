@@ -3,6 +3,11 @@ import { afterEach } from 'vitest'
 
 import '@testing-library/jest-dom/vitest'
 
+import { preloadOverlays } from '@quill/ui'
+
+import { eagerMounting, setCodeMirrorMounting } from './src/code-block/lazy-code-mirror.ts'
+import { alwaysNear, setPageNearness } from './src/document/measuring.ts'
+
 // Registered explicitly rather than relying on Testing Library's automatic
 // cleanup, which only installs itself when the global `afterEach` happens to
 // exist at import time.
@@ -76,6 +81,17 @@ if (!('ResizeObserver' in globalThis)) {
   defineMissing(globalThis, 'ResizeObserver', ResizeObserverShim)
 }
 
+/*
+ * Every code block opens as it is drawn. A browser opens one when it comes
+ * near the viewport (`lazy-code-mirror.ts`), which needs layout to say; jsdom
+ * has none, so here nothing is nearer than anything else and the honest
+ * answer is all of them, at once. The tests of the lazy behaviour itself
+ * choose their own strategy. Floating controls that wait for their element
+ * to come near the screen (`document/measuring.ts`) are told the same.
+ */
+setCodeMirrorMounting(eagerMounting)
+setPageNearness(alwaysNear)
+
 if (!('IntersectionObserver' in globalThis)) {
   class IntersectionObserverShim {
     observe(): void {}
@@ -141,3 +157,18 @@ if (!('ClipboardEvent' in globalThis)) {
  * reported as a missing element.
  */
 configure({ asyncUtilTimeout: 5_000 })
+
+/*
+ * A code block loads `@quill/highlight`'s grammars as a chunk of their own the
+ * first time it needs colour (`code-mirror.ts`). Loaded once here, that import
+ * has already settled whenever a test draws a block, instead of finishing after
+ * the test's environment has been torn down.
+ */
+await import('@quill/highlight')
+
+/*
+ * Menus, dialogs and popovers fetch their machinery on demand in the app
+ * (`packages/ui/src/lib/on-demand.ts`). Fetched here, before any test, so a
+ * component renders as it does on a page that has settled.
+ */
+await preloadOverlays()

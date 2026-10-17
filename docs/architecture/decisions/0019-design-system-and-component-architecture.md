@@ -51,7 +51,7 @@ The type scale, the reading measure, the vertical rhythm, control heights, motio
 
 **Design variation is `tailwind-variants`.** Every component declares its variants with the configured `tv` exported from `packages/ui/src/lib/class-names.ts`, using `slots` for the multi-part ones (dialog, callout, input, tabs, tree, timeline, the shell). `cx` is `tailwind-variants`' merge, extended once for the design system's own utilities — `text-2xs`, `text-reading`, `font-display`, `font-reading`, `tracking-caps`, the three shadows, the three easings — because a merge that does not know a scale silently keeps both classes and lets stylesheet order decide.
 
-**Theme axes are custom variants, not props.** `theme-instrument:`, `theme-press:`, `theme-atelier:`, `rules-hairline:`, `rules-double:`, and `rules-cards:` are declared once in `tokens.css` and read the data attributes the theme already sets (`data-theme-id` on the document element, `data-rules` on the shell and the prose article). Density is not a variant at all: the theme's `--density-scale` drives Tailwind's `--spacing`, so one declaration tightens every spacing and size utility in the product at once and no component carries a density class. The reading surface's own rule treatment stays in `prose.css`, on real elements, because server-rendered HTML arrives with no classes.
+**Theme axes are custom variants, not props.** `theme-instrument:`, `theme-calm:`, `theme-editorial:` (which Press's id also matches), `theme-grid:`, `theme-atelier:`, `rules-hairline:`, `rules-double:`, `rules-cards:`, and `rules-plain:` are declared once in `tokens.css` and read the data attributes the theme already sets (`data-theme-id` on the document element, `data-rules` on the shell and the prose article). Density is not a variant at all: the theme's `--density-scale` drives Tailwind's `--spacing`, so one declaration tightens every spacing and size utility in the product at once and no component carries a density class. The reading surface's own rule treatment stays in `prose.css`, on real elements, because server-rendered HTML arrives with no classes.
 
 The signature components still take an explicit `variant` prop, which is the one place this differs from "never takes the theme as a prop": `readout` versus `breadcrumb` and `timeline` versus `menu` are different markup and different keyboard behaviour, not different paint, and a preview has to be able to render a variant the surrounding page is not in. The value defaults from the identity in scope, so a feature never passes one.
 
@@ -67,7 +67,7 @@ The signature components still take an explicit `variant` prop, which is the one
 | `history: timeline \| menu` | `RevisionTimeline` | both |
 | `navigation: tree \| tabs` | `Tree` | `tree`; `tabs` renders the tree and marks itself `data-navigation="tabs"` |
 | `comments: panel \| sidenotes` | `CommentsPanel` | `panel`; `sidenotes` renders the panel and marks itself `data-comments="sidenotes"` |
-| `rules: hairline \| double \| cards` | `data-rules` on the shell and the prose article | all three |
+| `rules: hairline \| double \| cards \| plain` | `data-rules` on the shell and the prose article | all four |
 
 `DocumentShell` composes them into the frame every document is read in: banner, the rail's navigation, the tree's navigation, main, and the complementary column, in that order in the DOM at every width, so the tab sequence and the visual order agree whether it is four columns or one.
 
@@ -75,11 +75,13 @@ A component reads the variant from the identity in scope through `ThemeVariantsP
 
 ### 6. The accent is the only signal colour
 
-It appears on the current revision tick, the current item in navigation, the current publication state, the primary action, and the focus ring. Nowhere else. Body links are ink with a quiet underline that takes the accent on hover; callouts are a rule down the leading edge rather than a tinted box; status is always a word as well as a colour. That discipline, not a brighter accent, is what makes the accent mean something.
+It appears on the current revision tick, the current item in navigation, the current publication state, the primary action, and the focus ring. Nowhere else. Where reading rather than acting is the point of a view, the primary action wears it as the soft tint (`Button variant="soft"`) rather than filled, and the current item in navigation sits on the same tint (amended 11 October 2026; `docs/design/chrome.md`). Body links are ink with a quiet underline that takes the accent on hover; callouts are a rule down the leading edge rather than a tinted box; status is always a word as well as a colour. That discipline, not a brighter accent, is what makes the accent mean something.
 
 ### 7. Metadata is set in the mono face
 
 Anything that is a fact *about* a document rather than part of one — a path, a version, an owner, a column heading, a line reference, a badge, a specimen label — is monospace, small, and quiet. It is one rule (`.meta`, `.meta-value`) rather than a habit, and it is most of what makes Instrument look like an instrument.
+
+**Amendment (11 October 2026): not in the reading chrome.** Applied to every label around a document — the theme switch, the collection headings, "Revisions", "On this page", "Signals", the path and the revision readouts — the rule turned the frame into a column of monospace capitals that competed with the document and read as debug output. The chrome is now set in the interface face with three inks and section labels as small headings (`.section-label`), with tabular figures where numbers must align; `docs/design/chrome.md` has the rules. `.meta` and `.meta-value` keep their meaning for tabular metadata inside content surfaces: data table headings, code block captions, the merge and diff views, and specimen labels.
 
 ### 8. File layout
 

@@ -1,8 +1,10 @@
 /** Turns heading text into an identifier, once per document. */
 export type Slugger = (text: string) => string
 
-const PUNCTUATION = /[^\p{L}\p{N}\s-]/gu
-const WHITESPACE = /\s+/g
+/** What GitHub's slugs drop: everything but letters, digits, spaces, `-` and `_`. */
+const PUNCTUATION = /[^\p{L}\p{N}\s_-]/gu
+/** Each space becomes a hyphen, as on GitHub, so `a  b` is `a--b`. */
+const WHITESPACE = /\s/g
 
 /**
  * What a heading's slug is prefixed with in the rendered HTML.

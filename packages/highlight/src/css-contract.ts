@@ -5,7 +5,8 @@
  * theme test runs against a specific grammar. Neither package hand-copies
  * the other's list — both read `TOKEN_CLASSES` through here.
  */
-import { Prism, type PrismTypes, type SupportedLanguage } from './grammars.ts'
+import { Prism, type PrismTypes } from './grammars.ts'
+import type { SupportedLanguage } from './languages.ts'
 import {
   TOKEN_CLASSES,
   TOKEN_CLASS_PREFIX,
@@ -31,6 +32,36 @@ export function tokenCssContract(): TokenCssContract {
       (tokenClass) => `::highlight(${TOKEN_HIGHLIGHT_PREFIX}${tokenClass})`,
     ),
   }
+}
+
+/**
+ * The token colour rules, the one stylesheet text every surface serves
+ * (ADR-030): `packages/ui` writes it into the application's generated CSS and
+ * the server puts it in the public site's stylesheet, so the two can never
+ * colour code differently.
+ *
+ * Two selector families read the same `--token-*` variable the theme emits,
+ * and they are never comma-joined: a browser without `::highlight()` drops a
+ * whole selector list that contains one, which would take the markup rules
+ * down with it. Both are colour-only, because that is all `::highlight()` can
+ * paint, and parity between the two presentations beats a flourish in one.
+ */
+export function tokenStylesheet(): string {
+  const { variables, classSelectors, highlightSelectors } = tokenCssContract()
+  const colours = variables
+    .flatMap((variable, index) =>
+      [classSelectors[index], highlightSelectors[index]].map(
+        (selector) => `${selector} {\n  color: var(${variable});\n}\n`,
+      ),
+    )
+    .join('\n')
+  // Forced colours replace the theme with the reader's own few system colours,
+  // and a painted range left to the browser there reads as selected text. Code
+  // is text, so under forced colours it is CanvasText, in both families.
+  const plain = [...classSelectors, ...highlightSelectors]
+    .map((selector) => `  ${selector} {\n    color: CanvasText;\n  }\n`)
+    .join('')
+  return `${colours}\n@media (forced-colors: active) {\n${plain}}\n`
 }
 
 /**

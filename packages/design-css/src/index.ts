@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -21,7 +22,12 @@ import { fileURLToPath } from 'node:url'
  * the sake of forty lines of `readFile`. The direction is enforced by
  * `.dependency-cruiser.cjs`'s `server-does-not-import-ui` rule.
  *
- * What is *not* here is anything generated: colour comes from a theme document
+ * The public site's reader script is here too, already bundled: its
+ * sources import `@quill/highlight`, and the bundler is Rolldown, but both are
+ * development dependencies, used only to write `reader/reader.gen.js`. At run
+ * time this package still depends on nothing.
+ *
+ * What is *not* here is any generated colour: it comes from a theme document
  * through `@quill/theme` (ADR-028), and syntax token colours from
  * `@quill/highlight` (ADR-030). These files only ever name tokens.
  */
@@ -29,10 +35,16 @@ import { fileURLToPath } from 'node:url'
 /**
  * The stylesheets a page needs, in the order they must cascade: the semantic
  * layer and the site's furniture first, then the layout grid, then reading
- * typography. A generated theme goes in front of all three, because everything
- * here is written in terms of its tokens.
+ * typography, then the byline (`byline.css`), which sits inside the reading
+ * surface and must win over it. A generated theme goes in front of them all,
+ * because everything here is written in terms of its tokens.
  */
-export const PUBLIC_SITE_STYLESHEETS = ['public-site.css', 'layout.css', 'prose.css'] as const
+export const PUBLIC_SITE_STYLESHEETS = [
+  'public-site.css',
+  'layout.css',
+  'prose.css',
+  'byline.css',
+] as const
 
 const HERE = path.dirname(fileURLToPath(import.meta.url))
 
@@ -41,7 +53,17 @@ export function styleSheetPath(name: string): string {
   return path.join(HERE, name)
 }
 
-/** The three stylesheets, concatenated in cascade order. */
+/**
+ * The public site's reader script — code highlighting and the diagram
+ * lightbox — as one plain ES module (`reader/reader.gen.js`, bundled from
+ * `reader/reader.ts` by `reader/bundle.ts`). Read once, synchronously, by the
+ * composition root that serves it.
+ */
+export function readPublicReaderScript(): string {
+  return readFileSync(path.join(HERE, 'reader', 'reader.gen.js'), 'utf8')
+}
+
+/** The stylesheets, concatenated in cascade order. */
 export async function readPublicSiteStyles(): Promise<string> {
   const files = await Promise.all(
     PUBLIC_SITE_STYLESHEETS.map(async (name) => readFile(styleSheetPath(name), 'utf8')),

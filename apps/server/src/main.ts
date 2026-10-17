@@ -23,10 +23,12 @@ import { createHasher } from './infrastructure/hasher.ts'
 import { createOutboundClient } from './infrastructure/http/outbound-client.ts'
 import { runMigrations } from './infrastructure/db/migrator.ts'
 import { createDocumentFormat } from './infrastructure/markdown/document-format.ts'
-import { createAcknowledgingConsumer } from './infrastructure/outbox/acknowledge.ts'
+import { CHILD_PAGES_CACHE_TTL_MS, createChildPagesCache } from './child-pages/cache.ts'
+import { createInvalidateChildPagesConsumers } from './child-pages/invalidate-child-pages.ts'
 import { combineConsumers } from './infrastructure/outbox/combine.ts'
 import {
   createIndexOnPublishConsumer,
+  createIndexOnAttachmentRevisedConsumer,
   createIndexOnRenameConsumer,
 } from './infrastructure/outbox/index-on-publish.ts'
 import {
@@ -48,18 +50,24 @@ import type { SecretExistenceCheck } from './infrastructure/secrets/boot-validat
 import { createSettingsStore } from './infrastructure/settings-store.ts'
 import { createPublicSiteCache, PUBLIC_SITE_CACHE_TTL_MS } from './public-site/cache.ts'
 import { createPublicStylesheets, loadDesignSystemCss } from './public-site/stylesheet.ts'
+import { loadFaceFiles } from './theme/face-files.ts'
+import { createThemeStylesheets } from './theme/theme-stylesheet.ts'
 import { createSystemClock } from './infrastructure/system-clock.ts'
 import { createUuidGenerator } from './infrastructure/uuid-generator.ts'
 import { createJobRunner } from './jobs/job-runner.ts'
 import { createShutdown } from './shutdown.ts'
 import { createSweepJob } from './jobs/sweep-expired.ts'
 import {
+  ATTACHMENT_REVISED,
   DOCUMENT_CREATED,
+  DOCUMENT_DELETED,
   DOCUMENT_MOVED,
+  DOCUMENT_NESTED,
   DOCUMENT_PUBLISHED,
   DOCUMENT_RENAMED,
 } from '@quill/application'
 import { createSearchService } from '@quill/search'
+import { createDrawioText } from './extensions/drawio/drawing-text.ts'
 
 /**
  * Startup warnings are collected and replayed through the app's own logger
@@ -188,22 +196,31 @@ const attachmentRateLimiter = createRateLimiter({ clock, config: config.attachme
 // One Argon2id hash at startup, so no request ever pays for the dummy.
 const passwords = await createPasswordHasher()
 const publicSiteCache = createPublicSiteCache({ clock, ttlMs: PUBLIC_SITE_CACHE_TTL_MS })
+const childPagesCache = createChildPagesCache({ clock, ttlMs: CHILD_PAGES_CACHE_TTL_MS })
 const searchIndex = createPostgresSearchIndex({
   db: database.db,
   visibility: createVisibleDocumentResolver({ uow }),
   clock,
 })
+// The curated faces are read once, here, so that serving a font or naming one
+// in a stylesheet never touches the filesystem (ADR-028).
+const faceFiles = await loadFaceFiles()
+const themeStylesheets = createThemeStylesheets({ hasher, faceFiles })
 const deps = {
   uow,
   searchIndex,
   search: createSearchService(searchIndex),
   // The design system's plain CSS is read once, here, so that serving a public
   // page never touches the filesystem (ADR-023).
+  faceFiles,
+  themeStylesheets,
   publicStylesheets: createPublicStylesheets({
     hasher,
+    themeStylesheets,
     designSystemCss: await loadDesignSystemCss(),
   }),
   publicSiteCache,
+  childPagesCache,
   contentStore,
   settings,
   secrets,
@@ -219,6 +236,7 @@ const deps = {
   rateLimiter,
   oidcRateLimiter,
   attachmentRateLimiter,
+  drawingText: createDrawioText(),
   passwords,
   identityProviders,
   config,
@@ -250,12 +268,28 @@ const invalidationOf = (eventType: string) => {
   return consumer
 }
 
+// The child pages lists (ADR-049) are invalidated by six events, each a
+// subtree's worth of entries at most.
+const invalidateChildPages = new Map(
+  createInvalidateChildPagesConsumers(childPagesCache, deps).map((consumer) => [
+    consumer.eventType,
+    consumer,
+  ]),
+)
+/* v8 ignore next 5 -- `createInvalidateChildPagesConsumers` answers for each of the six. */
+const childPagesOf = (eventType: string) => {
+  const consumer = invalidateChildPages.get(eventType)
+  if (consumer === undefined) throw new Error(`no child pages invalidation for ${eventType}`)
+  return consumer
+}
+
 jobRunner.register(
   combineConsumers(
     DOCUMENT_PUBLISHED,
     createRenderOnPublishConsumer(deps),
     createIndexOnPublishConsumer(deps),
     invalidationOf(DOCUMENT_PUBLISHED),
+    childPagesOf(DOCUMENT_PUBLISHED),
   ),
 )
 // A rename writes the new title into the document itself, and the title is
@@ -270,6 +304,7 @@ jobRunner.register(
     // answered with a 301 (ADR-035).
     createRecordRenameRedirectConsumer(deps),
     invalidationOf(DOCUMENT_RENAMED),
+    childPagesOf(DOCUMENT_RENAMED),
   ),
 )
 // A move between collections changes the collection segment of a public
@@ -279,6 +314,16 @@ jobRunner.register(
     DOCUMENT_MOVED,
     createRecordMoveRedirectConsumer(deps),
     invalidationOf(DOCUMENT_MOVED),
+    childPagesOf(DOCUMENT_MOVED),
+  ),
+)
+// A re-saved diagram (ADR-043) changes the words and the picture of every
+// published body that shows it, without a publish.
+jobRunner.register(
+  combineConsumers(
+    ATTACHMENT_REVISED,
+    createIndexOnAttachmentRevisedConsumer(deps),
+    invalidationOf(ATTACHMENT_REVISED),
   ),
 )
 // Delivery happens here rather than on the request path, so an address that
@@ -287,12 +332,15 @@ jobRunner.register(createSendMailConsumer(mailer))
 // Every type something emits has a consumer, even when the consumer does
 // nothing yet: the poller claims only registered types, so an unregistered
 // one would accumulate for ever (review finding H6).
-jobRunner.register(
-  createAcknowledgingConsumer(
-    DOCUMENT_CREATED,
-    'Nothing acts on a creation: a document with no published revision has nothing to index or render.',
-  ),
-)
+// A new page changes the child pages lists above it (ADR-049); it has
+// nothing to index or render until it is published.
+jobRunner.register(childPagesOf(DOCUMENT_CREATED))
+// Nesting and deleting change the lists and the public navigation (ADR-049).
+for (const eventType of [DOCUMENT_NESTED, DOCUMENT_DELETED]) {
+  jobRunner.register(
+    combineConsumers(eventType, childPagesOf(eventType), invalidationOf(eventType)),
+  )
+}
 jobRunner.schedule(createSweepJob({ uow, clock, session: config.session }))
 jobRunner.start()
 

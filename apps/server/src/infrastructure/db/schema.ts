@@ -8,6 +8,7 @@ import {
   integer,
   jsonb,
   pgTable,
+  primaryKey,
   text,
   timestamp,
   unique,
@@ -726,6 +727,21 @@ export const documentSearch = pgTable(
       .notNull()
       .default(sql`'{}'::text[]`),
     status: text('status').notNull(),
+    /**
+     * What the document says it is about, in a sentence or two: its
+     * `description`, or else its first paragraph (ADR-049). Shown under its
+     * title in a child pages list; null for a row projected before it existed.
+     */
+    summary: text('summary'),
+    /** The document's own icon from its front matter, an emoji (ADR-049). */
+    icon: text('icon'),
+    /**
+     * The author's lifecycle from front matter `status` (`in-review`,
+     * `verified`, `deprecated`); null when unset, or for a row projected
+     * before it existed. Only `deprecated` affects ranking today
+     * (`RankingProfile.deprecatedPenalty`).
+     */
+    lifecycle: text('lifecycle'),
     /** The document's own last update, which the recency boost decays from. */
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull(),
     /** The revision this row was projected from (ADR-034). Null for a row rebuilt from a workspace with no revision recorded. */
@@ -779,6 +795,13 @@ export const attachments = pgTable(
     contentType: text('content_type').notNull(),
     size: integer('size').notNull(),
     sha256: text('sha256').notNull(),
+    /** Rises with each revision (ADR-043); the compare-and-set a save names. */
+    version: integer('version').notNull().default(1),
+    /** A drawing's words, for search (ADR-043); null for a file with none. */
+    searchText: text('search_text'),
+    /** Who saved the current revision, and when; null while it is the upload. */
+    revisedBy: text('revised_by').references(() => users.id, { onDelete: 'set null' }),
+    revisedAt: timestamp('revised_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull(),
     deletedAt: timestamp('deleted_at', { withTimezone: true }),
   },
@@ -789,3 +812,47 @@ export const attachments = pgTable(
     index('attachments_sha256_idx').on(table.sha256),
   ],
 )
+
+/**
+ * An attachment's history (ADR-043): each state a revision replaced, by the
+ * version it was. The current state is the `attachments` row; the bytes of
+ * every state stay in the blob store, which is a system of record (ADR-034),
+ * so a revision is never lost, only superseded.
+ */
+export const attachmentRevisions = pgTable(
+  'attachment_revisions',
+  {
+    attachmentId: text('attachment_id')
+      .notNull()
+      .references(() => attachments.id, { onDelete: 'cascade' }),
+    version: integer('version').notNull(),
+    contentType: text('content_type').notNull(),
+    size: integer('size').notNull(),
+    sha256: text('sha256').notNull(),
+    /** Who saved this state; null once their account is gone. */
+    savedBy: text('saved_by').references(() => users.id, { onDelete: 'set null' }),
+    /** When this state was saved. */
+    savedAt: timestamp('saved_at', { withTimezone: true }).notNull(),
+    /** When a revision replaced it. */
+    replacedAt: timestamp('replaced_at', { withTimezone: true }).notNull(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.attachmentId, table.version] }),
+    // Objects a revision still points at, for the same sweep as above.
+    index('attachment_revisions_sha256_idx').on(table.sha256),
+  ],
+)
+
+/**
+ * A person's own preferences (ADR-034: per-person data lives here): one
+ * versioned document per person, read through the application's versioned
+ * reader (ADR-033) rather than mapped to columns, so adding a preference is
+ * adding an optional field and never a migration. Goes with the person.
+ */
+export const personPreferences = pgTable('person_preferences', {
+  userId: text('user_id')
+    .primaryKey()
+    .references(() => users.id, { onDelete: 'cascade' }),
+  document: jsonb('document').notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull(),
+})

@@ -1,6 +1,11 @@
 # Local infrastructure for development and integration tests.
 # Postgres holds system data; RustFS stands in for S3-compatible blob storage.
 # Nothing else is required to run Quill locally (quill-plan.md, section 28).
+#
+# Host ports default to the standard ones and can be moved with POSTGRES_PORT,
+# RUSTFS_PORT, RUSTFS_CONSOLE_PORT and DRAWIO_PORT (read from .env by Compose),
+# so two checkouts can run side by side. Each checkout is its own Compose
+# project with its own volumes; point DATABASE_URL at the port you chose.
 
 services:
   postgres:
@@ -10,7 +15,7 @@ services:
       POSTGRES_PASSWORD: quill
       POSTGRES_DB: quill
     ports:
-      - '5432:5432'
+      - '${POSTGRES_PORT:-5432}:5432'
     volumes:
       - postgres-data:/var/lib/postgresql/data
     healthcheck:
@@ -32,13 +37,26 @@ services:
       RUSTFS_CONSOLE_ADDRESS: ':9001'
       RUSTFS_CONSOLE_ENABLE: 'true'
     ports:
-      - '9000:9000'
-      - '9001:9001'
+      - '${RUSTFS_PORT:-9000}:9000'
+      - '${RUSTFS_CONSOLE_PORT:-9001}:9001'
     volumes:
       - rustfs-data:/data
     healthcheck:
       test: ['CMD-SHELL', 'curl --fail --silent http://localhost:9000/health']
       interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # The draw.io editor (jgraph/drawio, Apache 2.0), served from its own origin
+  # so diagrams never leave the instance (ADR-043). Quill embeds it in an
+  # iframe at DRAWIO_URL; nothing here stores a diagram, so it has no volume.
+  drawio:
+    image: jgraph/drawio:32.4.1
+    ports:
+      - '${DRAWIO_PORT:-8080}:8080'
+    healthcheck:
+      test: ['CMD-SHELL', 'curl --fail --silent http://localhost:8080/ > /dev/null']
+      interval: 10s
       timeout: 3s
       retries: 10
 

@@ -64,6 +64,16 @@ export interface UserRepository {
   create(input: CreateUserInput): Promise<UserRow>
   findById(id: UserId): Promise<UserRow | null>
   findByEmail(email: string): Promise<UserRow | null>
+  /**
+   * The verified people with these addresses, matched without regard to case,
+   * in one query: a byline names every owner at once, never one by one.
+   */
+  findVerifiedByEmails(emails: readonly string[]): Promise<readonly UserRow[]>
+  /**
+   * Verified people whose name or address contains `query`, without regard
+   * to case, ordered by name, at most `limit` of them: the people picker.
+   */
+  searchVerified(query: string, limit: number): Promise<readonly UserRow[]>
   markEmailVerified(id: UserId, now: Date): Promise<void>
   setInstanceAdmin(id: UserId, isInstanceAdmin: boolean): Promise<void>
 }
@@ -420,6 +430,14 @@ export interface CollectionRepository {
    */
   findBySiteSlug(siteSlug: string): Promise<CollectionRow | null>
   listByWorkspace(workspaceId: WorkspaceId): Promise<readonly CollectionRow[]>
+  /** The collections with these ids, in no particular order; an unknown id is simply absent. */
+  listByIds(ids: readonly CollectionId[]): Promise<readonly CollectionRow[]>
+  /**
+   * Collections in any workspace whose name contains `text`, ignoring case,
+   * by name, at most `limit` of them: what a picker offers as somebody types
+   * (the public menu's target combobox).
+   */
+  searchByName(text: string, limit: number): Promise<readonly CollectionRow[]>
   /**
    * Every collection whose site is switched on, for `robots.txt` — which names
    * a sitemap per site — and for an administrator's list of what is public.
@@ -547,6 +565,12 @@ export interface DocumentRepository {
    * query — the ancestor half of a document's scope chain (ADR-012).
    */
   listAncestors(id: DocumentId): Promise<readonly DocumentRow[]>
+  /**
+   * Every document nested under this one, at most `depth` levels down, in one
+   * query however many there are: a child pages list's subtree (ADR-049).
+   * The document itself is not included.
+   */
+  listDescendants(id: DocumentId, depth: number): Promise<readonly DocumentRow[]>
   update(id: DocumentId, patch: UpdateDocumentPatch, now: Date): Promise<DocumentRow>
   delete(id: DocumentId): Promise<void>
 }
@@ -558,6 +582,9 @@ export interface DraftRow {
   readonly ast: unknown
   readonly updatedAt: Date
 }
+
+/** A draft's row without its content. */
+export type DraftStamp = Pick<DraftRow, 'baseRevision' | 'updatedAt'>
 
 export type WriteDraftResult =
   | { readonly ok: true; readonly draft: DraftRow }
@@ -573,6 +600,12 @@ export interface DraftRepository {
     readonly now: Date
   }): Promise<DraftRow>
   find(documentId: DocumentId): Promise<DraftRow | null>
+  /**
+   * When the draft was last written and what it is based on, without its
+   * content: enough to tell whether it holds changes nothing has published,
+   * for a caller that has no use for the tree itself.
+   */
+  stamp(documentId: DocumentId): Promise<DraftStamp | null>
   /**
    * Optimistic, lock-gated write (ADR-021). Must run lock validation and the
    * version check inside one transaction so a concurrent takeover cannot
@@ -1022,6 +1055,18 @@ export interface AttachmentRow {
   readonly contentType: string
   readonly size: number
   readonly sha256: string
+  /**
+   * Starts at 1 and rises with each revision (ADR-043). The URL never changes,
+   * so a document showing the attachment shows its latest revision; a writer
+   * names the version they edited, and a newer one refuses their save.
+   */
+  readonly version: number
+  /**
+   * Words the file carries that a reader of the document can see but the
+   * Markdown does not say — a diagram's labels — for search. Null for a file
+   * with none, or one whose words could not be read within the limits.
+   */
+  readonly searchText: string | null
   readonly createdAt: Date
   readonly deletedAt: Date | null
 }
@@ -1035,6 +1080,20 @@ export interface CreateAttachmentInput {
   readonly contentType: string
   readonly size: number
   readonly sha256: string
+  readonly searchText?: string | null
+  readonly now: Date
+}
+
+/** A new revision of an attachment's bytes, under the same id and URL. */
+export interface ReviseAttachmentInput {
+  readonly id: AttachmentId
+  /** The version the writer edited; any other current version refuses the revision. */
+  readonly expectedVersion: number
+  readonly revisedBy: UserId
+  readonly contentType: string
+  readonly size: number
+  readonly sha256: string
+  readonly searchText: string | null
   readonly now: Date
 }
 
@@ -1048,8 +1107,50 @@ export interface AttachmentRepository {
    * years may have shed many, and none of them is ever an answer.
    */
   listForDocument(documentId: DocumentId): Promise<readonly AttachmentRow[]>
+  /**
+   * The live attachments among `ids` that belong to this workspace, in one
+   * query. Scoped by workspace in the query itself, so a body can never be
+   * handed another workspace's file however its URLs were written.
+   */
+  listLiveInWorkspace(
+    workspaceId: WorkspaceId,
+    ids: readonly AttachmentId[],
+  ): Promise<readonly AttachmentRow[]>
   /** Marks the row removed. Removing an already-removed attachment is not an error. */
   softDelete(id: AttachmentId, now: Date): Promise<void>
+  /**
+   * Replaces a live attachment's bytes with a new revision, keeping the one
+   * it replaces in the attachment's history. A compare-and-set on the
+   * version: null when the attachment is gone or is no longer at
+   * `expectedVersion`, and nothing is written.
+   */
+  revise(input: ReviseAttachmentInput): Promise<AttachmentRow | null>
+}
+
+// ---------------------------------------------------------------------------
+// Person preferences
+// ---------------------------------------------------------------------------
+
+/**
+ * A person's own preferences as stored: the versioned document exactly as it
+ * was written, read through `use-cases/person-preferences.ts`'s versioned
+ * reader rather than trusted here, so a document an older or newer release
+ * wrote is never misread by the storage layer (ADR-033).
+ */
+export interface PersonPreferencesRow {
+  readonly userId: UserId
+  readonly document: unknown
+  readonly updatedAt: Date
+}
+
+export interface PersonPreferencesRepository {
+  find(userId: UserId): Promise<PersonPreferencesRow | null>
+  /** Writes the whole document, replacing whatever the person had. */
+  put(input: {
+    readonly userId: UserId
+    readonly document: unknown
+    readonly now: Date
+  }): Promise<PersonPreferencesRow>
 }
 
 // ---------------------------------------------------------------------------
@@ -1103,6 +1204,23 @@ export interface AuditWriter {
 // Unit of work
 // ---------------------------------------------------------------------------
 
+/**
+ * What a list shows under a document's title (ADR-049): its summary — the
+ * `description`, or the first paragraph — and its icon, as the search
+ * projection of its published head holds them. A document never published
+ * has none.
+ */
+export interface DocumentSummaryRow {
+  readonly documentId: DocumentId
+  readonly summary: string | null
+  readonly icon: string | null
+}
+
+export interface DocumentSummaryRepository {
+  /** The summaries of these documents, in one query; a document without one is absent. */
+  listByIds(ids: readonly DocumentId[]): Promise<readonly DocumentSummaryRow[]>
+}
+
 export interface RepositoryBundle {
   readonly users: UserRepository
   readonly sessions: SessionRepository
@@ -1115,6 +1233,7 @@ export interface RepositoryBundle {
   readonly workspaceSlugHistory: WorkspaceSlugHistoryRepository
   readonly collections: CollectionRepository
   readonly documents: DocumentRepository
+  readonly documentSummaries: DocumentSummaryRepository
   readonly drafts: DraftRepository
   readonly locks: LockRepository
   readonly grants: GrantRepository
@@ -1125,6 +1244,7 @@ export interface RepositoryBundle {
   readonly documentLinks: DocumentLinksRepository
   readonly secrets: SecretsRepository
   readonly attachments: AttachmentRepository
+  readonly personPreferences: PersonPreferencesRepository
   readonly outbox: OutboxWriter
   readonly audit: AuditWriter
 }

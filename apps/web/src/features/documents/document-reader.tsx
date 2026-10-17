@@ -1,26 +1,24 @@
 import { Link } from '@tanstack/react-router'
-import { lazy, Suspense } from 'react'
+import { useCallback, useState, type ReactNode } from 'react'
 
 import { Block, Button, buttonClassName, Callout, LayoutGrid, Spinner, tv } from '@quill/ui'
 
-import { ApiError, useRenderedDocument, type DiffRange } from '../../lib/api/index.ts'
+import {
+  ApiError,
+  useChildPagesOf,
+  useDocumentLinksLoader,
+  useRenderedDocument,
+} from '../../lib/api/index.ts'
 import type { LabelledRevision } from '../../lib/documents/revision-labels.ts'
+import { useFollowLink } from '../../lib/routing/use-follow-link.ts'
 import { shortRevision } from '../../lib/documents/revision-labels.ts'
+import { NewDocumentDialog } from '../workspaces/new-document-dialog.tsx'
 import { DocumentBody } from './document-body.tsx'
-
-/**
- * The comparison view is the one part of reading a document that most readers
- * never ask for, so it is its own chunk: the reading route's first load does
- * not carry it (quill-plan.md section 31).
- */
-const RevisionDiffView = lazy(async () => ({
-  default: (await import('./revision-diff-view.tsx')).RevisionDiffView,
-}))
 
 export const documentReaderStyles = tv({
   slots: {
     banner: 'flex flex-wrap items-center justify-between gap-3 border-y border-border py-2.5',
-    bannerText: 'meta-value',
+    bannerText: 'text-xs text-muted tabular-nums',
     body: 'pt-8 pb-24',
     title: 'text-3xl leading-tight font-semibold tracking-tight text-foreground',
     centre: 'flex min-h-60 items-center justify-center',
@@ -38,10 +36,19 @@ export interface DocumentReaderProps {
    * contents list beside it is keyed by the same value.
    */
   readonly onScreen: string
-  /** Two revisions named in the URL; absent means read rather than compare. */
-  readonly compare: DiffRange | undefined
   readonly revisions: readonly LabelledRevision[]
   readonly canEdit: boolean
+  /** The collection the document sits in, shown above its title (`DocumentBody`). */
+  readonly eyebrow?: string | undefined
+  /**
+   * Where a child page of this one is created, for the "Create a child page"
+   * an empty child pages list offers an editor (ADR-049). Omitted, none is offered.
+   */
+  readonly placement?:
+    | { readonly workspaceId: string; readonly collectionId: string | undefined }
+    | undefined
+  /** The document's facts, under its title (`docs/design/properties.md`). */
+  readonly byline?: ReactNode
 }
 
 /** What a reader calls a revision, falling back to its short hash. */
@@ -65,49 +72,12 @@ export function DocumentReader({
   title,
   revision,
   onScreen,
-  compare,
   revisions,
   canEdit,
+  eyebrow,
+  placement,
+  byline,
 }: DocumentReaderProps) {
-  const styles = documentReaderStyles()
-
-  if (compare !== undefined) {
-    return (
-      <>
-        <LayoutGrid className="pt-8">
-          <Block width="wide">
-            <div className={styles.banner()}>
-              <p className={styles.bannerText()}>comparing revisions</p>
-              <Link
-                to="/w/$workspaceSlug/d/$documentId"
-                params={{ workspaceSlug, documentId }}
-                search={{}}
-                className={buttonClassName({ variant: 'secondary', size: 'sm' })}
-              >
-                Back to the document
-              </Link>
-            </div>
-          </Block>
-        </LayoutGrid>
-        <Suspense
-          fallback={
-            <div className={styles.centre()}>
-              <Spinner className="size-5" />
-            </div>
-          }
-        >
-          <RevisionDiffView
-            documentId={documentId}
-            range={compare}
-            fromLabel={labelOf(revisions, compare.from)}
-            toLabel={labelOf(revisions, compare.to)}
-            className={styles.body()}
-          />
-        </Suspense>
-      </>
-    )
-  }
-
   return (
     <PublishedBody
       documentId={documentId}
@@ -117,6 +87,9 @@ export function DocumentReader({
       onScreen={onScreen}
       revisions={revisions}
       canEdit={canEdit}
+      eyebrow={eyebrow}
+      placement={placement}
+      byline={byline}
     />
   )
 }
@@ -129,9 +102,21 @@ function PublishedBody({
   onScreen,
   revisions,
   canEdit,
-}: Omit<DocumentReaderProps, 'compare'>) {
+  eyebrow,
+  placement,
+  byline,
+}: DocumentReaderProps) {
   const rendered = useRenderedDocument(documentId, revision)
   const styles = documentReaderStyles()
+  const childPages = useChildPagesOf(documentId)
+  // A link in the body to another document moves within the app (ADR-035).
+  const followLink = useFollowLink()
+  const loadLinks = useDocumentLinksLoader()
+  const [creatingChild, setCreatingChild] = useState(false)
+  const createChildPage = useCallback(() => {
+    setCreatingChild(true)
+  }, [setCreatingChild])
+  const canCreateChild = canEdit && placement !== undefined
 
   if (rendered.isPending) {
     return (
@@ -229,6 +214,7 @@ function PublishedBody({
         <LayoutGrid className="pt-8">
           <Block>
             <h1 className={styles.title()}>{title}</h1>
+            {byline === undefined ? undefined : <div className="mt-4">{byline}</div>}
           </Block>
         </LayoutGrid>
       )}
@@ -240,8 +226,26 @@ function PublishedBody({
         key={onScreen}
         html={rendered.data.body.html}
         label={title}
+        eyebrow={eyebrow}
+        loadChildPages={childPages}
+        onCreateChildPage={canCreateChild ? createChildPage : undefined}
+        afterTitle={bodyHasTitle ? byline : undefined}
+        onFollowLink={followLink}
+        loadLinks={loadLinks}
         className={styles.body()}
       />
+      {canCreateChild ? (
+        <NewDocumentDialog
+          workspaceId={placement.workspaceId}
+          workspaceSlug={workspaceSlug}
+          open={creatingChild}
+          onOpenChange={setCreatingChild}
+          initialParentId={documentId}
+          {...(placement.collectionId === undefined
+            ? {}
+            : { initialCollectionId: placement.collectionId })}
+        />
+      ) : undefined}
     </>
   )
 }

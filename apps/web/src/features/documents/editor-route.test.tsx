@@ -1,12 +1,16 @@
 import { act, screen, waitFor, within } from '@testing-library/react'
+import { parseMarkdown } from '@quill/markdown'
+import { toast } from '@quill/ui'
 import userEvent from '@testing-library/user-event'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
 import { expectNoAccessibilityViolations } from '@quill/ui/testing/axe'
 
 import { DRAFT_CONTENT_VERSION } from '../../lib/documents/draft-content.ts'
 import { renderApp } from '../../lib/api/render-app.tsx'
 import { errorResponse, jsonResponse, type FakeRoutes } from '../../lib/api/testing.ts'
+import { createFakeIndexedDb } from '../../lib/recovery/testing.ts'
+import { OFFLINE_LABEL } from './editor-status.tsx'
 
 const me = () =>
   jsonResponse(200, {
@@ -147,6 +151,46 @@ describe('the editor route', () => {
     })
   })
 
+  it('mounts with the organisation’s labels, even when the theme answers late (ADR-037)', async () => {
+    const labelled = {
+      type: 'root',
+      children: [
+        {
+          type: 'paragraph',
+          children: [
+            { type: 'text', value: 'Sold on ' },
+            {
+              type: 'textDirective',
+              name: 'airbnb',
+              attributes: {},
+              children: [{ type: 'text', value: 'Airbnb' }],
+            },
+          ],
+        },
+      ],
+    }
+    await openEditor(
+      editorRoutes({
+        'GET /api/documents/{id}/draft': draft({
+          ast: { version: DRAFT_CONTENT_VERSION, frontMatter: {}, ast: labelled },
+        }),
+        'GET /api/settings/organisation/theme': async () => {
+          await new Promise((resolve) => setTimeout(resolve, 50))
+          return jsonResponse(200, {
+            themeId: 'instrument',
+            stylesheetHref: '/api/settings/organisation/theme.css?v=1',
+            attributes: {},
+            labels: ['airbnb'],
+          })
+        },
+      }),
+    )
+
+    const surface = screen.getByRole('textbox', { name: 'Regional failover' })
+    const label = within(surface).getByText('Airbnb')
+    expect(label.closest('.badge')).toHaveAttribute('data-label', 'airbnb')
+  })
+
   it('autosaves what is typed, in the envelope the draft arrived in', async () => {
     const saved: Array<{ ast: { frontMatter: unknown }; expectedVersion: number }> = []
     await openEditor(
@@ -237,15 +281,18 @@ describe('the editor route', () => {
 
     await userEvent.type(screen.getByRole('textbox', { name: 'Regional failover' }), ' Then west.')
 
-    const notice = await screen.findByRole(
-      'group',
-      { name: 'Danger: Your lock was lost' },
-      {
-        timeout: 4000,
+    // The lock is taken again once by itself; a server that still refuses
+    // leaves it to the author, with the edit kept.
+    await waitFor(
+      () => {
+        const notice = screen.getByRole('group', { name: 'Danger: Your lock was lost' })
+        expect(within(notice).getByText(/held safely in this browser/)).toBeInTheDocument()
+        expect(
+          within(notice).getByRole('button', { name: 'Take the lock again' }),
+        ).toBeInTheDocument()
       },
+      { timeout: 6000 },
     )
-    expect(within(notice).getByText(/held safely in this browser/)).toBeInTheDocument()
-    expect(within(notice).getByRole('button', { name: 'Take the lock again' })).toBeInTheDocument()
     expect(await screen.findByText('lock lost')).toBeInTheDocument()
   })
 
@@ -316,13 +363,21 @@ describe('the editor route', () => {
         'POST /api/documents/{id}/publish': () =>
           jsonResponse(409, { kind: 'merge-required', current: 'c'.repeat(40), conflicts: [] }),
         'GET /api/documents/{id}/history': () => jsonResponse(200, { revisions: [] }),
-        'GET /api/documents/{id}/diff': () =>
+        'GET /api/documents/{id}/compare': () =>
           jsonResponse(200, {
-            from: 'a'.repeat(40),
-            to: 'c'.repeat(40),
-            unified: '@@ -1 +1 @@\n-was\n+is',
-            added: 1,
-            removed: 1,
+            html: '<article><p data-change="changed" data-change-id="c1">is</p></article>',
+            summary: {
+              sections: 1,
+              added: 0,
+              removed: 0,
+              changed: 1,
+              moved: 0,
+              wordsAdded: 1,
+              wordsRemoved: 1,
+            },
+            changes: [],
+            sections: [],
+            properties: [],
           }),
       }),
     )
@@ -331,7 +386,9 @@ describe('the editor route', () => {
     const dialog = await screen.findByRole('dialog', { name: 'Someone else published first' })
     await userEvent.click(within(dialog).getByRole('button', { name: 'See what changed' }))
 
-    expect(await screen.findByRole('group', { name: 'Unified diff' })).toBeInTheDocument()
+    expect(
+      await screen.findByRole('heading', { level: 1, name: /^Changes between/ }),
+    ).toBeInTheDocument()
   })
 
   it('refuses to open a draft written by a newer release rather than losing it', async () => {
@@ -590,20 +647,31 @@ describe("the document's properties, where its front matter used to be", () => {
   it('never shows the writer YAML', async () => {
     await openEditor(withProperties())
     expect(screen.queryByText(/somethingNobodyKnows:/)).not.toBeInTheDocument()
-    expect(screen.getByRole('region', { name: 'Document properties' })).toBeInTheDocument()
+    expect(screen.getByRole('region', { name: 'Properties' })).toBeInTheDocument()
   })
 
-  it('shows who owns the document, which nothing in the shell knew before', async () => {
-    await openEditor(withProperties())
-    const summary = within(screen.getByRole('list', { name: 'Summary' }))
-    expect(summary.getByText('sre@example.com')).toBeInTheDocument()
-    expect(summary.getByText('runbook')).toBeInTheDocument()
-    expect(summary.getByText('#on-call')).toBeInTheDocument()
+  it('shows who owns the document as a person, which nothing in the shell knew before', async () => {
+    await openEditor(
+      withProperties({
+        'GET /api/documents/{id}/people': () =>
+          jsonResponse(200, {
+            people: [
+              { value: 'sre@example.com', name: 'Site Reliability', detail: 'sre@example.com' },
+            ],
+          }),
+      }),
+    )
+    const line = screen.getByRole('group', { name: 'Document properties' })
+    expect(
+      await within(line).findByRole('button', { name: 'Owners: Site Reliability' }),
+    ).toBeInTheDocument()
+    expect(within(line).getByRole('button', { name: 'Type: runbook' })).toBeInTheDocument()
+    expect(within(line).getByRole('button', { name: 'Tags: on-call' })).toBeInTheDocument()
   })
 
-  it('says so rather than inventing facts when a document names none', async () => {
+  it('offers what could be set rather than inventing facts when a document names none', async () => {
     await openEditor()
-    expect(screen.getByText('Nothing set yet')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Add property' })).toBeInTheDocument()
   })
 
   it('saves a changed property into the draft, front matter and all', async () => {
@@ -617,8 +685,11 @@ describe("the document's properties, where its front matter used to be", () => {
       }),
     )
 
-    await userEvent.click(screen.getByRole('button', { name: 'Properties' }))
-    await userEvent.selectOptions(screen.getByRole('combobox', { name: 'Status' }), 'published')
+    // The fixture's `status` is one an earlier release wrote: the lifecycle
+    // is unset, so it is added, and replaces it (ADR-005 amendment).
+    await userEvent.click(screen.getByRole('button', { name: 'Add property' }))
+    await userEvent.click(await screen.findByRole('menuitem', { name: 'Lifecycle' }))
+    await userEvent.click(await screen.findByRole('menuitemradio', { name: /^In review/u }))
 
     await waitFor(
       () => {
@@ -627,7 +698,7 @@ describe("the document's properties, where its front matter used to be", () => {
       { timeout: 4000 },
     )
     expect(saved.at(-1)?.ast.frontMatter).toMatchObject({
-      status: 'published',
+      status: 'in-review',
       // Everything the strip has no control for survives the round trip (rule 7).
       somethingNobodyKnows: 'kept',
       id: 'doc-1',
@@ -636,8 +707,327 @@ describe("the document's properties, where its front matter used to be", () => {
 
   it('has no axe violations with the properties open', async () => {
     const { container } = await openEditor(withProperties())
-    await userEvent.click(screen.getByRole('button', { name: 'Properties' }))
+    await userEvent.click(screen.getByRole('button', { name: 'All properties' }))
 
     await expectNoAccessibilityViolations(container)
+  })
+})
+
+/**
+ * Audit 2026-10-11: the five ways the editor could lose an author's work or
+ * lie about it, each reproduced through the whole route.
+ */
+/**
+ * A draft endpoint with the server's version rule — stale writes are
+ * refused — that can be cut off, and written to by somebody else.
+ */
+function createDraftServer(initial: unknown = TREE) {
+  let current: { ast: unknown; draftVersion: number; writtenBy?: unknown } = {
+    ast: initial,
+    draftVersion: 3,
+  }
+  const writes: Array<{ text: string; expectedVersion: number }> = []
+  let down = false
+  return {
+    writes,
+    get draft() {
+      return current
+    },
+    cutOff() {
+      down = true
+    },
+    reconnect() {
+      down = false
+    },
+    /** Somebody else saved a draft while this one could not. */
+    writeAs(name: string, ast: unknown) {
+      current = {
+        ast,
+        draftVersion: current.draftVersion + 1,
+        writtenBy: { userId: `user-${name}`, displayName: name },
+      }
+    },
+    routes: {
+      'GET /api/documents/{id}/draft': () =>
+        jsonResponse(200, {
+          documentId: 'doc-1',
+          draftVersion: current.draftVersion,
+          baseRevision: 'a'.repeat(40),
+          ast: {
+            version: DRAFT_CONTENT_VERSION,
+            frontMatter: {},
+            ast: current.ast,
+            ...(current.writtenBy === undefined ? {} : { writtenBy: current.writtenBy }),
+          },
+          updatedAt: '2026-02-03T00:00:00.000Z',
+        }),
+      'PUT /api/documents/{id}/draft': async (request: Request) => {
+        if (down) return errorResponse(503, 'unavailable', 'Down')
+        const body = (await request.json()) as {
+          ast: { ast: unknown; writtenBy?: unknown }
+          expectedVersion: number
+        }
+        if (body.expectedVersion !== current.draftVersion) {
+          return errorResponse(409, 'stale_version', 'Your draft version is behind', {
+            currentVersion: current.draftVersion,
+          })
+        }
+        current = {
+          ast: body.ast.ast,
+          draftVersion: current.draftVersion + 1,
+          writtenBy: body.ast.writtenBy,
+        }
+        writes.push({ text: JSON.stringify(body.ast.ast), expectedVersion: body.expectedVersion })
+        return jsonResponse(200, {
+          draftVersion: current.draftVersion,
+          updatedAt: '2026-02-03T00:05:00.000Z',
+        })
+      },
+    } satisfies FakeRoutes,
+  }
+}
+
+describe('the editor keeps the author’s work through failures', () => {
+  const SURFACE = { name: 'Regional failover' }
+
+  async function openIn(view: ReturnType<typeof renderApp>) {
+    return within(view.container).findByRole('textbox', SURFACE, { timeout: 5000 })
+  }
+
+  it('survives a 5xx on a background refresh while editing (P0-2)', async () => {
+    let failing = false
+    const view = await openEditor(
+      editorRoutes({
+        'GET /api/documents/{id}': () =>
+          failing ? errorResponse(502, 'bad_gateway', 'Bad gateway') : document(),
+        'GET /api/documents/{id}/draft': () =>
+          failing ? errorResponse(502, 'bad_gateway', 'Bad gateway') : draft()(),
+      }),
+    )
+    // The retry policy has its own tests; this is about what the route does
+    // once a refresh has failed for good.
+    view.queryClient.setDefaultOptions({ queries: { retry: false } })
+    const surface = screen.getByRole('textbox', SURFACE)
+    await userEvent.type(surface, ' Then west.')
+
+    failing = true
+    await act(async () => {
+      await view.queryClient.refetchQueries()
+    })
+
+    expect(
+      await screen.findByRole('group', { name: 'Note: Couldn’t refresh this document' }),
+    ).toBeInTheDocument()
+    expect(screen.getByRole('textbox', SURFACE)).toHaveTextContent('Then west.')
+    expect(screen.queryByText("Couldn't open this document for editing")).not.toBeInTheDocument()
+  })
+
+  it('retries a save the server failed with a 502, and says so meanwhile (P0-1)', async () => {
+    const saved: string[] = []
+    let failures = 1
+    await openEditor(
+      editorRoutes({
+        'PUT /api/documents/{id}/draft': async (request) => {
+          if (failures > 0) {
+            failures -= 1
+            return errorResponse(502, 'bad_gateway', 'Bad gateway')
+          }
+          saved.push(JSON.stringify(await request.json()))
+          return jsonResponse(200, { draftVersion: 4, updatedAt: '2026-02-03T00:05:00.000Z' })
+        },
+      }),
+    )
+
+    await userEvent.type(screen.getByRole('textbox', SURFACE), ' Then west.')
+
+    expect(
+      (await screen.findAllByText(OFFLINE_LABEL, {}, { timeout: 4000 })).length,
+    ).toBeGreaterThan(0)
+    expect(await screen.findByText('draft saved', {}, { timeout: 4000 })).toBeInTheDocument()
+    expect(saved).toHaveLength(1)
+    expect(saved[0]).toContain('Then west.')
+  })
+
+  it('never lets a stale tab overwrite another: it takes the newer draft in first (P0-5)', async () => {
+    const server = createDraftServer()
+    const routes = editorRoutes(server.routes)
+    const tabA = renderApp(EDIT_PATH, routes)
+    const tabB = renderApp(EDIT_PATH, routes)
+    const surfaceA = await openIn(tabA)
+    await openIn(tabB)
+
+    await userEvent.type(surfaceA, ' TAB1')
+    await waitFor(() => {
+      expect(server.draft.draftVersion).toBe(4)
+    })
+
+    // Tab B hears about it before its author types a thing, and carries on
+    // from the newer draft rather than writing over it.
+    await waitFor(() => {
+      expect(within(tabB.container).getByRole('textbox', SURFACE)).toHaveTextContent('TAB1')
+    })
+    await userEvent.type(within(tabB.container).getByRole('textbox', SURFACE), ' TAB2')
+    await waitFor(
+      () => {
+        expect(server.draft.draftVersion).toBe(5)
+      },
+      { timeout: 4000 },
+    )
+    expect(JSON.stringify(server.draft.ast)).toContain('TAB1')
+    expect(JSON.stringify(server.draft.ast)).toContain('TAB2')
+
+    // ...and now tab A takes tab B's in.
+    await waitFor(() => {
+      expect(within(tabA.container).getByRole('textbox', SURFACE)).toHaveTextContent('TAB2')
+    })
+    tabA.unmount()
+    tabB.unmount()
+  })
+
+  it('says it is offline, in words, when saves fail though the browser says online', async () => {
+    const server = createDraftServer()
+    await openEditor(editorRoutes(server.routes))
+    server.cutOff()
+    await userEvent.type(screen.getByRole('textbox', SURFACE), ' Then west.')
+    expect(
+      (await screen.findAllByText(OFFLINE_LABEL, {}, { timeout: 4000 })).length,
+    ).toBeGreaterThan(0)
+    // Typing never waits: the words are in the document all along.
+    expect(screen.getByRole('textbox', SURFACE)).toHaveTextContent('Then west.')
+
+    server.reconnect()
+    expect(await screen.findByText('draft saved', {}, { timeout: 8000 })).toBeInTheDocument()
+    expect(JSON.stringify(server.draft.ast)).toContain('Then west.')
+  })
+
+  const TWO_BLOCKS = parseMarkdown('Move traffic east.\n\nPage the on-call.\n')
+
+  it('merges offline changes with what somebody else saved meanwhile, and says so', async () => {
+    const info = vi.spyOn(toast, 'info')
+    const server = createDraftServer(TWO_BLOCKS)
+    await openEditor(editorRoutes(server.routes))
+    server.cutOff()
+    await userEvent.type(screen.getByRole('textbox', SURFACE), ' Then west.')
+    expect(
+      (await screen.findAllByText(OFFLINE_LABEL, {}, { timeout: 4000 })).length,
+    ).toBeGreaterThan(0)
+
+    server.writeAs('Sam', parseMarkdown('Move traffic east.\n\nPage the on-call, then the lead.\n'))
+    server.reconnect()
+
+    await waitFor(
+      () => {
+        expect(JSON.stringify(server.draft.ast)).toContain('Then west.')
+      },
+      { timeout: 8000 },
+    )
+    expect(JSON.stringify(server.draft.ast)).toContain('then the lead')
+    expect(screen.getByRole('textbox', SURFACE)).toHaveTextContent('then the lead')
+    expect(info).toHaveBeenCalledWith('Merged your offline changes with Sam’s')
+    info.mockRestore()
+  })
+
+  it('asks the author to resolve a block both people changed, and saves the choice', async () => {
+    const server = createDraftServer(TWO_BLOCKS)
+    await openEditor(editorRoutes(server.routes))
+    server.cutOff()
+    await userEvent.type(screen.getByRole('textbox', SURFACE), ' Then west.')
+    expect(
+      (await screen.findAllByText(OFFLINE_LABEL, {}, { timeout: 4000 })).length,
+    ).toBeGreaterThan(0)
+
+    // The writer typed onto the first word of the first block; Sam changed that word.
+    server.writeAs('Sam', parseMarkdown('Run traffic east.\n\nPage the on-call.\n'))
+    server.reconnect()
+
+    const view = await screen.findByRole(
+      'region',
+      { name: 'Your offline changes overlap with Sam’s' },
+      { timeout: 8000 },
+    )
+    // Nothing is sent while it is open.
+    expect(JSON.stringify(server.draft.ast)).not.toContain('Then west.')
+    expect(screen.getByRole('textbox', SURFACE)).toHaveAttribute('contenteditable', 'false')
+    await expectNoAccessibilityViolations(view)
+
+    await userEvent.click(within(view).getByRole('radio', { name: 'Keep both' }))
+    await userEvent.click(within(view).getByRole('button', { name: 'Save the merged draft' }))
+    await waitFor(
+      () => {
+        expect(JSON.stringify(server.draft.ast)).toContain('Then west.')
+      },
+      { timeout: 8000 },
+    )
+    expect(JSON.stringify(server.draft.ast)).toContain('Run traffic east.')
+    expect(screen.queryByRole('region', { name: /overlap/ })).not.toBeInTheDocument()
+  })
+
+  it('tells the author when somebody merged offline changes into their draft', async () => {
+    await openEditor(
+      editorRoutes({
+        'GET /api/documents/{id}/draft': draft({
+          ast: {
+            version: DRAFT_CONTENT_VERSION,
+            frontMatter: {},
+            ast: TREE,
+            mergedBy: { userId: 'user-2', displayName: 'Alex' },
+          },
+        }),
+      }),
+    )
+    expect(
+      await screen.findByRole('group', {
+        name: 'Note: Alex merged offline changes into this draft',
+      }),
+    ).toBeInTheDocument()
+  })
+
+  it('records an unsent edit under StrictMode and offers it back after a crash (P0-3)', async () => {
+    const { factory, rows } = createFakeIndexedDb()
+    vi.stubGlobal('indexedDB', factory)
+    try {
+      const down = renderApp(
+        EDIT_PATH,
+        editorRoutes({
+          'PUT /api/documents/{id}/draft': () => errorResponse(503, 'unavailable', 'Down'),
+        }),
+        { strictMode: true },
+      )
+      await userEvent.type(await openIn(down), ' Unsent words.')
+      await waitFor(() => {
+        expect(JSON.stringify([...rows.values()])).toContain('Unsent words.')
+      })
+
+      // The tab dies with the edit unsent.
+      down.unmount()
+
+      const saved: string[] = []
+      const reloaded = renderApp(
+        EDIT_PATH,
+        editorRoutes({
+          'PUT /api/documents/{id}/draft': async (request) => {
+            saved.push(JSON.stringify(await request.json()))
+            return jsonResponse(200, { draftVersion: 4, updatedAt: '2026-02-03T00:05:00.000Z' })
+          },
+        }),
+        { strictMode: true },
+      )
+
+      expect(await openIn(reloaded)).toHaveTextContent('Unsent words.')
+      expect(
+        await within(reloaded.container).findByRole('group', {
+          name: 'Note: Recovered an unsent edit',
+        }),
+      ).toBeInTheDocument()
+      await waitFor(
+        () => {
+          expect(saved.join()).toContain('Unsent words.')
+        },
+        { timeout: 4000 },
+      )
+      reloaded.unmount()
+    } finally {
+      vi.unstubAllGlobals()
+    }
   })
 })

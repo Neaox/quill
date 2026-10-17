@@ -3,6 +3,7 @@ import type {
   Clock,
   ContentStore,
   DocumentFormat,
+  DrawingText,
   Hasher,
   IdGenerator,
   SearchIndex,
@@ -14,6 +15,7 @@ import type {
 } from '@quill/application'
 import type { SearchService } from '@quill/search'
 
+import type { ServerChildPagesCache } from './child-pages/cache.ts'
 import type { BreachedPasswordChecker } from './auth/breached-password.ts'
 import type { IdentityProviderRegistry } from './auth/oidc/registry.ts'
 import type { Mailer } from './auth/mailer.ts'
@@ -22,6 +24,8 @@ import type { RateLimiter } from './auth/rate-limit.ts'
 import type { ServerConfig } from './config.ts'
 import type { PublicSiteCache } from './public-site/cache.ts'
 import type { PublicStylesheets } from './public-site/stylesheet.ts'
+import type { FaceFiles } from './theme/face-files.ts'
+import type { ThemeStylesheets } from './theme/theme-stylesheet.ts'
 
 /**
  * Everything a route or a use case needs that isn't pure business logic.
@@ -72,6 +76,17 @@ export interface AppDependencies {
   readonly searchIndex: SearchIndex
   readonly search: SearchService
   /**
+   * The curated faces' files, read once at boot and served by their content
+   * hash (ADR-028), for pages that have no bundle behind them.
+   */
+  readonly faceFiles: FaceFiles
+  /**
+   * The organisation's theme as a stylesheet, generated once per theme and
+   * linked by the application and embedded in the public site's sheet
+   * (ADR-028, "Delivery").
+   */
+  readonly themeStylesheets: ThemeStylesheets
+  /**
    * The public site's stylesheet, generated from the organisation's theme and
    * kept by its hash (ADR-023, ADR-028). Built at the composition root because
    * it reads the design system's CSS off disk once, which is not something a
@@ -85,6 +100,11 @@ export interface AppDependencies {
    * change what a site shows.
    */
   readonly publicSiteCache: PublicSiteCache
+  /**
+   * The subtrees child pages lists are drawn from (ADR-049), invalidated by
+   * the outbox. Omitted, every list reads its subtree afresh.
+   */
+  readonly childPagesCache?: ServerChildPagesCache | undefined
   readonly mailer: Mailer
   /** The breached-password corpus (ADR-011). Fails open, and says so in the audit log. */
   readonly breachedPasswords: BreachedPasswordChecker
@@ -110,6 +130,8 @@ export interface AppDependencies {
    * the difference by making the maximum window the same as the first one.
    */
   readonly attachmentRateLimiter: RateLimiter
+  /** Reads a drawing's words for search on upload and revision (ADR-043; `extensions/drawio`). */
+  readonly drawingText: DrawingText
   /**
    * Argon2id, with the dummy hash sign-in needs already computed. Built by
    * `createPasswordHasher` in the composition root, never lazily on a request.

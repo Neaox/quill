@@ -87,7 +87,7 @@ describe('the template surface', () => {
 
   it('names a callout by the tone it carries', () => {
     open()
-    expect(screen.getByRole('group', { name: 'Callout: warning' })).toBeVisible()
+    expect(screen.getByRole('group', { name: 'Warning callout' })).toBeVisible()
   })
 
   it('renders the template surface without an accessibility violation', async () => {

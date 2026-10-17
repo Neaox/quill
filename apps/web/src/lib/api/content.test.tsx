@@ -6,7 +6,8 @@ import {
   useDocumentHistory,
   usePublishedContent,
   useRenderedDocument,
-  useRevisionDiff,
+  useComparison,
+  useSourceComparison,
 } from './content.ts'
 import { ApiError } from './errors.ts'
 import { createHookWrapper } from './hook-wrapper.tsx'
@@ -151,18 +152,34 @@ describe('useDocumentHistory', () => {
   })
 })
 
-describe('useRevisionDiff', () => {
+const EMPTY_COMPARISON = {
+  html: '<article></article>',
+  summary: {
+    sections: 0,
+    added: 0,
+    removed: 0,
+    changed: 0,
+    moved: 0,
+    wordsAdded: 0,
+    wordsRemoved: 0,
+  },
+  changes: [],
+  sections: [],
+  properties: [],
+}
+
+describe('useComparison', () => {
   it('asks for both ends of the comparison', async () => {
     const asked: Array<Record<string, string>> = []
     const wrapper = createHookWrapper({
-      'GET /api/documents/{id}/diff': (request) => {
+      'GET /api/documents/{id}/compare': (request) => {
         asked.push(Object.fromEntries(new URL(request.url).searchParams))
-        return jsonResponse(200, { from: 'a', to: 'b', unified: '', added: 0, removed: 0 })
+        return jsonResponse(200, EMPTY_COMPARISON)
       },
     })
 
     const { result } = renderHook(
-      () => useRevisionDiff('doc-1', { from: 'a'.repeat(40), to: 'b'.repeat(40) }),
+      () => useComparison('doc-1', { from: 'a'.repeat(40), to: 'b'.repeat(40) }),
       { wrapper },
     )
 
@@ -175,28 +192,30 @@ describe('useRevisionDiff', () => {
   it('omits `from` so the server compares against the empty document', async () => {
     const asked: Array<Record<string, string>> = []
     const wrapper = createHookWrapper({
-      'GET /api/documents/{id}/diff': (request) => {
+      'GET /api/documents/{id}/compare': (request) => {
         asked.push(Object.fromEntries(new URL(request.url).searchParams))
-        return jsonResponse(200, { from: null, to: 'b', unified: '', added: 0, removed: 0 })
+        return jsonResponse(200, EMPTY_COMPARISON)
       },
     })
 
-    const { result } = renderHook(
-      () => useRevisionDiff('doc-1', { from: null, to: 'b'.repeat(40) }),
-      { wrapper },
-    )
+    const { result } = renderHook(() => useComparison('doc-1', { from: null, to: 'draft' }), {
+      wrapper,
+    })
 
     await waitFor(() => {
       expect(result.current.data).toBeDefined()
     })
-    expect(asked).toEqual([{ to: 'b'.repeat(40) }])
+    expect(asked).toEqual([{ to: 'draft' }])
   })
+})
 
-  it('waits until there is something to compare', () => {
+describe('useSourceComparison', () => {
+  it('waits until the source view asks for it', () => {
     const wrapper = createHookWrapper({})
-
-    const { result } = renderHook(() => useRevisionDiff('doc-1', undefined), { wrapper })
-
+    const { result } = renderHook(
+      () => useSourceComparison('doc-1', { from: null, to: 'b'.repeat(40) }, { enabled: false }),
+      { wrapper },
+    )
     expect(result.current.fetchStatus).toBe('idle')
   })
 })

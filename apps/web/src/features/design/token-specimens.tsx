@@ -321,15 +321,15 @@ export function LayoutSpecimen() {
   )
 }
 
-/** The rule treatment a theme chooses: hairline, double, or cards. */
+/** The rule treatment a theme chooses: hairline, double, cards, or plain space. */
 export function RulesSpecimen({ chosen }: { readonly chosen: string }) {
   return (
     <Specimen
       label="Rules"
       note={`this identity uses ${chosen}; each panel below reads the rules-* variants`}
-      bodyClassName="grid gap-5 sm:grid-cols-3"
+      bodyClassName="grid gap-5 sm:grid-cols-4"
     >
-      {(['hairline', 'double', 'cards'] as const).map((rules) => (
+      {(['hairline', 'double', 'cards', 'plain'] as const).map((rules) => (
         <div key={rules} data-rules={rules} className="flex flex-col gap-3">
           <p className="meta">{rules}</p>
           <hr

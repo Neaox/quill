@@ -30,3 +30,24 @@ describe('createMemoryRecoveryStore', () => {
     expect(store.read()).toBeUndefined()
   })
 })
+
+describe('the base a recovery store keeps', () => {
+  it('has none until one is written', () => {
+    expect(createMemoryRecoveryStore().readBase()).toBeUndefined()
+  })
+
+  it('starts from a base left over from a previous session', () => {
+    expect(createMemoryRecoveryStore(entry, { ast, draftVersion: 2 }).readBase()).toEqual({
+      ast,
+      draftVersion: 2,
+    })
+  })
+
+  it('keeps only the latest base, and outlives the edit it was the base of', () => {
+    const store = createMemoryRecoveryStore(entry)
+    store.writeBase({ ast, draftVersion: 3 })
+    store.writeBase({ ast, draftVersion: 4 })
+    store.clear()
+    expect(store.readBase()).toEqual({ ast, draftVersion: 4 })
+  })
+})

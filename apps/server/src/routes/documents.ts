@@ -1,7 +1,9 @@
 import { Type } from '@sinclair/typebox'
 import type { TypeBoxTypeProvider } from '@fastify/type-provider-typebox'
 import {
-  getDiff,
+  compareRevisions,
+  compareRevisionSources,
+  DRAFT,
   getEnvelope,
   getHistory,
   publishDocument,
@@ -11,7 +13,7 @@ import {
   restoreRevision,
   updateDocument,
 } from '@quill/application'
-import type { CollectionId, PublishAuthor } from '@quill/application'
+import type { CollectionId, CompareRevisionsCommand, PublishAuthor } from '@quill/application'
 import { revisionId } from '@quill/domain'
 import type { DocumentId, DocumentStatus, RevisionId } from '@quill/domain'
 import type { FastifyPluginAsync, FastifyRequest } from 'fastify'
@@ -21,18 +23,19 @@ import {
   requireCollectionAccess,
   requireDocumentAccess,
 } from '../application/authorization.ts'
-import { resolveDocumentId } from '../application/references.ts'
+import { readableDocuments, resolveDocumentId } from '../application/references.ts'
 import type { AppDependencies } from '../dependencies.ts'
 import { conflict, lockLost, notFound, unprocessable } from '../errors.ts'
 import { notModified } from '../errors.ts'
 import { requireAuthenticatedSession } from '../plugins/session.ts'
 import {
+  comparisonResponse,
   ContentSchema,
   documentResponse,
   envelopeResponse,
   historyResponse,
-  DiffQuerySchema,
-  DiffSchema,
+  CompareQuerySchema,
+  ComparisonSchema,
   DocumentSchema,
   EnvelopeSchema,
   HistoryQuerySchema,
@@ -44,6 +47,8 @@ import {
   RenderedQuerySchema,
   RenderedSchema,
   RestoreBodySchema,
+  SourceComparisonSchema,
+  sourceComparisonResponse,
 } from './document-schemas.ts'
 import { DocumentStatusSchema } from './document-schemas.ts'
 
@@ -170,14 +175,23 @@ export function documentRoutes(deps: AppDependencies): FastifyPluginAsync {
       },
       async (request) => {
         const documentId = await resolveDocumentId(deps, request.params.id)
-        const access = await requireDocumentAccess(authorizerFor(deps, request), documentId, 'view')
+        const authorizer = authorizerFor(deps, request)
+        const access = await requireDocumentAccess(authorizer, documentId, 'view')
         const envelope = await getEnvelope(deps, {
           documentId,
           capabilities: access.capabilities,
         })
         /* v8 ignore next -- the authorizer has already loaded this document. */
         if (envelope.kind !== 'envelope') throw notFound('Document not found')
-        return envelopeResponse(envelope.envelope)
+        // A deprecated document's replacement, named and linked only if this
+        // reader may open it (ADR-012): the same answer a link to it gets.
+        const { lifecycle } = envelope.envelope.facts
+        const replacedBy = lifecycle?.state === 'deprecated' ? lifecycle.supersededBy : undefined
+        const replacement =
+          replacedBy === undefined
+            ? undefined
+            : (await readableDocuments(deps, authorizer, [replacedBy])).get(replacedBy)
+        return envelopeResponse(envelope.envelope, replacement)
       },
     )
 
@@ -200,6 +214,7 @@ export function documentRoutes(deps: AppDependencies): FastifyPluginAsync {
           base: readBase(request.body.base),
           author: await author(request),
           sessionId: session.sessionId,
+          appOrigins: [deps.config.appOrigin],
           ...(request.body.changeNote === undefined ? {} : { changeNote: request.body.changeNote }),
         })
 
@@ -316,36 +331,63 @@ export function documentRoutes(deps: AppDependencies): FastifyPluginAsync {
       },
     )
 
+    /**
+     * Two versions of a document as one page: two revisions, or the published
+     * head and the draft (`to=draft`), which only someone who may edit the
+     * document may read, as they may read the draft itself.
+     *
+     * The comparison is a pure function of what it compares, so it is tagged
+     * with its key and revalidated like a body (ADR-031), and nothing in it
+     * names how the content store keeps a revision (rule 9).
+     */
     app.get(
-      '/api/documents/:id/diff',
+      '/api/documents/:id/compare',
       {
         preHandler: app.requireSession,
         schema: {
           params: IdParamsSchema,
-          querystring: DiffQuerySchema,
-          response: { 200: DiffSchema },
+          querystring: CompareQuerySchema,
+          response: { 200: ComparisonSchema },
+        },
+      },
+      async (request, reply) => {
+        const documentId = await resolveDocumentId(deps, request.params.id)
+        const range = await comparisonRange(deps, request, request.query, documentId)
+        const etag = request.headers['if-none-match']
+        const result = await compareRevisions(deps, {
+          ...range,
+          appOrigins: [deps.config.appOrigin],
+          known: typeof etag === 'string' ? etag.replaceAll('"', '') : undefined,
+        })
+        if (result.kind === 'not-modified') {
+          reply.header('etag', `"${result.key}"`)
+          throw notModified()
+        }
+        if (result.kind !== 'compared') throw comparisonRefused(result.kind)
+        reply.header('etag', `"${result.key}"`)
+        reply.header('cache-control', 'private, no-cache')
+        return comparisonResponse(result.content)
+      },
+    )
+
+    app.get(
+      '/api/documents/:id/compare/source',
+      {
+        preHandler: app.requireSession,
+        schema: {
+          params: IdParamsSchema,
+          querystring: CompareQuerySchema,
+          response: { 200: SourceComparisonSchema },
         },
       },
       async (request) => {
         const documentId = await resolveDocumentId(deps, request.params.id)
-        await requireDocumentAccess(authorizerFor(deps, request), documentId, 'view')
-        const result = await getDiff(deps, {
-          documentId,
-          from: readBase(request.query.from),
-          to: revisionId(request.query.to),
+        const result = await compareRevisionSources(deps, {
+          ...(await comparisonRange(deps, request, request.query, documentId)),
+          appOrigins: [deps.config.appOrigin],
         })
-        if (result.kind === 'revision-not-found') {
-          throw notFound('That revision does not exist for this document')
-        }
-        /* v8 ignore next -- the authorizer has already loaded this document. */
-        if (result.kind !== 'diff') throw notFound('Document not found')
-        return {
-          from: result.diff.from,
-          to: result.diff.to,
-          unified: result.diff.unified,
-          added: result.diff.added,
-          removed: result.diff.removed,
-        }
+        if (result.kind !== 'compared') throw comparisonRefused(result.kind)
+        return sourceComparisonResponse(result.source)
       },
     )
 
@@ -455,6 +497,34 @@ export function documentRoutes(deps: AppDependencies): FastifyPluginAsync {
  * before the null branch is tried, so "no base" arrives either way and is read
  * the same way here.
  */
+/**
+ * What a comparison request asks to compare, once the reader is allowed to
+ * see both sides: `view` for revisions, and `edit` for the draft, which is
+ * what reading a draft requires everywhere else.
+ */
+async function comparisonRange(
+  deps: AppDependencies,
+  request: FastifyRequest,
+  query: { readonly from?: string | undefined; readonly to: string },
+  documentId: DocumentId,
+): Promise<Omit<CompareRevisionsCommand, 'known'>> {
+  const toDraft = query.to === DRAFT
+  await requireDocumentAccess(authorizerFor(deps, request), documentId, toDraft ? 'edit' : 'view')
+  return {
+    documentId,
+    from: readBase(query.from),
+    to: toDraft ? DRAFT : revisionId(query.to),
+  }
+}
+
+function comparisonRefused(kind: 'not-found' | 'revision-not-found' | 'no-draft'): Error {
+  if (kind === 'revision-not-found')
+    return notFound('That revision does not exist for this document')
+  if (kind === 'no-draft') return notFound('This document has no draft to compare with')
+  /* v8 ignore next -- the authorizer has already loaded this document. */
+  return notFound('Document not found')
+}
+
 function readBase(value: string | null | undefined): RevisionId | null {
   return typeof value === 'string' && value.length > 0 ? revisionId(value) : null
 }

@@ -1,10 +1,15 @@
 import type { DocumentId, UserId } from '@quill/domain'
 
 import { concatChunks, type BlobStore } from '../ports/blob-store.ts'
+import type { DrawingText } from '../ports/drawing-text.ts'
 import type { AttachmentId, AttachmentRow, DocumentRow, UnitOfWork } from '../ports/persistence.ts'
 import type { Clock, IdGenerator } from '../ports/system.ts'
+import { ATTACHMENT_REVISED, EVENT_PAYLOAD_VERSION } from './events.ts'
+import type { AttachmentRevisedPayload } from './events.ts'
 import { MalformedImage, stripImageMetadata } from './image-metadata.ts'
 import {
+  DIAGRAM_SOURCE_MEDIA_TYPE,
+  DRAWING_MEDIA_TYPE,
   isAllowedMediaType,
   isImageMediaType,
   isInlineMediaType,
@@ -45,8 +50,28 @@ export function attachmentUrl(id: AttachmentId): string {
  */
 export const ATTACHMENT_URL_PREFIX = '/api/attachments/'
 
+const ATTACHMENT_REFERENCE =
+  /\/api\/attachments\/[\da-f]{8}-[\da-f]{4}-[\da-f]{4}-[\da-f]{4}-[\da-f]{12}/giu
+
+/**
+ * The attachments a body names, by id, each once, in the order first named.
+ * The renderer reads the drawings among them and search reads their words, so
+ * both find them the same way, in one pass over the Markdown.
+ */
+export function attachmentIdsIn(markdown: string): readonly AttachmentId[] {
+  if (!markdown.includes(ATTACHMENT_URL_PREFIX)) return []
+  return [
+    ...new Set(
+      Array.from(markdown.matchAll(ATTACHMENT_REFERENCE), ([reference]) =>
+        reference.slice(ATTACHMENT_URL_PREFIX.length).toLowerCase(),
+      ),
+    ),
+  ]
+}
+
 export const ATTACHMENT_AUDIT_EVENTS = {
   uploaded: 'attachment.uploaded',
+  revised: 'attachment.revised',
   deleted: 'attachment.deleted',
 } as const
 
@@ -55,6 +80,8 @@ export interface AttachmentDependencies {
   readonly blobStore: BlobStore
   readonly clock: Clock
   readonly ids: IdGenerator
+  /** Reads a drawing's words for search, on upload and on each revision (ADR-043). */
+  readonly drawingText: DrawingText
 }
 
 // ---------------------------------------------------------------------------
@@ -96,6 +123,21 @@ export type UploadAttachmentResult =
    */
   | { readonly kind: 'malformed'; readonly contentType: ImageMediaType; readonly reason: string }
 
+/** Why a file's bytes were not accepted, whether they came as an upload or as a revision. */
+export type AttachmentRefusal = Extract<
+  UploadAttachmentResult,
+  { kind: 'too-large' | 'empty' | 'type-not-allowed' | 'type-mismatch' | 'malformed' }
+>
+
+/** A file's bytes, accepted and in the blob store. */
+interface Received {
+  readonly kind: 'received'
+  readonly contentType: AllowedMediaType
+  readonly sha256: string
+  readonly size: number
+  readonly searchText: string | null
+}
+
 /**
  * A file becomes an attachment.
  *
@@ -117,7 +159,29 @@ export async function uploadAttachment(
   const document = await deps.uow.repos.documents.findById(command.documentId)
   if (document === null) return { kind: 'document-not-found', documentId: command.documentId }
 
-  const rest = capped(command.body, command.maxBytes)
+  const received = await receive(deps, command)
+  if (received.kind !== 'received') return received
+  return store(deps, command, document, received)
+}
+
+/** The parts of a command that carry a file's bytes. */
+interface IncomingFile {
+  /** What the sender said it was. Checked against the bytes, never believed. */
+  readonly declaredContentType: string
+  readonly body: AsyncIterable<Uint8Array>
+  /** The cap, from configuration. Counted as the bytes arrive. */
+  readonly maxBytes: number
+}
+
+/**
+ * A file's bytes, checked, stored, and read for words: the intake an upload
+ * and a revision share, so a revision is held to exactly what an upload is.
+ */
+async function receive(
+  deps: AttachmentDependencies,
+  file: IncomingFile,
+): Promise<Received | AttachmentRefusal> {
+  const rest = capped(file.body, file.maxBytes)
 
   let head: Uint8Array
   try {
@@ -127,7 +191,7 @@ export async function uploadAttachment(
   }
   if (head.length === 0) return { kind: 'empty' }
 
-  const decided = decide(head, command.declaredContentType)
+  const decided = decide(head, file.declaredContentType)
   if (decided.kind !== 'allowed') return decided
 
   // The type is known before a byte reaches the store, so the store is told
@@ -136,7 +200,12 @@ export async function uploadAttachment(
   // this platform will actually serve — two uploads of the same photograph,
   // one carrying its coordinates and one not, are one object.
   const whole = join(head, rest)
-  const bytes = isImageMediaType(decided.type) ? stripImageMetadata(decided.type, whole) : whole
+  const kept: Uint8Array[] = []
+  const bytes = isImageMediaType(decided.type)
+    ? stripImageMetadata(decided.type, whole)
+    : hasWords(decided.type)
+      ? keeping(whole, kept)
+      : whole
 
   let blob
   try {
@@ -149,7 +218,38 @@ export async function uploadAttachment(
     return refusal(error)
   }
 
-  return store(deps, command, document, blob.hash, blob.size, decided.type)
+  const searchText = hasWords(decided.type)
+    ? await deps.drawingText.read(
+        new TextDecoder('utf-8', { fatal: false }).decode(concatChunks(kept)),
+      )
+    : null
+  return {
+    kind: 'received',
+    contentType: decided.type,
+    sha256: blob.hash,
+    size: blob.size,
+    searchText,
+  }
+}
+
+/**
+ * The types whose words are worth reading for search: drawings, whose labels
+ * a reader sees but the Markdown does not say (ADR-043). Both are text held
+ * under the upload cap, so keeping a copy while they stream is bounded.
+ */
+function hasWords(type: AllowedMediaType): boolean {
+  return type === DRAWING_MEDIA_TYPE || type === DIAGRAM_SOURCE_MEDIA_TYPE
+}
+
+/** The stream as it was, each chunk also kept for a reader once the store has it. */
+async function* keeping(
+  chunks: AsyncIterable<Uint8Array>,
+  kept: Uint8Array[],
+): AsyncGenerator<Uint8Array> {
+  for await (const chunk of chunks) {
+    kept.push(chunk)
+    yield chunk
+  }
 }
 
 /** Enough of the body to sniff, or all of it when there is less than that. */
@@ -217,9 +317,9 @@ function decide(head: Uint8Array, declaredContentType: string): Decision {
  * anything but exceptions. It is caught the moment it comes back out.
  */
 class UploadRefused extends Error {
-  readonly result: UploadAttachmentResult
+  readonly result: AttachmentRefusal
 
-  constructor(result: UploadAttachmentResult) {
+  constructor(result: AttachmentRefusal) {
     super('upload refused')
     this.name = 'UploadRefused'
     this.result = result
@@ -234,7 +334,7 @@ class UploadRefused extends Error {
  * cap, which throws its own result, and the container walkers, which throw
  * `MalformedImage` — so both are recognised here and nothing else is.
  */
-function refusal(error: unknown): UploadAttachmentResult {
+function refusal(error: unknown): AttachmentRefusal {
   if (error instanceof UploadRefused) return error.result
   if (error instanceof MalformedImage) {
     return { kind: 'malformed', contentType: error.contentType, reason: error.reason }
@@ -247,10 +347,9 @@ async function store(
   deps: AttachmentDependencies,
   command: UploadAttachmentCommand,
   document: DocumentRow,
-  sha256: string,
-  size: number,
-  contentType: string,
+  received: Received,
 ): Promise<UploadAttachmentResult> {
+  const { contentType, size, sha256, searchText } = received
   const now = deps.clock.now()
   const id = deps.ids.uuid()
   const attachment = await deps.uow.run(async (tx) => {
@@ -263,6 +362,7 @@ async function store(
       contentType,
       size,
       sha256,
+      searchText,
       now,
     })
     await tx.audit.write({
@@ -277,6 +377,105 @@ async function store(
     return row
   })
   return { kind: 'uploaded', attachment, url: attachmentUrl(attachment.id) }
+}
+
+// ---------------------------------------------------------------------------
+// Revise
+// ---------------------------------------------------------------------------
+
+export interface ReviseAttachmentCommand extends IncomingFile {
+  readonly attachmentId: AttachmentId
+  readonly revisedBy: UserId
+  /** The version the writer edited (ADR-043, "Concurrency"). */
+  readonly expectedVersion: number
+}
+
+export type ReviseAttachmentResult =
+  | { readonly kind: 'revised'; readonly attachment: AttachmentRow; readonly url: string }
+  | { readonly kind: 'not-found'; readonly attachmentId: AttachmentId }
+  /**
+   * Somebody saved a newer revision since this writer opened theirs. Nothing
+   * is written: the writer chooses to save theirs as a copy or to reload, and
+   * is never silently overwritten, or overwriting.
+   */
+  | { readonly kind: 'version-conflict'; readonly current: AttachmentRow }
+  /** A revision keeps its kind: a drawing stays a drawing, so the documents showing it still can. */
+  | { readonly kind: 'type-changed'; readonly current: string; readonly sniffed: string }
+  | AttachmentRefusal
+
+/**
+ * A new revision of an attachment, under the same id and URL (ADR-043).
+ *
+ * Every document that shows the attachment shows the revision, and none of
+ * them gets a revision of its own: the attachment carries its own history,
+ * one row per version it replaced. The version is a compare-and-set, checked
+ * before the bytes are read and again where the row is written, so two
+ * writers saving at once cannot both win.
+ *
+ * The caller has already decided the writer may `edit` the owning document.
+ */
+export async function reviseAttachment(
+  deps: AttachmentDependencies,
+  command: ReviseAttachmentCommand,
+): Promise<ReviseAttachmentResult> {
+  const current = await deps.uow.repos.attachments.findById(command.attachmentId)
+  if (current === null || current.deletedAt !== null) {
+    return { kind: 'not-found', attachmentId: command.attachmentId }
+  }
+  if (current.version !== command.expectedVersion) return { kind: 'version-conflict', current }
+
+  const received = await receive(deps, command)
+  if (received.kind !== 'received') return received
+  if (received.contentType !== current.contentType) {
+    return { kind: 'type-changed', current: current.contentType, sniffed: received.contentType }
+  }
+
+  const now = deps.clock.now()
+  const revised = await deps.uow.run(async (tx) => {
+    const row = await tx.attachments.revise({
+      id: current.id,
+      expectedVersion: command.expectedVersion,
+      revisedBy: command.revisedBy,
+      contentType: received.contentType,
+      size: received.size,
+      sha256: received.sha256,
+      searchText: received.searchText,
+      now,
+    })
+    if (row === null) return null
+    await tx.audit.write({
+      id: deps.ids.uuid(),
+      type: ATTACHMENT_AUDIT_EVENTS.revised,
+      actorUserId: command.revisedBy,
+      targetType: 'attachment',
+      targetId: row.id,
+      metadata: {
+        documentId: row.documentId,
+        version: row.version,
+        size: row.size,
+        sha256: row.sha256,
+      },
+      now,
+    })
+    const event: AttachmentRevisedPayload = {
+      version: EVENT_PAYLOAD_VERSION,
+      attachmentId: row.id,
+      documentId: row.documentId,
+      workspaceId: row.workspaceId,
+      attachmentVersion: row.version,
+    }
+    await tx.outbox.write({ id: deps.ids.uuid(), type: ATTACHMENT_REVISED, payload: event, now })
+    return row
+  })
+
+  if (revised !== null) {
+    return { kind: 'revised', attachment: revised, url: attachmentUrl(revised.id) }
+  }
+  // Lost the race between the check above and the write: answer with what won.
+  const winner = await deps.uow.repos.attachments.findById(command.attachmentId)
+  return winner === null || winner.deletedAt !== null
+    ? { kind: 'not-found', attachmentId: command.attachmentId }
+    : { kind: 'version-conflict', current: winner }
 }
 
 /** How long a name may be before it stops being a label and starts being a payload. */

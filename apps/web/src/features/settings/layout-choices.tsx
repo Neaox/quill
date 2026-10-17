@@ -42,6 +42,8 @@ export interface LayoutAxis {
   readonly legend: string
   readonly description: string
   readonly options: readonly LayoutOption[]
+  /** What an axis reads as when a layout saved before it existed leaves it unstated. */
+  readonly fallback?: string
   /** Applies a chosen option; returns the layout unchanged for a value outside the set. */
   readonly apply: (layout: LayoutSettings, value: string) => LayoutSettings
 }
@@ -212,7 +214,7 @@ export const LAYOUT_AXES: readonly LayoutAxis[] = [
     legend: 'Dividers',
     description: 'How sections of a document are separated.',
     apply: (layout, value) =>
-      value === 'double' || value === 'hairline' || value === 'cards'
+      value === 'double' || value === 'hairline' || value === 'cards' || value === 'plain'
         ? { ...layout, rules: value }
         : layout,
     options: [
@@ -252,9 +254,62 @@ export const LAYOUT_AXES: readonly LayoutAxis[] = [
           </Sketch>
         ),
       },
+      {
+        value: 'plain',
+        label: 'Space',
+        description: 'No rule at all: the heading and the space above it.',
+        illustration: (
+          <Sketch>
+            <rect x="6" y="7" width="52" height="3" className={PANE} />
+            <rect x="6" y="20" width="30" height="3" className={LINE} />
+            <rect x="6" y="26" width="52" height="3" className={PANE} />
+          </Sketch>
+        ),
+      },
+    ],
+  },
+  {
+    key: 'align',
+    legend: 'Reading column',
+    description: 'Where the text sits in the space beside the navigation.',
+    fallback: 'centre',
+    apply: (layout, value) =>
+      value === 'centre' || value === 'start' ? { ...layout, align: value } : layout,
+    options: [
+      {
+        value: 'centre',
+        label: 'Centred',
+        description: 'In the middle of the space, with room either side.',
+        illustration: (
+          <Sketch>
+            <rect x="4" y="6" width="10" height="28" className={PANE} />
+            <rect x="24" y="9" width="26" height="3" className={LINE} />
+            <rect x="24" y="16" width="26" height="3" className={PANE} />
+            <rect x="24" y="23" width="26" height="3" className={PANE} />
+          </Sketch>
+        ),
+      },
+      {
+        value: 'start',
+        label: 'Beside the navigation',
+        description: 'Flush against the navigation, the way a documentation site reads.',
+        illustration: (
+          <Sketch>
+            <rect x="4" y="6" width="10" height="28" className={PANE} />
+            <rect x="18" y="9" width="26" height="3" className={LINE} />
+            <rect x="18" y="16" width="26" height="3" className={PANE} />
+            <rect x="18" y="23" width="26" height="3" className={PANE} />
+          </Sketch>
+        ),
+      },
     ],
   },
 ]
+
+/** An axis's value in a layout, or what it reads as when the layout predates it. */
+function valueOf(layout: LayoutSettings, axis: LayoutAxis): string {
+  return layout[axis.key] ?? axis.fallback ?? ''
+}
 
 const layoutChoice = tv({
   slots: {
@@ -370,7 +425,7 @@ export function LayoutChoices({
         <LayoutChoice
           key={axis.key}
           axis={axis}
-          value={layout[axis.key]}
+          value={valueOf(layout, axis)}
           disabled={disabled}
           {...(groupPrefix === undefined ? {} : { groupName: `${groupPrefix}-${axis.key}` })}
           onValueChange={(next) => {
@@ -391,6 +446,6 @@ export function layoutOptionLabel(key: LayoutKey, value: string): string {
 /** A whole layout in words, for a conflict notice or a locked readout. */
 export function describeLayout(layout: LayoutSettings): string {
   return LAYOUT_AXES.map(
-    (axis) => `${axis.legend}: ${layoutOptionLabel(axis.key, layout[axis.key])}`,
+    (axis) => `${axis.legend}: ${layoutOptionLabel(axis.key, valueOf(layout, axis))}`,
   ).join(', ')
 }

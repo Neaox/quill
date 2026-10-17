@@ -11,8 +11,19 @@ import type {
   UpdateDocumentPatch,
 } from '../ports/persistence.ts'
 import type { Clock, IdGenerator } from '../ports/system.ts'
-import { DOCUMENT_MOVED, DOCUMENT_RENAMED, EVENT_PAYLOAD_VERSION } from './events.ts'
-import type { DocumentMovedPayload, DocumentRenamedPayload } from './events.ts'
+import {
+  DOCUMENT_DELETED,
+  DOCUMENT_MOVED,
+  DOCUMENT_NESTED,
+  DOCUMENT_RENAMED,
+  EVENT_PAYLOAD_VERSION,
+} from './events.ts'
+import type {
+  DocumentDeletedPayload,
+  DocumentMovedPayload,
+  DocumentNestedPayload,
+  DocumentRenamedPayload,
+} from './events.ts'
 import { heldByAnother, readDraftContent } from './publish-document.ts'
 
 /**
@@ -185,6 +196,17 @@ export async function updateDocument(
       }
       await tx.outbox.write({ id: deps.ids.uuid(), type: DOCUMENT_MOVED, payload, now })
       await auditMove(deps, tx, { document, updated, now, sessionId: command.sessionId })
+    } else if (updated.parentId !== document.parentId) {
+      // A re-nesting inside the collection moves nothing on the web, but it
+      // changes the pages listed under both parents (ADR-049).
+      const payload: DocumentNestedPayload = {
+        version: EVENT_PAYLOAD_VERSION,
+        documentId: document.id,
+        workspaceId: document.workspaceId,
+        fromParentId: document.parentId,
+        toParentId: updated.parentId,
+      }
+      await tx.outbox.write({ id: deps.ids.uuid(), type: DOCUMENT_NESTED, payload, now })
     }
     return { kind: 'updated', document: updated }
   })
@@ -356,21 +378,37 @@ export async function deleteDocument(
   const siblings = await repos.documents.listByWorkspace(document.workspaceId)
   const orphaned = siblings.filter((row) => row.parentId === command.documentId).length
 
-  await repos.documents.delete(command.documentId)
-  await repos.audit.write({
-    id: deps.ids.uuid(),
-    type: DOCUMENT_AUDIT_EVENTS.deleted,
-    actorUserId: command.deletedBy,
-    targetType: 'document',
-    targetId: document.id,
-    metadata: {
-      workspaceId: document.workspaceId,
-      collectionId: document.collectionId,
-      title: document.title,
-      path: document.path,
-      childrenLifted: orphaned,
-    },
-    now: deps.clock.now(),
+  const payload: DocumentDeletedPayload = {
+    version: EVENT_PAYLOAD_VERSION,
+    documentId: document.id,
+    workspaceId: document.workspaceId,
+    parentId: document.parentId,
+    collectionId: document.collectionId,
+  }
+  await deps.uow.run(async (tx) => {
+    await tx.documents.delete(command.documentId)
+    // The pages listed under its parent, and the ones it lifted, have changed (ADR-049).
+    await tx.outbox.write({
+      id: deps.ids.uuid(),
+      type: DOCUMENT_DELETED,
+      payload,
+      now: deps.clock.now(),
+    })
+    await tx.audit.write({
+      id: deps.ids.uuid(),
+      type: DOCUMENT_AUDIT_EVENTS.deleted,
+      actorUserId: command.deletedBy,
+      targetType: 'document',
+      targetId: document.id,
+      metadata: {
+        workspaceId: document.workspaceId,
+        collectionId: document.collectionId,
+        title: document.title,
+        path: document.path,
+        childrenLifted: orphaned,
+      },
+      now: deps.clock.now(),
+    })
   })
   return { kind: 'deleted' }
 }

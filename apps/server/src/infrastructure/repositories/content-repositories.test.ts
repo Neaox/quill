@@ -4,6 +4,7 @@ import type { CollectionId, GroupId } from '@quill/domain'
 
 import { createUuidGenerator } from '../uuid-generator.ts'
 import { createTestDatabase, type TestDatabase } from '../db/test-database.ts'
+import { createAttachmentRepository } from './attachment-repository.ts'
 import { createCollectionRepository } from './collection-repository.ts'
 import { createDocumentLinksRepository } from './document-links-repository.ts'
 import { createDocumentRepository } from './document-repository.ts'
@@ -104,6 +105,7 @@ afterAll(async () => {
 })
 
 beforeEach(async () => {
+  await database.pool.query('DELETE FROM attachments')
   await database.pool.query('DELETE FROM document_links')
   await database.pool.query('DELETE FROM render_cache')
   await database.pool.query('DELETE FROM revisions_index')
@@ -232,6 +234,35 @@ describe('CollectionRepository', () => {
         homeDocumentId: documentId('00000000-0000-4000-8000-0000000002ff'),
       }),
     ).rejects.toThrow(/Failed query/u)
+  })
+
+  it('lists collections by id, and finds them by a fragment of their name taken literally', async () => {
+    const runbooks = '00000000-0000-4000-8000-000000000304' as CollectionId
+    for (const [id, name] of [
+      [COLLECTION, 'Architecture'],
+      [runbooks, 'Runbooks 100%'],
+    ] as const) {
+      await collections.create({ id, workspaceId: WORKSPACE, name, slug: id.slice(-4), now: NOW })
+    }
+
+    expect(
+      (await collections.listByIds([runbooks, COLLECTION, 'nope' as CollectionId]))
+        .map((row) => row.name)
+        .toSorted(),
+    ).toEqual(['Architecture', 'Runbooks 100%'])
+    expect(await collections.listByIds([])).toEqual([])
+
+    expect((await collections.searchByName('ARCH', 10)).map((row) => row.name)).toEqual([
+      'Architecture',
+    ])
+    expect((await collections.searchByName('r', 1)).map((row) => row.name)).toEqual([
+      'Architecture',
+    ])
+    // `%` and `_` are what was typed, not wildcards.
+    expect((await collections.searchByName('0%', 10)).map((row) => row.name)).toEqual([
+      'Runbooks 100%',
+    ])
+    expect(await collections.searchByName('_', 10)).toEqual([])
   })
 })
 
@@ -480,5 +511,128 @@ describe('DocumentLinksRepository', () => {
     await documents.delete(CHILD)
     const [row] = await links.listForDocument(DOC)
     expect(row).toMatchObject({ kind: 'document', targetDocumentId: null })
+  })
+})
+
+describe('AttachmentRepository: the live attachments of one workspace', () => {
+  it('reads only live rows in the workspace asked, and asks nothing for no ids', async () => {
+    await seedDocuments()
+    const elsewhere = workspaceId('00000000-0000-4000-8000-000000000102')
+    await createWorkspaceRepository(database.db).create({
+      id: elsewhere,
+      unitId: 'platform',
+      name: 'Elsewhere',
+      slug: `elsewhere-${Date.now()}`,
+      now: NOW,
+    })
+    const attachments = createAttachmentRepository(database.db)
+    const attach = async (id: string, workspace: typeof WORKSPACE) =>
+      attachments.create({
+        id,
+        documentId: DOC,
+        workspaceId: workspace,
+        uploadedBy: MEMBER,
+        filename: 'the-loop.svg',
+        contentType: 'image/svg+xml',
+        size: 10,
+        sha256: 'a'.repeat(64),
+        now: NOW,
+      })
+    const live = '00000000-0000-4000-8000-000000000401'
+    const removed = '00000000-0000-4000-8000-000000000402'
+    const foreign = '00000000-0000-4000-8000-000000000403'
+    await attach(live, WORKSPACE)
+    await attach(removed, WORKSPACE)
+    await attach(foreign, elsewhere)
+    await attachments.softDelete(removed, NOW)
+
+    const found = await attachments.listLiveInWorkspace(WORKSPACE, [live, removed, foreign])
+
+    expect(found.map((row) => row.id)).toEqual([live])
+    expect(await attachments.listLiveInWorkspace(WORKSPACE, [])).toEqual([])
+    await database.pool.query('DELETE FROM attachments')
+    await database.pool.query('DELETE FROM workspaces WHERE id = $1', [elsewhere])
+  })
+})
+
+describe('AttachmentRepository: revisions (ADR-043)', () => {
+  const ID = '00000000-0000-4000-8000-000000000411'
+
+  async function drawing() {
+    await seedDocuments()
+    const attachments = createAttachmentRepository(database.db)
+    const created = await attachments.create({
+      id: ID,
+      documentId: DOC,
+      workspaceId: WORKSPACE,
+      uploadedBy: MEMBER,
+      filename: 'flow.drawio.svg',
+      contentType: 'image/svg+xml',
+      size: 10,
+      sha256: 'a'.repeat(64),
+      searchText: 'Gateway',
+      now: NOW,
+    })
+    return { attachments, created }
+  }
+
+  const revision = (expectedVersion: number, sha: string, now = NOW) => ({
+    id: ID,
+    expectedVersion,
+    revisedBy: MEMBER,
+    contentType: 'image/svg+xml',
+    size: 12,
+    sha256: sha.repeat(64),
+    searchText: 'Gateway\nLedger',
+    now,
+  })
+
+  it('starts an attachment at version 1 with its words', async () => {
+    const { created } = await drawing()
+    expect(created).toMatchObject({ version: 1, searchText: 'Gateway' })
+  })
+
+  it('replaces the bytes under the same id and keeps what each revision replaced', async () => {
+    const { attachments } = await drawing()
+    const later = new Date(NOW.getTime() + 60_000)
+
+    expect(await attachments.revise(revision(1, 'b', later))).toMatchObject({
+      id: ID,
+      version: 2,
+      sha256: 'b'.repeat(64),
+      size: 12,
+      searchText: 'Gateway\nLedger',
+    })
+    await attachments.revise(revision(2, 'c'))
+
+    const { rows } = await database.pool.query(
+      'SELECT version, sha256, saved_by, saved_at FROM attachment_revisions WHERE attachment_id = $1 ORDER BY version',
+      [ID],
+    )
+    expect(rows).toEqual([
+      { version: 1, sha256: 'a'.repeat(64), saved_by: MEMBER, saved_at: NOW },
+      { version: 2, sha256: 'b'.repeat(64), saved_by: MEMBER, saved_at: later },
+    ])
+  })
+
+  it('writes nothing for a version that is not the current one, or a removed attachment', async () => {
+    const { attachments } = await drawing()
+    expect(await attachments.revise(revision(2, 'b'))).toBeNull()
+    await attachments.softDelete(ID, NOW)
+    expect(await attachments.revise(revision(1, 'b'))).toBeNull()
+
+    expect(await attachments.findById(ID)).toMatchObject({ version: 1, sha256: 'a'.repeat(64) })
+    const { rows } = await database.pool.query('SELECT 1 FROM attachment_revisions')
+    expect(rows).toEqual([])
+  })
+
+  it('lets exactly one of two saves from the same version win', async () => {
+    const { attachments } = await drawing()
+    const results = await Promise.all([
+      attachments.revise(revision(1, 'b')),
+      attachments.revise(revision(1, 'c')),
+    ])
+    expect(results.filter((row) => row !== null)).toHaveLength(1)
+    expect(await attachments.findById(ID)).toMatchObject({ version: 2 })
   })
 })

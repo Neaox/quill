@@ -36,6 +36,8 @@ let admin: Record<string, string>
 
 const SITE = 'acme-docs'
 
+const STATUS_LINK = { kind: 'url', href: 'https://s.test', label: 'Status' } as const
+
 /** The two documents the site is made of, and the one taken off it. */
 let overview: DocumentId
 let rateLimits: DocumentId
@@ -52,6 +54,13 @@ const OVERVIEW_MARKDOWN = [
 ].join('\n')
 
 const RATE_LIMITS_MARKDOWN = [
+  '---',
+  'status: deprecated',
+  'supersededBy: OVERVIEW_ID',
+  'owners: [editor@example.com]',
+  'tags: [api, On call]',
+  '---',
+  '',
   '# Rate limits',
   '',
   'Every key is limited to one hundred requests a minute.',
@@ -59,6 +68,14 @@ const RATE_LIMITS_MARKDOWN = [
   '## Bursts',
   '',
   'A burst of twenty is allowed.',
+  '',
+  '## Headers',
+  '',
+  'Every response says how much is left.',
+  '',
+  '## When you are limited',
+  '',
+  'Wait, then try again.',
 ].join('\n')
 
 const SALARIES_MARKDOWN = ['# Salaries', '', 'Not for the web.'].join('\n')
@@ -198,11 +215,15 @@ beforeAll(async () => {
   editor = await harness.cookiesFor(tenancy.editor)
   admin = await harness.cookiesFor(tenancy.admin)
 
-  await settings({ name: 'Acme', publicNavigation: [{ label: 'Status', href: 'https://s.test' }] })
+  await settings({ name: 'Acme', publicMenu: [STATUS_LINK] })
   await allowPublishing(true)
 
   overview = await writePublished('Overview', OVERVIEW_MARKDOWN)
-  rateLimits = await writePublished('Rate limits', RATE_LIMITS_MARKDOWN)
+  // Deprecated in favour of a page the site shows (ADR-005 amendment).
+  rateLimits = await writePublished(
+    'Rate limits',
+    RATE_LIMITS_MARKDOWN.replace('OVERVIEW_ID', overview),
+  )
   salaries = await writePublished('Salaries', SALARIES_MARKDOWN)
   await harness.drainOutbox()
 
@@ -227,9 +248,44 @@ describe('the site home', () => {
     expect(body).toContain('<header class="site-header">')
     expect(body).toContain('<main class="site-main" id="site-main">')
     expect(body).toContain('<nav class="site-nav"')
-    expect(body).toContain('<a class="site-brand" href="/s/acme-docs">Acme</a>')
+    expect(body).toContain('<a class="site-brand" href="/s/acme-docs">')
+    expect(body).toMatch(/Acme\s*<span class="site-edition">docs<\/span>/u)
     expect(body).toContain('href="https://s.test"')
     expect(body).toContain('href="/s/acme-docs/architecture/rate-limits"')
+    expect(body).toMatch(/<summary>\s*Architecture\s*<span class="site-nav-count">/u)
+  })
+
+  it('loads the colour-scheme script from the site’s own origin, immutable and by hash', async () => {
+    const body = (await get(`/s/${SITE}`)).body
+    const src = /<script src="(\/s\/_assets\/scheme-[0-9a-f]{32}\.js)"><\/script>/u.exec(body)?.[1]
+    expect(src).toBeDefined()
+    const script = await get(src ?? '')
+    expect(script.statusCode).toBe(200)
+    expect(script.headers['content-type']).toContain('text/javascript')
+    expect(script.headers['cache-control']).toContain('immutable')
+    expect(script.body).toContain('theme-preference')
+    const etag = String(script.headers['etag'])
+    expect((await get(src ?? '', { 'if-none-match': etag })).statusCode).toBe(304)
+    expect((await get(`/s/_assets/scheme-${'0'.repeat(32)}.js`)).statusCode).toBe(404)
+  })
+
+  it('loads the reader as a module from its own origin, immutable and by hash', async () => {
+    const body = (await get(`/s/${SITE}`)).body
+    const src =
+      /<script type="module" src="(\/s\/_assets\/reader-[0-9a-f]{32}\.js)"><\/script>/u.exec(
+        body,
+      )?.[1]
+    expect(src).toBeDefined()
+    const script = await get(src ?? '')
+    expect(script.statusCode).toBe(200)
+    expect(script.headers['content-type']).toContain('text/javascript')
+    expect(script.headers['cache-control']).toContain('immutable')
+    // Highlighting and the lightbox, bundled: nothing left to import.
+    expect(script.body).toContain('applyHighlighting')
+    expect(script.body).toContain('diagram-expand')
+    expect(script.body).not.toMatch(/\bimport\s*[{(*'"`]/u)
+    expect((await get(`/s/_assets/reader-${'0'.repeat(32)}.js`)).statusCode).toBe(404)
+    expect((await get(`/s/_assets/lightbox-${'0'.repeat(32)}.js`)).statusCode).toBe(404)
   })
 
   it('carries none of the application shell', async () => {
@@ -261,6 +317,25 @@ describe('a document page', () => {
     expect(response.body).toContain('<nav class="site-toc"')
     expect(response.body).toContain('Bursts')
     expect(response.body).toContain('<time datetime=')
+  })
+
+  it('states its public facts under the title, and never who owns it (ADR-052)', async () => {
+    const body = (await get(path)).body
+    expect(body).toMatch(
+      /<\/h1><div role="group" aria-label="Document properties" class="byline">/u,
+    )
+    expect(body).toMatch(/data-lifecycle="deprecated" class="byline-lifecycle"\s*>Deprecated</u)
+    expect(body).toContain(
+      `<a class="byline-tag badge" data-label="api" href="/s/${SITE}/search?q=tag%3Aapi">api</a>`,
+    )
+    expect(body).toContain(`href="/s/${SITE}/search?q=tag%3A%22On%20call%22">On call</a>`)
+    expect(body).not.toContain('editor@example.com')
+  })
+
+  it('says a deprecated page is deprecated, and leads to its replacement on this site', async () => {
+    const body = (await get(path)).body
+    expect(body).toMatch(/<div\s+role="note"\s+class="lifecycle-notice"/u)
+    expect(body).toContain(`Use <a href="/s/${SITE}/architecture/overview">Overview</a> instead.`)
   })
 
   it('carries the canonical link, the description and the Open Graph tags a crawler reads', async () => {
@@ -385,6 +460,31 @@ describe('an address that has moved', () => {
     expect((await get(`/s/${SITE}/architecture/throttling`)).statusCode).toBe(200)
   })
 
+  it('gives an old address to a new page that takes it, and back to the redirect when it leaves', async () => {
+    // `rate-limits` redirects to `throttling` since the rename above. A new
+    // page of that title is a live page at that address, and a live page
+    // always wins over a redirect.
+    const newcomer = await writePublished('Rate limits', '# Rate limits\n\nThe new page.\n')
+    await harness.drainOutbox()
+    const claimed = await get(`/s/${SITE}/architecture/rate-limits`)
+    expect(claimed.statusCode).toBe(200)
+    expect(claimed.body).toContain('The new page.')
+
+    // When the newcomer is renamed in turn, the address follows the page that
+    // held it last: the newcomer, not the page that left it first.
+    const renamed = await harness.app.inject({
+      method: 'PATCH',
+      url: `/api/documents/${newcomer}`,
+      cookies: admin,
+      payload: { title: 'Request quotas' },
+    })
+    expect(renamed.statusCode).toBe(200)
+    await harness.drainOutbox()
+    const moved = await get(`/s/${SITE}/architecture/rate-limits`)
+    expect(moved.statusCode).toBe(301)
+    expect(moved.headers['location']).toBe(`/s/${SITE}/architecture/request-quotas`)
+  })
+
   it('lists only the current path in the sitemap', async () => {
     const sitemap = (await get(`/s/${SITE}/sitemap.xml`)).body
     expect(sitemap).toContain('architecture/throttling')
@@ -395,6 +495,119 @@ describe('an address that has moved', () => {
     const response = await get(`/s/${SITE}/architecture/never-written`)
     expect(response.statusCode).toBe(404)
     expect(response.body).toContain('That page is not here')
+  })
+})
+
+describe('the header menu', () => {
+  /** A page of this describe's own, so a rename here moves nothing another test reads. */
+  let glossary: DocumentId
+  let unpublished: DocumentId
+
+  beforeAll(async () => {
+    glossary = await writePublished('Glossary', '# Glossary\n\nWords and what they mean.\n')
+    unpublished = await createDocument('Not yet')
+    await harness.drainOutbox()
+  }, 30_000)
+
+  /** The header of a page, which is where the menu is and nothing else is asserted about. */
+  const headerOf = async (url: string) =>
+    /<header class="site-header">[\s\S]*?<\/header>/u.exec((await get(url)).body)?.[0] ?? ''
+
+  it('links documents by id, under their current titles and addresses, leaving out what is not public', async () => {
+    await settings({
+      publicMenu: [
+        { kind: 'document', id: overview },
+        {
+          kind: 'group',
+          label: 'Reference',
+          items: [
+            { kind: 'document', id: glossary },
+            { kind: 'document', id: unpublished },
+          ],
+        },
+        { kind: 'document', id: '00000000-0000-4000-8000-0000000002ff' },
+        STATUS_LINK,
+      ],
+    })
+    const header = await headerOf(`/s/${SITE}/architecture/overview`)
+    expect(header).toMatch(
+      /<a class="site-bar-link" href="\/s\/acme-docs\/architecture\/overview"\s+aria-current="page">Overview<\/a>/u,
+    )
+    expect(header).toContain('<details class="site-dropdown"')
+    expect(header).toContain('href="/s/acme-docs/architecture/glossary">Glossary</a>')
+    // A draft, and a document that has been deleted: left out, not linked to a 404.
+    expect(header).not.toContain('Not yet')
+    expect(header).not.toContain('0000000002ff')
+    expect(header).toMatch(/href="https:\/\/s\.test"\s+rel="noopener noreferrer"/u)
+  })
+
+  it('follows a rename on the next request, with a new ETag, without anybody editing the menu', async () => {
+    const before = await get(`/s/${SITE}/architecture/overview`)
+    const renamed = await harness.app.inject({
+      method: 'PATCH',
+      url: `/api/documents/${glossary}`,
+      cookies: admin,
+      payload: { title: 'Terms' },
+    })
+    expect(renamed.statusCode).toBe(200)
+    await harness.drainOutbox()
+
+    const after = await get(`/s/${SITE}/architecture/overview`)
+    expect(after.headers['etag']).not.toBe(before.headers['etag'])
+    const header = await headerOf(`/s/${SITE}/architecture/overview`)
+    expect(header).toContain('href="/s/acme-docs/architecture/terms">Terms</a>')
+    expect(header).not.toContain('Glossary')
+  })
+
+  it('lets an administrator send a partner the site’s origin, and never loosens Referrer-Policy', async () => {
+    await settings({
+      publicMenu: [
+        { kind: 'url', href: 'https://partner.test', label: 'Partner', referrer: 'sent' },
+        STATUS_LINK,
+      ],
+    })
+    const header = await headerOf(`/s/${SITE}`)
+    expect(header).toMatch(/href="https:\/\/partner\.test"\s+rel="noopener"/u)
+    expect(header).toMatch(/href="https:\/\/s\.test"\s+rel="noopener noreferrer"/u)
+    expect(header).not.toContain('referrerpolicy')
+
+    // The page's own policy is the ceiling: the partner sees the origin, never the page.
+    for (const url of [`/s/${SITE}`, `/s/${SITE}/architecture/overview`, `/s/${SITE}/search?q=x`]) {
+      expect((await get(url)).headers['referrer-policy']).toBe('strict-origin-when-cross-origin')
+    }
+    await settings({ publicMenu: [STATUS_LINK] })
+  })
+
+  it('reads a version 1 settings file, its links as they were', async () => {
+    const current = await harness.app.inject({
+      method: 'GET',
+      url: '/api/settings/organisation',
+      cookies: admin,
+    })
+    const { publicMenu: _menu, ...rest } = (current.json() as { settings: OrganisationSettings })
+      .settings
+    const before = await harness.deps.contentStore.readFile(
+      SYSTEM_WORKSPACE_ID,
+      ORGANISATION_SETTINGS_PATH,
+    )
+    // JSON is YAML, and it is how an older release's file is planted here
+    // without a YAML writer: what matters is the version and the shape.
+    await harness.deps.contentStore.putFile({
+      workspaceId: SYSTEM_WORKSPACE_ID,
+      path: ORGANISATION_SETTINGS_PATH,
+      text: JSON.stringify({
+        ...rest,
+        version: 1,
+        publicNavigation: [{ label: 'Handbook', href: '/handbook' }],
+      }),
+      expected: before?.text ?? null,
+      author: { name: 'An older release', email: 'past@example.com' },
+    })
+    harness.deps.publicSiteCache.invalidate()
+
+    const header = await headerOf(`/s/${SITE}`)
+    expect(header).toContain('href="/handbook">Handbook</a>')
+    await settings({ publicMenu: [STATUS_LINK] })
   })
 })
 
@@ -439,6 +652,25 @@ describe('the stylesheet', () => {
 
     const again = await get(href, { 'if-none-match': String(css.headers['etag']) })
     expect(again.statusCode).toBe(304)
+  })
+
+  it('applies under the identity the page names, with the faces the theme sets its type in', async () => {
+    const page = (await get(`/s/${SITE}`)).body
+    const identity = /<html lang="en" data-theme-id="([a-z0-9-]+)"/u.exec(page)?.[1]
+    // The layout attribute the stylesheet reads from the page, from the
+    // organisation's layout default.
+    expect(page).toMatch(/<html lang="en" data-theme-id="[a-z0-9-]+" data-rules="[a-z]+">/u)
+    expect(identity).toBeDefined()
+
+    const css = (await get(stylesheetIn(page))).body
+    expect(css).toContain(`html:root[data-theme-id='${String(identity)}'] {`)
+    // Before this, a public page declared no face at all, and every theme fell
+    // back to a system font on the web.
+    const font = /url\('(\/api\/fonts\/[^']+\.woff2)'\) format\('woff2'\)/u.exec(css)?.[1]
+    expect(font).toBeDefined()
+    const served = await get(String(font))
+    expect(served.statusCode).toBe(200)
+    expect(served.headers['content-type']).toBe('font/woff2')
   })
 
   it('refuses an asset name it did not mint', async () => {

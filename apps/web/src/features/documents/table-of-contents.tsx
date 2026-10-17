@@ -4,24 +4,31 @@ import { ANCHOR_OFFSET_PX, tv } from '@quill/ui'
 
 import type { OutlineEntry } from '../../lib/api/index.ts'
 
+/*
+ * The quietest list on the page: the headings in the faintest ink down a
+ * hairline, wrapping rather than truncating so a long heading is still read
+ * whole. The heading being read takes full ink and lays the accent over its
+ * stretch of the hairline — each entry's own leading edge sits on the list's
+ * rule — so the position is a mark as well as a colour.
+ */
 export const tableOfContentsStyles = tv({
   slots: {
     root: '',
-    heading: 'meta pb-2',
-    list: 'flex flex-col gap-1.5 text-sm',
+    heading: 'section-label pb-2.5',
+    list: 'flex flex-col border-s border-border text-xs leading-snug',
     link: [
-      'block truncate text-muted transition-colors ease-standard',
-      'hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2',
-      'focus-visible:outline-focus-ring aria-current:font-medium',
-      'aria-current:text-foreground',
+      '-ms-px block border-s border-transparent py-1 ps-3 text-pretty text-muted',
+      'transition-[color,border-color] ease-standard hover:text-foreground',
+      'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring',
+      'current:border-accent current:font-medium current:text-foreground',
     ],
   },
   variants: {
     depth: {
       1: { link: '' },
       2: { link: '' },
-      3: { link: 'ps-3' },
-      4: { link: 'ps-6' },
+      3: { link: 'ps-6' },
+      4: { link: 'ps-9' },
     },
   },
 })

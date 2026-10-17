@@ -44,12 +44,24 @@ describe('renderHtml', () => {
     // The prefix is what stops an author's heading minting `id="main"` or a
     // global the application relies on; the anchor carries it too, so the
     // permalink still lands on its own heading.
+    expect(html).toContain('<h1 id="user-content-one" aria-labelledby="user-content-title.one">')
+    expect(html).toContain('<a class="heading-anchor" href="#user-content-one"')
     expect(html).toContain(
-      '<h1 id="user-content-one">One<a class="heading-anchor" href="#user-content-one"',
+      '<h2 id="user-content-one-1" aria-labelledby="user-content-title.one-1">',
     )
-    expect(html).toContain('<h2 id="user-content-one-1">')
     expect(html).toContain('href="#user-content-one-1"')
-    expect(html).toContain('aria-label="Permalink: One"')
+  })
+
+  it('names a heading by its words alone, and its permalink by what it links to', () => {
+    // The anchor sits inside the heading, so without a name of its own the
+    // heading would be called "One Link to this section: One" in a list of
+    // headings. Its words carry the name; the hash is drawn, never spoken.
+    expect(render('## One *two*\n')).toBe(
+      '<article><h2 id="user-content-one-two" aria-labelledby="user-content-title.one-two">' +
+        '<span id="user-content-title.one-two">One <em>two</em></span>' +
+        '<a class="heading-anchor" href="#user-content-one-two" aria-label="Link to this section: One two">' +
+        '<span aria-hidden="true">#</span></a></h2></article>',
+    )
   })
 
   it('renders tables with a head, column scopes and alignment classes', () => {
@@ -60,6 +72,15 @@ describe('renderHtml', () => {
     expect(html).toContain('<th scope="col" class="align-right">b</th>')
     expect(html).toContain('<tbody>')
     expect(html).toContain('<td class="align-left">1</td>')
+  })
+
+  it('sets every table in a scroll container a keyboard can reach, as the reader styles it', () => {
+    const html = render('| a | b |\n| - | - |\n| 1 | 2 |\n')
+
+    expect(html).toContain(
+      '<div class="table-scroll" tabindex="0" role="group" aria-label="Table"><table>',
+    )
+    expect(html).toContain('</table></div>')
   })
 
   it('renders a header-only table without an empty body', () => {
@@ -111,7 +132,9 @@ describe('renderHtml', () => {
   it('renders a code block as one text node, with the language', () => {
     const html = render('```ts\nconst a = 1\n```\n')
 
-    expect(html).toBe('<article><pre><code data-lang="ts">const a = 1</code></pre></article>')
+    expect(html).toBe(
+      '<article><div class="code-block"><pre><code data-lang="ts">const a = 1</code></pre></div></article>',
+    )
   })
 
   it('carries packed token ranges when a highlighter is supplied', () => {
@@ -152,27 +175,60 @@ describe('renderHtml', () => {
     expect(render('```c#\nx\n```\n')).toContain('data-lang="c#"')
   })
 
-  it('renders task lists with disabled checkboxes', () => {
-    const html = render('- [ ] todo\n- [x] done\n')
+  it('renders task lists with disabled checkboxes, each named by its task', () => {
+    const html = render('- [ ] Write the *tests*\n- [x] done\n')
 
-    expect(html).toContain('<input type="checkbox" disabled>')
-    expect(html).toContain('<input type="checkbox" checked disabled>')
+    expect(html).toContain('<input type="checkbox" disabled aria-label="Write the tests">')
+    expect(html).toContain('<input type="checkbox" checked disabled aria-label="done">')
   })
 
-  it('renders a callout as a labelled aside', () => {
+  it('names a task by its first paragraph, and an empty task by what it is', () => {
+    const html = render('- [ ] First.\n\n  Second.\n\n  - [x] Nested\n')
+    const empty = renderHtml({
+      type: 'root',
+      children: [
+        {
+          type: 'list',
+          children: [{ type: 'listItem', checked: false, spread: false, children: [] }],
+        },
+      ],
+    })
+
+    expect(html).toContain('aria-label="First."')
+    expect(html).toContain('aria-label="Nested"')
+    expect(html).not.toContain('aria-label="First. Second.')
+    expect(empty).toContain('<input type="checkbox" disabled aria-label="Task">')
+  })
+
+  it('leaves an ordinary list item without a checkbox or a name', () => {
+    expect(render('- plain\n')).toBe('<article><ul>\n<li>plain</li>\n</ul></article>')
+  })
+
+  it('renders a callout as an aside named by the type it shows in words', () => {
     const html = render(':::callout{type=warning}\nCareful.\n:::\n')
 
     expect(html).toContain(
-      '<aside class="callout callout-warning" role="note" aria-label="Warning">',
+      '<aside class="callout callout-warning" role="note" aria-labelledby="user-content-callout.1">',
     )
+    expect(html).toContain('<p class="callout-label" id="user-content-callout.1">Warning</p>')
   })
 
-  it('uses a callout label as its accessible name', () => {
-    const html = render(':::callout[Before you begin]{type=note}\n\nBody.\n:::\n')
+  it('keeps a labelled callout’s type in its name, spoken before the author’s label', () => {
+    const html = render(':::callout[Before you begin]{type=tip}\n\nBody.\n:::\n')
 
-    expect(html).toContain('aria-label="Before you begin"')
-    expect(html).toContain('<p class="callout-label">Before you begin</p>')
+    expect(html).toContain('aria-labelledby="user-content-callout.1"')
+    expect(html).toContain(
+      '<p class="callout-label" id="user-content-callout.1"><span class="sr-only">Tip: </span>Before you begin</p>',
+    )
     expect(html).toContain('<p>Body.</p>')
+  })
+
+  it('numbers the callouts of a document so each label names only its own', () => {
+    const html = render(':::callout\nOne.\n:::\n\n> [!NOTE]\n> Two.\n')
+
+    expect(html).toContain('aria-labelledby="user-content-callout.1"')
+    expect(html).toContain('aria-labelledby="user-content-callout.2"')
+    expect(html).toContain('<p class="callout-label" id="user-content-callout.2">Note</p>')
   })
 
   it('renders nothing for presenter notes, so a reader never meets them', () => {
@@ -260,25 +316,19 @@ describe('renderHtml', () => {
     expect(render('---\ntitle: One\n---\n\nBody.\n')).toBe('<article><p>Body.</p></article>')
   })
 
-  it('renders dates from front matter as time elements', () => {
+  it('leaves front matter out of the body, dates and all: the byline states it', () => {
+    // A body is cached for every reader (ADR-031), and what a document says
+    // about itself is shown by each surface's byline, to each reader as they
+    // may see it (ADR-052). A key path such as `review.lastReviewed` in the
+    // body was also read as the page's eyebrow.
     const html = render('Body.\n', {
       frontMatter: {
         title: 'One',
-        order: 2,
         published: '2026-01-31',
         review: { interval: '365d', lastReviewed: '2026-02-01T09:00:00Z' },
-        owners: ['platform'],
       },
     })
-
-    expect(html).toContain('<header class="document-meta">')
-    expect(html).toContain('<dt>published</dt><dd><time datetime="2026-01-31">')
-    expect(html).toContain('<dt>review.lastReviewed</dt>')
-    expect(html).not.toContain('365d')
-  })
-
-  it('omits the header when no front matter carries a date', () => {
-    expect(render('Body.\n', { frontMatter: { title: 'One' } })).not.toContain('<header')
+    expect(html).toBe('<article><p>Body.</p></article>')
   })
 
   it('adds rel="noopener noreferrer" to an external link but not a relative one', () => {

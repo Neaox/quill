@@ -104,6 +104,63 @@ export type { Guidance } from './directives/guidance.ts'
 export { guidanceDirective } from './directives/guidance.ts'
 export type { KeyboardKeys } from './directives/kbd.ts'
 export { kbdDirective } from './directives/kbd.ts'
+export type { Badge, BadgeTone } from './directives/badge.ts'
+export {
+  BADGE_SHORTHANDS,
+  BADGE_TONES,
+  badgeDirective,
+  badgeTone,
+  isBadgeTone,
+} from './directives/badge.ts'
+export { isLabel, isLabelDirective, LABEL_NAME, unknownLabelWarning } from './directives/label.ts'
+export type {
+  CustomEmoji,
+  EmojiLookup,
+  EmojiMarkup,
+  ResolvedEmoji,
+  ShortcodeMatch,
+  StandardLookup,
+} from './emoji/emoji.ts'
+// GitHub's table is not exported here: it is `@quill/markdown/emoji-shortcodes`,
+// so the editor can load it lazily (ADR-038).
+export {
+  EMOJI_ASSET_URL,
+  EMOJI_FRAMES_ATTRIBUTE,
+  EMOJI_LOOP_ATTRIBUTE,
+  EMOJI_NAME,
+  emojiLookup,
+  emojiMarkup,
+  findShortcodes,
+  REDUCED_MOTION,
+} from './emoji/emoji.ts'
+export type { StandardEmoji } from './emoji/shortcodes.ts'
+export type { SmallPrint } from './directives/small.ts'
+export { smallDirective } from './directives/small.ts'
+export type { Figure } from './directives/figure.ts'
+export { figureDirective } from './directives/figure.ts'
+export type { Cards, CardsVariant } from './directives/cards.ts'
+export { CARDS_VARIANTS, cardsDirective, isCardsVariant } from './directives/cards.ts'
+export type {
+  ReadTableOptions,
+  TableBlock,
+  TableFreeze,
+  TableFrozenPart,
+  TableOptions,
+  TableResponsiveMode,
+  TableWidth,
+} from './directives/table.ts'
+export {
+  DEFAULT_TABLE_OPTIONS,
+  readTableOptions,
+  TABLE_FROZEN_PARTS,
+  TABLE_PERCENT_STEP,
+  TABLE_RESPONSIVE_MODES,
+  tableDirective,
+  tableOf,
+} from './directives/table.ts'
+export { tableBlockData } from './render/table-block.ts'
+export type { ColumnShape } from './render/table-columns.ts'
+export { columnClasses, shapeOf } from './render/table-columns.ts'
 export type { OptionalSection } from './directives/optional.ts'
 export { optionalDirective } from './directives/optional.ts'
 export type { WhenSection } from './directives/when.ts'
@@ -122,6 +179,55 @@ export { substituteAnswers } from './directives/substitute.ts'
 export type { ResolvedTemplate } from './directives/resolve-template.ts'
 export { resolveTemplate } from './directives/resolve-template.ts'
 
+// Code blocks and code groups (ADR-041)
+export type { CodeLanguage } from './code-group/languages.ts'
+export { CODE_LANGUAGES, languageLabel, resolveCodeLanguage } from './code-group/languages.ts'
+export type { TabLabelSyntax } from './code-group/fence-meta.ts'
+export { fenceTitle, hasTabAttribute, tabLabel, withTabLabel } from './code-group/fence-meta.ts'
+export type { CodeGroup, CodeGroupSyntax, CodeTab } from './code-group/code-group.ts'
+export {
+  CODE_GROUP,
+  codeGroupDirective,
+  codeGroupTabs,
+  codeLabel,
+  createCodeGroup,
+  isCodeGroup,
+  SYNC_KEY,
+  syncKeyOf,
+} from './code-group/code-group.ts'
+export type { CodeCaption } from './code-group/render.ts'
+export { CODE_SANITIZE_GRANT } from './code-group/render.ts'
+
+// Details and accordions (ADR-048)
+export type {
+  CalloutDetailsSource,
+  Details,
+  DetailsModel,
+  DetailsNode,
+  DetailsSource,
+  DetailsSyntax,
+  HtmlDetailsSource,
+} from './details/details.ts'
+export {
+  ACCORDION,
+  accordionDirective,
+  calloutKindOf,
+  DETAILS,
+  DETAILS_NAME,
+  detailsDirective,
+  detailsModel,
+  isDetails,
+  isDetailsNode,
+  knownCalloutKind,
+} from './details/details.ts'
+export { DETAILS_SANITIZE_GRANT } from './details/render.ts'
+export {
+  importDetails,
+  importMdxAccordions,
+  importMkDocsDetails,
+  importVitePressDetails,
+} from './import/details.ts'
+
 // Rendering and extraction
 export type { RenderedDocument, RenderOptions } from './render/html.ts'
 export { renderDocument, renderHtml } from './render/html.ts'
@@ -135,6 +241,11 @@ export type { DocumentText } from './render/text.ts'
 export { extractText } from './render/text.ts'
 export type { ExtractedLink } from './render/links.ts'
 export { extractLinks } from './render/links.ts'
+export type { LinkRewrite } from './render/rewrite-links.ts'
+export { rewriteLinks } from './render/rewrite-links.ts'
+
+// Comparing revisions, and the merge engine's primitives (ADR-021 amendment)
+export * from './diff/index.ts'
 
 // The editor converter
 export { extensions, schema } from './prosemirror/schema.ts'
@@ -147,3 +258,16 @@ export { mdastToProseMirror } from './prosemirror/from-mdast.ts'
 export type { MdastDocument } from './prosemirror/to-mdast.ts'
 export { proseMirrorToMdast } from './prosemirror/to-mdast.ts'
 export { liftLayout, wrapLayout } from './prosemirror/layout.ts'
+export type { WithAttribute } from './pipeline/written-attribute.ts'
+export { withAttribute } from './pipeline/written-attribute.ts'
+export type { AlertForm, AlertType } from './prosemirror/alert.ts'
+export { ALERT_TYPES, alertForm, alertType, isAlertType, retypeAlert } from './prosemirror/alert.ts'
+
+// Three-way merge of drafts and of publishes (ADR-021, amendment of 2026-10-11)
+export type { BlockConflict, ConflictResolution, DocumentMerge } from './merge/merge-documents.ts'
+export { contentKey, mergeDocuments, resolveMerge } from './merge/merge-documents.ts'
+export type { MarkdownMerge } from './merge/merge-markdown.ts'
+export { mergeMarkdown } from './merge/merge-markdown.ts'
+
+// Navigation blocks: a table of contents, and the pages under this one (ADR-049)
+export * from './navigation/index.ts'

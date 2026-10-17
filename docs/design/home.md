@@ -16,27 +16,52 @@ the same to everyone.
 
 ## Signed-in home
 
-The person, not the workspace, is the subject. Sections, in this order, each
-omitted when empty rather than shown blank:
+The person, not the workspace, is the subject. It is a calm dashboard: one
+accent, and nothing shown blank. It sits in the application column `AppPage`
+gives a full-width surface (centred, capped so a 2560-pixel window still reads
+as one composition, a 16px gutter on a phone). On a phone it is one column in
+the order below; from `lg` it is two columns, the long lists (the checklist,
+Recently updated) on the left and the short ones (Continue writing,
+Workspaces, Organisation) on the right, so a wide window is used and neither
+column runs on while the other stands empty. In
+order:
 
-1. **Continue.** Documents the person holds a lock on or has unpublished
-   draft changes in. One click back into the editor. (M2: from the lock and
-   draft state the API already has.)
-2. **Your workspaces.** Every workspace the person can see, grouped by unit,
-   with the last-updated time. If there is exactly one, home skips itself
-   and opens it. (M2: the workspace list route.)
-3. **Recently updated.** Published changes across the person's workspaces,
-   newest first, permission-filtered. (M2: from the document list; a proper
-   activity feed comes with comments in M4.)
-4. **Recently viewed by you.** Kept per person. (M2: client-side, as a
-   personal preference; synced server-side when preferences are stored.)
-5. **Pinned.** Person-owned, always at hand. (With personal preferences.)
-6. **What others are reading.** Popular in your workspaces. **Not before a
-   decision on privacy:** only ever aggregate counts, never who; off by
-   default; an organisation setting. Open question for M4.
+1. **Who and when.** Today's date in the muted ink, then a greeting by the
+   hour and the person's name. The organisation's name is already in the bar.
+2. **Search or jump to.** A full-width field that opens the command palette:
+   documents, workspaces, and (for an administrator) every setting, so the
+   page's first action reaches everything.
+3. **Set up your organisation** (administrators only). A checklist rather
+   than a card: name the organisation and choose its theme, create the first
+   workspace (a unit, then a workspace in it, through the same dialogs the
+   organisation page uses), publish the first document. Each step is answered
+   from what the API already says — a name other than the product's, a
+   workspace, a published document — with its action beside it and a count of
+   how many are done. It leaves once every step is done, and can be hidden
+   sooner; hiding is remembered per browser.
+4. **Continue writing.** Drafts that have never been published, newest first,
+   five at most, with the total beside the heading. Omitted when there are
+   none. (The list DTO cannot say whether a published document has a newer
+   draft, or who holds a lock; those are each document's envelope.)
+5. **Workspaces.** Every workspace the person can see, as cards: its name, its
+   unit's path, how many documents and drafts it holds, and when anything in
+   it last changed. If there is exactly one, home skips itself and opens it.
+6. **Recently updated.** Published changes across the person's workspaces,
+   newest first, eight at most, with the workspace and a relative date ("3
+   days ago", the exact date on hover and in `datetime`). Before anything is
+   published it says so in a sentence instead.
+7. **Organisation** (administrators only). Every settings screen as a list of
+   links in one card: the same destinations as the person menu's Organisation
+   group and the palette (`chrome.md`, "Reaching settings"), so the way in
+   stays on the page after the checklist has gone.
+8. **Recently viewed by you** and **Pinned** come with personal preferences;
+   **What others are reading** waits on a privacy decision (aggregate counts
+   only, never who; off by default; an organisation setting; M4).
 
-Admins additionally see a short **set-up** card until it is done: create the
-first unit, workspace, and collection; invite people; choose a theme.
+A person with no workspace is told whom to ask; an administrator with none is
+pointed at Units and workspaces. Everything above is counted from the same
+per-workspace document lists the workspace pages read, fetched in parallel,
+so opening a workspace afterwards costs nothing.
 
 ## Workspace home
 
@@ -79,7 +104,7 @@ the signed-in world (drafts, locks, other workspaces) exists here.
 
 ## What M2 ships
 
-The signed-in home with Continue, Your workspaces, Recently updated, and the
-admin set-up card; the workspace home with its home document and the
+The signed-in home with Continue writing, Workspaces, Recently updated, and the
+administrator's set-up checklist; the workspace home with its home document and the
 Collections, Recently updated, and In progress sections. Recently viewed and
 Pinned come with personal preferences; the public site home comes with M3.

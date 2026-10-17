@@ -58,11 +58,20 @@ export interface ImageDialogProps {
   /** A refusal from the server — too large, the wrong type, an SVG — shown in place. */
   readonly error?: unknown
   readonly onSubmit: (request: ImageRequest) => void
+  /**
+   * `drawing` asks for an SVG upload only: a drawing is drawn inline in the
+   * page's colours only when it is one of the workspace's own attachments
+   * (ADR-036), so an address would insert a picture that never takes them.
+   */
+  readonly purpose?: 'image' | 'drawing'
 }
 
 const FORM_ID = 'insert-image-form'
 
-const ACCEPTED = 'image/png,image/jpeg,image/gif,image/webp,image/avif,application/pdf'
+const ACCEPTED =
+  'image/png,image/jpeg,image/gif,image/webp,image/avif,image/svg+xml,application/pdf'
+
+const DRAWING_ACCEPTED = 'image/svg+xml'
 
 const MEGABYTE = 1024 * 1024
 
@@ -79,7 +88,9 @@ export function ImageDialog({
   uploading = false,
   error,
   onSubmit,
+  purpose = 'image',
 }: ImageDialogProps) {
+  const drawing = purpose === 'drawing'
   const [source, setSource] = useState('')
   const [alt, setAlt] = useState('')
   const [picked, setPicked] = useState<File | undefined>(undefined)
@@ -124,8 +135,12 @@ export function ImageDialog({
 
   return (
     <Dialog
-      title="Insert an image"
-      description="Upload a picture, or use one that already has an address on the web."
+      title={drawing ? 'Insert an SVG drawing' : 'Insert an image'}
+      description={
+        drawing
+          ? 'Upload an SVG. It is drawn in the page’s colours, in light and in dark.'
+          : 'Upload a picture, or use one that already has an address on the web.'
+      }
       open={open}
       onOpenChange={(next) => {
         if (!next) close()
@@ -143,11 +158,15 @@ export function ImageDialog({
     >
       <form id={FORM_ID} onSubmit={handleSubmit} noValidate className={styles.form()}>
         <Input
-          label="Image file"
+          label={drawing ? 'Drawing file' : 'Image file'}
           name="file"
           type="file"
-          accept={ACCEPTED}
-          description="PNG, JPEG, GIF, WebP, AVIF or PDF. You can also drag a file onto the document, or paste one."
+          accept={drawing ? DRAWING_ACCEPTED : ACCEPTED}
+          description={
+            drawing
+              ? 'An SVG file, such as one exported from a drawing tool.'
+              : 'PNG, JPEG, GIF, WebP, AVIF, an SVG drawing or PDF. You can also drag a file onto the document, or paste one.'
+          }
           onChange={(event) => {
             setPicked(event.target.files?.[0])
           }}
@@ -170,22 +189,26 @@ export function ImageDialog({
           </p>
         )}
 
-        <p className={styles.divider()} aria-hidden="true">
-          <span className={styles.rule()} />
-          or
-          <span className={styles.rule()} />
-        </p>
+        {drawing ? undefined : (
+          <>
+            <p className={styles.divider()} aria-hidden="true">
+              <span className={styles.rule()} />
+              or
+              <span className={styles.rule()} />
+            </p>
 
-        <Input
-          label="Image address"
-          name="source"
-          type="url"
-          placeholder="https://example.com/diagram.png"
-          value={source}
-          onChange={(event) => {
-            setSource(event.target.value)
-          }}
-        />
+            <Input
+              label="Image address"
+              name="source"
+              type="url"
+              placeholder="https://example.com/diagram.png"
+              value={source}
+              onChange={(event) => {
+                setSource(event.target.value)
+              }}
+            />
+          </>
+        )}
 
         <Input
           label={isPicture ? 'Alternative text' : 'Link text'}

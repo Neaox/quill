@@ -37,6 +37,8 @@ import type { WorkspaceId } from '@quill/domain'
  * collide with each other for no reason.
  */
 export function createSettingsStore(contentStore: ContentStore): Settings {
+  const decodeOrganisation = decodedOnce(decodeOrganisationSettings)
+
   const read = async <T>(
     path: string,
     decode: (text: string) => SettingsDecode<T>,
@@ -73,7 +75,7 @@ export function createSettingsStore(contentStore: ContentStore): Settings {
 
   return {
     async readOrganisation() {
-      return await read(ORGANISATION_SETTINGS_PATH, decodeOrganisationSettings)
+      return await read(ORGANISATION_SETTINGS_PATH, decodeOrganisation)
     },
 
     async writeOrganisation(input) {
@@ -97,6 +99,26 @@ export function createSettingsStore(contentStore: ContentStore): Settings {
         decodeWorkspaceSettings,
       )
     },
+  }
+}
+
+/**
+ * A decoder that decodes the same text once.
+ *
+ * The organisation's file is read on every render — its theme's label names
+ * are part of a body's cache key (ADR-037) — and on every themed page, and it
+ * changes a few times a year. Parsing its YAML and checking its theme against
+ * the schema each time would be the most expensive part of serving a cached
+ * body, so the last text and what it decoded to are kept. What is returned is
+ * shared between callers, which every caller already treats as read-only.
+ */
+function decodedOnce<T>(
+  decode: (text: string) => SettingsDecode<T>,
+): (text: string) => SettingsDecode<T> {
+  let last: { readonly text: string; readonly decoded: SettingsDecode<T> } | undefined
+  return (text) => {
+    if (last?.text !== text) last = { text, decoded: decode(text) }
+    return last.decoded
   }
 }
 

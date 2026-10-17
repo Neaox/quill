@@ -5,7 +5,8 @@ import type {
   RevisionId,
   WorkspaceId,
 } from '@quill/domain'
-import { extractOutline, extractText } from '@quill/markdown'
+import { isDocumentStatus, isLifecycleState } from '@quill/domain'
+import { documentIcon, documentSummary, extractOutline, extractText } from '@quill/markdown'
 import type { CoreFrontMatter, OutlineEntry } from '@quill/markdown'
 import type { Root } from 'mdast'
 
@@ -30,6 +31,12 @@ export interface DocumentLocation {
 export interface ProjectIndexableDocumentInput extends DocumentLocation {
   readonly frontMatter: CoreFrontMatter
   readonly ast: Root
+  /**
+   * The words of the drawings the body shows — a draw.io diagram's labels
+   * (ADR-043) — which a reader sees on the page but the Markdown does not say.
+   * Searched as body text, after the prose.
+   */
+  readonly drawingText?: readonly string[]
 }
 
 /** A document whose front matter never says otherwise is indexed as published: this projection only ever runs from a `DocumentPublished` event. */
@@ -56,11 +63,17 @@ export function projectIndexableDocument(input: ProjectIndexableDocumentInput): 
     path: input.path,
     title: input.frontMatter.title ?? text.title ?? input.path,
     headings: flattenHeadings(outline),
-    body: text.body,
+    body: [text.body, ...(input.drawingText ?? [])].filter((part) => part !== '').join('\n'),
     tags: input.frontMatter.tags ?? [],
     owners: input.frontMatter.owners ?? [],
-    status: input.frontMatter.status ?? DEFAULT_STATUS,
+    // One front-matter field, two meanings (ADR-005 amendment of 2026-10-17):
+    // a legacy publication word is the `status:` filter's, a lifecycle state
+    // is ranking's, and neither is ever read as the other.
+    status: isDocumentStatus(input.frontMatter.status) ? input.frontMatter.status : DEFAULT_STATUS,
+    lifecycle: isLifecycleState(input.frontMatter.status) ? input.frontMatter.status : undefined,
     updatedAt: input.updatedAt,
+    summary: documentSummary(input.ast, input.frontMatter),
+    icon: documentIcon(input.frontMatter),
   }
 }
 

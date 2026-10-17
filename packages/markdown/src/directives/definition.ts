@@ -64,8 +64,15 @@ export function attribute(node: Directive, name: string): string | undefined {
   return node.attributes?.[name] ?? undefined
 }
 
-/** A valueless attribute such as the `added` in `:::optional{title="x" added}`. */
-export function flag(node: Directive, name: string): boolean {
+/**
+ * A valueless attribute such as the `added` in `:::optional{title="x" added}`.
+ * Anything carrying directive attributes can be asked, a details written in
+ * HTML included (ADR-048).
+ */
+export function flag(
+  node: Directive | { readonly type: 'details'; readonly attributes: DirectiveAttributes },
+  name: string,
+): boolean {
   const attributes = node.attributes
   if (!attributes) return false
   if (!Object.hasOwn(attributes, name)) return false

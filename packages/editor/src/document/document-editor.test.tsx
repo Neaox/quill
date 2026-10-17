@@ -74,13 +74,17 @@ describe('the document editor', () => {
 
   it('shows a block at its width rather than as a wrapper', () => {
     open()
-    expect(screen.getByRole('table')).toHaveAttribute('data-layout', 'wide')
+    // On the table's block, which is the grid's child (ADR-040).
+    expect(screen.getByRole('table').closest('[data-layout]')).toHaveAttribute(
+      'data-layout',
+      'wide',
+    )
   })
 
   it('hosts the code block in a code editor with a language picker', () => {
     open()
     const picker = screen.getByRole('combobox', { name: 'Code block language' })
-    expect(picker).toHaveValue('typescript')
+    expect(picker).toHaveValue('TypeScript')
   })
 
   it('reports a change as soon as one is made', async () => {
@@ -90,6 +94,27 @@ describe('the document editor', () => {
     await user.keyboard('!')
     expect(onChange).toHaveBeenCalled()
     expect(markdown(ref.current)).toContain('!')
+  })
+
+  it('shows a paragraph wrapped in the source as one line, as a reader sees it', () => {
+    const { onChange } = open('How properties move between lockstay\nand an owner’s PMS.\n')
+    const paragraph = screen.getByText(/How properties move/u)
+
+    expect(paragraph.textContent).toBe('How properties move between lockstay and an owner’s PMS.')
+    // Opening is not editing: nothing is saved until the author changes something.
+    expect(onChange).not.toHaveBeenCalled()
+  })
+
+  it('keeps a source-wrapped paragraph when a caller asks it to', () => {
+    const ref = createRef<DocumentEditorHandle>()
+    render(
+      <DocumentEditor
+        ast={parseDocument('One line\nwrapped here.\n').ast}
+        ref={ref}
+        softBreaks="preserve"
+      />,
+    )
+    expect(markdown(ref.current)).toBe('One line\nwrapped here.\n')
   })
 
   it('does not reopen the document when a later AST arrives', () => {

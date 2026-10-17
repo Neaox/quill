@@ -119,6 +119,20 @@ describe('organisation settings as a file', () => {
     expect(await writeOrganisation('Acme Corporation', first)).toMatchObject({ kind: 'written' })
   })
 
+  it('decodes the file once while it is unchanged, and again once it changes', async () => {
+    const first = await writeOrganisation('Acme', null)
+    const once = await settings.readOrganisation()
+    const twice = await settings.readOrganisation()
+    expect(once.kind === 'settings' && twice.kind === 'settings').toBe(true)
+    if (once.kind !== 'settings' || twice.kind !== 'settings') return
+    expect(twice.document).toBe(once.document)
+
+    if (first.kind !== 'written') throw new Error(first.kind)
+    await writeOrganisation('Acme Ltd', first.revision)
+    const changed = await settings.readOrganisation()
+    expect(changed.kind === 'settings' && changed.document.name).toBe('Acme Ltd')
+  })
+
   it('reports a file this release cannot read, with the revision it read it at', async () => {
     await contentStore.putFile({
       workspaceId: SYSTEM_WORKSPACE_ID,

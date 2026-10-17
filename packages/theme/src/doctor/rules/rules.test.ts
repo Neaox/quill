@@ -10,6 +10,7 @@ import {
   type ThemePalettes,
 } from '../../colour/palette.ts'
 import type { ThemeDocument } from '../../schema/theme-document.ts'
+import { failingRoles } from '../evidence.ts'
 import { DEFAULT_DOCTOR_OPTIONS, type DoctorOptions, type Rule } from '../rule.ts'
 import { lightnessBandRule, surfaceSeparationRule } from './bands.ts'
 import { accentBudgetRule, areaBudgetRule, oneSaturatedThingRule } from './chroma.ts'
@@ -367,5 +368,193 @@ describe('section 8, colour vision deficiency', () => {
 
   it('advises rather than warns when the seeds themselves leave the accent close', () => {
     expect(status(accentSeparationRule, buildPalettes(press), press)).toBe('adjusted')
+  })
+})
+
+/**
+ * Evidence is what the theme editor shows beside a verdict, so it has to say
+ * the same thing: the roles a broken palette breaks are the ones that fail.
+ */
+const failing = (rule: Rule, palettes: ThemePalettes, theme: ThemeDocument = instrument) =>
+  failingRoles(rule.evidence?.(theme, palettes, DEFAULT_DOCTOR_OPTIONS) ?? [])
+
+describe('evidence', () => {
+  const clashing: ThemeDocument = {
+    ...instrument,
+    seeds: { tone: { hue: 150, chroma: 0.012 }, accent: { hue: 45, chroma: 0.15, lightness: 50 } },
+  }
+
+  it.each([
+    ['text contrast', textContrastRule, withLight({ colours: { ink: grey(95) } }), 'ink'],
+    [
+      'ui boundaries',
+      uiBoundaryRule,
+      withLight({ colours: { borderStrong: grey(97) } }),
+      'borderStrong',
+    ],
+    [
+      'placeholder',
+      decorativeTextRule,
+      withLight({ colours: { placeholder: base.light.colours.ink } }),
+      'placeholder',
+    ],
+    [
+      'text on accent',
+      textOnAccentRule,
+      withLight({ colours: { accentForeground: grey(60) } }),
+      'accentForeground',
+    ],
+    [
+      'ramp hue',
+      rampHueRule,
+      withLight({ colours: { border: { lightness: 90, chroma: 0.01, hue: 10 } } }),
+      'border',
+    ],
+    ['bands', lightnessBandRule, withLight({ colours: { ink: grey(60) } }), 'ink'],
+    [
+      'surface separation',
+      surfaceSeparationRule,
+      withLight({ colours: { surface: base.light.colours.paper } }),
+      'surface',
+    ],
+    [
+      'area budget',
+      areaBudgetRule,
+      withLight({ colours: { surface: { lightness: 96, chroma: 0.1, hue: 250 } } }),
+      'surface',
+    ],
+    ['paper tint', areaBudgetRule, withLight({ colours: { paper: grey(98.5) } }), 'paper'],
+    [
+      'accent budget',
+      accentBudgetRule,
+      withLight({ colours: { accent: { lightness: 50, chroma: 0.3, hue: 45 } } }),
+      'accent',
+    ],
+    [
+      'one saturated thing',
+      oneSaturatedThingRule,
+      withLight({ colours: { border: { lightness: 90, chroma: 0.2, hue: 250 } } }),
+      'border',
+    ],
+    [
+      'status band',
+      statusHueRule,
+      withLight({ colours: { danger: { lightness: 48, chroma: 0.1, hue: 300 } } }),
+      'danger',
+    ],
+    [
+      'status match',
+      statusMatchRule,
+      withLight({ colours: { warning: { lightness: 70, chroma: 0.1, hue: 85 } } }),
+      'warning',
+    ],
+  ] as const)('%s fails the role it measured in light', (_name, rule, palettes, role) => {
+    expect(failing(rule, palettes)).toContainEqual({ scheme: 'light', role })
+  })
+
+  it.each([
+    ['dark ink', darkInkAndPaperRule, withDark({ colours: { ink: grey(100) } }), 'ink'],
+    ['dark paper', darkInkAndPaperRule, withDark({ colours: { paper: grey(0) } }), 'paper'],
+    [
+      'raised separation',
+      surfaceSeparationRule,
+      withDark({ colours: { raised: base.dark.colours.surface } }),
+      'raised',
+    ],
+    [
+      'dark accent budget',
+      accentBudgetRule,
+      withDark({ colours: { accent: { lightness: 70, chroma: 0.3, hue: 45 } } }),
+      'accent',
+    ],
+    [
+      'rederivation',
+      darkRederivationRule,
+      withDark({ colours: { border: { ...base.dark.colours.border, chroma: 0.3 } } }),
+      'border',
+    ],
+    [
+      'elevation surface',
+      darkElevationRule,
+      withDark({ colours: { surface: grey(10) } }),
+      'surface',
+    ],
+    ['elevation raised', darkElevationRule, withDark({ colours: { raised: grey(10) } }), 'raised'],
+    ['recheck', darkRecheckRule, withDark({ colours: { ink: base.dark.colours.paper } }), 'ink'],
+  ] as const)('%s fails the role it measured in dark', (_name, rule, palettes, role) => {
+    expect(failing(rule, palettes)).toContainEqual({ scheme: 'dark', role })
+  })
+
+  it('holds everything a passing rule measured', () => {
+    for (const rule of [textContrastRule, uiBoundaryRule, lightnessBandRule, darkElevationRule]) {
+      expect(failing(rule, base)).toEqual([])
+    }
+  })
+
+  it('shows the tone beside the accent it clashes with', () => {
+    expect(failing(neutralAgreementRule, buildPalettes(clashing), clashing)).toContainEqual({
+      scheme: 'light',
+      role: 'accent',
+    })
+    expect(failing(neutralAgreementRule, base)).toEqual([])
+  })
+
+  it('shows the colours the generator moved, before and after', () => {
+    const gamut = gamutRule.evidence?.(instrument, base, DEFAULT_DOCTOR_OPTIONS) ?? []
+    const compensation =
+      chromaCompensationRule.evidence?.(instrument, base, DEFAULT_DOCTOR_OPTIONS) ?? []
+    const statusHues = statusHueRule.evidence?.(instrument, base, DEFAULT_DOCTOR_OPTIONS) ?? []
+
+    expect(gamut.every((entry) => entry.kind === 'adjustment')).toBe(true)
+    expect(compensation.map((entry) => entry.kind === 'adjustment' && entry.role)).toContain(
+      'success',
+    )
+    expect(statusHues.some((entry) => entry.kind === 'adjustment')).toBe(true)
+    expect(statusHues.some((entry) => entry.kind === 'swatch')).toBe(true)
+  })
+
+  it('shows the status set and the accent beside muted text under simulated vision', () => {
+    expect(failing(statusSeparationRule, base).map((entry) => entry.role)).toContain('success')
+    const separated = withLight({
+      colours: { success: grey(20), warning: grey(60), danger: grey(95) },
+    })
+    expect(
+      failing(statusSeparationRule, { light: separated.light, dark: separated.light }),
+    ).toEqual([])
+    expect(failing(accentSeparationRule, base)).toEqual([])
+    expect(failing(accentSeparationRule, buildPalettes(press), press).length).toBeGreaterThan(0)
+  })
+})
+
+/**
+ * A brand-tinted wash is calibrated against what well-made dark themes carry
+ * (Linear, Vercel and Fumadocs tint their dark accent backgrounds at roughly
+ * C 0.03 to 0.05 at low lightness), not against the panel budget, which left
+ * a dark teal wash nowhere to go but grey.
+ */
+const wash = (lightness: number, chroma: number) => ({ lightness, chroma, hue: 190 })
+
+describe('washes', () => {
+  it('lets a light wash carry C 0.03 and a dark one C 0.045, and no more', () => {
+    expect(status(areaBudgetRule, withLight({ colours: { accentSubtle: wash(96, 0.03) } }))).toBe(
+      'pass',
+    )
+    expect(status(areaBudgetRule, withDark({ colours: { accentSubtle: wash(30, 0.045) } }))).toBe(
+      'pass',
+    )
+    expect(status(areaBudgetRule, withDark({ colours: { successSubtle: wash(30, 0.05) } }))).toBe(
+      'warn',
+    )
+    expect(status(areaBudgetRule, withLight({ colours: { accentSubtle: wash(96, 0.035) } }))).toBe(
+      'warn',
+    )
+  })
+
+  it('does not hold a dark wash to the light one’s chroma, which its budget already bounds', () => {
+    const palettes = {
+      light: patchOne(base.light, { colours: { accentSubtle: wash(96, 0.03) } }),
+      dark: patchOne(base.dark, { colours: { accentSubtle: wash(30, 0.045) } }),
+    }
+    expect(status(darkRederivationRule, palettes)).toBe('pass')
   })
 })

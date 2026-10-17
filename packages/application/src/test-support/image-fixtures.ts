@@ -1,6 +1,7 @@
 import { deflateSync } from 'node:zlib'
 
 import { concatChunks } from '../ports/blob-store.ts'
+import { crc32 } from '../use-cases/image-container.ts'
 
 /**
  * Images for tests: real ones, as encoders write them, and a PNG builder for
@@ -230,16 +231,4 @@ export function pngChunk(type: string, data: Uint8Array): Uint8Array {
   chunk.set(data, 8)
   view.setUint32(8 + data.length, crc32(chunk.subarray(4, 8 + data.length)))
   return chunk
-}
-
-const CRC_TABLE = Uint32Array.from({ length: 256 }, (_, n) => {
-  let c = n
-  for (let k = 0; k < 8; k += 1) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1
-  return c >>> 0
-})
-
-function crc32(bytes: Uint8Array): number {
-  let crc = 0xffffffff
-  for (const byte of bytes) crc = (CRC_TABLE[(crc ^ byte) & 0xff] as number) ^ (crc >>> 8)
-  return (crc ^ 0xffffffff) >>> 0
 }

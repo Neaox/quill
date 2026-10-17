@@ -182,6 +182,75 @@ describe('checkRoutes / exitCodeFor', () => {
   })
 })
 
+describe('on-demand modules', () => {
+  // What a reader must not pay for up front: each one is a chunk of its own,
+  // fetched by a dynamic import, and the route's static graph never reaches it.
+  const reading: RouteConfig = {
+    name: 'reading',
+    entries: ['index.html'],
+    budgetBytes: 1_000,
+    onDemand: ['src/menu-panels.tsx'],
+  }
+
+  it('passes when an on-demand module is its own chunk, reached only dynamically', () => {
+    withTempDist((distDir) => {
+      const manifest: Manifest = {
+        'index.html': {
+          file: writeAsset(distDir, 'index.js', 100),
+          dynamicImports: ['src/menu-panels.tsx'],
+        },
+        'src/menu-panels.tsx': {
+          file: writeAsset(distDir, 'menu-panels.js', 100),
+          isDynamicEntry: true,
+        },
+      }
+
+      const [report] = checkRoutes(distDir, manifest, [reading])
+
+      expect(report?.onDemandViolations).toEqual([])
+      expect(report?.status).toBe('PASS')
+    })
+  })
+
+  it('fails when the static graph reaches an on-demand module', () => {
+    withTempDist((distDir) => {
+      const manifest: Manifest = {
+        'index.html': {
+          file: writeAsset(distDir, 'index.js', 100),
+          imports: ['src/menu-panels.tsx'],
+        },
+        'src/menu-panels.tsx': {
+          file: writeAsset(distDir, 'menu-panels.js', 100),
+          isDynamicEntry: true,
+        },
+      }
+
+      const reports = checkRoutes(distDir, manifest, [reading])
+
+      expect(reports[0]?.onDemandViolations).toEqual([
+        'src/menu-panels.tsx is loaded with the route, not on demand',
+      ])
+      expect(reports[0]?.status).toBe('FAIL')
+      expect(exitCodeFor(reports)).toBe(1)
+    })
+  })
+
+  it('fails when an on-demand module is no longer a chunk of its own', () => {
+    withTempDist((distDir) => {
+      // A static import elsewhere folds the module into a shared chunk, and
+      // the manifest stops naming it.
+      const manifest: Manifest = { 'index.html': { file: writeAsset(distDir, 'index.js', 100) } }
+
+      const [report] = checkRoutes(distDir, manifest, [reading])
+
+      expect(report?.onDemandViolations).toEqual([
+        'src/menu-panels.tsx is not a chunk of its own; something imports it statically',
+      ])
+      expect(report?.status).toBe('FAIL')
+    })
+  })
+})
+
 describe('topLargestFiles', () => {
   it('returns the largest files by gzip size, largest first, capped at the requested count', () => {
     const files = [

@@ -1,6 +1,8 @@
 import { buildPalettes, type Palette, type ThemePalettes } from '../../colour/palette.ts'
 import type { ThemeDocument } from '../../schema/theme-document.ts'
+import { STATUS_NAMES } from '../../colour/status.ts'
 import { pairSeparation, worstSeparation, type SeparationResult } from '../cvd.ts'
+import { swatchEvidence } from '../evidence.ts'
 import { adjusted, pass, round, warn, type Rule, type RuleOutcome } from '../rule.ts'
 
 /** Section 8: the status set must stay separable under simulated CVD. */
@@ -70,23 +72,19 @@ export const statusSeparationRule: Rule = {
       STATUS_SEPARATION_FLOOR,
       'Status must carry a shape or a label as well as a colour, never a fourth colour.',
     ),
+  evidence: (_theme, palettes) =>
+    swatchEvidence(
+      palettes,
+      STATUS_NAMES,
+      (palette) => statusSeparation(palette).deltaE >= STATUS_SEPARATION_FLOOR,
+    ),
 }
 
+const accentMutedSeparation = (palette: Palette): SeparationResult =>
+  pairSeparation('accent', palette.colours.accent, 'muted text', palette.colours.muted)
+
 const accentAgainstMuted = (palettes: ThemePalettes): SeparationResult =>
-  weakest([
-    pairSeparation(
-      'accent',
-      palettes.light.colours.accent,
-      'muted text',
-      palettes.light.colours.muted,
-    ),
-    pairSeparation(
-      'accent',
-      palettes.dark.colours.accent,
-      'muted text',
-      palettes.dark.colours.muted,
-    ),
-  ])
+  weakest([accentMutedSeparation(palettes.light), accentMutedSeparation(palettes.dark)])
 
 export const accentSeparationRule: Rule = {
   id: 'cvd/accent-separation',
@@ -98,5 +96,11 @@ export const accentSeparationRule: Rule = {
       accentAgainstMuted(withoutOverrides(theme)),
       ACCENT_SEPARATION_FLOOR,
       'Links and controls must also carry an underline, a weight or a position, never colour alone.',
+    ),
+  evidence: (_theme, palettes) =>
+    swatchEvidence(
+      palettes,
+      ['accent', 'muted'],
+      (palette) => accentMutedSeparation(palette).deltaE >= ACCENT_SEPARATION_FLOOR,
     ),
 }

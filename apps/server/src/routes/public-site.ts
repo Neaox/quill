@@ -1,21 +1,26 @@
 import { Type } from '@sinclair/typebox'
 import type { TypeBoxTypeProvider } from '@fastify/type-provider-typebox'
 import {
-  loadPublicSite,
   publicPageHref,
   publicSiteHref,
   publishedAt,
+  readPublicFacts,
   renderDocument,
+  surfaceLinkRewriter,
+  surfaceReplacement,
 } from '@quill/application'
 import type { DocumentRow, PublicSite } from '@quill/application'
-import { PUBLIC_PRINCIPAL } from '@quill/domain'
-import type { WorkspaceId } from '@quill/domain'
+import { rewriteLinks } from '@quill/markdown'
+import { PUBLIC_PRINCIPAL, tagQuery } from '@quill/domain'
+import type { DocumentId, WorkspaceId } from '@quill/domain'
 import { visibilityFilter } from '@quill/search'
 import type { FastifyPluginAsync, FastifyReply, FastifyRequest } from 'fastify'
 
+import { fillChildPages } from '../child-pages/fill.ts'
 import type { AppDependencies } from '../dependencies.ts'
 import { notFound } from '../errors.ts'
 import type { CachedPage } from '../public-site/cache.ts'
+import { html as markup } from '../public-site/html.ts'
 import {
   articleStructuredData,
   firstParagraph,
@@ -27,8 +32,15 @@ import {
 } from '../public-site/pages.ts'
 import type { SearchResultView } from '../public-site/pages.ts'
 import { renderRobots, renderSitemap, renderSitemapIndex } from '../public-site/sitemap.ts'
+import { createReaderScript } from '../public-site/reader-script.ts'
+import { cachedHeaderMenu, cachedPublicSiteLoader } from '../public-site/menu.ts'
+import { createSchemeScript } from '../public-site/scheme-script.ts'
 import { ASSET_MAX_AGE_SECONDS } from '../public-site/stylesheet.ts'
+import { renderByline } from '../public-site/templates/byline.ts'
+import { renderLifecycleNotice } from '../public-site/templates/lifecycle-notice.ts'
+import { navigationSection } from '../public-site/templates/navigation.ts'
 import { renderPage } from '../public-site/templates/page.ts'
+import { pageLayoutAttributes } from '../theme/page-attributes.ts'
 import { addressRateLimit } from '../plugins/rate-limit.ts'
 import { unsearchable } from './search-query.ts'
 
@@ -100,9 +112,15 @@ const HOME_PATH = ''
 /** `theme-<32 hex characters>.css`, and nothing else. */
 const ASSET_FILE = /^theme-([0-9a-f]{32})\.css$/u
 
+/** `scheme-` or `reader-` and 32 hex characters, `.js`, and nothing else. */
+const SCRIPT_FILE = /^(scheme|reader)-([0-9a-f]{32})\.js$/u
+
 export function publicSiteRoutes(deps: AppDependencies): FastifyPluginAsync {
   const budget = addressRateLimit(PUBLIC_SITE_BUCKET, deps.config.publicSiteRateLimitMax)
   const pageSize = deps.config.publicSitemapPageSize
+  const schemeScript = createSchemeScript(deps.hasher)
+  const readerScript = createReaderScript(deps.hasher)
+  const scripts = { scheme: schemeScript, reader: readerScript } as const
 
   /** The absolute form of a path on this instance, for canonical links and the sitemap. */
   const absolute = (path: string): string => `${deps.config.appUrl}${path}`
@@ -145,26 +163,52 @@ export function publicSiteRoutes(deps: AppDependencies): FastifyPluginAsync {
     etag: `"${deps.hasher.contentHash(html)}"`,
   })
 
-  /** Everything the shell needs that is the same on every page of a site. */
-  const shellOf = (site: PublicSite) => {
+  /**
+   * Everything the shell needs that is the same on every page of a site, bar
+   * which document is open in the navigation and which address the header
+   * menu marks as the one being read.
+   */
+  const shellOf = async (
+    site: PublicSite,
+    currentDocumentId: DocumentId | null,
+    currentHref: string | null,
+  ) => {
     const stylesheet = deps.publicStylesheets.forTheme(site.organisation.theme)
     return {
-      siteSlug: site.siteSlug,
       siteName: site.organisation.name,
-      links: site.organisation.publicNavigation,
-      navigation: site.navigation,
+      homeHref: publicSiteHref(site.siteSlug),
+      menu: await cachedHeaderMenu(deps, site.organisation),
+      currentHref,
+      audience: 'public' as const,
+      searchHref: `${publicSiteHref(site.siteSlug)}/search`,
+      sections: [
+        navigationSection({
+          name: site.collection.name,
+          nodes: site.navigation,
+          hrefOf: (node) => publicPageHref(site.siteSlug, node.path),
+          currentDocumentId,
+          open: true,
+        }),
+      ],
       stylesheetHref: stylesheet.href,
+      themeId: stylesheet.identity,
+      scriptHref: schemeScript.href,
+      readerHref: readerScript.href,
+      preview: null,
+      htmlAttributes: pageLayoutAttributes([
+        site.organisation.layout.default,
+        site.organisation.theme.variants,
+      ]),
     }
   }
 
-  const notFoundPage = (request: FastifyRequest, reply: FastifyReply, site: PublicSite) =>
+  const notFoundPage = async (request: FastifyRequest, reply: FastifyReply, site: PublicSite) =>
     sendPage(
       request,
       reply,
       finished(
         renderPage({
-          ...shellOf(site),
-          currentPath: null,
+          ...(await shellOf(site, null, null)),
           title: 'Not found',
           description: null,
           // No canonical: this address is not the authoritative home of
@@ -200,14 +244,7 @@ export function publicSiteRoutes(deps: AppDependencies): FastifyPluginAsync {
    * `null` is the one answer every reason gives, and the caller turns it into
    * the page above.
    */
-  const siteAt = async (siteSlug: string): Promise<PublicSite | null> => {
-    const known = deps.publicSiteCache.site(siteSlug)
-    if (known !== null) return known
-    const loaded = await loadPublicSite(deps, siteSlug)
-    if (loaded.kind !== 'site') return null
-    deps.publicSiteCache.rememberSite(siteSlug, loaded.site)
-    return loaded.site
-  }
+  const siteAt = cachedPublicSiteLoader(deps)
 
   /**
    * One page of a site's addresses, newest-first stamps and all.
@@ -259,6 +296,56 @@ export function publicSiteRoutes(deps: AppDependencies): FastifyPluginAsync {
     /* v8 ignore next 2 -- the site only holds documents with a head revision. */
     if (rendered.kind !== 'rendered') return notFoundPage(request, reply, site)
 
+    const workspace = await deps.uow.repos.workspaces.findById(site.collection.workspaceId)
+    /* v8 ignore next -- a collection's workspace cannot be missing: the row cascades from it. */
+    if (workspace === null) return notFoundPage(request, reply, site)
+    // The pages under this one, as the site lists them (ADR-049): only
+    // published, public pages, at the site's own addresses. Filled before the
+    // page is cached, and the cache is emptied by the same events that change
+    // the list.
+    const filled = await fillChildPages(deps, {
+      html: rendered.content.html,
+      parent: document,
+      workspace,
+      audience: { kind: 'public' },
+      /* v8 ignore next -- every document in the collection is in the path table. */
+      hrefOf: (child) => publicPageHref(site.siteSlug, site.pathById.get(child.id) ?? ''),
+    })
+    // Links to other documents (`/d/<id>`, ADR-035) go to their address on
+    // this site when they are on it, and are reduced to their words when
+    // they are not: a stranger is never handed the id, workspace or title of
+    // a page the site does not show (ADR-046), nor a link into the app.
+    const bodyHtml = rewriteLinks(
+      filled,
+      surfaceLinkRewriter(site.pages.values(), (page) =>
+        /* v8 ignore next -- every page of the site is in the path table. */
+        publicPageHref(site.siteSlug, site.pathById.get(page.id) ?? ''),
+      ),
+    )
+
+    // What the page states about itself that a stranger may see (ADR-052):
+    // its tags lead to this site's own search, never into the application.
+    const facts = await readPublicFacts(deps, document, deps.clock.now())
+    const searchHref = `${publicSiteHref(site.siteSlug)}/search`
+    // A deprecated page names its replacement only when this site shows it,
+    // by the rule a link in its body follows (ADR-046).
+    const notice =
+      facts?.lifecycle?.state === 'deprecated'
+        ? renderLifecycleNotice(
+            surfaceReplacement(facts.lifecycle.supersededBy, site.pages.values(), (page) =>
+              /* v8 ignore next -- every page of the site is in the path table. */
+              publicPageHref(site.siteSlug, site.pathById.get(page.id) ?? ''),
+            ),
+          )
+        : markup``
+    const byline =
+      facts === null
+        ? undefined
+        : markup`${renderByline({
+            facts,
+            tagHref: (tag) => `${searchHref}?q=${encodeURIComponent(tagQuery(tag))}`,
+          })}${notice}`
+
     const stamps = await publishedAt(deps, [document])
     /* v8 ignore next -- `publishedAt` answers for every document it is given. */
     const updatedAt = stamps.get(document.id) ?? document.updatedAt
@@ -267,8 +354,7 @@ export function publicSiteRoutes(deps: AppDependencies): FastifyPluginAsync {
 
     const page = finished(
       renderPage({
-        ...shellOf(site),
-        currentPath: path,
+        ...(await shellOf(site, document.id, publicPageHref(site.siteSlug, path))),
         title: document.title,
         description,
         canonical,
@@ -277,8 +363,9 @@ export function publicSiteRoutes(deps: AppDependencies): FastifyPluginAsync {
         main: renderDocumentMain({
           collectionName: site.collection.name,
           title: document.title,
-          bodyHtml: rendered.content.html,
+          bodyHtml,
           rules: site.organisation.layout.default.rules,
+          byline,
         }),
         updatedAt,
         structuredData: articleStructuredData({
@@ -338,6 +425,22 @@ export function publicSiteRoutes(deps: AppDependencies): FastifyPluginAsync {
       '/s/_assets/:file',
       { config: budget, schema: { params: AssetParams, hide: true } },
       async (request, reply) => {
+        // The colour-scheme script (`public-site/scheme-script.ts`) and the
+        // reader (`public-site/reader-script.ts`): one file each
+        // per release, addressed by its own hash like the stylesheet.
+        const script = SCRIPT_FILE.exec(request.params.file)
+        if (script !== null) {
+          const served = script[1] === 'reader' ? scripts.reader : scripts.scheme
+          if (script[2] !== served.hash) throw notFound('No such asset')
+          reply.type('text/javascript; charset=utf-8')
+          reply.header('cache-control', `public, max-age=${ASSET_MAX_AGE_SECONDS}, immutable`)
+          reply.header('etag', `"${served.hash}"`)
+          if (request.headers['if-none-match'] === `"${served.hash}"`) {
+            return reply.status(304).send()
+          }
+          return served.source
+        }
+
         const hash = ASSET_FILE.exec(request.params.file)?.[1]
         if (hash === undefined) throw notFound('No such asset')
         const settings = await deps.settings.readOrganisation()
@@ -372,8 +475,7 @@ export function publicSiteRoutes(deps: AppDependencies): FastifyPluginAsync {
         if (held !== null) return sendPage(request, reply, held)
         const page = finished(
           renderPage({
-            ...shellOf(site),
-            currentPath: null,
+            ...(await shellOf(site, null, publicSiteHref(site.siteSlug))),
             title: site.collection.name,
             description: null,
             canonical: absolute(publicSiteHref(site.siteSlug)),
@@ -418,8 +520,7 @@ export function publicSiteRoutes(deps: AppDependencies): FastifyPluginAsync {
           reply,
           finished(
             renderPage({
-              ...shellOf(site),
-              currentPath: null,
+              ...(await shellOf(site, null, `${publicSiteHref(site.siteSlug)}/search`)),
               // The query is *not* in the title. A search page is an address
               // anybody can choose the text of, and a title built from it
               // unfurls in a chat client as the organisation's own page saying

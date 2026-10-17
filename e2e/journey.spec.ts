@@ -13,6 +13,7 @@ import {
 } from './support/content.ts'
 import { caretAtEndOf } from './support/editing.ts'
 import { seedDevelopmentData } from './support/seed.ts'
+import { accountMenu } from './support/account.ts'
 
 /**
  * The milestone journey: sign in, read, write, publish, read again, publish a
@@ -71,7 +72,7 @@ async function signIn(page: Page, email: string, password: string): Promise<void
   // throughout either. A `page.goto` fired into that gap is cancelled by
   // whatever the router does next: Firefox reports `NS_BINDING_ABORTED` and
   // WebKit "Frame load interrupted", where Chromium usually gets away with it.
-  await expect(page.getByRole('button', { name: 'Sign out' })).toBeVisible()
+  await expect(accountMenu(page)).toBeVisible()
   await expect(page).toHaveURL('/')
 }
 

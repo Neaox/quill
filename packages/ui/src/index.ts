@@ -45,7 +45,7 @@ export {
   type LinkTarget,
 } from './lib/link.tsx'
 
-export { Badge, type BadgeProps, type BadgeTone } from './components/badge.tsx'
+export { Badge, badgeStyles, type BadgeProps, type BadgeTone } from './components/badge.tsx'
 export { Breadcrumb, type BreadcrumbItem, type BreadcrumbProps } from './components/breadcrumb.tsx'
 export {
   Button,
@@ -57,6 +57,7 @@ export {
 } from './components/button.tsx'
 export { Callout, type CalloutProps, type CalloutTone } from './components/callout.tsx'
 export { CodeBlock, codeBlockStyles, type CodeBlockProps } from './components/code-block.tsx'
+export { Combobox, comboboxStyles, type ComboboxProps } from './components/combobox.tsx'
 export {
   CommandPalette,
   commandPaletteStyles,
@@ -64,6 +65,7 @@ export {
   type CommandPaletteOption,
   type CommandPaletteProps,
 } from './components/command-palette.tsx'
+export type { ListboxGroup, ListboxOption } from './components/listbox.tsx'
 export {
   CommentsPanel,
   type CommentsPanelProps,
@@ -75,8 +77,23 @@ export {
   DialogClose,
   dialogStyles,
   type DialogElevation,
+  type DialogPlacement,
   type DialogProps,
 } from './components/dialog.tsx'
+/**
+ * Menus, dialogs and the history popover fetch their machinery on demand, in
+ * idle time (`lib/on-demand.ts`). This fetches all of it now — for a test
+ * environment that should render as a settled page does.
+ */
+export { preloadOverlays } from './components/overlays.ts'
+
+/**
+ * A module fetched when it is wanted rather than with the page, with an
+ * observer so a component renders without it and again once it is here — the
+ * overlays' own mechanism, for an application's on-demand chunks too.
+ */
+export { onDemand, useOnDemand, type OnDemand } from './lib/on-demand.ts'
+export { useNarrowScreen } from './lib/use-narrow-screen.ts'
 export {
   DocumentHeader,
   type DocumentHeaderProps,
@@ -86,21 +103,142 @@ export {
 export { DocumentShell, type DocumentShellProps } from './components/document-shell.tsx'
 export { IconRail, type IconRailItem, type IconRailProps } from './components/icon-rail.tsx'
 export {
+  CheckIcon,
+  ChevronDownIcon,
   ChevronRightIcon,
+  ChevronUpIcon,
   CloseIcon,
+  CollectionIcon,
   CommentIcon,
+  CompareIcon,
   CopyIcon,
   DangerIcon,
+  DocumentIcon,
+  DropdownIcon,
+  ExternalIcon,
   HistoryIcon,
   InfoIcon,
+  LinkIcon,
   OutlineIcon,
+  PencilIcon,
+  PlusIcon,
+  PresentIcon,
+  PreviewIcon,
+  RestoreIcon,
   SearchIcon,
+  ShareIcon,
   SuccessIcon,
+  SwapIcon,
   WarningIcon,
   type IconProps,
 } from './components/icons.tsx'
-export { Input, type InputProps } from './components/input.tsx'
-export { Menu, menuStyles, type MenuItem, type MenuProps } from './components/menu.tsx'
+export {
+  ParagraphIcon,
+  Heading1Icon,
+  Heading2Icon,
+  Heading3Icon,
+  Heading4Icon,
+  BulletListIcon,
+  NumberedListIcon,
+  TaskListIcon,
+  QuoteIcon,
+  DividerIcon,
+  CalloutIcon,
+  FigureIcon,
+  CardsIcon,
+  WidthIcon,
+  NotesIcon,
+  ImageIcon,
+  DiagramIcon,
+  DrawingIcon,
+  CodeGroupIcon,
+  CodeIcon,
+  TableIcon,
+  BadgeIcon,
+  LabelIcon,
+  EmojiIcon,
+  FootnoteIcon,
+  SmallPrintIcon,
+  KeyboardIcon,
+  PlaceholderIcon,
+  GuidanceIcon,
+  OptionalIcon,
+  RepeatIcon,
+  DetailsIcon,
+  AccordionIcon,
+  TableOfContentsIcon,
+  ChildPagesIcon,
+} from './components/block-icons.tsx'
+export {
+  CALLOUT_ICONS,
+  CALLOUT_ICON_SHAPES,
+  CautionCalloutIcon,
+  ImportantCalloutIcon,
+  InfoCalloutIcon,
+  NoteCalloutIcon,
+  TipCalloutIcon,
+  WarningCalloutIcon,
+  type CalloutIconShape,
+  type CalloutKind,
+} from './components/callout-icons.tsx'
+export {
+  AnchoredPopover,
+  anchoredPopoverStyles,
+  type AnchoredPopoverProps,
+  type PopoverAnchor,
+} from './components/anchored-popover.tsx'
+export {
+  ContextMenu,
+  contextMenuStyles,
+  type ContextMenuAction,
+  type ContextMenuAnchor,
+  type ContextMenuChoice,
+  type ContextMenuEntry,
+  type ContextMenuProps,
+  type ContextMenuSection,
+  type ContextMenuSubmenu,
+} from './components/context-menu.tsx'
+export {
+  ArrowDownIcon,
+  ArrowUpIcon,
+  BoldIcon,
+  ClearFormattingIcon,
+  CutIcon,
+  InlineCodeIcon,
+  ItalicIcon,
+  PasteIcon,
+  StrikeIcon,
+  TrashIcon,
+  TurnIntoIcon,
+  UnlinkIcon,
+} from './components/format-icons.tsx'
+export {
+  AlignCenterIcon,
+  AlignLeftIcon,
+  AlignRightIcon,
+  CaptionIcon,
+  ColumnLeftIcon,
+  ColumnRightIcon,
+  DeleteColumnIcon,
+  DeleteRowIcon,
+  FooterRowIcon,
+  HeaderColumnIcon,
+  HeaderRowIcon,
+  RowAboveIcon,
+  RowBelowIcon,
+  TableOptionsIcon,
+} from './components/table-icons.tsx'
+export { Input, inputStyles, type InputProps, type InputSize } from './components/input.tsx'
+export {
+  Menu,
+  MenuButton,
+  menuStyles,
+  type MenuButtonProps,
+  type MenuEntry,
+  type MenuItem,
+  type MenuProps,
+  type MenuSection,
+} from './components/menu.tsx'
 export {
   Block,
   LayoutGrid,
@@ -124,6 +262,38 @@ export {
   type PropertySelectOption,
   type PropertySelectProps,
 } from './components/properties-field.tsx'
+export { Avatar, initialsOf, type AvatarProps } from './components/avatar.tsx'
+export {
+  DocumentByline,
+  type BylineField,
+  type BylineLifecycle,
+  type BylineOwner,
+  type DocumentBylineProps,
+} from './components/document-byline.tsx'
+export { LifecycleNotice, type LifecycleNoticeProps } from './components/lifecycle-notice.tsx'
+export {
+  ChoiceMenu,
+  type ChoiceMenuOption,
+  type ChoiceMenuProps,
+} from './components/choice-menu.tsx'
+export {
+  PropertyPopover,
+  propertyPopoverStyles,
+  type PropertyPopoverProps,
+} from './components/property-popover.tsx'
+export {
+  TokenInput,
+  tokenInputStyles,
+  type Token,
+  type TokenInputProps,
+} from './components/token-input.tsx'
+export { absoluteDate, relativeDate } from './lib/dates.ts'
+export {
+  RevisionPicker,
+  revisionPickerStyles,
+  type RevisionChoice,
+  type RevisionPickerProps,
+} from './components/revision-picker.tsx'
 export {
   RevisionTimeline,
   type Revision,
@@ -183,6 +353,8 @@ export {
   type TabPanelProps,
   type TabProps,
   type TabsProps,
+  type TabsSize,
+  type TabsVariant,
 } from './components/tabs.tsx'
 export {
   toast,
@@ -202,6 +374,11 @@ export {
   type ToastTone,
 } from './components/toaster.tsx'
 export {
+  InfoPopover,
+  infoPopoverStyles,
+  type InfoPopoverProps,
+} from './components/info-popover.tsx'
+export {
   Tooltip,
   TooltipProvider,
   type TooltipProps,
@@ -209,7 +386,9 @@ export {
 } from './components/tooltip.tsx'
 export {
   Tree,
+  TREE_PAGE_SIZE,
   type TreeNode,
+  type TreeLoadRequest,
   type TreeNodeAction,
   type TreeProps,
   type TreeSection,
@@ -228,6 +407,18 @@ export {
   type ThemePreference,
   type ThemeStorage,
 } from './theme/theme.ts'
+export {
+  ANIMATED_IMAGES_ATTRIBUTE,
+  ANIMATED_IMAGES_PREFERENCES,
+  ANIMATED_IMAGES_STORAGE_KEY,
+  applyAnimatedImagesPreference,
+  DEFAULT_ANIMATED_IMAGES_PREFERENCE,
+  isAnimatedImagesPreference,
+  readAnimatedImagesPreference,
+  rememberAnimatedImagesPreference,
+  type AnimatedImagesPreference,
+  type AnimatedImagesStorage,
+} from './motion/animated-images.ts'
 /*
  * The tenant's identity (ADR-028, layer 1) is **not** re-exported here. It is
  * `@quill/ui/theme`, because only a preview surface — the design showcase, and

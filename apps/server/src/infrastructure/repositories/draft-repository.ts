@@ -108,6 +108,18 @@ export function createDraftRepository(db: DrizzleClient, pool: pg.Pool): DraftRe
       return row === undefined ? null : toDraftRowFrom(row)
     },
 
+    /** Two columns, never the tree: the envelope asks on every read of a document. */
+    async stamp(documentId: DocumentId) {
+      const rows = await db
+        .select({ baseRevision: drafts.baseRevision, updatedAt: drafts.updatedAt })
+        .from(drafts)
+        .where(eq(drafts.documentId, documentId))
+      const row = rows[0]
+      return row === undefined
+        ? null
+        : { baseRevision: row.baseRevision as RevisionId | null, updatedAt: row.updatedAt }
+    },
+
     /**
      * Moving the base alone leaves the content and the version alone; moving
      * the content as well — a restore — bumps the version, so an editor that

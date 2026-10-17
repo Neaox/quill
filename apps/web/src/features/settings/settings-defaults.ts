@@ -27,11 +27,11 @@ import type { OrganisationSettings } from '../../lib/api/index.ts'
  */
 export function defaultOrganisationSettings(): OrganisationSettings {
   return {
-    version: 1,
+    version: 2,
     name: BRAND.name,
     theme: DEFAULT_THEME,
     layout: { default: recommendedLayout(DEFAULT_THEME), locked: false },
-    publicNavigation: [],
+    publicMenu: [],
     policies: {
       shareLinksAllowed: true,
       publicPublishingAllowed: false,

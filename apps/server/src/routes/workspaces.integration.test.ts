@@ -626,3 +626,124 @@ describe('addressing a workspace by its slug', () => {
     })
   })
 })
+
+/*
+ * The tree a sidebar draws: a few levels, a page of each list, and the way
+ * down to the document being read, with the rest a page at a time. A large
+ * workspace's whole tree is megabytes; these are kilobytes, cut from the
+ * same reader-filtered tree, so a page never shows what the whole would hide.
+ */
+describe('the workspace tree, a page at a time', () => {
+  let shelf: DocumentId
+  let volumes: DocumentId[]
+
+  beforeAll(async () => {
+    const parent = await create({ collectionId: runbooks, title: 'Shelf' })
+    shelf = parent.json().document.id as DocumentId
+    volumes = []
+    for (const title of ['Volume 1', 'Volume 2', 'Volume 3']) {
+      // One at a time: the tree's order is creation order.
+      const made = await create({ collectionId: runbooks, parentId: shelf, title })
+      volumes.push(made.json().document.id as DocumentId)
+    }
+  })
+
+  type Node = {
+    id: string
+    title: string
+    childCount: number
+    childrenOffset: number
+    children: Node[]
+  }
+  type Collection = {
+    name: string
+    documents: Node[]
+    documentCount: number
+    documentsOffset: number
+    total: number
+  }
+
+  async function tree(query: string, cookies = editor) {
+    const response = await harness.app.inject({
+      method: 'GET',
+      url: `/api/workspaces/${tenancy.workspaceId}/tree?${query}`,
+      cookies,
+    })
+    expect(response.statusCode).toBe(200)
+    return (response.json().collections as Collection[]).find((entry) => entry.name === 'Runbooks')
+  }
+
+  it('cuts the tree to a depth, and counts what it left out', async () => {
+    const runbookTree = await tree('depth=1&limit=50')
+    const shelfNode = runbookTree?.documents.find((node) => node.id === shelf)
+
+    expect(shelfNode).toMatchObject({ childCount: 3, children: [] })
+    expect(runbookTree?.documentCount).toBe(runbookTree?.documents.length)
+    expect(runbookTree?.total).toBeGreaterThan(runbookTree?.documentCount ?? 0)
+  })
+
+  it('brings the way to a focused document with the first response', async () => {
+    const runbookTree = await tree(`depth=1&limit=2&focus=${String(volumes[2])}`)
+    const shelfNode = runbookTree?.documents.find((node) => node.id === shelf)
+
+    // The page of the shelf's children that holds Volume 3.
+    expect(shelfNode?.childrenOffset).toBe(2)
+    expect(shelfNode?.children.map((node) => node.title)).toEqual(['Volume 3'])
+  })
+
+  it('answers the rest of a list a page at a time', async () => {
+    const response = await harness.app.inject({
+      method: 'GET',
+      url: `/api/workspaces/${tenancy.workspaceId}/tree/children?parent=${shelf}&offset=1&limit=1`,
+      cookies: editor,
+    })
+
+    expect(response.statusCode).toBe(200)
+    expect(response.json()).toMatchObject({
+      total: 3,
+      offset: 1,
+      documents: [{ title: 'Volume 2', childCount: 0, children: [] }],
+    })
+    // A collection's top level the same way.
+    const top = await harness.app.inject({
+      method: 'GET',
+      url: `/api/workspaces/${tenancy.workspaceId}/tree/children?collection=${runbooks}&limit=1`,
+      cookies: editor,
+    })
+    expect(top.json()).toMatchObject({ offset: 0, documents: [expect.anything()] })
+  })
+
+  it('never pages out what a deny hides, and treats a hidden parent as not found', async () => {
+    const denied = await createGrant(harness.deps, {
+      principalKind: 'user',
+      principalId: tenancy.viewer,
+      scopeKind: 'document',
+      scopeId: shelf,
+      role: 'viewer',
+      effect: 'deny',
+      createdBy: tenancy.admin,
+    })
+    expect(denied.kind).toBe('created')
+
+    const hidden = await harness.app.inject({
+      method: 'GET',
+      url: `/api/workspaces/${tenancy.workspaceId}/tree/children?parent=${shelf}`,
+      cookies: viewer,
+    })
+    expect(hidden.statusCode).toBe(404)
+
+    const runbookTree = await tree('depth=1', viewer)
+    expect(runbookTree?.documents.map((node) => node.id)).not.toContain(shelf)
+  })
+
+  it('refuses a request that names neither or both owners', async () => {
+    for (const query of ['', `parent=${shelf}&collection=${runbooks}`]) {
+      const response = await harness.app.inject({
+        method: 'GET',
+        url: `/api/workspaces/${tenancy.workspaceId}/tree/children?${query}`,
+        cookies: editor,
+      })
+      expect(response.statusCode).toBe(400)
+    }
+  })
+})

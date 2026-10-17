@@ -1,4 +1,4 @@
-import type { Clock, PublicSite } from '@quill/application'
+import type { Clock, PublicSite, ResolvedPublicMenu } from '@quill/application'
 
 /**
  * What the public site remembers between requests (ADR-023, ADR-031).
@@ -16,7 +16,12 @@ import type { Clock, PublicSite } from '@quill/application'
  *   each one's address is, how they nest, and what the organisation
  *   configured;
  * - **the finished page**, keyed by the site and the path: the HTML and its
- *   `ETag`.
+ *   `ETag`;
+ * - **the resolved header menu**, one for the whole instance because every
+ *   page of every site carries the same one (`resolvePublicMenu`). It names
+ *   documents on any site, which is why anything that changes one page
+ *   invalidates everything: a rename in one collection changes the header of
+ *   every site whose menu links to it.
  *
  * Neither is allowed to be the reason something is wrong, so both are bounded
  * three ways.
@@ -52,6 +57,9 @@ export interface PublicSiteCache {
   rememberSite(siteSlug: string, site: PublicSite): void
   page(siteSlug: string, path: string): CachedPage | null
   rememberPage(siteSlug: string, path: string, page: CachedPage): void
+  /** The resolved header menu, or null when nothing valid is held. */
+  menu(): ResolvedPublicMenu | null
+  rememberMenu(menu: ResolvedPublicMenu): void
   /** Everything, because anything that changes one page can change the navigation on all of them. */
   invalidate(): void
 }
@@ -77,6 +85,9 @@ const DEFAULT_MAX_PAGES = 512
  */
 const pageKey = (siteSlug: string, path: string): string => `${siteSlug}\n${path}`
 
+/** The one menu an instance has. */
+const MENU_KEY = 'menu'
+
 interface Entry<T> {
   readonly value: T
   readonly at: number
@@ -87,6 +98,7 @@ export function createPublicSiteCache(options: PublicSiteCacheOptions): PublicSi
   const maxPages = options.maxPages ?? DEFAULT_MAX_PAGES
   const sites = new Map<string, Entry<PublicSite>>()
   const pages = new Map<string, Entry<CachedPage>>()
+  const menus = new Map<string, Entry<ResolvedPublicMenu>>()
 
   /**
    * A `Map` iterates in insertion order, so deleting the first key evicts the
@@ -121,9 +133,12 @@ export function createPublicSiteCache(options: PublicSiteCacheOptions): PublicSi
     page: (siteSlug, path) => recall(pages, pageKey(siteSlug, path)),
     rememberPage: (siteSlug, path, page) =>
       remember(pages, pageKey(siteSlug, path), page, maxPages),
+    menu: () => recall(menus, MENU_KEY),
+    rememberMenu: (menu) => remember(menus, MENU_KEY, menu, 1),
     invalidate: () => {
       sites.clear()
       pages.clear()
+      menus.clear()
     },
   }
 }
