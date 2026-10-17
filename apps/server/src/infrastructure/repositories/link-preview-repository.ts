@@ -87,7 +87,8 @@ export function createLinkPreviewRepository(db: DrizzleClient): LinkPreviewRepos
 
     async putFailure({ scope, key, failure, now }) {
       const waitUntil = retryAfter(now)
-      const wasReady = sql`${linkPreviews.state} = 'ready'`
+      // A link that has become restricted is the one failure that must not leave its old preview in view.
+      const wasReady = failure === 'restricted' ? sql`false` : sql`${linkPreviews.state} = 'ready'`
       await db
         .insert(linkPreviews)
         .values({

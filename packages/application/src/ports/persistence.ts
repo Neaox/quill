@@ -1219,7 +1219,9 @@ export interface LinkPreviewRepository {
   /**
    * Records a failed fetch. A row that already holds a preview keeps it, with
    * a later `retryAfter`: a dead link's last good preview beats an empty card
-   * (ADR-032, "the last good snapshot with its age").
+   * (ADR-032, "the last good snapshot with its age"). The one exception is the
+   * failure `restricted`: the link is no longer public, so what was kept from
+   * when it was is dropped rather than shown to people who could not open it.
    */
   putFailure(input: {
     readonly scope: string

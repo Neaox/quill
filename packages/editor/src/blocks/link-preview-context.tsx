@@ -20,6 +20,23 @@ export interface EditorLinkPreview {
   readonly siteName: string | null
   readonly thumbnail: EditorLinkImage | null
   readonly favicon: EditorLinkImage | null
+  /** From a connector: "Open", "Merged". Optional, so a source that has none still fits. */
+  readonly status?: EditorLinkStatus | undefined
+  /** From a connector, for a permalink to lines of source. */
+  readonly code?: EditorLinkCode | undefined
+}
+
+export interface EditorLinkStatus {
+  readonly label: string
+  readonly tone: 'neutral' | 'accent' | 'success' | 'warning' | 'danger'
+}
+
+export interface EditorLinkCode {
+  readonly language: string | null
+  readonly startLine: number
+  readonly lines: readonly string[]
+  readonly path: string
+  readonly repository: string
 }
 
 export interface EditorLinkImage {

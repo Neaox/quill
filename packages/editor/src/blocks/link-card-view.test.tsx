@@ -1,10 +1,10 @@
 import { parseDocument } from '@quill/markdown'
-import { render, screen } from '@testing-library/react'
+import { render, screen, within } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
 
 import { DocumentEditor } from '../document/document-editor.tsx'
 import { expectNoAccessibilityViolations } from '../testing/axe.ts'
-import type { LinkPreviewSource } from './link-preview-context.tsx'
+import type { EditorLinkPreview, LinkPreviewSource } from './link-preview-context.tsx'
 
 const ADDRESS = 'https://blog.example/post'
 const PREVIEW = {
@@ -15,7 +15,7 @@ const PREVIEW = {
   favicon: { hash: 'b'.repeat(64), width: 64, height: 64 },
 }
 
-const source = (preview: typeof PREVIEW | null): LinkPreviewSource => ({
+const source = (preview: EditorLinkPreview | null): LinkPreviewSource => ({
   preview: () => preview,
   request: () => undefined,
   imageUrl: ({ hash }) => `/pictures/${hash}`,
@@ -72,5 +72,77 @@ describe('a link card in the writing surface', () => {
   it('hides a description the author has emptied', async () => {
     open(`::link{url="${ADDRESS}" display=card description=""}\n`, source(PREVIEW))
     expect(await card('How we cut build times')).not.toHaveTextContent('Caching and parallelism.')
+  })
+
+  describe('what a connector adds', () => {
+    it('shows the state of a pull request in words, with its tone as emphasis only', async () => {
+      const { container } = open(
+        `::link{url="${ADDRESS}" display=card}
+`,
+        source({ ...PREVIEW, status: { label: 'Merged', tone: 'accent' } }),
+      )
+      const drawn = await card('How we cut build times')
+      expect(within(drawn).getByText('Merged')).toBeInTheDocument()
+      await expectNoAccessibilityViolations(container)
+    })
+
+    it('shows the state on a compact link, too', async () => {
+      open(
+        `::link{url="${ADDRESS}" display=compact}
+`,
+        source({ ...PREVIEW, status: { label: 'Open', tone: 'success' } }),
+      )
+      const drawn = await screen.findByRole('group', {
+        name: 'Compact link: How we cut build times',
+      })
+      expect(within(drawn).getByText('Open')).toBeInTheDocument()
+    })
+
+    it('shows no state for a page', async () => {
+      open(
+        `::link{url="${ADDRESS}" display=card}
+`,
+        source(PREVIEW),
+      )
+      const drawn = await card('How we cut build times')
+      expect(drawn.querySelector('[data-link-status]')).toBeNull()
+    })
+
+    const CODE = {
+      language: 'typescript',
+      startLine: 12,
+      lines: ['const a = 1', 'const b = 2', 'const c = 3', 'const d = 4', 'const e = 5'],
+      path: 'src/index.ts',
+      repository: 'o/r',
+    }
+
+    it('summarises a code permalink: the file, the lines, and the first few of them as text', async () => {
+      const { container } = open(
+        `::link{url="${ADDRESS}" display=card}
+`,
+        source({ ...PREVIEW, title: 'src/index.ts, lines 12 to 16', code: CODE }),
+      )
+      const drawn = await card('src/index.ts, lines 12 to 16')
+      expect(drawn).toHaveTextContent('o/r')
+      const excerpt = drawn.querySelector('pre')
+      expect(excerpt?.textContent).toBe('const a = 1\nconst b = 2\nconst c = 3')
+      expect(excerpt).toHaveAttribute('data-first-line', '12')
+      await expectNoAccessibilityViolations(container)
+    })
+
+    it('does not run or interpret the code', async () => {
+      open(
+        `::link{url="${ADDRESS}" display=card}
+`,
+        source({
+          ...PREVIEW,
+          title: 'x',
+          code: { ...CODE, lines: ['<img src=x onerror=alert(1)>'] },
+        }),
+      )
+      const drawn = await card('x')
+      expect(drawn.querySelector('img[src="x"]')).toBeNull()
+      expect(drawn.querySelector('pre')?.textContent).toBe('<img src=x onerror=alert(1)>')
+    })
   })
 })

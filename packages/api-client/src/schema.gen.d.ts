@@ -1904,6 +1904,13 @@ export interface paths {
                         "application/json": {
                             preview: {
                                 canonicalUrl: string;
+                                code?: {
+                                    language: string | null;
+                                    lines: string[];
+                                    path: string;
+                                    repository: string;
+                                    startLine: number;
+                                };
                                 description: string | null;
                                 embed?: {
                                     aspectRatio: number;
@@ -1949,7 +1956,7 @@ export interface paths {
                             state: "pending";
                         } | {
                             /** @enum {string} */
-                            reason: "invalid_url" | "unreachable" | "not_a_page" | "no_metadata" | "blocked" | "busy";
+                            reason: "invalid_url" | "unreachable" | "not_a_page" | "no_metadata" | "restricted" | "blocked" | "busy";
                             /** @enum {string} */
                             state: "unavailable";
                         } | {
@@ -2002,6 +2009,13 @@ export interface paths {
                                 view: {
                                     preview: {
                                         canonicalUrl: string;
+                                        code?: {
+                                            language: string | null;
+                                            lines: string[];
+                                            path: string;
+                                            repository: string;
+                                            startLine: number;
+                                        };
                                         description: string | null;
                                         embed?: {
                                             aspectRatio: number;
@@ -2047,7 +2061,7 @@ export interface paths {
                                     state: "pending";
                                 } | {
                                     /** @enum {string} */
-                                    reason: "invalid_url" | "unreachable" | "not_a_page" | "no_metadata" | "blocked" | "busy";
+                                    reason: "invalid_url" | "unreachable" | "not_a_page" | "no_metadata" | "restricted" | "blocked" | "busy";
                                     /** @enum {string} */
                                     state: "unavailable";
                                 } | {

@@ -163,6 +163,19 @@ describe('putReady and putFailure', () => {
     ])
   })
 
+  it('drops a stored preview when the link has become restricted', async () => {
+    await previews.putReady({ scope: 'public', key: A, document: DOCUMENT, now: NOW })
+    await previews.putFailure({ scope: 'public', key: A, failure: 'restricted', now: later(1) })
+    expect(await find([A])).toEqual([
+      expect.objectContaining({
+        state: 'failed',
+        failure: 'restricted',
+        document: null,
+        fetchedAt: later(1),
+      }),
+    ])
+  })
+
   it('records a failure with the time it may be tried again', async () => {
     await previews.putFailure({ scope: 'public', key: A, failure: 'not_a_page', now: NOW })
     expect(await find([A])).toEqual([

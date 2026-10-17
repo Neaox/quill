@@ -199,3 +199,12 @@ export type {
   RateDecision,
 } from './link-previews.ts'
 export { PUBLIC_PREVIEW_SCOPE } from './link-previews.ts'
+
+export type {
+  ConnectorCredentialSource,
+  ConnectorCredentials,
+  ConnectorDraft,
+  ConnectorFailure,
+  LinkConnector,
+  LinkConnectorRegistry,
+} from './link-connectors.ts'

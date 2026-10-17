@@ -259,6 +259,107 @@ describe('fillLinkSlots: a block link', () => {
     }
   })
 
+  describe('a code permalink', () => {
+    const CODE_URL = 'https://github.com/o/r/blob/abcdef/a.ts#L3-L4'
+    const code = {
+      language: 'typescript',
+      startLine: 3,
+      lines: ['const a = "<b>x</b>"', '\tif (a) { return 1 }'],
+      path: 'src/a.ts',
+      repository: 'o/r',
+    }
+    const permalink = previewOf({
+      url: CODE_URL,
+      canonicalUrl: CODE_URL,
+      title: 'src/a.ts, lines 3 to 4',
+      description: 'o/r at abcdef0',
+      siteName: 'GitHub',
+      kind: 'repository',
+      thumbnail: null,
+      favicon: null,
+      layer: 'connector',
+      code,
+    })
+    const block = (display = 'card', preview = permalink) =>
+      fill(`::link{url="${CODE_URL}" display=${display}}`, { [CODE_URL]: ready(preview) })
+
+    it('is drawn as a figure: the file and lines as its caption, the code as a numbered block', () => {
+      const html = block()
+      expect([...tagsIn(html)]).toEqual(
+        expect.arrayContaining(['figure', 'figcaption', 'a', 'span', 'pre', 'code']),
+      )
+      expect(html).toContain('<figure class="link-code" data-language="typescript">')
+      expect(html).toContain('>src/a.ts, lines 3 to 4</a>')
+      expect(html).toContain('<span class="link-code-repository">o/r</span>')
+      expect(html).toContain('data-line="3"')
+      expect(html).toContain('data-line="4"')
+    })
+
+    it('makes only the caption a link, so the code can be selected and copied', () => {
+      const html = block()
+      expect(html.match(/<a /gu)).toHaveLength(1)
+      expect(html).toContain('href="https://github.com/o/r/blob/abcdef/a.ts#L3-L4"')
+      expect(html).toContain('rel="noopener noreferrer"')
+    })
+
+    it('shows the lines as text, escaped, with tabs kept and a newline after every line', () => {
+      const html = block()
+      expect(html).toContain('const a = "&#x3C;b>x&#x3C;/b>"\n</span>')
+      expect(html).not.toContain('<b>')
+      expect(html).toContain('\tif (a) { return 1 }\n</span>')
+      expect(tagsIn(html)).not.toContain('b')
+    })
+
+    it('is a keyboard stop, because a long line scrolls, and the figure is named by its caption', () => {
+      const html = block()
+      expect(html).toContain('<pre class="link-code-lines" tabindex="0">')
+      expect(html).toMatch(/<figure[^>]*><figcaption/u)
+    })
+
+    it('adds no script, no style attribute and no highlighting markup', () => {
+      const html = block()
+      expect(html).not.toMatch(/<script|style=|onerror|onclick/u)
+    })
+
+    it('names the language only as a class and a data attribute, and not at all when unknown', () => {
+      expect(block()).toContain('class="language-typescript"')
+      const unknown = block('card', previewOf({ ...permalink, code: { ...code, language: null } }))
+      expect(unknown).not.toContain('language-')
+      expect(unknown).not.toContain('data-language')
+    })
+
+    it('refuses a language that is not a plain name, which could otherwise add classes', () => {
+      const hostile = block(
+        'card',
+        previewOf({ ...permalink, code: { ...code, language: 'x" onmouseover="alert(1)' } }),
+      )
+      expect(hostile).not.toContain('onmouseover')
+      expect(hostile).not.toContain('language-')
+    })
+
+    it('carries a status, if the connector gave one, in the caption', () => {
+      const html = block(
+        'card',
+        previewOf({ ...permalink, status: { label: 'Archived', tone: 'neutral' } }),
+      )
+      expect(html).toContain('<span class="link-status" data-tone="neutral">Archived</span>')
+    })
+
+    it('is a chip or a compact line, without the code, when asked for those', () => {
+      expect(block('compact')).not.toContain('<pre')
+      const chip = fill(`See :link[${CODE_URL}]{display=inline}.`, { [CODE_URL]: ready(permalink) })
+      expect(chip).toContain('class="link-chip"')
+      expect(chip).not.toContain('<pre')
+    })
+
+    it('shows the author’s own title over the file’s', () => {
+      const html = fill(`::link{url="${CODE_URL}" display=card title="The bug"}`, {
+        [CODE_URL]: ready(permalink),
+      })
+      expect(html).toContain('>The bug</a>')
+    })
+  })
+
   it('says nothing about state for a page, which has none', () => {
     expect(
       fill('::link{url="https://blog.example/post" display=card}', { [URL_A]: ready() }),

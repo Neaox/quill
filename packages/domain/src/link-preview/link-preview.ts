@@ -74,6 +74,26 @@ export interface PreviewFile {
   readonly name: string | null
 }
 
+/** The most lines a code snippet carries, and the longest a line may be: a preview, not a mirror. */
+export const CODE_SNIPPET_MAX_LINES = 30
+export const CODE_SNIPPET_MAX_LINE_LENGTH = 240
+
+/**
+ * Lines of source a link points at (a code permalink), from a connector. Plain text only:
+ * each line is data to be escaped and shown, never markup, and never highlighted by a script.
+ */
+export interface PreviewCode {
+  /** A language name for styling, lower case (`typescript`), or null when it is not known. */
+  readonly language: string | null
+  /** The 1-based number of the first line in `lines`. */
+  readonly startLine: number
+  readonly lines: readonly string[]
+  /** The file's path within the repository. */
+  readonly path: string
+  /** The repository, as `owner/name`. */
+  readonly repository: string
+}
+
 export interface LinkPreview {
   /** The normalised URL; the key the preview is stored and looked up by. */
   readonly url: string
@@ -94,6 +114,8 @@ export interface LinkPreview {
   readonly embed?: PreviewEmbed
   /** Present when the link is a file and not a page. */
   readonly file?: PreviewFile
+  /** Present when the link is a permalink to lines of source. Optional, so older stored previews still read. */
+  readonly code?: PreviewCode
 }
 
 /**
@@ -110,6 +132,12 @@ export const LINK_PREVIEW_FAILURES = [
   'not_a_page',
   /** A page, but one that says nothing about itself. */
   'no_metadata',
+  /**
+   * A connector found the thing, and it is not public. A preview made with the instance's
+   * credentials would show it to people who could not open it, so none is made; and any
+   * preview kept from when it was public is dropped (ADR-042, "Private content").
+   */
+  'restricted',
   /** The organisation's policy does not let Quill contact it, or previews are off. */
   'blocked',
   /**

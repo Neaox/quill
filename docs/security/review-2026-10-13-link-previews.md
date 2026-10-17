@@ -187,6 +187,65 @@ The web bundle is unaffected: the web app imports only `@quill/markdown` subpath
 - Policy storage and the settings screens (step 5) are still to build; the audience is the default for everyone until then.
 - `GET /bot` states the limits of the default configuration. If an operator changes them, the page should read them from configuration.
 
+## Addendum: the connector layer and the GitHub connector (2026-10-17)
+
+Reviewed as it was built (ADR-042, step 6). The connector is the first code in the link preview path that **holds a credential** and the first that can **see private content**, so the review is about those two things. Findings C1 to C7.
+
+| #   | Severity | Finding                                                                                                                                                | Status |
+| --- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ | ------ |
+| C1  | High     | A token that can read private repositories would let a pull request title, a description or source lines reach a reader who cannot open the repository | Designed out: only public content is ever previewed |
+| C2  | Medium   | A preview kept from when a repository was public would stay on show after it became private ("last good snapshot" survives failed refreshes)           | Fixed for every refresh; residual window below |
+| C3  | Medium   | The credentialed request could be steered by the link (an encoded slash, a dot segment, a look-alike host) to another API path or host                 | Fixed: paths are built from validated pieces; one allowlisted host |
+| C4  | Medium   | The failure for a private link would tell any reader that a private repository exists                                                                  | Fixed: stored as `restricted`, always shown as "not a page" |
+| C5  | Medium   | Lines of source from a stranger's file are shown on our pages                                                                                          | Fixed: plain text, capped, stripped, escaped, never highlighted by script |
+| C6  | Low      | GitHub's rate limit could be spent by one person varying line ranges, or counted as a failure that is then cached for an hour                          | Fixed: a wait, never a failure; bounded by the existing limits |
+| C7  | Low      | The token could leak through a log, an error message, a preview or the audit trail                                                                     | Held: tested |
+
+### C1. Private content (the rule, and why)
+
+Three designs were weighed for a preview fetched with credentials of a private resource:
+
+1. **Show it to everyone who sees the link.** Rejected outright: it publishes private titles and code to people GitHub would refuse.
+2. **Store it per person and show it to the person who asked.** Correct, but it needs a scope per person in the snapshot store, a per-reader check against GitHub for everyone else who opens the document, and a decision about what the public site does. None of that exists, and a half-built version of it is the kind of thing that leaks.
+3. **Do not make it.** Chosen. The first request of every resolution reads the repository; a repository whose `private` is true, or whose `visibility` is anything but `public`, or that does not say, makes no preview and reads no further. A private link is a plain link, which is also what GitHub shows a stranger.
+
+The consequence, stated plainly: **the GitHub connector today raises the quality and the rate limit of previews of public repositories; it does not preview private ones.** The ADR's "the only layer that can see private content" is true of what it *can read*, not of what it *shows*. The recommended token is a fine-grained token limited to **public repositories, read-only**: with it, a defect in this module cannot read private content at all.
+
+Tests: a private, an internal and a visibility-less private repository, and a pull request, an issue and a code permalink in a private repository, each answering `restricted` after exactly one request (the repository's); a response that does not say whether the repository is public is `unavailable`, not guessed; a pull request whose own `base.repo` says private is `restricted` whatever the repository read said.
+
+### C2. After a repository becomes private
+
+`restricted` is the one failure that **drops** a stored preview; every other failure leaves the last good one (ADR-032). A repository that goes private is noticed at the next refresh, which is at most three days away for a link in use (a stale preview is served while it refreshes), or at once if anyone presses "Refresh preview". **Residual risk:** until then the title and description of the repository as it was while public remain visible. They were public; this is the same exposure as any cached copy of a public page. The three-day freshness is the bound.
+
+### C3. Where the credential can go
+
+The token is attached in one function, to a request whose host is the constant `api.github.com` and whose path starts `/repos/<owner>/<repo>`. The owner, repository, number, commit and path come from `github-urls.ts`, which accepts only GitHub's own naming rules, a full commit id (a branch is not a permalink), and path segments that, once decoded, contain no `/`, backslash, control character, `.` or `..`. The client is the allowlisted one, so even a defect that built another host would be refused before any connection (`host_not_allowed`), and its redirects are re-checked against the same list. Tested with encoded slashes, backslashes, control characters, dot segments, look-alike hosts (`github.com.evil.example`), subdomains (`gist.github.com`) and malformed escapes.
+
+The organisation's host policy is checked against the pasted link (as for every layer), not against `api.github.com`: an organisation that allows `github.com` and nothing else still gets previews, and one that blocks it never reaches the connector. The picture the connector names (the owner's avatar) is fetched through the open-web image pipeline, under the policy, and is accepted only from `avatars.githubusercontent.com`.
+
+### C4. Not telling a reader that a repository exists
+
+GitHub answers 404 for a private repository and for one that does not exist. Quill would otherwise answer "restricted" to any member who pasted a guessed name. The failure is stored as `restricted` (it has to be, to drop the old preview) and read as `not_a_page`.
+
+### C5. Source lines
+
+A permalink shows up to 30 lines of at most 240 characters each. The file must be UTF-8 text without NUL bytes (a binary file is not shown) and fit the client's response cap (2 MiB of JSON, which holds files up to about 1.4 MB). Control characters and the invisible and bidirectional formatting characters (which can make code read as something it is not) are removed; tabs are kept. The lines are text nodes in the page, escaped by the serialiser; the snippet adds no script, no `style` attribute and no highlighting markup, and a `language-*` class is added only for a language name that is a plain identifier. The stored reader enforces the same caps again on whatever it reads. Tested with markup, control characters and a hostile language name.
+
+### C6. Rate limits
+
+GitHub's `retry-after` and `x-ratelimit-*` headers are honoured: a 403 or 429 that carries them, or a success that says none remain, becomes a wait (at least one second, at most thirty minutes) and the connector then makes **no request at all** until it is over. The fetch is deferred through the outbox lane's existing mechanism and is not counted as an attempt or stored as a failure; an ordinary 403 (a blocked repository, a bad token) is not mistaken for a limit. The existing per-host bucket (5 in a burst, then one every two seconds) already bounds `github.com` to well under an authenticated token's 5 000 requests an hour, and each person's allowance bounds how many new links they can cause; varying line ranges in one file costs two API calls per range and is bounded by those. **Residual:** an anonymous instance (no token) has GitHub's 60 an hour per address, so it defers often; that is the reason to store a token.
+
+### C7. The token
+
+It is a secret in the secrets store (envelope-encrypted, ADR-034) under `connectors/github/token`, entered on the Secrets screen or with `secrets:set` (value on stdin, never argv). It is decrypted when a fetch needs it and not held: a rotation takes effect on the next request. It is sent as `Authorization: Bearer` to one host and appears in no draft, failure, log line, error message or audit row (the tests serialise every outcome and look for it). A secret that cannot be opened degrades to anonymous requests instead of failing previews. There is no environment-variable fallback, by design: this is a new secret, so there is no deprecation to carry.
+
+### What was checked and held
+
+- The open-web client still refuses credential headers, and the connector does not use it.
+- A connector failure never reaches a reader: not found, an API error, a timeout and a connector that throws all hand over to the page layers.
+- `restricted` and a rate limit do not hand over: the page layers would answer with a sign-in screen or a different, ungated copy.
+- A line range is now part of the preview key (`normaliseUrl` keeps `#L10-L20` and nothing else of a fragment). The pattern is anchored and bounded (`#L` and up to seven digits, an optional `-L` and seven more), so a key cannot be made arbitrarily large or unlike a line range.
+
 ## Open items
 
 1. ~~Rate limits and de-duplication~~ Done (step 3, extended 2026-10-17).
@@ -196,7 +255,8 @@ The web bundle is unaffected: the web app imports only `@quill/markdown` subpath
 5. ~~Serving stored images~~ Done, with the reference check.
 6. **The operator layer**: an instance-level denylist no organisation can override, and the deployment guide's egress firewall and unprivileged-container recommendations (see S5).
 7. **A stored preview key can contain a secret** (a signed or token-bearing URL). It is already in the document body, so nothing new is exposed, but the snapshot store's classification (ADR-034) should say so, and logs must record the host only.
-8. **A `connector` layer must never use this client**; it holds credentials and uses the allowlisted client or its own. The credential-header refusal above is the backstop, not the design.
+8. ~~**A `connector` layer must never use this client**~~ Done: the GitHub connector uses the allowlisted client (see the addendum above). The credential-header refusal remains the backstop.
+9. **Private content shown to those who may open it** (a per-person scope and a per-reader check with the service). Not built; until it is, a connector previews only public content.
 
 ## Gate
 

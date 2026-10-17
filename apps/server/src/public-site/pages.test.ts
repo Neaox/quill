@@ -284,6 +284,29 @@ describe('the bot page', () => {
     expect(page).toContain('robots.txt')
   })
 
+  it('says nothing about services with an API when there are none', () => {
+    expect(renderBotPage(view)).not.toContain('API')
+  })
+
+  it('names the services it asks through their API, and what it takes from them', () => {
+    const page = renderBotPage({
+      ...view,
+      connectors: [{ name: 'GitHub', apiHost: 'api.github.com' }],
+    }).replaceAll(/\s+/gu, ' ')
+    expect(page).toContain('GitHub')
+    expect(page).toContain('api.github.com')
+    expect(page).toContain('only what anyone can open without signing in')
+    expect(page).toContain('never sent to any other site')
+  })
+
+  it('escapes a connector’s name', () => {
+    const page = renderBotPage({
+      ...view,
+      connectors: [{ name: '<b>x</b>', apiHost: 'api.example.com' }],
+    })
+    expect(page).not.toContain('<b>x</b>')
+  })
+
   it('is a complete page with a language, a title and one main landmark', () => {
     const page = renderBotPage(view)
     expect(page.startsWith('<!doctype html>')).toBe(true)
