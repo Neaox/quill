@@ -317,9 +317,11 @@ export function publicSiteRoutes(deps: AppDependencies): FastifyPluginAsync {
     // a page the site does not show (ADR-046), nor a link into the app.
     const bodyHtml = rewriteLinks(
       filled,
-      surfaceLinkRewriter(site.pages.values(), (page) =>
+      surfaceLinkRewriter(
+        site.pages.values(),
         /* v8 ignore next -- every page of the site is in the path table. */
-        publicPageHref(site.siteSlug, site.pathById.get(page.id) ?? ''),
+        (page) => publicPageHref(site.siteSlug, site.pathById.get(page.id) ?? ''),
+        [deps.config.appOrigin],
       ),
     )
 
@@ -332,12 +334,15 @@ export function publicSiteRoutes(deps: AppDependencies): FastifyPluginAsync {
     const notice =
       facts?.lifecycle?.state === 'deprecated'
         ? renderLifecycleNotice(
-            surfaceReplacement(facts.lifecycle.supersededBy, site.pages.values(), (page) =>
+            surfaceReplacement(
+              facts.lifecycle.supersededBy,
+              site.pages.values(),
               /* v8 ignore next -- every page of the site is in the path table. */
-              publicPageHref(site.siteSlug, site.pathById.get(page.id) ?? ''),
+              (page) => publicPageHref(site.siteSlug, site.pathById.get(page.id) ?? ''),
             ),
           )
         : markup``
+    /* v8 ignore next -- the page was just rendered from its published source, which has facts. */
     const byline =
       facts === null
         ? undefined

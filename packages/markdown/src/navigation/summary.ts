@@ -13,8 +13,17 @@ import { stripPresenterNotes } from '../directives/strip-presenter-notes.ts'
 
 export const SUMMARY_LIMIT = 240
 
-/** An icon is one emoji, or a short shortcode-like word; anything longer is not an icon. */
+/**
+ * An icon is one emoji, as one user-perceived character, in at most this many
+ * UTF-16 code units: longer than any emoji Unicode recommends, the longest
+ * flag sequences included.
+ */
 const ICON_LIMIT = 16
+
+/** One emoji Unicode recommends for general interchange, whatever sequence draws it. */
+const ONE_EMOJI = /^\p{RGI_Emoji}$/v
+
+const graphemes = new Intl.Segmenter(undefined, { granularity: 'grapheme' })
 
 function clip(text: string): string {
   if (text.length <= SUMMARY_LIMIT) return text
@@ -44,10 +53,19 @@ export function documentSummary(
   return first === undefined ? undefined : words(toString(first))
 }
 
-/** The document's own icon from its front matter (`icon: 🚀`), or undefined. */
+/**
+ * The document's own icon from its front matter (`icon: 🚀`), or undefined.
+ *
+ * It is drawn beside the title wherever the title is listed, so it is held to
+ * exactly what the name promises: one emoji. A word, a sentence, a run of
+ * emoji or a control character that turns the title round is no icon at all,
+ * because anything else here is words beside a title that nobody wrote there.
+ */
 export function documentIcon(frontMatter: Readonly<Record<string, unknown>>): string | undefined {
   const icon = frontMatter['icon']
   if (typeof icon !== 'string') return undefined
   const trimmed = icon.trim()
-  return trimmed === '' || [...trimmed].length > ICON_LIMIT ? undefined : trimmed
+  if (trimmed === '' || trimmed.length > ICON_LIMIT) return undefined
+  if ([...graphemes.segment(trimmed)].length !== 1) return undefined
+  return ONE_EMOJI.test(trimmed) ? trimmed : undefined
 }

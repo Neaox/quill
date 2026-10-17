@@ -120,6 +120,11 @@ const LINKER_MARKDOWN = (ids: {
   carved: DocumentId
   elsewhere: DocumentId
   absolute: string
+  /** The application's own origin in the spellings a publish does not canonicalise. */
+  otherScheme: string
+  www: string
+  key: string
+  workspace: string
 }) =>
   [
     '# Start here',
@@ -138,8 +143,30 @@ const LINKER_MARKDOWN = (ids: {
     '',
     `Also [the copied address](${ids.absolute}#user-content-install).`,
     '',
+    `Hidden [by the other scheme](${ids.otherScheme}/d/${ids.draft}).`,
+    '',
+    `Hidden [by www](${ids.www}/w/${ids.workspace}/d/secret-unwritten-plan-${ids.draft}).`,
+    '',
+    `Hidden [in capitals](/D/${ids.draft}).`,
+    '',
+    `Found [by www too](${ids.www}/w/${ids.workspace}/d/setup-guide-${ids.key}).`,
+    '',
     'And [the web](https://example.com/guide).',
   ].join('\n')
+
+/** The application's origin under the other scheme of the web. */
+function otherScheme(origin: string): string {
+  const url = new URL(origin)
+  url.protocol = url.protocol === 'https:' ? 'http:' : 'https:'
+  return url.origin
+}
+
+/** The application's origin with `www.` in front, as a person copying it might have it. */
+function wwwOf(origin: string): string {
+  const url = new URL(origin)
+  url.hostname = `www.${url.hostname}`
+  return url.origin
+}
 
 beforeAll(async () => {
   harness = await createServerHarness()
@@ -188,6 +215,10 @@ beforeAll(async () => {
       carved,
       elsewhere,
       absolute: `${harness.deps.config.appOrigin}/w/${workspaceSlug}/d/setup-guide-${targetShortId}`,
+      otherScheme: otherScheme(harness.deps.config.appOrigin),
+      www: wwwOf(harness.deps.config.appOrigin),
+      key: targetShortId,
+      workspace: workspaceSlug,
     }).replace('LINKER_SELF', linker),
   )
   await harness.drainOutbox()
@@ -272,6 +303,18 @@ describe('links on the public site', () => {
 
   it('leaves a link to the web exactly as written', async () => {
     expect(await page()).toContain('href="https://example.com/guide"')
+  })
+
+  it('reads an old absolute address, in any spelling of this application, as its own', async () => {
+    const html = await page()
+
+    expect(html).toContain('Hidden by the other scheme.')
+    expect(html).toContain('Hidden by www.')
+    expect(html).toContain('Hidden in capitals.')
+    expect(html).toMatch(/<a href="\/s\/links-site\/[^"]*setup-guide"[^>]*>by www too<\/a>/u)
+    expect(html).not.toContain(wwwOf(harness.deps.config.appOrigin))
+    expect(html).not.toContain(otherScheme(harness.deps.config.appOrigin))
+    expectNothingLeaked(html)
   })
 })
 

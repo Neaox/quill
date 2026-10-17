@@ -123,6 +123,9 @@ export function createEditingService(deps: AppDependencies) {
       // A document with no draft yet — imported, seeded, or older than
       // drafts — starts one rather than answering "not found" (`openDraft`).
       const opened = await openDraft(deps, input.documentId)
+      // The access check has just found the document, so only a delete landing
+      // between the two leaves nothing to open.
+      /* v8 ignore next -- that race is not reproducible from a request. */
       return opened.kind === 'draft' ? opened.draft : null
     },
 

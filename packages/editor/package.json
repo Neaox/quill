@@ -7,7 +7,8 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
-    "./drawio": "./src/extensions/drawio/index.ts"
+    "./drawio": "./src/extensions/drawio/index.ts",
+    "./properties": "./src/properties/index.ts"
   },
   "scripts": {
     "typecheck": "tsc -p tsconfig.json"

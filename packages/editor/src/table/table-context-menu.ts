@@ -61,6 +61,7 @@ function destructive(entry: MenuAction): MenuAction {
 function selectTableEntry(place: MenuPlace): MenuAction[] {
   const { view, state } = place
   const context = tableContext(state)
+  /* v8 ignore next -- the menu asks only once its table actions have found a table. */
   if (context === undefined) return []
   const { rect, map } = context
   const whole =
@@ -97,6 +98,7 @@ function cellEntries(place: MenuPlace): MenuAction[] {
       icon: CopyIcon,
       disabledReason: copyText === undefined ? 'The clipboard is not available here' : undefined,
       run: () => {
+        /* v8 ignore else -- selected cells are always a table; the check narrows the type. */
         if (table !== undefined) void copyText?.(markdownOfTable(table))
       },
     },

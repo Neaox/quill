@@ -141,6 +141,7 @@ export function Tooltip({ content, children, side }: TooltipProps) {
           side={side}
           open={open}
           onOpenChange={(next) => {
+            /* v8 ignore else -- opening is this component's; Radix's trigger is an inert stand-in (no pointer events, not focusable), so it only ever asks to close. */
             if (!next) hide()
           }}
           anchor={control}

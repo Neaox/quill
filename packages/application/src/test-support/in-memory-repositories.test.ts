@@ -953,6 +953,52 @@ describe('createInMemoryUnitOfWork: drafts, grants, revisions, renders, and link
     ).toBeNull()
   })
 
+  it('keeps who wrote what through a rebase that leaves the base, and lets it go with one that moves it', async () => {
+    const uow = createInMemoryUnitOfWork()
+    await uow.repos.drafts.init({ documentId: DOC_1, baseRevision: null, ast: {}, now: NOW })
+    const record = { version: 1, by: 'ada' }
+    await uow.repos.drafts.rebase({
+      documentId: DOC_1,
+      baseRevision: null,
+      ast: { a: 1 },
+      authorship: record,
+      now: NOW,
+    })
+
+    expect(
+      (await uow.repos.drafts.rebase({ documentId: DOC_1, baseRevision: null, ast: {}, now: NOW }))
+        ?.authorship,
+    ).toEqual(record)
+    expect(
+      (await uow.repos.drafts.rebase({ documentId: DOC_1, baseRevision: REVISION, now: NOW }))
+        ?.authorship,
+    ).toBeNull()
+  })
+
+  it('stamps a draft with its base and when it was saved, and has no stamp for a document without one', async () => {
+    const uow = createInMemoryUnitOfWork()
+    await uow.repos.drafts.init({ documentId: DOC_1, baseRevision: REVISION, ast: {}, now: NOW })
+
+    expect(await uow.repos.drafts.stamp(DOC_1)).toEqual({ baseRevision: REVISION, updatedAt: NOW })
+    expect(await uow.repos.drafts.stamp(NOPE_DOC)).toBeNull()
+  })
+
+  it('writes nothing in a rebase that expects another version of the draft', async () => {
+    const uow = createInMemoryUnitOfWork()
+    await uow.repos.drafts.init({ documentId: DOC_1, baseRevision: null, ast: {}, now: NOW })
+
+    expect(
+      await uow.repos.drafts.rebase({
+        documentId: DOC_1,
+        baseRevision: null,
+        ast: { a: 1 },
+        expectedVersion: 5,
+        now: NOW,
+      }),
+    ).toBeNull()
+    expect((await uow.repos.drafts.find(DOC_1))?.ast).toEqual({})
+  })
+
   it('lists grants for a set of scopes in one call', async () => {
     const uow = createInMemoryUnitOfWork()
     await uow.repos.grants.create({

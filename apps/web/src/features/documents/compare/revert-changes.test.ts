@@ -1,6 +1,10 @@
 import { describe, expect, it, vi } from 'vitest'
 
-import { createRevertChannel, memoryRevertTransports } from '../../../lib/documents/revert-channel.ts'
+import {
+  createRevertChannel,
+  memoryRevertTransports,
+  type RevertOutcome,
+} from '../../../lib/documents/revert-channel.ts'
 import { putBack, RevertRefused, revertRefusal, whyNot } from './revert-changes.tsx'
 
 function tabs() {
@@ -13,12 +17,29 @@ function tabs() {
 
 const REQUEST = { from: 'b'.repeat(40), draftVersion: 3, changes: ['c1'] }
 
+/** What writing the draft answers. */
+interface Written {
+  readonly draftVersion: number
+  readonly previous: Record<string, unknown>
+}
+
+const aChange = (kind: 'moved' | 'changed') => ({
+  id: 'c1',
+  change: kind,
+  block: 'paragraph',
+  excerpt: 'x',
+  wordsAdded: 0,
+  wordsRemoved: 0,
+})
+
 describe('where reverted changes go', () => {
   it('goes to the editor this browser has open, which holds the draft, and writes nothing itself', async () => {
     const { comparison, editor } = tabs()
-    const served = vi.fn(() => Promise.resolve({ ok: true as const }))
+    const served = vi.fn<() => Promise<RevertOutcome>>(() => Promise.resolve({ ok: true }))
     editor.serve(served)
-    const write = vi.fn(() => Promise.resolve({ draftVersion: 4, previous: {} }))
+    const write = vi.fn<() => Promise<Written>>(() =>
+      Promise.resolve({ draftVersion: 4, previous: {} }),
+    )
 
     const result = await putBack({ channel: comparison, ...REQUEST, write })
 
@@ -29,7 +50,9 @@ describe('where reverted changes go', () => {
 
   it('writes the draft itself when no editor is open', async () => {
     const { comparison } = tabs()
-    const write = vi.fn(() => Promise.resolve({ draftVersion: 4, previous: { version: 1 } }))
+    const write = vi.fn<() => Promise<Written>>(() =>
+      Promise.resolve({ draftVersion: 4, previous: { version: 1 } }),
+    )
 
     const result = await putBack({ channel: comparison, ...REQUEST, write })
 
@@ -38,8 +61,12 @@ describe('where reverted changes go', () => {
 
   it('says what the open editor said when it could not, and does not write behind its back', async () => {
     const { comparison, editor } = tabs()
-    editor.serve(() => Promise.resolve({ ok: false, message: 'Your latest edits were still being saved.' }))
-    const write = vi.fn(() => Promise.resolve({ draftVersion: 4, previous: {} }))
+    editor.serve(() =>
+      Promise.resolve({ ok: false, message: 'Your latest edits were still being saved.' }),
+    )
+    const write = vi.fn<() => Promise<Written>>(() =>
+      Promise.resolve({ draftVersion: 4, previous: {} }),
+    )
 
     const refused = putBack({ channel: comparison, ...REQUEST, write })
 
@@ -50,21 +77,12 @@ describe('where reverted changes go', () => {
 })
 
 describe('why a change cannot be reverted', () => {
-  const change = (kind: 'moved' | 'changed') => ({
-    id: 'c1',
-    change: kind,
-    block: 'paragraph',
-    excerpt: 'x',
-    wordsAdded: 0,
-    wordsRemoved: 0,
-  })
-
   it('says a move is the same block in another place', () => {
-    expect(whyNot(change('moved')).full).toMatch(/only its place differs/u)
+    expect(whyNot(aChange('moved')).full).toMatch(/only its place differs/u)
   })
 
   it('says a block the draft writes differently is to be edited in the editor', () => {
-    expect(whyNot(change('changed')).full).toMatch(/Edit it in the editor/u)
+    expect(whyNot(aChange('changed')).full).toMatch(/Edit it in the editor/u)
   })
 
   it('carries an open editor’s refusal as it was said', () => {

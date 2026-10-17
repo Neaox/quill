@@ -108,6 +108,7 @@ export {
   attachmentIdsIn,
   attachmentUrl,
   deleteAttachment,
+  documentsShowingAttachment,
   getAttachment,
   listAttachments,
   reviseAttachment,

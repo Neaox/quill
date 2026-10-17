@@ -73,6 +73,101 @@ describe('createIndexedDbRecoveryStore: the edit and its base (row format 2)', (
   })
 })
 
+describe('createIndexedDbRecoveryStore: the base an earlier release kept in its own row', () => {
+  // Releases before row format 2 kept the base beside the edit under
+  // `<documentId>#base`, as a bare DraftBase.
+  const LEGACY_BASE_KEY = 'doc-1#base'
+
+  it('recovers the base of an edit an earlier release left unsent', async () => {
+    const { factory } = createFakeIndexedDb(
+      new Map<string, unknown>([
+        ['doc-1', EDIT],
+        [LEGACY_BASE_KEY, BASE],
+      ]),
+    )
+    const store = createIndexedDbRecoveryStore({ documentId: 'doc-1', factory })
+    expect(await store.ready).toEqual(EDIT)
+    expect(store.readBase()).toEqual(BASE)
+  })
+
+  it('moves that base into the format 2 row and deletes the old row', async () => {
+    const { factory, rows } = createFakeIndexedDb(
+      new Map<string, unknown>([
+        ['doc-1', EDIT],
+        [LEGACY_BASE_KEY, BASE],
+      ]),
+    )
+    const store = createIndexedDbRecoveryStore({ documentId: 'doc-1', factory })
+    await store.ready
+    await vi.waitFor(() => {
+      expect(rows.get('doc-1')).toEqual({ format: 2, pending: EDIT, base: BASE })
+      expect(rows.has(LEGACY_BASE_KEY)).toBe(false)
+    })
+  })
+
+  it('migrates a base that outlived its edit', async () => {
+    const { factory, rows } = createFakeIndexedDb(new Map([[LEGACY_BASE_KEY, BASE]]))
+    const store = createIndexedDbRecoveryStore({ documentId: 'doc-1', factory })
+    expect(await store.ready).toBeUndefined()
+    expect(store.readBase()).toEqual(BASE)
+    await vi.waitFor(() => {
+      expect(rows.get('doc-1')).toEqual({ format: 2, base: BASE })
+      expect(rows.has(LEGACY_BASE_KEY)).toBe(false)
+    })
+  })
+
+  it('prefers the base in the format 2 row, and still removes the old one', async () => {
+    const current = { ...BASE, draftVersion: 7 }
+    const { factory, rows } = createFakeIndexedDb(
+      new Map<string, unknown>([
+        ['doc-1', { format: 2, pending: EDIT, base: current }],
+        [LEGACY_BASE_KEY, BASE],
+      ]),
+    )
+    const store = createIndexedDbRecoveryStore({ documentId: 'doc-1', factory })
+    await store.ready
+    expect(store.readBase()).toEqual(current)
+    await vi.waitFor(() => {
+      expect(rows.get('doc-1')).toEqual({ format: 2, pending: EDIT, base: current })
+      expect(rows.has(LEGACY_BASE_KEY)).toBe(false)
+    })
+  })
+
+  it('discards an old row that does not hold a base', async () => {
+    const { factory, rows } = createFakeIndexedDb(
+      new Map<string, unknown>([
+        ['doc-1', EDIT],
+        [LEGACY_BASE_KEY, { draftVersion: 'three' }],
+      ]),
+    )
+    const store = createIndexedDbRecoveryStore({ documentId: 'doc-1', factory })
+    await store.ready
+    expect(store.readBase()).toBeUndefined()
+    await vi.waitFor(() => {
+      expect(rows.has(LEGACY_BASE_KEY)).toBe(false)
+    })
+    expect(rows.get('doc-1')).toEqual({ format: 2, pending: EDIT })
+  })
+
+  it('keeps the edit typed while the database opened, and still recovers the old base', async () => {
+    const { factory, rows } = createFakeIndexedDb(
+      new Map<string, unknown>([
+        ['doc-1', EDIT],
+        [LEGACY_BASE_KEY, BASE],
+      ]),
+    )
+    const store = createIndexedDbRecoveryStore({ documentId: 'doc-1', factory })
+    const typing: PendingDraft = { ...EDIT, expectedVersion: 5, savedAt: EDIT.savedAt + 1 }
+    store.write(typing)
+    expect(await store.ready).toEqual(typing)
+    expect(store.readBase()).toEqual(BASE)
+    await vi.waitFor(() => {
+      expect(rows.get('doc-1')).toEqual({ format: 2, pending: typing, base: BASE })
+      expect(rows.has(LEGACY_BASE_KEY)).toBe(false)
+    })
+  })
+})
+
 describe('createIndexedDbRecoveryStore', () => {
   it('hands back the edit a previous session never managed to send', async () => {
     const { factory } = createFakeIndexedDb(new Map([['doc-1', EDIT]]))

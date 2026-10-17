@@ -151,4 +151,34 @@ describe('ChoiceMenu', () => {
     expect(screen.queryByRole('menu')).toBeNull()
     expect(screen.getByRole('button', { name: 'Draft' })).toHaveFocus()
   })
+  it('explains a choice under its label, and disables one with a reason', async () => {
+    const user = userEvent.setup()
+    const onValueChange = vi.fn<(value: string) => void>()
+    render(
+      <ChoiceMenu
+        label="Layout"
+        value="article"
+        options={[
+          { value: 'article', label: 'Article', description: 'A readable column' },
+          {
+            value: 'wide',
+            label: 'Wide',
+            description: 'Needs a wider workspace',
+            disabled: true,
+          },
+        ]}
+        onValueChange={onValueChange}
+        trigger={<button type="button">Layout: Article</button>}
+      />,
+    )
+    await user.click(screen.getByRole('button', { name: 'Layout: Article' }))
+    const menu = await screen.findByRole('menu')
+    expect(screen.getByText('A readable column')).toBeInTheDocument()
+    const wide = screen.getByRole('menuitemradio', { name: /Wide/ })
+    expect(wide).toHaveAttribute('aria-disabled', 'true')
+    expect(wide).toHaveTextContent('Needs a wider workspace')
+    await user.click(wide)
+    expect(onValueChange).not.toHaveBeenCalled()
+    await expectNoAccessibilityViolations(menu)
+  })
 })

@@ -558,7 +558,7 @@ export function createInMemoryUnitOfWork(): InMemoryUnitOfWork {
       }
       return chain
     },
-    async listDescendants(id, depth) {
+    async listDescendants(id, depth, limit) {
       const found: DocumentRow[] = []
       let level: readonly DocumentId[] = [id]
       for (let reached = 0; reached < depth && level.length > 0; reached += 1) {
@@ -569,7 +569,7 @@ export function createInMemoryUnitOfWork(): InMemoryUnitOfWork {
         found.push(...next)
         level = next.map((doc) => doc.id)
       }
-      return found
+      return found.slice(0, limit)
     },
     async update(id, patch, now) {
       const existing = documents.get(id)

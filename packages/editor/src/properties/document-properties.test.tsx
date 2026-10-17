@@ -1,4 +1,4 @@
-import { act, render, screen, within } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { useState } from 'react'
 import { describe, expect, it, vi } from 'vitest'
@@ -6,7 +6,9 @@ import { describe, expect, it, vi } from 'vitest'
 import { createFakeClock } from '../drafts/clock.ts'
 import { expectNoAccessibilityViolations } from '../testing/axe.ts'
 import { DocumentProperties, type DocumentPropertiesProps } from './document-properties.tsx'
-import type { PeopleDirectory } from './people.ts'
+import type { DocumentLinkTarget } from '../slash/slash-item.ts'
+import type { Person, PeopleDirectory } from './people.ts'
+import type { DocumentSearch } from './property-editors.tsx'
 
 const NOW = new Date(Date.UTC(2026, 9, 17, 9))
 const CLOCK = createFakeClock(NOW.getTime())
@@ -504,5 +506,304 @@ describe('using it', () => {
   it('shows an owner as written when there is no directory to name them', () => {
     render(<DocumentProperties frontMatter={FRONT_MATTER} clock={CLOCK} onChange={() => {}} />)
     expect(screen.getByRole('button', { name: /^Owners:/u })).toHaveTextContent('ada@example.com')
+  })
+})
+
+describe('each value’s editor, closely', () => {
+  it('writes nothing when the value chosen is the one already there', async () => {
+    const onRecord = vi.fn<(next: Record<string, unknown>) => void>()
+    const { user } = mount({ onRecord })
+    await user.click(screen.getByRole('button', { name: 'Lifecycle: In review' }))
+    await user.click(await screen.findByRole('menuitemradio', { name: /^In review/u }))
+    expect(onRecord).not.toHaveBeenCalled()
+  })
+
+  it('moves the lifecycle with nobody signed in, and takes it away again', async () => {
+    const onRecord = vi.fn<(next: Record<string, unknown>) => void>()
+    const { user } = mount({ onRecord, currentPerson: undefined })
+    await user.click(screen.getByRole('button', { name: 'Lifecycle: In review' }))
+    const verified = await screen.findByRole('menuitemradio', { name: /^Verified/u })
+    expect(verified).toHaveTextContent('nobody is signed in')
+    await user.click(await screen.findByRole('menuitemradio', { name: /^Deprecated/u }))
+    expect(onRecord.mock.lastCall?.[0]['status']).toBe('deprecated')
+
+    await user.click(screen.getByRole('button', { name: 'Lifecycle: Deprecated' }))
+    await user.click(await screen.findByRole('menuitemradio', { name: /^None/u }))
+    expect(onRecord.mock.lastCall?.[0]).not.toHaveProperty('status')
+  }, 15_000)
+
+  it('names a verifier the directory does not know by their address', () => {
+    mount({
+      initial: {
+        id: 'doc-1',
+        status: 'verified',
+        verified: { by: 'someone@example.com', at: '2026-10-01' },
+        review: { interval: '1y', lastReviewed: '2026-10-01' },
+      },
+    })
+    expect(
+      within(line()).getByRole('button', { name: /^Lifecycle: Verified, by someone@example.com/u }),
+    ).toBeInTheDocument()
+  })
+
+  it('sets the layout from All properties, and back to the default', async () => {
+    const onRecord = vi.fn<(next: Record<string, unknown>) => void>()
+    const { user } = mount({ onRecord })
+    await user.click(screen.getByRole('button', { name: 'All properties' }))
+    const panel = screen.getByRole('region', { name: 'All properties' })
+    await user.click(within(panel).getByRole('button', { name: 'Layout: Not set' }))
+    await user.click(await screen.findByRole('menuitemradio', { name: 'Wide' }))
+    expect(onRecord.mock.lastCall?.[0]['layout']).toBe('wide')
+
+    await user.click(within(panel).getByRole('button', { name: 'Layout: Wide' }))
+    await user.click(await screen.findByRole('menuitemradio', { name: 'Not set' }))
+    expect(onRecord.mock.lastCall?.[0]).not.toHaveProperty('layout')
+  }, 15_000)
+
+  it('adds a layout, offering only the widths there are', async () => {
+    const onRecord = vi.fn<(next: Record<string, unknown>) => void>()
+    const { user } = mount({ initial: { id: 'doc-1' }, onRecord })
+    await user.click(screen.getByRole('button', { name: 'Add property' }))
+    await user.click(await screen.findByRole('menuitem', { name: 'Layout' }))
+    const options = await screen.findAllByRole('menuitemradio')
+    expect(options.map((option) => option.textContent)).toEqual(['Content', 'Wide', 'Full'])
+    await user.click(screen.getByRole('menuitemradio', { name: 'Full' }))
+    expect(onRecord.mock.lastCall?.[0]).toEqual({ id: 'doc-1', layout: 'full' })
+    // Two menus open and close in turn; generous, for a loaded machine.
+  }, 15_000)
+
+  it('takes the type away when its words are cleared', async () => {
+    const onRecord = vi.fn<(next: Record<string, unknown>) => void>()
+    const { user } = mount({ onRecord })
+    await user.click(screen.getByRole('button', { name: 'Type: design' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Edit type' })
+    await user.clear(within(dialog).getByRole('textbox', { name: 'Type' }))
+    await user.keyboard('{Enter}')
+    expect(onRecord.mock.lastCall?.[0]).not.toHaveProperty('type')
+  })
+
+  it('forgets the last review when its date is cleared, and leaves an unchanged interval be', async () => {
+    const onRecord = vi.fn<(next: Record<string, unknown>) => void>()
+    const { user } = mount({
+      initial: { id: 'doc-1', review: { interval: '90d', lastReviewed: '2026-09-01' } },
+      onRecord,
+    })
+    await user.click(screen.getByRole('button', { name: /^Review:/u }))
+    const dialog = await screen.findByRole('dialog', { name: 'Edit review' })
+    await user.click(within(dialog).getByRole('textbox', { name: 'Custom interval' }))
+    await user.keyboard('{Enter}')
+    expect(onRecord).not.toHaveBeenCalled()
+
+    fireEvent.change(within(dialog).getByLabelText('Last reviewed'), { target: { value: '' } })
+    expect(onRecord.mock.lastCall?.[0]['review']).toEqual({ interval: '90d' })
+
+    await user.keyboard('{Escape}')
+    expect(screen.queryByRole('dialog')).toBeNull()
+  })
+
+  it('says what is wrong without a button where the document cannot be edited', () => {
+    mount({ initial: { id: 'doc-1', layout: 'enormous' }, editable: false })
+    expect(screen.queryByRole('button', { name: /is not a layout/u })).toBeNull()
+    expect(line()).toHaveTextContent('Layout: “enormous” is not a layout')
+  })
+
+  it('counts the questions left unanswered', () => {
+    mount({
+      initial: {
+        id: 'template-1',
+        template: {
+          name: 'Decision',
+          version: 1,
+          questions: [
+            { id: 'outcome', label: 'Outcome', type: 'text' },
+            { id: 'owner', label: 'Owner', type: 'text' },
+          ],
+        },
+      },
+    })
+    expect(screen.getByRole('button', { name: '2 questions unanswered' })).toBeInTheDocument()
+  })
+
+  const QUESTIONS: Record<string, unknown> = {
+    id: 'template-1',
+    template: {
+      name: 'Decision',
+      version: 1,
+      questions: [
+        { id: 'decidedOn', label: 'Decided on', type: 'date', optional: true },
+        { id: 'adr', label: 'ADR number', type: 'text', optional: true },
+      ],
+    },
+  }
+
+  it('shows the questions read-only where the document cannot be edited', async () => {
+    const { user } = mount({ initial: QUESTIONS, editable: false })
+    await user.click(screen.getByRole('button', { name: 'All properties' }))
+    const questions = screen.getByRole('group', { name: 'Template questions' })
+    expect(within(questions).queryByRole('button')).toBeNull()
+    expect(questions).toHaveTextContent('Not answered')
+  })
+
+  it('answers a date with today, and clears it', async () => {
+    const onRecord = vi.fn<(next: Record<string, unknown>) => void>()
+    const { user } = mount({ initial: QUESTIONS, onRecord, defaultOpen: true })
+    await user.click(screen.getByRole('button', { name: 'Decided on: Not answered' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Edit decided on' })
+    await user.click(within(dialog).getByRole('button', { name: 'Today' }))
+    expect(onRecord.mock.lastCall?.[0]['decidedOn']).toBe('2026-10-17')
+
+    fireEvent.change(within(dialog).getByLabelText('Decided on'), { target: { value: '' } })
+    expect(onRecord.mock.lastCall?.[0]).not.toHaveProperty('decidedOn')
+  })
+
+  it('keeps a label that starts with an abbreviation as it is written', async () => {
+    const { user } = mount({ initial: QUESTIONS, defaultOpen: true })
+    await user.click(screen.getByRole('button', { name: 'ADR number: Not answered' }))
+    expect(await screen.findByRole('dialog', { name: 'Edit ADR number' })).toBeInTheDocument()
+  })
+
+  it('has no other fields to list when the front matter says nothing else', async () => {
+    const { user } = mount({ initial: {} })
+    await user.click(screen.getByRole('button', { name: 'All properties' }))
+    expect(screen.queryByRole('group', { name: 'Other fields' })).toBeNull()
+  })
+
+  it('offers the YAML alone when nothing else is there, and puts it away on Cancel', async () => {
+    const onSourceChange = vi.fn<(source: string) => void>()
+    const { user } = mount({ initial: {}, source: '', onSourceChange })
+    await user.click(screen.getByRole('button', { name: 'All properties' }))
+    const other = screen.getByRole('group', { name: 'Other fields' })
+    expect(other.querySelector('dl')).toBeNull()
+    await user.click(within(other).getByRole('button', { name: 'Edit as YAML' }))
+    await user.click(within(other).getByRole('button', { name: 'Cancel' }))
+    expect(screen.queryByRole('textbox', { name: 'Front matter' })).toBeNull()
+    expect(onSourceChange).not.toHaveBeenCalled()
+  })
+})
+
+/** A search that answers only when the test says so, one answer per question asked. */
+function heldSearch<T>() {
+  const asked: { resolve: (value: T) => void; reject: (error: Error) => void }[] = []
+  const search = vi.fn<(query: string, signal: AbortSignal) => Promise<T>>(
+    async () =>
+      new Promise<T>((resolve, reject) => {
+        asked.push({ resolve, reject })
+      }),
+  )
+  return { asked, search }
+}
+
+describe('finding a replacement, closely', () => {
+  it('finds a replacement for a page with no id, by a title with no context', async () => {
+    const searchDocuments = vi.fn<DocumentSearch>(async () => [{ id: 'doc-3', title: 'Plain' }])
+    const { user } = mount({ initial: { status: 'deprecated' }, searchDocuments })
+    await user.click(within(line()).getByRole('button', { name: 'Replaced by: Not set' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Edit replacement' })
+    await user.type(within(dialog).getByRole('combobox', { name: 'Replaced by' }), 'plain')
+    expect(await within(dialog).findByRole('option', { name: 'Plain' })).toBeInTheDocument()
+  })
+
+  it('removes the replacement chosen', async () => {
+    const onRecord = vi.fn<(next: Record<string, unknown>) => void>()
+    const { user } = mount({
+      initial: { id: 'doc-1', status: 'deprecated', supersededBy: 'doc-2' },
+      replacementTitle: 'Reading surface, revised',
+      onRecord,
+    })
+    await user.click(
+      within(line()).getByRole('button', { name: 'Replaced by: Reading surface, revised' }),
+    )
+    const dialog = await screen.findByRole('dialog', { name: 'Edit replacement' })
+    await user.click(within(dialog).getByRole('button', { name: 'Remove' }))
+    expect(onRecord.mock.lastCall?.[0]).toEqual({ id: 'doc-1', status: 'deprecated' })
+  })
+
+  it('finds nothing when the search fails, and ignores an answer typing has moved past', async () => {
+    const { asked, search } = heldSearch<readonly DocumentLinkTarget[]>()
+    const { user } = mount({
+      initial: { id: 'doc-1', status: 'deprecated' },
+      searchDocuments: search,
+    })
+    await user.click(within(line()).getByRole('button', { name: 'Replaced by: Not set' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Edit replacement' })
+    const field = within(dialog).getByRole('combobox', { name: 'Replaced by' })
+    await user.type(field, 'rea')
+    await waitFor(() => {
+      expect(asked).toHaveLength(1)
+    })
+    await user.type(field, 'd')
+    await waitFor(() => {
+      expect(asked).toHaveLength(2)
+    })
+
+    await act(async () => {
+      asked[0]?.resolve([{ id: 'doc-9', title: 'Stale answer' }])
+      asked[1]?.reject(new Error('offline'))
+    })
+
+    expect(await within(dialog).findByText('Nothing matches')).toBeInTheDocument()
+    expect(within(dialog).queryByRole('option', { name: 'Stale answer' })).toBeNull()
+  })
+})
+
+describe('choosing people and tags, closely', () => {
+  it('ignores answers typing has moved past, and says when nobody matches', async () => {
+    const { asked, search } = heldSearch<readonly Person[]>()
+    const { user } = mount({ people: { nameOf: () => undefined, search } })
+    await user.click(screen.getByRole('button', { name: /^Owners:/u }))
+    const dialog = await screen.findByRole('dialog', { name: 'Edit owners' })
+    await user.keyboard('g')
+    await waitFor(() => {
+      expect(asked).toHaveLength(1)
+    })
+    await user.keyboard('r')
+    await waitFor(() => {
+      expect(asked).toHaveLength(2)
+    })
+    await user.keyboard('a')
+    await waitFor(() => {
+      expect(asked).toHaveLength(3)
+    })
+
+    await act(async () => {
+      asked[0]?.resolve([{ value: 'stale@example.com', name: 'Stale Answer' }])
+      asked[1]?.reject(new Error('offline'))
+      asked[2]?.reject(new Error('offline'))
+    })
+
+    expect(
+      await within(dialog).findByText('No one matches “gra”. Press Enter to add it as written.'),
+    ).toBeInTheDocument()
+    expect(within(dialog).queryByRole('option', { name: 'Stale Answer' })).toBeNull()
+  })
+
+  it('offers someone the directory has no detail for, and adds nobody twice', async () => {
+    const onRecord = vi.fn<(next: Record<string, unknown>) => void>()
+    const { user } = mount({
+      onRecord,
+      people: {
+        nameOf: () => undefined,
+        search: async (query) =>
+          query.startsWith('k') ? [{ value: 'kit@example.com', name: 'Kit' }] : [],
+      },
+    })
+    await user.click(screen.getByRole('button', { name: /^Owners:/u }))
+    const dialog = await screen.findByRole('dialog', { name: 'Edit owners' })
+    await user.keyboard('ki')
+    expect(await within(dialog).findByRole('option', { name: 'Kit' })).toBeInTheDocument()
+    await user.clear(within(dialog).getByRole('combobox', { name: 'Owners' }))
+    await user.keyboard('platform{Enter}')
+    expect(onRecord).not.toHaveBeenCalled()
+  })
+
+  it('adds no tag twice, and takes the last away with Backspace', async () => {
+    const onRecord = vi.fn<(next: Record<string, unknown>) => void>()
+    const { user } = mount({ onRecord })
+    await user.click(screen.getByRole('button', { name: 'Tags: design-system' }))
+    await screen.findByRole('dialog', { name: 'Edit tags' })
+    await user.keyboard('design-system{Enter}')
+    expect(onRecord).not.toHaveBeenCalled()
+    await user.keyboard('{Backspace}')
+    expect(onRecord.mock.lastCall?.[0]).not.toHaveProperty('tags')
   })
 })

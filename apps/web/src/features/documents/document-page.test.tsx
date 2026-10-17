@@ -803,6 +803,17 @@ describe('comparing two revisions', () => {
   })
 })
 
+/** The list of changes, once the draft it reverts into has been read. */
+async function changeList() {
+  const list = await screen.findByRole('navigation', { name: 'Changes (3)' })
+  await waitFor(() => {
+    expect(
+      within(list).getByRole('button', { name: /^Revert: Edited Paragraph/u }),
+    ).not.toHaveAttribute('aria-disabled')
+  })
+  return list
+}
+
 describe('comparing the published page with the draft', () => {
   const COMPARING_DRAFT = `${READING_PATH}?from=${B}&to=draft`
   const withDraftChanges = () =>
@@ -863,17 +874,6 @@ describe('comparing the published page with the draft', () => {
       'GET /api/documents/{id}/draft': draftOf({ type: 'paragraph', children: [text('Draft.')] }),
       ...extra,
     })
-  }
-
-  /** The list of changes, once the draft it reverts into has been read. */
-  async function changeList() {
-    const list = await screen.findByRole('navigation', { name: 'Changes (3)' })
-    await waitFor(() => {
-      expect(
-        within(list).getByRole('button', { name: /^Revert: Edited Paragraph/u }),
-      ).not.toHaveAttribute('aria-disabled')
-    })
-    return list
   }
 
   it('says who made each change and when, from the draft’s record', async () => {

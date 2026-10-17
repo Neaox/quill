@@ -476,4 +476,3 @@ describe('WorkspaceTree when a slice cannot be had', () => {
     expect(attempts).toBe(2)
   })
 })
-

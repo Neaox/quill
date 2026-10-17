@@ -9,6 +9,7 @@ import { resolveDocumentId } from '../application/references.ts'
 import { countChildPages, toChildPages } from '../child-pages/present.ts'
 import type { AppDependencies } from '../dependencies.ts'
 import { AppError } from '../errors.ts'
+import { sessionRateLimit } from '../plugins/rate-limit.ts'
 import { IdParamsSchema } from './document-schemas.ts'
 
 const ChildPagesQuerySchema = Type.Object({
@@ -47,6 +48,8 @@ export function childPagesRoutes(deps: AppDependencies): FastifyPluginAsync {
       '/api/documents/:id/children',
       {
         preHandler: app.requireSession,
+        // Each answer walks a subtree, so a reader's budget bounds how often.
+        config: sessionRateLimit('child-pages', deps.config.browseRateLimitMax),
         schema: {
           params: IdParamsSchema,
           querystring: ChildPagesQuerySchema,
@@ -83,13 +86,17 @@ export function childPagesRoutes(deps: AppDependencies): FastifyPluginAsync {
         // shared and never reused without asking.
         reply.header('cache-control', 'private, no-cache')
         return {
-          html: renderChildPages(pages, {
-            /* v8 ignore next -- the schema has already bounded it to 1–6. */
-            depth: parseChildPagesDepth(String(depth)) ?? 1,
-            sort,
-            excerpts,
-            icons,
-          }),
+          html: renderChildPages(
+            pages,
+            {
+              /* v8 ignore next -- the schema has already bounded it to 1–6. */
+              depth: parseChildPagesDepth(String(depth)) ?? 1,
+              sort,
+              excerpts,
+              icons,
+            },
+            { more: listed.more },
+          ),
           count: countChildPages(pages),
         }
       },

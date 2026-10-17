@@ -3676,7 +3676,7 @@ html.lightbox-open {
   outline-offset: 1px;
 }
 
-.prose :is(.toc-empty, .child-pages-empty, .child-pages-fallback) {
+.prose :is(.toc-empty, .child-pages-empty, .child-pages-fallback, .child-pages-more) {
   margin: 0;
   color: var(--color-muted);
   font-family: var(--font-sans);
@@ -3797,6 +3797,11 @@ html.lightbox-open {
   padding: 0.75rem 1rem;
   border: 1px dashed var(--color-border-strong);
   border-radius: var(--radius-lg);
+}
+
+/* A list cut short says so under its card (ADR-056). */
+.prose .child-pages-more {
+  margin-block-start: 0.5rem;
 }
 
 @media (prefers-reduced-motion: reduce) {

@@ -458,6 +458,13 @@ export const WorkspaceTreeSchema = Type.Object({
 })
 
 /**
+ * The longest a reference to a document may be: an id, a short key, or a
+ * readable address of a slug (from a title of at most 200 characters) and a
+ * key. Anything longer names nothing, and is refused before it is looked up.
+ */
+const MAX_REFERENCE_LENGTH = 256
+
+/**
  * `GET /api/workspaces/:id/tree`'s optional cut (ADR-033: additive; without
  * `depth` the whole tree is answered, as it always has been).
  */
@@ -467,15 +474,15 @@ export const WorkspaceTreeQuerySchema = Type.Object({
   /** How many entries of any one list to include, when `depth` is given; 50 when omitted. */
   limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 500 })),
   /** A document whose ancestors, page of siblings and children come with the first response. */
-  focus: Type.Optional(Type.String({ minLength: 1 })),
+  focus: Type.Optional(Type.String({ minLength: 1, maxLength: MAX_REFERENCE_LENGTH })),
 })
 
 /** `GET /api/workspaces/:id/tree/children`: one page of a list in the tree. */
 export const TreeChildrenQuerySchema = Type.Object({
   /** The document whose children are listed. Exactly one of `parent` and `collection`. */
-  parent: Type.Optional(Type.String({ minLength: 1 })),
+  parent: Type.Optional(Type.String({ minLength: 1, maxLength: MAX_REFERENCE_LENGTH })),
   /** The collection whose top level is listed. */
-  collection: Type.Optional(Type.String({ minLength: 1 })),
+  collection: Type.Optional(Type.String({ minLength: 1, maxLength: MAX_REFERENCE_LENGTH })),
   offset: Type.Integer({ minimum: 0, default: 0 }),
   limit: Type.Integer({ minimum: 1, maximum: 500, default: 50 }),
 })

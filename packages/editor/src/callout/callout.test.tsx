@@ -206,6 +206,18 @@ describe('a callout in the editor', () => {
     expect(saved()).toBe('> [!WARNING]\n> Mind the gap.\n')
   })
 
+  it('gives the keyboard back to its button when its menu is put away', async () => {
+    const { user } = open('> [!WARNING]\n> Mind the gap.\n')
+    const button = screen.getByRole('button', { name: 'Warning, change type' })
+    await user.click(button)
+    await screen.findByRole('menu', { name: 'Callout type' })
+
+    await user.keyboard('{Escape}')
+
+    expect(screen.queryByRole('menu', { name: 'Callout type' })).not.toBeInTheDocument()
+    expect(button).toHaveFocus()
+  })
+
   it('switches a callout block, and gives it a title', async () => {
     const { user, saved } = open(':::callout{type=tip}\nBody.\n:::\n')
     await user.click(screen.getByRole('button', { name: 'Tip, change type' }))

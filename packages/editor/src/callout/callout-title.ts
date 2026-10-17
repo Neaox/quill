@@ -46,6 +46,7 @@ function titleAt(state: EditorState): TitleHere | undefined {
  */
 const removeTitleHere: Command = (state, dispatch) => {
   const here = titleAt(state)
+  /* v8 ignore next -- only Backspace calls this, once it has found the caret in a title. */
   if (here === undefined) return false
   if (dispatch === undefined) return true
   const { pos, node, callout } = here

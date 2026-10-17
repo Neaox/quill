@@ -60,9 +60,7 @@ describe('the changes since published, in the editor bar', () => {
   it('says how many there are, and opens the comparison', async () => {
     const onReview = open(SOME)
 
-    await userEvent.click(
-      await screen.findByRole('button', { name: 'Changes since published: 1' }),
-    )
+    await userEvent.click(await screen.findByRole('button', { name: 'Changes since published: 1' }))
 
     expect(onReview).toHaveBeenCalledTimes(1)
   })

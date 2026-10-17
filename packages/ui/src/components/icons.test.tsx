@@ -29,6 +29,13 @@ import {
   SuccessIcon,
   SwapIcon,
   WarningIcon,
+  SidebarIcon,
+  SettingsIcon,
+  UserIcon,
+  BellIcon,
+  UsersIcon,
+  SignOutIcon,
+  WorkspacesIcon,
 } from './icons.tsx'
 
 const ICONS = [
@@ -59,6 +66,13 @@ const ICONS = [
   ['SwapIcon', SwapIcon],
   ['ChevronUpIcon', ChevronUpIcon],
   ['RestoreIcon', RestoreIcon],
+  ['SidebarIcon', SidebarIcon],
+  ['SettingsIcon', SettingsIcon],
+  ['UserIcon', UserIcon],
+  ['BellIcon', BellIcon],
+  ['UsersIcon', UsersIcon],
+  ['SignOutIcon', SignOutIcon],
+  ['WorkspacesIcon', WorkspacesIcon],
 ] as const
 
 describe('icons', () => {

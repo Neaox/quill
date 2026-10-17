@@ -177,7 +177,7 @@ export async function getEnvelope(
       lastPublished,
       review,
       health: await healthOf(deps, document, source, frontMatter, review),
-      facts: await factsOf(deps, frontMatter),
+      facts: await factsOf(deps, document.id, frontMatter),
       unpublishedChanges,
       draft: waiting,
     },

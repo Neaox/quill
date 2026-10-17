@@ -14,7 +14,7 @@ import { aShortId } from '../test-support/fakes.ts'
 import { createInMemoryUnitOfWork } from '../test-support/in-memory-repositories.ts'
 import type { InMemoryUnitOfWork } from '../test-support/in-memory-repositories.ts'
 import type { ChildPageNode, ChildPagesCache, ChildPagesStructure } from './child-pages.ts'
-import { childPagesKey, listChildPages } from './child-pages.ts'
+import { childPagesKey, listChildPages, MAX_CHILD_PAGES } from './child-pages.ts'
 
 const WORKSPACE = workspaceId('00000000-0000-4000-8000-000000000101')
 const READER = userId('00000000-0000-4000-8000-000000000001')
@@ -126,6 +126,11 @@ async function guide() {
   return parent
 }
 
+/** How many pages a tree lists, at every depth. */
+function count(nodes: readonly ChildPageNode[]): number {
+  return nodes.reduce((total, node) => total + 1 + count(node.children), 0)
+}
+
 function titles(nodes: readonly ChildPageNode[]): unknown {
   return nodes.map((node) =>
     node.children.length === 0
@@ -227,6 +232,14 @@ describe('listChildPages', () => {
     expect(byTime.map((page) => page.document.id).slice(0, 2)).toEqual([INSTALL, id(50)])
   })
 
+  it('orders pages created in the same moment by their id, whichever was written first', async () => {
+    await document(id(61), GUIDE, 'Zeta', 2)
+    await document(id(60), GUIDE, 'Alpha', 2)
+
+    const pages = await list()
+    expect(pages.map((page) => page.document.id).slice(1, 4)).toEqual([INSTALL, id(60), id(61)])
+  })
+
   it('carries each page’s summary and icon, or none', async () => {
     const pages = await list()
     const install = pages.find((page) => page.document.id === INSTALL)
@@ -245,7 +258,42 @@ describe('listChildPages', () => {
         audience: { kind: 'reader', identities: reader, seesEverything: false },
       },
     )
-    expect(result).toEqual({ kind: 'pages', pages: [] })
+    expect(result).toEqual({ kind: 'pages', pages: [], more: false })
+  })
+
+  it('lists at most the most pages one list draws, and says there are more', async () => {
+    await Promise.all(
+      Array.from({ length: MAX_CHILD_PAGES }, async (_, n) =>
+        document(id(1000 + n), UPGRADE, `Bulk ${String(n)}`, 20),
+      ),
+    )
+    const result = await listChildPages(
+      { uow },
+      {
+        parent: await guide(),
+        workspace,
+        options: { depth: 2, sort: 'manual' },
+        audience: { kind: 'reader', identities: reader, seesEverything: false },
+      },
+    )
+    if (result.kind !== 'pages') throw new Error(result.kind)
+    expect(count(result.pages)).toBeLessThanOrEqual(MAX_CHILD_PAGES)
+    expect(result.more).toBe(true)
+    // The level nearest the parent is the one kept whole.
+    expect(titles(result.pages)).toEqual(
+      expect.arrayContaining([expect.objectContaining({ Upgrade: expect.any(Array) })]),
+    )
+
+    const small = await listChildPages(
+      { uow },
+      {
+        parent: await guide(),
+        workspace,
+        options: { depth: 1, sort: 'manual' },
+        audience: { kind: 'reader', identities: reader, seesEverything: false },
+      },
+    )
+    expect(small).toMatchObject({ kind: 'pages', more: false })
   })
 
   it('reports a permission tree it cannot resolve rather than guessing', async () => {
@@ -315,13 +363,70 @@ describe('the cost of a list', () => {
     const second = counting(uow)
     const pages = await list({ depth: 2 }, undefined, { uow: second.uow, childPagesCache: cache })
     expect(titles(pages)).toEqual(['Upgrade', { Install: ['Linux'] }, 'Roadmap'])
-    expect(second.calls.some((call) => call.startsWith('documents.'))).toBe(false)
+    // The walk and the summaries come from the cache; where each page is now,
+    // which decides who may read it, is asked afresh in a fixed few queries.
+    expect(second.calls).not.toContain('documents.listDescendants')
+    expect(second.calls).not.toContain('documentSummaries.listByIds')
+    expect(second.calls.filter((call) => call.startsWith('documents.')).toSorted()).toEqual([
+      'documents.listAncestors',
+      'documents.listByIds',
+    ])
     expect(second.calls.some((call) => call.startsWith('grants.'))).toBe(true)
 
     // A deny written after the subtree was cached still applies at once.
     await grant('document', INSTALL, 'deny')
     expect(titles(await list({ depth: 2 }, undefined, { uow, childPagesCache: cache }))).toEqual([
       'Upgrade',
+      'Roadmap',
+    ])
+  })
+
+  it('reads where each page is now, so one moved somewhere restricted is gone at once', async () => {
+    const held = new Map<string, ChildPagesStructure>()
+    const cache: ChildPagesCache = {
+      find: (key) => held.get(key),
+      remember: (key, structure) => held.set(key, structure),
+    }
+    await uow.repos.collections.create({
+      id: 'restricted',
+      workspaceId: WORKSPACE,
+      name: 'Restricted',
+      slug: 'restricted',
+      now: new Date(0),
+    })
+    await uow.repos.grants.create({
+      id: 'grant-restricted-deny',
+      principalKind: 'user',
+      principalId: READER,
+      scopeKind: 'collection',
+      scopeId: 'restricted',
+      role: 'viewer',
+      effect: 'deny',
+      createdBy: null,
+      now: new Date(0),
+    })
+    expect(titles(await list({ depth: 2 }, undefined, { uow, childPagesCache: cache }))).toEqual([
+      'Upgrade',
+      { Install: ['Linux'] },
+      'Roadmap',
+    ])
+
+    // Moved on another process: no event reaches this cache, which still
+    // holds the subtree as it was.
+    await uow.repos.documents.update(
+      INSTALL,
+      { collectionId: 'restricted', parentId: null },
+      new Date(Date.UTC(2026, 1, 1)),
+    )
+    expect(held.size).toBe(1)
+    expect(titles(await list({ depth: 2 }, undefined, { uow, childPagesCache: cache }))).toEqual([
+      'Upgrade',
+      'Roadmap',
+    ])
+
+    // And one deleted since is simply gone.
+    await uow.repos.documents.delete(UPGRADE)
+    expect(titles(await list({ depth: 2 }, undefined, { uow, childPagesCache: cache }))).toEqual([
       'Roadmap',
     ])
   })

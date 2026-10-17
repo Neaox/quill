@@ -126,3 +126,62 @@ describe('drawing a draw.io diagram', () => {
     expect(render(SVG_TEXT)).toBe(render(SVG_TEXT))
   })
 })
+
+/**
+ * The time budgets below are skipped under coverage (`QUILL_COVERAGE`, set by
+ * the root Vitest config), where instrumentation, not the pattern, decides the
+ * time; a plain `pnpm test` holds them. A pattern that backtracks without
+ * bound still fails there, on the test timeout, because the same input is
+ * checked for its answer in a test that always runs.
+ */
+const UNDER_COVERAGE = process.env['QUILL_COVERAGE'] === '1'
+
+/** How long one call takes, in milliseconds. */
+function timed(run: () => unknown): number {
+  const started = performance.now()
+  run()
+  return performance.now() - started
+}
+
+describe('a hostile draw.io drawing, in linear time', () => {
+  const tags = '<svg '.repeat(20_000)
+  const spaces = `<svg><rect fill="var(--ge-adaptive-bg,${' '.repeat(5_000)}"/></svg>`
+  const many = `<svg>${'var(--ge-adaptive-bg,x'.repeat(5_000)}</svg>`
+
+  it('finds no source in a file of unclosed root tags, and leaves it as it is', () => {
+    expect(isDrawioDrawing({ markup: tags })).toBe(false)
+    expect(withoutDrawioSource(tags)).toBe(tags)
+  })
+
+  it.skipIf(UNDER_COVERAGE)('looks for it without rescanning the file per tag', () => {
+    expect(timed(() => isDrawioDrawing({ markup: tags }))).toBeLessThan(50)
+    expect(timed(() => withoutDrawioSource(tags))).toBeLessThan(50)
+  })
+
+  it('leaves an adaptive background whose value never closes, or never ends, as it is', () => {
+    expect(renderDrawioDrawing({ markup: spaces })).toMatchObject({
+      kind: 'inline',
+      markup: spaces,
+    })
+    expect(renderDrawioDrawing({ markup: many })).toMatchObject({ kind: 'inline', markup: many })
+  })
+
+  it.skipIf(UNDER_COVERAGE)('reads such a background in linear time', () => {
+    expect(timed(() => renderDrawioDrawing({ markup: spaces }))).toBeLessThan(50)
+    expect(timed(() => renderDrawioDrawing({ markup: many }))).toBeLessThan(50)
+  })
+
+  it('still writes out the adaptive background it always did', () => {
+    const rendering = renderDrawioDrawing({
+      markup: '<svg content="&lt;mxfile/&gt;"><rect fill="var(--ge-adaptive-bg,  #fff )"/></svg>',
+    })
+
+    expect(rendering.kind === 'inline' && rendering.markup).toContain(
+      'fill="light-dark(#fff, #121212)"',
+    )
+    const empty = renderDrawioDrawing({
+      markup: '<svg><rect fill="var(--ge-adaptive-bg, )"/></svg>',
+    })
+    expect(empty.kind === 'inline' && empty.markup).toContain('var(--ge-adaptive-bg, )')
+  })
+})

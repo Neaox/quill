@@ -35,6 +35,8 @@ if (!('ResizeObserver' in globalThis)) {
   Object.defineProperty(globalThis, 'ResizeObserver', {
     value: ResizeObserverShim,
     writable: true,
+    // A test can take it away (`vi.stubGlobal`) to check what a browser without one gets.
+    configurable: true,
   })
 }
 

@@ -19,7 +19,7 @@ import {
 } from './drawio-protocol.ts'
 import type { DrawioMessage } from './drawio-protocol.ts'
 import type { DrawioSessionEvent, DrawioSessionState } from './drawio-session.ts'
-import { drawioSessionReducer, initialDrawioSessionState } from './drawio-session.ts'
+import { drawioSessionReducer, initialDrawioSessionState, savingFailed } from './drawio-session.ts'
 
 /**
  * Editing a draw.io diagram in the embedded editor (ADR-043): the draw.io
@@ -49,6 +49,8 @@ export interface DrawioDiagram {
 export type DrawioRevision =
   | { readonly kind: 'revised'; readonly diagram: DrawioDiagram }
   | { readonly kind: 'conflict'; readonly currentVersion: number }
+  /** Not written, for a reason that saving again will not change: the message says why. */
+  | { readonly kind: 'refused'; readonly message: string }
 
 /** The attachments API, as the draw.io session needs it. The application implements it. */
 export interface DrawioFiles {
@@ -108,7 +110,7 @@ function statusOf(state: DrawioSessionState, thirdParty: boolean): string {
     case 'conflict':
       return 'Not saved: a newer version exists'
     case 'error':
-      return state.retry === 'save' ? 'Not saved' : 'Not opened'
+      return savingFailed(state.retry) ? 'Not saved' : 'Not opened'
     case 'ready':
     case 'confirming-close':
     case 'closed':
@@ -207,6 +209,11 @@ export function DrawioEditor({
         return
       }
       const result = await files.revise(current, svg)
+      if (result.kind === 'refused') {
+        transition({ type: 'failed', message: result.message, retry: 'copy' })
+        send({ action: 'status', modified: true, message: 'Not saved' })
+        return
+      }
       if (result.kind === 'conflict') {
         transition({ type: 'conflicted', currentVersion: result.currentVersion })
         send({ action: 'status', modified: true, message: 'Not saved' })
@@ -285,7 +292,7 @@ export function DrawioEditor({
     // "Try again" is offered only after a failure that can be retried: the
     // opening, which loads again, or the save, which writes its export again.
     if (next.status === 'loading') void open()
-    else void write(exported.current, false)
+    else void write(exported.current, next.status === 'saving' && next.copy)
   }
 
   const prompt = (() => {
@@ -340,7 +347,7 @@ export function DrawioEditor({
         return (
           <EmbeddedEditorPrompt
             title={
-              state.retry === 'save' ? 'Your diagram is not saved' : 'The diagram did not open'
+              savingFailed(state.retry) ? 'Your diagram is not saved' : 'The diagram did not open'
             }
             actions={
               <>
@@ -349,7 +356,7 @@ export function DrawioEditor({
                 </Button>
                 {state.retry === 'none' ? undefined : (
                   <Button variant="primary" onClick={retry}>
-                    Try again
+                    {state.retry === 'copy' ? 'Save mine as a copy' : 'Try again'}
                   </Button>
                 )}
               </>

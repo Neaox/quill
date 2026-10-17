@@ -1,7 +1,13 @@
 import { documentFacts, publicDocumentFacts } from '@quill/domain'
-import type { DocumentLifecycle, DocumentStatus, PublicDocumentFacts } from '@quill/domain'
+import type {
+  DocumentId,
+  DocumentLifecycle,
+  DocumentStatus,
+  PublicDocumentFacts,
+} from '@quill/domain'
 
-import type { DocumentRow, UnitOfWork } from '../ports/persistence.ts'
+import type { DocumentRow, UnitOfWork, UserRow } from '../ports/persistence.ts'
+import { createReviewerAccessProbe } from './review-access.ts'
 import type { ReadPublishedDependencies } from './read-published.ts'
 import { readSource } from './read-published.ts'
 
@@ -62,37 +68,81 @@ export interface PersonView {
 /** How many people the picker is offered for one query: enough to choose from, few to read. */
 export const PEOPLE_SEARCH_LIMIT = 8
 
+/**
+ * The shortest query the directory answers. One letter would page through
+ * everyone who can view a document in twenty-six requests.
+ */
+export const MIN_PEOPLE_QUERY = 2
+
+/**
+ * How many matches a search looks at before it narrows to those who can view
+ * the document, as the reviewer search does (`review.ts`).
+ */
+const PEOPLE_SCAN = 50
+
 interface DirectoryDependencies {
   readonly uow: UnitOfWork
 }
 
-/** The verified people behind these addresses, keyed by the address as written. */
+/**
+ * The directory answers only for people who can view the document it is
+ * asked about: the same question, through the same resolver, as tagging a
+ * reviewer asks (`review-access.ts`). Anyone else is never found and never
+ * named, so a writer cannot learn of an account outside the people they
+ * already share the document with, by search or by guessing an address.
+ */
+async function whoCanView(
+  deps: DirectoryDependencies,
+  documentId: DocumentId,
+  users: readonly UserRow[],
+): Promise<readonly UserRow[]> {
+  if (users.length === 0) return []
+  const probe = await createReviewerAccessProbe(deps.uow.repos, documentId)
+  if (probe === null) return []
+  const verdicts = await Promise.all(
+    users.map(async (user) => probe.canView({ kind: 'user', id: user.id })),
+  )
+  return users.filter((_user, index) => verdicts[index] === true)
+}
+
+/** The verified people behind these addresses who can view the document, keyed by the address as written. */
 export async function namePeople(
   deps: DirectoryDependencies,
+  documentId: DocumentId,
   emails: readonly string[],
 ): Promise<readonly PersonView[]> {
   if (emails.length === 0) return []
   const found = await deps.uow.repos.users.findVerifiedByEmails(emails)
-  const byAddress = new Map(found.map((user) => [user.email.toLowerCase(), user]))
+  const visible = await whoCanView(deps, documentId, found)
+  const byAddress = new Map(visible.map((user) => [user.email.toLowerCase(), user]))
   return emails.flatMap((value) => {
     const user = byAddress.get(value.toLowerCase())
     return user === undefined ? [] : [{ value, name: user.displayName, detail: user.email }]
   })
 }
 
+/** Verified people who can view the document, matched by name or address. */
 export async function searchPeople(
   deps: DirectoryDependencies,
+  documentId: DocumentId,
   query: string,
 ): Promise<readonly PersonView[]> {
   const wanted = query.trim()
-  if (wanted === '') return []
-  const found = await deps.uow.repos.users.searchVerified(wanted, PEOPLE_SEARCH_LIMIT)
-  return found.map((user) => ({ value: user.email, name: user.displayName, detail: user.email }))
+  if (wanted.length < MIN_PEOPLE_QUERY) return []
+  const found = await deps.uow.repos.users.searchVerified(wanted, PEOPLE_SCAN)
+  const visible = await whoCanView(deps, documentId, found)
+  return visible
+    .slice(0, PEOPLE_SEARCH_LIMIT)
+    .map((user) => ({ value: user.email, name: user.displayName, detail: user.email }))
 }
 
-/** The facts a front matter record states, owners named as people where they are. */
+/**
+ * The facts a front matter record states, owners named as people where they
+ * are: verified, and able to view the document (`namePeople`).
+ */
 export async function factsOf(
   deps: DirectoryDependencies,
+  documentId: DocumentId,
   frontMatter: Readonly<Record<string, unknown>>,
 ): Promise<FactsView> {
   const facts = documentFacts(frontMatter)
@@ -101,6 +151,7 @@ export async function factsOf(
   const addresses = [...facts.owners, ...(verifier === undefined ? [] : [verifier])]
   const people = await namePeople(
     deps,
+    documentId,
     [...new Set(addresses)].filter((value) => value.includes('@')),
   )
   const names = new Map(people.map((found) => [found.value, found.name]))

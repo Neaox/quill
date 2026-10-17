@@ -691,6 +691,13 @@ describe('the workspace tree, a page at a time', () => {
     expect(shelfNode?.children.map((node) => node.title)).toEqual(['Volume 3'])
   })
 
+  it('opens nothing for a focus that names no document', async () => {
+    const runbookTree = await tree('depth=1&limit=50&focus=no-such-document-zzzzzzzz')
+    const shelfNode = runbookTree?.documents.find((node) => node.id === shelf)
+
+    expect(shelfNode).toMatchObject({ childCount: 3, children: [] })
+  })
+
   it('answers the rest of a list a page at a time', async () => {
     const response = await harness.app.inject({
       method: 'GET',
@@ -736,6 +743,46 @@ describe('the workspace tree, a page at a time', () => {
     expect(runbookTree?.documents.map((node) => node.id)).not.toContain(shelf)
   })
 
+  it('gives one answer for a parent or collection it cannot show, whatever the reason', async () => {
+    const answer = async (query: string, cookies = editor) => {
+      const response = await harness.app.inject({
+        method: 'GET',
+        url: `/api/workspaces/${tenancy.workspaceId}/tree/children?${query}`,
+        cookies,
+      })
+      return { status: response.statusCode, body: response.json() as unknown }
+    }
+    const answers = [
+      // A reference that names no document at all.
+      await answer('parent=no-such-document-zzzzzzzz'),
+      // A document id that exists nowhere.
+      await answer('parent=00000000-0000-4000-8000-00000000dead'),
+      // A collection named by something that is not an id, and one that is not here.
+      await answer('collection=not-a-collection'),
+      await answer('collection=00000000-0000-4000-8000-00000000dead'),
+    ]
+    expect(answers[0]?.status).toBe(404)
+    for (const other of answers) expect(other).toEqual(answers[0])
+  })
+
+  it('refuses a focus or an owner too long to name a document', async () => {
+    for (const query of [
+      `depth=1&focus=${'a'.repeat(257)}`,
+      `children?parent=${'a'.repeat(257)}`,
+      `children?collection=${'a'.repeat(257)}`,
+    ]) {
+      const [path, search] = query.startsWith('children?')
+        ? ['tree/children', query.slice('children?'.length)]
+        : ['tree', query]
+      const response = await harness.app.inject({
+        method: 'GET',
+        url: `/api/workspaces/${tenancy.workspaceId}/${path}?${search}`,
+        cookies: editor,
+      })
+      expect(response.statusCode).toBe(400)
+    }
+  })
+
   it('refuses a request that names neither or both owners', async () => {
     for (const query of ['', `parent=${shelf}&collection=${runbooks}`]) {
       const response = await harness.app.inject({
@@ -746,4 +793,29 @@ describe('the workspace tree, a page at a time', () => {
       expect(response.statusCode).toBe(400)
     }
   })
+})
+
+describe('the budget in front of the tree', () => {
+  it('refuses a reader past it, on the tree and on its pages', async () => {
+    const small = await createServerHarness({ browseRateLimitMax: 2 })
+    try {
+      const fixture = await seedTenancy(small)
+      const cookies = await small.cookiesFor(fixture.viewer)
+      const ask = (path: string) =>
+        small.app.inject({
+          method: 'GET',
+          url: `/api/workspaces/${fixture.workspaceId}/${path}`,
+          cookies,
+        })
+      const answers = [
+        await ask('tree'),
+        await ask(`tree/children?collection=${fixture.collectionId}`),
+        await ask('tree'),
+      ]
+      expect(answers.map((response) => response.statusCode)).toEqual([200, 200, 429])
+      expect(answers[2]?.json().error).toMatchObject({ code: 'rate_limited' })
+    } finally {
+      await small.close()
+    }
+  }, 60_000)
 })

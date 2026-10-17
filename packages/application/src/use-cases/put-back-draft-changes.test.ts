@@ -205,6 +205,60 @@ describe('replaceDraftContent', () => {
     expect(await bodyOf(id)).toEqual({ body: '# Runbook\nRestart weekly.' })
   })
 
+  it('says the draft has moved on when undoing over a version that is not the latest', async () => {
+    const { id } = await aPublishedDocument('# Runbook\nRestart nightly.')
+    const version = await writeDraft(id, '# Runbook\nRestart weekly.')
+
+    const result = await replaceDraftContent(deps, {
+      documentId: id,
+      sessionId: SESSION,
+      userId: ADA,
+      draftVersion: version - 1,
+      ast: contentOf('x'),
+    })
+
+    expect(result).toEqual({ kind: 'stale', currentVersion: version })
+  })
+
+  it('is refused, undoing too, while another session is editing', async () => {
+    const { id } = await aPublishedDocument('# Runbook\nRestart nightly.')
+    const version = await writeDraft(id, '# Runbook\nRestart weekly.')
+    await uow.repos.locks.acquire({ documentId: id, userId: GRACE, sessionId: 'grace', now: NOW })
+
+    const result = await replaceDraftContent(deps, {
+      documentId: id,
+      sessionId: SESSION,
+      userId: ADA,
+      draftVersion: version,
+      ast: contentOf('x'),
+    })
+
+    expect(result.kind).toBe('lock-lost')
+  })
+
+  it('writes over a draft this release cannot read, leaving who wrote what as it was', async () => {
+    const { id } = await aPublishedDocument('# Runbook\nRestart nightly.')
+    const draft = await uow.repos.drafts.find(id)
+    await uow.repos.drafts.rebase({
+      documentId: id,
+      baseRevision: draft?.baseRevision ?? null,
+      ast: { version: 99 },
+      now: NOW,
+    })
+    const unreadable = (await uow.repos.drafts.find(id))?.draftVersion ?? 0
+
+    const result = await replaceDraftContent(deps, {
+      documentId: id,
+      sessionId: SESSION,
+      userId: ADA,
+      draftVersion: unreadable,
+      ast: contentOf('Back to something readable.'),
+    })
+
+    expect(result.kind).toBe('replaced')
+    expect((await uow.repos.drafts.find(id))?.authorship).toBeNull()
+  })
+
   it('refuses content that is not a draft', async () => {
     const { id } = await aPublishedDocument('# Runbook\nRestart nightly.')
 

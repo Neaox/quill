@@ -60,6 +60,12 @@ describe('TokenInput', () => {
     await expectNoAccessibilityViolations(container)
   })
 
+  it('describes the field and hints at what to type', () => {
+    render(<Tags description="Up to five tags" placeholder="Add a tag" />)
+    expect(field()).toHaveAccessibleDescription('Up to five tags')
+    expect(field()).toHaveAttribute('placeholder', 'Add a tag')
+  })
+
   it('suggests as somebody types, and adds the one chosen with the arrows and Enter', async () => {
     const user = userEvent.setup()
     render(<Tags />)
@@ -69,6 +75,20 @@ describe('TokenInput', () => {
     expect(tokens()).toEqual(['ops', 'deploys'])
     expect(field()).toHaveValue('')
     expect(field()).toHaveFocus()
+  })
+
+  it('adds what was typed, not a suggestion left from an earlier search, while the new one is busy', async () => {
+    const user = userEvent.setup()
+    // The suggestions still on screen answer what was typed before; the
+    // search for what is typed now has not come back.
+    render(
+      <Tags
+        busy
+        groups={[{ id: 'tags', label: 'Tags', options: [{ id: 'database', label: 'database' }] }]}
+      />,
+    )
+    await user.type(field(), 'incidents{Enter}')
+    expect(tokens()).toEqual(['ops', 'incidents'])
   })
 
   it('adds what was typed when nothing is suggested, on Enter or on a comma', async () => {

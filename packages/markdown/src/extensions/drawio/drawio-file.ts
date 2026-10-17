@@ -69,8 +69,12 @@ export type DrawioLabels =
   | { readonly kind: 'not-drawio' }
   | { readonly kind: 'refused'; readonly reason: DrawioRefusal }
 
-/** The root `<svg …>` start tag; attribute values are quoted, so a `>` inside one is skipped. */
-const SVG_START_TAG = /<svg\b(?:[^>"']|"[^"]*"|'[^']*')*>/i
+/**
+ * The root `<svg …>` start tag; attribute values are quoted, so a `>` inside
+ * one is skipped. Nothing in a tag may be a `<` (XML refuses one even in a
+ * value), so a hostile file of unclosed tags is scanned once, not once per tag.
+ */
+const SVG_START_TAG = /<svg\b(?:[^<>"']|"[^<"]*"|'[^<']*')*>/i
 
 /** draw.io writes its attributes double-quoted, with `"` escaped, so a value never holds one. */
 const CONTENT_ATTRIBUTE = /\scontent\s*=\s*"([^"]*)"/i
@@ -91,8 +95,13 @@ export function drawioSourceOf(file: string): string | null {
   return DRAWIO_ROOT.test(source) ? source : null
 }
 
-/** One `<diagram …>…</diagram>` page; draw.io never nests them. */
-const DIAGRAM_PAGE = /<diagram\b(?:[^>"']|"[^"]*"|'[^']*')*?(?:\/>|>([\s\S]*?)<\/diagram>)/g
+/**
+ * One `<diagram …>…</diagram>` page; draw.io never nests them, so a page's
+ * content stops at the next `<diagram` as well as at its own close, and a
+ * file of pages that never close is scanned once rather than once per page.
+ */
+const DIAGRAM_PAGE =
+  /<diagram\b(?:[^<>"']|"[^<"]*"|'[^<']*')*?(?:\/>|>([^<]*(?:<(?!\/?diagram\b)[^<]*)*)<\/diagram>)/g
 
 const BASE64 = /^[A-Za-z\d+/=\s]*$/
 

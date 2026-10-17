@@ -71,6 +71,13 @@ vi.mock('./markdown-parser.ts', async (importOriginal) => {
 
 /** quill-plan.md section 31. */
 const KEYSTROKE_BUDGET_MS = 16
+/**
+ * Under coverage (`QUILL_COVERAGE`, set by the root Vitest config) the code is
+ * instrumented and runs several times slower, so a timing measures the
+ * instrumentation: the timed budgets skip themselves there and hold in a plain
+ * `pnpm test`. What they count rather than time runs either way.
+ */
+const UNDER_COVERAGE = process.env['QUILL_COVERAGE'] === '1'
 const TASK_BUDGET_MS = 50
 const RUNS = 5
 const CODE_BLOCKS = 240
@@ -365,25 +372,28 @@ describe('a paste of a 4,100-line document', { timeout: PASTE_TEST_TIMEOUT }, ()
     page.restore()
   })
 
-  it(`answers the next keystroke within ${String(KEYSTROKE_BUDGET_MS)} ms and defers nothing longer than ${String(TASK_BUDGET_MS)} ms`, async () => {
-    const keystrokes: number[] = []
-    const deferred: number[] = []
-    const page = lazyPage()
-    const { editor } = await pasted()
-    for (let run = 0; run < RUNS; run += 1) {
-      // Each run types once and opens the next screenful, each timed alone.
-      const typed = performance.now()
-      editor.view.dispatch(editor.state.tr.insertText('x', 1))
-      keystrokes.push(performance.now() - typed)
+  it.skipIf(UNDER_COVERAGE)(
+    `answers the next keystroke within ${String(KEYSTROKE_BUDGET_MS)} ms and defers nothing longer than ${String(TASK_BUDGET_MS)} ms`,
+    async () => {
+      const keystrokes: number[] = []
+      const deferred: number[] = []
+      const page = lazyPage()
+      const { editor } = await pasted()
+      for (let run = 0; run < RUNS; run += 1) {
+        // Each run types once and opens the next screenful, each timed alone.
+        const typed = performance.now()
+        editor.view.dispatch(editor.state.tr.insertText('x', 1))
+        keystrokes.push(performance.now() - typed)
 
-      // A screenful: each block is coloured, then opened, one idle task at a time.
-      page.scrollTo(4, run * 4)
-      deferred.push(...page.drain())
-    }
-    page.restore()
-    expect(median(keystrokes)).toBeLessThan(KEYSTROKE_BUDGET_MS)
-    expect(median(deferred)).toBeLessThan(TASK_BUDGET_MS)
-  })
+        // A screenful: each block is coloured, then opened, one idle task at a time.
+        page.scrollTo(4, run * 4)
+        deferred.push(...page.drain())
+      }
+      page.restore()
+      expect(median(keystrokes)).toBeLessThan(KEYSTROKE_BUDGET_MS)
+      expect(median(deferred)).toBeLessThan(TASK_BUDGET_MS)
+    },
+  )
 })
 
 describe('landing a paste in slices', { timeout: PASTE_TEST_TIMEOUT }, () => {

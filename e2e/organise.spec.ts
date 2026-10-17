@@ -211,7 +211,7 @@ test('a unit, a workspace, collections, documents, nesting, moving and deleting'
   await page.keyboard.press('Enter')
   await page.keyboard.type('Everything that did not fit in the plan.')
   await expect(page.getByText('draft saved')).toBeVisible({ timeout: 15_000 })
-  await page.getByRole('button', { name: 'Publish' }).click()
+  await page.getByRole('button', { name: 'Publish', exact: true }).click()
 
   const published = page.getByRole('article', { name: 'Appendix A' })
   await expect(published).toBeVisible()

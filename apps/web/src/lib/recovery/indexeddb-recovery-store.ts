@@ -33,6 +33,11 @@ const OBJECT_STORE = 'pending-drafts'
  *   before ADR-021's amendment of 2026-10-11 wrote it. It is read as an edit
  *   with no base, and the merge it might need runs against an empty ancestor:
  *   everything both sides hold is offered, nothing is overwritten.
+ *   Those releases kept the base, when they had one, in a row of its own
+ *   under `<documentId>#base` ({@link legacyBaseKey}). It is read when the
+ *   document's row has no base of its own, then folded into a format 2 row
+ *   and deleted, so the base of an edit made on an older release survives
+ *   the upgrade.
  * - **Format 2** keeps the unsent edit beside its base — the draft as this
  *   browser last agreed it with the server — so a reconnect can merge three
  *   ways. A row with a base and no edit is kept; one with neither is deleted.
@@ -116,6 +121,11 @@ function isDraftBase(value: unknown): value is DraftBase {
   )
 }
 
+/** Where releases before row format 2 kept a document's base, as a bare `DraftBase`. */
+function legacyBaseKey(documentId: string): string {
+  return `${documentId}#base`
+}
+
 interface RecoveredRow {
   readonly pending: PendingDraft | undefined
   readonly base: DraftBase | undefined
@@ -166,15 +176,23 @@ export function createIndexedDbRecoveryStore(
           () => undefined,
         )
 
-  const ready = connection.then(async (opened) => {
-    if (opened === undefined || written) return entry
-    const stored = await toPromise(
-      opened.transaction(OBJECT_STORE, 'readonly').objectStore(OBJECT_STORE).get(documentId),
+  /** One read of a key, which a refused read answers with nothing. */
+  const load = (opened: IDBDatabase, key: string): Promise<unknown> =>
+    toPromise(
+      opened.transaction(OBJECT_STORE, 'readonly').objectStore(OBJECT_STORE).get(key),
     ).catch(() => undefined)
+
+  const ready = connection.then(async (opened) => {
+    if (opened === undefined) return entry
+    const [stored, legacyBase] = await Promise.all([
+      load(opened, documentId),
+      load(opened, legacyBaseKey(documentId)),
+    ])
     const row = readRow(stored)
-    base ??= row.base
-    if (written) return entry
-    entry = row.pending
+    // A base written while the database was opening is newer than either.
+    base ??= row.base ?? (isDraftBase(legacyBase) ? legacyBase : undefined)
+    if (!written) entry = row.pending
+    if (legacyBase !== undefined) mirror([legacyBaseKey(documentId)])
     return entry
   })
 
@@ -194,18 +212,25 @@ export function createIndexedDbRecoveryStore(
       })
   }
 
-  /** Mirrors the edit and the base as one row, so the two never disagree on disk. */
-  function mirror(): void {
+  /**
+   * Mirrors the edit and the base as one row, so the two never disagree on
+   * disk, and deletes `superseded` rows in the same transaction: a migrated
+   * row goes only once what it held is written.
+   */
+  function mirror(superseded: readonly string[] = []): void {
     const row: StoredRecord = {
       format: RECORD_FORMAT,
       ...(entry === undefined ? {} : { pending: entry }),
       ...(base === undefined ? {} : { base }),
     }
-    enqueue((store) =>
-      entry === undefined && base === undefined
-        ? store.delete(documentId)
-        : store.put(row, documentId),
-    )
+    enqueue((store) => {
+      const request =
+        entry === undefined && base === undefined
+          ? store.delete(documentId)
+          : store.put(row, documentId)
+      for (const key of superseded) store.delete(key)
+      return request
+    })
   }
 
   return {

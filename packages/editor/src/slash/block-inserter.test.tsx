@@ -13,6 +13,8 @@ import { editorSchema } from '../schema/editor-schema.ts'
 import { expectNoAccessibilityViolations } from '../testing/axe.ts'
 import { BlockInserter, gutterPosition, openInsertMenu } from './block-inserter.tsx'
 
+const NL = String.fromCharCode(10)
+
 function stateAt(markdown: string, position: number): EditorState {
   const state = EditorState.create({
     schema: editorSchema,
@@ -131,6 +133,28 @@ describe('the insert button', () => {
     const gutter = container.querySelector<HTMLElement>('.block-inserter')
     expect(gutter?.style.top).toBe('80px')
     expect(gutter?.style.left).toBe('66px')
+  })
+
+  it('hides itself when the caret’s block has nothing drawn to sit beside', async () => {
+    const ref = createRef<DocumentEditorHandle>()
+    const { container } = render(
+      <DocumentEditor ast={parseDocument('One' + NL + NL + 'Two' + NL).ast} ref={ref} />,
+    )
+    const editor = ref.current?.editor
+    if (editor === null || editor === undefined) throw new Error('No editor.')
+    await act(async () => {
+      await new Promise((resolve) => requestAnimationFrame(resolve))
+    })
+    vi.spyOn(editor.view, 'nodeDOM').mockReturnValue(null)
+
+    act(() => {
+      editor.view.dispatch(editor.state.tr.setSelection(TextSelection.create(editor.state.doc, 6)))
+    })
+    await act(async () => {
+      await new Promise((resolve) => requestAnimationFrame(resolve))
+    })
+
+    expect(container.querySelector<HTMLElement>('.block-inserter')?.hidden).toBe(true)
   })
 
   it('has no place without a block or a frame to measure against', () => {

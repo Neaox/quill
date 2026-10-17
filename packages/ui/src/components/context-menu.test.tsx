@@ -61,7 +61,7 @@ function sections(spy: (what: string) => void = () => {}): readonly ContextMenuS
           value: 'tip',
           options: [
             { value: 'tip', label: 'Tip' },
-            { value: 'warning', label: 'Warning' },
+            { value: 'warning', label: 'Warning', icon: <svg data-testid="warning-icon" /> },
           ],
           onValueChange: (value) => spy(`type:${value}`),
         },
@@ -153,7 +153,9 @@ describe('ContextMenu', () => {
       'aria-checked',
       'true',
     )
-    await userEvent.click(screen.getByRole('menuitemradio', { name: 'Warning' }))
+    const warning = screen.getByRole('menuitemradio', { name: 'Warning' })
+    expect(warning).toContainElement(screen.getByTestId('warning-icon'))
+    await userEvent.click(warning)
     expect(spy).toHaveBeenCalledWith('type:warning')
   })
 

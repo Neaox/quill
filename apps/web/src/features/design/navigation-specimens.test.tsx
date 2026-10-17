@@ -16,9 +16,10 @@ describe('the navigation specimens (ADR-056)', () => {
       const drawn =
         specimen.pages === undefined
           ? body
-          : fillChildPagesSlots(body, () =>
-              specimen.pages === 'sample' ? SPECIMEN_CHILD_PAGES : [],
-            )
+          : fillChildPagesSlots(body, () => ({
+              pages: specimen.pages === 'sample' ? SPECIMEN_CHILD_PAGES : [],
+              more: false,
+            }))
       expect(drawn).toBe(specimen.html)
     }
   })

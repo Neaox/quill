@@ -348,6 +348,38 @@ describe('a dialog whose machinery has not arrived yet', () => {
     arrive()
     expect(await screen.findByRole('dialog', { name: 'Delete document' })).toBeInTheDocument()
   })
+
+  it('draws a close control as its child alone until the machinery arrives', async () => {
+    const { DialogClose: FreshDialogClose } = await freshDialog()
+    render(
+      <FreshDialogClose>
+        <Button>Cancel</Button>
+      </FreshDialogClose>,
+    )
+    expect(screen.getByRole('button', { name: 'Cancel' })).toBeInTheDocument()
+  })
+
+  it('keeps its trigger working when fetching the machinery ahead of a press fails', async () => {
+    vi.resetModules()
+    vi.doMock('./dialog-panels.tsx', () => {
+      throw new Error('offline')
+    })
+    const { Dialog: FreshDialog } = await import('./dialog.tsx')
+    render(
+      <FreshDialog title="Delete document" trigger={<Button>Delete</Button>}>
+        This cannot be undone.
+      </FreshDialog>,
+    )
+    const trigger = screen.getByRole('button', { name: 'Delete' })
+
+    await act(async () => {
+      fireEvent.pointerEnter(trigger)
+      fireEvent.focus(trigger)
+      await new Promise((resolve) => setTimeout(resolve, 0))
+    })
+    expect(trigger).toHaveAttribute('aria-expanded', 'false')
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  })
 })
 
 /*

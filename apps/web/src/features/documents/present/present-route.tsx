@@ -104,6 +104,13 @@ export function PresentRoute() {
   const isPresenter = view === 'presenter'
   const router = useRouter()
   const navigate = routeApi.useNavigate()
+  // Where this presentation is. Leaving it — Escape, Exit, the back button — changes the address
+  // at once but unmounts the presentation only when the reading view has loaded, and meanwhile the
+  // other window, the wheel and the full-screen exit can all still ask for a step. Those are
+  // ignored: following them would bring the person back into the presentation they just left,
+  // from a route the router no longer matches.
+  const here = routeApi.useMatch({ select: (match) => match.pathname })
+  const isHere = useCallback(() => router.latestLocation.pathname === here, [router, here])
 
   // Both were awaited by the route's loader, so neither has a pending state
   // here. The body is still allowed to have failed: a document that has never
@@ -146,6 +153,7 @@ export function PresentRoute() {
   // Moves this window, and only this one: what the other window told it to do ends here.
   const moveTo = useCallback(
     (next: number, entry: SlideEntry = 'top') => {
+      if (!isHere()) return
       arriving.current = entry
       void navigate({
         to: '.',
@@ -156,7 +164,7 @@ export function PresentRoute() {
         resetScroll: false,
       })
     },
-    [navigate],
+    [navigate, isHere],
   )
 
   // Whether the room's screen is black. Both windows have it: the presenter blanks the room from
@@ -188,10 +196,12 @@ export function PresentRoute() {
   // Moves this window and tells the other, which follows it.
   const goTo = useCallback(
     (next: number, entry: SlideEntry = 'top') => {
+      // A presentation being left does not move the other window either.
+      if (!isHere()) return
       moveTo(next, entry)
       sync.announce(next, entry)
     },
-    [moveTo, sync],
+    [moveTo, sync, isHere],
   )
 
   /** Blanks the room's screen, or brings it back, here and in the other window. */
@@ -242,13 +252,14 @@ export function PresentRoute() {
   )
 
   const leave = useCallback(() => {
+    if (!isHere()) return
     void navigate({
       to: '/w/$workspaceSlug/d/$documentId',
       params: { workspaceSlug, documentId },
       search: {},
       ...(current === undefined ? {} : { hash: current.id }),
     })
-  }, [navigate, workspaceSlug, documentId, current])
+  }, [navigate, isHere, workspaceSlug, documentId, current])
 
   /*
    * Escape leaves, on every engine.

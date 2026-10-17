@@ -64,6 +64,53 @@ describe('surfaceLinkRewriter', () => {
   })
 })
 
+describe('surfaceLinkRewriter, for an address written as a browser would read it', () => {
+  const APP = 'https://quill.example.com'
+  const own = surfaceLinkRewriter([PUBLISHED], (document) => `/s/docs/${document.path}`, [APP])
+
+  it('treats an absolute address of the application as its own, in any form a browser opens', () => {
+    for (const origin of [
+      APP,
+      'http://quill.example.com',
+      'https://www.quill.example.com',
+      'http://WWW.Quill.Example.com',
+      '//quill.example.com',
+    ]) {
+      expect(own(`${origin}/d/${PRIVATE_ID}`)).toEqual({ kind: 'text' })
+      expect(own(`${origin}/w/engineering/d/setup-${PUBLISHED.shortId}#run`)).toEqual({
+        kind: 'href',
+        href: '/s/docs/guide/setup#run',
+      })
+    }
+  })
+
+  it('reads the path as a browser does: its case, its backslashes, its surrounding space', () => {
+    for (const href of [
+      `/D/${PRIVATE_ID}`,
+      `/W/engineering/D/${PRIVATE_ID}`,
+      ` /d/${PRIVATE_ID}`,
+      `\t/d/${PRIVATE_ID}\n`,
+      `\\d\\${PRIVATE_ID}`,
+      `${APP}/W/engineering`,
+    ]) {
+      expect(own(href)).toEqual({ kind: 'text' })
+    }
+    expect(own(` /D/${PUBLISHED.id}`)).toEqual({ kind: 'href', href: '/s/docs/guide/setup' })
+  })
+
+  it('leaves another site that merely looks like the application alone', () => {
+    for (const href of [
+      `https://quill.example.com.evil.example/d/${PRIVATE_ID}`,
+      `https://evil.example/d/${PRIVATE_ID}`,
+      `https://quill.example.com:8443/d/${PRIVATE_ID}`,
+      `ftp://quill.example.com/d/${PRIVATE_ID}`,
+      'https://[::1',
+    ]) {
+      expect(own(href)).toEqual({ kind: 'keep' })
+    }
+  })
+})
+
 describe('surfaceReplacement', () => {
   const pages = [{ ...PUBLISHED, title: 'Setting up' }]
   const replacement = (reference: string | undefined) =>

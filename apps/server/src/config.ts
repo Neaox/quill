@@ -45,6 +45,13 @@ export interface ServerConfig {
    */
   readonly searchRateLimitMax: number
   /**
+   * The budget, per session, for the signed-in reads that walk a tree on
+   * every request: the navigation tree and child pages lists. Counted in the
+   * same window `rateLimit.windowMs` sets, and far larger than search's,
+   * because opening one page asks for several of them at once.
+   */
+  readonly browseRateLimitMax: number
+  /**
    * The public site's own budget, per source address, counted in the same
    * window `rateLimit.windowMs` sets (ADR-023: "public search is scoped to
    * public content and rate limited"; `docs/product/personas.md`: a crawler
@@ -450,6 +457,7 @@ const DEFAULT_RATE_LIMIT: RateLimitConfig = {
 
 /** Enough for a search box that answers as somebody types, and far short of a scraper. */
 const DEFAULT_SEARCH_RATE_LIMIT_MAX = 60
+const DEFAULT_BROWSE_RATE_LIMIT_MAX = 600
 /** Enough for a crawler working through a site at a civil pace, per address, per minute. */
 const DEFAULT_PUBLIC_SITE_RATE_LIMIT_MAX = 600
 /** A thousand addresses is a large sitemap and a small amount of work. */
@@ -838,6 +846,11 @@ export function loadConfig(
       env['SEARCH_RATE_LIMIT_MAX'],
       'SEARCH_RATE_LIMIT_MAX',
       DEFAULT_SEARCH_RATE_LIMIT_MAX,
+    ),
+    browseRateLimitMax: parseCount(
+      env['BROWSE_RATE_LIMIT_MAX'],
+      'BROWSE_RATE_LIMIT_MAX',
+      DEFAULT_BROWSE_RATE_LIMIT_MAX,
     ),
     publicSiteRateLimitMax: parseCount(
       env['PUBLIC_SITE_RATE_LIMIT_MAX'],

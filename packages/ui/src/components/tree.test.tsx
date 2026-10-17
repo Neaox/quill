@@ -461,6 +461,17 @@ describe('a tree that folds and pages', () => {
     expect(screen.queryByRole('link', { name: 'specifications' })).not.toBeInTheDocument()
   })
 
+  it('folds a section from the keyboard, ArrowLeft to close and ArrowRight to open', async () => {
+    render(<Tree label="Documents" sections={SECTIONS} />)
+
+    const toggle = screen.getByRole('button', { name: 'product' })
+    toggle.focus()
+    await userEvent.keyboard('{ArrowLeft}')
+    expect(toggle).toHaveAttribute('aria-expanded', 'false')
+    await userEvent.keyboard('{ArrowRight}')
+    expect(toggle).toHaveAttribute('aria-expanded', 'true')
+  })
+
   it('remembers what was opened by hand for the session, under its key', async () => {
     const first = render(<Tree label="Documents" sections={SECTIONS} persistenceKey="ws-1" />)
     await userEvent.click(screen.getByRole('button', { name: 'Expand architecture' }))
@@ -518,21 +529,50 @@ describe('a tree that folds and pages', () => {
           ? new DOMRect(0, 5_000, 200, 28)
           : new DOMRect(0, 100, 200, 600)
       })
-    Element.prototype.scrollTo = scrolled
+    Object.assign(Element.prototype, { scrollTo: scrolled })
     try {
       render(
-        <div data-testid="region" style={{ overflowY: 'auto' }}>
+        <div data-testid="region">
           <Tree label="Documents" sections={[stressSection(3)]} currentId="deep-5" />
         </div>,
       )
+      // A region of its own, as the sidebar is; set before the next frame, when the tree looks.
+      screen.getByTestId('region').style.overflowY = 'auto'
       // Far below the window: the region alone is scrolled, in the next frame, so the page
       // around it stays where it is.
       await waitFor(() => {
         expect(scrolled.mock.contexts).toContain(screen.getByTestId('region'))
       })
-      expect(scrolled.mock.contexts.every((element) => element === screen.getByTestId('region'))).toBe(
-        true,
+      expect(
+        scrolled.mock.contexts.every((element) => element === screen.getByTestId('region')),
+      ).toBe(true)
+    } finally {
+      measure.mockRestore()
+      Reflect.deleteProperty(Element.prototype, 'scrollTo')
+    }
+  })
+
+  it('leaves the open document where it is when it is already in view', async () => {
+    const scrolled = vi.fn<(this: Element, options?: ScrollToOptions) => void>()
+    const measure = vi
+      .spyOn(Element.prototype, 'getBoundingClientRect')
+      .mockImplementation(function (this: Element) {
+        return this instanceof HTMLLIElement
+          ? new DOMRect(0, 150, 200, 28)
+          : new DOMRect(0, 100, 200, 600)
+      })
+    Object.assign(Element.prototype, { scrollTo: scrolled })
+    try {
+      render(
+        <div data-testid="region">
+          <Tree label="Documents" sections={[stressSection(3)]} currentId="deep-5" />
+        </div>,
       )
+      screen.getByTestId('region').style.overflowY = 'auto'
+      // A row just clicked does not jump.
+      await new Promise((resolve) => requestAnimationFrame(resolve))
+      await new Promise((resolve) => requestAnimationFrame(resolve))
+      expect(scrolled).not.toHaveBeenCalled()
     } finally {
       measure.mockRestore()
       Reflect.deleteProperty(Element.prototype, 'scrollTo')
@@ -544,7 +584,7 @@ describe('a tree that folds and pages', () => {
     const measure = vi
       .spyOn(Element.prototype, 'getBoundingClientRect')
       .mockReturnValue(new DOMRect(0, 5_000, 200, 28))
-    Element.prototype.scrollTo = scrolled
+    Object.assign(Element.prototype, { scrollTo: scrolled })
     try {
       // A tree on a long page, say: bringing its open row into view would scroll the page
       // away from wherever the reader is, and again whenever the layout settles.
@@ -556,6 +596,63 @@ describe('a tree that folds and pages', () => {
       measure.mockRestore()
       Reflect.deleteProperty(Element.prototype, 'scrollTo')
     }
+  })
+
+  it('pages back to a newly opened document a widened window no longer holds', async () => {
+    const { rerender } = render(
+      <Tree
+        label="Documents"
+        sections={[stressSection(2000)]}
+        currentId="entry-10"
+        pageSize={50}
+      />,
+    )
+    await userEvent.click(screen.getByRole('button', { name: /^Show 50 more/ }))
+    expect(screen.getAllByRole('link')).toHaveLength(100)
+
+    rerender(
+      <Tree
+        label="Documents"
+        sections={[stressSection(2000)]}
+        currentId="entry-1500"
+        pageSize={50}
+      />,
+    )
+    expect(screen.getByRole('link', { name: 'Entry 1500' })).toHaveAttribute('aria-current', 'page')
+    expect(screen.getAllByRole('link')).toHaveLength(50)
+  })
+
+  it('brings the open document into view once where layout cannot be watched', async () => {
+    vi.stubGlobal('ResizeObserver', undefined)
+    try {
+      const { unmount } = render(
+        <Tree label="Documents" sections={[stressSection(3)]} currentId="deep-5" />,
+      )
+      await new Promise((resolve) => requestAnimationFrame(resolve))
+      expect(screen.getByRole('link', { name: 'Deep 5' })).toHaveAttribute('aria-current', 'page')
+      unmount()
+    } finally {
+      vi.unstubAllGlobals()
+    }
+  })
+
+  it('brings a picker’s current destination into view when nothing is chosen yet', () => {
+    const sections: readonly TreeSection[] = [
+      {
+        id: 's',
+        label: 'Guides',
+        nodes: [
+          {
+            id: 'top',
+            label: 'Top',
+            children: [{ id: 'here', label: 'Here', current: true }],
+          },
+        ],
+      },
+    ]
+    render(<Tree label="Choose a destination" selectable sections={sections} />)
+
+    expect(screen.getByRole('button', { name: /^Here/ })).toBeInTheDocument()
   })
 
   it('opens the way to the chosen and the current destination in a picker', () => {
@@ -629,6 +726,49 @@ describe('a tree given only part of its lists', () => {
       />,
     )
     expect(screen.getByRole('link', { name: 'Child' })).toBeInTheDocument()
+  })
+
+  it('asks for nothing for a list that is empty', () => {
+    const onLoad = vi.fn<(request: TreeLoadRequest) => void>()
+    render(
+      <Tree
+        label="Documents"
+        sections={[{ id: 'empty', label: 'Empty', nodeCount: 0, nodes: [] }]}
+        onLoad={onLoad}
+      />,
+    )
+
+    expect(onLoad).not.toHaveBeenCalled()
+    expect(screen.queryByRole('status')).not.toBeInTheDocument()
+  })
+
+  it('asks for the part of a page it holds only the end of', () => {
+    const onLoad = vi.fn<(request: TreeLoadRequest) => void>()
+    render(
+      <Tree
+        label="Documents"
+        sections={[
+          {
+            id: 'guides',
+            label: 'Guides',
+            nodeCount: 120,
+            nodesOffset: 50,
+            nodes: Array.from({ length: 50 }, (_, index) => ({
+              id: `late-${index}`,
+              label: `Late ${index}`,
+              link: { to: '#' },
+            })),
+          },
+        ]}
+        onLoad={onLoad}
+      />,
+    )
+
+    expect(onLoad).toHaveBeenCalledWith({
+      owner: { kind: 'section', id: 'guides' },
+      offset: 0,
+      limit: 50,
+    })
   })
 
   it('counts what it was not given, and asks for the next page when it is wanted', async () => {

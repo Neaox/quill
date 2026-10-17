@@ -205,6 +205,7 @@ function choiceField(
     kind: 'select',
     value,
     options: [UNSET, ...optionsOf(choice.values)],
+    /* v8 ignore next -- the one choice, the layout, has help; a later choice may not. */
     ...(choice.help === undefined ? {} : { help: choice.help }),
     ...(invalid ? { error: choice.problem(value) } : {}),
   }

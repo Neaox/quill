@@ -85,6 +85,27 @@ describe('DocumentByline', () => {
     await expectNoAccessibilityViolations(container)
   })
 
+  it('says as much about a verification as it knows: who, when, or neither', () => {
+    const { container, rerender } = render(
+      <DocumentByline lifecycle={{ state: 'verified', by: 'Ada Lovelace' }} now={NOW} />,
+    )
+    expect(container).toHaveTextContent('Verifiedby Ada Lovelace')
+    expect(container.querySelector('time')).toBeNull()
+
+    rerender(
+      <DocumentByline
+        lifecycle={{ state: 'verified', at: new Date(Date.UTC(2026, 9, 2)) }}
+        now={NOW}
+      />,
+    )
+    expect(container).toHaveTextContent('Verified2 weeks ago')
+    expect(container).not.toHaveTextContent('by ')
+
+    rerender(<DocumentByline lifecycle={{ state: 'verified' }} now={NOW} />)
+    expect(container.querySelector('.byline-verification')).toBeNull()
+    expect(screen.getByText('Verified')).toHaveAttribute('data-lifecycle', 'verified')
+  })
+
   it('says a lapsed verification is lapsed, in words, and never that it stands', () => {
     const { container } = render(
       <DocumentByline

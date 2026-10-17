@@ -155,6 +155,21 @@ export interface ChildPage {
 
 export const NO_CHILD_PAGES = 'No child pages yet'
 
+/**
+ * Said under a list cut at the most pages one list draws (ADR-056), so a
+ * reader knows the list is not the whole subtree. In words, after the list,
+ * so it is read in order and needs no colour or icon to mean anything.
+ */
+export const MORE_CHILD_PAGES =
+  'More pages under this one are not listed here. Browse them in the navigation.'
+
+/** A slot's answer: the pages this reader may see, and whether the list was cut short. */
+export interface ChildPagesListing {
+  readonly pages: readonly ChildPage[]
+  /** True when there are more pages than one list draws. */
+  readonly more: boolean
+}
+
 function childPageItem(page: ChildPage, query: ChildPagesQuery): Element {
   const icon = query.icons
     ? [
@@ -198,13 +213,22 @@ function childPagesList(pages: readonly ChildPage[], query: ChildPagesQuery): El
 
 /**
  * What fills a child pages slot: the list, nested as deep as it was asked
- * for, or the empty state. The pages arrive already filtered to what this
- * reader may see, sorted and cut to depth; this only draws them.
+ * for, and a line saying so when it was cut short; or the empty state. The
+ * pages arrive already filtered to what this reader may see, sorted and cut
+ * to depth; this only draws them.
  */
-export function childPagesFill(pages: readonly ChildPage[], query: ChildPagesQuery): Element {
-  return pages.length === 0
-    ? element('p', { className: ['child-pages-empty'] }, [text(NO_CHILD_PAGES)])
-    : childPagesList(pages, query)
+export function childPagesFill(
+  pages: readonly ChildPage[],
+  query: ChildPagesQuery,
+  { more = false }: { readonly more?: boolean } = {},
+): Element[] {
+  if (pages.length === 0) {
+    return [element('p', { className: ['child-pages-empty'] }, [text(NO_CHILD_PAGES)])]
+  }
+  const cut = more
+    ? [element('p', { className: ['child-pages-more'] }, [text(MORE_CHILD_PAGES)])]
+    : []
+  return [childPagesList(pages, query), ...cut]
 }
 
 const stringify = unified().use(rehypeStringify).freeze()
@@ -225,8 +249,12 @@ export function renderTableOfContents(
 }
 
 /** `childPagesFill` as HTML, for a surface that places it in a slot it already shows. */
-export function renderChildPages(pages: readonly ChildPage[], query: ChildPagesQuery): string {
-  return stringify.stringify({ type: 'root', children: [childPagesFill(pages, query)] })
+export function renderChildPages(
+  pages: readonly ChildPage[],
+  query: ChildPagesQuery,
+  options: { readonly more?: boolean } = {},
+): string {
+  return stringify.stringify({ type: 'root', children: childPagesFill(pages, query, options) })
 }
 
 function hasClass(node: Element, name: string): boolean {
@@ -262,21 +290,21 @@ function slotKeyOf(node: Element): string | undefined {
  */
 export function fillChildPagesSlots(
   html: string,
-  pagesFor: (query: ChildPagesQuery) => readonly ChildPage[],
+  pagesFor: (query: ChildPagesQuery) => ChildPagesListing,
 ): string {
   if (!html.includes(`data-live-block="${CHILD_PAGES_BLOCK}"`)) return html
   const tree: HastRoot = fromHtml(html, { fragment: true })
-  const answers = new Map<string, readonly ChildPage[]>()
+  const answers = new Map<string, ChildPagesListing>()
   visit(tree, 'element', (node: Element) => {
     const key = slotKeyOf(node)
     const query = key === undefined ? undefined : parseChildPagesSlotKey(key)
     if (key === undefined || query === undefined) return
-    const pages = answers.get(key) ?? pagesFor(query)
-    answers.set(key, pages)
-    node.children = node.children.map((child) =>
+    const listing = answers.get(key) ?? pagesFor(query)
+    answers.set(key, listing)
+    node.children = node.children.flatMap((child) =>
       child.type === 'element' && hasClass(child, 'child-pages-fallback')
-        ? childPagesFill(pages, query)
-        : child,
+        ? childPagesFill(listing.pages, query, { more: listing.more })
+        : [child],
     )
   })
   return stringify.stringify(tree)

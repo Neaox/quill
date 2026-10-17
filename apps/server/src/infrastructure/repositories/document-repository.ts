@@ -224,12 +224,22 @@ export function createDocumentRepository(db: DrizzleClient): DocumentRepository 
     },
 
     /**
-     * One recursive walk down the document tree, bounded by the depth, for a
-     * child pages list (ADR-056). The cycle guard is the depth itself: a
-     * parent chain is acyclic (`checkParent`), and a walk can never go
-     * further than the six levels a list may ask for.
+     * One recursive walk down the document tree, bounded by the depth and by
+     * `limit`, for a child pages list (ADR-056). The cycle guard is the depth
+     * itself: a parent chain is acyclic (`checkParent`), and a walk can never
+     * go further than the six levels a list may ask for.
+     *
+     * The outer query has no `ORDER BY`, so PostgreSQL evaluates only as many
+     * rows of the recursive query as the `LIMIT` fetches: a page with a
+     * hundred thousand pages under it costs `limit` rows, not the subtree. The
+     * walk runs a level at a time, so what it stops at is the nearest levels;
+     * they are put in level order here, where ordering costs nothing.
      */
-    async listDescendants(id: DocumentId, depth: number): Promise<readonly DocumentRow[]> {
+    async listDescendants(
+      id: DocumentId,
+      depth: number,
+      limit: number,
+    ): Promise<readonly DocumentRow[]> {
       const { rows } = await db.execute<DocumentRecord & { level: number }>(sql`
         WITH RECURSIVE subtree AS (
           SELECT d.*, 1 AS level FROM documents d WHERE d.parent_id = ${id}
@@ -239,9 +249,9 @@ export function createDocumentRepository(db: DrizzleClient): DocumentRepository 
           JOIN subtree ON child.parent_id = subtree.id
           WHERE subtree.level < ${depth}
         )
-        SELECT * FROM subtree ORDER BY level
+        SELECT * FROM subtree LIMIT ${limit}
       `)
-      return rows.map(fromRecord)
+      return rows.toSorted((left, right) => left.level - right.level).map(fromRecord)
     },
 
     async update(id: DocumentId, patch: UpdateDocumentPatch, now: Date): Promise<DocumentRow> {

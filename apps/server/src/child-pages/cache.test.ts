@@ -56,6 +56,7 @@ function structure(
     ancestors: [parent, ...above].map((n) => row(n, null)),
     descendants: under.map((n) => row(n, parent)),
     summaries: new Map(),
+    more: false,
   }
 }
 

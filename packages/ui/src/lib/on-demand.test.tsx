@@ -26,6 +26,7 @@ function Probe({ source }: { readonly source: OnDemand<{ readonly name: string }
 
 afterEach(() => {
   vi.useRealTimers()
+  vi.unstubAllGlobals()
 })
 
 describe('onDemand', () => {
@@ -42,6 +43,44 @@ describe('onDemand', () => {
     await expect(first).resolves.toEqual({ name: 'panel' })
     await expect(second).resolves.toEqual({ name: 'panel' })
     expect(source.current()).toEqual({ name: 'panel' })
+  })
+
+  it('prefetches again after an idle fetch that failed', async () => {
+    vi.useFakeTimers()
+    const importer = vi
+      .fn<() => Promise<{ readonly name: string }>>()
+      .mockRejectedValueOnce(new Error('offline'))
+      .mockResolvedValueOnce({ name: 'panel' })
+    const source = onDemand(importer)
+
+    source.prefetch()
+    source.prefetch()
+    await vi.runAllTimersAsync()
+    expect(importer).toHaveBeenCalledTimes(1)
+    expect(source.current()).toBeUndefined()
+
+    source.prefetch()
+    await vi.runAllTimersAsync()
+    expect(importer).toHaveBeenCalledTimes(2)
+    expect(source.current()).toEqual({ name: 'panel' })
+
+    source.prefetch()
+    await vi.runAllTimersAsync()
+    expect(importer).toHaveBeenCalledTimes(2)
+  })
+
+  it('takes the module outside a page, where there is no focus to keep', async () => {
+    const { importer, arrive } = controlled({ name: 'panel' })
+    const source = onDemand(importer)
+    const loading = source.load()
+
+    vi.stubGlobal('document', undefined)
+    try {
+      await arrive()
+      await expect(loading).resolves.toEqual({ name: 'panel' })
+    } finally {
+      vi.unstubAllGlobals()
+    }
   })
 
   it('tells its subscribers when the module arrives, and stops when they leave', async () => {
@@ -100,6 +139,41 @@ describe('useOnDemand', () => {
     expect(importer).toHaveBeenCalledTimes(1)
   })
 
+  it('asks at once when it is wanted now, and shrugs off a failure', async () => {
+    const importer = vi
+      .fn<() => Promise<{ readonly name: string }>>()
+      .mockRejectedValue(new Error('offline'))
+    const source = onDemand(importer)
+
+    function Now() {
+      const module = useOnDemand(source, true)
+      return <p>{module === undefined ? 'waiting' : module.name}</p>
+    }
+    render(<Now />)
+    expect(importer).toHaveBeenCalledTimes(1)
+
+    await act(async () => {
+      await Promise.resolve()
+    })
+    expect(screen.getByText('waiting')).toBeInTheDocument()
+  })
+
+  it('uses the browser’s idle callback where there is one, and cancels it on unmount', () => {
+    const requestIdle = vi.fn<(task: () => void, options: { timeout: number }) => number>(() => 7)
+    const cancelIdle = vi.fn<(handle: number) => void>()
+    vi.stubGlobal('requestIdleCallback', requestIdle)
+    vi.stubGlobal('cancelIdleCallback', cancelIdle)
+    const { importer } = controlled({ name: 'panel' })
+    const source = onDemand(importer)
+
+    const { unmount } = render(<Probe source={source} />)
+    expect(requestIdle).toHaveBeenCalledWith(expect.any(Function), { timeout: 2000 })
+    expect(importer).not.toHaveBeenCalled()
+
+    unmount()
+    expect(cancelIdle).toHaveBeenCalledWith(7)
+  })
+
   it('renders with the module at once when it has already arrived', async () => {
     const source = onDemand(() => Promise.resolve({ name: 'panel' }))
     await source.load()
@@ -139,6 +213,61 @@ describe('useOnDemand', () => {
     })
 
     expect(screen.getByRole('button', { name: 'Actions' })).toHaveFocus()
+  })
+
+  it('focuses the replacement itself when it is the focusable element', async () => {
+    const { importer, arrive } = controlled({ name: 'panel' })
+    const source = onDemand(importer)
+
+    function Control() {
+      const module = useOnDemand(source)
+      return module === undefined ? (
+        <button type="button">Actions</button>
+      ) : (
+        <a href="#actions">Actions</a>
+      )
+    }
+
+    render(
+      <div>
+        <Control />
+      </div>,
+    )
+    screen.getByRole('button', { name: 'Actions' }).focus()
+
+    void source.load()
+    await arrive()
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0))
+    })
+
+    expect(screen.getByRole('link', { name: 'Actions' })).toHaveFocus()
+  })
+
+  it('leaves focus alone when what replaced the focused control is not an element', async () => {
+    const { importer, arrive } = controlled({ name: 'panel' })
+    const source = onDemand(importer)
+
+    function Control() {
+      const module = useOnDemand(source)
+      return module === undefined ? <button type="button">Actions</button> : 'No actions'
+    }
+
+    render(
+      <div>
+        <Control />
+      </div>,
+    )
+    screen.getByRole('button', { name: 'Actions' }).focus()
+
+    void source.load()
+    await arrive()
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0))
+    })
+
+    expect(screen.getByText('No actions')).toBeInTheDocument()
+    expect(document.body).toHaveFocus()
   })
 })
 

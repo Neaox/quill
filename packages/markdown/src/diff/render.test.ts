@@ -74,6 +74,12 @@ describe('renderComparison', () => {
     )
   })
 
+  it('keeps a removed alert an alert when its first words are not plain text', () => {
+    const { html } = render('Keep.\n\n> [!WARNING]\n> **Stop** the deploy.\n', 'Keep.\n')
+    expect(html).toMatch(/<aside[^>]*data-change="removed"/)
+    expect(html).toMatch(/<del data-diff="removed">[\s\S]*<strong>Stop<\/strong>/)
+  })
+
   it('escapes whatever a removed or added passage says', () => {
     const { html } = render(
       'Safe.\n',

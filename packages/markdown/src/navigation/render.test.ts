@@ -177,6 +177,19 @@ describe('filling a child pages slot', () => {
     expect(html).not.toContain('child-page-excerpt')
   })
 
+  it('says, after the list and in words, when it is not every page', () => {
+    const query = { depth: 1, sort: 'manual', excerpts: false, icons: false } as const
+    const html = renderChildPages(PAGES, query, { more: true })
+
+    expect(html).toMatch(
+      /<\/ul><p class="child-pages-more">More pages under this one are not listed here\.[^<]*<\/p>$/,
+    )
+    expect(renderChildPages(PAGES, query)).not.toContain('child-pages-more')
+    expect(
+      fillChildPagesSlots(render('::children\n'), () => ({ pages: PAGES, more: true })),
+    ).toContain('<p class="child-pages-more">')
+  })
+
   it('says there are none yet', () => {
     expect(renderChildPages([], { depth: 1, sort: 'manual', excerpts: false, icons: false })).toBe(
       '<p class="child-pages-empty">No child pages yet</p>',
@@ -197,7 +210,7 @@ describe('filling a child pages slot', () => {
     const asked: unknown[] = []
     const filled = fillChildPagesSlots(html, (query) => {
       asked.push(query)
-      return PAGES
+      return { pages: PAGES, more: false }
     })
     expect(asked).toHaveLength(1)
     expect(filled).not.toContain('child-pages-fallback')
@@ -210,13 +223,13 @@ describe('filling a child pages slot', () => {
 
   it('leaves a body with no slots exactly as it was', () => {
     const html = render('## Plain\n')
-    expect(fillChildPagesSlots(html, () => PAGES)).toBe(html)
+    expect(fillChildPagesSlots(html, () => ({ pages: PAGES, more: false }))).toBe(html)
   })
 
   it('leaves a slot whose key it cannot read as its fallback', () => {
     const html =
       '<section class="live-block child-pages" data-live-block="children" data-live-key="children?depth=9"><p class="child-pages-fallback">x</p></section><section data-live-block="children"></section>'
-    expect(fillChildPagesSlots(html, () => PAGES)).toBe(html)
+    expect(fillChildPagesSlots(html, () => ({ pages: PAGES, more: false }))).toBe(html)
   })
 })
 

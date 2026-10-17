@@ -44,6 +44,7 @@ describe('loadConfig', () => {
       },
       rateLimit: { max: 10, windowMs: 60_000, maxWindowMs: 60 * 60_000 },
       searchRateLimitMax: 60,
+      browseRateLimitMax: 600,
       publicSiteRateLimitMax: 600,
       publicSitemapPageSize: 1000,
       breachedPasswords: {

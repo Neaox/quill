@@ -125,6 +125,10 @@ export interface HarnessOptions {
    * *about* the rate limit rather than merely subject to it.
    */
   readonly rateLimit?: RateLimitConfig
+  /** Shrinks search's per-session budget (the people directory shares it), for a test about it. */
+  readonly searchRateLimitMax?: number
+  /** Shrinks the tree's and child pages' per-session budget, for a test about it. */
+  readonly browseRateLimitMax?: number
   /** `SHARE_LINKS=off`, for the tests that check the policy closes the door. */
   readonly shareLinksAllowed?: boolean
   /**
@@ -182,6 +186,12 @@ export async function createServerHarness(options: HarnessOptions = {}): Promise
   const config = {
     ...loaded,
     ...(options.rateLimit === undefined ? {} : { rateLimit: options.rateLimit }),
+    ...(options.searchRateLimitMax === undefined
+      ? {}
+      : { searchRateLimitMax: options.searchRateLimitMax }),
+    ...(options.browseRateLimitMax === undefined
+      ? {}
+      : { browseRateLimitMax: options.browseRateLimitMax }),
     ...(options.publicSitemapPageSize === undefined
       ? {}
       : { publicSitemapPageSize: options.publicSitemapPageSize }),

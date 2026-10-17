@@ -87,24 +87,31 @@ const titles = (rows: readonly { title: string }[]): string[] =>
 
 describe('DocumentRepository.listDescendants', () => {
   it('walks down as many levels as asked, and leaves the document itself out', async () => {
-    expect(titles(await documents.listDescendants(id(1), 1))).toEqual(['a', 'b'])
-    expect(titles(await documents.listDescendants(id(1), 2))).toEqual(['a', 'a1', 'b'])
-    expect(titles(await documents.listDescendants(id(1), 6))).toEqual([
+    expect(titles(await documents.listDescendants(id(1), 1, 500))).toEqual(['a', 'b'])
+    expect(titles(await documents.listDescendants(id(1), 2, 500))).toEqual(['a', 'a1', 'b'])
+    expect(titles(await documents.listDescendants(id(1), 6, 500))).toEqual([
       'a',
       'a1',
       'a11',
       'a111',
       'b',
     ])
-    expect(titles(await documents.listDescendants(id(3), 6))).toEqual(['a11', 'a111'])
+    expect(titles(await documents.listDescendants(id(3), 6, 500))).toEqual(['a11', 'a111'])
+  })
+
+  it('stops at the limit, keeping the nearest levels, nearest first', async () => {
+    const rows = await documents.listDescendants(id(1), 6, 3)
+    expect(rows).toHaveLength(3)
+    expect(titles(rows.slice(0, 2))).toEqual(['a', 'b'])
+    expect(rows[2]?.title).toBe('a1')
   })
 
   it('answers nothing for a page with no children', async () => {
-    expect(await documents.listDescendants(id(7), 3)).toEqual([])
+    expect(await documents.listDescendants(id(7), 3, 500)).toEqual([])
   })
 
   it('reads whole rows, as every other read does', async () => {
-    const [a] = await documents.listDescendants(id(1), 1)
+    const [a] = await documents.listDescendants(id(1), 1, 500)
     expect(a).toMatchObject({ workspaceId: WORKSPACE, collectionId: COLLECTION, parentId: id(1) })
     expect(a?.createdAt).toEqual(NOW)
   })

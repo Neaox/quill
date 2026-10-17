@@ -27,6 +27,26 @@ import { defineConfig } from 'vitest/config'
 const BUDGET = { testTimeout: 30_000, hookTimeout: 60_000 } as const
 
 /**
+ * Whether this run instruments the code for coverage, told to every test as
+ * `QUILL_COVERAGE=1`.
+ *
+ * Instrumented code runs several times slower and unevenly, so a performance
+ * budget measured under it says nothing about the code: a budget test skips
+ * itself here (`it.skipIf`) and still runs in a plain `pnpm test`, where its
+ * timing means something. Coverage is only ever switched on from the command
+ * line (`pnpm test:coverage`), which is what this reads.
+ */
+const COVERAGE = process.argv.some(
+  (argument) =>
+    argument === '--coverage' ||
+    argument === '--coverage.enabled' ||
+    argument === '--coverage.enabled=true',
+)
+
+/** What every project shares; a project does not inherit the root's test options. */
+const SHARED = { ...BUDGET, env: { QUILL_COVERAGE: COVERAGE ? '1' : '' } } as const
+
+/**
  * Half the cores, and never fewer than two.
  *
  * Vitest's default is one worker per core less one, and every worker is a
@@ -50,7 +70,7 @@ export default defineConfig({
           environment: 'node',
           include: ['packages/*/src/**/*.test.ts'],
           exclude: ['packages/ui/**', 'packages/editor/**'],
-          ...BUDGET,
+          ...SHARED,
         },
       },
       {
@@ -60,7 +80,7 @@ export default defineConfig({
           environment: 'jsdom',
           setupFiles: ['./packages/editor/vitest.setup.ts'],
           include: ['packages/editor/src/**/*.test.{ts,tsx}'],
-          ...BUDGET,
+          ...SHARED,
         },
       },
       {
@@ -70,7 +90,7 @@ export default defineConfig({
           environment: 'jsdom',
           setupFiles: ['./packages/ui/vitest.setup.ts'],
           include: ['packages/ui/src/**/*.test.{ts,tsx}'],
-          ...BUDGET,
+          ...SHARED,
         },
       },
       {
@@ -78,7 +98,7 @@ export default defineConfig({
           name: 'server',
           environment: 'node',
           include: ['apps/server/src/**/*.test.ts'],
-          ...BUDGET,
+          ...SHARED,
         },
       },
       {
@@ -88,7 +108,7 @@ export default defineConfig({
           environment: 'jsdom',
           setupFiles: ['./apps/web/vitest.setup.ts'],
           include: ['apps/web/src/**/*.test.{ts,tsx}'],
-          ...BUDGET,
+          ...SHARED,
         },
       },
       {
@@ -96,7 +116,7 @@ export default defineConfig({
           name: 'tools',
           environment: 'node',
           include: ['tools/**/*.test.ts'],
-          ...BUDGET,
+          ...SHARED,
         },
       },
       {
@@ -104,7 +124,7 @@ export default defineConfig({
           name: 'scripts',
           environment: 'node',
           include: ['scripts/**/*.test.ts'],
-          ...BUDGET,
+          ...SHARED,
         },
       },
     ],

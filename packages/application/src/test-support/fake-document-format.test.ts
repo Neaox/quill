@@ -166,6 +166,51 @@ describe('createFakeDocumentFormat: compare', () => {
     expect(grown.changes[0]?.wordsRemoved).toBe(0)
   })
 
+  it('says which changes can be put back, and who made them, when the draft is given', () => {
+    const compared = format.compare({
+      before: text('one'),
+      after: text('two'),
+      context,
+      patches: true,
+      draft: draft('two'),
+      authorship: { by: 'ada', at: '2026-01-01T00:00:00.000Z' },
+    })
+    expect(compared.changes[0]).toMatchObject({
+      html: 'two',
+      revertible: true,
+      author: { userId: 'ada', at: '2026-01-01T00:00:00.000Z' },
+    })
+    expect(
+      format.compare({ before: text('one'), after: text('two'), context, draft: draft('two') })
+        .changes[0]?.author,
+    ).toBeUndefined()
+  })
+
+  it('puts a changed, an added and a removed line back as they were', () => {
+    const revert = (before: string, now: string, changes: string[]) =>
+      format.revert({ before: text(before), after: text(now), draft: draft(now), changes }).ast
+
+    expect(revert('one\ntwo', 'one\nTWO', ['c2'])).toEqual({ body: 'one\ntwo' })
+    expect(revert('one', 'one\nadded', ['c2'])).toEqual({ body: 'one' })
+    expect(revert('one\ngone', 'one', ['c2'])).toEqual({ body: 'one\ngone' })
+    // Several at once, from the last place back, so an earlier one never moves a later one.
+    expect(revert('one\ntwo\nthree', 'ONE\ntwo\nTHREE', ['c1', 'c3'])).toEqual({
+      body: 'one\ntwo\nthree',
+    })
+  })
+
+  it('stamps the whole body with who saved it', () => {
+    expect(
+      format.stampAuthorship({
+        previous: draft('one'),
+        next: draft('two'),
+        authorship: undefined,
+        by: 'ada',
+        at: '2026-01-01T00:00:00.000Z',
+      }),
+    ).toEqual({ version: 1, body: 'two', by: 'ada', at: '2026-01-01T00:00:00.000Z' })
+  })
+
   it('has no sections for identical texts', () => {
     const compared = format.compare({ before: text('same'), after: text('same'), context })
     expect(compared.changes).toEqual([])

@@ -171,8 +171,12 @@ export function DocumentShell({
     // The last current item: the rail's section comes first in the sheet, and
     // the document being read is in the tree below it.
     const target =
-      [...(container?.querySelectorAll<HTMLElement>('[aria-current="page"]') ?? [])].at(-1) ??
-      container?.querySelector<HTMLElement>('a[href], button')
+      [
+        ...(container?.querySelectorAll<HTMLElement>('[aria-current="page"]') ??
+          /* v8 ignore start -- the section is always mounted: it is the sheet being opened. */
+          []),
+        /* v8 ignore stop */
+      ].at(-1) ?? container?.querySelector<HTMLElement>('a[href], button')
     target?.focus()
   }
   const closeNav = () => {

@@ -6,7 +6,7 @@ import type {
   WorkspaceRow,
 } from '@quill/application'
 import { childPagesQueries, childPagesSlotKey, fillChildPagesSlots } from '@quill/markdown'
-import type { ChildPage } from '@quill/markdown'
+import type { ChildPagesListing } from '@quill/markdown'
 
 import { toChildPages } from './present.ts'
 
@@ -43,13 +43,19 @@ export async function fillChildPages(
       }),
     ),
   )
-  const answers = new Map<string, readonly ChildPage[]>()
+  const answers = new Map<string, ChildPagesListing>()
   for (const [index, query] of queries.entries()) {
     const answer = listed[index]
     /* v8 ignore next -- the page was just placed in this very tree. */
     if (answer?.kind !== 'pages') return input.html
-    answers.set(childPagesSlotKey(query), toChildPages(answer.pages, input.hrefOf))
+    answers.set(childPagesSlotKey(query), {
+      pages: toChildPages(answer.pages, input.hrefOf),
+      more: answer.more,
+    })
   }
-  /* v8 ignore next -- every query was answered above. */
-  return fillChildPagesSlots(input.html, (query) => answers.get(childPagesSlotKey(query)) ?? [])
+  return fillChildPagesSlots(
+    input.html,
+    /* v8 ignore next -- every query was answered above. */
+    (query) => answers.get(childPagesSlotKey(query)) ?? { pages: [], more: false },
+  )
 }

@@ -43,6 +43,13 @@ vi.mock('@quill/markdown', async (importOriginal) => {
 
 /** quill-plan.md section 31. */
 const KEYSTROKE_BUDGET_MS = 16
+/**
+ * Under coverage (`QUILL_COVERAGE`, set by the root Vitest config) the code is
+ * instrumented and runs several times slower, so a timing measures the
+ * instrumentation: the timed budgets skip themselves there and hold in a plain
+ * `pnpm test`. What they count rather than time runs either way.
+ */
+const UNDER_COVERAGE = process.env['QUILL_COVERAGE'] === '1'
 const KEYSTROKES = 41
 
 const clock = createFakeClock()
@@ -273,16 +280,19 @@ describe('a keystroke in a 4,100-line document', () => {
     expect(counts.reads / 5).toBeLessThan(ONE_TABLE_READS)
   })
 
-  it(`takes under ${String(KEYSTROKE_BUDGET_MS)} ms, as the median of ${String(KEYSTROKES)}`, () => {
-    const { keystroke } = open()
-    // Warm the paths a first keystroke compiles.
-    for (let typed = 0; typed < 5; typed += 1) keystroke()
-    const times = Array.from({ length: KEYSTROKES }, () => {
-      const started = performance.now()
-      keystroke()
-      return performance.now() - started
-    }).toSorted((a, b) => a - b)
-    const median = times[Math.floor(times.length / 2)] ?? Number.POSITIVE_INFINITY
-    expect(median).toBeLessThan(KEYSTROKE_BUDGET_MS)
-  })
+  it.skipIf(UNDER_COVERAGE)(
+    `takes under ${String(KEYSTROKE_BUDGET_MS)} ms, as the median of ${String(KEYSTROKES)}`,
+    () => {
+      const { keystroke } = open()
+      // Warm the paths a first keystroke compiles.
+      for (let typed = 0; typed < 5; typed += 1) keystroke()
+      const times = Array.from({ length: KEYSTROKES }, () => {
+        const started = performance.now()
+        keystroke()
+        return performance.now() - started
+      }).toSorted((a, b) => a - b)
+      const median = times[Math.floor(times.length / 2)] ?? Number.POSITIVE_INFINITY
+      expect(median).toBeLessThan(KEYSTROKE_BUDGET_MS)
+    },
+  )
 })

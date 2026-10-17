@@ -215,6 +215,8 @@ export function DocumentEditor({
   // the toolbar's way of taking focus, which Alt+F10 asks for.
   const overlays = useMemo(() => createOverlayStore(), [])
   // Nothing to focus until the toolbar is drawn: the key is the page's.
+  // The toolbar's layout effect sets it as the editor mounts, before any key can ask.
+  /* v8 ignore next */
   const focusToolbar = useRef<() => boolean>(() => false)
   // Every keyboard shortcut, listed on Ctrl+/.
   const [shortcutsOpen, setShortcutsOpen] = useState(false)

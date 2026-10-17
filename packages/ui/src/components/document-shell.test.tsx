@@ -204,6 +204,47 @@ describe('DocumentShell on a narrow screen', () => {
     expect(toggle).toHaveFocus()
   })
 
+  it('closes on a second press of its button, or on the sheet’s own close button', async () => {
+    renderShell()
+    const toggle = screen.getByRole('button', { name: 'Browse documents' })
+
+    await userEvent.click(toggle)
+    await userEvent.click(toggle)
+    expect(toggle).toHaveAttribute('aria-expanded', 'false')
+
+    await userEvent.click(toggle)
+    await userEvent.click(screen.getByRole('button', { name: 'Close documents' }))
+    expect(toggle).toHaveAttribute('aria-expanded', 'false')
+    expect(toggle).toHaveFocus()
+  })
+
+  it('stays open for other keys, and for an Escape something inside has already handled', async () => {
+    renderShell()
+    const toggle = screen.getByRole('button', { name: 'Browse documents' })
+    await userEvent.click(toggle)
+    const link = screen.getByRole('link', { name: 'authentication' })
+
+    await userEvent.keyboard('{ArrowDown}')
+    expect(toggle).toHaveAttribute('aria-expanded', 'true')
+
+    link.addEventListener('keydown', (event) => {
+      event.preventDefault()
+    })
+    await userEvent.keyboard('{Escape}')
+    expect(toggle).toHaveAttribute('aria-expanded', 'true')
+  })
+
+  it('opens onto its first control when nothing in it is current', async () => {
+    renderShell({
+      railCurrentId: undefined,
+      navigation: <Tree label="Documents" sections={SECTIONS} />,
+    })
+
+    await userEvent.click(screen.getByRole('button', { name: 'Browse documents' }))
+
+    expect(screen.getByRole('button', { name: 'Close documents' })).toHaveFocus()
+  })
+
   it('closes when a document in it is chosen', async () => {
     renderShell()
     const toggle = screen.getByRole('button', { name: 'Browse documents' })

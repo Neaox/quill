@@ -2,17 +2,21 @@ import { parseDocument, serializeDocument } from '@quill/markdown'
 import { act, fireEvent, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { TextSelection } from '@tiptap/pm/state'
+import { Editor } from '@tiptap/react'
 import { createRef } from 'react'
 import { describe, expect, it, vi } from 'vitest'
 
+import { createOverlayStore } from '../context-menu/overlay-store.ts'
 import { DocumentEditor } from '../document/document-editor.tsx'
+import { buildExtensions } from '../document/extensions.ts'
 import type { DocumentEditorHandle, DocumentEditorProps } from '../document/document-editor.tsx'
 import { expectNoAccessibilityViolations } from '../testing/axe.ts'
 import { placeToolbar, toolbarArea, toolbarRoom } from './toolbar-position.ts'
 import type { CommentRequest } from '../block/block-menu.tsx'
 import { rangeBox } from '../link/open-link-popover.ts'
 import { selectionBox } from './selection-box.ts'
-import { describeSelection } from './selection-toolbar.tsx'
+import { describeSelection, SelectionToolbar } from './selection-toolbar.tsx'
+import { createSelectionWatch } from './selection-watch.ts'
 
 /**
  * The selection toolbar as a writer meets it: select words and it is there,
@@ -146,6 +150,41 @@ describe('when it appears', () => {
       editor().view.dom.blur()
     })
     expect(hasToolbar()).toBe(false)
+  })
+
+  it('has no find button in an editor without find', () => {
+    const editor = new Editor({
+      element: document.createElement('div'),
+      extensions: buildExtensions().filter((extension) => extension.name !== 'findAndReplace'),
+      content: {
+        type: 'doc',
+        content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Some words.' }] }],
+      },
+    })
+    act(() => {
+      editor.view.dispatch(
+        editor.state.tr.setSelection(TextSelection.create(editor.state.doc, 1, 5)),
+      )
+    })
+    const focusRef = { current: () => false }
+
+    render(
+      <SelectionToolbar
+        editor={editor}
+        watch={createSelectionWatch(editor)}
+        store={createOverlayStore()}
+        environment={{}}
+        focusRef={focusRef}
+        onLink={() => undefined}
+      />,
+    )
+
+    expect(describeSelection(editor.state)?.unavailable).not.toHaveProperty('find')
+    // Drawn hidden, as the editor has no focus here: what it holds is what is asked.
+    const bar = document.querySelector('[role="toolbar"][aria-label="Formatting"]')
+    expect(bar?.querySelector('[data-control="bold"]')).not.toBeNull()
+    expect(bar?.querySelector('[data-control="find"]')).toBeNull()
+    editor.destroy()
   })
 
   it('does not appear at a caret, in a code block, or in a table, whose toolbar is in charge', () => {

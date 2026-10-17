@@ -1,6 +1,7 @@
 import { useState } from 'react'
 
-import { DocumentProperties, type PeopleDirectory } from '@quill/editor'
+// The entry of its own, not the package's: the package's brings the whole editor.
+import { DocumentProperties, type PeopleDirectory } from '@quill/editor/properties'
 import { DocumentByline, LifecycleNotice, PlainLink, TokenInput } from '@quill/ui'
 
 import { now as wallClock } from '../../lib/time/clock.ts'

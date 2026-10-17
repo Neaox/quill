@@ -1,5 +1,5 @@
 import { getRouteApi, useNavigate } from '@tanstack/react-router'
-import { useEffect, useMemo, useRef, useState, useTransition } from 'react'
+import { useEffect, useEffectEvent, useMemo, useRef, useState, useTransition } from 'react'
 
 import { BRAND } from '@quill/brand'
 import '@quill/ui/styles/editor.css'
@@ -526,12 +526,12 @@ function EditingSession({
       }
     }
     const reverted = await revertPreview.mutateAsync({ documentId, ...request })
-    const content = readDraftContent(reverted.ast)
+    const restored = readDraftContent(reverted.ast)
     const handle = editorRef.current
-    if (handle === null || !isDocumentTree(content?.ast)) {
+    if (handle === null || !isDocumentTree(restored?.ast)) {
       return { ok: false, message: 'Couldn’t revert that. Your draft is as it was.' }
     }
-    handle.replaceContent(content.ast)
+    handle.replaceContent(restored.ast)
     autosave.change(handle.toMdast)
     await autosave.flush()
     toast.success(
@@ -542,16 +542,12 @@ function EditingSession({
     return { ok: true }
   }
   // The latest of it for the channel's listener, which outlives any one render.
-  const revertHandler = useRef(revertFromComparison)
-  revertHandler.current = revertFromComparison
+  const revertHandler = useEffectEvent(revertFromComparison)
   const [revertChannel] = useState(() =>
     createRevertChannel(broadcastRevertTransport(revertChannelName(documentId))),
   )
   // Synchronises with the other tabs of this browser, which React does not own.
-  useEffect(
-    () => revertChannel.serve((request) => revertHandler.current(request)),
-    [revertChannel],
-  )
+  useEffect(() => revertChannel.serve((request) => revertHandler(request)), [revertChannel])
 
   /** Runs a command against the live editor and queues the save every edit queues. */
   function place(command: (editor: NonNullable<DocumentEditorHandle['editor']>) => void) {

@@ -40,6 +40,20 @@ describe('Menu', () => {
     expect(trigger).toHaveAttribute('aria-expanded', 'true')
   })
 
+  it('closes again on a second press of its trigger', async () => {
+    render(<Menu label="Failover" items={ITEMS} />)
+
+    const trigger = screen.getByRole('button', { name: 'More actions for Failover' })
+    await userEvent.click(trigger)
+    await screen.findByRole('menu')
+
+    await userEvent.click(trigger)
+    await waitFor(() => {
+      expect(screen.queryByRole('menu')).not.toBeInTheDocument()
+    })
+    expect(trigger).toHaveAttribute('aria-expanded', 'false')
+  })
+
   it('leaves the page behind it usable, because a row menu is not a dialog', async () => {
     render(
       <>
@@ -387,6 +401,24 @@ describe('a menu whose machinery has not arrived yet', () => {
     await waitFor(() => {
       expect(screen.getByRole('menuitem', { name: 'Sign out' })).toHaveFocus()
     })
+  })
+
+  it('keeps its trigger working when fetching the menu ahead of a press fails', async () => {
+    vi.resetModules()
+    vi.doMock('./menu-panels.tsx', () => {
+      throw new Error('offline')
+    })
+    const { Menu: FreshMenu } = await import('./menu.tsx')
+    render(<FreshMenu label="Failover" items={ITEMS} />)
+    const trigger = screen.getByRole('button', { name: 'More actions for Failover' })
+
+    await act(async () => {
+      fireEvent.pointerEnter(trigger)
+      fireEvent.focus(trigger)
+      await new Promise((resolve) => setTimeout(resolve, 0))
+    })
+    expect(trigger).toHaveAttribute('aria-expanded', 'false')
+    expect(screen.queryByRole('menu')).not.toBeInTheDocument()
   })
 })
 

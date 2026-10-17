@@ -166,6 +166,16 @@ describe('createDrawioFiles', () => {
     })
   })
 
+  it('answers a save that needs permission to publish as refused, with the reason', async () => {
+    const refused = response(403, {
+      error: { code: 'publish_required', message: 'A published page shows this file.' },
+    })
+    expect(await files(refused).files.revise(DIAGRAM, '<svg/>')).toEqual({
+      kind: 'refused',
+      message: 'A published page shows this file.',
+    })
+  })
+
   it('throws what it cannot read as a conflict, and every other failure', async () => {
     const odd = response(409, {
       error: { code: 'x', message: 'Odd', details: { current: 'nope' } },

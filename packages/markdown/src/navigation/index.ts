@@ -22,13 +22,14 @@ export {
   parseChildPagesDepth,
   parseChildPagesSlotKey,
 } from './children.ts'
-export type { ChildPage } from './render.ts'
+export type { ChildPage, ChildPagesListing } from './render.ts'
 export {
   CHILD_PAGES_FALLBACK,
   CHILD_PAGES_LABEL,
   childPagesFill,
   childPagesQueries,
   fillChildPagesSlots,
+  MORE_CHILD_PAGES,
   NO_CHILD_PAGES,
   NAVIGATION_SANITIZE_GRANT,
   renderChildPages,

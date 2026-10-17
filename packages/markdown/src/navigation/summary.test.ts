@@ -50,6 +50,29 @@ describe('documentIcon', () => {
     expect(documentIcon({ icon: 7 })).toBeUndefined()
     expect(documentIcon({})).toBeUndefined()
   })
+
+  it('is one emoji, however many code points draw it', () => {
+    for (const emoji of ['👍🏽', '1️⃣', '🇳🇿', '👨‍👩‍👧‍👦', '🅰️']) {
+      expect(documentIcon({ icon: emoji })).toBe(emoji)
+    }
+  })
+
+  it('is no icon when it is words, or more than one emoji, or not an emoji at all', () => {
+    // Shown beside a title wherever it is listed, so words here are words
+    // beside a title that nobody wrote there.
+    for (const icon of [
+      'Admin',
+      'Sign in',
+      'a',
+      '📦📦',
+      '📦 ok',
+      '<b>',
+      String.fromCodePoint(0x202e),
+      `📦${String.fromCodePoint(0x200d).repeat(20)}`,
+    ]) {
+      expect(documentIcon({ icon })).toBeUndefined()
+    }
+  })
 })
 
 describe('a description with no words in it', () => {

@@ -113,3 +113,9 @@ Verified against draw.io 32.4 (`jgraph/drawio:32.4.1`, the Compose service):
 2. The draw.io embed editor: insert and edit, save as an attachment revision, the self-hosted bundle, and settings.
 3. Figma cards via ADR-042.
 4. The Figma connector, image snapshots, the webhook refresh, and the embed upgrade.
+
+## Amendment, 2026-10-18: a revision that readers will see needs publish
+
+This ADR was written when anyone who could edit a document could publish it, so a revision needed only `edit` on the document that owns the attachment. ADR-052 (#21) has since split publishing out of editing: a contributor writes drafts and asks for a review, and an editor publishes. A revision bypassed that split. It overwrites the bytes under the same URL, so every page that shows the file shows the new version at once, on the public site and through share links too, with no publish and no review. An attachment owned by one document and shown in another also let `edit` on the first change the second.
+
+So `PUT /api/attachments/:id` now asks, from the link index of published heads, which documents' published revisions show the attachment (`documentsShowingAttachment`). When none do, the file is used only in drafts and `edit` on the owning document is enough, as before. When any do, the writer needs `publish` on the owning document and on every one of those documents, which is what changing each of them otherwise asks. The refusal is `403 publish_required`, and it names the documents the writer may see and counts the rest, by the checklist's rule for refusals.

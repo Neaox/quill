@@ -56,6 +56,20 @@ describe('Backspace after an emoji (ADR-038)', () => {
     expect(written()).toBe('Ship it :tda:' + NL)
   })
 
+  it('takes a selected range as it is, emoji or not', async () => {
+    const { user, surface, ref } = await openAt('Ship it :tada:', 'end')
+    await waitFor(() => {
+      expect(surface.querySelector('.emoji')).not.toBeNull()
+    })
+    act(() => {
+      ref.current?.editor?.commands.setTextSelection({ from: 1, to: 6 })
+    })
+
+    await user.keyboard('{Backspace}')
+
+    expect(ref.current?.editor?.getText()).toBe('it :tada:')
+  })
+
   it('leaves a colon that ends no emoji to the ordinary key', async () => {
     const { user, written } = await openAt('Ship it :nope:', 'end')
 

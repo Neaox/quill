@@ -107,6 +107,36 @@ describe('finding again as the document changes', () => {
     expect(find(after).found.matches).toHaveLength(3)
   })
 
+  it('does not search a changed block outside the selection it searches', () => {
+    const before = searching(DOC, 'plan', [1, 21])
+    const after = before.apply(before.tr.insertText('plan ', 38))
+
+    expect(positions(find(after).found)).toEqual(fromScratch(after))
+    expect(find(after).found.matches).toHaveLength(2)
+  })
+
+  it('has nothing to find again while what is looked for is not a pattern', () => {
+    for (const query of ['', '(']) {
+      const before = run(
+        run(open(DOC), openFind(false)),
+        editFind({ query, options: { regex: true } }),
+      )
+      const after = before.apply(before.tr.insertText('plan ', 1))
+
+      expect(find(after).pattern.kind).toBe(query === '' ? 'empty' : 'invalid')
+      expect(find(after).found.matches).toEqual([])
+    }
+  })
+
+  it('searches again when asked to, or to go on, with nothing edited', () => {
+    const before = searching(DOC, 'plan')
+    for (const type of ['refresh', 'advance'] as const) {
+      const after = before.apply(before.tr.setMeta(findKey, { type }))
+
+      expect(positions(find(after).found)).toEqual(fromScratch(before))
+    }
+  })
+
   it('goes on to the next match after one is replaced, without searching again from scratch', () => {
     const before = searching(DOC, 'plan')
     const after = before.apply(

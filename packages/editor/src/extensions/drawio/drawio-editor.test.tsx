@@ -270,6 +270,36 @@ describe('the draw.io editor', () => {
     expect(files.create).toHaveBeenCalledWith(EXPORTED, 'request-path.drawio.svg')
   })
 
+  it('says why a save was refused, and keeps the work by saving it as a copy', async () => {
+    const files = fakeFiles({
+      revise: vi.fn<DrawioFiles['revise']>(async () => ({
+        kind: 'refused',
+        message: 'A published page shows this file.',
+      })),
+    })
+    const { say, save, lastAction, onSaved } = open({
+      files,
+      target: { kind: 'existing', diagram: EXISTING, title: 'Request path' },
+    })
+    say({ event: 'configure' })
+    say({ event: 'init' })
+    await waitFor(() => expect(lastAction()?.action).toBe('load'))
+    say({ event: 'load' })
+    await save({ xml: '<mxfile/>' })
+    say({ event: 'export', format: 'svg', data: EXPORTED })
+
+    const prompt = await screen.findByRole('alertdialog', { name: 'Your diagram is not saved' })
+    expect(prompt).toHaveTextContent('A published page shows this file.')
+    expect(screen.queryByRole('button', { name: 'Try again' })).toBeNull()
+    await userEvent.click(screen.getByRole('button', { name: 'Save mine as a copy' }))
+    await waitFor(() =>
+      expect(onSaved).toHaveBeenCalledWith({
+        kind: 'copied',
+        diagram: { attachmentId: 'new', url: '/api/attachments/new', version: 1 },
+      }),
+    )
+  })
+
   it('reloads the newer revision when asked, discarding the writer’s changes', async () => {
     const files = fakeFiles({
       revise: vi.fn<DrawioFiles['revise']>(async () => ({ kind: 'conflict', currentVersion: 5 })),

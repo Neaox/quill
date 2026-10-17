@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { expectNoAccessibilityViolations } from '../../testing/axe.ts'
 import { Button } from './button.tsx'
 import { Tooltip, TooltipProvider } from './tooltip.tsx'
+import { RadixTooltip } from './tooltip-panels.tsx'
 
 function renderTooltip(side?: 'top' | 'right' | 'bottom' | 'left') {
   return render(
@@ -81,6 +82,55 @@ describe('Tooltip', () => {
     await expectNoAccessibilityViolations(baseElement, { rules: { region: { enabled: false } } })
   })
 
+  it('leaves a touch alone, since a finger resting on a control is a press', async () => {
+    renderTooltip()
+
+    fireEvent.pointerEnter(screen.getByRole('button', { name: 'Publish' }), {
+      pointerType: 'touch',
+    })
+    await pause(20)
+
+    expect(screen.queryByRole('tooltip')).not.toBeInTheDocument()
+  })
+
+  it('stays shut for the focus a press causes', async () => {
+    const onClick = vi.fn<() => void>()
+    render(
+      <TooltipProvider delayDuration={0}>
+        <Tooltip content="Publishes a new revision">
+          <Button onClick={onClick}>Publish</Button>
+        </Tooltip>
+      </TooltipProvider>,
+    )
+    const control = screen.getByRole('button', { name: 'Publish' })
+
+    fireEvent.pointerDown(control)
+    act(() => {
+      control.focus()
+    })
+    fireEvent.pointerUp(control)
+    fireEvent.click(control)
+    await pause(20)
+
+    expect(onClick).toHaveBeenCalledOnce()
+    expect(control).toHaveFocus()
+    expect(screen.queryByRole('tooltip')).not.toBeInTheDocument()
+  })
+
+  it('shows one tip when focus follows a hover that has already opened it', async () => {
+    renderTooltip()
+    const control = screen.getByRole('button', { name: 'Publish' })
+
+    await userEvent.hover(control)
+    await screen.findByRole('tooltip')
+    act(() => {
+      control.focus()
+    })
+
+    expect(screen.getAllByRole('tooltip')).toHaveLength(1)
+    expect(control).toHaveAccessibleDescription('Publishes a new revision')
+  })
+
   it('shares a delay across the provider', async () => {
     render(
       <TooltipProvider>
@@ -127,6 +177,49 @@ describe('a tooltip whose machinery has not arrived yet', () => {
     arrive()
     expect(await screen.findByRole('tooltip')).toHaveTextContent('Publishes a new revision')
     expect(screen.getByRole('button', { name: 'Publish' })).toHaveFocus()
+  })
+
+  it('keeps the control working when fetching the machinery fails', async () => {
+    vi.resetModules()
+    vi.doMock('./tooltip-panels.tsx', () => {
+      throw new Error('offline')
+    })
+    const fresh = await import('./tooltip.tsx')
+    const onClick = vi.fn<() => void>()
+    render(
+      <fresh.TooltipProvider delayDuration={0}>
+        <fresh.Tooltip content="Publishes a new revision">
+          <Button onClick={onClick}>Publish</Button>
+        </fresh.Tooltip>
+      </fresh.TooltipProvider>,
+    )
+    const control = screen.getByRole('button', { name: 'Publish' })
+
+    await userEvent.tab()
+    await pause(20)
+    await userEvent.keyboard('{Enter}')
+
+    expect(control).toHaveFocus()
+    expect(onClick).toHaveBeenCalledOnce()
+    expect(screen.queryByRole('tooltip')).not.toBeInTheDocument()
+  })
+})
+
+describe('the tip’s Radix half', () => {
+  it('measures as an empty box while its control is not in the page', async () => {
+    render(
+      <RadixTooltip
+        content="Publishes a new revision"
+        open
+        onOpenChange={() => {}}
+        anchor={{ current: null }}
+        id="tip"
+      />,
+    )
+
+    expect(await screen.findByRole('tooltip')).toHaveTextContent('Publishes a new revision')
+    const standIn = document.querySelector('[data-state][aria-hidden="true"]')
+    expect(standIn?.getBoundingClientRect()).toMatchObject({ width: 0, height: 0 })
   })
 })
 

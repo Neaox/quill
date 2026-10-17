@@ -330,14 +330,18 @@ export function shareLinkRoutes(deps: AppDependencies): FastifyPluginAsync {
    * links into the application at all.
    */
   const sharedLinks = async (html: string, scope: ShareScope): Promise<string> => {
-    if (!/href="\/(?:d|w)\//u.test(html)) return html
+    // Any href with a `/d/` or `/w/` in it, absolute or not, in either case:
+    // the rewriter decides which of them are the application's.
+    if (!/href="[^"]*\/(?:d|w)\//iu.test(html)) return html
     const root = scope.resolved.document
     const reachable = [root, ...flattenNavigation(await scope.navigation())]
     const base = `/share/${scope.token}`
     return rewriteLinks(
       html,
-      surfaceLinkRewriter(reachable, (document) =>
-        document.id === root.id ? base : `${base}/d/${documentReference(document)}`,
+      surfaceLinkRewriter(
+        reachable,
+        (document) => (document.id === root.id ? base : `${base}/d/${documentReference(document)}`),
+        [deps.config.appOrigin],
       ),
     )
   }

@@ -6,6 +6,7 @@ import type { FastifyPluginAsync } from 'fastify'
 import { authorizerFor, requireDocumentAccess } from '../application/authorization.ts'
 import { resolveDocumentId } from '../application/references.ts'
 import type { AppDependencies } from '../dependencies.ts'
+import { sessionRateLimit } from '../plugins/rate-limit.ts'
 import { IdParamsSchema } from './document-schemas.ts'
 
 /**
@@ -15,10 +16,12 @@ import { IdParamsSchema } from './document-schemas.ts'
  * Scoped to a document, and open only to someone who may edit it, because the
  * only reason to look a person up is to name them on a document you are
  * writing: a directory any member could page through would be an address book
- * of the whole instance. `q` searches names and addresses; `email` (repeated)
- * names the addresses a document already holds, all of them in one request
- * and one query. Only verified people are answered for (see
- * `use-cases/document-facts.ts`).
+ * of the whole instance. So it answers only for verified people who can view
+ * that document, by search or by address alike (`use-cases/document-facts.ts`);
+ * anyone else is neither found nor named. `q` searches names and addresses,
+ * from two characters; `email` (repeated) names the addresses a document
+ * already holds, all of them in one request. Each caller has a budget, so the
+ * directory cannot be walked a query at a time either.
  */
 
 const PeopleQuerySchema = Type.Object({
@@ -48,6 +51,7 @@ export function peopleRoutes(deps: AppDependencies): FastifyPluginAsync {
       '/api/documents/:id/people',
       {
         preHandler: app.requireVerifiedSession,
+        config: sessionRateLimit('people-directory', deps.config.searchRateLimitMax),
         schema: {
           params: IdParamsSchema,
           querystring: PeopleQuerySchema,
@@ -59,11 +63,10 @@ export function peopleRoutes(deps: AppDependencies): FastifyPluginAsync {
         await requireDocumentAccess(authorizerFor(deps, request), documentId, 'edit')
         const { q, email } = request.query
         if (email !== undefined) {
-          return {
-            people: [...(await namePeople(deps, typeof email === 'string' ? [email] : email))],
-          }
+          const emails = typeof email === 'string' ? [email] : email
+          return { people: [...(await namePeople(deps, documentId, emails))] }
         }
-        return { people: [...(await searchPeople(deps, q ?? ''))] }
+        return { people: [...(await searchPeople(deps, documentId, q ?? ''))] }
       },
     )
   }

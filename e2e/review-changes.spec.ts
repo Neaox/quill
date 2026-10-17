@@ -98,14 +98,22 @@ test('unpublished changes are noticed, previewed, compared, reverted, and the re
   await expect(article.locator('del[data-diff] [data-diff-char]').first()).toHaveText('u')
 
   // --- One change reverted, and the revert undone --------------------------
-  await expect(changes.getByRole('button', { name: /^Revert/u })).toHaveCount(2)
+  // Every change keeps its Revert; the ones that can be reverted are the ones enabled.
+  const revertible = changes.locator('button[aria-label^="Revert: "]:not([aria-disabled])')
+  await expect(revertible).toHaveCount(2)
   const revertDay = changes.getByRole('button', { name: /^Revert: .*after a day/u })
-  await expect(revertDay).toBeEnabled()
+  await expect(revertDay).not.toHaveAttribute('aria-disabled')
   await revertDay.click()
   await expect(page.getByText('Change reverted in your draft')).toBeVisible()
-  await expect(changes.getByRole('button', { name: /^Revert/u })).toHaveCount(1)
+  await expect(revertible).toHaveCount(1)
 
   await page.getByRole('button', { name: 'Undo' }).click()
-  await expect(page.getByText('Change restored to your draft')).toBeVisible()
-  await expect(changes.getByRole('button', { name: /^Revert/u })).toHaveCount(2)
+  await expect(page.getByText('Restored to your draft')).toBeVisible()
+  await expect(revertible).toHaveCount(2)
+
+  // --- Several reverted at once, in one save -------------------------------
+  await changes.getByRole('checkbox', { name: 'Select all revertible' }).check()
+  await changes.getByRole('button', { name: 'Revert 2 selected' }).click()
+  await expect(page.getByText('2 changes reverted in your draft')).toBeVisible()
+  await expect(page.getByText(/read the same/u)).toBeVisible()
 })

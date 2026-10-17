@@ -508,6 +508,9 @@ importers:
       mdast-util-to-string:
         specifier: ^4.0.0
         version: 4.0.0
+      micromark-util-sanitize-uri:
+        specifier: ^2.0.1
+        version: 2.0.1
       property-information:
         specifier: ^7.2.0
         version: 7.2.0

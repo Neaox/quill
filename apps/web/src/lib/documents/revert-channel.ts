@@ -1,5 +1,7 @@
 import { BRAND } from '@quill/brand'
 
+import { newId } from '../ids/new-id.ts'
+
 /**
  * Putting changes back in a draft that an editor of this browser has open.
  *
@@ -103,7 +105,7 @@ export function createRevertChannel(
   const { claimMs = CLAIM_MS, doneMs = DONE_MS } = timing
   return {
     ask(request) {
-      const requestId = crypto.randomUUID()
+      const requestId = newId()
       const { promise, resolve } = Promise.withResolvers<RevertAnswer>()
       let timer = setTimeout(() => {
         resolve({ ok: 'no-editor' })

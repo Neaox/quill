@@ -92,6 +92,20 @@ describe('find in the context menu', () => {
     expect(findSelectionUnavailable(editor.state)).toBeDefined()
   })
 
+  it('says there is nothing to find yet at a caret', () => {
+    const { editor, select } = mount()
+    select(3, 3)
+
+    expect(findSelectionUnavailable(editor.state)).toBe('Select some words first')
+  })
+
+  it('offers nothing in an editor without find', () => {
+    const { editor } = mount()
+    const withoutFind = editor.state.reconfigure({ plugins: [] })
+
+    expect(findMenu.entries({ ...placeIn(editor), state: withoutFind })).toEqual([])
+  })
+
   it('opens the bar on the selected words, and with the replace row, from the entries', () => {
     const { editor, select } = mount()
     select(5, 9)

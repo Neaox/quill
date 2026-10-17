@@ -123,6 +123,34 @@ describe('the keys in a callout’s title', () => {
     expect(caretBlock(state)).toBe('Mind the gap.')
   })
 
+  it('Backspace at the start of an empty title that is all the callout has leaves a body', () => {
+    const titled = caretIn(TITLE_ONLY, 'Just', 0)
+    const { from } = titled.selection
+    const emptied = titled.apply(titled.tr.delete(from, from + 'Just a title'.length))
+
+    expect(backspaceInCalloutTitle(emptied)).toBe(true)
+    const state = apply(backspaceInCalloutTitle, emptied)
+
+    const callout = calloutAt(state)?.node
+    expect(callout?.childCount).toBe(1)
+    expect(callout?.firstChild?.attrs['directiveLabel']).toBeFalsy()
+    expect(caretBlock(state)).toBe('')
+  })
+
+  it('answers whether it would take an empty title away without doing it', () => {
+    const state = withEmptyTitle(caretIn(UNTITLED, 'Mind'))
+
+    expect(backspaceInCalloutTitle(state)).toBe(true)
+    expect(calloutAt(state)?.node.firstChild?.attrs['directiveLabel']).toBe(true)
+  })
+
+  it('answers whether Enter would go on to the body without doing it', () => {
+    const state = caretIn(TITLED, 'Before')
+
+    expect(enterInCalloutTitle(state)).toBe(true)
+    expect(caretBlock(state)).toBe('Before you begin')
+  })
+
   it('Backspace at the start of a title with words keeps them, and goes nowhere', () => {
     const state = caretIn(TITLED, 'Before', 0)
 
@@ -194,6 +222,27 @@ describe('a title left empty', () => {
     const callout = left.doc.firstChild
     expect(callout?.childCount).toBe(1)
     expect(callout?.firstChild?.attrs['directiveLabel']).toBeFalsy()
+  })
+
+  it('stays when the caret leaves it in the same step that writes in it', () => {
+    const state = withEmptyTitle(withPlugin(caretIn(UNTITLED, 'Mind')))
+    const tr = state.tr.insertText('Heads up', state.selection.from)
+    const left = state.apply(tr.setSelection(TextSelection.create(tr.doc, bodyStart(state) + 8)))
+
+    expect(written(left)).toContain('[Heads up]')
+  })
+
+  it('is left alone when the step that leaves it makes it something other than a title', () => {
+    for (const make of ['heading', 'paragraph'] as const) {
+      const state = withEmptyTitle(withPlugin(caretIn(UNTITLED, 'Mind')))
+      const pos = state.selection.from - 1
+      const attrs = make === 'heading' ? { level: 2 } : { directiveLabel: false }
+      const tr = state.tr.setNodeMarkup(pos, nodeType(state.schema, make), attrs)
+      const left = state.apply(tr.setSelection(TextSelection.create(tr.doc, bodyStart(state))))
+
+      expect(calloutAt(left)?.node.childCount).toBe(2)
+      expect(calloutAt(left)?.node.firstChild?.type.name).toBe(make)
+    }
   })
 
   it('is not looked for when the selection never was in a callout', () => {

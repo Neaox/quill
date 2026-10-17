@@ -111,8 +111,9 @@ export function buildApp(options: AppOptions = {}): FastifyInstance {
 
   registerErrorHandler(app)
   registerRequestIdHeader(app)
-  // Last of the `onSend` hooks, so it compresses what the others have
-  // finished with; it only reads their headers.
+  // Before any route: it adds itself to each route as it is declared, as the
+  // last `onSend` stage, so it reads the headers every other hook has set,
+  // a cookie above all (`plugins/compression.ts`).
   registerCompression(app)
 
   if (deps !== undefined) {

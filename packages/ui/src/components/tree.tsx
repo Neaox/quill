@@ -397,7 +397,8 @@ const Branch = memo(function Branch({
   )
 
   const { onLoad } = scope
-  const failed = missing !== undefined && scope.loadFailed?.({ kind: ownerKind, id: ownerId }) === true
+  const failed =
+    missing !== undefined && scope.loadFailed?.({ kind: ownerKind, id: ownerId }) === true
   // A window that does not draw the whole list says where each row is in it,
   // which the nested list alone would count from the first drawn row.
   const firstShown = Math.max(window.start, loadedFrom)
@@ -589,7 +590,7 @@ const Row = memo(function Row({
 
 /** The nearest ancestor that scrolls on its own, if the element is in one. */
 function scrollContainerOf(element: HTMLElement): HTMLElement | undefined {
-  for (let container = element.parentElement; container !== null; ) {
+  for (let container = element.parentElement; container !== null;) {
     const overflow = getComputedStyle(container).overflowY
     if (overflow === 'auto' || overflow === 'scroll') return container
     container = container.parentElement
@@ -761,13 +762,14 @@ export function Tree({
       const row = [...container.querySelectorAll<HTMLElement>('[data-node-id]')].find(
         (element) => element.dataset['nodeId'] === scrollTarget,
       )
-      if (row === undefined) return
+      // Nothing to scroll with (a test environment): the style walk below is not worth doing.
+      if (row === undefined || typeof row.scrollTo !== 'function') return
       // Only the tree's own region is scrolled (the sidebar, the phone's sheet, a picker's
       // list), never the page around it: `scrollIntoView` would scroll every ancestor, so a
       // tree in a page — a specimen on the design page — would carry the whole page to its open
       // row, and again whenever the layout settles. A tree in no region of its own is left be.
       const region = scrollContainerOf(row)
-      if (region === undefined || typeof region.scrollTo !== 'function') return
+      if (region === undefined) return
       // Left alone when it is already in view — a row just clicked does not
       // jump — and brought to the middle when it is not, with context around it.
       if (isInView(row, region)) return
@@ -811,6 +813,7 @@ export function Tree({
       })
       if (focusId === undefined) return
       const list = globalThis.document.getElementById(branchDomId(baseId, key))
+      /* v8 ignore next -- the branch was drawn synchronously just above; `?? []` narrows the lookup. */
       const row = [...(list?.children ?? [])].find(
         (element) => element instanceof HTMLElement && element.dataset['nodeId'] === focusId,
       )

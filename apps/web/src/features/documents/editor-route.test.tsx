@@ -1067,35 +1067,35 @@ describe('the editor keeps the author’s work through failures', () => {
   })
 })
 
-describe('what is waiting to be published, before it is', () => {
-  const ONE_CHANGE = () =>
-    jsonResponse(200, {
-      html: '<article><p data-change="changed" data-change-id="c1">Move traffic west.</p></article>',
-      summary: {
-        sections: 1,
-        added: 0,
-        removed: 0,
-        changed: 1,
-        moved: 0,
+const ONE_CHANGE = () =>
+  jsonResponse(200, {
+    html: '<article><p data-change="changed" data-change-id="c1">Move traffic west.</p></article>',
+    summary: {
+      sections: 1,
+      added: 0,
+      removed: 0,
+      changed: 1,
+      moved: 0,
+      wordsAdded: 1,
+      wordsRemoved: 1,
+    },
+    changes: [
+      {
+        id: 'c1',
+        change: 'changed',
+        block: 'paragraph',
+        excerpt: 'Move traffic west.',
         wordsAdded: 1,
         wordsRemoved: 1,
+        revertible: true,
+        author: { id: 'user-1', name: 'Writer', at: '2026-02-03T00:00:00.000Z' },
       },
-      changes: [
-        {
-          id: 'c1',
-          change: 'changed',
-          block: 'paragraph',
-          excerpt: 'Move traffic west.',
-          wordsAdded: 1,
-          wordsRemoved: 1,
-          revertible: true,
-          author: { id: 'user-1', name: 'Writer', at: '2026-02-03T00:00:00.000Z' },
-        },
-      ],
-      sections: [],
-      properties: [],
-    })
+    ],
+    sections: [],
+    properties: [],
+  })
 
+describe('what is waiting to be published, before it is', () => {
   const withChanges = (overrides: FakeRoutes = {}) =>
     editorRoutes({
       'GET /api/documents/{id}/compare': ONE_CHANGE,
@@ -1110,7 +1110,10 @@ describe('what is waiting to be published, before it is', () => {
     await userEvent.click(changes)
 
     expect(
-      await screen.findByRole('heading', { level: 1, name: /^Changes between .* and Your draft$/u }),
+      await screen.findByRole('heading', {
+        level: 1,
+        name: /^Changes between .* and your draft$/u,
+      }),
     ).toBeInTheDocument()
   })
 
@@ -1195,7 +1198,11 @@ describe('what is waiting to be published, before it is', () => {
       )
       await screen.findByRole('button', { name: 'Publish' })
 
-      const answer = await anotherTab().ask({ from: 'a'.repeat(40), draftVersion: 2, changes: ['c1'] })
+      const answer = await anotherTab().ask({
+        from: 'a'.repeat(40),
+        draftVersion: 2,
+        changes: ['c1'],
+      })
 
       expect(answer).toMatchObject({ ok: false, message: expect.stringMatching(/draft changed/u) })
       expect(previews).toEqual([])

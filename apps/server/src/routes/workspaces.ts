@@ -10,10 +10,11 @@ import {
   listVisibleWorkspaces,
   renameWorkspace,
   windowTree,
+  type ChildrenOwner,
   type WindowedCollection,
   type WindowedNode,
 } from '@quill/application'
-import { slugify } from '@quill/domain'
+import { collectionId, isUuid, slugify } from '@quill/domain'
 import type { CollectionId, DocumentId } from '@quill/domain'
 import type { FastifyPluginAsync, FastifyRequest } from 'fastify'
 
@@ -26,6 +27,7 @@ import {
 import { resolveDocumentId, resolveWorkspaceId } from '../application/references.ts'
 import type { AppDependencies } from '../dependencies.ts'
 import { AppError, conflict, notFound, unprocessable } from '../errors.ts'
+import { sessionRateLimit } from '../plugins/rate-limit.ts'
 import { requireAuthenticatedSession } from '../plugins/session.ts'
 import {
   CreateDocumentBodySchema,
@@ -96,6 +98,13 @@ const WorkspaceListItemSchema = Type.Object({
  * permission resolver: reading the tree needs view, creating a document needs
  * edit, and renaming or deleting the workspace needs manage.
  */
+/** A collection named by its id; anything else names none. */
+function collectionOwner(reference: string): ChildrenOwner | undefined {
+  return isUuid(reference)
+    ? { kind: 'collection', collectionId: collectionId(reference) }
+    : undefined
+}
+
 export function workspaceRoutes(deps: AppDependencies): FastifyPluginAsync {
   return async (rawApp) => {
     const app = rawApp.withTypeProvider<TypeBoxTypeProvider>()
@@ -227,6 +236,14 @@ export function workspaceRoutes(deps: AppDependencies): FastifyPluginAsync {
     )
 
     /** The reader's whole tree: the one pass every cut of it is taken from. */
+    /** The tree's reads walk the whole workspace, so a reader's budget bounds how often. */
+    const treeBudget = sessionRateLimit('tree', deps.config.browseRateLimitMax)
+
+    async function documentOwner(reference: string): Promise<ChildrenOwner | undefined> {
+      const parentId = await resolveDocumentId(deps, reference).catch(() => undefined)
+      return parentId === undefined ? undefined : { kind: 'document', parentId }
+    }
+
     async function readerTree(request: FastifyRequest, workspace: string) {
       const target = await resolveWorkspaceId(deps, workspace)
       const authorizer = authorizerFor(deps, request)
@@ -251,6 +268,7 @@ export function workspaceRoutes(deps: AppDependencies): FastifyPluginAsync {
       '/api/workspaces/:id/tree',
       {
         preHandler: app.requireSession,
+        config: treeBudget,
         schema: {
           params: IdParamsSchema,
           querystring: WorkspaceTreeQuerySchema,
@@ -283,6 +301,7 @@ export function workspaceRoutes(deps: AppDependencies): FastifyPluginAsync {
       '/api/workspaces/:id/tree/children',
       {
         preHandler: app.requireSession,
+        config: treeBudget,
         schema: {
           params: IdParamsSchema,
           querystring: TreeChildrenQuerySchema,
@@ -295,14 +314,18 @@ export function workspaceRoutes(deps: AppDependencies): FastifyPluginAsync {
           throw new AppError(400, 'invalid_query', 'Name exactly one of parent and collection')
         }
         const collections = await readerTree(request, request.params.id)
-        const page = childrenPage(
-          collections,
-          collection === undefined
-            ? { kind: 'document', parentId: await resolveDocumentId(deps, parent ?? '') }
-            : { kind: 'collection', collectionId: collection as CollectionId },
-          { offset, limit },
-        )
-        if (page.kind === 'not-found') throw notFound('Not found in this workspace')
+        // A parent that names nothing, one in another workspace and one the
+        // reader cannot see are all one answer, so the answer says nothing
+        // about which documents exist (ADR-012).
+        /* v8 ignore next -- `parent` is always given without a collection: the check above. */
+        const owner = await (collection === undefined
+          ? documentOwner(parent ?? '')
+          : collectionOwner(collection))
+        const page =
+          owner === undefined ? undefined : childrenPage(collections, owner, { offset, limit })
+        if (page === undefined || page.kind === 'not-found') {
+          throw notFound('Not found in this workspace')
+        }
         return { documents: page.documents.map(toTreeNode), total: page.total, offset: page.offset }
       },
     )

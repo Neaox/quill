@@ -1,4 +1,5 @@
 import { toString } from 'mdast-util-to-string'
+import { normalizeUri } from 'micromark-util-sanitize-uri'
 import type { Element, ElementContent, Properties } from 'hast'
 import type { Blockquote, Code, Heading, Image, Paragraph, PhrasingContent, Table } from 'mdast'
 import type { ContainerDirective, LeafDirective, TextDirective } from 'mdast-util-directive'
@@ -170,7 +171,7 @@ export interface HandlerOptions {
    * the same tree the headings are rendered from, so every entry links to the
    * id its heading carries. Asked only when the body holds one.
    */
-  readonly outline?: (() => readonly OutlineEntry[]) | undefined
+  readonly outline: () => readonly OutlineEntry[]
 }
 
 function element(tagName: string, properties: Properties, children: ElementContent[]): Element {
@@ -274,6 +275,14 @@ function directiveSource(
 }
 
 /**
+ * An image's source, percent-encoded as a link's is (mdast-util-to-hast's
+ * own image handler does the same), so a character a browser would read
+ * as something else, such as the backslash in `/\host`, which it reads as
+ * `//host`, stays a path on this origin.
+ */
+const imageSource = (node: Image): string => normalizeUri(node.url)
+
+/**
  * The mdast to hast handlers behind `renderHtml`. Every one of them exists to put
  * meaning in the markup: the right element for the job, a name for anything a
  * screen reader would otherwise meet unannounced, and no information carried by
@@ -288,7 +297,7 @@ export function createHandlers(options: HandlerOptions): Handlers {
     placed = [],
     labels = new Set<string>(),
     labelEmoji,
-    outline = () => [],
+    outline,
   } = options
 
   /**
@@ -353,11 +362,15 @@ export function createHandlers(options: HandlerOptions): Handlers {
   const detailsRenderer = createDetailsRenderer()
 
   const image = (_state: State, node: Image): Element =>
-    element('img', { src: node.url, alt: altText(node.alt), title: node.title ?? undefined }, [])
+    element(
+      'img',
+      { src: imageSource(node), alt: altText(node.alt), title: node.title ?? undefined },
+      [],
+    )
 
   const figure = (node: Image, caption: string): Element =>
     element('figure', {}, [
-      element('img', { src: node.url, alt: altText(node.alt) }, []),
+      element('img', { src: imageSource(node), alt: altText(node.alt) }, []),
       element('figcaption', {}, [text(caption)]),
     ])
 
@@ -380,6 +393,7 @@ export function createHandlers(options: HandlerOptions): Handlers {
       url: node.url,
       idPrefix: `${HEADING_ID_PREFIX}d${placed.length + 1}-`,
       label: altText(node.alt),
+      labels,
     })
     if (drawing === null) return undefined
     placed.push(drawing)

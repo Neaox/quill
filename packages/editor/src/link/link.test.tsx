@@ -20,6 +20,7 @@ import {
   normaliseHref,
   unlink,
 } from './link-commands.ts'
+import { holdSelection } from './held-selection.ts'
 import { LINK_CARD_LINGER_MS } from './link-card.tsx'
 import { LINK_SEARCH_DELAY_MS, looksLikeAddress } from './link-popover.tsx'
 import { sectionAnchor } from './section-link.ts'
@@ -208,6 +209,36 @@ describe('Ctrl+K', () => {
 
     await user.keyboard('{Escape}')
     expect(container.querySelector('.selection-held')).toBeNull()
+  })
+
+  it('lets go of words an edit takes away while the box is open', async () => {
+    const { select, user, container, editor } = open('Link these words.\n')
+    select('these')
+    await user.keyboard('{Control>}k{/Control}')
+    await screen.findByRole('dialog', { name: 'Add link' })
+
+    act(() => {
+      editor().view.dispatch(editor().state.tr.delete(5, 12))
+    })
+
+    expect(container.querySelector('.selection-held')).toBeNull()
+  })
+
+  it('holds nothing once the editor itself has gone, as when the page is left', async () => {
+    const { select, user, editor, unmount } = open('Link these words.\n')
+    select('these')
+    await user.keyboard('{Control>}k{/Control}')
+    await screen.findByRole('dialog', { name: 'Add link' })
+    const view = editor().view
+
+    act(() => {
+      editor().destroy()
+    })
+    holdSelection(view, { from: 1, to: 3 })
+
+    expect(() => {
+      unmount()
+    }).not.toThrow()
   })
 
   it('does nothing in a code block', async () => {

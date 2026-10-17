@@ -1,5 +1,5 @@
 import { parseDocument, serializeDocument } from '@quill/markdown'
-import { act, render, screen, within } from '@testing-library/react'
+import { act, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { history, undo } from '@tiptap/pm/history'
 import { EditorState, NodeSelection, TextSelection } from '@tiptap/pm/state'
@@ -373,6 +373,30 @@ describe('a child pages block in the editor', () => {
     await user.click(screen.getByRole('link', { name: 'Depth 3' }))
     await user.keyboard('{Escape}')
     await expectNoAccessibilityViolations(container)
+  })
+
+  it('lists nothing once the application stops offering child pages', async () => {
+    const childPages = vi.fn<ChildPagesPreview>(async () => ({
+      html: '<ul class="child-pages-list"><li class="child-page">Listed</li></ul>',
+      count: 1,
+    }))
+    const source = '::children' + String.fromCharCode(10)
+    const { ref, user, rerender, container } = mount(source, childPages)
+    expect(await screen.findByText('Listed')).toBeDefined()
+    const asked = childPages.mock.calls.length
+    rerender(<DocumentEditor ast={parseDocument(source).ast} ref={ref} />)
+
+    await user.click(screen.getByRole('button', { name: 'Child pages settings' }))
+    const panel = await screen.findByRole('dialog', { name: 'Child pages settings' })
+    await user.selectOptions(within(panel).getByLabelText('Levels deep'), '2')
+
+    expect(markdownOf(ref)).toBe('::children{depth="2"}' + String.fromCharCode(10))
+    // Asked again with nobody to answer, it has nothing to list, and says nothing.
+    await waitFor(() => {
+      expect(container.querySelector('.child-pages-fallback')).toBeNull()
+    })
+    expect(container.querySelector('.child-pages')?.textContent).toBe('')
+    expect(childPages).toHaveBeenCalledTimes(asked)
   })
 
   it('says in words what it will list when there is no list to show', async () => {

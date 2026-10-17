@@ -24,7 +24,8 @@ import { Spinner } from './spinner.tsx'
  *
  * - **Enter or a comma** with no suggestion active adds what was typed, when
  *   the caller accepts text (`onEnterText`); a field that only takes known
- *   values (people) leaves it in the box.
+ *   values (people) leaves it in the box. While a search is `busy`, Enter
+ *   takes what was typed: the suggestions still listed answer an earlier one.
  * - **A pasted list** — commas or new lines — becomes several tokens at once.
  * - **Backspace** in an empty field removes the last token; each token also
  *   has its own remove button, and focus returns to the field either way.
@@ -155,7 +156,9 @@ export function TokenInput({
         cursor.move(-1)
         break
       case 'Enter': {
-        const chosen = open ? cursor.activeOption() : undefined
+        // While a search is busy, the suggestions on screen answer what was
+        // typed before; Enter takes what is typed now, never one of those.
+        const chosen = open && !busy ? cursor.activeOption() : undefined
         if (chosen !== undefined) {
           onChoose(chosen)
           cursor.reset()

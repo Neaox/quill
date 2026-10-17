@@ -88,7 +88,10 @@ function inTableOr(inTable: Command | undefined, elsewhere: Command): Command {
   return (state, dispatch, view) =>
     tableContext(state) === undefined
       ? elsewhere(state, dispatch, view)
-      : (inTable?.(state, dispatch, view) ?? false)
+      : (inTable?.(state, dispatch, view) ??
+        /* v8 ignore start -- the table's keymap binds both keys; this only narrows its index type. */
+        false)
+  /* v8 ignore stop */
 }
 
 export function keyboardShortcuts(schema: Schema): Readonly<Record<string, Command>> {

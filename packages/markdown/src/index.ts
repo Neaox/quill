@@ -89,6 +89,7 @@ export {
   calloutDirective,
   DEFAULT_CALLOUT_TYPE,
   isCalloutType,
+  knownCalloutKind,
 } from './directives/callout.ts'
 export type { LayoutBlock, LayoutDirectiveName, LayoutWidth } from './directives/layout.ts'
 export {
@@ -219,7 +220,6 @@ export {
   detailsModel,
   isDetails,
   isDetailsNode,
-  knownCalloutKind,
 } from './details/details.ts'
 export { DETAILS_SANITIZE_GRANT } from './details/render.ts'
 export {

@@ -695,6 +695,48 @@ describe('the content journey', () => {
     await harness.app.inject({ method: 'DELETE', url: `/api/documents/${id}/lock`, cookies: other })
   })
 
+  it('answers each way a revert or its undo can be refused, in the words of the contract', async () => {
+    const id = await createDocument('Refused reverts')
+    await writeDraft(id, '# Refused reverts\n\nOne.\n', 0)
+    const published = await publish(id, await baseOf(id))
+    await writeDraft(id, '# Refused reverts\n\nOne, edited.\n', 1)
+    const post = async (url: string, payload: Record<string, unknown>) =>
+      await harness.app.inject({ method: 'POST', url, cookies: editor, payload })
+
+    const from = published.json().revision
+    expect(
+      (await post(`/api/documents/${id}/draft/revert`, { from, draftVersion: 2, changes: ['c9'] }))
+        .statusCode,
+    ).toBe(422)
+    expect(
+      (
+        await post(`/api/documents/${id}/draft/revert`, {
+          from: 'f'.repeat(40),
+          draftVersion: 2,
+          changes: ['c1'],
+        })
+      ).statusCode,
+    ).toBe(404)
+    expect(
+      (
+        await post(`/api/documents/${id}/draft/revert/undo`, {
+          draftVersion: 1,
+          ast: draftOf('# Refused reverts\n') as Record<string, unknown>,
+        })
+      ).statusCode,
+    ).toBe(409)
+
+    await harness.database.pool.query('DELETE FROM drafts WHERE document_id = $1', [id])
+    expect(
+      (
+        await post(`/api/documents/${id}/draft/revert/undo`, {
+          draftVersion: 2,
+          ast: draftOf('# Refused reverts\n') as Record<string, unknown>,
+        })
+      ).statusCode,
+    ).toBe(404)
+  })
+
   it('revalidates a comparison by its tag', async () => {
     const id = await createDocument('Tagged comparison')
     await writeDraft(id, '# Tagged comparison\n\nBody.\n', 0)

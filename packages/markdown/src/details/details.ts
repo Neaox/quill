@@ -2,7 +2,7 @@ import type { Paragraph, Parent, RootContent } from 'mdast'
 import type { ContainerDirective } from 'mdast-util-directive'
 
 import type { CalloutType } from '../directives/callout.ts'
-import { isCalloutType } from '../directives/callout.ts'
+import { knownCalloutKind } from '../directives/callout.ts'
 import type {
   Directive,
   DirectiveAttributes,
@@ -151,40 +151,6 @@ const NOT_FLOW: ReadonlySet<string> = new Set([
 /** Whether a node can be one of a container's blocks, a details' body included. */
 export function isFlowContent(node: RootContent): node is DirectiveContent[number] {
   return !NOT_FLOW.has(node.type)
-}
-
-/**
- * Obsidian's callout kinds and their aliases, onto Quill's (ADR-036). A kind
- * neither knows is drawn as a note, the way an unknown `:::callout` type is.
- */
-const CALLOUT_ALIASES: Readonly<Record<string, CalloutType>> = {
-  abstract: 'note',
-  summary: 'note',
-  tldr: 'note',
-  example: 'note',
-  quote: 'note',
-  cite: 'note',
-  todo: 'info',
-  question: 'info',
-  help: 'info',
-  faq: 'info',
-  success: 'tip',
-  check: 'tip',
-  done: 'tip',
-  hint: 'tip',
-  attention: 'warning',
-  failure: 'caution',
-  fail: 'caution',
-  missing: 'caution',
-  danger: 'caution',
-  error: 'caution',
-  bug: 'caution',
-}
-
-/** The callout a kind is drawn as, or undefined when it is no kind Quill or Obsidian knows. */
-export function knownCalloutKind(kind: string): CalloutType | undefined {
-  const lower = kind.toLowerCase()
-  return isCalloutType(lower) ? lower : CALLOUT_ALIASES[lower]
 }
 
 /** A details' attributes, whichever syntax it was written in. */

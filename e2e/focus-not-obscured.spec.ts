@@ -65,8 +65,23 @@ interface Stop {
   readonly chrome: number
 }
 
-/** Where the focused element is, against the bottom of the sticky bar; null off the page's content. */
+/**
+ * Where the focused element is, against the bottom of the sticky bar; null off the page's content.
+ *
+ * Read once the page has drawn the frame after the key press, which is the
+ * first moment a reader can see where focus went. WebKit settles a focus
+ * scroll there rather than inside the key press: a key pressed at machine
+ * speed, in the same frame as the last one's scroll, can otherwise find the
+ * new stop still under the bar, and the very next frame has it clear. What
+ * this asserts is unchanged — a stop still covered once drawn fails.
+ */
 async function focused(page: Page, bar: string): Promise<Stop | null> {
+  await page.evaluate(
+    () =>
+      new Promise((drawn) => {
+        requestAnimationFrame(() => requestAnimationFrame(drawn))
+      }),
+  )
   return page.evaluate((selector) => {
     const element = document.activeElement
     const header = document.querySelector(selector)

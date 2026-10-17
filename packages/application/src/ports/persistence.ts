@@ -602,7 +602,11 @@ export interface DocumentRepository {
    * query however many there are: a child pages list's subtree (ADR-056).
    * The document itself is not included.
    */
-  listDescendants(id: DocumentId, depth: number): Promise<readonly DocumentRow[]>
+  /**
+   * The documents under `id`, to `depth` levels, nearest levels first, and at
+   * most `limit` of them: the walk stops there, however wide the tree.
+   */
+  listDescendants(id: DocumentId, depth: number, limit: number): Promise<readonly DocumentRow[]>
   update(id: DocumentId, patch: UpdateDocumentPatch, now: Date): Promise<DocumentRow>
   delete(id: DocumentId): Promise<void>
 }

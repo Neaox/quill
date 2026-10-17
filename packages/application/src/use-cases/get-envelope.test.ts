@@ -141,6 +141,26 @@ describe('getEnvelope', () => {
 
   it('states the published facts, with owners who are people named and never addressed', async () => {
     await uow.repos.users.markEmailVerified(AUTHOR, NOW)
+    // An owner is named only to readers when they can view the document themselves.
+    await uow.repos.units.create({
+      id: 'acme',
+      parentId: null,
+      name: 'Acme',
+      slug: 'acme',
+      label: 'company',
+      now: NOW,
+    })
+    await uow.repos.grants.create({
+      id: 'grant-author',
+      principalKind: 'user',
+      principalId: AUTHOR,
+      scopeKind: 'workspace',
+      scopeId: WORKSPACE,
+      role: 'editor',
+      effect: 'allow',
+      createdBy: null,
+      now: NOW,
+    })
     const id = await draft('Overview', '# Overview', {
       status: 'draft',
       type: 'Runbook',

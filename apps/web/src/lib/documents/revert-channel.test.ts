@@ -1,6 +1,11 @@
 import { describe, expect, it, vi } from 'vitest'
 
-import { createRevertChannel, memoryRevertTransports, revertChannelName } from './revert-channel.ts'
+import {
+  createRevertChannel,
+  memoryRevertTransports,
+  revertChannelName,
+  type RevertOutcome,
+} from './revert-channel.ts'
 
 const REQUEST = { from: 'b'.repeat(40), draftVersion: 3, changes: ['c1', 'c2'] }
 
@@ -15,7 +20,7 @@ function twoTabs(timing: { claimMs?: number; doneMs?: number } = {}) {
 describe('asking an open editor to put changes back', () => {
   it('hands the request to the editor and answers with how it went', async () => {
     const { comparison, editor } = twoTabs()
-    const handler = vi.fn(() => Promise.resolve({ ok: true as const }))
+    const handler = vi.fn<() => Promise<RevertOutcome>>(() => Promise.resolve({ ok: true }))
     editor.serve(handler)
 
     await expect(comparison.ask(REQUEST)).resolves.toEqual({ ok: true })
@@ -68,7 +73,7 @@ describe('asking an open editor to put changes back', () => {
     const transports = memoryRevertTransports()
     const stranger = transports.transport()
     const editor = createRevertChannel(transports.transport())
-    const handler = vi.fn(() => Promise.resolve({ ok: true as const }))
+    const handler = vi.fn<() => Promise<RevertOutcome>>(() => Promise.resolve({ ok: true }))
     editor.serve(handler)
 
     stranger.post({ kind: 'revert', requestId: 'x', request: { changes: 'all' } })

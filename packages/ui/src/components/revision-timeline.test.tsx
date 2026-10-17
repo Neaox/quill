@@ -133,6 +133,17 @@ describe('RevisionTimeline', () => {
     )
   })
 
+  it('stays open for a press inside its panel, which bubbles to the control through React', async () => {
+    render(<RevisionTimeline revisions={REVISIONS} currentId="v12" variant="menu" />)
+
+    await userEvent.click(screen.getByRole('button', { name: 'History' }))
+    const panel = await screen.findByRole('dialog', { name: 'Revisions' })
+    await userEvent.click(within(panel).getByText('Revisions'))
+
+    expect(screen.getByRole('dialog', { name: 'Revisions' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'History' })).toHaveAttribute('aria-expanded', 'true')
+  })
+
   it('takes its own names when a caller supplies them', async () => {
     render(
       <RevisionTimeline
@@ -184,6 +195,24 @@ describe('a history popover whose machinery has not arrived yet', () => {
     arrive()
     const panel = await screen.findByRole('dialog', { name: 'Revisions' })
     expect(within(panel).getAllByRole('listitem')).toHaveLength(3)
+  })
+
+  it('keeps its control working when fetching the machinery ahead of a press fails', async () => {
+    vi.resetModules()
+    vi.doMock('./popover-panels.tsx', () => {
+      throw new Error('offline')
+    })
+    const { RevisionTimeline: FreshTimeline } = await import('./revision-timeline.tsx')
+    render(<FreshTimeline revisions={REVISIONS} currentId="v12" variant="menu" />)
+    const trigger = screen.getByRole('button', { name: 'History' })
+
+    await act(async () => {
+      fireEvent.pointerEnter(trigger)
+      fireEvent.focus(trigger)
+      await new Promise((resolve) => setTimeout(resolve, 0))
+    })
+    expect(trigger).toHaveAttribute('aria-expanded', 'false')
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
   })
 })
 

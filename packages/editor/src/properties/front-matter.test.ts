@@ -117,6 +117,14 @@ describe('the fields a document offers', () => {
     expect(readProperties({ verified: { by: 'x' }, supersededBy: 'y' }).other).toEqual([])
   })
 
+  it('shows a verification written by hand, as a plain word, as it is written', () => {
+    expect(
+      readProperties({ status: 'verified', verified: 'by the platform team' }).fields.find(
+        (entry) => entry.key === 'verified',
+      ),
+    ).toMatchObject({ kind: 'readonly', value: 'by the platform team' })
+  })
+
   it('shows a list as one line, and reads it back as a list', () => {
     expect(field('owners').value).toBe('platform@example.com, docs@example.com')
     expect(splitList(' one ,, two ')).toEqual(['one', 'two'])

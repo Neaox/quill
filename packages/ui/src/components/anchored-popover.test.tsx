@@ -69,4 +69,21 @@ describe('AnchoredPopover', () => {
     await userEvent.keyboard('{Escape}')
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
   })
+  it('leaves Escape to a control inside whose list is open', async () => {
+    render(
+      <AnchoredPopover
+        open
+        anchor={ANCHOR}
+        label="Link"
+        onOpenChange={vi.fn<(open: boolean) => void>()}
+      >
+        <input role="combobox" aria-label="Page" aria-expanded="true" aria-controls="pages" />
+        <ul id="pages" />
+      </AnchoredPopover>,
+    )
+    await screen.findByRole('dialog')
+    screen.getByRole('combobox', { name: 'Page' }).focus()
+    await userEvent.keyboard('{Escape}')
+    expect(screen.getByRole('dialog', { name: 'Link' })).toBeInTheDocument()
+  })
 })

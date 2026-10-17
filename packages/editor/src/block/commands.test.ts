@@ -1,6 +1,6 @@
 import { AllSelection, NodeSelection, TextSelection } from '@tiptap/pm/state'
 import type { Command, EditorState } from '@tiptap/pm/state'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
 import { documentToMdast } from '../document/ast.ts'
 import { createEditorTestHarness } from '../testing/harness.ts'
@@ -219,6 +219,27 @@ describe('the commands behind a block menu', () => {
         '',
         'Third.',
       ])
+    })
+
+    it('moves a selected block as the block it is', () => {
+      const state = harness.state(DOCUMENT)
+      const selected = state.apply(state.tr.setSelection(NodeSelection.create(state.doc, 0)))
+
+      expect(text(apply(selected, moveBlock(1, 'item')))).toEqual([
+        'Second.',
+        'First.',
+        '',
+        'Third.',
+      ])
+    })
+
+    it('moves nothing from a text selection that sits between blocks rather than in one', () => {
+      const state = harness.state(DOCUMENT)
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+      const between = state.apply(state.tr.setSelection(TextSelection.create(state.doc, 0)))
+      warn.mockRestore()
+
+      expect(apply(between, moveBlock(1, 'item'))).toBeNull()
     })
 
     it('moves the whole list for the block menu, which points at the top-level block', () => {

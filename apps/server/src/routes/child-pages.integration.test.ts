@@ -85,7 +85,11 @@ beforeAll(async () => {
   linux = await create('Linux', install)
   await create('Roadmap', parent)
   await publish(install, '---\nicon: 📦\n---\n\n# Install\n\nHow to install it.\n')
-  await publish(linux, '---\ndescription: Notes for Linux.\n---\n\n# Linux\n\nOn Linux.\n')
+  // An icon that is not an emoji is no icon: words beside a title nobody wrote there.
+  await publish(
+    linux,
+    '---\ndescription: Notes for Linux.\nicon: Sign in\n---\n\n# Linux\n\nOn Linux.\n',
+  )
   await harness.drainOutbox()
 }, 60_000)
 
@@ -120,6 +124,10 @@ describe('the children of a document', () => {
     expect(html).toMatch(/href="\/w\/engineering\/d\/linux-[0-9a-z]{10}"/)
     // A description, when a page has one, is its excerpt.
     expect(html).toContain('<p class="child-page-excerpt">Notes for Linux.</p>')
+    expect(html).not.toContain('Sign in')
+    expect(html).toMatch(
+      /<span class="child-page-icon" data-icon="page" aria-hidden="true"><\/span><span class="child-page-title">Linux</,
+    )
     // Sorted by title: Install before Roadmap.
     expect(html.indexOf('Install')).toBeLessThan(html.indexOf('Roadmap'))
   })
@@ -227,4 +235,28 @@ describe('on the server-assembled pages', () => {
     expect(preview.body).toMatch(/href="\/preview\/d\/install-[^"]+"/)
     expect(preview.body).toContain('Roadmap')
   })
+})
+
+describe('the budget in front of the children of a document', () => {
+  it('refuses a reader past it', async () => {
+    const small = await createServerHarness({ browseRateLimitMax: 2 })
+    try {
+      const fixture = await seedTenancy(small)
+      const cookies = await small.cookiesFor(fixture.editor)
+      const created = await small.app.inject({
+        method: 'POST',
+        url: `/api/workspaces/${fixture.workspaceId}/documents`,
+        cookies,
+        payload: { collectionId: fixture.collectionId, title: 'Guide' },
+      })
+      const id = created.json().document.id as string
+      const ask = () =>
+        small.app.inject({ method: 'GET', url: `/api/documents/${id}/children`, cookies })
+      const answers = [await ask(), await ask(), await ask()]
+      expect(answers.map((response) => response.statusCode)).toEqual([200, 200, 429])
+      expect(answers[2]?.json().error).toMatchObject({ code: 'rate_limited' })
+    } finally {
+      await small.close()
+    }
+  }, 60_000)
 })
