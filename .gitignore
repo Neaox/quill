@@ -15,6 +15,9 @@ playwright-report/
 test-results/
 blob-report/
 
+# Scratch probes run by hand against a dev server; never committed
+e2e/.*
+
 # Environment
 .env
 .env.*
