@@ -22,12 +22,26 @@ export async function retry() {
   return false
 }
 
-export async function accumulate(ids: string[]) {
-  let total = 0
+export async function budgeted(ids: string[]) {
+  let budget = 100
   for (const id of ids) {
-    total += await fetchOne(id)
+    budget -= await fetchOne(id.slice(0, budget))
   }
-  return total
+  return budget
+}
+
+export async function countedAttempts(ids: string[]) {
+  let failures = 0
+  for (const id of ids) {
+    if ((await fetchOne(id)) === 0) failures += 1
+    if (failures > 3) await sleep(failures * 100)
+  }
+}
+
+export async function chunkedByIndex(ids: string[]) {
+  for (let from = 0; from < ids.length; from += 10) {
+    await Promise.all(ids.slice(from, from + 10).map((id) => fetchOne(id)))
+  }
 }
 
 export async function dedupe(ids: string[]) {

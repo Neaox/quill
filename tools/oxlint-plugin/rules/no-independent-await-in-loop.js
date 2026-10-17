@@ -13,15 +13,21 @@
  *   - an await in the loop condition;
  *   - a `break`, `return` or `throw` in the loop (walk-until, early exit);
  *   - a variable declared outside the loop that the loop writes and also
- *     reads elsewhere (cursor, `previous`, retry counter, a queried set,
- *     `+=`); `results.push(await x)` alone is NOT a dependency;
- *   - the only awaits are on stateful handles (`tx`, `client`, `reader`,
- *     `stream`, ...), `.next()/.read()/.write()/.send()` style calls,
- *     sleep/delay calls, or `Promise.all(...)` chunks (already bounded).
+ *     reads elsewhere (cursor, `previous`, a retry counter that is compared,
+ *     a queried set, a budget); `results.push(await x)`, `total += await x`
+ *     and `count += 1` alone are pure accumulation, NOT a dependency;
+ *   - the only awaits are methods called directly on a stateful handle
+ *     (`tx.insert(row)`, `client.query(sql)`, `reader`, `stream`, ...),
+ *     `.next()/.read()/.write()/.send()` style calls, sleep/delay calls, or
+ *     `Promise.all(...)` chunks (already bounded). A repository reached
+ *     through the handle (`tx.grants.delete(id)`) is a query per item and is
+ *     not exempt.
  *
- * Known limits: stateful handles are recognised by name, and nested
- * functions are not inspected. Where it still fires on genuinely sequential
- * work, say why:
+ * Known limits (docs/architecture/linting.md has the reasons): stateful
+ * handles are recognised by name; any `break`/`return`/`throw` silences the
+ * loop whether or not it depends on the awaited value; `while` loops and
+ * nested functions are not inspected. Where it still fires on genuinely
+ * sequential work, say why:
  *   // oxlint-disable-next-line quill/no-independent-await-in-loop -- <dependency>
  */
 
@@ -141,8 +147,11 @@ function isExemptAwait(awaitNode) {
     return PROMISE_COMBINATORS.has(method)
   }
   if (STATEFUL_METHODS.has(method) || SLEEP_NAMES.test(method)) return true
-  const root = rootIdentifier(callee)
-  return root !== undefined && STATEFUL_ROOTS.test(root.name)
+  // Only a method called directly on the handle (`tx.insert(row)`,
+  // `client.query(sql)`) is the handle's own protocol. A call reached through
+  // one of its properties (`tx.grants.delete(id)`) is a repository asked once
+  // per item, which is the N+1 shape whatever the handle is called.
+  return object.type === 'Identifier' && STATEFUL_ROOTS.test(object.name)
 }
 
 function bump(map, name) {
@@ -193,10 +202,16 @@ function analyse(loop) {
         if (node.left.type === 'MemberExpression') {
           const root = rootIdentifier(node.left)
           if (root) markWrite([root])
-        } else if (node.operator === '=') {
-          markWrite(patternTargets(node.left, []))
         } else {
-          for (const id of patternTargets(node.left, [])) written.add(id.name)
+          // `total += await x` and `count += 1` are pure accumulation, like a
+          // push, unless the target is also read elsewhere in the loop. A
+          // compound assignment in a `for` update clause (`from += SIZE`) is
+          // the loop's own stepping, like `i++`; a plain `=` there
+          // (`chunk = await next()`) feeds the condition and stays a write.
+          const targets = patternTargets(node.left, [])
+          markWrite(
+            node.operator === '=' ? targets : targets.filter((id) => !ctx.skipNames?.has(id.name)),
+          )
         }
         break
       case 'UpdateExpression': {

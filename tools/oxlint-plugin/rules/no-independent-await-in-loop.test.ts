@@ -10,12 +10,12 @@ describe('quill/no-independent-await-in-loop', () => {
     expect(result.diagnostics).toEqual([])
   })
 
-  it('flags an accumulating push and an index loop whose awaits are independent', () => {
+  it('flags pushes, index loops, pure accumulators and per-item calls through a handle', () => {
     const result = runRule(
       'no-independent-await-in-loop',
       fixtureFiles('no-independent-await-in-loop', 'invalid'),
     )
-    expect(result.diagnostics.map((diagnostic) => diagnostic.line)).toEqual([5, 12])
+    expect(result.diagnostics.map((diagnostic) => diagnostic.line)).toEqual([9, 16, 23, 31, 38, 44])
     expect(result.diagnostics[0]?.message).toContain('Promise.all')
   })
 })
