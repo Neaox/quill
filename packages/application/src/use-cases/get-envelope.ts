@@ -2,11 +2,10 @@ import type { Capabilities, DocumentId, RevisionId, UserId } from '@quill/domain
 
 import type { DocumentSource } from '../ports/content-store.ts'
 import type { DocumentLockRow, DocumentRow } from '../ports/persistence.ts'
+import { factsOf, type FactsView } from './document-facts.ts'
 import type { RenderDocumentDependencies } from './render-document.ts'
 import { renderSource } from './render-document.ts'
-import { canonicaliseLinks } from './canonical-links.ts'
 import { readSource } from './read-published.ts'
-import { readDraftContent } from './publish-document.ts'
 
 /**
  * The live envelope (ADR-031).
@@ -54,7 +53,7 @@ export interface HealthSignal {
   readonly detail?: string | undefined
 }
 
-/** A draft that says something the published page does not (an editor's to see and to resume). */
+/** A draft that holds what nothing has published (an editor's to see and to resume). */
 export interface DraftView {
   /** When it was last saved. */
   readonly savedAt: Date
@@ -70,10 +69,42 @@ export interface EnvelopeView {
   }
   readonly lock: LockView | null
   readonly lastPublished: LastPublishedView | null
-  /** Unpublished changes, for somebody who may edit; null for everybody else and when there are none. */
-  readonly draft: DraftView | null
   readonly review: ReviewView | null
   readonly health: readonly HealthSignal[]
+  /**
+   * What the head revision says about itself, for the byline: who owns it, its
+   * status, its tags and its review cycle (`docs/design/properties.md`). A
+   * property of now like everything else here: a reader of an old revision is
+   * told who to ask *today*.
+   */
+  readonly facts: FactsView
+  /**
+   * Whether the draft holds changes nothing has published: the third answer
+   * to "is this published?" (`document-lifecycle.ts`), which the header's
+   * publication pill says. Only ever true for someone who may edit the
+   * document — a draft is unpublished work, and reading one needs the right
+   * to write it (ADR-021) — and never before a first publish, when the
+   * document is simply a draft.
+   */
+  readonly unpublishedChanges: boolean
+  /**
+   * The draft waiting to be published, for somebody who may edit: one saved since the
+   * last publish, or any draft of a document never published. Null for everybody else
+   * and when there is none. Read from the same two columns as `unpublishedChanges`, so the
+   * header and the notice under it never disagree.
+   */
+  readonly draft: DraftView | null
+}
+
+/** What a document with nothing published states. */
+const NO_FACTS: FactsView = {
+  status: undefined,
+  lifecycle: undefined,
+  type: undefined,
+  owners: [],
+  tags: [],
+  reviewInterval: undefined,
+  lastReviewed: undefined,
 }
 
 export type GetEnvelopeResult =
@@ -93,10 +124,11 @@ export async function getEnvelope(
   if (document === null) return { kind: 'not-found', documentId: command.documentId }
 
   const now = deps.clock.now()
-  const [lock, latest, source] = await Promise.all([
+  const [lock, latest, source, draft] = await Promise.all([
     repos.locks.find(command.documentId),
     repos.revisions.latestForDocument(command.documentId),
     readSource(deps, document.workspaceId, { documentId: command.documentId }),
+    command.capabilities.edit ? repos.drafts.stamp(command.documentId) : null,
   ])
 
   const permissions = {
@@ -111,10 +143,13 @@ export async function getEnvelope(
     latest === null
       ? null
       : { revision: latest.revision, author: latest.authorName, at: latest.timestamp }
-
-  const unpublished = permissions.edit
-    ? await unpublishedDraft(deps, document, source, latest)
-    : null
+  // A publish moves the draft onto what it published at the publish's own
+  // moment (`recordPublish`), so a draft written since is ahead of it.
+  const waiting =
+    draft !== null && (latest === null || draft.updatedAt.getTime() > latest.timestamp.getTime())
+      ? { savedAt: draft.updatedAt }
+      : null
+  const unpublishedChanges = waiting !== null && latest !== null
 
   if (source === null) {
     return {
@@ -123,9 +158,11 @@ export async function getEnvelope(
         permissions,
         lock: lockView,
         lastPublished,
-        draft: unpublished,
         review: null,
         health: [],
+        facts: NO_FACTS,
+        unpublishedChanges,
+        draft: waiting,
       },
     }
   }
@@ -138,39 +175,13 @@ export async function getEnvelope(
       permissions,
       lock: lockView,
       lastPublished,
-      draft: unpublished,
       review,
       health: await healthOf(deps, document, source, frontMatter, review),
+      facts: await factsOf(deps, document.id, frontMatter),
+      unpublishedChanges,
+      draft: waiting,
     },
   }
-}
-
-/**
- * The draft, when it says something the published page does not.
- *
- * Publishing leaves the draft where it is, so a draft existing says nothing; what
- * says something is whether it differs from what is published, as its next
- * publish would write it (the comparison's rule, so a link pasted in its readable
- * form is not a difference). A draft not saved since the last publish cannot
- * differ, which is asked first because it is a comparison of two dates and the
- * other is a serialisation.
- */
-async function unpublishedDraft(
-  deps: EnvelopeDependencies,
-  document: DocumentRow,
-  source: DocumentSource | null,
-  latest: { readonly timestamp: Date } | null,
-): Promise<DraftView | null> {
-  const draft = await deps.uow.repos.drafts.find(document.id)
-  const content = draft === null ? null : readDraftContent(draft.ast)
-  if (draft === null || content === null) return null
-  if (latest !== null && draft.updatedAt.getTime() <= latest.timestamp.getTime()) return null
-  if (source !== null) {
-    const prepared = deps.format.prepareForPublish({ documentId: document.id, content })
-    const markdown = await canonicaliseLinks(deps.uow.repos.documents, prepared.markdown)
-    if (markdown === source.markdown) return null
-  }
-  return { savedAt: draft.updatedAt }
 }
 
 /**

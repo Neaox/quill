@@ -5,7 +5,9 @@ import { join } from 'node:path'
 import {
   ATTACHMENT_REVISED,
   DOCUMENT_CREATED,
+  DOCUMENT_DELETED,
   DOCUMENT_MOVED,
+  DOCUMENT_NESTED,
   DOCUMENT_PUBLISHED,
   DOCUMENT_RENAMED,
 } from '@quill/application'
@@ -26,7 +28,8 @@ import { createTestDatabase } from '../infrastructure/db/test-database.ts'
 import type { TestDatabase } from '../infrastructure/db/test-database.ts'
 import { createHasher } from '../infrastructure/hasher.ts'
 import { createDocumentFormat } from '../infrastructure/markdown/document-format.ts'
-import { createAcknowledgingConsumer } from '../infrastructure/outbox/acknowledge.ts'
+import { CHILD_PAGES_CACHE_TTL_MS, createChildPagesCache } from '../child-pages/cache.ts'
+import { createInvalidateChildPagesConsumers } from '../child-pages/invalidate-child-pages.ts'
 import { pollOutboxOnce } from '../infrastructure/outbox/poller.ts'
 import { combineConsumers } from '../infrastructure/outbox/combine.ts'
 import {
@@ -122,6 +125,10 @@ export interface HarnessOptions {
    * *about* the rate limit rather than merely subject to it.
    */
   readonly rateLimit?: RateLimitConfig
+  /** Shrinks search's per-session budget (the people directory shares it), for a test about it. */
+  readonly searchRateLimitMax?: number
+  /** Shrinks the tree's and child pages' per-session budget, for a test about it. */
+  readonly browseRateLimitMax?: number
   /** `SHARE_LINKS=off`, for the tests that check the policy closes the door. */
   readonly shareLinksAllowed?: boolean
   /**
@@ -179,6 +186,12 @@ export async function createServerHarness(options: HarnessOptions = {}): Promise
   const config = {
     ...loaded,
     ...(options.rateLimit === undefined ? {} : { rateLimit: options.rateLimit }),
+    ...(options.searchRateLimitMax === undefined
+      ? {}
+      : { searchRateLimitMax: options.searchRateLimitMax }),
+    ...(options.browseRateLimitMax === undefined
+      ? {}
+      : { browseRateLimitMax: options.browseRateLimitMax }),
     ...(options.publicSitemapPageSize === undefined
       ? {}
       : { publicSitemapPageSize: options.publicSitemapPageSize }),
@@ -209,6 +222,7 @@ export async function createServerHarness(options: HarnessOptions = {}): Promise
     clock,
     ttlMs: options.publicSiteCacheTtlMs ?? PUBLIC_SITE_CACHE_TTL_MS,
   })
+  const childPagesCache = createChildPagesCache({ clock, ttlMs: CHILD_PAGES_CACHE_TTL_MS })
   const faceFiles = await loadFaceFiles()
   const themeStylesheets = createThemeStylesheets({ hasher, faceFiles })
   const deps: AppDependencies = {
@@ -227,6 +241,7 @@ export async function createServerHarness(options: HarnessOptions = {}): Promise
       designSystemCss: await loadDesignSystemCss(),
     }),
     publicSiteCache,
+    childPagesCache,
     contentStore,
     // The real settings adapter over the real content store: an integration
     // test of a settings write exercises the publish path and its
@@ -280,12 +295,26 @@ export async function createServerHarness(options: HarnessOptions = {}): Promise
     return consumer
   }
 
+  const invalidateChildPages = new Map(
+    createInvalidateChildPagesConsumers(childPagesCache, deps).map((consumer) => [
+      consumer.eventType,
+      consumer,
+    ]),
+  )
+  /* v8 ignore next 5 -- one consumer per event type, by construction. */
+  const childPagesOf = (eventType: string) => {
+    const consumer = invalidateChildPages.get(eventType)
+    if (consumer === undefined) throw new Error(`no child pages invalidation for ${eventType}`)
+    return consumer
+  }
+
   jobRunner.register(
     combineConsumers(
       DOCUMENT_PUBLISHED,
       createRenderOnPublishConsumer(deps),
       createIndexOnPublishConsumer(deps),
       invalidationOf(DOCUMENT_PUBLISHED),
+      childPagesOf(DOCUMENT_PUBLISHED),
     ),
   )
   jobRunner.register(
@@ -294,6 +323,7 @@ export async function createServerHarness(options: HarnessOptions = {}): Promise
       createIndexOnRenameConsumer(deps),
       createRecordRenameRedirectConsumer(deps),
       invalidationOf(DOCUMENT_RENAMED),
+      childPagesOf(DOCUMENT_RENAMED),
     ),
   )
   jobRunner.register(
@@ -301,6 +331,7 @@ export async function createServerHarness(options: HarnessOptions = {}): Promise
       DOCUMENT_MOVED,
       createRecordMoveRedirectConsumer(deps),
       invalidationOf(DOCUMENT_MOVED),
+      childPagesOf(DOCUMENT_MOVED),
     ),
   )
   jobRunner.register(
@@ -312,9 +343,15 @@ export async function createServerHarness(options: HarnessOptions = {}): Promise
   )
   jobRunner.register(createSendMailConsumer(mailer))
   for (const consumer of createNotifyOnReviewConsumers(deps)) jobRunner.register(consumer)
-  jobRunner.register(
-    createAcknowledgingConsumer(DOCUMENT_CREATED, 'Nothing acts on a creation yet.'),
-  )
+  // A new page changes the child pages lists above it (ADR-056); it has
+  // nothing to index or render until it is published.
+  jobRunner.register(childPagesOf(DOCUMENT_CREATED))
+  // Nesting and deleting change the lists and the public navigation (ADR-056).
+  for (const eventType of [DOCUMENT_NESTED, DOCUMENT_DELETED]) {
+    jobRunner.register(
+      combineConsumers(eventType, childPagesOf(eventType), invalidationOf(eventType)),
+    )
+  }
   jobRunner.schedule(createSweepJob({ uow, clock, session: config.session }))
 
   let sessions = 0

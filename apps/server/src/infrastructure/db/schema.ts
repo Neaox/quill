@@ -418,7 +418,8 @@ export const documents = pgTable(
       foreignColumns: [table.id],
       name: 'documents_parent_id_fk',
     }).onDelete('set null'),
-    // A page of siblings, in their order, from where the last page ended (ADR-049).
+    // A page of siblings, in their order, from where the last page ended
+    // (migration 0015, which databases migrated from main already have).
     index('documents_children_idx').on(
       table.workspaceId,
       table.collectionId,
@@ -441,8 +442,9 @@ export const drafts = pgTable('drafts', {
   ast: jsonb('ast').notNull().default({}),
   /**
    * Who wrote what is waiting in the draft (`packages/markdown`'s `Authorship`), kept beside
-   * the tree and cleared whenever the draft is moved onto a new base, because from then it
-   * says what is published. Versioned, and null for a draft that has none.
+   * the tree (migration 0014) and cleared whenever the draft is moved onto a new base,
+   * because from then it says what is published. Versioned, and null for a draft that has
+   * none.
    */
   authorship: jsonb('authorship'),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull(),
@@ -752,6 +754,21 @@ export const documentSearch = pgTable(
       .notNull()
       .default(sql`'{}'::text[]`),
     status: text('status').notNull(),
+    /**
+     * What the document says it is about, in a sentence or two: its
+     * `description`, or else its first paragraph (ADR-056). Shown under its
+     * title in a child pages list; null for a row projected before it existed.
+     */
+    summary: text('summary'),
+    /** The document's own icon from its front matter, an emoji (ADR-056). */
+    icon: text('icon'),
+    /**
+     * The author's lifecycle from front matter `status` (`in-review`,
+     * `verified`, `deprecated`); null when unset, or for a row projected
+     * before it existed. Only `deprecated` affects ranking today
+     * (`RankingProfile.deprecatedPenalty`).
+     */
+    lifecycle: text('lifecycle'),
     /** The document's own last update, which the recency boost decays from. */
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull(),
     /** The revision this row was projected from (ADR-034). Null for a row rebuilt from a workspace with no revision recorded. */

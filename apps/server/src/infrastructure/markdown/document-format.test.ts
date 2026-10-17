@@ -403,6 +403,16 @@ describe('createDocumentFormat: render and read', () => {
     expect(rendered.incompleteRequiredSections).toEqual(['Decision'])
   })
 
+  it('draws a table of contents into the body and lists each child pages slot (ADR-056)', () => {
+    const rendered = format.render({
+      markdown: '# Title\n\n::toc\n\n## Install\n\n::children{depth=2}\n',
+      linkTitles: new Map(),
+    })
+    expect(rendered.html).toContain('<a href="#user-content-install">Install</a>')
+    expect(rendered.html).toContain('data-live-key="children?depth=2&#x26;sort=manual"')
+    expect(rendered.slots).toEqual(['children?depth=2&sort=manual'])
+  })
+
   it('draws the SVG drawings the body shows, from the markup it was handed', () => {
     const url = '/api/attachments/0b6b0d2c-7f7e-4a39-8a8a-4a5f6d0c1a11'
     const rendered = format.render({
@@ -438,7 +448,6 @@ describe('createDocumentFormat: render and read', () => {
     expect(rendered.html).toContain(
       '<span class="emoji" role="img" aria-label="thumbs up">👍</span>',
     )
-    // Described by its name, with the shortcode kept as the title, never read out as ":airbnb:".
     expect(rendered.html).toContain(`<img class="emoji" src="${src}" alt="airbnb" title=":airbnb:"`)
     expect(rendered.html).toContain(
       `<span class="badge" data-label="airbnb"><img class="emoji" src="${src}" alt=""`,
@@ -623,5 +632,14 @@ describe('createDocumentFormat: compare', () => {
     expect(unrecorded.changes.map(({ revertible, author }) => ({ revertible, author }))).toEqual([
       { revertible: true },
     ])
+  })
+
+  it('puts a change back in the draft, and leaves the rest as the draft has it', () => {
+    const before = 'Kept.\n\nRestart nightly.\n'
+    const after = 'Kept.\n\nRestart weekly.\n'
+    const reverted = format.revert({ before, after, draft: draftOf(after), changes: ['c1'] })
+
+    expect(JSON.stringify(reverted.ast)).toContain('nightly')
+    expect(JSON.stringify(reverted.ast)).not.toContain('weekly')
   })
 })

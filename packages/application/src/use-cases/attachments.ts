@@ -51,7 +51,7 @@ export function attachmentUrl(id: AttachmentId): string {
 export const ATTACHMENT_URL_PREFIX = '/api/attachments/'
 
 const ATTACHMENT_REFERENCE =
-  /\/api\/attachments\/([\da-f]{8}-[\da-f]{4}-[\da-f]{4}-[\da-f]{4}-[\da-f]{12})/giu
+  /\/api\/attachments\/[\da-f]{8}-[\da-f]{4}-[\da-f]{4}-[\da-f]{4}-[\da-f]{12}/giu
 
 /**
  * The attachments a body names, by id, each once, in the order first named.
@@ -62,10 +62,9 @@ export function attachmentIdsIn(markdown: string): readonly AttachmentId[] {
   if (!markdown.includes(ATTACHMENT_URL_PREFIX)) return []
   return [
     ...new Set(
-      // The pattern's one group is the id; slicing it out of the match leaves no `undefined` to guard.
-      Array.from(markdown.matchAll(ATTACHMENT_REFERENCE), (match) =>
-        match.slice(1, 2).map((id) => id.toLowerCase()),
-      ).flat(),
+      Array.from(markdown.matchAll(ATTACHMENT_REFERENCE), ([reference]) =>
+        reference.slice(ATTACHMENT_URL_PREFIX.length).toLowerCase(),
+      ),
     ),
   ]
 }
@@ -384,6 +383,23 @@ async function store(
 // Revise
 // ---------------------------------------------------------------------------
 
+/**
+ * The documents whose published heads show this attachment, from the link
+ * index (`render-document.ts`), in its own workspace. A revision changes what
+ * each of their readers sees without a publish, so saving one asks of the
+ * writer what publishing each of them would (ADR-043, amendment of
+ * 2026-10-18). An empty answer means only drafts use it.
+ */
+export async function documentsShowingAttachment(
+  deps: Pick<AttachmentDependencies, 'uow'>,
+  attachment: Pick<AttachmentRow, 'id' | 'workspaceId'>,
+): Promise<readonly DocumentId[]> {
+  return deps.uow.repos.documentLinks.listSourcesReferencing(
+    attachmentUrl(attachment.id),
+    attachment.workspaceId,
+  )
+}
+
 export interface ReviseAttachmentCommand extends IncomingFile {
   readonly attachmentId: AttachmentId
   readonly revisedBy: UserId
@@ -413,7 +429,10 @@ export type ReviseAttachmentResult =
  * before the bytes are read and again where the row is written, so two
  * writers saving at once cannot both win.
  *
- * The caller has already decided the writer may `edit` the owning document.
+ * The caller has already decided the writer may `edit` the owning document,
+ * and, when a published page shows the attachment, `publish` on the owner
+ * and on every such page (`documentsShowingAttachment`): a revision reaches
+ * those pages' readers at once, as a publish would.
  */
 export async function reviseAttachment(
   deps: AttachmentDependencies,
@@ -626,10 +645,7 @@ export async function deleteAttachment(
     return { kind: 'not-found', attachmentId: command.attachmentId }
   }
 
-  const referencing = await repos.documentLinks.listSourcesReferencing(
-    attachmentUrl(attachment.id),
-    attachment.workspaceId,
-  )
+  const referencing = await documentsShowingAttachment(deps, attachment)
   if (referencing.length > 0) return { kind: 'in-use', documents: referencing }
 
   const now = deps.clock.now()

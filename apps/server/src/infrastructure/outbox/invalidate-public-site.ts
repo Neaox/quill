@@ -1,6 +1,8 @@
 import {
   ATTACHMENT_REVISED,
+  DOCUMENT_DELETED,
   DOCUMENT_MOVED,
+  DOCUMENT_NESTED,
   DOCUMENT_PUBLISHED,
   DOCUMENT_RENAMED,
 } from '@quill/application'
@@ -30,16 +32,24 @@ import type { OutboxConsumer } from './consumer.ts'
  * leaves an unreadable event for a release that understands it (ADR-033), and
  * that is right when the consumer *does* something with the payload; this one
  * only needs to know that something happened.
+ *
+ * Nesting a page under another and deleting one (ADR-056) change the site's
+ * navigation and its child pages lists too, so they empty it as well.
  */
 export function createInvalidatePublicSiteConsumers(
   cache: PublicSiteCache,
 ): readonly OutboxConsumer[] {
-  return [DOCUMENT_PUBLISHED, DOCUMENT_RENAMED, DOCUMENT_MOVED, ATTACHMENT_REVISED].map(
-    (eventType) => ({
-      eventType,
-      async handle(): Promise<void> {
-        cache.invalidate()
-      },
-    }),
-  )
+  return [
+    DOCUMENT_PUBLISHED,
+    DOCUMENT_RENAMED,
+    DOCUMENT_MOVED,
+    ATTACHMENT_REVISED,
+    DOCUMENT_NESTED,
+    DOCUMENT_DELETED,
+  ].map((eventType) => ({
+    eventType,
+    async handle(): Promise<void> {
+      cache.invalidate()
+    },
+  }))
 }

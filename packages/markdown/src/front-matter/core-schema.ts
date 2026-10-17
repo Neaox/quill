@@ -1,6 +1,6 @@
-import { DOCUMENT_STATUSES } from '@quill/domain'
+import { DOCUMENT_STATUSES, LIFECYCLE_STATES } from '@quill/domain'
 import { Type } from '@sinclair/typebox'
-import type { DocumentStatus } from '@quill/domain'
+import type { DocumentStatus, LifecycleState } from '@quill/domain'
 import type { Static, TObject } from '@sinclair/typebox'
 
 import type { LayoutWidth } from '../directives/layout.ts'
@@ -30,9 +30,29 @@ export const CoreFrontMatterSchema = Type.Object(
     title: Type.Optional(Type.String({ minLength: 1 })),
     description: Type.Optional(Type.String()),
     type: Type.Optional(Type.String({ minLength: 1 })),
+    /**
+     * The lifecycle (`in-review`, `verified`, `deprecated`), or a status an
+     * earlier release wrote (`draft`, `published`, `archived`), which is kept
+     * and means nothing (ADR-005 amendment, `document-lifecycle.ts`).
+     */
     status: Type.Optional(
-      Type.Unsafe<DocumentStatus>({ type: 'string', enum: [...DOCUMENT_STATUSES] }),
+      Type.Unsafe<LifecycleState | DocumentStatus>({
+        type: 'string',
+        enum: [...LIFECYCLE_STATES, ...DOCUMENT_STATUSES],
+      }),
     ),
+    /** Who verified the document, as an address, and on which day. */
+    verified: Type.Optional(
+      Type.Object(
+        {
+          by: Type.Optional(Type.String({ minLength: 1 })),
+          at: Type.Optional(Type.String({ format: 'date' })),
+        },
+        { additionalProperties: true },
+      ),
+    ),
+    /** The document that replaces a deprecated one: its id (decision D17). */
+    supersededBy: Type.Optional(Type.String({ minLength: 1 })),
     owners: Type.Optional(Type.Array(Type.String({ minLength: 1 }))),
     tags: Type.Optional(Type.Array(Type.String({ minLength: 1 }))),
     order: Type.Optional(Type.Integer()),

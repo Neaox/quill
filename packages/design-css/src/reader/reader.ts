@@ -4,6 +4,7 @@ import { languageLabel } from '@quill/markdown/code-languages'
 
 import { enhanceAnimatedImages } from '../animated-images/animated-images.ts'
 import { enhanceCodeBlocks } from '../code-blocks/code-blocks.ts'
+import { enhanceContents } from '../contents-spy/contents-spy.ts'
 import { enhanceDetails } from '../details/details.ts'
 import { enhanceDiagrams } from '../lightbox/lightbox.ts'
 import { trackStickyChrome } from '../sticky-chrome/sticky-chrome.ts'
@@ -31,6 +32,9 @@ import { enhanceTables } from '../tables/tables.ts'
  * - **Animated emoji play briefly, then rest on their still**
  *   (`../animated-images/animated-images.ts`, ADR-047), as the person's
  *   setting says; reduced motion is the picture's own and needs none of this.
+ * - **"On this page" follows the reader** (`../contents-spy/contents-spy.ts`):
+ *   the section being read is marked in the contents, as in the app, and in
+ *   every table of contents block the body holds (ADR-056).
  * - **The site header is measured** (`../sticky-chrome/sticky-chrome.ts`), so
  *   a hanging table header and an anchor target clear it however it wraps.
  *
@@ -54,6 +58,8 @@ export function enhanceReader(view: ReaderWindow): () => void {
     enhanceCodeBlocks(view.document, { languageLabel }),
     ...applyHighlighting(rootOf(view.document), environment),
     trackStickyChrome(view.document.querySelector('.site-header'), view.document.documentElement),
+    // After the header is measured, so the contents' band starts below it.
+    enhanceContents(view.document),
     enhanceDiagrams(view.document),
     enhanceTables(view.document),
     enhanceDetails(view.document),

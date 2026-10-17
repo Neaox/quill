@@ -23,6 +23,7 @@ export const SLASH_GROUPS = [
   'Code',
   'Data',
   'References',
+  'Navigation',
   'Templates',
 ] as const
 

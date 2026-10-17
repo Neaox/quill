@@ -2,6 +2,7 @@ import type {
   CollectionId,
   DocumentId,
   DocumentStatus,
+  LifecycleState,
   RevisionId,
   WorkspaceId,
 } from '@quill/domain'
@@ -104,8 +105,29 @@ export interface IndexableDocumentV1 {
   readonly body: string
   readonly tags: readonly string[]
   readonly owners: readonly string[]
+  /**
+   * The legacy publication status a `status:` filter matches: a value from
+   * before the lifecycle existed, or `published` when the front matter has
+   * none. Never a lifecycle state; that travels as {@link lifecycle}.
+   */
   readonly status: DocumentStatus
   readonly updatedAt: Date
+  /**
+   * The author's lifecycle (ADR-005 amendment of 2026-10-17): in review,
+   * verified or deprecated, or undefined when the front matter sets none.
+   * Only `deprecated` affects ranking today ({@link RankingProfile.deprecatedPenalty}).
+   * Optional, so a projection written before it existed still reads; that is
+   * why `INDEXABLE_DOCUMENT_VERSION` did not change for it.
+   */
+  readonly lifecycle?: LifecycleState | undefined
+  /**
+   * What the document is about in a sentence or two — its `description`, or
+   * its first paragraph — for lists that show it under its title (ADR-056).
+   * Optional, so a projection written before it existed still reads.
+   */
+  readonly summary?: string | undefined
+  /** The document's own icon, an emoji from its front matter (ADR-056). */
+  readonly icon?: string | undefined
 }
 
 export type IndexableDocument = IndexableDocumentV1
@@ -155,6 +177,12 @@ export interface RankingProfile {
   readonly recencyBoost: RecencyBoost
   /** Multiplier applied when the query matched an exact quoted phrase rather than loose terms. */
   readonly exactPhraseBoost: number
+  /**
+   * Multiplier applied to a deprecated document's score: below 1, so a
+   * deprecated page still appears but below a current one that matched as
+   * well.
+   */
+  readonly deprecatedPenalty: number
   readonly workspaceAffinity: WorkspaceAffinity
 }
 

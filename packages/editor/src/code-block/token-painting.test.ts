@@ -224,6 +224,47 @@ describe('the ranges presentation', () => {
     expect(view.contentDOM.querySelector('[class*="tok-"]')).toBeNull()
   })
 
+  /*
+   * The guard on ADR-030's measurement, in jsdom's terms: a 2,000-line block
+   * adds no element per token, and a keystroke maps the ranges it has rather
+   * than tokenizing the block again. The timing budget is generous — jsdom is
+   * no browser — so it catches a keystroke that starts tokenizing, not jitter.
+   */
+  it('keeps a 2,000-line block to its lines, and a keystroke to a fraction of a tokenize', async () => {
+    const lines = Array.from(
+      { length: 2000 },
+      (_, index) => `const value${index} = "text" // ${index}`,
+    )
+    const text = lines.join('\n')
+    const counted = vi.fn<typeof tokenize>(tokenize)
+    const { environment } = rangesEnvironment()
+    const { view, scheduler } = mount(text, 'typescript', {
+      environment,
+      tokenizer: { current: () => counted, load: () => Promise.resolve(counted) },
+    })
+    await Promise.resolve()
+
+    const drawn = view.contentDOM.querySelectorAll('.cm-line').length
+    expect(view.contentDOM.querySelectorAll('[class*="tok-"]')).toHaveLength(0)
+    expect(view.contentDOM.querySelectorAll('*').length).toBeLessThanOrEqual(drawn + 10)
+
+    const tokenizeStart = performance.now()
+    tokenize(text, 'typescript')
+    const oneTokenize = performance.now() - tokenizeStart
+
+    counted.mockClear()
+    const costs: number[] = []
+    for (let index = 0; index < 20; index += 1) {
+      const start = performance.now()
+      view.dispatch({ changes: { from: 6, insert: 'x' } })
+      costs.push(performance.now() - start)
+    }
+    expect(counted).not.toHaveBeenCalled()
+    expect(scheduler.pending).toBe(1)
+    const median = costs.toSorted((a, b) => a - b)[10] ?? Infinity
+    expect(median).toBeLessThan(Math.max(oneTokenize, 50))
+  })
+
   it('repaints after an edit, and removes exactly its own ranges when the block goes away', async () => {
     const { environment, painted } = rangesEnvironment()
     const { view, scheduler } = mount('let a', 'javascript', { environment })

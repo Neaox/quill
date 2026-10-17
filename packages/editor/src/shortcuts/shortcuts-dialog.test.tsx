@@ -4,7 +4,7 @@ import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 
 import { DocumentEditor } from '../document/document-editor.tsx'
-import { describeShortcut } from '../format/marks.ts'
+import { shortcutLabel } from '../format/shortcuts.ts'
 import { expectNoAccessibilityViolations } from '../testing/axe.ts'
 import { SHORTCUT_GROUPS } from './shortcut-catalogue.ts'
 import { ShortcutsDialog } from './shortcuts-dialog.tsx'
@@ -21,7 +21,7 @@ describe('the keyboard shortcuts dialog', () => {
     }
     const formatting = within(dialog()).getByRole('region', { name: 'Formatting' })
     expect(within(formatting).getByText('Bold').closest('div')).toHaveTextContent(
-      describeShortcut('Mod-b'),
+      shortcutLabel('Mod-b'),
     )
   })
 
@@ -32,8 +32,8 @@ describe('the keyboard shortcuts dialog', () => {
     const keys = within(redo ?? dialog()).getAllByText(/.+/u, { selector: 'kbd' })
 
     expect(keys.map((kbd) => kbd.textContent)).toEqual([
-      describeShortcut('Mod-Shift-z'),
-      describeShortcut('Mod-y'),
+      shortcutLabel('Mod-Shift-z'),
+      shortcutLabel('Mod-y'),
     ])
   })
 

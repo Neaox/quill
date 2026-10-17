@@ -18,6 +18,7 @@ import { visit } from 'unist-util-visit'
 import { calloutDirective, isCalloutType } from '../directives/callout.ts'
 import { claims } from '../directives/definition.ts'
 import { isPresenterNotes, stripPresenterNotes } from '../directives/strip-presenter-notes.ts'
+import { ALERT_MARKER } from '../pipeline/github-alert.ts'
 import { DIAGRAM_LANGUAGES } from '../render/handlers.ts'
 import type { BlockAlignment } from './blocks.ts'
 import { alignBlocks } from './blocks.ts'
@@ -459,10 +460,6 @@ function mergeList(before: List, after: List): { node: List; added: number; remo
   return { node: { ...after, children: items }, added, removed }
 }
 
-function tableWidth(table: Table): number {
-  return table.children[0]?.children.length ?? 0
-}
-
 /**
  * A table compared by row, then by cell. The header row is always the
  * header: it is compared cell by cell with the older header rather than
@@ -472,11 +469,7 @@ function tableWidth(table: Table): number {
 function mergeTable(before: Table, after: Table): Merged<Table> | undefined {
   const [olderHead, ...olderBody] = before.children
   const [newerHead, ...newerBody] = after.children
-  if (
-    tableWidth(before) !== tableWidth(after) ||
-    olderHead === undefined ||
-    newerHead === undefined
-  ) {
+  if (width(before) !== width(after) || olderHead === undefined || newerHead === undefined) {
     return undefined
   }
 
@@ -512,6 +505,11 @@ function mergeTable(before: Table, after: Table): Merged<Table> | undefined {
     }
   }
   return { nodes: [{ ...after, children: rows }], added, removed }
+}
+
+/** How many columns a table has: its header row's cells. */
+function width(table: Table): number {
+  return table.children[0]?.children.length ?? 0
 }
 
 function mergeRow(
@@ -564,7 +562,8 @@ function wrapped<T extends Nodes>(node: T, change: 'added' | 'removed'): T {
   const copy = structuredClone(node)
   visit(copy, (child) => {
     if (child.type === 'paragraph' || child.type === 'heading' || child.type === 'tableCell') {
-      child.children = wholly(change, child.children)
+      const [marker, rest] = alertMarker(child.children)
+      child.children = [...marker, ...wholly(change, rest)]
       return 'skip'
     }
     return undefined
@@ -572,18 +571,35 @@ function wrapped<T extends Nodes>(node: T, change: 'added' | 'removed'): T {
   return copy
 }
 
+/**
+ * A GitHub alert's `[!NOTE]` kept outside the wrapper, where the renderer
+ * looks for it, so a removed alert is still drawn as an alert, struck through.
+ */
+function alertMarker(
+  children: PhrasingContent[],
+): readonly [marker: PhrasingContent[], rest: PhrasingContent[]] {
+  const [first, ...others] = children
+  const match = first?.type === 'text' ? ALERT_MARKER.exec(first.value) : null
+  if (first?.type !== 'text' || match === null) return [[], children]
+  const remainder = first.value.slice(match[0].length)
+  return [
+    [{ type: 'text', value: match[0] }],
+    remainder === '' ? others : [{ type: 'text', value: remainder }, ...others],
+  ]
+}
+
 function wordsIn(node: Nodes): number {
   return countWords(plainText(node))
 }
 
-/** Phrasing without the whitespace-only text between its meaningful parts. */
-function meaningfulChildren(children: readonly PhrasingContent[]): PhrasingContent[] {
+/** Phrasing without the white space between pictures. */
+function meaningful(children: readonly PhrasingContent[]): PhrasingContent[] {
   return children.filter((child) => !(child.type === 'text' && child.value.trim() === ''))
 }
 
 /** A paragraph that is only a picture: an image, perhaps with a link around it. */
 function isImageParagraph(node: Paragraph): boolean {
-  const content = meaningfulChildren(node.children)
+  const content = meaningful(node.children)
   return (
     content.length > 0 &&
     content.every(
@@ -591,7 +607,7 @@ function isImageParagraph(node: Paragraph): boolean {
         child.type === 'image' ||
         child.type === 'imageReference' ||
         (child.type === 'link' &&
-          meaningfulChildren(child.children).every(
+          meaningful(child.children).every(
             (inner) => inner.type === 'image' || inner.type === 'imageReference',
           )),
     )

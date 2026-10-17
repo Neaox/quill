@@ -54,6 +54,13 @@ const OVERVIEW_MARKDOWN = [
 ].join('\n')
 
 const RATE_LIMITS_MARKDOWN = [
+  '---',
+  'status: deprecated',
+  'supersededBy: OVERVIEW_ID',
+  'owners: [editor@example.com]',
+  'tags: [api, On call]',
+  '---',
+  '',
   '# Rate limits',
   '',
   'Every key is limited to one hundred requests a minute.',
@@ -212,7 +219,11 @@ beforeAll(async () => {
   await allowPublishing(true)
 
   overview = await writePublished('Overview', OVERVIEW_MARKDOWN)
-  rateLimits = await writePublished('Rate limits', RATE_LIMITS_MARKDOWN)
+  // Deprecated in favour of a page the site shows (ADR-005 amendment).
+  rateLimits = await writePublished(
+    'Rate limits',
+    RATE_LIMITS_MARKDOWN.replace('OVERVIEW_ID', overview),
+  )
   salaries = await writePublished('Salaries', SALARIES_MARKDOWN)
   await harness.drainOutbox()
 
@@ -306,6 +317,25 @@ describe('a document page', () => {
     expect(response.body).toContain('<nav class="site-toc"')
     expect(response.body).toContain('Bursts')
     expect(response.body).toContain('<time datetime=')
+  })
+
+  it('states its public facts under the title, and never who owns it (ADR-057)', async () => {
+    const body = (await get(path)).body
+    expect(body).toMatch(
+      /<\/h1><div role="group" aria-label="Document properties" class="byline">/u,
+    )
+    expect(body).toMatch(/data-lifecycle="deprecated" class="byline-lifecycle"\s*>Deprecated</u)
+    expect(body).toContain(
+      `<a class="byline-tag badge" data-label="api" href="/s/${SITE}/search?q=tag%3Aapi">api</a>`,
+    )
+    expect(body).toContain(`href="/s/${SITE}/search?q=tag%3A%22On%20call%22">On call</a>`)
+    expect(body).not.toContain('editor@example.com')
+  })
+
+  it('says a deprecated page is deprecated, and leads to its replacement on this site', async () => {
+    const body = (await get(path)).body
+    expect(body).toMatch(/<div\s+role="note"\s+class="lifecycle-notice"/u)
+    expect(body).toContain(`Use <a href="/s/${SITE}/architecture/overview">Overview</a> instead.`)
   })
 
   it('carries the canonical link, the description and the Open Graph tags a crawler reads', async () => {

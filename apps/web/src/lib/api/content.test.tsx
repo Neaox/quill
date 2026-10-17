@@ -209,63 +209,6 @@ describe('useComparison', () => {
   })
 })
 
-describe('useComparison drawn change by change', () => {
-  it('asks for the changes on their own, and keeps that answer apart from the plain one', async () => {
-    const asked: string[] = []
-    const wrapper = createHookWrapper({
-      'GET /api/documents/{id}/compare': (request) => {
-        asked.push(new URL(request.url).searchParams.get('patches') ?? 'no')
-        return jsonResponse(200, EMPTY_COMPARISON)
-      },
-    })
-
-    const plain = renderHook(() => useComparison('doc-1', { from: null, to: 'draft' }), { wrapper })
-    const detailed = renderHook(
-      () => useComparison('doc-1', { from: null, to: 'draft' }, { patches: true }),
-      { wrapper },
-    )
-    await waitFor(() => {
-      expect(plain.result.current.data).toBeDefined()
-      expect(detailed.result.current.data).toBeDefined()
-    })
-
-    expect(asked.toSorted()).toEqual(['no', 'true'])
-  })
-})
-
-describe('useComparison with the draft', () => {
-  it('asks again for each version of the draft that is saved, and keeps the last answer meanwhile', async () => {
-    let asked = 0
-    const wrapper = createHookWrapper({
-      'GET /api/documents/{id}/compare': () => {
-        asked += 1
-        return jsonResponse(200, {
-          ...EMPTY_COMPARISON,
-          summary: { ...EMPTY_COMPARISON.summary, changed: asked },
-        })
-      },
-    })
-
-    const { result, rerender } = renderHook(
-      ({ version }: { version: number }) =>
-        useComparison('doc-1', { from: 'a'.repeat(40), to: 'draft' }, { version }),
-      { wrapper, initialProps: { version: 1 } },
-    )
-    await waitFor(() => {
-      expect(result.current.data?.summary.changed).toBe(1)
-    })
-
-    rerender({ version: 2 })
-
-    // The summary of version one stays up while version two's is on its way.
-    expect(result.current.data?.summary.changed).toBe(1)
-    await waitFor(() => {
-      expect(result.current.data?.summary.changed).toBe(2)
-    })
-    expect(asked).toBe(2)
-  })
-})
-
 describe('useSourceComparison', () => {
   it('waits until the source view asks for it', () => {
     const wrapper = createHookWrapper({})

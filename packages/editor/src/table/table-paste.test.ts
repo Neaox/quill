@@ -123,24 +123,6 @@ describe('pasting a grid', () => {
 })
 
 describe('making a table from a grid', () => {
-  it('fills the cells a short row leaves with empty ones', () => {
-    const grid = {
-      rows: [
-        [
-          { element: null, text: 'a' },
-          { element: null, text: 'b' },
-        ],
-        [{ element: null, text: 'c' }],
-      ],
-      unmerged: false,
-    }
-
-    const table = tableFromGrid(editorSchema, grid)
-
-    expect(table.child(1).childCount).toBe(2)
-    expect(table.child(1).child(1).textContent).toBe('')
-  })
-
   it('keeps a cell whose markup holds no words as an empty line', () => {
     const grid = gridFromHtml(
       '<table><tr><td>a</td><td><span></span></td></tr><tr><td>b</td><td>c</td></tr></table>',

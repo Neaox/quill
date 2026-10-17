@@ -9,6 +9,7 @@ import { createCredentialRepository } from './credential-repository.ts'
 import { createDocumentRepository } from './document-repository.ts'
 import { createDocumentViewRepository } from './document-view-repository.ts'
 import { createDocumentLinksRepository } from './document-links-repository.ts'
+import { createDocumentSummaryRepository } from './document-summary-repository.ts'
 import { createDraftRepository } from './draft-repository.ts'
 import { createGrantRepository } from './grant-repository.ts'
 import { createGroupRepository } from './group-repository.ts'
@@ -53,6 +54,7 @@ function buildBundle(db: DrizzleClient, pool: pg.Pool, ids: IdGenerator): Reposi
     workspaceSlugHistory: createWorkspaceSlugHistoryRepository(db),
     collections: createCollectionRepository(db),
     documents: createDocumentRepository(db),
+    documentSummaries: createDocumentSummaryRepository(db),
     drafts: createDraftRepository(db, pool),
     locks: createLockRepository(pool),
     grants: createGrantRepository(db, ids),

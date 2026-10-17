@@ -29,27 +29,33 @@
 export interface DetailsOptions {
   /**
    * Whether the browser closes the other details of a name itself. Asked of
-   * `HTMLDetailsElement` unless given; `fallback` makes this module do it.
+   * the browser (`exclusiveMode`) unless given; `fallback` makes
+   * this module do it.
    */
   readonly exclusive?: 'native' | 'fallback'
-  /** The address the page was navigated to, fragment directive and all, where the browser keeps it. */
-  readonly navigationUrl?: () => string | undefined
+  /**
+   * The address the page was navigated to, fragment directive and all, which
+   * a browser that reads text fragments takes off the address. The navigation
+   * entry's, unless given.
+   */
+  readonly navigationUrl?: string
 }
 
 const ID_PREFIX = 'user-content-'
 
-function decode(value: string): string | undefined {
+/** A percent-encoded value decoded, or nothing for one that is not well formed. */
+function decode(value: string): string {
   try {
     return decodeURIComponent(value)
   } catch {
-    return undefined
+    return ''
   }
 }
 
 /**
  * The text each `text=` of a URL's fragment directive starts with: its
- * `textStart`, without the `prefix-` and `-suffix` that only narrow where it
- * is (the URL Fragment Text Directives draft).
+ * `textStart`, without the `prefix-,` and `,-suffix` that only narrow where it
+ * is, and without its `,textEnd` (the URL Fragment Text Directives draft).
  */
 export function textFragments(url: string): string[] {
   const at = url.indexOf(':~:')
@@ -58,15 +64,26 @@ export function textFragments(url: string): string[] {
     .slice(at + 3)
     .split('&')
     .filter((directive) => directive.startsWith('text='))
-    .flatMap((directive) => {
-      const parts = directive.slice('text='.length).split(',')
-      const start = parts.find(
-        (part, index) => !(index === 0 && part.endsWith('-') && parts.length > 1),
-      )
-      /* v8 ignore next -- dropping a prefix leaves at least the start, which `parts.length > 1` guards. */
-      const text = start === undefined ? undefined : decode(start)
-      return text === undefined || text === '' ? [] : [text]
-    })
+    .map((directive) =>
+      decode(
+        directive
+          .slice('text='.length)
+          .replace(/^[^,]*-,/u, '')
+          .split(',', 1)
+          .join(''),
+      ),
+    )
+    .filter((text) => text !== '')
+}
+
+/**
+ * Who keeps an accordion exclusive: the browser, where it groups details by
+ * `name` and closes the others as one opens, or this module.
+ */
+export function exclusiveMode(view: {
+  readonly HTMLDetailsElement: { readonly prototype: object }
+}): 'native' | 'fallback' {
+  return 'name' in view.HTMLDetailsElement.prototype ? 'native' : 'fallback'
 }
 
 /** Text as a reader's find compares it: case and runs of white space aside. */
@@ -76,62 +93,70 @@ function comparable(text: string): string {
 
 /** Whether `node` is part of the summary of `details`, which shows while it is closed. */
 function inSummary(details: HTMLDetailsElement, node: Node): boolean {
-  const summary = details.querySelector(':scope > summary')
-  return summary !== null && summary.contains(node)
+  return details.querySelector(':scope > summary')?.contains(node) === true
+}
+
+/** The details around `node`, nearest first. */
+function* detailsAround(node: Node): Generator<HTMLDetailsElement> {
+  for (
+    let at = node.parentElement?.closest('details');
+    at;
+    at = at.parentElement?.closest('details')
+  ) {
+    yield at
+  }
 }
 
 /** Opens every closed details around `node`. Whether it opened any. */
 function reveal(node: Node): boolean {
   let opened = false
-  let details = node.parentElement?.closest('details') ?? null
-  while (details !== null) {
-    if (!details.open && !inSummary(details, node)) {
-      details.open = true
-      opened = true
-    }
-    details = details.parentElement?.closest('details') ?? null
+  for (const details of detailsAround(node)) {
+    if (details.open || inSummary(details, node)) continue
+    details.open = true
+    opened = true
   }
   return opened
 }
 
 /** The element a fragment names, inside `root`, by its id or the id the renderer prefixed. */
-function targetOf(root: ParentNode, document: Document, hash: string): Element | undefined {
-  const id = decode(hash.replace(/^#/u, '').replace(/:~:.*$/su, ''))
-  if (id === undefined || id === '') return undefined
-  const found = document.getElementById(id) ?? document.getElementById(`${ID_PREFIX}${id}`)
-  return found !== null && root.contains(found) ? found : undefined
+function targetOf(root: Node, document: Document, hash: string): Element | undefined {
+  const id = decode(hash.replace(/^#/u, '').split(':~:', 1).join(''))
+  const found = [id, `${ID_PREFIX}${id}`]
+    .filter((candidate) => candidate !== '' && candidate !== ID_PREFIX)
+    .map((candidate) => document.getElementById(candidate))
+    .find((element) => element !== null && root.contains(element))
+  return found ?? undefined
 }
 
-function scrollTo(element: Element): void {
-  if (typeof element.scrollIntoView === 'function') element.scrollIntoView({ block: 'start' })
+/** The URL the page was navigated to, from its navigation entry. */
+function navigationEntry(view: Window): string {
+  return view.performance
+    .getEntriesByType('navigation')
+    .map((entry) => entry.name)
+    .join(' ')
 }
 
 /** Enhances every details in `root`. Returns what takes the enhancement away again. */
-export function enhanceDetails(root: ParentNode & Node, options: DetailsOptions = {}): () => void {
-  // Only a document has no owner, and a document that is not shown (one made to hold a template)
-  // has no window to listen on.
-  const view = (root instanceof Document ? root : root.ownerDocument)?.defaultView
-  if (view === null || view === undefined) return () => undefined
-  const { document } = view
+export function enhanceDetails(root: Element | Document, options: DetailsOptions = {}): () => void {
+  const document = root instanceof Document ? root : root.ownerDocument
+  const view = document.defaultView
+  if (view === null) return () => undefined
 
   const all = (): HTMLDetailsElement[] => [...root.querySelectorAll('details')]
 
   const openTarget = (hash: string): void => {
     const target = targetOf(root, document, hash)
-    if (target !== undefined && reveal(target)) scrollTo(target)
+    // Hidden, it could not be scrolled to; open, it can.
+    if (target !== undefined && reveal(target)) target.scrollIntoView({ block: 'start' })
   }
 
-  const openFragments = (urls: readonly (string | undefined)[]): void => {
-    const wanted = urls
-      .flatMap((url) => (url === undefined ? [] : textFragments(url)))
-      .map(comparable)
-    if (wanted.length === 0) return
+  const openFragments = (urls: readonly string[]): void => {
+    const wanted = urls.flatMap(textFragments).map(comparable)
     for (const details of all()) {
-      const text = comparable(details.textContent)
-      if (!details.open && wanted.some((fragment) => text.includes(fragment))) {
-        details.open = true
-        reveal(details)
-      }
+      const text = comparable(String(details.textContent))
+      if (details.open || !wanted.some((fragment) => text.includes(fragment))) continue
+      details.open = true
+      reveal(details)
     }
   }
 
@@ -140,25 +165,24 @@ export function enhanceDetails(root: ParentNode & Node, options: DetailsOptions 
   }
 
   const onClick = (event: Event): void => {
-    const link = event.target instanceof view.Element ? event.target.closest('a[href^="#"]') : null
-    const href = link?.getAttribute('href')
-    if (href !== null && href !== undefined) openTarget(href)
+    const { target } = event
+    const link = target instanceof view.Element ? target.closest('a[href^="#"]') : null
+    if (link !== null) openTarget(String(link.getAttribute('href')))
   }
 
+  // Find reveals a match; every details on its way to it opens.
   const onBeforeMatch = (event: Event): void => {
-    /* v8 ignore next -- the root only hears events from nodes below it; this narrows `EventTarget`. */
-    if (event.target instanceof view.Node) reveal(event.target)
+    for (const step of event.composedPath()) {
+      if (step instanceof view.HTMLDetailsElement) step.open = true
+    }
   }
 
-  const exclusive =
-    options.exclusive ?? ('name' in view.HTMLDetailsElement.prototype ? 'native' : 'fallback')
   const onToggle = (event: Event): void => {
-    const opened = event.target
-    if (!(opened instanceof view.HTMLDetailsElement) || !opened.open) return
-    const name = opened.getAttribute('name')
-    if (name === null || name === '') return
+    const { target } = event
+    if (!(target instanceof view.HTMLDetailsElement) || !target.open) return
+    const name = String(target.getAttribute('name'))
     for (const other of all()) {
-      if (other !== opened && other.getAttribute('name') === name) other.open = false
+      if (other !== target && other.getAttribute('name') === name) other.open = false
     }
   }
 
@@ -173,8 +197,9 @@ export function enhanceDetails(root: ParentNode & Node, options: DetailsOptions 
   }
 
   openTarget(view.location.hash)
-  openFragments([view.location.hash, options.navigationUrl?.() ?? navigationEntry(view)])
+  openFragments([view.location.hash, options.navigationUrl ?? navigationEntry(view)])
 
+  const exclusive = options.exclusive ?? exclusiveMode(view)
   view.addEventListener('hashchange', onHashChange)
   view.addEventListener('beforeprint', onBeforePrint)
   view.addEventListener('afterprint', onAfterPrint)
@@ -191,10 +216,4 @@ export function enhanceDetails(root: ParentNode & Node, options: DetailsOptions 
     root.removeEventListener('beforematch', onBeforeMatch, true)
     root.removeEventListener('toggle', onToggle, true)
   }
-}
-
-/** The URL the page was navigated to, which keeps a fragment directive the address has lost. */
-function navigationEntry(view: Window): string | undefined {
-  const [entry] = view.performance.getEntriesByType('navigation')
-  return entry?.name
 }

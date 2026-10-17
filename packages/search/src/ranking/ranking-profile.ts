@@ -25,6 +25,9 @@ export const DEFAULT_RANKING_PROFILE: RankingProfile = {
   fieldWeights: { title: 10, headings: 5, body: 1 },
   recencyBoost: { halfLifeDays: 90, maxBoost: 0.2 },
   exactPhraseBoost: 2,
+  // Half, not zero: a deprecated page is often exactly what someone is
+  // looking for (to find what replaced it), so it is demoted, never hidden.
+  deprecatedPenalty: 0.5,
   workspaceAffinity: { currentWorkspaceBoost: 2, groupOthersByWorkspace: true },
 }
 

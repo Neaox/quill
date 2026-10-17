@@ -23,6 +23,7 @@ import { Route as AuthenticatedAdminIndexRouteImport } from './routes/_authentic
 import { Route as AuthenticatedAdminGroupsRouteImport } from './routes/_authenticated/admin/groups'
 import { Route as AuthenticatedAdminOrganisationRouteImport } from './routes/_authenticated/admin/organisation'
 import { Route as AuthenticatedAdminSettingsRouteRouteImport } from './routes/_authenticated/admin/settings/route'
+import { Route as AuthenticatedDDocumentRefRouteRouteImport } from './routes/_authenticated/d/$documentRef/route'
 import { Route as AuthenticatedWWorkspaceSlugRouteRouteImport } from './routes/_authenticated/w/$workspaceSlug/route'
 import { Route as ShareTokenIndexRouteImport } from './routes/share/$token/index'
 import { Route as AuthenticatedAdminSettingsIndexRouteImport } from './routes/_authenticated/admin/settings/index'
@@ -110,6 +111,12 @@ const AuthenticatedAdminSettingsRouteRoute =
   AuthenticatedAdminSettingsRouteRouteImport.update({
     id: '/admin/settings',
     path: '/admin/settings',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedDDocumentRefRouteRoute =
+  AuthenticatedDDocumentRefRouteRouteImport.update({
+    id: '/d/$documentRef',
+    path: '/d/$documentRef',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
 const AuthenticatedWWorkspaceSlugRouteRoute =
@@ -213,6 +220,7 @@ export interface FileRoutesByFullPath {
   '/share/$token': typeof ShareTokenRouteRouteWithChildren
   '/preferences': typeof AuthenticatedPreferencesRoute
   '/admin/settings': typeof AuthenticatedAdminSettingsRouteRouteWithChildren
+  '/d/$documentRef': typeof AuthenticatedDDocumentRefRouteRoute
   '/w/$workspaceSlug': typeof AuthenticatedWWorkspaceSlugRouteRouteWithChildren
   '/admin/groups': typeof AuthenticatedAdminGroupsRoute
   '/admin/organisation': typeof AuthenticatedAdminOrganisationRoute
@@ -241,6 +249,7 @@ export interface FileRoutesByTo {
   '/sign-up': typeof SignUpRoute
   '/verify-email': typeof VerifyEmailRoute
   '/preferences': typeof AuthenticatedPreferencesRoute
+  '/d/$documentRef': typeof AuthenticatedDDocumentRefRouteRoute
   '/admin/groups': typeof AuthenticatedAdminGroupsRoute
   '/admin/organisation': typeof AuthenticatedAdminOrganisationRoute
   '/admin': typeof AuthenticatedAdminIndexRoute
@@ -272,6 +281,7 @@ export interface FileRoutesById {
   '/share/$token': typeof ShareTokenRouteRouteWithChildren
   '/_authenticated/preferences': typeof AuthenticatedPreferencesRoute
   '/_authenticated/admin/settings': typeof AuthenticatedAdminSettingsRouteRouteWithChildren
+  '/_authenticated/d/$documentRef': typeof AuthenticatedDDocumentRefRouteRoute
   '/_authenticated/w/$workspaceSlug': typeof AuthenticatedWWorkspaceSlugRouteRouteWithChildren
   '/_authenticated/admin/groups': typeof AuthenticatedAdminGroupsRoute
   '/_authenticated/admin/organisation': typeof AuthenticatedAdminOrganisationRoute
@@ -304,6 +314,7 @@ export interface FileRouteTypes {
     | '/share/$token'
     | '/preferences'
     | '/admin/settings'
+    | '/d/$documentRef'
     | '/w/$workspaceSlug'
     | '/admin/groups'
     | '/admin/organisation'
@@ -332,6 +343,7 @@ export interface FileRouteTypes {
     | '/sign-up'
     | '/verify-email'
     | '/preferences'
+    | '/d/$documentRef'
     | '/admin/groups'
     | '/admin/organisation'
     | '/admin'
@@ -362,6 +374,7 @@ export interface FileRouteTypes {
     | '/share/$token'
     | '/_authenticated/preferences'
     | '/_authenticated/admin/settings'
+    | '/_authenticated/d/$documentRef'
     | '/_authenticated/w/$workspaceSlug'
     | '/_authenticated/admin/groups'
     | '/_authenticated/admin/organisation'
@@ -492,6 +505,13 @@ declare module '@tanstack/react-router' {
       path: '/admin/settings'
       fullPath: '/admin/settings'
       preLoaderRoute: typeof AuthenticatedAdminSettingsRouteRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/d/$documentRef': {
+      id: '/_authenticated/d/$documentRef'
+      path: '/d/$documentRef'
+      fullPath: '/d/$documentRef'
+      preLoaderRoute: typeof AuthenticatedDDocumentRefRouteRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
     '/_authenticated/w/$workspaceSlug': {
@@ -660,6 +680,7 @@ const AuthenticatedWWorkspaceSlugRouteRouteWithChildren =
 interface AuthenticatedRouteRouteChildren {
   AuthenticatedPreferencesRoute: typeof AuthenticatedPreferencesRoute
   AuthenticatedAdminSettingsRouteRoute: typeof AuthenticatedAdminSettingsRouteRouteWithChildren
+  AuthenticatedDDocumentRefRouteRoute: typeof AuthenticatedDDocumentRefRouteRoute
   AuthenticatedWWorkspaceSlugRouteRoute: typeof AuthenticatedWWorkspaceSlugRouteRouteWithChildren
   AuthenticatedAdminGroupsRoute: typeof AuthenticatedAdminGroupsRoute
   AuthenticatedAdminOrganisationRoute: typeof AuthenticatedAdminOrganisationRoute
@@ -671,6 +692,7 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedPreferencesRoute: AuthenticatedPreferencesRoute,
   AuthenticatedAdminSettingsRouteRoute:
     AuthenticatedAdminSettingsRouteRouteWithChildren,
+  AuthenticatedDDocumentRefRouteRoute: AuthenticatedDDocumentRefRouteRoute,
   AuthenticatedWWorkspaceSlugRouteRoute:
     AuthenticatedWWorkspaceSlugRouteRouteWithChildren,
   AuthenticatedAdminGroupsRoute: AuthenticatedAdminGroupsRoute,

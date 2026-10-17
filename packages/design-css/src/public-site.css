@@ -915,6 +915,34 @@ a {
   color: var(--site-ink);
 }
 
+/*
+ * The section being read (`aria-current="location"`, set by the reader script
+ * as the page scrolls): the link in the ink and a little heavier, with a short
+ * accent bar laid over the list's rule beside it, so it is marked by position
+ * and weight as well as colour.
+ */
+.site-toc a[aria-current]:not([aria-current='false']) {
+  position: relative;
+  color: var(--site-ink);
+  font-weight: 500;
+}
+
+.site-toc a[aria-current]:not([aria-current='false'])::before {
+  content: '';
+  position: absolute;
+  inset-block: 0.25rem;
+  inset-inline-start: calc(-0.625rem - 1px);
+  inline-size: 2px;
+  border-radius: 1px;
+  background-color: var(--color-accent);
+}
+
+@media (forced-colors: active) {
+  .site-toc a[aria-current]:not([aria-current='false'])::before {
+    background-color: Highlight;
+  }
+}
+
 .site-toc .toc-depth-3 a {
   padding-inline-start: 0.75rem;
 }

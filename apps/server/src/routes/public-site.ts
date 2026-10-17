@@ -1,15 +1,26 @@
 import { Type } from '@sinclair/typebox'
 import type { TypeBoxTypeProvider } from '@fastify/type-provider-typebox'
-import { publicPageHref, publicSiteHref, publishedAt, renderDocument } from '@quill/application'
+import {
+  publicPageHref,
+  publicSiteHref,
+  publishedAt,
+  readPublicFacts,
+  renderDocument,
+  surfaceLinkRewriter,
+  surfaceReplacement,
+} from '@quill/application'
 import type { DocumentRow, PublicSite } from '@quill/application'
-import { PUBLIC_PRINCIPAL } from '@quill/domain'
+import { rewriteLinks } from '@quill/markdown'
+import { PUBLIC_PRINCIPAL, tagQuery } from '@quill/domain'
 import type { DocumentId, WorkspaceId } from '@quill/domain'
 import { visibilityFilter } from '@quill/search'
 import type { FastifyPluginAsync, FastifyReply, FastifyRequest } from 'fastify'
 
+import { fillChildPages } from '../child-pages/fill.ts'
 import type { AppDependencies } from '../dependencies.ts'
 import { notFound } from '../errors.ts'
 import type { CachedPage } from '../public-site/cache.ts'
+import { html as markup } from '../public-site/html.ts'
 import {
   articleStructuredData,
   firstParagraph,
@@ -25,6 +36,8 @@ import { createReaderScript } from '../public-site/reader-script.ts'
 import { cachedHeaderMenu, cachedPublicSiteLoader } from '../public-site/menu.ts'
 import { createSchemeScript } from '../public-site/scheme-script.ts'
 import { ASSET_MAX_AGE_SECONDS } from '../public-site/stylesheet.ts'
+import { renderByline } from '../public-site/templates/byline.ts'
+import { renderLifecycleNotice } from '../public-site/templates/lifecycle-notice.ts'
 import { navigationSection } from '../public-site/templates/navigation.ts'
 import { renderPage } from '../public-site/templates/page.ts'
 import { pageLayoutAttributes } from '../theme/page-attributes.ts'
@@ -283,6 +296,61 @@ export function publicSiteRoutes(deps: AppDependencies): FastifyPluginAsync {
     /* v8 ignore next 2 -- the site only holds documents with a head revision. */
     if (rendered.kind !== 'rendered') return notFoundPage(request, reply, site)
 
+    const workspace = await deps.uow.repos.workspaces.findById(site.collection.workspaceId)
+    /* v8 ignore next -- a collection's workspace cannot be missing: the row cascades from it. */
+    if (workspace === null) return notFoundPage(request, reply, site)
+    // The pages under this one, as the site lists them (ADR-056): only
+    // published, public pages, at the site's own addresses. Filled before the
+    // page is cached, and the cache is emptied by the same events that change
+    // the list.
+    const filled = await fillChildPages(deps, {
+      html: rendered.content.html,
+      parent: document,
+      workspace,
+      audience: { kind: 'public' },
+      /* v8 ignore next -- every document in the collection is in the path table. */
+      hrefOf: (child) => publicPageHref(site.siteSlug, site.pathById.get(child.id) ?? ''),
+    })
+    // Links to other documents (`/d/<id>`, ADR-035) go to their address on
+    // this site when they are on it, and are reduced to their words when
+    // they are not: a stranger is never handed the id, workspace or title of
+    // a page the site does not show (ADR-046), nor a link into the app.
+    const bodyHtml = rewriteLinks(
+      filled,
+      surfaceLinkRewriter(
+        site.pages.values(),
+        /* v8 ignore next -- every page of the site is in the path table. */
+        (page) => publicPageHref(site.siteSlug, site.pathById.get(page.id) ?? ''),
+        [deps.config.appOrigin],
+      ),
+    )
+
+    // What the page states about itself that a stranger may see (ADR-057):
+    // its tags lead to this site's own search, never into the application.
+    const facts = await readPublicFacts(deps, document, deps.clock.now())
+    const searchHref = `${publicSiteHref(site.siteSlug)}/search`
+    // A deprecated page names its replacement only when this site shows it,
+    // by the rule a link in its body follows (ADR-046).
+    const notice =
+      facts?.lifecycle?.state === 'deprecated'
+        ? renderLifecycleNotice(
+            surfaceReplacement(
+              facts.lifecycle.supersededBy,
+              site.pages.values(),
+              /* v8 ignore next -- every page of the site is in the path table. */
+              (page) => publicPageHref(site.siteSlug, site.pathById.get(page.id) ?? ''),
+            ),
+          )
+        : markup``
+    /* v8 ignore next -- the page was just rendered from its published source, which has facts. */
+    const byline =
+      facts === null
+        ? undefined
+        : markup`${renderByline({
+            facts,
+            tagHref: (tag) => `${searchHref}?q=${encodeURIComponent(tagQuery(tag))}`,
+          })}${notice}`
+
     const stamps = await publishedAt(deps, [document])
     /* v8 ignore next -- `publishedAt` answers for every document it is given. */
     const updatedAt = stamps.get(document.id) ?? document.updatedAt
@@ -300,8 +368,9 @@ export function publicSiteRoutes(deps: AppDependencies): FastifyPluginAsync {
         main: renderDocumentMain({
           collectionName: site.collection.name,
           title: document.title,
-          bodyHtml: rendered.content.html,
+          bodyHtml,
           rules: site.organisation.layout.default.rules,
+          byline,
         }),
         updatedAt,
         structuredData: articleStructuredData({

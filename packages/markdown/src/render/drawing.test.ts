@@ -227,3 +227,77 @@ describe('sanitizeDrawing, style declarations', () => {
     }
   })
 })
+
+/**
+ * The time budgets below are skipped under coverage (`QUILL_COVERAGE`, set by
+ * the root Vitest config), where instrumentation, not the pattern, decides the
+ * time; a plain `pnpm test` holds them. A pattern that backtracks without
+ * bound still fails there, on the test timeout, because the same input is
+ * checked for its answer in a test that always runs.
+ */
+const UNDER_COVERAGE = process.env['QUILL_COVERAGE'] === '1'
+
+/** How long drawing this markup takes, in milliseconds. */
+function timeToDraw(markup: string): number {
+  const started = performance.now()
+  draw(markup)
+  return performance.now() - started
+}
+
+/** Whitespace a backtracking pattern could split between two quantifiers 2^18 ways. */
+const SPLIT_WHITESPACE = `${'scale()  '.repeat(18)}!`
+
+/** A colour's arguments longer than any colour, which a quadratic pattern would scan per digit. */
+const LONG_COLOUR = `rgb(${'1'.repeat(30_000)}!`
+
+describe('sanitizeDrawing, hostile values that would take long to check', () => {
+  it('refuses a transform whose whitespace could be split many ways', () => {
+    expect(draw(`<svg><g transform="${SPLIT_WHITESPACE}"/></svg>`)).not.toContain('transform=')
+  })
+
+  it.skipIf(UNDER_COVERAGE)('checks such a transform in linear time', () => {
+    expect(timeToDraw(`<svg><g transform="${SPLIT_WHITESPACE}"/></svg>`)).toBeLessThan(50)
+  })
+
+  it('accepts the transform lists it always did', () => {
+    for (const value of [
+      'scale(2)',
+      ' translate(1 2) , rotate(45)  ',
+      'scale(1)scale(2)',
+      'matrix(1,0,0,1,0,0), skewX(3),',
+      '',
+    ]) {
+      expect(draw(`<svg><g transform="${value}"/></svg>`)).toContain(`transform="${value}"`)
+    }
+    for (const value of ['scale(1),,scale(2)', 'scale(1) url(#x)', 'scale(1']) {
+      expect(draw(`<svg><g transform="${value}"/></svg>`)).not.toContain('transform=')
+    }
+  })
+
+  it.skipIf(UNDER_COVERAGE)('checks a colour in linear time, however long', () => {
+    expect(timeToDraw(`<svg><rect fill="${LONG_COLOUR}"/></svg>`)).toBeLessThan(50)
+  })
+
+  it('refuses a colour too long to be one', () => {
+    expect(draw(`<svg><rect fill="${LONG_COLOUR}"/></svg>`)).not.toContain('fill=')
+    expect(draw(`<svg><rect fill="rgb(${'1 '.repeat(200)})"/></svg>`)).not.toContain('fill=')
+    expect(draw('<svg><rect fill="hsl(120deg 50% 50%)"/></svg>')).toContain(
+      'fill="hsl(120deg 50% 50%)"',
+    )
+  })
+})
+
+describe('sanitizeDrawing, classes', () => {
+  it("keeps only the reading stylesheet's vocabulary and the organisation's labels", () => {
+    const drawing = sanitizeDrawing(
+      '<svg class="fixed inset-0 z-50 bg-white"><rect class="box planned acme hidden"/><g class="sr-only"/></svg>',
+      { idPrefix: 'p-', label: 'A', labels: new Set(['acme']) },
+    )
+    const html = drawing === null ? '' : toHtml(drawing, { space: 'svg' })
+
+    expect(html).toContain('<rect class="box planned acme">')
+    for (const utility of ['fixed', 'inset-0', 'z-50', 'bg-white', 'hidden', 'sr-only']) {
+      expect(html).not.toContain(utility)
+    }
+  })
+})

@@ -86,6 +86,7 @@ On reconnecting, the client re-validates through a heartbeat as before. It then 
   - **Properties:** merging with an unchanged side is the identity; merges are symmetric up to the order of "keep both"; round trips are byte-stable for untouched blocks; conflict detection never loses a change.
   - **Fixtures:** taken from the corpus.
 - **Reuse.** The publish path's three-way merge of Markdown (plan section 9) uses the same engine, so drafts and publishing cannot disagree about what a conflict is.
+- **One differ, too.** The two-way primitives the merge is built from are `packages/markdown/src/diff/`: `diffSequences` (Myers), `changeRuns` and `diffText` (words), `alignBlocks` (matching by content key and position, with moves and similarity pairing), `mergePhrasing` (word-level changes inside a block, formatting kept) and `compareLines` (code by line). The revision comparison view (ADR-015) is drawn from the same functions, so what the comparison calls a change and what the merge calls a change are one decision. The merge itself belongs beside them, in `packages/markdown/src/merge/`.
 - **Speed.**
   - Merging a 4,000-line document stays within the editor's budgets (quill-plan.md section 31). Large documents merge in a worker.
   - The conflict view renders only the blocks in conflict, plus context, never the whole document twice.

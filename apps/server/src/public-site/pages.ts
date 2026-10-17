@@ -35,14 +35,37 @@ export function renderDocumentMain(view: {
   readonly title: string
   readonly bodyHtml: string
   readonly rules: string
+  /** The facts under the title (`templates/byline.ts`); empty when it states none. */
+  readonly byline?: Html | undefined
 }): Html {
   const body = unwrapArticle(view.bodyHtml)
+  const byline = view.byline ?? raw('')
   const eyebrow = hasAuthoredEyebrow(body)
     ? ''
     : html`<p class="site-eyebrow">${view.collectionName}</p>`
   return html`<article class="layout-grid prose" data-rules="${view.rules}">
-    ${eyebrow} ${hasTopHeading(body) ? '' : html`<h1>${view.title}</h1>`} ${raw(body)}
+    ${eyebrow}
+    ${
+      hasTopHeading(body)
+        ? raw(afterTitle(body, byline.value))
+        : html`<h1>${view.title}</h1>
+            ${byline} ${raw(body)}`
+    }
   </article>`
+}
+
+/**
+ * The body with the byline straight after its title. The title is the first
+ * `<h1>` (ADR-015), and a heading cannot contain another, so the first
+ * `</h1>` closes it. Both strings are already safe: the body is the
+ * renderer's sanitised output and the byline is escaped by its template.
+ */
+function afterTitle(body: string, byline: string): string {
+  const close = body.search(/<\/h1>/iu)
+  /* v8 ignore next -- only called on a body `hasTopHeading` found an <h1> in. */
+  if (close === -1) return body
+  const end = close + '</h1>'.length
+  return `${body.slice(0, end)}${byline}${body.slice(end)}`
 }
 
 /**

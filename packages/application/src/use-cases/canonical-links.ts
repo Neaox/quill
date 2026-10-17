@@ -4,6 +4,7 @@ import type { DocumentRepository } from '../ports/persistence.ts'
 import {
   canonicaliseDocumentLinks,
   parseDocumentReference,
+  withoutOwnOrigin,
   workspaceLinkReferences,
 } from './document-path.ts'
 
@@ -23,15 +24,22 @@ import {
  */
 export async function canonicaliseLinks(
   documents: DocumentRepository,
-  markdown: string,
+  source: string,
+  /** The origins this application is served at, whose absolute addresses are its own. */
+  appOrigins: readonly string[] = [],
 ): Promise<string> {
+  const markdown = withoutOwnOrigin(source, appOrigins)
   const references = [...workspaceLinkReferences(markdown)]
   if (references.length === 0) return markdown
-  return canonicaliseDocumentLinks(markdown, await resolveReferences(documents, references))
+  return canonicaliseDocumentLinks(markdown, await resolveDocumentReferences(documents, references))
 }
 
-/** Each reference text mapped to the document it names, leaving out the ones nothing names. */
-async function resolveReferences(
+/**
+ * Each reference text mapped to the document it names, leaving out the ones
+ * nothing names: a UUID as it is, every key in one query however many there
+ * are. The words of a reference are never consulted (ADR-035).
+ */
+export async function resolveDocumentReferences(
   documents: DocumentRepository,
   references: readonly string[],
 ): Promise<ReadonlyMap<string, DocumentId>> {

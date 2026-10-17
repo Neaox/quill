@@ -70,6 +70,16 @@ export interface UserRepository {
   listByIds(ids: readonly UserId[]): Promise<readonly UserRow[]>
   findByEmail(email: string): Promise<UserRow | null>
   /**
+   * The verified people with these addresses, matched without regard to case,
+   * in one query: a byline names every owner at once, never one by one.
+   */
+  findVerifiedByEmails(emails: readonly string[]): Promise<readonly UserRow[]>
+  /**
+   * Verified people whose name or address contains `query`, without regard
+   * to case, ordered by name, at most `limit` of them: the people picker.
+   */
+  searchVerified(query: string, limit: number): Promise<readonly UserRow[]>
+  /**
    * People whose display name or email starts with `query`, ignoring case,
    * ordered by name and cut at `limit`: the admin's people picker.
    */
@@ -511,21 +521,6 @@ export interface DocumentRow {
   readonly updatedAt: Date
 }
 
-/** Where a page of siblings resumes: after the sibling with this creation time and id. */
-export interface ChildCursor {
-  readonly createdAt: Date
-  readonly id: DocumentId
-}
-
-export interface ChildPage {
-  readonly workspaceId: WorkspaceId
-  readonly collectionId: CollectionId
-  /** The parent, or null for the documents at the top of the collection. */
-  readonly parentId: DocumentId | null
-  readonly after: ChildCursor | null
-  readonly limit: number
-}
-
 export interface CreateDocumentInput {
   readonly id: DocumentId
   readonly shortId: ShortId
@@ -595,15 +590,6 @@ export interface DocumentRepository {
    * which reads rows the caller has already decided it cannot use.
    */
   listByCollection(collectionId: CollectionId): Promise<readonly DocumentRow[]>
-  /**
-   * One page of the documents directly under a parent (or at the top of a collection, for a
-   * null parent), in the order siblings have: oldest first, then by id, so a new document is
-   * last and nothing moves when it is made (ADR-049). The page after `after`, by key rather
-   * than by offset, so a document made while someone reads is neither repeated nor skipped.
-   */
-  listChildren(input: ChildPage): Promise<readonly DocumentRow[]>
-  /** How many documents each of these has directly beneath it; one with none is absent. */
-  countChildren(parentIds: readonly DocumentId[]): Promise<ReadonlyMap<DocumentId, number>>
   /** Resolving a body's outgoing links must cost one query, not one per link. */
   listByIds(ids: readonly DocumentId[]): Promise<readonly DocumentRow[]>
   /**
@@ -611,6 +597,16 @@ export interface DocumentRepository {
    * query — the ancestor half of a document's scope chain (ADR-012).
    */
   listAncestors(id: DocumentId): Promise<readonly DocumentRow[]>
+  /**
+   * Every document nested under this one, at most `depth` levels down, in one
+   * query however many there are: a child pages list's subtree (ADR-056).
+   * The document itself is not included.
+   */
+  /**
+   * The documents under `id`, to `depth` levels, nearest levels first, and at
+   * most `limit` of them: the walk stops there, however wide the tree.
+   */
+  listDescendants(id: DocumentId, depth: number, limit: number): Promise<readonly DocumentRow[]>
   update(id: DocumentId, patch: UpdateDocumentPatch, now: Date): Promise<DocumentRow>
   delete(id: DocumentId): Promise<void>
 }
@@ -624,6 +620,9 @@ export interface DraftRow {
   readonly authorship?: unknown
   readonly updatedAt: Date
 }
+
+/** A draft's row without its content. */
+export type DraftStamp = Pick<DraftRow, 'baseRevision' | 'updatedAt'>
 
 export type WriteDraftResult =
   | { readonly ok: true; readonly draft: DraftRow }
@@ -639,6 +638,12 @@ export interface DraftRepository {
     readonly now: Date
   }): Promise<DraftRow>
   find(documentId: DocumentId): Promise<DraftRow | null>
+  /**
+   * When the draft was last written and what it is based on, without its
+   * content: enough to tell whether it holds changes nothing has published,
+   * for a caller that has no use for the tree itself.
+   */
+  stamp(documentId: DocumentId): Promise<DraftStamp | null>
   /**
    * Optimistic, lock-gated write (ADR-021). Must run lock validation and the
    * version check inside one transaction so a concurrent takeover cannot
@@ -663,13 +668,19 @@ export interface DraftRepository {
    * holding content that would undo it on their next publish. Replacing the
    * content bumps the draft version, so an editor that was open when the
    * restore happened is told its write is stale and re-reads (ADR-021);
-   * leaving the content alone leaves the version alone with it. Either way the record of
-   * who wrote what is cleared: from here the draft says what is published.
+   * leaving the content alone leaves the version alone with it.
+   *
+   * The record of who wrote what is cleared when the base moves, because from there the
+   * draft says what is published, and kept when it does not (a rename, a revert), unless
+   * `authorship` gives the record as it now is. With `expectedVersion`, nothing is written
+   * unless the draft is at that version, and null says so.
    */
   rebase(input: {
     readonly documentId: DocumentId
     readonly baseRevision: RevisionId | null
     readonly ast?: unknown
+    readonly authorship?: unknown
+    readonly expectedVersion?: number
     readonly now: Date
   }): Promise<DraftRow | null>
 }
@@ -1244,6 +1255,23 @@ export interface AuditWriter {
 // Unit of work
 // ---------------------------------------------------------------------------
 
+/**
+ * What a list shows under a document's title (ADR-056): its summary — the
+ * `description`, or the first paragraph — and its icon, as the search
+ * projection of its published head holds them. A document never published
+ * has none.
+ */
+export interface DocumentSummaryRow {
+  readonly documentId: DocumentId
+  readonly summary: string | null
+  readonly icon: string | null
+}
+
+export interface DocumentSummaryRepository {
+  /** The summaries of these documents, in one query; a document without one is absent. */
+  listByIds(ids: readonly DocumentId[]): Promise<readonly DocumentSummaryRow[]>
+}
+
 export interface RepositoryBundle {
   readonly users: UserRepository
   readonly sessions: SessionRepository
@@ -1256,6 +1284,7 @@ export interface RepositoryBundle {
   readonly workspaceSlugHistory: WorkspaceSlugHistoryRepository
   readonly collections: CollectionRepository
   readonly documents: DocumentRepository
+  readonly documentSummaries: DocumentSummaryRepository
   readonly drafts: DraftRepository
   readonly locks: LockRepository
   readonly grants: GrantRepository

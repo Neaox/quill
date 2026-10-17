@@ -28,6 +28,7 @@ data/
 *.log
 
 # Local tooling state
+.tanstack/
 .claude/*
 !.claude/launch.json
 *.local

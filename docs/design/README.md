@@ -25,6 +25,12 @@ narrows.
 
 [`feedback.md`](feedback.md) sets the vocabulary for inline status, toasts, and blocking dialogs, and when a promise toast is the right way to show background work that concerns the current page.
 
+## Document properties
+
+[`properties.md`](properties.md) sets what a document's properties are for,
+the byline every surface shows under a title, who sees which facts, and how an
+author edits them in place.
+
 ## Home
 
 [`home.md`](home.md) defines the three first pages (signed-in home, workspace home, public site home), who each is for, and what M2 ships of them.

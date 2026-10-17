@@ -51,12 +51,12 @@ export interface DetailsRenderer {
  * output is the same every time (ADR-039).
  */
 export function createDetailsRenderer(): DetailsRenderer {
-  const names = new WeakMap<object, string>()
+  // Keyed by the accordion node a details' parent is; one render's worth, so a Map.
+  const names = new Map<unknown, string>()
   let accordions = 0
 
   const groupName = (node: DetailsNode, parent: unknown): string | undefined => {
-    const group = typeof parent === 'object' && parent !== null ? names.get(parent) : undefined
-    return group ?? detailsModel(node).name
+    return names.get(parent) ?? detailsModel(node).name
   }
 
   return {

@@ -13,10 +13,7 @@ import type {
 } from 'mdast'
 
 import { DETAILS } from '../details/details.ts'
-import type { CalloutType } from '../directives/callout.ts'
-import { isCalloutType } from '../directives/callout.ts'
-import { markerFor, markerType } from '../pipeline/github-alert.ts'
-import type { AlertForm } from '../pipeline/github-alert.ts'
+import { alertForm, writeAlert } from './alert.ts'
 import type { SourceForm } from '../pipeline/source-form.ts'
 import type { Warning } from '../warnings.ts'
 import { warning } from '../warnings.ts'
@@ -46,80 +43,6 @@ interface AppliedMark {
 interface MarkRun {
   readonly applied: AppliedMark | undefined
   readonly nodes: PMNode[]
-}
-
-/** How a callout is written as a quote, and what its first block is if it is a title. */
-interface AlertWriting extends AlertForm {
-  readonly type: CalloutType
-}
-
-/**
- * How a callout is written as a quote (GitHub's alert, Obsidian's callout), when it
- * was read from one or made in the editor, and is still a callout of a known type
- * with nothing else to say. The quote is the standard form wherever one exists, so
- * the title Obsidian puts after the marker and the kinds it has are written as it
- * writes them; the directive is for a callout that was written as one.
- */
-function alertFormOf(node: PMNode): AlertWriting | undefined {
-  const { attrs } = node
-  const form: unknown = attrs['alert']
-  const attributes: unknown = attrs['attributes']
-  if (attrs['name'] !== 'callout' || typeof form !== 'object' || form === null) return undefined
-  if (typeof attributes !== 'object' || attributes === null) return undefined
-  if (!('marker' in form) || typeof form.marker !== 'string') return undefined
-  const entries = Object.entries(attributes)
-  const type = entries.length === 1 ? entries[0]?.[1] : undefined
-  if (typeof type !== 'string' || !isCalloutType(type)) return undefined
-  return { marker: form.marker, own: 'own' in form && form.own === true, type }
-}
-
-/** The title a callout's first block is, and the body that follows it. */
-function titleAndBody(body: readonly BlockNode[]): {
-  readonly title: PhrasingContent[]
-  readonly rest: readonly BlockNode[]
-} {
-  const [first, ...rest] = body
-  return first?.type === 'paragraph' && first.data?.directiveLabel === true
-    ? { title: first.children, rest }
-    : { title: [], rest: body }
-}
-
-/** Text nodes that touch are one: what the parser would have read the written text as. */
-function joinText(inline: readonly PhrasingContent[]): PhrasingContent[] {
-  return inline.reduce<PhrasingContent[]>((joined, node) => {
-    const last = joined.at(-1)
-    return last?.type === 'text' && node.type === 'text'
-      ? [...joined.slice(0, -1), { ...last, value: last.value + node.value }]
-      : [...joined, node]
-  }, [])
-}
-
-/** A callout as the quote it was: its marker and title on a line, then its blocks. */
-function alertBlockquote(
-  form: AlertWriting,
-  body: readonly BlockNode[],
-  data: ReturnType<typeof dataOf>,
-): BlockContent {
-  // A type that was changed in the editor is written as the type it is now.
-  const marker =
-    markerType(form.marker) === form.type ? form.marker : markerFor(form.type, form.marker)
-  const { title, rest } = titleAndBody(body)
-  const line: PhrasingContent[] = [
-    { type: 'text', value: title.length === 0 ? marker : `${marker} ` },
-    ...title,
-  ]
-  const [first, ...others] = rest
-  const blocks: BlockNode[] =
-    !form.own && first?.type === 'paragraph'
-      ? [
-          {
-            ...first,
-            children: joinText([...line, { type: 'text', value: '\n' }, ...first.children]),
-          },
-          ...others,
-        ]
-      : [{ type: 'paragraph', children: joinText(line) }, ...rest]
-  return { type: 'blockquote', children: blocks, ...data }
 }
 
 function children(node: PMNode): PMNode[] {
@@ -337,8 +260,9 @@ export function proseMirrorToMdast(doc: PMNode): MdastDocument {
    */
   function details(node: PMNode): BlockNode {
     const { attrs } = node
-    const [summary, ...body] = children(node)
-    const title = summary === undefined ? [] : inlines(children(summary), [])
+    // A details' first child is always its summary line.
+    const title = inlines(children(node.child(0)), [])
+    const body = children(node).slice(1)
     const label: Paragraph[] =
       title.length === 0
         ? []
@@ -386,8 +310,15 @@ export function proseMirrorToMdast(doc: PMNode): MdastDocument {
             ...dataOf(node),
           },
         ]
-      case 'blockquote':
-        return [{ type: 'blockquote', children: blocks(children(node)), ...dataOf(node) }]
+      case 'blockquote': {
+        // An alert's marker line goes back in front of its body (`alert.ts`).
+        const alert = alertForm(attrs['alert'])
+        const quoted =
+          alert === undefined
+            ? blocks(children(node))
+            : writeAlert(blocks(children(node).filter((kid) => !isSyntheticParagraph(kid))), alert)
+        return [{ type: 'blockquote', children: quoted, ...dataOf(node) }]
+      }
       case 'bulletList':
       case 'taskList':
       case 'orderedList': {
@@ -431,21 +362,17 @@ export function proseMirrorToMdast(doc: PMNode): MdastDocument {
         ]
       case 'details':
         return [details(node)]
-      case 'containerDirective': {
-        // The line an empty container holds only because it must is not written.
-        const content = blocks(children(node).filter((kid) => !isSyntheticParagraph(kid)))
-        const alert = alertFormOf(node)
-        if (alert !== undefined) return [alertBlockquote(alert, content, dataOf(node))]
+      case 'containerDirective':
         return [
           {
             type: 'containerDirective',
             name: attrs['name'],
             attributes: attrs['attributes'],
-            children: content,
+            // The line an empty container holds only because it must is not written.
+            children: blocks(children(node).filter((kid) => !isSyntheticParagraph(kid))),
             ...dataOf(node),
           },
         ]
-      }
       case 'leafDirective':
         return [
           {

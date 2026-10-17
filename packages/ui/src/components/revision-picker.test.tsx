@@ -1,4 +1,4 @@
-import { render, screen, within } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { useState } from 'react'
 import { describe, expect, it } from 'vitest'
@@ -59,7 +59,9 @@ describe('RevisionPicker', () => {
     screen.getByRole('button', { name: /^From/ }).focus()
     await userEvent.keyboard('{Enter}')
     const menu = await screen.findByRole('menu', { name: 'From' })
-    expect(within(menu).getByRole('menuitemradio', { name: /^v2/ })).toHaveFocus()
+    await waitFor(() => {
+      expect(within(menu).getByRole('menuitemradio', { name: /^v2/ })).toHaveFocus()
+    })
     await userEvent.keyboard('{ArrowDown}{Enter}')
 
     expect(screen.queryByRole('menu')).not.toBeInTheDocument()

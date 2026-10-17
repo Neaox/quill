@@ -76,7 +76,7 @@
 }
 
 .prose > [data-change]:not(.table-block)::after {
-  content: attr(data-change) / '';
+  content: var(--change-name) / '';
   position: absolute;
   inset-block: 0;
   inset-inline-end: calc(100% + 0.75rem);
@@ -89,7 +89,7 @@
   font-style: normal;
   line-height: 1.6;
   letter-spacing: 0.02em;
-  text-transform: capitalize;
+  text-transform: none;
   white-space: nowrap;
   color: var(--change-colour);
   pointer-events: none;
@@ -97,26 +97,29 @@
 
 .prose [data-change='added'] {
   --change-colour: var(--change-added);
+  --change-name: 'Added';
 }
 .prose [data-change='removed'] {
   --change-colour: var(--change-removed);
+  --change-name: 'Removed';
 }
 .prose [data-change='changed'] {
   --change-colour: var(--change-changed);
+  --change-name: 'Edited';
 }
 .prose [data-change='moved'] {
   --change-colour: var(--change-moved);
+  --change-name: 'Moved';
 }
 
 /* The two halves of a before-and-after say which they are. */
 .prose [data-side='before'] {
   --change-colour: var(--change-removed);
+  --change-name: 'Before';
 }
 .prose [data-side='after'] {
   --change-colour: var(--change-added);
-}
-.prose > [data-side]:not(.table-block)::after {
-  content: attr(data-side) / '';
+  --change-name: 'After';
 }
 
 /* A picture that is gone is still shown, quietened, so the change is seen. */
@@ -227,6 +230,53 @@
   text-decoration-color: var(--change-removed);
 }
 
+/* --- The characters that changed ----------------------------------------------
+ *
+ * A word replaced by a word that shares its beginning or its end has the characters
+ * that are not shared picked out (`colour` becoming `color`, `1.2.3` becoming `1.2.4`):
+ * one changed character is the hardest change to see, and a word is marked whole either
+ * way. Drawn as the word is, only stronger, and bolder and outlined so it is not carried
+ * by tint alone. Where a character was taken out or put in, the side that has no
+ * character shows the place as a tick (`[data-diff-char]` with nothing in it). */
+
+.prose ins[data-diff] [data-diff-char],
+.prose del[data-diff] [data-diff-char] {
+  padding-inline: 0.12em;
+  border-radius: 0.15em;
+  font-weight: 650;
+  outline: 1px solid color-mix(in oklab, currentcolor 35%, transparent);
+  outline-offset: 0;
+  text-decoration-thickness: 2px;
+}
+
+.prose ins[data-diff='added'] [data-diff-char] {
+  background-color: color-mix(in oklab, var(--change-added) 42%, transparent);
+}
+
+.prose del[data-diff='removed'] [data-diff-char] {
+  background-color: color-mix(in oklab, var(--change-removed) 42%, transparent);
+}
+
+.prose ins[data-diff='added'] [data-diff-char]:empty,
+.prose del[data-diff='removed'] [data-diff-char]:empty {
+  display: inline-block;
+  width: 0.2em;
+  height: 1.15em;
+  padding: 0;
+  margin-inline: 0.04em;
+  border-radius: 1px;
+  outline: none;
+  vertical-align: text-bottom;
+}
+
+.prose ins[data-diff='added'] [data-diff-char]:empty {
+  background-color: var(--change-added);
+}
+
+.prose del[data-diff='removed'] [data-diff-char]:empty {
+  background-color: var(--change-removed);
+}
+
 /* --- Unchanged stretches, folded ------------------------------------------ */
 
 .prose .comparison-fold {
@@ -259,130 +309,4 @@
   outline: 2px solid var(--color-focus-ring);
   outline-offset: 2px;
   border-radius: var(--radius-sm);
-}
-
-/* --- One side of a change ----------------------------------------------------
- *
- * A review draws one change twice, side by side, from the same markup: the published
- * words on the left and the draft's on the right. Each side hides what the other side
- * added, so the words that differ are marked where they are and the rest reads as the
- * document did (`display: none` also keeps the hidden words from a screen reader, which
- * would otherwise hear both versions in each pane). A block that only one side has is
- * the whole change, and the pane of the other side says so instead. */
-
-[data-pane='before'] ins[data-diff],
-[data-pane='before'] [data-change='added'],
-[data-pane='before'] [data-side='after'],
-[data-pane='after'] del[data-diff],
-[data-pane='after'] [data-change='removed'],
-[data-pane='after'] [data-side='before'] {
-  display: none;
-}
-
-/* --- The characters that changed ----------------------------------------------
- *
- * A word replaced by a word that shares its beginning or its end has the characters
- * that are not shared picked out (`color` becoming `colour`, `1.2.3` becoming `1.2.4`):
- * one changed character is the hardest change to see, and a word is marked whole either
- * way. Drawn as the word is, only stronger, and bolder so it is not carried by tint alone. */
-
-.prose ins[data-diff] [data-diff-char],
-.prose del[data-diff] [data-diff-char] {
-  border-radius: 0.15em;
-  font-weight: 650;
-  text-decoration-thickness: 2px;
-}
-
-.prose ins[data-diff='added'] [data-diff-char] {
-  background-color: color-mix(in oklab, var(--change-added) 42%, transparent);
-}
-
-.prose del[data-diff='removed'] [data-diff-char] {
-  background-color: color-mix(in oklab, var(--change-removed) 42%, transparent);
-}
-
-/* In a review, where the change is the whole point, the words stand out more too. */
-[data-pane] .prose ins[data-diff='added'] {
-  background-color: color-mix(in oklab, var(--change-added) 20%, transparent);
-}
-
-[data-pane] .prose del[data-diff='removed'] {
-  background-color: color-mix(in oklab, var(--change-removed) 20%, transparent);
-}
-
-/* --- Drawing the eye to a line that changed -----------------------------------
- *
- * A change of one character is the hardest to see, and a change in a long line the
- * easiest to scroll past. Three things carry it, none by colour alone:
- *
- * - the line itself: a small mark in the gutter beside it, outside the text, saying what
- *   happened to it (`+`, `−`, `≠`, `↕`), so that it is plainly a note about the line and not
- *   part of it, as a callout's own box or bar would be;
- * - the character: padded to a mark of its own even when it is one letter or a comma, bold,
- *   and outlined;
- * - the place, where a character was taken out or put in, which the side that has no
- *   character shows as a tick (`[data-diff-char]` with nothing in it).
- *
- * The gutter mark is for a review, which has room for it and exists to look at changes; the
- * page itself keeps its margin marker. A review pane leaves a gutter of its own for it. */
-
-.prose ins[data-diff] [data-diff-char],
-.prose del[data-diff] [data-diff-char] {
-  padding-inline: 0.12em;
-  outline: 1px solid color-mix(in oklab, currentcolor 35%, transparent);
-  outline-offset: 0;
-}
-
-.prose ins[data-diff='added'] [data-diff-char]:empty,
-.prose del[data-diff='removed'] [data-diff-char]:empty {
-  display: inline-block;
-  width: 0.2em;
-  height: 1.15em;
-  padding: 0;
-  margin-inline: 0.04em;
-  border-radius: 1px;
-  outline: none;
-  vertical-align: text-bottom;
-}
-
-.prose ins[data-diff='added'] [data-diff-char]:empty {
-  background-color: var(--change-added);
-}
-
-.prose del[data-diff='removed'] [data-diff-char]:empty {
-  background-color: var(--change-removed);
-}
-
-/* The mark in a review pane's gutter: the margin marker, redrawn as a small badge. */
-[data-pane] .prose > [data-change]:not(.table-block)::after {
-  content: '≠' / '';
-  inset-block: 0.2em auto;
-  inset-inline-end: calc(100% + 0.6rem);
-  display: grid;
-  place-items: center;
-  width: 1.3rem;
-  min-height: 0;
-  height: 1.3rem;
-  padding: 0;
-  border: 0;
-  border-radius: var(--radius-sm);
-  background-color: color-mix(in oklab, var(--change-colour) 16%, transparent);
-  font-family: var(--font-mono);
-  font-size: var(--text-sm);
-  font-weight: 700;
-  line-height: 1;
-  letter-spacing: 0;
-  text-transform: none;
-}
-
-[data-pane] .prose > [data-change='added']:not(.table-block)::after {
-  content: '+' / '';
-}
-
-[data-pane] .prose > [data-change='removed']:not(.table-block)::after {
-  content: '−' / '';
-}
-
-[data-pane] .prose > [data-change='moved']:not(.table-block)::after {
-  content: '↕' / '';
 }

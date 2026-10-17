@@ -1,7 +1,6 @@
-import { and, asc, count, eq, gt, inArray, isNull, or, sql } from 'drizzle-orm'
+import { and, eq, inArray, sql } from 'drizzle-orm'
 
 import type {
-  ChildPage,
   CollectionId,
   CreateDocumentInput,
   CreateDocumentOutcome,
@@ -58,8 +57,17 @@ interface DocumentRecord extends Record<string, unknown> {
   head_revision: string | null
   created_by: string | null
   updated_by: string | null
-  created_at: Date
-  updated_at: Date
+  /**
+   * Drizzle reads a timestamp in raw SQL as the driver's text, not as the
+   * `Date` its query builder returns, so a recursive query's rows arrive with
+   * strings here and are read into dates below.
+   */
+  created_at: Date | string
+  updated_at: Date | string
+}
+
+function toDate(value: Date | string): Date {
+  return new Date(value)
 }
 
 function fromRecord(record: DocumentRecord): DocumentRow {
@@ -78,8 +86,8 @@ function fromRecord(record: DocumentRecord): DocumentRow {
     headRevision: record.head_revision as RevisionId | null,
     createdBy: record.created_by as UserId | null,
     updatedBy: record.updated_by as UserId | null,
-    createdAt: record.created_at,
-    updatedAt: record.updated_at,
+    createdAt: toDate(record.created_at),
+    updatedAt: toDate(record.updated_at),
   }
 }
 
@@ -190,52 +198,6 @@ export function createDocumentRepository(db: DrizzleClient): DocumentRepository 
       return rows.map(toDocumentRow)
     },
 
-    async listChildren({
-      workspaceId,
-      collectionId,
-      parentId,
-      after,
-      limit,
-    }: ChildPage): Promise<readonly DocumentRow[]> {
-      const rows = await db
-        .select()
-        .from(documents)
-        .where(
-          and(
-            eq(documents.workspaceId, workspaceId),
-            eq(documents.collectionId, collectionId),
-            parentId === null ? isNull(documents.parentId) : eq(documents.parentId, parentId),
-            after === null
-              ? undefined
-              : or(
-                  gt(documents.createdAt, after.createdAt),
-                  and(eq(documents.createdAt, after.createdAt), gt(documents.id, after.id)),
-                ),
-          ),
-        )
-        .orderBy(asc(documents.createdAt), asc(documents.id))
-        .limit(limit)
-      return rows.map(toDocumentRow)
-    },
-
-    async countChildren(
-      parentIds: readonly DocumentId[],
-    ): Promise<ReadonlyMap<DocumentId, number>> {
-      if (parentIds.length === 0) return new Map()
-      const rows = await db
-        .select({ parentId: documents.parentId, count: count() })
-        .from(documents)
-        .where(inArray(documents.parentId, [...parentIds]))
-        .groupBy(documents.parentId)
-      const counts = new Map<DocumentId, number>()
-      for (const { parentId, count: total } of rows) {
-        /* v8 ignore next -- the `IN` filter above never matches a null parent; the guard narrows the column's type. */
-        if (parentId === null) continue
-        counts.set(parentId as DocumentId, total)
-      }
-      return counts
-    },
-
     async listByIds(ids: readonly DocumentId[]): Promise<readonly DocumentRow[]> {
       if (ids.length === 0) return []
       const rows = await db
@@ -259,6 +221,37 @@ export function createDocumentRepository(db: DrizzleClient): DocumentRepository 
         SELECT * FROM chain ORDER BY depth
       `)
       return rows.map(fromRecord)
+    },
+
+    /**
+     * One recursive walk down the document tree, bounded by the depth and by
+     * `limit`, for a child pages list (ADR-056). The cycle guard is the depth
+     * itself: a parent chain is acyclic (`checkParent`), and a walk can never
+     * go further than the six levels a list may ask for.
+     *
+     * The outer query has no `ORDER BY`, so PostgreSQL evaluates only as many
+     * rows of the recursive query as the `LIMIT` fetches: a page with a
+     * hundred thousand pages under it costs `limit` rows, not the subtree. The
+     * walk runs a level at a time, so what it stops at is the nearest levels;
+     * they are put in level order here, where ordering costs nothing.
+     */
+    async listDescendants(
+      id: DocumentId,
+      depth: number,
+      limit: number,
+    ): Promise<readonly DocumentRow[]> {
+      const { rows } = await db.execute<DocumentRecord & { level: number }>(sql`
+        WITH RECURSIVE subtree AS (
+          SELECT d.*, 1 AS level FROM documents d WHERE d.parent_id = ${id}
+          UNION ALL
+          SELECT child.*, subtree.level + 1
+          FROM documents child
+          JOIN subtree ON child.parent_id = subtree.id
+          WHERE subtree.level < ${depth}
+        )
+        SELECT * FROM subtree LIMIT ${limit}
+      `)
+      return rows.toSorted((left, right) => left.level - right.level).map(fromRecord)
     },
 
     async update(id: DocumentId, patch: UpdateDocumentPatch, now: Date): Promise<DocumentRow> {

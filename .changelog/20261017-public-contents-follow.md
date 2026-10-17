@@ -1,0 +1,1 @@
+Added: on the public site, "On this page" now marks the section being read as you scroll, as the signed-in reader does: the link is set in the ink, slightly heavier, with an accent bar beside it, and the last section is marked when you reach the end of the page.

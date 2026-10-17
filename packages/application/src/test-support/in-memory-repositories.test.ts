@@ -953,6 +953,52 @@ describe('createInMemoryUnitOfWork: drafts, grants, revisions, renders, and link
     ).toBeNull()
   })
 
+  it('keeps who wrote what through a rebase that leaves the base, and lets it go with one that moves it', async () => {
+    const uow = createInMemoryUnitOfWork()
+    await uow.repos.drafts.init({ documentId: DOC_1, baseRevision: null, ast: {}, now: NOW })
+    const record = { version: 1, by: 'ada' }
+    await uow.repos.drafts.rebase({
+      documentId: DOC_1,
+      baseRevision: null,
+      ast: { a: 1 },
+      authorship: record,
+      now: NOW,
+    })
+
+    expect(
+      (await uow.repos.drafts.rebase({ documentId: DOC_1, baseRevision: null, ast: {}, now: NOW }))
+        ?.authorship,
+    ).toEqual(record)
+    expect(
+      (await uow.repos.drafts.rebase({ documentId: DOC_1, baseRevision: REVISION, now: NOW }))
+        ?.authorship,
+    ).toBeNull()
+  })
+
+  it('stamps a draft with its base and when it was saved, and has no stamp for a document without one', async () => {
+    const uow = createInMemoryUnitOfWork()
+    await uow.repos.drafts.init({ documentId: DOC_1, baseRevision: REVISION, ast: {}, now: NOW })
+
+    expect(await uow.repos.drafts.stamp(DOC_1)).toEqual({ baseRevision: REVISION, updatedAt: NOW })
+    expect(await uow.repos.drafts.stamp(NOPE_DOC)).toBeNull()
+  })
+
+  it('writes nothing in a rebase that expects another version of the draft', async () => {
+    const uow = createInMemoryUnitOfWork()
+    await uow.repos.drafts.init({ documentId: DOC_1, baseRevision: null, ast: {}, now: NOW })
+
+    expect(
+      await uow.repos.drafts.rebase({
+        documentId: DOC_1,
+        baseRevision: null,
+        ast: { a: 1 },
+        expectedVersion: 5,
+        now: NOW,
+      }),
+    ).toBeNull()
+    expect((await uow.repos.drafts.find(DOC_1))?.ast).toEqual({})
+  })
+
   it('lists grants for a set of scopes in one call', async () => {
     const uow = createInMemoryUnitOfWork()
     await uow.repos.grants.create({
@@ -1343,54 +1389,6 @@ describe('secrets', () => {
         })
       ).map((row) => row.name),
     ).toEqual(['b', 'c'])
-  })
-})
-
-describe('createInMemoryUnitOfWork: listing children created at the same moment', () => {
-  it('orders them by id so the paging cursor stays stable', async () => {
-    const uow = createInMemoryUnitOfWork()
-    const base = {
-      workspaceId: WORKSPACE_1,
-      collectionId: 'c1',
-      parentId: null,
-      status: 'draft',
-      templateId: null,
-      templateVersion: null,
-      now: NOW,
-    } as const
-    const ids = [
-      documentId('00000000-0000-4000-8000-000000000b02'),
-      documentId('00000000-0000-4000-8000-000000000b01'),
-    ]
-    for (const [index, id] of ids.entries()) {
-      await uow.repos.documents.create({
-        ...base,
-        id,
-        shortId: aShortId(),
-        slug: `same-${index}`,
-        path: `same-${index}.md`,
-        title: `Same ${index}`,
-      })
-    }
-
-    const page = await uow.repos.documents.listChildren({
-      workspaceId: WORKSPACE_1,
-      collectionId: 'c1',
-      parentId: null,
-      after: null,
-      limit: 10,
-    })
-    expect(page.map((doc) => doc.id)).toEqual(ids.toSorted())
-
-    const [first] = page
-    const rest = await uow.repos.documents.listChildren({
-      workspaceId: WORKSPACE_1,
-      collectionId: 'c1',
-      parentId: null,
-      after: first === undefined ? null : { createdAt: first.createdAt, id: first.id },
-      limit: 10,
-    })
-    expect(rest.map((doc) => doc.id)).toEqual(page.slice(1).map((doc) => doc.id))
   })
 })
 

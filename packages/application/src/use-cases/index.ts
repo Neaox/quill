@@ -13,7 +13,9 @@ export { createAuthorizer, toGrants } from './authorizer.ts'
 export type {
   AttachmentRevisedPayload,
   DocumentCreatedPayload,
+  DocumentDeletedPayload,
   DocumentMovedPayload,
+  DocumentNestedPayload,
   DocumentPublishedPayload,
   DocumentRenamedPayload,
   MailRequestedPayload,
@@ -24,7 +26,9 @@ export type {
 export {
   ATTACHMENT_REVISED,
   DOCUMENT_CREATED,
+  DOCUMENT_DELETED,
   DOCUMENT_MOVED,
+  DOCUMENT_NESTED,
   DOCUMENT_PUBLISHED,
   DOCUMENT_RENAMED,
   EVENT_PAYLOAD_VERSION,
@@ -33,7 +37,9 @@ export {
   REVIEW_REQUESTED,
   REVIEW_WITHDRAWN,
   parseAttachmentRevised,
+  parseDocumentDeleted,
   parseDocumentMoved,
+  parseDocumentNested,
   parseDocumentPublished,
   parseDocumentRenamed,
   parseMailRequested,
@@ -62,7 +68,10 @@ export {
   workspaceLinkReferences,
 } from './document-path.ts'
 
-export { canonicaliseLinks } from './canonical-links.ts'
+export { canonicaliseLinks, resolveDocumentReferences } from './canonical-links.ts'
+
+export type { Replacement, SurfaceDocument, SurfaceLink } from './surface-links.ts'
+export { surfaceLinkRewriter, surfaceReplacement } from './surface-links.ts'
 
 export type { AllowedMediaType, ImageMediaType, SniffedMediaType } from './media-types.ts'
 export {
@@ -99,6 +108,7 @@ export {
   attachmentIdsIn,
   attachmentUrl,
   deleteAttachment,
+  documentsShowingAttachment,
   getAttachment,
   listAttachments,
   reviseAttachment,
@@ -246,14 +256,33 @@ export {
   GROUP_AUDIT_EVENTS,
   listGroupMembers,
   listGroups,
-  PEOPLE_SEARCH_LIMIT,
+  GROUP_PEOPLE_SEARCH_LIMIT,
   removeGroupMember,
   renameGroup,
-  searchPeople,
+  searchPeopleForGroups,
 } from './groups.ts'
 
 export type { RestoreRevisionCommand, RestoreRevisionResult } from './restore-revision.ts'
 export { restoreRevision } from './restore-revision.ts'
+
+export type { RenderDraftCommand, RenderDraftResult } from './render-draft.ts'
+export { renderDraft } from './render-draft.ts'
+
+export type {
+  RevertDraftChangesCommand,
+  RevertDraftChangesDependencies,
+  RevertDraftChangesResult,
+} from './revert-draft-changes.ts'
+export { revertDraftChanges } from './revert-draft-changes.ts'
+export { stampDraftAuthorship } from './stamp-draft-authorship.ts'
+export type {
+  PutBackDraftChangesCommand,
+  PutBackDraftChangesDependencies,
+  PutBackDraftChangesResult,
+  ReplaceDraftContentCommand,
+  ReplaceDraftContentResult,
+} from './put-back-draft-changes.ts'
+export { putBackDraftChanges, replaceDraftContent } from './put-back-draft-changes.ts'
 
 export type {
   ReadPublishedCommand,
@@ -261,9 +290,6 @@ export type {
   ReadPublishedResult,
 } from './read-published.ts'
 export { readPublished } from './read-published.ts'
-
-export type { RenderDraftCommand, RenderDraftResult } from './render-draft.ts'
-export { renderDraft } from './render-draft.ts'
 
 export type {
   RenderDocumentCommand,
@@ -285,7 +311,6 @@ export { createVersionedReader } from './versioned-reader.ts'
 
 export type {
   EnvelopeDependencies,
-  DraftView,
   EnvelopeView,
   GetEnvelopeCommand,
   GetEnvelopeResult,
@@ -296,6 +321,15 @@ export type {
   ReviewView,
 } from './get-envelope.ts'
 export { getEnvelope, reviewOf } from './get-envelope.ts'
+
+export type { FactsView, LifecycleView, OwnerView, PersonView } from './document-facts.ts'
+export {
+  factsOf,
+  namePeople,
+  PEOPLE_SEARCH_LIMIT,
+  readPublicFacts,
+  searchPeople,
+} from './document-facts.ts'
 
 export type {
   GetHistoryCommand,
@@ -314,25 +348,6 @@ export type {
 export { compareRevisions, compareRevisionSources, DRAFT } from './compare-revisions.ts'
 
 export type {
-  RevertDraftChangesCommand,
-  RevertDraftChangesDependencies,
-  RevertDraftChangesResult,
-} from './revert-draft-changes.ts'
-export { revertDraftChanges } from './revert-draft-changes.ts'
-export { stampDraftAuthorship } from './stamp-draft-authorship.ts'
-
-export type {
-  ListTreeChildrenCommand,
-  ListTreeChildrenDependencies,
-  ListTreeChildrenResult,
-  TreeChild,
-} from './list-tree-children.ts'
-export { listTreeChildren } from './list-tree-children.ts'
-
-export type { GetTreePositionDependencies, GetTreePositionResult } from './get-tree-position.ts'
-export { getTreePosition } from './get-tree-position.ts'
-
-export type {
   CollectionTree,
   GetWorkspaceTreeCommand,
   GetWorkspaceTreeResult,
@@ -340,6 +355,16 @@ export type {
   WorkspaceTreeDependencies,
 } from './get-workspace-tree.ts'
 export { getWorkspaceTree } from './get-workspace-tree.ts'
+export { openDraft, type OpenDraftDependencies, type OpenDraftResult } from './open-draft.ts'
+export {
+  childrenPage,
+  windowTree,
+  type ChildrenOwner,
+  type ChildrenPageResult,
+  type TreeWindowOptions,
+  type WindowedCollection,
+  type WindowedNode,
+} from './tree-window.ts'
 
 export type {
   GetHomeSummaryCommand,
@@ -542,6 +567,19 @@ export {
   readPersonPreferences,
   updatePersonPreferences,
 } from './person-preferences.ts'
+
+export type {
+  ChildPageNode,
+  ChildPagesAudience,
+  ChildPagesCache,
+  ChildPagesDependencies,
+  ChildPagesOptions,
+  ChildPagesSort,
+  ChildPagesStructure,
+  ListChildPagesCommand,
+  ListChildPagesResult,
+} from './child-pages.ts'
+export { childPagesKey, listChildPages, MAX_CHILD_PAGES_DEPTH } from './child-pages.ts'
 
 export type { ReviewerAccessProbe, ReviewerRef } from './review-access.ts'
 export { createReviewerAccessProbe } from './review-access.ts'

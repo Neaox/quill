@@ -43,11 +43,14 @@ export interface CodeMirrorMounting {
   watch(element: Element, block: WatchedBlock): () => void
 }
 
+/** What there is to undo before anything has been done. */
+const nothing = (): void => undefined
+
 /** Every block opened as it is drawn: the behaviour where nothing can say what is near. */
 export const eagerMounting: CodeMirrorMounting = {
   watch: (_element, block) => {
     block.open()
-    return () => undefined
+    return nothing
   },
 }
 
@@ -175,13 +178,13 @@ export function createLazyCodeMirror(options: LazyCodeMirrorOptions): LazyCodeMi
   options.parent.append(pre)
 
   let registry: TokenHighlightRegistry | null | undefined
-  let unpaint: (() => void) | undefined
+  let unpaint = nothing
   let painted = false
 
   /** Colours the static block with the reader's ranges, over its one text node. */
   const paint = (): void => {
-    unpaint?.()
-    unpaint = undefined
+    unpaint()
+    unpaint = nothing
     painted = true
     const grammar = language?.grammar
     if (destroyed || live !== undefined || grammar === undefined) return
@@ -203,7 +206,7 @@ export function createLazyCodeMirror(options: LazyCodeMirrorOptions): LazyCodeMi
     )
   }
 
-  let stopWatching: (() => void) | undefined
+  let stopWatching = nothing
 
   const open = (): CodeMirrorHost => {
     if (live !== undefined) return live

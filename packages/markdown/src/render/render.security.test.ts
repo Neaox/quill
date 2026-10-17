@@ -19,6 +19,14 @@ const render = (markdown: string): string => renderHtml(parseMarkdown(markdown))
 // quote, whitespace, an attribute name, `=`, quote — never legitimately occurs;
 // its presence would mean an attacker's value closed the tag's real attribute
 // and opened their own.
+/** An input element, as hast-util-sanitize meets one. */
+const input = (properties: Properties): Element => ({
+  type: 'element',
+  tagName: 'input',
+  properties,
+  children: [],
+})
+
 const ATTRIBUTE_BREAKOUT = /"\s+on[a-z-]+\s*=\s*"/i
 
 /**
@@ -32,13 +40,6 @@ const ATTRIBUTE_BREAKOUT = /"\s+on[a-z-]+\s*=\s*"/i
  * renderer itself builds) still comes through, and that the hostile part
  * survives only as inert, escaped text.
  */
-const input = (properties: Properties): Element => ({
-  type: 'element',
-  tagName: 'input',
-  properties,
-  children: [],
-})
-
 describe('renderHtml: adversarial corpus', () => {
   it('escapes a raw <script> block to inert text', () => {
     const html = render('Before.\n\n<script>alert(document.cookie)</script>\n\nAfter.\n')
@@ -401,6 +402,21 @@ describe('renderHtml: attachment images', () => {
     const html = render('[The runbook](/api/attachments/abc)\n')
 
     expect(html).toContain('<a href="/api/attachments/abc">The runbook</a>')
+  })
+
+  it('normalises an image source as it does a link, so a backslash cannot leave the origin', () => {
+    // Browsers read `/\host` as `//host`; encoded, it is a path on this origin.
+    for (const markdown of [
+      '![i](/\\evil.example/x.png)\n',
+      '![i](/\\evil.example/x.png "A caption")\n',
+      'Inline ![i](/\\evil.example/x.png) image.\n',
+    ]) {
+      const html = render(markdown)
+
+      expect(html).not.toContain('src="/\\')
+      expect(html).toContain('src="/%5Cevil.example/x.png"')
+    }
+    expect(render('![i](<a b%20c>)\n')).toContain('src="a%20b%20c"')
   })
 
   it('does not let the shape be a way past the rules that already hold', () => {

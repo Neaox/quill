@@ -52,7 +52,7 @@ describe('enhanceComparison', () => {
     const root = article(
       `<p data-change="added" data-change-id="c1">One.</p>${paragraphs(10)}<p data-change="removed" data-change-id="c2">Two.</p>`,
     )
-    const scroll = vi.fn<() => void>()
+    const scroll = vi.fn<(options?: ScrollIntoViewOptions) => void>()
     HTMLElement.prototype.scrollIntoView = scroll
     const surface = enhanceComparison(root)
 

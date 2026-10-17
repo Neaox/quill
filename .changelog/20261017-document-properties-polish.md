@@ -1,0 +1,6 @@
+Added: Every document now has a byline under its title, in the app, on share pages and on the public site. It shows the owners by name, the status in words, when the document was last reviewed and when it is next due, with "Review overdue" spelled out, and the tags. Tags link to the search for that tag.
+Added: In the editor, document properties are edited in place. Pick owners from the people in Quill by name, add tags as tokens (paste a list to add several), choose the status from a menu, and set the review cycle from presets or mark it "Reviewed today". "Add property" offers only what is not set yet, and "All properties" lists everything, including template questions and fields Quill has no control for. The front matter can also be edited as YAML there.
+Added: Undo and redo cover property changes, from the document or from the properties line.
+Changed: Share links and the public site show only status, last review and tags. They never show who owns a document.
+Fixed: Dates from front matter no longer appear as raw keys such as "review.lastReviewed" above a document's title.
+Security: The people search behind the owner picker only answers someone who can edit the document, and a name is only shown for an address that has been verified.

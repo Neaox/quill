@@ -1,13 +1,7 @@
 import { attachmentIdsIn, readPublished } from '@quill/application'
 import type { ReadPublishedDependencies, SearchIndex } from '@quill/application'
-import { isDocumentStatus } from '@quill/domain'
-import type {
-  CollectionId,
-  DocumentId,
-  DocumentStatus,
-  RevisionId,
-  WorkspaceId,
-} from '@quill/domain'
+import { isDocumentStatus, isLifecycleState } from '@quill/domain'
+import type { CollectionId, DocumentId, RevisionId, WorkspaceId } from '@quill/domain'
 import { parseDocument } from '@quill/markdown'
 import type { CoreFrontMatter } from '@quill/markdown'
 import { projectIndexableDocument } from '@quill/search'
@@ -118,9 +112,21 @@ function toCoreFrontMatter(
   return {
     id: documentId,
     title,
-    ...(isDocumentStatus(status) ? { status: status satisfies DocumentStatus } : {}),
+    // A legacy status or a lifecycle state; the projection tells them apart.
+    ...(isDocumentStatus(status) || isLifecycleState(status) ? { status } : {}),
     tags: strings(frontMatter['tags']),
     owners: strings(frontMatter['owners']),
+    // What a child pages list shows under the title (ADR-056).
+    ...listed(frontMatter),
+  }
+}
+
+/** The description and icon, each only when it is text, as the projection reads them. */
+function listed(frontMatter: Record<string, unknown>): { description?: string; icon?: string } {
+  const { description, icon } = frontMatter
+  return {
+    ...(typeof description === 'string' ? { description } : {}),
+    ...(typeof icon === 'string' ? { icon } : {}),
   }
 }
 

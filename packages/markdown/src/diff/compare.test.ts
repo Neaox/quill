@@ -206,6 +206,15 @@ describe('compareDocuments', () => {
   })
 })
 
+/**
+ * How many random edits the corpus property tries. Each one parses, edits,
+ * serialises and compares a whole corpus file, so CI, where the suite runs
+ * under coverage on two cores, tries a quarter of them; a local run tries all,
+ * and `QUILL_FULL_PROPERTIES=1` asks CI for all of them too.
+ */
+const CORPUS_EDIT_RUNS =
+  process.env['CI'] === undefined || process.env['QUILL_FULL_PROPERTIES'] === '1' ? 60 : 15
+
 describe('the corpus, compared', () => {
   const corpus = fileURLToPath(new URL('../../corpus/', import.meta.url))
   const files = readdirSync(corpus)
@@ -243,7 +252,7 @@ describe('the corpus, compared', () => {
         expect(side(result.tree, 'after')).toBe(plain(after))
         expect(side(result.tree, 'before')).toBe(plain(source))
       }),
-      { numRuns: 60 },
+      { numRuns: CORPUS_EDIT_RUNS },
     )
   })
 })

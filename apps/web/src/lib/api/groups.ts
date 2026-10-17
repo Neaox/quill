@@ -53,7 +53,7 @@ export function useGroupMembers(groupId: string | undefined) {
 export function usePeopleSearch(query: string, options: { readonly enabled?: boolean } = {}) {
   const client = useApiClient()
   return useQuery({
-    queryKey: queryKeys.people(query),
+    queryKey: queryKeys.groupPeople(query),
     queryFn: async (): Promise<readonly PersonDto[]> =>
       (
         await request<{ readonly people: readonly PersonDto[] }>(

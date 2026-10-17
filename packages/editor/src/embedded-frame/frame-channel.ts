@@ -38,11 +38,16 @@ export interface FrameCodec<Outbound> {
 /** Why a message was dropped, for the log and for tests; never shown to a reader. */
 export type FrameRejection = 'origin' | 'source' | 'undecodable' | 'shape'
 
+/** What a message is posted to: the frame's window, as far as the channel needs one. */
+export interface FrameTarget {
+  postMessage(message: unknown, targetOrigin: string): void
+}
+
 export interface FrameChannelOptions<Inbound extends TSchema, Outbound> {
   /** The window that listens: the page's own. */
   readonly host: Pick<Window, 'addEventListener' | 'removeEventListener'>
   /** The embedded editor's window, read when a message arrives or is sent; null before it loads. */
-  readonly target: () => Pick<Window, 'postMessage'> | null
+  readonly target: () => FrameTarget | null
   /** The only origin messages are accepted from and sent to. */
   readonly origin: string
   /** Every message the editor may send. */

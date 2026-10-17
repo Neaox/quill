@@ -112,6 +112,21 @@ describe('unknown labels in the editor (ADR-037)', () => {
     editor.destroy()
   })
 
+  it('keeps the words beside a warning as typing goes on around it', () => {
+    // Drawn again, the words are taken out of the paragraph and put back on
+    // every keystroke, which lays the page out twice a key (section 31).
+    const editor = new Editor({
+      element: document.createElement('div'),
+      extensions: buildExtensions({ labels: [...LABELS] }),
+      content: harness.state('On :airbn[Airbnb] today.\n').doc.toJSON(),
+    })
+    const words = editor.view.dom.querySelector('.sr-only')
+    editor.view.dispatch(editor.state.tr.insertText('x', 2))
+    editor.view.dispatch(editor.state.tr.insertText('y', editor.state.doc.content.size - 1))
+    expect(editor.view.dom.querySelector('.sr-only')).toBe(words)
+    editor.destroy()
+  })
+
   it('runs only in an editor told the organisation’s labels', () => {
     expect(named(buildExtensions())).not.toContain(UNKNOWN_LABELS)
     expect(named(buildExtensions({ labels: ['airbnb'] }))).toContain(UNKNOWN_LABELS)

@@ -6,7 +6,20 @@ import { diffSequences } from './sequence.ts'
 
 const identity = (value: string) => value
 
-/** The length of the longest common subsequence of two lists. */
+/** Replays an edit script: what `before` becomes when the script is applied. */
+function apply(before: readonly string[], after: readonly string[], edits: readonly Edit[]) {
+  return edits.flatMap((edit) => {
+    if (edit.kind === 'removed') return []
+    if (edit.kind === 'added') return [after[edit.after]]
+    return [before[edit.before]]
+  })
+}
+
+function kinds(edits: readonly Edit[]): string {
+  return edits.map((edit) => edit.kind[0]).join('')
+}
+
+/** The length of the longest common subsequence, by dynamic programming. */
 function lcs(left: readonly string[], right: readonly string[]): number {
   const table = Array.from({ length: left.length + 1 }, () =>
     Array.from({ length: right.length + 1 }, () => 0),
@@ -21,19 +34,6 @@ function lcs(left: readonly string[], right: readonly string[]): number {
     }
   }
   return table[0]?.[0] ?? 0
-}
-
-/** Replays an edit script: what `before` becomes when the script is applied. */
-function apply(before: readonly string[], after: readonly string[], edits: readonly Edit[]) {
-  return edits.flatMap((edit) => {
-    if (edit.kind === 'removed') return []
-    if (edit.kind === 'added') return [after[edit.after]]
-    return [before[edit.before]]
-  })
-}
-
-function kinds(edits: readonly Edit[]): string {
-  return edits.map((edit) => edit.kind[0]).join('')
 }
 
 describe('diffSequences', () => {
@@ -73,18 +73,16 @@ describe('diffSequences', () => {
         const edits = diffSequences(before, after, identity)
         expect(apply(before, after, edits)).toEqual(after)
         // Every equal pair really is equal, and both sides are walked in order.
-        const equalPairs = edits.filter((edit) => edit.kind === 'equal')
-        expect(equalPairs.map((edit) => before[edit.before])).toEqual(
-          equalPairs.map((edit) => after[edit.after]),
+        const pairs = edits.flatMap((edit) =>
+          edit.kind === 'equal' ? [[before[edit.before], after[edit.after]] as const] : [],
         )
-        const walkedBefore = edits.flatMap((edit) => (edit.kind === 'added' ? [] : [edit.before]))
-        const walkedAfter = edits.flatMap((edit) => (edit.kind === 'removed' ? [] : [edit.after]))
-        expect(walkedBefore).toEqual(walkedBefore.map((_, index) => index))
-        expect(walkedAfter).toEqual(walkedAfter.map((_, index) => index))
-        const lastBefore = walkedBefore.length - 1
-        const lastAfter = walkedAfter.length - 1
-        expect(lastBefore).toBe(before.length - 1)
-        expect(lastAfter).toBe(after.length - 1)
+        expect(pairs.map(([left]) => left)).toEqual(pairs.map(([, right]) => right))
+        expect(edits.flatMap((edit) => (edit.kind === 'added' ? [] : [edit.before]))).toEqual(
+          before.map((_, index) => index),
+        )
+        expect(edits.flatMap((edit) => (edit.kind === 'removed' ? [] : [edit.after]))).toEqual(
+          after.map((_, index) => index),
+        )
       }),
     )
   })

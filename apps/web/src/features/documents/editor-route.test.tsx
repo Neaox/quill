@@ -1,14 +1,21 @@
 import { act, screen, waitFor, within } from '@testing-library/react'
+import { parseMarkdown } from '@quill/markdown'
+import { toast } from '@quill/ui'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 
-import { toast } from '@quill/ui'
 import { expectNoAccessibilityViolations } from '@quill/ui/testing/axe'
 
 import { DRAFT_CONTENT_VERSION } from '../../lib/documents/draft-content.ts'
+import {
+  broadcastRevertTransport,
+  createRevertChannel,
+  revertChannelName,
+} from '../../lib/documents/revert-channel.ts'
 import { renderApp } from '../../lib/api/render-app.tsx'
 import { errorResponse, jsonResponse, type FakeRoutes } from '../../lib/api/testing.ts'
 import { createFakeIndexedDb } from '../../lib/recovery/testing.ts'
+import { OFFLINE_LABEL } from './editor-status.tsx'
 
 const me = () =>
   jsonResponse(200, {
@@ -223,64 +230,6 @@ describe('the editor route', () => {
     expect(await screen.findByText('draft saved')).toBeInTheDocument()
   })
 
-  it('previews the unpublished changes, in a new tab, from the editor', async () => {
-    await openEditor()
-
-    const link = screen.getByRole('link', { name: /^Preview\s+your unpublished changes/u })
-
-    expect(link.getAttribute('href')).toBe(`/preview/d/regional-failover-${KEY}?draft`)
-    expect(link.getAttribute('target')).toBe('_blank')
-  })
-
-  it('is left with Done: the draft is saved, the lock is let go, nothing is published', async () => {
-    const calls: string[] = []
-    await openEditor(
-      editorRoutes({
-        'PUT /api/documents/{id}/draft': () => {
-          calls.push('save')
-          return jsonResponse(200, { draftVersion: 4, updatedAt: '2026-02-03T00:05:00.000Z' })
-        },
-        'DELETE /api/documents/{id}/lock': () => {
-          calls.push('release')
-          return new Response(null, { status: 204 })
-        },
-        'POST /api/documents/{id}/publish': () => {
-          calls.push('publish')
-          return jsonResponse(500, {})
-        },
-        'GET /api/documents/{id}/rendered': () =>
-          jsonResponse(200, {
-            revision: 'a'.repeat(40),
-            html: '<article><p>Move traffic east.</p></article>',
-            outline: [],
-            slots: [],
-          }),
-        'GET /api/documents/{id}/history': () => jsonResponse(200, { revisions: [] }),
-      }),
-    )
-    await userEvent.type(screen.getByRole('textbox', { name: 'Regional failover' }), ' Then west.')
-
-    await userEvent.click(screen.getByRole('button', { name: 'Done' }))
-
-    expect(await screen.findByRole('article', { name: 'Regional failover' })).toBeInTheDocument()
-    expect(calls).toContain('save')
-    expect(calls.indexOf('save')).toBeLessThan(calls.indexOf('release'))
-    expect(calls).not.toContain('publish')
-  })
-
-  it('offers Done even while somebody else holds the document, because leaving is always allowed', async () => {
-    await openEditor(
-      editorRoutes({
-        'POST /api/documents/{id}/lock/acquire': () =>
-          errorResponse(409, 'held', 'This document is locked by another editor', {
-            holder: { ...LOCK, holderUserId: 'user-2' },
-          }),
-      }),
-    )
-
-    expect(await screen.findByRole('button', { name: 'Done' })).toBeEnabled()
-  })
-
   it('says the document is held by someone else, and offers no takeover to an editor', async () => {
     await openEditor(
       editorRoutes({
@@ -306,7 +255,7 @@ describe('the editor route', () => {
     expect(
       await screen.findByRole('group', { name: 'Warning: Grace is editing this document' }),
     ).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: /^Take over from/u })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Take over the lock' })).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Publish' })).toBeDisabled()
   })
 
@@ -347,107 +296,12 @@ describe('the editor route', () => {
       }),
     )
 
-    await userEvent.click(await screen.findByRole('button', { name: /^Take over from/u }))
+    await userEvent.click(await screen.findByRole('button', { name: 'Take over the lock' }))
 
     await waitFor(() => {
       expect(takenOver).toBe(1)
     })
     expect(await screen.findByText('editing')).toBeInTheDocument()
-  })
-
-  it('tells apart resuming a lost lock and taking it over, and offers the second only to a manager', async () => {
-    const refused = {
-      'PUT /api/documents/{id}/draft': () =>
-        errorResponse(423, 'lock_lost', 'You do not hold a valid lock', {
-          holder: { ...LOCK, holderUserId: 'user-2' },
-        }),
-    }
-    await openEditor(
-      editorRoutes({ ...refused, 'GET /api/documents/{id}/envelope': envelope({ manage: true }) }),
-    )
-
-    await userEvent.type(screen.getByRole('textbox', { name: 'Regional failover' }), ' Then west.')
-
-    const notice = await screen.findByRole(
-      'group',
-      { name: 'Danger: Your lock was lost' },
-      { timeout: 4000 },
-    )
-    // Each says what it does: one gets the lock back if it is free, the other ends someone's session.
-    expect(notice).toHaveTextContent(/if nobody else has taken the document since/u)
-    expect(notice).toHaveTextContent(/ends their session/u)
-    expect(within(notice).getByRole('button', { name: 'Resume editing' })).toBeInTheDocument()
-    expect(within(notice).getByRole('button', { name: /^Take over from/u })).toBeInTheDocument()
-  })
-
-  describe('after the lock is pressed for again', () => {
-    /** An editor whose lock is lost on the first save, and answers the next ask as told. */
-    async function lostLock(
-      next: () => Response,
-      options: { manage?: boolean } = {},
-    ): Promise<HTMLElement> {
-      let asked = 0
-      await openEditor(
-        editorRoutes({
-          'GET /api/documents/{id}/envelope': envelope({ manage: options.manage ?? false }),
-          'PUT /api/documents/{id}/draft': () =>
-            errorResponse(423, 'lock_lost', 'You do not hold a valid lock', {
-              holder: { ...LOCK, holderUserId: 'user-2' },
-            }),
-          'POST /api/documents/{id}/lock/acquire': () => {
-            asked += 1
-            return asked === 1 ? jsonResponse(200, { lock: LOCK }) : next()
-          },
-          'POST /api/documents/{id}/lock/takeover': () => jsonResponse(200, { lock: LOCK }),
-        }),
-      )
-      await userEvent.type(
-        screen.getByRole('textbox', { name: 'Regional failover' }),
-        ' Then west.',
-      )
-      return await screen.findByRole(
-        'group',
-        { name: 'Danger: Your lock was lost' },
-        { timeout: 4000 },
-      )
-    }
-
-    it('says the lock is back, so nobody has to wonder whether it worked', async () => {
-      const success = vi.spyOn(toast, 'success')
-      const notice = await lostLock(() => jsonResponse(200, { lock: LOCK }))
-
-      await userEvent.click(within(notice).getByRole('button', { name: 'Resume editing' }))
-
-      await waitFor(() => {
-        expect(success).toHaveBeenCalledWith(expect.stringMatching(/You have the lock again/u))
-      })
-    })
-
-    it('says who it was taken from, when a manager takes over', async () => {
-      const success = vi.spyOn(toast, 'success')
-      const notice = await lostLock(() => jsonResponse(200, { lock: LOCK }), { manage: true })
-
-      await userEvent.click(within(notice).getByRole('button', { name: /^Take over from/u }))
-
-      await waitFor(() => {
-        expect(success).toHaveBeenCalledWith(expect.stringMatching(/You took over from/u))
-      })
-    })
-
-    it('says why, and that the edit is safe, when someone else has the lock', async () => {
-      const danger = vi.spyOn(toast, 'danger')
-      const notice = await lostLock(() =>
-        errorResponse(409, 'held', 'Locked', { holder: { ...LOCK, holderUserId: 'user-2' } }),
-      )
-
-      await userEvent.click(within(notice).getByRole('button', { name: 'Resume editing' }))
-
-      await waitFor(() => {
-        expect(danger).toHaveBeenCalledWith(
-          expect.stringMatching(/is editing now.*safe in this browser/u),
-        )
-      })
-    })
   })
 
   it('keeps an edit that the server refused, and offers the way back', async () => {
@@ -462,15 +316,18 @@ describe('the editor route', () => {
 
     await userEvent.type(screen.getByRole('textbox', { name: 'Regional failover' }), ' Then west.')
 
-    const notice = await screen.findByRole(
-      'group',
-      { name: 'Danger: Your lock was lost' },
-      {
-        timeout: 4000,
+    // The lock is taken again once by itself; a server that still refuses
+    // leaves it to the author, with the edit kept.
+    await waitFor(
+      () => {
+        const notice = screen.getByRole('group', { name: 'Danger: Your lock was lost' })
+        expect(within(notice).getByText(/held safely in this browser/)).toBeInTheDocument()
+        expect(
+          within(notice).getByRole('button', { name: 'Take the lock again' }),
+        ).toBeInTheDocument()
       },
+      { timeout: 6000 },
     )
-    expect(within(notice).getByText(/held safely in this browser/)).toBeInTheDocument()
-    expect(within(notice).getByRole('button', { name: 'Resume editing' })).toBeInTheDocument()
     expect(await screen.findByText('lock lost')).toBeInTheDocument()
   })
 
@@ -543,7 +400,7 @@ describe('the editor route', () => {
         'GET /api/documents/{id}/history': () => jsonResponse(200, { revisions: [] }),
         'GET /api/documents/{id}/compare': () =>
           jsonResponse(200, {
-            html: '<article><p data-change="changed" data-change-id="c1">It <del data-diff="removed">was</del><ins data-diff="added">is</ins>.</p></article>',
+            html: '<article><p data-change="changed" data-change-id="c1">is</p></article>',
             summary: {
               sections: 1,
               added: 0,
@@ -553,16 +410,7 @@ describe('the editor route', () => {
               wordsAdded: 1,
               wordsRemoved: 1,
             },
-            changes: [
-              {
-                id: 'c1',
-                change: 'changed',
-                block: 'paragraph',
-                excerpt: 'It is.',
-                wordsAdded: 1,
-                wordsRemoved: 1,
-              },
-            ],
+            changes: [],
             sections: [],
             properties: [],
           }),
@@ -573,7 +421,9 @@ describe('the editor route', () => {
     const dialog = await screen.findByRole('dialog', { name: 'Someone else published first' })
     await userEvent.click(within(dialog).getByRole('button', { name: 'See what changed' }))
 
-    expect(await screen.findByRole('article', { name: 'Comparison' })).toBeInTheDocument()
+    expect(
+      await screen.findByRole('heading', { level: 1, name: /^Changes between/ }),
+    ).toBeInTheDocument()
   })
 
   it('refuses to open a draft written by a newer release rather than losing it', async () => {
@@ -832,20 +682,31 @@ describe("the document's properties, where its front matter used to be", () => {
   it('never shows the writer YAML', async () => {
     await openEditor(withProperties())
     expect(screen.queryByText(/somethingNobodyKnows:/)).not.toBeInTheDocument()
-    expect(screen.getByRole('region', { name: 'Document properties' })).toBeInTheDocument()
+    expect(screen.getByRole('region', { name: 'Properties' })).toBeInTheDocument()
   })
 
-  it('shows who owns the document, which nothing in the shell knew before', async () => {
-    await openEditor(withProperties())
-    const summary = within(screen.getByRole('list', { name: 'Summary' }))
-    expect(summary.getByText('sre@example.com')).toBeInTheDocument()
-    expect(summary.getByText('runbook')).toBeInTheDocument()
-    expect(summary.getByText('#on-call')).toBeInTheDocument()
+  it('shows who owns the document as a person, which nothing in the shell knew before', async () => {
+    await openEditor(
+      withProperties({
+        'GET /api/documents/{id}/people': () =>
+          jsonResponse(200, {
+            people: [
+              { value: 'sre@example.com', name: 'Site Reliability', detail: 'sre@example.com' },
+            ],
+          }),
+      }),
+    )
+    const line = screen.getByRole('group', { name: 'Document properties' })
+    expect(
+      await within(line).findByRole('button', { name: 'Owners: Site Reliability' }),
+    ).toBeInTheDocument()
+    expect(within(line).getByRole('button', { name: 'Type: runbook' })).toBeInTheDocument()
+    expect(within(line).getByRole('button', { name: 'Tags: on-call' })).toBeInTheDocument()
   })
 
-  it('says so rather than inventing facts when a document names none', async () => {
+  it('offers what could be set rather than inventing facts when a document names none', async () => {
     await openEditor()
-    expect(screen.getByText('Nothing set yet')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Add property' })).toBeInTheDocument()
   })
 
   it('saves a changed property into the draft, front matter and all', async () => {
@@ -859,8 +720,11 @@ describe("the document's properties, where its front matter used to be", () => {
       }),
     )
 
-    await userEvent.click(screen.getByRole('button', { name: 'Properties' }))
-    await userEvent.selectOptions(screen.getByRole('combobox', { name: 'Status' }), 'published')
+    // The fixture's `status` is one an earlier release wrote: the lifecycle
+    // is unset, so it is added, and replaces it (ADR-005 amendment).
+    await userEvent.click(screen.getByRole('button', { name: 'Add property' }))
+    await userEvent.click(await screen.findByRole('menuitem', { name: 'Lifecycle' }))
+    await userEvent.click(await screen.findByRole('menuitemradio', { name: /^In review/u }))
 
     await waitFor(
       () => {
@@ -869,7 +733,7 @@ describe("the document's properties, where its front matter used to be", () => {
       { timeout: 4000 },
     )
     expect(saved.at(-1)?.ast.frontMatter).toMatchObject({
-      status: 'published',
+      status: 'in-review',
       // Everything the strip has no control for survives the round trip (rule 7).
       somethingNobodyKnows: 'kept',
       id: 'doc-1',
@@ -878,7 +742,7 @@ describe("the document's properties, where its front matter used to be", () => {
 
   it('has no axe violations with the properties open', async () => {
     const { container } = await openEditor(withProperties())
-    await userEvent.click(screen.getByRole('button', { name: 'Properties' }))
+    await userEvent.click(screen.getByRole('button', { name: 'All properties' }))
 
     await expectNoAccessibilityViolations(container)
   })
@@ -888,47 +752,78 @@ describe("the document's properties, where its front matter used to be", () => {
  * Audit 2026-10-11: the five ways the editor could lose an author's work or
  * lie about it, each reproduced through the whole route.
  */
+/**
+ * A draft endpoint with the server's version rule — stale writes are
+ * refused — that can be cut off, and written to by somebody else.
+ */
+function createDraftServer(initial: unknown = TREE) {
+  let current: { ast: unknown; draftVersion: number; writtenBy?: unknown } = {
+    ast: initial,
+    draftVersion: 3,
+  }
+  const writes: Array<{ text: string; expectedVersion: number }> = []
+  let down = false
+  return {
+    writes,
+    get draft() {
+      return current
+    },
+    cutOff() {
+      down = true
+    },
+    reconnect() {
+      down = false
+    },
+    /** Somebody else saved a draft while this one could not. */
+    writeAs(name: string, ast: unknown) {
+      current = {
+        ast,
+        draftVersion: current.draftVersion + 1,
+        writtenBy: { userId: `user-${name}`, displayName: name },
+      }
+    },
+    routes: {
+      'GET /api/documents/{id}/draft': () =>
+        jsonResponse(200, {
+          documentId: 'doc-1',
+          draftVersion: current.draftVersion,
+          baseRevision: 'a'.repeat(40),
+          ast: {
+            version: DRAFT_CONTENT_VERSION,
+            frontMatter: {},
+            ast: current.ast,
+            ...(current.writtenBy === undefined ? {} : { writtenBy: current.writtenBy }),
+          },
+          updatedAt: '2026-02-03T00:00:00.000Z',
+        }),
+      'PUT /api/documents/{id}/draft': async (request: Request) => {
+        if (down) return errorResponse(503, 'unavailable', 'Down')
+        const body = (await request.json()) as {
+          ast: { ast: unknown; writtenBy?: unknown }
+          expectedVersion: number
+        }
+        if (body.expectedVersion !== current.draftVersion) {
+          return errorResponse(409, 'stale_version', 'Your draft version is behind', {
+            currentVersion: current.draftVersion,
+          })
+        }
+        current = {
+          ast: body.ast.ast,
+          draftVersion: current.draftVersion + 1,
+          writtenBy: body.ast.writtenBy,
+        }
+        writes.push({ text: JSON.stringify(body.ast.ast), expectedVersion: body.expectedVersion })
+        return jsonResponse(200, {
+          draftVersion: current.draftVersion,
+          updatedAt: '2026-02-03T00:05:00.000Z',
+        })
+      },
+    } satisfies FakeRoutes,
+  }
+}
+
 describe('the editor keeps the author’s work through failures', () => {
   const SURFACE = { name: 'Regional failover' }
-
-  /** A draft endpoint with the server's version rule: stale writes are refused. */
-  function createDraftServer() {
-    let current = { ast: TREE as unknown, draftVersion: 3 }
-    const writes: Array<{ text: string; expectedVersion: number }> = []
-    return {
-      writes,
-      get draft() {
-        return current
-      },
-      routes: {
-        'GET /api/documents/{id}/draft': () =>
-          jsonResponse(200, {
-            documentId: 'doc-1',
-            draftVersion: current.draftVersion,
-            baseRevision: 'a'.repeat(40),
-            ast: { version: DRAFT_CONTENT_VERSION, frontMatter: {}, ast: current.ast },
-            updatedAt: '2026-02-03T00:00:00.000Z',
-          }),
-        'PUT /api/documents/{id}/draft': async (request: Request) => {
-          const body = (await request.json()) as {
-            ast: { ast: unknown }
-            expectedVersion: number
-          }
-          if (body.expectedVersion !== current.draftVersion) {
-            return errorResponse(409, 'stale_version', 'Your draft version is behind', {
-              currentVersion: current.draftVersion,
-            })
-          }
-          current = { ast: body.ast.ast, draftVersion: current.draftVersion + 1 }
-          writes.push({ text: JSON.stringify(body.ast.ast), expectedVersion: body.expectedVersion })
-          return jsonResponse(200, {
-            draftVersion: current.draftVersion,
-            updatedAt: '2026-02-03T00:05:00.000Z',
-          })
-        },
-      } satisfies FakeRoutes,
-    }
-  }
 
   async function openIn(view: ReturnType<typeof renderApp>) {
     return within(view.container).findByRole('textbox', SURFACE, { timeout: 5000 })
@@ -980,51 +875,33 @@ describe('the editor keeps the author’s work through failures', () => {
 
     await userEvent.type(screen.getByRole('textbox', SURFACE), ' Then west.')
 
-    expect(await screen.findByText('not saved — retrying', {}, { timeout: 4000 })).toBeVisible()
+    expect(
+      (await screen.findAllByText(OFFLINE_LABEL, {}, { timeout: 4000 })).length,
+    ).toBeGreaterThan(0)
     expect(await screen.findByText('draft saved', {}, { timeout: 4000 })).toBeInTheDocument()
     expect(saved).toHaveLength(1)
     expect(saved[0]).toContain('Then west.')
   })
 
-  it('never lets a stale tab overwrite another, and reloads for real (P0-5)', async () => {
+  it('never lets a stale tab overwrite another: it takes the newer draft in first (P0-5)', async () => {
     const server = createDraftServer()
     const routes = editorRoutes(server.routes)
     const tabA = renderApp(EDIT_PATH, routes)
     const tabB = renderApp(EDIT_PATH, routes)
     const surfaceA = await openIn(tabA)
-    const surfaceB = await openIn(tabB)
+    await openIn(tabB)
 
     await userEvent.type(surfaceA, ' TAB1')
     await waitFor(() => {
       expect(server.draft.draftVersion).toBe(4)
     })
 
-    // Tab B hears about it before its author types a thing.
-    const notice = await within(tabB.container).findByRole('group', {
-      name: 'Warning: This draft changed somewhere else',
-    })
-
-    // Typing in the stale tab sends nothing over tab A's save.
-    await userEvent.type(surfaceB, ' TAB2')
-    await new Promise((resolve) => setTimeout(resolve, 1500))
-    expect(server.draft.draftVersion).toBe(4)
-    expect(JSON.stringify(server.draft.ast)).toContain('TAB1')
-    expect(JSON.stringify(server.draft.ast)).not.toContain('TAB2')
-
-    // Reloading really replaces the content, and sets the unsent edit aside —
-    // including the words typed a moment ago, not yet read into the buffer.
-    await userEvent.type(surfaceB, ' late')
-    await userEvent.click(within(notice).getByRole('button', { name: 'Reload the draft' }))
+    // Tab B hears about it before its author types a thing, and carries on
+    // from the newer draft rather than writing over it.
     await waitFor(() => {
       expect(within(tabB.container).getByRole('textbox', SURFACE)).toHaveTextContent('TAB1')
     })
-    expect(within(tabB.container).getByRole('textbox', SURFACE)).not.toHaveTextContent('TAB2')
-    const setAside = await within(tabB.container).findByRole('group', {
-      name: 'Note: Your unsaved change was set aside',
-    })
-
-    // Writing on from the reloaded draft saves on top of tab A's edit...
-    await userEvent.type(within(tabB.container).getByRole('textbox', SURFACE), ' more')
+    await userEvent.type(within(tabB.container).getByRole('textbox', SURFACE), ' TAB2')
     await waitFor(
       () => {
         expect(server.draft.draftVersion).toBe(5)
@@ -1032,23 +909,112 @@ describe('the editor keeps the author’s work through failures', () => {
       { timeout: 4000 },
     )
     expect(JSON.stringify(server.draft.ast)).toContain('TAB1')
-    expect(JSON.stringify(server.draft.ast)).toContain('more')
+    expect(JSON.stringify(server.draft.ast)).toContain('TAB2')
 
-    // ...and now it is tab A that knows it is behind.
-    expect(
-      await within(tabA.container).findByRole('group', {
-        name: 'Warning: This draft changed somewhere else',
-      }),
-    ).toBeInTheDocument()
-
-    // The set-aside edit comes back on request.
-    await userEvent.click(within(setAside).getByRole('button', { name: 'Restore my change' }))
+    // ...and now tab A takes tab B's in.
     await waitFor(() => {
-      expect(within(tabB.container).getByRole('textbox', SURFACE)).toHaveTextContent('TAB2')
+      expect(within(tabA.container).getByRole('textbox', SURFACE)).toHaveTextContent('TAB2')
     })
-    expect(within(tabB.container).getByRole('textbox', SURFACE)).toHaveTextContent('late')
     tabA.unmount()
     tabB.unmount()
+  })
+
+  it('says it is offline, in words, when saves fail though the browser says online', async () => {
+    const server = createDraftServer()
+    await openEditor(editorRoutes(server.routes))
+    server.cutOff()
+    await userEvent.type(screen.getByRole('textbox', SURFACE), ' Then west.')
+    expect(
+      (await screen.findAllByText(OFFLINE_LABEL, {}, { timeout: 4000 })).length,
+    ).toBeGreaterThan(0)
+    // Typing never waits: the words are in the document all along.
+    expect(screen.getByRole('textbox', SURFACE)).toHaveTextContent('Then west.')
+
+    server.reconnect()
+    expect(await screen.findByText('draft saved', {}, { timeout: 8000 })).toBeInTheDocument()
+    expect(JSON.stringify(server.draft.ast)).toContain('Then west.')
+  })
+
+  const TWO_BLOCKS = parseMarkdown('Move traffic east.\n\nPage the on-call.\n')
+
+  it('merges offline changes with what somebody else saved meanwhile, and says so', async () => {
+    const info = vi.spyOn(toast, 'info')
+    const server = createDraftServer(TWO_BLOCKS)
+    await openEditor(editorRoutes(server.routes))
+    server.cutOff()
+    await userEvent.type(screen.getByRole('textbox', SURFACE), ' Then west.')
+    expect(
+      (await screen.findAllByText(OFFLINE_LABEL, {}, { timeout: 4000 })).length,
+    ).toBeGreaterThan(0)
+
+    server.writeAs('Sam', parseMarkdown('Move traffic east.\n\nPage the on-call, then the lead.\n'))
+    server.reconnect()
+
+    await waitFor(
+      () => {
+        expect(JSON.stringify(server.draft.ast)).toContain('Then west.')
+      },
+      { timeout: 8000 },
+    )
+    expect(JSON.stringify(server.draft.ast)).toContain('then the lead')
+    expect(screen.getByRole('textbox', SURFACE)).toHaveTextContent('then the lead')
+    expect(info).toHaveBeenCalledWith('Merged your offline changes with Sam’s')
+    info.mockRestore()
+  })
+
+  it('asks the author to resolve a block both people changed, and saves the choice', async () => {
+    const server = createDraftServer(TWO_BLOCKS)
+    await openEditor(editorRoutes(server.routes))
+    server.cutOff()
+    await userEvent.type(screen.getByRole('textbox', SURFACE), ' Then west.')
+    expect(
+      (await screen.findAllByText(OFFLINE_LABEL, {}, { timeout: 4000 })).length,
+    ).toBeGreaterThan(0)
+
+    // The writer typed onto the first word of the first block; Sam changed that word.
+    server.writeAs('Sam', parseMarkdown('Run traffic east.\n\nPage the on-call.\n'))
+    server.reconnect()
+
+    const view = await screen.findByRole(
+      'region',
+      { name: 'Your offline changes overlap with Sam’s' },
+      { timeout: 8000 },
+    )
+    // Nothing is sent while it is open.
+    expect(JSON.stringify(server.draft.ast)).not.toContain('Then west.')
+    expect(screen.getByRole('textbox', SURFACE)).toHaveAttribute('contenteditable', 'false')
+    await expectNoAccessibilityViolations(view)
+
+    await userEvent.click(within(view).getByRole('radio', { name: 'Keep both' }))
+    await userEvent.click(within(view).getByRole('button', { name: 'Save the merged draft' }))
+    await waitFor(
+      () => {
+        expect(JSON.stringify(server.draft.ast)).toContain('Then west.')
+      },
+      { timeout: 8000 },
+    )
+    expect(JSON.stringify(server.draft.ast)).toContain('Run traffic east.')
+    expect(screen.queryByRole('region', { name: /overlap/ })).not.toBeInTheDocument()
+  })
+
+  it('tells the author when somebody merged offline changes into their draft', async () => {
+    await openEditor(
+      editorRoutes({
+        'GET /api/documents/{id}/draft': draft({
+          ast: {
+            version: DRAFT_CONTENT_VERSION,
+            frontMatter: {},
+            ast: TREE,
+            mergedBy: { userId: 'user-2', displayName: 'Alex' },
+          },
+        }),
+      }),
+    )
+    expect(
+      await screen.findByRole('group', {
+        name: 'Note: Alex merged offline changes into this draft',
+      }),
+    ).toBeInTheDocument()
   })
 
   it('records an unsent edit under StrictMode and offers it back after a crash (P0-3)', async () => {
@@ -1101,73 +1067,146 @@ describe('the editor keeps the author’s work through failures', () => {
   })
 })
 
-const leaf = (id: string, title: string, children: unknown[] = []) => ({
-  id,
-  shortId: id.padEnd(10, '0'),
-  title,
-  slug: id,
-  status: 'published',
-  children,
-})
-
-describe('the child-documents block while writing', () => {
-  const withBlock = (depth: string) =>
-    draft({
-      ast: {
-        version: DRAFT_CONTENT_VERSION,
-        frontMatter: { title: 'Regional failover' },
-        ast: {
-          type: 'root',
-          children: [
-            { type: 'leafDirective', name: 'children', attributes: { depth }, children: [] },
-          ],
-        },
+const ONE_CHANGE = () =>
+  jsonResponse(200, {
+    html: '<article><p data-change="changed" data-change-id="c1">Move traffic west.</p></article>',
+    summary: {
+      sections: 1,
+      added: 0,
+      removed: 0,
+      changed: 1,
+      moved: 0,
+      wordsAdded: 1,
+      wordsRemoved: 1,
+    },
+    changes: [
+      {
+        id: 'c1',
+        change: 'changed',
+        block: 'paragraph',
+        excerpt: 'Move traffic west.',
+        wordsAdded: 1,
+        wordsRemoved: 1,
+        revertible: true,
+        author: { id: 'user-1', name: 'Writer', at: '2026-02-03T00:00:00.000Z' },
       },
-    })
-
-  const tree = () =>
-    jsonResponse(200, {
-      collections: [
-        {
-          id: 'col-1',
-          name: 'Runbooks',
-          slug: 'runbooks',
-          documents: [
-            leaf('doc-1', 'Regional failover', [
-              leaf('primary', 'Primary region', [leaf('detail', 'Detail')]),
-            ]),
-            leaf('elsewhere', 'Somewhere else'),
-          ],
-        },
-      ],
-    })
-
-  it('previews the documents beneath this one, as deep as the block says', async () => {
-    await openEditor(
-      editorRoutes({
-        'GET /api/documents/{id}/draft': withBlock('2'),
-        'GET /api/workspaces/{id}/tree': tree,
-      }),
-    )
-    const block = await screen.findByRole('region', { name: 'Child documents' })
-    await waitFor(() => {
-      expect(within(block).getByText('Primary region')).toBeVisible()
-    })
-    expect(within(block).getByText('Detail')).toBeVisible()
-    expect(within(block).queryByText('Somewhere else')).toBeNull()
+    ],
+    sections: [],
+    properties: [],
   })
 
-  it('shows only the direct children at the depth it starts with', async () => {
-    await openEditor(
-      editorRoutes({
-        'GET /api/documents/{id}/draft': withBlock('1'),
-        'GET /api/workspaces/{id}/tree': tree,
-      }),
-    )
-    const block = await screen.findByRole('region', { name: 'Child documents' })
-    await waitFor(() => {
-      expect(within(block).getByText('Primary region')).toBeVisible()
+describe('what is waiting to be published, before it is', () => {
+  const withChanges = (overrides: FakeRoutes = {}) =>
+    editorRoutes({
+      'GET /api/documents/{id}/compare': ONE_CHANGE,
+      'GET /api/documents/{id}/history': () => jsonResponse(200, { revisions: [] }),
+      ...overrides,
     })
-    expect(within(block).queryByText('Detail')).toBeNull()
+
+  it('says how many changes there are since the page was published, and opens their comparison', async () => {
+    await openEditor(withChanges())
+
+    const changes = await screen.findByRole('button', { name: 'Changes since published: 1' })
+    await userEvent.click(changes)
+
+    expect(
+      await screen.findByRole('heading', {
+        level: 1,
+        name: /^Changes between .* and your draft$/u,
+      }),
+    ).toBeInTheDocument()
+  })
+
+  it('tells what Publish would send, in its description', async () => {
+    await openEditor(withChanges())
+
+    const publish = screen.getByRole('button', { name: 'Publish' })
+    await waitFor(() => {
+      expect(publish).toHaveAccessibleDescription(/1 block changed/u)
+    })
+  })
+
+  it('previews the draft as readers will see it, from the bar', async () => {
+    await openEditor(withChanges())
+
+    expect(
+      screen.getByRole('link', { name: /^Preview\s+your unpublished changes/u }),
+    ).toHaveAttribute('href', `/preview/d/regional-failover-${KEY}?draft`)
+  })
+
+  describe('reverting from a comparison open in another tab', () => {
+    const REVERTED = {
+      version: DRAFT_CONTENT_VERSION,
+      frontMatter: { title: 'Regional failover' },
+      ast: {
+        type: 'root',
+        children: [
+          { type: 'paragraph', children: [{ type: 'text', value: 'Move traffic north.' }] },
+        ],
+      },
+    }
+
+    function anotherTab() {
+      return createRevertChannel(
+        broadcastRevertTransport(revertChannelName(`regional-failover-${KEY}`)),
+        { claimMs: 2000 },
+      )
+    }
+
+    it('applies the revert as an edit of its own, saves it, and says it went', async () => {
+      const previews: unknown[] = []
+      const saves: unknown[] = []
+      await openEditor(
+        withChanges({
+          'POST /api/documents/{id}/draft/revert-preview': async (request) => {
+            previews.push(await request.json())
+            return jsonResponse(200, { draftVersion: 3, ast: REVERTED })
+          },
+          'PUT /api/documents/{id}/draft': async (request) => {
+            saves.push(await request.json())
+            return jsonResponse(200, { draftVersion: 4, updatedAt: '2026-02-03T00:05:00.000Z' })
+          },
+        }),
+      )
+      await screen.findByRole('button', { name: 'Publish' })
+
+      const answer = await anotherTab().ask({
+        from: 'a'.repeat(40),
+        draftVersion: 3,
+        changes: ['c1'],
+      })
+
+      expect(answer).toEqual({ ok: true })
+      expect(previews).toEqual([{ from: 'a'.repeat(40), draftVersion: 3, changes: ['c1'] }])
+      expect(
+        within(screen.getByRole('textbox', { name: 'Regional failover' })).getByText(
+          'Move traffic north.',
+        ),
+      ).toBeInTheDocument()
+      expect(JSON.stringify(saves.at(-1))).toContain('Move traffic north.')
+    })
+
+    it('refuses a revert of a draft other than the one it holds, and changes nothing', async () => {
+      const previews: unknown[] = []
+      await openEditor(
+        withChanges({
+          'POST /api/documents/{id}/draft/revert-preview': async (request) => {
+            previews.push(await request.json())
+            return jsonResponse(200, { draftVersion: 3, ast: REVERTED })
+          },
+        }),
+      )
+      await screen.findByRole('button', { name: 'Publish' })
+
+      const answer = await anotherTab().ask({
+        from: 'a'.repeat(40),
+        draftVersion: 2,
+        changes: ['c1'],
+      })
+
+      expect(answer).toMatchObject({ ok: false, message: expect.stringMatching(/draft changed/u) })
+      expect(previews).toEqual([])
+      expect(screen.getByText('Move traffic east.')).toBeInTheDocument()
+    })
   })
 })

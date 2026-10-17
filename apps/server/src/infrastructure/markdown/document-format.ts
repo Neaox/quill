@@ -1,4 +1,5 @@
 import {
+  childPagesSlots,
   compareDocuments,
   compareLines,
   compareProperties,
@@ -13,10 +14,10 @@ import {
   renderComparison,
   revertChanges,
   revertibleChanges,
+  stampEdit,
   renderDocument,
   resolveTemplate,
   serializeDocument,
-  stampEdit,
   stripAuthoringBlocks,
   validateFrontMatter,
 } from '@quill/markdown'
@@ -177,9 +178,10 @@ export function createDocumentFormat(options: DocumentFormatOptions = {}): Docum
         outline: rendered.outline.map(toOutlineEntry),
         text: { title: text.title, headings: text.headings, body: text.body },
         links: extractLinks(ast).map(toLink),
-        // The live-block registry arrives in M5 (ADR-032); until a block type
-        // is registered the renderer emits no slots to list.
-        slots: [],
+        // The slots a page fills as it is assembled (ADR-032): today the
+        // child pages lists (ADR-056). The live-block registry adds its own
+        // types in M5.
+        slots: childPagesSlots(ast),
         incompleteRequiredSections: incompleteRequiredSections(
           markdown,
           readStrings(frontMatter[REQUIRED_SECTIONS]),

@@ -1,6 +1,8 @@
 import { cleanup, configure } from '@testing-library/react'
 import { afterEach } from 'vitest'
 
+import { preloadOverlays } from './src/components/overlays.ts'
+
 import '@testing-library/jest-dom/vitest'
 
 // Registered explicitly rather than relying on Testing Library's automatic
@@ -33,6 +35,8 @@ if (!('ResizeObserver' in globalThis)) {
   Object.defineProperty(globalThis, 'ResizeObserver', {
     value: ResizeObserverShim,
     writable: true,
+    // A test can take it away (`vi.stubGlobal`) to check what a browser without one gets.
+    configurable: true,
   })
 }
 
@@ -72,3 +76,11 @@ if (!('scrollIntoView' in Element.prototype)) {
  * reported as a missing element.
  */
 configure({ asyncUtilTimeout: 5_000 })
+
+/*
+ * Menus, dialogs and popovers fetch their machinery on demand
+ * (`src/lib/on-demand.ts`). Fetched here, before any test, so a component
+ * renders as it does on a page that has settled; the tests of the moment
+ * before it arrives load a fresh copy of the component that has not.
+ */
+await preloadOverlays()

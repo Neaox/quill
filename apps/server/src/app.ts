@@ -11,6 +11,8 @@ import { authRoutes } from './routes/auth.ts'
 import { oidcAuthRoutes } from './routes/auth-oidc.ts'
 import { collectionRoutes } from './routes/collections.ts'
 import { documentRoutes } from './routes/documents.ts'
+import { childPagesRoutes } from './routes/child-pages.ts'
+import { documentLinksRoutes } from './routes/document-links.ts'
 import { draftRoutes } from './routes/drafts.ts'
 import { healthRoutes } from './routes/health.ts'
 import { lockRoutes } from './routes/locks.ts'
@@ -25,10 +27,12 @@ import { readerPreviewRoutes } from './routes/reader-preview.ts'
 import { reviewRoutes } from './routes/review.ts'
 import { searchRoutes } from './routes/search.ts'
 import { shareLinkRoutes, SHARE_SCHEMAS } from './routes/share-links.ts'
+import { peopleRoutes } from './routes/people.ts'
 import { settingsRoutes } from './routes/settings.ts'
 import { themeRoutes } from './routes/theme.ts'
 import { unitRoutes } from './routes/units.ts'
 import { workspaceRoutes } from './routes/workspaces.ts'
+import { registerCompression } from './plugins/compression.ts'
 import { registerCsrfProtection } from './plugins/csrf.ts'
 import { registerErrorHandler } from './plugins/error-handler.ts'
 import { registerOpenApi } from './plugins/openapi.ts'
@@ -107,6 +111,10 @@ export function buildApp(options: AppOptions = {}): FastifyInstance {
 
   registerErrorHandler(app)
   registerRequestIdHeader(app)
+  // Before any route: it adds itself to each route as it is declared, as the
+  // last `onSend` stage, so it reads the headers every other hook has set,
+  // a cookie above all (`plugins/compression.ts`).
+  registerCompression(app)
 
   if (deps !== undefined) {
     const serveApiDocs = options.serveApiDocs ?? deps.config.serveApiDocs
@@ -171,11 +179,14 @@ export function buildApp(options: AppOptions = {}): FastifyInstance {
     app.register(workspaceRoutes(deps))
     app.register(collectionRoutes(deps))
     app.register(documentRoutes(deps))
+    app.register(childPagesRoutes(deps))
+    app.register(documentLinksRoutes(deps))
     app.register(reviewRoutes(deps))
     app.register(notificationRoutes(deps))
     app.register(attachmentRoutes(deps))
     app.register(drawioRoutes(deps))
     app.register(draftRoutes(deps))
+    app.register(peopleRoutes(deps))
     app.register(lockRoutes(deps))
     app.register(searchRoutes(deps))
     app.register(shareLinkRoutes(deps))

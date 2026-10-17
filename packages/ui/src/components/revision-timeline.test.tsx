@@ -1,6 +1,6 @@
-import { render, screen, within } from '@testing-library/react'
+import { act, fireEvent, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { expectNoAccessibilityViolations } from '../../testing/axe.ts'
 import { ThemeVariantsProvider } from '../theme/theme-variants.tsx'
@@ -133,6 +133,17 @@ describe('RevisionTimeline', () => {
     )
   })
 
+  it('stays open for a press inside its panel, which bubbles to the control through React', async () => {
+    render(<RevisionTimeline revisions={REVISIONS} currentId="v12" variant="menu" />)
+
+    await userEvent.click(screen.getByRole('button', { name: 'History' }))
+    const panel = await screen.findByRole('dialog', { name: 'Revisions' })
+    await userEvent.click(within(panel).getByText('Revisions'))
+
+    expect(screen.getByRole('dialog', { name: 'Revisions' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'History' })).toHaveAttribute('aria-expanded', 'true')
+  })
+
   it('takes its own names when a caller supplies them', async () => {
     render(
       <RevisionTimeline
@@ -148,5 +159,98 @@ describe('RevisionTimeline', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Revisions' }))
 
     expect(await screen.findByRole('dialog', { name: 'Published revisions' })).toBeInTheDocument()
+  })
+})
+
+/*
+ * The popover's machinery arrives on demand (quill-plan.md section 31). The
+ * tests above run with it already here (`vitest.setup.ts`); this loads a fresh
+ * timeline whose popover has not arrived, and decides when it does.
+ */
+describe('a history popover whose machinery has not arrived yet', () => {
+  afterEach(() => {
+    vi.doUnmock('./popover-panels.tsx')
+  })
+
+  it('draws the closed control, holds a press, and opens once it arrives', async () => {
+    vi.resetModules()
+    const { promise: arrived, resolve: arrive } = Promise.withResolvers<void>()
+    vi.doMock('./popover-panels.tsx', async () => {
+      await arrived
+      return vi.importActual('./popover-panels.tsx')
+    })
+    const { RevisionTimeline: FreshTimeline } = await import('./revision-timeline.tsx')
+    const { container } = render(
+      <FreshTimeline revisions={REVISIONS} currentId="v12" variant="menu" />,
+    )
+
+    const trigger = screen.getByRole('button', { name: 'History' })
+    expect(trigger).toHaveAttribute('aria-haspopup', 'dialog')
+    expect(trigger).toHaveAttribute('aria-expanded', 'false')
+    await expectNoAccessibilityViolations(container)
+
+    await userEvent.click(trigger)
+    expect(screen.getByRole('button', { name: 'History' })).toHaveAttribute('aria-busy', 'true')
+
+    arrive()
+    const panel = await screen.findByRole('dialog', { name: 'Revisions' })
+    expect(within(panel).getAllByRole('listitem')).toHaveLength(3)
+  })
+
+  it('keeps its control working when fetching the machinery ahead of a press fails', async () => {
+    vi.resetModules()
+    vi.doMock('./popover-panels.tsx', () => {
+      throw new Error('offline')
+    })
+    const { RevisionTimeline: FreshTimeline } = await import('./revision-timeline.tsx')
+    render(<FreshTimeline revisions={REVISIONS} currentId="v12" variant="menu" />)
+    const trigger = screen.getByRole('button', { name: 'History' })
+
+    await act(async () => {
+      fireEvent.pointerEnter(trigger)
+      fireEvent.focus(trigger)
+      await new Promise((resolve) => setTimeout(resolve, 0))
+    })
+    expect(trigger).toHaveAttribute('aria-expanded', 'false')
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  })
+})
+
+/*
+ * The trigger is never replaced by the machinery (2026-10-17): a press in the
+ * same task as the module arriving lands on the control that is still the
+ * trigger afterwards, which opens, says so, and gets focus back on Escape.
+ */
+describe('a history popover pressed as its machinery arrives', () => {
+  afterEach(() => {
+    vi.doUnmock('./popover-panels.tsx')
+  })
+
+  it('opens from the same trigger element, and returns focus to it', async () => {
+    vi.resetModules()
+    const { promise: arrived, resolve: arrive } = Promise.withResolvers<void>()
+    vi.doMock('./popover-panels.tsx', async () => {
+      await arrived
+      return vi.importActual('./popover-panels.tsx')
+    })
+    const fresh = await import('./revision-timeline.tsx')
+    render(<fresh.RevisionTimeline revisions={REVISIONS} currentId="v12" variant="menu" />)
+    const trigger = screen.getByRole('button', { name: 'History' })
+
+    await act(async () => {
+      const loading = fresh.preloadPopovers()
+      arrive()
+      await loading
+      fireEvent.pointerDown(trigger)
+      fireEvent.click(trigger)
+    })
+
+    expect(await screen.findByRole('dialog', { name: 'Revisions' })).toBeInTheDocument()
+    expect(trigger).toBeInTheDocument()
+    expect(trigger).toHaveAttribute('aria-expanded', 'true')
+
+    await userEvent.keyboard('{Escape}')
+    expect(screen.queryByRole('dialog', { name: 'Revisions' })).not.toBeInTheDocument()
+    expect(trigger).toHaveFocus()
   })
 })

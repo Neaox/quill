@@ -12,6 +12,7 @@ import { createDocument } from './create-document.ts'
 import { publishDocument, readDraftContent } from './publish-document.ts'
 import type { PublishDependencies } from './publish-document.ts'
 import { deleteDocument, DOCUMENT_AUDIT_EVENTS, updateDocument } from './update-document.ts'
+import { DOCUMENT_DELETED, DOCUMENT_NESTED } from './events.ts'
 
 /**
  * Review finding H5. `PATCH /api/documents/:id` used to hand `collectionId`
@@ -252,6 +253,29 @@ describe('updateDocument', () => {
         },
       },
     ])
+  })
+
+  it('announces a change of parent inside the collection as a nesting (ADR-056)', async () => {
+    await updateDocument(deps, { documentId: CHILD, sessionId: SESSION, patch: { parentId: null } })
+    await updateDocument(deps, { documentId: CHILD, sessionId: SESSION, patch: { parentId: null } })
+    expect(uow.events.filter((event) => event.type === DOCUMENT_NESTED)).toMatchObject([
+      {
+        payload: {
+          version: 1,
+          documentId: CHILD,
+          workspaceId: WORKSPACE,
+          fromParentId: PARENT,
+          toParentId: null,
+        },
+      },
+    ])
+    // A change of collection is a move, not a nesting.
+    await updateDocument(deps, {
+      documentId: CHILD,
+      sessionId: SESSION,
+      patch: { collectionId: RUNBOOKS },
+    })
+    expect(uow.events.filter((event) => event.type === DOCUMENT_NESTED)).toHaveLength(1)
   })
 
   /**
@@ -597,32 +621,31 @@ describe('renaming, which is a write to the document', () => {
 
 describe('deleteDocument', () => {
   it('deletes it and records how many children were lifted to the root', async () => {
-    const audited: unknown[] = []
-    const withAudit = {
-      ...deps,
-      uow: {
-        ...uow,
-        repos: {
-          ...uow.repos,
-          audit: {
-            async write(input: unknown): Promise<void> {
-              audited.push(input)
-            },
-          },
-        },
-      },
-    }
-
-    expect(await deleteDocument(withAudit, { documentId: PARENT, deletedBy: ACTOR })).toEqual({
+    expect(await deleteDocument(deps, { documentId: PARENT, deletedBy: ACTOR })).toEqual({
       kind: 'deleted',
     })
     expect(await uow.repos.documents.findById(PARENT)).toBeNull()
-    expect(audited[0]).toMatchObject({
+    expect(uow.auditEvents.at(-1)).toMatchObject({
       type: DOCUMENT_AUDIT_EVENTS.deleted,
       targetType: 'document',
       targetId: PARENT,
       metadata: { childrenLifted: 1 },
     })
+  })
+
+  it('announces the delete, with where the document was, for the lists that showed it (ADR-056)', async () => {
+    await deleteDocument(deps, { documentId: CHILD, deletedBy: ACTOR })
+    expect(uow.events.filter((event) => event.type === DOCUMENT_DELETED)).toMatchObject([
+      {
+        payload: {
+          version: 1,
+          documentId: CHILD,
+          workspaceId: WORKSPACE,
+          parentId: PARENT,
+          collectionId: ARCHITECTURE,
+        },
+      },
+    ])
   })
 
   it('answers not-found for a document that does not exist', async () => {

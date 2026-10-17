@@ -68,7 +68,7 @@ interface Animated {
   inView: boolean
   /** Whether it has entered view once, which is when it plays unasked. */
   seen: boolean
-  /** What is left of its current turn; nought while it rests. */
+  /** What is left of its current turn, in milliseconds of the page's monotonic clock; nought while it rests. */
   remaining: number
   startedAt: number
   timer: ReturnType<typeof setTimeout> | undefined

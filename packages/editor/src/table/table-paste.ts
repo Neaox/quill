@@ -23,7 +23,9 @@ import { tableContext } from './table-context.ts'
  * words.
  *
  * It runs before the table library's own paste, which would keep a pasted
- * `colspan` as a merged cell GFM cannot write and a reader cannot sort.
+ * `colspan` as a merged cell GFM cannot write and a reader cannot sort, and
+ * before the Markdown paste (`paste.ts`), which would read a spreadsheet's
+ * tab-separated copy as a line of prose.
  */
 
 /** Said once when a real merge was split. */
@@ -39,7 +41,6 @@ function cellParagraph(schema: Schema, cell: PastedCell): PMNode {
     topNode: paragraph.create(),
   })
   // Parsed into a paragraph, a cell can only be inline: a line, as GFM needs.
-  if (parsed.content.size === 0) return paragraph.create()
   return paragraph.create(null, parsed.content)
 }
 
@@ -47,19 +48,16 @@ function cellNode(schema: Schema, header: boolean, content: PMNode): PMNode {
   return nodeType(schema, header ? 'tableHeader' : 'tableCell').create(null, content)
 }
 
-/** A new table from a grid: its first row is the header, as GFM's always is. */
+/**
+ * A new table from a grid, which `clipboard-grid.ts` has made rectangular:
+ * its first row is the header, as GFM's always is.
+ */
 export function tableFromGrid(schema: Schema, grid: PastedGrid): PMNode {
   const width = Math.max(...grid.rows.map((row) => row.length))
   const rows = grid.rows.map((row, index) =>
     nodeType(schema, 'tableRow').create(
       null,
-      Array.from({ length: width }, (_, column) =>
-        cellNode(
-          schema,
-          index === 0,
-          cellParagraph(schema, row[column] ?? { element: null, text: '' }),
-        ),
-      ),
+      row.map((cell) => cellNode(schema, index === 0, cellParagraph(schema, cell))),
     ),
   )
   return nodeType(schema, 'table').create(
@@ -79,14 +77,16 @@ function filledTable(
   const map = TableMap.get(table)
   const height = Math.max(map.height, top + grid.rows.length)
   const width = Math.max(map.width, left + Math.max(...grid.rows.map((row) => row.length)))
-  const existing = (row: number, column: number): PMNode | null =>
-    row >= map.height || column >= map.width
-      ? null
-      : table.nodeAt(map.positionAt(row, column, table))
-  const rows = Array.from({ length: height }, (_row, row) =>
+  const existing = (row: number, column: number): PMNode | undefined => {
+    if (row >= map.height || column >= map.width) return undefined
+    const offset = map.map[row * map.width + column]
+    /* v8 ignore next -- a place inside the map is a cell. */
+    return offset === undefined ? undefined : (table.nodeAt(offset) ?? undefined)
+  }
+  const rows = Array.from({ length: height }, (_, row) =>
     nodeType(schema, 'tableRow').create(
       null,
-      Array.from({ length: width }, (_, column) => {
+      Array.from({ length: width }, (_cell, column) => {
         const pasted = grid.rows[row - top]?.[column - left]
         if (pasted !== undefined && column >= left) {
           return cellNode(schema, row === 0, cellParagraph(schema, pasted))
@@ -151,8 +151,21 @@ export const TablePaste = Extension.create({
     new Plugin({
       key: tablePasteKey,
       props: {
-        handlePaste: (view, event) =>
-          handleGridPaste(view.state, event.clipboardData, view.dispatch, view.dom.ownerDocument),
+        // On the event itself, as the Markdown paste reads it, and before it:
+        // a spreadsheet's tab-separated copy would otherwise be read as prose.
+        handleDOMEvents: {
+          paste: (view, event) => {
+            if (!view.editable) return false
+            const handled = handleGridPaste(
+              view.state,
+              event.clipboardData,
+              view.dispatch,
+              view.dom.ownerDocument,
+            )
+            if (handled) event.preventDefault()
+            return handled
+          },
+        },
       },
     }),
   ],

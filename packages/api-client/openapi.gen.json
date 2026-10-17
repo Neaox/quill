@@ -70,6 +70,14 @@
             "items": {
               "$ref": "#/components/schemas/TreeNode"
             }
+          },
+          "childCount": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "childrenOffset": {
+            "minimum": 0,
+            "type": "integer"
           }
         }
       },
@@ -8739,6 +8747,35 @@
         "parameters": [
           {
             "schema": {
+              "minimum": 1,
+              "maximum": 32,
+              "type": "integer"
+            },
+            "in": "query",
+            "name": "depth",
+            "required": false
+          },
+          {
+            "schema": {
+              "minimum": 1,
+              "maximum": 500,
+              "type": "integer"
+            },
+            "in": "query",
+            "name": "limit",
+            "required": false
+          },
+          {
+            "schema": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "in": "query",
+            "name": "focus",
+            "required": false
+          },
+          {
+            "schema": {
               "type": "string"
             },
             "in": "path",
@@ -8782,6 +8819,18 @@
                             "items": {
                               "$ref": "#/components/schemas/TreeNode"
                             }
+                          },
+                          "documentCount": {
+                            "minimum": 0,
+                            "type": "integer"
+                          },
+                          "documentsOffset": {
+                            "minimum": 0,
+                            "type": "integer"
+                          },
+                          "total": {
+                            "minimum": 0,
+                            "type": "integer"
                           }
                         }
                       }
@@ -8803,38 +8852,38 @@
               "type": "string"
             },
             "in": "query",
-            "name": "collectionId",
+            "name": "parent",
+            "required": false
+          },
+          {
+            "schema": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "in": "query",
+            "name": "collection",
+            "required": false
+          },
+          {
+            "schema": {
+              "minimum": 0,
+              "default": 0,
+              "type": "integer"
+            },
+            "in": "query",
+            "name": "offset",
             "required": true
           },
           {
             "schema": {
-              "minLength": 1,
-              "type": "string"
-            },
-            "in": "query",
-            "name": "parentId",
-            "required": false
-          },
-          {
-            "schema": {
-              "minLength": 1,
-              "maxLength": 200,
-              "type": "string"
-            },
-            "in": "query",
-            "name": "cursor",
-            "required": false
-          },
-          {
-            "schema": {
               "minimum": 1,
-              "maximum": 200,
+              "maximum": 500,
               "default": 50,
               "type": "integer"
             },
             "in": "query",
             "name": "limit",
-            "required": false
+            "required": true
           },
           {
             "schema": {
@@ -8853,50 +8902,24 @@
                 "schema": {
                   "type": "object",
                   "required": [
-                    "nodes"
+                    "documents",
+                    "total",
+                    "offset"
                   ],
                   "properties": {
-                    "nodes": {
+                    "documents": {
                       "type": "array",
                       "items": {
-                        "type": "object",
-                        "required": [
-                          "id",
-                          "shortId",
-                          "title",
-                          "slug",
-                          "status",
-                          "childCount"
-                        ],
-                        "properties": {
-                          "id": {
-                            "type": "string"
-                          },
-                          "shortId": {
-                            "type": "string"
-                          },
-                          "title": {
-                            "type": "string"
-                          },
-                          "slug": {
-                            "type": "string"
-                          },
-                          "status": {
-                            "type": "string",
-                            "enum": [
-                              "draft",
-                              "published",
-                              "archived"
-                            ]
-                          },
-                          "childCount": {
-                            "type": "integer"
-                          }
-                        }
+                        "$ref": "#/components/schemas/TreeNode"
                       }
                     },
-                    "next": {
-                      "type": "string"
+                    "total": {
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "offset": {
+                      "minimum": 0,
+                      "type": "integer"
                     }
                   }
                 }
@@ -9931,9 +9954,11 @@
                     "permissions",
                     "lock",
                     "lastPublished",
-                    "draft",
                     "review",
-                    "health"
+                    "health",
+                    "facts",
+                    "unpublishedChanges",
+                    "draft"
                   ],
                   "properties": {
                     "permissions": {
@@ -10018,25 +10043,6 @@
                         }
                       ]
                     },
-                    "draft": {
-                      "anyOf": [
-                        {
-                          "type": "object",
-                          "required": [
-                            "savedAt"
-                          ],
-                          "properties": {
-                            "savedAt": {
-                              "format": "date-time",
-                              "type": "string"
-                            }
-                          }
-                        },
-                        {
-                          "type": "null"
-                        }
-                      ]
-                    },
                     "review": {
                       "anyOf": [
                         {
@@ -10101,58 +10107,159 @@
                           }
                         }
                       }
-                    }
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/documents/{id}/tree-position": {
-      "get": {
-        "parameters": [
-          {
-            "schema": {
-              "type": "string"
-            },
-            "in": "path",
-            "name": "id",
-            "required": true
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Default Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "required": [
-                    "collectionId",
-                    "ancestors",
-                    "childCount"
-                  ],
-                  "properties": {
-                    "collectionId": {
+                    },
+                    "facts": {
+                      "type": "object",
+                      "required": [
+                        "owners",
+                        "tags"
+                      ],
+                      "properties": {
+                        "status": {
+                          "type": "string",
+                          "enum": [
+                            "draft",
+                            "published",
+                            "archived"
+                          ]
+                        },
+                        "lifecycle": {
+                          "anyOf": [
+                            {
+                              "type": "object",
+                              "required": [
+                                "state"
+                              ],
+                              "properties": {
+                                "state": {
+                                  "type": "string",
+                                  "enum": [
+                                    "in-review"
+                                  ]
+                                }
+                              }
+                            },
+                            {
+                              "type": "object",
+                              "required": [
+                                "state"
+                              ],
+                              "properties": {
+                                "state": {
+                                  "type": "string",
+                                  "enum": [
+                                    "verified"
+                                  ]
+                                },
+                                "verifiedBy": {
+                                  "type": "object",
+                                  "required": [
+                                    "label",
+                                    "person"
+                                  ],
+                                  "properties": {
+                                    "label": {
+                                      "type": "string"
+                                    },
+                                    "person": {
+                                      "type": "boolean"
+                                    }
+                                  }
+                                },
+                                "verifiedAt": {
+                                  "format": "date",
+                                  "type": "string"
+                                }
+                              }
+                            },
+                            {
+                              "type": "object",
+                              "required": [
+                                "state"
+                              ],
+                              "properties": {
+                                "state": {
+                                  "type": "string",
+                                  "enum": [
+                                    "deprecated"
+                                  ]
+                                },
+                                "replacement": {
+                                  "type": "object",
+                                  "required": [
+                                    "href",
+                                    "title"
+                                  ],
+                                  "properties": {
+                                    "href": {
+                                      "type": "string"
+                                    },
+                                    "title": {
+                                      "type": "string"
+                                    }
+                                  }
+                                }
+                              }
+                            }
+                          ]
+                        },
+                        "type": {
+                          "type": "string"
+                        },
+                        "owners": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "required": [
+                              "label",
+                              "person"
+                            ],
+                            "properties": {
+                              "label": {
+                                "type": "string"
+                              },
+                              "person": {
+                                "type": "boolean"
+                              }
+                            }
+                          }
+                        },
+                        "tags": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        "reviewInterval": {
+                          "type": "string"
+                        },
+                        "lastReviewed": {
+                          "format": "date",
+                          "type": "string"
+                        }
+                      }
+                    },
+                    "unpublishedChanges": {
+                      "type": "boolean"
+                    },
+                    "draft": {
                       "anyOf": [
                         {
-                          "type": "string"
+                          "type": "object",
+                          "required": [
+                            "savedAt"
+                          ],
+                          "properties": {
+                            "savedAt": {
+                              "format": "date-time",
+                              "type": "string"
+                            }
+                          }
                         },
                         {
                           "type": "null"
                         }
                       ]
-                    },
-                    "ancestors": {
-                      "type": "array",
-                      "items": {
-                        "type": "string"
-                      }
-                    },
-                    "childCount": {
-                      "type": "integer"
                     }
                   }
                 }
@@ -10932,6 +11039,136 @@
         }
       }
     },
+    "/api/documents/{id}/draft/revert": {
+      "post": {
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "draftVersion",
+                  "changes"
+                ],
+                "properties": {
+                  "from": {
+                    "pattern": "^[0-9a-f]{40}$",
+                    "type": "string"
+                  },
+                  "draftVersion": {
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "changes": {
+                    "minItems": 1,
+                    "maxItems": 500,
+                    "type": "array",
+                    "items": {
+                      "pattern": "^c\\d{1,6}$",
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "draftVersion",
+                    "previous"
+                  ],
+                  "properties": {
+                    "draftVersion": {
+                      "type": "integer"
+                    },
+                    "previous": {
+                      "type": "object",
+                      "additionalProperties": {}
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/documents/{id}/draft/revert/undo": {
+      "post": {
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "draftVersion",
+                  "ast"
+                ],
+                "properties": {
+                  "draftVersion": {
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "ast": {
+                    "type": "object",
+                    "additionalProperties": {}
+                  }
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "draftVersion"
+                  ],
+                  "properties": {
+                    "draftVersion": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/documents/{id}/compare/source": {
       "get": {
         "parameters": [
@@ -11075,6 +11312,165 @@
                     },
                     "wordsRemoved": {
                       "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/documents/{id}/children": {
+      "get": {
+        "parameters": [
+          {
+            "schema": {
+              "minimum": 1,
+              "maximum": 6,
+              "default": 1,
+              "type": "integer"
+            },
+            "in": "query",
+            "name": "depth",
+            "required": true
+          },
+          {
+            "schema": {
+              "default": "manual",
+              "anyOf": [
+                {
+                  "type": "string",
+                  "enum": [
+                    "manual"
+                  ]
+                },
+                {
+                  "type": "string",
+                  "enum": [
+                    "title"
+                  ]
+                },
+                {
+                  "type": "string",
+                  "enum": [
+                    "updated"
+                  ]
+                }
+              ]
+            },
+            "in": "query",
+            "name": "sort",
+            "required": true
+          },
+          {
+            "schema": {
+              "default": false,
+              "type": "boolean"
+            },
+            "in": "query",
+            "name": "excerpts",
+            "required": true
+          },
+          {
+            "schema": {
+              "default": false,
+              "type": "boolean"
+            },
+            "in": "query",
+            "name": "icons",
+            "required": true
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "html",
+                    "count"
+                  ],
+                  "properties": {
+                    "html": {
+                      "type": "string"
+                    },
+                    "count": {
+                      "minimum": 0,
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/documents/links": {
+      "post": {
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "references"
+                ],
+                "properties": {
+                  "references": {
+                    "maxItems": 200,
+                    "type": "array",
+                    "items": {
+                      "minLength": 1,
+                      "maxLength": 200,
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "links"
+                  ],
+                  "properties": {
+                    "links": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "reference",
+                          "href"
+                        ],
+                        "properties": {
+                          "reference": {
+                            "type": "string"
+                          },
+                          "href": {
+                            "type": "string"
+                          }
+                        }
+                      }
                     }
                   }
                 }
@@ -12560,6 +12956,89 @@
         }
       }
     },
+    "/api/documents/{id}/people": {
+      "get": {
+        "parameters": [
+          {
+            "schema": {
+              "maxLength": 200,
+              "type": "string"
+            },
+            "in": "query",
+            "name": "q",
+            "required": false
+          },
+          {
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 320,
+                  "type": "string"
+                },
+                {
+                  "maxItems": 50,
+                  "type": "array",
+                  "items": {
+                    "maxLength": 320,
+                    "type": "string"
+                  }
+                }
+              ]
+            },
+            "in": "query",
+            "name": "email",
+            "required": false
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "people"
+                  ],
+                  "properties": {
+                    "people": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "value",
+                          "name",
+                          "detail"
+                        ],
+                        "properties": {
+                          "value": {
+                            "type": "string"
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "detail": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/documents/{id}/lock/acquire": {
       "post": {
         "parameters": [
@@ -13056,6 +13535,7 @@
                     "link",
                     "document",
                     "rendered",
+                    "facts",
                     "children"
                   ],
                   "properties": {
@@ -13151,6 +13631,97 @@
                         }
                       }
                     },
+                    "facts": {
+                      "type": "object",
+                      "required": [
+                        "tags"
+                      ],
+                      "properties": {
+                        "status": {
+                          "type": "string",
+                          "enum": [
+                            "draft",
+                            "published",
+                            "archived"
+                          ]
+                        },
+                        "lifecycle": {
+                          "anyOf": [
+                            {
+                              "type": "object",
+                              "required": [
+                                "state"
+                              ],
+                              "properties": {
+                                "state": {
+                                  "type": "string",
+                                  "enum": [
+                                    "in-review"
+                                  ]
+                                }
+                              }
+                            },
+                            {
+                              "type": "object",
+                              "required": [
+                                "state"
+                              ],
+                              "properties": {
+                                "state": {
+                                  "type": "string",
+                                  "enum": [
+                                    "verified"
+                                  ]
+                                },
+                                "verifiedAt": {
+                                  "format": "date",
+                                  "type": "string"
+                                }
+                              }
+                            },
+                            {
+                              "type": "object",
+                              "required": [
+                                "state"
+                              ],
+                              "properties": {
+                                "state": {
+                                  "type": "string",
+                                  "enum": [
+                                    "deprecated"
+                                  ]
+                                },
+                                "replacement": {
+                                  "type": "object",
+                                  "required": [
+                                    "href",
+                                    "title"
+                                  ],
+                                  "properties": {
+                                    "href": {
+                                      "type": "string"
+                                    },
+                                    "title": {
+                                      "type": "string"
+                                    }
+                                  }
+                                }
+                              }
+                            }
+                          ]
+                        },
+                        "tags": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        "lastReviewed": {
+                          "format": "date",
+                          "type": "string"
+                        }
+                      }
+                    },
                     "children": {
                       "type": "array",
                       "items": {
@@ -13196,7 +13767,8 @@
                   "type": "object",
                   "required": [
                     "document",
-                    "rendered"
+                    "rendered",
+                    "facts"
                   ],
                   "properties": {
                     "document": {
@@ -13254,6 +13826,97 @@
                           "items": {
                             "type": "string"
                           }
+                        }
+                      }
+                    },
+                    "facts": {
+                      "type": "object",
+                      "required": [
+                        "tags"
+                      ],
+                      "properties": {
+                        "status": {
+                          "type": "string",
+                          "enum": [
+                            "draft",
+                            "published",
+                            "archived"
+                          ]
+                        },
+                        "lifecycle": {
+                          "anyOf": [
+                            {
+                              "type": "object",
+                              "required": [
+                                "state"
+                              ],
+                              "properties": {
+                                "state": {
+                                  "type": "string",
+                                  "enum": [
+                                    "in-review"
+                                  ]
+                                }
+                              }
+                            },
+                            {
+                              "type": "object",
+                              "required": [
+                                "state"
+                              ],
+                              "properties": {
+                                "state": {
+                                  "type": "string",
+                                  "enum": [
+                                    "verified"
+                                  ]
+                                },
+                                "verifiedAt": {
+                                  "format": "date",
+                                  "type": "string"
+                                }
+                              }
+                            },
+                            {
+                              "type": "object",
+                              "required": [
+                                "state"
+                              ],
+                              "properties": {
+                                "state": {
+                                  "type": "string",
+                                  "enum": [
+                                    "deprecated"
+                                  ]
+                                },
+                                "replacement": {
+                                  "type": "object",
+                                  "required": [
+                                    "href",
+                                    "title"
+                                  ],
+                                  "properties": {
+                                    "href": {
+                                      "type": "string"
+                                    },
+                                    "title": {
+                                      "type": "string"
+                                    }
+                                  }
+                                }
+                              }
+                            }
+                          ]
+                        },
+                        "tags": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        "lastReviewed": {
+                          "format": "date",
+                          "type": "string"
                         }
                       }
                     }

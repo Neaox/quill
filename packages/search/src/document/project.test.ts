@@ -13,6 +13,9 @@ const REVISION = revisionId('a'.repeat(40))
 
 const MINIMAL_FRONT_MATTER: CoreFrontMatter = { id: DOCUMENT_ID }
 
+/** Front matter a document may carry beyond the core schema. */
+const ICON = { icon: '🚀' }
+
 function location() {
   return {
     documentId: DOCUMENT_ID,
@@ -25,6 +28,16 @@ function location() {
 }
 
 describe('projectIndexableDocument', () => {
+  it('carries what a child pages list shows: the summary and the icon (ADR-056)', () => {
+    const result = projectIndexableDocument({
+      ...location(),
+      frontMatter: { ...MINIMAL_FRONT_MATTER, ...ICON },
+      ast: parseMarkdown(['# Title', 'The opening words.', 'More.'].join('\n\n')),
+    })
+    expect(result.summary).toBe('The opening words.')
+    expect(result.icon).toBe('🚀')
+  })
+
   it('prefers the front matter title over an extracted heading', () => {
     const ast = parseMarkdown('# Extracted title\n\nSome body text.')
     const result = projectIndexableDocument({
@@ -136,6 +149,18 @@ describe('projectIndexableDocument', () => {
       ast,
     })
     expect(result.status).toBe('archived')
+    expect(result.lifecycle).toBeUndefined()
+  })
+
+  it('carries a lifecycle as the lifecycle, leaving the legacy status at its default', () => {
+    const ast = parseMarkdown('# Title')
+    const result = projectIndexableDocument({
+      ...location(),
+      frontMatter: { ...MINIMAL_FRONT_MATTER, status: 'deprecated' },
+      ast,
+    })
+    expect(result.lifecycle).toBe('deprecated')
+    expect(result.status).toBe('published')
   })
 
   it('carries the document’s identity, placement, and version', () => {

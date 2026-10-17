@@ -3,9 +3,6 @@ import type { Node as PMNode, Schema } from '@tiptap/pm/model'
 import { Selection, TextSelection } from '@tiptap/pm/state'
 import type { Command, Transaction } from '@tiptap/pm/state'
 
-import type { CalloutType } from '@quill/markdown'
-
-import { newCalloutAttributes } from '../callout/callouts.ts'
 import { nodeType } from '../schema/node-type.ts'
 
 /**
@@ -27,13 +24,6 @@ export type NodeFactory = (schema: Schema) => PMNode
 export interface InsertOptions {
   /** Select the first line of text in the new block, so typing replaces a prompt. */
   readonly selectText?: boolean
-  /**
-   * The block is all settings and no text, like a divider: it is followed by an
-   * empty paragraph to keep writing in, and the caret goes there. A node with
-   * no content spec is that by itself; a leaf directive has an inline content
-   * spec for its label but is written without one.
-   */
-  readonly standalone?: boolean
 }
 
 /** Puts the caret at the first spot after `from` that can hold it, optionally selecting that line. */
@@ -59,8 +49,7 @@ export function insertBlock(make: NodeFactory, options: InsertOptions = {}): Com
     const line = $from.parent
     if (!line.isTextblock || $from.depth === 0) return false
     const node = make(state.schema)
-    const standalone = node.isLeaf || options.standalone === true
-    const nodes = standalone ? [node, nodeType(state.schema, 'paragraph').create()] : [node]
+    const nodes = node.isLeaf ? [node, nodeType(state.schema, 'paragraph').create()] : [node]
     const parent = $from.node($from.depth - 1)
     const index = $from.index($from.depth - 1)
     const content = Fragment.from(nodes)
@@ -76,7 +65,7 @@ export function insertBlock(make: NodeFactory, options: InsertOptions = {}): Com
     const to = replacing ? $from.after() : from
     if (dispatch !== undefined) {
       const tr = state.tr.replaceWith(from, to, nodes)
-      placeCaret(tr, standalone ? from + node.nodeSize + 1 : from + 1, options.selectText === true)
+      placeCaret(tr, node.isLeaf ? from + node.nodeSize + 1 : from + 1, options.selectText === true)
       dispatch(tr.scrollIntoView())
     }
     return true
@@ -99,7 +88,7 @@ export function insertInline(make: NodeFactory): Command {
   }
 }
 
-/** Types text at the caret, as if the author had: an emoji's shortcode. */
+/** Types text at the caret, as if the author had. */
 export function insertText(text: string): Command {
   return (state, dispatch) => {
     if (!state.selection.$from.parent.inlineContent) return false
@@ -135,14 +124,6 @@ export function textDirective(name: string, text: string): NodeFactory {
     nodeType(schema, 'textDirective').create({ name, attributes: {} }, schema.text(text))
 }
 
-/** The leaf directive `::name{attributes}`: a block that is its settings and nothing else. */
-export function leafDirective(
-  name: string,
-  attributes: Readonly<Record<string, string>>,
-): NodeFactory {
-  return (schema) => nodeType(schema, 'leafDirective').create({ name, attributes })
-}
-
 /** The container directive `:::name`, holding the given blocks or one empty paragraph. */
 export function containerDirective(
   name: string,
@@ -154,12 +135,6 @@ export function containerDirective(
       { name, attributes },
       body === undefined ? paragraph(schema) : body(schema),
     )
-}
-
-/** A callout of this type, written as the standard quote (`newCalloutAttributes`), with one empty paragraph in it. */
-export function calloutBlock(type: CalloutType): NodeFactory {
-  return (schema) =>
-    nodeType(schema, 'containerDirective').create(newCalloutAttributes(type), paragraph(schema))
 }
 
 /**

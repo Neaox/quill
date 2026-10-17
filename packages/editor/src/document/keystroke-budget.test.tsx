@@ -2,6 +2,8 @@ import { parseDocument } from '@quill/markdown'
 import * as markdown from '@quill/markdown'
 import { act, render } from '@testing-library/react'
 import { Node as PMNode } from '@tiptap/pm/model'
+import { TextSelection } from '@tiptap/pm/state'
+import { EditorView } from '@tiptap/pm/view'
 import { createRef, useState } from 'react'
 import type { Ref } from 'react'
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
@@ -12,6 +14,8 @@ import { createFakeClock } from '../drafts/clock.ts'
 import { createFakeConnectivity } from '../drafts/connectivity.ts'
 import { createMemoryRecoveryStore } from '../drafts/recovery-store.ts'
 import { useAutosave } from '../drafts/use-autosave.ts'
+import { editFind, openFind } from '../find/find-commands.ts'
+import { findStateOf } from '../find/find-plugin.ts'
 import { longDocumentMarkdown } from '../testing/long-document.ts'
 import { DocumentEditor } from './document-editor.tsx'
 import type { DocumentEditorHandle } from './document-editor.tsx'
@@ -39,6 +43,13 @@ vi.mock('@quill/markdown', async (importOriginal) => {
 
 /** quill-plan.md section 31. */
 const KEYSTROKE_BUDGET_MS = 16
+/**
+ * Under coverage (`QUILL_COVERAGE`, set by the root Vitest config) the code is
+ * instrumented and runs several times slower, so a timing measures the
+ * instrumentation: the timed budgets skip themselves there and hold in a plain
+ * `pnpm test`. What they count rather than time runs either way.
+ */
+const UNDER_COVERAGE = process.env['QUILL_COVERAGE'] === '1'
 const KEYSTROKES = 41
 
 const clock = createFakeClock()
@@ -86,24 +97,32 @@ afterEach(() => {
   vi.restoreAllMocks()
 })
 
-function open() {
+/** Where a writer would be: a paragraph, or a table's cell, in a section halfway down. */
+type Place = 'paragraph' | 'table cell'
+
+function open(place: Place = 'paragraph') {
   const editorRef = createRef<DocumentEditorHandle>()
   render(<EditingSession ast={longDocument} ref={editorRef} />)
   const editor = editorRef.current?.editor
   if (editor == null) throw new Error('The editor did not mount.')
-  // Inside the paragraph of a section halfway down, where a writer would be.
-  let paragraph = -1
+  const wanted = place === 'paragraph' ? 'paragraph' : 'table'
+  let block = -1
   editor.state.doc.forEach((node, offset, index) => {
-    if (
-      paragraph < 0 &&
-      index > editor.state.doc.childCount / 2 &&
-      node.type.name === 'paragraph'
-    ) {
-      paragraph = offset + 1
+    if (block < 0 && index > editor.state.doc.childCount / 2 && node.type.name === wanted) {
+      block = offset
     }
   })
+  const node = editor.state.doc.nodeAt(block)
+  if (node === null) throw new Error(`No ${wanted} halfway down.`)
+  // The paragraph's first word, or the end of the last cell's words.
+  const caret = place === 'paragraph' ? block + 1 : block + node.nodeSize - 3
+  act(() => {
+    editor.view.dispatch(
+      editor.state.tr.setSelection(TextSelection.create(editor.state.doc, caret)),
+    )
+  })
   const keystroke = () => {
-    editor.view.dispatch(editor.state.tr.insertText('x', paragraph))
+    editor.view.dispatch(editor.state.tr.insertText('x'))
   }
   return { editor, keystroke }
 }
@@ -134,6 +153,58 @@ function countWholeDocumentWalks() {
   return counts
 }
 
+/** The next animation frame, where the floating controls measure. */
+async function nextFrame(): Promise<void> {
+  await act(async () => {
+    await new Promise((resolve) => requestAnimationFrame(resolve))
+  })
+}
+
+/**
+ * Counts what reads the layout: each read after a write makes the browser lay
+ * the page out again, which in a long document is the whole keystroke budget.
+ */
+function countLayoutReads() {
+  const counts = { reads: 0 }
+  const count = () => {
+    counts.reads += 1
+  }
+  const box = Element.prototype.getBoundingClientRect
+  vi.spyOn(Element.prototype, 'getBoundingClientRect').mockImplementation(function (this: Element) {
+    count()
+    return box.call(this)
+  })
+  const boxes = Element.prototype.getClientRects
+  vi.spyOn(Element.prototype, 'getClientRects').mockImplementation(function (this: Element) {
+    count()
+    return boxes.call(this)
+  })
+  for (const getter of ['offsetTop', 'offsetLeft', 'offsetWidth', 'offsetHeight'] as const) {
+    vi.spyOn(HTMLElement.prototype, getter, 'get').mockImplementation(() => {
+      count()
+      return 0
+    })
+  }
+  for (const getter of ['clientWidth', 'clientHeight', 'scrollTop', 'scrollLeft'] as const) {
+    vi.spyOn(Element.prototype, getter, 'get').mockImplementation(() => {
+      count()
+      return 0
+    })
+  }
+  const coordsAtPos = EditorView.prototype.coordsAtPos
+  vi.spyOn(EditorView.prototype, 'coordsAtPos').mockImplementation(function (
+    this: EditorView,
+    ...args: Parameters<EditorView['coordsAtPos']>
+  ) {
+    count()
+    return coordsAtPos.apply(this, args)
+  })
+  return counts
+}
+
+/** A table's handles and toolbar read its cells once a frame: a few dozen reads, never the page's. */
+const ONE_TABLE_READS = 40
+
 describe('a keystroke in a 4,100-line document', () => {
   it('is that long a document', () => {
     expect(longDocumentMarkdown().split('\n').length).toBeGreaterThan(4_000)
@@ -158,23 +229,70 @@ describe('a keystroke in a 4,100-line document', () => {
     expect(saves).toHaveLength(1)
   })
 
-  it('walks the whole document zero times', () => {
-    const { keystroke } = open()
+  it.each<Place>(['paragraph', 'table cell'])(
+    'walks the whole document zero times, in a %s',
+    (place) => {
+      const { keystroke } = open(place)
+      const counts = countWholeDocumentWalks()
+      for (let typed = 0; typed < KEYSTROKES; typed += 1) keystroke()
+      expect(counts).toEqual({ traversals: 0, serialisations: 0 })
+    },
+  )
+
+  it('walks the whole document zero times with the find bar open and finding', () => {
+    const { editor, keystroke } = open()
+    act(() => {
+      openFind(false)(editor.state, editor.view.dispatch)
+      editFind({ query: 'the' })(editor.state, editor.view.dispatch)
+    })
+    const found = findStateOf(editor.state)?.found.matches.length ?? 0
+    // Common enough that every block has some: a search from scratch would be the whole document.
+    expect(found).toBeGreaterThan(500)
     const counts = countWholeDocumentWalks()
-    for (let typed = 0; typed < KEYSTROKES; typed += 1) keystroke()
+    act(() => {
+      for (let typed = 0; typed < KEYSTROKES; typed += 1) keystroke()
+    })
     expect(counts).toEqual({ traversals: 0, serialisations: 0 })
+    expect(findStateOf(editor.state)?.found.matches.length).toBe(found)
   })
 
-  it(`takes under ${String(KEYSTROKE_BUDGET_MS)} ms, as the median of ${String(KEYSTROKES)}`, () => {
+  it('reads the layout zero times in a paragraph, frames included', async () => {
     const { keystroke } = open()
-    // Warm the paths a first keystroke compiles.
-    for (let typed = 0; typed < 5; typed += 1) keystroke()
-    const times = Array.from({ length: KEYSTROKES }, () => {
-      const started = performance.now()
-      keystroke()
-      return performance.now() - started
-    }).toSorted((a, b) => a - b)
-    const median = times[Math.floor(times.length / 2)] ?? Number.POSITIVE_INFINITY
-    expect(median).toBeLessThan(KEYSTROKE_BUDGET_MS)
+    await nextFrame()
+    const counts = countLayoutReads()
+    for (let typed = 0; typed < 5; typed += 1) {
+      act(keystroke)
+      await nextFrame()
+    }
+    expect(counts.reads).toBe(0)
   })
+
+  it(`reads the layout of one table, not every table, in a table cell`, async () => {
+    const { keystroke } = open('table cell')
+    await nextFrame()
+    const counts = countLayoutReads()
+    for (let typed = 0; typed < 5; typed += 1) {
+      act(keystroke)
+      await nextFrame()
+    }
+    // 240 tables placed again would be thousands.
+    expect(counts.reads).toBeGreaterThan(0)
+    expect(counts.reads / 5).toBeLessThan(ONE_TABLE_READS)
+  })
+
+  it.skipIf(UNDER_COVERAGE)(
+    `takes under ${String(KEYSTROKE_BUDGET_MS)} ms, as the median of ${String(KEYSTROKES)}`,
+    () => {
+      const { keystroke } = open()
+      // Warm the paths a first keystroke compiles.
+      for (let typed = 0; typed < 5; typed += 1) keystroke()
+      const times = Array.from({ length: KEYSTROKES }, () => {
+        const started = performance.now()
+        keystroke()
+        return performance.now() - started
+      }).toSorted((a, b) => a - b)
+      const median = times[Math.floor(times.length / 2)] ?? Number.POSITIVE_INFINITY
+      expect(median).toBeLessThan(KEYSTROKE_BUDGET_MS)
+    },
+  )
 })

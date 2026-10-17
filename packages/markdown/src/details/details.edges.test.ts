@@ -1,7 +1,6 @@
 import type { ContainerDirective, LeafDirective } from 'mdast-util-directive'
 import { describe, expect, it } from 'vitest'
 
-import type { DetailsDirective } from './details.ts'
 import { accordionDirective, DETAILS, detailsDirective, detailsModel } from './details.ts'
 import { parseMarkdown } from '../pipeline/processor.ts'
 import { renderHtmlWith } from '../render/html.ts'
@@ -14,7 +13,7 @@ const container = (name: string): ContainerDirective => ({
 
 describe('a details written without attributes', () => {
   it('is closed, ungrouped and a plain details', () => {
-    const bare: DetailsDirective = { type: 'containerDirective', name: DETAILS, children: [] }
+    const bare: ContainerDirective = { type: 'containerDirective', name: DETAILS, children: [] }
 
     expect(detailsModel(bare)).toMatchObject({
       open: false,

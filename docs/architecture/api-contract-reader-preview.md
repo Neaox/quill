@@ -5,6 +5,7 @@ A member previews a document as a reader of the public site will see it. The rou
 | Method and path | Purpose | Response |
 |---|---|---|
 | `GET /preview/d/:documentRef` | The document in the public site's chrome | `200 text/html`; `303` to sign-in without a session; `404 text/html` when there is nothing this member may preview |
+| `GET /preview/d/:documentRef?draft` | The draft as last saved, as the page it would become | as above, for somebody who may `edit`; anybody else, and a document with no draft, is answered as one with nothing to preview. The banner says "Unpublished changes" and links back to the editor; the published page's byline is not shown |
 
 `documentRef` is anything the document routes accept (ADR-035): the readable reference (`the-sync-map-j9t064k4d7`), the short key alone, or the UUID. The words are advisory and never consulted.
 

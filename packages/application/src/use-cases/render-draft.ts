@@ -24,6 +24,8 @@ import type { RenderDocumentDependencies } from './render-document.ts'
 
 export interface RenderDraftCommand {
   readonly documentId: DocumentId
+  /** The origins this application is served at, as a publish takes them (ADR-035). */
+  readonly appOrigins?: readonly string[] | undefined
 }
 
 export type RenderDraftResult =
@@ -55,7 +57,7 @@ export async function renderDraft(
   }
 
   const prepared = deps.format.prepareForPublish({ documentId: document.id, content })
-  const markdown = await canonicaliseLinks(repos.documents, prepared.markdown)
+  const markdown = await canonicaliseLinks(repos.documents, prepared.markdown, command.appOrigins)
   const { input } = await renderInputFor(deps, document, markdown)
   return {
     kind: 'rendered',

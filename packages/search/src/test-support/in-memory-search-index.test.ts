@@ -330,6 +330,25 @@ describe('createInMemorySearchIndex', () => {
     expect(result.hits.map((hit) => hit.documentId)).toEqual([fresh.documentId, stale.documentId])
   })
 
+  it('ranks a deprecated document below an equally relevant current one, but still returns it', async () => {
+    const index = createInMemorySearchIndex({ now: () => NOW })
+    const deprecated = aDocument({ lifecycle: 'deprecated' })
+    const current = aDocument({ lifecycle: 'verified' })
+    await index.index(deprecated)
+    await index.index(current)
+
+    const result = await index.search(query(term('started')), noFilter(), DEFAULT_RANKING_PROFILE, {
+      limit: 10,
+    })
+    expect(result.hits.map((hit) => hit.documentId)).toEqual([
+      current.documentId,
+      deprecated.documentId,
+    ])
+    expect(result.hits[1]?.score).toBeCloseTo(
+      (result.hits[0]?.score ?? 0) * DEFAULT_RANKING_PROFILE.deprecatedPenalty,
+    )
+  })
+
   it('boosts a hit in the current workspace over an equally relevant one elsewhere', async () => {
     const index = createInMemorySearchIndex({ now: () => NOW })
     const elsewhere = aDocument({ workspaceId: WORKSPACE_A })

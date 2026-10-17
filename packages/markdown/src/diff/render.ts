@@ -209,8 +209,11 @@ function changeElement(change: 'added' | 'removed', children: ElementContent[]):
  */
 function diffCode(node: DiffCode): Element {
   const lines = node.lines.flatMap((line): ElementContent[] => {
+    // Only the words that changed inside an edited line are picked out; a
+    // line wholly added or removed is marked by the line itself.
+    const wholeLine = line.segments.every((segment) => segment.change !== 'equal')
     const parts = line.segments.map((segment): ElementContent =>
-      segment.change === 'equal' || line.change === 'equal'
+      segment.change === 'equal' || line.change === 'equal' || wholeLine
         ? { type: 'text', value: segment.text }
         : element('span', { 'data-diff-word': '' }, [{ type: 'text', value: segment.text }]),
     )

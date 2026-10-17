@@ -13,7 +13,7 @@ import {
   listGroups,
   removeGroupMember,
   renameGroup,
-  searchPeople,
+  searchPeopleForGroups,
 } from './groups.ts'
 import type { GroupsDependencies } from './groups.ts'
 
@@ -320,7 +320,7 @@ describe('deleteGroup', () => {
   })
 })
 
-describe('searchPeople', () => {
+describe('searchPeopleForGroups', () => {
   it('matches a name or email prefix, ignoring case, at most 20', async () => {
     await Promise.all(
       Array.from({ length: 25 }, (_, index) =>
@@ -330,12 +330,12 @@ describe('searchPeople', () => {
     await person('Alice', 'alice@example.com')
     await person('Bob', 'sam.b@elsewhere.com')
 
-    expect(await searchPeople(deps, { query: 'SAM' })).toHaveLength(20)
-    expect((await searchPeople(deps, { query: 'ali' })).map((entry) => entry.name)).toEqual([
-      'Alice',
-    ])
-    expect((await searchPeople(deps, { query: 'sam.b@' })).map((entry) => entry.name)).toEqual([
-      'Bob',
-    ])
+    expect(await searchPeopleForGroups(deps, { query: 'SAM' })).toHaveLength(20)
+    expect(
+      (await searchPeopleForGroups(deps, { query: 'ali' })).map((entry) => entry.name),
+    ).toEqual(['Alice'])
+    expect(
+      (await searchPeopleForGroups(deps, { query: 'sam.b@' })).map((entry) => entry.name),
+    ).toEqual(['Bob'])
   })
 })

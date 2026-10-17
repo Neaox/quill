@@ -155,8 +155,8 @@ export class FootnoteReferenceView implements NodeView {
     const identifier = identifierOf(this.node)
     let target: number | undefined
     view.state.doc.descendants((node, pos) => {
-      if (target !== undefined) return false
-      if (node.type.name === DEFINITION && identifierOf(node) === identifier) target = pos
+      const found = node.type.name === DEFINITION && identifierOf(node) === identifier
+      if (target === undefined && found) target = pos
       return target === undefined
     })
     if (target === undefined) return
