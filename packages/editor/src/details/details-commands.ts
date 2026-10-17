@@ -44,7 +44,9 @@ function detailsAt(doc: PMNode, pos: number): PMNode | undefined {
 
 function attributesOf(node: PMNode): Readonly<Record<string, unknown>> {
   const attributes: unknown = node.attrs['attributes']
-  return typeof attributes === 'object' && attributes !== null ? attributes : {}
+  return typeof attributes === 'object' && attributes !== null
+    ? Object.fromEntries(Object.entries(attributes))
+    : {}
 }
 
 /** Whether a details opens for a reader by default: its `open` attribute, as a directive reads one. */

@@ -4,7 +4,7 @@ import userEvent from '@testing-library/user-event'
 import { undo } from '@tiptap/pm/history'
 import { DOMParser as ProseMirrorParser } from '@tiptap/pm/model'
 import { TextSelection } from '@tiptap/pm/state'
-import type { EditorState } from '@tiptap/pm/state'
+import type { Command, EditorState } from '@tiptap/pm/state'
 import { createRef } from 'react'
 import { describe, expect, it } from 'vitest'
 
@@ -53,10 +53,7 @@ function caretInEmptyBody(source: string, index = 1): EditorState {
   return state.apply(state.tr.setSelection(TextSelection.create(state.doc, pos)))
 }
 
-function run(
-  state: EditorState,
-  command: (state: EditorState, dispatch: (tr: never) => void) => boolean,
-): EditorState {
+function run(state: EditorState, command: Command): EditorState {
   let next = state
   const ran = command(state, (tr) => {
     next = state.apply(tr)
