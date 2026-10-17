@@ -187,6 +187,47 @@ The web bundle is unaffected: the web app imports only `@quill/markdown` subpath
 - Policy storage and the settings screens (step 5) are still to build; the audience is the default for everyone until then.
 - `GET /bot` states the limits of the default configuration. If an operator changes them, the page should read them from configuration.
 
+## Addendum: live embeds (2026-10-17)
+
+**Scope:** `packages/domain/src/link-preview/embed-providers.ts` (the allowlist), the resolver's `embed` field, the `embed` drawer in `packages/markdown/src/render/link-slots.ts`, the CSP `frame-src` (`apps/server/src/plugins/security-headers.ts`, `app.ts`), `LINK_EMBEDS_DISABLED` (`infrastructure/link-preview/embed-config.ts`), and the editor's `Embed` choice and placeholder. Checked against every section of `docs/security/checklist.md`, below.
+
+### What this adds, and what it does not
+
+An embed is the one place in Quill where a third party's page is loaded **by the reader's browser** on our page. The server fetches nothing new: the resolver makes no extra request for an embed, and the frame is built from the pasted address. The new risks are therefore in the browser: what the frame can do to our page, what it learns about the reader, and whether the list of what may be framed can be widened by anyone but a reviewer.
+
+### Threats and how each is met
+
+| Threat | Control | Test |
+| ------ | ------- | ---- |
+| An author or a page chooses where the frame points (open frame, phishing, script URL) | The `src` is built from validated parts (an identifier of fixed alphabet and length) on the provider's own https origin. Open Graph tags and oEmbed `html` are never read for it | `embed-providers.test.ts` (hostile address, query and path injection); `link-preview-provider.test.ts` (a page that names another frame) |
+| A stored preview is altered, or outlives a provider being switched off | The renderer asks the registry to recognise the stored frame at draw time: provider on, https, no credentials, an origin of that provider. Otherwise it draws a card | `embed-providers.test.ts` (`recognise`); `link-slots.test.ts`; `fill-links.test.ts` |
+| A frame navigates or pops up on our page, or reaches our origin | `sandbox` comes from the provider's entry: `allow-scripts` and `allow-same-origin` (and `allow-presentation` for players) only. No top navigation, popups, forms, modals or downloads. Every frame is on another origin than ours, so `allow-same-origin` gives the provider its own storage and nothing of ours. A stated reason is required wherever the token appears | `embed-providers.test.ts` |
+| The CSP is widened for something that is not a frame | Only `frame-src` is generated; `default-src`, `script-src`, `connect-src` and the rest are untouched and tested as unchanged. `frame-ancestors 'none'` stays | `security-headers.test.ts` |
+| A frame source exists that no reviewer approved | `frame-src` is exactly the origins of the providers left on (plus the configured draw.io editor). The tests fail if any other source, a wildcard or a scheme-only source appears. With every provider off it is `'none'`. The public site and shared pages carry the same policy | `security-headers.test.ts`; `public-site.integration.test.ts` |
+| An organisation that asked for text only, or none, gets a third-party frame | The resolver records a frame only under `rich`; `off` makes no preview at all; the renderer cannot draw what was never recorded | `link-preview-provider.test.ts` |
+| An export or a crawler's copy contains a frame | The body holds only a slot (a plain anchor); frames exist only after a page fill, which an export never runs | `link-slots.test.ts` |
+| A path crafted to make matching slow | Exact host match, then segments and identifiers checked per character; no regular expression over a path. A 10 000 character path is matched against every entry in a test with a time budget | `embed-providers.test.ts` |
+| An operator mistypes the switch that turns a provider off, and it stays on | An unknown id stops the boot | `embed-config.test.ts` |
+| A reader's address and browsing leak to the provider when the page loads | Inherent to a live frame, and the reason the feature is chosen per link, limited to `rich`, lazy (a frame below the fold loads nothing) and switchable per provider by the operator. YouTube uses its privacy-enhanced origin. `Referrer-Policy` stays `strict-origin-when-cross-origin`, so only our origin, never a path, is sent | `link-slots.test.ts` |
+| An anonymous read causes a request | Unchanged: drawing a frame is part of a response, not a fetch; the public fill never queues anything | `fill-links.test.ts` |
+
+### Checklist
+
+- Headers and transport: strict CSP kept (no `unsafe-inline`); `frame-ancestors` kept; `frame-src` generated and tested. Met.
+- Input, output, content: the frame is built by `rehype-stringify` from a tree, so every attribute is escaped; the title is escaped in the `title` attribute and the caption (tested with `<`, `&` and quotes). The caption link has `rel="noopener noreferrer"`. Met.
+- Outbound requests: no new server request. Met.
+- Bounded matching: met, measured.
+- Anything cached: the filled body's validator already names what was drawn (`drawnTag`), so a frame appearing or disappearing changes the tag. Met.
+- Authentication, authorisation, abuse, supply chain: unchanged by this work; no dependency was added.
+
+### Findings
+
+- **E1 (Low, accepted, documented).** `allow-same-origin` is on for all eleven entries. Every one needs it for its player or viewer to run, and each states why. A provider whose frame would be on **our** origin must never get the token (it would let the frame remove its own sandbox); the registry only admits third-party https origins, and adding one is a reviewed change.
+- **E2 (Low, accepted).** A framed provider hosts third-party content (any Google Doc, any Miro board). The sandbox keeps it from our page; it can still show its own content to the reader. The mitigation is that an author chose it, the organisation allows `rich`, and an operator can switch the provider off.
+- **E3 (Info).** Posts from X are not embedded: the supported embed is a script, not a frame, and the plain-frame address is undocumented. They remain cards.
+- **E4 (Info).** LinkedIn is admitted on the strength of its documented plain-frame address. It has not been exercised against a live post from this environment, so the first operator to enable it should check one post; `LINK_EMBEDS_DISABLED=linkedin` turns it off.
+- **E5 (Open).** Previews stored before this change carry no frame; they gain one when they next refresh (three days), or on "Refresh preview".
+
 ## Open items
 
 1. ~~Rate limits and de-duplication~~ Done (step 3, extended 2026-10-17).

@@ -26,6 +26,7 @@ import {
   requireDocumentAccess,
 } from '../application/authorization.ts'
 import { drawnTag, fillLinksForMember, linkPreviewDependencies } from '../application/fill-links.ts'
+import { linkEmbedRegistry } from '../infrastructure/link-preview/embed-config.ts'
 import { resolveDocumentId } from '../application/references.ts'
 import type { AppDependencies } from '../dependencies.ts'
 import { conflict, lockLost, notFound, unprocessable } from '../errors.ts'
@@ -168,6 +169,7 @@ export function documentRoutes(deps: AppDependencies): FastifyPluginAsync {
           linkPreviewDependencies(deps),
           userId,
           rendered.content.html,
+          linkEmbedRegistry(deps.config.linkEmbeds),
         )
         const etag = drawnTag(rendered.key, rendered.content.html, filled.html)
         reply.header('etag', etag)

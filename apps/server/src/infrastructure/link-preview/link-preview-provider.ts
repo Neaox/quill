@@ -2,6 +2,7 @@ import type { Clock } from '@quill/application'
 import { err, normaliseUrl, ok } from '@quill/domain'
 import type {
   CompiledLinkPolicy,
+  EmbedRegistry,
   LinkPreview,
   LinkPreviewFailure,
   PreviewImage,
@@ -73,12 +74,20 @@ export interface LinkPreviewProvider {
 interface Scope {
   readonly permit: UrlPermit | undefined
   readonly images: boolean
+  /**
+   * Whether a live frame may be recorded. It is the same permission as pictures, `rich`: a
+   * frame loads the provider's own page in the reader's browser, which is more than a
+   * picture does, so an organisation that has asked for text only never gets one.
+   */
+  readonly embeds: boolean
 }
 
 export interface LinkPreviewProviderDeps {
   readonly reader: OpenWebReader
   readonly images: ImageIngestor
   readonly oembed: OembedRegistry
+  /** The embed allowlist as this instance runs it: which pages may become a live frame. */
+  readonly embeds: EmbedRegistry
   readonly clock: Clock
 }
 
@@ -152,7 +161,7 @@ async function fetchPage(
 }
 
 export function createLinkPreviewProvider(deps: LinkPreviewProviderDeps): LinkPreviewProvider {
-  const { reader, images, oembed, clock } = deps
+  const { reader, images, oembed, embeds, clock } = deps
 
   /** The first favicon candidate that turns into an image; later ones are the fallback, so one at a time. */
   async function firstFavicon(
@@ -185,6 +194,7 @@ export function createLinkPreviewProvider(deps: LinkPreviewProviderDeps): LinkPr
     // The page's claim is believed only for its own site; otherwise the address is where we ended up.
     const address = claimed !== null && sameSite(claimed, where) ? claimed : where
     const canonicalUrl = normaliseUrl(address) ?? key
+    const frame = scope.embeds ? embeds.find(new URL(key)) : null
     return {
       url: key,
       canonicalUrl,
@@ -197,6 +207,16 @@ export function createLinkPreviewProvider(deps: LinkPreviewProviderDeps): LinkPr
       favicon,
       layer: draft.layer,
       fetchedAt: clock.now().toISOString(),
+      // Built by us from the address's validated parts (`embeds.find`), never from the page.
+      ...(frame === null
+        ? {}
+        : {
+            embed: {
+              provider: frame.provider.id,
+              src: frame.frame.src,
+              aspectRatio: frame.frame.aspectRatio,
+            },
+          }),
     }
   }
 
@@ -212,6 +232,7 @@ export function createLinkPreviewProvider(deps: LinkPreviewProviderDeps): LinkPr
       const scope: Scope = {
         permit: policy === undefined ? undefined : (url) => policy.permits(url),
         images: policy?.images ?? true,
+        embeds: policy === undefined || policy.mode === 'rich',
       }
       const drafts: PreviewDraft[] = []
       const finish = async (draft: TitledDraft, page: FetchedPage | null) =>

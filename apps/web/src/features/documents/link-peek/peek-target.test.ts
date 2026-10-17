@@ -26,6 +26,10 @@ describe('peekTarget', () => {
       'a card, which already says it all',
       '<a class="link-card" href="https://blog.example/p">x</a>',
     ],
+    [
+      'the caption of an embed, whose frame already shows the page',
+      '<figure class="link-embed"><figcaption class="link-embed-caption"><a href="https://video.example/v">x</a></figcaption></figure>',
+    ],
     ['a link to a document written in the same origin', `<a href="${location.origin}/d/abc">x</a>`],
   ])('is nothing for %s', (_name, html) => {
     const root = article(`<p>${html}</p>`)

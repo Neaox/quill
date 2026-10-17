@@ -387,7 +387,7 @@ describe('how a link is shown', () => {
 
   const display = (name: string) => within(toolbar('Link')).getByRole('button', { name })
 
-  it('offers a plain link, an inline link and a card, with the one in force pressed', async () => {
+  it('offers every way to show a link, with the one in force pressed', async () => {
     const opened = open(source)
     select(opened, 'the docs', 3)
     const group = within(toolbar('Link')).getByRole('group', { name: 'Show link as' })
@@ -395,7 +395,7 @@ describe('how a link is shown', () => {
       within(group)
         .getAllByRole('button')
         .map((button) => button.textContent),
-    ).toEqual(['Link', 'Inline', 'Compact', 'Card'])
+    ).toEqual(['Link', 'Inline', 'Compact', 'Card', 'Embed'])
     expect(display('Link')).toHaveAttribute('aria-pressed', 'true')
     expect(display('Card')).toHaveAttribute('aria-pressed', 'false')
     await expectNoAccessibilityViolations(opened.container)

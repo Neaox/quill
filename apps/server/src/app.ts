@@ -33,6 +33,7 @@ import { registerRateLimiting } from './plugins/rate-limit.ts'
 import { createRequestIdGenerator, registerRequestIdHeader } from './plugins/request-id.ts'
 import { registerSecurityHeaders } from './plugins/security-headers.ts'
 import { drawioFrameSources } from './extensions/drawio/drawio-config.ts'
+import { linkEmbedRegistry } from './infrastructure/link-preview/embed-config.ts'
 import { drawioRoutes } from './extensions/drawio/drawio-routes.ts'
 import { registerSessionSupport } from './plugins/session.ts'
 import { SHARED_SCHEMAS } from './routes/document-schemas.ts'
@@ -113,7 +114,12 @@ export function buildApp(options: AppOptions = {}): FastifyInstance {
     registerSecurityHeaders(app, {
       https: deps.config.https,
       serveApiDocs,
-      frameSources: drawioFrameSources(deps.config.drawio),
+      // The only origins the app may frame: the draw.io editor, and the live-embed
+      // providers an operator has left on (ADR-042). Both come from configuration.
+      frameSources: [
+        ...drawioFrameSources(deps.config.drawio),
+        ...linkEmbedRegistry(deps.config.linkEmbeds).frameSources(),
+      ],
     })
 
     // Registered before any route: `@fastify/swagger` documents the routes of

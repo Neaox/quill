@@ -12,6 +12,7 @@ import { NodeSelection, TextSelection } from '@tiptap/pm/state'
 import type { Command, EditorState, Transaction } from '@tiptap/pm/state'
 
 import { linkAt } from '../format/links.ts'
+import { embedHintFor } from './link-embeds.ts'
 import { markType, nodeType } from '../schema/node-type.ts'
 import { directiveAttributes, directiveName } from '../schema/directive-attributes.ts'
 
@@ -195,16 +196,18 @@ function caretInside(tr: Transaction, from: number, node: PMNode, offset: number
 }
 
 /**
- * Shows the link under the selection as `display`: a plain link, an inline chip
- * or a card. Not `embed`, which waits for the embed allowlist (ADR-042), and not
- * what the link already is. A card is a block, so it cannot go in a heading or a
- * table cell: there the command is unavailable rather than half done.
+ * Shows the link under the selection as `display`: a plain link, an inline chip,
+ * a card or an embed. Not what the link already is. A card is a block, so it
+ * cannot go in a heading or a table cell: there the command is unavailable rather
+ * than half done. An embed is a block too, and only for an address whose preview
+ * has a frame from the allowlist (`link-embeds.ts`): an option that cannot work
+ * is not offered as one that can (ADR-042).
  */
 export function showLinkAs(display: LinkDisplay): Command {
   return (state, dispatch) => {
-    if (display === 'embed') return false
     const target = linkTargetAt(state)
     if (target === null || target.display === display) return false
+    if (display === 'embed' && embedHintFor(state, target.href) === undefined) return false
     const model = modelFor(target, state, display)
     const offset = Math.max(
       state.selection.head - target.from - (target.form === 'mark' ? 0 : 1),
@@ -213,7 +216,15 @@ export function showLinkAs(display: LinkDisplay): Command {
 
     const tr = state.tr
     if (isBlockDisplay(display)) {
-      if (target.form === 'leaf') return false
+      if (target.form === 'leaf') {
+        // Already a block of its own: only what it is shown as changes (card, compact, embed).
+        tr.setNodeMarkup(target.from, undefined, {
+          ...target.node.attrs,
+          attributes: linkDirective.serialize(model).attributes,
+        })
+        dispatch?.(tr.scrollIntoView())
+        return true
+      }
       const at = placeCard(tr, target, cardNode(state, model))
       if (at === null) return false
       tr.setSelection(NodeSelection.create(tr.doc, at))

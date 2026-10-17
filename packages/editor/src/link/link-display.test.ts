@@ -1,9 +1,10 @@
-import { NodeSelection, TextSelection } from '@tiptap/pm/state'
-import type { Command, EditorState } from '@tiptap/pm/state'
+import { EditorState, NodeSelection, TextSelection } from '@tiptap/pm/state'
+import type { Command } from '@tiptap/pm/state'
 import { describe, expect, it } from 'vitest'
 
 import { documentToMdast } from '../document/ast.ts'
 import { createEditorTestHarness } from '../testing/harness.ts'
+import { linkEmbedsPlugin, recordLinkEmbed } from './link-embeds.ts'
 import { linkTargetAt, setLinkChoice, showLinkAs } from './link-display.ts'
 
 const harness = createEditorTestHarness()
@@ -153,8 +154,52 @@ describe('showLinkAs', () => {
     expect(run(caretIn('Just words.', 'words'), showLinkAs('card')).ok).toBe(false)
   })
 
-  it('does not offer embed, which waits for the embed allowlist', () => {
-    expect(run(caretIn(PLAIN, 'design'), showLinkAs('embed')).ok).toBe(false)
+  describe('as an embed', () => {
+    const ADDRESS = 'https://blog.example/post'
+    const HINT = { provider: 'YouTube', aspectRatio: 16 / 9 }
+
+    /** The same state, told by the application that this address has a frame. */
+    function told(state: EditorState, href: string): EditorState {
+      const plugged = EditorState.create({
+        doc: state.doc,
+        selection: state.selection,
+        plugins: [linkEmbedsPlugin()],
+      })
+      const record = recordLinkEmbed(plugged, href, HINT)
+      return record === null ? plugged : plugged.apply(record)
+    }
+
+    it('is refused for an address nothing has said can be embedded', () => {
+      expect(run(caretIn(PLAIN, 'design'), showLinkAs('embed')).ok).toBe(false)
+    })
+
+    it('is refused for an address that was told about, but not this one', () => {
+      expect(
+        run(told(caretIn(PLAIN, 'design'), 'https://elsewhere.example/'), showLinkAs('embed')).ok,
+      ).toBe(false)
+    })
+
+    it('writes the embed as a directive of its own, for an address that has a frame', () => {
+      const { ok, markdown } = run(told(caretIn(PLAIN, 'design'), ADDRESS), showLinkAs('embed'))
+      expect(ok).toBe(true)
+      expect(markdown).toContain(
+        '::link[the design doc]{url="https://blog.example/post" display="embed"}',
+      )
+    })
+
+    it('is a block, so it cannot go where a line cannot be split', () => {
+      const heading = told(
+        caretIn('# A [heading link](https://blog.example/post)', 'heading'),
+        ADDRESS,
+      )
+      expect(run(heading, showLinkAs('embed')).ok).toBe(false)
+    })
+
+    it('can be taken back to a card, an inline link or a plain link', () => {
+      const embedded = told(selectLeaf(`::link{url="${ADDRESS}" display="embed"}`), ADDRESS)
+      expect(run(embedded, showLinkAs('card')).markdown).toContain('display="card"')
+      expect(run(embedded, showLinkAs('inline')).markdown).toContain('display="inline"')
+    })
   })
 })
 

@@ -10,6 +10,7 @@
 // The writing surface
 export { DocumentEditor } from './document/document-editor.tsx'
 export type {
+  EditorLinkEmbed,
   EditorLinkImage,
   EditorLinkPreview,
   LinkPreviewSource,

@@ -1,9 +1,11 @@
 import { useQueries } from '@tanstack/react-query'
 import { useCallback, useMemo, useState } from 'react'
 
-import type { LinkPreviewSource } from '@quill/editor'
+import { EMBED_PROVIDERS } from '@quill/domain'
+import type { EditorLinkPreview, LinkPreviewSource } from '@quill/editor'
 
 import { linkPreviewImageUrl, linkPreviewQueryOptions, useApiClient } from '../../lib/api/index.ts'
+import type { LinkPreview } from '../../lib/api/index.ts'
 
 /**
  * How the editor gets the preview of a link card (ADR-042).
@@ -14,6 +16,17 @@ import { linkPreviewImageUrl, linkPreviewQueryOptions, useApiClient } from '../.
  * preview that is ready is handed back; a link that is still being fetched, blocked
  * or unavailable is drawn from its address, never as an error.
  */
+/**
+ * What the editor is given of a preview: the frame's address stays here, and the editor gets
+ * the provider's name and shape, which is all it needs to offer `Embed` and to hold the place.
+ */
+function forEditor(preview: LinkPreview): EditorLinkPreview {
+  const { embed, ...rest } = preview
+  if (embed === undefined) return rest
+  const name = EMBED_PROVIDERS.find((provider) => provider.id === embed.provider)?.name
+  return { ...rest, embed: { provider: name ?? embed.provider, aspectRatio: embed.aspectRatio } }
+}
+
 export function useEditorLinkPreviews(): LinkPreviewSource {
   const client = useApiClient()
   const [wanted, setWanted] = useState<readonly string[]>([])
@@ -28,7 +41,9 @@ export function useEditorLinkPreviews(): LinkPreviewSource {
         results.flatMap((result, index) => {
           const view = result.data
           const url = wanted[index]
-          return view?.state === 'ready' && url !== undefined ? [[url, view.preview] as const] : []
+          return view?.state === 'ready' && url !== undefined
+            ? [[url, forEditor(view.preview)] as const]
+            : []
         }),
       ),
   })

@@ -23,6 +23,7 @@ import {
   SHARE_REFUSAL,
 } from '../application/authorization.ts'
 import { drawnTag, fillLinksForPublic, linkPreviewDependencies } from '../application/fill-links.ts'
+import { linkEmbedRegistry } from '../infrastructure/link-preview/embed-config.ts'
 import { resolveDocumentId } from '../application/references.ts'
 import type { AppDependencies } from '../dependencies.ts'
 import { AppError, notFound, notModified, unprocessable } from '../errors.ts'
@@ -273,7 +274,11 @@ export function shareLinkRoutes(deps: AppDependencies): FastifyPluginAsync {
     const rendered = await renderDocument(deps, { documentId: document.id })
     if (rendered.kind !== 'rendered') throw notFound(SHARE_REFUSAL)
     // Whoever holds the link reads stored previews only; they cannot cause a fetch (ADR-042).
-    const filled = await fillLinksForPublic(linkPreviewDependencies(deps), rendered.content.html)
+    const filled = await fillLinksForPublic(
+      linkPreviewDependencies(deps),
+      rendered.content.html,
+      linkEmbedRegistry(deps.config.linkEmbeds),
+    )
     return {
       // The render-cache key is the whole of the body's identity: what it was
       // rendered from, and the render version (ADR-031); and what was drawn into it.

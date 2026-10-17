@@ -1,18 +1,38 @@
 import { parseDocument, serializeDocument } from '@quill/markdown'
-import { act, render, screen, within } from '@testing-library/react'
+import { act, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { createRef } from 'react'
 import { describe, expect, it } from 'vitest'
 
+import type { LinkPreviewSource } from '../blocks/link-preview-context.tsx'
 import { DocumentEditor } from '../document/document-editor.tsx'
 import type { DocumentEditorHandle } from '../document/document-editor.tsx'
 import { expectNoAccessibilityViolations } from '../testing/axe.ts'
 
 const ADDRESS = 'https://blog.example/post'
 
-function open(source: string) {
+const preview = (embed?: { provider: string; aspectRatio: number }): LinkPreviewSource => ({
+  preview: () => ({
+    title: 'A talk',
+    description: null,
+    siteName: null,
+    thumbnail: null,
+    favicon: null,
+    ...(embed === undefined ? {} : { embed }),
+  }),
+  request: () => undefined,
+  imageUrl: () => '',
+})
+
+function open(source: string, linkPreviews?: LinkPreviewSource) {
   const ref = createRef<DocumentEditorHandle>()
-  const result = render(<DocumentEditor ast={parseDocument(source).ast} ref={ref} />)
+  const result = render(
+    <DocumentEditor
+      ast={parseDocument(source).ast}
+      ref={ref}
+      {...(linkPreviews === undefined ? {} : { linkPreviews })}
+    />,
+  )
   return { ref, user: userEvent.setup(), ...result }
 }
 
@@ -61,6 +81,7 @@ describe('the offer that follows a pasted address', () => {
       'Inline',
       'Compact',
       'Card',
+      'Embed',
     ])
     expect(choices[0]).toHaveAttribute('aria-pressed', 'true')
     await expectNoAccessibilityViolations(opened.container)
@@ -79,6 +100,27 @@ describe('the offer that follows a pasted address', () => {
     pasteAtEnd(opened, ADDRESS)
     await opened.user.click(within(offer()).getByRole('button', { name: 'Card' }))
     expect(markdown(opened)).toContain(`::link{url="${ADDRESS}" display="card"}`)
+  })
+
+  describe('Embed', () => {
+    const embedButton = () => within(offer()).getByRole('button', { name: 'Embed' })
+
+    it('is disabled, with the reason, for a page that cannot be embedded', () => {
+      const opened = open('See', preview())
+      pasteAtEnd(opened, ADDRESS)
+      expect(embedButton()).toBeDisabled()
+      expect(embedButton()).toHaveAttribute('title', expect.stringMatching(/cannot be embedded/u))
+    })
+
+    it('is offered for a page whose preview has a frame, and shows the link as an embed', async () => {
+      const opened = open('See', preview({ provider: 'YouTube', aspectRatio: 16 / 9 }))
+      pasteAtEnd(opened, ADDRESS)
+      await waitFor(() => {
+        expect(embedButton()).toBeEnabled()
+      })
+      await opened.user.click(embedButton())
+      expect(markdown(opened)).toContain(`::link{url="${ADDRESS}" display="embed"}`)
+    })
   })
 
   it('goes away when the author types on', () => {

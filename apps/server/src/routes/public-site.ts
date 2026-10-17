@@ -9,6 +9,7 @@ import { visibilityFilter } from '@quill/search'
 import type { FastifyPluginAsync, FastifyReply, FastifyRequest } from 'fastify'
 
 import { fillLinksForPublic, linkPreviewDependencies } from '../application/fill-links.ts'
+import { linkEmbedRegistry } from '../infrastructure/link-preview/embed-config.ts'
 import type { AppDependencies } from '../dependencies.ts'
 import { notFound } from '../errors.ts'
 import { OPEN_WEB_LIMITS } from '../infrastructure/http/open-web-client.ts'
@@ -293,6 +294,7 @@ export function publicSiteRoutes(deps: AppDependencies): FastifyPluginAsync {
     const { html: bodyHtml } = await fillLinksForPublic(
       linkPreviewDependencies(deps),
       rendered.content.html,
+      linkEmbedRegistry(deps.config.linkEmbeds),
     )
 
     const stamps = await publishedAt(deps, [document])

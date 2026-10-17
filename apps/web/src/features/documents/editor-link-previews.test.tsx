@@ -70,6 +70,29 @@ describe('useEditorLinkPreviews', () => {
     expect(result.current.preview(URL_B)).toBeNull()
   })
 
+  it('hands the editor the provider’s name and shape of an embed, and not the frame’s address', async () => {
+    const embedded = {
+      ...preview(URL_A),
+      embed: {
+        provider: 'youtube',
+        src: 'https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ',
+        aspectRatio: 16 / 9,
+      },
+    }
+    const { wrapper: Wrapper } = wrapper({
+      [URL_A]: { state: 'ready', preview: embedded, stale: false },
+    })
+    const { result } = renderHook(() => useEditorLinkPreviews(), { wrapper: Wrapper })
+    act(() => {
+      result.current.request(URL_A)
+    })
+    await waitFor(() => expect(result.current.preview(URL_A)).not.toBeNull())
+    expect(result.current.preview(URL_A)?.embed).toEqual({
+      provider: 'YouTube',
+      aspectRatio: 16 / 9,
+    })
+  })
+
   it('serves pictures from our own origin', () => {
     const { wrapper: Wrapper } = wrapper({})
     const { result } = renderHook(() => useEditorLinkPreviews(), { wrapper: Wrapper })

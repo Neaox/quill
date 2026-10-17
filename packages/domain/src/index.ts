@@ -185,3 +185,17 @@ export {
   isLinkDisplay,
 } from './link-preview/display.ts'
 export type { CardLayout, LinkChoice, LinkDisplay } from './link-preview/display.ts'
+export {
+  EMBED_PROVIDERS,
+  EMBED_RATIOS,
+  createEmbedRegistry,
+  nearestEmbedRatio,
+  unknownEmbedProviders,
+} from './link-preview/embed-providers.ts'
+export type {
+  EmbedFrame,
+  EmbedMatch,
+  EmbedProvider,
+  EmbedRatioName,
+  EmbedRegistry,
+} from './link-preview/embed-providers.ts'

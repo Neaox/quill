@@ -1,5 +1,6 @@
-import { isBlockDisplay, isLinkDisplay, normaliseUrl } from '@quill/domain'
+import { isBlockDisplay, isLinkDisplay, nearestEmbedRatio, normaliseUrl } from '@quill/domain'
 import type {
+  EmbedRegistry,
   LinkChoice,
   LinkDisplay,
   LinkPreview,
@@ -87,6 +88,12 @@ export interface FillOptions {
   readonly defaultDisplay: LinkDisplay
   /** Where a stored picture is served from. */
   readonly imageUrl: (image: PreviewImage) => string
+  /**
+   * The embed allowlist as this instance runs it (ADR-042). Without it, or for an embed it
+   * does not recognise, an `embed` is drawn as the card it falls back to: a frame is drawn
+   * only when the allowlist vouches for it, here, at the moment of drawing.
+   */
+  readonly embeds?: EmbedRegistry
 }
 
 /**
@@ -254,6 +261,58 @@ function card(
   )
 }
 
+/**
+ * A live embed: one lazy, sandboxed frame from the allowlist, held in a box of its shape.
+ *
+ * Everything about the frame comes from the allowlist's entry for its provider, not from
+ * the stored preview: the `sandbox` and `allow` tokens, the name, and whether the address is
+ * one the provider may frame. The preview's `src` is *checked* (`recognise`) and drawn only if
+ * it passes, so a stored preview that was edited, or made for a provider since switched off,
+ * degrades to a card. The caption link is the fallback: it is a real link to the page, for a
+ * reader whose browser or network will not load the frame (an `<iframe>`'s own content is not
+ * parsed as markup, so a link inside it would never be seen).
+ */
+function embed(
+  slot: Element,
+  preview: LinkPreview,
+  choice: LinkChoice,
+  options: FillOptions,
+): Element {
+  const provider =
+    preview.embed === undefined ? null : (options.embeds?.recognise(preview.embed) ?? null)
+  if (preview.embed === undefined || provider === null) return card(slot, preview, choice, options)
+
+  const title = choice.title ?? preview.title
+  return element(
+    'figure',
+    {
+      className: ['link-embed'],
+      'data-provider': provider.id,
+      'data-ratio': nearestEmbedRatio(preview.embed.aspectRatio).replace(':', '-'),
+    },
+    [
+      element('div', { className: ['link-embed-frame'] }, [
+        element(
+          'iframe',
+          {
+            src: preview.embed.src,
+            title: `${title} (${provider.name})`,
+            loading: 'lazy',
+            sandbox: [...provider.sandbox],
+            allow: provider.allow.join('; '),
+            referrerPolicy: 'strict-origin-when-cross-origin',
+          },
+          [],
+        ),
+      ]),
+      element('figcaption', { className: ['link-embed-caption'] }, [
+        element('a', { href: slot.properties['href'], rel: EXTERNAL_REL }, [text(title)]),
+        element('span', { className: ['link-embed-provider'] }, [text(provider.name)]),
+      ]),
+    ],
+  )
+}
+
 type Drawer = (
   slot: Element,
   preview: LinkPreview,
@@ -269,8 +328,7 @@ type Drawer = (
 const BLOCK_DRAWERS: Readonly<Partial<Record<LinkDisplay, Drawer>>> = {
   compact,
   card,
-  // `embed` is drawn as a card until the embed allowlist (ADR-042) can say it may be a frame.
-  embed: card,
+  embed,
 }
 
 /** The replacement for a slot, or null to leave it as the plain link it is. */

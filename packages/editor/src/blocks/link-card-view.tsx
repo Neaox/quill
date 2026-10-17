@@ -1,4 +1,5 @@
-import { linkDirective } from '@quill/markdown'
+import { linkDirective, nearestEmbedRatio } from '@quill/markdown'
+import type { EmbedRatioName } from '@quill/markdown'
 import { LinkIcon } from '@quill/ui'
 import { NodeViewContent, NodeViewWrapper } from '@tiptap/react'
 import { useEffect } from 'react'
@@ -33,12 +34,25 @@ const card = tv({
     icon: 'size-4 shrink-0 rounded-sm object-contain',
     picture: 'w-36 shrink-0 self-stretch border-s border-border object-cover',
     pending: 'h-3 w-2/3 rounded-sm bg-border motion-safe:animate-pulse',
+    embed: [
+      'link-embed-editor flex w-full max-w-xl flex-col items-center justify-center gap-1 rounded-md border border-dashed',
+      'border-border-strong bg-surface-raised p-4 text-center text-sm',
+      'data-[selected=true]:border-accent data-[selected=true]:ring-2 data-[selected=true]:ring-focus-ring',
+    ],
     compact: [
       'link-compact-editor flex items-center rounded-md border border-border bg-surface-raised px-3 py-1.5 text-sm',
       'data-[selected=true]:border-accent data-[selected=true]:ring-2 data-[selected=true]:ring-focus-ring',
     ],
   },
   variants: {
+    ratio: {
+      '7:3': { embed: 'aspect-[7/3]' },
+      '16:9': { embed: 'aspect-video' },
+      '16:10': { embed: 'aspect-[16/10]' },
+      '4:3': { embed: 'aspect-[4/3]' },
+      '1:1': { embed: 'aspect-square' },
+      '9:10': { embed: 'aspect-[9/10]' },
+    } satisfies Record<EmbedRatioName, { embed: string }>,
     layout: {
       side: {},
       top: {
@@ -57,6 +71,10 @@ function hostOf(address: string): string {
   }
 }
 
+function ratioLabel(aspectRatio: number): string {
+  return nearestEmbedRatio(aspectRatio)
+}
+
 export function LinkCardBlock({ node, selected }: NodeViewProps) {
   const link = linkDirective.parse({
     type: 'leafDirective',
@@ -73,12 +91,40 @@ export function LinkCardBlock({ node, selected }: NodeViewProps) {
   useEffect(() => {
     request(address)
   }, [request, address])
-  const styles = card({ layout: link.choice.layout })
+  const embed = preview?.embed
+  const styles = card({
+    layout: link.choice.layout,
+    ratio: embed === undefined ? '16:9' : nearestEmbedRatio(embed.aspectRatio),
+  })
   const host = hostOf(link.url)
 
   const title = link.choice.title ?? link.text ?? preview?.title ?? link.url
   const description = link.choice.description ?? preview?.description ?? null
   const picture = link.choice.showImage ? (preview?.thumbnail ?? null) : null
+
+  // The writing surface never loads the frame: an embed is a place held for it, which says what
+  // will be there and how big. The reader and the published page draw the live frame.
+  if (link.choice.display === 'embed' && embed !== undefined) {
+    return (
+      <NodeViewWrapper
+        className={styles.embed()}
+        data-directive="link"
+        data-selected={selected}
+        role="group"
+        aria-label={`Embedded ${embed.provider}: ${title}`}
+      >
+        <NodeViewContent className="hidden" />
+        <div className="flex min-w-0 flex-col items-center gap-1" contentEditable={false}>
+          <LinkIcon className="size-5 text-muted" />
+          <p className="font-medium text-foreground">{embed.provider} embed</p>
+          <p className="max-w-full truncate text-muted">{title}</p>
+          <p className="text-xs text-muted">
+            Shown live to readers · {ratioLabel(embed.aspectRatio)}
+          </p>
+        </div>
+      </NodeViewWrapper>
+    )
+  }
 
   if (link.choice.display === 'compact') {
     return (

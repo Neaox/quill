@@ -7,7 +7,7 @@ import type {
   LinkPreviewReading,
 } from '@quill/application'
 import { DEFAULT_LINK_DISPLAY } from '@quill/domain'
-import type { LinkPreviewView, UserId } from '@quill/domain'
+import type { EmbedRegistry, LinkPreviewView, UserId } from '@quill/domain'
 import { scanLinkSlots } from '@quill/markdown'
 
 import type { AppDependencies } from '../dependencies.ts'
@@ -42,7 +42,12 @@ type Read = (keys: readonly string[]) => Promise<readonly LinkPreviewReading[]>
 /** The address a stored picture is served from; see `routes/link-preview-images.ts`. */
 const imageUrl = (image: { readonly hash: string }) => `/link-previews/images/${image.hash}`
 
-async function fill(html: string, read: Read, countPending: boolean): Promise<FilledBody> {
+async function fill(
+  html: string,
+  read: Read,
+  countPending: boolean,
+  embeds: EmbedRegistry,
+): Promise<FilledBody> {
   const slots = scanLinkSlots(html)
   if (slots.keys.length === 0) return { html, pending: 0 }
 
@@ -51,7 +56,7 @@ async function fill(html: string, read: Read, countPending: boolean): Promise<Fi
   for (const { key, view } of readings) if (key !== null) views.set(key, view)
 
   return {
-    html: slots.draw(views, { defaultDisplay: DEFAULT_LINK_DISPLAY, imageUrl }),
+    html: slots.draw(views, { defaultDisplay: DEFAULT_LINK_DISPLAY, imageUrl, embeds }),
     // An anonymous reader has no one to wait for: nothing was queued on their behalf.
     pending: countPending
       ? [...views.values()].filter((view) => view.state === 'pending').length
@@ -75,18 +80,21 @@ export function fillLinksForMember(
   deps: LinkPreviewDependencies,
   userId: UserId,
   html: string,
+  embeds: EmbedRegistry,
 ): Promise<FilledBody> {
-  return fill(html, (urls) => getLinkPreviews(deps, { userId, urls }), true)
+  return fill(html, (urls) => getLinkPreviews(deps, { userId, urls }), true, embeds)
 }
 
 /** For anyone else: stored previews are drawn, and nothing is ever queued. */
 export function fillLinksForPublic(
   deps: LinkPreviewDependencies,
   html: string,
+  embeds: EmbedRegistry,
 ): Promise<FilledBody> {
   return fill(
     html,
     (urls) => peekLinkPreviews(deps, { audience: deps.audiences.forPublic(), urls }),
     false,
+    embeds,
   )
 }

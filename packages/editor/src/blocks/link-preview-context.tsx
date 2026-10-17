@@ -20,6 +20,18 @@ export interface EditorLinkPreview {
   readonly siteName: string | null
   readonly thumbnail: EditorLinkImage | null
   readonly favicon: EditorLinkImage | null
+  /**
+   * Present when the page can be embedded, so the editor offers `Embed` for it and draws the
+   * embed's place. The editor never loads the frame: this is only enough to name it and size it.
+   */
+  readonly embed?: EditorLinkEmbed
+}
+
+export interface EditorLinkEmbed {
+  /** What a reader calls the provider: "YouTube". */
+  readonly provider: string
+  /** Width over height. */
+  readonly aspectRatio: number
 }
 
 export interface EditorLinkImage {

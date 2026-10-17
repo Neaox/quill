@@ -1,6 +1,7 @@
 import type { Command, EditorState } from '@tiptap/pm/state'
 
 import { linkTargetAt, setLinkChoice, showLinkAs } from '../link/link-display.ts'
+import { embedHintFor } from '../link/link-embeds.ts'
 import type { LinkDisplay } from '@quill/markdown'
 import type { ActionGroup, EditorAction } from './editor-action.ts'
 
@@ -11,8 +12,9 @@ import type { ActionGroup, EditorAction } from './editor-action.ts'
  * The same actions are the toolbar's segmented control, the context menu's
  * "Show link as", and the command palette's entries, because an action is data
  * (`editor-action.ts`) and every surface is a rendering of a list of them.
- * `embed` is not offered: it needs the embed allowlist, which does not exist
- * yet, and an option that cannot work is not an option (ADR-042).
+ * `embed` is always listed and available only for an address whose preview has a
+ * frame from the embed allowlist (`link-embeds.ts`); anywhere else it is disabled
+ * and says why, as a card does where the line cannot be split.
  */
 
 const DISPLAY_LABELS = {
@@ -20,6 +22,7 @@ const DISPLAY_LABELS = {
   inline: 'Inline',
   compact: 'Compact',
   card: 'Card',
+  embed: 'Embed',
 } as const satisfies Partial<Record<LinkDisplay, string>>
 
 const DISPLAY_DESCRIPTIONS = {
@@ -27,6 +30,7 @@ const DISPLAY_DESCRIPTIONS = {
   inline: 'The page’s icon and title, in the line',
   compact: 'Icon, title and site on one line, for lists of references',
   card: 'Title, summary and picture, on a line of its own',
+  embed: 'The page itself, live, in a frame (YouTube, Figma and other supported sites)',
 } as const satisfies Partial<Record<LinkDisplay, string>>
 
 /** A card is a block, so inside a line that cannot be split (a heading, a table cell, a placeholder) it cannot go. */
@@ -34,6 +38,16 @@ function blockUnavailableBecause(state: EditorState): string | undefined {
   return linkTargetAt(state) !== null && !showLinkAs('card')(state)
     ? 'A card or compact link needs a line of its own, which this place cannot give it'
     : undefined
+}
+
+/** An embed is a block like a card, and also needs a page that can be embedded at all. */
+function embedUnavailableBecause(state: EditorState): string | undefined {
+  const target = linkTargetAt(state)
+  if (target === null) return undefined
+  if (embedHintFor(state, target.href) === undefined) {
+    return 'This page cannot be embedded: only pages from supported sites, such as YouTube, Vimeo and Figma, can, and the organisation’s link settings must allow rich previews'
+  }
+  return blockUnavailableBecause(state)
 }
 
 export function linkDisplayAction(display: keyof typeof DISPLAY_LABELS): EditorAction {
@@ -47,6 +61,7 @@ export function linkDisplayAction(display: keyof typeof DISPLAY_LABELS): EditorA
     ...(display === 'card' || display === 'compact'
       ? { whyUnavailable: blockUnavailableBecause }
       : {}),
+    ...(display === 'embed' ? { whyUnavailable: embedUnavailableBecause } : {}),
   }
 }
 
@@ -58,6 +73,7 @@ export const LINK_DISPLAY_GROUP: ActionGroup = {
     linkDisplayAction('inline'),
     linkDisplayAction('compact'),
     linkDisplayAction('card'),
+    linkDisplayAction('embed'),
   ],
 }
 

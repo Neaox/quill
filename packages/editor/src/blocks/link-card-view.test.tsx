@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest'
 
 import { DocumentEditor } from '../document/document-editor.tsx'
 import { expectNoAccessibilityViolations } from '../testing/axe.ts'
-import type { LinkPreviewSource } from './link-preview-context.tsx'
+import type { EditorLinkPreview, LinkPreviewSource } from './link-preview-context.tsx'
 
 const ADDRESS = 'https://blog.example/post'
 const PREVIEW = {
@@ -15,7 +15,7 @@ const PREVIEW = {
   favicon: { hash: 'b'.repeat(64), width: 64, height: 64 },
 }
 
-const source = (preview: typeof PREVIEW | null): LinkPreviewSource => ({
+const source = (preview: EditorLinkPreview | null): LinkPreviewSource => ({
   preview: () => preview,
   request: () => undefined,
   imageUrl: ({ hash }) => `/pictures/${hash}`,
@@ -72,5 +72,35 @@ describe('a link card in the writing surface', () => {
   it('hides a description the author has emptied', async () => {
     open(`::link{url="${ADDRESS}" display=card description=""}\n`, source(PREVIEW))
     expect(await card('How we cut build times')).not.toHaveTextContent('Caching and parallelism.')
+  })
+})
+
+describe('an embed in the writing surface', () => {
+  const VIDEO = 'https://www.youtube.com/watch?v=dQw4w9WgXcQ'
+  const EMBEDDABLE = { ...PREVIEW, embed: { provider: 'YouTube', aspectRatio: 16 / 9 } }
+
+  it('is an inert placeholder naming the provider and shape, never a live frame', async () => {
+    const { container } = open(
+      `::link{url="${VIDEO}" display=embed}
+`,
+      source(EMBEDDABLE),
+    )
+    const drawn = await screen.findByRole('group', {
+      name: 'Embedded YouTube: How we cut build times',
+    })
+    expect(drawn).toHaveTextContent('YouTube embed')
+    expect(drawn).toHaveTextContent('16:9')
+    expect(container.querySelector('iframe')).toBeNull()
+    expect(container.querySelector('img')).toBeNull()
+    await expectNoAccessibilityViolations(container)
+  })
+
+  it('is drawn as the card the reader will see when the page has no embed', async () => {
+    open(
+      `::link{url="${VIDEO}" display=embed}
+`,
+      source(PREVIEW),
+    )
+    expect(await card('How we cut build times')).toBeInTheDocument()
   })
 })

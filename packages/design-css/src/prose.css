@@ -3426,3 +3426,81 @@ html.lightbox-open {
     border-color: CanvasText;
   }
 }
+
+/*
+ * A live embed (ADR-042): a sandboxed frame from the allowlist, in a box of its own shape so
+ * the page does not shift as it loads. The shape is a named token on the figure
+ * (`data-ratio`) because the Content-Security-Policy forbids an inline style, which is how
+ * an arbitrary ratio would otherwise be written. The caption's link is the fallback for a
+ * reader whose frame will not load, so it is always visible, never a hover affordance.
+ */
+.prose figure.link-embed {
+  inline-size: 100%;
+  max-inline-size: 42em;
+  margin-block: 1em;
+  margin-inline: 0;
+  font-family: var(--font-sans);
+  font-size: 0.9em;
+  line-height: 1.4;
+}
+
+.prose .link-embed-frame {
+  overflow: hidden;
+  aspect-ratio: 16 / 9;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background-color: var(--color-surface-raised);
+}
+
+.prose .link-embed[data-ratio='7-3'] .link-embed-frame {
+  aspect-ratio: 7 / 3;
+}
+
+.prose .link-embed[data-ratio='16-10'] .link-embed-frame {
+  aspect-ratio: 16 / 10;
+}
+
+.prose .link-embed[data-ratio='4-3'] .link-embed-frame {
+  aspect-ratio: 4 / 3;
+}
+
+.prose .link-embed[data-ratio='1-1'] .link-embed-frame {
+  aspect-ratio: 1 / 1;
+}
+
+.prose .link-embed[data-ratio='9-10'] .link-embed-frame {
+  aspect-ratio: 9 / 10;
+}
+
+.prose .link-embed-frame iframe {
+  display: block;
+  inline-size: 100%;
+  block-size: 100%;
+  border: 0;
+}
+
+.prose .link-embed-caption {
+  display: flex;
+  min-inline-size: 0;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.25em 1em;
+  padding-block-start: 0.4em;
+  color: var(--color-muted);
+}
+
+.prose .link-embed-caption a {
+  min-inline-size: 0;
+  color: var(--color-foreground);
+  overflow-wrap: anywhere;
+}
+
+.prose .link-embed-provider {
+  font-size: 0.85em;
+}
+
+/* On a slide the frame takes the width the slide gives it, and scales with it. */
+[data-surface='present'] .prose figure.link-embed {
+  max-inline-size: none;
+}

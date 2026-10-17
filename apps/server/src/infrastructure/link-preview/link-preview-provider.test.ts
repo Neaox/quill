@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs'
 import { createFakeClock, createInMemoryBlobStore } from '@quill/application/test-support'
-import { compileLinkPolicy } from '@quill/domain'
+import { compileLinkPolicy, createEmbedRegistry } from '@quill/domain'
 import type { CompiledLinkPolicy, LinkPreviewPolicy, PreviewImage } from '@quill/domain'
 import sharp from 'sharp'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -13,6 +13,7 @@ import { createLinkPreviewProvider } from './link-preview-provider.ts'
 import { createOembedRegistry } from './oembed-registry.ts'
 import { createSharpTranscoder } from './sharp-transcoder.ts'
 
+const EMBEDS = createEmbedRegistry([])
 const NOW = new Date('2026-10-13T09:00:00.000Z')
 const encoder = new TextEncoder()
 
@@ -78,6 +79,7 @@ function setUp(routes: Record<string, Route>, failingImages: readonly string[] =
     reader: served.reader,
     images: images.images,
     oembed: REGISTRY,
+    embeds: EMBEDS,
     clock: createFakeClock(NOW),
   })
   return { provider, ...served, ...images }
@@ -437,6 +439,7 @@ describe('resolve: failures are values', () => {
       reader,
       images: fakeImages().images,
       oembed: REGISTRY,
+      embeds: EMBEDS,
       clock: createFakeClock(NOW),
     })
     expect(await provider.resolve(url)).toEqual({ ok: false, error: 'unreachable' })
@@ -472,6 +475,7 @@ describe('resolve: end to end with real images', () => {
       reader,
       images: createImageIngestor({ reader, transcoder: createSharpTranscoder(), blobs }),
       oembed: REGISTRY,
+      embeds: EMBEDS,
       clock: createFakeClock(NOW),
     })
     const result = await provider.resolve(url)
@@ -513,6 +517,7 @@ describe('resolve: organisation policy', () => {
       reader: served.reader,
       images: images.images,
       oembed: REGISTRY,
+      embeds: EMBEDS,
       clock: createFakeClock(NOW),
     })
     return { provider, ...served, ...images }
@@ -560,6 +565,7 @@ describe('resolve: organisation policy', () => {
       reader: { get },
       images: fakeImages().images,
       oembed: REGISTRY,
+      embeds: EMBEDS,
       clock: createFakeClock(NOW),
     })
     expect(served.get).not.toHaveBeenCalled()
@@ -610,8 +616,75 @@ describe('resolve: organisation policy', () => {
       reader,
       images: fakeImages().images,
       oembed: REGISTRY,
+      embeds: EMBEDS,
       clock: createFakeClock(NOW),
     })
     expect(await provider.resolve('https://busy.example/')).toEqual({ ok: false, error: 'busy' })
+  })
+})
+
+describe('resolve: embeds (ADR-042, "Embeds are an allowlist")', () => {
+  const video = 'https://www.youtube.com/watch?v=dQw4w9WgXcQ'
+  const embed = {
+    provider: 'youtube',
+    src: 'https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ',
+    aspectRatio: 16 / 9,
+  }
+
+  function resolverFor(embeds = EMBEDS, routes: Record<string, Route> = {}) {
+    const served = fakeReader({
+      [video]: page(video, fixture('article-open-graph.html')),
+      [ARTICLE]: page(ARTICLE, fixture('article-open-graph.html')),
+      ...routes,
+    })
+    return createLinkPreviewProvider({
+      reader: served.reader,
+      images: fakeImages().images,
+      oembed: REGISTRY,
+      embeds,
+      clock: createFakeClock(NOW),
+    })
+  }
+  const policy = (mode: 'off' | 'text' | 'rich') => compile({ mode, allow: [], block: [] })
+
+  it('records the frame for a page of an allowlisted provider', async () => {
+    const result = await resolverFor().resolve(video, { policy: policy('rich') })
+    expect(result.ok && result.value.embed).toEqual(embed)
+  })
+
+  it('records it when no policy is given, which is the default policy, rich', async () => {
+    const result = await resolverFor().resolve(video)
+    expect(result.ok && result.value.embed).toEqual(embed)
+  })
+
+  it('never records one under a text-only policy', async () => {
+    const result = await resolverFor().resolve(video, { policy: policy('text') })
+    expect(result.ok && result.value).toMatchObject({ title: expect.any(String) })
+    expect(result.ok && 'embed' in result.value).toBe(false)
+  })
+
+  it('makes no preview at all when previews are off', async () => {
+    expect(await resolverFor().resolve(video, { policy: policy('off') })).toEqual({
+      ok: false,
+      error: 'blocked',
+    })
+  })
+
+  it('records none for a page that is not on the allowlist', async () => {
+    const result = await resolverFor().resolve(ARTICLE, { policy: policy('rich') })
+    expect(result.ok && 'embed' in result.value).toBe(false)
+  })
+
+  it('records none for a provider the operator has switched off', async () => {
+    const result = await resolverFor(createEmbedRegistry(['youtube'])).resolve(video)
+    expect(result.ok && 'embed' in result.value).toBe(false)
+  })
+
+  it('takes the frame from the address, never from what the page says', async () => {
+    const hostile = `<title>Hostile</title><meta property="og:description" content="d">
+      <meta property="og:video:url" content="https://evil.example/frame">
+      <link rel="alternate" type="application/json+oembed" href="https://evil.example/o.json">`
+    const result = await resolverFor(EMBEDS, { [video]: page(video, hostile) }).resolve(video)
+    expect(result.ok && result.value.embed).toEqual(embed)
   })
 })

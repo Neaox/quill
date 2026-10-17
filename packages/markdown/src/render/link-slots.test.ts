@@ -1,3 +1,4 @@
+import { createEmbedRegistry } from '@quill/domain'
 import type { LinkPreview, LinkPreviewView, PreviewImage } from '@quill/domain'
 import { fromHtml } from 'hast-util-from-html'
 import { describe, expect, it } from 'vitest'
@@ -315,7 +316,7 @@ describe('fillLinkSlots: a block link', () => {
     ).not.toContain('link-card-description')
   })
 
-  it('draws an embed as a card until embeds exist', () => {
+  it('draws an embed as a card when the preview offers no frame', () => {
     expect(card('::link{url="https://blog.example/post" display=embed}')).toContain('link-card')
   })
 
@@ -544,5 +545,93 @@ describe('finding slots in a body that someone has tried to confuse', () => {
     expect(linkSlotKeys(big)).toEqual([URL_A])
     // A generous bound: the attack it guards against takes tens of seconds, and a busy machine takes one.
     expect(performance.now() - started).toBeLessThan(1000)
+  })
+})
+
+describe('an embed: a sandboxed, lazy frame from the allowlist (ADR-042)', () => {
+  const VIDEO = 'https://www.youtube.com/watch?v=dQw4w9WgXcQ'
+  const embed = {
+    provider: 'youtube',
+    src: 'https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ',
+    aspectRatio: 16 / 9,
+  }
+  const video = previewOf({ url: VIDEO, canonicalUrl: VIDEO, title: 'A <talk> & "more"', embed })
+  const options: FillOptions = { ...OPTIONS, embeds: createEmbedRegistry([]) }
+  const markdown = `::link{url="${VIDEO}" display=embed}`
+  const drawn = (preview: LinkPreview = video, withOptions: FillOptions = options) =>
+    fill(markdown, { [VIDEO]: ready(preview) }, withOptions)
+
+  it('draws one lazy, sandboxed iframe in a figure that holds its place', () => {
+    const html = drawn()
+    expect(tagsIn(html)).toEqual(
+      new Set(['article', 'figure', 'div', 'iframe', 'figcaption', 'a', 'span']),
+    )
+    expect(html).toContain('<figure class="link-embed" data-provider="youtube" data-ratio="16-9">')
+    expect(html).toContain('src="https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ"')
+    expect(html).toContain('loading="lazy"')
+    expect(html).toContain('sandbox="allow-scripts allow-same-origin allow-presentation"')
+    expect(html).toContain('allow="encrypted-media; picture-in-picture; fullscreen"')
+    expect(html).toContain('referrerpolicy="strict-origin-when-cross-origin"')
+    expect(html).not.toMatch(/allowfullscreen|allow-top-navigation|allow-popups|allow-forms/u)
+  })
+
+  it('gives the frame a visible, escaped title and a plain link to the page as its fallback', () => {
+    const html = drawn()
+    expect(html).toContain('title="A <talk> &#x26; &#x22;more&#x22; (YouTube)"')
+    expect(html).toContain(
+      `<a href="${VIDEO}" rel="noopener noreferrer">A &#x3C;talk> &#x26; "more"</a>`,
+    )
+    expect(html).toContain('>YouTube</span>')
+  })
+
+  it('shows the author’s title in the caption and the frame', () => {
+    const html = fill(
+      `::link{url="${VIDEO}" display=embed title="Mine"}`,
+      { [VIDEO]: ready(video) },
+      options,
+    )
+    expect(html).toContain('>Mine</a>')
+    expect(html).toContain('title="Mine (YouTube)"')
+  })
+
+  it('names the nearest shape for a ratio, because the stylesheet cannot take an inline style', () => {
+    const html = drawn({ ...video, embed: { ...embed, aspectRatio: 1.31 } })
+    expect(html).toContain('data-ratio="4-3"')
+  })
+
+  it.each([
+    ['a frame on another origin', { ...embed, src: 'https://evil.example/embed/x' }],
+    ['a script address', { ...embed, src: 'javascript:alert(1)' }],
+    ['a provider that is not on the list', { ...embed, provider: 'nope' }],
+    [
+      'an address with credentials',
+      { ...embed, src: 'https://www.youtube-nocookie.com@evil.example/' },
+    ],
+  ])('draws a card, not a frame, for %s', (_name, bad) => {
+    const html = drawn({ ...video, embed: bad })
+    expect(html).toContain('link-card')
+    expect(html).not.toContain('<iframe')
+  })
+
+  it('draws a card for a provider the operator has switched off', () => {
+    const html = drawn(video, { ...options, embeds: createEmbedRegistry(['youtube']) })
+    expect(html).toContain('link-card')
+    expect(html).not.toContain('<iframe')
+  })
+
+  it('draws a card when it was given no allowlist at all', () => {
+    const html = drawn(video, OPTIONS)
+    expect(html).toContain('link-card')
+    expect(html).not.toContain('<iframe')
+  })
+
+  it('draws a chip for an embed in the middle of a sentence', () => {
+    const html = fill(`See :link[${VIDEO}]{display=embed} now.`, { [VIDEO]: ready(video) }, options)
+    expect(html).toContain('link-chip')
+    expect(html).not.toContain('<iframe')
+  })
+
+  it('leaves the unfilled body, which is what an export holds, without any frame', () => {
+    expect(body(markdown)).not.toContain('<iframe')
   })
 })

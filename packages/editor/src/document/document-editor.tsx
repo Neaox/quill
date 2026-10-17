@@ -22,6 +22,7 @@ import { createSlashRegistry } from '../slash/slash-registry.ts'
 import { FindBar } from '../find/find-bar.tsx'
 import { ShortcutsDialog } from '../shortcuts/shortcuts-dialog.tsx'
 import { FormattingToolbar } from '../toolbar/formatting-toolbar.tsx'
+import { LinkEmbedSync } from '../link/link-embed-sync.tsx'
 import { LinkOfferBar } from '../toolbar/link-offer-bar.tsx'
 import { useDetailsEditing, useLinkEditing } from '../toolbar/hooks.ts'
 import { createSlashStore } from '../slash/slash-store.ts'
@@ -295,6 +296,7 @@ export function DocumentEditor({
           detailsEditing={detailsEditing}
           onComment={onComment}
         />
+        <LinkEmbedSync editor={editor} />
         <LinkOfferBar editor={editor} />
         <EditorContextMenu editor={editor} linkEditing={linkEditing} onComment={onComment} />
         <CalloutVariantMenu editor={editor} />

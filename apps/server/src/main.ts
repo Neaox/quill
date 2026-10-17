@@ -41,6 +41,7 @@ import { createLinkPreviewAudiences } from './infrastructure/link-preview/audien
 import { createFetchObserver } from './infrastructure/link-preview/fetch-log.ts'
 import { createImageIngestor } from './infrastructure/link-preview/image-ingestor.ts'
 import { createIsolatedTranscoder } from './infrastructure/link-preview/isolated-transcoder.ts'
+import { linkEmbedRegistry } from './infrastructure/link-preview/embed-config.ts'
 import { createLinkPreviewProvider } from './infrastructure/link-preview/link-preview-provider.ts'
 import { OEMBED_PROVIDERS } from './infrastructure/link-preview/oembed-providers.gen.ts'
 import { createOembedRegistry } from './infrastructure/link-preview/oembed-registry.ts'
@@ -235,6 +236,7 @@ const linkPreviewPorts = {
       blobs: blobStore,
     }),
     oembed: createOembedRegistry(OEMBED_PROVIDERS),
+    embeds: linkEmbedRegistry(config.linkEmbeds),
     clock,
   }),
   limits: createLinkPreviewRateLimits(clock),
