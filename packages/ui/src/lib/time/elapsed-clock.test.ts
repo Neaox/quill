@@ -4,6 +4,9 @@ import { createElapsedClock, type ElapsedClockHost } from './elapsed-clock.ts'
 
 const START = Date.UTC(2026, 0, 1, 12, 0, 0)
 
+/** A signed 32-bit count of milliseconds: a timer set for more wraps round and fires at once. */
+const LONGEST_TIMER_MS = 2 ** 31 - 1
+
 /** A host whose time and timers are the test's: time moves only when it is told to. */
 function aHost() {
   let now = START
@@ -152,5 +155,23 @@ describe('the elapsed clock', () => {
     advance(50)
 
     expect(pending()).toBeLessThanOrEqual(1)
+  })
+
+  it('never sets a timer longer than a timer can be, for a time whose saying is weeks from changing', () => {
+    const delays: number[] = []
+    const { host } = aHost()
+    const clock = createElapsedClock({
+      now: host.now,
+      schedule: (run, delayMs) => {
+        delays.push(delayMs)
+        return host.schedule(run, delayMs)
+      },
+    })
+
+    // "2 years ago" next reads differently half a year from now.
+    clock.subscribe(ago(2 * 365 * 86_400), 'en', vi.fn<() => void>())
+
+    expect(delays.length).toBeGreaterThan(0)
+    expect(Math.max(...delays)).toBeLessThanOrEqual(LONGEST_TIMER_MS)
   })
 })
