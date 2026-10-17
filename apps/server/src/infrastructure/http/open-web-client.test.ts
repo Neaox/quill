@@ -362,18 +362,18 @@ describe('createOpenWebClient: media types and encodings', () => {
   })
 })
 
+/** A body that would never end: reading any of it would hang, so the test proves it is not read. */
+function endless(headers: Record<string, string>): { response: Response; cancelled: () => void } {
+  const cancelled = vi.fn<() => void>()
+  const body = new ReadableStream<Uint8Array>({
+    pull: () => new Promise(() => undefined),
+    cancel: cancelled,
+  })
+  return { response: new Response(body, { status: 200, headers }), cancelled }
+}
+
 describe('createOpenWebClient: a file, answered from its headers', () => {
   const FILES = ['application/pdf', 'video/*', 'image/*']
-
-  /** A body that would never end: reading any of it would hang, so the test proves it is not read. */
-  function endless(headers: Record<string, string>): { response: Response; cancelled: () => void } {
-    const cancelled = vi.fn<() => void>()
-    const body = new ReadableStream<Uint8Array>({
-      pull: () => new Promise(() => undefined),
-      cancel: cancelled,
-    })
-    return { response: new Response(body, { status: 200, headers }), cancelled }
-  }
 
   it('reports the type, the declared size and the suggested name, and reads no body', async () => {
     const { client, fetchMock } = setUp()

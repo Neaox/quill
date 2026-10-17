@@ -132,12 +132,16 @@ function memberViewer(who: typeof READER): InternalLinkViewer {
   }
 }
 
-async function read(viewer: InternalLinkViewer, ids: readonly DocumentId[], describe = false) {
+async function read(
+  viewer: InternalLinkViewer,
+  ids: readonly DocumentId[],
+  withDescriptions = false,
+) {
   const keys = ids.map(keyOf)
   return readInternalLinkPreviews(deps, {
     viewer,
     keys,
-    ...(describe ? { described: new Set(keys) } : {}),
+    ...(withDescriptions ? { described: new Set(keys) } : {}),
   })
 }
 

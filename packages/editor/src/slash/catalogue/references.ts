@@ -1,7 +1,6 @@
 import { DEFAULT_CHILD_DEPTH, DEFAULT_TOC_MAX, DEFAULT_TOC_MIN } from '@quill/markdown'
 import { DocumentIcon, FootnoteIcon, LinkIcon, OutlineIcon, SmallPrintIcon } from '@quill/ui'
 
-import { insertLink } from '../../document/commands.ts'
 import { blockLinkNode, inlineLinkNode, previewableAddress } from '../../link/new-link.ts'
 import {
   insertBlock,

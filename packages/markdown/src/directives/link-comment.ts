@@ -1,3 +1,4 @@
+import { BRAND } from '@quill/brand'
 import type { Html, Link, Paragraph, Parent, PhrasingContent, Root } from 'mdast'
 import type { LeafDirective, TextDirective } from 'mdast-util-directive'
 import { toString } from 'mdast-util-to-string'
@@ -37,7 +38,25 @@ import { linkDirective } from './link.ts'
  *   it was, so an unchanged document is not reformatted.
  */
 
-const COMMENT = /^<!--\s*quill:link(?:\s+([^]*?))?\s*-->$/u
+/**
+ * The comment's marker is the product's slug and `link`, so a rename follows the brand rule. A
+ * document written before a rename still has the earlier slug in its files, so the original
+ * spelling is read as well and a link is never orphaned by it (ADR-042).
+ */
+const MARKER = `${BRAND.slug}:link`
+const COMMENTS = [
+  new RegExp(`^<!--\\s*${MARKER}(?:\\s+([^]*?))?\\s*-->$`, 'u'),
+  /^<!--\s*quill:link(?:\s+([^]*?))?\s*-->$/u,
+]
+
+/** The attribute text of a Quill link comment, or null for any other node value. */
+function commentSource(value: string): string | null {
+  for (const comment of COMMENTS) {
+    const match = comment.exec(value)
+    if (match !== null) return match[1] ?? ''
+  }
+  return null
+}
 const PLAIN_VALUE = /^[A-Za-z0-9_.]+$/u
 
 declare module 'mdast' {
@@ -123,14 +142,14 @@ export function writeCommentAttributes(attributes: Readonly<Record<string, strin
   const parts = Object.entries(attributes).map(([key, value]) =>
     value === '' ? key : `${key}=${quote(value)}`,
   )
-  return `<!-- ${['quill:link', ...parts].join(' ')} -->`
+  return `<!-- ${[MARKER, ...parts].join(' ')} -->`
 }
 
 /** The attributes of a Quill link comment, or null for any other node. */
 function commentOf(node: PhrasingContent | undefined): Record<string, string> | null {
   if (node?.type !== 'html') return null
-  const match = COMMENT.exec(node.value)
-  return match === null ? null : readCommentAttributes(match[1] ?? '')
+  const source = commentSource(node.value)
+  return source === null ? null : readCommentAttributes(source)
 }
 
 // ---------------------------------------------------------------------------
@@ -259,8 +278,8 @@ function commentFor(node: LinkDirective): { link: Link; comment: Html } {
     ),
   )
   const kept = node.data?.linkComment
-  const reads = kept === undefined ? null : COMMENT.exec(kept)
-  const original = reads === null ? null : readCommentAttributes(reads[1] ?? '')
+  const keptSource = kept === undefined ? null : commentSource(kept)
+  const original = keptSource === null ? null : readCommentAttributes(keptSource)
   const unchanged =
     kept !== undefined &&
     original !== null &&

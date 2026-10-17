@@ -554,9 +554,9 @@ describe('the stored format', () => {
       path: 'src/a.ts',
       repository: 'o/r',
     }
-    const read = storedPreviewReader.read({ ...previewOf(URL_A), version: 1, code })
-    expect(read?.code).toMatchObject({ language: 'typescript', startLine: 10, path: 'src/a.ts' })
-    expect(read?.code?.lines[1]).toHaveLength(CODE_SNIPPET_MAX_LINE_LENGTH)
+    const stored = storedPreviewReader.read({ ...previewOf(URL_A), version: 1, code })
+    expect(stored?.code).toMatchObject({ language: 'typescript', startLine: 10, path: 'src/a.ts' })
+    expect(stored?.code?.lines[1]).toHaveLength(CODE_SNIPPET_MAX_LINE_LENGTH)
 
     const many = Array.from({ length: CODE_SNIPPET_MAX_LINES + 20 }, (_, index) => `l${index}`)
     const capped = storedPreviewReader.read({
@@ -582,14 +582,14 @@ describe('the stored format', () => {
   })
 
   it('leaves out an extension that is malformed, without losing the preview', () => {
-    const read = storedPreviewReader.read({
+    const stored = storedPreviewReader.read({
       ...previewOf(URL_A),
       version: 1,
       status: { label: 'Merged', tone: 'purple' },
       embed: { provider: 'x', src: 'https://x.example', aspectRatio: 0 },
       file: 'pdf',
     })
-    expect(read).toEqual(previewOf(URL_A))
+    expect(stored).toEqual(previewOf(URL_A))
   })
 
   it('accepts a preview with no description, site name or images', () => {
