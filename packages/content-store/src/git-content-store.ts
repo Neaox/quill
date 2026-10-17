@@ -352,6 +352,7 @@ export class GitContentStore implements ContentStore {
       baseTree === undefined ? EMPTY_DOCUMENTS : await this.#documents.of(repository, baseTree)
     const merged: ContentChange[] = []
     const conflicts: MergeConflict[] = []
+    // oxlint-disable-next-line quill/no-independent-await-in-loop -- each reconcile reads blobs from the shared object store; unbounded fan-out over a large change set would exhaust file handles
     for (const change of changes) {
       const outcome = await this.#reconcile(repository, change, headDocuments, baseDocuments)
       if (outcome.kind === 'conflict') conflicts.push(outcome.conflict)

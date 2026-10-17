@@ -528,14 +528,15 @@ async function visibleDocuments(
   authorizer: Authorizer,
   documents: readonly DocumentId[],
 ): Promise<{ documents: string[]; hidden: number }> {
-  const visible: string[] = []
-  let hidden = 0
-  for (const documentId of documents) {
-    const access = await authorizer.document(documentId)
-    if (access.ok && access.value.capabilities.view) visible.push(documentId)
-    else hidden += 1
-  }
-  return { documents: visible, hidden }
+  const verdicts = await Promise.all(
+    documents.map(
+      async (documentId) => [documentId, await authorizer.document(documentId)] as const,
+    ),
+  )
+  const visible = verdicts
+    .filter(([, access]) => access.ok && access.value.capabilities.view)
+    .map(([documentId]) => documentId)
+  return { documents: visible, hidden: documents.length - visible.length }
 }
 
 /** The format's everyday name, for a refusal that has to say what it tried to read. */

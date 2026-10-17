@@ -194,12 +194,25 @@ describe('GrantRepository', () => {
       now,
     })
 
+    await grants.create({
+      id: 'grant-few',
+      principalKind: 'user',
+      principalId: ALICE,
+      scopeKind: 'document',
+      scopeId: 'document-5',
+      role: 'viewer',
+      effect: 'allow',
+      createdBy: null,
+      now,
+    })
+
     const scopes = Array.from({ length: 40_000 }, (_unused, index) => ({
       kind: 'document' as const,
       id: `document-${index}`,
     }))
 
+    // One match in each chunk, and the answer keeps the chunks' order.
     const found = await grants.listForScopes(scopes)
-    expect(found.map((grant) => grant.scopeId)).toEqual(['document-20000'])
+    expect(found.map((grant) => grant.scopeId)).toEqual(['document-5', 'document-20000'])
   }, 30_000)
 })

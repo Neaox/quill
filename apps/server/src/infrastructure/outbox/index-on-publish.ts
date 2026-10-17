@@ -76,6 +76,7 @@ export function createIndexOnAttachmentRevisedConsumer(
         attachmentUrl(event.attachmentId),
         event.workspaceId,
       )
+      // oxlint-disable-next-line quill/no-independent-await-in-loop -- each indexDocument opens its own unit of work on the shared pool; fan-out over every referencing document would crowd out requests
       for (const documentId of documents) await indexDocument(deps, documentId)
     },
   }

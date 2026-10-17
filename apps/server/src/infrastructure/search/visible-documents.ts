@@ -134,6 +134,7 @@ export function createVisibleDocumentResolver(
       const documentIds: DocumentId[] = []
       // Serially: one permission walk at a time leaves the pool for the
       // requests that are not searching.
+      // oxlint-disable-next-line quill/no-independent-await-in-loop -- one permission walk at a time leaves the pool for requests that are not searching
       for (const workspaceId of batch) {
         const resolved = await resolveWorkspace(deps, workspaceId, identities)
         if (resolved.kind === 'whole') wholeWorkspaces.push(workspaceId)

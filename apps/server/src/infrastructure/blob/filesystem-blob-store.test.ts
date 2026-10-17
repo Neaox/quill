@@ -154,6 +154,17 @@ describe('FilesystemBlobStore', () => {
     expect(await store.sweepTemporary(0, new Date())).toBe(0)
   })
 
+  it('leaves alone, and carries on past, a temporary entry it cannot remove', async () => {
+    const temporary = join(root, 'tmp')
+    // A directory cannot be removed as a file is, so the removal fails after the listing found it.
+    await mkdir(join(temporary, 'stuck.part'), { recursive: true })
+    await writeFile(join(temporary, 'gone.part'), 'half', 'utf8')
+
+    const later = new Date(Date.now() + 60_000)
+    expect(await store.sweepTemporary(0, later)).toBe(1)
+    expect(await readdir(temporary)).toStrictEqual(['stuck.part'])
+  })
+
   it('reads an object written by an earlier process', async () => {
     // What a restore from a backup looks like: the files are there, this
     // process wrote none of them.

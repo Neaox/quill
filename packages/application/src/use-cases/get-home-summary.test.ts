@@ -169,9 +169,7 @@ describe('getHomeSummary', () => {
   it('reads many workspaces without losing any of them', async () => {
     const count = WORKSPACES_IN_FLIGHT * 3 + 1
     for (let n = 1; n <= count; n += 1) {
-      // eslint-disable-next-line no-await-in-loop
       await addWorkspace(n)
-      // eslint-disable-next-line no-await-in-loop
       await addDocument(n, `Page ${n}`, n)
     }
 
@@ -379,9 +377,7 @@ describe('getHomeSummary', () => {
     it('is capped at eight', async () => {
       await addWorkspace(1)
       for (let n = 1; n <= 10; n += 1) {
-        // eslint-disable-next-line no-await-in-loop
         const id = await addDocument(1, `Page ${n}`, n)
-        // eslint-disable-next-line no-await-in-loop
         await open(id, 1, n)
       }
 

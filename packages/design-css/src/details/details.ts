@@ -60,7 +60,7 @@ export function textFragments(url: string): string[] {
     .filter((directive) => directive.startsWith('text='))
     .flatMap((directive) => {
       const parts = directive.slice('text='.length).split(',')
-      const [start] = parts.filter(
+      const start = parts.find(
         (part, index) => !(index === 0 && part.endsWith('-') && parts.length > 1),
       )
       /* v8 ignore next -- dropping a prefix leaves at least the start, which `parts.length > 1` guards. */

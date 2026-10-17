@@ -388,6 +388,9 @@ async function inParallel<T>(
 ): Promise<void> {
   const queue = items.values()
   const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
+    // The workers are the concurrency: they drain one shared iterator, so each
+    // awaits its own item before taking the next. Running them serially defeats `limit`.
+    // oxlint-disable-next-line quill/no-independent-await-in-loop -- workers share the queue iterator; each worker's next item depends on its previous task finishing
     for (const item of queue) await task(item)
   })
   await Promise.all(workers)

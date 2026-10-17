@@ -218,7 +218,6 @@ export async function getHomeSummary(
   for (let from = 0; from < workspaces.length; from += WORKSPACES_IN_FLIGHT) {
     const batch = workspaces.slice(from, from + WORKSPACES_IN_FLIGHT)
     // Sequential batches by design: the bound is the point.
-    // oxlint-disable-next-line no-await-in-loop
     digests.push(...(await Promise.all(batch.map((entry) => digest(deps, context, entry)))))
   }
   const read = digests.filter((entry) => entry !== undefined)

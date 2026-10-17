@@ -63,6 +63,7 @@ export function createJobRunner(options: JobRunnerOptions): JobRunner {
    */
   async function runDue(now: Date): Promise<readonly string[]> {
     const ran: string[] = []
+    // oxlint-disable-next-line quill/no-independent-await-in-loop -- jobs share one connection pool with the poll that just ran, and housekeeping must never crowd it out
     for (const entry of scheduled) {
       if (now.getTime() < entry.dueAt) continue
       entry.dueAt = now.getTime() + entry.job.intervalMs
