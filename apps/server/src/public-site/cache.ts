@@ -10,13 +10,18 @@ import type { Clock, PublicSite, ResolvedPublicMenu } from '@quill/application'
  * the content store to find out which render-cache entry it wanted — per
  * request, from no account at all, on a budget sized for a crawler.
  *
- * So two things are kept, both in this process and both small:
+ * So these are kept, all in this process and all small:
  *
  * - **the resolved site**, keyed by its slug: which documents are on it, what
  *   each one's address is, how they nest, and what the organisation
  *   configured;
  * - **the finished page**, keyed by the site and the path: the HTML and its
  *   `ETag`;
+ * - **a search's finished page**, keyed by the site, the question and the page
+ *   of it. A search is the one request here whose cost a stranger chooses, so
+ *   a question asked twice inside the window is answered from here, and these
+ *   have a bound of their own: arbitrary questions from anywhere must not be
+ *   able to push the pages readers are actually on out of memory;
  * - **the resolved header menu**, one for the whole instance because every
  *   page of every site carries the same one (`resolvePublicMenu`). It names
  *   documents on any site, which is why anything that changes one page
@@ -28,7 +33,7 @@ import type { Clock, PublicSite, ResolvedPublicMenu } from '@quill/application'
  *
  * **Events.** Publishing, renaming and moving a document all change what a
  * site shows, and all three are outbox events this server already consumes
- * (`infrastructure/outbox/invalidate-public-site.ts`). Publishing or
+ * (`public-site/invalidation.ts`, subscribed to the in-process bus, ADR-056). Publishing or
  * unpublishing a collection, and saving the organisation's settings, are
  * writes this server makes, and they invalidate on the way out.
  *
@@ -57,6 +62,14 @@ export interface PublicSiteCache {
   rememberSite(siteSlug: string, site: PublicSite): void
   page(siteSlug: string, path: string): CachedPage | null
   rememberPage(siteSlug: string, path: string, page: CachedPage): void
+  /** The finished results page for this question, or null when nothing valid is held. */
+  search(siteSlug: string, query: string, cursor: string | undefined): CachedPage | null
+  rememberSearch(
+    siteSlug: string,
+    query: string,
+    cursor: string | undefined,
+    page: CachedPage,
+  ): void
   /** The resolved header menu, or null when nothing valid is held. */
   menu(): ResolvedPublicMenu | null
   rememberMenu(menu: ResolvedPublicMenu): void
@@ -70,6 +83,7 @@ export interface PublicSiteCacheOptions {
   readonly ttlMs: number
   readonly maxSites?: number
   readonly maxPages?: number
+  readonly maxSearches?: number
 }
 
 /** Long enough to absorb a burst, never longer than the page's own `s-maxage`. */
@@ -77,6 +91,7 @@ export const PUBLIC_SITE_CACHE_TTL_MS = 15_000
 
 const DEFAULT_MAX_SITES = 64
 const DEFAULT_MAX_PAGES = 512
+const DEFAULT_MAX_SEARCHES = 256
 
 /**
  * One key for a page, from the two things that name it. A newline separates
@@ -84,6 +99,14 @@ const DEFAULT_MAX_PAGES = 512
  * different pages can run together into the same key.
  */
 const pageKey = (siteSlug: string, path: string): string => `${siteSlug}\n${path}`
+
+/**
+ * One key for a search. Unlike a path, a question can contain anything a
+ * stranger types — a newline included — so the three parts are encoded rather
+ * than joined, and no two different searches can run together into one key.
+ */
+const searchKey = (siteSlug: string, query: string, cursor: string | undefined): string =>
+  JSON.stringify([siteSlug, cursor ?? null, query])
 
 /** The one menu an instance has. */
 const MENU_KEY = 'menu'
@@ -96,8 +119,10 @@ interface Entry<T> {
 export function createPublicSiteCache(options: PublicSiteCacheOptions): PublicSiteCache {
   const maxSites = options.maxSites ?? DEFAULT_MAX_SITES
   const maxPages = options.maxPages ?? DEFAULT_MAX_PAGES
+  const maxSearches = options.maxSearches ?? DEFAULT_MAX_SEARCHES
   const sites = new Map<string, Entry<PublicSite>>()
   const pages = new Map<string, Entry<CachedPage>>()
+  const searches = new Map<string, Entry<CachedPage>>()
   const menus = new Map<string, Entry<ResolvedPublicMenu>>()
 
   /**
@@ -133,11 +158,15 @@ export function createPublicSiteCache(options: PublicSiteCacheOptions): PublicSi
     page: (siteSlug, path) => recall(pages, pageKey(siteSlug, path)),
     rememberPage: (siteSlug, path, page) =>
       remember(pages, pageKey(siteSlug, path), page, maxPages),
+    search: (siteSlug, query, cursor) => recall(searches, searchKey(siteSlug, query, cursor)),
+    rememberSearch: (siteSlug, query, cursor, page) =>
+      remember(searches, searchKey(siteSlug, query, cursor), page, maxSearches),
     menu: () => recall(menus, MENU_KEY),
     rememberMenu: (menu) => remember(menus, MENU_KEY, menu, 1),
     invalidate: () => {
       sites.clear()
       pages.clear()
+      searches.clear()
       menus.clear()
     },
   }

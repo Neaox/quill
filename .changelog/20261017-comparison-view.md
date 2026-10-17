@@ -1,0 +1,1 @@
+Added: Comparing two revisions of a document now shows the whole page with what was added, removed, changed and moved marked where it is, folds the long stretches that did not change behind a button, and lets you pick either end of the comparison and step from one change to the next.

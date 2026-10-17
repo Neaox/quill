@@ -391,6 +391,16 @@ describe('the preview of a draft', () => {
     )
   })
 
+  it('answers a document that has no draft as it answers a missing one', async () => {
+    const { id } = await createDocument('Draft lost')
+    await harness.database.pool.query('DELETE FROM drafts WHERE document_id = $1', [id])
+    const response = await previewDraft(id, editor)
+    const missing = await previewDraft('nothing-k000000000', editor)
+
+    expect(response.statusCode).toBe(404)
+    expect(response.body).toBe(missing.body)
+  })
+
   it('shows a document nobody has published, which the published preview has nothing to show of', async () => {
     const created = await createDocument('Brand new')
     const ref = documentReference({ title: 'Brand new', shortId: created.shortId })

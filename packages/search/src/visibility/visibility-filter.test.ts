@@ -1,7 +1,7 @@
 import { PUBLIC_PRINCIPAL, userId, userPrincipal, workspaceId } from '@quill/domain'
 import { describe, expect, it } from 'vitest'
 
-import { visibilityFilter } from './visibility-filter.ts'
+import { shareVisibility, visibilityFilter } from './visibility-filter.ts'
 
 const WORKSPACE_A = workspaceId('11111111-1111-4111-8111-111111111111')
 const WORKSPACE_B = workspaceId('22222222-2222-4222-8222-222222222222')
@@ -31,5 +31,17 @@ describe('visibilityFilter', () => {
 
   it('produces an empty filter for no workspaces and no principals', () => {
     expect(visibilityFilter([], [])).toEqual({ workspaceIds: [], principalKeys: [] })
+  })
+})
+
+describe('shareVisibility', () => {
+  it('wraps the very filter it was given, so an index can tell whose visibility it is', () => {
+    const filter = visibilityFilter([WORKSPACE_A], [USER])
+    expect(shareVisibility(filter).filter).toBe(filter)
+  })
+
+  it('makes a new handle every time, so two requests never share what one resolved', () => {
+    const filter = visibilityFilter([WORKSPACE_A], [USER])
+    expect(shareVisibility(filter)).not.toBe(shareVisibility(filter))
   })
 })

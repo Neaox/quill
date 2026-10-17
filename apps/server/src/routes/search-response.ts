@@ -1,8 +1,10 @@
-import type { CollectionRow, DocumentRow, WorkspaceRow } from '@quill/application'
+import type { CollectionRow, Contributor, DocumentRow, WorkspaceRow } from '@quill/application'
 import type { SearchServiceHit, SearchServiceResults } from '@quill/search'
 import type { CollectionId, DocumentId, WorkspaceId } from '@quill/domain'
 import { Type } from '@sinclair/typebox'
 import type { Static } from '@sinclair/typebox'
+
+import { FacetsSchema } from './search-facets.ts'
 
 /**
  * A hit carries a document id, a title, and a snippet. A result row needs the
@@ -35,6 +37,13 @@ const WorkspaceRefSchema = Type.Object({
   name: Type.String(),
 })
 
+/** Somebody who has published a revision, by the name they published under and nothing else. */
+const ContributorSchema = Type.Object({ name: Type.String() })
+
+/** A result row names at most this many tags and people; the rest are counted or left to the document. */
+const MAX_TAGS = 5
+const MAX_CONTRIBUTORS = 3
+
 const SearchHitSchema = Type.Object({
   documentId: Type.String(),
   /** The short key a readable address carries (ADR-035); with `slug` it is the whole link. */
@@ -47,6 +56,16 @@ const SearchHitSchema = Type.Object({
   breadcrumb: Type.Array(Type.String()),
   snippet: SnippetSchema,
   score: Type.Number(),
+  /** The document's status as the row holds it (`draft`, `published`, `archived`). */
+  status: Type.String(),
+  /** When the document last changed, ISO 8601. */
+  updatedAt: Type.String(),
+  /** The tags it was indexed with, folded to lower case, in stored order: at most five. */
+  tags: Type.Array(Type.String()),
+  /** Who has published it, most recent publisher first: names only, never addresses, at most three. */
+  contributors: Type.Array(ContributorSchema),
+  /** How many distinct people have published it, so a row can say "Ada, Sam +2". */
+  contributorCount: Type.Integer({ minimum: 0 }),
 })
 
 const WorkspaceHitsSchema = Type.Object({
@@ -60,6 +79,8 @@ export const SearchResultsSchema = Type.Object({
   current: Type.Array(SearchHitSchema),
   elsewhere: Type.Array(WorkspaceHitsSchema),
   nextCursor: Type.Optional(Type.String()),
+  /** Present only when `facets` was asked for: the counts of what the query matched. */
+  facets: Type.Optional(FacetsSchema),
 })
 
 export type SearchHitResponse = Static<typeof SearchHitSchema>
@@ -69,6 +90,8 @@ export interface SearchContext {
   readonly documentsById: ReadonlyMap<DocumentId, DocumentRow>
   readonly workspacesById: ReadonlyMap<WorkspaceId, WorkspaceRow>
   readonly collectionsById: ReadonlyMap<CollectionId, CollectionRow>
+  /** Everyone who has published each document on the page, most recent first, from one query. */
+  readonly contributorsById: ReadonlyMap<DocumentId, readonly Contributor[]>
 }
 
 export function toSearchResponse(
@@ -107,6 +130,7 @@ function toHit(
   context: SearchContext,
 ): SearchHitResponse {
   const workspace = context.workspacesById.get(document.workspaceId)
+  const contributors = context.contributorsById.get(document.id) ?? []
   const collection =
     document.collectionId === null
       ? undefined
@@ -122,5 +146,26 @@ function toHit(
     breadcrumb: [workspace?.name, collection?.name].filter((name) => name !== undefined),
     snippet: { text: hit.snippet.text, ranges: [...hit.snippet.ranges] },
     score: hit.score,
+    status: document.status,
+    updatedAt: document.updatedAt.toISOString(),
+    tags: hit.tags.slice(0, MAX_TAGS),
+    contributors: contributors
+      .slice(0, MAX_CONTRIBUTORS)
+      .map(({ name }) => ({ name: nameOnly(name) })),
+    contributorCount: contributors.length,
   }
+}
+
+/**
+ * A name, and never an address.
+ *
+ * A revision records whatever its author's tool called them, and a Git
+ * configuration with an address where the name should be is common enough. The
+ * response promises names only, so the part before the `@` stands in: it is
+ * still recognisably the person, and the address is not disclosed to somebody
+ * who could not otherwise see it.
+ */
+function nameOnly(name: string): string {
+  const [localPart = ''] = name.split('@')
+  return localPart.trim()
 }

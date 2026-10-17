@@ -10,13 +10,16 @@ import { err, ok } from '@quill/domain'
  */
 
 export type {
+  Contributor,
   IndexableDocument,
   IndexableDocumentV1,
+  IndexableDocumentV2,
+  IndexableDocumentV3,
   IndexableHeading,
 } from '@quill/application/ports'
 
 /** The version {@link projectIndexableDocument} writes today. */
-export const INDEXABLE_DOCUMENT_VERSION = 1
+export const INDEXABLE_DOCUMENT_VERSION = 3
 
 const MAX_HEADING_DEPTH = 6
 
@@ -37,15 +40,18 @@ export interface UnsupportedIndexableDocumentVersion {
 
 /**
  * Confirms `value` carries a version this build knows how to read, before
- * anything else about it is trusted. There is only one version today, so the
- * dispatch is a single case plus a refusal — the shape a second version
- * extends without disturbing this one (rule 17).
+ * anything else about it is trusted. Each version this package has shipped is
+ * a case, and a version it has not is refused (rule 17): version 1 is a
+ * document indexed before anyone's name was; version 2 knows who has published;
+ * version 3 carries the generic properties `prop:` asks about.
  */
 export function assertSupportedIndexableDocumentVersion(value: {
   readonly version: number
-}): Result<1, UnsupportedIndexableDocumentVersion> {
+}): Result<1 | 2 | 3, UnsupportedIndexableDocumentVersion> {
   switch (value.version) {
     case 1:
+    case 2:
+    case 3:
       return ok(value.version)
     default:
       return err({ kind: 'unsupported-indexable-document-version', version: value.version })

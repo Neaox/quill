@@ -5,8 +5,10 @@
   "description": "Quill search core: query language, indexable document projection, ranking data, snippet offsets, and the permission-filter contract every search engine adapter shares (ADR-010).",
   "license": "MIT",
   "type": "module",
+  "sideEffects": false,
   "exports": {
     ".": "./src/index.ts",
+    "./query": "./src/query/index.ts",
     "./test-support": "./src/test-support/index.ts"
   },
   "scripts": {

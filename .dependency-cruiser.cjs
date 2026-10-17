@@ -67,10 +67,14 @@ module.exports = {
     },
     {
       name: 'web-does-not-touch-infrastructure',
-      comment: 'The web app talks to the server through the generated API client only.',
+      comment:
+        'The web app talks to the server through the generated API client only. The one exception is the search query language (`@quill/search/query`, packages/search/src/query): a chip or a suggestion has to read a query exactly as the server does, so it is the same parser and not a second one. That entry is pure — it imports only @quill/domain, and a test of it runs with no engine — and it is a separate package export precisely so the rest of the search package, which projects documents through the whole Markdown pipeline, never reaches a browser.',
       severity: 'error',
       from: { path: '^apps/web/src' },
-      to: { path: '^packages/(content-store|search|providers)/' },
+      to: {
+        path: '^packages/(content-store|search|providers)/',
+        pathNot: '^packages/search/src/query/',
+      },
     },
     {
       name: 'fake-oidc-provider-is-test-only',

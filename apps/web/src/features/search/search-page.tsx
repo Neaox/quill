@@ -1,17 +1,24 @@
 import { getRouteApi, useNavigate } from '@tanstack/react-router'
-import type { FormEvent } from 'react'
+import { useRef, useState, type FormEvent } from 'react'
 
-import { Button, Callout, Input, Spinner, tv } from '@quill/ui'
+import type { FieldFilterKey } from '@quill/search/query'
+import { Button, Callout, Spinner, tv } from '@quill/ui'
 
 import {
   queryTooLong,
   readInvalidQuery,
+  RESULTS_FACETS,
   useLoadedWorkspace,
   useSearchResults,
 } from '../../lib/api/index.ts'
-import { workspaceReference } from '../../lib/routing/document-reference.ts'
+import { searchLink, workspaceReference } from '../../lib/routing/document-reference.ts'
+import { AddFilterRow } from './add-filter-row.tsx'
+import { FilterChipList } from './filter-chip-list.tsx'
 import { InvalidQueryNotice } from './invalid-query-notice.tsx'
 import { SearchHitLink } from './search-hit.tsx'
+import { SearchQueryField, type SearchQueryFieldHandle } from './search-query-field.tsx'
+import { RefineFacets, useRetainedFacets } from './refine-facets.tsx'
+import { filterChips, withClause, withoutClause, type FilterChip } from './search-filters.ts'
 import {
   ELSEWHERE_SECTION_LABEL,
   QUERY_TOO_LONG,
@@ -31,14 +38,15 @@ export const searchPageStyles = tv({
     // morning, which is when this page is used.
     root: 'flex w-full max-w-(--layout-wide) flex-col gap-6 px-8 py-8',
     heading: 'text-2xl font-semibold tracking-tight text-foreground',
-    form: 'flex max-w-xl items-end gap-2',
-    field: 'grow',
+    search: 'flex max-w-xl flex-col gap-3',
+    form: 'flex items-end gap-2',
+    field: 'min-w-0 grow',
     sections: 'flex flex-col gap-8',
     section: 'flex flex-col gap-2',
     sectionHeading: 'text-xs font-medium tracking-wide text-muted uppercase',
     list: 'flex flex-col gap-1',
     hit: [
-      'flex rounded-md border border-transparent px-3 py-2.5 transition-colors ease-standard',
+      'flex min-w-0 rounded-md border border-transparent px-3 py-2.5 transition-colors ease-standard',
       'hover:border-border hover:bg-surface',
       'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring',
     ],
@@ -93,11 +101,27 @@ export function SearchPage() {
   const workspace = useLoadedWorkspace(workspaceSlug).data
   const query = q ?? ''
 
-  const results = useSearchResults({ query, workspaceId: workspace.id })
+  // What is in the box is a draft; the address holds the query that was asked.
+  // The draft follows the address when it changes under us (back, a removed
+  // chip, "See all results" from the palette) by being reset *while rendering*
+  // — an effect would paint one frame of the old text first — and the field is
+  // never remounted, so focus stays where it is.
+  const [draft, setDraft] = useState(query)
+  const [draftFor, setDraftFor] = useState(query)
+  if (draftFor !== query) {
+    setDraftFor(query)
+    setDraft(query)
+  }
+  const field = useRef<SearchQueryFieldHandle | null>(null)
+  const chips = filterChips(query)
+
+  const results = useSearchResults({ query, workspaceId: workspace.id, facets: RESULTS_FACETS })
   const sections = searchSections(results.data?.pages ?? [], workspace)
   const here = sections.find((section) => section.id === 'current')
   const elsewhere = sections.filter((section) => section.id !== 'current')
   const invalid = readInvalidQuery(results.error)
+  // The first page's: counts are over the whole answer, so paging adds none.
+  const facets = useRetainedFacets(results.data?.pages[0])
   const busy = results.isFetching
   // Said only once an answer has settled, so paging announces the longer list
   // rather than the act of asking for it.
@@ -107,37 +131,64 @@ export function SearchPage() {
       : describeResults(sections)
   const styles = searchPageStyles()
 
+  function ask(asked: string): void {
+    void navigate(searchLink(workspaceReference(workspace), asked))
+  }
+
   function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
-    const asked = new FormData(event.currentTarget).get('q')
-    void navigate({
-      to: '/w/$workspaceSlug/search',
-      params: { workspaceSlug: workspaceReference(workspace) },
-      search: { q: typeof asked === 'string' ? asked.trim() : '' },
-    })
+    ask(draft.trim())
   }
+
+  function removeFilter(chip: FilterChip): void {
+    ask(withoutClause(query, chip.clause))
+    // The chip that had focus is about to be gone.
+    field.current?.focus()
+  }
+
+  function refine(key: FieldFilterKey, value: string): void {
+    ask(withClause(query, key, value))
+    // The pill that had focus is about to be gone (what it chose is no longer
+    // offered), and the field is where chip removal already sends focus: one
+    // place to land after any change to the query, and the place to carry on.
+    field.current?.focus()
+  }
+
+  // Not while the query is empty, too long, refused or failing: what was
+  // counted would describe a search that is not the one on screen.
+  const refinable =
+    query !== '' && !queryTooLong(query) && invalid === undefined && !results.isError
 
   return (
     <div aria-busy={busy} className={styles.root()}>
       <h1 className={styles.heading()}>Search</h1>
 
-      <form onSubmit={onSubmit} className={styles.form()}>
-        {/* Keyed by the query so that arriving from the palette, or from the
-            back button, shows what was actually searched for rather than
-            whatever was last typed into a field that never remounted. */}
-        <Input
-          key={query}
-          label="Search this organisation"
-          name="q"
-          type="search"
-          defaultValue={query}
-          placeholder='Words, "a phrase", -exclusions, tag:incident'
-          className={styles.field()}
+      <div className={styles.search()}>
+        <form onSubmit={onSubmit} className={styles.form()}>
+          <SearchQueryField
+            ref={field}
+            label="Search this organisation"
+            value={draft}
+            onValueChange={setDraft}
+            workspaceId={workspace.id}
+            placeholder='Words, "a phrase", -exclusions, tag:incident, by:me'
+            className={styles.field()}
+          />
+          <Button type="submit" variant="secondary">
+            Search
+          </Button>
+        </form>
+        {/* The applied query's filters, not the draft's: a chip says what the
+            results below are about, and only a search changes that. */}
+        <FilterChipList chips={chips} onRemove={removeFilter} />
+        <AddFilterRow
+          onAdd={(key) => {
+            field.current?.addFilter(key)
+          }}
         />
-        <Button type="submit" variant="secondary">
-          Search
-        </Button>
-      </form>
+      </div>
+
+      {refinable ? <RefineFacets facets={facets} query={query} onRefine={refine} /> : undefined}
 
       {/* Polite, so a page that has just lengthened under "Show more" is
           announced without interrupting whatever is being read. */}
@@ -163,8 +214,11 @@ export function SearchPage() {
         </p>
       ) : sectionsHitCount(sections) === 0 ? (
         <Callout tone="info" title={`Nothing matched “${query}”`}>
-          Try fewer words, or check a filter’s spelling. A quoted phrase is matched exactly; every
-          other word is widened when a search finds too little.
+          {chips.length === 0
+            ? 'Try fewer words, or check a filter’s spelling.'
+            : 'Try removing a filter, or use fewer words.'}{' '}
+          A quoted phrase is matched exactly; every other word is widened when a search finds too
+          little.
         </Callout>
       ) : (
         <div className={styles.sections()}>
