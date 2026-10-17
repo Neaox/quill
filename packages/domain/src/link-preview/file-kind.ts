@@ -56,8 +56,8 @@ export function fileKindOf(mediaType: string): FileKind | null {
   const type = mediaType.trim().toLowerCase()
   const exact = EXACT[type]
   if (exact !== undefined) return exact
-  const family = Object.keys(FAMILIES).find((prefix) => type.startsWith(prefix))
-  return family === undefined ? null : (FAMILIES[family] ?? null)
+  const family = Object.entries(FAMILIES).find(([prefix]) => type.startsWith(prefix))
+  return family === undefined ? null : family[1]
 }
 
 /** The media-type patterns a fetch answers from headers alone (`image/*` matches the family). */
@@ -105,8 +105,8 @@ const NAMED: Readonly<Record<string, string>> = {
 
 /** `png` in `image/png`, but not `vnd.microsoft.icon`: a short plain subtype reads as a format. */
 function formatOf(mediaType: string): string | null {
-  const subtype = (mediaType.split('/')[1] ?? '').replace(/\+xml$/u, '')
-  return /^[a-z0-9]{2,5}$/u.test(subtype) && subtype !== 'mpeg' ? subtype.toUpperCase() : null
+  const subtype = /^[^/]+\/([a-z0-9]{2,5})(?:\+xml)?$/u.exec(mediaType)?.[1]
+  return subtype !== undefined && subtype !== 'mpeg' ? subtype.toUpperCase() : null
 }
 
 /** "PDF document", "PNG image", "Word document": what a reader would call it. Null when it is not a file. */

@@ -90,6 +90,21 @@ describe('the toolbar’s line about a link’s preview', () => {
     expect(within(toolbar()).getByText(new RegExp(`^${words}, fetched`, 'u'))).toBeVisible()
   })
 
+  it('names a layer it has no words for as it is', () => {
+    openWithCaretInLink(sourceOf({ preview: preview({ layer: 'internal' }) }))
+    expect(within(toolbar()).getByText(/^internal, fetched/u)).toBeVisible()
+  })
+
+  it('says only that it was fetched when the answer has no layer', () => {
+    openWithCaretInLink(sourceOf({ preview: preview({ layer: undefined, fetchedAt: undefined }) }))
+    expect(within(toolbar()).getByText('Fetched')).toBeVisible()
+  })
+
+  it('says only that it was fetched when the application has no preview to show for a ready link', () => {
+    openWithCaretInLink(sourceOf({ preview: null }))
+    expect(within(toolbar()).getByText('Fetched')).toBeVisible()
+  })
+
   it('tells the application which address it is looking at, so the answer can be found', () => {
     const source = sourceOf()
     openWithCaretInLink(source)

@@ -103,6 +103,16 @@ describe('the link box offers how the link is shown', () => {
     expect(written).toContain('clever.')
   })
 
+  it('starts an embed from the card, which it is drawn as until embeds can be chosen here', async () => {
+    const opened = open('::link{url="https://www.youtube.com/watch?v=dQw4w9WgXcQ" display=embed}\n')
+    act(() => {
+      editorOf(opened).view.focus()
+      editorOf(opened).commands.setNodeSelection(0)
+    })
+    await opened.user.keyboard('{Control>}k{/Control}')
+    expect(choice('Card')).toBeChecked()
+  })
+
   it('is one undo step, back to the words as they were', async () => {
     const opened = open('Say something clever.\n')
     select(opened, 'something')

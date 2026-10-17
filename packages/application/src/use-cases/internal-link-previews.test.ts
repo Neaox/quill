@@ -311,6 +311,26 @@ describe('readInternalLinkPreviews: an anonymous reader of a public site', () =>
     expect(views.get(key)?.state).toBe('ready')
   })
 
+  it('gives nothing for a page whose path the site lists but whose page it lacks', async () => {
+    const site = await siteWith([])
+    if (site.kind !== 'site') throw new Error('expected a site')
+    const lopsided: InternalLinkViewer = {
+      kind: 'site',
+      site: { ...site.site, pathById: new Map([[OPEN, 'runbooks/ghost']]) },
+    }
+    const views = await read(lopsided, [OPEN])
+    expect(views.get(keyOf(OPEN))).toEqual({ state: 'blocked' })
+  })
+
+  it('gives nothing for a short key no page of the site carries', async () => {
+    const key = `/d/${aShortId(999)}`
+    const views = await readInternalLinkPreviews(deps, {
+      viewer: await siteWith([OPEN]),
+      keys: [key],
+    })
+    expect(views.get(key)).toEqual({ state: 'blocked' })
+  })
+
   it('describes a published page only when asked', async () => {
     const views = await read(await siteWith([OPEN]), [OPEN], true)
     expect(readyOf(views, OPEN).description).toBe('About 201.')

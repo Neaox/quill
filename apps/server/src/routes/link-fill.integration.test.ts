@@ -7,6 +7,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 
 import { PUBLIC_SITE_CACHE_TTL_MS } from '../public-site/cache.ts'
 import { createLinkPreviewRateLimits } from '../infrastructure/link-preview/rate-limits.ts'
+import { createWarmLinkPreviewsOnPublishConsumer } from '../infrastructure/outbox/warm-link-previews-on-publish.ts'
 import { createServerHarness } from '../test-support/harness.ts'
 import type { ServerHarness } from '../test-support/harness.ts'
 import { seedTenancy } from '../test-support/tenancy-fixture.ts'
@@ -192,6 +193,58 @@ describe('publishing', () => {
     await publishDocument('Warmed page', `Also :link[${other}]{display=card}.`)
     await harness.drainOutbox()
     expect(resolve.mock.calls.map(([url]) => url)).toEqual([other])
+  })
+})
+
+/** The event a publish leaves in the outbox, for a document. */
+const published = (id: string) => ({
+  version: 1,
+  documentId: id,
+  workspaceId: '00000000-0000-4000-8000-000000000001',
+  revision: '00000000-0000-4000-8000-000000000002',
+  publishedBy: '00000000-0000-4000-8000-000000000003',
+})
+
+describe('warming the previews of a publish that cannot be read', () => {
+  const consumer = () =>
+    createWarmLinkPreviewsOnPublishConsumer({
+      ...harness.deps,
+      ...harness.deps.linkPreviewPorts,
+    })
+
+  it('does nothing for an event it cannot read', async () => {
+    resolve.mockClear()
+    await expect(consumer().handle({ version: 99 })).resolves.toBeUndefined()
+    expect(resolve).not.toHaveBeenCalled()
+  })
+
+  it('does nothing for a document that is no longer there, and does not fail the event', async () => {
+    resolve.mockClear()
+    await expect(
+      consumer().handle(published('00000000-0000-4000-8000-0000000009ff')),
+    ).resolves.toBeUndefined()
+    expect(resolve).not.toHaveBeenCalled()
+  })
+
+  it('does not fail the event when reading the document fails, since it is only a head start', async () => {
+    const { documents } = harness.deps.uow.repos
+    const failing = createWarmLinkPreviewsOnPublishConsumer({
+      ...harness.deps,
+      ...harness.deps.linkPreviewPorts,
+      uow: {
+        ...harness.deps.uow,
+        repos: {
+          ...harness.deps.uow.repos,
+          documents: {
+            ...documents,
+            findById: async () => {
+              throw new Error('the database is away')
+            },
+          },
+        },
+      },
+    })
+    await expect(failing.handle(published(documentId))).resolves.toBeUndefined()
   })
 })
 

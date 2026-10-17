@@ -4,7 +4,7 @@ import type { LeafDirective, TextDirective } from 'mdast-util-directive'
 import { toString } from 'mdast-util-to-string'
 import { SKIP, visit } from 'unist-util-visit'
 
-import { linkDirective } from './link.ts'
+import { linkDirective, writeAttributes } from './link.ts'
 
 /**
  * A link's display, stored where every Markdown tool leaves it alone (ADR-042,
@@ -197,9 +197,7 @@ function blockLink(paragraph: Paragraph): LeafDirective | null {
 function inlineLinks(children: readonly PhrasingContent[]): PhrasingContent[] | null {
   const out: PhrasingContent[] = []
   let changed = false
-  for (let at = 0; at < children.length; at += 1) {
-    const child = children[at]
-    if (child === undefined) continue
+  for (let at = 0, child = children[at]; child !== undefined; at += 1, child = children[at]) {
     if (child.type === 'link') {
       let next = at + 1
       for (
@@ -271,11 +269,9 @@ function isLinkDirective(node: unknown): node is LinkDirective {
 function commentFor(node: LinkDirective): { link: Link; comment: Html } {
   const model = linkDirective.parse(node)
   // The address is the link's own; the comment never repeats it.
-  const written = linkDirective.serialize({ ...model, form: 'text' }).attributes ?? {}
+  const written = writeAttributes({ ...model, form: 'text' })
   const attributes: Record<string, string> = Object.fromEntries(
-    Object.entries(written).flatMap(([key, value]) =>
-      key === 'url' || typeof value !== 'string' ? [] : [[key, value]],
-    ),
+    Object.entries(written).filter(([key]) => key !== 'url'),
   )
   const kept = node.data?.linkComment
   const keptSource = kept === undefined ? null : commentSource(kept)

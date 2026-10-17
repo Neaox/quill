@@ -112,13 +112,22 @@ function layoutAction(layout: 'side' | 'top', label: string, description: string
   }
 }
 
+/** The layouts, each with the short word the toolbar uses where room is short; the action's label is the full one. */
+export const CARD_LAYOUT_CHOICES = [
+  {
+    action: layoutAction('side', 'Image beside', 'Compact: the picture sits beside the words'),
+    toolbarWord: 'Beside',
+  },
+  {
+    action: layoutAction('top', 'Image above', 'A large picture above the words'),
+    toolbarWord: 'Above',
+  },
+] as const
+
 export const CARD_LAYOUT_GROUP: ActionGroup = {
   id: 'card-layout',
   label: 'Card layout',
-  actions: [
-    layoutAction('side', 'Image beside', 'Compact: the picture sits beside the words'),
-    layoutAction('top', 'Image above', 'A large picture above the words'),
-  ],
+  actions: CARD_LAYOUT_CHOICES.map(({ action }) => action),
 }
 
 /**

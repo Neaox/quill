@@ -111,6 +111,30 @@ describe('fillLinksForMember', () => {
   })
 })
 
+describe('what a body draws from', () => {
+  it('serves a stored picture from the address pictures are served from', async () => {
+    const { deps, store, internal } = setUp()
+    const hash = 'a'.repeat(64)
+    const picture = { hash, width: 600, height: 315, mediaType: 'image/webp' }
+    await store({ thumbnail: picture, favicon: picture })
+    const { html } = await fillLinksForMember(deps, ADA, slot(KEY), EMBEDS, internal(ADA))
+    expect(html).toContain(`/link-previews/images/${hash}`)
+  })
+
+  it('leaves a link that is not a web address as the plain link it is, and waits for nothing', async () => {
+    const { deps, internal } = setUp()
+    const { html, pending } = await fillLinksForMember(
+      deps,
+      ADA,
+      slot('ftp://files.example/report'),
+      EMBEDS,
+      internal(ADA),
+    )
+    expect(html).toContain('data-link-slot')
+    expect(pending).toBe(0)
+  })
+})
+
 /** A bare link on a line of its own, whose author chose no display. */
 const unchosen = (url: string) =>
   `<p class="link-slot-block"><a href="${url}" data-link-slot="" data-link-key="${url}">${url}</a></p>`

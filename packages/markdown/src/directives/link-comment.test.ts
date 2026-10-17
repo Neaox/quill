@@ -73,6 +73,28 @@ describe('reading: a link and its comment are a link directive', () => {
     })
   })
 
+  it('reads a comment with no attributes as a link that chose nothing, and writes it back as it was', () => {
+    const markdown = `[x](${URL_A}) <!-- quill:link -->
+`
+    expect(parseDocument(markdown).ast.children[0]).toMatchObject({
+      type: 'leafDirective',
+      name: 'link',
+      attributes: { url: URL_A },
+    })
+    expect(roundTrip(markdown)).toBe(markdown)
+    expect(
+      roundTrip(`[x](${URL_A}) <!--quill:link-->
+`),
+    ).toBe(`[x](${URL_A}) <!--quill:link-->
+`)
+  })
+
+  it('reads a link with no words as a directive with no label', () => {
+    const { ast } = parseDocument(`[](${URL_A}) <!-- quill:link display=card -->
+`)
+    expect(ast.children[0]).toMatchObject({ type: 'leafDirective', name: 'link', children: [] })
+  })
+
   it('reads a link in a sentence as inline', () => {
     const { ast } = parseDocument(
       `See [the doc](${URL_A})<!-- quill:link display=inline --> now.\n`,

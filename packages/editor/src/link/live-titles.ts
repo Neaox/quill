@@ -6,7 +6,7 @@ import {
 } from '@quill/markdown'
 import type { Node as PMNode } from '@tiptap/pm/model'
 import { Plugin, PluginKey } from '@tiptap/pm/state'
-import type { Transaction } from '@tiptap/pm/state'
+import type { EditorState, Transaction } from '@tiptap/pm/state'
 import { Decoration, DecorationSet } from '@tiptap/pm/view'
 
 import type { LinkPreviewSource } from '../blocks/link-preview-context.tsx'
@@ -35,6 +35,11 @@ interface BareDocumentLink {
 }
 
 export const liveTitleKey = new PluginKey<readonly BareDocumentLink[]>('liveLinkTitles')
+
+/** The links being titled in this state: none where the plugin is not installed. */
+export function liveTitledLinks(state: EditorState): readonly BareDocumentLink[] {
+  return liveTitleKey.getState(state) ?? []
+}
 
 /**
  * The inline links between two positions that are a bare address of a document and are not
@@ -146,7 +151,7 @@ export function createLiveTitles(
     },
     props: {
       decorations: (state) => {
-        const links = liveTitleKey.getState(state) ?? []
+        const links = liveTitledLinks(state)
         if (links.length === 0) return null
         const { from, to } = state.selection
         const { preview } = source()
@@ -172,7 +177,7 @@ export function createLiveTitles(
     view: (view) => {
       // Tells the application which documents are being shown, as a card does for its address.
       const ask = () => {
-        for (const link of liveTitleKey.getState(view.state) ?? []) source().request(link.address)
+        for (const link of liveTitledLinks(view.state)) source().request(link.address)
       }
       ask()
       return { update: ask }

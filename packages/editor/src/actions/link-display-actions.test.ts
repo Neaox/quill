@@ -1,5 +1,5 @@
 import { EditorState, NodeSelection, TextSelection } from '@tiptap/pm/state'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
 import { documentToMdast } from '../document/ast.ts'
 import { linkEmbedsPlugin, recordLinkEmbed } from '../link/link-embeds.ts'
@@ -10,6 +10,7 @@ import {
   CARD_IMAGE,
   CARD_LAYOUT_GROUP,
   LINK_DISPLAY_GROUP,
+  cardDetailsAction,
   linkDisplayAction,
 } from './link-display-actions.ts'
 
@@ -170,5 +171,20 @@ describe('the link display actions', () => {
     expect(CARD_LAYOUT_GROUP.actions.some((action) => actionState(action, state).enabled)).toBe(
       false,
     )
+  })
+
+  it('opens a card’s details box only when a card is selected, and only when asked to act', () => {
+    const openDetails = vi.fn<() => void>()
+    const action = cardDetailsAction({ openDetails })
+    const card = selectCard(CARD)
+
+    expect(action.command(card, undefined)).toBe(true)
+    expect(openDetails).not.toHaveBeenCalled()
+
+    expect(action.command(card, () => undefined)).toBe(true)
+    expect(openDetails).toHaveBeenCalledOnce()
+
+    expect(action.command(caretIn(PLAIN, 'doc'), () => undefined)).toBe(false)
+    expect(openDetails).toHaveBeenCalledOnce()
   })
 })

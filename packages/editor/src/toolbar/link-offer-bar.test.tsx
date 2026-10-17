@@ -123,6 +123,24 @@ describe('the offer that follows a pasted address', () => {
     })
   })
 
+  it('stays while focus is in the offer, and is out of sight once focus is in neither', () => {
+    const opened = open('See')
+    pasteAtEnd(opened, ADDRESS)
+    const first = within(offer()).getAllByRole('button')[0]
+    if (first === undefined) throw new Error('The offer has no buttons.')
+    act(() => {
+      first.focus()
+    })
+    expect(offer()).toBeInTheDocument()
+    const elsewhere = document.createElement('button')
+    document.body.append(elsewhere)
+    act(() => {
+      elsewhere.focus()
+    })
+    expect(screen.queryByRole('group', { name: 'Show pasted link as' })).toBeNull()
+    elsewhere.remove()
+  })
+
   it('goes away when the author types on', () => {
     const opened = open('See')
     pasteAtEnd(opened, ADDRESS)

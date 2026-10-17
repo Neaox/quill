@@ -163,6 +163,9 @@ export function linkPreviewRoutes(deps: AppDependencies): FastifyPluginAsync {
         return {
           previews: asked.map(({ url, address }) => {
             const view = address === null ? pages.next().value?.view : documents.get(address)
+            /* v8 ignore next -- every link asked about has exactly one answer above (a reading per
+               page address, an entry per document address); the fallback is only there because
+               an iterator result and a map lookup are both typed as possibly absent. */
             return { url, view: view ?? UNAVAILABLE }
           }),
         }

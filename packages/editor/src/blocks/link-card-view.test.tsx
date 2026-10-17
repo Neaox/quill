@@ -205,6 +205,11 @@ describe('a link card for another document', () => {
 `)
     expect(await card(ADDRESS_OF_DOC)).toHaveTextContent('Document')
   })
+
+  it('holds its place with the address as written when it is not an address a host can be read from', async () => {
+    open('::link{url="not a web address" display=card}\n')
+    expect(await card('not a web address')).toHaveTextContent('not a web address')
+  })
 })
 
 describe('a link card for a file', () => {

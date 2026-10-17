@@ -32,6 +32,7 @@ describe('what each provider recognises, and the frame it builds', () => {
       'vimeo',
       'https://player.vimeo.com/video/123456789',
     ],
+    [`http://youtu.be/${VIDEO_ID}`, 'youtube', `${NOCOOKIE}/${VIDEO_ID}`],
     [`https://www.loom.com/share/${LOOM_ID}`, 'loom', `https://www.loom.com/embed/${LOOM_ID}`],
     [
       'https://www.figma.com/design/AbCdEfGhIj1234/My-file?node-id=1-2',
@@ -52,6 +53,16 @@ describe('what each provider recognises, and the frame it builds', () => {
       `https://docs.google.com/presentation/d/${DOC_ID}/edit`,
       'google-slides',
       `https://docs.google.com/presentation/d/${DOC_ID}/embed`,
+    ],
+    [
+      'https://docs.google.com/presentation/d/e/2PACX-1vAbC_dEf/pub',
+      'google-slides',
+      'https://docs.google.com/presentation/d/e/2PACX-1vAbC_dEf/embed',
+    ],
+    [
+      'https://docs.google.com/spreadsheets/d/e/2PACX-1vAbC_dEf/pubhtml',
+      'google-sheets',
+      'https://docs.google.com/spreadsheets/d/e/2PACX-1vAbC_dEf/pubhtml?widget=true&headers=false',
     ],
     [
       `https://docs.google.com/spreadsheets/d/${DOC_ID}/edit#gid=0`,
@@ -113,7 +124,21 @@ describe('what each provider recognises, and the frame it builds', () => {
     'https://docs.google.com/document/d/x/edit',
     'https://open.spotify.com/user/abc',
     'https://x.com/someone/status/1234567890',
+    'https://www.linkedin.com/posts/someone_a-title-activity-short-AbCd',
+    'https://www.linkedin.com/posts/someone_a-title-without-a-post',
+    'https://www.linkedin.com/feed/update/urn:li:activity:%E0%A4%A',
     'https://ftp.example/anything',
+    `ftp://youtu.be/${VIDEO_ID}`,
+    `https://youtu.be/${VIDEO_ID}/more`,
+    'https://www.youtube.com/watch',
+    'https://player.vimeo.com/channels/staffpicks',
+    'https://vimeo.com/123456789/abcdef0123/more',
+    'https://vimeo.com/123456789/not-a-hash',
+    'https://docs.google.com/document/d/e',
+    `https://drive.google.com/file/d/short/view`,
+    'https://drive.google.com/drive/folders/short',
+    'https://www.linkedin.com/feed/update/urn:li:person:7123456789012345678',
+    'https://www.linkedin.com/feed/update/urn:xx:activity:7123456789012345678',
   ])('does not embed %s', (url) => {
     expect(frame(url)).toBeNull()
   })

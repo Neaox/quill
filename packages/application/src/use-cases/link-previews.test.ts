@@ -592,6 +592,14 @@ describe('the stored format', () => {
     expect(stored).toEqual(previewOf(URL_A))
   })
 
+  it('leaves out a file with no media type, and keeps one of unknown size and name', () => {
+    const base = { ...previewOf(URL_A), version: 1 }
+    expect(storedPreviewReader.read({ ...base, file: { bytes: 5 } })).toEqual(previewOf(URL_A))
+    expect(
+      storedPreviewReader.read({ ...base, file: { mediaType: 'application/pdf', bytes: '5' } }),
+    ).toMatchObject({ file: { mediaType: 'application/pdf', bytes: null, name: null } })
+  })
+
   it('accepts a preview with no description, site name or images', () => {
     const bare = {
       ...previewOf(URL_A),

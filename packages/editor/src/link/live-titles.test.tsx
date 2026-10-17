@@ -6,6 +6,8 @@ import { DocumentEditor } from '../document/document-editor.tsx'
 import type { DocumentEditorHandle } from '../document/document-editor.tsx'
 import { expectNoAccessibilityViolations } from '../testing/axe.ts'
 import type { EditorLinkPreview, LinkPreviewSource } from '../blocks/link-preview-context.tsx'
+import { createEditorTestHarness } from '../testing/harness.ts'
+import { liveTitledLinks } from './live-titles.ts'
 
 const DOC = '/d/0192f0a4-7c1e-7a3b-8d1e-4a5b6c7d8e9f'
 const PREVIEW: EditorLinkPreview = {
@@ -158,6 +160,23 @@ describe('the live title of a link to a document, while writing', () => {
       expect(container.querySelector('.link-live-source')).toHaveTextContent(DOC)
     })
 
+    it('keeps every title on its own link when text is typed between and after them', () => {
+      const other = '/d/0192f0a4-7c1e-7a3b-8d1e-000000000002'
+      const { editor, container } = editorWith(
+        `See :link[${DOC}]{display=inline} and :link[${other}]{display=inline}.
+`,
+        { [DOC]: PREVIEW, [other]: { ...PREVIEW, title: 'Release notes' } },
+      )
+      expect(titles(container)).toEqual(['Deploy runbook', 'Release notes'])
+      act(() => {
+        editor.commands.insertContentAt(editor.state.doc.content.size - 1, ' More.')
+      })
+      act(() => {
+        editor.commands.insertContentAt(8 + DOC.length, 'x')
+      })
+      expect(titles(container)).toEqual(['Deploy runbook', 'Release notes'])
+    })
+
     it('follows the address as it is changed, and gives up the title when it stops being a document', () => {
       const { editor, container } = editorWith(
         `See :link[${DOC}]{display=inline} now.
@@ -197,5 +216,14 @@ describe('the live title of a link to a document, while writing', () => {
       })
       expect(titles(container)).toEqual([])
     })
+  })
+})
+
+describe('the links being titled', () => {
+  it('are none in a state that has no live titles installed', () => {
+    const state = createEditorTestHarness().state(
+      'See :link[/d/0192f0a4-7c1e-7a3b-8d1e-4a5b6c7d8e9f]{display=inline}.\n',
+    )
+    expect(liveTitledLinks(state)).toEqual([])
   })
 })

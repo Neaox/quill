@@ -88,16 +88,15 @@ export function LinkPreviewLine({ href }: LinkPreviewLineProps) {
   const refresh = source.refresh
   const preview = source.preview(href)
 
-  function refreshNow(): void {
-    setNotice(null)
-    if (refresh === undefined) return
-    void refresh(href).then((outcome) => {
-      setNotice(outcome === 'started' ? null : NOTICES[outcome])
-    })
-  }
-
-  const action = (label: string): ReactNode =>
-    refresh === undefined ? null : (
+  const action = (label: string): ReactNode => {
+    if (refresh === undefined) return null
+    const refreshNow = (): void => {
+      setNotice(null)
+      void refresh(href).then((outcome) => {
+        setNotice(outcome === 'started' ? null : NOTICES[outcome])
+      })
+    }
+    return (
       <button
         type="button"
         data-toolbar-item=""
@@ -111,6 +110,7 @@ export function LinkPreviewLine({ href }: LinkPreviewLineProps) {
         {source.refreshing === true ? 'Refreshing…' : label}
       </button>
     )
+  }
 
   const warning = state === 'ready' ? publicSiteWarning(preview, source.publicSite) : null
 

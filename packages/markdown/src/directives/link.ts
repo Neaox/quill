@@ -103,7 +103,7 @@ function parseLink(node: LeafDirective | TextDirective): Link {
 }
 
 /** Written in a fixed order, so a document that is saved twice does not change. */
-function writeAttributes(model: Link): Record<string, string> {
+export function writeAttributes(model: Link): Record<string, string> {
   const { choice } = model
   const written: Record<string, string> = {}
   const spellsUrl = model.form === 'text' && model.text === null

@@ -37,7 +37,8 @@ function suggested(disposition: string | null): string | null {
 
 function lastSegmentOf(address: string): string | null {
   try {
-    const segment = new URL(address).pathname.split('/').at(-1) ?? ''
+    const { pathname } = new URL(address)
+    const segment = pathname.slice(pathname.lastIndexOf('/') + 1)
     return segment === '' ? null : decodeURIComponent(segment)
   } catch {
     return null
@@ -46,7 +47,7 @@ function lastSegmentOf(address: string): string | null {
 
 /** One file name, never a path. */
 function onlyTheName(raw: string): string {
-  return raw.split(/[/\\]/u).at(-1) ?? ''
+  return raw.slice(Math.max(raw.lastIndexOf('/'), raw.lastIndexOf('\\')) + 1)
 }
 
 export function fileNameOf(disposition: string | null, address: string): string | null {

@@ -243,7 +243,12 @@ function ToolbarSurface({
     }
   }, [editor, editingLink, heldFrom, heldTo])
 
-  const editingDetails = visible && detailsEditing.isOpenFor(key) && target.kind === 'link'
+  // Only a link written as a directive has words of its own to type; a plain link has none.
+  const linkTarget = target.kind === 'link' ? linkTargetAt(state) : null
+  const detailsFor =
+    visible && detailsEditing.isOpenFor(key) && linkTarget !== null && linkTarget.form !== 'mark'
+      ? linkTarget
+      : null
 
   if (!visible) return null
 
@@ -287,9 +292,10 @@ function ToolbarSurface({
         if (handleToolbarKey(event, returnToDocument)) event.preventDefault()
       }}
     >
-      {editingDetails ? (
+      {detailsFor !== null ? (
         <DetailsBox
           editor={editor}
+          target={detailsFor}
           onDone={() => {
             detailsEditing.close()
             editor.view.focus()
@@ -362,14 +368,13 @@ function ToolbarFor({ target, state, onRun, link, details, comment }: ToolbarFor
 
 interface DetailsBoxProps {
   readonly editor: Editor
+  readonly target: Extract<LinkTarget, { readonly form: 'text' | 'leaf' }>
   readonly onDone: () => void
 }
 
 /** The card's own title and description, with what the page says shown as the placeholders. */
-function DetailsBox({ editor, onDone }: DetailsBoxProps) {
-  const target = linkTargetAt(editor.state)
-  const fetched = useLinkPreviewSource().preview(target?.href ?? '')
-  if (target === null || target.form === 'mark') return null
+function DetailsBox({ editor, target, onDone }: DetailsBoxProps) {
+  const fetched = useLinkPreviewSource().preview(target.href)
   const { title, description } = target.link.choice
   const apply = (choice: { title: string | null; description: string | null }): void => {
     setLinkChoice(choice)(editor.state, editor.view.dispatch)

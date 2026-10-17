@@ -158,6 +158,18 @@ describe('a repository', () => {
     expect(value(await t.resolve('https://github.com/sindresorhus/is')).imageUrl).toBeNull()
   })
 
+  it.each([
+    ['an owner that is not an object', 'octocat'],
+    ['an owner with no picture', { login: 'octocat' }],
+    ['a picture address that is not an address', { avatar_url: 'not an address' }],
+  ])('has no picture for %s', async (_name, owner) => {
+    t.reply(
+      '/repos/octocat/Hello-World',
+      json({ ...(fixture('repo-hello-world') as object), owner }),
+    )
+    expect(value(await t.resolve('https://github.com/octocat/Hello-World')).imageUrl).toBeNull()
+  })
+
   it('uses the name GitHub gives the repository, which is the new one after a rename', async () => {
     t.reply('/repos/old/name', json({ ...(fixture('repo-is') as object), full_name: 'new/name' }))
     const draft = value(await t.resolve('https://github.com/old/name'))
@@ -306,6 +318,64 @@ describe('a pull request', () => {
     expect(description).not.toContain('label-29')
   })
 
+  it('says nothing of the state of a pull request that is in none it knows', async () => {
+    t.reply(
+      '/repos/octocat/Hello-World/pulls/9',
+      json({ ...(fixture('pull-open') as object), state: 'unheard-of', draft: false }),
+    )
+    const draft = value(await t.resolve('https://github.com/octocat/Hello-World/pull/9'))
+    expect(draft).not.toHaveProperty('status')
+  })
+
+  it('reads an answer that carries no headers at all', async () => {
+    t.reply('/repos/octocat/Hello-World/pulls/9', {
+      status: 200,
+      body: JSON.stringify(fixture('pull-open')),
+    })
+    expect(value(await t.resolve('https://github.com/octocat/Hello-World/pull/9')).kind).toBe(
+      'issue',
+    )
+  })
+
+  it('leaves out labels that are not a list, and any label that is not a named one', async () => {
+    t.reply(
+      '/repos/octocat/Hello-World/pulls/9',
+      json({ ...(fixture('pull-open') as object), labels: 'bug' }),
+    )
+    expect(
+      value(await t.resolve('https://github.com/octocat/Hello-World/pull/9')).description,
+    ).not.toContain('Labels')
+
+    t.reply(
+      '/repos/octocat/Hello-World/pulls/10',
+      json({ ...(fixture('pull-open') as object), labels: ['bug', null, { name: '  ' }] }),
+    )
+    expect(
+      value(await t.resolve('https://github.com/octocat/Hello-World/pull/10')).description,
+    ).not.toContain('Labels')
+  })
+
+  it('names only the repository when the author is not given', async () => {
+    t.reply(
+      '/repos/octocat/Hello-World/pulls/9',
+      json({ ...(fixture('pull-open') as object), user: null, labels: [] }),
+    )
+    expect(
+      value(await t.resolve('https://github.com/octocat/Hello-World/pull/9')).description,
+    ).toBe('In octocat/Hello-World.')
+  })
+
+  it.each([
+    ['without a title', { ...(fixture('pull-open') as object), title: null }],
+    ['that is not an object', []],
+  ])('is unavailable for a pull request %s', async (_name, body) => {
+    t.reply('/repos/octocat/Hello-World/pulls/9', json(body))
+    expect(await t.resolve('https://github.com/octocat/Hello-World/pull/9')).toEqual({
+      ok: false,
+      error: { kind: 'unavailable' },
+    })
+  })
+
   it('is not found when the repository or the pull request is not', async () => {
     t.reply('/repos/octocat/Hello-World/pulls/9', failure(404))
     expect(await t.resolve('https://github.com/octocat/Hello-World/pull/9')).toEqual({
@@ -362,6 +432,12 @@ describe('an issue', () => {
     expect(
       value(await t.resolve('https://github.com/octocat/Hello-World/issues/7')).status,
     ).toEqual(status)
+  })
+
+  it('says nothing of the state of an issue that is in none it knows', async () => {
+    t.reply('/repos/octocat/Hello-World/issues/7', json(issue({ state: 'unheard-of' })))
+    const draft = value(await t.resolve('https://github.com/octocat/Hello-World/issues/7'))
+    expect(draft).not.toHaveProperty('status')
   })
 
   it('follows an issue number that is really a pull request to the pull request, which knows if it merged', async () => {
@@ -469,6 +545,48 @@ describe('a code permalink', () => {
       }),
     )
     expect(await t.resolve(link())).toEqual({ ok: false, error: { kind: 'unavailable' } })
+  })
+
+  it('is not found when the file cannot be read, though the repository can', async () => {
+    t.reply(API_PATH, failure(404))
+    expect(await t.resolve(link())).toEqual({ ok: false, error: { kind: 'not_found' } })
+  })
+
+  it('does not show a file with a null byte in it, which is not text', async () => {
+    t.reply(
+      API_PATH,
+      json({
+        type: 'file',
+        encoding: 'base64',
+        path: 'source/index.ts',
+        content: Buffer.from(`a${NUL}b`).toString('base64'),
+      }),
+    )
+    expect(await t.resolve(link())).toEqual({ ok: false, error: { kind: 'unavailable' } })
+  })
+
+  it('names no language for a file with no extension', async () => {
+    t.reply(
+      `/repos/sindresorhus/is/contents/docs/Makefile?ref=${SHA}`,
+      json(fixture('contents-readme')),
+    )
+    const draft = value(
+      await t.resolve(`https://github.com/sindresorhus/is/blob/${SHA}/docs/Makefile#L1`),
+    )
+    expect(draft.code?.language).toBeNull()
+  })
+
+  it('does not show a file whose name is nothing but invisible characters', async () => {
+    const invisible = String.fromCodePoint(0x200b)
+    t.reply(
+      `/repos/sindresorhus/is/contents/${encodeURIComponent(invisible)}?ref=${SHA}`,
+      json(fixture('contents-readme')),
+    )
+    expect(
+      await t.resolve(
+        `https://github.com/sindresorhus/is/blob/${SHA}/${encodeURIComponent(invisible)}#L1`,
+      ),
+    ).toEqual({ ok: false, error: { kind: 'unavailable' } })
   })
 
   it('does not show a file with an encoding it does not read', async () => {

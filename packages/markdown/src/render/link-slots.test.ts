@@ -979,6 +979,19 @@ describe('file links', () => {
     expect(tagsIn(html).has('img')).toBe(false)
   })
 
+  it('draws a compact line for a file of no known type with an empty site line', () => {
+    const html = fill(
+      `::link{url="${FILE_URL}" display=compact}`,
+      view(
+        filePreview({
+          siteName: null,
+          file: { mediaType: 'application/x-weird', bytes: null, name: 'x' },
+        }),
+      ),
+    )
+    expect(html).toContain('<span class="link-compact-site"></span>')
+  })
+
   it('draws a type it has no icon for as a plain card', () => {
     const html = fill(
       `::link{url="${FILE_URL}" display=card}`,

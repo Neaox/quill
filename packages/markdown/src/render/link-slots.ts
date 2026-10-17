@@ -70,20 +70,34 @@ function choiceProperties(link: Link): Properties {
 }
 
 /**
- * The body's rendering of a `link` directive: an anchor in a paragraph of its
- * own for the block form, the anchor alone for the inline form. An address that
+ * The body's rendering of a `link` directive: the anchor alone for the inline form
+ * (see `linkBlockSlot` for the block form). An address that
  * cannot be previewed is drawn as the text it was written with, since a
  * directive must never make words disappear.
  */
-export function linkSlot(link: Link): ElementContent {
-  const words = link.text ?? link.url
+export function linkInlineSlot(link: Link): ElementContent {
+  return anchorOf(link) ?? text(wordsOf(link))
+}
+
+/** The block form of a link: a paragraph of its own. */
+export function linkBlockSlot(link: Link): Element {
+  const anchor = anchorOf(link)
+  return anchor === null
+    ? element('p', {}, [text(wordsOf(link))])
+    : element('p', { className: [BLOCK_CLASS] }, [anchor])
+}
+
+const wordsOf = (link: Link): string => link.text ?? link.url
+
+/** The slot's anchor, or null for an address that cannot be previewed. */
+function anchorOf(link: Link): Element | null {
   // A document of this instance is keyed by its id address and linked by it: the same anchor,
   // marked internal so the page draws it for the reader's own access (ADR-042, "Internal links").
   const internal = internalDocumentAddress(link.url)
   const key = internal ?? normaliseUrl(link.url)
-  if (key === null) return link.form === 'leaf' ? element('p', {}, [text(words)]) : text(words)
+  if (key === null) return null
 
-  const anchor = element(
+  return element(
     'a',
     {
       href: internal ?? new URL(link.url).href,
@@ -92,9 +106,8 @@ export function linkSlot(link: Link): ElementContent {
       ...(internal === null ? {} : { [INTERNAL]: '' }),
       ...choiceProperties(link),
     },
-    [text(words)],
+    [text(wordsOf(link))],
   )
-  return link.form === 'leaf' ? element('p', { className: [BLOCK_CLASS] }, [anchor]) : anchor
 }
 
 // ---------------------------------------------------------------------------
@@ -179,8 +192,8 @@ const EXTERNAL_REL = ['noopener', 'noreferrer']
  * (`prose.css`, from the same paths as `FileIcon` in `@quill/ui`). Nothing for a type it has no
  * icon for. The type is always said in words beside it.
  */
-function fileIcon(preview: LinkPreview, large: boolean): ElementContent[] {
-  const kind = preview.file === undefined ? null : fileKindOf(preview.file.mediaType)
+function fileIcon(file: NonNullable<LinkPreview['file']>, large: boolean): ElementContent[] {
+  const kind = fileKindOf(file.mediaType)
   if (kind === null) return []
   return [
     element(
@@ -199,7 +212,7 @@ function fileIcon(preview: LinkPreview, large: boolean): ElementContent[] {
 function leadingIcon(preview: LinkPreview, options: FillOptions): ElementContent[] {
   return preview.file === undefined
     ? icon(preview.favicon, options, 'link-chip-icon')
-    : fileIcon(preview, false)
+    : fileIcon(preview.file, false)
 }
 
 /**
@@ -350,7 +363,7 @@ function card(
     choice.description ?? preview.description ?? (file === undefined ? null : fileMeta(file))
   const showImage = choice.showImage && preview.thumbnail !== null
   // A file with no picture to show is led by the icon for its type.
-  const leading = file === undefined || showImage ? [] : fileIcon(preview, true)
+  const leading = file === undefined || showImage ? [] : fileIcon(file, true)
   const kind = file === undefined ? null : fileKindOf(file.mediaType)
   return element(
     'a',

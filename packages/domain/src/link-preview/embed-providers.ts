@@ -158,12 +158,11 @@ const youtube: EmbedProvider = {
     'The player reads its own origin’s storage for playback settings and refuses to start without it; the frame is on youtube-nocookie.com, so it gains nothing of ours.',
   frameFor(url) {
     const parts = segments(url)
+    const [first, second] = parts
     let id: string | undefined
-    if (url.hostname === 'youtu.be') id = parts.length === 1 ? parts[0] : undefined
-    else if (parts.length === 1 && parts[0] === 'watch') id = url.searchParams.get('v') ?? undefined
-    else if (parts.length === 2 && YOUTUBE_PATHS.has(parts[0] ?? '')) {
-      id = parts[1]
-    }
+    if (url.hostname === 'youtu.be') id = parts.length === 1 ? first : undefined
+    else if (parts.length === 1 && first === 'watch') id = url.searchParams.get('v') ?? undefined
+    else if (parts.length === 2 && first !== undefined && YOUTUBE_PATHS.has(first)) id = second
     const video = identifier(id, isTokenCharacter, 11)
     return video === null ? null : frame(`https://www.youtube-nocookie.com/embed/${video}`, '16:9')
   },

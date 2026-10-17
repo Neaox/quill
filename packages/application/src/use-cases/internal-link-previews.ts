@@ -154,7 +154,7 @@ async function readForReader(
     keys.map(async (key): Promise<readonly [string, LinkPreviewView]> => {
       const row = visible.get(key)
       if (row === undefined) return [key, blocked]
-      const place = row.collectionId === null ? null : (places.get(row.collectionId) ?? null)
+      const place = places.get(row.collectionId) ?? null
       const description = await describedAs(deps, query, key, row)
       return [
         key,
@@ -178,8 +178,8 @@ async function placesFor(
   uow: UnitOfWork,
   authorizer: Authorizer,
   rows: readonly DocumentRow[],
-): Promise<ReadonlyMap<string, string>> {
-  const ids = [...new Set(rows.flatMap((row) => row.collectionId ?? []))]
+): Promise<ReadonlyMap<string | null, string>> {
+  const ids = [...new Set(rows.map((row) => row.collectionId).filter((id) => id !== null))]
   if (ids.length === 0) return new Map()
   const collections = await uow.repos.collections.listByIds(ids)
   const named = await Promise.all(

@@ -357,6 +357,18 @@ describe('pickers say when nothing matches', () => {
     expect(run(id).picker?.empty('zz')).toBe(message)
   })
 
+  it.each(['link-card', 'link-compact', 'link-inline'])(
+    '%s asks for an address before it has one, and offers nothing until it has a real one',
+    (id) => {
+      const { picker } = run(id)
+      expect(picker?.empty('  ')).toBe('Paste or type a web address')
+      const source = picker?.source
+      if (source?.kind !== 'list') throw new Error('Not a list.')
+      expect(source.options('blog.example/post')).toEqual([])
+      expect(source.options('https://blog.example/post')).toHaveLength(1)
+    },
+  )
+
   it('and a document search asks for words before it has any', async () => {
     const { picker } = run('document-link')
     expect(picker?.empty(' ')).toBe('Type to search documents')

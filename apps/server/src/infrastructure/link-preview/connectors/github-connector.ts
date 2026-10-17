@@ -173,7 +173,7 @@ function codeLine(raw: string): string {
 }
 
 function languageOf(path: string): string | null {
-  const name = path.split('/').at(-1) ?? ''
+  const name = path.slice(path.lastIndexOf('/') + 1)
   const dot = name.lastIndexOf('.')
   return dot < 0 ? null : (LANGUAGES[name.slice(dot + 1).toLowerCase()] ?? null)
 }
@@ -296,7 +296,8 @@ export function createGitHubConnector(deps: GitHubConnectorDeps): LinkConnector 
     ].filter((fact) => fact !== null)
     return {
       canonicalUrl: `https://github.com/${fullName}`,
-      title: cleanText(fullName, TITLE_LIMIT) ?? fullName,
+      // Already known to be a plain `owner/name` (`FULL_NAME`), so there is nothing to clean.
+      title: fullName,
       description: facts.length === 0 ? null : facts.join(' · '),
       siteName: SITE,
       kind: 'repository',

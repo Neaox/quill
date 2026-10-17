@@ -12,7 +12,7 @@ import {
 import type { EditorAction } from '../actions/editor-action.ts'
 import {
   CARD_IMAGE,
-  CARD_LAYOUT_GROUP,
+  CARD_LAYOUT_CHOICES,
   LINK_DISPLAY_GROUP,
 } from '../actions/link-display-actions.ts'
 import type { LinkDisplay } from '@quill/markdown'
@@ -137,12 +137,6 @@ export function TextToolbarContent({ state, onRun, link, comment }: TextContentP
   )
 }
 
-/** What a card's layout choices say on the toolbar, where room is short; their names are the full words. */
-const LAYOUT_WORDS: Readonly<Record<string, string>> = {
-  'card-layout-side': 'Beside',
-  'card-layout-top': 'Above',
-}
-
 export interface LinkContentProps extends ContentProps {
   readonly href: string
   /** Opens the box a card's own words are typed into. */
@@ -202,9 +196,9 @@ export function LinkToolbarContent({
         <>
           <ToolbarSeparator />
           <ToolbarGroup label="Card">
-            {CARD_LAYOUT_GROUP.actions.map((action) => (
+            {CARD_LAYOUT_CHOICES.map(({ action, toolbarWord }) => (
               <ToolbarButton key={action.id} action={action} state={state} onRun={onRun}>
-                {LAYOUT_WORDS[action.id] ?? action.label}
+                {toolbarWord}
               </ToolbarButton>
             ))}
             <ToolbarButton action={CARD_IMAGE} state={state} onRun={onRun}>

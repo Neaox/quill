@@ -47,10 +47,6 @@ export function blockLinkNode(
   })
 }
 
-/** A card for an address. */
-export const cardLinkNode = (schema: Schema, url: string): PMNode =>
-  blockLinkNode(schema, url, 'card')
-
 /**
  * A pasted link to another document: an inline link by its id, with the caret after it. Its
  * words are its address, which the reader draws as the document's live title.

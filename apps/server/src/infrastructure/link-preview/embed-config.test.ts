@@ -26,6 +26,12 @@ describe('loadLinkEmbedsConfig', () => {
       /LINK_EMBEDS_DISABLED.*youtub/u,
     )
   })
+
+  it('says "are" when it names more than one that is not a provider', () => {
+    expect(() => loadLinkEmbedsConfig({ LINK_EMBEDS_DISABLED: 'youtub,vimeoo' })).toThrow(
+      /youtub, vimeoo, which are not embed providers/u,
+    )
+  })
 })
 
 describe('linkEmbedRegistry', () => {

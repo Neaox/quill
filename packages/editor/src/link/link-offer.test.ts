@@ -53,6 +53,13 @@ describe('pasting an address', () => {
     expect(markdownOf(pasted())).toBe(`See <${ADDRESS}>`)
   })
 
+  it('says it can be pasted without pasting, when only asked', () => {
+    const editor = open('See ')
+    const before = editor.state.doc
+    expect(pasteAddress(ADDRESS)(editor.state, undefined)).toBe(true)
+    expect(editor.state.doc).toBe(before)
+  })
+
   it('offers to show it another way, over the link it just made', () => {
     const offer = linkOfferAt(pasted().state)
     expect(offer?.to).toBe((offer?.from ?? 0) + ADDRESS.length)

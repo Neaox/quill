@@ -217,6 +217,32 @@ describe('the rendered body, read by a member', () => {
   })
 })
 
+describe('a link to a document that has not been published', () => {
+  it('shows the editor its title and place, and has no first paragraph to give it', async () => {
+    const created = await harness.app.inject({
+      method: 'POST',
+      url: `/api/workspaces/${tenancy.workspaceId}/documents`,
+      cookies: editor,
+      payload: { collectionId: tenancy.collectionId, title: 'Draft idea' },
+    })
+    const draft = created.json().document.id as DocumentId
+    const linking = await publishDocument(
+      tenancy.collectionId,
+      'Mentions a draft',
+      `::link{url="/d/${draft}" display=card}
+`,
+    )
+    const response = await harness.app.inject({
+      method: 'GET',
+      url: `/api/documents/${linking}/rendered`,
+      cookies: editor,
+    })
+    const html = response.json().html as string
+    expect(html).toContain('Draft idea')
+    expect(html).toContain(`href="/d/${draft}"`)
+  })
+})
+
 describe('the link preview lookup the editor uses', () => {
   const lookup = (urls: string[], cookies: Record<string, string>) =>
     harness.app.inject({
@@ -232,6 +258,15 @@ describe('the link preview lookup the editor uses', () => {
     expect(response.json().previews[0].view).toMatchObject({
       state: 'ready',
       preview: { title: 'Release runbook', layer: 'internal', canonicalUrl: `/d/${runbook}` },
+    })
+  })
+
+  it('reads a pasted address of this instance’s own page as the document it names', async () => {
+    const pasted = `${harness.deps.config.appUrl}/d/${runbook}`
+    const response = await lookup([pasted], editor)
+    expect(response.json().previews[0]).toMatchObject({
+      url: pasted,
+      view: { state: 'ready', preview: { layer: 'internal', canonicalUrl: `/d/${runbook}` } },
     })
   })
 

@@ -54,6 +54,11 @@ describe('fileNameOf', () => {
     ).toBeLessThanOrEqual(120)
   })
 
+  it('has no name for an address whose last segment is not valid percent-encoding, or not an address', () => {
+    expect(fileNameOf(null, 'https://files.example/%E0%A4%A')).toBeNull()
+    expect(fileNameOf(null, 'not an address')).toBeNull()
+  })
+
   it('ignores an extended name that is not valid percent-encoding', () => {
     expect(
       fileNameOf("attachment; filename*=UTF-8''%E0%A4%A", 'https://files.example/ok.pdf'),

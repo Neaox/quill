@@ -115,6 +115,18 @@ describe('resolve: connectors, layer 1', () => {
     expect(t.asked()).toEqual([])
   })
 
+  it('carries an embed and a file through, and shows no status when the connector gave none', async () => {
+    const { canonicalUrl, title, description, siteName, kind } = draft
+    const embed = { provider: 'Example', src: 'https://player.example/v/1', aspectRatio: 16 / 9 }
+    const file = { mediaType: 'application/pdf', bytes: 1024, name: 'spec.pdf' }
+    const t = setUp(async () =>
+      ok({ canonicalUrl, title, description, siteName, kind, imageUrl: null, embed, file }),
+    )
+    const result = await t.provider.resolve(REPO_URL)
+    expect(result.ok && result.value).toMatchObject({ layer: 'connector', embed, file })
+    expect(result.ok && result.value).not.toHaveProperty('status')
+  })
+
   it('carries a code snippet through', async () => {
     const code = {
       language: 'typescript',

@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest'
 import { documentToMdast } from '../document/ast.ts'
 import { createEditorTestHarness } from '../testing/harness.ts'
 import { linkEmbedsPlugin, recordLinkEmbed } from './link-embeds.ts'
-import { linkTargetAt, setLinkChoice, showLinkAs } from './link-display.ts'
+import { inOneStep, linkTargetAt, setLinkChoice, showLinkAs } from './link-display.ts'
 
 const harness = createEditorTestHarness()
 
@@ -112,6 +112,15 @@ describe('showLinkAs', () => {
     const { markdown } = run(caretIn(PLAIN, 'design'), showLinkAs('card'))
     expect(markdown).toBe(
       'See\n\n[the design doc](https://blog.example/post) <!-- quill:link display=card -->\n\nnow.',
+    )
+  })
+
+  it('drops the space left either side of a card, rather than a paragraph of only space', () => {
+    const state = caretIn('[the design doc](https://blog.example/post) now.', 'design')
+    const spaced = state.apply(state.tr.insertText(' ', 1))
+    const { markdown } = run(spaced, showLinkAs('card'))
+    expect(markdown).toBe(
+      '[the design doc](https://blog.example/post) <!-- quill:link display=card -->\n\nnow.',
     )
   })
 
@@ -239,5 +248,28 @@ describe('setLinkChoice', () => {
       '<https://blog.example/post> <!-- quill:link display=card future=yes -->',
     )
     expect(run(state, setLinkChoice({ layout: 'top' })).markdown).toContain('future=yes')
+  })
+})
+
+const nothing: Command = () => false
+const agrees: Command = () => true
+
+describe('inOneStep', () => {
+  it('does nothing, and says so, when no command applies', () => {
+    const state = caretIn(PLAIN, 'design')
+    expect(inOneStep(nothing, nothing)(state, undefined)).toBe(false)
+    expect(run(state, inOneStep(nothing)).ok).toBe(false)
+  })
+
+  it('answers whether it would act without acting, when asked only that', () => {
+    expect(inOneStep(showLinkAs('inline'))(caretIn(PLAIN, 'design'), undefined)).toBe(true)
+  })
+
+  it('counts a command that agrees without changing anything as one that applied', () => {
+    const state = caretIn(PLAIN, 'design')
+    const { ok, markdown } = run(state, inOneStep(agrees, showLinkAs('inline')))
+    expect(ok).toBe(true)
+    expect(markdown).toContain('display=inline')
+    expect(run(state, inOneStep(agrees)).markdown).toBe(PLAIN)
   })
 })

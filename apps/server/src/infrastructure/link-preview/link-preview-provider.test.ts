@@ -781,6 +781,15 @@ describe('resolve: a link to a file', () => {
     })
   })
 
+  it('keeps the address it was asked about when the client ended at one that cannot be normalised', async () => {
+    const short = 'https://go.example/r/2'
+    const { provider } = setUp({
+      [short]: file(short, 'application/pdf', { url: 'ftp://cdn.example/final/handbook.pdf' }),
+    })
+    const result = await provider.resolve(short)
+    expect(result.ok && result.value).toMatchObject({ url: short, canonicalUrl: short })
+  })
+
   it.each([
     ['video/mp4', 'https://v.example/clip.mp4', 'video'],
     ['audio/mpeg', 'https://a.example/song.mp3', 'audio'],
