@@ -26,7 +26,7 @@ export const SITE_NAME_LIMIT = 80
 // eslint-disable-next-line no-control-regex -- matching control characters is the point.
 const WHITESPACE_AND_CONTROLS = new RegExp('[\\s\\u0000-\\u001F\\u007F-\\u009F]+', 'gu')
 /** Bidi embeddings, overrides and isolates; zero-width space, non-joiner and marks; the BOM. */
-const INVISIBLE_FORMATTING = new RegExp(
+export const INVISIBLE_FORMATTING = new RegExp(
   '[\\u200B\\u200C\\u200E\\u200F\\u202A-\\u202E\\u2060\\u2066-\\u2069\\uFEFF]',
   'gu',
 )

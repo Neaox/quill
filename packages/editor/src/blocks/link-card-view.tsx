@@ -1,6 +1,6 @@
 import { linkDirective, nearestEmbedRatio } from '@quill/markdown'
 import type { EmbedRatioName } from '@quill/markdown'
-import { LinkIcon } from '@quill/ui'
+import { Badge, LinkIcon } from '@quill/ui'
 import { NodeViewContent, NodeViewWrapper } from '@tiptap/react'
 import { useEffect } from 'react'
 import type { NodeViewProps } from '@tiptap/react'
@@ -8,6 +8,7 @@ import { tv } from 'tailwind-variants'
 
 import { directiveAttributes } from '../schema/directive-attributes.ts'
 import { useLinkPreviewSource } from './link-preview-context.tsx'
+import type { EditorLinkStatus } from './link-preview-context.tsx'
 
 /**
  * A link card as it is written (ADR-042): the same card the reader will see, drawn
@@ -39,6 +40,10 @@ const card = tv({
       'border-border-strong bg-surface-raised p-4 text-center text-sm',
       'data-[selected=true]:border-accent data-[selected=true]:ring-2 data-[selected=true]:ring-focus-ring',
     ],
+    code: [
+      'max-h-[4.5em] overflow-hidden rounded-sm border border-border bg-code-background px-2 py-1',
+      'font-mono text-2xs leading-snug text-foreground whitespace-pre',
+    ],
     compact: [
       'link-compact-editor flex items-center rounded-md border border-border bg-surface-raised px-3 py-1.5 text-sm',
       'data-[selected=true]:border-accent data-[selected=true]:ring-2 data-[selected=true]:ring-focus-ring',
@@ -62,6 +67,19 @@ const card = tv({
     },
   },
 })
+
+/** How many lines of a code permalink the card shows; the page it links to has the rest. */
+const CODE_EXCERPT_LINES = 3
+
+/** The state a connector reported, in words: the tone is emphasis, never the meaning. */
+function LinkStatus({ status }: { readonly status: EditorLinkStatus | undefined }) {
+  if (status === undefined) return null
+  return (
+    <span className="self-start" data-link-status contentEditable={false}>
+      <Badge tone={status.tone}>{status.label}</Badge>
+    </span>
+  )
+}
 
 function hostOf(address: string): string {
   try {
@@ -149,6 +167,7 @@ export function LinkCardBlock({ node, selected }: NodeViewProps) {
             />
           )}
           <span className="truncate font-medium text-foreground">{title}</span>
+          <LinkStatus status={preview?.status} />
           <span className="truncate text-xs text-muted">{preview?.siteName ?? host}</span>
         </span>
       </NodeViewWrapper>
@@ -168,8 +187,18 @@ export function LinkCardBlock({ node, selected }: NodeViewProps) {
       <NodeViewContent className="hidden" />
       <div className={styles.body()} contentEditable={false}>
         <p className={styles.title()}>{title}</p>
+        <LinkStatus status={preview?.status} />
         {description === null || description === '' ? null : (
           <p className={styles.description()}>{description}</p>
+        )}
+        {preview?.code === undefined ? null : (
+          // A glance at the lines, as text; the reader's page shows them in full.
+          <>
+            <p className="truncate font-mono text-2xs text-muted">{preview.code.repository}</p>
+            <pre className={styles.code()} data-first-line={preview.code.startLine}>
+              {preview.code.lines.slice(0, CODE_EXCERPT_LINES).join('\n')}
+            </pre>
+          </>
         )}
         {preview === null && link.choice.description === null ? (
           <span aria-hidden="true" className={styles.pending()} />

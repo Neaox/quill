@@ -3439,6 +3439,22 @@ html.lightbox-open {
   max-inline-size: 42em;
   margin-block: 1em;
   margin-inline: 0;
+/* --- A code permalink (ADR-042) ------------------------------------------- */
+
+/*
+ * Lines of source from a connector, as a figure: the caption is the one link, the lines are
+ * text. It reuses the code block's surface and tab size (`.prose pre`) so a snippet reads as
+ * code, and the card's border so it reads as a link. Line numbers are generated from
+ * `data-line`, which keeps them out of a copy. Nothing here is highlighted.
+ */
+.prose figure.link-code {
+  inline-size: 100%;
+  max-inline-size: 42em;
+  margin-block: 1em;
+  overflow: hidden;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background-color: var(--color-surface-raised);
   font-family: var(--font-sans);
   font-size: 0.9em;
   line-height: 1.4;
@@ -3503,4 +3519,59 @@ html.lightbox-open {
 /* On a slide the frame takes the width the slide gives it, and scales with it. */
 [data-surface='present'] .prose figure.link-embed {
   max-inline-size: none;
+.prose figure.link-code > figcaption {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25em 0.75em;
+  padding: 0.5em 1em;
+  border-block-end: 1px solid var(--color-border);
+  color: var(--color-muted);
+  font-size: 0.9em;
+}
+
+.prose figure.link-code .link-code-title {
+  min-inline-size: 0;
+  color: var(--color-foreground);
+  font-family: var(--font-mono);
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.prose figure.link-code .link-code-repository {
+  margin-inline-end: auto;
+}
+
+.prose figure.link-code pre.link-code-lines {
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+}
+
+.prose figure.link-code .link-code-line {
+  display: block;
+  padding-inline-start: 3.5ch;
+  position: relative;
+}
+
+.prose figure.link-code .link-code-line::before {
+  content: attr(data-line);
+  position: absolute;
+  inset-inline-start: 0;
+  inline-size: 3ch;
+  color: var(--color-muted);
+  text-align: end;
+  user-select: none;
+}
+
+@media (forced-colors: active) {
+  .prose figure.link-code {
+    border-color: CanvasText;
+  }
+}
+
+@media print {
+  .prose figure.link-code {
+    break-inside: avoid;
+  }
 }

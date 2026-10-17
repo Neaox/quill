@@ -20,6 +20,22 @@ describe('normaliseUrl', () => {
     expect(normaliseUrl('https://example.com/a#section-2')).toBe('https://example.com/a')
   })
 
+  it('keeps a line-range fragment, because it selects what the link is about', () => {
+    expect(normaliseUrl('https://github.com/o/r/blob/abc/a.ts#L10-L20')).toBe(
+      'https://github.com/o/r/blob/abc/a.ts#L10-L20',
+    )
+    expect(normaliseUrl('https://github.com/o/r/blob/abc/a.ts#L7')).toBe(
+      'https://github.com/o/r/blob/abc/a.ts#L7',
+    )
+  })
+
+  it.each(['#L', '#L10-', '#Lx', '#l10', '#L10-L20-L30', '#L10-20x', '#section'])(
+    'still removes %s, which is not a line range',
+    (fragment) => {
+      expect(normaliseUrl(`https://example.com/a${fragment}`)).toBe('https://example.com/a')
+    },
+  )
+
   it('removes tracking parameters, by name and by prefix, in any case', () => {
     expect(
       normaliseUrl(

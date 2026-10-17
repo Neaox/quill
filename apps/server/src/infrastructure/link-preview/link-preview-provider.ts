@@ -1,4 +1,13 @@
-import type { Clock } from '@quill/application'
+import { LinkPreviewRetryLater } from '@quill/application'
+import type {
+  Clock,
+  ConnectorCredentialSource,
+  ConnectorCredentials,
+  ConnectorDraft,
+  ConnectorFailure,
+  LinkConnector,
+  LinkConnectorRegistry,
+} from '@quill/application'
 import { err, normaliseUrl, ok } from '@quill/domain'
 import type {
   CompiledLinkPolicy,
@@ -42,8 +51,14 @@ import type { PreviewDraft, TitledDraft } from './preview-draft.ts'
  * but one has a title, the first of those is used: a title and a site name are
  * still a better link than none.
  *
- * Layer 1 of the ADR, a connector's API, is a separate resolver that runs
- * before this one and arrives with the connectors.
+ * **Layer 1, a connector's API**, runs before all of these when a connector claims
+ * the link (`connectors`). A connector that cannot answer (`not_found`, `unavailable`)
+ * hands over to the page layers, so a reader never sees a connector's error. Three
+ * outcomes do not fall through, because the page layers would answer wrongly: the
+ * content is `restricted` (not public, so no preview; the page would only offer a
+ * sign-in screen), the API said to wait (the fetch is deferred with `LinkPreviewRetryLater`,
+ * never counted as a failure), and the organisation's policy forbids the host (decided
+ * before any layer is asked).
  *
  * Pattern: the layers are strategies tried in order. This function owns the
  * order and the shared page fetch, and each layer owns its own vocabulary.
@@ -62,7 +77,9 @@ export interface ResolveOptions {
 export interface LinkPreviewProvider {
   /**
    * Never throws for an expected outcome. A failure is a value, because every
-   * failure but `busy` is an answer the cache stores.
+   * failure but `busy` is an answer the cache stores. The one exception is a
+   * connector's rate limit, which throws `LinkPreviewRetryLater`: it says nothing
+   * about the link, so the fetch is put back, not stored.
    */
   resolve(
     rawUrl: string,
@@ -89,7 +106,17 @@ export interface LinkPreviewProviderDeps {
   /** The embed allowlist as this instance runs it: which pages may become a live frame. */
   readonly embeds: EmbedRegistry
   readonly clock: Clock
+  /** Layer 1. Without a registry no connector is consulted. */
+  readonly connectors?: LinkConnectorRegistry
+  /** Where a connector's credentials come from. Without one connectors act anonymously. */
+  readonly credentials?: ConnectorCredentialSource
 }
+
+/**
+ * Longest a connector may take in all, across every request it makes. Past it the
+ * page layers answer: a slow API must not hold a fetch slot for long.
+ */
+export const CONNECTOR_BUDGET_MS = 10_000
 
 interface FetchedPage {
   readonly metadata: PageMetadata
@@ -133,6 +160,18 @@ function failureForStatus(status: number): LinkPreviewFailure {
     : 'not_a_page'
 }
 
+/** What only a connector can add to a preview; all optional, so a page's preview is as it always was. */
+type ConnectorExtensions = Partial<Pick<LinkPreview, 'status' | 'embed' | 'file' | 'code'>>
+
+function extensionsOf(draft: ConnectorExtensions): ConnectorExtensions {
+  return {
+    ...(draft.status === undefined ? {} : { status: draft.status }),
+    ...(draft.embed === undefined ? {} : { embed: draft.embed }),
+    ...(draft.file === undefined ? {} : { file: draft.file }),
+    ...(draft.code === undefined ? {} : { code: draft.code }),
+  }
+}
+
 function hostWithoutWww(url: string): string {
   return new URL(url).hostname.replace(/^www\./u, '')
 }
@@ -161,7 +200,38 @@ async function fetchPage(
 }
 
 export function createLinkPreviewProvider(deps: LinkPreviewProviderDeps): LinkPreviewProvider {
-  const { reader, images, oembed, embeds, clock } = deps
+  const { reader, images, oembed, embeds, clock, connectors, credentials } = deps
+
+  /** Credentials at the moment of use; a source that fails means anonymous, never a failed preview. */
+  async function credentialsFor(connector: LinkConnector): Promise<ConnectorCredentials | null> {
+    if (credentials === undefined) return null
+    try {
+      return await credentials.forConnector(connector)
+    } catch {
+      return null
+    }
+  }
+
+  /**
+   * Asks the connector, and answers a draft, or the failure that decides what happens
+   * next. A connector that throws has broken its contract and is treated as unavailable.
+   */
+  async function askConnector(
+    connector: LinkConnector,
+    target: URL,
+  ): Promise<Result<ConnectorDraft, ConnectorFailure>> {
+    const budget = new AbortController()
+    const timer = setTimeout(() => {
+      budget.abort()
+    }, CONNECTOR_BUDGET_MS)
+    try {
+      return await connector.resolve(target, await credentialsFor(connector), budget.signal)
+    } catch {
+      return err({ kind: 'unavailable' })
+    } finally {
+      clearTimeout(timer)
+    }
+  }
 
   /** The first favicon candidate that turns into an image; later ones are the fallback, so one at a time. */
   async function firstFavicon(
@@ -182,6 +252,7 @@ export function createLinkPreviewProvider(deps: LinkPreviewProviderDeps): LinkPr
     draft: TitledDraft,
     page: FetchedPage | null,
     scope: Scope,
+    extensions: ConnectorExtensions = {},
   ): Promise<LinkPreview> {
     const [thumbnail, favicon] = await Promise.all([
       draft.imageUrl === null || !scope.images
@@ -217,6 +288,7 @@ export function createLinkPreviewProvider(deps: LinkPreviewProviderDeps): LinkPr
               aspectRatio: frame.frame.aspectRatio,
             },
           }),
+      ...extensions,
     }
   }
 
@@ -237,6 +309,29 @@ export function createLinkPreviewProvider(deps: LinkPreviewProviderDeps): LinkPr
       const drafts: PreviewDraft[] = []
       const finish = async (draft: TitledDraft, page: FetchedPage | null) =>
         ok(await assemble(key, draft, page, scope))
+
+      const connector = connectors?.find(target) ?? null
+      if (connector !== null) {
+        const answer = await askConnector(connector, target)
+        if (answer.ok) {
+          const { imageUrl, canonicalUrl, ...connected } = answer.value
+          const titled: TitledDraft = {
+            layer: 'connector',
+            title: connected.title,
+            description: connected.description,
+            siteName: connected.siteName,
+            kind: connected.kind,
+            imageUrl,
+            canonicalUrl,
+          }
+          return ok(await assemble(key, titled, null, scope, extensionsOf(connected)))
+        }
+        // Not public: there is nothing to show, and the page would only offer a sign-in screen.
+        if (answer.error.kind === 'restricted') return err('restricted')
+        if (answer.error.kind === 'rate_limited') {
+          throw new LinkPreviewRetryLater(`${connector.id} rate limit`, answer.error.retryAfterMs)
+        }
+      }
 
       const known = oembed.find(target)
       if (known !== null) {

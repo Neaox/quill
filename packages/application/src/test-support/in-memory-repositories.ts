@@ -1114,7 +1114,7 @@ export function createInMemoryUnitOfWork(): InMemoryUnitOfWork {
       const row = linkPreviewRows.get(id)
       linkPreviewRows.set(
         id,
-        row?.state === 'ready'
+        row?.state === 'ready' && failure !== 'restricted'
           ? { ...row, requestedAt: null, retryAfter: retryAfter(now) }
           : {
               scope,

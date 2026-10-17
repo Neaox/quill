@@ -217,6 +217,8 @@ export interface BotPageView {
   }
   /** The most requests to one host in a burst, and the steady rate after it, per second. */
   readonly perHost: { readonly burst: number; readonly perSecond: number }
+  /** Services Quill asks through their own API (the connectors), if any are configured. */
+  readonly connectors?: readonly { readonly name: string; readonly apiHost: string }[]
 }
 
 /**
@@ -230,6 +232,7 @@ export interface BotPageView {
  */
 export function renderBotPage(view: BotPageView): string {
   const { limits, perHost } = view
+  const connectors = view.connectors ?? []
   return toDocument(html`<html lang="en">
     <head>
       <meta charset="utf-8" />
@@ -282,6 +285,20 @@ export function renderBotPage(view: BotPageView): string {
             more than ${String(limits.maxRedirects)} redirects.
           </li>
         </ul>
+
+        ${
+          connectors.length === 0
+            ? ''
+            : html`<h2>Services with an API</h2>
+                <p>
+                  For ${connectors.map((connector) => connector.name).join(', ')}, the server asks
+                  the service’s own API about a link instead of reading its page
+                  (${connectors.map((connector) => html`<code>${connector.apiHost}</code>`)}), using
+                  an access token that an administrator of ${view.instanceName} stored. It shows
+                  only what anyone can open without signing in: a link to something private gets no
+                  card. The token is sent to that API host and is never sent to any other site.
+                </p>`
+        }
 
         <h2>How often</h2>
         <p>

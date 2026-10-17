@@ -220,6 +220,59 @@ function compact(
   )
 }
 
+/** A language name is a class suffix, so only a plain one is used; anything else could add classes. */
+const PLAIN_LANGUAGE = /^[a-z][a-z0-9+#-]{0,31}$/u
+
+/**
+ * A permalink to lines of source, from a connector (ADR-042): a figure whose caption is the
+ * one link, and whose body is the code as text.
+ *
+ * Only the caption is a link, so the code can be selected and copied, which a card-wide
+ * anchor would make awkward. Every line is a text node, escaped by the serialiser and
+ * never interpreted; nothing is highlighted, because highlighting means running a
+ * script or trusting markup from a stranger's file. Line numbers are CSS (`data-line`),
+ * so they are not copied with the code. The block scrolls sideways for a long line,
+ * which makes it a keyboard stop; the figure is named by its caption.
+ */
+function codeCard(slot: Element, preview: LinkPreview, choice: LinkChoice): Element | null {
+  const { code } = preview
+  if (code === undefined) return null
+  const title = choice.title ?? preview.title
+  const language =
+    code.language !== null && PLAIN_LANGUAGE.test(code.language) ? code.language : null
+  return element(
+    'figure',
+    { className: ['link-code'], ...(language === null ? {} : { 'data-language': language }) },
+    [
+      element('figcaption', { className: ['link-code-caption'] }, [
+        element(
+          'a',
+          { className: ['link-code-title'], href: slot.properties['href'], rel: EXTERNAL_REL },
+          [text(title)],
+        ),
+        element('span', { className: ['link-code-repository'] }, [text(code.repository)]),
+        ...status(preview),
+      ]),
+      element('pre', { className: ['link-code-lines'], tabIndex: 0 }, [
+        element(
+          'code',
+          language === null ? {} : { className: [`language-${language}`] },
+          code.lines.map((line, index) =>
+            element(
+              'span',
+              { className: ['link-code-line'], 'data-line': String(code.startLine + index) },
+              [
+                text(`${line}
+`),
+              ],
+            ),
+          ),
+        ),
+      ]),
+    ],
+  )
+}
+
 /**
  * The block form: one anchor, so one tab stop and one name for a screen reader.
  * The picture is decoration and carries the dimensions it was stored with, so
@@ -231,6 +284,8 @@ function card(
   choice: LinkChoice,
   options: FillOptions,
 ): Element {
+  const snippet = codeCard(slot, preview, choice)
+  if (snippet !== null) return snippet
   const description = choice.description ?? preview.description
   const showImage = choice.showImage && preview.thumbnail !== null
   return element(

@@ -1,4 +1,4 @@
-import { LINK_PREVIEW_REQUESTED, getLinkPreviews } from '@quill/application'
+import { LINK_PREVIEW_REQUESTED, LinkPreviewRetryLater, getLinkPreviews } from '@quill/application'
 import type { LinkPreviewFetchDependencies, LinkPreviewResolver } from '@quill/application'
 import {
   createFakeClock,
@@ -80,6 +80,26 @@ describe('createFetchLinkPreviewConsumer', () => {
       name: 'DeferEvent',
       retryAfterMs: 4200,
     })
+  })
+
+  it('puts a fetch back for as long as a connector’s API says to wait, and stores nothing', async () => {
+    const { deps, uow } = setUp()
+    await getLinkPreviews(deps, { userId: ADA, urls: [URL_A] })
+    const waiting = createFetchLinkPreviewConsumer({
+      ...deps,
+      resolver: {
+        resolve: async () => {
+          throw new LinkPreviewRetryLater('github rate limit', 61_000)
+        },
+      },
+    })
+    const event = uow.events.find((candidate) => candidate.type === LINK_PREVIEW_REQUESTED)
+    await expect(waiting.handle(event?.payload)).rejects.toMatchObject({
+      name: 'DeferEvent',
+      retryAfterMs: 61_000,
+    })
+    const [reading] = await getLinkPreviews(deps, { userId: ADA, urls: [URL_A] })
+    expect(reading?.view).toEqual({ state: 'pending' })
   })
 
   it('lets a real fault through as a fault', async () => {

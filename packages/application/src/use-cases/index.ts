@@ -483,3 +483,5 @@ export {
   refreshLinkPreview,
   storedPreviewReader,
 } from './link-previews.ts'
+
+export { createLinkConnectorRegistry } from './link-connectors.ts'

@@ -13,6 +13,7 @@ import { linkEmbedRegistry } from '../infrastructure/link-preview/embed-config.t
 import type { AppDependencies } from '../dependencies.ts'
 import { notFound } from '../errors.ts'
 import { OPEN_WEB_LIMITS } from '../infrastructure/http/open-web-client.ts'
+import { GITHUB_SERVICE } from '../infrastructure/link-preview/connectors/github-connector.ts'
 import { linkPreviewUserAgent } from '../infrastructure/link-preview/user-agent.ts'
 import { DEFAULT_RATE_LIMITS } from '../infrastructure/link-preview/rate-limits.ts'
 import type { CachedPage } from '../public-site/cache.ts'
@@ -353,6 +354,7 @@ export function publicSiteRoutes(deps: AppDependencies): FastifyPluginAsync {
             userAgent: linkPreviewUserAgent(deps.config.appUrl),
             instanceName,
             limits: OPEN_WEB_LIMITS,
+            connectors: [GITHUB_SERVICE],
             perHost: {
               burst: DEFAULT_RATE_LIMITS.perHost.capacity,
               perSecond: DEFAULT_RATE_LIMITS.perHost.refillPerSecond,

@@ -1,4 +1,6 @@
 import {
+  CODE_SNIPPET_MAX_LINES,
+  CODE_SNIPPET_MAX_LINE_LENGTH,
   FAILURE_REMEMBERED_FOR_MS,
   PREVIEW_FRESH_FOR_MS,
   REQUEST_IN_FLIGHT_FOR_MS,
@@ -225,6 +227,17 @@ describe('fetching and then reading', () => {
     expect(queued()).toHaveLength(1)
   })
 
+  it('drops a good preview when the link turns out to be restricted, unlike any other failure', async () => {
+    await read([URL_A])
+    await t.drain()
+    t.clock.advance(PREVIEW_FRESH_FOR_MS)
+    await read([URL_A])
+    t.resolve.mockResolvedValueOnce(err('restricted'))
+    await t.drain()
+    // Dropped, and not reported as restricted: the reader is told nothing about why.
+    expect(await views([URL_A])).toEqual([{ state: 'unavailable', reason: 'not_a_page' }])
+  })
+
   it.each<LinkPreviewFailure>(['unreachable', 'not_a_page', 'no_metadata', 'blocked'])(
     'remembers a %s failure for an hour, then tries again',
     async (failure) => {
@@ -258,6 +271,17 @@ describe('fetching and then reading', () => {
       retryAfterMs: 1500,
     })
     expect(t.resolve).toHaveBeenCalledOnce()
+  })
+
+  it('defers, and stores nothing, when a connector says the API’s rate limit is spent', async () => {
+    await read([URL_A])
+    t.resolve.mockRejectedValueOnce(new LinkPreviewRetryLater('github rate limit', 90_000))
+    await expect(fetchLinkPreview(t, queued()[0]?.payload)).rejects.toMatchObject({
+      name: 'LinkPreviewRetryLater',
+      retryAfterMs: 90_000,
+    })
+    // Not a failure: still pending, so it is not remembered as one for an hour.
+    expect(await views([URL_A])).toEqual([{ state: 'pending' }])
   })
 
   it('rate-limits by the host and the scope of the link', async () => {
@@ -494,6 +518,41 @@ describe('the stored format', () => {
       file: { mediaType: 'application/pdf', bytes: 1024, name: 'spec.pdf' },
     })
     expect(storedPreviewReader.read({ ...previewOf(URL_A), version: 1 })).toEqual(previewOf(URL_A))
+  })
+
+  it('reads a code snippet, and keeps it within the caps whatever was stored', () => {
+    const code = {
+      language: 'typescript',
+      startLine: 10,
+      lines: ['const a = 1', 'x'.repeat(CODE_SNIPPET_MAX_LINE_LENGTH + 50)],
+      path: 'src/a.ts',
+      repository: 'o/r',
+    }
+    const read = storedPreviewReader.read({ ...previewOf(URL_A), version: 1, code })
+    expect(read?.code).toMatchObject({ language: 'typescript', startLine: 10, path: 'src/a.ts' })
+    expect(read?.code?.lines[1]).toHaveLength(CODE_SNIPPET_MAX_LINE_LENGTH)
+
+    const many = Array.from({ length: CODE_SNIPPET_MAX_LINES + 20 }, (_, index) => `l${index}`)
+    const capped = storedPreviewReader.read({
+      ...previewOf(URL_A),
+      version: 1,
+      code: { ...code, lines: many, language: null },
+    })
+    expect(capped?.code?.lines).toHaveLength(CODE_SNIPPET_MAX_LINES)
+    expect(capped?.code?.language).toBeNull()
+  })
+
+  it.each([
+    ['not an object', 'x = 1'],
+    ['without lines', { startLine: 1, path: 'a', repository: 'o/r' }],
+    ['with a line that is not text', { startLine: 1, lines: [1], path: 'a', repository: 'o/r' }],
+    ['with no usable line number', { startLine: 0, lines: ['a'], path: 'a', repository: 'o/r' }],
+    ['without a path', { startLine: 1, lines: ['a'], repository: 'o/r' }],
+    ['without a repository', { startLine: 1, lines: ['a'], path: 'a' }],
+  ])('leaves out a code snippet that is %s, without losing the preview', (_name, code) => {
+    expect(storedPreviewReader.read({ ...previewOf(URL_A), version: 1, code })).toEqual(
+      previewOf(URL_A),
+    )
   })
 
   it('leaves out an extension that is malformed, without losing the preview', () => {

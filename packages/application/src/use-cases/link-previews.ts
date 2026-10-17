@@ -2,6 +2,8 @@ import {
   LINK_PREVIEW_FAILURES,
   LINK_PREVIEW_KINDS,
   LINK_PREVIEW_LAYERS,
+  CODE_SNIPPET_MAX_LINES,
+  CODE_SNIPPET_MAX_LINE_LENGTH,
   PREVIEW_TONES,
   err,
   isStale,
@@ -116,6 +118,34 @@ function readFile(value: unknown): LinkPreview['file'] {
     : { mediaType, bytes: typeof bytes === 'number' ? bytes : null, name: text(value['name']) }
 }
 
+/** Lines of source, within the caps whatever was stored: a preview is never a mirror of a file. */
+function readCode(value: unknown): LinkPreview['code'] {
+  if (!isRecord(value)) return undefined
+  const { startLine, lines } = value
+  const path = text(value['path'])
+  const repository = text(value['repository'])
+  if (
+    typeof startLine !== 'number' ||
+    !Number.isInteger(startLine) ||
+    startLine < 1 ||
+    !Array.isArray(lines) ||
+    !lines.every((line): line is string => typeof line === 'string') ||
+    path === null ||
+    repository === null
+  ) {
+    return undefined
+  }
+  return {
+    language: text(value['language']),
+    startLine,
+    lines: lines
+      .slice(0, CODE_SNIPPET_MAX_LINES)
+      .map((line) => line.slice(0, CODE_SNIPPET_MAX_LINE_LENGTH)),
+    path,
+    repository,
+  }
+}
+
 function readKind(value: unknown): LinkPreviewKind | null {
   return LINK_PREVIEW_KINDS.find((kind) => kind === value) ?? null
 }
@@ -124,8 +154,15 @@ function readLayer(value: unknown): LinkPreviewLayer | null {
   return LINK_PREVIEW_LAYERS.find((layer) => layer === value) ?? null
 }
 
+/**
+ * What a reader is told about a stored failure. `restricted` is kept apart in storage (it
+ * drops a preview that was kept from when the link was public) but is never reported as
+ * such: GitHub answers 404 for a private repository and for one that does not exist, and a
+ * reader who cannot open the link has no business learning that it exists.
+ */
 function readFailure(value: string | null): LinkPreviewFailure {
-  return LINK_PREVIEW_FAILURES.find((failure) => failure === value) ?? 'unreachable'
+  const failure = LINK_PREVIEW_FAILURES.find((candidate) => candidate === value) ?? 'unreachable'
+  return failure === 'restricted' ? 'not_a_page' : failure
 }
 
 /** Version 1: a `LinkPreview` plus its version. A record that is not one reads as null, and is fetched again. */
@@ -144,6 +181,7 @@ function readVersion1(value: unknown): LinkPreview | null {
   const status = readStatus(value['status'])
   const embed = readEmbed(value['embed'])
   const file = readFile(value['file'])
+  const code = readCode(value['code'])
   if (
     thumbnail === undefined ||
     favicon === undefined ||
@@ -170,6 +208,7 @@ function readVersion1(value: unknown): LinkPreview | null {
     ...(status === undefined ? {} : { status }),
     ...(embed === undefined ? {} : { embed }),
     ...(file === undefined ? {} : { file }),
+    ...(code === undefined ? {} : { code }),
   }
 }
 

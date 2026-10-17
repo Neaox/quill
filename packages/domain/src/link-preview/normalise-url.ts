@@ -4,7 +4,7 @@
  * once per spelling.
  *
  * What is folded away is exactly what cannot change which page loads:
- * scheme and host case, the default port, the fragment, parameters that only
+ * scheme and host case, the default port, the fragment (except a line range), parameters that only
  * identify a click, and the order of the remaining parameters. Everything else
  * is kept as written, because a path or a real parameter can name a different
  * page, and a trailing slash is not ours to guess about.
@@ -39,6 +39,13 @@ function isTracking(name: string): boolean {
 }
 
 /**
+ * `#L10` and `#L10-L20`, the fragment a code host uses to select lines. Unlike
+ * `#section-2`, it changes what the link is *about* (a permalink to ten lines is not a
+ * permalink to the file), so two such links must not share a snapshot.
+ */
+const LINE_RANGE = /^#L\d{1,7}(?:-L\d{1,7})?$/u
+
+/**
  * Longer than any link a person means to share, and the bound on what every
  * later step (pattern matching, fetching, storing as a key) is asked to chew.
  */
@@ -61,7 +68,7 @@ export function normaliseUrl(raw: string): string | null {
   if (url.protocol !== 'http:' && url.protocol !== 'https:') return null
   if (url.username !== '' || url.password !== '') return null
 
-  url.hash = ''
+  if (!LINE_RANGE.test(url.hash)) url.hash = ''
   const kept = new URLSearchParams()
   for (const [name, value] of url.searchParams) {
     if (!isTracking(name)) kept.append(name, value)

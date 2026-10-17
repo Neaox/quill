@@ -38,6 +38,11 @@ import { createWarmLinkPreviewsOnPublishConsumer } from './infrastructure/outbox
 import { createInvalidatePublicSiteConsumers } from './infrastructure/outbox/invalidate-public-site.ts'
 import { createOpenWebClient } from './infrastructure/http/open-web-client.ts'
 import { createLinkPreviewAudiences } from './infrastructure/link-preview/audiences.ts'
+import { createConnectorCredentialSource } from './infrastructure/link-preview/connectors/credentials.ts'
+import {
+  GITHUB_API_HOST,
+  createGitHubConnector,
+} from './infrastructure/link-preview/connectors/github-connector.ts'
 import { createFetchObserver } from './infrastructure/link-preview/fetch-log.ts'
 import { createImageIngestor } from './infrastructure/link-preview/image-ingestor.ts'
 import { createIsolatedTranscoder } from './infrastructure/link-preview/isolated-transcoder.ts'
@@ -77,6 +82,7 @@ import {
   DOCUMENT_MOVED,
   DOCUMENT_PUBLISHED,
   DOCUMENT_RENAMED,
+  createLinkConnectorRegistry,
 } from '@quill/application'
 import { createSearchService } from '@quill/search'
 import { createDrawioText } from './extensions/drawio/drawing-text.ts'
@@ -226,6 +232,19 @@ const openWeb = createOpenWebClient({
   // One log line per fetch: the host and how it went, never the path or the response.
   observe: createFetchObserver(() => app.log),
 })
+// Connectors (layer 1) carry credentials, so they never use the open-web client: the GitHub
+// connector reaches its API through the allowlisted client, whose one host is the API's, and
+// reads its token from the secrets store at the moment of use (ADR-042, ADR-034).
+const connectorUserAgent = linkPreviewUserAgent(config.appUrl)
+const gitHubApi = createOutboundClient({
+  allowedHosts: [GITHUB_API_HOST],
+  timeoutMs: 8_000,
+  // A file's contents arrive base64-encoded inside JSON.
+  maxResponseBytes: 2 * 1024 * 1024,
+})
+const linkConnectors = createLinkConnectorRegistry([
+  createGitHubConnector({ client: gitHubApi, clock, userAgent: connectorUserAgent }),
+])
 const linkPreviewPorts = {
   audiences: createLinkPreviewAudiences(),
   resolver: createLinkPreviewProvider({
@@ -238,6 +257,8 @@ const linkPreviewPorts = {
     oembed: createOembedRegistry(OEMBED_PROVIDERS),
     embeds: linkEmbedRegistry(config.linkEmbeds),
     clock,
+    connectors: linkConnectors,
+    credentials: createConnectorCredentialSource({ uow, secrets, clock, ids }),
   }),
   limits: createLinkPreviewRateLimits(clock),
 }

@@ -71,6 +71,16 @@ const PreviewSchema = Type.Object({
       name: Type.Union([Type.String(), Type.Null()]),
     }),
   ),
+  code: Type.Optional(
+    Type.Object({
+      language: Type.Union([Type.String(), Type.Null()]),
+      startLine: Type.Integer(),
+      // The domain's lines are read-only; the schema's own array type is not, so it is stated.
+      lines: Type.Unsafe<readonly string[]>(Type.Array(Type.String())),
+      path: Type.String(),
+      repository: Type.String(),
+    }),
+  ),
 })
 
 /** What a surface is told about one link: a preview, or the reason there is none. */

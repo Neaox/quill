@@ -272,6 +272,41 @@ describe('createOutboundClient', () => {
   })
 })
 
+describe('exposing response headers', () => {
+  it('returns only the headers that were asked for, by lower-case name, and only when asked', async () => {
+    const { client, fetchMock } = setUp()
+    fetchMock.mockImplementation(async () =>
+      respond(200, 'ok', {
+        'X-RateLimit-Remaining': '4999',
+        'Set-Cookie': 'a=b',
+        'Retry-After': '7',
+      }),
+    )
+    const url = `https://${ALLOWED}/x`
+    const asked = await client.get({
+      url,
+      exposeHeaders: ['X-RateLimit-Remaining', 'retry-after', 'x-missing'],
+    })
+    expect(asked).toEqual({
+      status: 200,
+      body: 'ok',
+      headers: { 'x-ratelimit-remaining': '4999', 'retry-after': '7' },
+    })
+    expect(await client.get({ url })).toEqual({ status: 200, body: 'ok' })
+  })
+
+  it('exposes the headers of the final response of a redirect chain, not the redirect', async () => {
+    const { client, fetchMock } = setUp()
+    fetchMock
+      .mockResolvedValueOnce(
+        respond(301, '', { location: `https://${ALLOWED}/y`, 'x-hop': 'first' }),
+      )
+      .mockResolvedValueOnce(respond(200, 'ok', { 'x-hop': 'second' }))
+    const response = await client.get({ url: `https://${ALLOWED}/x`, exposeHeaders: ['x-hop'] })
+    expect(response.headers).toEqual({ 'x-hop': 'second' })
+  })
+})
+
 describe('a response with no body', () => {
   it('reads as empty rather than failing', async () => {
     const client = createOutboundClient({

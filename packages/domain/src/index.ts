@@ -135,6 +135,8 @@ export { materialiseEffectivePermissions } from './permissions/materialise.ts'
 
 export { MAX_URL_LENGTH, normaliseUrl } from './link-preview/normalise-url.ts'
 export {
+  CODE_SNIPPET_MAX_LINES,
+  CODE_SNIPPET_MAX_LINE_LENGTH,
   LINK_PREVIEW_FAILURES,
   LINK_PREVIEW_KINDS,
   LINK_PREVIEW_LAYERS,
@@ -145,6 +147,7 @@ export type {
   LinkPreviewFailure,
   LinkPreviewKind,
   LinkPreviewLayer,
+  PreviewCode,
   PreviewEmbed,
   PreviewFile,
   PreviewImage,

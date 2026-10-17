@@ -96,6 +96,11 @@ export interface ResolveHost {
 export interface OutboundRequest {
   readonly url: string
   readonly headers?: Readonly<Record<string, string>>
+  /**
+   * Response headers the caller needs (a rate limit's, say), by name. Nothing else is
+   * handed back, so a caller cannot be given a cookie it did not ask about.
+   */
+  readonly exposeHeaders?: readonly string[]
 }
 
 /**
@@ -115,6 +120,8 @@ export interface OutboundPostRequest extends OutboundRequest {
 export interface OutboundResponse {
   readonly status: number
   readonly body: string
+  /** Present only when the request named headers to expose; keys are lower case, absent headers are left out. */
+  readonly headers?: Readonly<Record<string, string>>
 }
 
 export { OutboundRequestError } from './outbound-error.ts'
@@ -397,6 +404,18 @@ export async function resolvePublicAddresses(
   return addresses
 }
 
+function pickHeaders(
+  response: OutboundFetchResponse,
+  names: readonly string[],
+): Readonly<Record<string, string>> {
+  const picked: Record<string, string> = {}
+  for (const name of names) {
+    const value = response.headers.get(name)
+    if (value !== null) picked[name.toLowerCase()] = value
+  }
+  return picked
+}
+
 export function createOutboundClient(options: OutboundClientOptions): OutboundClient {
   const allowed = new Set(options.allowedHosts.map((host) => host.toLowerCase()))
   const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS
@@ -490,7 +509,7 @@ export function createOutboundClient(options: OutboundClientOptions): OutboundCl
   }
 
   return {
-    async get({ url, headers = {} }): Promise<OutboundResponse> {
+    async get({ url, headers = {}, exposeHeaders }): Promise<OutboundResponse> {
       // One clock for the whole call: every redirect, and the body.
       const budget = startBudget(timeoutMs)
       try {
@@ -500,7 +519,13 @@ export function createOutboundClient(options: OutboundClientOptions): OutboundCl
           const response = await sendOnce(target, 'GET', headers, undefined, budget)
 
           if (!isRedirect(response.status)) {
-            return { status: response.status, body: await readBody(response, budget) }
+            return {
+              status: response.status,
+              body: await readBody(response, budget),
+              ...(exposeHeaders === undefined
+                ? {}
+                : { headers: pickHeaders(response, exposeHeaders) }),
+            }
           }
           const location = response.headers.get('location')
           if (location === null) {

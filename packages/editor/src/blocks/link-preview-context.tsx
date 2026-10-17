@@ -25,6 +25,23 @@ export interface EditorLinkPreview {
    * embed's place. The editor never loads the frame: this is only enough to name it and size it.
    */
   readonly embed?: EditorLinkEmbed
+  /** From a connector: "Open", "Merged". Optional, so a source that has none still fits. */
+  readonly status?: EditorLinkStatus | undefined
+  /** From a connector, for a permalink to lines of source. */
+  readonly code?: EditorLinkCode | undefined
+}
+
+export interface EditorLinkStatus {
+  readonly label: string
+  readonly tone: 'neutral' | 'accent' | 'success' | 'warning' | 'danger'
+}
+
+export interface EditorLinkCode {
+  readonly language: string | null
+  readonly startLine: number
+  readonly lines: readonly string[]
+  readonly path: string
+  readonly repository: string
 }
 
 export interface EditorLinkEmbed {

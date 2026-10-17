@@ -7899,6 +7899,43 @@
                                             ]
                                           }
                                         }
+                                      },
+                                      "code": {
+                                        "type": "object",
+                                        "required": [
+                                          "language",
+                                          "startLine",
+                                          "lines",
+                                          "path",
+                                          "repository"
+                                        ],
+                                        "properties": {
+                                          "language": {
+                                            "anyOf": [
+                                              {
+                                                "type": "string"
+                                              },
+                                              {
+                                                "type": "null"
+                                              }
+                                            ]
+                                          },
+                                          "startLine": {
+                                            "type": "integer"
+                                          },
+                                          "lines": {
+                                            "type": "array",
+                                            "items": {
+                                              "type": "string"
+                                            }
+                                          },
+                                          "path": {
+                                            "type": "string"
+                                          },
+                                          "repository": {
+                                            "type": "string"
+                                          }
+                                        }
                                       }
                                     }
                                   },
@@ -7940,6 +7977,7 @@
                                       "unreachable",
                                       "not_a_page",
                                       "no_metadata",
+                                      "restricted",
                                       "blocked",
                                       "busy"
                                     ],
@@ -8221,6 +8259,43 @@
                                   ]
                                 }
                               }
+                            },
+                            "code": {
+                              "type": "object",
+                              "required": [
+                                "language",
+                                "startLine",
+                                "lines",
+                                "path",
+                                "repository"
+                              ],
+                              "properties": {
+                                "language": {
+                                  "anyOf": [
+                                    {
+                                      "type": "string"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "startLine": {
+                                  "type": "integer"
+                                },
+                                "lines": {
+                                  "type": "array",
+                                  "items": {
+                                    "type": "string"
+                                  }
+                                },
+                                "path": {
+                                  "type": "string"
+                                },
+                                "repository": {
+                                  "type": "string"
+                                }
+                              }
                             }
                           }
                         },
@@ -8262,6 +8337,7 @@
                             "unreachable",
                             "not_a_page",
                             "no_metadata",
+                            "restricted",
                             "blocked",
                             "busy"
                           ],
