@@ -97,7 +97,7 @@ beforeAll(async () => {
     linkPreviewPorts: {
       audiences: {
         forPerson: async () => ({ scope: PUBLIC_PREVIEW_SCOPE, policy: policy.value }),
-        forPublic: () => ({ scope: PUBLIC_PREVIEW_SCOPE, policy: policy.value }),
+        forPublic: async () => ({ scope: PUBLIC_PREVIEW_SCOPE, policy: policy.value }),
       },
       resolver: { resolve },
       limits: {

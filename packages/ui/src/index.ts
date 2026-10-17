@@ -173,6 +173,7 @@ export {
   TrashIcon,
 } from './components/table-icons.tsx'
 export { Input, type InputProps, type InputSize } from './components/input.tsx'
+export { Textarea, type TextareaProps } from './components/textarea.tsx'
 export {
   Menu,
   MenuButton,

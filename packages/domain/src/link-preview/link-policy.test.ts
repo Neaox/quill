@@ -4,6 +4,7 @@ import {
   DEFAULT_LINK_PREVIEW_POLICY,
   MAX_POLICY_PATTERNS,
   compileLinkPolicy,
+  describePatternError,
   parseUrlPattern,
 } from './link-policy.ts'
 import type { LinkPreviewPolicy } from './link-policy.ts'
@@ -202,5 +203,24 @@ describe('compileLinkPolicy: images and validation', () => {
   it('accepts a list at exactly the limit', () => {
     const many = Array.from({ length: MAX_POLICY_PATTERNS }, (_, index) => `h${index}.example`)
     expect(compileLinkPolicy({ mode: 'rich', allow: many, block: [] }).ok).toBe(true)
+  })
+})
+
+describe('describing a pattern that was refused', () => {
+  it('says why in words an administrator can act on, for every reason', () => {
+    const reasons = ['empty', 'too_long', 'invalid_host', 'invalid_path'] as const
+    const messages = reasons.map(describePatternError)
+    expect(new Set(messages).size).toBe(reasons.length)
+    for (const message of messages) expect(message).toMatch(/^[A-Z].*\.$/u)
+    expect(describePatternError('invalid_host')).toMatch(/host/u)
+    expect(describePatternError('invalid_path')).toMatch(/path/u)
+  })
+
+  it('agrees with the parser about what is refused', () => {
+    for (const bad of ['', 'not a host', 'example.com:8080', 'a.com/x*y']) {
+      const parsed = parseUrlPattern(bad)
+      expect(parsed.ok).toBe(false)
+      if (!parsed.ok) expect(describePatternError(parsed.error).length).toBeGreaterThan(10)
+    }
   })
 })

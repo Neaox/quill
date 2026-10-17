@@ -3858,6 +3858,90 @@
                 }
               }
             }
+          },
+          "linkPreviews": {
+            "additionalProperties": false,
+            "type": "object",
+            "required": [
+              "mode",
+              "publicSite",
+              "defaultDisplay",
+              "allow",
+              "block"
+            ],
+            "properties": {
+              "mode": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "enum": [
+                      "off"
+                    ]
+                  },
+                  {
+                    "type": "string",
+                    "enum": [
+                      "text"
+                    ]
+                  },
+                  {
+                    "type": "string",
+                    "enum": [
+                      "rich"
+                    ]
+                  }
+                ]
+              },
+              "publicSite": {
+                "type": "boolean"
+              },
+              "defaultDisplay": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "enum": [
+                      "url"
+                    ]
+                  },
+                  {
+                    "type": "string",
+                    "enum": [
+                      "inline"
+                    ]
+                  },
+                  {
+                    "type": "string",
+                    "enum": [
+                      "compact"
+                    ]
+                  },
+                  {
+                    "type": "string",
+                    "enum": [
+                      "card"
+                    ]
+                  }
+                ]
+              },
+              "allow": {
+                "maxItems": 500,
+                "type": "array",
+                "items": {
+                  "minLength": 1,
+                  "maxLength": 300,
+                  "type": "string"
+                }
+              },
+              "block": {
+                "maxItems": 500,
+                "type": "array",
+                "items": {
+                  "minLength": 1,
+                  "maxLength": 300,
+                  "type": "string"
+                }
+              }
+            }
           }
         }
       },

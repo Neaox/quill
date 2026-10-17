@@ -37,6 +37,10 @@ export interface LinkPreviewResolver {
  * never handed to anyone else. This is what lets an organisation that limits
  * where Quill goes be certain Quill did not go there on its behalf, while
  * everyone else still shares one fetch.
+ *
+ * The rule runs in one direction and is strict: an audience reads **only its
+ * own scope**. A restrictive audience is never shown what a looser policy
+ * fetched, even from the shared scope.
  */
 export interface LinkPreviewAudience {
   readonly scope: string
@@ -48,10 +52,13 @@ export const PUBLIC_PREVIEW_SCOPE = 'public'
 export interface LinkPreviewAudiences {
   forPerson(userId: UserId): Promise<LinkPreviewAudience>
   /**
-   * Whom the public site and exports read for: nobody in particular, so the
-   * default policy and the shared scope. Read-only; see `peekLinkPreviews`.
+   * Whom the public site, share links and exports read for: nobody in
+   * particular, but still under the organisation's rules, so the scope its
+   * members' fetches are stored in. When the organisation switched previews
+   * off for the public site, a policy that permits nothing. Read-only; see
+   * `peekLinkPreviews`.
    */
-  forPublic(): LinkPreviewAudience
+  forPublic(): Promise<LinkPreviewAudience>
 }
 
 /**

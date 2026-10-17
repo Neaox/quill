@@ -45,7 +45,7 @@ function setUp() {
     ids: createFakeIdGenerator(),
     audiences: {
       forPerson: async () => ({ scope: 'public', policy: policy.value }),
-      forPublic: () => ({ scope: 'public', policy: policy.value }),
+      forPublic: async () => ({ scope: 'public', policy: policy.value }),
     },
     resolver: { resolve },
     limits: LIMITS_OPEN,

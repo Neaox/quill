@@ -17,7 +17,7 @@ if (!off.ok) throw new Error('The inert link preview policy did not compile')
 const inertAudience = { scope: 'inert', policy: off.value }
 
 export const INERT_LINK_PREVIEW_PORTS: LinkPreviewPorts = {
-  audiences: { forPerson: async () => inertAudience, forPublic: () => inertAudience },
+  audiences: { forPerson: async () => inertAudience, forPublic: async () => inertAudience },
   resolver: { resolve: async () => err('blocked') },
   limits: {
     allowFetch: () => ({ allowed: false, retryAfterMs: 60_000 }),

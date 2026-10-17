@@ -110,6 +110,24 @@ export function parseUrlPattern(raw: string): Result<UrlPattern, PatternError> {
   return ok({ host, subdomainsOnly, pathPrefix: prefix })
 }
 
+/**
+ * A pattern's refusal in a sentence for the administrator who typed it. One
+ * wording for the settings screen and the settings API, so the two never
+ * disagree about what is wrong.
+ */
+export function describePatternError(error: PatternError): string {
+  switch (error) {
+    case 'empty':
+      return 'A pattern cannot be empty.'
+    case 'too_long':
+      return `A pattern can be at most ${MAX_PATTERN_LENGTH} characters.`
+    case 'invalid_host':
+      return 'The host must be a plain name such as example.com, or *.example.com for subdomains. No spaces, port or credentials.'
+    case 'invalid_path':
+      return 'A path can only end in *, as in example.com/docs/*. A * anywhere else, or a ? or #, is not allowed.'
+  }
+}
+
 function matches(pattern: UrlPattern, url: URL): boolean {
   const host = url.hostname.replace(/\.$/u, '')
   const hostMatches = pattern.subdomainsOnly

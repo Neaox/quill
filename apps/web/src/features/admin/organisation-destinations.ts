@@ -49,6 +49,11 @@ export const ORGANISATION_DESTINATIONS = [
     keywords: ['settings', 'admin', 'sidebar', 'variants'],
   },
   {
+    to: '/admin/settings/links',
+    label: 'Links',
+    keywords: ['settings', 'admin', 'link', 'previews', 'unfurl', 'open graph', 'block', 'sites'],
+  },
+  {
     to: '/admin/settings/secrets',
     label: 'Secrets and sign-in',
     keywords: ['settings', 'admin', 'sso', 'oidc', 'single sign-on', 'keys', 'providers'],

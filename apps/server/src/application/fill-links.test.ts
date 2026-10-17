@@ -26,7 +26,7 @@ function setUp() {
     uow,
     clock: createFakeClock(NOW),
     ids: createFakeIdGenerator(),
-    audiences: { forPerson: async () => audience, forPublic: () => audience },
+    audiences: { forPerson: async () => audience, forPublic: async () => audience },
     limits: {
       allowFetch: () => ({ allowed: true }),
       allowRefresh: () => true,
@@ -78,6 +78,64 @@ describe('fillLinksForMember', () => {
     expect(html).toContain('data-link-slot')
     expect(pending).toBe(1)
     expect(uow.events.map((event) => event.type)).toEqual([LINK_PREVIEW_REQUESTED])
+  })
+})
+
+/** A bare link on a line of its own, whose author chose no display. */
+const unchosen = (url: string) =>
+  `<p class="link-slot-block"><a href="${url}" data-link-slot="" data-link-key="${url}">${url}</a></p>`
+
+describe('the display of a link its author chose no display for', () => {
+  it('is inline when the organisation never said', async () => {
+    const { deps, store } = setUp()
+    await store()
+    const { html } = await fillLinksForMember(deps, ADA, unchosen(KEY))
+    expect(html).toContain('link-chip')
+    expect(html).not.toContain('link-card')
+  })
+
+  it('is the organisation’s default for a member, on a line of its own', async () => {
+    const { deps, store } = setUp()
+    await store()
+    const { html } = await fillLinksForMember(
+      { ...deps, defaultDisplay: async () => 'card' },
+      ADA,
+      unchosen(KEY),
+    )
+    expect(html).toContain('link-card')
+  })
+
+  it('is the organisation’s default for the public site too', async () => {
+    const { deps, store } = setUp()
+    await store()
+    const { html } = await fillLinksForPublic(
+      { ...deps, defaultDisplay: async () => 'compact' },
+      unchosen(KEY),
+    )
+    expect(html).toContain('link-compact')
+  })
+
+  it('is plain when the organisation made the default a plain link', async () => {
+    const { deps, store } = setUp()
+    await store()
+    const { html } = await fillLinksForMember(
+      { ...deps, defaultDisplay: async () => 'url' },
+      ADA,
+      unchosen(KEY),
+    )
+    expect(html).toContain('data-link-slot')
+    expect(html).not.toContain('A stored title')
+  })
+
+  it('does not override what the author chose', async () => {
+    const { deps, store } = setUp()
+    await store()
+    const { html } = await fillLinksForMember(
+      { ...deps, defaultDisplay: async () => 'card' },
+      ADA,
+      slot(KEY).replace('data-display="card"', 'data-display="inline"'),
+    )
+    expect(html).not.toContain('link-card')
   })
 })
 

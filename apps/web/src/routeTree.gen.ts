@@ -27,6 +27,7 @@ import { Route as ShareTokenIndexRouteImport } from './routes/share/$token/index
 import { Route as AuthenticatedAdminSettingsIndexRouteImport } from './routes/_authenticated/admin/settings/index'
 import { Route as AuthenticatedAdminSettingsLabelsRouteImport } from './routes/_authenticated/admin/settings/labels'
 import { Route as AuthenticatedAdminSettingsLayoutRouteImport } from './routes/_authenticated/admin/settings/layout'
+import { Route as AuthenticatedAdminSettingsLinksRouteImport } from './routes/_authenticated/admin/settings/links'
 import { Route as AuthenticatedAdminSettingsOrganisationRouteImport } from './routes/_authenticated/admin/settings/organisation'
 import { Route as AuthenticatedAdminSettingsSecretsRouteImport } from './routes/_authenticated/admin/settings/secrets'
 import { Route as AuthenticatedAdminSettingsThemeRouteImport } from './routes/_authenticated/admin/settings/theme'
@@ -134,6 +135,12 @@ const AuthenticatedAdminSettingsLayoutRoute =
     path: '/layout',
     getParentRoute: () => AuthenticatedAdminSettingsRouteRoute,
   } as any)
+const AuthenticatedAdminSettingsLinksRoute =
+  AuthenticatedAdminSettingsLinksRouteImport.update({
+    id: '/links',
+    path: '/links',
+    getParentRoute: () => AuthenticatedAdminSettingsRouteRoute,
+  } as any)
 const AuthenticatedAdminSettingsOrganisationRoute =
   AuthenticatedAdminSettingsOrganisationRouteImport.update({
     id: '/organisation',
@@ -212,6 +219,7 @@ export interface FileRoutesByFullPath {
   '/share/$token/': typeof ShareTokenIndexRoute
   '/admin/settings/labels': typeof AuthenticatedAdminSettingsLabelsRoute
   '/admin/settings/layout': typeof AuthenticatedAdminSettingsLayoutRoute
+  '/admin/settings/links': typeof AuthenticatedAdminSettingsLinksRoute
   '/admin/settings/organisation': typeof AuthenticatedAdminSettingsOrganisationRoute
   '/admin/settings/secrets': typeof AuthenticatedAdminSettingsSecretsRoute
   '/admin/settings/theme': typeof AuthenticatedAdminSettingsThemeRoute
@@ -238,6 +246,7 @@ export interface FileRoutesByTo {
   '/share/$token': typeof ShareTokenIndexRoute
   '/admin/settings/labels': typeof AuthenticatedAdminSettingsLabelsRoute
   '/admin/settings/layout': typeof AuthenticatedAdminSettingsLayoutRoute
+  '/admin/settings/links': typeof AuthenticatedAdminSettingsLinksRoute
   '/admin/settings/organisation': typeof AuthenticatedAdminSettingsOrganisationRoute
   '/admin/settings/secrets': typeof AuthenticatedAdminSettingsSecretsRoute
   '/admin/settings/theme': typeof AuthenticatedAdminSettingsThemeRoute
@@ -269,6 +278,7 @@ export interface FileRoutesById {
   '/share/$token/': typeof ShareTokenIndexRoute
   '/_authenticated/admin/settings/labels': typeof AuthenticatedAdminSettingsLabelsRoute
   '/_authenticated/admin/settings/layout': typeof AuthenticatedAdminSettingsLayoutRoute
+  '/_authenticated/admin/settings/links': typeof AuthenticatedAdminSettingsLinksRoute
   '/_authenticated/admin/settings/organisation': typeof AuthenticatedAdminSettingsOrganisationRoute
   '/_authenticated/admin/settings/secrets': typeof AuthenticatedAdminSettingsSecretsRoute
   '/_authenticated/admin/settings/theme': typeof AuthenticatedAdminSettingsThemeRoute
@@ -300,6 +310,7 @@ export interface FileRouteTypes {
     | '/share/$token/'
     | '/admin/settings/labels'
     | '/admin/settings/layout'
+    | '/admin/settings/links'
     | '/admin/settings/organisation'
     | '/admin/settings/secrets'
     | '/admin/settings/theme'
@@ -326,6 +337,7 @@ export interface FileRouteTypes {
     | '/share/$token'
     | '/admin/settings/labels'
     | '/admin/settings/layout'
+    | '/admin/settings/links'
     | '/admin/settings/organisation'
     | '/admin/settings/secrets'
     | '/admin/settings/theme'
@@ -356,6 +368,7 @@ export interface FileRouteTypes {
     | '/share/$token/'
     | '/_authenticated/admin/settings/labels'
     | '/_authenticated/admin/settings/layout'
+    | '/_authenticated/admin/settings/links'
     | '/_authenticated/admin/settings/organisation'
     | '/_authenticated/admin/settings/secrets'
     | '/_authenticated/admin/settings/theme'
@@ -509,6 +522,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedAdminSettingsLayoutRouteImport
       parentRoute: typeof AuthenticatedAdminSettingsRouteRoute
     }
+    '/_authenticated/admin/settings/links': {
+      id: '/_authenticated/admin/settings/links'
+      path: '/links'
+      fullPath: '/admin/settings/links'
+      preLoaderRoute: typeof AuthenticatedAdminSettingsLinksRouteImport
+      parentRoute: typeof AuthenticatedAdminSettingsRouteRoute
+    }
     '/_authenticated/admin/settings/organisation': {
       id: '/_authenticated/admin/settings/organisation'
       path: '/organisation'
@@ -585,6 +605,7 @@ declare module '@tanstack/react-router' {
 interface AuthenticatedAdminSettingsRouteRouteChildren {
   AuthenticatedAdminSettingsLabelsRoute: typeof AuthenticatedAdminSettingsLabelsRoute
   AuthenticatedAdminSettingsLayoutRoute: typeof AuthenticatedAdminSettingsLayoutRoute
+  AuthenticatedAdminSettingsLinksRoute: typeof AuthenticatedAdminSettingsLinksRoute
   AuthenticatedAdminSettingsOrganisationRoute: typeof AuthenticatedAdminSettingsOrganisationRoute
   AuthenticatedAdminSettingsSecretsRoute: typeof AuthenticatedAdminSettingsSecretsRoute
   AuthenticatedAdminSettingsThemeRoute: typeof AuthenticatedAdminSettingsThemeRoute
@@ -597,6 +618,7 @@ const AuthenticatedAdminSettingsRouteRouteChildren: AuthenticatedAdminSettingsRo
       AuthenticatedAdminSettingsLabelsRoute,
     AuthenticatedAdminSettingsLayoutRoute:
       AuthenticatedAdminSettingsLayoutRoute,
+    AuthenticatedAdminSettingsLinksRoute: AuthenticatedAdminSettingsLinksRoute,
     AuthenticatedAdminSettingsOrganisationRoute:
       AuthenticatedAdminSettingsOrganisationRoute,
     AuthenticatedAdminSettingsSecretsRoute:

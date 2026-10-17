@@ -64,8 +64,8 @@ describe('INERT_LINK_PREVIEW_PORTS', () => {
     expect(audience.policy.permits(new URL('https://a.example/'))).toBe(false)
   })
 
-  it('reads for the public with the same policy that is off', () => {
-    expect(INERT_LINK_PREVIEW_PORTS.audiences.forPublic().policy.mode).toBe('off')
+  it('reads for the public with the same policy that is off', async () => {
+    expect((await INERT_LINK_PREVIEW_PORTS.audiences.forPublic()).policy.mode).toBe('off')
   })
 
   it('allows no lookups and no new fetches', () => {

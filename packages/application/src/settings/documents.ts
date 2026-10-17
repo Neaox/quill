@@ -14,6 +14,7 @@ import type { ThemeDocument } from '@quill/theme'
 import { createVersionedReader } from '../use-cases/versioned-reader.ts'
 import { CustomEmojiSchema, duplicateEmojiNames, MAX_CUSTOM_EMOJI } from './emoji.ts'
 import { LayoutSchema } from './layout.ts'
+import { LinkPreviewSettingsSchema, linkPatternIssues } from './link-previews.ts'
 import { PublicMenuSchema, publicMenuFromNavigation } from './public-menu.ts'
 
 /**
@@ -227,6 +228,13 @@ export const OrganisationSettingsSchema = Type.Object(
      * theme rather than in it (`emoji.ts`).
      */
     emoji: Type.Optional(Type.Array(CustomEmojiSchema, { maxItems: MAX_CUSTOM_EMOJI })),
+    /**
+     * What Quill does about links (ADR-042): previews on or off, how rich,
+     * for the public site, the default display, and the sites it may or may
+     * not contact. Optional, so every file written before it reads as it did;
+     * absent means the shipped defaults (`link-previews.ts`).
+     */
+    linkPreviews: Type.Optional(LinkPreviewSettingsSchema),
   },
   { additionalProperties: false },
 )
@@ -296,9 +304,23 @@ const workspaceValidator = ajv.compile(WorkspaceSettingsSchema)
 export function validateOrganisationSettings(
   value: unknown,
 ): SettingsValidation<OrganisationSettings> {
-  return withUniqueEmoji(
-    withValidTheme(validateWith<OrganisationSettings>(organisationValidator, value)),
+  return withValidLinkPatterns(
+    withUniqueEmoji(withValidTheme(validateWith<OrganisationSettings>(organisationValidator, value))),
   )
+}
+
+/**
+ * A pattern the schema accepts as a string may still not be a host. The whole
+ * document is refused, each bad pattern named with the reason, because a block
+ * list that silently skips the entry that was mistyped is worse than one that
+ * says so (ADR-042).
+ */
+function withValidLinkPatterns(
+  validation: SettingsValidation<OrganisationSettings>,
+): SettingsValidation<OrganisationSettings> {
+  if (!validation.valid || validation.document.linkPreviews === undefined) return validation
+  const issues = linkPatternIssues(validation.document.linkPreviews)
+  return issues.length === 0 ? validation : { valid: false, issues }
 }
 
 /** A shortcode names one emoji, so two of one name are refused rather than one silently winning. */

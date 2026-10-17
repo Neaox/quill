@@ -80,7 +80,7 @@ function setUp() {
     ids: createFakeIdGenerator(),
     audiences: {
       forPerson: async (person: string) => people.get(person) ?? everyone,
-      forPublic: () => everyone,
+      forPublic: async () => everyone,
     },
     resolver: { resolve },
     limits,
@@ -314,8 +314,9 @@ describe('organisation policy at read time', () => {
   })
 
   it('shows only the words in text mode, though the stored preview has pictures', async () => {
-    await stored()
     t.people.set(BOB, { scope: 'org:b', policy: compile({ mode: 'text' }) })
+    await read([URL_A], BOB)
+    await t.drain()
     expect(await views([URL_A], BOB)).toMatchObject([
       { state: 'ready', preview: { title: 'A title', thumbnail: null, favicon: null } },
     ])
@@ -353,24 +354,51 @@ describe('scopes: a restrictive organisation keeps its own previews', () => {
     expect(await views([URL_A], BOB)).toEqual([{ state: 'pending' }])
   })
 
-  it('does use the shared public preview, which was fetched under the default policy', async () => {
+  it('never shows a preview fetched under a looser policy, and fetches its own', async () => {
+    // Bob is under the default policy; his fetch is stored in the shared scope.
+    t.resolve.mockResolvedValueOnce(ok(previewOf(URL_A, { title: 'Found under the loose policy' })))
     await read([URL_A], BOB)
     await t.drain()
+    expect(await views([URL_A], BOB)).toMatchObject([{ state: 'ready' }])
+
+    // Ada's policy is stricter, so what the loose fetch found is not hers to be shown.
     t.people.set(ADA, restricted)
-    expect(await views([URL_A], ADA)).toMatchObject([{ state: 'ready' }])
-    expect(queued()).toHaveLength(0)
+    expect(await views([URL_A], ADA)).toEqual([{ state: 'pending' }])
+    expect(queued()).toHaveLength(1)
+
+    t.resolve.mockResolvedValueOnce(ok(previewOf(URL_A, { title: 'Under my policy' })))
+    await t.drain()
+    expect(await views([URL_A], ADA)).toMatchObject([{ preview: { title: 'Under my policy' } }])
+    expect(await views([URL_A], BOB)).toMatchObject([
+      { preview: { title: 'Found under the loose policy' } },
+    ])
   })
 
-  it('prefers its own preview over the shared one', async () => {
-    await read([URL_A], BOB)
-    await t.drain()
-    t.people.set(ADA, restricted)
-    t.resolve.mockResolvedValueOnce(ok(previewOf(URL_A, { title: 'Under my policy' })))
-    t.clock.advance(PREVIEW_FRESH_FOR_MS)
+  it('does not show a preview fetched under a looser policy when the policy is tightened later', async () => {
     await read([URL_A])
     await t.drain()
-    t.clock.advance(1)
-    expect(await views([URL_A])).toMatchObject([{ preview: { title: 'Under my policy' } }])
+    expect(await views([URL_A])).toMatchObject([{ state: 'ready' }])
+    t.people.set(ADA, { scope: 'org:tight', policy: compile({ mode: 'text' }) })
+    expect(await views([URL_A])).toEqual([{ state: 'pending' }])
+  })
+
+  it('stores a late fetch under the policy in force when it ran, not the one it was queued under', async () => {
+    await read([URL_A])
+    t.people.set(ADA, restricted)
+    await t.drain()
+    expect(t.resolve).toHaveBeenCalledWith(URL_A, { policy: restricted.policy })
+    expect(await t.uow.repos.linkPreviews.findMany([PUBLIC_PREVIEW_SCOPE], [URL_A])).toHaveLength(
+      1,
+    )
+    expect(
+      (await t.uow.repos.linkPreviews.findMany(['org:a'], [URL_A])).filter(
+        (row) => row.state === 'ready',
+      ),
+    ).toHaveLength(1)
+    // The shared scope still only holds the pending mark the original request left.
+    expect(
+      (await t.uow.repos.linkPreviews.findMany([PUBLIC_PREVIEW_SCOPE], [URL_A]))[0]?.state,
+    ).not.toBe('ready')
   })
 })
 
@@ -416,9 +444,9 @@ describe('refreshLinkPreview', () => {
   })
 
   it("does not show a blocked preview's pictures to a text-only organisation", async () => {
-    await read([URL_A])
-    await t.drain()
     t.people.set(BOB, { scope: 'org:b', policy: compile({ mode: 'text' }) })
+    await read([URL_A], BOB)
+    await t.drain()
     const result = await refreshLinkPreview(t, { userId: BOB, url: URL_A })
     expect(result).toMatchObject({
       ok: true,
@@ -557,12 +585,12 @@ describe('the stored format', () => {
     expect(queued()).toHaveLength(2)
   })
 
-  it('shows a shared failure to a private audience rather than asking at once', async () => {
+  it('does not carry a shared failure over to a private audience, whose policy may fetch differently', async () => {
     t.resolve.mockResolvedValueOnce(err('not_a_page'))
     await read([URL_A], BOB)
     await t.drain()
     t.people.set(ADA, { scope: 'org:a', policy: compile({ allow: ['blog.example'] }) })
-    expect(await views([URL_A])).toEqual([{ state: 'unavailable', reason: 'not_a_page' }])
+    expect(await views([URL_A])).toEqual([{ state: 'pending' }])
   })
 })
 
