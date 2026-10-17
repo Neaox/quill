@@ -3,7 +3,10 @@ import type { EditorState } from '@tiptap/pm/state'
 
 import { calloutAt } from '../callout/callouts.ts'
 import type { CalloutContext } from '../callout/callouts.ts'
-import { linkAt } from '../format/links.ts'
+import type { LinkDisplay } from '@quill/markdown'
+
+import { linkTargetAt } from '../link/link-display.ts'
+import type { LinkTarget } from '../link/link-display.ts'
 import { tableContext, tableScope } from '../table/table-context.ts'
 import type { TableScope } from '../table/table-context.ts'
 
@@ -20,7 +23,15 @@ import type { TableScope } from '../table/table-context.ts'
 
 export type ToolbarTarget =
   | { readonly kind: 'text'; readonly from: number; readonly to: number }
-  | { readonly kind: 'link'; readonly from: number; readonly to: number; readonly href: string }
+  | {
+      readonly kind: 'link'
+      readonly from: number
+      readonly to: number
+      readonly href: string
+      /** Written as an ordinary link, an inline `:link` or a `::link` card. */
+      readonly form: LinkTarget['form']
+      readonly display: LinkDisplay
+    }
   | { readonly kind: 'table'; readonly scope: TableScope; readonly tablePos: number }
   | { readonly kind: 'callout'; readonly callout: CalloutContext }
 
@@ -37,8 +48,11 @@ export function toolbarTarget(state: EditorState): ToolbarTarget | null {
   const range = formattableRange(state)
   if (range !== null) return { kind: 'text', ...range }
 
-  const link = linkAt(state)
-  if (link !== null) return { kind: 'link', from: link.from, to: link.to, href: link.href }
+  const link = linkTargetAt(state)
+  if (link !== null) {
+    const { from, to, href, form, display } = link
+    return { kind: 'link', from, to, href, form, display }
+  }
 
   const table = tableContext(state)
   if (table !== undefined) {

@@ -3858,6 +3858,90 @@
                 }
               }
             }
+          },
+          "linkPreviews": {
+            "additionalProperties": false,
+            "type": "object",
+            "required": [
+              "mode",
+              "publicSite",
+              "defaultDisplay",
+              "allow",
+              "block"
+            ],
+            "properties": {
+              "mode": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "enum": [
+                      "off"
+                    ]
+                  },
+                  {
+                    "type": "string",
+                    "enum": [
+                      "text"
+                    ]
+                  },
+                  {
+                    "type": "string",
+                    "enum": [
+                      "rich"
+                    ]
+                  }
+                ]
+              },
+              "publicSite": {
+                "type": "boolean"
+              },
+              "defaultDisplay": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "enum": [
+                      "url"
+                    ]
+                  },
+                  {
+                    "type": "string",
+                    "enum": [
+                      "inline"
+                    ]
+                  },
+                  {
+                    "type": "string",
+                    "enum": [
+                      "compact"
+                    ]
+                  },
+                  {
+                    "type": "string",
+                    "enum": [
+                      "card"
+                    ]
+                  }
+                ]
+              },
+              "allow": {
+                "maxItems": 500,
+                "type": "array",
+                "items": {
+                  "minLength": 1,
+                  "maxLength": 300,
+                  "type": "string"
+                }
+              },
+              "block": {
+                "maxItems": 500,
+                "type": "array",
+                "items": {
+                  "minLength": 1,
+                  "maxLength": 300,
+                  "type": "string"
+                }
+              }
+            }
           }
         }
       },
@@ -7629,6 +7713,746 @@
         }
       }
     },
+    "/api/link-previews/resolve": {
+      "post": {
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                  "urls"
+                ],
+                "properties": {
+                  "urls": {
+                    "minItems": 1,
+                    "maxItems": 50,
+                    "type": "array",
+                    "items": {
+                      "minLength": 1,
+                      "maxLength": 4096,
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "previews"
+                  ],
+                  "properties": {
+                    "previews": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "url",
+                          "view"
+                        ],
+                        "properties": {
+                          "url": {
+                            "type": "string"
+                          },
+                          "view": {
+                            "anyOf": [
+                              {
+                                "type": "object",
+                                "required": [
+                                  "state",
+                                  "preview",
+                                  "stale"
+                                ],
+                                "properties": {
+                                  "state": {
+                                    "type": "string",
+                                    "enum": [
+                                      "ready"
+                                    ]
+                                  },
+                                  "preview": {
+                                    "type": "object",
+                                    "required": [
+                                      "url",
+                                      "canonicalUrl",
+                                      "title",
+                                      "description",
+                                      "siteName",
+                                      "kind",
+                                      "thumbnail",
+                                      "favicon",
+                                      "layer",
+                                      "fetchedAt"
+                                    ],
+                                    "properties": {
+                                      "url": {
+                                        "type": "string"
+                                      },
+                                      "canonicalUrl": {
+                                        "type": "string"
+                                      },
+                                      "title": {
+                                        "type": "string"
+                                      },
+                                      "description": {
+                                        "anyOf": [
+                                          {
+                                            "type": "string"
+                                          },
+                                          {
+                                            "type": "null"
+                                          }
+                                        ]
+                                      },
+                                      "siteName": {
+                                        "anyOf": [
+                                          {
+                                            "type": "string"
+                                          },
+                                          {
+                                            "type": "null"
+                                          }
+                                        ]
+                                      },
+                                      "kind": {
+                                        "enum": [
+                                          "website",
+                                          "article",
+                                          "video",
+                                          "audio",
+                                          "image",
+                                          "profile",
+                                          "repository",
+                                          "issue"
+                                        ],
+                                        "type": "string"
+                                      },
+                                      "thumbnail": {
+                                        "anyOf": [
+                                          {
+                                            "type": "object",
+                                            "required": [
+                                              "hash",
+                                              "width",
+                                              "height",
+                                              "mediaType"
+                                            ],
+                                            "properties": {
+                                              "hash": {
+                                                "type": "string"
+                                              },
+                                              "width": {
+                                                "type": "integer"
+                                              },
+                                              "height": {
+                                                "type": "integer"
+                                              },
+                                              "mediaType": {
+                                                "type": "string"
+                                              }
+                                            }
+                                          },
+                                          {
+                                            "type": "null"
+                                          }
+                                        ]
+                                      },
+                                      "favicon": {
+                                        "anyOf": [
+                                          {
+                                            "type": "object",
+                                            "required": [
+                                              "hash",
+                                              "width",
+                                              "height",
+                                              "mediaType"
+                                            ],
+                                            "properties": {
+                                              "hash": {
+                                                "type": "string"
+                                              },
+                                              "width": {
+                                                "type": "integer"
+                                              },
+                                              "height": {
+                                                "type": "integer"
+                                              },
+                                              "mediaType": {
+                                                "type": "string"
+                                              }
+                                            }
+                                          },
+                                          {
+                                            "type": "null"
+                                          }
+                                        ]
+                                      },
+                                      "layer": {
+                                        "enum": [
+                                          "connector",
+                                          "oembed",
+                                          "open-graph",
+                                          "twitter-card",
+                                          "page",
+                                          "internal"
+                                        ],
+                                        "type": "string"
+                                      },
+                                      "fetchedAt": {
+                                        "type": "string"
+                                      },
+                                      "status": {
+                                        "type": "object",
+                                        "required": [
+                                          "label",
+                                          "tone"
+                                        ],
+                                        "properties": {
+                                          "label": {
+                                            "type": "string"
+                                          },
+                                          "tone": {
+                                            "enum": [
+                                              "neutral",
+                                              "accent",
+                                              "success",
+                                              "warning",
+                                              "danger"
+                                            ],
+                                            "type": "string"
+                                          }
+                                        }
+                                      },
+                                      "embed": {
+                                        "type": "object",
+                                        "required": [
+                                          "provider",
+                                          "src",
+                                          "aspectRatio"
+                                        ],
+                                        "properties": {
+                                          "provider": {
+                                            "type": "string"
+                                          },
+                                          "src": {
+                                            "type": "string"
+                                          },
+                                          "aspectRatio": {
+                                            "type": "number"
+                                          }
+                                        }
+                                      },
+                                      "file": {
+                                        "type": "object",
+                                        "required": [
+                                          "mediaType",
+                                          "bytes",
+                                          "name"
+                                        ],
+                                        "properties": {
+                                          "mediaType": {
+                                            "type": "string"
+                                          },
+                                          "bytes": {
+                                            "anyOf": [
+                                              {
+                                                "type": "integer"
+                                              },
+                                              {
+                                                "type": "null"
+                                              }
+                                            ]
+                                          },
+                                          "name": {
+                                            "anyOf": [
+                                              {
+                                                "type": "string"
+                                              },
+                                              {
+                                                "type": "null"
+                                              }
+                                            ]
+                                          }
+                                        }
+                                      },
+                                      "code": {
+                                        "type": "object",
+                                        "required": [
+                                          "language",
+                                          "startLine",
+                                          "lines",
+                                          "path",
+                                          "repository"
+                                        ],
+                                        "properties": {
+                                          "language": {
+                                            "anyOf": [
+                                              {
+                                                "type": "string"
+                                              },
+                                              {
+                                                "type": "null"
+                                              }
+                                            ]
+                                          },
+                                          "startLine": {
+                                            "type": "integer"
+                                          },
+                                          "lines": {
+                                            "type": "array",
+                                            "items": {
+                                              "type": "string"
+                                            }
+                                          },
+                                          "path": {
+                                            "type": "string"
+                                          },
+                                          "repository": {
+                                            "type": "string"
+                                          }
+                                        }
+                                      }
+                                    }
+                                  },
+                                  "stale": {
+                                    "type": "boolean"
+                                  }
+                                }
+                              },
+                              {
+                                "type": "object",
+                                "required": [
+                                  "state"
+                                ],
+                                "properties": {
+                                  "state": {
+                                    "type": "string",
+                                    "enum": [
+                                      "pending"
+                                    ]
+                                  }
+                                }
+                              },
+                              {
+                                "type": "object",
+                                "required": [
+                                  "state",
+                                  "reason"
+                                ],
+                                "properties": {
+                                  "state": {
+                                    "type": "string",
+                                    "enum": [
+                                      "unavailable"
+                                    ]
+                                  },
+                                  "reason": {
+                                    "enum": [
+                                      "invalid_url",
+                                      "unreachable",
+                                      "not_a_page",
+                                      "no_metadata",
+                                      "restricted",
+                                      "blocked",
+                                      "busy"
+                                    ],
+                                    "type": "string"
+                                  }
+                                }
+                              },
+                              {
+                                "type": "object",
+                                "required": [
+                                  "state"
+                                ],
+                                "properties": {
+                                  "state": {
+                                    "type": "string",
+                                    "enum": [
+                                      "blocked"
+                                    ]
+                                  }
+                                }
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/link-previews/refresh": {
+      "post": {
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                  "url"
+                ],
+                "properties": {
+                  "url": {
+                    "minLength": 1,
+                    "maxLength": 4096,
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "required": [
+                        "state",
+                        "preview",
+                        "stale"
+                      ],
+                      "properties": {
+                        "state": {
+                          "type": "string",
+                          "enum": [
+                            "ready"
+                          ]
+                        },
+                        "preview": {
+                          "type": "object",
+                          "required": [
+                            "url",
+                            "canonicalUrl",
+                            "title",
+                            "description",
+                            "siteName",
+                            "kind",
+                            "thumbnail",
+                            "favicon",
+                            "layer",
+                            "fetchedAt"
+                          ],
+                          "properties": {
+                            "url": {
+                              "type": "string"
+                            },
+                            "canonicalUrl": {
+                              "type": "string"
+                            },
+                            "title": {
+                              "type": "string"
+                            },
+                            "description": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "siteName": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "kind": {
+                              "enum": [
+                                "website",
+                                "article",
+                                "video",
+                                "audio",
+                                "image",
+                                "profile",
+                                "repository",
+                                "issue"
+                              ],
+                              "type": "string"
+                            },
+                            "thumbnail": {
+                              "anyOf": [
+                                {
+                                  "type": "object",
+                                  "required": [
+                                    "hash",
+                                    "width",
+                                    "height",
+                                    "mediaType"
+                                  ],
+                                  "properties": {
+                                    "hash": {
+                                      "type": "string"
+                                    },
+                                    "width": {
+                                      "type": "integer"
+                                    },
+                                    "height": {
+                                      "type": "integer"
+                                    },
+                                    "mediaType": {
+                                      "type": "string"
+                                    }
+                                  }
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "favicon": {
+                              "anyOf": [
+                                {
+                                  "type": "object",
+                                  "required": [
+                                    "hash",
+                                    "width",
+                                    "height",
+                                    "mediaType"
+                                  ],
+                                  "properties": {
+                                    "hash": {
+                                      "type": "string"
+                                    },
+                                    "width": {
+                                      "type": "integer"
+                                    },
+                                    "height": {
+                                      "type": "integer"
+                                    },
+                                    "mediaType": {
+                                      "type": "string"
+                                    }
+                                  }
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "layer": {
+                              "enum": [
+                                "connector",
+                                "oembed",
+                                "open-graph",
+                                "twitter-card",
+                                "page",
+                                "internal"
+                              ],
+                              "type": "string"
+                            },
+                            "fetchedAt": {
+                              "type": "string"
+                            },
+                            "status": {
+                              "type": "object",
+                              "required": [
+                                "label",
+                                "tone"
+                              ],
+                              "properties": {
+                                "label": {
+                                  "type": "string"
+                                },
+                                "tone": {
+                                  "enum": [
+                                    "neutral",
+                                    "accent",
+                                    "success",
+                                    "warning",
+                                    "danger"
+                                  ],
+                                  "type": "string"
+                                }
+                              }
+                            },
+                            "embed": {
+                              "type": "object",
+                              "required": [
+                                "provider",
+                                "src",
+                                "aspectRatio"
+                              ],
+                              "properties": {
+                                "provider": {
+                                  "type": "string"
+                                },
+                                "src": {
+                                  "type": "string"
+                                },
+                                "aspectRatio": {
+                                  "type": "number"
+                                }
+                              }
+                            },
+                            "file": {
+                              "type": "object",
+                              "required": [
+                                "mediaType",
+                                "bytes",
+                                "name"
+                              ],
+                              "properties": {
+                                "mediaType": {
+                                  "type": "string"
+                                },
+                                "bytes": {
+                                  "anyOf": [
+                                    {
+                                      "type": "integer"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "name": {
+                                  "anyOf": [
+                                    {
+                                      "type": "string"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                }
+                              }
+                            },
+                            "code": {
+                              "type": "object",
+                              "required": [
+                                "language",
+                                "startLine",
+                                "lines",
+                                "path",
+                                "repository"
+                              ],
+                              "properties": {
+                                "language": {
+                                  "anyOf": [
+                                    {
+                                      "type": "string"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "startLine": {
+                                  "type": "integer"
+                                },
+                                "lines": {
+                                  "type": "array",
+                                  "items": {
+                                    "type": "string"
+                                  }
+                                },
+                                "path": {
+                                  "type": "string"
+                                },
+                                "repository": {
+                                  "type": "string"
+                                }
+                              }
+                            }
+                          }
+                        },
+                        "stale": {
+                          "type": "boolean"
+                        }
+                      }
+                    },
+                    {
+                      "type": "object",
+                      "required": [
+                        "state"
+                      ],
+                      "properties": {
+                        "state": {
+                          "type": "string",
+                          "enum": [
+                            "pending"
+                          ]
+                        }
+                      }
+                    },
+                    {
+                      "type": "object",
+                      "required": [
+                        "state",
+                        "reason"
+                      ],
+                      "properties": {
+                        "state": {
+                          "type": "string",
+                          "enum": [
+                            "unavailable"
+                          ]
+                        },
+                        "reason": {
+                          "enum": [
+                            "invalid_url",
+                            "unreachable",
+                            "not_a_page",
+                            "no_metadata",
+                            "restricted",
+                            "blocked",
+                            "busy"
+                          ],
+                          "type": "string"
+                        }
+                      }
+                    },
+                    {
+                      "type": "object",
+                      "required": [
+                        "state"
+                      ],
+                      "properties": {
+                        "state": {
+                          "type": "string",
+                          "enum": [
+                            "blocked"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/home": {
       "get": {
         "parameters": [
@@ -9878,7 +10702,8 @@
                     "revision",
                     "html",
                     "outline",
-                    "slots"
+                    "slots",
+                    "pendingLinks"
                   ],
                   "properties": {
                     "revision": {
@@ -9899,6 +10724,10 @@
                       "items": {
                         "type": "string"
                       }
+                    },
+                    "pendingLinks": {
+                      "minimum": 0,
+                      "type": "integer"
                     }
                   }
                 }
@@ -13127,7 +13956,8 @@
                         "revision",
                         "html",
                         "outline",
-                        "slots"
+                        "slots",
+                        "pendingLinks"
                       ],
                       "properties": {
                         "revision": {
@@ -13148,6 +13978,10 @@
                           "items": {
                             "type": "string"
                           }
+                        },
+                        "pendingLinks": {
+                          "minimum": 0,
+                          "type": "integer"
                         }
                       }
                     },
@@ -13233,7 +14067,8 @@
                         "revision",
                         "html",
                         "outline",
-                        "slots"
+                        "slots",
+                        "pendingLinks"
                       ],
                       "properties": {
                         "revision": {
@@ -13254,6 +14089,10 @@
                           "items": {
                             "type": "string"
                           }
+                        },
+                        "pendingLinks": {
+                          "minimum": 0,
+                          "type": "integer"
                         }
                       }
                     }

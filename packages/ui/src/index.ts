@@ -125,6 +125,13 @@ export {
   type IconProps,
 } from './components/icons.tsx'
 export {
+  FILE_ICON_KINDS,
+  FileIcon,
+  fileIconPaths,
+  type FileIconKind,
+  type FileIconProps,
+} from './components/file-icons.tsx'
+export {
   ParagraphIcon,
   Heading1Icon,
   Heading2Icon,
@@ -294,6 +301,11 @@ export {
   type ToastTone,
 } from './components/toaster.tsx'
 export { HoverCard, hoverCardStyles, type HoverCardProps } from './components/hover-card.tsx'
+export {
+  LinkPreviewPanel,
+  linkPreviewPanelStyles,
+  type LinkPreviewPanelProps,
+} from './components/link-preview-panel.tsx'
 export {
   InfoPopover,
   infoPopoverStyles,

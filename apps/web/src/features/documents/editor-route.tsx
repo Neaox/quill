@@ -54,6 +54,8 @@ import { ReviewActions } from '../review/review-actions.tsx'
 import { PublishButton } from './publish-button.tsx'
 import { ChangesReview } from './changes-review.tsx'
 import { ReviewButton } from './review-button.tsx'
+import { useEditorLinkPreviews } from './editor-link-previews.ts'
+import { useEditorPaletteCommands } from './use-editor-palette-commands.ts'
 import { useDocumentLinkSearch } from './use-document-link-search.ts'
 import { DocumentPropertiesPanel } from './properties/document-properties-panel.tsx'
 import { useDrawio } from './drawio/use-drawio.tsx'
@@ -252,6 +254,7 @@ function EditingSession({
 
   // For the child-documents block, which shows what is beneath this document.
   const childDocuments = useChildDocuments(document, workspaceSlug)
+  const linkPreviews = useEditorLinkPreviews()
 
   const draftClient = useDraftClient(documentId)
   const lockClient = useLockClient(documentId)
@@ -275,6 +278,7 @@ function EditingSession({
   useUnsavedChangesGuard(autosave.unsaved)
 
   const editorRef = useRef<DocumentEditorHandle>(null)
+  useEditorPaletteCommands(editorRef)
   // Loaded before the editor mounts (the route's loader); a label changed while
   // somebody is editing reaches their editor on the next visit, which is enough.
   const labels = useOrganisationLabels()
@@ -844,6 +848,7 @@ function EditingSession({
           labels={labels}
           emoji={emoji}
           childDocuments={childDocuments}
+          linkPreviews={linkPreviews}
           className={styles.surface()}
           onChange={(handle) => {
             // How to read the tree, not the tree: converting a long document

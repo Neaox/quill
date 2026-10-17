@@ -31,14 +31,15 @@ describe('GET /api/extensions/drawio', () => {
     })
   })
 
-  it('lets the page frame exactly that origin', async () => {
+  it('lets the page frame that origin, first among the frame sources', async () => {
     const response = await harness.app.inject({
       method: 'GET',
       url: '/api/extensions/drawio',
       cookies,
     })
-    expect(response.headers['content-security-policy']).toContain(
-      'frame-src http://localhost:8080;',
+    // The reviewed embed providers follow it (ADR-042); the draw.io origin is still named exactly.
+    expect(response.headers['content-security-policy']).toMatch(
+      /frame-src http:\/\/localhost:8080[ ;]/u,
     )
   })
 

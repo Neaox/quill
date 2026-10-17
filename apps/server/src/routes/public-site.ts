@@ -1,3 +1,4 @@
+import { BRAND } from '@quill/brand'
 import { Type } from '@sinclair/typebox'
 import type { TypeBoxTypeProvider } from '@fastify/type-provider-typebox'
 import { publicPageHref, publicSiteHref, publishedAt, renderDocument } from '@quill/application'
@@ -7,14 +8,25 @@ import type { DocumentId, WorkspaceId } from '@quill/domain'
 import { visibilityFilter } from '@quill/search'
 import type { FastifyPluginAsync, FastifyReply, FastifyRequest } from 'fastify'
 
+import {
+  fillLinksForPublic,
+  internalLinks,
+  linkPreviewDependencies,
+} from '../application/fill-links.ts'
+import { linkEmbedRegistry } from '../infrastructure/link-preview/embed-config.ts'
 import type { AppDependencies } from '../dependencies.ts'
 import { notFound } from '../errors.ts'
+import { OPEN_WEB_LIMITS } from '../infrastructure/http/open-web-client.ts'
+import { GITHUB_SERVICE } from '../infrastructure/link-preview/connectors/github-connector.ts'
+import { linkPreviewUserAgent } from '../infrastructure/link-preview/user-agent.ts'
+import { DEFAULT_RATE_LIMITS } from '../infrastructure/link-preview/rate-limits.ts'
 import type { CachedPage } from '../public-site/cache.ts'
 import {
   articleStructuredData,
   firstParagraph,
   renderDocumentMain,
   renderIndexMain,
+  renderBotPage,
   renderNoSitePage,
   renderNotFoundMain,
   renderSearchMain,
@@ -283,6 +295,15 @@ export function publicSiteRoutes(deps: AppDependencies): FastifyPluginAsync {
     /* v8 ignore next 2 -- the site only holds documents with a head revision. */
     if (rendered.kind !== 'rendered') return notFoundPage(request, reply, site)
 
+    // Stored previews only: an anonymous page load never causes a fetch (ADR-042).
+    const { html: bodyHtml } = await fillLinksForPublic(
+      linkPreviewDependencies(deps),
+      rendered.content.html,
+      linkEmbedRegistry(deps.config.linkEmbeds),
+      // Documents published on this site are previewed and linked to their public pages; no others exist here.
+      internalLinks(deps, { kind: 'site', site }),
+    )
+
     const stamps = await publishedAt(deps, [document])
     /* v8 ignore next -- `publishedAt` answers for every document it is given. */
     const updatedAt = stamps.get(document.id) ?? document.updatedAt
@@ -300,7 +321,7 @@ export function publicSiteRoutes(deps: AppDependencies): FastifyPluginAsync {
         main: renderDocumentMain({
           collectionName: site.collection.name,
           title: document.title,
-          bodyHtml: rendered.content.html,
+          bodyHtml,
           rules: site.organisation.layout.default.rules,
         }),
         updatedAt,
@@ -320,6 +341,34 @@ export function publicSiteRoutes(deps: AppDependencies): FastifyPluginAsync {
 
   return async (rawApp) => {
     const app = rawApp.withTypeProvider<TypeBoxTypeProvider>()
+
+    /**
+     * The page the link preview bot's user agent names (ADR-042).
+     *
+     * Public and static, with nothing taken from any document, because the person
+     * reading it is a stranger whose server was visited and who is owed an
+     * explanation. At the root, as the user agent says.
+     */
+    app.get('/bot', { config: budget, schema: { hide: true } }, async (request, reply) => {
+      const settings = await deps.settings.readOrganisation()
+      const instanceName = settings.kind === 'settings' ? settings.document.name : BRAND.name
+      return sendPage(
+        request,
+        reply,
+        finished(
+          renderBotPage({
+            userAgent: linkPreviewUserAgent(deps.config.appUrl),
+            instanceName,
+            limits: OPEN_WEB_LIMITS,
+            connectors: [GITHUB_SERVICE],
+            perHost: {
+              burst: DEFAULT_RATE_LIMITS.perHost.capacity,
+              perSecond: DEFAULT_RATE_LIMITS.perHost.refillPerSecond,
+            },
+          }),
+        ),
+      )
+    })
 
     /**
      * `robots.txt`, naming a sitemap per published site (use case 29).

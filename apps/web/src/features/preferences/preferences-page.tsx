@@ -10,6 +10,8 @@ import {
 import type { PersonPreferences } from '../../lib/api/index.ts'
 import { AppPage } from '../layout/app-page.tsx'
 import { SegmentedControl, type Segment } from '../theme/segmented-control.tsx'
+import { useLinkPeekPreference } from './use-link-peek-preference.ts'
+import type { LinkPeekChoice } from './use-link-peek-preference.ts'
 
 type AnimatedImages = PersonPreferences['animatedImages']
 
@@ -18,6 +20,11 @@ export const ANIMATED_IMAGE_CHOICES: readonly Segment<AnimatedImages>[] = [
   { value: 'brief', label: 'Play briefly' },
   { value: 'hover', label: 'Play on hover only' },
   { value: 'never', label: 'Never' },
+]
+
+const LINK_PEEK_SEGMENTS: readonly Segment<LinkPeekChoice>[] = [
+  { value: 'on', label: 'Show' },
+  { value: 'off', label: 'Don’t show' },
 ]
 
 const preferencesPageStyles = tv({
@@ -52,6 +59,9 @@ export function PreferencesPage() {
   const styles = preferencesPageStyles()
   const headingId = useId()
   const descriptionId = useId()
+  const peekHeadingId = useId()
+  const peekDescriptionId = useId()
+  const [peek, setPeek] = useLinkPeekPreference()
 
   const stored = preferences.data
   const shown = save.isPending ? save.variables.animatedImages : stored?.animatedImages
@@ -113,6 +123,24 @@ export function PreferencesPage() {
             </p>
           </>
         )}
+      </section>
+
+      <section aria-labelledby={peekHeadingId} className={styles.section()}>
+        <h2 id={peekHeadingId} className={styles.heading()}>
+          Link previews on hover
+        </h2>
+        <p id={peekDescriptionId} className={styles.description()}>
+          A small card about the page a link goes to, while you rest the pointer on a link or focus
+          it. This applies to this browser only, and touch screens never show it.
+        </p>
+        <SegmentedControl
+          legend="Link previews on hover"
+          describedBy={peekDescriptionId}
+          segments={LINK_PEEK_SEGMENTS}
+          value={peek}
+          className="self-start"
+          onValueChange={setPeek}
+        />
       </section>
 
       <section aria-labelledby={historyId} className={styles.section()}>

@@ -15,10 +15,12 @@
     "seed:demo": "node --env-file-if-exists=../../.env src/scripts/seed-cli.ts --demo",
     "db:reset": "node --env-file-if-exists=../../.env src/scripts/reset-database-cli.ts",
     "e2e:serve": "node src/scripts/reset-database-cli.ts && node src/scripts/seed-oidc-fake-secret-cli.ts && node src/main.ts",
+    "oembed:sync": "node src/scripts/sync-oembed-providers-cli.ts",
     "reindex": "node --env-file-if-exists=../../.env src/scripts/reindex-cli.ts",
     "secrets:rotate": "node --env-file-if-exists=../../.env src/scripts/rotate-secrets-cli.ts",
     "secrets:set": "node --env-file-if-exists=../../.env src/scripts/secrets-set-cli.ts",
     "e2e:fake-oidc": "node src/scripts/fake-oidc-server-cli.ts",
+    "bench:link-preview": "node src/infrastructure/link-preview/link-preview.bench.ts",
     "bench:search": "node --env-file-if-exists=../../.env src/infrastructure/search/search.bench.ts"
   },
   "dependencies": {
@@ -55,8 +57,10 @@
     "drizzle-orm": "^0.45.2",
     "fastify": "^5.12.3",
     "nodemailer": "^10.0.3",
+    "parse5": "^8.0.1",
     "pg": "^8.23.0",
-    "remeda": "^2.48.0"
+    "remeda": "^2.48.0",
+    "sharp": "^0.35.5"
   },
   "devDependencies": {
     "@quill/config": "workspace:*",

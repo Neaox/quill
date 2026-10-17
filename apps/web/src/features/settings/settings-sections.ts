@@ -11,6 +11,7 @@ export const SETTINGS_SECTIONS = [
   { to: '/admin/settings/theme', label: 'Theme' },
   { to: '/admin/settings/labels', label: 'Labels and emoji' },
   { to: '/admin/settings/layout', label: 'Layout' },
+  { to: '/admin/settings/links', label: 'Links' },
   { to: '/admin/settings/secrets', label: 'Secrets and sign-in' },
 ] as const
 

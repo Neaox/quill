@@ -10,6 +10,12 @@ import {
   CALLOUT_VARIANT_GROUP,
 } from '../actions/callout-actions.ts'
 import type { EditorAction } from '../actions/editor-action.ts'
+import {
+  CARD_IMAGE,
+  CARD_LAYOUT_CHOICES,
+  LINK_DISPLAY_GROUP,
+} from '../actions/link-display-actions.ts'
+import type { LinkDisplay } from '@quill/markdown'
 import { calloutLabel } from '../callout/callouts.ts'
 import type { CalloutContext } from '../callout/callouts.ts'
 import { normaliseHref } from '../format/href.ts'
@@ -21,6 +27,7 @@ import {
   STYLE_GROUP,
 } from '../actions/text-actions.ts'
 import type { InlineMark } from '../format/marks.ts'
+import { LinkPreviewLine } from './link-preview-line.tsx'
 import {
   ToneSwatch,
   ToolbarButton,
@@ -132,12 +139,31 @@ export function TextToolbarContent({ state, onRun, link, comment }: TextContentP
 
 export interface LinkContentProps extends ContentProps {
   readonly href: string
+  /** Opens the box a card's own words are typed into. */
+  readonly details: EditorAction
+  /** How the link is written: only an ordinary link has its address edited in the link box. */
+  readonly form: 'mark' | 'text' | 'leaf'
+  /** How the link is shown now: only a card has a layout, a picture and words of its own to shape. */
+  readonly display: LinkDisplay
   readonly edit: EditorAction
   readonly remove: EditorAction
 }
 
-/** A caret in a link: where it goes, and how to change or remove it. */
-export function LinkToolbarContent({ state, onRun, href, edit, remove }: LinkContentProps) {
+/**
+ * A caret in a link: where it goes, how it is shown, what a card is made of, and
+ * how to change or remove it (ADR-042). A link's display is one segmented choice,
+ * which is always one press from the plain link.
+ */
+export function LinkToolbarContent({
+  state,
+  onRun,
+  href,
+  details,
+  form,
+  display,
+  edit,
+  remove,
+}: LinkContentProps) {
   // Only an address a document may carry becomes something to click; anything
   // else is shown as text, so the toolbar is never a way to follow a bad link.
   const safe = normaliseHref(href) === href
@@ -159,14 +185,45 @@ export function LinkToolbarContent({ state, onRun, href, edit, remove }: LinkCon
         )}
       </ToolbarGroup>
       <ToolbarSeparator />
-      <ToolbarGroup label="Edit link">
-        <ToolbarButton action={edit} state={state} onRun={onRun}>
-          Edit
-        </ToolbarButton>
-        <ToolbarButton action={remove} state={state} onRun={onRun}>
-          Remove
-        </ToolbarButton>
+      <ToolbarGroup label="Show link as">
+        {LINK_DISPLAY_GROUP.actions.map((action) => (
+          <ToolbarButton key={action.id} action={action} state={state} onRun={onRun}>
+            {action.label}
+          </ToolbarButton>
+        ))}
       </ToolbarGroup>
+      {form === 'leaf' && display === 'card' ? (
+        <>
+          <ToolbarSeparator />
+          <ToolbarGroup label="Card">
+            {CARD_LAYOUT_CHOICES.map(({ action, toolbarWord }) => (
+              <ToolbarButton key={action.id} action={action} state={state} onRun={onRun}>
+                {toolbarWord}
+              </ToolbarButton>
+            ))}
+            <ToolbarButton action={CARD_IMAGE} state={state} onRun={onRun}>
+              {CARD_IMAGE.label}
+            </ToolbarButton>
+            <ToolbarButton action={details} state={state} onRun={onRun}>
+              Details
+            </ToolbarButton>
+          </ToolbarGroup>
+        </>
+      ) : null}
+      {form === 'mark' ? (
+        <>
+          <ToolbarSeparator />
+          <ToolbarGroup label="Edit link">
+            <ToolbarButton action={edit} state={state} onRun={onRun}>
+              Edit
+            </ToolbarButton>
+            <ToolbarButton action={remove} state={state} onRun={onRun}>
+              Remove
+            </ToolbarButton>
+          </ToolbarGroup>
+        </>
+      ) : null}
+      {safe ? <LinkPreviewLine key={href} href={href} /> : null}
     </>
   )
 }

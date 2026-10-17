@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest'
 import {
   useDocumentEnvelope,
   useDocumentHistory,
+  pendingLinksInterval,
   usePublishedContent,
   useRenderedDocument,
   useComparison,
@@ -20,7 +21,21 @@ const BODY = {
   html: '<article><h1 id="runbook">Runbook</h1></article>',
   outline: [{ id: 'runbook', depth: 1, text: 'Runbook', children: [] }],
   slots: [],
+  pendingLinks: 0,
 }
+
+describe('pendingLinksInterval', () => {
+  it('does not look again when nothing is pending', () => {
+    expect(pendingLinksInterval(0, 1)).toBe(false)
+  })
+
+  it('waits twice as long each time, and then gives up', () => {
+    expect([1, 2, 3, 4].map((looks) => pendingLinksInterval(2, looks))).toEqual([
+      2_000, 4_000, 8_000, 16_000,
+    ])
+    expect(pendingLinksInterval(2, 5)).toBe(false)
+  })
+})
 
 describe('useRenderedDocument', () => {
   it('reads the body and keeps the render cache’s ETag with it', async () => {

@@ -384,3 +384,32 @@ describe('S3BlobStore', () => {
     })
   })
 })
+
+describe('S3BlobStore: a store that stops answering', () => {
+  const HASH = 'a'.repeat(64)
+
+  it('gives up on a request the store never begins to answer', async () => {
+    const { store } = recordingStore({
+      headersTimeoutMs: 30,
+      fetch: (_input, init) =>
+        new Promise<Response>((_resolve, reject) => {
+          init?.signal?.addEventListener('abort', () => reject(new Error('aborted')))
+        }),
+    })
+    await expect(store.has(HASH)).rejects.toThrow('aborted')
+  })
+
+  it('does not abort a transfer that has begun, however long the body takes', async () => {
+    let signal: AbortSignal | undefined
+    const { store } = recordingStore({
+      headersTimeoutMs: 30,
+      fetch: async (_input, init) => {
+        signal = init?.signal ?? undefined
+        return new Response('x', { status: 200 })
+      },
+    })
+    await store.has(HASH)
+    await new Promise((done) => setTimeout(done, 80))
+    expect(signal?.aborted).toBe(false)
+  })
+})
