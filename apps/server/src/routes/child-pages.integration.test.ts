@@ -190,14 +190,15 @@ describe('on the server-assembled pages', () => {
         expectedRevision: body.revision,
       },
     })
-    expect(saved.statusCode).toBe(200)
+    // Setup, not an assertion: a failed step stops the suite with its reason.
+    if (saved.statusCode !== 200) throw new Error(`settings: ${saved.statusCode} ${saved.body}`)
     const site = await harness.app.inject({
       method: 'POST',
       url: `/api/collections/${tenancy.collectionId}/public`,
       cookies: admin,
       payload: { siteSlug: 'guides' },
     })
-    expect(site.statusCode).toBe(200)
+    if (site.statusCode !== 200) throw new Error(`publish site: ${site.statusCode} ${site.body}`)
     await publish(parent, '# Guide\n\n::children[In this guide]{depth=2 excerpts}\n')
     await harness.drainOutbox()
   }, 60_000)

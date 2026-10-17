@@ -255,7 +255,9 @@ export function useNavigationTree(workspaceId: string | undefined, focus: string
       const asked = `${listId}@${String(offset)}+${String(limit)}`
       if (inFlight.current.has(asked)) return
       inFlight.current.add(asked)
-      setFailed((now) => (now.has(listId) ? new Set([...now].filter((key) => key !== listId)) : now))
+      setFailed((now) =>
+        now.has(listId) ? new Set([...now].filter((key) => key !== listId)) : now,
+      )
       void loadPage(queryClient, client, workspaceId, owner, offset, limit)
         .then((loaded) => {
           if (!loaded) setFailed((now) => new Set(now).add(listId))

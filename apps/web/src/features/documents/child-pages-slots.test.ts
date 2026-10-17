@@ -7,6 +7,7 @@ import {
   CHILD_PAGES_UNAVAILABLE,
   CREATE_CHILD_PAGE,
   fillChildPageSlots,
+  type ChildPagesSlotsOptions,
 } from './child-pages-slots.ts'
 
 const SLOT = (key: string, title = '') =>
@@ -45,7 +46,7 @@ afterEach(() => {
 describe('filling child pages slots', () => {
   it('asks once per slot, for the options its key names, and keeps its title', async () => {
     const article = mount(SLOT('children?depth=2&sort=title&excerpts&icons', 'Guides'))
-    const load = vi.fn(async () => ({ html: LIST, count: 1 }))
+    const load = vi.fn<ChildPagesSlotsOptions['load']>(async () => ({ html: LIST, count: 1 }))
     fillChildPageSlots(article, { load })
 
     const slot = article.querySelector('section')
@@ -64,7 +65,7 @@ describe('filling child pages slots', () => {
 
   it('offers to create a child page in an empty list, to someone who can', async () => {
     const article = mount(SLOT('children?depth=1&sort=manual'))
-    const create = vi.fn()
+    const create = vi.fn<() => void>()
     const empty = '<p class="child-pages-empty">No child pages yet</p>'
     fillChildPageSlots(article, {
       load: async () => ({ html: empty, count: 0 }),
@@ -120,7 +121,7 @@ describe('filling child pages slots', () => {
 
   it('leaves a slot whose key it cannot read as it is', () => {
     const article = mount(SLOT('children?depth=9'))
-    const load = vi.fn()
+    const load = vi.fn<ChildPagesSlotsOptions['load']>()
     fillChildPageSlots(article, { load })
     expect(load).not.toHaveBeenCalled()
     expect(article.querySelector('section')?.hasAttribute('aria-busy')).toBe(false)

@@ -196,7 +196,9 @@ export function renderDigest(input: RenderInput, extensions = ''): string {
     .toSorted()
     .join('\u0002')
   const decorated =
-    emoji.length === 0 && leading.length === 0 ? labelled : `${labelled}\u0005${emoji}\u0006${leading}`
+    emoji.length === 0 && leading.length === 0
+      ? labelled
+      : `${labelled}\u0005${emoji}\u0006${leading}`
   // The installed extensions (ADR-039), only when there are any, so a
   // renderer with none keeps every key it had.
   return extensions === '' ? decorated : `${decorated}\u0007${extensions}`
