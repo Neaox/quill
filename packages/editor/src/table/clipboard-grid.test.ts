@@ -61,6 +61,17 @@ describe('a pasted HTML table', () => {
     ])
   })
 
+  it('pads a row that is shorter than the widest with empty cells', () => {
+    const grid = gridFromHtml(
+      '<table><tr><td>a</td><td>b</td></tr><tr><td>c</td></tr></table>',
+      document,
+    )
+    expect(texts(grid)).toEqual([
+      ['a', 'b'],
+      ['c', ''],
+    ])
+  })
+
   it('is no grid without a table, or with an empty one', () => {
     expect(gridFromHtml('<p>Words.</p>', document)).toBeUndefined()
     expect(gridFromHtml('<table></table>', document)).toBeUndefined()

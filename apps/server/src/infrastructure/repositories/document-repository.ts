@@ -9,7 +9,14 @@ import type {
   DocumentRow,
   UpdateDocumentPatch,
 } from '@quill/application'
-import type { DocumentId, DocumentStatus, RevisionId, ShortId, WorkspaceId } from '@quill/domain'
+import type {
+  DocumentId,
+  DocumentStatus,
+  RevisionId,
+  ShortId,
+  UserId,
+  WorkspaceId,
+} from '@quill/domain'
 
 import { documents } from '../db/schema.ts'
 import type { DrizzleClient } from '../db/types.ts'
@@ -29,6 +36,8 @@ function toDocumentRow(row: typeof documents.$inferSelect): DocumentRow {
     templateId: row.templateId,
     templateVersion: row.templateVersion,
     headRevision: row.headRevision as RevisionId | null,
+    createdBy: row.createdBy as UserId | null,
+    updatedBy: row.updatedBy as UserId | null,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
   }
@@ -47,6 +56,8 @@ interface DocumentRecord extends Record<string, unknown> {
   template_id: string | null
   template_version: number | null
   head_revision: string | null
+  created_by: string | null
+  updated_by: string | null
   created_at: Date
   updated_at: Date
 }
@@ -65,6 +76,8 @@ function fromRecord(record: DocumentRecord): DocumentRow {
     templateId: record.template_id,
     templateVersion: record.template_version,
     headRevision: record.head_revision as RevisionId | null,
+    createdBy: record.created_by as UserId | null,
+    updatedBy: record.updated_by as UserId | null,
     createdAt: record.created_at,
     updatedAt: record.updated_at,
   }
@@ -87,6 +100,7 @@ export function createDocumentRepository(db: DrizzleClient): DocumentRepository 
           status: input.status,
           templateId: input.templateId,
           templateVersion: input.templateVersion,
+          createdBy: input.createdBy ?? null,
           createdAt: input.now,
           updatedAt: input.now,
         })
@@ -120,6 +134,7 @@ export function createDocumentRepository(db: DrizzleClient): DocumentRepository 
           status: input.status,
           templateId: input.templateId,
           templateVersion: input.templateVersion,
+          createdBy: input.createdBy ?? null,
           createdAt: input.now,
           updatedAt: input.now,
         })
@@ -212,11 +227,13 @@ export function createDocumentRepository(db: DrizzleClient): DocumentRepository 
         .from(documents)
         .where(inArray(documents.parentId, [...parentIds]))
         .groupBy(documents.parentId)
-      return new Map(
-        rows.flatMap(({ parentId, count: total }) =>
-          parentId === null ? [] : [[parentId as DocumentId, total] as const],
-        ),
-      )
+      const counts = new Map<DocumentId, number>()
+      for (const { parentId, count: total } of rows) {
+        /* v8 ignore next -- the `IN` filter above never matches a null parent; the guard narrows the column's type. */
+        if (parentId === null) continue
+        counts.set(parentId as DocumentId, total)
+      }
+      return counts
     },
 
     async listByIds(ids: readonly DocumentId[]): Promise<readonly DocumentRow[]> {

@@ -86,6 +86,7 @@ interface Snapshot {
 }
 
 function reached(snapshot: Snapshot, diagonal: number): number {
+  /* v8 ignore next -- a diagonal the walk back asks for was copied into the snapshot. */
   return snapshot.values[diagonal + snapshot.d + 1] ?? 0
 }
 
@@ -102,9 +103,11 @@ function myers(left: Int32Array, right: Int32Array, offset: number): readonly Ed
     if (d > MAX_EDIT_DISTANCE) return null
     trace.push({ d, values: frontier.slice(centre - d - 1, centre + d + 2) })
     for (let k = -d; k <= d; k += 2) {
+      /* v8 ignore next -- the frontier has a slot either side of every diagonal. */
       const down = frontier[centre + k + 1] ?? 0
-      const right_ = frontier[centre + k - 1] ?? 0
-      let x = k === -d || (k !== d && right_ < down) ? down : right_ + 1
+      /* v8 ignore next -- the frontier has a slot either side of every diagonal. */
+      const rightward = frontier[centre + k - 1] ?? 0
+      let x = k === -d || (k !== d && rightward < down) ? down : rightward + 1
       let y = x - k
       while (x < n && y < m && left[x] === right[y]) {
         x += 1
@@ -140,7 +143,7 @@ function myers(left: Int32Array, right: Int32Array, offset: number): readonly Ed
     x = previousX
     y = previousY
   }
-  return edits.reverse()
+  return edits.toReversed()
 }
 
 /**

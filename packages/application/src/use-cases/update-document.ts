@@ -99,6 +99,12 @@ export interface UpdateDocumentCommand {
   readonly patch: UpdateDocumentPatchInput
   /** The session asking: a rename is a write, and a write re-validates the lock (ADR-021). */
   readonly sessionId: SessionId
+  /**
+   * Who is asking, recorded as the document's last editor (ADR-053). Omitted
+   * leaves the last editor as it was, which is what a caller with no person
+   * behind it (an import, a repair) should do.
+   */
+  readonly updatedBy?: UserId | undefined
 }
 
 export type UpdateDocumentResult =
@@ -168,7 +174,10 @@ export async function updateDocument(
     }
     const updated = await tx.documents.update(
       command.documentId,
-      toPatch(lift ? { ...patch, parentId: null } : patch),
+      {
+        ...toPatch(lift ? { ...patch, parentId: null } : patch),
+        ...(command.updatedBy === undefined ? {} : { updatedBy: command.updatedBy }),
+      },
       now,
     )
     // Only a change of collection is announced. A public address is the

@@ -353,6 +353,9 @@ importers:
       '@codemirror/view':
         specifier: ^6.43.11
         version: 6.43.11
+      '@quill/brand':
+        specifier: workspace:*
+        version: link:../brand
       '@quill/design-css':
         specifier: workspace:*
         version: link:../design-css
@@ -463,6 +466,9 @@ importers:
 
   packages/markdown:
     dependencies:
+      '@quill/brand':
+        specifier: workspace:*
+        version: link:../brand
       '@quill/domain':
         specifier: workspace:*
         version: link:../domain

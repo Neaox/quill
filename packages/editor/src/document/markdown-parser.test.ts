@@ -22,7 +22,7 @@ function fakeWorker() {
   }
   let terminated = false
   const worker: WorkerLike = {
-    postMessage: (request) => {
+    postMessage: (request, _options) => {
       sent.push(request)
     },
     addEventListener: (type, listener) => {
@@ -77,7 +77,7 @@ describe('parsing in the page', () => {
 describe('parsing in a worker', () => {
   it('builds the worker once, when first asked, and resolves each request by its id', async () => {
     const fake = fakeWorker()
-    const create = vi.fn(() => fake.worker)
+    const create = vi.fn<() => WorkerLike>(() => fake.worker)
     const parse = workerParser(create)
     expect(create).not.toHaveBeenCalled()
 
@@ -106,7 +106,7 @@ describe('parsing in a worker', () => {
     const broken = fakeWorker()
     const replacement = fakeWorker()
     const create = vi
-      .fn()
+      .fn<() => WorkerLike>()
       .mockReturnValueOnce(broken.worker)
       .mockReturnValueOnce(replacement.worker)
     const parse = workerParser(create)

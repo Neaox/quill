@@ -102,9 +102,52 @@ function writeHidden(): void {
   }
 }
 
+export interface SetupChecklistState {
+  readonly steps: readonly SetupStep[]
+  readonly done: number
+  /** Whether the checklist is on the page: answered, unfinished, and not hidden. */
+  readonly visible: boolean
+  readonly hide: () => void
+}
+
+/**
+ * Where the checklist stands, for the page as well as for the checklist: the
+ * page drops its own "no workspaces" notice while the checklist is already
+ * saying so, and shows it again once the checklist is hidden or done.
+ */
+export function useSetupChecklist(
+  workspaces: readonly WorkspaceSummaryDto[],
+  anyPublished: boolean,
+  /** Whether `anyPublished` is an answer yet, so the last step is not shown undone by default. */
+  published: 'known' | 'unknown',
+): SetupChecklistState {
+  const settings = useOrganisationSettings()
+  const [hidden, setHidden] = useState(readHidden)
+
+  const name = settings.data?.settings.name
+  const steps = setupSteps({
+    named: name !== undefined && name.trim() !== '' && name !== BRAND.name,
+    hasWorkspace: workspaces.length > 0,
+    anyPublished,
+  })
+  const done = steps.filter((step) => step.done).length
+
+  return {
+    steps,
+    done,
+    // Not until the settings have answered, so a finished step never flashes
+    // as unfinished; and not at all once everything is done or it was hidden.
+    visible: settings.data !== undefined && published === 'known' && !hidden && done < steps.length,
+    hide: () => {
+      writeHidden()
+      setHidden(true)
+    },
+  }
+}
+
 export interface SetupChecklistProps {
+  readonly setup: SetupChecklistState
   readonly workspaces: readonly WorkspaceSummaryDto[]
-  readonly anyPublished: boolean
   /** Where the checklist sits on the page that holds it. */
   readonly className?: string | undefined
 }
@@ -121,22 +164,11 @@ export interface SetupChecklistProps {
  * administrator, because `GET /api/units` is admin-only and a
  * non-administrator must not even ask; the check is the caller's.
  */
-export function SetupChecklist({ workspaces, anyPublished, className }: SetupChecklistProps) {
-  const settings = useOrganisationSettings()
-  const [hidden, setHidden] = useState(readHidden)
+export function SetupChecklist({ setup, workspaces, className }: SetupChecklistProps) {
+  const { steps, done, visible, hide } = setup
   const styles = setupChecklistStyles()
 
-  const name = settings.data?.settings.name
-  const steps = setupSteps({
-    named: name !== undefined && name.trim() !== '' && name !== BRAND.name,
-    hasWorkspace: workspaces.length > 0,
-    anyPublished,
-  })
-  const done = steps.filter((step) => step.done).length
-
-  // Not until the settings have answered, so a finished step never flashes
-  // as unfinished; and not at all once everything is done or it was hidden.
-  if (settings.data === undefined || hidden || done === steps.length) return undefined
+  if (!visible) return undefined
 
   return (
     <section aria-labelledby="set-up-heading" className={styles.root({ className })}>
@@ -149,14 +181,7 @@ export function SetupChecklist({ workspaces, anyPublished, className }: SetupChe
             {done} of {steps.length} done
           </p>
         </div>
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={() => {
-            writeHidden()
-            setHidden(true)
-          }}
-        >
+        <Button variant="ghost" size="sm" onClick={hide}>
           Hide
         </Button>
       </div>

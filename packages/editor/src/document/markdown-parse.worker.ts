@@ -1,5 +1,5 @@
 // First, so the Markdown pipeline finds a document when it loads.
-import './worker-document.ts'
+import { standInInstalled } from './worker-document.ts'
 import { answerParse } from './markdown-parser.ts'
 import type { ParseRequest } from './markdown-parser.ts'
 
@@ -8,6 +8,10 @@ import type { ParseRequest } from './markdown-parser.ts'
  * holds the Markdown pipeline and nothing else, and answers each request in
  * the order it came.
  */
+
+// Read, so the import is kept; and first, so the stand-in exists before the pipeline loads.
+void standInInstalled
+
 addEventListener('message', (event: MessageEvent<ParseRequest>) => {
   postMessage(answerParse(event.data))
 })

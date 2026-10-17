@@ -3,7 +3,7 @@ import type { Mark, Node as PMNode } from 'prosemirror-model'
 import type { Code, List, ListItem, PhrasingContent, Root, RootContent, TableRow } from 'mdast'
 
 import type { DetailsNode } from '../details/details.ts'
-import { DETAILS, detailsModel, isDetails } from '../details/details.ts'
+import { detailsModel, isDetails, isDetailsNode } from '../details/details.ts'
 import { splitAlert } from '../pipeline/github-alert.ts'
 import type { SourceForm } from '../pipeline/source-form.ts'
 import type { Warning } from '../warnings.ts'
@@ -295,7 +295,7 @@ export function mdastToProseMirror(
       case 'details':
         return [details(current)]
       case 'containerDirective': {
-        if (current.name === DETAILS) return [details(current)]
+        if (isDetailsNode(current)) return [details(current)]
         // `:::callout` with nothing in it is valid Markdown — it is what an
         // emptied callout is written as — but the node must hold a block, so
         // it holds the synthetic paragraph, which is written back as nothing.

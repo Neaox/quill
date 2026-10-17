@@ -7,6 +7,7 @@ import { createAuditWriter } from './audit-writer.ts'
 import { createCollectionRepository } from './collection-repository.ts'
 import { createCredentialRepository } from './credential-repository.ts'
 import { createDocumentRepository } from './document-repository.ts'
+import { createDocumentViewRepository } from './document-view-repository.ts'
 import { createDocumentLinksRepository } from './document-links-repository.ts'
 import { createDraftRepository } from './draft-repository.ts'
 import { createGrantRepository } from './grant-repository.ts'
@@ -14,10 +15,12 @@ import { createGroupRepository } from './group-repository.ts'
 import { createIdentityRepository } from './identity-repository.ts'
 import { createLockRepository } from './lock-repository.ts'
 import { createMagicLinkRepository } from './magic-link-repository.ts'
+import { createNotificationRepository } from './notification-repository.ts'
 import { createOutboxWriter } from './outbox-writer.ts'
 import { createPersonPreferencesRepository } from './person-preferences-repository.ts'
 import { createPublicRedirectRepository } from './public-redirect-repository.ts'
 import { createRenderCacheRepository } from './render-cache-repository.ts'
+import { createReviewRepository } from './review-repository.ts'
 import { createRevisionsIndexRepository } from './revisions-index-repository.ts'
 import { createSecretRepository } from './secret-repository.ts'
 import { createSessionRepository } from './session-repository.ts'
@@ -61,6 +64,9 @@ function buildBundle(db: DrizzleClient, pool: pg.Pool, ids: IdGenerator): Reposi
     secrets: createSecretRepository(db),
     attachments: createAttachmentRepository(db),
     personPreferences: createPersonPreferencesRepository(db),
+    reviews: createReviewRepository(db),
+    documentViews: createDocumentViewRepository(db),
+    notifications: createNotificationRepository(db),
     outbox: createOutboxWriter(db),
     audit: createAuditWriter(db),
   }

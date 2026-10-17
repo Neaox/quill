@@ -1,4 +1,4 @@
-import { eq, inArray } from 'drizzle-orm'
+import { asc, eq, inArray, or, sql } from 'drizzle-orm'
 
 import type { CreateUserInput, UserRepository, UserRow } from '@quill/application'
 import type { UserId } from '@quill/domain'
@@ -52,6 +52,23 @@ export function createUserRepository(db: DrizzleClient): UserRepository {
       const rows = await db.select().from(users).where(eq(users.email, email))
       const row = rows[0]
       return row === undefined ? null : toUserRow(row)
+    },
+
+    async searchByPrefix(query: string, limit: number): Promise<readonly UserRow[]> {
+      // `%`, `_` and the escape character are literal in what an admin types.
+      const pattern = `${query.toLowerCase().replace(/[\\%_]/g, String.raw`\$&`)}%`
+      const rows = await db
+        .select()
+        .from(users)
+        .where(
+          or(
+            sql`lower(${users.displayName}) LIKE ${pattern}`,
+            sql`lower(${users.email}) LIKE ${pattern}`,
+          ),
+        )
+        .orderBy(asc(users.displayName), asc(users.email))
+        .limit(limit)
+      return rows.map(toUserRow)
     },
 
     async markEmailVerified(id: UserId, now: Date): Promise<void> {
