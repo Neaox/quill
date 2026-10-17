@@ -97,6 +97,27 @@ function spoken(choice: RevisionChoice | undefined): string {
   return at === undefined ? choice.label : `${choice.label}, ${formatMoment(at, 'date')}`
 }
 
+/**
+ * Opens the menu on the version already chosen, as a select does, so the
+ * arrows move from where the person is rather than from the top.
+ *
+ * The menu does honour `onOpenAutoFocus` (it is the focus scope's), but
+ * Radix's dropdown typings leave it out, so it is passed as a spread, which
+ * the compiler does not check against a component's declared props.
+ */
+const openOnChosen = {
+  onOpenAutoFocus: (event: Event) => {
+    const content = event.currentTarget
+    const checked =
+      content instanceof HTMLElement
+        ? content.querySelector<HTMLElement>('[role="menuitemradio"][aria-checked="true"]')
+        : null
+    if (checked === null) return
+    event.preventDefault()
+    checked.focus()
+  },
+}
+
 export function RevisionPicker({
   label,
   value,
@@ -130,18 +151,7 @@ export function RevisionPicker({
           sideOffset={6}
           collisionPadding={8}
           aria-labelledby={headingId}
-          // Open on the version already chosen, as a select does, so the
-          // arrows move from where the person is rather than from the top.
-          onOpenAutoFocus={(event) => {
-            const content = event.currentTarget
-            const checked =
-              content instanceof HTMLElement
-                ? content.querySelector<HTMLElement>('[role="menuitemradio"][aria-checked="true"]')
-                : null
-            if (checked === null) return
-            event.preventDefault()
-            checked.focus()
-          }}
+          {...openOnChosen}
           className={styles.content()}
         >
           <DropdownMenu.Label id={headingId} className={styles.heading()}>
