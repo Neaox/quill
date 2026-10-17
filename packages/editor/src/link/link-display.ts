@@ -8,7 +8,7 @@ import {
 import type { Link, LinkChoice, LinkDisplay } from '@quill/markdown'
 import { Fragment } from '@tiptap/pm/model'
 import type { Node as PMNode } from '@tiptap/pm/model'
-import { NodeSelection, TextSelection } from '@tiptap/pm/state'
+import { NodeSelection, Selection, TextSelection } from '@tiptap/pm/state'
 import type { Command, EditorState, Transaction } from '@tiptap/pm/state'
 
 import { linkAt } from '../format/links.ts'
@@ -195,6 +195,15 @@ function caretInside(tr: Transaction, from: number, node: PMNode, offset: number
 }
 
 /**
+ * Whether the selection is somewhere a block display (a card, a compact line)
+ * can go: in a paragraph, which can be split around it. A heading, a table
+ * cell or a placeholder cannot, and there an inline link is as far as it goes.
+ */
+export function blockDisplayFits(state: EditorState): boolean {
+  return state.selection.$from.parent.type.name === 'paragraph'
+}
+
+/**
  * Shows the link under the selection as `display`: a plain link, an inline chip
  * or a card. Not `embed`, which waits for the embed allowlist (ADR-042), and not
  * what the link already is. A card is a block, so it cannot go in a heading or a
@@ -252,6 +261,39 @@ export function setLinkChoice(patch: Partial<LinkChoice>): Command {
         attributes: linkDirective.serialize(model).attributes,
       }),
     )
+    return true
+  }
+}
+
+/**
+ * Runs each command that applies, one after another, each on the document the
+ * last one left, and dispatches the lot as **one** transaction, so one undo takes
+ * them all back. Answers whether any of them did something.
+ *
+ * Two commands dispatched one after the other are two history steps whenever the
+ * second does not touch the first's range, as a card replacing a link does not.
+ */
+export function inOneStep(...commands: readonly Command[]): Command {
+  return (state, dispatch) => {
+    const merged = state.tr
+    let current = state
+    let did = false
+    for (const command of commands) {
+      let produced: Transaction | null = null
+      if (command(current, (tr) => (produced = tr))) {
+        did = true
+        if (produced !== null) {
+          const tr: Transaction = produced
+          for (const step of tr.steps) merged.step(step)
+          current = current.apply(tr)
+        }
+      }
+    }
+    if (!did) return false
+    if (dispatch !== undefined) {
+      merged.setSelection(Selection.fromJSON(merged.doc, current.selection.toJSON()))
+      dispatch(merged.scrollIntoView())
+    }
     return true
   }
 }

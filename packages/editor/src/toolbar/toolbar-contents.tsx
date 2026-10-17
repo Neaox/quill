@@ -26,6 +26,7 @@ import {
   STYLE_GROUP,
 } from '../actions/text-actions.ts'
 import type { InlineMark } from '../format/marks.ts'
+import { LinkPreviewLine } from './link-preview-line.tsx'
 import {
   ToneSwatch,
   ToolbarButton,
@@ -224,6 +225,7 @@ export function LinkToolbarContent({
           </ToolbarGroup>
         </>
       ) : null}
+      {safe ? <LinkPreviewLine key={href} href={href} /> : null}
     </>
   )
 }

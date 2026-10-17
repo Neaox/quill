@@ -33,6 +33,8 @@ export const toolbarStyles = tv({
       'disabled:pointer-events-none disabled:opacity-40',
       'aria-pressed:bg-accent-subtle aria-pressed:text-accent aria-expanded:bg-surface',
       'data-destructive:text-danger data-destructive:hover:bg-danger-subtle',
+      // Underlined as well as described, so the suggestion is not carried by colour alone.
+      'data-suggested:underline data-suggested:decoration-accent data-suggested:decoration-2 data-suggested:underline-offset-4',
     ],
     caret: 'text-2xs text-muted',
     swatch: 'size-2.5 rounded-full',
@@ -81,6 +83,8 @@ export interface ToolbarButtonProps {
   readonly onRun: (action: EditorAction) => void
   /** What is drawn on the button; the action's label is its accessible name. */
   readonly children: ReactNode
+  /** Says why this choice is the one to pick, such as "Your organisation's default"; the button is marked and described. */
+  readonly suggested?: string | undefined
 }
 
 /**
@@ -88,7 +92,13 @@ export interface ToolbarButtonProps {
  * that took focus on press would collapse what the author selected before the
  * click that acts on it.
  */
-export function ToolbarButton({ action, state, onRun, children }: ToolbarButtonProps) {
+export function ToolbarButton({
+  action,
+  state,
+  onRun,
+  children,
+  suggested,
+}: ToolbarButtonProps) {
   const { enabled, checked } = actionState(action, state)
   // A radio choice on a toolbar is a pressed button, the way a row of alignments is read.
   const toggles = action.kind === 'check' || action.kind === 'radio'
@@ -99,9 +109,11 @@ export function ToolbarButton({ action, state, onRun, children }: ToolbarButtonP
       className={styles.button()}
       title={
         enabled
-          ? describeAction(action)
+          ? describeAction(action) + (suggested === undefined ? '' : `. ${suggested}`)
           : (action.whyUnavailable?.(state) ?? describeAction(action))
       }
+      aria-description={suggested}
+      data-suggested={suggested === undefined ? undefined : ''}
       aria-label={action.label}
       aria-keyshortcuts={action.keys}
       aria-pressed={toggles ? checked : undefined}

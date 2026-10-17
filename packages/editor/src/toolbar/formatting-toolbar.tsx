@@ -6,9 +6,17 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { commentAction } from '../actions/block-actions.ts'
 import type { EditorAction } from '../actions/editor-action.ts'
 import { linkActions } from '../actions/link-actions.ts'
-import { cardDetailsAction } from '../actions/link-display-actions.ts'
+import { LINK_DISPLAY_CHOICES, cardDetailsAction } from '../actions/link-display-actions.ts'
+import type { LinkDisplayChoice } from '../actions/link-display-actions.ts'
 import { useLinkPreviewSource } from '../blocks/link-preview-context.tsx'
-import { linkTargetAt, setLinkChoice } from '../link/link-display.ts'
+import {
+  blockDisplayFits,
+  inOneStep,
+  linkTargetAt,
+  setLinkChoice,
+  showLinkAs,
+} from '../link/link-display.ts'
+import type { LinkTarget } from '../link/link-display.ts'
 import type { CommentRequest } from '../block/comment-request.ts'
 import type { Rect } from '../floating/placement.ts'
 import { useFloatingPlacement } from '../floating/use-floating-placement.ts'
@@ -244,6 +252,12 @@ function ToolbarSurface({
     linkEditing.close()
     editor.view.focus()
   }
+  // The address first, then how the link is shown, as one edit: one undo takes both back. A link
+  // written as a directive has no address to change here.
+  const applyAddressAndDisplay = (href: string, display: LinkDisplayChoice): void => {
+    const keepsAddress = target.kind === 'link' && target.form !== 'mark'
+    finishLink(inOneStep(...(keepsAddress ? [] : [applyLink(href)]), showLinkAs(display)))
+  }
   const returnToDocument = (): void => {
     linkEditing.close()
     detailsEditing.close()
@@ -284,9 +298,10 @@ function ToolbarSurface({
       ) : editingLink ? (
         <LinkEditor
           href={target.kind === 'link' ? target.href : null}
-          onApply={(href) => {
-            finishLink(applyLink(href))
-          }}
+          display={target.kind === 'link' ? displayChoice(target.display) : 'url'}
+          blockFits={blockDisplayFits(state)}
+          addressLocked={target.kind === 'link' && target.form !== 'mark'}
+          onApply={applyAddressAndDisplay}
           onRemove={() => {
             finishLink(unlink)
           }}
@@ -304,6 +319,11 @@ function ToolbarSurface({
       )}
     </div>
   )
+}
+
+/** The display the link box starts from: an embed, which is drawn as a card until embeds exist, reads as one. */
+function displayChoice(display: LinkTarget['display']): LinkDisplayChoice {
+  return LINK_DISPLAY_CHOICES.find((choice) => choice.display === display)?.display ?? 'card'
 }
 
 interface ToolbarForProps {

@@ -3,6 +3,7 @@ import type { Editor } from '@tiptap/react'
 import { useCallback, useRef } from 'react'
 
 import { LINK_DISPLAY_GROUP } from '../actions/link-display-actions.ts'
+import { useLinkPreviewSource } from '../blocks/link-preview-context.tsx'
 import type { EditorAction } from '../actions/editor-action.ts'
 import { useFloatingPlacement } from '../floating/use-floating-placement.ts'
 import { linkOfferAt } from '../link/link-offer.ts'
@@ -44,6 +45,9 @@ function OfferSurface({ editor, from, to }: OfferSurfaceProps) {
   const surface = useRef<HTMLDivElement | null>(null)
   const focusWithin = useFocusWithin(surface)
   const visible = focused || focusWithin
+  // The organisation's default is the choice to point at, not the one already made: the pasted
+  // link is a plain link until the author picks.
+  const { defaultDisplay } = useLinkPreviewSource()
 
   const locate = useCallback(() => {
     const start = editor.view.coordsAtPos(from)
@@ -83,7 +87,17 @@ function OfferSurface({ editor, from, to }: OfferSurfaceProps) {
       <span className="px-2 text-xs text-muted">Show as</span>
       <ToolbarGroup label="Show link as">
         {LINK_DISPLAY_GROUP.actions.map((action) => (
-          <ToolbarButton key={action.id} action={action} state={inside} onRun={choose}>
+          <ToolbarButton
+            key={action.id}
+            action={action}
+            state={inside}
+            onRun={choose}
+            suggested={
+              action.id === `link-show-${defaultDisplay}`
+                ? 'Your organisation’s default'
+                : undefined
+            }
+          >
             {action.label}
           </ToolbarButton>
         ))}

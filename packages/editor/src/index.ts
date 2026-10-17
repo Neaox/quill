@@ -13,8 +13,12 @@ export type {
   EditorLinkImage,
   EditorLinkPreview,
   LinkPreviewSource,
+  LinkPreviewState,
+  LinkRefreshOutcome,
 } from './blocks/link-preview-context.tsx'
 export type { DocumentEditorHandle, DocumentEditorProps } from './document/document-editor.tsx'
+export { linkDisplayPaletteCommands } from './actions/link-display-palette.ts'
+export type { EditorPaletteCommand } from './actions/link-display-palette.ts'
 export type { DocumentAst, DocumentNode, MdastNode } from './document-ast.ts'
 export { documentFromMdast, documentToMdast } from './document/ast.ts'
 export type { LoadedDocument, LoadOptions, SavedDocument } from './document/ast.ts'
