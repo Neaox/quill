@@ -2,19 +2,9 @@ import { useEffect, useEffectEvent, useMemo, useRef } from 'react'
 import type { ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 
-import { enhanceAnimatedImages } from '@quill/design-css/animated-images'
-import { enhanceCodeBlocks } from '@quill/design-css/code-blocks'
-import { enhanceDetails } from '@quill/design-css/details'
-import { enhanceImages } from '@quill/design-css/image-viewer'
-import { enhanceDiagrams } from '@quill/design-css/lightbox'
-import { enhanceTables } from '@quill/design-css/tables'
-import { createBrowserHighlighting } from '@quill/highlight/browser'
-import { applyHighlighting } from '@quill/highlight/client'
-import { languageLabel } from '@quill/markdown/code-languages'
 import { cx, Prose } from '@quill/ui'
 
-import { createBrowserDiagrams } from '../../lib/diagrams/browser-environment.ts'
-import { drawDiagrams } from '../../lib/diagrams/draw-diagrams.ts'
+import { enhanceBody } from './body-enhancers.ts'
 
 export interface DocumentBodyProps {
   /** The cached body from `GET /documents/:id/rendered` (ADR-031). */
@@ -93,7 +83,8 @@ export function DocumentBody({
      the lightbox every diagram opens in, every table's reading tools
      (ADR-040), the details a link or find points into (ADR-048), and the
      animated emoji that play briefly and then rest (ADR-047), and, where a surface asks for it,
-     the pictures that open in the viewer. Keyed on the
+     the pictures that open in the viewer. Each enhancer is loaded only when the body has what it
+     enhances (`body-enhancers.ts`). Keyed on the
      parsed body, which is what a new revision changes — a restore that
      reproduces an earlier body is the same body, and correctly repaints nothing. The eyebrow is part of what is
      mounted, so moving the document to another collection remounts it too. */
@@ -104,23 +95,13 @@ export function DocumentBody({
     article.replaceChildren(...body.blocks)
     addEyebrow(article, eyebrow)
 
-    const { environment, rootOf } = createBrowserHighlighting(window)
-    // Cards before ranges: a bare block is moved into its card, and ranges
-    // painted before the move would be painted over nothing.
-    const disposers = [
-      enhanceCodeBlocks(article, { languageLabel }),
-      ...applyHighlighting(rootOf(article), environment),
-      drawDiagrams(article, createBrowserDiagrams(window, article)),
-      enhanceDiagrams(article),
-      enhanceTables(article),
-      enhanceDetails(article),
-      enhanceAnimatedImages(article),
-      ...(expandImages ? [enhanceImages(article)] : []),
-    ]
-    mounted()
-    return () => {
-      for (const dispose of disposers) dispose()
-    }
+    const enhancement = enhanceBody(article, { expandImages })
+    // A chunk that fails to load leaves the body readable but unenhanced, and
+    // surfaces as an unhandled rejection, which is how the browser reports it.
+    void enhancement.ready.then((applied) => {
+      if (applied) mounted()
+    })
+    return enhancement.dispose
   }, [body, eyebrow, expandImages])
 
   return (
