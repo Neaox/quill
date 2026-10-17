@@ -29,7 +29,11 @@ describe('Textarea', () => {
       <Textarea
         label="Blocked sites"
         description="One pattern per line."
-        error={<ul><li>Line 2 is not a host.</li></ul>}
+        error={
+          <ul>
+            <li>Line 2 is not a host.</li>
+          </ul>
+        }
       />,
     )
 

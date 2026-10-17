@@ -13,7 +13,7 @@ import { nodeType } from '../schema/node-type.ts'
  * address wherever the directive is not understood.
  */
 
-export type NewLinkDisplay = 'inline' | 'card'
+export type NewLinkDisplay = 'inline' | 'compact' | 'card'
 
 function modelOf(url: string, display: NewLinkDisplay): Link {
   return {
@@ -22,7 +22,7 @@ function modelOf(url: string, display: NewLinkDisplay): Link {
     choice: { ...UNCHOSEN, display },
     unrecognisedDisplay: null,
     extra: {},
-    form: display === 'card' ? 'leaf' : 'text',
+    form: display === 'inline' ? 'text' : 'leaf',
   }
 }
 
@@ -34,13 +34,21 @@ export function inlineLinkNode(schema: Schema, url: string): PMNode {
   )
 }
 
-/** The block node for an address: a card, which is its settings and no words of its own. */
-export function cardLinkNode(schema: Schema, url: string): PMNode {
+/** The block node for an address: a card or a compact line, which is its settings and no words of its own. */
+export function blockLinkNode(
+  schema: Schema,
+  url: string,
+  display: Exclude<NewLinkDisplay, 'inline'>,
+): PMNode {
   return nodeType(schema, 'leafDirective').create({
     name: 'link',
-    attributes: linkDirective.serialize(modelOf(url, 'card')).attributes,
+    attributes: linkDirective.serialize(modelOf(url, display)).attributes,
   })
 }
+
+/** A card for an address. */
+export const cardLinkNode = (schema: Schema, url: string): PMNode =>
+  blockLinkNode(schema, url, 'card')
 
 /** An address worth previewing: an absolute web address, which is all a preview can be made of. */
 export function previewableAddress(text: string): string | null {

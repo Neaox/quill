@@ -21,6 +21,7 @@ import { createSlashRecents, emojiRecentsKey } from '../slash/slash-recents.ts'
 import { createSlashRegistry } from '../slash/slash-registry.ts'
 import { FindBar } from '../find/find-bar.tsx'
 import { ShortcutsDialog } from '../shortcuts/shortcuts-dialog.tsx'
+import { withLinkDefaultDisplay } from '../link/link-default-display.ts'
 import { FormattingToolbar } from '../toolbar/formatting-toolbar.tsx'
 import { LinkOfferBar } from '../toolbar/link-offer-bar.tsx'
 import { useDetailsEditing, useLinkEditing } from '../toolbar/hooks.ts'
@@ -278,6 +279,16 @@ export function DocumentEditor({
 
   const linkEditing = useLinkEditing(editor)
   const detailsEditing = useDetailsEditing(editor)
+
+  // Tells the editor's state what an unchosen link is shown as, which the organisation decides
+  // (ADR-042). The commands that ask what a link is shown as read it from the state, so it is
+  // put there when the application learns it, and again if it changes.
+  const defaultDisplay = linkPreviews?.defaultDisplay
+  // Synchronises the ProseMirror state, which React does not render, with the application's setting.
+  useEffect(() => {
+    if (defaultDisplay === undefined || editor.isDestroyed) return
+    editor.view.dispatch(withLinkDefaultDisplay(editor.state.tr, defaultDisplay))
+  }, [editor, defaultDisplay])
 
   return (
     <div className={cx('document-editor relative', className)}>

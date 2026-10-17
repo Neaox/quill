@@ -2,7 +2,7 @@ import { DEFAULT_CHILD_DEPTH, DEFAULT_TOC_MAX, DEFAULT_TOC_MIN } from '@quill/ma
 import { DocumentIcon, FootnoteIcon, LinkIcon, OutlineIcon, SmallPrintIcon } from '@quill/ui'
 
 import { insertLink } from '../../document/commands.ts'
-import { cardLinkNode, inlineLinkNode, previewableAddress } from '../../link/new-link.ts'
+import { blockLinkNode, inlineLinkNode, previewableAddress } from '../../link/new-link.ts'
 import {
   insertBlock,
   insertFootnote,
@@ -57,28 +57,66 @@ function documentLinkItem(
   )
 }
 
+/** What each way of making a link with a preview says about itself in the slash menu. */
+const LINK_PREVIEW_ITEMS = {
+  card: {
+    id: 'link-card',
+    label: 'Link card',
+    description: 'A web page as a card: its title, summary and picture',
+    aliases: ['bookmark', 'card'],
+    title: 'Link card address',
+    offer: 'Insert as a card',
+  },
+  compact: {
+    id: 'link-compact',
+    label: 'Compact link',
+    description: 'A web page’s icon, title and site on one line, for lists of references',
+    aliases: ['reference', 'compact'],
+    title: 'Compact link address',
+    offer: 'Insert as a compact line',
+  },
+  inline: {
+    id: 'link-inline',
+    label: 'Link with preview',
+    description: 'A web page’s icon and title, in the line',
+    aliases: ['chip'],
+    title: 'Link address',
+    offer: 'Insert inline',
+  },
+} as const
+
 /**
  * A link that shows the page it goes to, made from an address typed or pasted
- * into the menu's second step (ADR-042: `/link card`, `/link inline`). There is
- * one option, and only once what was typed is an address worth previewing.
+ * into the menu's second step (ADR-042: `/link card`, `/link compact`,
+ * `/link inline`). There is one option, and only once what was typed is an
+ * address worth previewing.
  */
-function linkPreviewItem(display: 'inline' | 'card'): SlashItem {
-  const card = display === 'card'
+function linkPreviewItem(display: 'inline' | 'compact' | 'card'): SlashItem {
+  const words = LINK_PREVIEW_ITEMS[display]
+  const block = display !== 'inline'
   return pickerItem(
     {
-      id: card ? 'link-card' : 'link-inline',
-      label: card ? 'Link card' : 'Link with preview',
-      description: card
-        ? 'A web page as a card: its title, summary and picture'
-        : 'A web page’s icon and title, in the line',
+      id: words.id,
+      label: words.label,
+      description: words.description,
       group: 'References',
-      keywords: ['link', 'url', 'web', 'website', 'preview', 'bookmark', 'embed', 'card', 'unfurl'],
-      aliases: card ? ['bookmark', 'card'] : ['chip'],
+      keywords: [
+        'link',
+        'url',
+        'web',
+        'website',
+        'preview',
+        'bookmark',
+        'embed',
+        'unfurl',
+        display,
+      ],
+      aliases: words.aliases,
       icon: LinkIcon,
-      inline: !card,
+      inline: !block,
     },
     {
-      title: card ? 'Link card address' : 'Link address',
+      title: words.title,
       placeholder: 'Paste or type a web address',
       empty: (query) =>
         query.trim() === ''
@@ -88,23 +126,17 @@ function linkPreviewItem(display: 'inline' | 'card'): SlashItem {
         kind: 'list',
         options: (query) => {
           const address = previewableAddress(query)
-          return address === null
-            ? []
-            : [
-                {
-                  id: address,
-                  label: address,
-                  description: card ? 'Insert as a card' : 'Insert inline',
-                },
-              ]
+          return address === null ? [] : [{ id: address, label: address, description: words.offer }]
         },
       },
       choose: (option) =>
-        card
-          ? insertBlock((schema) => cardLinkNode(schema, option.id), { standalone: true })
-          : insertInline((schema) => inlineLinkNode(schema, option.id)),
+        display === 'inline'
+          ? insertInline((schema) => inlineLinkNode(schema, option.id))
+          : insertBlock((schema) => blockLinkNode(schema, option.id, display), {
+              standalone: true,
+            }),
     },
-    (place) => (card ? true : place.state.selection.$from.parent.inlineContent),
+    (place) => (block ? true : place.state.selection.$from.parent.inlineContent),
   )
 }
 
@@ -115,6 +147,7 @@ export const referenceItems: SlashContribution = {
       ? []
       : [documentLinkItem(environment.searchDocuments)]),
     linkPreviewItem('card'),
+    linkPreviewItem('compact'),
     linkPreviewItem('inline'),
     commandItem(
       {

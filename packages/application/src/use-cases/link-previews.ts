@@ -387,9 +387,7 @@ async function read(
   })
   const unique = [...new Set(lookups)]
   const rows =
-    unique.length === 0
-      ? []
-      : await deps.uow.repos.linkPreviews.findMany([audience.scope], unique)
+    unique.length === 0 ? [] : await deps.uow.repos.linkPreviews.findMany([audience.scope], unique)
   const rowsByKey = Map.groupBy(rows, (row) => row.key)
   const now = deps.clock.now()
 

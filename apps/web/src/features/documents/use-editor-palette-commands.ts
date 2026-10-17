@@ -16,6 +16,7 @@ import { registerEditorCommands } from '../search/editor-commands.ts'
  * sources), and it undoes itself when the editor goes.
  */
 export function useEditorPaletteCommands(editorRef: RefObject<DocumentEditorHandle | null>): void {
+  // Synchronises with the command palette's list of sources, which lives outside React.
   useEffect(
     () =>
       registerEditorCommands(() => {

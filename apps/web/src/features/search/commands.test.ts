@@ -74,11 +74,24 @@ describe('the palette’s commands', () => {
 
   describe('from the open editor', () => {
     const editor = [
-      { id: 'editor:link-show-card', label: 'Show link as card', keywords: ['link', 'preview'], run: () => undefined },
-      { id: 'editor:link-show-inline', label: 'Show link as inline', keywords: ['link'], run: () => undefined },
+      {
+        id: 'editor:link-show-card',
+        label: 'Show link as card',
+        keywords: ['link', 'preview'],
+        run: () => undefined,
+      },
+      {
+        id: 'editor:link-show-inline',
+        label: 'Show link as inline',
+        keywords: ['link'],
+        run: () => undefined,
+      },
     ]
     const withEditor = (query: string) =>
-      matchCommands(paletteCommands({ isInstanceAdmin: false, workspaces: WORKSPACES, editor }), query)
+      matchCommands(
+        paletteCommands({ isInstanceAdmin: false, workspaces: WORKSPACES, editor }),
+        query,
+      )
 
     it('are listed first and before anything is typed, since they are about where the cursor is', () => {
       expect(withEditor('').map((command) => command.label)).toEqual([
@@ -104,7 +117,7 @@ describe('the palette’s commands', () => {
     })
 
     it('run what the editor gave them', () => {
-      const run = vi.fn()
+      const run = vi.fn<() => void>()
       const [command] = matchCommands(
         paletteCommands({
           isInstanceAdmin: false,

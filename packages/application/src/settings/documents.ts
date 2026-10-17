@@ -305,7 +305,9 @@ export function validateOrganisationSettings(
   value: unknown,
 ): SettingsValidation<OrganisationSettings> {
   return withValidLinkPatterns(
-    withUniqueEmoji(withValidTheme(validateWith<OrganisationSettings>(organisationValidator, value))),
+    withUniqueEmoji(
+      withValidTheme(validateWith<OrganisationSettings>(organisationValidator, value)),
+    ),
   )
 }
 

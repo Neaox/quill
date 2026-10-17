@@ -45,7 +45,10 @@ describe('the command palette’s entries for the link at the cursor', () => {
   })
 
   it('leave out the display the link already has', () => {
-    const { editor } = open(`See :link[the post]{url="${ADDRESS}" display="inline"} now.`, 'the post')
+    const { editor } = open(
+      `See :link[the post]{url="${ADDRESS}" display="inline"} now.`,
+      'the post',
+    )
     expect(linkDisplayPaletteCommands(editor).map((command) => command.label)).toEqual([
       'Show link as link',
       'Show link as compact',

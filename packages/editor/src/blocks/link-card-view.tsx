@@ -1,4 +1,4 @@
-import { linkDirective } from '@quill/markdown'
+import { DEFAULT_LINK_DISPLAY, effectiveDisplay, linkDirective } from '@quill/markdown'
 import { LinkIcon } from '@quill/ui'
 import { NodeViewContent, NodeViewWrapper } from '@tiptap/react'
 import { useEffect } from 'react'
@@ -33,6 +33,15 @@ const card = tv({
     icon: 'size-4 shrink-0 rounded-sm object-contain',
     picture: 'w-36 shrink-0 self-stretch border-s border-border object-cover',
     pending: 'h-3 w-2/3 rounded-sm bg-border motion-safe:animate-pulse',
+    chip: [
+      'link-chip-editor inline-flex max-w-full items-center gap-1.5 self-start rounded-full border border-border',
+      'bg-surface-raised px-2.5 py-0.5 text-sm',
+      'data-[selected=true]:border-accent data-[selected=true]:ring-2 data-[selected=true]:ring-focus-ring',
+    ],
+    plain: [
+      'link-plain-editor max-w-full truncate text-sm text-accent underline',
+      'data-[selected=true]:ring-2 data-[selected=true]:ring-focus-ring',
+    ],
     compact: [
       'link-compact-editor flex items-center rounded-md border border-border bg-surface-raised px-3 py-1.5 text-sm',
       'data-[selected=true]:border-accent data-[selected=true]:ring-2 data-[selected=true]:ring-focus-ring',
@@ -80,7 +89,55 @@ export function LinkCardBlock({ node, selected }: NodeViewProps) {
   const description = link.choice.description ?? preview?.description ?? null
   const picture = link.choice.showImage ? (preview?.thumbnail ?? null) : null
 
-  if (link.choice.display === 'compact') {
+  // What the reader will draw: the author's choice, else the organisation's default, which the
+  // application hands over until it is known the product's own. A block display is a block;
+  // `inline` and `url` on a line of their own are a chip and a plain link, as the reader draws them.
+  const display = effectiveDisplay(link, source.defaultDisplay ?? DEFAULT_LINK_DISPLAY)
+
+  if (display === 'url') {
+    return (
+      <NodeViewWrapper
+        className={styles.plain()}
+        data-directive="link"
+        data-selected={selected}
+        role="group"
+        aria-label={`Link: ${link.text ?? address}`}
+      >
+        <NodeViewContent className="hidden" />
+        <span contentEditable={false}>{link.text ?? address}</span>
+      </NodeViewWrapper>
+    )
+  }
+
+  if (display === 'inline') {
+    return (
+      <NodeViewWrapper
+        className={styles.chip()}
+        data-directive="link"
+        data-selected={selected}
+        role="group"
+        aria-label={`Link: ${title}`}
+      >
+        <NodeViewContent className="hidden" />
+        <span className="flex min-w-0 items-center gap-1.5" contentEditable={false}>
+          {preview?.favicon == null ? (
+            <LinkIcon className="size-3.5 shrink-0" />
+          ) : (
+            <img
+              className={styles.icon()}
+              src={imageUrl(preview.favicon)}
+              alt=""
+              width={preview.favicon.width}
+              height={preview.favicon.height}
+            />
+          )}
+          <span className="truncate text-foreground">{title}</span>
+        </span>
+      </NodeViewWrapper>
+    )
+  }
+
+  if (display === 'compact') {
     return (
       <NodeViewWrapper
         className={styles.compact()}

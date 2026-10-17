@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 
 import { currentEditorCommands, registerEditorCommands } from './editor-commands.ts'
 
-const command = (id: string) => ({ id, label: id, keywords: [], run: vi.fn() })
+const command = (id: string) => ({ id, label: id, keywords: [], run: vi.fn<() => void>() })
 
 describe('the commands the open editor offers the palette', () => {
   it('are none while no editor is registered', () => {

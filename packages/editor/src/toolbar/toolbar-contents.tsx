@@ -15,6 +15,7 @@ import {
   CARD_LAYOUT_GROUP,
   LINK_DISPLAY_GROUP,
 } from '../actions/link-display-actions.ts'
+import type { LinkDisplay } from '@quill/markdown'
 import { calloutLabel } from '../callout/callouts.ts'
 import type { CalloutContext } from '../callout/callouts.ts'
 import { normaliseHref } from '../format/href.ts'
@@ -148,6 +149,8 @@ export interface LinkContentProps extends ContentProps {
   readonly details: EditorAction
   /** How the link is written: only an ordinary link has its address edited in the link box. */
   readonly form: 'mark' | 'text' | 'leaf'
+  /** How the link is shown now: only a card has a layout, a picture and words of its own to shape. */
+  readonly display: LinkDisplay
   readonly edit: EditorAction
   readonly remove: EditorAction
 }
@@ -163,6 +166,7 @@ export function LinkToolbarContent({
   href,
   details,
   form,
+  display,
   edit,
   remove,
 }: LinkContentProps) {
@@ -194,7 +198,7 @@ export function LinkToolbarContent({
           </ToolbarButton>
         ))}
       </ToolbarGroup>
-      {form === 'leaf' ? (
+      {form === 'leaf' && display === 'card' ? (
         <>
           <ToolbarSeparator />
           <ToolbarGroup label="Card">

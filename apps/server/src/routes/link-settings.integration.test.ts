@@ -1,5 +1,9 @@
 import { defaultOrganisationSettings } from '@quill/application'
-import type { LinkPreviewPorts, LinkPreviewSettings, OrganisationSettings } from '@quill/application'
+import type {
+  LinkPreviewPorts,
+  LinkPreviewSettings,
+  OrganisationSettings,
+} from '@quill/application'
 import { ok } from '@quill/domain'
 import type { DocumentId } from '@quill/domain'
 import { parseDocument } from '@quill/markdown'
@@ -54,6 +58,11 @@ const LOOSE: LinkPreviewSettings = {
   defaultDisplay: 'inline',
   allow: [],
   block: [],
+}
+
+/** A fixture step that must have worked, stated where a hook can say so. */
+function succeeded(response: { statusCode: number }): void {
+  if (response.statusCode !== 200) throw new Error(`Fixture step answered ${response.statusCode}`)
 }
 
 async function readSettings() {
@@ -132,7 +141,7 @@ beforeAll(async () => {
       expectedRevision: current.revision,
     },
   })
-  expect(published.statusCode).toBe(200)
+  succeeded(published)
 
   const created = await harness.app.inject({
     method: 'POST',
@@ -164,7 +173,7 @@ beforeAll(async () => {
     cookies: editor,
     payload: { base: null },
   })
-  expect(publish.statusCode).toBe(200)
+  succeeded(publish)
   await harness.drainOutbox()
   const site = await harness.app.inject({
     method: 'POST',
@@ -172,7 +181,7 @@ beforeAll(async () => {
     cookies: admin,
     payload: { siteSlug: SITE, homeDocumentId: documentId },
   })
-  expect(site.statusCode).toBe(200)
+  succeeded(site)
 }, 60_000)
 
 beforeEach(async () => {

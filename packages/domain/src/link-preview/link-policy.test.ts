@@ -217,10 +217,10 @@ describe('describing a pattern that was refused', () => {
   })
 
   it('agrees with the parser about what is refused', () => {
-    for (const bad of ['', 'not a host', 'example.com:8080', 'a.com/x*y']) {
-      const parsed = parseUrlPattern(bad)
-      expect(parsed.ok).toBe(false)
-      if (!parsed.ok) expect(describePatternError(parsed.error).length).toBeGreaterThan(10)
-    }
+    const refused = ['', 'not a host', 'example.com:8080', 'a.com/x*y'].map(parseUrlPattern)
+    expect(refused.every((parsed) => !parsed.ok)).toBe(true)
+    const reasons = refused.flatMap((parsed) => (parsed.ok ? [] : [parsed.error]))
+    expect(reasons).toHaveLength(4)
+    for (const reason of reasons) expect(describePatternError(reason).length).toBeGreaterThan(10)
   })
 })

@@ -73,11 +73,11 @@ describe('where a link’s preview stands, for the editor’s toolbar', () => {
   })
 })
 
-describe('refreshing a link’s preview from the editor', () => {
-  const refreshRoute = (respond: () => Response): FakeRoutes => ({
-    'POST /api/link-previews/refresh': respond,
-  })
+const refreshRoute = (respond: () => Response): FakeRoutes => ({
+  'POST /api/link-previews/refresh': respond,
+})
 
+describe('refreshing a link’s preview from the editor', () => {
   it('starts a fresh fetch, and the answer replaces what the editor knew', async () => {
     const { result } = hook(
       { [URL_A]: { state: 'unavailable', reason: 'unreachable' } },
@@ -140,15 +140,12 @@ describe('refreshing a link’s preview from the editor', () => {
   })
 
   it('is in flight only while the request is', async () => {
-    let release: () => void = () => undefined
-    const gate = new Promise<void>((resolve) => {
-      release = resolve
-    })
+    const gate = Promise.withResolvers<void>()
     const { result } = hook(
       {},
       {
         'POST /api/link-previews/refresh': async () => {
-          await gate
+          await gate.promise
           return jsonResponse(200, { state: 'pending' })
         },
       },
@@ -161,7 +158,7 @@ describe('refreshing a link’s preview from the editor', () => {
     await waitFor(() => {
       expect(result.current.refreshing).toBe(true)
     })
-    release()
+    gate.resolve()
     await act(async () => {
       await done
     })

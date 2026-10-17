@@ -1,10 +1,4 @@
-import {
-  DEFAULT_LINK_DISPLAY,
-  UNCHOSEN,
-  effectiveDisplay,
-  isBlockDisplay,
-  linkDirective,
-} from '@quill/markdown'
+import { UNCHOSEN, effectiveDisplay, isBlockDisplay, linkDirective } from '@quill/markdown'
 import type { Link, LinkChoice, LinkDisplay } from '@quill/markdown'
 import { Fragment } from '@tiptap/pm/model'
 import type { Node as PMNode } from '@tiptap/pm/model'
@@ -12,6 +6,7 @@ import { NodeSelection, Selection, TextSelection } from '@tiptap/pm/state'
 import type { Command, EditorState, Transaction } from '@tiptap/pm/state'
 
 import { linkAt } from '../format/links.ts'
+import { linkDefaultDisplayOf } from './link-default-display.ts'
 import { markType, nodeType } from '../schema/node-type.ts'
 import { directiveAttributes, directiveName } from '../schema/directive-attributes.ts'
 
@@ -63,14 +58,14 @@ function modelOf(node: PMNode): Link {
   })
 }
 
-function directiveTarget(node: PMNode, from: number): LinkTarget {
+function directiveTarget(node: PMNode, from: number, fallback: LinkDisplay): LinkTarget {
   const link = modelOf(node)
   return {
     form: link.form === 'leaf' ? 'leaf' : 'text',
     from,
     to: from + node.nodeSize,
     href: link.url,
-    display: effectiveDisplay(link, DEFAULT_LINK_DISPLAY),
+    display: effectiveDisplay(link, fallback),
     node,
     link,
   }
@@ -92,12 +87,14 @@ export function linkTargetAt(state: EditorState): LinkTarget | null {
     selection.node.type.name === 'leafDirective' &&
     isLinkDirective(selection.node)
   ) {
-    return directiveTarget(selection.node, selection.from)
+    return directiveTarget(selection.node, selection.from, linkDefaultDisplayOf(state))
   }
   const { $from } = selection
   for (let depth = $from.depth; depth > 0; depth -= 1) {
     const node = $from.node(depth)
-    if (isLinkDirective(node)) return directiveTarget(node, $from.before(depth))
+    if (isLinkDirective(node)) {
+      return directiveTarget(node, $from.before(depth), linkDefaultDisplayOf(state))
+    }
   }
   const run = linkAt(state)
   return run === null

@@ -540,7 +540,7 @@ describe('the search palette', () => {
     })
 
     it('offer what the open editor can do at the cursor, first, and run it', async () => {
-      const run = vi.fn()
+      const run = vi.fn<() => void>()
       const unregister = registerEditorCommands(() => [
         { id: 'editor:link-show-card', label: 'Show link as card', keywords: ['link'], run },
       ])

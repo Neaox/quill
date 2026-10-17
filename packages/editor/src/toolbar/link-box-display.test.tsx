@@ -41,9 +41,7 @@ function select(opened: Opened, text: string, offset?: number): void {
     editor.view.focus()
     editor
       .chain()
-      .setTextSelection(
-        offset === undefined ? { from, to: from + text.length } : from + offset,
-      )
+      .setTextSelection(offset === undefined ? { from, to: from + text.length } : from + offset)
       .run()
   })
 }
@@ -65,7 +63,11 @@ describe('the link box offers how the link is shown', () => {
     expect(
       within(choices())
         .getAllByRole('radio')
-        .map((radio) => radio.getAttribute('aria-label') ?? (radio as HTMLInputElement).labels?.[0]?.textContent),
+        .map(
+          (radio) =>
+            radio.getAttribute('aria-label') ??
+            (radio as HTMLInputElement).labels?.[0]?.textContent,
+        ),
     ).toEqual(['Link', 'Inline', 'Compact', 'Card'])
     expect(choice('Link')).toBeChecked()
     await expectNoAccessibilityViolations(opened.container)
@@ -126,7 +128,9 @@ describe('the link box offers how the link is shown', () => {
     expect(screen.getByRole('button', { name: 'Apply' })).toHaveFocus()
     await opened.user.keyboard('{Enter}')
 
-    expect(markdown(opened)).toContain(':link[something]{url="https://example.com" display="inline"}')
+    expect(markdown(opened)).toContain(
+      ':link[something]{url="https://example.com" display="inline"}',
+    )
   })
 
   it('submits with Enter from the address, keeping the choice made', async () => {
@@ -134,9 +138,14 @@ describe('the link box offers how the link is shown', () => {
     select(opened, 'something')
     await openBox(opened)
     await opened.user.click(choice('Inline'))
-    await opened.user.type(screen.getByRole('textbox', { name: 'Link address' }), 'example.com{Enter}')
+    await opened.user.type(
+      screen.getByRole('textbox', { name: 'Link address' }),
+      'example.com{Enter}',
+    )
 
-    expect(markdown(opened)).toContain(':link[something]{url="https://example.com" display="inline"}')
+    expect(markdown(opened)).toContain(
+      ':link[something]{url="https://example.com" display="inline"}',
+    )
   })
 
   it('leaves a plain link plain when the choice is not touched', async () => {
@@ -148,7 +157,9 @@ describe('the link box offers how the link is shown', () => {
   })
 
   it('starts from the display the link already has, and changes only that', async () => {
-    const opened = open('See :link[the post]{url="https://blog.example/post" display="inline"} now.\n')
+    const opened = open(
+      'See :link[the post]{url="https://blog.example/post" display="inline"} now.\n',
+    )
     select(opened, 'the post', 3)
     await opened.user.keyboard('{Control>}k{/Control}')
 
@@ -160,7 +171,9 @@ describe('the link box offers how the link is shown', () => {
   })
 
   it('does not let the address of a link written as a directive be edited here', async () => {
-    const opened = open('See :link[the post]{url="https://blog.example/post" display="inline"} now.\n')
+    const opened = open(
+      'See :link[the post]{url="https://blog.example/post" display="inline"} now.\n',
+    )
     select(opened, 'the post', 3)
     await opened.user.keyboard('{Control>}k{/Control}')
 

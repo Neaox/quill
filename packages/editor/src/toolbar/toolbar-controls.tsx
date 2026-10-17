@@ -92,14 +92,9 @@ export interface ToolbarButtonProps {
  * that took focus on press would collapse what the author selected before the
  * click that acts on it.
  */
-export function ToolbarButton({
-  action,
-  state,
-  onRun,
-  children,
-  suggested,
-}: ToolbarButtonProps) {
+export function ToolbarButton({ action, state, onRun, children, suggested }: ToolbarButtonProps) {
   const { enabled, checked } = actionState(action, state)
+  const suggestedId = useId()
   // A radio choice on a toolbar is a pressed button, the way a row of alignments is read.
   const toggles = action.kind === 'check' || action.kind === 'radio'
   return (
@@ -112,7 +107,7 @@ export function ToolbarButton({
           ? describeAction(action) + (suggested === undefined ? '' : `. ${suggested}`)
           : (action.whyUnavailable?.(state) ?? describeAction(action))
       }
-      aria-description={suggested}
+      aria-describedby={suggested === undefined ? undefined : suggestedId}
       data-suggested={suggested === undefined ? undefined : ''}
       aria-label={action.label}
       aria-keyshortcuts={action.keys}
@@ -127,6 +122,11 @@ export function ToolbarButton({
       }}
     >
       {children}
+      {suggested === undefined ? null : (
+        <span id={suggestedId} className="sr-only">
+          {suggested}
+        </span>
+      )}
     </button>
   )
 }

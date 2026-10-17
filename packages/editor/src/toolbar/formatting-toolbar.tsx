@@ -348,6 +348,7 @@ function ToolbarFor({ target, state, onRun, link, details, comment }: ToolbarFor
           href={target.href}
           details={details}
           form={target.form}
+          display={target.display}
           edit={link.edit}
           remove={link.remove}
         />

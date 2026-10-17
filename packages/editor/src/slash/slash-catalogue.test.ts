@@ -303,6 +303,12 @@ describe('data and references', () => {
     expectStable(roundTrip(result.markdown))
   })
 
+  it('compact link: a web address as one line of its own', async () => {
+    const result = await choose(run('link-compact'), 'https://blog.example/post')
+    expect(result.markdown).toContain('::link{url="https://blog.example/post" display="compact"}')
+    expectStable(roundTrip(result.markdown))
+  })
+
   it('link with preview: a web address inline, spelling itself', async () => {
     const result = await choose(run('link-inline', 'See '), 'https://blog.example/post')
     expect(result.markdown).toBe('See :link[https://blog.example/post]{display="inline"}\n')
@@ -339,6 +345,7 @@ describe('pickers say when nothing matches', () => {
     ['emoji', 'No emoji matches “zz”'],
     ['document-link', 'No document matches “zz”'],
     ['link-card', 'That is not a web address (https://…)'],
+    ['link-compact', 'That is not a web address (https://…)'],
     ['link-inline', 'That is not a web address (https://…)'],
   ])('%s', (id, message) => {
     expect(run(id).picker?.empty('zz')).toBe(message)

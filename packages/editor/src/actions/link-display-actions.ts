@@ -31,9 +31,7 @@ const DISPLAY_DESCRIPTIONS = {
 
 /** A card is a block, so inside a line that cannot be split (a heading, a table cell, a placeholder) it cannot go. */
 function blockUnavailableBecause(state: EditorState): string | undefined {
-  return linkTargetAt(state) !== null && !showLinkAs('card')(state)
-    ? NO_LINE_OF_ITS_OWN
-    : undefined
+  return linkTargetAt(state) !== null && !showLinkAs('card')(state) ? NO_LINE_OF_ITS_OWN : undefined
 }
 
 /** The displays an author can choose for a link, in the order they are offered, with their words. */

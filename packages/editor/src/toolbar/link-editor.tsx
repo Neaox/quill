@@ -20,10 +20,10 @@ import { toolbarStyles } from './toolbar-controls.tsx'
 
 const linkEditor = tv({
   slots: {
-    form: 'flex items-center gap-1',
-    field: 'flex flex-col',
+    form: 'flex flex-wrap items-center gap-1',
+    field: 'flex min-w-0 max-w-full flex-col',
     input: [
-      'h-8 w-64 rounded-sm border border-border-strong bg-surface px-2 text-sm text-foreground',
+      'h-8 w-64 max-w-full rounded-sm border border-border-strong bg-surface px-2 text-sm text-foreground',
       'placeholder:text-muted focus-visible:outline-2 focus-visible:outline-focus-ring',
       'aria-invalid:border-danger',
     ],
@@ -146,20 +146,20 @@ export function LinkEditor({
           className={styles.choices()}
           onKeyDown={cancelOnEscape}
         >
-          {LINK_DISPLAY_CHOICES.map(({ display: value, label, description }) => {
-            const unavailable = !blockFits && (value === 'card' || value === 'compact')
+          {LINK_DISPLAY_CHOICES.map(({ display: choice, label, description }) => {
+            const unavailable = !blockFits && (choice === 'card' || choice === 'compact')
             return (
-              <label key={value} className={styles.choice()} title={description}>
+              <label key={choice} className={styles.choice()} title={description}>
                 <input
                   type="radio"
                   name={choicesId}
                   className={styles.radio()}
                   aria-label={label}
-                  checked={shownAs === value}
+                  checked={shownAs === choice}
                   disabled={unavailable}
                   aria-describedby={unavailable ? `${choicesId}-why` : undefined}
                   onChange={() => {
-                    setShownAs(value)
+                    setShownAs(choice)
                   }}
                 />
                 {label}

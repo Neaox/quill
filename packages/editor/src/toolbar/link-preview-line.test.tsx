@@ -53,7 +53,10 @@ function sourceOf(
 }
 
 /** A document with the link in the middle of a sentence, the caret inside the link. */
-function openWithCaretInLink(source: LinkPreviewSource, markdown = `See [the post](${ADDRESS}) now.`) {
+function openWithCaretInLink(
+  source: LinkPreviewSource,
+  markdown = `See [the post](${ADDRESS}) now.`,
+) {
   const ref = createRef<DocumentEditorHandle>()
   const result = render(
     <DocumentEditor ast={parseDocument(markdown).ast} ref={ref} linkPreviews={source} />,
@@ -127,7 +130,7 @@ describe('the toolbar’s line about a link’s preview', () => {
   })
 
   it('says "Preview unavailable" with a Retry, never an error in the page', async () => {
-    const refresh = vi.fn(async () => 'started' as const)
+    const refresh = vi.fn<() => Promise<LinkRefreshOutcome>>(async () => 'started')
     const opened = openWithCaretInLink(sourceOf({ state: 'unavailable', preview: null, refresh }))
     expect(within(toolbar()).getByText('Preview unavailable.')).toBeVisible()
     await opened.user.click(within(toolbar()).getByRole('button', { name: 'Retry' }))
@@ -136,7 +139,11 @@ describe('the toolbar’s line about a link’s preview', () => {
   })
 
   it('has nothing to say when the application cannot tell', () => {
-    const quiet: LinkPreviewSource = { preview: () => null, request: () => undefined, imageUrl: () => '' }
+    const quiet: LinkPreviewSource = {
+      preview: () => null,
+      request: () => undefined,
+      imageUrl: () => '',
+    }
     openWithCaretInLink(quiet)
     expect(within(toolbar()).queryByText(/preview/iu)).toBeNull()
   })
@@ -144,14 +151,14 @@ describe('the toolbar’s line about a link’s preview', () => {
 
 describe('refreshing a preview from the toolbar', () => {
   it('asks the application for the address under the caret', async () => {
-    const refresh = vi.fn(async () => 'started' as const)
+    const refresh = vi.fn<() => Promise<LinkRefreshOutcome>>(async () => 'started')
     const opened = openWithCaretInLink(sourceOf({ refresh }))
     await opened.user.click(within(toolbar()).getByRole('button', { name: 'Refresh preview' }))
     expect(refresh).toHaveBeenCalledExactlyOnceWith(ADDRESS)
   })
 
   it('is reachable with the keyboard, like every control on the toolbar', async () => {
-    const refresh = vi.fn(async () => 'started' as const)
+    const refresh = vi.fn<() => Promise<LinkRefreshOutcome>>(async () => 'started')
     const opened = openWithCaretInLink(sourceOf({ refresh }))
     within(toolbar()).getByRole('button', { name: 'Refresh preview' }).focus()
     await opened.user.keyboard('{Enter}')

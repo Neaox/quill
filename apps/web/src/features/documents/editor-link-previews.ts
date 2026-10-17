@@ -54,9 +54,7 @@ export function useEditorLinkPreviews(): LinkPreviewSource {
       new Map(
         results.flatMap((result, index) => {
           const url = wanted[index]
-          return result.data !== undefined && url !== undefined
-            ? [[url, result.data] as const]
-            : []
+          return result.data !== undefined && url !== undefined ? [[url, result.data] as const] : []
         }),
       ),
   })

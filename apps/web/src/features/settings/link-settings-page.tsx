@@ -1,6 +1,7 @@
 import { useId } from 'react'
 
 import type { LinkPreviewMode, OrganisationDefaultDisplay } from '@quill/domain'
+import { BRAND } from '@quill/brand'
 import { Textarea, tv } from '@quill/ui'
 
 import {
@@ -54,7 +55,7 @@ const DISPLAYS: readonly Segment<OrganisationDefaultDisplay>[] = [
 ]
 
 const MODE_SENTENCES: Readonly<Record<LinkPreviewMode, string>> = {
-  off: 'Quill never contacts a site to describe a link. Every link stays a plain link.',
+  off: `${BRAND.name} never contacts a site to describe a link. Every link stays a plain link.`,
   text: 'Titles, descriptions and site names, with no pictures fetched, stored or shown.',
   rich: 'Titles, descriptions, thumbnails and site icons.',
 }
@@ -73,7 +74,8 @@ function LinkSettingsSummary({ settings }: { readonly settings: LinkSettings }) 
       <li>Previews: {MODES.find((mode) => mode.value === settings.mode)?.label}</li>
       <li>On the public site: {settings.publicSite ? 'yes' : 'no'}</li>
       <li>
-        Default display: {DISPLAYS.find((display) => display.value === settings.defaultDisplay)?.label}
+        Default display:{' '}
+        {DISPLAYS.find((display) => display.value === settings.defaultDisplay)?.label}
       </li>
       <li>Only these sites: {settings.allow.length === 0 ? 'any' : settings.allow.length}</li>
       <li>Never these sites: {settings.block.length === 0 ? 'none' : settings.block.length}</li>
@@ -136,8 +138,8 @@ function PatternSyntax() {
       <summary className={styles.summary()}>How patterns work</summary>
       <p className="mt-2">
         One pattern to a line. A pattern names a site, and optionally a part of it. It is never a
-        regular expression, and it is checked against every address Quill contacts for a link,
-        including the pages a link redirects to and the images it points at.
+        regular expression, and it is checked against every address {BRAND.name} contacts for a
+        link, including the pages a link redirects to and the images it points at.
       </p>
       <dl className={styles.examples()}>
         <dt>
@@ -147,7 +149,9 @@ function PatternSyntax() {
         <dt>
           <code>*.example.com</code>
         </dt>
-        <dd>Any subdomain, but not <code>example.com</code> itself. List both for both.</dd>
+        <dd>
+          Any subdomain, but not <code>example.com</code> itself. List both for both.
+        </dd>
         <dt>
           <code>example.com/docs</code>
         </dt>
@@ -210,12 +214,7 @@ export function LinkSettingsPage() {
   }
 
   const saveButton = (
-    <SettingsSaveButton
-      compact={compact}
-      dirty={ready}
-      pending={save.isPending}
-      onSave={submit}
-    />
+    <SettingsSaveButton compact={compact} dirty={ready} pending={save.isPending} onSave={submit} />
   )
 
   return (
@@ -225,7 +224,7 @@ export function LinkSettingsPage() {
 
       <SettingsSection
         title="Links"
-        description="How Quill describes the links in your documents. A preview is made by Quill fetching the linked page on your behalf, which tells that site the link was shared."
+        description={`How ${BRAND.name} describes the links in your documents. A preview is made by ${BRAND.name} fetching the linked page on your behalf, which tells that site the link was shared.`}
       >
         {ready ? undefined : (
           <p className={styles.status()}>
@@ -300,7 +299,7 @@ export function LinkSettingsPage() {
 
       <SettingsSection
         title="Sites"
-        description="Which sites Quill may contact to describe a link. A link to a site that is not allowed still works as a link; Quill just does not ask that site about it."
+        description={`Which sites ${BRAND.name} may contact to describe a link. A link to a site that is not allowed still works as a link; ${BRAND.name} just does not ask that site about it.`}
         level={2}
         wide
       >
@@ -308,7 +307,7 @@ export function LinkSettingsPage() {
         <div className={styles.lists()}>
           <PatternList
             label="Only these sites"
-            description="Leave empty to allow any public site. Otherwise Quill contacts only the sites listed."
+            description={`Leave empty to allow any public site. Otherwise ${BRAND.name} contacts only the sites listed.`}
             lines={links.allow}
             disabled={previewsOff}
             onLinesChange={(allow) => {
@@ -317,7 +316,7 @@ export function LinkSettingsPage() {
           />
           <PatternList
             label="Never these sites"
-            description="Quill never contacts these sites, whatever the list on the left says."
+            description={`${BRAND.name} never contacts these sites, whatever the list on the left says.`}
             lines={links.block}
             disabled={previewsOff}
             onLinesChange={(block) => {

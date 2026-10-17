@@ -387,9 +387,7 @@ describe('scopes: a restrictive organisation keeps its own previews', () => {
     t.people.set(ADA, restricted)
     await t.drain()
     expect(t.resolve).toHaveBeenCalledWith(URL_A, { policy: restricted.policy })
-    expect(await t.uow.repos.linkPreviews.findMany([PUBLIC_PREVIEW_SCOPE], [URL_A])).toHaveLength(
-      1,
-    )
+    expect(await t.uow.repos.linkPreviews.findMany([PUBLIC_PREVIEW_SCOPE], [URL_A])).toHaveLength(1)
     expect(
       (await t.uow.repos.linkPreviews.findMany(['org:a'], [URL_A])).filter(
         (row) => row.state === 'ready',
