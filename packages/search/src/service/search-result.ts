@@ -8,6 +8,8 @@ export interface SearchServiceHit {
   readonly workspaceId: WorkspaceId
   readonly title: string
   readonly snippet: Snippet
+  /** The tags the document was indexed with, folded to lower case, in the order they were written. */
+  readonly tags: readonly string[]
   readonly score: number
 }
 

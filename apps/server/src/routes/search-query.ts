@@ -28,3 +28,29 @@ export function unsearchable(queryText: string): UnsearchableQuery | null {
     ? null
     : { kind: 'nothing-to-search-for' }
 }
+
+/** The filters a site open to the world does not answer. */
+const PRIVATE_FILTER_KEYS: ReadonlySet<string> = new Set(['by', 'team', 'prop'])
+
+/**
+ * Whether a query asks about people or properties: `by:`, `team:` or `prop:`,
+ * kept or left out.
+ *
+ * Who has written what, and what a page's front matter holds beyond the core
+ * fields, are not for everyone. A signed-in search answers them — only about
+ * documents the caller may read — but a site open to the world must not, or
+ * `by:somebody@company.com` would confirm to a stranger that an address is an
+ * author of a published page, and `prop:` would let a stranger probe front
+ * matter the site never shows. The public route asks this before it asks the
+ * engine anything. A query the parser cannot read is not one that asks about
+ * either; it is refused for being unreadable, as it always was.
+ */
+export function searchesPrivateFields(queryText: string): boolean {
+  const parsed = parseQuery(queryText)
+  return (
+    parsed.ok &&
+    parsed.value.clauses.some(
+      (clause) => clause.kind === 'filter' && PRIVATE_FILTER_KEYS.has(clause.key),
+    )
+  )
+}

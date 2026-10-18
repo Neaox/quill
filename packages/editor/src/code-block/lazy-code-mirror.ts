@@ -138,6 +138,13 @@ export function codeMirrorIn(container: Element | undefined): EditorView | null 
 export interface LazyCodeMirrorOptions extends CodeMirrorOptions {
   /** The page's strategy unless a test supplies its own. */
   readonly mounting?: CodeMirrorMounting
+  /**
+   * Told once, when the block first comes near the screen or is opened,
+   * whichever is first: the moment the rest of the block's furniture (its
+   * language picker, a React root apiece) is worth building. A paste of
+   * hundreds of blocks builds none of it up front.
+   */
+  onWanted?(): void
 }
 
 export interface LazyCodeMirrorHost extends CodeMirrorHost {
@@ -146,6 +153,9 @@ export interface LazyCodeMirrorHost extends CodeMirrorHost {
 }
 
 const frame = codeBlockStyles()
+
+/** What there is to undo before anything has been painted or watched. */
+const nothing = (): void => undefined
 
 /** Where a press landed in the static text, where the browser can say. */
 function offsetOf(code: HTMLElement, event: PointerEvent): number {
@@ -175,13 +185,21 @@ export function createLazyCodeMirror(options: LazyCodeMirrorOptions): LazyCodeMi
   options.parent.append(pre)
 
   let registry: TokenHighlightRegistry | null | undefined
-  let unpaint: (() => void) | undefined
+  let unpaint = nothing
   let painted = false
+  let wanted = false
+
+  const want = (): void => {
+    if (wanted) return
+    wanted = true
+    options.onWanted?.()
+  }
 
   /** Colours the static block with the reader's ranges, over its one text node. */
   const paint = (): void => {
-    unpaint?.()
-    unpaint = undefined
+    want()
+    unpaint()
+    unpaint = nothing
     painted = true
     const grammar = language?.grammar
     if (destroyed || live !== undefined || grammar === undefined) return
@@ -203,12 +221,13 @@ export function createLazyCodeMirror(options: LazyCodeMirrorOptions): LazyCodeMi
     )
   }
 
-  let stopWatching: (() => void) | undefined
+  let stopWatching = nothing
 
   const open = (): CodeMirrorHost => {
     if (live !== undefined) return live
-    stopWatching?.()
-    unpaint?.()
+    want()
+    stopWatching()
+    unpaint()
     pre.remove()
     opening.delete(pre)
     live = createCodeMirror({ ...options, text, language, editable, painting })
@@ -264,8 +283,8 @@ export function createLazyCodeMirror(options: LazyCodeMirrorOptions): LazyCodeMi
     },
     destroy() {
       destroyed = true
-      stopWatching?.()
-      unpaint?.()
+      stopWatching()
+      unpaint()
       live?.destroy()
     },
   }

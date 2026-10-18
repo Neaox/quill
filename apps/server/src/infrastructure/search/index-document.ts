@@ -56,6 +56,10 @@ export async function indexDocument(
 
   const { frontMatter, ast } = parseDocument(published.markdown)
   const drawingText = await drawingWords(deps, document.workspaceId, published.markdown)
+  // Who has published, from the revisions rather than from the one that
+  // triggered this: a reindex has no event to read it from, and an event that
+  // is delivered twice must still leave the same index.
+  const contributors = await deps.uow.repos.revisions.listContributors(documentId)
   await deps.searchIndex.index(
     projectIndexableDocument({
       documentId,
@@ -65,8 +69,12 @@ export async function indexDocument(
       path: published.path,
       updatedAt: document.updatedAt,
       frontMatter: toCoreFrontMatter(documentId, frontMatter, document.title),
+      // Whole, so a key this build does not know still reaches the index
+      // as a property (rule 7: unknown front matter survives).
+      rawFrontMatter: frontMatter,
       ast,
       drawingText,
+      contributors,
     }),
   )
 

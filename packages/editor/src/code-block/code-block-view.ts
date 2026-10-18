@@ -93,6 +93,7 @@ export class CodeBlockNodeView implements NodeView {
     this.toolbar = element('div', styles.toolbar())
     this.toolbar.contentEditable = 'false'
     this.field = createLanguageField({
+      deferred: true,
       commit: (name) => this.setLanguage(name),
       cancel: () => {
         this.host.view.focus()
@@ -111,6 +112,9 @@ export class CodeBlockNodeView implements NodeView {
       text: node.textContent,
       language: resolveLanguage(this.languageName()),
       editable: view.editable,
+      onWanted: () => {
+        this.field.draw()
+      },
       onChange: (text) => {
         this.forwardChange(text)
       },

@@ -60,13 +60,24 @@ describe('parseQuery', () => {
     })
   })
 
-  it.each(['title', 'tag', 'owner', 'status', 'collection', 'in'] as const)(
+  it.each(['title', 'tag', 'owner', 'status', 'collection', 'in', 'by', 'team', 'prop'] as const)(
     'parses the %s field filter',
     (key) => {
       const result = parseQuery(`${key}:value`)
       expect(result).toEqual({ ok: true, value: { clauses: [filter(key, 'value')] } })
     },
   )
+
+  it('reads a property filter whole, with its equals sign, and quoted when it has spaces', () => {
+    expect(parseQuery('prop:severity=high')).toEqual({
+      ok: true,
+      value: { clauses: [filter('prop', 'severity=high')] },
+    })
+    expect(parseQuery('-prop:"customer name=Acme Ltd"')).toEqual({
+      ok: true,
+      value: { clauses: [filter('prop', 'customer name=Acme Ltd', true)] },
+    })
+  })
 
   it('reads a field filter key case-insensitively', () => {
     const result = parseQuery('TAG:release')

@@ -1,5 +1,8 @@
 import type {
   Clock,
+  FacetCounts,
+  FacetName,
+  FacetsOptions,
   IndexableDocument,
   RankingProfile,
   SearchHit,
@@ -7,9 +10,13 @@ import type {
   SearchIndex,
   SearchIndexQueryOptions,
   SearchQuery,
+  SharedVisibility,
+  SuggestionRequest,
   VisibilityFilter,
 } from '@quill/application'
+import { rankSuggestions, suggestion } from '@quill/domain'
 import type { DocumentId, WorkspaceId } from '@quill/domain'
+import { addCounts, rankFacetCounts } from '@quill/search'
 import { eq, sql } from 'drizzle-orm'
 import type { SQL } from 'drizzle-orm'
 
@@ -19,8 +26,14 @@ import { decodeSearchCursor, encodeSearchCursor } from './cursor.ts'
 import type { SearchArm, SearchCursor } from './cursor.ts'
 import { toIndexRow } from './index-entry.ts'
 import { translateQuery } from './query-sql.ts'
-import type { TranslatedQuery } from './query-sql.ts'
-import type { VisibleDocumentResolver, VisibleDocuments } from './visible-documents.ts'
+import type { Asker, TranslatedQuery } from './query-sql.ts'
+import { principalsFromKeys } from './visible-documents.ts'
+import type {
+  VisibleDocumentRequest,
+  VisibleDocumentResolver,
+  VisibleDocuments,
+  VisibleDocumentsBatch,
+} from './visible-documents.ts'
 
 /**
  * PostgreSQL full-text search behind the `SearchIndex` port (ADR-010,
@@ -34,7 +47,9 @@ import type { VisibleDocumentResolver, VisibleDocuments } from './visible-docume
  * second through the domain's own materialise-and-combine, a bounded number
  * of workspaces at a time). Nothing is fetched and then discarded, so a
  * document a principal cannot read is never scored, never counted, and never
- * paged past.
+ * paged past. The walk is the dearest part of a query, so a request that asks
+ * for a page and its facets passes one {@link SharedVisibility} to both and the
+ * walk of each batch runs once (see {@link batchResolver}).
  *
  * **The match is AND first, widened to OR only when the AND finds too
  * little.** Every word the author typed has to appear, which is precise and
@@ -116,11 +131,13 @@ interface HitRecord extends Record<string, unknown> {
   workspace_id: string
   title: string
   body: string
+  tags: string[]
   score: number
 }
 
 export function createPostgresSearchIndex(deps: PostgresSearchIndexDependencies): SearchIndex {
   const trigramAvailable = memoise(deps.trigram ?? (() => probeTrigram(deps.db)))
+  const resolveBatch = batchResolver(deps.visibility)
 
   async function upsert(document: IndexableDocument, bodyByteLimit?: number): Promise<void> {
     const values = toIndexRow({
@@ -161,16 +178,19 @@ export function createPostgresSearchIndex(deps: PostgresSearchIndexDependencies)
       if (filter.workspaceIds.length === 0) return { hits: [] }
 
       const cursor = options.cursor === undefined ? null : decodeSearchCursor(options.cursor)
-      const batch = await deps.visibility.resolve({
-        filter,
-        ...(options.currentWorkspaceId === undefined
-          ? {}
-          : { currentWorkspaceId: options.currentWorkspaceId }),
-        from: cursor?.from ?? 0,
-      })
+      const batch = await resolveBatch(
+        {
+          filter,
+          ...(options.currentWorkspaceId === undefined
+            ? {}
+            : { currentWorkspaceId: options.currentWorkspaceId }),
+          from: cursor?.from ?? 0,
+        },
+        options.visibility,
+      )
       if (batch.workspaceIds.length === 0) return { hits: [] }
 
-      const translated = translateQuery(query)
+      const translated = translateQuery(query, askerOf(filter))
       const scoredAt = cursor === null ? deps.clock.now() : new Date(cursor.at)
       // A quoted phrase is an exact demand: nothing fuzzy may bring in a
       // document that does not contain it (the negative test in
@@ -208,7 +228,242 @@ export function createPostgresSearchIndex(deps: PostgresSearchIndexDependencies)
         }),
       }
     },
+
+    async suggest(
+      request: SuggestionRequest,
+      filter: VisibilityFilter,
+    ): Promise<readonly string[]> {
+      return suggestValues(deps, request, filter)
+    },
+
+    async facets(
+      query: SearchQuery,
+      filter: VisibilityFilter,
+      options: FacetsOptions,
+    ): Promise<FacetCounts> {
+      return countFacets({ deps, resolveBatch, trigramAvailable }, query, filter, options)
+    },
   }
+}
+
+/**
+ * Completes a filter's value from the documents the caller may read (ADR-010,
+ * amendment of 2026-10-17).
+ *
+ * It walks the same visibility batches a search does — the workspace the
+ * caller is in first, then five at a time — and applies each batch's
+ * permission predicate inside the statement, so a name or a tag that is only
+ * on a document the caller is denied is never selected, let alone returned.
+ * It stops as soon as the limit is filled, so the common case costs one walk;
+ * the values from a later batch can then rank below ones already found, which
+ * is the same trade search makes and for the same reason (a bounded cost per
+ * keystroke).
+ */
+async function suggestValues(
+  deps: PostgresSearchIndexDependencies,
+  request: SuggestionRequest,
+  filter: VisibilityFilter,
+): Promise<readonly string[]> {
+  const found = new Map<string, string>()
+  let ranked: readonly string[] = []
+  let from: number | null = 0
+
+  while (from !== null) {
+    const batch = await deps.visibility.resolve({
+      filter,
+      ...(request.currentWorkspaceId === undefined
+        ? {}
+        : { currentWorkspaceId: request.currentWorkspaceId }),
+      from,
+    })
+    if (batch.workspaceIds.length === 0) break
+
+    const { rows } = await deps.db.execute<{ value: string }>(suggestionQuery(request, batch))
+    for (const row of rows) found.set(row.value.toLowerCase(), row.value)
+    ranked = rankSuggestions(
+      [...found.values()].map(suggestion),
+      request.prefix,
+      request.limit,
+    ).map((candidate) => candidate.value)
+    from = ranked.length >= request.limit ? null : batch.nextFrom
+  }
+  return ranked
+}
+
+/**
+ * The distinct values of one field over one batch, best first, at most
+ * `limit`.
+ *
+ * What was typed is a bound parameter inside a `LIKE` pattern with `%`, `_`
+ * and `\` escaped, so it can only ever be text. Tags are stored folded to
+ * lower case; people are the accounts whose address is among the contributors
+ * of a document the caller may read, so a Git-synced author with no account
+ * is not named, and an address is never selected — nor is a display name
+ * that is itself an address, which would be one by another route.
+ */
+function suggestionQuery(request: SuggestionRequest, batch: VisibleDocumentsBatch): SQL {
+  const needle = request.prefix
+    .trim()
+    .toLowerCase()
+    .replace(/[\\%_]/gu, '\\$&')
+  const contains = `%${needle}%`
+  const startsWith = `${needle}%`
+  const visible = allOf(visibilityPredicates(batch.visible, batch.workspaceIds))
+
+  const distinctValues =
+    request.field === 'tag'
+      ? // Every node of the hierarchy, so `area` is offered beside `area/billing`.
+        sql`SELECT DISTINCT tag AS value FROM ${documentSearch}, unnest(${documentSearch.tagPaths}) AS tag WHERE ${visible}`
+      : sql`SELECT DISTINCT ON (lower(u.display_name)) u.display_name AS value
+          FROM users u
+          WHERE u.display_name NOT LIKE '%@%' AND lower(trim(u.email)) IN (
+            SELECT DISTINCT unnest(${documentSearch.contributorEmails}) FROM ${documentSearch} WHERE ${visible}
+          )
+          ORDER BY lower(u.display_name), u.display_name`
+
+  return sql`
+    SELECT value FROM (${distinctValues}) AS distinct_values
+    WHERE lower(value) LIKE ${contains} ESCAPE '\\'
+    ORDER BY (lower(value) NOT LIKE ${startsWith} ESCAPE '\\'), lower(value), value
+    LIMIT ${request.limit}::int
+  `
+}
+
+/** What counting facets needs besides the query: the database, the walk, and whether typos are tolerated. */
+interface FacetCollaborators {
+  readonly deps: PostgresSearchIndexDependencies
+  readonly resolveBatch: BatchResolver
+  readonly trigramAvailable: () => Promise<boolean>
+}
+
+type BatchResolver = (
+  request: VisibleDocumentRequest,
+  shared: SharedVisibility | undefined,
+) => Promise<VisibleDocumentsBatch>
+
+/**
+ * The resolver, answering once per batch for the calls that share a
+ * {@link SharedVisibility} (ADR-010, amendment of 2026-10-17).
+ *
+ * What was resolved is kept against the handle and nowhere else, so it lives
+ * exactly as long as the request that made it (the `WeakMap` lets it go with
+ * the handle) and is never a cache across requests: a permission that changed
+ * is seen by the next request. It is the *promise* that is kept, so a page and
+ * its facets in flight together wait on one walk rather than starting two. A
+ * batch is keyed by where it starts and the workspace the order was set by,
+ * because those are what make two walks the same walk; a request that differs
+ * in either resolves for itself. A handle is used only for the filter it was
+ * made for, so offering it with another caller's filter resolves afresh.
+ */
+function batchResolver(resolver: VisibleDocumentResolver): BatchResolver {
+  const walks = new WeakMap<SharedVisibility, Map<string, Promise<VisibleDocumentsBatch>>>()
+  return (request, shared) => {
+    if (shared?.filter !== request.filter) return resolver.resolve(request)
+    const batches = walks.get(shared) ?? new Map<string, Promise<VisibleDocumentsBatch>>()
+    walks.set(shared, batches)
+    const key = `${request.currentWorkspaceId ?? ''}/${request.from}`
+    const walk = batches.get(key) ?? resolver.resolve(request)
+    batches.set(key, walk)
+    return walk
+  }
+}
+
+interface FacetRow extends Record<string, unknown> {
+  facet: FacetName
+  value: string
+  count: number
+}
+
+/**
+ * What the query matches, counted (ADR-010, amendment of 2026-10-17).
+ *
+ * It walks every batch of workspaces the caller may read, as a search pages
+ * through them, and adds each batch's counts to the totals: a count is over
+ * the whole matching set, so it cannot stop early as `suggest` does. The
+ * permission predicate is inside each statement, so a document the caller is
+ * denied is never counted.
+ *
+ * The match is the strict one: the AND of every word, with the same typo arm a
+ * search's AND arm has, and never the OR widening. Counts then equal what
+ * paging a search to the end shows whenever the search did not need to widen
+ * (it only widens below one screenful of matches), and a refinement's count is
+ * the number of results it will give.
+ */
+async function countFacets(
+  { deps, resolveBatch, trigramAvailable }: FacetCollaborators,
+  query: SearchQuery,
+  filter: VisibilityFilter,
+  options: FacetsOptions,
+): Promise<FacetCounts> {
+  const totals: Record<FacetName, Map<string, number>> = {
+    tag: new Map(),
+    status: new Map(),
+    collection: new Map(),
+  }
+
+  if (options.facets.length > 0 && filter.workspaceIds.length > 0) {
+    const translated = translateQuery(query, askerOf(filter))
+    const trigram =
+      translated.text.length > 0 && !translated.hasPhrase && (await trigramAvailable())
+
+    let from: number | null = 0
+    while (from !== null) {
+      const batch = await resolveBatch(
+        {
+          filter,
+          ...(options.currentWorkspaceId === undefined
+            ? {}
+            : { currentWorkspaceId: options.currentWorkspaceId }),
+          from,
+        },
+        options.visibility,
+      )
+      if (batch.workspaceIds.length === 0) break
+      const statement = facetsQuery({ translated, trigram, batch }, options.facets)
+      const { rows } = await withTrigramThreshold(deps, trigram, (executor) =>
+        executor.execute<FacetRow>(statement),
+      )
+      for (const row of rows) {
+        addCounts(totals[row.facet], [{ value: row.value, count: Number(row.count) }])
+      }
+      from = batch.nextFrom
+    }
+  }
+
+  return Object.fromEntries(
+    options.facets.map((facet) => [
+      facet,
+      // Collections come back whole: the application merges the ones that share a name.
+      rankFacetCounts(totals[facet], facet === 'collection' ? totals[facet].size : options.limit),
+    ]),
+  )
+}
+
+/**
+ * The matching documents once, and each requested facet as a grouping of the
+ * same rows, so counting three facets reads the index once, not three times.
+ */
+function facetsQuery(
+  plan: Pick<QueryPlan, 'translated' | 'trigram' | 'batch'>,
+  facets: readonly FacetName[],
+): SQL {
+  const groupings: Record<FacetName, SQL> = {
+    tag: sql`SELECT 'tag' AS facet, path AS value, count(*)::int AS count FROM matched_rows, unnest(tag_paths) AS path GROUP BY path`,
+    status: sql`SELECT 'status' AS facet, status AS value, count(*)::int AS count FROM matched_rows GROUP BY status`,
+    collection: sql`SELECT 'collection' AS facet, collection_id AS value, count(*)::int AS count FROM matched_rows WHERE collection_id IS NOT NULL GROUP BY collection_id`,
+  }
+  const requested = [...new Set(facets)].map((facet) => groupings[facet])
+
+  return sql`
+    WITH matched AS (
+      ${candidates(plan, plan.translated.all, commonPredicate(plan))}
+    ), matched_rows AS MATERIALIZED (
+      SELECT ${documentSearch.tagPaths} AS tag_paths, ${documentSearch.status} AS status, ${documentSearch.collectionId} AS collection_id
+      FROM matched
+      JOIN ${documentSearch} ON ${documentSearch.documentId} = matched.document_id
+    )
+    ${requested.reduce((all, next) => sql`${all} UNION ALL ${next}`)}
+  `
 }
 
 interface QueryPlan {
@@ -272,15 +527,29 @@ async function run(
   limit: number,
 ): Promise<readonly HitRecord[]> {
   const statement = pageQuery(plan, arm, cursor, limit)
-  if (!plan.trigram) {
-    const { rows } = await deps.db.execute<HitRecord>(statement)
+  return withTrigramThreshold(deps, plan.trigram, async (executor) => {
+    const { rows } = await executor.execute<HitRecord>(statement)
     return rows
-  }
+  })
+}
+
+/** Something a statement can be executed on: the client, or the transaction that wraps it. */
+type Executor = Pick<DrizzleClient, 'execute'>
+
+/**
+ * Runs `work` in the transaction that sets the trigram threshold when its
+ * statement has a trigram arm, and on the client directly when it has not.
+ */
+async function withTrigramThreshold<Result>(
+  deps: PostgresSearchIndexDependencies,
+  trigram: boolean,
+  work: (executor: Executor) => Promise<Result>,
+): Promise<Result> {
+  if (!trigram) return work(deps.db)
   return deps.db.transaction(async (tx) => {
     // The value is this module's own constant, never anything a caller sent.
     await tx.execute(sql.raw(`SET LOCAL pg_trgm.similarity_threshold = ${TRIGRAM_THRESHOLD}`))
-    const { rows } = await tx.execute<HitRecord>(statement)
-    return rows
+    return work(tx)
   })
 }
 
@@ -310,7 +579,8 @@ function pageQuery(
       scored.workspace_id,
       scored.title,
       scored.score,
-      ${bodyExpression(match)} AS body
+      ${bodyExpression(match)} AS body,
+      ${documentSearch.tags} AS tags
     FROM scored
     JOIN ${documentSearch} ON ${documentSearch.documentId} = scored.document_id
     ${keysetPredicate(cursor)}
@@ -328,19 +598,28 @@ function pageQuery(
  * workspaces — so there is always at least one, and a fallback for "no
  * predicates at all" would be a branch that can never run.
  */
-function commonPredicate(plan: QueryPlan): SQL {
-  return [
+function commonPredicate(plan: Pick<QueryPlan, 'batch' | 'translated'>): SQL {
+  return allOf([
     ...visibilityPredicates(plan.batch.visible, plan.batch.workspaceIds),
     ...plan.translated.predicates,
     ...excludePredicate(plan.translated),
-  ].reduce((all, next) => sql`${all} AND ${next}`)
+  ])
+}
+
+/** The predicates ANDed; never called with none, because a restriction to the batch's workspaces is always among them. */
+function allOf(predicates: readonly SQL[]): SQL {
+  return predicates.reduce((all, next) => sql`${all} AND ${next}`)
 }
 
 /**
  * The candidate ids: one `SELECT` per arm, unioned, so each arm is planned
  * against the index built for it.
  */
-function candidates(plan: QueryPlan, match: SQL | null, common: SQL): SQL {
+function candidates(
+  plan: Pick<QueryPlan, 'translated' | 'trigram'>,
+  match: SQL | null,
+  common: SQL,
+): SQL {
   const arms: SQL[] = []
   if (match !== null) {
     arms.push(select(sql`${common} AND ${documentSearch.searchVector} @@ ${match}`))
@@ -380,6 +659,19 @@ export async function probeTrigram(db: DrizzleClient): Promise<boolean> {
  * arrived. A rejected probe is forgotten, so a database that was briefly
  * unreachable is asked again rather than being remembered as broken.
  */
+/**
+ * The accounts the request is made as, for `by:me`: the user principals in the
+ * visibility filter, which is who the route resolved the caller to. A group, the
+ * public, and a share link are not a person, so `me` is nobody for them.
+ */
+function askerOf(filter: VisibilityFilter): Asker {
+  return {
+    userIds: [...principalsFromKeys(filter.principalKeys)].flatMap((principal) =>
+      principal.kind === 'user' ? [principal.userId] : [],
+    ),
+  }
+}
+
 function memoise(probe: () => Promise<boolean>): () => Promise<boolean> {
   let answer: Promise<boolean> | null = null
   return () => {
@@ -586,6 +878,7 @@ function toHit(record: HitRecord): SearchHit {
     workspaceId: record.workspace_id as WorkspaceId,
     title: record.title,
     body: record.body,
+    tags: record.tags,
     score: Number(record.score),
   }
 }

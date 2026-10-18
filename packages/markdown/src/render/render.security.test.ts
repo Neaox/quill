@@ -11,6 +11,13 @@ import { parseMarkdown } from '../pipeline/processor.ts'
 import { renderHtml } from './html.ts'
 import { sanitizeSchema } from './sanitize-schema.ts'
 
+const input = (properties: Properties): Element => ({
+  type: 'element',
+  tagName: 'input',
+  properties,
+  children: [],
+})
+
 const render = (markdown: string): string => renderHtml(parseMarkdown(markdown))
 
 // A genuine attribute breakout looks like `"` (closing the value early) then a
@@ -32,13 +39,6 @@ const ATTRIBUTE_BREAKOUT = /"\s+on[a-z-]+\s*=\s*"/i
  * renderer itself builds) still comes through, and that the hostile part
  * survives only as inert, escaped text.
  */
-const input = (properties: Properties): Element => ({
-  type: 'element',
-  tagName: 'input',
-  properties,
-  children: [],
-})
-
 describe('renderHtml: adversarial corpus', () => {
   it('escapes a raw <script> block to inert text', () => {
     const html = render('Before.\n\n<script>alert(document.cookie)</script>\n\nAfter.\n')

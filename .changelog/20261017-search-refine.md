@@ -1,0 +1,1 @@
+Added: The search results page offers ways to narrow a search. Under your filters, a Refine section lists the commonest tags, statuses and collections among the results, each with how many results it would leave; choosing one adds that filter to your search. A custom property filter such as `prop:severity=high` now shows as a "Property: severity=high" chip.

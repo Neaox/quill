@@ -6,7 +6,7 @@ import { useApiClient } from './client-context.tsx'
 import { ApiError } from './errors.ts'
 import { request } from './http.ts'
 import { queryKeys } from './query-keys.ts'
-import type { SearchResults } from './types.ts'
+import type { FacetName, SearchResults, SearchSuggestionField, SearchSuggestions } from './types.ts'
 
 /**
  * `GET /api/search`, for both surfaces that read it: the command palette,
@@ -36,6 +36,13 @@ export const PALETTE_LIMIT = 8
 /** The results page's page size. The server's own default and maximum are 20 and 50. */
 export const RESULTS_LIMIT = 20
 
+/**
+ * The facets the results page asks for, in the order it shows them. The route's
+ * loader and the page's hook both read this, so they share one cache entry
+ * (the key carries the facets).
+ */
+export const RESULTS_FACETS: readonly FacetName[] = ['tag', 'status', 'collection']
+
 export interface SearchInput {
   /** Exactly what was typed. Trimmed here, so a trailing space is not a new search. */
   readonly query: string
@@ -47,6 +54,15 @@ export interface SearchInput {
    */
   readonly workspaceId: string | null
   readonly limit?: number
+}
+
+export interface SearchResultsInput extends SearchInput {
+  /**
+   * The facets to count alongside the first page. Only the results page asks:
+   * counting is extra work for the server, and the palette has no room to show
+   * the answer.
+   */
+  readonly facets?: readonly FacetName[] | undefined
 }
 
 /**
@@ -62,6 +78,7 @@ function fetchPage(
   input: SearchInput,
   cursor: string | undefined,
   signal: AbortSignal,
+  facets: readonly FacetName[] = [],
 ): Promise<SearchResults> {
   return request(
     client.GET('/api/search', {
@@ -72,6 +89,8 @@ function fetchPage(
           ...(input.workspaceId === null ? {} : { workspace: input.workspaceId }),
           ...(input.limit === undefined ? {} : { limit: input.limit }),
           ...(cursor === undefined ? {} : { cursor }),
+          // Counted over the whole match set, so later pages add nothing.
+          ...(cursor !== undefined || facets.length === 0 ? {} : { facets: facets.join(',') }),
         },
       },
     }),
@@ -109,21 +128,68 @@ export function useSearch(input: SearchInput) {
  * boost cannot shuffle later pages
  * (`docs/architecture/api-contract-m2.md`).
  */
-export function searchResultsQueryOptions(client: ApiClient, input: SearchInput) {
+export function searchResultsQueryOptions(client: ApiClient, input: SearchResultsInput) {
   const query = input.query.trim()
+  const facets = input.facets ?? []
   return {
-    queryKey: queryKeys.searchResults(input.workspaceId, query),
+    queryKey: queryKeys.searchResults(input.workspaceId, query, facets.join(',')),
     queryFn: ({ pageParam, signal }: { pageParam: string | undefined; signal: AbortSignal }) =>
-      fetchPage(client, { limit: RESULTS_LIMIT, ...input }, pageParam, signal),
+      fetchPage(client, { limit: RESULTS_LIMIT, ...input }, pageParam, signal, facets),
     initialPageParam: undefined,
     getNextPageParam: (lastPage: SearchResults) => lastPage.nextCursor,
     enabled: query !== '' && !queryTooLong(query),
   }
 }
 
-export function useSearchResults(input: SearchInput) {
+export function useSearchResults(input: SearchResultsInput) {
   const client = useApiClient()
   return useInfiniteQuery(searchResultsQueryOptions(client, input))
+}
+
+/** How long a list of suggestions is trusted: a name that was just added should turn up soon. */
+const SUGGESTIONS_STALE_MS = 30_000
+
+export interface SearchSuggestionsInput {
+  /** The filter being typed; undefined when the caret is not in one, which asks nothing. */
+  readonly field: SearchSuggestionField | undefined
+  /** What has been typed after the colon. Debounce it at the call site, not here. */
+  readonly prefix: string
+  /** The workspace the search is run from, by id or slug, or `null` outside one. */
+  readonly workspaceId: string | null
+}
+
+/**
+ * `GET /api/search/suggestions`: the values a filter could take, for the
+ * typeahead under a search field.
+ *
+ * The previous answer stays while the next is fetched (`keepPreviousData`), so
+ * the list narrows in place rather than flickering to nothing between
+ * keystrokes, and the abort `signal` cancels the request a newer prefix has
+ * made pointless. The wait for a pause in typing belongs to the caller
+ * (`useDebouncedValue`): this hook asks about exactly what it is given.
+ */
+export function useSearchSuggestions({ field, prefix, workspaceId }: SearchSuggestionsInput) {
+  const client = useApiClient()
+  return useQuery({
+    queryKey: queryKeys.searchSuggestions(workspaceId, field ?? null, prefix),
+    queryFn: ({ signal }): Promise<SearchSuggestions> =>
+      request(
+        client.GET('/api/search/suggestions', {
+          signal,
+          params: {
+            query: {
+              // `enabled` below guarantees a field by the time this runs.
+              field: field ?? 'by',
+              ...(prefix === '' ? {} : { prefix }),
+              ...(workspaceId === null ? {} : { workspace: workspaceId }),
+            },
+          },
+        }),
+      ),
+    enabled: field !== undefined,
+    staleTime: SUGGESTIONS_STALE_MS,
+    placeholderData: keepPreviousData,
+  })
 }
 
 /** The three ways a query is refused, so a field can say which and point at it. */

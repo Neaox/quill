@@ -39,3 +39,7 @@ Thumbs.db
 .vscode/*
 !.vscode/extensions.json
 !.vscode/settings.json
+
+# Throw-away Playwright probes: scratch, never committed (they fail the gate by design).
+e2e/.probe-*
+e2e/.drawio-*

@@ -7,6 +7,7 @@ import { expectNoAccessibilityViolations } from '@quill/ui/testing/axe'
 
 import { createHookWrapper } from '../../../lib/api/hook-wrapper.tsx'
 import type { PublicMenu, PublicMenuTarget } from '../../../lib/api/index.ts'
+import { searchHitFixture } from '../../../lib/api/search-fixtures.ts'
 import { errorResponse, jsonResponse, type FakeRoutes } from '../../../lib/api/testing.ts'
 import { PublicMenuEditor } from './public-menu-editor.tsx'
 
@@ -61,17 +62,16 @@ const targets = (request: Request): Response => {
   return jsonResponse(200, { targets: TARGETS.filter((target) => asked.has(target.id)) })
 }
 
-const searchHit = (documentId: string, title: string) => ({
-  documentId,
-  shortId: 'k000000001',
-  slug: title.toLowerCase(),
-  title,
-  path: `${title}.md`,
-  workspaceId: 'w-1',
-  breadcrumb: ['Engineering', 'Architecture'],
-  snippet: { text: title, ranges: [] },
-  score: 1,
-})
+const searchHit = (documentId: string, title: string) =>
+  searchHitFixture(title, {
+    documentId,
+    shortId: 'k000000001',
+    slug: title.toLowerCase(),
+    path: `${title}.md`,
+    workspaceId: 'w-1',
+    breadcrumb: ['Engineering', 'Architecture'],
+    snippet: { text: title, ranges: [] },
+  })
 
 function routes(extra: FakeRoutes = {}): FakeRoutes {
   return {

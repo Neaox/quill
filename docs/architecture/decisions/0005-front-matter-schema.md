@@ -24,4 +24,5 @@ Document metadata (identity, title, owners, status, tags, review cycle, template
 ## Consequences
 
 - The identity rule of D17 has a concrete home.
+- Front-matter keys that are not core fields stay open and preserved. Search can ask about them on purpose, with `prop:key=value`, over a bounded, folded copy kept in the index (ADR-010, amendment of 2026-10-17); they are never searched, suggested or counted by default. `tags` may be hierarchical, with `/` as the separator, and are read by `normaliseTag` in `@quill/search`.
 - Externally synced files that lack an `id` are assigned one on import, which is a write back to the repository; R4 covers how that is done without surprising the author.

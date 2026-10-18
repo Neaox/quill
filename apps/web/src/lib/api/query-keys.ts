@@ -155,6 +155,10 @@ export const queryKeys = {
    */
   search: (workspaceId: string | null, query: string, cursor: string | null) =>
     ['search', workspaceId, query, cursor] as const,
-  searchResults: (workspaceId: string | null, query: string) =>
-    ['search-results', workspaceId, query] as const,
+  /** `facets` is part of the key: an answer with counts is not the same answer as one without. */
+  searchResults: (workspaceId: string | null, query: string, facets: string) =>
+    ['search-results', workspaceId, query, facets] as const,
+  /** Values a filter could take, by the workspace asked from, the filter, and what is typed of it. */
+  searchSuggestions: (workspaceId: string | null, field: string | null, prefix: string) =>
+    ['search-suggestions', workspaceId, field, prefix] as const,
 }

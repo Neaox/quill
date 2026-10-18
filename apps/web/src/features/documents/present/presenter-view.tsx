@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from 'react'
 import type { MouseEvent } from 'react'
 
 import { Badge, Button, buttonClassName, PresentGoTo, tv } from '@quill/ui'
+import '@quill/ui/styles/present.css'
 
 import { DocumentBody } from '../document-body.tsx'
 import type { PresentStep } from './present-steps.ts'

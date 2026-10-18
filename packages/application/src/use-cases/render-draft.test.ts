@@ -108,6 +108,30 @@ describe('rendering a document’s draft', () => {
     expect(result.kind === 'rendered' && result.content.html).toContain('Not out yet.')
   })
 
+  it('titles it as the draft names itself, or by the document when the draft names nothing', async () => {
+    const id = await documentWith('# Runbook')
+    const titled = await renderDraft(deps, { documentId: id })
+    expect(titled.kind === 'rendered' && titled.title).toBe('Runbook')
+
+    await uow.repos.drafts.init({
+      documentId: id,
+      baseRevision: null,
+      ast: { version: 1, frontMatter: { title: 'Renamed in the draft' }, ast: { body: 'Words.' } },
+      now: NOW,
+    })
+    const renamed = await renderDraft(deps, { documentId: id })
+    expect(renamed.kind === 'rendered' && renamed.title).toBe('Renamed in the draft')
+
+    await uow.repos.drafts.init({
+      documentId: id,
+      baseRevision: null,
+      ast: { version: 1, frontMatter: {}, ast: { body: 'Words with no heading.' } },
+      now: NOW,
+    })
+    const untitled = await renderDraft(deps, { documentId: id })
+    expect(untitled.kind === 'rendered' && untitled.title).toBe('Runbook')
+  })
+
   it('says when the draft was last saved, and what revision it is based on', async () => {
     const id = await documentWith('# Runbook\nBody.', true)
     const draft = await uow.repos.drafts.find(id)
@@ -162,6 +186,21 @@ describe('rendering a document’s draft', () => {
     expect(await renderDraft(deps, { documentId: bare })).toEqual({
       kind: 'no-draft',
       documentId: bare,
+    })
+  })
+
+  it('says so when the draft is in a form this release cannot read', async () => {
+    const id = await documentWith('# Runbook')
+    await uow.repos.drafts.init({
+      documentId: id,
+      baseRevision: null,
+      ast: { version: 999 },
+      now: NOW,
+    })
+
+    expect(await renderDraft(deps, { documentId: id })).toEqual({
+      kind: 'no-draft',
+      documentId: id,
     })
   })
 

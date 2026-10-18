@@ -63,6 +63,7 @@ describe('linesOf', () => {
   it('ignores the trailing newline every file ends with', () => {
     expect(linesOf('a\nb\n')).toEqual(['a', 'b'])
     expect(linesOf('')).toEqual([])
+    expect(linesOf('a\nb')).toEqual(['a', 'b'])
   })
 
   it('keeps the last line of a text that does not end in a newline', () => {

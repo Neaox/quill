@@ -30,7 +30,7 @@ const REASONS: Readonly<Record<InvalidQueryKind, string>> = {
 }
 
 const HELP =
-  'Search for words, "an exact phrase", -something to exclude, or a filter such as title:, tag:, owner:, status:, collection: or in:.'
+  'Search for words, "an exact phrase", -something to exclude, or a filter such as title:, tag:, owner:, status:, collection:, in:, by: or team:.'
 
 function isKnownKind(kind: string): kind is InvalidQueryKind {
   return Object.hasOwn(REASONS, kind)

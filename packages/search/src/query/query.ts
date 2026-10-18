@@ -1,7 +1,7 @@
 /**
  * The search query language: free terms, quoted phrases, `-` exclusions, and
  * field filters (`title:`, `tag:`, `owner:`, `status:`, `collection:`,
- * `in:workspace`). This is the structured form both {@link parseQuery} and
+ * `in:workspace`, `by:`, `team:`, `prop:key=value`). This is the structured form both {@link parseQuery} and
  * {@link serializeQuery} agree on; nothing downstream reads query text again.
  *
  * The shapes themselves belong to the search port
@@ -41,6 +41,9 @@ export const FIELD_FILTER_KEYS = [
   'status',
   'collection',
   'in',
+  'by',
+  'team',
+  'prop',
 ] as const satisfies readonly FieldFilterKey[]
 
 export function isFieldFilterKey(value: string): value is FieldFilterKey {

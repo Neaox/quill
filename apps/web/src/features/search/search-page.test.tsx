@@ -4,6 +4,11 @@ import { describe, expect, it } from 'vitest'
 
 import { expectNoAccessibilityViolations } from '@quill/ui/testing/axe'
 
+import {
+  facetValueFixture,
+  searchHitFixture,
+  searchResultsFixture,
+} from '../../lib/api/search-fixtures.ts'
 import { renderApp } from '../../lib/api/render-app.tsx'
 import { errorResponse, jsonResponse, type FakeRoutes } from '../../lib/api/testing.ts'
 
@@ -25,20 +30,7 @@ const workspace = () =>
     createdAt: '2026-01-01T00:00:00.000Z',
   })
 
-function hit(title: string, overrides: Record<string, unknown> = {}) {
-  return {
-    documentId: `doc-${title}`,
-    shortId: 'k7m3q9v2xd',
-    slug: 'regional-failover',
-    title,
-    path: 'runbooks/regional-failover',
-    workspaceId: 'ws-1',
-    breadcrumb: ['Engineering', 'Runbooks'],
-    snippet: { text: 'Follow the failover runbook.', ranges: [{ start: 11, end: 19 }] },
-    score: 1,
-    ...overrides,
-  }
-}
+const hit = searchHitFixture
 
 const PLATFORM_GROUP = {
   workspace: { id: 'ws-2', slug: 'platform-docs', name: 'Platform docs' },
@@ -361,5 +353,334 @@ describe('the search results page', () => {
     await waitFor(() => {
       expect(document.title).toBe('Search: failover')
     })
+  })
+})
+
+const answer = (query: string, current = [hit('Regional failover')]) =>
+  jsonResponse(200, { query, current, elsewhere: [] })
+
+const people = () =>
+  jsonResponse(200, {
+    field: 'by',
+    suggestions: [
+      { value: 'ada', label: 'Ada Lovelace' },
+      { value: 'sam', label: 'Sam Taylor' },
+    ],
+  })
+
+const box = () => screen.findByRole('combobox', { name: 'Search this organisation' })
+
+describe('the search results page: filters', () => {
+  function filterRoutes(search: FakeRoutes['x'] = () => answer('x')): FakeRoutes {
+    return { ...shellRoutes(search), 'GET /api/search/suggestions': people }
+  }
+
+  it('shows the applied query’s filters as chips, in a list that counts them', async () => {
+    renderApp('/w/engineering/search?q=failover%20by%3Ame%20-tag%3Aold', filterRoutes())
+
+    const list = await screen.findByRole('list', { name: 'Filters' })
+    expect(
+      within(list)
+        .getAllByRole('listitem')
+        .map((item) => item.textContent),
+    ).toEqual(['By: me', 'Not tag: old'])
+    expect(
+      within(list).getByRole('button', { name: 'Remove filter Not tag: old' }),
+    ).toBeInTheDocument()
+  })
+
+  it('describes each hit in full, tags included', async () => {
+    const enriched = hit('Regional failover', {
+      status: 'draft',
+      tags: ['incident', 'dr'],
+      contributors: [{ name: 'Ada Lovelace' }],
+      contributorCount: 1,
+    })
+    renderApp(
+      '/w/engineering/search?q=failover',
+      filterRoutes(() => answer('failover', [enriched])),
+    )
+
+    const link = await screen.findByRole('link', { name: 'Regional failover' })
+    expect(within(link).getByText('draft')).toBeInTheDocument()
+    expect(within(link).getByText('by Ada Lovelace')).toBeInTheDocument()
+    expect(within(link).getByText('incident')).toBeInTheDocument()
+    expect(link).toHaveAccessibleDescription(/Updated/)
+  })
+
+  it('renders no list at all for a query with no filters', async () => {
+    renderApp('/w/engineering/search?q=failover', filterRoutes())
+
+    await box()
+    expect(screen.queryByRole('list', { name: 'Filters' })).not.toBeInTheDocument()
+  })
+
+  it('takes a filter off by searching again without it, and puts focus back in the box', async () => {
+    const { router } = renderApp(
+      '/w/engineering/search?q=failover%20by%3Ame%20-tag%3Aold',
+      filterRoutes(),
+    )
+    await screen.findByRole('list', { name: 'Filters' })
+
+    await userEvent.click(screen.getByRole('button', { name: 'Remove filter By: me' }))
+
+    await waitFor(() => {
+      expect(router.state.location.search).toEqual({ q: 'failover -tag:old' })
+    })
+    expect(await box()).toHaveFocus()
+    expect(await screen.findByRole('combobox', { name: 'Search this organisation' })).toHaveValue(
+      'failover -tag:old',
+    )
+    expect(
+      within(screen.getByRole('list', { name: 'Filters' })).getAllByRole('listitem'),
+    ).toHaveLength(1)
+  })
+
+  it('follows the address when it changes, without losing the box it was typed in', async () => {
+    const { router } = renderApp('/w/engineering/search?q=failover', filterRoutes())
+    const before = await box()
+    await userEvent.type(before, ' half-typed')
+
+    await router.navigate({
+      to: '/w/$workspaceSlug/search',
+      params: { workspaceSlug: 'engineering' },
+      search: { q: 'runbook' },
+    })
+
+    await waitFor(() => {
+      expect(before).toHaveValue('runbook')
+    })
+    expect(await box()).toBe(before)
+  })
+
+  it('keeps chips to what was asked, not to what is being typed', async () => {
+    renderApp('/w/engineering/search?q=failover', filterRoutes())
+
+    await userEvent.type(await box(), ' by:me')
+
+    expect(screen.queryByRole('list', { name: 'Filters' })).not.toBeInTheDocument()
+  })
+
+  it('searches for the draft, filters and all, when the form is submitted', async () => {
+    const { router } = renderApp('/w/engineering/search?q=failover', filterRoutes())
+
+    await userEvent.type(await box(), ' by:me{Enter}')
+
+    await waitFor(() => {
+      expect(router.state.location.search).toEqual({ q: 'failover by:me' })
+    })
+    expect(await screen.findByRole('list', { name: 'Filters' })).toBeInTheDocument()
+  })
+
+  it('completes a filter’s value from the server’s suggestions', async () => {
+    const { router } = renderApp('/w/engineering/search', filterRoutes())
+
+    await userEvent.type(await box(), 'by:ad')
+    await userEvent.click(await screen.findByRole('option', { name: 'Ada Lovelace' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Search' }))
+
+    await waitFor(() => {
+      expect(router.state.location.search).toEqual({ q: 'by:ada' })
+    })
+  })
+
+  it('offers each filter that has values as a button, with what it finds as its description', async () => {
+    renderApp('/w/engineering/search?q=failover', filterRoutes())
+
+    const row = await screen.findByRole('list', { name: 'Add a filter:' })
+    expect(
+      within(row)
+        .getAllByRole('button')
+        .map((button) => button.textContent),
+    ).toEqual(['By', 'Team', 'Tag', 'Collection', 'Workspace', 'Status'])
+    expect(within(row).getByRole('button', { name: 'Tag' })).toHaveAccessibleDescription(
+      'A tag the document carries',
+    )
+  })
+
+  it('adds a filter at the end of the box and opens its suggestions', async () => {
+    renderApp('/w/engineering/search?q=failover', filterRoutes())
+
+    await userEvent.click(await screen.findByRole('button', { name: 'By' }))
+
+    expect(await box()).toHaveValue('failover by:')
+    expect(await box()).toHaveFocus()
+    expect(await screen.findByRole('option', { name: 'Ada Lovelace' })).toBeInTheDocument()
+  })
+
+  it('suggests removing a filter when a search with one finds nothing', async () => {
+    renderApp(
+      '/w/engineering/search?q=failover%20by%3Ame',
+      filterRoutes(() => answer('failover by:me', [])),
+    )
+
+    expect(await screen.findByText('Nothing matched “failover by:me”')).toBeInTheDocument()
+    expect(screen.getByText(/Try removing a filter/)).toBeInTheDocument()
+  })
+
+  it('does not suggest removing a filter when there is none to remove', async () => {
+    renderApp(
+      '/w/engineering/search?q=zzz',
+      filterRoutes(() => answer('zzz', [])),
+    )
+
+    await screen.findByText('Nothing matched “zzz”')
+    expect(screen.queryByText(/Try removing a filter/)).not.toBeInTheDocument()
+  })
+
+  it('is free of axe violations with chips, the filter row and suggestions showing', async () => {
+    renderApp('/w/engineering/search?q=failover%20by%3Ame', filterRoutes())
+    await screen.findByRole('list', { name: 'Filters' })
+    await userEvent.type(await box(), ' by:ad')
+    await screen.findByRole('option', { name: 'Ada Lovelace' })
+
+    await expectNoAccessibilityViolations(document.body)
+  })
+})
+
+describe('the search results page: refining', () => {
+  const facets = {
+    tag: [facetValueFixture('api', 12), facetValueFixture('area/billing', 3)],
+    status: [facetValueFixture('draft', 2, 'Draft')],
+    collection: [facetValueFixture('Release notes', 1)],
+  }
+
+  /** Answers like the server: facets only when `facets=` was asked for, on the first page only. */
+  function refineRoutes(
+    reply: (url: URL) => unknown = (url) =>
+      searchResultsFixture(url.searchParams.get('q') ?? '', [hit('Regional failover')], facets),
+  ): { asked: URL[]; routes: FakeRoutes } {
+    const asked: URL[] = []
+    return {
+      asked,
+      routes: shellRoutes((request: Request) => {
+        const url = new URL(request.url)
+        asked.push(url)
+        return jsonResponse(200, reply(url))
+      }),
+    }
+  }
+
+  it('asks for the three facets, and shows them between the filters and the results', async () => {
+    const { asked, routes } = refineRoutes()
+    renderApp('/w/engineering/search?q=failover%20by%3Ame', routes)
+
+    const refine = await screen.findByRole('region', { name: 'Refine' })
+
+    expect(asked[0]?.searchParams.get('facets')).toBe('tag,status,collection')
+    expect(within(refine).getByRole('button', { name: 'api, 12 results' })).toBeInTheDocument()
+    const filters = screen.getByRole('list', { name: 'Filters' })
+    const results = screen.getByRole('heading', { level: 2, name: 'In this workspace' })
+    expect(filters.compareDocumentPosition(refine) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(refine.compareDocumentPosition(results) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  })
+
+  it('adds the choice to the query as a filter, and puts focus in the box', async () => {
+    const { routes } = refineRoutes()
+    const { router } = renderApp('/w/engineering/search?q=failover%20-draft', routes)
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Release notes, 1 result' }))
+
+    await waitFor(() => {
+      expect(router.state.location.search).toEqual({
+        q: 'failover -draft collection:"Release notes"',
+      })
+    })
+    expect(await box()).toHaveFocus()
+  })
+
+  it('uses the value the server wrote, not the label shown', async () => {
+    const { routes } = refineRoutes()
+    const { router } = renderApp('/w/engineering/search?q=failover', routes)
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Draft, 2 results' }))
+
+    await waitFor(() => {
+      expect(router.state.location.search).toEqual({ q: 'failover status:draft' })
+    })
+  })
+
+  it('no longer offers what has been chosen, once the new answer is in', async () => {
+    const { routes } = refineRoutes()
+    renderApp('/w/engineering/search?q=failover', routes)
+
+    await userEvent.click(await screen.findByRole('button', { name: 'api, 12 results' }))
+
+    await waitFor(() => {
+      expect(screen.queryByRole('button', { name: 'api, 12 results' })).not.toBeInTheDocument()
+    })
+    expect(screen.getByRole('button', { name: 'area/billing, 3 results' })).toBeInTheDocument()
+  })
+
+  it('keeps the previous facets on show while the refined answer is on its way', async () => {
+    const { promise: gate, resolve: release } = Promise.withResolvers<void>()
+    const { routes } = refineRoutes()
+    const slow = routes['GET /api/search']
+    renderApp('/w/engineering/search?q=failover', {
+      ...routes,
+      'GET /api/search': async (request, params) => {
+        if (new URL(request.url).searchParams.get('q') !== 'failover') await gate
+        return slow?.(request, params) ?? jsonResponse(500, {})
+      },
+    })
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Draft, 2 results' }))
+
+    expect(await screen.findByText('Searching…')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'area/billing, 3 results' })).toBeInTheDocument()
+    release()
+    await screen.findByRole('heading', { level: 2, name: 'In this workspace' })
+  })
+
+  it('does not ask again, or lose the facets, when more results are shown', async () => {
+    const { asked, routes } = refineRoutes((url) =>
+      url.searchParams.has('cursor')
+        ? searchResultsFixture('failover', [hit('Failover drill', { documentId: 'doc-drill' })])
+        : {
+            ...searchResultsFixture('failover', [hit('Regional failover')], facets),
+            nextCursor: 'c1',
+          },
+    )
+    renderApp('/w/engineering/search?q=failover', routes)
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Show more' }))
+
+    await screen.findByRole('link', { name: 'Failover drill' })
+    const paging = asked.filter((url) => url.searchParams.has('cursor'))
+    expect(paging.map((url) => url.searchParams.get('cursor'))).toEqual(['c1'])
+    expect(paging[0]?.searchParams.has('facets')).toBe(false)
+    const firstPages = asked.filter((url) => !url.searchParams.has('cursor'))
+    expect(firstPages.every((url) => url.searchParams.has('facets'))).toBe(true)
+    expect(screen.getByRole('button', { name: 'api, 12 results' })).toBeInTheDocument()
+  })
+
+  it('shows no Refine section when the answer has nothing to refine by', async () => {
+    const { routes } = refineRoutes((url) =>
+      searchResultsFixture(url.searchParams.get('q') ?? '', [hit('Regional failover')]),
+    )
+    renderApp('/w/engineering/search?q=failover', routes)
+
+    await screen.findByRole('heading', { level: 2, name: 'In this workspace' })
+
+    expect(screen.queryByRole('region', { name: 'Refine' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: 'Refine' })).not.toBeInTheDocument()
+  })
+
+  it('shows no Refine section when the search failed', async () => {
+    renderApp(
+      '/w/engineering/search?q=zzz',
+      shellRoutes(() => errorResponse(500, 'internal', 'Nope')),
+    )
+    await screen.findByText("Couldn't run that search")
+
+    expect(screen.queryByRole('region', { name: 'Refine' })).not.toBeInTheDocument()
+  })
+
+  it('is free of axe violations with the Refine section showing', async () => {
+    const { routes } = refineRoutes()
+    renderApp('/w/engineering/search?q=failover%20by%3Ame', routes)
+    await screen.findByRole('region', { name: 'Refine' })
+
+    await expectNoAccessibilityViolations(document.body)
   })
 })

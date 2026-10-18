@@ -234,6 +234,13 @@ describe('readDrawioModels', () => {
     })
   })
 
+  it('skips a page written as an empty element', async () => {
+    expect(await readDrawioModels(mxfile('<diagram id="e" name="e"/>'), inflate)).toEqual({
+      kind: 'models',
+      models: [],
+    })
+  })
+
   it('says a source that is not draw.io is not one', async () => {
     expect(await readDrawioModels('<svg/>', inflate)).toEqual({ kind: 'not-drawio' })
   })
@@ -288,6 +295,15 @@ describe('editableDrawioSource', () => {
       kind: 'source',
       xml: empty,
       converted: false,
+    })
+  })
+
+  it('converts a shape that has no style at all', async () => {
+    const bare = model('<mxCell id="a" value="A" vertex="1" parent="1"/>')
+    expect(await editableDrawioSource(bare, inflate)).toEqual({
+      kind: 'source',
+      xml: model('<mxCell id="a" value="A" vertex="1" parent="1" style="convertToSvg=1;"/>'),
+      converted: true,
     })
   })
 

@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { describe, expect, it } from 'vitest'
 
 import { renderApp } from '../../lib/api/render-app.tsx'
+import { searchHitFixture } from '../../lib/api/search-fixtures.ts'
 import { jsonResponse, type FakeRoutes } from '../../lib/api/testing.ts'
 
 const me = () =>
@@ -43,17 +44,10 @@ const results = () =>
       {
         workspace: { id: 'ws-1', slug: 'engineering', name: 'Engineering' },
         hits: [
-          {
+          searchHitFixture('Regional failover', {
             documentId: 'doc-1',
-            shortId: 'k7m3q9v2xd',
-            slug: 'regional-failover',
-            title: 'Regional failover',
-            path: 'runbooks/regional-failover',
-            workspaceId: 'ws-1',
-            breadcrumb: ['Engineering', 'Runbooks'],
             snippet: { text: 'The failover runbook.', ranges: [{ start: 4, end: 12 }] },
-            score: 1,
-          },
+          }),
         ],
       },
     ],

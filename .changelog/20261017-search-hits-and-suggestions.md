@@ -1,0 +1,3 @@
+Added: Search results say more about each document: whether it is a draft or published, when it last changed, its first few tags, and who has published it ("Ada, Sam +2").
+Added: Typing a filter in search (`by:`, `team:`, `tag:`, `collection:`, `in:`, `status:`) can now suggest values. People are offered by name, and only people who published something you can read; tags, collections and workspaces are the ones you can read; teams are your own organisation unit, the units above it, and their groups.
+Security: Suggestions never show an email address, and never offer a name, tag, team or collection that exists only where you have no access.

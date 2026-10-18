@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 import {
   createGrant,
   defaultOrganisationSettings,
@@ -9,6 +9,7 @@ import {
 import type { OrganisationSettings } from '@quill/application'
 import { pngFile } from '@quill/application/test-support'
 import { parseDocument } from '@quill/markdown'
+import { documentId, ok } from '@quill/domain'
 import type { CollectionId, DocumentId } from '@quill/domain'
 
 import { PUBLIC_SITE_CACHE_TTL_MS } from '../public-site/cache.ts'
@@ -384,11 +385,10 @@ describe('a document carved out of the site', () => {
       createdBy: tenancy.admin,
     })
     expect(denied.kind).toBe('created')
-    // A grant is not an outbox event, so the cache in front of the site is
-    // told directly — which is what the access screen's route will do when it
-    // is built, and what the time to live does for anything that forgets.
-    harness.deps.publicSiteCache.invalidate()
-
+    // Nothing tells the cache by hand. The grant announced itself when it
+    // committed (ADR-056), and the page is gone on the very next request —
+    // not after the time to live, which is what a stale permission cache
+    // would have been.
     expect((await get(path)).statusCode).toBe(404)
     expect((await get(`/s/${SITE}`)).body).not.toContain('architecture/salaries')
     expect((await get(`/s/${SITE}/sitemap.xml`)).body).not.toContain('architecture/salaries')
@@ -656,6 +656,7 @@ describe('public search', () => {
     expect(response.body).toContain('1 result for')
     expect(response.body).toContain('href="/s/acme-docs/architecture/overview"')
     expect(response.body).toContain('<mark>')
+    expect(response.body).toMatch(/<time datetime="\d{4}-\d{2}-\d{2}T/u)
   })
 
   it('returns nothing about a document the public may not see', async () => {
@@ -676,10 +677,196 @@ describe('public search', () => {
     expect(response.body).not.toContain('<script>alert(1)')
   })
 
-  it('answers a query the parser refuses without falling over', async () => {
+  it('says what is wrong with a query that only leaves things out, instead of pretending it found nothing', async () => {
     const response = await get(`/s/${SITE}/search?q=-onlyanexclusion`)
     expect(response.statusCode).toBe(200)
-    expect(response.body).toContain('Nothing matched')
+    expect(response.body).toContain('word or phrase to look for')
+    expect(response.body).not.toContain('Nothing matched')
+  })
+
+  it('says what is wrong with a query the parser cannot read, and escapes the words it quotes', async () => {
+    const response = await get(`/s/${SITE}/search?q=${encodeURIComponent('"never closed <i>')}`)
+    expect(response.statusCode).toBe(200)
+    expect(response.body).toContain('could not be read')
+    expect(response.body).not.toContain('<i>')
+  })
+
+  it('does not answer who wrote a page or what its front matter holds: by:, team: and prop: are not offered to a stranger', async () => {
+    // Otherwise `by:someone@company.com` would confirm, to anybody, that an
+    // address is an author of a published page.
+    const engine = vi.spyOn(harness.deps.search, 'search')
+    try {
+      for (const query of ['by:editor', 'team:writers', 'warehouses -prop:severity=high']) {
+        const response = await get(`/s/${SITE}/search?q=${encodeURIComponent(query)}`)
+        expect(response.statusCode).toBe(200)
+        expect(response.body).toContain('not offered on this site')
+        expect(response.body).not.toContain('Nothing matched')
+      }
+      expect(engine).not.toHaveBeenCalled()
+    } finally {
+      engine.mockRestore()
+    }
+  })
+
+  it('carries the query through to the box it came from, so it can be amended', async () => {
+    const response = await get(`/s/${SITE}/search?q=warehouses`)
+    expect(response.body).toMatch(/<input[^>]*value="warehouses"/u)
+  })
+})
+
+const links = (body: string) =>
+  [...body.matchAll(/class="site-result-title" href="([^"]+)"/gu)].map((match) => match[1])
+
+describe('public search paging', () => {
+  const PER_PAGE = 20
+  const TOTAL = PER_PAGE + 1
+  let many: CollectionId
+
+  beforeAll(async () => {
+    many = await publishAnotherSite('Many pages', 'acme-many')
+    for (let n = 1; n <= TOTAL; n += 1) {
+      const created = await harness.app.inject({
+        method: 'POST',
+        url: `/api/workspaces/${tenancy.workspaceId}/documents`,
+        cookies: editor,
+        payload: { collectionId: many, title: `Pager ${n}` },
+      })
+      succeeded(created, 201)
+      const id = created.json().document.id as DocumentId
+      await writeDraft(
+        id,
+        `# Pager ${n}
+
+The pagerword appears here.
+`,
+        0,
+      )
+      await publish(id, null)
+    }
+    await harness.drainOutbox()
+  }, 120_000)
+
+  it('shows a page, says it is not the whole answer, and links on', async () => {
+    const first = await get('/s/acme-many/search?q=pagerword')
+    expect(first.body).toContain(`Showing the first ${PER_PAGE} results`)
+    expect(links(first.body)).toHaveLength(PER_PAGE)
+    expect(first.body).toMatch(/href="\/s\/acme-many\/search\?q=pagerword&amp;cursor=[^"]+"/u)
+  })
+
+  it('reaches every result exactly once by following the links', async () => {
+    const first = await get('/s/acme-many/search?q=pagerword')
+    const next = /href="(\/s\/acme-many\/search\?[^"]*cursor=[^"]+)"/u.exec(first.body)?.[1]
+    expect(next).toBeDefined()
+
+    const second = await get((next ?? '').replaceAll('&amp;', '&'))
+    expect(second.statusCode).toBe(200)
+    expect(second.body).toContain('1 result for')
+    expect(second.body).not.toContain('More results')
+
+    const seen = [...links(first.body), ...links(second.body)]
+    expect(seen).toHaveLength(TOTAL)
+    expect(new Set(seen).size).toBe(TOTAL)
+  })
+
+  it('treats a cursor it did not issue as the first page rather than as an error', async () => {
+    const response = await get('/s/acme-many/search?q=pagerword&cursor=not-a-cursor')
+    expect(response.statusCode).toBe(200)
+    expect(links(response.body)).toHaveLength(PER_PAGE)
+  })
+})
+
+describe('public search answers, remembered', () => {
+  it('does not ask the engine again for a question it has just answered', async () => {
+    const engine = vi.spyOn(harness.deps.search, 'search')
+    try {
+      const first = await get(`/s/${SITE}/search?q=warehouses+remembered`)
+      const second = await get(`/s/${SITE}/search?q=warehouses+remembered`)
+      expect(second.statusCode).toBe(200)
+      expect(second.body).toBe(first.body)
+      expect(engine).toHaveBeenCalledTimes(1)
+
+      // A different question, and a different page of the same one, are not it.
+      await get(`/s/${SITE}/search?q=warehouses+forgotten`)
+      expect(engine).toHaveBeenCalledTimes(2)
+    } finally {
+      engine.mockRestore()
+    }
+  })
+
+  it('asks again once something has been published, so a new page is findable', async () => {
+    const before = await get(`/s/${SITE}/search?q=freshlypublished`)
+    expect(before.body).toContain('Nothing matched')
+
+    await writePublished('Freshly', ['# Freshly', '', 'This page is freshlypublished.'].join('\n'))
+    await harness.drainOutbox()
+
+    const after = await get(`/s/${SITE}/search?q=freshlypublished`)
+    expect(after.body).toContain('1 result for')
+  })
+
+  it('stops offering a page the moment public access to it is taken away', async () => {
+    const id = await writePublished(
+      'Soon revoked',
+      ['# Soon revoked', '', 'A revocableword page.'].join('\n'),
+    )
+    await harness.drainOutbox()
+
+    const before = await get(`/s/${SITE}/search?q=revocableword`)
+    expect(before.body).toContain('1 result for')
+    // A second look is answered from memory, so what follows is about the
+    // revoke and not about a search that was never remembered.
+    expect((await get(`/s/${SITE}/search?q=revocableword`)).body).toBe(before.body)
+
+    const denied = await createGrant(harness.deps, {
+      principalKind: 'public',
+      principalId: null,
+      scopeKind: 'document',
+      scopeId: id,
+      role: 'viewer',
+      effect: 'deny',
+      createdBy: tenancy.admin,
+    })
+    expect(denied.kind).toBe('created')
+
+    expect((await get(`/s/${SITE}/search?q=revocableword`)).body).toContain('Nothing matched')
+    expect(harness.listenerFailures).toEqual([])
+  })
+
+  it('shows only what is on the site, whatever the engine hands back', async () => {
+    // The engine is scoped to the site's collection, so this cannot happen
+    // unless something is wrong; the site's own page table is what makes that
+    // a miss and not a leak, and a defence that is never exercised is a hope.
+    const draft = await createDocument('Never published')
+    const stranger = documentId('00000000-0000-4000-8000-0000000000aa')
+    const hit = (id: DocumentId) => ({
+      documentId: id,
+      workspaceId: tenancy.workspaceId,
+      title: 'Strayword',
+      snippet: { text: 'A strayword entry.', ranges: [] },
+      tags: [],
+      score: 1,
+    })
+    const engine = vi
+      .spyOn(harness.deps.search, 'search')
+      .mockResolvedValueOnce(ok({ current: [hit(draft), hit(stranger)], elsewhere: [] }))
+    try {
+      const body = (await get(`/s/${SITE}/search?q=strayword`)).body
+      expect(body).toContain('Nothing matched')
+      expect(body).not.toContain('Strayword')
+    } finally {
+      engine.mockRestore()
+    }
+  })
+
+  it('does not remember a query it refused to run', async () => {
+    const engine = vi.spyOn(harness.deps.search, 'search')
+    try {
+      await get(`/s/${SITE}/search?q=-only`)
+      await get(`/s/${SITE}/search?q=-only`)
+      expect(engine).not.toHaveBeenCalled()
+    } finally {
+      engine.mockRestore()
+    }
   })
 })
 
@@ -953,6 +1140,28 @@ describe('the budget in front of it', () => {
       expect(exhausted.some((response) => response.statusCode === 429)).toBe(true)
       const refused = exhausted.find((response) => response.statusCode === 429)
       expect(refused?.json().error).toMatchObject({ code: 'rate_limited' })
+    } finally {
+      await small.close()
+    }
+  }, 60_000)
+})
+
+describe('the budget search has of its own', () => {
+  it('refuses a fourth search from one address while pages are still being served', async () => {
+    const small = await createServerHarness({ publicSearchRateLimitMax: 3 })
+    try {
+      const searches = []
+      for (let n = 0; n < 4; n += 1) {
+        searches.push(await small.app.inject({ method: 'GET', url: `/s/nobody/search?q=word${n}` }))
+      }
+      // Counted before the site is even looked up, so a stranger cannot learn
+      // which slugs exist by being refused on some and not others.
+      expect(searches.map((response) => response.statusCode)).toEqual([404, 404, 404, 429])
+      expect(searches[3]?.json().error).toMatchObject({ code: 'rate_limited' })
+
+      // Searching costs far more than reading a page, so it is counted apart:
+      // somebody who has used up their searches can still read.
+      expect((await small.app.inject({ method: 'GET', url: '/robots.txt' })).statusCode).toBe(200)
     } finally {
       await small.close()
     }

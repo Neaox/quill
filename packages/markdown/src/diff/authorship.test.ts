@@ -178,6 +178,10 @@ describe('who made each change of a comparison', () => {
     expect(stamps).toEqual({ changed: ADA, added: ADA, removed: GRACE })
   })
 
+  it('names no one for a change the ledger has never heard of', () => {
+    expect(attributeChanges(context(byAda), NO_AUTHORSHIP).size).toBe(0)
+  })
+
   it('names no one without a ledger', () => {
     expect(attributeChanges(context(byAda), undefined).size).toBe(0)
   })

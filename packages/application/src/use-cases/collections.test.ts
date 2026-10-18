@@ -162,6 +162,26 @@ describe('deleteCollection', () => {
     expect(audited[0]).toMatchObject({ type: COLLECTION_AUDIT_EVENTS.deleted, targetId: id })
   })
 
+  it('announces it, so what was derived from the collection is told it has gone', async () => {
+    const id = await collection()
+    const before = uow.events.length
+    await deleteCollection(deps, { collectionId: id, deletedBy: ACTOR })
+    const emitted = uow.events.slice(before)
+    expect(emitted.map((event) => event.type)).toEqual(['CollectionDeleted'])
+    expect(emitted[0]?.payload).toMatchObject({
+      collectionId: id,
+      workspaceId: WORKSPACE,
+      deletedBy: ACTOR,
+    })
+  })
+
+  it('announces nothing for a collection it refused to delete', async () => {
+    expect(await deleteCollection(deps, { collectionId: 'nope', deletedBy: ACTOR })).toEqual({
+      kind: 'not-found',
+    })
+    expect(uow.events.map((event) => event.type)).not.toContain('CollectionDeleted')
+  })
+
   /**
    * `collection_id` is nullable, so deleting the row would leave its
    * documents outside every collection — and a document outside a collection

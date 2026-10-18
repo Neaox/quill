@@ -130,3 +130,60 @@ describe('the public site cache', () => {
     expect(PUBLIC_SITE_CACHE_TTL_MS).toBeLessThanOrEqual(60_000)
   })
 })
+
+describe('what the public site remembers of its searches', () => {
+  it('answers a repeated question with the answer it already rendered', () => {
+    const { cache: held } = cache()
+    held.rememberSearch('acme', 'rate limit', undefined, aPage('<p>results</p>'))
+    expect(held.search('acme', 'rate limit', undefined)).toEqual(aPage('<p>results</p>'))
+  })
+
+  it('keeps apart two sites, two questions and two pages of one question', () => {
+    const { cache: held } = cache()
+    held.rememberSearch('acme', 'limit', undefined, aPage('<p>acme first</p>'))
+    held.rememberSearch('acme', 'limit', 'page-2', aPage('<p>acme second</p>'))
+    held.rememberSearch('other', 'limit', undefined, aPage('<p>other first</p>'))
+    held.rememberSearch('acme', 'other words', undefined, aPage('<p>acme other</p>'))
+    expect(held.search('acme', 'limit', undefined)?.html).toBe('<p>acme first</p>')
+    expect(held.search('acme', 'limit', 'page-2')?.html).toBe('<p>acme second</p>')
+    expect(held.search('other', 'limit', undefined)?.html).toBe('<p>other first</p>')
+    expect(held.search('acme', 'other words', undefined)?.html).toBe('<p>acme other</p>')
+  })
+
+  it('cannot be made to run two questions together by what a stranger typed', () => {
+    const { cache: held } = cache()
+    held.rememberSearch('acme', 'a\nb', undefined, aPage('<p>one</p>'))
+    expect(held.search('acme', 'a', 'b')).toBeNull()
+    expect(held.search('acme\na', 'b', undefined)).toBeNull()
+  })
+
+  it('forgets with everything else when something is published, and when the clock says so', () => {
+    const { clock, cache: held } = cache(1_000)
+    held.rememberSearch('acme', 'limit', undefined, aPage('<p>x</p>'))
+    clock.advance(999)
+    expect(held.search('acme', 'limit', undefined)).not.toBeNull()
+    clock.advance(1)
+    expect(held.search('acme', 'limit', undefined)).toBeNull()
+
+    held.rememberSearch('acme', 'limit', undefined, aPage('<p>x</p>'))
+    held.invalidate()
+    expect(held.search('acme', 'limit', undefined)).toBeNull()
+  })
+
+  it('has a bound of its own, so a stranger’s questions cannot push real pages out', () => {
+    const { cache: held } = cache(PUBLIC_SITE_CACHE_TTL_MS, { maxPages: 2, maxSearches: 2 })
+    held.rememberPage('acme', 'guides/one', aPage('<p>one</p>'))
+    for (const query of ['a', 'b', 'c', 'd']) {
+      held.rememberSearch('acme', query, undefined, aPage(`<p>${query}</p>`))
+    }
+    expect(held.page('acme', 'guides/one')).not.toBeNull()
+    expect(held.search('acme', 'a', undefined)).toBeNull()
+    expect(held.search('acme', 'd', undefined)).not.toBeNull()
+  })
+
+  it('remembers nothing when the cache is switched off', () => {
+    const { cache: held } = cache(0)
+    held.rememberSearch('acme', 'limit', undefined, aPage('<p>x</p>'))
+    expect(held.search('acme', 'limit', undefined)).toBeNull()
+  })
+})

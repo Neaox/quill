@@ -29,7 +29,7 @@ UI -> Features -> Application -> Domain <- Infrastructure
 | Application    | `packages/application`                                                                | Domain, and interfaces it declares (content store, search, blob store, providers). |
 | Infrastructure | `packages/content-store`, `packages/search`, `packages/providers`, server persistence | Domain and application interfaces. Implements them.                                |
 | Server         | `apps/server`                                                                         | Application, infrastructure. Routes call application services only.                |
-| Web            | `apps/web`                                                                            | Domain types, the generated API client, `packages/ui`. Never infrastructure.       |
+| Web            | `apps/web`                                                                            | Domain types, the generated API client, `packages/ui`. Never infrastructure, except the search query language (`@quill/search/query`), which is pure and must be the server's own parser. |
 
 These rules are enforced by `pnpm lint:deps` (see `.dependency-cruiser.cjs`).
 

@@ -1,6 +1,6 @@
 import type { Principal, WorkspaceId } from '@quill/domain'
 import { principalKey } from '@quill/domain'
-import type { VisibilityFilter } from '@quill/application/ports'
+import type { SharedVisibility, VisibilityFilter } from '@quill/application/ports'
 
 /**
  * Who is searching, and which workspaces the query may even consider
@@ -14,7 +14,7 @@ import type { VisibilityFilter } from '@quill/application/ports'
  * type-level proof.
  */
 
-export type { VisibilityFilter } from '@quill/application/ports'
+export type { SharedVisibility, VisibilityFilter } from '@quill/application/ports'
 
 /** Builds a `VisibilityFilter` from the workspaces and principals a request already resolved, de-duplicating both. */
 export function visibilityFilter(
@@ -24,4 +24,13 @@ export function visibilityFilter(
   const principalKeys = new Set<string>()
   for (const principal of principals) principalKeys.add(principalKey(principal))
   return { workspaceIds: [...new Set(workspaceIds)], principalKeys: [...principalKeys] }
+}
+
+/**
+ * A caller's visibility, to hand to every call one request makes (a page and
+ * its facet counts) so the index works out what they may read once. One per
+ * request: see {@link SharedVisibility}.
+ */
+export function shareVisibility(filter: VisibilityFilter): SharedVisibility {
+  return { filter }
 }

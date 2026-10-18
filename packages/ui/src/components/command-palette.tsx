@@ -29,6 +29,7 @@ export const commandPaletteStyles = tv({
       'flex shrink-0 items-center gap-2.5 border-b border-border px-3.5',
       'text-muted aria-busy:cursor-progress',
     ],
+    filters: 'shrink-0 border-b border-border px-3 py-2',
     field: [
       'h-12 w-full min-w-0 bg-transparent text-sm text-foreground',
       'placeholder:text-muted/75 focus-visible:outline-hidden',
@@ -76,6 +77,18 @@ export interface CommandPaletteProps {
    * what keeps it from chattering at every keystroke.
    */
   readonly status?: string | undefined
+  /**
+   * Chips, or anything else about the query that sits between the field and
+   * the list. Given a way back into the field: Radix's dialog keeps focus
+   * inside the panel, so a control here that removes itself (a chip's remove
+   * button) would otherwise leave focus on nothing.
+   */
+  readonly renderFilters?: ((api: CommandPaletteFiltersApi) => ReactNode) | undefined
+}
+
+export interface CommandPaletteFiltersApi {
+  /** Puts focus back in the search field. */
+  readonly focusField: () => void
 }
 
 /**
@@ -119,12 +132,22 @@ function Panel({
   notice,
   footer,
   status,
+  renderFilters,
 }: PanelProps) {
   const ids = useId()
   const field = useRef<HTMLInputElement | null>(null)
   const cursor = useListboxCursor(groups)
   const descriptionId = `${ids}-description`
   const styles = commandPaletteStyles()
+
+  const fieldId = `${ids}-field`
+  const chips = renderFilters?.({
+    // By id rather than through the ref: this is handed to the caller during
+    // the render, and a ref is not for reading there.
+    focusField: () => {
+      document.getElementById(fieldId)?.focus()
+    },
+  })
 
   function choose(): void {
     const chosen = cursor.activeOption()
@@ -171,6 +194,7 @@ function Panel({
           <SearchIcon />
           <input
             ref={field}
+            id={fieldId}
             type="text"
             role="combobox"
             autoComplete="off"
@@ -192,6 +216,12 @@ function Panel({
           />
           {busy ? <Spinner /> : undefined}
         </div>
+
+        {/* No wrapper, and so no empty rule under the field, when there is
+            nothing to show: a query with no filters in it. */}
+        {chips === undefined || chips === null || chips === false ? undefined : (
+          <div className={styles.filters()}>{chips}</div>
+        )}
 
         {description === undefined ? undefined : (
           <VisuallyHidden.Root id={descriptionId}>{description}</VisuallyHidden.Root>

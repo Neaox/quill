@@ -277,4 +277,60 @@ describe('CommandPalette', () => {
       Element.prototype.scrollIntoView = shim
     }
   })
+  describe('filters slot', () => {
+    it('sits between the field and the list, and is not there at all when it renders nothing', async () => {
+      const { rerender } = render(
+        palette({
+          renderFilters: () => (
+            <ul aria-label="Filters">
+              <li>By: ada</li>
+            </ul>
+          ),
+        }),
+      )
+      const filters = await screen.findByRole('list', { name: 'Filters' })
+
+      expect(
+        field().compareDocumentPosition(filters) & Node.DOCUMENT_POSITION_FOLLOWING,
+      ).toBeTruthy()
+      expect(
+        filters.compareDocumentPosition(screen.getByRole('listbox')) &
+          Node.DOCUMENT_POSITION_FOLLOWING,
+      ).toBeTruthy()
+
+      rerender(palette({ renderFilters: () => undefined }))
+      expect(screen.queryByRole('list', { name: 'Filters' })).not.toBeInTheDocument()
+    })
+
+    it('hands back a way to put focus in the field again', async () => {
+      render(
+        palette({
+          renderFilters: ({ focusField }) => (
+            <button type="button" onClick={focusField}>
+              Remove
+            </button>
+          ),
+        }),
+      )
+
+      await userEvent.click(await screen.findByRole('button', { name: 'Remove' }))
+
+      expect(field()).toHaveFocus()
+    })
+
+    it('has no accessibility violations with chips in it', async () => {
+      render(
+        palette({
+          renderFilters: () => (
+            <ul aria-label="Filters">
+              <li>By: ada</li>
+            </ul>
+          ),
+        }),
+      )
+      await screen.findByRole('list', { name: 'Filters' })
+
+      await expectNoAccessibilityViolations(screen.getByRole('dialog'))
+    })
+  })
 })

@@ -7,6 +7,7 @@ import { ContentStoreError, GitContentStore, type HistorySlice } from './git-con
 import { parseTrailers, trailerValues } from './git/trailers.ts'
 import { MemoryObjectStore, MemoryObjectStoreProvider } from './memory-object-store.ts'
 import type { ObjectEntry, ObjectStore, ObjectStoreProvider } from './object-store.ts'
+import { OURS_LABEL, THEIRS_LABEL } from './three-way-merge.ts'
 import {
   AUTHOR,
   JITTER,
@@ -324,6 +325,10 @@ describe('stale base', () => {
     if (result.kind !== 'merge-required') throw new Error('expected a merge')
     expect(result.conflicts[0]).toMatchObject({ documentId: ONBOARDING, ours: '' })
     expect(result.conflicts[0]?.theirs).toContain('Two.')
+    // A merge view is shown `conflicted`, so it has to say there is a clash.
+    expect(result.conflicts[0]?.conflicted).toContain(`<<<<<<< ${OURS_LABEL}`)
+    expect(result.conflicts[0]?.conflicted).toContain('Two.')
+    expect(result.conflicts[0]?.conflicted).toContain(`>>>>>>> ${THEIRS_LABEL}`)
     expect(await store.read(workspace, ONBOARDING)).not.toBeNull()
   })
 
@@ -338,6 +343,9 @@ describe('stale base', () => {
     if (result.kind !== 'merge-required') throw new Error('expected a merge')
     expect(result.conflicts[0]).toMatchObject({ documentId: ONBOARDING, theirs: '' })
     expect(result.conflicts[0]?.ours).toContain('Two.')
+    expect(result.conflicts[0]?.conflicted).toContain(`<<<<<<< ${OURS_LABEL}`)
+    expect(result.conflicts[0]?.conflicted).toContain('Two.')
+    expect(result.conflicts[0]?.conflicted).toContain(`>>>>>>> ${THEIRS_LABEL}`)
   })
 
   it('follows a document somebody else moved rather than duplicating it', async () => {

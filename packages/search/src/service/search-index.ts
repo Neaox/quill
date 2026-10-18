@@ -10,6 +10,10 @@
  */
 
 export type {
+  FacetCount,
+  FacetCounts,
+  FacetName,
+  FacetsOptions,
   SearchHit,
   SearchHits,
   SearchIndex,

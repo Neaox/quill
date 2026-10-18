@@ -1,0 +1,1 @@
+Fixed: A document deleted on one side and edited on the other (a Git-sync edit against an unpublished change, or a delete against someone else's edit) now comes back as a conflict that shows both sides between markers. Before, the merge view was given only the surviving side's text with no markers, so a person was told to choose between two things and shown one.

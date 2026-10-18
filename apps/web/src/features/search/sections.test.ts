@@ -1,20 +1,16 @@
 import { describe, expect, it } from 'vitest'
 
 import type { SearchHit, SearchResults } from '../../lib/api/index.ts'
+import { searchHitFixture } from '../../lib/api/search-fixtures.ts'
 import { searchSections, sectionsHitCount } from './sections.ts'
 
 function hit(title: string, workspaceId = 'ws-1'): SearchHit {
-  return {
-    documentId: `doc-${title}`,
-    shortId: 'k7m3q9v2xd',
+  return searchHitFixture(title, {
     slug: 'slug',
-    title,
     path: 'runbooks/slug',
     workspaceId,
-    breadcrumb: ['Engineering', 'Runbooks'],
     snippet: { text: title, ranges: [] },
-    score: 1,
-  }
+  })
 }
 
 function page(overrides: Partial<SearchResults> = {}): SearchResults {

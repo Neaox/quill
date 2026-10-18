@@ -386,3 +386,8 @@
 [data-pane] .prose > [data-change='moved']:not(.table-block)::after {
   content: '↕' / '';
 }
+
+/* A folded block stays folded even where the reading grid gives its blocks a display of their own. */
+.prose > [hidden] {
+  display: none;
+}

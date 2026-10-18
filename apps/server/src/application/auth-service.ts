@@ -1,9 +1,10 @@
-import { EVENT_PAYLOAD_VERSION, MAIL_REQUESTED } from '@quill/application'
+import { mailRequested } from '@quill/application'
 import type {
   Clock,
   IdGenerator,
   MagicLinkPurpose,
   MagicLinkTokenRow,
+  EventPayloadInput,
   MailRequestedPayload,
   SessionId,
   SessionRow,
@@ -193,13 +194,8 @@ export function createAuthService(deps: AuthServiceDeps) {
   }
 
   /** Queued, never awaited on a request path — see the note on enumeration above. */
-  async function queueMail(payload: MailRequestedPayload): Promise<void> {
-    await uow.repos.outbox.write({
-      id: ids.uuid(),
-      type: MAIL_REQUESTED,
-      payload,
-      now: clock.now(),
-    })
+  async function queueMail(payload: EventPayloadInput<MailRequestedPayload>): Promise<void> {
+    await uow.repos.events.record(mailRequested, payload, clock.now())
   }
 
   /**
@@ -282,18 +278,11 @@ export function createAuthService(deps: AuthServiceDeps) {
       })
       // The event and the token it carries are committed together: a link
       // that exists is always one somebody will be sent.
-      await repos.outbox.write({
-        id: ids.uuid(),
-        type: MAIL_REQUESTED,
-        payload: {
-          version: EVENT_PAYLOAD_VERSION,
-          kind: 'magic-link',
-          to: user.email,
-          url: linkUrl(purpose, token),
-          purpose,
-        },
+      await repos.events.record(
+        mailRequested,
+        { kind: 'magic-link', to: user.email, url: linkUrl(purpose, token), purpose },
         now,
-      })
+      )
     })
 
     await recordLinkIssued({ user, email, purpose, superseded })
@@ -380,7 +369,6 @@ export function createAuthService(deps: AuthServiceDeps) {
           targetId: existing.id,
         })
         await queueMail({
-          version: EVENT_PAYLOAD_VERSION,
           kind: 'account-exists',
           to: existing.email,
           signInUrl: `${appUrl}/auth/sign-in`,

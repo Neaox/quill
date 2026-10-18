@@ -11,6 +11,17 @@ import type { components } from './schema.gen.d.ts'
  * no use for this. The split is what keeps it out.
  */
 
+/** The one multipart body every upload shares: a single field called `file`. */
+function multipartFile(file: Blob, filename?: string): FormData {
+  const form = new FormData()
+  if (filename === undefined) {
+    form.append('file', file)
+  } else {
+    form.append('file', file, filename)
+  }
+  return form
+}
+
 export type Attachment = components['schemas']['Attachment']
 
 export interface UploadAttachmentOptions {
@@ -38,11 +49,7 @@ export async function uploadAttachment(
   return client.POST('/api/documents/{id}/attachments', {
     params: { path: { id: options.documentId } },
     body: { file: '' },
-    bodySerializer: () => {
-      const form = new FormData()
-      form.append('file', options.file, options.filename)
-      return form
-    },
+    bodySerializer: () => multipartFile(options.file, options.filename),
   })
 }
 
@@ -68,11 +75,7 @@ export async function reviseAttachment(
       query: { expectedVersion: options.expectedVersion },
     },
     body: { file: '' },
-    bodySerializer: () => {
-      const form = new FormData()
-      form.append('file', options.file, options.filename)
-      return form
-    },
+    bodySerializer: () => multipartFile(options.file, options.filename),
   })
 }
 
@@ -89,10 +92,6 @@ export async function uploadEmojiImage(
 ): Promise<{ data?: EmojiImage; error?: unknown; response: Response }> {
   return client.POST('/api/settings/organisation/emoji-images', {
     body: { file: '' },
-    bodySerializer: () => {
-      const form = new FormData()
-      form.append('file', file)
-      return form
-    },
+    bodySerializer: () => multipartFile(file),
   })
 }

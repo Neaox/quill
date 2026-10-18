@@ -121,6 +121,17 @@ export function createCollectionRepository(db: DrizzleClient): CollectionReposit
       return rows.map(toCollectionRow)
     },
 
+    async listByWorkspaces(
+      workspaceIds: readonly WorkspaceId[],
+    ): Promise<readonly CollectionRow[]> {
+      if (workspaceIds.length === 0) return []
+      const rows = await db
+        .select()
+        .from(collections)
+        .where(inArray(collections.workspaceId, [...workspaceIds]))
+      return rows.map(toCollectionRow)
+    },
+
     async searchByName(text: string, limit: number): Promise<readonly CollectionRow[]> {
       // `%`, `_` and `\` are pattern characters to ILIKE; what was typed is matched literally.
       const literal = text.replaceAll(/[\\%_]/gu, (character) => `\\${character}`)

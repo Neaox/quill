@@ -22,7 +22,7 @@ export interface FooterView {
 }
 
 /** The date, in the form a reader anywhere can read without ambiguity. */
-const FORMAT = new Intl.DateTimeFormat('en-GB', {
+export const PUBLISHED_DATE = new Intl.DateTimeFormat('en-GB', {
   day: 'numeric',
   month: 'long',
   year: 'numeric',
@@ -38,7 +38,7 @@ export function renderFooter(view: FooterView): Html {
         : html`<span
             >Updated
             <time datetime="${view.updatedAt.toISOString()}"
-              >${FORMAT.format(view.updatedAt)}</time
+              >${PUBLISHED_DATE.format(view.updatedAt)}</time
             ></span
           >`
     }

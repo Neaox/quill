@@ -214,6 +214,19 @@ describe('reverting changes to a draft', () => {
     ).toHaveLength(context.draft.children.length)
   })
 
+  it('puts a removed last block back at the end of the document', () => {
+    const { comparison, context, written } = setUp(
+      document('# Runbook', 'Restart the queue first.', 'Tell the on-call engineer.'),
+      document('# Runbook', 'Restart the queue first.'),
+    )
+
+    const reverted = revertChanges(context, [idOf(comparison, 'removed')])
+
+    expect(written(reverted)).toBe(
+      document('# Runbook', 'Restart the queue first.', 'Tell the on-call engineer.'),
+    )
+  })
+
   it('ignores an id that names nothing, or a change that cannot be reverted', () => {
     const { context, written } = setUp(OLDER, NEWER)
 
