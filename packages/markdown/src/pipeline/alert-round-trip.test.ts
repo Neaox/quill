@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest'
 import type { Root } from 'mdast'
 
+import { CALLOUT_TYPES } from '../directives/callout.ts'
 import { mdastToProseMirror } from '../prosemirror/from-mdast.ts'
 import { liftLayout, wrapLayout } from '../prosemirror/layout.ts'
 import { proseMirrorToMdast } from '../prosemirror/to-mdast.ts'
+import { markerOf } from './github-alert.ts'
 import { parseDocument } from './parse-document.ts'
 import { parseMarkdown, stringifyMdast } from './processor.ts'
 import { serializeDocument } from './serialize-document.ts'
@@ -171,5 +173,46 @@ describe('Obsidian callouts on a save', () => {
     const tree = parseMarkdown(source)
 
     expect(semantics(parseMarkdown(stringifyMdast(tree)))).toBe(semantics(tree))
+  })
+})
+
+describe('the marker a callout is written with', () => {
+  it('is GitHub’s own capitals for GitHub’s kinds, and lower case for the one it lacks', () => {
+    expect(CALLOUT_TYPES.map((type) => markerOf(type))).toEqual([
+      '[!NOTE]',
+      '[!info]',
+      '[!TIP]',
+      '[!IMPORTANT]',
+      '[!WARNING]',
+      '[!CAUTION]',
+    ])
+  })
+})
+
+describe('GitHub alerts as an editor builds them', () => {
+  it('ignore the spaces that end a formatted title', () => {
+    expect(saved('> [!tip] **Bold**&#32;\n> Body.\n')).toBe('> [!tip] **Bold**\n> Body.\n')
+  })
+
+  it('keep a marker on its own line when the text after it is a node of its own', () => {
+    const tree: Root = {
+      type: 'root',
+      children: [
+        {
+          type: 'blockquote',
+          children: [
+            {
+              type: 'paragraph',
+              children: [
+                { type: 'text', value: '[!NOTE]' },
+                { type: 'text', value: '\nBody.' },
+              ],
+            },
+          ],
+        },
+      ],
+    }
+
+    expect(stringifyMdast(tree)).toBe('> [!NOTE]\n> Body.\n')
   })
 })

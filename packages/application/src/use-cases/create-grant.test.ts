@@ -51,6 +51,29 @@ describe('createGrant', () => {
     expect(await uow.repos.grants.listForScope('collection', COLLECTION)).toHaveLength(1)
   })
 
+  it('announces a grant it stored, as it was, so what is derived from access can follow it', async () => {
+    const result = await createGrant(deps, command())
+    if (result.kind !== 'created') throw new Error('expected a grant')
+
+    expect(uow.events.map((event) => event.type)).toEqual(['GrantCreated'])
+    expect(uow.events[0]?.payload).toEqual({
+      version: 1,
+      grantId: result.grant.id,
+      principalKind: 'user',
+      principalId: ALICE,
+      scopeKind: 'collection',
+      scopeId: COLLECTION,
+      role: 'editor',
+      effect: 'allow',
+    })
+  })
+
+  it('announces nothing for a grant it refused', async () => {
+    await createGrant(deps, command({ principalKind: 'public', principalId: null, role: 'editor' }))
+    await createGrant(deps, command({ principalId: null }))
+    expect(uow.events).toEqual([])
+  })
+
   it('stores a deny at document scope', async () => {
     const result = await createGrant(
       deps,

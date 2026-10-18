@@ -1,7 +1,7 @@
 import { Link } from '@tanstack/react-router'
 import { useId } from 'react'
 
-import { tv } from '@quill/ui'
+import { Badge, RelativeTime, tv } from '@quill/ui'
 
 import type { SearchHit } from '../../lib/api/index.ts'
 import {
@@ -21,8 +21,43 @@ export const searchHitStyles = tv({
     breadcrumb: 'flex min-w-0 items-center gap-1 text-2xs text-muted',
     step: 'truncate',
     separator: 'text-border-strong',
+    // Facts about the document, in a quieter voice than the words that matched.
+    meta: 'flex min-w-0 items-center gap-x-3 gap-y-1 text-2xs text-muted',
+    contributors: 'min-w-0 truncate',
+    updated: 'whitespace-nowrap',
+    tags: 'flex min-w-0 flex-wrap items-center gap-1',
   },
+  variants: {
+    // The palette gives a hit one line of facts that truncates; the page has
+    // room to let them wrap and to show what the document is about.
+    density: {
+      compact: { meta: 'flex-nowrap', updated: 'shrink-0' },
+      comfortable: { meta: 'flex-wrap' },
+    },
+  },
+  defaultVariants: { density: 'comfortable' },
 })
+
+export type SearchHitDensity = 'compact' | 'comfortable'
+
+/** The most tags a hit shows: enough to say what it is about, few enough to stay a row. */
+const TAGS_SHOWN = 3
+
+/**
+ * "by Ada Lovelace, Sam Taylor +2", or nothing when nobody is to be credited.
+ *
+ * The server sends the most recent names and the total, so the phrase counts
+ * the people it did not name rather than guessing at them.
+ */
+export function contributorsPhrase(
+  contributors: SearchHit['contributors'],
+  total: number,
+): string | undefined {
+  if (contributors.length === 0) return undefined
+  const names = contributors.map((contributor) => contributor.name).join(', ')
+  const more = total - contributors.length
+  return more > 0 ? `by ${names} +${more}` : `by ${names}`
+}
 
 /**
  * Where a hit is read.
@@ -88,8 +123,17 @@ export function SearchSnippetText({ hit }: { readonly hit: SearchHit }) {
  * allowed to see where it sits, and a result with no location is a title with
  * nowhere to put it (`docs/architecture/api-contract-m2.md`).
  */
-export function SearchHitDetail({ hit }: { readonly hit: SearchHit }) {
-  const styles = searchHitStyles()
+export function SearchHitDetail({
+  hit,
+  density = 'comfortable',
+}: {
+  readonly hit: SearchHit
+  /** `compact` for the palette (one line of facts, no tags); `comfortable` for the page. */
+  readonly density?: SearchHitDensity
+}) {
+  const styles = searchHitStyles({ density })
+  const credit = contributorsPhrase(hit.contributors, hit.contributorCount)
+  const tags = hit.tags.slice(0, TAGS_SHOWN)
   // A trail is positional — a "Runbooks" collection inside a "Runbooks" unit is
   // a real one — so a step's identity is where it sits, not what it is called.
   const trail = hit.breadcrumb.map((step, index) => ({ step, id: `${index}:${step}` }))
@@ -109,6 +153,23 @@ export function SearchHitDetail({ hit }: { readonly hit: SearchHit }) {
           </span>
         ))}
       </span>
+      <span className={styles.meta()}>
+        {/* The words are the meaning; the neutral tone is only quiet. A
+            published document is the ordinary case and says nothing. */}
+        {hit.status === 'published' ? undefined : <Badge>{hit.status}</Badge>}
+        {credit === undefined ? undefined : <span className={styles.contributors()}>{credit}</span>}
+        <span className={styles.updated()}>
+          Updated <RelativeTime value={hit.updatedAt} />
+        </span>
+      </span>
+      {density === 'compact' || tags.length === 0 ? undefined : (
+        <span className={styles.tags()}>
+          <span className="sr-only">Tags:</span>
+          {tags.map((tag) => (
+            <Badge key={tag}>{tag}</Badge>
+          ))}
+        </span>
+      )}
     </>
   )
 }
@@ -146,7 +207,7 @@ export function SearchHitLink({
           {hit.title}
         </span>
         <span id={`${ids}-detail`} className={styles.detail()}>
-          <SearchHitDetail hit={hit} />
+          <SearchHitDetail hit={hit} density="comfortable" />
         </span>
       </span>
     </Link>

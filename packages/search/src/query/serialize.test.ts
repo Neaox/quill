@@ -4,6 +4,15 @@ import { filter, phrase, term } from './query.ts'
 import { serializeQuery } from './serialize.ts'
 
 describe('serializeQuery', () => {
+  it('serializes a property filter, quoting it only when it has to', () => {
+    expect(serializeQuery({ clauses: [filter('prop', 'severity=high')] })).toBe(
+      'prop:severity=high',
+    )
+    expect(serializeQuery({ clauses: [filter('prop', 'customer name=acme', true)] })).toBe(
+      '-prop:"customer name=acme"',
+    )
+  })
+
   it('serializes an empty query to an empty string', () => {
     expect(serializeQuery({ clauses: [] })).toBe('')
   })

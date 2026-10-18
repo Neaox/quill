@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { documentId, revisionId, userId, workspaceId } from '@quill/domain'
 import type { CollectionId, GroupId } from '@quill/domain'
 
@@ -264,6 +264,23 @@ describe('CollectionRepository', () => {
     ])
     expect(await collections.searchByName('_', 10)).toEqual([])
   })
+
+  it('lists the collections of several workspaces in one read', async () => {
+    await collections.create({
+      id: COLLECTION,
+      workspaceId: WORKSPACE,
+      name: 'Architecture',
+      slug: 'architecture',
+      now: NOW,
+    })
+    expect((await collections.listByWorkspaces([WORKSPACE])).map((row) => row.id)).toEqual([
+      COLLECTION,
+    ])
+    expect(
+      await collections.listByWorkspaces([workspaceId('00000000-0000-4000-8000-0000000001ff')]),
+    ).toEqual([])
+    expect(await collections.listByWorkspaces([])).toEqual([])
+  })
 })
 
 describe('GroupRepository', () => {
@@ -297,6 +314,26 @@ describe('GroupRepository', () => {
 
     await groups.removeMember({ groupId: 'platform-group' as GroupId, userId: MEMBER })
     expect(await groups.listForUser(MEMBER)).toEqual([])
+  })
+
+  it('lists the groups of several units in one read', async () => {
+    for (const [id, unitId] of [
+      ['in-acme', 'acme'],
+      ['in-platform', 'platform'],
+    ] as const) {
+      await groups.create({
+        id: id as GroupId,
+        unitId,
+        parentGroupId: null,
+        name: id,
+        now: NOW,
+      })
+    }
+    expect((await groups.listByUnits(['acme'])).map((row) => row.id)).toEqual(['in-acme'])
+    expect(
+      (await groups.listByUnits(['acme', 'platform'])).map((row) => row.id).toSorted(),
+    ).toEqual(['in-acme', 'in-platform'])
+    expect(await groups.listByUnits([])).toEqual([])
   })
 })
 
@@ -403,6 +440,83 @@ describe('RevisionsIndexRepository', () => {
     expect(
       await revisions.append({ ...entry, id: 'revision-other', documentId: OTHER }),
     ).toMatchObject({ id: 'revision-other' })
+  })
+
+  it('names each person who has published a document once, under the name they last used', async () => {
+    await seedDocuments()
+    let published = 0
+    const publish = (
+      id: string,
+      forDocument: typeof DOC,
+      name: string,
+      email: string,
+      at: number,
+    ) =>
+      revisions.append({
+        id,
+        documentId: forDocument,
+        workspaceId: WORKSPACE,
+        revision: revisionId((++published).toString(16).padStart(40, '0')),
+        authorName: name,
+        authorEmail: email,
+        timestamp: new Date(NOW.getTime() + at),
+        summary: id,
+        changeNote: null,
+        now: NOW,
+      })
+    await publish('a1', DOC, 'Ada', 'Ada@Example.com', 1_000)
+    await publish('a2', DOC, 'Ada Lovelace', 'ada@example.com', 2_000)
+    await publish('s1', DOC, 'Sam Taylor', 'sam@example.com', 1_500)
+    await publish('g1', OTHER, 'Grace Hopper', 'grace@example.com', 1_000)
+
+    expect(await revisions.listContributors(DOC)).toEqual([
+      { name: 'Ada Lovelace', email: 'ada@example.com' },
+      { name: 'Sam Taylor', email: 'sam@example.com' },
+    ])
+    expect(await revisions.listContributors(CHILD)).toEqual([])
+  })
+
+  it('names the contributors of a page of documents in one query, most recent publisher first', async () => {
+    await seedDocuments()
+    let published = 0
+    const publish = (
+      forDocument: typeof DOC,
+      name: string,
+      email: string,
+      at: number,
+      id = `batch-${published + 1}`,
+    ) =>
+      revisions.append({
+        id,
+        documentId: forDocument,
+        workspaceId: WORKSPACE,
+        revision: revisionId((100 + ++published).toString(16).padStart(40, '0')),
+        authorName: name,
+        authorEmail: email,
+        timestamp: new Date(NOW.getTime() + at),
+        summary: id,
+        changeNote: null,
+        now: NOW,
+      })
+    await publish(DOC, 'Ada', 'Ada@Example.com', 1_000)
+    await publish(DOC, 'Sam Taylor', 'sam@example.com', 2_000)
+    await publish(DOC, 'Ada Lovelace', ' ada@example.com', 3_000)
+    // Two people at the same instant are ordered by identifier, newest id first.
+    await publish(OTHER, 'Grace Hopper', 'grace@example.com', 1_000, 'tie-a')
+    await publish(OTHER, 'Alan Turing', 'alan@example.com', 1_000, 'tie-b')
+
+    const queries = vi.spyOn(database.pool, 'query')
+    const found = await revisions.listContributorsForDocuments([DOC, CHILD, OTHER])
+    expect(queries).toHaveBeenCalledTimes(1)
+    queries.mockRestore()
+
+    expect(found.get(DOC)).toEqual([
+      { name: 'Ada Lovelace', email: 'ada@example.com' },
+      { name: 'Sam Taylor', email: 'sam@example.com' },
+    ])
+    expect(found.get(OTHER)?.map((person) => person.name)).toEqual(['Alan Turing', 'Grace Hopper'])
+    expect(found.has(CHILD)).toBe(false)
+    expect((await revisions.listContributorsForDocuments([])).size).toBe(0)
   })
 
   it('breaks a tie on the timestamp by identifier, so a page never repeats a row', async () => {

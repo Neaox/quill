@@ -20,11 +20,15 @@ export { FIELD_FILTER_KEYS, filter, isFieldFilterKey, phrase, term } from './que
 export type { QueryParseError } from './query/parse.ts'
 export { parseQuery } from './query/parse.ts'
 export { serializeQuery } from './query/serialize.ts'
+export { parsePropertyFilter } from './query/property-filter.ts'
+export type { PropertyFilter } from './query/property-filter.ts'
 
 // Indexable document projection
 export type {
   IndexableDocument,
   IndexableDocumentV1,
+  IndexableDocumentV2,
+  IndexableDocumentV3,
   IndexableHeading,
   UnsupportedIndexableDocumentVersion,
 } from './document/indexable-document.ts'
@@ -50,17 +54,35 @@ export type { Snippet, SnippetOptions, SnippetRange } from './snippet/snippet.ts
 export { buildSnippet } from './snippet/snippet.ts'
 
 // The permission-filter contract
-export type { VisibilityFilter } from './visibility/visibility-filter.ts'
-export { visibilityFilter } from './visibility/visibility-filter.ts'
+export type { SharedVisibility, VisibilityFilter } from './visibility/visibility-filter.ts'
+export { shareVisibility, visibilityFilter } from './visibility/visibility-filter.ts'
+
+// Tags and properties, as the index reads them
+export { expandTagPaths, normaliseTag } from './document/tags.ts'
+export type { IndexedProperties } from './document/properties.ts'
+export {
+  extractProperties,
+  MAX_PROPERTY_KEY_LENGTH,
+  MAX_PROPERTY_KEYS,
+  MAX_PROPERTY_VALUE_LENGTH,
+  MAX_PROPERTY_VALUES,
+} from './document/properties.ts'
+
+// Facets
+export { addCounts, FACET_NAMES, rankFacetCounts } from './facets/facet-counts.ts'
 
 // The engine boundary and the composed service
 export type {
+  FacetCount,
+  FacetCounts,
+  FacetName,
+  FacetsOptions,
   SearchHit,
   SearchHits,
   SearchIndex,
   SearchIndexQueryOptions,
 } from './service/search-index.ts'
-export type { SearchRequest } from './service/search-request.ts'
+export type { FacetsRequest, SearchRequest, SearchScope } from './service/search-request.ts'
 export type {
   SearchServiceHit,
   SearchServiceResults,

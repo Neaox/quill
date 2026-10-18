@@ -19,6 +19,7 @@
     "@quill/editor": "workspace:*",
     "@quill/highlight": "workspace:*",
     "@quill/markdown": "workspace:*",
+    "@quill/search": "workspace:*",
     "@quill/theme": "workspace:*",
     "@quill/ui": "workspace:*",
     "@tanstack/react-query": "^5.102.8",

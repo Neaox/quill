@@ -227,13 +227,8 @@ export function createDocumentRepository(db: DrizzleClient): DocumentRepository 
         .from(documents)
         .where(inArray(documents.parentId, [...parentIds]))
         .groupBy(documents.parentId)
-      const counts = new Map<DocumentId, number>()
-      for (const { parentId, count: total } of rows) {
-        /* v8 ignore next -- the `IN` filter above never matches a null parent; the guard narrows the column's type. */
-        if (parentId === null) continue
-        counts.set(parentId as DocumentId, total)
-      }
-      return counts
+      // `IN` never matches a null parent, so every row the query returns has one.
+      return new Map(rows.map(({ parentId, count: total }) => [parentId as DocumentId, total]))
     },
 
     async listByIds(ids: readonly DocumentId[]): Promise<readonly DocumentRow[]> {

@@ -24,6 +24,65 @@ function location() {
   }
 }
 
+describe('projectIndexableDocument: who has published', () => {
+  const ast = parseMarkdown('# Runbook\n\nSteps.')
+  const project = (contributors?: readonly { name: string; email: string }[]) =>
+    projectIndexableDocument({
+      ...location(),
+      frontMatter: MINIMAL_FRONT_MATTER,
+      ast,
+      ...(contributors === undefined ? {} : { contributors }),
+    })
+
+  it('carries each contributor with the name and address they published under', () => {
+    expect(project([{ name: 'Ada Lovelace', email: 'ada@example.com' }]).contributors).toEqual([
+      { name: 'Ada Lovelace', email: 'ada@example.com' },
+    ])
+  })
+
+  it('names nobody when it was not told, rather than guessing', () => {
+    expect(project().contributors).toEqual([])
+  })
+
+  it('counts one address once, however often or however it was written', () => {
+    expect(
+      project([
+        { name: 'Ada Lovelace', email: 'Ada@Example.com' },
+        { name: 'A. Lovelace', email: 'ada@example.com ' },
+        { name: 'Sam Taylor', email: 'sam@example.com' },
+      ]).contributors,
+    ).toEqual([
+      { name: 'Ada Lovelace', email: 'ada@example.com' },
+      { name: 'Sam Taylor', email: 'sam@example.com' },
+    ])
+  })
+
+  it('writes version 3 of the document', () => {
+    expect(project().version).toBe(3)
+  })
+})
+
+describe('projectIndexableDocument: properties', () => {
+  const ast = parseMarkdown(['# Runbook', '', 'Steps.'].join('\n'))
+
+  it('carries the front-matter keys that are not core fields, folded', () => {
+    const project = projectIndexableDocument({
+      ...location(),
+      frontMatter: MINIMAL_FRONT_MATTER,
+      ast,
+      rawFrontMatter: { id: DOCUMENT_ID, tags: ['a'], Severity: 'High', regions: ['EU'], meta: {} },
+    })
+    expect(project.properties).toEqual({ severity: ['high'], regions: ['eu'] })
+  })
+
+  it('has none when it was not given the front matter', () => {
+    expect(
+      projectIndexableDocument({ ...location(), frontMatter: MINIMAL_FRONT_MATTER, ast })
+        .properties,
+    ).toEqual({})
+  })
+})
+
 describe('projectIndexableDocument', () => {
   it('prefers the front matter title over an extracted heading', () => {
     const ast = parseMarkdown('# Extracted title\n\nSome body text.')
@@ -145,7 +204,7 @@ describe('projectIndexableDocument', () => {
       frontMatter: MINIMAL_FRONT_MATTER,
       ast,
     })
-    expect(result.version).toBe(1)
+    expect(result.version).toBe(3)
     expect(result.documentId).toBe(DOCUMENT_ID)
     expect(result.workspaceId).toBe(WORKSPACE_ID)
     expect(result.collectionId).toBe(COLLECTION_ID)
