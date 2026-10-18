@@ -1080,7 +1080,14 @@ export function createInMemoryUnitOfWork(
   }
 
   /** Sequential and readable in a failing assertion; the real generator draws UUIDs. */
-  const eventIds = { uuid: () => `event-${String(events.length + 1)}` }
+  // A batch asks for every id before any row is written, so the count is of ids issued as well as rows.
+  let issued = 0
+  const eventIds = {
+    uuid: () => {
+      issued = Math.max(issued, events.length) + 1
+      return `event-${String(issued)}`
+    },
+  }
 
   const outboxWriter: OutboxWriter = {
     async write({ id, type, payload, now }) {

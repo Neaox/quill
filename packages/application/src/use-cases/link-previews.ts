@@ -31,6 +31,7 @@ import type {
 } from '../ports/link-previews.ts'
 import type { LinkPreviewRow, UnitOfWork } from '../ports/persistence.ts'
 import type { Clock, IdGenerator } from '../ports/system.ts'
+import { defineEvent } from '../events/define-event.ts'
 import { EVENT_PAYLOAD_VERSION, LINK_PREVIEW_REQUESTED } from './events.ts'
 import { createVersionedReader } from './versioned-reader.ts'
 
@@ -230,22 +231,31 @@ export interface LinkPreviewRequestedPayload {
   readonly requestedBy: UserId
 }
 
-const requestedReader = createVersionedReader<LinkPreviewRequestedPayload>({
-  [EVENT_PAYLOAD_VERSION]: (payload) => {
-    // The versioned reader has already established an object; this is for the type.
-    /* v8 ignore next */
-    if (!isRecord(payload)) return null
-    const url = text(payload['url'])
-    const scope = text(payload['scope'])
-    const requestedBy = text(payload['requestedBy'])
-    if (url === null || scope === null || requestedBy === null) return null
-    return { version: EVENT_PAYLOAD_VERSION, url, scope, requestedBy: toUserId(requestedBy) }
+/**
+ * A link preview is wanted (ADR-042, ADR-056). Not announced to the bus: the address may carry a
+ * token (a signed link, an unlisted share), which belongs to the outbox row and the one consumer
+ * that fetches it, and is redacted there once it has run.
+ */
+export const linkPreviewRequested = defineEvent<LinkPreviewRequestedPayload>(
+  LINK_PREVIEW_REQUESTED,
+  {
+    [EVENT_PAYLOAD_VERSION]: (payload) => {
+      // The versioned reader has already established an object; this is for the type.
+      /* v8 ignore next */
+      if (!isRecord(payload)) return null
+      const url = text(payload['url'])
+      const scope = text(payload['scope'])
+      const requestedBy = text(payload['requestedBy'])
+      if (url === null || scope === null || requestedBy === null) return null
+      return { version: EVENT_PAYLOAD_VERSION, url, scope, requestedBy: toUserId(requestedBy) }
+    },
   },
-})
+  { announced: false },
+)
 
 /** A `LinkPreviewRequested` payload, or null when this release cannot read it. */
 export function parseLinkPreviewRequested(payload: unknown): LinkPreviewRequestedPayload | null {
-  return requestedReader.read(payload)
+  return linkPreviewRequested.parse(payload)
 }
 
 // ---------------------------------------------------------------------------
@@ -354,16 +364,14 @@ async function queueFetches(
       force: input.force,
     })
     // One statement for the lot: a page of fifty new links is one insert, not fifty.
-    await repos.outbox.writeMany(
-      toQueue.map((url) => {
-        const payload: LinkPreviewRequestedPayload = {
-          version: EVENT_PAYLOAD_VERSION,
-          url,
-          scope: input.audience.scope,
-          requestedBy: input.userId,
-        }
-        return { id: deps.ids.uuid(), type: LINK_PREVIEW_REQUESTED, payload, now }
-      }),
+    await repos.events.recordMany(
+      linkPreviewRequested,
+      toQueue.map((url) => ({
+        url,
+        scope: input.audience.scope,
+        requestedBy: input.userId,
+      })),
+      now,
     )
     return toQueue
   })

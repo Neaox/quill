@@ -692,11 +692,13 @@ describe('rationing what a person can cause', () => {
     expect(t.limits.allowQueued).not.toHaveBeenCalled()
   })
 
-  it('writes the outbox events for a page of new links in one call', async () => {
-    const writeMany = vi.spyOn(t.uow.repos.outbox, 'writeMany')
+  it('queues one event for each new link of a page, recorded together (the recorder batches them)', async () => {
+    const before = t.uow.events.length
     await read(manyLinks(20))
-    expect(writeMany).toHaveBeenCalledOnce()
-    expect(writeMany.mock.calls[0]?.[0]).toHaveLength(20)
+    const requested = t.uow.events.slice(before)
+    expect(requested).toHaveLength(20)
+    expect(requested.every((event) => event.type === 'LinkPreviewRequested')).toBe(true)
+    expect(new Set(requested.map((event) => event.id)).size).toBe(20)
   })
 })
 
