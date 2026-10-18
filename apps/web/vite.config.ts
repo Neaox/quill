@@ -133,6 +133,11 @@ export default defineConfig({
         target: process.env['API_URL'] ?? 'http://localhost:3000',
         changeOrigin: true,
       },
+      // The pictures link previews show (ADR-042) are served by the server from its own origin.
+      '/link-previews/': {
+        target: process.env['API_URL'] ?? 'http://localhost:3000',
+        changeOrigin: true,
+      },
       '/robots.txt': {
         target: process.env['API_URL'] ?? 'http://localhost:3000',
         changeOrigin: true,

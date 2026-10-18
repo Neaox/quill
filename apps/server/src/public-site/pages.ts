@@ -1,4 +1,4 @@
-import type { ExtractedText, PublicNavigationNode } from '@quill/application'
+import type { PublicNavigationNode } from '@quill/application'
 import { publicPageHref } from '@quill/application'
 import type { Snippet } from '@quill/search'
 
@@ -274,6 +274,124 @@ export function renderNoSitePage(): string {
   </html>`)
 }
 
+export interface BotPageView {
+  readonly userAgent: string
+  readonly instanceName: string
+  readonly limits: {
+    readonly timeoutSeconds: number
+    readonly maxRedirects: number
+    readonly pageKiB: number
+    readonly imageMiB: number
+  }
+  /** The most requests to one host in a burst, and the steady rate after it, per second. */
+  readonly perHost: { readonly burst: number; readonly perSecond: number }
+  /** Services Quill asks through their own API (the connectors), if any are configured. */
+  readonly connectors?: readonly { readonly name: string; readonly apiHost: string }[]
+}
+
+/**
+ * The page the bot's user agent points at (ADR-042): what Quill fetches when
+ * somebody pastes a link, and how a site owner can stop it.
+ *
+ * Written for the person who found the name in their server log, and so about
+ * what they will want to know: why, how much, how often, what for, and how to
+ * make it stop. Every number is taken from where it is enforced, so the page
+ * cannot promise more than the client does.
+ */
+export function renderBotPage(view: BotPageView): string {
+  const { limits, perHost } = view
+  const connectors = view.connectors ?? []
+  return toDocument(html`<html lang="en">
+    <head>
+      <meta charset="utf-8" />
+      <meta name="viewport" content="width=device-width, initial-scale=1" />
+      <title>${view.instanceName} link preview bot</title>
+      <meta name="robots" content="noindex,follow" />
+    </head>
+    <body>
+      <main>
+        <h1>The ${view.instanceName} link preview bot</h1>
+        <p>
+          This is the page named in the user agent
+          <code>${view.userAgent}</code>. A request with that user agent came from a documentation
+          server (${view.instanceName}) because one of its members pasted a link to your site into a
+          document, and the server was making a small card to show for it: the page title, a short
+          description, and a picture.
+        </p>
+
+        <h2>What it fetches</h2>
+        <ul>
+          <li>
+            The top of one page: the head of the HTML, at most ${String(limits.pageKiB)} KiB,
+            stopping at the end of the head. Once for each link, then again at most every few days
+            while the link is still being read.
+          </li>
+          <li>
+            If the page names one, its social card image and its icon, at most
+            ${String(limits.imageMiB)} MiB each. These are re-encoded and stored; they are never
+            shown from your address.
+          </li>
+          <li>
+            If your site is a known embed provider, or the page advertises one, its oEmbed JSON.
+          </li>
+          <li>
+            If the address is a file (a PDF, a video, a document, a picture), only the response
+            headers: its type, its size and its name. None of the file is downloaded. For a picture,
+            a small thumbnail is also fetched and stored, within the same size limit.
+          </li>
+        </ul>
+
+        <h2>What it does not do</h2>
+        <ul>
+          <li>It does not crawl. It follows no links on your page and fetches nothing else.</li>
+          <li>
+            It does not run scripts, send cookies, sign in, or send a referrer, and it never asks
+            for anything that needs a credential.
+          </li>
+          <li>
+            It does not read <code>robots.txt</code>. A preview is a single fetch made for a person
+            who chose to share your link, not a crawl, in the same way as when a chat application
+            shows a link you paste into it.
+          </li>
+          <li>
+            It does not reach private addresses, other ports than 80 and 443, or addresses behind
+            more than ${String(limits.maxRedirects)} redirects.
+          </li>
+        </ul>
+
+        ${
+          connectors.length === 0
+            ? ''
+            : html`<h2>Services with an API</h2>
+                <p>
+                  For ${connectors.map((connector) => connector.name).join(', ')}, the server asks
+                  the service’s own API about a link instead of reading its page
+                  (${connectors.map((connector) => html`<code>${connector.apiHost}</code>`)}), using
+                  an access token that an administrator of ${view.instanceName} stored. It shows
+                  only what anyone can open without signing in: a link to something private gets no
+                  card. The token is sent to that API host and is never sent to any other site.
+                </p>`
+        }
+
+        <h2>How often</h2>
+        <p>
+          To any one host, a burst of at most ${String(perHost.burst)} requests and then no more
+          than one every ${String(1 / perHost.perSecond)} seconds. A request gives up after
+          ${String(limits.timeoutSeconds)} seconds.
+        </p>
+
+        <h2>To stop it</h2>
+        <p>
+          Answer requests with this user agent with <code>403</code>, <code>404</code> or
+          <code>410</code>. The failure is remembered for an hour, so it will not ask again soon,
+          and the people sharing your link will see a plain link. To have it stopped for a whole
+          site, or to ask a question, contact whoever runs ${view.instanceName}.
+        </p>
+      </main>
+    </body>
+  </html>`)
+}
+
 /**
  * The reader preview's answer when there is nothing it may show: a document
  * that is not there, or one the member may not read.
@@ -329,29 +447,8 @@ function publicSiteLink(siteSlug: string): string {
   return `/s/${siteSlug}`
 }
 
-/**
- * The description a crawler and a chat client's unfurl show: the document's
- * first paragraph (use case 29).
- *
- * The extracted text is the prose of the document, one block per line, with
- * authoring scaffolding and presenter notes already gone (ADR-031), so the
- * first line is the first paragraph. It is trimmed to a length that survives a
- * search result and an unfurl, cut at a word rather than mid-word, with an
- * ellipsis so a reader can see it was cut.
- */
-export const DESCRIPTION_MAX_LENGTH = 200
-
-export function firstParagraph(text: ExtractedText): string | null {
-  const paragraph = text.body
-    .split('\n')
-    .find((line) => line.trim().length > 0)
-    ?.trim()
-  if (paragraph === undefined || paragraph.length === 0) return null
-  if (paragraph.length <= DESCRIPTION_MAX_LENGTH) return paragraph
-  const cut = paragraph.slice(0, DESCRIPTION_MAX_LENGTH)
-  const lastSpace = cut.lastIndexOf(' ')
-  return `${(lastSpace > 0 ? cut.slice(0, lastSpace) : cut).trimEnd()}…`
-}
+// The description helper lives with the use cases, which link cards use too (ADR-042).
+export { DESCRIPTION_MAX_LENGTH, firstParagraph } from '@quill/application'
 
 /**
  * `Article` structured data (schema.org), for the crawler that wants it.

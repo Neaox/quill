@@ -21,18 +21,20 @@ import { ActionMenu } from '../menu/action-menu.tsx'
 export const toolbarStyles = tv({
   slots: {
     root: [
-      'formatting-toolbar fixed top-0 left-0 z-20 flex max-w-[calc(100vw-1rem)] items-center gap-1',
+      'formatting-toolbar fixed top-0 left-0 z-20 flex max-w-[calc(100vw-1rem)] flex-wrap items-center gap-1',
       'rounded-md border border-border-strong/70 bg-surface-raised p-1 shadow-raised',
     ],
     group: 'flex items-center gap-0.5',
     separator: 'mx-0.5 h-5 w-px shrink-0 border-0 bg-border',
     button: [
-      'inline-flex h-8 min-w-8 cursor-pointer items-center justify-center gap-1 rounded-sm px-2',
+      'inline-flex h-8 min-w-8 cursor-pointer items-center justify-center gap-1 rounded-sm px-2 whitespace-nowrap',
       'text-sm text-foreground transition-colors ease-standard hover:bg-surface',
       'focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus-ring',
       'disabled:pointer-events-none disabled:opacity-40',
       'aria-pressed:bg-accent-subtle aria-pressed:text-accent aria-expanded:bg-surface',
       'data-destructive:text-danger data-destructive:hover:bg-danger-subtle',
+      // Underlined as well as described, so the suggestion is not carried by colour alone.
+      'data-suggested:underline data-suggested:decoration-accent data-suggested:decoration-2 data-suggested:underline-offset-4',
     ],
     caret: 'text-2xs text-muted',
     swatch: 'size-2.5 rounded-full',
@@ -81,6 +83,8 @@ export interface ToolbarButtonProps {
   readonly onRun: (action: EditorAction) => void
   /** What is drawn on the button; the action's label is its accessible name. */
   readonly children: ReactNode
+  /** Says why this choice is the one to pick, such as "Your organisation's default"; the button is marked and described. */
+  readonly suggested?: string | undefined
 }
 
 /**
@@ -88,8 +92,9 @@ export interface ToolbarButtonProps {
  * that took focus on press would collapse what the author selected before the
  * click that acts on it.
  */
-export function ToolbarButton({ action, state, onRun, children }: ToolbarButtonProps) {
+export function ToolbarButton({ action, state, onRun, children, suggested }: ToolbarButtonProps) {
   const { enabled, checked } = actionState(action, state)
+  const suggestedId = useId()
   // A radio choice on a toolbar is a pressed button, the way a row of alignments is read.
   const toggles = action.kind === 'check' || action.kind === 'radio'
   return (
@@ -97,7 +102,13 @@ export function ToolbarButton({ action, state, onRun, children }: ToolbarButtonP
       type="button"
       data-toolbar-item=""
       className={styles.button()}
-      title={describeAction(action)}
+      title={
+        enabled
+          ? describeAction(action) + (suggested === undefined ? '' : `. ${suggested}`)
+          : (action.whyUnavailable?.(state) ?? describeAction(action))
+      }
+      aria-describedby={suggested === undefined ? undefined : suggestedId}
+      data-suggested={suggested === undefined ? undefined : ''}
       aria-label={action.label}
       aria-keyshortcuts={action.keys}
       aria-pressed={toggles ? checked : undefined}
@@ -111,6 +122,11 @@ export function ToolbarButton({ action, state, onRun, children }: ToolbarButtonP
       }}
     >
       {children}
+      {suggested === undefined ? null : (
+        <span id={suggestedId} className="sr-only">
+          {suggested}
+        </span>
+      )}
     </button>
   )
 }

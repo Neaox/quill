@@ -148,6 +148,13 @@
       "when": 1792208381016,
       "tag": "0020_tags_properties",
       "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1792300666822,
+      "tag": "0021_link_previews",
+      "breakpoints": true
     }
   ]
 }

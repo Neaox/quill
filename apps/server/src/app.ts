@@ -14,6 +14,8 @@ import { documentRoutes } from './routes/documents.ts'
 import { draftRoutes } from './routes/drafts.ts'
 import { healthRoutes } from './routes/health.ts'
 import { lockRoutes } from './routes/locks.ts'
+import { linkPreviewImageRoutes } from './routes/link-preview-images.ts'
+import { linkPreviewRoutes } from './routes/link-previews.ts'
 import { groupRoutes } from './routes/groups.ts'
 import { historyRoutes } from './routes/history.ts'
 import { homeRoutes } from './routes/home.ts'
@@ -36,6 +38,7 @@ import { registerRateLimiting } from './plugins/rate-limit.ts'
 import { createRequestIdGenerator, registerRequestIdHeader } from './plugins/request-id.ts'
 import { registerSecurityHeaders } from './plugins/security-headers.ts'
 import { drawioFrameSources } from './extensions/drawio/drawio-config.ts'
+import { linkEmbedRegistry } from './infrastructure/link-preview/embed-config.ts'
 import { drawioRoutes } from './extensions/drawio/drawio-routes.ts'
 import { registerSessionSupport } from './plugins/session.ts'
 import { SHARED_SCHEMAS } from './routes/document-schemas.ts'
@@ -116,7 +119,12 @@ export function buildApp(options: AppOptions = {}): FastifyInstance {
     registerSecurityHeaders(app, {
       https: deps.config.https,
       serveApiDocs,
-      frameSources: drawioFrameSources(deps.config.drawio),
+      // The only origins the app may frame: the draw.io editor, and the live-embed
+      // providers an operator has left on (ADR-042). Both come from configuration.
+      frameSources: [
+        ...drawioFrameSources(deps.config.drawio),
+        ...linkEmbedRegistry(deps.config.linkEmbeds).frameSources(),
+      ],
     })
 
     // Registered before any route: `@fastify/swagger` documents the routes of
@@ -164,6 +172,8 @@ export function buildApp(options: AppOptions = {}): FastifyInstance {
     app.register(authRoutes(deps))
     app.register(oidcAuthRoutes(deps))
     app.register(meRoutes(deps))
+    app.register(linkPreviewRoutes(deps))
+    app.register(linkPreviewImageRoutes(deps))
     app.register(homeRoutes(deps))
     app.register(historyRoutes(deps))
     app.register(unitRoutes(deps))

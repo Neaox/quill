@@ -8,6 +8,7 @@ import {
   DOCUMENT_RENAMED,
   GRANT_CREATED,
   GRANT_REVOKED,
+  LINK_PREVIEW_REQUESTED,
   MAIL_REQUESTED,
   REVIEW_DECIDED,
   REVIEW_REQUESTED,
@@ -34,6 +35,7 @@ const EMITTED = [
   DOCUMENT_RENAMED,
   GRANT_CREATED,
   GRANT_REVOKED,
+  LINK_PREVIEW_REQUESTED,
   MAIL_REQUESTED,
   REVIEW_DECIDED,
   REVIEW_REQUESTED,
@@ -43,7 +45,11 @@ const EMITTED = [
 function registered(): readonly OutboxConsumer[] {
   const consumers: OutboxConsumer[] = []
   registerOutboxConsumers(
-    { register: (consumer) => consumers.push(consumer) },
+    {
+      register: (consumer) => consumers.push(consumer),
+      // The slow lane for fetching other people's pages (ADR-042) holds one consumer per type too.
+      lane: (consumer) => consumers.push(consumer),
+    },
     // The consumers are only constructed here, never run.
     { deps: {} as never, mailer: {} as never },
   )

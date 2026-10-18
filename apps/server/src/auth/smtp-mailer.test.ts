@@ -11,7 +11,7 @@ vi.mock('nodemailer', () => ({
   createTransport: (...args: unknown[]) => createTransport(...args),
 }))
 
-const { createSmtpMailer } = await import('./smtp-mailer.ts')
+const { SMTP_TIMEOUTS, createSmtpMailer } = await import('./smtp-mailer.ts')
 
 /** Never asked, in a test with no `user` configured. */
 const UNUSED_SECRET_RESOLVER: SecretResolver = {
@@ -28,6 +28,14 @@ function fixedResolver(value: string | undefined): SecretResolver {
     },
   }
 }
+
+describe('the mail server’s time limits', () => {
+  it('are short enough that a dead server cannot stall the outbox for minutes', () => {
+    expect(SMTP_TIMEOUTS.connectionTimeout).toBeLessThanOrEqual(15_000)
+    expect(SMTP_TIMEOUTS.greetingTimeout).toBeLessThanOrEqual(15_000)
+    expect(SMTP_TIMEOUTS.socketTimeout).toBeLessThanOrEqual(60_000)
+  })
+})
 
 describe('createSmtpMailer', () => {
   afterEach(() => {
@@ -52,6 +60,7 @@ describe('createSmtpMailer', () => {
       host: 'smtp.example.com',
       port: 587,
       secure: false,
+      ...SMTP_TIMEOUTS,
     })
   })
 
@@ -77,6 +86,7 @@ describe('createSmtpMailer', () => {
       host: 'smtp.example.com',
       port: 465,
       secure: true,
+      ...SMTP_TIMEOUTS,
       auth: { user: 'user', pass: 'from-the-secrets-store' },
     })
   })

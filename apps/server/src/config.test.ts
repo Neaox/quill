@@ -76,6 +76,8 @@ describe('loadConfig', () => {
           thirdParty: false,
         },
       },
+      // Every embed provider is on until an operator switches one off.
+      linkEmbeds: { disabled: [] },
     })
   })
 

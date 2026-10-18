@@ -28,6 +28,7 @@ import { seedDevelopmentData } from './seed.ts'
 import { pagelessStylesheets } from '../theme/pageless.ts'
 import { createSearchService } from '@quill/search'
 import { createDrawioText } from '../extensions/drawio/drawing-text.ts'
+import { INERT_LINK_PREVIEW_PORTS } from '../infrastructure/link-preview/inert.ts'
 
 /**
  * `pnpm --filter @quill/server seed` — the seed's composition root: the same
@@ -90,6 +91,7 @@ try {
     publicSiteCache: createPublicSiteCache({ clock, ttlMs: 0 }),
     tokens: createTokenService(),
     shareLinkPolicy: createShareLinkPolicy(config),
+    linkPreviewPorts: INERT_LINK_PREVIEW_PORTS,
     mailer: createDevMailer((message) => process.stdout.write(`${message}\n`)),
     // Seeding runs no HTTP and asks nothing of a corpus; both ports exist
     // because `AppDependencies` is one shape, not because seeding uses them.

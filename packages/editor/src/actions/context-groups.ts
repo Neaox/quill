@@ -12,7 +12,9 @@ import { CALLOUT_GROUP, CALLOUT_VARIANT_GROUP, CALLOUT_WRAP_GROUP } from './call
 import { CLIPBOARD_GROUP } from './clipboard-actions.ts'
 import { availableGroups } from './editor-action.ts'
 import type { ActionGroup } from './editor-action.ts'
+import { linkTargetAt } from '../link/link-display.ts'
 import { linkGroup } from './link-actions.ts'
+import { LINK_DISPLAY_GROUP } from './link-display-actions.ts'
 import type { LinkUi } from './link-actions.ts'
 import {
   TABLE_ALIGN_GROUP,
@@ -134,6 +136,7 @@ export function contextMenuGroups(state: EditorState, ui: ContextMenuUi): readon
   // with only a caret the keyboard's paste and the browser's own menu (Shift + right-click) do.
   const groups: ActionGroup[] = state.selection.empty ? [] : [CLIPBOARD_GROUP]
   if (selectedText || linkAt(state) !== null) groups.push(linkGroup(ui))
+  if (linkTargetAt(state) !== null) groups.push(LINK_DISPLAY_GROUP)
   if (selectedText) groups.push(MARK_GROUP)
   if (table) {
     groups.push(...tableGroups(state))

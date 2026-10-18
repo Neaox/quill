@@ -40,6 +40,7 @@ export {
   documentPublished,
   documentRenamed,
   EVENT_PAYLOAD_VERSION,
+  LINK_PREVIEW_REQUESTED,
   GRANT_CREATED,
   GRANT_REVOKED,
   grantChange,
@@ -571,6 +572,34 @@ export type {
 } from './suggest-search-values.ts'
 export { suggestSearchValues } from './suggest-search-values.ts'
 
+export type {
+  LinkPreviewDependencies,
+  LinkPreviewFetchDependencies,
+  LinkPreviewPorts,
+  LinkPreviewReadCommand,
+  LinkPreviewReading,
+  LinkPreviewRequestedPayload,
+  RefreshFailure,
+} from './link-previews.ts'
+export {
+  LinkPreviewRetryLater,
+  MAX_LINKS_PER_READ,
+  fetchLinkPreview,
+  getLinkPreviews,
+  parseLinkPreviewRequested,
+  peekLinkPreviews,
+  refreshLinkPreview,
+  storedPreviewReader,
+} from './link-previews.ts'
+
+export { createLinkConnectorRegistry } from './link-connectors.ts'
+export { DESCRIPTION_MAX_LENGTH, firstParagraph } from './document-description.ts'
+export type {
+  InternalLinkDependencies,
+  InternalLinkQuery,
+  InternalLinkViewer,
+} from './internal-link-previews.ts'
+export { readInternalLinkPreviews } from './internal-link-previews.ts'
 export type { ReviewerAccessProbe, ReviewerRef } from './review-access.ts'
 export { createReviewerAccessProbe } from './review-access.ts'
 export type {

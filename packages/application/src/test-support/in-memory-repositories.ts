@@ -1,3 +1,4 @@
+import { REQUEST_IN_FLIGHT_FOR_MS, retryAfter } from '@quill/domain'
 import type { DocumentId, ShortId, UserId } from '@quill/domain'
 
 import type {
@@ -32,6 +33,8 @@ import type {
   NotificationRow,
   OutboxEventRow,
   OutboxWriter,
+  LinkPreviewRepository,
+  LinkPreviewRow,
   PersonPreferencesRepository,
   PersonPreferencesRow,
   PublicRedirectRepository,
@@ -106,6 +109,10 @@ function identityKey(issuer: string, subject: string): string {
   return JSON.stringify([issuer, subject])
 }
 
+/** A scope and a key cannot collide: neither contains a newline. */
+function rowId(scope: string, key: string): string {
+  return `${scope}\n${key}`
+}
 const isActiveReview = (row: ReviewRequestRow): boolean => row.closedAt === null
 const newestFirst = (left: ReviewRequestRow, right: ReviewRequestRow): number =>
   right.createdAt.getTime() - left.createdAt.getTime() || (left.id < right.id ? 1 : -1)
@@ -150,6 +157,7 @@ export function createInMemoryUnitOfWork(
   const auditEvents: AuditEventRow[] = []
   const secrets = new Map<string, SecretRow>()
   const personPreferences = new Map<string, PersonPreferencesRow>()
+  const linkPreviewRows = new Map<string, LinkPreviewRow>()
   const reviewRequests: ReviewRequestRow[] = []
   const reviewAssignments: ReviewAssignmentRow[] = []
   /** Keyed by `(userId, documentId)`, which is what the primary key makes unique. */
@@ -1072,7 +1080,14 @@ export function createInMemoryUnitOfWork(
   }
 
   /** Sequential and readable in a failing assertion; the real generator draws UUIDs. */
-  const eventIds = { uuid: () => `event-${String(events.length + 1)}` }
+  // A batch asks for every id before any row is written, so the count is of ids issued as well as rows.
+  let issued = 0
+  const eventIds = {
+    uuid: () => {
+      issued = Math.max(issued, events.length) + 1
+      return `event-${String(issued)}`
+    },
+  }
 
   const outboxWriter: OutboxWriter = {
     async write({ id, type, payload, now }) {
@@ -1086,6 +1101,9 @@ export function createInMemoryUnitOfWork(
         attempts: 0,
         lastError: null,
       })
+    },
+    async writeMany(inputs) {
+      for (const input of inputs) await outboxWriter.write(input)
     },
   }
 
@@ -1419,6 +1437,94 @@ export function createInMemoryUnitOfWork(
   }
 
   /**
+   * The same rules as the SQL: one row per `(scope, key)`, an atomic claim on
+   * a fetch, and a failure that never replaces a stored preview.
+   */
+  const linkPreviewRepository: LinkPreviewRepository = {
+    async findMany(scopes, keys) {
+      return keys.flatMap((key) =>
+        scopes.flatMap((scope) => linkPreviewRows.get(rowId(scope, key)) ?? []),
+      )
+    },
+    async requestFetch({ scope, keys, now, force }) {
+      const cutoff = now.getTime() - REQUEST_IN_FLIGHT_FOR_MS
+      const queued: string[] = []
+      for (const key of keys) {
+        const id = rowId(scope, key)
+        const row = linkPreviewRows.get(id)
+        if (row === undefined) {
+          linkPreviewRows.set(id, {
+            scope,
+            key,
+            state: 'pending',
+            document: null,
+            failure: null,
+            fetchedAt: now,
+            requestedAt: now,
+            retryAfter: null,
+          })
+          queued.push(key)
+        } else if (
+          (row.requestedAt === null || row.requestedAt.getTime() < cutoff) &&
+          (force || row.retryAfter === null || row.retryAfter.getTime() <= now.getTime())
+        ) {
+          linkPreviewRows.set(id, { ...row, requestedAt: now })
+          queued.push(key)
+        }
+      }
+      return queued
+    },
+    async putReady({ scope, key, document, now }) {
+      linkPreviewRows.set(rowId(scope, key), {
+        scope,
+        key,
+        state: 'ready',
+        document,
+        failure: null,
+        fetchedAt: now,
+        requestedAt: null,
+        retryAfter: null,
+      })
+    },
+    async putFailure({ scope, key, failure, now }) {
+      const id = rowId(scope, key)
+      const row = linkPreviewRows.get(id)
+      linkPreviewRows.set(
+        id,
+        row?.state === 'ready' && failure !== 'restricted'
+          ? { ...row, requestedAt: null, retryAfter: retryAfter(now) }
+          : {
+              scope,
+              key,
+              state: 'failed',
+              document: null,
+              failure,
+              fetchedAt: now,
+              requestedAt: null,
+              retryAfter: retryAfter(now),
+            },
+      )
+    },
+    async deleteFetchedBefore(before) {
+      const stale = [...linkPreviewRows].filter(
+        ([, row]) => row.fetchedAt.getTime() < before.getTime(),
+      )
+      for (const [id] of stale) linkPreviewRows.delete(id)
+      return stale.length
+    },
+    async isImageReferenced(hash) {
+      return [...linkPreviewRows.values()].some((row) => {
+        const { document } = row
+        if (typeof document !== 'object' || document === null) return false
+        return [Reflect.get(document, 'thumbnail'), Reflect.get(document, 'favicon')].some(
+          (image) =>
+            typeof image === 'object' && image !== null && Reflect.get(image, 'hash') === hash,
+        )
+      })
+    },
+  }
+
+  /**
    * Secrets as they are stored: ciphertext and a wrapped key, never a value
    * (ADR-034). The fake keeps exactly the columns the table has, so a test of
    * rotation exercises the real "which key is this wrapped with" question.
@@ -1504,6 +1610,7 @@ export function createInMemoryUnitOfWork(
     secrets: secretsRepository,
     attachments: attachmentRepository,
     personPreferences: personPreferencesRepository,
+    linkPreviews: linkPreviewRepository,
     reviews: reviewRepository,
     documentViews: documentViewRepository,
     notifications: notificationRepository,

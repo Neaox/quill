@@ -2,6 +2,8 @@ import { useEffect, useId, useRef, useState } from 'react'
 import type { FormEvent, KeyboardEvent } from 'react'
 import { tv } from 'tailwind-variants'
 
+import { LINK_DISPLAY_CHOICES, NO_LINE_OF_ITS_OWN } from '../actions/link-display-actions.ts'
+import type { LinkDisplayChoice } from '../actions/link-display-actions.ts'
 import { normaliseHref } from '../format/href.ts'
 import { toolbarStyles } from './toolbar-controls.tsx'
 
@@ -18,14 +20,27 @@ import { toolbarStyles } from './toolbar-controls.tsx'
 
 const linkEditor = tv({
   slots: {
-    form: 'flex items-center gap-1',
-    field: 'flex flex-col',
+    form: 'flex flex-wrap items-center gap-1',
+    field: 'flex min-w-0 max-w-full flex-col',
     input: [
-      'h-8 w-64 rounded-sm border border-border-strong bg-surface px-2 text-sm text-foreground',
+      'h-8 w-64 max-w-full rounded-sm border border-border-strong bg-surface px-2 text-sm text-foreground',
       'placeholder:text-muted focus-visible:outline-2 focus-visible:outline-focus-ring',
       'aria-invalid:border-danger',
     ],
     error: 'px-1 pt-0.5 text-xs text-danger',
+    // The choice of display: native radios, so the group is one tab stop and the arrows move
+    // inside it. The radio carries the state, and the label follows it.
+    choices: 'flex min-w-0 items-center gap-0.5 rounded-sm border-0 bg-surface p-0.5',
+    choice: [
+      'relative inline-flex h-7 min-w-8 cursor-pointer items-center justify-center rounded-sm px-2 text-sm',
+      'text-foreground transition-colors ease-standard hover:bg-surface-raised',
+      'has-checked:bg-accent-subtle has-checked:text-accent',
+      'has-focus-visible:outline-2 has-focus-visible:outline-offset-1 has-focus-visible:outline-focus-ring',
+      'has-disabled:cursor-not-allowed has-disabled:opacity-40 has-disabled:hover:bg-transparent',
+    ],
+    radio: 'absolute inset-0 m-0 cursor-[inherit] appearance-none opacity-0',
+    legend: 'sr-only',
+    hint: 'sr-only',
   },
 })
 const styles = linkEditor()
@@ -36,13 +51,35 @@ const REFUSAL = 'Use a web address, an email address, or a path in this site.'
 export interface LinkEditorProps {
   /** The address the selection already links to, if it does. */
   readonly href: string | null
-  onApply(href: string): void
+  /**
+   * The display the link has now, or `url` for words that are not a link yet. Absent, the box
+   * offers no choice of display (an editor with nothing to show a link as).
+   */
+  readonly display?: LinkDisplayChoice | undefined
+  /** Whether the selection is somewhere a card or a compact line can go. */
+  readonly blockFits?: boolean | undefined
+  /**
+   * The address cannot be changed here: the link is written as a directive, whose address is
+   * the words it was made from. The box then only changes how it is shown.
+   */
+  readonly addressLocked?: boolean | undefined
+  onApply(href: string, display: LinkDisplayChoice): void
   onRemove(): void
   onCancel(): void
 }
 
-export function LinkEditor({ href, onApply, onRemove, onCancel }: LinkEditorProps) {
+export function LinkEditor({
+  href,
+  display,
+  blockFits = true,
+  addressLocked = false,
+  onApply,
+  onRemove,
+  onCancel,
+}: LinkEditorProps) {
   const [value, setValue] = useState(href ?? '')
+  const [shownAs, setShownAs] = useState<LinkDisplayChoice>(display ?? 'url')
+  const choicesId = useId()
   const [refused, setRefused] = useState(false)
   const input = useRef<HTMLInputElement | null>(null)
   const errorId = useId()
@@ -66,12 +103,12 @@ export function LinkEditor({ href, onApply, onRemove, onCancel }: LinkEditorProp
 
   function submit(event: FormEvent): void {
     event.preventDefault()
-    const address = normaliseHref(value)
+    const address = addressLocked && href !== null ? href : normaliseHref(value)
     if (address === null) {
       setRefused(true)
       return
     }
-    onApply(address)
+    onApply(address, shownAs)
   }
 
   return (
@@ -87,6 +124,7 @@ export function LinkEditor({ href, onApply, onRemove, onCancel }: LinkEditorProp
           aria-invalid={refused || undefined}
           aria-describedby={refused ? errorId : undefined}
           placeholder="Paste or type an address"
+          readOnly={addressLocked}
           className={styles.input()}
           onKeyDown={cancelOnEscape}
           value={value}
@@ -101,6 +139,40 @@ export function LinkEditor({ href, onApply, onRemove, onCancel }: LinkEditorProp
           </p>
         ) : null}
       </div>
+      {display === undefined ? null : (
+        <fieldset
+          role="radiogroup"
+          aria-label="Show link as"
+          className={styles.choices()}
+          onKeyDown={cancelOnEscape}
+        >
+          {LINK_DISPLAY_CHOICES.map(({ display: choice, label, description }) => {
+            const unavailable = !blockFits && (choice === 'card' || choice === 'compact')
+            return (
+              <label key={choice} className={styles.choice()} title={description}>
+                <input
+                  type="radio"
+                  name={choicesId}
+                  className={styles.radio()}
+                  aria-label={label}
+                  checked={shownAs === choice}
+                  disabled={unavailable}
+                  aria-describedby={unavailable ? `${choicesId}-why` : undefined}
+                  onChange={() => {
+                    setShownAs(choice)
+                  }}
+                />
+                {label}
+              </label>
+            )
+          })}
+          {blockFits ? null : (
+            <span id={`${choicesId}-why`} className={styles.hint()}>
+              {NO_LINE_OF_ITS_OWN}
+            </span>
+          )}
+        </fieldset>
+      )}
       <button type="submit" className={buttons.button()} onKeyDown={cancelOnEscape}>
         Apply
       </button>

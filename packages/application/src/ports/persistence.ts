@@ -1224,6 +1224,95 @@ export interface PersonPreferencesRepository {
 }
 
 // ---------------------------------------------------------------------------
+// Link previews
+// ---------------------------------------------------------------------------
+
+/**
+ * One stored link preview, as it was written (ADR-042).
+ *
+ * `document` is the preview exactly as stored, read through the use case's
+ * versioned reader rather than trusted here, so a row written by another
+ * release is never misread by the storage layer (ADR-033). It is null for a
+ * row that holds no preview: one that has only been asked for, or one whose
+ * fetch failed.
+ */
+export interface LinkPreviewRow {
+  /** `public` for a preview anyone on the instance may be shown, else the owner it is private to. */
+  readonly scope: string
+  /** The normalised URL. */
+  readonly key: string
+  readonly state: 'ready' | 'failed' | 'pending'
+  readonly document: unknown
+  readonly failure: string | null
+  /** When this row's state was decided: the fetch that produced it, or the request that created it. */
+  readonly fetchedAt: Date
+  /** Set while a fetch is wanted or running. */
+  readonly requestedAt: Date | null
+  /** No new fetch before this, so a dead link is not asked for on every read. */
+  readonly retryAfter: Date | null
+}
+
+export interface LinkPreviewRepository {
+  /**
+   * Every row for these keys in any of these scopes, in one query, so a page
+   * with fifty links costs one read and never fifty.
+   */
+  findMany(scopes: readonly string[], keys: readonly string[]): Promise<readonly LinkPreviewRow[]>
+  /**
+   * Records that a fetch is wanted for each key, and answers which of them
+   * this caller is the one to queue: not one that another request already has
+   * in flight (made within `REQUEST_IN_FLIGHT_FOR_MS`), nor one that failed
+   * recently unless `force` is set. Atomic, so two readers asking at once
+   * queue one fetch, and one statement for any number of keys.
+   *
+   * A row that already holds a preview keeps it: the reader goes on being shown
+   * the old preview until the new one lands.
+   */
+  requestFetch(input: {
+    readonly scope: string
+    readonly keys: readonly string[]
+    readonly now: Date
+    readonly force: boolean
+  }): Promise<readonly string[]>
+  putReady(input: {
+    readonly scope: string
+    readonly key: string
+    readonly document: unknown
+    readonly now: Date
+  }): Promise<void>
+  /**
+   * Records a failed fetch. A row that already holds a preview keeps it, with
+   * a later `retryAfter`: a dead link's last good preview beats an empty card
+   * (ADR-032, "the last good snapshot with its age"). The one exception is the
+   * failure `restricted`: the link is no longer public, so what was kept from
+   * when it was is dropped rather than shown to people who could not open it.
+   */
+  putFailure(input: {
+    readonly scope: string
+    readonly key: string
+    readonly failure: string
+    readonly now: Date
+  }): Promise<void>
+  /**
+   * Forgets every row last fetched before `before`, whatever its state, and
+   * says how many went. Previews are derived data: a link someone still reads
+   * is refreshed long before this, so what is left to sweep is a link nobody
+   * has read in months, and one fetch brings it back if anyone ever does.
+   */
+  deleteFetchedBefore(before: Date): Promise<number>
+  /**
+   * Whether any stored preview shows the image with this hash, as its thumbnail
+   * or its icon.
+   *
+   * The blob store holds every kind of file by its hash, attachments included,
+   * so a route that serves an image by hash must first be sure the hash is one
+   * a preview put there. Otherwise it would be a way to read any stored file
+   * whose hash you know, past the permissions that guard it.
+   */
+  isImageReferenced(hash: string): Promise<boolean>
+}
+
+// ---------------------------------------------------------------------------
 // Outbox and audit
 // ---------------------------------------------------------------------------
 
@@ -1239,13 +1328,17 @@ export interface OutboxEventRow {
 }
 
 /** Written in the same transaction as the change that produced the event (plan §22). */
+export interface OutboxEventInput {
+  readonly id: string
+  readonly type: string
+  readonly payload: unknown
+  readonly now: Date
+}
+
 export interface OutboxWriter {
-  write(input: {
-    readonly id: string
-    readonly type: string
-    readonly payload: unknown
-    readonly now: Date
-  }): Promise<void>
+  write(input: OutboxEventInput): Promise<void>
+  /** Several events in one statement, for a use case that queues many (a page of links). */
+  writeMany(inputs: readonly OutboxEventInput[]): Promise<void>
 }
 
 export interface AuditEventRow {
@@ -1297,6 +1390,7 @@ export interface RepositoryBundle {
   readonly secrets: SecretsRepository
   readonly attachments: AttachmentRepository
   readonly personPreferences: PersonPreferencesRepository
+  readonly linkPreviews: LinkPreviewRepository
   readonly reviews: ReviewRepository
   readonly documentViews: DocumentViewRepository
   readonly notifications: NotificationRepository
