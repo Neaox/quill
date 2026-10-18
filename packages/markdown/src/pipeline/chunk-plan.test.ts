@@ -91,6 +91,16 @@ describe('cutting a document into pieces', () => {
     ])
   })
 
+  it('stops reading a wrapped label at a blank line, or once it is longer than a label can be', () => {
+    // A blank line ends the paragraph, so nothing after it can close the label.
+    expect(
+      planChunks('[open\n\nlabel]: /x\n', EVERYWHERE).spans.flatMap((s) => s.definitions),
+    ).toEqual([])
+    // CommonMark caps a label at 999 characters; reading stops there.
+    const long = `[${'word '.repeat(150)}\n${'more '.repeat(150)}\n${'still '.repeat(150)}\nend]: /x\n`
+    expect(planChunks(long, EVERYWHERE).spans.flatMap((s) => s.definitions)).toEqual([])
+  })
+
   it('reads a label that wraps onto the next line', () => {
     const plan = planChunks('[a long\nlabel]: /x\n', EVERYWHERE)
     expect(plan.spans.flatMap((span) => span.definitions)).toEqual([
