@@ -18,5 +18,18 @@ export function createOutboxWriter(db: DrizzleClient): OutboxWriter {
         availableAt: now,
       })
     },
+
+    async writeMany(inputs): Promise<void> {
+      if (inputs.length === 0) return
+      await db.insert(outboxEvents).values(
+        inputs.map(({ id, type, payload, now }) => ({
+          id,
+          type,
+          payload,
+          createdAt: now,
+          availableAt: now,
+        })),
+      )
+    },
   }
 }

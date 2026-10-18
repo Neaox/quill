@@ -27,12 +27,27 @@ describe('what the toolbar is about', () => {
     expect(toolbarTarget(stateAt('```\nsome code\n```\n', 2, 6))).toBeNull()
   })
 
+  it('is a link written as a directive, whichever form, with how it is shown', () => {
+    expect(
+      toolbarTarget(
+        stateAt('See :link[the doc]{url="https://blog.example/p" display=inline}.', 12),
+      ),
+    ).toMatchObject({
+      kind: 'link',
+      form: 'text',
+      display: 'inline',
+      href: 'https://blog.example/p',
+    })
+  })
+
   it('is the link a caret rests in, before the table or callout around it', () => {
     expect(toolbarTarget(stateAt('[a link](/x)\n', 3))).toEqual({
       kind: 'link',
       from: 1,
       to: 7,
       href: '/x',
+      form: 'mark',
+      display: 'url',
     })
     expect(toolbarTarget(stateAt(':::callout\n[a link](/x)\n:::\n', 3))).toMatchObject({
       kind: 'link',

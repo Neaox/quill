@@ -27,6 +27,7 @@ import { parseSecretsSetArgv, readSecretValue, setSecretValue } from './secrets-
 import { pagelessStylesheets } from '../theme/pageless.ts'
 import type { UserId } from '@quill/domain'
 import { createDrawioText } from '../extensions/drawio/drawing-text.ts'
+import { INERT_LINK_PREVIEW_PORTS } from '../infrastructure/link-preview/inert.ts'
 
 /**
  * `pnpm --filter @quill/server secrets:set <name>` — the composition root for
@@ -100,6 +101,7 @@ try {
       publicSiteCache: createPublicSiteCache({ clock, ttlMs: 0 }),
       tokens: createTokenService(),
       shareLinkPolicy: createShareLinkPolicy(config),
+      linkPreviewPorts: INERT_LINK_PREVIEW_PORTS,
       mailer: createDevMailer(() => undefined),
       // No secret set here reaches mail, an identity provider or an
       // attachment; the ports are present only because `AppDependencies` is

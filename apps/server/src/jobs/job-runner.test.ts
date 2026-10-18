@@ -1,7 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { createFakeClock } from '../test-support/fakes.ts'
-import { createJobRunner, type OutboxPoll } from './job-runner.ts'
+import { createJobRunner, type LanePoll, type OutboxPoll } from './job-runner.ts'
+import type { LaneResult } from '../infrastructure/outbox/lane.ts'
 import type { OutboxConsumer } from '../infrastructure/outbox/consumer.ts'
 import type { PollResult } from '../infrastructure/outbox/poller.ts'
 
@@ -207,5 +208,110 @@ describe('one poll at a time', () => {
     const stopping = runner.stop()
     await vi.runOnlyPendingTimersAsync()
     await stopping
+  })
+})
+
+describe('the lane for slow work', () => {
+  const LANE_RESULT: LaneResult = { processed: 1, failed: 0, deferred: 0, deadLettered: 0 }
+  const laneConsumer: OutboxConsumer = { eventType: 'Slow', handle: async () => undefined }
+
+  function setUp(pollLane: LanePoll) {
+    const clock = createFakeClock(new Date('2026-01-01T00:00:00.000Z'))
+    const poll = vi.fn<OutboxPoll>().mockResolvedValue(RESULT)
+    const onPollError = vi.fn<(error: unknown) => void>()
+    const runner = createJobRunner({ poll, pollLane, clock, onPollError })
+    return { runner, poll, onPollError }
+  }
+
+  it('polls the lane with its own consumers, not the main ones', async () => {
+    const pollLane = vi.fn<LanePoll>().mockResolvedValue(LANE_RESULT)
+    const { runner, poll } = setUp(pollLane)
+    runner.register({ eventType: 'Quick', handle: async () => undefined })
+    runner.lane(laneConsumer)
+
+    await runner.pollLaneOnce()
+    await runner.pollOnce()
+    expect([...(pollLane.mock.calls[0]?.[0].keys() ?? [])]).toEqual(['Slow'])
+    expect([...(poll.mock.calls[0]?.[0].keys() ?? [])]).toEqual(['Quick'])
+  })
+
+  it('runs on a timer of its own once started', async () => {
+    const pollLane = vi.fn<LanePoll>().mockResolvedValue(LANE_RESULT)
+    const { runner } = setUp(pollLane)
+    runner.lane(laneConsumer)
+    runner.start()
+    await vi.advanceTimersByTimeAsync(3000)
+    expect(pollLane.mock.calls.length).toBeGreaterThanOrEqual(3)
+    await runner.stop()
+  })
+
+  it('does not poll the lane when nothing is on it', async () => {
+    const pollLane = vi.fn<LanePoll>().mockResolvedValue(LANE_RESULT)
+    const { runner } = setUp(pollLane)
+    runner.start()
+    await vi.advanceTimersByTimeAsync(3000)
+    expect(pollLane).not.toHaveBeenCalled()
+    await runner.stop()
+  })
+
+  it('does not hold up the main poll while a lane cycle is in progress', async () => {
+    const held = pause()
+    const pollLane = vi.fn<LanePoll>(async () => {
+      await held.waited
+      return LANE_RESULT
+    })
+    const { runner, poll } = setUp(pollLane)
+    runner.lane(laneConsumer)
+    runner.start()
+    await vi.advanceTimersByTimeAsync(5000)
+    // The lane has been started once and is still working; the main poll kept its pace.
+    expect(pollLane).toHaveBeenCalledOnce()
+    expect(poll.mock.calls.length).toBeGreaterThanOrEqual(4)
+    held.release()
+    await runner.stop()
+  })
+
+  it('has one lane cycle at a time', async () => {
+    const held = pause()
+    const pollLane = vi.fn<LanePoll>(async () => {
+      await held.waited
+      return LANE_RESULT
+    })
+    const { runner } = setUp(pollLane)
+    runner.lane(laneConsumer)
+    runner.start()
+    await vi.advanceTimersByTimeAsync(4000)
+    expect(pollLane).toHaveBeenCalledOnce()
+    held.release()
+    await runner.stop()
+  })
+
+  it('waits for the lane cycle in flight when stopping', async () => {
+    const held = pause()
+    let finished = false
+    const pollLane = vi.fn<LanePoll>(async () => {
+      await held.waited
+      finished = true
+      return LANE_RESULT
+    })
+    const { runner } = setUp(pollLane)
+    runner.lane(laneConsumer)
+    runner.start()
+    await vi.advanceTimersByTimeAsync(1500)
+    const stopping = runner.stop()
+    held.release()
+    await stopping
+    expect(finished).toBe(true)
+  })
+
+  it('reports a lane failure and carries on', async () => {
+    const pollLane = vi.fn<LanePoll>().mockRejectedValue(new Error('database gone'))
+    const { runner, onPollError } = setUp(pollLane)
+    runner.lane(laneConsumer)
+    runner.start()
+    await vi.advanceTimersByTimeAsync(2500)
+    expect(onPollError).toHaveBeenCalledWith(expect.objectContaining({ message: 'database gone' }))
+    expect(pollLane.mock.calls.length).toBeGreaterThanOrEqual(2)
+    await runner.stop()
   })
 })

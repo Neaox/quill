@@ -87,7 +87,20 @@ src/
                             just-in-time provisioning, session rotation, audit
 
   infrastructure/http/
-    outbound-client.ts      the one SSRF-safe client every server-side fetch goes through
+    outbound-client.ts      the SSRF-safe, allowlisted client server-side fetches go through
+    open-web-client.ts      its open-web sibling for link previews: no allowlist, stricter limits, per-request policy
+    open-web-resolver.ts    c-ares name resolution for it; limiter.ts bounds work in flight
+    decode-html.ts          fetched page bytes to text: header charset, else meta, else UTF-8
+
+  infrastructure/link-preview/   (ADR-042)
+    link-preview-provider.ts  the layered resolver: known oEmbed, Open Graph, Twitter Card, page tags, discovered oEmbed
+    page-metadata.ts        one parse5 pass over a page's head: tags, JSON-LD, icons, oEmbed link
+    markup-layers.ts        Open Graph, Twitter Card and page layers, each a pure function of that parse
+    oembed-layer.ts         asks an oEmbed endpoint; never reads its `html`
+    oembed-registry.ts      matches a URL to a provider; `oembed-providers.gen.ts` is vendored (`pnpm oembed:sync`)
+    plain-text.ts           cleans untrusted text: whitespace, controls, bidi overrides, length
+    image-ingestor.ts       fetch, sniff, re-encode, store under its hash; null on any failure
+    isolated-transcoder.ts  runs sharp in a child process (transcode-worker.ts): no environment, heap and time limits, reply validated
 
   plugins/
     error-handler.ts        maps every error to the consistent shape
@@ -363,6 +376,54 @@ The transport and the resolver are parameters, so the unit tests drive the whole
 without a network. The breached-password checker is its first caller; it consults a small
 bundled corpus (`auth/breached-password-corpus.ts`) whenever the remote range API cannot be
 reached, so an outage is a narrower check rather than no check.
+
+### The open-web client (ADR-042)
+
+`open-web-client.ts` serves link previews, which must reach whatever host a person pasted. It
+shares the address check and the pinned transport with the client above, and adds what an open
+door needs: ports 80 and 443 only, no credentials in the URL, one **total** time budget (6 s,
+body included, so a slow-drip host cannot hold a connection), the media type decided from the
+headers before the body is read, no compressed bodies, and reading that stops at `</head>` or
+512 KiB. Names are resolved with c-ares rather than `getaddrinfo`, so a slow nameserver cannot hold
+the threadpool that serves file reads; at most 8 requests run at once, 64 queue, and the rest are
+refused as busy. Callers state what they accept through `pageRequest`, `jsonRequest` and
+`imageRequest`, and pass the organisation's policy as `permit`, which is asked on every hop. It
+refuses to carry an `Authorization`, `Cookie` or similar header: nothing that holds credentials may
+use it.
+
+See `docs/security/review-2026-10-13-link-previews.md` for the review, including two denial-of-service
+problems found by measurement (a quadratic HTML parse and a backtracking pattern match).
+
+## Link previews (ADR-042)
+
+Reading never fetches. `POST /api/link-previews/resolve` looks up the stored snapshots for up to fifty
+links in one query and answers each as `ready` (with `stale`), `pending`, `unavailable` or `blocked`;
+a link with no usable snapshot queues a `LinkPreviewRequested` outbox event, and the consumer
+(`infrastructure/outbox/fetch-link-preview.ts`) fetches it in the background and stores the result
+in `link_previews`. `POST /api/link-previews/refresh` forces one, limited per person.
+
+- **The claim is one statement.** `requestFetch` is a conditional upsert, so readers who miss the same
+  link together queue one fetch; the test runs eight at once.
+- **Policy at read time.** What a viewer is shown is decided by their organisation's policy every time,
+  not when the preview was fetched, so a policy change takes effect at once and a text-only
+  organisation never receives a stored picture.
+- **Scopes.** A preview fetched under the default policy is shared (`public`); one fetched under a
+  restrictive policy lives in a scope derived from a hash of that policy (`audiences.ts`).
+- **Rate limits** (`rate-limits.ts`): token buckets per host, per scope, and globally; a refused fetch
+  is retried by the outbox with backoff.
+- **Housekeeping.** `jobs/sweep-link-previews.ts` forgets rows last fetched over 90 days ago.
+- **A lane of its own** (`infrastructure/outbox/lane.ts`). Fetches wait on other people's servers, so
+  they run beside the main outbox poll, not in it: events are leased (no transaction held while the
+  fetch runs), up to eight at once, and a rate limit or a busy fetcher defers the event
+  (`DeferEvent`) without counting a failed attempt.
+- **Never fetched for a stranger.** `peekLinkPreviews` is the read for the public site and exports:
+  it cannot queue. Signed-in reads and pastes queue, within a per-person allowance.
+- **Pictures** are served at `/link-previews/images/:hash` (`routes/link-preview-images.ts`), and
+  only if a stored preview shows that hash; the blob store also holds attachments.
+- **`GET /bot`** is the page the user agent names. `pnpm --filter @quill/server bench:link-preview`
+  measures the hot paths against their budgets and fails if one is over.
+- `INERT_LINK_PREVIEW_PORTS` is the "previews off" implementation that scripts and tests of other
+  things are given.
 
 ## Drafts and locks (ADR-021)
 

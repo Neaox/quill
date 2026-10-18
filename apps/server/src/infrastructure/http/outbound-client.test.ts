@@ -40,6 +40,13 @@ describe('isBlockedAddress', () => {
       'fd12:3456::1',
       'fe80::1',
       '::ffff:169.254.169.254',
+      '::ffff:0:127.0.0.1', // IPv4-translated
+      '::ffff:0:7f00:1',
+      'fec0::1', // site-local
+      '2001:db8::1', // documentation
+      '100::1', // discard-only
+      '64:ff9b:1::1', // local-use NAT64
+      '64:ff9b:1:0:0:7f:0:1',
       'not-an-address',
     ]) {
       expect({ address, blocked: isBlockedAddress(address) }).toEqual({ address, blocked: true })
@@ -265,6 +272,41 @@ describe('createOutboundClient', () => {
   })
 })
 
+describe('exposing response headers', () => {
+  it('returns only the headers that were asked for, by lower-case name, and only when asked', async () => {
+    const { client, fetchMock } = setUp()
+    fetchMock.mockImplementation(async () =>
+      respond(200, 'ok', {
+        'X-RateLimit-Remaining': '4999',
+        'Set-Cookie': 'a=b',
+        'Retry-After': '7',
+      }),
+    )
+    const url = `https://${ALLOWED}/x`
+    const asked = await client.get({
+      url,
+      exposeHeaders: ['X-RateLimit-Remaining', 'retry-after', 'x-missing'],
+    })
+    expect(asked).toEqual({
+      status: 200,
+      body: 'ok',
+      headers: { 'x-ratelimit-remaining': '4999', 'retry-after': '7' },
+    })
+    expect(await client.get({ url })).toEqual({ status: 200, body: 'ok' })
+  })
+
+  it('exposes the headers of the final response of a redirect chain, not the redirect', async () => {
+    const { client, fetchMock } = setUp()
+    fetchMock
+      .mockResolvedValueOnce(
+        respond(301, '', { location: `https://${ALLOWED}/y`, 'x-hop': 'first' }),
+      )
+      .mockResolvedValueOnce(respond(200, 'ok', { 'x-hop': 'second' }))
+    const response = await client.get({ url: `https://${ALLOWED}/x`, exposeHeaders: ['x-hop'] })
+    expect(response.headers).toEqual({ 'x-hop': 'second' })
+  })
+})
+
 describe('a response with no body', () => {
   it('reads as empty rather than failing', async () => {
     const client = createOutboundClient({
@@ -380,5 +422,63 @@ describe('post', () => {
         contentType: 'application/x-www-form-urlencoded',
       }),
     ).rejects.toMatchObject({ reason: 'response_too_large' })
+  })
+})
+
+const nap = (milliseconds: number) => new Promise<void>((done) => setTimeout(done, milliseconds))
+
+describe('one clock for the whole call', () => {
+  /** A response whose body sends one byte and then stops, as a host that answers and then drips would. */
+  function dripping(): Response {
+    return new Response(
+      new ReadableStream<Uint8Array>({
+        pull(controller) {
+          controller.enqueue(new Uint8Array([120]))
+          return nap(1_000)
+        },
+      }),
+      { status: 200 },
+    )
+  }
+
+  it('times out a host that answers at once and then drips its body', async () => {
+    const { client } = setUp({ timeoutMs: 60, fetch: async () => dripping() })
+    const started = performance.now()
+    await expect(client.get({ url: `https://${ALLOWED}/x` })).rejects.toMatchObject({
+      reason: 'timeout',
+    })
+    // A generous bound: the attack it guards against takes tens of seconds, and a busy machine takes one.
+    expect(performance.now() - started).toBeLessThan(2500)
+  })
+
+  it('times out a POST whose answer drips its body, too', async () => {
+    const { client } = setUp({ timeoutMs: 60, fetch: async () => dripping() })
+    await expect(
+      client.post({ url: `https://${ALLOWED}/token`, body: 'a=b', contentType: 'text/plain' }),
+    ).rejects.toMatchObject({ reason: 'timeout' })
+  })
+
+  it('times out a name that never resolves', async () => {
+    const { client } = setUp({ timeoutMs: 40, resolve: () => new Promise(() => undefined) })
+    await expect(client.get({ url: `https://${ALLOWED}/x` })).rejects.toMatchObject({
+      reason: 'timeout',
+    })
+  })
+
+  it('counts every redirect against the same budget, not a fresh one for each', async () => {
+    const fetchMock = vi.fn<FetchLike>(async () => {
+      await nap(30)
+      return respond(302, '', { location: '/again' })
+    })
+    const { client } = setUp({ timeoutMs: 80, maxRedirects: 10, fetch: fetchMock })
+    await expect(client.get({ url: `https://${ALLOWED}/x` })).rejects.toMatchObject({
+      reason: 'timeout',
+    })
+    expect(fetchMock.mock.calls.length).toBeLessThan(10)
+  })
+
+  it('still answers a call that finishes inside its budget, body and all', async () => {
+    const { client } = setUp({ timeoutMs: 500, fetch: async () => respond(200, 'fine') })
+    expect(await client.get({ url: `https://${ALLOWED}/x` })).toEqual({ status: 200, body: 'fine' })
   })
 })

@@ -291,9 +291,33 @@ describe('data and references', () => {
     expectStable(result.markdown)
   })
 
-  it('link to document: by id, with the title as its words', async () => {
+  it('link to document: by id, shown as the document’s live title', async () => {
     const result = await choose(run('document-link', 'See '), 'run')
-    expect(result.markdown).toBe('See [Runbook](/d/doc-1)\n')
+    expect(result.markdown).toBe('See [/d/doc-1](/d/doc-1)<!-- quill:link display=inline -->\n')
+    expectStable(result.markdown)
+  })
+
+  it('link card: a web address as a card, on a line of its own', async () => {
+    const result = await choose(run('link-card'), 'https://blog.example/post')
+    expect(result.markdown).toContain(
+      '<https://blog.example/post> <!-- quill:link display=card -->',
+    )
+    expectStable(roundTrip(result.markdown))
+  })
+
+  it('compact link: a web address as one line of its own', async () => {
+    const result = await choose(run('link-compact'), 'https://blog.example/post')
+    expect(result.markdown).toContain(
+      '<https://blog.example/post> <!-- quill:link display=compact -->',
+    )
+    expectStable(roundTrip(result.markdown))
+  })
+
+  it('link with preview: a web address inline, spelling itself', async () => {
+    const result = await choose(run('link-inline', 'See '), 'https://blog.example/post')
+    expect(result.markdown).toBe(
+      'See <https://blog.example/post><!-- quill:link display=inline -->\n',
+    )
     expectStable(result.markdown)
   })
 
@@ -326,9 +350,24 @@ describe('pickers say when nothing matches', () => {
     ['label', 'No label matches “zz”'],
     ['emoji', 'No emoji matches “zz”'],
     ['document-link', 'No document matches “zz”'],
+    ['link-card', 'That is not a web address (https://…)'],
+    ['link-compact', 'That is not a web address (https://…)'],
+    ['link-inline', 'That is not a web address (https://…)'],
   ])('%s', (id, message) => {
     expect(run(id).picker?.empty('zz')).toBe(message)
   })
+
+  it.each(['link-card', 'link-compact', 'link-inline'])(
+    '%s asks for an address before it has one, and offers nothing until it has a real one',
+    (id) => {
+      const { picker } = run(id)
+      expect(picker?.empty('  ')).toBe('Paste or type a web address')
+      const source = picker?.source
+      if (source?.kind !== 'list') throw new Error('Not a list.')
+      expect(source.options('blog.example/post')).toEqual([])
+      expect(source.options('https://blog.example/post')).toHaveLength(1)
+    },
+  )
 
   it('and a document search asks for words before it has any', async () => {
     const { picker } = run('document-link')

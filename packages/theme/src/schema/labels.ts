@@ -56,6 +56,7 @@ export const BUILT_IN_DIRECTIVE_NAMES = [
   'important',
   'info',
   'kbd',
+  'link',
   'note',
   'notes',
   'ok',

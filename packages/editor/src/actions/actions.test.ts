@@ -202,6 +202,11 @@ describe('the context menu’s groups', () => {
     expect(ids(stateAt('Some text.\n', 3))).toEqual(['styles', 'block', 'comment'])
   })
 
+  it('offer how a link is shown wherever the caret is in one', () => {
+    expect(ids(stateAt('[a link](/x)\n', 3))).toContain('link-display')
+    expect(ids(stateAt('Some text.\n', 3))).not.toContain('link-display')
+  })
+
   it('leave out the comment group when nobody is listening', () => {
     expect(
       contextMenuGroups(stateAt('Some text.\n', 3), { edit: () => {} }).map((g) => g.id),

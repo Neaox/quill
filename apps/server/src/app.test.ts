@@ -26,6 +26,7 @@ import {
   inMemorySettings,
 } from './test-support/fakes.ts'
 import { createDrawioText } from './extensions/drawio/drawing-text.ts'
+import { INERT_LINK_PREVIEW_PORTS } from './infrastructure/link-preview/inert.ts'
 
 /** Nothing in these tests searches; the engine is present because `AppDependencies` is one shape. */
 const SEARCH_INDEX = createInMemorySearchIndex()
@@ -94,6 +95,7 @@ describe('server with dependencies', () => {
       hasher: createHasher(),
       tokens: createTokenService(),
       shareLinkPolicy: { allowed: () => true },
+      linkPreviewPorts: INERT_LINK_PREVIEW_PORTS,
       ...(await inMemorySettings(clock, config)),
       blobStore: createInMemoryBlobStore(),
       format: createDocumentFormat(),
@@ -171,6 +173,7 @@ describe('trusting what is in front of the server', () => {
       hasher: createHasher(),
       tokens: createTokenService(),
       shareLinkPolicy: { allowed: () => true },
+      linkPreviewPorts: INERT_LINK_PREVIEW_PORTS,
       ...(await inMemorySettings(clock, config)),
       blobStore: createInMemoryBlobStore(),
       format: createDocumentFormat(),

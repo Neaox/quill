@@ -31,6 +31,11 @@ export interface EditorAction {
   /** Removes something, so it is set apart and read as dangerous. */
   readonly destructive?: boolean
   readonly command: Command
+  /**
+   * Why the action is not available here, when it is not: shown on the disabled control, because
+   * a control that is greyed out with no reason reads as broken.
+   */
+  whyUnavailable?(state: EditorState): string | undefined
   /** For `radio` and `check` actions: whether the choice is the current one. */
   isChecked?(state: EditorState): boolean
 }

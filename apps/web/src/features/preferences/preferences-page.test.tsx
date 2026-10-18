@@ -1,3 +1,4 @@
+import { BRAND } from '@quill/brand'
 import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -26,6 +27,20 @@ afterEach(() => {
 })
 
 describe('the preferences page', () => {
+  it('offers link previews on hover, on until it is turned off, and remembers the choice in this browser', async () => {
+    const user = userEvent.setup()
+    renderApp(PATH, routes())
+
+    const group = await screen.findByRole('group', { name: 'Link previews on hover' })
+    expect(group).toHaveAccessibleDescription(/this browser only/)
+    expect(screen.getByRole('radio', { name: 'Show' })).toBeChecked()
+
+    await user.click(screen.getByRole('radio', { name: 'Don’t show' }))
+
+    expect(screen.getByRole('radio', { name: 'Don’t show' })).toBeChecked()
+    expect(localStorage.getItem(`${BRAND.slug}.link-peek`)).toBe('off')
+  })
+
   it('offers the three ways animated images can play, with the one in force chosen', async () => {
     const { container } = renderApp(PATH, routes())
 

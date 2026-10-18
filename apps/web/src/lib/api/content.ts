@@ -94,10 +94,29 @@ export function renderedQueryOptions(
   }
 }
 
+/** How long to wait before looking again for link previews that were being fetched, doubling each time. */
+const PENDING_LINKS_FIRST_WAIT_MS = 2_000
+const PENDING_LINKS_LOOKS = 5
+
+/**
+ * When to read a body again because some of its link previews were still
+ * being fetched (ADR-042): 2, 4, 8, 16 seconds, then give up. The links stay
+ * plain until a preview arrives, so giving up costs the reader nothing, and a
+ * reader never polls for a site that is slow or down.
+ */
+export function pendingLinksInterval(pendingLinks: number, looks: number): number | false {
+  if (pendingLinks === 0 || looks >= PENDING_LINKS_LOOKS) return false
+  return PENDING_LINKS_FIRST_WAIT_MS * 2 ** (looks - 1)
+}
+
 export function useRenderedDocument(documentId: string, revision?: string) {
   const client = useApiClient()
   const queryClient = useQueryClient()
-  return useQuery(renderedQueryOptions(client, queryClient, documentId, revision))
+  return useQuery({
+    ...renderedQueryOptions(client, queryClient, documentId, revision),
+    refetchInterval: (query) =>
+      pendingLinksInterval(query.state.data?.body.pendingLinks ?? 0, query.state.dataUpdateCount),
+  })
 }
 
 /**

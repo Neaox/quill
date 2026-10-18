@@ -52,4 +52,13 @@ export interface EventRecorder {
     payload: EventPayloadInput<P>,
     now: Date,
   ): Promise<void>
+  /**
+   * Several events of one kind in one statement: a page of fifty new links is one insert, not fifty.
+   * Each is announced to the bus after the commit exactly as `record` would, in order.
+   */
+  recordMany<P extends { readonly version: number }>(
+    definition: EventDefinition<P>,
+    payloads: readonly EventPayloadInput<P>[],
+    now: Date,
+  ): Promise<void>
 }

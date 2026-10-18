@@ -14,6 +14,7 @@ import {
   type SettingsIssue,
   type WorkspaceSettings,
 } from '../settings/documents.ts'
+import { resolveLinkPreviewSettings } from '../settings/link-previews.ts'
 import { resolveEffectiveSettings, type EffectiveSettings } from '../settings/resolve.ts'
 
 /**
@@ -35,6 +36,8 @@ import { resolveEffectiveSettings, type EffectiveSettings } from '../settings/re
 export const SETTINGS_AUDIT_EVENTS = {
   organisationUpdated: 'settings.organisation.updated',
   workspaceUpdated: 'settings.workspace.updated',
+  /** What Quill may fetch for the organisation changed (ADR-042). Counts, never patterns. */
+  linkPreviewsChanged: 'settings.link_previews.changed',
 } as const
 
 export interface SettingsDependencies {
@@ -169,6 +172,7 @@ export async function updateOrganisationSettings(
       changed: changedFields(before.kind === 'settings' ? before.document : null, written.document),
     },
   })
+  await auditLinkPolicy(deps, command.actor, before, written.document)
   return {
     kind: 'updated',
     document: written.document,
@@ -178,6 +182,42 @@ export async function updateOrganisationSettings(
     report: runThemeDoctor(written.document.theme, {
       textContrast: written.document.policies.contrastEnforcement,
     }),
+  }
+}
+
+/**
+ * Who widened or narrowed where Quill goes on the organisation's behalf is
+ * answered by its own event, so it can be found without reading every
+ * settings save. What it records is the shape of the policy (its mode, two
+ * switches and the size of each list), never a pattern: the revision beside
+ * it holds the whole before and after.
+ */
+async function auditLinkPolicy(
+  deps: SettingsDependencies,
+  actor: UserId,
+  before: SettingsRead<OrganisationSettings>,
+  after: OrganisationSettings,
+): Promise<void> {
+  const was = summariseLinkPolicy(before.kind === 'settings' ? before.document : null)
+  const now = summariseLinkPolicy(after)
+  if (JSON.stringify(was) === JSON.stringify(now)) return
+  await audit(deps, {
+    type: SETTINGS_AUDIT_EVENTS.linkPreviewsChanged,
+    actorUserId: actor,
+    targetType: 'organisation',
+    targetId: 'organisation',
+    metadata: { from: was, to: now },
+  })
+}
+
+function summariseLinkPolicy(document: OrganisationSettings | null) {
+  const settings = resolveLinkPreviewSettings(document ?? {})
+  return {
+    mode: settings.mode,
+    publicSite: settings.publicSite,
+    defaultDisplay: settings.defaultDisplay,
+    allow: settings.allow.length,
+    block: settings.block.length,
   }
 }
 

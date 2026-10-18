@@ -6,6 +6,21 @@ import type { MagicLinkPurpose } from '@quill/application'
 import type { SecretResolver } from '../infrastructure/secrets/resolve-secret.ts'
 import type { AccountExistsEmail, Mailer, MagicLinkEmail } from './mailer.ts'
 
+/**
+ * How long the mail server may take, at each stage.
+ *
+ * Delivery runs on the outbox, off the request path, so a slow server does not
+ * hold a sign-in. It does hold a job runner turn, and nodemailer's own defaults
+ * (two minutes to connect, ten of silence on an open socket) are long enough for
+ * a dead server to stall every event behind it. A message is small and a
+ * working mail server answers in well under these.
+ */
+export const SMTP_TIMEOUTS = {
+  connectionTimeout: 10_000,
+  greetingTimeout: 10_000,
+  socketTimeout: 30_000,
+} as const
+
 export interface SmtpMailerConfig {
   readonly host: string
   readonly port: number
@@ -56,6 +71,7 @@ export function createSmtpMailer(config: SmtpMailerConfig, secretResolver: Secre
       host: config.host,
       port: config.port,
       secure: config.secure,
+      ...SMTP_TIMEOUTS,
       ...(config.user === undefined ? {} : { auth: { user: config.user, pass } }),
     })
   }

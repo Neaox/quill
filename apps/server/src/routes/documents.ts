@@ -26,6 +26,13 @@ import {
   requireCollectionAccess,
   requireDocumentAccess,
 } from '../application/authorization.ts'
+import {
+  drawnTag,
+  fillLinksForMember,
+  internalLinks,
+  linkPreviewDependencies,
+} from '../application/fill-links.ts'
+import { linkEmbedRegistry } from '../infrastructure/link-preview/embed-config.ts'
 import { resolveDocumentId } from '../application/references.ts'
 import type { AppDependencies } from '../dependencies.ts'
 import { conflict, forbidden, lockLost, notFound, unprocessable } from '../errors.ts'
@@ -145,7 +152,8 @@ export function documentRoutes(deps: AppDependencies): FastifyPluginAsync {
       },
       async (request, reply) => {
         const documentId = await resolveDocumentId(deps, request.params.id)
-        await requireDocumentAccess(authorizerFor(deps, request), documentId, 'view')
+        const authorizer = authorizerFor(deps, request)
+        await requireDocumentAccess(authorizer, documentId, 'view')
         const rendered = await renderDocument(deps, {
           documentId,
           revision: request.query.revision as RevisionId | undefined,
@@ -159,16 +167,30 @@ export function documentRoutes(deps: AppDependencies): FastifyPluginAsync {
         // the documents it links to — and the render version (ADR-031). A
         // rename in a document this one links to therefore changes the tag,
         // which a tag of the revision alone would not.
-        const etag = `"${rendered.key}"`
+        //
+        // The link previews drawn into it are read per request (the body only
+        // holds slots), so the tag also names what was drawn: the same body
+        // with a preview that has since arrived must not answer 304.
+        const { userId } = requireAuthenticatedSession(request)
+        const filled = await fillLinksForMember(
+          linkPreviewDependencies(deps),
+          userId,
+          rendered.content.html,
+          linkEmbedRegistry(deps.config.linkEmbeds),
+          // The documents it links to are drawn for what this reader may see of them.
+          internalLinks(deps, { kind: 'authorized', authorizer }),
+        )
+        const etag = drawnTag(rendered.key, rendered.content.html, filled.html)
         reply.header('etag', etag)
         reply.header('cache-control', 'private, no-cache')
         if (request.headers['if-none-match'] === etag) throw notModified()
 
         return {
           revision: rendered.revision,
-          html: rendered.content.html,
+          html: filled.html,
           outline: [...rendered.content.outline],
           slots: [...rendered.content.slots],
+          pendingLinks: filled.pending,
         }
       },
     )

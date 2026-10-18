@@ -25,5 +25,19 @@ export function createEventRecorder(deps: EventRecorderDependencies): EventRecor
       })
       if (definition.announced) deps.sink({ type: definition.type, payload: stamped })
     },
+    async recordMany(definition, payloads, now) {
+      const stamped = payloads.map((payload) => ({ ...payload, version: definition.version }))
+      await deps.outbox.writeMany(
+        stamped.map((payload) => ({
+          id: deps.ids.uuid(),
+          type: definition.type,
+          payload,
+          now,
+        })),
+      )
+      if (definition.announced) {
+        for (const payload of stamped) deps.sink({ type: definition.type, payload })
+      }
+    },
   }
 }

@@ -61,3 +61,12 @@ export {
   MAX_EMOJI_BYTES,
   MAX_EMOJI_PIXELS,
 } from './emoji.ts'
+
+export type { LinkPatternIssue, LinkPreviewSettings } from './link-previews.ts'
+export {
+  DEFAULT_LINK_PREVIEW_SETTINGS,
+  LinkPreviewSettingsSchema,
+  linkPatternIssues,
+  linkPolicyOf,
+  resolveLinkPreviewSettings,
+} from './link-previews.ts'

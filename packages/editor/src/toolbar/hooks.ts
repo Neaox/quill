@@ -86,14 +86,33 @@ export interface LinkEditing {
  * is closed, with nothing to reset and no effect to write. A box left open by a
  * stale `true` would otherwise reappear on the next selection.
  */
+type Target = ReturnType<typeof toolbarTarget>
+
+const editsAddress = (target: Target): boolean => target?.kind === 'text' || target?.kind === 'link'
+
+const editsCard = (target: Target): boolean =>
+  target?.kind === 'link' && target.form === 'leaf' && target.display === 'card'
+
 export function useLinkEditing(editor: Editor): LinkEditing {
+  return useToolbarBox(editor, editsAddress)
+}
+
+/**
+ * The preview-details box's open state (ADR-042): open only for a link shown as a
+ * card, tied to the toolbar it opened for in the same way the link box is.
+ */
+export function useDetailsEditing(editor: Editor): LinkEditing {
+  return useToolbarBox(editor, editsCard)
+}
+
+function useToolbarBox(editor: Editor, accepts: (target: Target) => boolean): LinkEditing {
   const [openFor, setOpenFor] = useState<string | null>(null)
   const open = useCallback(() => {
     const target = toolbarTarget(editor.state)
-    const editable = target?.kind === 'text' || target?.kind === 'link'
+    const editable = accepts(target)
     setOpenFor(editable ? targetKey(target) : null)
     return editable
-  }, [editor])
+  }, [editor, accepts])
   const close = useCallback(() => {
     setOpenFor(null)
   }, [])

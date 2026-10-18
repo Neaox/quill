@@ -38,7 +38,11 @@ export interface S3BlobStoreOptions {
   readonly prefix: string
   /** Injected so a test can drive the store against a fake service. */
   readonly fetch?: typeof fetch
+  /** How long to wait for the store to begin answering a request. */
+  readonly headersTimeoutMs?: number
 }
+
+const HEADERS_TIMEOUT_MS = 30_000
 
 export class S3BlobStore implements BlobStore {
   readonly #client: AwsClient
@@ -109,9 +113,30 @@ export class S3BlobStore implements BlobStore {
     await assertOk(response, 'remove', hash)
   }
 
+  /**
+   * Signs a request and sends it, giving up if the store has not started to
+   * answer within `HEADERS_TIMEOUT_MS`.
+   *
+   * The store is the operator's own infrastructure and is trusted with what it
+   * answers, but not to answer: a bucket that has stopped responding would
+   * otherwise hold the request that asked for a file, and everything waiting
+   * behind it, for as long as the operating system lets a socket sit. The clock
+   * covers the wait for the answer and is stopped when it begins, not at the end
+   * of the body, because an attachment may be large and its transfer is
+   * streamed by the caller.
+   */
   async #send(hash: string, init: RequestInit): Promise<Response> {
     const signed = await this.#client.sign(this.#urlFor(hash), init)
-    return this.#fetch(signed)
+    const controller = new AbortController()
+    const timer = setTimeout(
+      () => controller.abort(),
+      this.#options.headersTimeoutMs ?? HEADERS_TIMEOUT_MS,
+    )
+    try {
+      return await this.#fetch(signed, { signal: controller.signal })
+    } finally {
+      clearTimeout(timer)
+    }
   }
 
   #urlFor(hash: string): string {

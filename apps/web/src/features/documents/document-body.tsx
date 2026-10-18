@@ -4,6 +4,7 @@ import { createPortal } from 'react-dom'
 
 import { cx, Prose } from '@quill/ui'
 
+import { LinkPeek } from './link-peek/link-peek.tsx'
 import { enhanceBody } from './body-enhancers.ts'
 
 export interface DocumentBodyProps {
@@ -22,6 +23,11 @@ export interface DocumentBodyProps {
    * at a distance or shared on a screen, such as the presenter's.
    */
   readonly expandImages?: boolean | undefined
+  /**
+   * Links that leave the application show a small card of the page they go to while the pointer
+   * rests on them (ADR-042). For a surface with a session to ask with: a shared link has none.
+   */
+  readonly linkPeek?: boolean | undefined
   /**
    * Called each time the body has been drawn into the page: for a surface that has to give what it
    * mounted a state of its own (the presentation's open sections), which the HTML cannot carry.
@@ -60,6 +66,7 @@ export function DocumentBody({
   eyebrow,
   className,
   expandImages = false,
+  linkPeek = false,
   onMounted,
   renderChildDocuments,
 }: DocumentBodyProps) {
@@ -109,6 +116,7 @@ export function DocumentBody({
       <div ref={host} className={cx(className)}>
         <Prose label={label}>{null}</Prose>
       </div>
+      {linkPeek ? <LinkPeek host={host} /> : null}
       {renderChildDocuments === undefined
         ? null
         : body.childSlots.map(({ element, depth }, index) =>

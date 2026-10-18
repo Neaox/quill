@@ -781,6 +781,29 @@
 }
 
 /* ------------------------------------------------------------------------
+ * The live title of a link to another document.
+ *
+ * The address is kept in the line, set aside to no width, and the title stands in its
+ * place while the caret is elsewhere (`packages/editor/src/link/live-titles.ts`). It is
+ * drawn like the link the reader will see, so what is written looks like what is read.
+ * ---------------------------------------------------------------------- */
+
+.document-editor-content .link-live-source {
+  display: inline-block;
+  inline-size: 0;
+  overflow: hidden;
+  vertical-align: bottom;
+  white-space: nowrap;
+}
+
+.document-editor-content .link-live-title {
+  color: var(--prose-link-colour, var(--color-foreground));
+  text-decoration: underline;
+  text-decoration-color: var(--prose-link-decoration, var(--color-border-strong));
+  text-underline-offset: var(--prose-link-offset, 0.16em);
+}
+
+/* ------------------------------------------------------------------------
  * Placeholders.
  *
  * An empty document says how to start, and the empty line the caret is on
@@ -1062,4 +1085,19 @@
 .document-editor-content ul.task-list {
   list-style: none;
   padding-inline-start: 0;
+}
+
+/*
+ * A link shown with its page's own title (ADR-042). In the reader this is a chip with the page's
+ * icon; while it is being written it is the words, drawn as a link that has been given a
+ * presentation, so the author can tell it from an ordinary link and still edit the words in it.
+ */
+.document-editor-content span.text-directive[data-name='link'] {
+  padding-inline: 0.25em;
+  border-radius: var(--radius-sm);
+  background-color: var(--color-accent-subtle);
+  text-decoration: underline;
+  text-decoration-color: var(--color-border-strong);
+  text-underline-offset: 0.16em;
+  box-decoration-break: clone;
 }

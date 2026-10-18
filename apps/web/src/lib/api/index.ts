@@ -119,6 +119,14 @@ export {
   type ComparisonRange,
 } from './content.ts'
 export {
+  linkPreviewImageUrl,
+  linkPreviewQueryOptions,
+  useLinkPreview,
+  useRefreshLinkPreview,
+  type LinkPreviewView,
+  type LinkPreview,
+} from './link-previews.ts'
+export {
   TREE_PAGE_SIZE,
   treeChildrenQueryOptions,
   treeCollectionsQueryOptions,

@@ -24,6 +24,7 @@ import { createLockRepository } from './lock-repository.ts'
 import { createMagicLinkRepository } from './magic-link-repository.ts'
 import { createNotificationRepository } from './notification-repository.ts'
 import { createOutboxWriter } from './outbox-writer.ts'
+import { createLinkPreviewRepository } from './link-preview-repository.ts'
 import { createPersonPreferencesRepository } from './person-preferences-repository.ts'
 import { createPublicRedirectRepository } from './public-redirect-repository.ts'
 import { createRenderCacheRepository } from './render-cache-repository.ts'
@@ -76,6 +77,7 @@ function buildBundle(
     secrets: createSecretRepository(db),
     attachments: createAttachmentRepository(db),
     personPreferences: createPersonPreferencesRepository(db),
+    linkPreviews: createLinkPreviewRepository(db),
     reviews: createReviewRepository(db),
     documentViews: createDocumentViewRepository(db),
     notifications: createNotificationRepository(db),
