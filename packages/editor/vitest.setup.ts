@@ -3,7 +3,10 @@ import { afterEach } from 'vitest'
 
 import '@testing-library/jest-dom/vitest'
 
+import { preloadOverlays } from '@quill/ui'
+
 import { eagerMounting, setCodeMirrorMounting } from './src/code-block/lazy-code-mirror.ts'
+import { alwaysNear, setPageNearness } from './src/document/measuring.ts'
 
 // Registered explicitly rather than relying on Testing Library's automatic
 // cleanup, which only installs itself when the global `afterEach` happens to
@@ -83,9 +86,11 @@ if (!('ResizeObserver' in globalThis)) {
  * near the viewport (`lazy-code-mirror.ts`), which needs layout to say; jsdom
  * has none, so here nothing is nearer than anything else and the honest
  * answer is all of them, at once. The tests of the lazy behaviour itself
- * choose their own strategy.
+ * choose their own strategy. Floating controls that wait for their element
+ * to come near the screen (`document/measuring.ts`) are told the same.
  */
 setCodeMirrorMounting(eagerMounting)
+setPageNearness(alwaysNear)
 
 if (!('IntersectionObserver' in globalThis)) {
   class IntersectionObserverShim {
@@ -160,3 +165,10 @@ configure({ asyncUtilTimeout: 5_000 })
  * the test's environment has been torn down.
  */
 await import('@quill/highlight')
+
+/*
+ * Menus, dialogs and popovers fetch their machinery on demand in the app
+ * (`packages/ui/src/lib/on-demand.ts`). Fetched here, before any test, so a
+ * component renders as it does on a page that has settled.
+ */
+await preloadOverlays()

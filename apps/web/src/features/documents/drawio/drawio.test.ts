@@ -5,6 +5,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { declared } from '../../../lib/api/attachments.ts'
 import { createDiagramStore, isDiagramAttachment } from './diagram-store.ts'
 import { createDrawioFiles } from './drawio-files.ts'
+import { interfaceLanguage } from './use-drawio.tsx'
 
 function attachment(overrides: Partial<Attachment> = {}): Attachment {
   return {
@@ -83,13 +84,11 @@ const response = (status: number, body: unknown) =>
   new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } })
 
 function files(answer: Response, fetchFile = vi.fn<typeof fetch>()) {
-  const send = vi.fn<() => Promise<{ data: unknown; error: unknown; response: Response }>>(
-    async () => ({
-      data: answer.ok ? await answer.clone().json() : undefined,
-      error: answer.ok ? undefined : await answer.clone().json(),
-      response: answer,
-    }),
-  )
+  const send = vi.fn<() => Promise<unknown>>(async () => ({
+    data: answer.ok ? await answer.clone().json() : undefined,
+    error: answer.ok ? undefined : await answer.clone().json(),
+    response: answer,
+  }))
   const client = { POST: send, PUT: send } as unknown as ApiClient
   const onWritten = vi.fn<() => void>()
   return {
@@ -167,6 +166,16 @@ describe('createDrawioFiles', () => {
     })
   })
 
+  it('answers a save that needs permission to publish as refused, with the reason', async () => {
+    const refused = response(403, {
+      error: { code: 'publish_required', message: 'A published page shows this file.' },
+    })
+    expect(await files(refused).files.revise(DIAGRAM, '<svg/>')).toEqual({
+      kind: 'refused',
+      message: 'A published page shows this file.',
+    })
+  })
+
   it('throws what it cannot read as a conflict, and every other failure', async () => {
     const odd = response(409, {
       error: { code: 'x', message: 'Odd', details: { current: 'nope' } },
@@ -192,5 +201,17 @@ describe('declared', () => {
     expect(declared(png)).toBe(png)
     const unknown = new File(['x'], 'notes.txt')
     expect(declared(unknown)).toBe(unknown)
+  })
+})
+
+describe('the language draw.io is asked to speak', () => {
+  it('is the page’s own, which is the language the application speaks', () => {
+    const root = document.createElement('html')
+    root.lang = 'de-DE'
+    expect(interfaceLanguage(root)).toBe('de-DE')
+  })
+
+  it('is left to draw.io when the page does not say', () => {
+    expect(interfaceLanguage(document.createElement('html'))).toBeUndefined()
   })
 })

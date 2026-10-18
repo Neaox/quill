@@ -64,9 +64,9 @@ describe('createMarkdownRegistry', () => {
     expect(registry.drawing({ markup: 'acme' })).toEqual({ kind: 'image', data: {} })
   })
 
-  it('grants an inline rendering nothing when the extension names no drawing attribute', () => {
+  it('keeps no data attribute an extension has no grant for', () => {
     const registry = createMarkdownRegistry([example({ sanitize: {} })])
-    expect(registry.drawing({ markup: '<svg>acme</svg>' })).toMatchObject({ data: {} })
+    expect(registry.drawing({ markup: 'acme' })).toMatchObject({ kind: 'inline', data: {} })
   })
 
   it('draws an unclaimed drawing as it is', () => {

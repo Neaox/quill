@@ -1,0 +1,72 @@
+/*
+ * The writing surface's callouts, and the floating controls over it.
+ *
+ * A callout is drawn with the reader's own classes (`prose.css`: `.callout`,
+ * `.callout-<type>`, `.callout-label`), so tone, icon and the type in words
+ * come from one stylesheet; this file adds only what writing needs: the
+ * title line is a button that changes the type, and the body's blocks keep
+ * the callout's rhythm one level down, where the reader's are direct children.
+ */
+
+.document-editor-content .callout-label {
+  margin: 0;
+}
+
+/* The type button reads exactly as the reader's title, until it is pointed at. */
+.document-editor-content .callout-type {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3em;
+  margin: -0.15rem -0.35rem;
+  padding: 0.15rem 0.35rem;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+  cursor: pointer;
+}
+
+.document-editor-content .callout-type:hover {
+  background-color: var(--color-surface);
+}
+
+.document-editor-content .callout-type:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 2px;
+}
+
+.document-editor-content .callout-type-chevron {
+  width: 0.9em;
+  height: 0.9em;
+  opacity: 0.7;
+}
+
+.document-editor-content .callout-body > :where(:not(:first-child)) {
+  margin-top: 0.55em;
+}
+
+/* A callout block's own title: the first line of its body, set as a title. */
+.document-editor-content .callout-body > p[data-directive-label] {
+  font-weight: 600;
+  color: var(--color-foreground);
+}
+
+/*
+ * "Wrap long lines" from a code block's context menu: how this person reads
+ * code while writing, so it is on the editor, not in the document.
+ */
+.document-editor[data-code-wrap='true'] .code-block .cm-content {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* The floating controls never print. */
+@media print {
+  .selection-toolbar,
+  .link-card {
+    display: none;
+  }
+}

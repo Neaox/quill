@@ -6,14 +6,15 @@ import {
   DRAFT,
   getEnvelope,
   getHistory,
-  getTreePosition,
   isAssignedReviewer,
   publishDocument,
+  putBackDraftChanges,
   readPublished,
+  replaceDraftContent,
+  revertDraftChanges,
   deleteDocument,
   renderDocument,
   restoreRevision,
-  revertDraftChanges,
   updateDocument,
 } from '@quill/application'
 import type { CollectionId, CompareRevisionsCommand, PublishAuthor } from '@quill/application'
@@ -33,7 +34,7 @@ import {
   linkPreviewDependencies,
 } from '../application/fill-links.ts'
 import { linkEmbedRegistry } from '../infrastructure/link-preview/embed-config.ts'
-import { resolveDocumentId } from '../application/references.ts'
+import { readableDocuments, resolveDocumentId } from '../application/references.ts'
 import type { AppDependencies } from '../dependencies.ts'
 import { conflict, forbidden, lockLost, notFound, unprocessable } from '../errors.ts'
 import { notModified } from '../errors.ts'
@@ -56,11 +57,13 @@ import {
   PublishedSchema,
   RenderedQuerySchema,
   RenderedSchema,
+  PutBackDraftSchema,
   RestoreBodySchema,
   RevertDraftChangesBodySchema,
   RevertedDraftSchema,
   SourceComparisonSchema,
-  TreePositionSchema,
+  UndoneRevertSchema,
+  UndoRevertBodySchema,
   sourceComparisonResponse,
 } from './document-schemas.ts'
 import { DocumentStatusSchema } from './document-schemas.ts'
@@ -203,35 +206,23 @@ export function documentRoutes(deps: AppDependencies): FastifyPluginAsync {
       },
       async (request) => {
         const documentId = await resolveDocumentId(deps, request.params.id)
-        const access = await requireDocumentAccess(authorizerFor(deps, request), documentId, 'view')
+        const authorizer = authorizerFor(deps, request)
+        const access = await requireDocumentAccess(authorizer, documentId, 'view')
         const envelope = await getEnvelope(deps, {
           documentId,
           capabilities: access.capabilities,
         })
         /* v8 ignore next -- the authorizer has already loaded this document. */
         if (envelope.kind !== 'envelope') throw notFound('Document not found')
-        return envelopeResponse(envelope.envelope)
-      },
-    )
-
-    /** Where the document is in the tree: what opens the tree to it, and what is under it (ADR-049). */
-    app.get(
-      '/api/documents/:id/tree-position',
-      {
-        preHandler: app.requireSession,
-        schema: { params: IdParamsSchema, response: { 200: TreePositionSchema } },
-      },
-      async (request) => {
-        const documentId = await resolveDocumentId(deps, request.params.id)
-        await requireDocumentAccess(authorizerFor(deps, request), documentId, 'view')
-        const position = await getTreePosition(deps, documentId)
-        /* v8 ignore next -- the authorizer has already loaded this document. */
-        if (position.kind !== 'position') throw notFound('Document not found')
-        return {
-          collectionId: position.collectionId,
-          ancestors: [...position.ancestors],
-          childCount: position.childCount,
-        }
+        // A deprecated document's replacement, named and linked only if this
+        // reader may open it (ADR-012): the same answer a link to it gets.
+        const { lifecycle } = envelope.envelope.facts
+        const replacedBy = lifecycle?.state === 'deprecated' ? lifecycle.supersededBy : undefined
+        const replacement =
+          replacedBy === undefined
+            ? undefined
+            : (await readableDocuments(deps, authorizer, [replacedBy])).get(replacedBy)
+        return envelopeResponse(envelope.envelope, replacement)
       },
     )
 
@@ -254,6 +245,7 @@ export function documentRoutes(deps: AppDependencies): FastifyPluginAsync {
           base: readBase(request.body.base),
           author: await author(request),
           sessionId: session.sessionId,
+          appOrigins: [deps.config.appOrigin],
           ...(request.body.changeNote === undefined ? {} : { changeNote: request.body.changeNote }),
         })
 
@@ -395,6 +387,7 @@ export function documentRoutes(deps: AppDependencies): FastifyPluginAsync {
         const etag = request.headers['if-none-match']
         const result = await compareRevisions(deps, {
           ...range,
+          appOrigins: [deps.config.appOrigin],
           patches: request.query.patches === true,
           known: typeof etag === 'string' ? etag.replaceAll('"', '') : undefined,
         })
@@ -411,10 +404,10 @@ export function documentRoutes(deps: AppDependencies): FastifyPluginAsync {
 
     /**
      * Some of what changed since a revision, put back in the draft: the draft as it would
-     * then be, not a write. The person asking has the draft open in an editor, and the
-     * change goes in there, where it can be undone and is saved like anything else they
-     * type. It is worked out against the draft as saved, so the caller names its version
-     * and is told with a `409` when that is no longer the draft.
+     * then be, not a write. An editor that has the draft open takes it as an edit of its
+     * own, where it can be undone and is saved like anything else typed. It is worked out
+     * against the draft as saved, so the caller names its version and is told with a `409`
+     * when that is no longer the draft.
      */
     app.post(
       '/api/documents/:id/draft/revert-preview',
@@ -434,21 +427,100 @@ export function documentRoutes(deps: AppDependencies): FastifyPluginAsync {
           from: readBase(request.body.from),
           draftVersion: request.body.draftVersion,
           changes: request.body.changes,
+          appOrigins: [deps.config.appOrigin],
         })
         switch (result.kind) {
           case 'reverted':
             return { draftVersion: result.draftVersion, ast: { ...result.content } }
           case 'stale':
-            throw conflict('stale_version', 'This draft has moved on since you read it', {
-              currentVersion: result.currentVersion,
-            })
+            throw staleDraft(result.currentVersion)
           case 'not-revertible':
-            throw unprocessable(
-              'not_revertible',
-              'Some of these changes cannot be put back in the draft',
-              { changes: result.changes },
-            )
+            throw notRevertible(result.changes)
           default:
+            throw comparisonRefused(result.kind)
+        }
+      },
+    )
+
+    /**
+     * The same, saved: the comparison of the published page with the draft puts a change
+     * back from outside the editor. Written as a rename is, refused with `423` while another
+     * session is editing (ADR-021), and answered with what the draft held before, which
+     * `revert/undo` puts back.
+     */
+    app.post(
+      '/api/documents/:id/draft/revert',
+      {
+        preHandler: app.requireVerifiedSession,
+        schema: {
+          params: IdParamsSchema,
+          body: RevertDraftChangesBodySchema,
+          response: { 200: PutBackDraftSchema },
+        },
+      },
+      async (request) => {
+        const session = requireAuthenticatedSession(request)
+        const documentId = await resolveDocumentId(deps, request.params.id)
+        await requireDocumentAccess(authorizerFor(deps, request), documentId, 'edit')
+        const result = await putBackDraftChanges(deps, {
+          documentId,
+          sessionId: session.sessionId,
+          userId: session.userId,
+          from: readBase(request.body.from),
+          draftVersion: request.body.draftVersion,
+          changes: request.body.changes,
+          appOrigins: [deps.config.appOrigin],
+        })
+        switch (result.kind) {
+          case 'replaced':
+            return {
+              draftVersion: result.draft.draftVersion,
+              previous: draftRecord(result.previous),
+            }
+          case 'stale':
+            throw staleDraft(result.currentVersion)
+          case 'not-revertible':
+            throw notRevertible(result.changes)
+          case 'lock-lost':
+            throw lockLost(result.holder)
+          default:
+            throw comparisonRefused(result.kind)
+        }
+      },
+    )
+
+    /** Undoing a revert: the draft it handed back, put back over the version it made. */
+    app.post(
+      '/api/documents/:id/draft/revert/undo',
+      {
+        preHandler: app.requireVerifiedSession,
+        schema: {
+          params: IdParamsSchema,
+          body: UndoRevertBodySchema,
+          response: { 200: UndoneRevertSchema },
+        },
+      },
+      async (request) => {
+        const session = requireAuthenticatedSession(request)
+        const documentId = await resolveDocumentId(deps, request.params.id)
+        await requireDocumentAccess(authorizerFor(deps, request), documentId, 'edit')
+        const result = await replaceDraftContent(deps, {
+          documentId,
+          sessionId: session.sessionId,
+          userId: session.userId,
+          draftVersion: request.body.draftVersion,
+          ast: request.body.ast,
+        })
+        switch (result.kind) {
+          case 'replaced':
+            return { draftVersion: result.draft.draftVersion }
+          case 'stale':
+            throw staleDraft(result.currentVersion)
+          case 'lock-lost':
+            throw lockLost(result.holder)
+          case 'unreadable':
+            throw unprocessable('draft_unreadable', 'That is not a draft this release can read')
+          case 'no-draft':
             throw comparisonRefused(result.kind)
         }
       },
@@ -466,10 +538,10 @@ export function documentRoutes(deps: AppDependencies): FastifyPluginAsync {
       },
       async (request) => {
         const documentId = await resolveDocumentId(deps, request.params.id)
-        const result = await compareRevisionSources(
-          deps,
-          await comparisonRange(deps, request, request.query, documentId),
-        )
+        const result = await compareRevisionSources(deps, {
+          ...(await comparisonRange(deps, request, request.query, documentId)),
+          appOrigins: [deps.config.appOrigin],
+        })
         if (result.kind !== 'compared') throw comparisonRefused(result.kind)
         return sourceComparisonResponse(result.source)
       },
@@ -608,6 +680,22 @@ async function comparisonRange(
     from: readBase(query.from),
     to: toDraft ? DRAFT : revisionId(query.to),
   }
+}
+
+function staleDraft(currentVersion: number): Error {
+  return conflict('stale_version', 'This draft has moved on since you read it', { currentVersion })
+}
+
+function notRevertible(changes: readonly string[]): Error {
+  return unprocessable('not_revertible', 'Some of these changes cannot be put back in the draft', {
+    changes,
+  })
+}
+
+/** A draft row's content as the wire carries it: an object, which a readable draft always is. */
+function draftRecord(value: unknown): Record<string, unknown> {
+  /* v8 ignore next -- the draft was read as content just before it was replaced. */
+  return typeof value === 'object' && value !== null ? { ...value } : {}
 }
 
 const COMPARISON_REFUSALS = {

@@ -17,6 +17,8 @@ import type {
   DocumentViewRepository,
   DocumentViewRow,
   DocumentRepository,
+  DocumentSummaryRepository,
+  DocumentSummaryRow,
   DocumentRow,
   DraftRepository,
   DraftRow,
@@ -91,6 +93,10 @@ export interface InMemoryUnitOfWork extends UnitOfWork {
   readonly auditEvents: readonly AuditEventRow[]
   /** Every attachment state a revision replaced, oldest first: the attachments' history. */
   readonly attachmentHistory: readonly AttachmentRow[]
+  /** What the search projection would hold for each published document (ADR-058); a test sets it. */
+  readonly summaries: Map<DocumentId, DocumentSummaryRow>
+  /** Drops a document's draft row, as a document imported or seeded without one has none. */
+  forgetDraft(documentId: DocumentId): void
 }
 
 /** The `(created_at, name)` order the secrets rotation pages by. */
@@ -157,6 +163,16 @@ export function createInMemoryUnitOfWork(
   const auditEvents: AuditEventRow[] = []
   const secrets = new Map<string, SecretRow>()
   const personPreferences = new Map<string, PersonPreferencesRow>()
+  const summaries = new Map<DocumentId, DocumentSummaryRow>()
+
+  const documentSummaryRepository: DocumentSummaryRepository = {
+    async listByIds(ids) {
+      return ids.flatMap((id) => {
+        const row = summaries.get(id)
+        return row === undefined ? [] : [row]
+      })
+    },
+  }
   const linkPreviewRows = new Map<string, LinkPreviewRow>()
   const reviewRequests: ReviewRequestRow[] = []
   const reviewAssignments: ReviewAssignmentRow[] = []
@@ -190,6 +206,24 @@ export function createInMemoryUnitOfWork(
       // has a row — the `?? null` fallback exists only to satisfy the return type.
       /* v8 ignore next */
       return id === undefined ? null : (users.get(id) ?? null)
+    },
+    async findVerifiedByEmails(emails) {
+      const wanted = new Set(emails.map((email) => email.toLowerCase()))
+      return [...users.values()].filter(
+        (user) => user.emailVerifiedAt !== null && wanted.has(user.email.toLowerCase()),
+      )
+    },
+    async searchVerified(query, limit) {
+      const needle = query.toLowerCase()
+      return [...users.values()]
+        .filter(
+          (user) =>
+            user.emailVerifiedAt !== null &&
+            (user.displayName.toLowerCase().includes(needle) ||
+              user.email.toLowerCase().includes(needle)),
+        )
+        .toSorted((a, b) => a.displayName.localeCompare(b.displayName))
+        .slice(0, limit)
     },
     async searchByPrefix(query, limit) {
       const prefix = query.toLowerCase()
@@ -523,34 +557,6 @@ export function createInMemoryUnitOfWork(
     async listByCollection(collectionId) {
       return [...documents.values()].filter((doc) => doc.collectionId === collectionId)
     },
-    async listChildren({ workspaceId, collectionId, parentId, after, limit }) {
-      const later = (doc: DocumentRow): boolean =>
-        after === null ||
-        doc.createdAt.getTime() > after.createdAt.getTime() ||
-        (doc.createdAt.getTime() === after.createdAt.getTime() && doc.id > after.id)
-      return [...documents.values()]
-        .filter(
-          (doc) =>
-            doc.workspaceId === workspaceId &&
-            doc.collectionId === collectionId &&
-            doc.parentId === parentId &&
-            later(doc),
-        )
-        .toSorted(
-          (a, b) => a.createdAt.getTime() - b.createdAt.getTime() || a.id.localeCompare(b.id),
-        )
-        .slice(0, limit)
-    },
-    async countChildren(parentIds) {
-      const wanted = new Set(parentIds)
-      const counts = new Map<DocumentId, number>()
-      for (const doc of documents.values()) {
-        if (doc.parentId !== null && wanted.has(doc.parentId)) {
-          counts.set(doc.parentId, (counts.get(doc.parentId) ?? 0) + 1)
-        }
-      }
-      return counts
-    },
     async listByIds(ids) {
       return ids.flatMap((id) => {
         const row = documents.get(id)
@@ -570,6 +576,19 @@ export function createInMemoryUnitOfWork(
       }
       return chain
     },
+    async listDescendants(id, depth, limit) {
+      const found: DocumentRow[] = []
+      let level: readonly DocumentId[] = [id]
+      for (let reached = 0; reached < depth && level.length > 0; reached += 1) {
+        const parents = new Set(level)
+        const next = [...documents.values()].filter(
+          (doc) => doc.parentId !== null && parents.has(doc.parentId),
+        )
+        found.push(...next)
+        level = next.map((doc) => doc.id)
+      }
+      return found.slice(0, limit)
+    },
     async update(id, patch, now) {
       const existing = documents.get(id)
       if (existing === undefined) {
@@ -586,18 +605,18 @@ export function createInMemoryUnitOfWork(
 
   const draftRepository: DraftRepository = {
     async init({ documentId, baseRevision, ast, now }) {
-      const row: DraftRow = {
-        documentId,
-        draftVersion: 0,
-        baseRevision,
-        ast,
-        updatedAt: now,
-      }
+      const row: DraftRow = { documentId, draftVersion: 0, baseRevision, ast, updatedAt: now }
       drafts.set(documentId, row)
       return row
     },
     async find(documentId) {
       return drafts.get(documentId) ?? null
+    },
+    async stamp(documentId) {
+      const draft = drafts.get(documentId)
+      return draft === undefined
+        ? null
+        : { baseRevision: draft.baseRevision, updatedAt: draft.updatedAt }
     },
     async write({ documentId, sessionId, expectedVersion, ast, authorship, now }) {
       const lock = locks.get(documentId) ?? null
@@ -623,13 +642,15 @@ export function createInMemoryUnitOfWork(
       drafts.set(documentId, updated)
       return { ok: true, draft: updated }
     },
-    async rebase({ documentId, baseRevision, ast, now }) {
+    async rebase({ documentId, baseRevision, ast, authorship, expectedVersion, now }) {
       const draft = drafts.get(documentId)
       if (draft === undefined) return null
+      if (expectedVersion !== undefined && draft.draftVersion !== expectedVersion) return null
       const updated: DraftRow = {
         ...draft,
         baseRevision,
-        authorship: null,
+        // From a new base the record says what is published, so it is let go.
+        authorship: authorship ?? (baseRevision === draft.baseRevision ? draft.authorship : null),
         updatedAt: now,
         // Replacing the content bumps the version, so an editor that was open
         // when a restore landed is told its next write is stale (ADR-021).
@@ -1599,6 +1620,7 @@ export function createInMemoryUnitOfWork(
     workspaceSlugHistory: workspaceSlugHistoryRepository,
     collections: collectionRepository,
     documents: documentRepository,
+    documentSummaries: documentSummaryRepository,
     drafts: draftRepository,
     locks: lockRepository,
     grants: grantRepository,
@@ -1628,6 +1650,10 @@ export function createInMemoryUnitOfWork(
     events,
     auditEvents,
     attachmentHistory,
+    summaries,
+    forgetDraft(documentId) {
+      drafts.delete(documentId)
+    },
     async run(fn) {
       const pending: RecordedEvent[] = []
       const result = await fn(bundleWith((event) => pending.push(event)))

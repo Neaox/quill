@@ -1,7 +1,7 @@
 import { render, screen } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
 
-import { describeEditorStatus, EditorStatus } from './editor-status.tsx'
+import { describeEditorStatus, EditorStatus, OFFLINE_LABEL } from './editor-status.tsx'
 
 describe('describeEditorStatus', () => {
   it('reports a saved draft once the lock is held and the save came back', () => {
@@ -18,20 +18,27 @@ describe('describeEditorStatus', () => {
     ['a blocked autosave', { autosave: 'blocked', lock: 'held' }, 'lock lost'],
     ['a stale draft', { autosave: 'conflict', lock: 'held' }, 'draft changed elsewhere'],
     ['a refused save', { autosave: 'failed', lock: 'held' }, 'couldn’t save'],
-    [
-      'a browser gone offline',
-      { autosave: 'offline', lock: 'reconnecting' },
-      'offline — will retry',
-    ],
-    ['a save waiting to retry', { autosave: 'retrying', lock: 'held' }, 'not saved — retrying'],
-    ['two missed heartbeats', { autosave: 'saved', lock: 'at_risk' }, 'connection lost'],
-    ['one missed heartbeat', { autosave: 'saved', lock: 'reconnecting' }, 'reconnecting'],
+    ['a browser gone offline', { autosave: 'offline', lock: 'reconnecting' }, OFFLINE_LABEL],
+    ['a save that could not be delivered', { autosave: 'retrying', lock: 'held' }, OFFLINE_LABEL],
+    ['two missed heartbeats', { autosave: 'saved', lock: 'at_risk' }, OFFLINE_LABEL],
+    ['one missed heartbeat', { autosave: 'saved', lock: 'reconnecting' }, OFFLINE_LABEL],
     ['a lock still being taken', { autosave: 'idle', lock: 'acquiring' }, 'opening'],
   ] as const)('outranks a good autosave with %s', (_name, input, label) => {
     const status = describeEditorStatus({ ...input, holderName: undefined })
 
     expect(status.label).toBe(label)
     expect(status.atRisk).toBe(true)
+  })
+
+  it.each([
+    ['conflicted', 'changes to resolve'],
+    ['merging', 'merging your changes…'],
+    ['relocking', 'reconnecting…'],
+  ] as const)('says when a reconnect is %s', (reconcile, label) => {
+    expect(
+      describeEditorStatus({ autosave: 'dirty', lock: 'held', holderName: undefined, reconcile })
+        .label,
+    ).toBe(label)
   })
 
   it('names the person holding the lock when the envelope knows it', () => {

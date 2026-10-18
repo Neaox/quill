@@ -1,7 +1,9 @@
 import { tv } from '@quill/ui'
 
-import type { OutlineEntry, SharedNode } from '../../lib/api/index.ts'
+import type { OutlineEntry, SharedDocument, SharedNode } from '../../lib/api/index.ts'
+import { useFollowLink } from '../../lib/routing/use-follow-link.ts'
 import { DocumentBody } from '../documents/document-body.tsx'
+import { PublicFactsByline } from '../documents/properties/facts-byline.tsx'
 import { TableOfContents } from '../documents/table-of-contents.tsx'
 import { SharedNavigation } from './shared-navigation.tsx'
 
@@ -43,6 +45,8 @@ export interface SharedDocumentViewProps {
   readonly target: { readonly id: string; readonly title: string; readonly shortId: string }
   /** Empty for a document-scoped link: there is no navigation out of a link's scope. */
   readonly navigation: readonly SharedNode[]
+  /** What the document states about itself that an outsider may see (ADR-059). */
+  readonly facts?: SharedDocument['facts'] | undefined
 }
 
 export function SharedDocumentView({
@@ -53,18 +57,33 @@ export function SharedDocumentView({
   outline,
   target,
   navigation,
+  facts,
 }: SharedDocumentViewProps) {
   // A document written from a template or by hand opens with its own title as
   // an `h1` in the body. Adding the page's title above it would show it twice
   // and give the page two first-level headings — the reading view's rule,
   // applied to the same bodies.
   const bodyHasTitle = outline[0]?.depth === 1
+  // The server has already pointed the body's links at this link's own pages
+  // (ADR-046), so following one is moving within the share page.
+  const followLink = useFollowLink()
 
   return (
     <div className={styles.layout()}>
       <main className={styles.main()}>
-        {bodyHasTitle ? undefined : <h1 className={styles.title()}>{title}</h1>}
-        <DocumentBody key={revision} html={html} label={title} />
+        {bodyHasTitle ? undefined : (
+          <>
+            <h1 className={styles.title()}>{title}</h1>
+            <PublicFactsByline facts={facts} className="mt-4" />
+          </>
+        )}
+        <DocumentBody
+          key={revision}
+          html={html}
+          label={title}
+          afterTitle={bodyHasTitle ? <PublicFactsByline facts={facts} /> : undefined}
+          onFollowLink={followLink}
+        />
       </main>
 
       <aside className={styles.aside()}>

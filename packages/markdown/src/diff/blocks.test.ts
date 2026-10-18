@@ -101,15 +101,15 @@ describe('alignBlocks', () => {
           )
           expect(fromAfter).toEqual(after)
           expect(new Set(fromBefore).size).toBe(before.length)
-          const matched = alignment.filter(
-            (entry) => entry.kind === 'unchanged' || entry.kind === 'moved',
+          const same = alignment.flatMap((entry) =>
+            entry.kind === 'unchanged' || entry.kind === 'moved' ? [entry] : [],
           )
-          expect(matched.map((entry) => toString(entry.before))).toEqual(
-            matched.map((entry) => toString(entry.after)),
+          expect(same.map((entry) => toString(entry.before))).toEqual(
+            same.map((entry) => toString(entry.after)),
           )
-          const changed = alignment.filter((entry) => entry.kind === 'changed')
-          expect(changed.map((entry) => entry.before.type)).toEqual(
-            changed.map((entry) => entry.after.type),
+          const paired = alignment.flatMap((entry) => (entry.kind === 'changed' ? [entry] : []))
+          expect(paired.map((entry) => entry.before.type)).toEqual(
+            paired.map((entry) => entry.after.type),
           )
         },
       ),

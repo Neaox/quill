@@ -1,6 +1,6 @@
 import type { Node as PMNode } from '@tiptap/pm/model'
-import type { EditorState, Selection } from '@tiptap/pm/state'
-import { CellSelection, isInTable, selectedRect, TableMap } from 'prosemirror-tables'
+import type { EditorState } from '@tiptap/pm/state'
+import { isInTable, selectedRect, TableMap } from 'prosemirror-tables'
 import type { TableRect } from 'prosemirror-tables'
 
 /**
@@ -90,48 +90,4 @@ export function tableAt(state: EditorState, tablePos: number): TableContext | un
     },
     wrapper,
   }
-}
-
-/** Rows or columns `from` up to, not including, `to`, selected whole. */
-export interface LineSelection {
-  readonly axis: 'row' | 'column'
-  readonly from: number
-  readonly to: number
-}
-
-/**
- * The whole rows or columns the cell selection covers, which is what a grip
- * selects; undefined for a caret, for a patch of cells, and for the whole table.
- */
-export function selectedLines(
-  context: TableContext,
-  selection: Selection,
-): LineSelection | undefined {
-  if (!(selection instanceof CellSelection)) return undefined
-  const { top, bottom, left, right } = context.rect
-  const wholeColumns = top === 0 && bottom === context.map.height
-  const wholeRows = left === 0 && right === context.map.width
-  if (wholeColumns === wholeRows) return undefined
-  return wholeColumns
-    ? { axis: 'column', from: left, to: right }
-    : { axis: 'row', from: top, to: bottom }
-}
-
-/** Whether every cell of the table is selected, as the handle on its corner selects them. */
-export function wholeTableSelected(context: TableContext, selection: Selection): boolean {
-  const { top, bottom, left, right } = context.rect
-  return (
-    selection instanceof CellSelection &&
-    top === 0 &&
-    left === 0 &&
-    bottom === context.map.height &&
-    right === context.map.width
-  )
-}
-
-/** What the author is pointing at in a table: the table, or one row or column of it. */
-export type TableScope = 'table' | 'row' | 'column'
-
-export function tableScope(context: TableContext, selection: Selection): TableScope {
-  return selectedLines(context, selection)?.axis ?? 'table'
 }

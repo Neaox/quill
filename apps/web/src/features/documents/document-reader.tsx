@@ -1,5 +1,5 @@
 import { Link } from '@tanstack/react-router'
-import { lazy, Suspense } from 'react'
+import { useCallback, useState, type ReactNode } from 'react'
 
 import {
   Block,
@@ -12,24 +12,21 @@ import {
   tv,
 } from '@quill/ui'
 
-import { ApiError, useRenderedDocument, type ComparisonRange } from '../../lib/api/index.ts'
+import {
+  ApiError,
+  useChildPagesOf,
+  useDocumentLinksLoader,
+  useRenderedDocument,
+} from '../../lib/api/index.ts'
 import { useDraft } from '../../lib/api/drafts.ts'
 import { isDocumentTree, readDraftContent } from '../../lib/documents/draft-content.ts'
 import { summariseDraft, type DraftSummary } from '../../lib/documents/draft-summary.ts'
 import type { LabelledRevision } from '../../lib/documents/revision-labels.ts'
+import { useFollowLink } from '../../lib/routing/use-follow-link.ts'
 import { shortRevision } from '../../lib/documents/revision-labels.ts'
-import { ChildDocumentsBlock } from './child-documents-block.tsx'
+import { NewDocumentDialog } from '../workspaces/new-document-dialog.tsx'
 import { DocumentBody } from './document-body.tsx'
 import { PreviewLink } from './preview-link.tsx'
-
-/**
- * The comparison view is the one part of reading a document that most readers
- * never ask for, so it is its own chunk: the reading route's first load does
- * not carry it (quill-plan.md section 31).
- */
-const RevisionDiffView = lazy(async () => ({
-  default: (await import('./revision-diff-view.tsx')).RevisionDiffView,
-}))
 
 export const documentReaderStyles = tv({
   slots: {
@@ -52,12 +49,19 @@ export interface DocumentReaderProps {
    * contents list beside it is keyed by the same value.
    */
   readonly onScreen: string
-  /** Two revisions named in the URL; absent means read rather than compare. */
-  readonly compare: ComparisonRange | undefined
   readonly revisions: readonly LabelledRevision[]
   readonly canEdit: boolean
   /** The collection the document sits in, shown above its title (`DocumentBody`). */
   readonly eyebrow?: string | undefined
+  /**
+   * Where a child page of this one is created, for the "Create a child page"
+   * an empty child pages list offers an editor (ADR-058). Omitted, none is offered.
+   */
+  readonly placement?:
+    | { readonly workspaceId: string; readonly collectionId: string | undefined }
+    | undefined
+  /** The document's facts, under its title (`docs/design/properties.md`). */
+  readonly byline?: ReactNode
 }
 
 /** What a reader calls a revision, falling back to its short hash. */
@@ -81,49 +85,12 @@ export function DocumentReader({
   title,
   revision,
   onScreen,
-  compare,
   revisions,
   canEdit,
   eyebrow,
+  placement,
+  byline,
 }: DocumentReaderProps) {
-  const styles = documentReaderStyles()
-
-  if (compare !== undefined) {
-    return (
-      <>
-        <LayoutGrid className="pt-8">
-          <Block width="wide">
-            <div className={styles.banner()}>
-              <p className={styles.bannerText()}>comparing revisions</p>
-              <Link
-                to="/w/$workspaceSlug/d/$documentId"
-                params={{ workspaceSlug, documentId }}
-                search={{}}
-                className={buttonClassName({ variant: 'secondary', size: 'sm' })}
-              >
-                Back to the document
-              </Link>
-            </div>
-          </Block>
-        </LayoutGrid>
-        <Suspense
-          fallback={
-            <div className={styles.centre()}>
-              <Spinner className="size-5" />
-            </div>
-          }
-        >
-          <RevisionDiffView
-            documentId={documentId}
-            range={compare}
-            fromLabel={labelOf(revisions, compare.from)}
-            toLabel={labelOf(revisions, compare.to)}
-          />
-        </Suspense>
-      </>
-    )
-  }
-
   return (
     <PublishedBody
       documentId={documentId}
@@ -134,6 +101,8 @@ export function DocumentReader({
       revisions={revisions}
       canEdit={canEdit}
       eyebrow={eyebrow}
+      placement={placement}
+      byline={byline}
     />
   )
 }
@@ -147,16 +116,24 @@ function PublishedBody({
   revisions,
   canEdit,
   eyebrow,
-}: Omit<DocumentReaderProps, 'compare'>) {
+  placement,
+  byline,
+}: DocumentReaderProps) {
   const rendered = useRenderedDocument(documentId, revision)
   const styles = documentReaderStyles()
+  const childPages = useChildPagesOf(documentId)
+  // A link in the body to another document moves within the app (ADR-035).
+  const followLink = useFollowLink()
+  const loadLinks = useDocumentLinksLoader()
+  const [creatingChild, setCreatingChild] = useState(false)
+  const createChildPage = useCallback(() => {
+    setCreatingChild(true)
+  }, [setCreatingChild])
+  const canCreateChild = canEdit && placement !== undefined
   // What is waiting to be published, for somebody who can write it, when there is nothing to read.
   const draft = useDraft(canEdit && rendered.isError ? documentId : undefined)
-  const draftSummary = summariseDraft(
-    isDocumentTree(readDraftContent(draft.data?.ast)?.ast)
-      ? readDraftContent(draft.data?.ast)?.ast
-      : undefined,
-  )
+  const tree = readDraftContent(draft.data?.ast)?.ast
+  const draftSummary = summariseDraft(isDocumentTree(tree) ? tree : undefined)
 
   if (rendered.isPending) {
     return (
@@ -212,7 +189,6 @@ function PublishedBody({
   // the two would call every document "older" the moment its neighbour was
   // republished.
   const isOlder = head !== undefined && revision !== undefined && revision !== head.revision
-  const onScreenRevision = revisions.find((candidate) => candidate.revision === onScreen)
   // Every document written from a template or by hand opens with its own
   // title, which arrives in the body as an `h1`. Adding the page's title
   // above it would show it twice and give the page two first-level headings.
@@ -225,8 +201,10 @@ function PublishedBody({
           <Block>
             <div className={styles.banner()}>
               <p className={styles.bannerText()}>
-                reading {labelOf(revisions, onScreen)} · published{' '}
-                {onScreenRevision === undefined ? '—' : <LocalTime value={onScreenRevision.date} />}
+                {`reading ${labelOf(revisions, onScreen)} · published `}
+                <OnScreenDate
+                  date={revisions.find((candidate) => candidate.revision === onScreen)?.date}
+                />
               </p>
               <Link
                 to="/w/$workspaceSlug/d/$documentId"
@@ -245,6 +223,7 @@ function PublishedBody({
         <LayoutGrid className="pt-8">
           <Block>
             <h1 className={styles.title()}>{title}</h1>
+            {byline === undefined ? undefined : <div className="mt-4">{byline}</div>}
           </Block>
         </LayoutGrid>
       )}
@@ -257,16 +236,26 @@ function PublishedBody({
         html={rendered.data.body.html}
         label={title}
         eyebrow={eyebrow}
+        loadChildPages={childPages}
+        onCreateChildPage={canCreateChild ? createChildPage : undefined}
+        afterTitle={bodyHasTitle ? byline : undefined}
+        onFollowLink={followLink}
+        loadLinks={loadLinks}
         className={styles.body()}
         linkPeek
-        renderChildDocuments={(depth) => (
-          <ChildDocumentsBlock
-            documentId={documentId}
-            workspaceSlug={workspaceSlug}
-            depth={depth}
-          />
-        )}
       />
+      {canCreateChild ? (
+        <NewDocumentDialog
+          workspaceId={placement.workspaceId}
+          workspaceSlug={workspaceSlug}
+          open={creatingChild}
+          onOpenChange={setCreatingChild}
+          initialParentId={documentId}
+          {...(placement.collectionId === undefined
+            ? {}
+            : { initialCollectionId: placement.collectionId })}
+        />
+      ) : undefined}
     </>
   )
 }
@@ -278,7 +267,8 @@ function PublishedBody({
  * out yet, and one made from a template has its sections and no writing in them. So somebody who
  * can write it is told what is waiting (its sections and how many words), and which of the two
  * it is changes what the button says. Somebody who cannot write it is told only that it has not
- * been published: advice to open the editor is not for them.
+ * been published: advice to open the editor is not for them. Nothing here claims readers see a
+ * page, because there is none.
  */
 function NotPublished({
   documentId,
@@ -339,4 +329,9 @@ function NotPublished({
       )}
     </Callout>
   )
+}
+
+/** When the revision on screen was published, in the reader's own language (`LocalTime`). */
+function OnScreenDate({ date }: { readonly date: string | undefined }) {
+  return date === undefined ? '—' : <LocalTime value={date} />
 }

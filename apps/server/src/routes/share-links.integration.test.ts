@@ -92,9 +92,9 @@ async function publishDocumentIn(
   writer: Writer,
   title: string,
   parentId: DocumentId | null = null,
+  markdown = [`# ${title}`, '', `The body of ${title}.`].join('\n'),
 ): Promise<DocumentId> {
   const id = await createDocumentIn(writer, title, parentId)
-  const markdown = [`# ${title}`, '', `The body of ${title}.`].join('\n')
   const { frontMatter, ast } = parseDocument(markdown)
 
   const acquired = await writer.on.app.inject({
@@ -131,6 +131,28 @@ const createDocument = (title: string, parentId: DocumentId | null): Promise<Doc
 
 const publishedDocument = (title: string, parentId: DocumentId | null): Promise<DocumentId> =>
   publishDocumentIn({ on: harness, as: editor, tenancy }, title, parentId)
+
+/** A published document deprecated in favour of `supersededBy`, when it is given. */
+const deprecated = (
+  title: string,
+  parentId: DocumentId | null,
+  supersededBy?: DocumentId,
+): Promise<DocumentId> =>
+  publishDocumentIn(
+    { on: harness, as: editor, tenancy },
+    title,
+    parentId,
+    [
+      '---',
+      'status: deprecated',
+      ...(supersededBy === undefined ? [] : [`supersededBy: ${supersededBy}`]),
+      '---',
+      '',
+      `# ${title}`,
+      '',
+      'Kept for reference.',
+    ].join('\n'),
+  )
 
 interface CreatedLink {
   readonly id: string
@@ -378,11 +400,19 @@ describe('reading through a share link', () => {
     expect(response.headers['x-robots-tag']).toBe('noindex, nofollow')
     expect(response.headers['referrer-policy']).toBe('no-referrer')
     const body = response.json()
-    expect(Object.keys(body).toSorted()).toEqual(['children', 'document', 'link', 'rendered'])
+    expect(Object.keys(body).toSorted()).toEqual([
+      'children',
+      'document',
+      'facts',
+      'link',
+      'rendered',
+    ])
     expect(body.document.title).toBe('Authentication architecture')
     expect(body.rendered.html).toContain('The body of Authentication architecture.')
     expect(body.link).toEqual({ scope: 'document', role: 'viewer', expiresAt: null })
     expect(body.children).toEqual([])
+    // The public facts only: never an owner, who is a person (ADR-059).
+    expect(body.facts).toEqual({ tags: [] })
 
     // No draft, no lock, no workspace, no collection, no status, and nothing
     // naming another document (`docs/product/surfaces.md`).
@@ -430,6 +460,43 @@ describe('reading through a share link', () => {
       const resent = await followChild(subtree.token, child, { 'if-none-match': header })
       expect(resent.statusCode).toBe(200)
     }
+  })
+
+  describe('a deprecated document', () => {
+    it('names a replacement inside the link, under the same token', async () => {
+      const root = await deprecated('Old login flow', null)
+      const replacement = await publishedDocument('New login flow', root)
+      const retired = await deprecated('Old session flow', root, replacement)
+      const link = await createLink(root, { scope: 'subtree' })
+
+      const facts = (await followChild(link.token, retired)).json().facts
+      expect(facts.lifecycle.state).toBe('deprecated')
+      expect(facts.lifecycle.replacement.title).toBe('New login flow')
+      expect(facts.lifecycle.replacement.href).toMatch(
+        new RegExp(`^/share/${link.token}/d/[^/]+$`, 'u'),
+      )
+    })
+
+    it('names the link’s own page at the token’s own address', async () => {
+      const root = await publishedDocument('Current runbook', null)
+      const retired = await deprecated('Previous runbook', root, root)
+      const link = await createLink(root, { scope: 'subtree' })
+
+      expect((await followChild(link.token, retired)).json().facts.lifecycle).toEqual({
+        state: 'deprecated',
+        replacement: { href: `/share/${link.token}`, title: 'Current runbook' },
+      })
+    })
+
+    it('never names a replacement outside the link, nor one nobody named', async () => {
+      const outside = await deprecated('Retired outside the link', null, sibling)
+      const unreplaced = await deprecated('Retired with no successor', null)
+
+      for (const id of [outside, unreplaced]) {
+        const link = await createLink(id)
+        expect((await follow(link.token)).json().facts.lifecycle).toEqual({ state: 'deprecated' })
+      }
+    })
   })
 
   it('takes the document’s short key as readily as its id (ADR-035)', async () => {

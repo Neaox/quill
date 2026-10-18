@@ -316,25 +316,19 @@ describe('renderHtml', () => {
     expect(render('---\ntitle: One\n---\n\nBody.\n')).toBe('<article><p>Body.</p></article>')
   })
 
-  it('renders dates from front matter as time elements', () => {
+  it('leaves front matter out of the body, dates and all: the byline states it', () => {
+    // A body is cached for every reader (ADR-031), and what a document says
+    // about itself is shown by each surface's byline, to each reader as they
+    // may see it (ADR-059). A key path such as `review.lastReviewed` in the
+    // body was also read as the page's eyebrow.
     const html = render('Body.\n', {
       frontMatter: {
         title: 'One',
-        order: 2,
         published: '2026-01-31',
         review: { interval: '365d', lastReviewed: '2026-02-01T09:00:00Z' },
-        owners: ['platform'],
       },
     })
-
-    expect(html).toContain('<header class="document-meta">')
-    expect(html).toContain('<dt>published</dt><dd><time datetime="2026-01-31">')
-    expect(html).toContain('<dt>review.lastReviewed</dt>')
-    expect(html).not.toContain('365d')
-  })
-
-  it('omits the header when no front matter carries a date', () => {
-    expect(render('Body.\n', { frontMatter: { title: 'One' } })).not.toContain('<header')
+    expect(html).toBe('<article><p>Body.</p></article>')
   })
 
   it('adds rel="noopener noreferrer" to an external link but not a relative one', () => {

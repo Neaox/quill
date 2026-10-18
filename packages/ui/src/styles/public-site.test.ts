@@ -110,7 +110,12 @@ describe('the public site stylesheet', () => {
   })
 
   it('names the stylesheets the server serves, in the order they cascade', () => {
-    expect(PUBLIC_SITE_STYLESHEETS).toEqual(['public-site.css', 'layout.css', 'prose.css'])
+    expect(PUBLIC_SITE_STYLESHEETS).toEqual([
+      'public-site.css',
+      'layout.css',
+      'prose.css',
+      'byline.css',
+    ])
   })
 
   it('resolves each of them to a file that exists', () => {

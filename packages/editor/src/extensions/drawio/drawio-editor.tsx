@@ -1,6 +1,5 @@
 import { useRef, useState } from 'react'
 
-import { BRAND } from '@quill/brand'
 import { drawioFilename, editableDrawioSource } from '@quill/markdown/drawio'
 import { Button } from '@quill/ui'
 
@@ -16,10 +15,11 @@ import {
   EMPTY_DIAGRAM,
   drawioCodec,
   drawioEditorUrl,
+  drawioLanguage,
 } from './drawio-protocol.ts'
 import type { DrawioMessage } from './drawio-protocol.ts'
 import type { DrawioSessionEvent, DrawioSessionState } from './drawio-session.ts'
-import { drawioSessionReducer, initialDrawioSessionState } from './drawio-session.ts'
+import { drawioSessionReducer, initialDrawioSessionState, savingFailed } from './drawio-session.ts'
 
 /**
  * Editing a draw.io diagram in the embedded editor (ADR-043): the draw.io
@@ -49,6 +49,8 @@ export interface DrawioDiagram {
 export type DrawioRevision =
   | { readonly kind: 'revised'; readonly diagram: DrawioDiagram }
   | { readonly kind: 'conflict'; readonly currentVersion: number }
+  /** Not written, for a reason that saving again will not change: the message says why. */
+  | { readonly kind: 'refused'; readonly message: string }
 
 /** The attachments API, as the draw.io session needs it. The application implements it. */
 export interface DrawioFiles {
@@ -79,6 +81,11 @@ export interface DrawioEditorProps {
   readonly thirdParty: boolean
   /** The reader's colour scheme, which the editor matches. */
   readonly dark: boolean
+  /**
+   * The language of the interface around the editor, as a BCP 47 tag (the
+   * page's `lang`), which draw.io is asked to speak. Omitted, draw.io guesses.
+   */
+  readonly lang?: string | undefined
   readonly target: DrawioTarget
   readonly files: DrawioFiles
   onSaved(saved: DrawioSaved): void
@@ -103,7 +110,7 @@ function statusOf(state: DrawioSessionState, thirdParty: boolean): string {
     case 'conflict':
       return 'Not saved: a newer version exists'
     case 'error':
-      return state.retry === 'save' ? 'Not saved' : 'Not opened'
+      return savingFailed(state.retry) ? 'Not saved' : 'Not opened'
     case 'ready':
     case 'confirming-close':
     case 'closed':
@@ -117,6 +124,7 @@ export function DrawioEditor({
   origin,
   thirdParty,
   dark,
+  lang,
   target,
   files,
   onSaved,
@@ -129,10 +137,16 @@ export function DrawioEditor({
   // while rendering, and each reads the session as the previous one left it.
   const session = useRef<DrawioSessionState>(initialDrawioSessionState)
   const diagram = useRef<DrawioDiagram | null>(target.kind === 'existing' ? target.diagram : null)
-  const exported = useRef<string | null>(null)
+  /** The last SVG draw.io exported: what a retried save or a copy writes. */
+  const exported = useRef('')
   /** A save's labels were converted to SVG text and reloaded; the export follows the `load` answer. */
   const converting = useRef(false)
-  const [src] = useState(() => drawioEditorUrl(editorUrl, { dark }))
+  const [src] = useState(() =>
+    drawioEditorUrl(editorUrl, {
+      dark,
+      lang: lang === undefined ? undefined : drawioLanguage(lang),
+    }),
+  )
 
   function transition(event: DrawioSessionEvent): DrawioSessionState {
     const next = drawioSessionReducer(session.current, event)
@@ -154,7 +168,7 @@ export function DrawioEditor({
     onSilent: () => {
       transition({
         type: 'failed',
-        message: `The draw.io editor at ${origin} did not answer. Check that it is running.`,
+        message: `The diagram editor at ${origin} did not answer. Check that it is running.`,
         retry: 'none',
       })
     },
@@ -163,7 +177,7 @@ export function DrawioEditor({
   async function open(): Promise<void> {
     const current = diagram.current
     if (current === null) {
-      send({ action: 'load', xml: EMPTY_DIAGRAM, autosave: 1, title: target.title })
+      send({ action: 'load', xml: EMPTY_DIAGRAM, autosave: 1 })
       return
     }
     try {
@@ -172,13 +186,13 @@ export function DrawioEditor({
       if (source.kind !== 'source') {
         transition({
           type: 'failed',
-          message: `This file holds no draw.io diagram ${BRAND.name} can open.`,
+          message: 'This file holds no diagram the editor can open.',
           retry: 'none',
         })
         return
       }
       diagram.current = { ...current, version }
-      send({ action: 'load', xml: source.xml, autosave: 1, title: target.title })
+      send({ action: 'load', xml: source.xml, autosave: 1 })
     } catch {
       transition({ type: 'failed', message: 'The diagram could not be opened.', retry: 'open' })
     }
@@ -195,6 +209,11 @@ export function DrawioEditor({
         return
       }
       const result = await files.revise(current, svg)
+      if (result.kind === 'refused') {
+        transition({ type: 'failed', message: result.message, retry: 'copy' })
+        send({ action: 'status', modified: true, message: 'Not saved' })
+        return
+      }
       if (result.kind === 'conflict') {
         transition({ type: 'conflicted', currentVersion: result.currentVersion })
         send({ action: 'status', modified: true, message: 'Not saved' })
@@ -239,15 +258,13 @@ export function DrawioEditor({
         transition({ type: 'changed' })
         return
       case 'save': {
-        if (
-          transition({ type: 'save-requested', exit: message.exit === true }).status !== 'saving'
-        ) {
-          return
-        }
+        // A second press while the first save is being written asks for nothing more.
+        if (session.current.status === 'saving') return
+        transition({ type: 'save-requested', exit: message.exit === true })
         const source = await editableDrawioSource(message.xml, browserInflate)
         if (source.kind === 'source' && source.converted) {
           converting.current = true
-          send({ action: 'load', xml: source.xml, autosave: 1, title: target.title })
+          send({ action: 'load', xml: source.xml, autosave: 1 })
         } else {
           exportSvg()
         }
@@ -270,6 +287,14 @@ export function DrawioEditor({
     void open()
   }
 
+  function retry(): void {
+    const next = transition({ type: 'retried' })
+    // "Try again" is offered only after a failure that can be retried: the
+    // opening, which loads again, or the save, which writes its export again.
+    if (next.status === 'loading') void open()
+    else void write(exported.current, next.status === 'saving' && next.copy)
+  }
+
   const prompt = (() => {
     switch (state.status) {
       case 'conflict':
@@ -285,8 +310,7 @@ export function DrawioEditor({
                   variant="primary"
                   onClick={() => {
                     transition({ type: 'copy-requested' })
-                    /* v8 ignore else -- a conflict is only ever raised by writing an export, so one is held. */
-                    if (exported.current !== null) void write(exported.current, true)
+                    void write(exported.current, true)
                   }}
                 >
                   Save mine as a copy
@@ -323,7 +347,7 @@ export function DrawioEditor({
         return (
           <EmbeddedEditorPrompt
             title={
-              state.retry === 'save' ? 'Your diagram is not saved' : 'The diagram did not open'
+              savingFailed(state.retry) ? 'Your diagram is not saved' : 'The diagram did not open'
             }
             actions={
               <>
@@ -332,7 +356,7 @@ export function DrawioEditor({
                 </Button>
                 {state.retry === 'none' ? undefined : (
                   <Button variant="primary" onClick={retry}>
-                    Try again
+                    {state.retry === 'copy' ? 'Save mine as a copy' : 'Try again'}
                   </Button>
                 )}
               </>
@@ -345,18 +369,6 @@ export function DrawioEditor({
         return undefined
     }
   })()
-
-  function retry(): void {
-    const next = transition({ type: 'retried' })
-    if (next.status === 'loading') {
-      void open()
-      return
-    }
-    /* v8 ignore else -- Try again is offered only after a failed open or a failed write, which leaves an export held. */
-    if (next.status === 'saving' && exported.current !== null) {
-      void write(exported.current, false)
-    }
-  }
 
   return (
     <EmbeddedEditorFrame

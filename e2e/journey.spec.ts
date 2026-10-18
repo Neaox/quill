@@ -187,7 +187,7 @@ test('a document is written, published, revised, compared, and restored', async 
   await expect(page.getByText('draft saved')).toBeVisible({ timeout: 15_000 })
 
   // --- Publish it ----------------------------------------------------------
-  await page.getByRole('button', { name: 'Publish' }).click()
+  await page.getByRole('button', { name: 'Publish', exact: true }).click()
 
   // --- Read it -------------------------------------------------------------
   const published = page.getByRole('article', { name: title })
@@ -216,25 +216,31 @@ test('a document is written, published, revised, compared, and restored', async 
   await page.keyboard.type(' Tell the on-call engineer before you begin.')
   await expect(page.getByText('draft saved')).toBeVisible({ timeout: 15_000 })
 
-  await page.getByRole('button', { name: 'Publish' }).click()
+  await page.getByRole('button', { name: 'Publish', exact: true }).click()
   await expect(published).toBeVisible()
   await expect(published.getByText(/on-call engineer/)).toBeVisible()
 
   // --- History -------------------------------------------------------------
   const revisions = page.getByRole('region', { name: 'Revisions' })
-  await expect(revisions.getByRole('link', { name: /v2/ })).toBeVisible()
-  await expect(revisions.getByRole('link', { name: /v1/ })).toBeVisible()
+  // Anchored: each publish after the first also has a "Compare v2 with the previous version" link.
+  await expect(revisions.getByRole('link', { name: /^v2 / })).toBeVisible()
+  await expect(revisions.getByRole('link', { name: /^v1 / })).toBeVisible()
+  await expect(revisions.getByRole('link', { name: /^Compare v2 with the previous/ })).toBeVisible()
 
   // --- Compare the two revisions -------------------------------------------
-  await page.getByText('Compare', { exact: true }).first().click()
-  // `exact`: "To" is also a substring of every heading's "Link to this section" anchor.
-  await page.getByLabel('From', { exact: true }).selectOption({ index: 1 })
-  await page.getByLabel('To', { exact: true }).selectOption({ index: 0 })
-  await page.getByRole('button', { name: 'Compare' }).click()
+  await revisions.getByRole('link', { name: /^Compare v2 with the previous/ }).click()
+  const compared = 'Changes between v1 and v2'
+  await expect(page.getByRole('heading', { level: 1, name: compared })).toBeVisible()
+  // The two versions are in the address and in the pickers, so the page can be linked to.
+  await expect(page).toHaveURL(/[?&]from=[0-9a-f]{40}&to=[0-9a-f]{40}/u)
+  await expect(page.getByRole('group', { name: 'Versions to compare' })).toBeVisible()
+  // What changed, said first, before the page itself.
+  await expect(page.getByRole('region', { name: `Summary of ${compared}` })).toContainText(
+    /1 edited/u,
+  )
 
   // The page as it reads, with what changed marked where it is (ADR-031's comparison).
-  await expect(page.getByRole('heading', { name: 'Comparing v1 with v2' })).toBeVisible()
-  const comparison = page.getByRole('article', { name: 'Comparison' })
+  const comparison = page.getByRole('article', { name: compared })
   await expect(comparison).toContainText('on-call engineer')
   // The sentence was added to a paragraph, so the block is changed and the words are inserted.
   await expect(comparison.locator('[data-change="changed"]').first()).toBeVisible()
@@ -243,8 +249,8 @@ test('a document is written, published, revised, compared, and restored', async 
   )
 
   // --- Restore the first revision ------------------------------------------
-  await page.getByRole('link', { name: 'Back to the document' }).click()
-  await revisions.getByRole('link', { name: /v1/ }).click()
+  await page.getByRole('main').getByRole('link', { name: title, exact: true }).click()
+  await revisions.getByRole('link', { name: /^v1 / }).click()
   await expect(page.getByText(/reading v1/)).toBeVisible()
 
   await page.getByRole('button', { name: 'Restore this revision' }).click()
@@ -257,5 +263,5 @@ test('a document is written, published, revised, compared, and restored', async 
   await expect(restored.getByText(/once a quarter/)).toBeVisible()
   await expect(restored.getByText(/on-call engineer/)).toBeHidden()
   // Restoring publishes rather than erasing: the step it undid is still there.
-  await expect(revisions.getByRole('link', { name: /v3/ })).toBeVisible()
+  await expect(revisions.getByRole('link', { name: /^v3 / })).toBeVisible()
 })

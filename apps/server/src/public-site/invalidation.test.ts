@@ -4,6 +4,7 @@ import {
   createEventBus,
   documentDeleted,
   documentMoved,
+  documentNested,
   documentPublished,
   documentRenamed,
   EVENT_PAYLOAD_VERSION,
@@ -34,6 +35,7 @@ const PAYLOADS = [
   ],
   [documentRenamed, { version: v, documentId: 'd', workspaceId: 'w', from: 'a', to: 'b' }],
   [documentMoved, { version: v, documentId: 'd', workspaceId: 'w' }],
+  [documentNested, { version: v, documentId: 'd', workspaceId: 'w', toParentId: 'p' }],
   [
     attachmentRevised,
     { version: v, attachmentId: 'a', documentId: 'd', workspaceId: 'w', attachmentVersion: 2 },
@@ -88,7 +90,7 @@ describe('invalidating the public site', () => {
 
   it('answers for a revoke, which is the one that must not be late', async () => {
     const { cache, bus } = aSubscribedCache()
-    await bus.publish({ type: grantRevoked.type, payload: PAYLOADS[7][1] })
+    await bus.publish({ type: grantRevoked.type, payload: PAYLOADS[8][1] })
     expect(cache.search('acme', 'limit', undefined)).toBeNull()
   })
 
@@ -101,7 +103,7 @@ describe('invalidating the public site', () => {
   it('stops listening when told to', async () => {
     const { cache, bus, unsubscribe } = aSubscribedCache()
     unsubscribe()
-    await bus.publish({ type: grantRevoked.type, payload: PAYLOADS[7][1] })
+    await bus.publish({ type: grantRevoked.type, payload: PAYLOADS[8][1] })
     expect(cache.page('acme', 'guides/one')).not.toBeNull()
   })
 })

@@ -3,9 +3,6 @@ import type { Node as PMNode, Schema } from '@tiptap/pm/model'
 import { Selection, TextSelection } from '@tiptap/pm/state'
 import type { Command, Transaction } from '@tiptap/pm/state'
 
-import type { CalloutType } from '@quill/markdown'
-
-import { newCalloutAttributes } from '../callout/callouts.ts'
 import { nodeType } from '../schema/node-type.ts'
 
 /**
@@ -28,10 +25,8 @@ export interface InsertOptions {
   /** Select the first line of text in the new block, so typing replaces a prompt. */
   readonly selectText?: boolean
   /**
-   * The block is all settings and no text, like a divider: it is followed by an
-   * empty paragraph to keep writing in, and the caret goes there. A node with
-   * no content spec is that by itself; a leaf directive has an inline content
-   * spec for its label but is written without one.
+   * The block stands alone, like a divider: an empty paragraph follows it so there is somewhere
+   * to keep writing. A link card has words of its own, which are not typed into (ADR-042).
    */
   readonly standalone?: boolean
 }
@@ -99,7 +94,7 @@ export function insertInline(make: NodeFactory): Command {
   }
 }
 
-/** Types text at the caret, as if the author had: an emoji's shortcode. */
+/** Types text at the caret, as if the author had. */
 export function insertText(text: string): Command {
   return (state, dispatch) => {
     if (!state.selection.$from.parent.inlineContent) return false
@@ -135,14 +130,6 @@ export function textDirective(name: string, text: string): NodeFactory {
     nodeType(schema, 'textDirective').create({ name, attributes: {} }, schema.text(text))
 }
 
-/** The leaf directive `::name{attributes}`: a block that is its settings and nothing else. */
-export function leafDirective(
-  name: string,
-  attributes: Readonly<Record<string, string>>,
-): NodeFactory {
-  return (schema) => nodeType(schema, 'leafDirective').create({ name, attributes })
-}
-
 /** The container directive `:::name`, holding the given blocks or one empty paragraph. */
 export function containerDirective(
   name: string,
@@ -154,12 +141,6 @@ export function containerDirective(
       { name, attributes },
       body === undefined ? paragraph(schema) : body(schema),
     )
-}
-
-/** A callout of this type, written as the standard quote (`newCalloutAttributes`), with one empty paragraph in it. */
-export function calloutBlock(type: CalloutType): NodeFactory {
-  return (schema) =>
-    nodeType(schema, 'containerDirective').create(newCalloutAttributes(type), paragraph(schema))
 }
 
 /**

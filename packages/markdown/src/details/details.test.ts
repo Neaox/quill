@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import type { Root, RootContent } from 'mdast'
+import type { Paragraph, PhrasingContent, Root, RootContent } from 'mdast'
 import type { ContainerDirective } from 'mdast-util-directive'
 
 import { parseDocument } from '../pipeline/parse-document.ts'
@@ -14,9 +14,34 @@ import {
   calloutKindOf,
   DETAILS,
   detailsModel,
+  accordionDirective,
+  detailsDirective,
   isDetails,
   isDetailsNode,
 } from './details.ts'
+import { readDetails } from './read.ts'
+import type { ReadInline } from './read.ts'
+
+/** Inline Markdown as the parser reads a summary: plain words only, for a hand-built tree. */
+const words: ReadInline = (text) => [{ type: 'text', value: text }]
+
+/** A details the editor made: no source form, a summary of `summary`, and one line of body. */
+function fresh(
+  syntax: Details['syntax'],
+  attributes: Details['attributes'],
+  summary: PhrasingContent[] = [],
+): Details {
+  const label: Paragraph[] =
+    summary.length === 0
+      ? []
+      : [{ type: 'paragraph', data: { directiveLabel: true }, children: summary }]
+  return {
+    type: 'details',
+    syntax,
+    attributes,
+    children: [...label, { type: 'paragraph', children: [{ type: 'text', value: 'x' }] }],
+  }
+}
 
 /** Every details in a tree, in document order, whatever syntax it was written in. */
 function detailsIn(tree: Root): DetailsNode[] {
@@ -324,7 +349,7 @@ describe('writing details back', () => {
   })
 
   it('writes a new HTML details in GitHub’s own layout', () => {
-    const fresh: Details = {
+    const made: Details = {
       type: 'details',
       syntax: 'html',
       attributes: {},
@@ -337,7 +362,7 @@ describe('writing details back', () => {
         { type: 'paragraph', children: [{ type: 'text', value: 'x' }] },
       ],
     }
-    expect(stringifyMdast({ type: 'root', children: [fresh] })).toBe(
+    expect(stringifyMdast({ type: 'root', children: [made] })).toBe(
       '<details>\n<summary>A</summary>\n\nx\n\n</details>\n',
     )
   })
@@ -387,6 +412,164 @@ describe('details in the editor', () => {
   })
 })
 
+const root = (...children: RootContent[]): Root => ({ type: 'root', children })
+const html = (value: string): RootContent => ({ type: 'html', value })
+const text = (value: string): RootContent => ({
+  type: 'paragraph',
+  children: [{ type: 'text', value }],
+})
+
+describe('the edges of each form', () => {
+  it('reads HTML tags in a tree the parser did not place, and leaves white space alone', () => {
+    const read = readDetails(
+      root(html('<details>\n<summary>A</summary>'), text('x'), html('</details>')),
+      words,
+    )
+    expect(detailsIn(read).map((node) => seen(node).summary)).toEqual(['A'])
+    const blank = root(html('  '), text('x'))
+    expect(readDetails(blank, words)).toEqual(blank)
+  })
+
+  it('reads nothing at a level where a tag would hold what a details cannot', () => {
+    const tree = root(html('<details>'), { type: 'text', value: 'loose' }, html('</details>'))
+    expect(readDetails(tree, words)).toEqual(tree)
+    const nested = root(
+      html('<details>'),
+      html('<details>'),
+      { type: 'text', value: 'loose' },
+      html('</details>\n</details>'),
+    )
+    expect(detailsIn(readDetails(nested, words))).toEqual([])
+  })
+
+  it('leaves a summary with no details to belong to, and a second summary, as HTML', () => {
+    expect(detailsIn(parseMarkdown('<summary>A</summary>\n'))).toEqual([])
+    expect(
+      detailsIn(
+        parseMarkdown('<details>\n<summary>A</summary>\n<summary>B</summary>\n\nx\n\n</details>\n'),
+      ),
+    ).toEqual([])
+  })
+
+  it('reads Obsidian titles that end in markup, or are only markup', () => {
+    for (const markdown of ['> [!note]- *Title*\n> Body.\n', '> [!note]- Title\n> *Body*\n']) {
+      expect(stringifyMdast(parseMarkdown(markdown))).toBe(markdown)
+      expect(detailsIn(parseMarkdown(markdown))).toHaveLength(1)
+    }
+    // The space a title line ends on is no part of the title, and is not kept.
+    expect(stringifyMdast(parseMarkdown('> [!note]- Title *x* \n> Body.\n'))).toBe(
+      '> [!note]- Title *x*\n> Body.\n',
+    )
+    expect(detailsIn(parseMarkdown('> - [!note]- In a list\n'))).toEqual([])
+    expect(detailsIn(parseMarkdown('> *[!note]-* Emphasised\n'))).toEqual([])
+  })
+
+  it('reads a foldable callout out of a quote the parser did not place', () => {
+    const quote: RootContent = {
+      type: 'blockquote',
+      children: [{ type: 'paragraph', children: [{ type: 'text', value: '[!tip]- A\nx' }] }],
+    }
+    const [node] = detailsIn(readDetails(root(quote), words))
+    expect(node?.position).toBeUndefined()
+    expect(node?.data).toBeUndefined()
+  })
+
+  it('keeps a details written tight under a paragraph tight, in both source forms', () => {
+    for (const markdown of [
+      'Intro:\n<details>\n<summary>A</summary>\n\nx\n\n</details>\n',
+      'Intro:\n> [!tip]- A\n> x\n',
+    ]) {
+      expect(stringifyMdast(parseMarkdown(markdown))).toBe(markdown)
+    }
+  })
+
+  it('never writes a callout tight under a quote it would join', () => {
+    const tight: Details = {
+      ...fresh('callout', { type: 'tip' }),
+      data: { sourceForm: { blankLines: 0 } },
+    }
+    expect(
+      stringifyMdast(root({ type: 'blockquote', children: [text('q')] } as RootContent, tight)),
+    ).toBe('> q\n\n> [!tip]-\n>\n> x\n')
+    expect(stringifyMdast(root(fresh('callout', { type: 'note' }), tight))).toBe(
+      '> [!note]-\n>\n> x\n\n> [!tip]-\n>\n> x\n',
+    )
+    const named: Details = {
+      ...fresh('html', { name: 'faq' }),
+      data: { sourceForm: { blankLines: 0 } },
+    }
+    expect(stringifyMdast(root(text('p'), named))).toBe('p\n\n:::details{name="faq"}\nx\n:::\n')
+  })
+
+  it('writes new details in each form, and moves one to the directive when its summary will not fit', () => {
+    expect(stringifyMdast(root(fresh('html', { open: '' })))).toBe(
+      '<details open>\n\nx\n\n</details>\n',
+    )
+    expect(stringifyMdast(root({ ...fresh('html', {}), children: [] }))).toBe(
+      '<details>\n\n</details>\n',
+    )
+    expect(
+      stringifyMdast(
+        root(fresh('callout', { type: 'tip', open: '' }, [{ type: 'text', value: 'A' }])),
+      ),
+    ).toBe('> [!tip]+ A\n>\n> x\n')
+    expect(stringifyMdast(root(fresh('callout', { type: '9 bad' })))).toBe(
+      ':::details{type="9 bad"}\nx\n:::\n',
+    )
+    const rich: PhrasingContent[] = [
+      { type: 'text', value: 'Run ' },
+      { type: 'inlineCode', value: 'check' },
+      { type: 'emphasis', children: [{ type: 'text', value: 'now' }] },
+      { type: 'strong', children: [{ type: 'text', value: '!' }] },
+    ]
+    expect(stringifyMdast(root(fresh('html', {}, rich)))).toBe(
+      '<details>\n<summary>Run `check`*now***!**</summary>\n\nx\n\n</details>\n',
+    )
+    const linked: PhrasingContent[] = [
+      { type: 'link', url: '/a', children: [{ type: 'text', value: 'A' }] },
+    ]
+    expect(stringifyMdast(root(fresh('html', {}, linked)))).toBe(
+      '<details>\n<summary>[A](/a)</summary>\n\nx\n\n</details>\n',
+    )
+    const titled: PhrasingContent[] = [
+      { type: 'link', url: '/a', title: 'T', children: [{ type: 'text', value: 'A' }] },
+    ]
+    expect(stringifyMdast(root(fresh('html', {}, titled)))).toBe(
+      ':::details[[A](/a "T")]\nx\n:::\n',
+    )
+    const broken: PhrasingContent[] = [{ type: 'text', value: 'one\ntwo' }]
+    expect(stringifyMdast(root(fresh('callout', { type: 'tip' }, broken)))).toContain(':::details[')
+  })
+
+  it('reads a directive with no attributes at all, and checks only what it claims', () => {
+    const bare: ContainerDirective = { type: 'containerDirective', name: DETAILS, children: [] }
+    expect(detailsModel(bare)).toEqual({
+      summary: undefined,
+      body: [],
+      open: false,
+      name: undefined,
+      kind: undefined,
+    })
+    const leaf = { type: 'leafDirective' as const, name: DETAILS, children: [] }
+    expect(detailsDirective.validate(leaf)).toEqual([])
+    expect(accordionDirective.validate({ ...leaf, name: ACCORDION })).toEqual([])
+    expect(accordionDirective.validate({ ...bare, name: 'callout' })).toEqual([])
+  })
+
+  it('takes a new details, and a bare directive, through the editor and back', () => {
+    const tree = root(fresh('html', {}), {
+      type: 'containerDirective',
+      name: DETAILS,
+      children: [],
+    })
+    const { doc, warnings } = mdastToProseMirror(tree)
+    expect(warnings).toEqual([])
+    expect(stringifyMdast(proseMirrorToMdast(doc).tree)).toBe(
+      '<details>\n\nx\n\n</details>\n\n:::details\n:::\n',
+    )
+  })
+})
+
 describe('checking details', () => {
   it('warns about an unknown callout kind, a name it cannot use, and an accordion of other things', () => {
     const issues = validateDirectives(
@@ -417,6 +600,9 @@ describe('checking details', () => {
   it('has nothing to say about well-formed details', () => {
     expect(
       validateDirectives(parseMarkdown(':::details[A]{open type=warning name=faq}\nx\n:::\n')),
+    ).toEqual([])
+    expect(
+      validateDirectives(parseMarkdown('::::accordion\n:::details[A]\nx\n:::\n::::\n')),
     ).toEqual([])
   })
 })

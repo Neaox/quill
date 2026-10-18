@@ -1,4 +1,5 @@
-import { parseDocument, serializeDocument } from '@quill/markdown'
+import { CALLOUT_TYPES, parseDocument, serializeDocument } from '@quill/markdown'
+import { CALLOUT_ICONS } from '@quill/ui'
 import { history, undo } from '@tiptap/pm/history'
 import { EditorState, TextSelection } from '@tiptap/pm/state'
 import { EditorView } from '@tiptap/pm/view'
@@ -151,12 +152,12 @@ describe('text items turn the line they are typed on', () => {
 
 describe('blocks open with the caret inside them', () => {
   it.each([
-    ['callout-note', '> [!NOTE]\n'],
-    ['callout-info', '> [!info]\n'],
-    ['callout-tip', '> [!TIP]\n'],
-    ['callout-important', '> [!IMPORTANT]\n'],
-    ['callout-warning', '> [!WARNING]\n'],
-    ['callout-caution', '> [!CAUTION]\n'],
+    ['callout-note', ':::callout{type="note"}\n:::\n'],
+    ['callout-info', ':::callout{type="info"}\n:::\n'],
+    ['callout-tip', ':::callout{type="tip"}\n:::\n'],
+    ['callout-important', ':::callout{type="important"}\n:::\n'],
+    ['callout-warning', ':::callout{type="warning"}\n:::\n'],
+    ['callout-caution', ':::callout{type="caution"}\n:::\n'],
     ['notes', ':::notes\n:::\n'],
   ])('%s', (id, expected) => {
     const result = run(id)
@@ -165,6 +166,12 @@ describe('blocks open with the caret inside them', () => {
     expect(result.caret).toMatchObject({ in: 'paragraph', line: '' })
     expect(result.view.state.selection.$from.node(1).type.name).toBe('containerDirective')
     expectStable(result.markdown)
+  })
+
+  it('marks each callout kind with the icon the reader draws for it', () => {
+    for (const type of CALLOUT_TYPES) {
+      expect(registry.findSlashItem(`callout-${type}`)?.icon).toBe(CALLOUT_ICONS[type])
+    }
   })
 
   it('figure: a line for its subject, the caret on it, and a caption', () => {

@@ -2,6 +2,7 @@ import type { Root } from 'mdast'
 import { describe, expect, it } from 'vitest'
 
 import { parseDocument } from '../pipeline/parse-document.ts'
+import { mergeDocuments } from '../merge/merge-documents.ts'
 import { compareDocuments } from './compare.ts'
 import {
   attributeChanges,
@@ -195,5 +196,35 @@ describe('who made each change of a comparison', () => {
     const drifted = { ...context(byAda), draft: document('Something else entirely.') }
 
     expect(attributeChanges(drifted, ledger).size).toBe(0)
+  })
+})
+
+describe('who wrote what, once offline changes are merged in', () => {
+  it('keeps the stamps of what the draft already had and stamps what the merge brought', () => {
+    // Grace saved an edit to the second block while Ada was offline editing the third.
+    const theirs = document('First block here.', 'Second block, by Grace.', 'Third block here.')
+    const ledger = stampEdit(undefined, PUBLISHED, theirs, GRACE)
+    const mine = document('First block here.', 'Second block here.', 'Third block, by Ada.')
+
+    const { merged, conflicts } = mergeDocuments(PUBLISHED, mine, theirs)
+    // Ada's session saves the merge over the draft as Grace left it.
+    const after = stampEdit(ledger, theirs, merged, ADA)
+
+    expect(conflicts).toEqual([])
+    expect(writtenBy(after, at(merged, 1))).toEqual(GRACE)
+    expect(writtenBy(after, at(merged, 2))).toEqual(ADA)
+    expect(writtenBy(after, at(merged, 0))).toBeUndefined()
+  })
+
+  it('names the author of a block the merge took out by whoever removed it offline', () => {
+    const theirs = document('First block here.', 'Second block, by Grace.', 'Third block here.')
+    const ledger = stampEdit(undefined, PUBLISHED, theirs, GRACE)
+    const mine = document('Second block here.', 'Third block here.')
+
+    const { merged } = mergeDocuments(PUBLISHED, mine, theirs)
+    const after = stampEdit(ledger, theirs, merged, ADA)
+
+    expect(removedBy(after, at(PUBLISHED, 0))).toEqual(ADA)
+    expect(writtenBy(after, at(merged, 0))).toEqual(GRACE)
   })
 })

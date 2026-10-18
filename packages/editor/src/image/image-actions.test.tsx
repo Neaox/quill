@@ -13,11 +13,12 @@ import { editorSchema } from '../schema/editor-schema.ts'
 import { expectNoAccessibilityViolations } from '../testing/axe.ts'
 import type { ImageAction, ImageRef } from './image-actions.ts'
 import { setImageSource } from './image-actions.ts'
+import { insertImage } from '../document/commands.ts'
 
 const DIAGRAM = '/api/attachments/3c9e1f4a-7b2d-4e8f-a1c6-5d0b9e2f8a17'
 const PHOTO = '/api/attachments/6f1d2b0e-5c3a-4b7e-9d21-0a8c4f3e7b19'
 
-const SOURCE = `Intro.\n\n![Request path](${DIAGRAM} "How a request moves")\n\n![A photo](${PHOTO})\n`
+const SOURCE = `Intro.\n\n![Request path](${DIAGRAM} "How a request moves")\n\n![A photo](${PHOTO})\n\n![](${PHOTO})\n`
 
 /** The set of diagram addresses the application keeps, which can change while the editor is open. */
 function diagramStore(initial: readonly string[]) {
@@ -142,21 +143,6 @@ describe('image actions', () => {
     expect(screen.getByRole('img', { name: 'A photo' })).toHaveAttribute('src', PHOTO)
   })
 
-  it('draws an image that has no address or no words as an empty one', () => {
-    const { editor } = open([drawioImageAction({ isDiagram: () => false, onEdit: () => {} })])
-    const image = editor().schema.nodes['image']
-    if (image === undefined) throw new Error('no image node')
-
-    act(() => {
-      editor().view.dispatch(editor().state.tr.insert(1, image.create()))
-    })
-
-    const drawn = [...document.querySelectorAll('.image-actions img')]
-    expect(drawn[0]).toHaveAttribute('src', '')
-    expect(drawn[0]).toHaveAttribute('alt', '')
-    expect(drawn[0]).not.toHaveAttribute('title')
-  })
-
   it('runs nothing from a button whose image has left the document', () => {
     const onEdit = vi.fn<(image: ImageRef) => void>()
     const { editor } = open([drawioImageAction({ isDiagram: () => true, onEdit })])
@@ -173,8 +159,14 @@ describe('image actions', () => {
   })
 
   it('works without a way to hear about changes', () => {
-    open([drawioImageAction({ isDiagram: () => true, onEdit: () => {} })])
-    expect(screen.getAllByRole('button', { name: 'Edit diagram' })).toHaveLength(2)
+    const { editor } = open([drawioImageAction({ isDiagram: () => true, onEdit: () => {} })])
+    expect(screen.getAllByRole('button', { name: 'Edit diagram' })).toHaveLength(3)
+    act(() => {
+      editor().commands.command(({ state, dispatch }) =>
+        insertImage({ src: DIAGRAM })(state, dispatch),
+      )
+    })
+    expect(screen.getAllByRole('button', { name: 'Edit diagram' })).toHaveLength(4)
   })
 })
 

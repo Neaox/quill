@@ -63,6 +63,16 @@ function readerPrefersDark(): boolean {
   return getComputedStyle(document.documentElement).colorScheme.split(' ').at(0) === 'dark'
 }
 
+/**
+ * The language the application speaks to the person, which draw.io is asked
+ * to speak too: the page's own `lang`. Nothing when the page does not say.
+ */
+export function interfaceLanguage(
+  root: HTMLElement = document.documentElement,
+): string | undefined {
+  return root.lang.trim() === '' ? undefined : root.lang
+}
+
 export function useDrawioEditorConfig() {
   const client = useApiClient()
   return useQuery({
@@ -81,20 +91,21 @@ export function useDrawio({ documentId, place }: UseDrawioOptions): DrawioIntegr
   const [describing, setDescribing] = useState(false)
   const [session, setSession] = useState<Session | null>(null)
   const [dark, setDark] = useState(false)
+  const [lang] = useState(() => interfaceLanguage())
 
-  const editor = config.data ?? null
+  const drawioEditor = config.data ?? null
 
-  // The editor's image views and its slash menu are built once and outlive
-  // renders: the store is how they hear that the document's diagrams, or the
-  // instance's editor, arrived or changed.
+  // Synchronises the diagram store — an external store the editor's
+  // ProseMirror image views subscribe to, which outlive renders — with the
+  // document's attachment list as the server last gave it.
   useEffect(() => {
     if (attachments.data !== undefined) store.replace(attachments.data)
   }, [attachments.data, store])
-  // Synchronises the diagram store, which the editor's image views and slash
-  // menu subscribe to outside React, with whether the instance has an editor.
+  // Synchronises the same store with whether the instance has a draw.io
+  // editor, which the slash menu, built once, asks each time it opens.
   useEffect(() => {
-    store.enable(editor !== null)
-  }, [editor, store])
+    store.enable(drawioEditor !== null)
+  }, [drawioEditor, store])
 
   const files = useMemo(
     () =>
@@ -183,13 +194,14 @@ export function useDrawio({ documentId, place }: UseDrawioOptions): DrawioIntegr
           setSession({ kind: 'new', title })
         }}
       />
-      {session === null || editor === null ? undefined : (
+      {session === null || drawioEditor === null ? undefined : (
         <Suspense fallback={undefined}>
           <DrawioEditor
-            editorUrl={editor.url}
-            origin={editor.origin}
-            thirdParty={editor.thirdParty}
+            editorUrl={drawioEditor.url}
+            origin={drawioEditor.origin}
+            thirdParty={drawioEditor.thirdParty}
             dark={dark}
+            lang={lang}
             target={session}
             files={files}
             onSaved={(result) => saved(result, session)}

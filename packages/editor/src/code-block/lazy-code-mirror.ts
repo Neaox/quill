@@ -43,11 +43,14 @@ export interface CodeMirrorMounting {
   watch(element: Element, block: WatchedBlock): () => void
 }
 
+/** What there is to undo before anything has been done. */
+const nothing = (): void => undefined
+
 /** Every block opened as it is drawn: the behaviour where nothing can say what is near. */
 export const eagerMounting: CodeMirrorMounting = {
   watch: (_element, block) => {
     block.open()
-    return () => undefined
+    return nothing
   },
 }
 
@@ -153,9 +156,6 @@ export interface LazyCodeMirrorHost extends CodeMirrorHost {
 }
 
 const frame = codeBlockStyles()
-
-/** What there is to undo before anything has been painted or watched. */
-const nothing = (): void => undefined
 
 /** Where a press landed in the static text, where the browser can say. */
 function offsetOf(code: HTMLElement, event: PointerEvent): number {

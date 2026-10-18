@@ -27,11 +27,17 @@ import type { DrawingRendering, DrawingSource } from '../contract.ts'
  * `data-drawio-legacy`, which is where the editor offers to re-save it.
  */
 
-/** draw.io's root carries its source as `content="&lt;mxfile…"`, or a bare model. */
+/**
+ * draw.io's root carries its source as `content="&lt;mxfile…"`, or a bare model.
+ *
+ * A start tag's attributes are read up to the next `<`, which XML never
+ * allows inside a tag or an attribute value, so each `<svg` in a hostile
+ * file is scanned only as far as the next tag, never to the end of the file.
+ */
 const DRAWIO_ROOT =
-  /<svg\b(?:[^>"']|"[^"]*"|'[^']*')*\scontent\s*=\s*"(?:&lt;|<)(?:mxfile|mxGraphModel)\b/i
+  /<svg\b(?:[^<>"']|"[^<"]*"|'[^<']*')*\scontent\s*=\s*"(?:&lt;|<)(?:mxfile|mxGraphModel)\b/i
 
-const CONTENT_ATTRIBUTE = /(<svg\b(?:[^>"']|"[^"]*"|'[^']*')*?)\scontent\s*=\s*"[^"]*"/i
+const CONTENT_ATTRIBUTE = /(<svg\b(?:[^<>"']|"[^<"]*"|'[^<']*')*?)\scontent\s*=\s*"[^"]*"/i
 
 /** What an inline drawing cannot show without losing it. */
 const NOT_INLINE = /<(?:foreignObject|image)\b/i
@@ -41,8 +47,11 @@ const NOT_INLINE = /<(?:foreignObject|image)\b/i
  * the drawing's own stylesheet as `light-dark(<light>, #121212)` —
  * `#121212` being `--ge-dark-color`'s default, the canvas of draw.io's own
  * dark mode. The stylesheet is never applied, so the value is written out.
+ * The value is read as one bounded run and trimmed afterwards: whitespace
+ * matched on both sides of an open-ended run is a cubic search when the
+ * value never closes.
  */
-const ADAPTIVE_BACKGROUND = /var\(--ge-adaptive-bg,\s*([^)]+?)\s*\)/g
+const ADAPTIVE_BACKGROUND = /var\(--ge-adaptive-bg,([^)]{0,256})\)/g
 const DARK_CANVAS = '#121212'
 
 const ADAPTIVE_COLOURS = /light-dark\(/
@@ -61,7 +70,9 @@ export function renderDrawioDrawing(drawing: DrawingSource): DrawingRendering {
   if (NOT_INLINE.test(picture)) return { kind: 'image', data: { 'data-drawio-legacy': '' } }
   return {
     kind: 'inline',
-    markup: picture.replaceAll(ADAPTIVE_BACKGROUND, `light-dark($1, ${DARK_CANVAS})`),
+    markup: picture.replaceAll(ADAPTIVE_BACKGROUND, (whole, light: string) =>
+      light.trim() === '' ? whole : `light-dark(${light.trim()}, ${DARK_CANVAS})`,
+    ),
     naturalSize: true,
     data: { 'data-drawio': ADAPTIVE_COLOURS.test(picture) ? 'adaptive' : 'fixed' },
   }

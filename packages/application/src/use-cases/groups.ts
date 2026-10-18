@@ -28,7 +28,7 @@ export const GROUP_AUDIT_EVENTS = {
 } as const
 
 /** The most people one search returns; the picker is not a directory browser. */
-export const PEOPLE_SEARCH_LIMIT = 20
+export const GROUP_PEOPLE_SEARCH_LIMIT = 20
 
 export interface GroupsDependencies {
   readonly uow: UnitOfWork
@@ -291,11 +291,14 @@ export async function removeGroupMember(
   return { kind: 'removed' }
 }
 
-export async function searchPeople(
+export async function searchPeopleForGroups(
   deps: GroupsDependencies,
   query: { readonly query: string },
 ): Promise<readonly Person[]> {
-  const found = await deps.uow.repos.users.searchByPrefix(query.query.trim(), PEOPLE_SEARCH_LIMIT)
+  const found = await deps.uow.repos.users.searchByPrefix(
+    query.query.trim(),
+    GROUP_PEOPLE_SEARCH_LIMIT,
+  )
   return found.map(toPerson)
 }
 

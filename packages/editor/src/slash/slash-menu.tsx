@@ -1,13 +1,5 @@
 import type { Editor } from '@tiptap/react'
-import {
-  Fragment,
-  useCallback,
-  useEffect,
-  useId,
-  useMemo,
-  useState,
-  useSyncExternalStore,
-} from 'react'
+import { Fragment, useCallback, useEffect, useId, useMemo, useSyncExternalStore } from 'react'
 
 import { nextIndex, runAt, useMenuNavigation } from '../menu/use-menu-navigation.ts'
 import type { SlashItem } from './slash-item.ts'
@@ -20,15 +12,11 @@ import { useWindowedList } from './windowed-list.ts'
 import type { SlashMenuState, SlashStore } from './slash-store.ts'
 import {
   BLOCK_WORDING,
+  LIST_PADDING,
+  listViewport,
   placementStyle,
   slashMenuClasses as classes,
   slashMenuStyles,
-  HEADING_REM,
-  HEADING_STYLE,
-  LIST_PADDING,
-  OPTION_REM,
-  OPTION_STYLE,
-  rootFontSize,
   windowStyle,
 } from './slash-styles.ts'
 
@@ -81,7 +69,16 @@ interface SlashListProps {
   readonly className?: string | undefined
 }
 
-/** The height of each row is fixed, in rem, so the list can be windowed by arithmetic (`windowed-list.ts`). */
+/**
+ * Each row's height, fixed so the list can be windowed by arithmetic
+ * (`windowed-list.ts`). Set on the rows in pixels, not by the spacing scale:
+ * an organisation's theme can change what `h-11` measures, and rows a few
+ * pixels taller than the arithmetic says leave the last of them out of reach.
+ */
+export const OPTION_HEIGHT = 44
+export const HEADING_HEIGHT = 28
+const OPTION_STYLE = { height: OPTION_HEIGHT } as const
+const HEADING_STYLE = { height: HEADING_HEIGHT } as const
 
 type Row =
   | { readonly kind: 'heading'; readonly section: number }
@@ -105,23 +102,22 @@ function rowsOf(sections: SlashMenuState['sections']): readonly Row[] {
 }
 
 function SlashList({ state, store, editor, className }: SlashListProps) {
-  const wording = state.wording ?? BLOCK_WORDING
   const baseId = useId()
   const listId = `${baseId}-list`
+  const wording = state.wording ?? BLOCK_WORDING
   const matches = flatten(state.sections)
   const distinct = new Set(matches.map(({ item }) => item.id)).size
   const rows = useMemo(() => rowsOf(state.sections), [state.sections])
-  // The rows' heights in pixels, from the root font size at the moment the menu
-  // opened: a rem is a multiple of it, and nothing else about a row's height varies.
-  const [pixelsPerRem] = useState(rootFontSize)
   const heights = useMemo(
-    () => rows.map((row) => (row.kind === 'heading' ? HEADING_REM : OPTION_REM) * pixelsPerRem),
-    [rows, pixelsPerRem],
+    () => rows.map((row) => (row.kind === 'heading' ? HEADING_HEIGHT : OPTION_HEIGHT)),
+    [rows],
   )
   const placement = placeMenu(state.rect, currentViewport())
+  // The list scrolls inside the panel's border, with its own padding at both
+  // ends; the window and the keyboard's reveal work in that box, not the panel's.
   const { listRef, window, onScroll, revealRows } = useWindowedList(
     heights,
-    placement.maxHeight,
+    listViewport(placement.maxHeight),
     LIST_PADDING,
   )
 
@@ -228,11 +224,6 @@ function SlashList({ state, store, editor, className }: SlashListProps) {
           className={classes.list}
           onScroll={onScroll}
         >
-          {/* The rows' own space, above and below, lives in a box *inside* the
-              scroller. As padding on the scroller itself it was a floor under
-              its height — a box cannot be shorter than its padding — so the
-              list grew to the height of the whole catalogue, the menu clipped
-              it, and the last blocks could not be scrolled to. */}
           <div style={windowStyle(window)}>
             {state.sections.map((section, sectionIndex) => {
               const shown = visible.filter((row) => row.section === sectionIndex)
@@ -240,18 +231,15 @@ function SlashList({ state, store, editor, className }: SlashListProps) {
               const options = shown.flatMap((row) => (row.kind === 'option' ? [option(row)] : []))
               if (section.title === null) return <Fragment key="matches">{options}</Fragment>
               const headingId = `${baseId}-group-${String(sectionIndex)}`
-              // A heading scrolled out of the window is kept only as the group's name, for
-              // assistive technology (`sr-only`); its height is already in the space above.
-              const headingDrawn = shown[0]?.kind === 'heading'
               return (
                 <div key={section.title} role="group" aria-labelledby={headingId}>
                   {/* Named even while scrolled out of the window, so the group keeps its name. */}
                   <div
                     id={headingId}
                     role="presentation"
-                    data-offscreen={!headingDrawn || undefined}
+                    data-offscreen={shown[0]?.kind !== 'heading' || undefined}
                     className={classes.heading}
-                    style={headingDrawn ? HEADING_STYLE : undefined}
+                    style={HEADING_STYLE}
                   >
                     {section.title}
                   </div>

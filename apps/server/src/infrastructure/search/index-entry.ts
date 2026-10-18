@@ -61,6 +61,9 @@ export function toIndexRow(input: IndexEntryInput): DocumentSearchRow {
       .map((contributor) => `${contributor.name} ${contributor.email}`.toLowerCase())
       .join('\n'),
     status: document.status,
+    summary: document.summary ?? null,
+    icon: document.icon ?? null,
+    lifecycle: document.lifecycle ?? null,
     updatedAt: document.updatedAt,
     revision: document.revision,
     indexVersion: document.version,

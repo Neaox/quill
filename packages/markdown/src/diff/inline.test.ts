@@ -42,6 +42,11 @@ function show(nodes: readonly (PhrasingContent | RootContent)[]): string {
     .join('')
 }
 
+function merge(before: string, after: string): string {
+  return show(mergePhrasing(phrasing(before), phrasing(after)).children)
+}
+
+/** The merged phrasing as the newer text reads: removals dropped. */
 function withoutRemovals(nodes: readonly PhrasingContent[]): PhrasingContent[] {
   return nodes
     .filter((node) => node.type !== 'diffDeletion')
@@ -50,10 +55,6 @@ function withoutRemovals(nodes: readonly PhrasingContent[]): PhrasingContent[] {
         ? ({ ...node, children: withoutRemovals(node.children) } as PhrasingContent)
         : node,
     )
-}
-
-function merge(before: string, after: string): string {
-  return show(mergePhrasing(phrasing(before), phrasing(after)).children)
 }
 
 describe('mergePhrasing', () => {

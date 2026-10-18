@@ -87,9 +87,9 @@ export type { Callout, CalloutType } from './directives/callout.ts'
 export {
   CALLOUT_TYPES,
   calloutDirective,
-  knownCalloutKind,
   DEFAULT_CALLOUT_TYPE,
   isCalloutType,
+  knownCalloutKind,
 } from './directives/callout.ts'
 export type { LayoutBlock, LayoutDirectiveName, LayoutWidth } from './directives/layout.ts'
 export {
@@ -131,8 +131,8 @@ export {
   EMOJI_NAME,
   emojiLookup,
   emojiMarkup,
-  findShortcodes,
   describeEmoji,
+  findShortcodes,
   REDUCED_MOTION,
 } from './emoji/emoji.ts'
 export type { StandardEmoji } from './emoji/shortcodes.ts'
@@ -178,33 +178,15 @@ export {
   tableDirective,
   tableOf,
 } from './directives/table.ts'
-export { markerOf } from './pipeline/github-alert.ts'
-export { columnClasses, tableBlockData } from './render/table-block.ts'
-export { shapeOfCells } from './render/table-columns.ts'
+export { tableBlockData } from './render/table-block.ts'
 export type { ColumnShape } from './render/table-columns.ts'
+export { columnClasses, shapeOf } from './render/table-columns.ts'
 export type { OptionalSection } from './directives/optional.ts'
 export { optionalDirective } from './directives/optional.ts'
 export type { WhenSection } from './directives/when.ts'
 export { whenDirective } from './directives/when.ts'
 export type { RepeatSection } from './directives/repeat.ts'
 export { repeatDirective } from './directives/repeat.ts'
-export type { ChildDepth, ChildDocuments } from './directives/children.ts'
-export {
-  CHILD_DEPTHS,
-  DEFAULT_CHILD_DEPTH,
-  childDepth,
-  childrenDirective,
-  isChildDepth,
-} from './directives/children.ts'
-export type { HeadingLevel, TableOfContents } from './directives/toc.ts'
-export {
-  DEFAULT_TOC_MAX,
-  DEFAULT_TOC_MIN,
-  HEADING_LEVELS,
-  isHeadingLevel,
-  tocDirective,
-  tocLevels,
-} from './directives/toc.ts'
 export type { PresenterNotes } from './directives/notes.ts'
 export { notesDirective } from './directives/notes.ts'
 export { findDirective, KNOWN_DIRECTIVES, validateDirectives } from './directives/registry.ts'
@@ -254,7 +236,6 @@ export {
   DETAILS_NAME,
   detailsDirective,
   detailsModel,
-  isAccordion,
   isDetails,
   isDetailsNode,
 } from './details/details.ts'
@@ -273,12 +254,14 @@ export type { HandlerOptions, Handlers, HighlightedCode, Highlighter } from './r
 export { createHandlers } from './render/handlers.ts'
 export type { Slugger } from './render/slug.ts'
 export { createSlugger, headingId, HEADING_ID_PREFIX } from './render/slug.ts'
-export type { OutlineEntry, OutlineHeading } from './render/outline.ts'
-export { extractOutline, nestOutline, outlineWithin, walkOutline } from './render/outline.ts'
+export type { OutlineEntry } from './render/outline.ts'
+export { extractOutline } from './render/outline.ts'
 export type { DocumentText } from './render/text.ts'
 export { extractText } from './render/text.ts'
 export type { ExtractedLink } from './render/links.ts'
 export { extractLinks } from './render/links.ts'
+export type { LinkRewrite } from './render/rewrite-links.ts'
+export { rewriteLinks } from './render/rewrite-links.ts'
 
 // Comparing revisions, and the merge engine's primitives (ADR-021 amendment)
 export * from './diff/index.ts'
@@ -294,9 +277,22 @@ export { mdastToProseMirror } from './prosemirror/from-mdast.ts'
 export type { MdastDocument } from './prosemirror/to-mdast.ts'
 export { proseMirrorToMdast } from './prosemirror/to-mdast.ts'
 export { liftLayout, wrapLayout } from './prosemirror/layout.ts'
+export type { WithAttribute } from './pipeline/written-attribute.ts'
+export { withAttribute } from './pipeline/written-attribute.ts'
+export type { AlertForm } from './pipeline/github-alert.ts'
+export {
+  markerFor,
+  markerName,
+  markerOf,
+  markerType,
+  readAlertForm,
+} from './pipeline/github-alert.ts'
 
 // Three-way merge of drafts and of publishes (ADR-021, amendment of 2026-10-11)
 export type { BlockConflict, ConflictResolution, DocumentMerge } from './merge/merge-documents.ts'
 export { contentKey, mergeDocuments, resolveMerge } from './merge/merge-documents.ts'
 export type { MarkdownMerge } from './merge/merge-markdown.ts'
 export { mergeMarkdown } from './merge/merge-markdown.ts'
+
+// Navigation blocks: a table of contents, and the pages under this one (ADR-058)
+export * from './navigation/index.ts'

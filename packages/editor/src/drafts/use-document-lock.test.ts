@@ -113,18 +113,6 @@ describe('useDocumentLock', () => {
     expect(clock.pending).toBe(1)
   })
 
-  it('says where asking for the lock left it, so whoever asked can tell the author', async () => {
-    const fake = createFakeLockClient()
-    const { result } = render(fake, createFakeClock())
-
-    let outcome: unknown
-    await act(async () => {
-      outcome = await result.current.acquire()
-    })
-
-    expect(outcome).toBe('held')
-  })
-
   it('keeps heartbeating on the 15 second cadence while the lock is alive', async () => {
     const fake = createFakeLockClient()
     const clock = createFakeClock()
@@ -374,7 +362,7 @@ describe('useDocumentLock', () => {
     const clock = createFakeClock()
     const { result, unmount } = render(fake, clock)
 
-    let acquired: Promise<unknown> = Promise.resolve()
+    let acquired: Promise<void> = Promise.resolve()
     act(() => {
       acquired = result.current.acquire()
     })
@@ -479,7 +467,7 @@ describe('useDocumentLock through an outage (audit P0-4)', () => {
       useDocumentLock({ client, clock, random: () => 1, connectivity: createFakeConnectivity() }),
     )
 
-    let acquiring: Promise<unknown> = Promise.resolve()
+    let acquiring: Promise<void> = Promise.resolve()
     act(() => {
       acquiring = result.current.acquire()
     })

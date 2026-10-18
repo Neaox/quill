@@ -65,6 +65,20 @@ describe('conflictMarkers', () => {
   })
 })
 
+describe('threeWayMerge: a conflict only the block merge sees', () => {
+  it('marks it block by block, so the merge view always has markers to show', () => {
+    const merged = threeWayMerge(
+      'Alpha.\n\nBravo.\n\nCharlie.\n',
+      'Bravo.\n\nCharlie.\n\nAlpha.\n',
+      'Bravo.\n\nCharlie.\n',
+    )
+    expect(merged).toEqual({
+      clean: false,
+      text: `Bravo.\n\nCharlie.\n<<<<<<< ${OURS_LABEL}\nAlpha.\n=======\n>>>>>>> ${THEIRS_LABEL}\n`,
+    })
+  })
+})
+
 describe('deletionMarkers', () => {
   it('shows an edit against a deletion as the whole document on one side and nothing on the other', () => {
     expect(deletionMarkers('Ours.\n', '')).toBe(

@@ -1,6 +1,6 @@
 # ADR-040: Tables
 
-**Status:** Accepted. Phase 1 (reading) is built; Phase 2 (the editor) is designed here and built later.
+**Status:** Accepted. Phase 1 (reading) is built. Phase 2 (the editor) is built except for the items listed under "Phase 2: still to build".
 **Date:** 2026-10-11
 **Related:** ADR-002 (Markdown is canonical), ADR-003 (editor architecture), ADR-011 (security baseline), ADR-027 (block layout widths), ADR-031 (render caching), ADR-033 (compatibility), ADR-036 (diagrams and reading blocks: tables are `wide` by default), ADR-039 (Markdown extensions)
 
@@ -209,20 +209,36 @@ The bar is Confluence's table editor at its best, without its known faults. The 
 - **Column border handles.** Each border between columns has a handle. Dragging it shows a live readout of both neighbours' shares and writes `columns` as proportions, rounded to sensible fractions. Holding Shift resizes the neighbour proportionally. A double click resets the column to automatic.
 - **No jank.** While a drag is in progress, the drag moves a CSS transform on an overlay guide and a `colgroup` preview inside one animation frame. The document is committed once, on release. Nothing reflows the page while the pointer moves, and the commit is one transaction.
 
-**A floating table toolbar.** One toolbar is shared with text, links and callouts (`packages/editor/src/toolbar`); it hangs above the table's top edge, is held below the page's chrome while a tall table passes under it, and offers what is about the thing the author is pointing at, as icons named by their labels:
-- **A caret in a cell, or a patch of cells, is pointing at the table.** It holds the alignment of the selected columns (left, centre, right), a "Table settings" menu, and removal of the table. The menu holds the width (Content, Wide, Full), the header row, header column, footer row and caption (`headers`, `footer`, the label), what is kept in view for readers (`freeze` header, first column), cards on phones (`responsive`) and whether readers may sort (`sort`). Each item says what it does and whether it is on.
-- **A whole row picked out by its grip is pointing at that row.** It holds insert above and below, move up and down, and delete.
-- **A whole column picked out by its grip is pointing at that column.** It holds insert left and right, move left and right, alignment and delete.
+**A floating table toolbar.** The toolbar appears under the table the caret is in, as Confluence's does, so it never covers the caption, the header row or the cell being edited. While the table runs past the bottom of the screen, the toolbar waits at the bottom of the screen until the table's end scrolls into view. It is one compact row of labelled icon buttons and two menus (width, and how readers see the table), and it holds:
+- the width (Content, Wide, Full, or a custom percentage);
+- header row, header column (writes `headers`) and footer row (writes `footer`) toggles;
+- a caption toggle, which adds an editable caption line (the label);
+- numbered rows;
+- alignment for the selected columns (left, centre, right, automatic numbers);
+- insert and delete for rows and columns;
+- freeze (header, first column);
+- the responsive mode (scroll or stack);
+- whether readers may sort.
 
-Every control is a labelled button with a visible focus ring, its state as a real attribute (`aria-pressed`, `aria-expanded`, `disabled`). The toolbar is entered with Alt+F10, moved along with the arrow keys, and left with Escape. Insert, move, align and delete are in the context menu too.
+Every control is a labelled button with a visible focus ring; its tooltip shows its shortcut, or why it cannot act now. A control that cannot act stays in place, disabled with its reason (`docs/design/feedback.md`, "Disable or hide"). The toolbar is one tab stop: the arrow keys move along it and Escape returns to the cell. Inside a table the selection toolbar stands aside, so there is one toolbar at a time.
 
-**Row and column handles.** A grip straddles the top edge for each column and the leading edge for each row, and is visible while the pointer or the caret is in the table. From a grip you can:
-- select the row or column, which makes it what the toolbar is about (the grip turns to the accent colour while it is selected);
+**One catalogue of actions.** Every table action is listed once, in `packages/editor/src/table/table-actions.ts`: its words, its key binding, whether it is on, why it cannot run now, and its command. The toolbar draws it, the keymap binds it, and the context menu lists it, so the three never disagree.
+
+| Action | Keys |
+| --- | --- |
+| Insert row above / below | Ctrl+Alt+↑ / Ctrl+Alt+↓ (⌘⌥ on a Mac) |
+| Insert column left / right | Ctrl+Alt+← / Ctrl+Alt+→ |
+| Move row up / down, column left / right | Alt+↑ / Alt+↓ / Alt+← / Alt+→ |
+| Delete row | Ctrl+Alt+Backspace |
+| Delete column | Ctrl+Alt+Shift+Backspace |
+
+**Row and column handles.** A grip sits beside each row and above each column. From a grip you can:
+- select the row or column (and extend the selection with Shift);
+- insert a row or column before or after it, through the "+" on every boundary between grips and at both ends: a dot at rest, a "+" under the pointer, with a line across the table where the new row or column will go;
+- delete it;
 - drag it to reorder.
 
-A "+" sits on every border between lines and on the outer edges (never above the header row). It is a dot until the pointer comes near, then a button with a guide across the table showing where the line will go. Pressing it inserts the line there with the caret in its first cell, in one transaction.
-
-While dragging, the moving row or column is drawn as a translucent overlay, and a drop line shows where it will land. Grips are reachable by keyboard: Alt+Arrow moves the selected row or column. Alt+Shift+Arrow moves the caret to the neighbouring cell in that direction, at its start, without stepping through the text first (the plain arrows go a character, Ctrl+Arrow a word, and Tab follows reading order); at the table's edge it does nothing.
+While dragging, the moving row or column is drawn as a translucent overlay, and a drop line shows where it will land. Grips are reachable by keyboard: Alt+Arrow moves the selected row or column.
 
 **Header row, header column and numbered rows.**
 - **Header row:** GFM always has a header row. Turning the toggle off makes the first row an empty header. The editor shows such a row collapsed, as an "untitled columns" strip, and the reader shows it hidden.
@@ -246,6 +262,16 @@ While dragging, the moving row or column is drawn as a translucent overlay, and 
 
 **Undo.** As above: every operation is one transaction, and undo restores the selection.
 
+**The table as it is written.** A table in the editor is drawn as it is read: the same card, scroller and widths, and the same header row, footer rows, row headers and column alignment. `prosemirror-tables` draws every row in one `tbody`, so decorations mark the header row, footer rows and row headers with `data-part`, and every cell with its column's classes (`columnClasses`, shared with the renderer), which the reading stylesheet reads beside `thead`, `tfoot` and `th[scope=row]`. Only the tables a change touched are decorated again, so typing in a long document costs one table, not all of them. The handles are an overlay that takes no room, shown while the pointer is over the table, the caret is in it or a drag is under way.
+
+### Phase 2: still to build
+
+- Shift on a column border to resize the neighbour proportionally, and a double click to reset a column to automatic.
+- Shift-click on a grip to extend a row or column selection.
+- Numbered rows (`numbered`), and footer rows beyond one by dragging the footer's edge.
+- The collapsed "untitled columns" strip for a table whose header row is off. Until then, turning the header row off writes `headers=row` and the first row reads as a body row.
+- Escape to select the whole table.
+
 ### How Phase 2 avoids Confluence's editor complaints
 
 | Complaint about Confluence | How Quill avoids it |
@@ -257,7 +283,7 @@ While dragging, the moving row or column is drawn as a translucent overlay, and 
 | Hard to select a whole row or column, or to reorder | Grips select, insert and drag. Alt+Arrow moves rows and columns by keyboard. |
 | Resizing drags are jumpy, and the page reflows | Drags preview on an overlay and commit once on release. |
 | Undo skips or splits table operations | Every operation is exactly one transaction. |
-| Toolbar covers the content | The toolbar is a short row of icons that hangs above the table's edge, never over its cells, and flips below the table when there is no room above. Everything rarer is in its settings menu. |
+| Toolbar covers the content | The toolbar sits under the table, never over the caption, the header row or the cell being edited. |
 
 ## Alternatives considered
 

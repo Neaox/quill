@@ -35,10 +35,16 @@ import { fileURLToPath } from 'node:url'
 /**
  * The stylesheets a page needs, in the order they must cascade: the semantic
  * layer and the site's furniture first, then the layout grid, then reading
- * typography. A generated theme goes in front of all three, because everything
- * here is written in terms of its tokens.
+ * typography, then the byline (`byline.css`), which sits inside the reading
+ * surface and must win over it. A generated theme goes in front of them all,
+ * because everything here is written in terms of its tokens.
  */
-export const PUBLIC_SITE_STYLESHEETS = ['public-site.css', 'layout.css', 'prose.css'] as const
+export const PUBLIC_SITE_STYLESHEETS = [
+  'public-site.css',
+  'layout.css',
+  'prose.css',
+  'byline.css',
+] as const
 
 const HERE = path.dirname(fileURLToPath(import.meta.url))
 
@@ -57,7 +63,7 @@ export function readPublicReaderScript(): string {
   return readFileSync(path.join(HERE, 'reader', 'reader.gen.js'), 'utf8')
 }
 
-/** The three stylesheets, concatenated in cascade order. */
+/** The stylesheets, concatenated in cascade order. */
 export async function readPublicSiteStyles(): Promise<string> {
   const files = await Promise.all(
     PUBLIC_SITE_STYLESHEETS.map(async (name) => readFile(styleSheetPath(name), 'utf8')),

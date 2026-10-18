@@ -56,20 +56,24 @@ function open(body: unknown) {
   return onReview
 }
 
-describe('the review button', () => {
-  it('opens the review when there is something to review', async () => {
+describe('the changes since published, in the editor bar', () => {
+  it('says how many there are, and opens the comparison', async () => {
     const onReview = open(SOME)
 
-    await userEvent.click(await screen.findByRole('button', { name: 'Review changes' }))
+    await userEvent.click(await screen.findByRole('button', { name: 'Changes since published: 1' }))
 
     expect(onReview).toHaveBeenCalledTimes(1)
   })
 
-  it('is not there when nothing has changed, nor while that is not known', async () => {
-    open(NONE)
+  it('stays where it is when nothing has changed, and says so instead of opening', async () => {
+    const onReview = open(NONE)
 
+    const button = await screen.findByRole('button', { name: 'Changes since published' })
     await waitFor(() => {
-      expect(screen.queryByRole('button')).toBeNull()
+      expect(button).toHaveAttribute('aria-disabled', 'true')
     })
+    expect(button).toHaveAccessibleDescription('No changes since this was last published.')
+    await userEvent.click(button)
+    expect(onReview).not.toHaveBeenCalled()
   })
 })

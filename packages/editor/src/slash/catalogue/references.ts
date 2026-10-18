@@ -1,14 +1,7 @@
-import { DEFAULT_CHILD_DEPTH, DEFAULT_TOC_MAX, DEFAULT_TOC_MIN } from '@quill/markdown'
-import { DocumentIcon, FootnoteIcon, LinkIcon, OutlineIcon, SmallPrintIcon } from '@quill/ui'
+import { DocumentIcon, FootnoteIcon, LinkIcon, SmallPrintIcon } from '@quill/ui'
 
 import { blockLinkNode, inlineLinkNode, previewableAddress } from '../../link/new-link.ts'
-import {
-  insertBlock,
-  insertFootnote,
-  insertInline,
-  leafDirective,
-  textDirective,
-} from '../slash-commands.ts'
+import { insertBlock, insertFootnote, insertInline, textDirective } from '../slash-commands.ts'
 import { commandItem, pickerItem } from '../slash-item.ts'
 import type { SlashContribution, SlashEnvironment, SlashItem } from '../slash-item.ts'
 
@@ -153,34 +146,6 @@ export const referenceItems: SlashContribution = {
     linkPreviewItem('card'),
     linkPreviewItem('compact'),
     linkPreviewItem('inline'),
-    commandItem(
-      {
-        id: 'table-of-contents',
-        label: 'Table of contents',
-        description: 'Links to the headings of this page',
-        group: 'References',
-        keywords: ['toc', 'contents', 'outline', 'navigation', 'sections'],
-        icon: OutlineIcon,
-      },
-      insertBlock(
-        leafDirective('toc', { min: String(DEFAULT_TOC_MIN), max: String(DEFAULT_TOC_MAX) }),
-        { standalone: true },
-      ),
-    ),
-    commandItem(
-      {
-        id: 'child-documents',
-        label: 'Child documents',
-        description: 'The documents beneath this one, to the depth you choose',
-        group: 'References',
-        keywords: ['children', 'child', 'pages', 'subpages', 'documents', 'tree', 'index'],
-        aliases: ['subpages'],
-        icon: DocumentIcon,
-      },
-      insertBlock(leafDirective('children', { depth: String(DEFAULT_CHILD_DEPTH) }), {
-        standalone: true,
-      }),
-    ),
     commandItem(
       {
         id: 'footnote',

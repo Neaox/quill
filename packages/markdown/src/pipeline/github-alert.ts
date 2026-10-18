@@ -37,6 +37,12 @@ const GITHUB_KINDS: ReadonlySet<string> = new Set([
 /** A callout marker opening a quote: `[!kind]`, then a space, a line ending, or nothing. */
 const MARKER = /^\[!([A-Za-z][\w-]*)\](?=\s|$)/u
 
+/**
+ * A marker and the plain title after it, through the end of their line: what a
+ * paragraph opening a callout must keep as written for it to stay one.
+ */
+export const MARKER_LINE = /^\[![A-Za-z][\w-]*\](?:[^\S\n][^\n]*)?(?:\n|$)/u
+
 export interface AlertOpening {
   readonly paragraph: Paragraph
   /** The text the marker is at the start of. */
@@ -98,6 +104,15 @@ export function alertOpening(node: Blockquote): AlertOpening | undefined {
   }
 }
 
+/**
+ * The kind a marker names, in words and in lower case: `note`, `faq`,
+ * `my-own-kind`. A kind Quill draws as another of its own is still said as the
+ * author wrote it, which is how Obsidian titles a callout of that kind.
+ */
+export function markerName(marker: string): string {
+  return marker.slice(2, -1).toLowerCase()
+}
+
 /** The kind a marker names, as the callout it is drawn as: Quill's, Obsidian's, or a note. */
 export function markerType(marker: string): CalloutType {
   return knownCalloutKind(marker.slice(2, -1)) ?? DEFAULT_CALLOUT_TYPE
@@ -121,6 +136,13 @@ export function markerOf(type: CalloutType): string {
 export interface AlertForm {
   readonly marker: string
   readonly own: boolean
+}
+
+/** A node's `alert` attribute read back as a form, or undefined when it is not one. */
+export function readAlertForm(value: unknown): AlertForm | undefined {
+  if (typeof value !== 'object' || value === null) return undefined
+  if (!('marker' in value) || typeof value.marker !== 'string') return undefined
+  return { marker: value.marker, own: 'own' in value && value.own === true }
 }
 
 export interface Alert {

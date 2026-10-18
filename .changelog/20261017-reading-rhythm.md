@@ -1,0 +1,1 @@
+Changed: Pressing Enter or pasting in a long document is quicker: the spacing between blocks no longer makes the browser restyle the whole document for each new block. Spacing is unchanged everywhere except under a heading, where a table now sits slightly closer to it.

@@ -64,6 +64,11 @@ export interface PublishDocumentCommand {
   readonly author: PublishAuthor
   /** The session publishing, so the lock can be re-validated as it is for any other write. */
   readonly sessionId: SessionId
+  /**
+   * The origins this application is served at. A link pasted with one of
+   * them is this application's own address, stored relative (ADR-035).
+   */
+  readonly appOrigins?: readonly string[] | undefined
 }
 
 export interface PublishedOutcome {
@@ -127,7 +132,7 @@ export async function publishDocument(
   // A link an author pasted out of the address bar becomes the canonical
   // `/d/<uuid>` here, once, on the way into the store (ADR-035), so what the
   // store holds is always the form the link index understands.
-  const markdown = await canonicaliseLinks(repos.documents, prepared.markdown)
+  const markdown = await canonicaliseLinks(repos.documents, prepared.markdown, command.appOrigins)
 
   const result = await deps.contentStore.publish({
     workspaceId: document.workspaceId,

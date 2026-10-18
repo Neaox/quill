@@ -403,6 +403,21 @@ describe('renderHtml: attachment images', () => {
     expect(html).toContain('<a href="/api/attachments/abc">The runbook</a>')
   })
 
+  it('normalises an image source as it does a link, so a backslash cannot leave the origin', () => {
+    // Browsers read `/\host` as `//host`; encoded, it is a path on this origin.
+    for (const markdown of [
+      '![i](/\\evil.example/x.png)\n',
+      '![i](/\\evil.example/x.png "A caption")\n',
+      'Inline ![i](/\\evil.example/x.png) image.\n',
+    ]) {
+      const html = render(markdown)
+
+      expect(html).not.toContain('src="/\\')
+      expect(html).toContain('src="/%5Cevil.example/x.png"')
+    }
+    expect(render('![i](<a b%20c>)\n')).toContain('src="a%20b%20c"')
+  })
+
   it('does not let the shape be a way past the rules that already hold', () => {
     // A scheme is still a scheme, whatever the path after it looks like.
     expect(render('![no](javascript:alert(1)/api/attachments/abc)\n')).not.toContain('javascript:')

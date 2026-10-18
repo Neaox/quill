@@ -7,19 +7,14 @@ import {
   createRoute,
   createRouter,
 } from '@tanstack/react-router'
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it } from 'vitest'
 
 import { expectNoAccessibilityViolations } from '@quill/ui/testing/axe'
 
 import { ApiClientProvider } from '../../lib/api/client-context.tsx'
-import {
-  createFakeApiClient,
-  errorResponse,
-  jsonResponse,
-  type FakeRoutes,
-} from '../../lib/api/testing.ts'
+import { createFakeApiClient, jsonResponse, type FakeRoutes } from '../../lib/api/testing.ts'
 import { WorkspaceTree } from './workspace-navigation.tsx'
 
 /**
@@ -148,67 +143,17 @@ describe('WorkspaceTree navigation', () => {
     expect(await screen.findByRole('heading', { name: 'Document page' })).toBeInTheDocument()
   })
 
-  it('shows a document’s children, a level deeper, once it is opened, and not before', async () => {
+  it('nests a child document under its parent, as the tree route says', async () => {
     renderTree()
 
-    await screen.findByRole('link', { name: 'Quarterly plan' })
-    expect(screen.queryByRole('link', { name: 'Appendix' })).toBeNull()
-
+    const parent = await screen.findByRole('link', { name: 'Quarterly plan' })
+    // Closed until opened: a closed branch's children are not drawn at all.
+    expect(screen.queryByRole('link', { name: 'Appendix' })).not.toBeInTheDocument()
     await userEvent.click(screen.getByRole('button', { name: 'Expand Quarterly plan' }))
-
-    const child = await screen.findByRole('link', { name: 'Appendix' })
-    // The window cannot show nesting as list structure, so each row says how deep it is.
-    expect(child.closest('li')).toHaveAttribute('aria-level', '2')
-    expect(screen.getByRole('link', { name: 'Quarterly plan' }).closest('li')).toHaveAttribute(
-      'aria-level',
-      '1',
-    )
-    await userEvent.click(screen.getByRole('button', { name: 'Collapse Quarterly plan' }))
-    expect(screen.queryByRole('link', { name: 'Appendix' })).toBeNull()
-  })
-
-  it('opens the tree to the document being read, so it is always found', async () => {
-    renderTree({ currentDocumentId: 'doc-3' })
-
-    const current = await screen.findByRole('link', { name: 'Appendix' })
-
-    expect(current).toHaveAttribute('aria-current', 'page')
-    expect(screen.getByRole('button', { name: 'Collapse Quarterly plan' })).toBeInTheDocument()
-  })
-
-  it('draws a window of a long list, with more behind “Show more”, however many documents there are', async () => {
-    const many = Array.from({ length: 5000 }, (_, n) =>
-      treeNode(`doc-many-${String(n)}`, `Entry ${String(n)}`),
-    )
-    renderTree(
-      {},
-      {
-        'GET /api/workspaces/{id}/tree': () =>
-          jsonResponse(200, {
-            collections: [{ id: 'col-log', name: 'Log', slug: 'log', documents: many }],
-          }),
-      },
-    )
-
-    expect(await screen.findByRole('link', { name: 'Entry 0' })).toBeInTheDocument()
-    // One page is fetched and a window of it drawn: nothing in the DOM grows with 5,000.
-    expect(screen.getAllByRole('listitem').length).toBeLessThan(60)
-    expect(screen.queryByRole('link', { name: 'Entry 4999' })).toBeNull()
-
-    // "Show more" is the fifty-first row, below the window: scroll to it as a reader would.
-    const scroller = screen.getByRole('navigation', { name: 'Documents' }).firstElementChild
-    if (scroller === null) throw new Error('The tree has no scrolling region.')
-    scroller.scrollTop = 1400
-    fireEvent.scroll(scroller)
-
-    await userEvent.click(await screen.findByRole('button', { name: 'Show more' }))
-
-    // The page after the first, in order, and still only a window of it.
-    expect((await screen.findByRole('link', { name: 'Entry 50' })).closest('li')).toHaveAttribute(
-      'aria-posinset',
-      '51',
-    )
-    expect(screen.getAllByRole('listitem').length).toBeLessThan(60)
+    const child = screen.getByRole('link', { name: 'Appendix' })
+    // The nesting is the list structure, not a class: the child's list is
+    // inside the parent's item.
+    expect(parent.closest('li')?.contains(child)).toBe(true)
   })
 
   it('keeps the collections in the order the tree route returned them', async () => {
@@ -366,21 +311,14 @@ describe('WorkspaceTree collection flows', () => {
   })
 
   it('refuses to delete a collection that still holds documents, and says why', async () => {
-    renderTree(
-      {},
-      {
-        'DELETE /api/collections/{id}': () =>
-          errorResponse(409, 'collection_not_empty', 'It still holds documents', { documents: 2 }),
-      },
-    )
+    renderTree()
 
     await userEvent.click(await screen.findByRole('button', { name: 'More actions for Guides' }))
     await userEvent.click(await screen.findByRole('menuitem', { name: 'Delete…' }))
 
     const dialog = await screen.findByRole('dialog', { name: /Delete/ })
-    await userEvent.click(within(dialog).getByRole('button', { name: 'Delete' }))
-    // Whether it is empty is the server's to say, with the count: the tree knows a page at a time.
-    expect(await within(dialog).findByText(/still holds 2 documents/)).toBeInTheDocument()
+    // Two documents, counting the one nested inside the other.
+    expect(within(dialog).getByText(/still holds 2 documents/)).toBeInTheDocument()
     expect(within(dialog).getByRole('button', { name: 'Move documents first' })).toBeInTheDocument()
     expect(within(dialog).queryByRole('button', { name: 'Delete' })).not.toBeInTheDocument()
   })
@@ -406,5 +344,135 @@ describe('WorkspaceTree collection flows', () => {
     await waitFor(() => {
       expect(deleted).toEqual(['col-archive'])
     })
+  })
+})
+
+/*
+ * Regression (2026-10-17): the seed's "Stress log" — twenty thousand documents
+ * in one collection — hung every signed-in page. The sidebar drew a router
+ * link and a menu for every one of them, and when the menus' machinery
+ * arrived in idle time every one of those menus became a full Radix menu in
+ * one synchronous commit. The sidebar now draws a page of the collection, and
+ * a menu's machinery mounts only for the menu that is pressed.
+ */
+describe('WorkspaceTree with a very large collection', () => {
+  const STRESS = () =>
+    jsonResponse(200, {
+      collections: [
+        {
+          id: 'col-stress',
+          name: 'Stress log',
+          slug: 'stress-log',
+          documents: Array.from({ length: 20_000 }, (_, index) =>
+            treeNode(`entry-${index + 1}`, `Entry ${index + 1}`),
+          ),
+        },
+      ],
+    })
+
+  it('draws a page of the collection, not every document in it', async () => {
+    renderTree({ currentDocumentId: 'entry-15000' }, { 'GET /api/workspaces/{id}/tree': STRESS })
+
+    const nav = await screen.findByRole('navigation', { name: 'Documents' })
+    expect(await within(nav).findByRole('link', { name: 'Entry 15000' })).toHaveAttribute(
+      'aria-current',
+      'page',
+    )
+    expect(within(nav).getAllByRole('link').length).toBeLessThanOrEqual(50)
+    expect(within(nav).getByRole('button', { name: /^Show 50 more/ })).toBeInTheDocument()
+    expect(screen.getByText('20,000')).toBeInTheDocument()
+  })
+})
+
+describe('WorkspaceTree loading a slice at a time', () => {
+  it('asks for the tree opened down to the open document, and for children as they are opened', async () => {
+    const asked: string[] = []
+    renderTree(
+      { currentDocumentId: 'doc-1' },
+      {
+        'GET /api/workspaces/{id}/tree': (request) => {
+          asked.push(new URL(request.url).search)
+          return jsonResponse(200, {
+            collections: [
+              {
+                id: 'col-guides',
+                name: 'Guides',
+                slug: 'guides',
+                documentCount: 2,
+                documentsOffset: 0,
+                total: 5,
+                documents: [
+                  { ...treeNode('doc-1', 'Quarterly plan'), childCount: 0, childrenOffset: 0 },
+                  { ...treeNode('doc-2', 'Handbook'), childCount: 2, childrenOffset: 0 },
+                ],
+              },
+            ],
+          })
+        },
+        'GET /api/workspaces/{id}/tree/children': (request) => {
+          asked.push(new URL(request.url).search)
+          return jsonResponse(200, {
+            total: 2,
+            offset: 0,
+            documents: [
+              { ...treeNode('doc-4', 'Benefits'), childCount: 0, childrenOffset: 0 },
+              { ...treeNode('doc-5', 'Leave'), childCount: 0, childrenOffset: 0 },
+            ],
+          })
+        },
+      },
+    )
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Expand Handbook' }))
+    expect(await screen.findByRole('link', { name: 'Leave' })).toBeInTheDocument()
+    expect(asked[0]).toContain('depth=1')
+    expect(asked[0]).toContain('focus=doc-1')
+    expect(asked.at(-1)).toContain('parent=doc-2')
+  })
+})
+
+describe('WorkspaceTree when a slice cannot be had', () => {
+  it('says the documents could not be loaded, and loads them when asked to try again', async () => {
+    // A document no other test opens: what is opened by hand is remembered for the session.
+    let attempts = 0
+    renderTree(
+      {},
+      {
+        'GET /api/workspaces/{id}/tree': () =>
+          jsonResponse(200, {
+            collections: [
+              {
+                id: 'col-guides',
+                name: 'Guides',
+                slug: 'guides',
+                documentCount: 1,
+                documentsOffset: 0,
+                total: 3,
+                documents: [{ ...treeNode('doc-9', 'Policies'), childCount: 2, childrenOffset: 0 }],
+              },
+            ],
+          }),
+        'GET /api/workspaces/{id}/tree/children': () => {
+          attempts += 1
+          return attempts === 1
+            ? jsonResponse(503, { code: 'unavailable', message: 'Try later' })
+            : jsonResponse(200, {
+                total: 2,
+                offset: 0,
+                documents: [
+                  { ...treeNode('doc-4', 'Benefits'), childCount: 0, childrenOffset: 0 },
+                  { ...treeNode('doc-5', 'Leave'), childCount: 0, childrenOffset: 0 },
+                ],
+              })
+        },
+      },
+    )
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Expand Policies' }))
+    expect(await screen.findByText('Couldn’t load the documents in Policies')).toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Try again, in Policies' }))
+    expect(await screen.findByRole('link', { name: 'Leave' })).toBeInTheDocument()
+    expect(attempts).toBe(2)
   })
 })

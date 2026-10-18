@@ -8,9 +8,10 @@ import {
   EVENT_PAYLOAD_VERSION,
   grantCreated,
   grantRevoked,
-  parseAttachmentRevised,
   parseDocumentCreated,
+  parseDocumentDeleted,
   parseDocumentMoved,
+  parseDocumentNested,
   parseDocumentPublished,
   parseDocumentRenamed,
   parseMailRequested,
@@ -153,6 +154,51 @@ describe('parseDocumentMoved', () => {
   })
 })
 
+describe('parseDocumentNested and parseDocumentDeleted (ADR-058)', () => {
+  const nested = {
+    version: EVENT_PAYLOAD_VERSION,
+    documentId: DOC,
+    workspaceId: WORKSPACE,
+    fromParentId: 'parent-a',
+    toParentId: null,
+  }
+  const deleted = {
+    version: EVENT_PAYLOAD_VERSION,
+    documentId: DOC,
+    workspaceId: WORKSPACE,
+    collectionId: 'guides',
+    parentId: null,
+    deletedBy: USER,
+  }
+
+  it('reads a nesting and a delete', () => {
+    expect(parseDocumentNested(nested)).toEqual(nested)
+    expect(parseDocumentNested({ ...nested, fromParentId: null, toParentId: 'b' })).toEqual({
+      ...nested,
+      fromParentId: null,
+      toParentId: 'b',
+    })
+    expect(parseDocumentDeleted(deleted)).toEqual(deleted)
+    expect(parseDocumentDeleted({ ...deleted, parentId: 'p', collectionId: null })).toEqual({
+      ...deleted,
+      parentId: 'p',
+      collectionId: null,
+    })
+  })
+
+  it('refuses a payload that names no document or no workspace', () => {
+    expect(parseDocumentNested({ ...nested, documentId: '' })).toBeNull()
+    expect(parseDocumentNested({ ...nested, workspaceId: '' })).toBeNull()
+    expect(parseDocumentDeleted({ ...deleted, documentId: '' })).toBeNull()
+    expect(parseDocumentDeleted({ ...deleted, workspaceId: '' })).toBeNull()
+  })
+
+  it('refuses a version nothing shipped can read', () => {
+    expect(parseDocumentNested({ ...nested, version: 99 })).toBeNull()
+    expect(parseDocumentDeleted({ ...deleted, version: 99 })).toBeNull()
+  })
+})
+
 describe('the grant events', () => {
   const grant = {
     version: EVENT_PAYLOAD_VERSION,
@@ -194,12 +240,13 @@ describe('the deletion events', () => {
       documentId: DOC,
       workspaceId: WORKSPACE,
       collectionId: 'collection-1',
+      parentId: null,
       deletedBy: USER,
     }
     expect(documentDeleted.parse(deleted)).toEqual(deleted)
     expect(
       documentDeleted.parse({ ...deleted, collectionId: undefined, deletedBy: undefined }),
-    ).toMatchObject({ collectionId: null, deletedBy: null })
+    ).toMatchObject({ collectionId: null, parentId: null, deletedBy: null })
     expect(documentDeleted.parse({ ...deleted, documentId: '' })).toBeNull()
   })
 
@@ -233,6 +280,7 @@ describe('attachmentRevised', () => {
     expect(attachmentRevised.parse({ ...revised, documentId: '' })).toBeNull()
     expect(attachmentRevised.parse({ ...revised, workspaceId: '' })).toBeNull()
     expect(attachmentRevised.parse({ ...revised, attachmentVersion: '2' })).toBeNull()
+    expect(attachmentRevised.parse({ ...revised, version: 99 })).toBeNull()
   })
 })
 
@@ -306,35 +354,6 @@ describe('review events', () => {
     expect(parseReviewDecided({ ...decided, decision: 'maybe' })).toBeNull()
     expect(parseReviewDecided({ ...decided, status: undefined })).toBeNull()
     expect(parseReviewWithdrawn({ ...withdrawn, withdrawnBy: null })).toBeNull()
-  })
-})
-
-describe('parseAttachmentRevised', () => {
-  const revised = {
-    version: EVENT_PAYLOAD_VERSION,
-    attachmentId: 'att-1',
-    documentId: DOC,
-    workspaceId: WORKSPACE,
-    attachmentVersion: 3,
-  }
-
-  it('reads a revision', () => {
-    expect(parseAttachmentRevised(revised)).toEqual(revised)
-  })
-
-  it('refuses a payload that names no attachment, document or workspace', () => {
-    expect(parseAttachmentRevised({ ...revised, attachmentId: '' })).toBeNull()
-    expect(parseAttachmentRevised({ ...revised, documentId: '' })).toBeNull()
-    expect(parseAttachmentRevised({ ...revised, workspaceId: '' })).toBeNull()
-  })
-
-  it('refuses a payload whose attachment version is not a number', () => {
-    expect(parseAttachmentRevised({ ...revised, attachmentVersion: '3' })).toBeNull()
-    expect(parseAttachmentRevised({ ...revised, attachmentVersion: undefined })).toBeNull()
-  })
-
-  it('refuses a version nothing shipped can read', () => {
-    expect(parseAttachmentRevised({ ...revised, version: 99 })).toBeNull()
   })
 })
 

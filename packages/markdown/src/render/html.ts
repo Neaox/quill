@@ -39,7 +39,11 @@ export interface RenderOptions {
    * block is left for the client to highlight on demand.
    */
   readonly highlighter?: Highlighter | undefined
-  /** Document metadata, so dates are rendered as `time` in the document header. */
+  /**
+   * Document metadata. Accepted and not drawn: what a document states about
+   * itself is the byline's to show, per reader (ADR-059), never the cached
+   * body's. Kept so a caller that still passes it is not refused.
+   */
   readonly frontMatter?: Record<string, unknown> | undefined
   /**
    * The SVG drawings the body shows, by the image URL that names each one.
@@ -80,49 +84,12 @@ export interface RenderOptions {
   readonly labelEmoji?: ReadonlyMap<string, string> | undefined
 }
 
-const ISO_DATE = /^\d{4}-\d{2}-\d{2}(?:T[\d:.]+(?:Z|[+-]\d{2}:\d{2})?)?$/
-
-interface DateField {
-  readonly path: string
-  readonly value: string
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value)
-}
-
-/** Walks front matter lazily, yielding every field that reads as a date. */
-function* dateFields(value: unknown, path: string): Generator<DateField> {
-  if (typeof value === 'string') {
-    if (ISO_DATE.test(value)) yield { path, value }
-    return
-  }
-  if (!isRecord(value)) return
-  for (const [key, nested] of Object.entries(value)) {
-    yield* dateFields(nested, path === '' ? key : `${path}.${key}`)
-  }
-}
-
 function element(
   tagName: string,
   properties: Element['properties'],
   children: ElementContent[],
 ): Element {
   return { type: 'element', tagName, properties, children }
-}
-
-function documentHeader(frontMatter: Record<string, unknown> | undefined): ElementContent[] {
-  const fields = [...dateFields(frontMatter, '')]
-  if (fields.length === 0) return []
-  const rows = fields.map((field) =>
-    element('div', {}, [
-      element('dt', {}, [{ type: 'text', value: field.path }]),
-      element('dd', {}, [
-        element('time', { dateTime: field.value }, [{ type: 'text', value: field.value }]),
-      ]),
-    ]),
-  )
-  return [element('header', { className: ['document-meta'] }, [element('dl', {}, rows)])]
 }
 
 /**
@@ -155,33 +122,31 @@ export interface RenderOverrides {
   readonly schema?: Schema | undefined
 }
 
-/**
- * `outline` is asked for only if the document has a table of contents block, so
- * a document without one never pays to extract its headings; `renderDocument`
- * has them already and hands them over.
- */
 export function renderHtmlWith(
   ast: Root,
   options: RenderOptions,
   overrides: RenderOverrides,
-  outline: () => readonly OutlineEntry[] = () => extractOutline(ast),
 ): string {
   const placed: Element[] = []
   const lookup = emojiLookup(
     options.emoji ?? new Map<string, CustomEmoji>(),
     options.standardEmoji ?? (() => undefined),
   )
+  // Taken at most once, and only when a table of contents asks (ADR-058):
+  // from the tree the headings are rendered from, so the ids agree.
+  let outline: readonly OutlineEntry[] | undefined
+  const outlineOf = (): readonly OutlineEntry[] => (outline ??= extractOutline(ast))
   const toHast = unified()
     .use(remarkRehype, {
       handlers: (overrides.handlers ?? ((handlers: Handlers) => handlers))(
         createHandlers({
           slug: createSlugger(),
-          outline,
           highlighter: options.highlighter,
           drawings: options.drawings,
           extensions: options.extensions,
           placed,
           labels: options.labels,
+          outline: outlineOf,
           labelEmoji: (label) => {
             const name = options.labelEmoji?.get(label)
             return name === undefined ? undefined : lookup(name)
@@ -207,7 +172,7 @@ export function renderHtmlWith(
   // from the same reduced tree (`extractOutline`) so heading ids still match.
   const hast: HastRoot = toHast.runSync(withEmoji(stripPresenterNotes(ast), lookup))
   const body = hast.children.filter((child): child is ElementContent => child.type !== 'doctype')
-  const article = element('article', {}, [...documentHeader(options.frontMatter), ...body])
+  const article = element('article', {}, body)
   const document: HastRoot = { type: 'root', children: [article] }
 
   const safe = addExternalLinkRel(
@@ -258,6 +223,5 @@ export interface RenderedDocument {
  * unstripped draft, so this is the entry point that makes it impossible.
  */
 export function renderDocument(ast: Root, options: RenderOptions = {}): RenderedDocument {
-  const outline = extractOutline(ast)
-  return { html: renderHtmlWith(ast, options, {}, () => outline), outline }
+  return { html: renderHtml(ast, options), outline: extractOutline(ast) }
 }

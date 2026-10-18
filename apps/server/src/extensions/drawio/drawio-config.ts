@@ -36,7 +36,11 @@ export const DEVELOPMENT_DRAWIO_URL = 'http://localhost:8080/'
 /** Hosts that are diagrams.net's own, and so a third party to this instance. */
 const THIRD_PARTY_HOSTS = /(?:^|\.)(?:diagrams\.net|draw\.io|drawio\.com)$/i
 
-export function loadDrawioConfig(env: NodeJS.ProcessEnv, development: boolean): DrawioConfig {
+export function loadDrawioConfig(
+  env: NodeJS.ProcessEnv,
+  development: boolean,
+  appOrigin: string,
+): DrawioConfig {
   const raw = env['DRAWIO_URL'] ?? (development ? DEVELOPMENT_DRAWIO_URL : '')
   if (raw === '' || raw === 'off') return { editor: null }
 
@@ -55,6 +59,19 @@ export function loadDrawioConfig(env: NodeJS.ProcessEnv, development: boolean): 
     )
   }
 
+  // The frame runs with `allow-scripts allow-same-origin`, which is safe only
+  // while it is another origin than the app's: on the same one it could lift
+  // its own sandbox and act as the reader.
+  if (url.origin === appOrigin && env['DRAWIO_URL'] === undefined) {
+    // The development default, on an app that took its port: no editor,
+    // rather than a refusal of a value nobody wrote.
+    return { editor: null }
+  }
+  if (url.origin === appOrigin) {
+    throw new Error(
+      'DRAWIO_URL must be on its own origin, not the app’s: serve draw.io from another host or port.',
+    )
+  }
   const thirdParty = THIRD_PARTY_HOSTS.test(url.hostname)
   if (thirdParty && env['DRAWIO_ALLOW_THIRD_PARTY'] !== 'true') {
     throw new Error(

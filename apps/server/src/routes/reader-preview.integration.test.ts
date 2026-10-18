@@ -111,6 +111,19 @@ afterAll(async () => {
   await harness.close()
 })
 
+/** A deprecated page, replaced by `supersededBy` when it is given. */
+const deprecated = (supersededBy: string | undefined, title: string) =>
+  [
+    '---',
+    'status: deprecated',
+    ...(supersededBy === undefined ? [] : [`supersededBy: ${supersededBy}`]),
+    '---',
+    '',
+    `# ${title}`,
+    '',
+    'Kept for reference.',
+  ].join('\n')
+
 const previewDraft = (reference: string, cookies?: Record<string, string>) =>
   harness.app.inject({
     method: 'GET',
@@ -325,6 +338,34 @@ describe('the reader preview', () => {
         author: { name: 'Restored', email: 'restore@example.com' },
       })
     }
+  })
+
+  describe('a deprecated page', () => {
+    it('leads to its replacement, opening the replacement’s own preview', async () => {
+      const { id } = await createDocument('Old overview')
+      await writeAndPublish(id, deprecated(overview, 'Old overview'))
+
+      const body = (await preview(id, editor)).body
+      expect(body).toMatch(/<div\s+role="note"\s+class="lifecycle-notice"/u)
+      expect(body).toMatch(/Use <a href="\/preview\/d\/[^"]+">Overview<\/a> instead\./u)
+    })
+
+    it('names no replacement that is not among the pages the preview shows', async () => {
+      const { id } = await createDocument('Orphaned page')
+      await writeAndPublish(id, deprecated('00000000-0000-4000-8000-0000000009ff', 'Orphaned page'))
+
+      const body = (await preview(id, editor)).body
+      expect(body).toContain('It is kept for reference and may be out of date.')
+    })
+
+    it('says only that it is deprecated when nothing replaces it', async () => {
+      const { id } = await createDocument('Retired page')
+      await writeAndPublish(id, deprecated(undefined, 'Retired page'))
+
+      const body = (await preview(id, editor)).body
+      expect(body).toMatch(/<div\s+role="note"\s+class="lifecycle-notice"/u)
+      expect(body).toContain('It is kept for reference and may be out of date.')
+    })
   })
 
   it('shows a document with no published revision as the chrome around a note', async () => {

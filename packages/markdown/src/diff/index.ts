@@ -11,6 +11,8 @@
  * - `compareLines`: text by line, with each changed line's words.
  * - `compareDocuments` and `renderComparison`: two revisions as one tree a
  *   reader can follow, drawn by the reader's own renderer.
+ * - `revertChanges`: some of a comparison's changes put back in the draft.
+ * - `stampEdit` and `attributeChanges`: who wrote what is waiting in a draft.
  *
  * Nothing here knows where a document is stored or how its revisions are
  * kept; it compares trees and text.

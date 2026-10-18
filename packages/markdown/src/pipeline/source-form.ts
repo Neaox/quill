@@ -132,7 +132,8 @@ function attributeBlock(source: string, from: number): string | undefined {
   return undefined
 }
 
-function withForm(node: Node, form: SourceForm): void {
+/** Adds to how a node was written. */
+export function withForm(node: Node, form: SourceForm): void {
   node.data = { ...node.data, sourceForm: { ...node.data?.sourceForm, ...form } }
 }
 

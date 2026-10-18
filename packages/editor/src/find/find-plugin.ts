@@ -1,9 +1,13 @@
 import { Plugin, PluginKey, TextSelection } from '@tiptap/pm/state'
 import type { EditorState } from '@tiptap/pm/state'
+import type { Node as PMNode } from '@tiptap/pm/model'
+import type { Selection, Transaction } from '@tiptap/pm/state'
 import type { Mapping } from '@tiptap/pm/transform'
 import { Decoration, DecorationSet } from '@tiptap/pm/view'
 
 import type { Found, Match } from './find-matches.ts'
+import { refindChanged } from './find-refresh.ts'
+import type { Refound } from './find-refresh.ts'
 import { currentMatch, INITIAL_FIND, reduceFind } from './find-state.ts'
 import type { FindAction, FindState } from './find-state.ts'
 
@@ -13,6 +17,11 @@ import type { FindAction, FindState } from './find-state.ts'
  *
  * Everything the bar shows is read from `findKey`'s state and everything it does is a command in
  * `find-commands.ts`, so the plugin is the one owner of what find knows.
+ *
+ * It costs nothing while the bar is closed: a transaction then returns the state it was given. While
+ * the bar is open an edit is searched again only where it was (`find-refresh.ts`), and the
+ * highlights are mapped through it and redrawn only there, so a keystroke with the bar open walks
+ * one block, not the document (quill-plan.md section 31).
  */
 
 export const findKey = new PluginKey<FindState>('find')
@@ -30,15 +39,13 @@ function movedScope(scope: Match | undefined, mapping: Mapping): Match | undefin
 /** Every match is drawn once per search, not once per keystroke or per move of the caret. */
 const drawn = new WeakMap<Found, DecorationSet>()
 
+const matchDecoration = ({ from, to }: Match) =>
+  Decoration.inline(from, to, { class: 'find-match' }, { find: 'match' })
+
 function marked(state: EditorState, found: Found): DecorationSet {
   const known = drawn.get(found)
   if (known !== undefined) return known
-  const set = DecorationSet.create(
-    state.doc,
-    found.matches.map(({ from, to }) =>
-      Decoration.inline(from, to, { class: 'find-match' }, { find: 'match' }),
-    ),
-  )
+  const set = DecorationSet.create(state.doc, found.matches.map(matchDecoration))
   drawn.set(found, set)
   return set
 }
@@ -85,20 +92,55 @@ export function findDecorations(state: EditorState): DecorationSet {
   return extra.length === 0 ? all : all.add(state.doc, extra)
 }
 
+const isMatch = (spec: { readonly [key: string]: unknown }): boolean => spec['find'] === 'match'
+
+/**
+ * The highlights after an edit, from those before it: mapped through it, and redrawn in the blocks
+ * that were searched again. Nothing is kept when the whole document was, or the count was cut short.
+ */
+function remark(before: Found, refound: Refound, doc: PMNode, transaction: Transaction): void {
+  const known = drawn.get(before)
+  const { changed, found, fresh } = refound
+  if (known === undefined || changed === undefined || found.truncated) return
+  const set = changed.reduce(
+    (next, { from, to }) => {
+      const stale = next
+        .find(from, to, isMatch)
+        .filter((item) => item.from >= from && item.to <= to)
+      return next.remove(stale)
+    },
+    known.map(transaction.mapping, doc),
+  )
+  drawn.set(found, set.add(doc, fresh.map(matchDecoration)))
+}
+
+/** The state after an edit with the bar open: what it finds, found again where the edit was. */
+function refreshed(state: FindState, transaction: Transaction, selection: Selection): FindState {
+  if (state.pattern.kind !== 'ok') return state
+  const scope = state.settings.inSelection ? state.scope : undefined
+  const refound = refindChanged(state.found, transaction, state.pattern, scope)
+  remark(state.found, refound, transaction.doc, transaction)
+  return { ...state, found: refound.found, current: currentMatch(refound.found, selection) }
+}
+
 export function findPlugin(): Plugin<FindState> {
   return new Plugin<FindState>({
     key: findKey,
     state: {
       init: () => INITIAL_FIND,
       apply(transaction, previous, _before, state) {
+        const action: FindAction | undefined = transaction.getMeta(findKey)
+        // Closed, find has nothing to keep up with: no work on a keystroke.
+        if (action === undefined && !previous.open) return previous
         const moved = transaction.docChanged
           ? { ...previous, scope: movedScope(previous.scope, transaction.mapping) }
           : previous
+        // An edit, the writer's or a replacement's, is searched again where it was.
+        if (transaction.docChanged && (action === undefined || action.type === 'advance')) {
+          return refreshed(moved, transaction, state.selection)
+        }
         const context = { doc: transaction.doc, selection: state.selection }
-        const action: FindAction | undefined = transaction.getMeta(findKey)
         if (action !== undefined) return reduceFind(moved, action, context)
-        if (!previous.open) return previous
-        if (transaction.docChanged) return reduceFind(moved, { type: 'refresh' }, context)
         if (!transaction.selectionSet) return previous
         // Searching in a selection, a new selection of the writer's is the stretch searched.
         if (previous.settings.inSelection)

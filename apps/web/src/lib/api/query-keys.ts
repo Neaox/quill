@@ -56,7 +56,7 @@ export const queryKeys = {
   /** Who is in one group. */
   groupMembers: (groupId: string) => ['groups', groupId, 'members'] as const,
   /** People whose name or email starts with what was typed, for adding to a group. */
-  people: (query: string) => ['people', query] as const,
+  groupPeople: (query: string) => ['group-people', query] as const,
   /**
    * The signed-in home's summary. One entry per session; the home page asks
    * again every time it is opened (`staleTime` is zero), so no write needs to
@@ -74,19 +74,6 @@ export const queryKeys = {
   workspace: (idOrSlug: string) => ['workspace', idOrSlug] as const,
   workspaceDocuments: (workspaceId: string) => ['workspace-documents', workspaceId] as const,
   workspaceTree: (workspaceId: string) => ['workspace-tree', workspaceId] as const,
-  /*
-   * What the navigation tree is built from, a level at a time (ADR-049). Every key begins with
-   * the workspace tree's, so what already invalidates that — a document made, renamed, moved or
-   * deleted — invalidates these too, and only the levels that are open are asked for again.
-   */
-  treeCollections: (workspaceId: string) => ['workspace-tree', workspaceId, 'collections'] as const,
-  treeChildren: (
-    workspaceId: string,
-    collectionId: string,
-    parentId: string | null,
-    cursor: string | null,
-  ) => ['workspace-tree', workspaceId, 'children', collectionId, parentId, cursor] as const,
-  treePosition: (documentId: string) => ['tree-position', documentId] as const,
   /**
    * A document is addressable three ways (its id, its short key, and a
    * title-slug plus that key — ADR-035), and a query is keyed by whichever
@@ -112,6 +99,12 @@ export const queryKeys = {
   rendered: (documentId: string, revision?: string) =>
     ['rendered', documentId, revision ?? null] as const,
   envelope: (documentId: string) => ['envelope', documentId] as const,
+  /**
+   * The people directory as one document's editor sees it: the names behind
+   * the addresses it holds, and searches for the owner picker. Under the
+   * document, because the server only answers someone who may edit it.
+   */
+  people: (documentId: string) => ['people', documentId] as const,
   /** Every share link on one document, as the share dialog lists them. */
   shareLinks: (documentId: string) => ['share-links', documentId] as const,
   /** A document's review request (ADR-052): one entry, replaced by what the server answers to a write. */
@@ -134,14 +127,8 @@ export const queryKeys = {
   sharedBody: (token: string, reference: string) => ['shared-body', token, reference] as const,
   publishedContent: (documentId: string) => ['published-content', documentId] as const,
   history: (documentId: string) => ['history', documentId] as const,
-  /** `version` is the draft's, for a comparison with it: each save is a new comparison. */
-  comparison: (
-    documentId: string,
-    from: string | null,
-    to: string,
-    version?: number,
-    patches?: boolean,
-  ) => ['comparison', documentId, from, to, version, patches === true] as const,
+  comparison: (documentId: string, from: string | null, to: string, version?: number) =>
+    ['comparison', documentId, from, to, version] as const,
   sourceComparison: (documentId: string, from: string | null, to: string) =>
     ['comparison-source', documentId, from, to] as const,
   /**

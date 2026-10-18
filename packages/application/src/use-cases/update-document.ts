@@ -11,7 +11,7 @@ import type {
   UpdateDocumentPatch,
 } from '../ports/persistence.ts'
 import type { Clock, IdGenerator } from '../ports/system.ts'
-import { documentDeleted, documentMoved, documentRenamed } from './events.ts'
+import { documentDeleted, documentMoved, documentNested, documentRenamed } from './events.ts'
 import { heldByAnother, readDraftContent } from './publish-document.ts'
 
 /**
@@ -195,6 +195,19 @@ export async function updateDocument(
         now,
       )
       await auditMove(deps, tx, { document, updated, now, sessionId: command.sessionId })
+    } else if (updated.parentId !== document.parentId) {
+      // A re-nesting inside the collection moves nothing on the web, but it
+      // changes the pages listed under both parents (ADR-058).
+      await tx.events.record(
+        documentNested,
+        {
+          documentId: document.id,
+          workspaceId: document.workspaceId,
+          fromParentId: document.parentId,
+          toParentId: updated.parentId,
+        },
+        now,
+      )
     }
     return { kind: 'updated', document: updated }
   })
@@ -364,7 +377,8 @@ export async function deleteDocument(
   const orphaned = siblings.filter((row) => row.parentId === command.documentId).length
 
   const now = deps.clock.now()
-  // The deletion, its audit row and its announcement commit together.
+  // The deletion, its audit row and its announcement commit together: the
+  // pages listed under its parent, and the ones it lifted, have changed (ADR-058).
   await deps.uow.run(async (tx) => {
     await tx.documents.delete(command.documentId)
     await tx.events.record(
@@ -373,6 +387,7 @@ export async function deleteDocument(
         documentId: document.id,
         workspaceId: document.workspaceId,
         collectionId: document.collectionId,
+        parentId: document.parentId,
         deletedBy: command.deletedBy,
       },
       now,

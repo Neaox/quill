@@ -1,8 +1,10 @@
 import type { Blockquote, Html, Paragraph, PhrasingContent, Root, RootContent } from 'mdast'
 
-import type { DirectiveAttributes, DirectiveContent } from '../directives/definition.ts'
+import type { DirectiveAttributes } from '../directives/definition.ts'
+import type { DirectiveContent } from '../directives/definition.ts'
 import { splitFirstLine } from '../pipeline/first-line.ts'
 import type { Details } from './details.ts'
+import { isFlowContent } from './details.ts'
 
 /**
  * Reading GitHub's `<details>` and Obsidian's foldable callouts out of a
@@ -103,37 +105,10 @@ interface Frame {
   opening: string
   openingEndLine: number
   summary: PhrasingContent[] | undefined
-  readonly children: FlowContent[]
+  readonly children: DirectiveContent
   /** The lines the first thing in the frame started on and the last ended on. */
   firstLine: number | undefined
   lastLine: number
-}
-
-/** A block a flow container holds, which is what a details can hold. */
-type FlowContent = DirectiveContent[number]
-
-/** Every type of block, which the compiler keeps complete as extensions add more. */
-const FLOW_TYPES: Readonly<Record<FlowContent['type'], true>> = {
-  blockquote: true,
-  code: true,
-  codeGroup: true,
-  containerDirective: true,
-  definition: true,
-  details: true,
-  diffCode: true,
-  footnoteDefinition: true,
-  heading: true,
-  html: true,
-  leafDirective: true,
-  list: true,
-  paragraph: true,
-  rawMdast: true,
-  table: true,
-  thematicBreak: true,
-}
-
-function isFlowContent(node: RootContent): node is FlowContent {
-  return Object.hasOwn(FLOW_TYPES, node.type)
 }
 
 interface Item {
@@ -144,9 +119,8 @@ interface Item {
 
 /**
  * The siblings of one flow container with every complete details made one
- * node; undefined when its tags do not balance, a summary is out of place, or
- * something other than a block would go inside one, in which case nothing at
- * this level is read as details.
+ * node; undefined when its tags do not balance, or a summary is out of place,
+ * in which case nothing at this level is read as details.
  */
 function readHtmlSiblings(
   children: readonly RootContent[],
@@ -156,19 +130,17 @@ function readHtmlSiblings(
     return undefined
   const out: RootContent[] = []
   const stack: Frame[] = []
-  let previousLine: number | undefined
 
-  /** Places an item at the current level; false when it cannot stand inside the open details. */
+  /** Puts a node where it belongs; false for one a details cannot hold, which reads nothing here. */
   const place = (item: Item): boolean => {
     const top = stack.at(-1)
     if (top === undefined) out.push(item.node)
-    else if (!isFlowContent(item.node)) return false
     else {
+      if (!isFlowContent(item.node)) return false
       top.children.push(item.node)
       top.firstLine ??= item.line
       top.lastLine = item.endLine
     }
-    previousLine = item.endLine
     return true
   }
 
@@ -180,21 +152,17 @@ function readHtmlSiblings(
       if (!place({ node: child, line: start, endLine: end })) return undefined
       continue
     }
-    for (const [index, tag] of tags.entries()) {
+    // Where the last tag in this HTML block ended: nothing but white space
+    // separates tags in one block, and no blank line can.
+    let previousEnd: number | undefined
+    for (const tag of tags) {
       const { token } = tag
       const top = stack.at(-1)
       if (token.kind === 'open') {
-        const recorded = child.data?.sourceForm?.blankLines
         stack.push({
           open: token.open,
           openLine: tag.line,
-          /* v8 ignore next 5 -- an earlier tag in this node has always set `previousLine`. */
-          blankLinesBefore:
-            index === 0
-              ? recorded
-              : previousLine === undefined
-                ? undefined
-                : tag.line - previousLine - 1,
+          blankLinesBefore: previousEnd === undefined ? child.data?.sourceForm?.blankLines : 0,
           opening: child.value.slice(tag.start, tag.end),
           openingEndLine: tag.endLine,
           summary: undefined,
@@ -202,7 +170,7 @@ function readHtmlSiblings(
           firstLine: undefined,
           lastLine: tag.endLine,
         })
-        previousLine = tag.endLine
+        previousEnd = tag.end
         continue
       }
       if (token.kind === 'summary') {
@@ -210,24 +178,23 @@ function readHtmlSiblings(
           return undefined
         const inline = readInline(token.text.trim())
         if (inline === undefined) return undefined
-        const gap =
-          index === 0 ? `\n${'\n'.repeat(Math.max(tag.line - top.openingEndLine - 1, 0))}` : ''
-        /* v8 ignore next 2 -- the tag before this one is always in the node. */
+        // A summary in an HTML block of its own is the blank lines after the opening away.
         const between =
-          index === 0 ? '' : child.value.slice(tags[index - 1]?.end ?? tag.start, tag.start)
-        top.opening = `${top.opening}${gap}${between}${child.value.slice(tag.start, tag.end)}`
+          previousEnd === undefined
+            ? '\n'.repeat(tag.line - top.openingEndLine)
+            : child.value.slice(previousEnd, tag.start)
+        top.opening = `${top.opening}${between}${child.value.slice(tag.start, tag.end)}`
         top.openingEndLine = tag.endLine
         top.lastLine = tag.endLine
         top.summary = inline
-        previousLine = tag.endLine
+        previousEnd = tag.end
         continue
       }
       const closing = stack.pop()
       if (closing === undefined) return undefined
-      previousLine = tag.endLine
-      /* v8 ignore next 2 -- a details is itself a block, so it always fits inside another. */
-      if (!place({ node: finish(closing, tag), line: closing.openLine, endLine: tag.endLine }))
-        return undefined
+      previousEnd = tag.end
+      // A finished details is a block, which any frame can hold.
+      place({ node: finish(closing, tag), line: closing.openLine, endLine: tag.endLine })
     }
   }
   return stack.length === 0 ? out : undefined

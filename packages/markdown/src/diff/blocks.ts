@@ -269,7 +269,8 @@ function pairScores<T extends Nodes>(
   return pairs
 }
 
-function lowercaseWords(node: Nodes): string[] {
+/** A block's words, lower-cased, for comparing how alike two blocks are. */
+function words(node: Nodes): string[] {
   return tokenize(plainText(node))
     .filter(isWord)
     .map((word) => word.toLowerCase())
@@ -281,17 +282,17 @@ function lowercaseWords(node: Nodes): string[] {
  * two images with no description — are the same thing in a different state.
  */
 export function similarity(left: Nodes, right: Nodes): number {
-  const leftWords = lowercaseWords(left)
-  const rightWords = lowercaseWords(right)
+  const leftWords = words(left)
+  const rightWords = words(right)
   if (leftWords.length === 0 && rightWords.length === 0) return 1
   const counts = new Map<string, number>()
   for (const word of leftWords) counts.set(word, (counts.get(word) ?? 0) + 1)
   let shared = 0
   for (const word of rightWords) {
-    const available = counts.get(word) ?? 0
-    if (available > 0) {
+    const remaining = counts.get(word) ?? 0
+    if (remaining > 0) {
       shared += 1
-      counts.set(word, available - 1)
+      counts.set(word, remaining - 1)
     }
   }
   return (2 * shared) / (leftWords.length + rightWords.length)

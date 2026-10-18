@@ -1,0 +1,1 @@
+Fixed: Leaving a presentation stays left: a step from the presenter window, the scroll wheel or the keyboard while the reading view loads no longer brings you back into the presentation or moves the other window on.

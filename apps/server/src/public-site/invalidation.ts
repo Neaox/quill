@@ -3,6 +3,7 @@ import {
   collectionDeleted,
   documentDeleted,
   documentMoved,
+  documentNested,
   documentPublished,
   documentRenamed,
   grantCreated,
@@ -22,9 +23,11 @@ import type { PublicSiteCache } from './cache.ts'
  * delay between revoking access and the cache knowing. The bus announces a
  * commit the moment it happens, in the process that made it.
  *
- * Eight events change what a site shows or who may see it. A publish gives a
+ * Nine events change what a site shows or who may see it. A publish gives a
  * document a new body; a rename moves its address and its title; a move
- * between collections puts it on a site or takes it off one; a revised
+ * between collections puts it on a site or takes it off one; nesting a page
+ * under another parent changes the navigation and the child pages lists
+ * (ADR-058); a revised
  * attachment — a re-saved draw.io diagram (ADR-043) — changes a body without a
  * publish; a deleted document or collection takes pages away; and a grant
  * created or revoked changes who is allowed to read — a revoke being the one
@@ -44,6 +47,7 @@ const INVALIDATING_EVENTS: readonly EventDefinition<{ readonly version: number }
   documentPublished,
   documentRenamed,
   documentMoved,
+  documentNested,
   attachmentRevised,
   documentDeleted,
   collectionDeleted,

@@ -1,12 +1,13 @@
 /*
  * Three surfaces keep their stylesheets out of this one, because most readers
  * never open them and a stylesheet in the entry is paid for on every page
- * (quill-plan.md section 31): the writing surface (`./editor.css`),
- * presentation mode (`./present.css`) and the comparison of two versions
- * (`@quill/design-css/comparison.css`). The first two are exported as
- * `@quill/ui/styles/editor.css` and `@quill/ui/styles/present.css`, and the
- * routes and views that need them import them, so they load with the route's own chunk,
- * after this sheet, which is the order their unlayered rules rely on.
+ * (quill-plan.md section 31): the writing surface (`./editor.css`,
+ * `./table-editor.css` and `./editor-menus.css`), presentation mode
+ * (`./present.css`) and the comparison of two versions
+ * (`@quill/design-css/comparison.css`). The first four are exported as
+ * `@quill/ui/styles/<name>.css`, and the routes and views that need them
+ * import them, so they load with the route's own chunk, after this sheet,
+ * which is the order their unlayered rules rely on.
  */
 
 /*
@@ -19,6 +20,7 @@
 @import './tokens.css';
 @import '@quill/design-css/layout.css';
 @import '@quill/design-css/prose.css';
+@import '@quill/design-css/byline.css';
 @import './components.css';
 
 /*

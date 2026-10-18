@@ -158,21 +158,23 @@ describe('mergeDocuments: properties', () => {
           mine: conflictWords(result, 'mine'),
           theirs: conflictWords(result, 'theirs'),
         }
-        // What a side wrote is in the result, or offered in a conflict.
-        const lostFromMine = [...inMine].filter(
-          (word) => !inBase.has(word) && !merged.has(word) && !conflicted.mine.has(word),
-        )
-        const lostFromTheirs = [...inTheirs].filter(
-          (word) => !inBase.has(word) && !merged.has(word) && !conflicted.theirs.has(word),
-        )
-        expect(lostFromMine).toEqual([])
-        expect(lostFromTheirs).toEqual([])
-        // What a side removed stays removed, unless the removal is in a conflict.
-        const resurrected = [...inBase].filter((word) => {
-          const removed = !inMine.has(word) || !inTheirs.has(word)
-          return removed && merged.has(word) && !conflicted.base.has(word)
-        })
-        expect(resurrected).toEqual([])
+        const lost = [
+          // What a side wrote is in the result, or offered in a conflict.
+          ...[...inMine].filter(
+            (word) => !inBase.has(word) && !merged.has(word) && !conflicted.mine.has(word),
+          ),
+          ...[...inTheirs].filter(
+            (word) => !inBase.has(word) && !merged.has(word) && !conflicted.theirs.has(word),
+          ),
+          // What a side removed stays removed, unless the removal is in a conflict.
+          ...[...inBase].filter(
+            (word) =>
+              (!inMine.has(word) || !inTheirs.has(word)) &&
+              merged.has(word) &&
+              !conflicted.base.has(word),
+          ),
+        ]
+        expect(lost).toEqual([])
       }),
       RUNS,
     )

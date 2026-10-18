@@ -7,7 +7,11 @@ import {
   documentQueryOptions,
   workspaceQueryOptions,
 } from '../../../../../../lib/api/index.ts'
-import { documentReference } from '../../../../../../lib/routing/document-reference.ts'
+import {
+  documentReference,
+  type ComparisonLayout,
+  type ComparisonView,
+} from '../../../../../../lib/routing/document-reference.ts'
 import { optionalStringSearch } from '../../../../../-search.ts'
 
 /**
@@ -20,8 +24,22 @@ export interface DocumentSearch {
   rev?: string
   /** The older side of a comparison; absent compares against the empty document. */
   from?: string
-  /** The newer side. Its presence is what puts the route in comparison mode. */
+  /** The newer side: a revision, or `draft`. Its presence is what puts the route in comparison mode. */
   to?: string
+  /** How a comparison is shown: the document with its changes marked, or its source. */
+  view?: ComparisonView
+  /** How the source view sets the two texts out. */
+  layout?: ComparisonLayout
+}
+
+function oneOf<T extends string>(
+  search: Record<string, unknown>,
+  key: string,
+  values: readonly T[],
+): Partial<Record<string, T>> {
+  const value = search[key]
+  const found = values.find((candidate) => candidate === value)
+  return found === undefined ? {} : { [key]: found }
 }
 
 /**
@@ -42,13 +60,26 @@ export interface DocumentSearch {
  * segment straight over and then corrects the address bar to the canonical
  * form when what arrived was not it.
  */
-export const Route = createFileRoute('/_authenticated/w/$workspaceSlug/d/$documentId/')({
-  validateSearch: (search: Record<string, unknown>): DocumentSearch => ({
+function validateDocumentSearch(search: Record<string, unknown>): DocumentSearch {
+  return {
     ...optionalStringSearch(search, 'rev'),
     ...optionalStringSearch(search, 'from'),
     ...optionalStringSearch(search, 'to'),
-  }),
-  loader: async ({ context, params }) => {
+    ...oneOf<ComparisonView>(search, 'view', ['changes', 'source']),
+    ...oneOf<ComparisonLayout>(search, 'layout', ['split', 'unified']),
+  }
+}
+
+export const Route = createFileRoute('/_authenticated/w/$workspaceSlug/d/$documentId/')({
+  validateSearch: validateDocumentSearch,
+  loader: async ({ context, params, location }) => {
+    // The body's deferred enhancements — its code's colours, its diagrams —
+    // are their own chunk (quill-plan.md section 31), asked for now so they
+    // arrive alongside the body rather than after it. A dynamic import, so
+    // the route's own chunk does not carry them.
+    void import('../../../../../../features/documents/deferred-enhancements.ts').catch(
+      () => undefined,
+    )
     let document
     try {
       document = await context.queryClient.ensureQueryData(
@@ -81,6 +112,9 @@ export const Route = createFileRoute('/_authenticated/w/$workspaceSlug/d/$docume
       throw redirect({
         to: '/w/$workspaceSlug/d/$documentId',
         params: { workspaceSlug: workspace.slug, documentId: canonical },
+        // The revision or comparison asked for is part of the place (ADR-013):
+        // correcting the address must not turn a link to one into the head.
+        search: validateDocumentSearch(location.search),
         replace: true,
       })
     }

@@ -61,6 +61,16 @@ describe('importing collapsible sections from other platforms', () => {
     }
   })
 
+  it('converts a block with a title and no kind, and an accordion with no title', () => {
+    expect(importMkDocsDetails('??? "Plain"\n    x\n')).toBe(':::details[Plain]\nx\n:::\n')
+    expect(
+      importMdxAccordions('<Accordions>\n\n<Accordion>\nx\n</Accordion>\n</Accordions>\n'),
+    ).toBe('::::accordion\n:::details\nx\n:::\n::::\n')
+    expect(importMdxAccordions('<Accordions>\n</Accordions>\n')).toBe(
+      '<Accordions>\n</Accordions>\n',
+    )
+  })
+
   it('converts a collapsible section that has a title but no kind and starts closed', () => {
     expect(importMkDocsDetails('??? "Plain title"\n    Body.\n')).toBe(
       ':::details[Plain title]\nBody.\n:::\n',

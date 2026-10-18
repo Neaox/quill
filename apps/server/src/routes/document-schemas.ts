@@ -7,9 +7,12 @@ import type {
   DocumentRow,
   DraftRow,
   EnvelopeView,
+  FactsView,
   HistoryPageView,
+  LifecycleView,
+  Replacement,
 } from '@quill/application'
-import type { DocumentStatus } from '@quill/domain'
+import type { DocumentStatus, PublicDocumentFacts, PublicLifecycle } from '@quill/domain'
 
 /**
  * The shapes of the M2 content API (`docs/architecture/api-contract-m2.md`).
@@ -102,6 +105,71 @@ export const HealthSignalSchema = Type.Object({
   detail: Type.Optional(Type.String()),
 })
 
+/**
+ * What a document states about itself, for the byline under its title
+ * (`docs/design/properties.md`). Owners are labels, never addresses: a person
+ * Quill knows is named, anything else is shown as written.
+ */
+const OwnerSchema = Type.Object({ label: Type.String(), person: Type.Boolean() })
+
+/**
+ * A deprecated document's replacement, at the address this reader follows it
+ * by. Absent when there is none, or when this reader may not open it: its
+ * title is then exactly what they were never shown (ADR-046).
+ */
+const ReplacementSchema = Type.Object({ href: Type.String(), title: Type.String() })
+
+const InReviewSchema = Type.Object({ state: Type.Literal('in-review') })
+const DeprecatedSchema = Type.Object({
+  state: Type.Literal('deprecated'),
+  replacement: Type.Optional(ReplacementSchema),
+})
+
+/**
+ * The lifecycle an author or owner set (ADR-005 amendment): absent when none
+ * is. Whether a verification has lapsed is the client's to work out from the
+ * review cycle at the moment it shows it, never something stored or sent.
+ */
+const LifecycleSchema = Type.Union([
+  InReviewSchema,
+  Type.Object({
+    state: Type.Literal('verified'),
+    verifiedBy: Type.Optional(OwnerSchema),
+    verifiedAt: Type.Optional(Type.String({ format: 'date' })),
+  }),
+  DeprecatedSchema,
+])
+
+/** The lifecycle an outsider is told: never who verified, and a verification only while it stands. */
+const PublicLifecycleSchema = Type.Union([
+  InReviewSchema,
+  Type.Object({
+    state: Type.Literal('verified'),
+    verifiedAt: Type.Optional(Type.String({ format: 'date' })),
+  }),
+  DeprecatedSchema,
+])
+
+export const FactsSchema = Type.Object({
+  /** A status from before the lifecycle. Kept for compatibility (ADR-033) and shown by nothing. */
+  status: Type.Optional(DocumentStatusSchema),
+  lifecycle: Type.Optional(LifecycleSchema),
+  type: Type.Optional(Type.String()),
+  owners: Type.Array(OwnerSchema),
+  tags: Type.Array(Type.String()),
+  reviewInterval: Type.Optional(Type.String()),
+  lastReviewed: Type.Optional(Type.String({ format: 'date' })),
+})
+
+/** What an outsider is shown: no people, no internal review cadence (ADR-059). */
+export const PublicFactsSchema = Type.Object({
+  /** A status from before the lifecycle. Kept for compatibility (ADR-033) and shown by nothing. */
+  status: Type.Optional(DocumentStatusSchema),
+  lifecycle: Type.Optional(PublicLifecycleSchema),
+  tags: Type.Array(Type.String()),
+  lastReviewed: Type.Optional(Type.String({ format: 'date' })),
+})
+
 export const EnvelopeSchema = Type.Object({
   permissions: Type.Object({
     view: Type.Boolean(),
@@ -126,13 +194,22 @@ export const EnvelopeSchema = Type.Object({
     }),
     Type.Null(),
   ]),
-  /** Unpublished changes, for somebody who may edit; null for everybody else and when there are none. */
-  draft: Type.Union([Type.Object({ savedAt: Type.String({ format: 'date-time' }) }), Type.Null()]),
   review: Type.Union([
     Type.Object({ dueAt: Type.String({ format: 'date-time' }), overdue: Type.Boolean() }),
     Type.Null(),
   ]),
   health: Type.Array(HealthSignalSchema),
+  facts: FactsSchema,
+  /**
+   * Whether the draft holds changes nothing has published, for the header's
+   * publication state. Only ever true for someone who may edit.
+   */
+  unpublishedChanges: Type.Boolean(),
+  /**
+   * The draft waiting to be published, for somebody who may edit: saved since the last
+   * publish, or the draft of a document never published. Null for everybody else.
+   */
+  draft: Type.Union([Type.Object({ savedAt: Type.String({ format: 'date-time' }) }), Type.Null()]),
 })
 
 /** What the publish summary states plainly and publishes anyway (ADR-029). */
@@ -215,6 +292,23 @@ export const RevertedDraftSchema = Type.Object({
   draftVersion: Type.Integer(),
   ast: Type.Record(Type.String(), Type.Unknown()),
 })
+
+/**
+ * The draft with those changes put back and saved: its new version, and what it held
+ * before, which undoing the revert sends back.
+ */
+export const PutBackDraftSchema = Type.Object({
+  draftVersion: Type.Integer(),
+  previous: Type.Record(Type.String(), Type.Unknown()),
+})
+
+/** Undoing a revert: the draft as it was, replacing the version the revert made. */
+export const UndoRevertBodySchema = Type.Object({
+  draftVersion: Type.Integer({ minimum: 0 }),
+  ast: Type.Record(Type.String(), Type.Unknown()),
+})
+
+export const UndoneRevertSchema = Type.Object({ draftVersion: Type.Integer() })
 
 const ChangeKindSchema = Type.Union([
   Type.Literal('added'),
@@ -338,51 +432,15 @@ export const TreeNodeSchema = Type.Recursive(
       /** Derived from the title on read, exactly as `Document.slug` is. */
       slug: Type.String(),
       status: DocumentStatusSchema,
+      /** A page of the children, or none when the tree was cut above them (`depth`). */
       children: Type.Array(Self),
+      /** How many children the document has in all; more than `children` when cut or paged. */
+      childCount: Type.Optional(Type.Integer({ minimum: 0 })),
+      /** Where `children` starts among them. */
+      childrenOffset: Type.Optional(Type.Integer({ minimum: 0 })),
     }),
   { $id: 'TreeNode' },
 )
-
-/** The most documents one page of a parent's children holds. */
-export const MAX_CHILDREN_PAGE = 200
-export const DEFAULT_CHILDREN_PAGE = 50
-
-export const TreeChildrenQuerySchema = Type.Object({
-  collectionId: Type.String({ minLength: 1 }),
-  /** The parent; omitted for the documents at the top of the collection. */
-  parentId: Type.Optional(Type.String({ minLength: 1 })),
-  /** Where the page resumes: the `next` of the page before it, which is opaque. */
-  cursor: Type.Optional(Type.String({ minLength: 1, maxLength: 200 })),
-  limit: Type.Optional(
-    Type.Integer({ minimum: 1, maximum: MAX_CHILDREN_PAGE, default: DEFAULT_CHILDREN_PAGE }),
-  ),
-})
-
-/** One entry of a navigation tree that opens a level at a time (ADR-049). */
-export const TreeChildSchema = Type.Object({
-  id: Type.String(),
-  shortId: Type.String(),
-  title: Type.String(),
-  slug: Type.String(),
-  status: DocumentStatusSchema,
-  /** How many documents it has directly beneath it, that the reader may see. */
-  childCount: Type.Integer(),
-})
-
-export const TreeChildrenSchema = Type.Object({
-  nodes: Type.Array(TreeChildSchema),
-  /** Pass as `cursor` for the next page; absent on the last. */
-  next: Type.Optional(Type.String()),
-})
-
-/** Where a document sits in a navigation tree that opens a level at a time (ADR-049). */
-export const TreePositionSchema = Type.Object({
-  collectionId: Type.Union([Type.String(), Type.Null()]),
-  /** The documents it nests under, outermost first: the order they are opened in to show it. */
-  ancestors: Type.Array(Type.String()),
-  /** How many documents are directly beneath it. */
-  childCount: Type.Integer(),
-})
 
 export const WorkspaceTreeSchema = Type.Object({
   collections: Type.Array(
@@ -391,8 +449,53 @@ export const WorkspaceTreeSchema = Type.Object({
       name: Type.String(),
       slug: Type.String(),
       documents: Type.Array(Type.Ref(TreeNodeSchema)),
+      /** How many documents sit at the collection's top level. */
+      documentCount: Type.Optional(Type.Integer({ minimum: 0 })),
+      /** Where `documents` starts among them. */
+      documentsOffset: Type.Optional(Type.Integer({ minimum: 0 })),
+      /** Every document in the collection the reader can see, nesting included. */
+      total: Type.Optional(Type.Integer({ minimum: 0 })),
     }),
   ),
+})
+
+/**
+ * The longest a reference to a document may be: an id, a short key, or a
+ * readable address of a slug (from a title of at most 200 characters) and a
+ * key. Anything longer names nothing, and is refused before it is looked up.
+ */
+const MAX_REFERENCE_LENGTH = 256
+
+/**
+ * `GET /api/workspaces/:id/tree`'s optional cut (ADR-033: additive; without
+ * `depth` the whole tree is answered, as it always has been).
+ */
+export const WorkspaceTreeQuerySchema = Type.Object({
+  /** How many levels below each collection to include. */
+  depth: Type.Optional(Type.Integer({ minimum: 1, maximum: 32 })),
+  /** How many entries of any one list to include, when `depth` is given; 50 when omitted. */
+  limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 500 })),
+  /** A document whose ancestors, page of siblings and children come with the first response. */
+  focus: Type.Optional(Type.String({ minLength: 1, maxLength: MAX_REFERENCE_LENGTH })),
+})
+
+/** `GET /api/workspaces/:id/tree/children`: one page of a list in the tree. */
+export const TreeChildrenQuerySchema = Type.Object({
+  /** The document whose children are listed. Exactly one of `parent` and `collection`. */
+  parent: Type.Optional(Type.String({ minLength: 1, maxLength: MAX_REFERENCE_LENGTH })),
+  /** The collection whose top level is listed. */
+  collection: Type.Optional(Type.String({ minLength: 1, maxLength: MAX_REFERENCE_LENGTH })),
+  offset: Type.Integer({ minimum: 0, default: 0 }),
+  limit: Type.Integer({ minimum: 1, maximum: 500, default: 50 }),
+})
+
+export const TreeChildrenSchema = Type.Object({
+  /** Each with its `childCount` and none of its own children. */
+  documents: Type.Array(Type.Ref(TreeNodeSchema)),
+  /** How many entries the list has in all. */
+  total: Type.Integer({ minimum: 0 }),
+  /** Where `documents` starts among them. */
+  offset: Type.Integer({ minimum: 0 }),
 })
 
 /**
@@ -441,7 +544,72 @@ export function draftResponse(row: DraftRow): Static<typeof CreatedDocumentSchem
   }
 }
 
-export function envelopeResponse(envelope: EnvelopeView): Static<typeof EnvelopeSchema> {
+/** A lifecycle on the wire, with its replacement already resolved for the reader it is going to. */
+function lifecycleResponse(
+  lifecycle: LifecycleView | PublicLifecycle,
+  replacement: Replacement | undefined,
+): Static<typeof LifecycleSchema> {
+  switch (lifecycle.state) {
+    case 'in-review':
+      return { state: 'in-review' }
+    case 'deprecated':
+      return { state: 'deprecated', ...(replacement === undefined ? {} : { replacement }) }
+    case 'verified':
+      return {
+        state: 'verified',
+        ...('verifiedBy' in lifecycle && lifecycle.verifiedBy !== undefined
+          ? {
+              verifiedBy: {
+                label: lifecycle.verifiedBy.label,
+                person: lifecycle.verifiedBy.person,
+              },
+            }
+          : {}),
+        ...(lifecycle.verifiedAt === undefined ? {} : { verifiedAt: lifecycle.verifiedAt }),
+      }
+  }
+}
+
+/**
+ * Facts on the wire: an unstated fact is an absent key, never `undefined` or
+ * `null`. `replacement` is where a deprecated document's replacement is for
+ * this reader, or undefined when there is none they may open.
+ */
+export function factsResponse(
+  facts: FactsView,
+  replacement?: Replacement | undefined,
+): Static<typeof FactsSchema> {
+  return {
+    ...(facts.status === undefined ? {} : { status: facts.status }),
+    ...(facts.lifecycle === undefined
+      ? {}
+      : { lifecycle: lifecycleResponse(facts.lifecycle, replacement) }),
+    ...(facts.type === undefined ? {} : { type: facts.type }),
+    owners: facts.owners.map((owner) => ({ label: owner.label, person: owner.person })),
+    tags: [...facts.tags],
+    ...(facts.reviewInterval === undefined ? {} : { reviewInterval: facts.reviewInterval }),
+    ...(facts.lastReviewed === undefined ? {} : { lastReviewed: facts.lastReviewed }),
+  }
+}
+
+export function publicFactsResponse(
+  facts: PublicDocumentFacts,
+  replacement?: Replacement | undefined,
+): Static<typeof PublicFactsSchema> {
+  return {
+    ...(facts.status === undefined ? {} : { status: facts.status }),
+    ...(facts.lifecycle === undefined
+      ? {}
+      : { lifecycle: lifecycleResponse(facts.lifecycle, replacement) }),
+    tags: [...facts.tags],
+    ...(facts.lastReviewed === undefined ? {} : { lastReviewed: facts.lastReviewed }),
+  }
+}
+
+export function envelopeResponse(
+  envelope: EnvelopeView,
+  replacement?: Replacement | undefined,
+): Static<typeof EnvelopeSchema> {
   return {
     permissions: envelope.permissions,
     lock:
@@ -460,7 +628,6 @@ export function envelopeResponse(envelope: EnvelopeView): Static<typeof Envelope
             author: envelope.lastPublished.author,
             at: envelope.lastPublished.at.toISOString(),
           },
-    draft: envelope.draft === null ? null : { savedAt: envelope.draft.savedAt.toISOString() },
     review:
       envelope.review === null
         ? null
@@ -469,6 +636,9 @@ export function envelopeResponse(envelope: EnvelopeView): Static<typeof Envelope
       kind: signal.kind,
       ...(signal.detail === undefined ? {} : { detail: signal.detail }),
     })),
+    facts: factsResponse(envelope.facts, replacement),
+    unpublishedChanges: envelope.unpublishedChanges,
+    draft: envelope.draft === null ? null : { savedAt: envelope.draft.savedAt.toISOString() },
   }
 }
 
