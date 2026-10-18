@@ -23,22 +23,28 @@ import { createHasher } from './infrastructure/hasher.ts'
 import { createOutboundClient } from './infrastructure/http/outbound-client.ts'
 import { runMigrations } from './infrastructure/db/migrator.ts'
 import { createDocumentFormat } from './infrastructure/markdown/document-format.ts'
-import { createAcknowledgingConsumer } from './infrastructure/outbox/acknowledge.ts'
-import { combineConsumers } from './infrastructure/outbox/combine.ts'
+import { CHILD_PAGES_CACHE_TTL_MS, createChildPagesCache } from './child-pages/cache.ts'
+import { subscribeChildPagesInvalidation } from './child-pages/invalidation.ts'
+import { createOpenWebClient } from './infrastructure/http/open-web-client.ts'
+import { linkPublicPolicy, linkSettingsPolicy } from './application/link-settings.ts'
+import { createLinkPreviewAudiences } from './infrastructure/link-preview/audiences.ts'
+import { createConnectorCredentialSource } from './infrastructure/link-preview/connectors/credentials.ts'
 import {
-  createIndexOnPublishConsumer,
-  createIndexOnAttachmentRevisedConsumer,
-  createIndexOnRenameConsumer,
-} from './infrastructure/outbox/index-on-publish.ts'
-import {
-  createRecordMoveRedirectConsumer,
-  createRecordRenameRedirectConsumer,
-} from './infrastructure/outbox/record-public-redirect.ts'
-import { createInvalidatePublicSiteConsumers } from './infrastructure/outbox/invalidate-public-site.ts'
-import { createRenderOnPublishConsumer } from './infrastructure/outbox/render-on-publish.ts'
+  GITHUB_API_HOST,
+  createGitHubConnector,
+} from './infrastructure/link-preview/connectors/github-connector.ts'
+import { createFetchObserver } from './infrastructure/link-preview/fetch-log.ts'
+import { createImageIngestor } from './infrastructure/link-preview/image-ingestor.ts'
+import { createIsolatedTranscoder } from './infrastructure/link-preview/isolated-transcoder.ts'
+import { linkEmbedRegistry } from './infrastructure/link-preview/embed-config.ts'
+import { createLinkPreviewProvider } from './infrastructure/link-preview/link-preview-provider.ts'
+import { OEMBED_PROVIDERS } from './infrastructure/link-preview/oembed-providers.gen.ts'
+import { createOembedRegistry } from './infrastructure/link-preview/oembed-registry.ts'
+import { createLinkPreviewRateLimits } from './infrastructure/link-preview/rate-limits.ts'
+import { linkPreviewUserAgent } from './infrastructure/link-preview/user-agent.ts'
+import { pollOutboxLane } from './infrastructure/outbox/lane.ts'
 import { createPostgresSearchIndex } from './infrastructure/search/postgres-search-index.ts'
 import { createVisibleDocumentResolver } from './infrastructure/search/visible-documents.ts'
-import { createSendMailConsumer } from './infrastructure/outbox/send-mail.ts'
 import { pollOutboxOnce } from './infrastructure/outbox/poller.ts'
 import { createUnitOfWork } from './infrastructure/repositories/unit-of-work.ts'
 import { createEnvelopeCipher } from './infrastructure/secrets/envelope-cipher.ts'
@@ -48,21 +54,18 @@ import { validateSecretsConfigured } from './infrastructure/secrets/boot-validat
 import type { SecretExistenceCheck } from './infrastructure/secrets/boot-validation.ts'
 import { createSettingsStore } from './infrastructure/settings-store.ts'
 import { createPublicSiteCache, PUBLIC_SITE_CACHE_TTL_MS } from './public-site/cache.ts'
+import { subscribePublicSiteInvalidation } from './public-site/invalidation.ts'
 import { createPublicStylesheets, loadDesignSystemCss } from './public-site/stylesheet.ts'
 import { loadFaceFiles } from './theme/face-files.ts'
 import { createThemeStylesheets } from './theme/theme-stylesheet.ts'
 import { createSystemClock } from './infrastructure/system-clock.ts'
 import { createUuidGenerator } from './infrastructure/uuid-generator.ts'
 import { createJobRunner } from './jobs/job-runner.ts'
+import { registerOutboxConsumers } from './jobs/register-consumers.ts'
 import { createShutdown } from './shutdown.ts'
 import { createSweepJob } from './jobs/sweep-expired.ts'
-import {
-  ATTACHMENT_REVISED,
-  DOCUMENT_CREATED,
-  DOCUMENT_MOVED,
-  DOCUMENT_PUBLISHED,
-  DOCUMENT_RENAMED,
-} from '@quill/application'
+import { createEventBus, createLinkConnectorRegistry } from '@quill/application'
+import { createSweepLinkPreviewsJob } from './jobs/sweep-link-previews.ts'
 import { createSearchService } from '@quill/search'
 import { createDrawioText } from './extensions/drawio/drawing-text.ts'
 
@@ -89,7 +92,16 @@ const tokens = createTokenService()
 const database = createDatabase({ connectionString: config.databaseUrl })
 await runMigrations(database.pool)
 
-const uow = createUnitOfWork(database.db, database.pool, ids)
+// What a transaction recorded is announced here once it has committed
+// (ADR-056). A listener that fails is logged and never fails the request that
+// made the change, which has already happened; `app` exists by the time any
+// request can.
+const eventBus = createEventBus({
+  onError: (error, event) => {
+    app.log.error({ err: error, eventType: event.type }, 'an event listener failed')
+  },
+})
+const uow = createUnitOfWork(database.db, database.pool, ids, eventBus)
 const contentStore = createContentStore(config.contentStore, clock)
 // Settings are files in a system workspace of that same content store, and
 // secrets are envelope-encrypted rows under the instance master key (ADR-034).
@@ -193,6 +205,7 @@ const attachmentRateLimiter = createRateLimiter({ clock, config: config.attachme
 // One Argon2id hash at startup, so no request ever pays for the dummy.
 const passwords = await createPasswordHasher()
 const publicSiteCache = createPublicSiteCache({ clock, ttlMs: PUBLIC_SITE_CACHE_TTL_MS })
+const childPagesCache = createChildPagesCache({ clock, ttlMs: CHILD_PAGES_CACHE_TTL_MS })
 const searchIndex = createPostgresSearchIndex({
   db: database.db,
   visibility: createVisibleDocumentResolver({ uow }),
@@ -202,7 +215,52 @@ const searchIndex = createPostgresSearchIndex({
 // in a stylesheet never touches the filesystem (ADR-028).
 const faceFiles = await loadFaceFiles()
 const themeStylesheets = createThemeStylesheets({ hasher, faceFiles })
+// Link previews (ADR-042). Fetching goes through the open-web client, a second
+// instance with its own stricter limits, never the allowlisted one above, and
+// images are decoded in a child process with no environment. What Quill may
+// fetch, and what the public site may draw, is the organisation's own setting,
+// read on each request so that a change takes effect at once.
+const openWeb = createOpenWebClient({
+  userAgent: linkPreviewUserAgent(config.appUrl),
+  // One log line per fetch: the host and how it went, never the path or the response.
+  observe: createFetchObserver(() => app.log),
+})
+// Connectors (layer 1) carry credentials, so they never use the open-web client: the GitHub
+// connector reaches its API through the allowlisted client, whose one host is the API's, and
+// reads its token from the secrets store at the moment of use (ADR-042, ADR-034).
+const connectorUserAgent = linkPreviewUserAgent(config.appUrl)
+const gitHubApi = createOutboundClient({
+  allowedHosts: [GITHUB_API_HOST],
+  timeoutMs: 8_000,
+  // A file's contents arrive base64-encoded inside JSON.
+  maxResponseBytes: 2 * 1024 * 1024,
+})
+const linkConnectors = createLinkConnectorRegistry([
+  createGitHubConnector({ client: gitHubApi, clock, userAgent: connectorUserAgent }),
+])
+const linkPreviewPorts = {
+  audiences: createLinkPreviewAudiences(
+    () => linkSettingsPolicy(settings),
+    () => linkPublicPolicy(settings),
+  ),
+  resolver: createLinkPreviewProvider({
+    reader: openWeb,
+    images: createImageIngestor({
+      reader: openWeb,
+      transcoder: createIsolatedTranscoder(),
+      blobs: blobStore,
+    }),
+    oembed: createOembedRegistry(OEMBED_PROVIDERS),
+    embeds: linkEmbedRegistry(config.linkEmbeds),
+    clock,
+    connectors: linkConnectors,
+    credentials: createConnectorCredentialSource({ uow, secrets, clock, ids }),
+  }),
+  limits: createLinkPreviewRateLimits(clock),
+}
+
 const deps = {
+  linkPreviewPorts,
   uow,
   searchIndex,
   search: createSearchService(searchIndex),
@@ -216,6 +274,7 @@ const deps = {
     designSystemCss: await loadDesignSystemCss(),
   }),
   publicSiteCache,
+  childPagesCache,
   contentStore,
   settings,
   secrets,
@@ -242,80 +301,17 @@ for (const { details, message } of startupWarnings) app.log.warn(details, messag
 const jobRunner = createJobRunner({
   clock,
   poll: (consumers, now) => pollOutboxOnce(database.pool, consumers, { now }),
+  // Slow work on other people's servers has its own lane, so it never delays a publish or a mail.
+  pollLane: (consumers, now) => pollOutboxLane(database.pool, consumers, { now }),
 })
-// Two things happen on a publish, in this order: the body is rendered, so
-// the first reader never pays for a render (ADR-031), and the document is
-// indexed, so it is findable (ADR-010). The runner holds one consumer per
-// event type, so they are combined rather than one silently replacing the
-// other.
-// A fourth consumer of the same three events throws the public site's page
-// cache away, because all three change what a published page says (ADR-023).
-const invalidatePublicSite = new Map(
-  createInvalidatePublicSiteConsumers(publicSiteCache).map((consumer) => [
-    consumer.eventType,
-    consumer,
-  ]),
-)
-/* v8 ignore next 3 -- `createInvalidatePublicSiteConsumers` answers for each of the three. */
-const invalidationOf = (eventType: string) => {
-  const consumer = invalidatePublicSite.get(eventType)
-  if (consumer === undefined) throw new Error(`no public-site invalidation for ${eventType}`)
-  return consumer
-}
-
-jobRunner.register(
-  combineConsumers(
-    DOCUMENT_PUBLISHED,
-    createRenderOnPublishConsumer(deps),
-    createIndexOnPublishConsumer(deps),
-    invalidationOf(DOCUMENT_PUBLISHED),
-  ),
-)
-// A rename writes the new title into the document itself, and the title is
-// the most heavily weighted field in the index (ADR-010). Nothing else acts
-// on it: a body that links to the renamed document simply renders under a new
-// cache key (ADR-031).
-jobRunner.register(
-  combineConsumers(
-    DOCUMENT_RENAMED,
-    createIndexOnRenameConsumer(deps),
-    // A rename changes a public address, so the old one is recorded and
-    // answered with a 301 (ADR-035).
-    createRecordRenameRedirectConsumer(deps),
-    invalidationOf(DOCUMENT_RENAMED),
-  ),
-)
-// A move between collections changes the collection segment of a public
-// address in the same way, and may change which site the page is on at all.
-jobRunner.register(
-  combineConsumers(
-    DOCUMENT_MOVED,
-    createRecordMoveRedirectConsumer(deps),
-    invalidationOf(DOCUMENT_MOVED),
-  ),
-)
-// A re-saved diagram (ADR-043) changes the words and the picture of every
-// published body that shows it, without a publish.
-jobRunner.register(
-  combineConsumers(
-    ATTACHMENT_REVISED,
-    createIndexOnAttachmentRevisedConsumer(deps),
-    invalidationOf(ATTACHMENT_REVISED),
-  ),
-)
-// Delivery happens here rather than on the request path, so an address that
-// has an account costs no more than one that does not (ADR-011).
-jobRunner.register(createSendMailConsumer(mailer))
-// Every type something emits has a consumer, even when the consumer does
-// nothing yet: the poller claims only registered types, so an unregistered
-// one would accumulate for ever (review finding H6).
-jobRunner.register(
-  createAcknowledgingConsumer(
-    DOCUMENT_CREATED,
-    'Nothing acts on a creation: a document with no published revision has nothing to index or render.',
-  ),
-)
+registerOutboxConsumers(jobRunner, { deps, mailer })
+// The public site's cache is this process's own, so the bus tells it, the
+// moment a commit that changes what a site shows (or who may read it) lands.
+subscribePublicSiteInvalidation(eventBus, publicSiteCache)
+// The child pages lists (ADR-058) are this process's own in the same way.
+subscribeChildPagesInvalidation(eventBus, childPagesCache, deps)
 jobRunner.schedule(createSweepJob({ uow, clock, session: config.session }))
+jobRunner.schedule(createSweepLinkPreviewsJob({ uow, clock }))
 jobRunner.start()
 
 // The order matters and is pinned by `shutdown.test.ts`: the job runner

@@ -18,6 +18,7 @@ import {
   moveColumn,
   moveRow,
   nextCellOrNewRow,
+  normalise,
   selectLine,
   selectTable,
   setColumnAlign,
@@ -159,35 +160,23 @@ describe('rows and columns', () => {
     expect(declines(state, moveRow(2, 1, 1))).toBe(true)
   })
 
-  it('inserts a line where a border is, with the caret in its first cell', () => {
+  it('inserts a row or column at a boundary, by position, wherever the selection is', () => {
     const state = harness.state(TABLE)
 
-    const row = run(state, insertLine('row', 2, 0))
-    expect(markdown(row)).toContain('| eu | Platform | 120 |\n| | | |\n| us |')
-    expect(row.selection).toBeInstanceOf(TextSelection)
-    expect(tableContext(row)?.rect).toMatchObject({ top: 2, left: 0 })
-
-    const first = run(state, insertLine('column', 0, 0))
-    expect(markdown(first)).toContain('| | Region | Owner | Budget |')
-    expect(tableContext(first)?.rect).toMatchObject({ top: 0, left: 0 })
-    const last = run(state, insertLine('column', 3, 0))
-    expect(markdown(last)).toContain('| Region | Owner | Budget | |')
-    expect(tableContext(last)?.rect).toMatchObject({ top: 0, left: 3 })
-  })
-
-  it('inserts nothing above the header row, outside the table, or off its ends', () => {
-    const state = harness.state(TABLE)
-
+    expect(markdown(run(state, insertLine('column', 0, 0)))).toContain(
+      '| | Region | Owner | Budget |',
+    )
+    expect(markdown(run(state, insertLine('column', 3, 0)))).toContain(
+      '| Region | Owner | Budget | |',
+    )
+    expect(markdown(run(state, insertLine('row', 1, 0)))).toContain(
+      '| - | - | - |\n| | | |\n| eu |',
+    )
+    expect(markdown(run(state, insertLine('row', 3, 0)))).toContain('| us | Data | 90 |\n| | | |')
     expect(declines(state, insertLine('row', 0, 0))).toBe(true)
     expect(declines(state, insertLine('row', 4, 0))).toBe(true)
-    expect(declines(state, insertLine('column', -1, 0))).toBe(true)
     expect(declines(state, insertLine('row', 1, 1))).toBe(true)
-  })
-
-  it('inserts above the first row when the rows are the only headers', () => {
-    const state = harness.state(`:::table{headers=row}\n${TABLE}:::\n`)
-
-    expect(markdown(run(state, insertLine('row', 0, 1)))).toContain('| | | |\n| - | - | - |')
+    expect(insertLine('column', 1, 0)(state)).toBe(true)
   })
 
   it('selects a whole row or column', () => {
@@ -200,22 +189,6 @@ describe('rows and columns', () => {
     expect(row instanceof CellSelection && row.isRowSelection()).toBe(true)
     expect(declines(state, selectLine('row', 3, 0))).toBe(true)
     expect(declines(state, selectLine('row', 0, 1))).toBe(true)
-  })
-
-  it('selects every cell of a table, as its corner does', () => {
-    const state = harness.state(TABLE)
-    const all = run(state, selectTable(0)).selection
-
-    expect(all).toBeInstanceOf(CellSelection)
-    expect(all instanceof CellSelection && all.isRowSelection() && all.isColSelection()).toBe(true)
-    expect(tableContext(run(state, selectTable(0)))?.rect).toMatchObject({
-      top: 0,
-      left: 0,
-      bottom: 3,
-      right: 3,
-    })
-    expect(declines(state, selectTable(1))).toBe(true)
-    expect(declines(harness.state('Prose.'), selectTable(0))).toBe(true)
   })
 
   it('aligns the selected columns, and declines what is already so', () => {
@@ -244,6 +217,47 @@ describe('rows and columns', () => {
     ]) {
       expect(declines(outside, command)).toBe(true)
     }
+  })
+})
+
+describe('answering without acting', () => {
+  it('says a command can run, without running it, wherever it can', () => {
+    const state = inCell(TABLE, 'eu')
+    const last = inCell(TABLE, '90')
+    const can = [
+      [state, setTableAttribute('width', 'full')],
+      [state, setColumnAlign('right')],
+      [state, moveRow(1, 2)],
+      [state, moveColumn(0, 1)],
+      [state, selectLine('row', 1, 0)],
+      [state, enterInTable],
+      [last, nextCellOrNewRow],
+      [state, toggleCaption],
+      [state, addRow('after')],
+    ] as const
+
+    for (const [at, command] of can) {
+      const before = at.doc
+      expect(command(at)).toBe(true)
+      expect(at.doc).toBe(before)
+    }
+  })
+})
+
+describe('the GFM invariants', () => {
+  it('gives every column an alignment, unset where it had none', () => {
+    const state = harness.state(TABLE)
+    const tr = state.tr.setNodeAttribute(0, 'align', ['right'])
+    normalise(tr, 0)
+
+    expect(alignOf(tr.doc.child(0))).toEqual(['right', null, null])
+  })
+
+  it('reads a table with no alignment list as unaligned', () => {
+    const state = harness.state(TABLE)
+    const tr = state.tr.setNodeAttribute(0, 'align', null)
+
+    expect(alignOf(tr.doc.child(0))).toEqual([])
   })
 })
 
@@ -306,6 +320,25 @@ describe('the wrapper', () => {
   })
 })
 
+describe('selecting the whole table', () => {
+  it('selects every cell of a table, as its corner does', () => {
+    const state = harness.state(TABLE)
+    const all = run(state, selectTable(0)).selection
+
+    expect(all).toBeInstanceOf(CellSelection)
+    expect(all instanceof CellSelection && all.isRowSelection() && all.isColSelection()).toBe(true)
+    expect(tableContext(run(state, selectTable(0)))?.rect).toMatchObject({
+      top: 0,
+      left: 0,
+      bottom: 3,
+      right: 3,
+    })
+    expect(selectTable(0)(state)).toBe(true)
+    expect(declines(state, selectTable(1))).toBe(true)
+    expect(declines(harness.state('Prose.\n'), selectTable(0))).toBe(true)
+  })
+})
+
 describe('moving between cells at once', () => {
   it.each([
     ['up', 'Data', 'Platform'],
@@ -339,6 +372,10 @@ describe('moving between cells at once', () => {
       expect(dispatched).toEqual([])
     },
   )
+
+  it('declines outside a table, so the key goes on to what else it does', () => {
+    expect(declines(harness.state('Prose.\n'), goToCell('down'))).toBe(true)
+  })
 })
 
 describe('the keyboard', () => {

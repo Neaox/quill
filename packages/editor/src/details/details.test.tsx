@@ -4,7 +4,7 @@ import userEvent from '@testing-library/user-event'
 import { undo } from '@tiptap/pm/history'
 import { DOMParser as ProseMirrorParser } from '@tiptap/pm/model'
 import { TextSelection } from '@tiptap/pm/state'
-import type { EditorState } from '@tiptap/pm/state'
+import type { Command, EditorState } from '@tiptap/pm/state'
 import { createRef } from 'react'
 import { describe, expect, it } from 'vitest'
 
@@ -18,9 +18,11 @@ import {
   backspaceInDetails,
   enterFromSummary,
   exitDetails,
+  isOpenByDefault,
   setOpenByDefault,
 } from './details-commands.ts'
 import { setFolded } from './details-folds.ts'
+import { DetailsNodeView } from './details-view.ts'
 
 const harness = createEditorTestHarness()
 
@@ -31,8 +33,8 @@ function written(state: EditorState): string {
 }
 
 /** A state with the caret in the textblock holding `text`, at `offset` within it. */
-function caretIn(markdown: string, text: string, offset = 0): EditorState {
-  const state = harness.state(markdown)
+function caretIn(source: string, text: string, offset = 0): EditorState {
+  const state = harness.state(source)
   let found = -1
   state.doc.descendants((node, pos) => {
     if (found === -1 && node.isTextblock && node.textContent === text) found = pos + 1 + offset
@@ -43,8 +45,8 @@ function caretIn(markdown: string, text: string, offset = 0): EditorState {
 }
 
 /** A state with the caret on the empty line of the body of the details at the top. */
-function caretInEmptyBody(markdown: string, index = 1): EditorState {
-  const state = harness.state(markdown)
+function caretInEmptyBody(source: string, index = 1): EditorState {
+  const state = harness.state(source)
   const details = state.doc.firstChild
   let pos = 1
   details?.forEach((child, offset, at) => {
@@ -53,10 +55,7 @@ function caretInEmptyBody(markdown: string, index = 1): EditorState {
   return state.apply(state.tr.setSelection(TextSelection.create(state.doc, pos)))
 }
 
-function run(
-  state: EditorState,
-  command: (state: EditorState, dispatch: (tr: never) => void) => boolean,
-): EditorState {
+function run(state: EditorState, command: Command): EditorState {
   let next = state
   const ran = command(state, (tr) => {
     next = state.apply(tr)
@@ -301,6 +300,10 @@ describe('making a details', () => {
       editorOf(ref).view.dispatch(editorOf(ref).state.tr.replaceSelection(slice))
     })
     expect(markdown(ref)).toBe(':::details[Pasted]{open}\nInside.\n:::\n')
+    const closed = document.createElement('div')
+    closed.innerHTML = '<details><summary>Closed</summary><p>x</p></details>'
+    const node = ProseMirrorParser.fromSchema(editorOf(ref).schema).parse(closed).firstChild
+    expect(node?.attrs['attributes']).toEqual({})
   })
 
   it('reads GitHub’s details out of pasted Markdown', () => {
@@ -314,5 +317,126 @@ describe('making a details', () => {
       })
     })
     expect(markdown(ref)).toBe(GITHUB)
+  })
+})
+
+function selecting(state: EditorState, from: number, to: number): EditorState {
+  return state.apply(state.tr.setSelection(TextSelection.create(state.doc, from, to)))
+}
+
+describe('what the details commands and view decline', () => {
+  it('reports without acting when asked without a dispatch', () => {
+    const state = harness.state(':::details[Title]\nBody.\n\n:::\n')
+    expect(enterFromSummary(caretIn(':::details[Title]\nBody.\n:::\n', 'Title', 2))).toBe(true)
+    expect(backspaceInDetails(caretIn(':::details[Title]\nBody.\n:::\n', 'Title'))).toBe(true)
+    expect(backspaceInDetails(caretIn(':::details[Title]\nBody.\n:::\n', 'Body.'))).toBe(true)
+    expect(backspaceInDetails(caretInEmptyBody(':::details[Title]\n:::\n'))).toBe(true)
+    expect(setOpenByDefault(0, true)(state)).toBe(true)
+    const end = (state.doc.firstChild?.nodeSize ?? 0) - 1
+    const grown = state.apply(state.tr.insert(end, editorSchema.nodes['paragraph']?.create() ?? []))
+    const onLastLine = grown.apply(grown.tr.setSelection(TextSelection.create(grown.doc, end + 1)))
+    expect(onLastLine.selection.$from.parent.content.size).toBe(0)
+    expect(exitDetails(onLastLine)).toBe(true)
+  })
+
+  it('declines a selection, a line with words, a line elsewhere, and a line that is not last', () => {
+    const source = ':::details[Title]\nOne.\n\n- item\n\nTwo.\n:::\n\nAfter.\n'
+    expect(enterFromSummary(selecting(caretIn(source, 'Title'), 2, 4))).toBe(false)
+    expect(backspaceInDetails(selecting(caretIn(source, 'Title'), 2, 4))).toBe(false)
+    expect(backspaceInDetails(caretIn(source, 'After.'))).toBe(false)
+    expect(backspaceInDetails(caretIn(source, 'item'))).toBe(false)
+    expect(exitDetails(selecting(caretIn(source, 'One.'), 1, 3))).toBe(false)
+    expect(exitDetails(caretIn(source, 'Two.'))).toBe(false)
+    expect(exitDetails(caretIn(':::details[Title]\n## Heading\n:::\n', 'Heading'))).toBe(false)
+    expect(exitDetails(caretIn('\n', ''))).toBe(false)
+    const listed = harness.state(':::details[Title]\n- \n\nx\n:::\n')
+    let inItem = -1
+    listed.doc.descendants((node, pos) => {
+      if (inItem === -1 && node.type.name === 'paragraph' && node.content.size === 0)
+        inItem = pos + 1
+      return inItem === -1
+    })
+    expect(
+      exitDetails(listed.apply(listed.tr.setSelection(TextSelection.create(listed.doc, inItem)))),
+    ).toBe(false)
+    const middle = harness.state(':::details[Title]\nOne.\n:::\n')
+    const details = middle.doc.firstChild
+    if (details === null) throw new Error('No details.')
+    const withLines = middle.apply(
+      middle.tr.insert(details.nodeSize - 1, [
+        editorSchema.nodes['paragraph']?.create() ?? details,
+        editorSchema.nodes['paragraph']?.create(null, editorSchema.text('Last.')) ?? details,
+      ]),
+    )
+    let empty = -1
+    withLines.doc.descendants((node, pos) => {
+      if (empty === -1 && node.type.name === 'paragraph' && node.content.size === 0) empty = pos + 1
+      return empty === -1
+    })
+    const onEmpty = withLines.apply(
+      withLines.tr.setSelection(TextSelection.create(withLines.doc, empty)),
+    )
+    expect(onEmpty.selection.$from.index(1)).toBe(2)
+    expect(exitDetails(onEmpty)).toBe(false)
+  })
+
+  it('reads a details whose attributes are missing as closed', () => {
+    const node = editorSchema.nodes['details']?.create({ attributes: null }, [
+      editorSchema.nodes['detailsSummary']?.create() ?? editorSchema.text('x'),
+      editorSchema.nodes['paragraph']?.create() ?? editorSchema.text('x'),
+    ])
+    expect(node === undefined ? undefined : isOpenByDefault(node)).toBe(false)
+  })
+})
+
+describe('the details view, on its own', () => {
+  function viewOf(source: string, getPos: () => number | undefined = () => 0) {
+    const { ref } = open(source)
+    const editor = editorOf(ref)
+    const node = editor.state.doc.firstChild
+    if (node === null) throw new Error('No details.')
+    return { view: new DetailsNodeView(node, editor.view, getPos, []), editor, node }
+  }
+
+  it('does nothing once it has left the document', () => {
+    const { view, editor } = viewOf(':::details[A]\nx\n:::\n', () => undefined)
+    const before = editor.state
+    view.dom.querySelector<HTMLButtonElement>('.details-editor-toggle')?.click()
+    view.dom.querySelector<HTMLButtonElement>('.details-editor-default')?.click()
+    expect(editor.state.doc.eq(before.doc)).toBe(true)
+  })
+
+  it('is redrawn for another node only of its own type, and keeps its controls its own', () => {
+    const { view } = viewOf(':::details[A]{type=shout}\nx\n:::\n')
+    expect(view.dom).toHaveClass('callout', 'callout-note')
+    const paragraph = editorSchema.nodes['paragraph']?.create()
+    if (paragraph === undefined) throw new Error('No paragraph node.')
+    expect(view.update(paragraph, [])).toBe(false)
+    const toggle = view.dom.querySelector('.details-editor-toggle')
+    expect(view.stopEvent(new MouseEvent('click'))).toBe(false)
+    const click = new MouseEvent('click', { bubbles: true })
+    toggle?.dispatchEvent(click)
+    expect(view.stopEvent(click)).toBe(true)
+    const inside = new MouseEvent('click', { bubbles: true })
+    view.contentDOM.dispatchEvent(inside)
+    expect(view.stopEvent(inside)).toBe(false)
+    expect(view.ignoreMutation({ target: view.dom })).toBe(true)
+    expect(view.ignoreMutation({ target: view.contentDOM })).toBe(false)
+  })
+})
+
+describe('typing +++ where a details cannot go', () => {
+  it.each([
+    ['in a heading', '# \n', 'end'],
+    ['before words', 'Words\n', 'start'],
+    ['as a list item’s first line', '- \n', 'end'],
+  ] as const)('leaves it as typed %s', async (_where, source, position) => {
+    const { ref, user } = open(source)
+    await user.click(surface())
+    act(() => {
+      editorOf(ref).commands.focus(position)
+    })
+    await user.keyboard('+++ ')
+    expect(markdown(ref)).not.toContain(':::details')
   })
 })

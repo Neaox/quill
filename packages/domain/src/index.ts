@@ -35,6 +35,9 @@ export {
 
 export { MAX_SLUG_LENGTH, slugify } from './slug.ts'
 
+export type { SearchSuggestion } from './suggestion-ranking.ts'
+export { compareCodePoints, rankSuggestions, suggestion } from './suggestion-ranking.ts'
+
 export type { Result } from './result.ts'
 export { err, ok } from './result.ts'
 
@@ -42,7 +45,25 @@ export type { DocumentStatus } from './document-status.ts'
 export { DOCUMENT_STATUSES, isDocumentStatus } from './document-status.ts'
 
 export type { Role } from './roles.ts'
-export { ROLES, canComment, canEdit, canManage, canOwn, canView, roleAtLeast } from './roles.ts'
+export {
+  ROLES,
+  canComment,
+  canEdit,
+  canManage,
+  canOwn,
+  canPublish,
+  canView,
+  roleAtLeast,
+} from './roles.ts'
+
+export type { AssignmentState, ReviewDecision, ReviewerKind, ReviewStatus } from './review.ts'
+export {
+  ASSIGNMENT_STATES,
+  REVIEW_STATUSES,
+  assignmentStateFor,
+  deriveReviewStatus,
+  isActiveReviewStatus,
+} from './review.ts'
 
 export type { Instance } from './tenancy/instance.ts'
 export type { OrganisationalUnit } from './tenancy/organisational-unit.ts'
@@ -132,3 +153,118 @@ export type {
   WorkspaceTree,
 } from './permissions/materialise.ts'
 export { materialiseEffectivePermissions } from './permissions/materialise.ts'
+
+export type { DocumentFacts, PublicDocumentFacts, PublicLifecycle } from './document-facts.ts'
+export {
+  calendarDate,
+  describeInterval,
+  documentFacts,
+  isReviewInterval,
+  nextReviewDue,
+  publicDocumentFacts,
+  reviewDueAt,
+  statusLabel,
+  tagQuery,
+  verificationLapsed,
+} from './document-facts.ts'
+export type { DocumentLifecycle, LifecycleState, ReviewFreshness } from './document-lifecycle.ts'
+export {
+  DEPRECATED_CANNOT_BE_VERIFIED,
+  LEGACY_STATUSES,
+  LIFECYCLE_STATES,
+  REVIEW_DUE_SOON_DAYS,
+  canMoveLifecycle,
+  isLifecycleState,
+  lifecycleLabel,
+  reviewFreshness,
+} from './document-lifecycle.ts'
+export { MAX_URL_LENGTH, normaliseUrl } from './link-preview/normalise-url.ts'
+export {
+  FILE_KINDS,
+  FILE_MEDIA_TYPE_PATTERNS,
+  fileKindOf,
+  fileMeta,
+  fileTypeLabel,
+  formatFileSize,
+} from './link-preview/file-kind.ts'
+export type { FileKind } from './link-preview/file-kind.ts'
+export {
+  internalDocumentAddress,
+  internalReference,
+  isInternalAddress,
+} from './link-preview/internal-address.ts'
+export {
+  CODE_SNIPPET_MAX_LINES,
+  CODE_SNIPPET_MAX_LINE_LENGTH,
+  LINK_PREVIEW_FAILURES,
+  LINK_PREVIEW_KINDS,
+  LINK_PREVIEW_LAYERS,
+  PREVIEW_TONES,
+} from './link-preview/link-preview.ts'
+export type {
+  LinkPreview,
+  LinkPreviewFailure,
+  LinkPreviewKind,
+  LinkPreviewLayer,
+  PreviewCode,
+  PreviewEmbed,
+  PreviewFile,
+  PreviewImage,
+  PreviewStatus,
+  PreviewTone,
+} from './link-preview/link-preview.ts'
+export {
+  DEFAULT_LINK_PREVIEW_POLICY,
+  LINK_PREVIEW_MODES,
+  MAX_POLICY_PATTERNS,
+  compileLinkPolicy,
+  describePatternError,
+  parseUrlPattern,
+} from './link-preview/link-policy.ts'
+export type {
+  CompiledLinkPolicy,
+  LinkPreviewMode,
+  LinkPreviewPolicy,
+  PatternError,
+  PolicyError,
+  UrlPattern,
+} from './link-preview/link-policy.ts'
+export {
+  FAILURE_REMEMBERED_FOR_MS,
+  PREVIEW_FRESH_FOR_MS,
+  REQUEST_IN_FLIGHT_FOR_MS,
+  isStale,
+  retryAfter,
+} from './link-preview/snapshot.ts'
+export type { LinkPreviewRecord, LinkPreviewView } from './link-preview/snapshot.ts'
+export {
+  CARD_LAYOUTS,
+  DEFAULT_CARD_LAYOUT,
+  LINK_DISPLAYS,
+  ORGANISATION_DEFAULT_DISPLAYS,
+  DEFAULT_LINK_DISPLAY,
+  UNCHOSEN,
+  isBlockDisplay,
+  isCardLayout,
+  isLinkDisplay,
+} from './link-preview/display.ts'
+export type {
+  CardLayout,
+  LinkChoice,
+  LinkDisplay,
+  OrganisationDefaultDisplay,
+} from './link-preview/display.ts'
+export {
+  EMBED_PROVIDERS,
+  EMBED_RATIOS,
+  createEmbedRegistry,
+  nearestEmbedRatio,
+  unknownEmbedProviders,
+} from './link-preview/embed-providers.ts'
+export type {
+  EmbedFrame,
+  EmbedMatch,
+  EmbedProvider,
+  EmbedRatioName,
+  EmbedRegistry,
+} from './link-preview/embed-providers.ts'

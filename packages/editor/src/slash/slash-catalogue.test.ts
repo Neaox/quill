@@ -1,4 +1,5 @@
-import { parseDocument, serializeDocument } from '@quill/markdown'
+import { CALLOUT_TYPES, parseDocument, serializeDocument } from '@quill/markdown'
+import { CALLOUT_ICONS } from '@quill/ui'
 import { history, undo } from '@tiptap/pm/history'
 import { EditorState, TextSelection } from '@tiptap/pm/state'
 import { EditorView } from '@tiptap/pm/view'
@@ -151,12 +152,12 @@ describe('text items turn the line they are typed on', () => {
 
 describe('blocks open with the caret inside them', () => {
   it.each([
-    ['callout-note', '> [!NOTE]\n'],
-    ['callout-info', '> [!info]\n'],
-    ['callout-tip', '> [!TIP]\n'],
-    ['callout-important', '> [!IMPORTANT]\n'],
-    ['callout-warning', '> [!WARNING]\n'],
-    ['callout-caution', '> [!CAUTION]\n'],
+    ['callout-note', ':::callout{type="note"}\n:::\n'],
+    ['callout-info', ':::callout{type="info"}\n:::\n'],
+    ['callout-tip', ':::callout{type="tip"}\n:::\n'],
+    ['callout-important', ':::callout{type="important"}\n:::\n'],
+    ['callout-warning', ':::callout{type="warning"}\n:::\n'],
+    ['callout-caution', ':::callout{type="caution"}\n:::\n'],
     ['notes', ':::notes\n:::\n'],
   ])('%s', (id, expected) => {
     const result = run(id)
@@ -165,6 +166,12 @@ describe('blocks open with the caret inside them', () => {
     expect(result.caret).toMatchObject({ in: 'paragraph', line: '' })
     expect(result.view.state.selection.$from.node(1).type.name).toBe('containerDirective')
     expectStable(result.markdown)
+  })
+
+  it('marks each callout kind with the icon the reader draws for it', () => {
+    for (const type of CALLOUT_TYPES) {
+      expect(registry.findSlashItem(`callout-${type}`)?.icon).toBe(CALLOUT_ICONS[type])
+    }
   })
 
   it('figure: a line for its subject, the caret on it, and a caption', () => {
@@ -291,9 +298,33 @@ describe('data and references', () => {
     expectStable(result.markdown)
   })
 
-  it('link to document: by id, with the title as its words', async () => {
+  it('link to document: by id, shown as the document’s live title', async () => {
     const result = await choose(run('document-link', 'See '), 'run')
-    expect(result.markdown).toBe('See [Runbook](/d/doc-1)\n')
+    expect(result.markdown).toBe('See [/d/doc-1](/d/doc-1)<!-- quill:link display=inline -->\n')
+    expectStable(result.markdown)
+  })
+
+  it('link card: a web address as a card, on a line of its own', async () => {
+    const result = await choose(run('link-card'), 'https://blog.example/post')
+    expect(result.markdown).toContain(
+      '<https://blog.example/post> <!-- quill:link display=card -->',
+    )
+    expectStable(roundTrip(result.markdown))
+  })
+
+  it('compact link: a web address as one line of its own', async () => {
+    const result = await choose(run('link-compact'), 'https://blog.example/post')
+    expect(result.markdown).toContain(
+      '<https://blog.example/post> <!-- quill:link display=compact -->',
+    )
+    expectStable(roundTrip(result.markdown))
+  })
+
+  it('link with preview: a web address inline, spelling itself', async () => {
+    const result = await choose(run('link-inline', 'See '), 'https://blog.example/post')
+    expect(result.markdown).toBe(
+      'See <https://blog.example/post><!-- quill:link display=inline -->\n',
+    )
     expectStable(result.markdown)
   })
 
@@ -326,9 +357,24 @@ describe('pickers say when nothing matches', () => {
     ['label', 'No label matches “zz”'],
     ['emoji', 'No emoji matches “zz”'],
     ['document-link', 'No document matches “zz”'],
+    ['link-card', 'That is not a web address (https://…)'],
+    ['link-compact', 'That is not a web address (https://…)'],
+    ['link-inline', 'That is not a web address (https://…)'],
   ])('%s', (id, message) => {
     expect(run(id).picker?.empty('zz')).toBe(message)
   })
+
+  it.each(['link-card', 'link-compact', 'link-inline'])(
+    '%s asks for an address before it has one, and offers nothing until it has a real one',
+    (id) => {
+      const { picker } = run(id)
+      expect(picker?.empty('  ')).toBe('Paste or type a web address')
+      const source = picker?.source
+      if (source?.kind !== 'list') throw new Error('Not a list.')
+      expect(source.options('blog.example/post')).toEqual([])
+      expect(source.options('https://blog.example/post')).toHaveLength(1)
+    },
+  )
 
   it('and a document search asks for words before it has any', async () => {
     const { picker } = run('document-link')

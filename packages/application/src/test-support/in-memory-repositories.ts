@@ -1,4 +1,5 @@
-import type { DocumentId, ShortId } from '@quill/domain'
+import { REQUEST_IN_FLIGHT_FOR_MS, retryAfter } from '@quill/domain'
+import type { DocumentId, ShortId, UserId } from '@quill/domain'
 
 import type {
   AttachmentRepository,
@@ -6,13 +7,18 @@ import type {
   AuditEventRow,
   AuditWriter,
   CollectionRepository,
+  Contributor,
   CollectionRow,
   CredentialRepository,
   CredentialRow,
   DocumentLinkRow,
   DocumentLinksRepository,
   DocumentLockRow,
+  DocumentViewRepository,
+  DocumentViewRow,
   DocumentRepository,
+  DocumentSummaryRepository,
+  DocumentSummaryRow,
   DocumentRow,
   DraftRepository,
   DraftRow,
@@ -25,8 +31,12 @@ import type {
   LockRepository,
   MagicLinkRepository,
   MagicLinkTokenRow,
+  NotificationRepository,
+  NotificationRow,
   OutboxEventRow,
   OutboxWriter,
+  LinkPreviewRepository,
+  LinkPreviewRow,
   PersonPreferencesRepository,
   PersonPreferencesRow,
   PublicRedirectRepository,
@@ -34,6 +44,9 @@ import type {
   RenderCacheRepository,
   RenderCacheRow,
   RepositoryBundle,
+  ReviewAssignmentRow,
+  ReviewRepository,
+  ReviewRequestRow,
   RevisionIndexRow,
   RevisionsIndexRepository,
   SecretCursor,
@@ -53,6 +66,8 @@ import type {
   WorkspaceSlugHistoryRepository,
   WorkspaceSlugHistoryRow,
 } from '../ports/index.ts'
+import type { EventBus, RecordedEvent } from '../ports/events.ts'
+import { createEventRecorder } from '../events/event-recorder.ts'
 import { LOCK_TTL_MS } from '../ports/index.ts'
 
 /**
@@ -78,6 +93,10 @@ export interface InMemoryUnitOfWork extends UnitOfWork {
   readonly auditEvents: readonly AuditEventRow[]
   /** Every attachment state a revision replaced, oldest first: the attachments' history. */
   readonly attachmentHistory: readonly AttachmentRow[]
+  /** What the search projection would hold for each published document (ADR-058); a test sets it. */
+  readonly summaries: Map<DocumentId, DocumentSummaryRow>
+  /** Drops a document's draft row, as a document imported or seeded without one has none. */
+  forgetDraft(documentId: DocumentId): void
 }
 
 /** The `(created_at, name)` order the secrets rotation pages by. */
@@ -96,7 +115,24 @@ function identityKey(issuer: string, subject: string): string {
   return JSON.stringify([issuer, subject])
 }
 
-export function createInMemoryUnitOfWork(): InMemoryUnitOfWork {
+/** A scope and a key cannot collide: neither contains a newline. */
+function rowId(scope: string, key: string): string {
+  return `${scope}\n${key}`
+}
+const isActiveReview = (row: ReviewRequestRow): boolean => row.closedAt === null
+const newestFirst = (left: ReviewRequestRow, right: ReviewRequestRow): number =>
+  right.createdAt.getTime() - left.createdAt.getTime() || (left.id < right.id ? 1 : -1)
+const matchesName = (name: string, query: string): boolean =>
+  name.toLowerCase().includes(query.toLowerCase())
+
+export interface InMemoryUnitOfWorkOptions {
+  /** Told of what was recorded once a run has finished, as the real unit of work tells it after commit. */
+  readonly bus?: EventBus
+}
+
+export function createInMemoryUnitOfWork(
+  options: InMemoryUnitOfWorkOptions = {},
+): InMemoryUnitOfWork {
   const users = new Map<string, UserRow>()
   const usersByEmail = new Map<string, string>()
   const credentials = new Map<string, CredentialRow>()
@@ -114,7 +150,7 @@ export function createInMemoryUnitOfWork(): InMemoryUnitOfWork {
   const grants = new Map<string, GrantRow>()
   const shareLinks = new Map<string, ShareLinkRow>()
   const groups = new Map<string, GroupRow>()
-  const memberships = new Map<string, Set<string>>()
+  const memberships = new Map<UserId, Set<string>>()
   const collections = new Map<string, CollectionRow>()
   const revisions: RevisionIndexRow[] = []
   const renders = new Map<string, RenderCacheRow>()
@@ -127,6 +163,22 @@ export function createInMemoryUnitOfWork(): InMemoryUnitOfWork {
   const auditEvents: AuditEventRow[] = []
   const secrets = new Map<string, SecretRow>()
   const personPreferences = new Map<string, PersonPreferencesRow>()
+  const summaries = new Map<DocumentId, DocumentSummaryRow>()
+
+  const documentSummaryRepository: DocumentSummaryRepository = {
+    async listByIds(ids) {
+      return ids.flatMap((id) => {
+        const row = summaries.get(id)
+        return row === undefined ? [] : [row]
+      })
+    },
+  }
+  const linkPreviewRows = new Map<string, LinkPreviewRow>()
+  const reviewRequests: ReviewRequestRow[] = []
+  const reviewAssignments: ReviewAssignmentRow[] = []
+  /** Keyed by `(userId, documentId)`, which is what the primary key makes unique. */
+  const documentViews = new Map<string, DocumentViewRow>()
+  const notifications: NotificationRow[] = []
 
   const userRepository: UserRepository = {
     async create(input) {
@@ -154,6 +206,35 @@ export function createInMemoryUnitOfWork(): InMemoryUnitOfWork {
       // has a row — the `?? null` fallback exists only to satisfy the return type.
       /* v8 ignore next */
       return id === undefined ? null : (users.get(id) ?? null)
+    },
+    async findVerifiedByEmails(emails) {
+      const wanted = new Set(emails.map((email) => email.toLowerCase()))
+      return [...users.values()].filter(
+        (user) => user.emailVerifiedAt !== null && wanted.has(user.email.toLowerCase()),
+      )
+    },
+    async searchVerified(query, limit) {
+      const needle = query.toLowerCase()
+      return [...users.values()]
+        .filter(
+          (user) =>
+            user.emailVerifiedAt !== null &&
+            (user.displayName.toLowerCase().includes(needle) ||
+              user.email.toLowerCase().includes(needle)),
+        )
+        .toSorted((a, b) => a.displayName.localeCompare(b.displayName))
+        .slice(0, limit)
+    },
+    async searchByPrefix(query, limit) {
+      const prefix = query.toLowerCase()
+      return [...users.values()]
+        .filter(
+          (user) =>
+            user.displayName.toLowerCase().startsWith(prefix) ||
+            user.email.toLowerCase().startsWith(prefix),
+        )
+        .toSorted((a, b) => a.displayName.localeCompare(b.displayName))
+        .slice(0, limit)
     },
     async markEmailVerified(id, now) {
       const existing = users.get(id)
@@ -372,6 +453,9 @@ export function createInMemoryUnitOfWork(): InMemoryUnitOfWork {
       }
       return chain
     },
+    async listAll() {
+      return [...units.values()]
+    },
     async rename(id, name) {
       const existing = units.get(id)
       if (existing === undefined) {
@@ -433,6 +517,8 @@ export function createInMemoryUnitOfWork(): InMemoryUnitOfWork {
       const row: DocumentRow = {
         ...input,
         headRevision: null,
+        createdBy: input.createdBy ?? null,
+        updatedBy: null,
         createdAt: input.now,
         updatedAt: input.now,
       }
@@ -471,34 +557,6 @@ export function createInMemoryUnitOfWork(): InMemoryUnitOfWork {
     async listByCollection(collectionId) {
       return [...documents.values()].filter((doc) => doc.collectionId === collectionId)
     },
-    async listChildren({ workspaceId, collectionId, parentId, after, limit }) {
-      const later = (doc: DocumentRow): boolean =>
-        after === null ||
-        doc.createdAt.getTime() > after.createdAt.getTime() ||
-        (doc.createdAt.getTime() === after.createdAt.getTime() && doc.id > after.id)
-      return [...documents.values()]
-        .filter(
-          (doc) =>
-            doc.workspaceId === workspaceId &&
-            doc.collectionId === collectionId &&
-            doc.parentId === parentId &&
-            later(doc),
-        )
-        .toSorted(
-          (a, b) => a.createdAt.getTime() - b.createdAt.getTime() || a.id.localeCompare(b.id),
-        )
-        .slice(0, limit)
-    },
-    async countChildren(parentIds) {
-      const wanted = new Set(parentIds)
-      const counts = new Map<DocumentId, number>()
-      for (const doc of documents.values()) {
-        if (doc.parentId !== null && wanted.has(doc.parentId)) {
-          counts.set(doc.parentId, (counts.get(doc.parentId) ?? 0) + 1)
-        }
-      }
-      return counts
-    },
     async listByIds(ids) {
       return ids.flatMap((id) => {
         const row = documents.get(id)
@@ -518,6 +576,19 @@ export function createInMemoryUnitOfWork(): InMemoryUnitOfWork {
       }
       return chain
     },
+    async listDescendants(id, depth, limit) {
+      const found: DocumentRow[] = []
+      let level: readonly DocumentId[] = [id]
+      for (let reached = 0; reached < depth && level.length > 0; reached += 1) {
+        const parents = new Set(level)
+        const next = [...documents.values()].filter(
+          (doc) => doc.parentId !== null && parents.has(doc.parentId),
+        )
+        found.push(...next)
+        level = next.map((doc) => doc.id)
+      }
+      return found.slice(0, limit)
+    },
     async update(id, patch, now) {
       const existing = documents.get(id)
       if (existing === undefined) {
@@ -534,18 +605,18 @@ export function createInMemoryUnitOfWork(): InMemoryUnitOfWork {
 
   const draftRepository: DraftRepository = {
     async init({ documentId, baseRevision, ast, now }) {
-      const row: DraftRow = {
-        documentId,
-        draftVersion: 0,
-        baseRevision,
-        ast,
-        updatedAt: now,
-      }
+      const row: DraftRow = { documentId, draftVersion: 0, baseRevision, ast, updatedAt: now }
       drafts.set(documentId, row)
       return row
     },
     async find(documentId) {
       return drafts.get(documentId) ?? null
+    },
+    async stamp(documentId) {
+      const draft = drafts.get(documentId)
+      return draft === undefined
+        ? null
+        : { baseRevision: draft.baseRevision, updatedAt: draft.updatedAt }
     },
     async write({ documentId, sessionId, expectedVersion, ast, authorship, now }) {
       const lock = locks.get(documentId) ?? null
@@ -571,13 +642,15 @@ export function createInMemoryUnitOfWork(): InMemoryUnitOfWork {
       drafts.set(documentId, updated)
       return { ok: true, draft: updated }
     },
-    async rebase({ documentId, baseRevision, ast, now }) {
+    async rebase({ documentId, baseRevision, ast, authorship, expectedVersion, now }) {
       const draft = drafts.get(documentId)
       if (draft === undefined) return null
+      if (expectedVersion !== undefined && draft.draftVersion !== expectedVersion) return null
       const updated: DraftRow = {
         ...draft,
         baseRevision,
-        authorship: null,
+        // From a new base the record says what is published, so it is let go.
+        authorship: authorship ?? (baseRevision === draft.baseRevision ? draft.authorship : null),
         updatedAt: now,
         // Replacing the content bumps the version, so an editor that was open
         // when a restore landed is told its next write is stale (ADR-021).
@@ -690,6 +763,33 @@ export function createInMemoryUnitOfWork(): InMemoryUnitOfWork {
     async findById(id) {
       return groups.get(id) ?? null
     },
+    async list() {
+      return [...groups.values()]
+    },
+    async countMembers() {
+      const counts = new Map<string, number>()
+      for (const held of memberships.values()) {
+        for (const groupId of held) counts.set(groupId, (counts.get(groupId) ?? 0) + 1)
+      }
+      return counts
+    },
+    async countChildren(id) {
+      return [...groups.values()].filter((group) => group.parentGroupId === id).length
+    },
+    async listMemberIds(groupId) {
+      return [...memberships].filter(([, held]) => held.has(groupId)).map(([member]) => member)
+    },
+    async rename(id, name) {
+      const existing = groups.get(id)
+      if (existing === undefined) throw new Error(`rename: group ${id} not found`)
+      const updated = { ...existing, name }
+      groups.set(id, updated)
+      return updated
+    },
+    async delete(id) {
+      groups.delete(id)
+      for (const held of memberships.values()) held.delete(id)
+    },
     async addMember({ groupId, userId: member }) {
       const current = memberships.get(member) ?? new Set<string>()
       current.add(groupId)
@@ -710,6 +810,10 @@ export function createInMemoryUnitOfWork(): InMemoryUnitOfWork {
         }
       }
       return [...found.values()]
+    },
+    async listByUnits(unitIds) {
+      const wanted = new Set(unitIds)
+      return [...groups.values()].filter((row) => wanted.has(row.unitId))
     },
   }
 
@@ -749,6 +853,10 @@ export function createInMemoryUnitOfWork(): InMemoryUnitOfWork {
         const row = collections.get(id)
         return row === undefined ? [] : [row]
       })
+    },
+    async listByWorkspaces(workspaceIds) {
+      const wanted = new Set(workspaceIds)
+      return [...collections.values()].filter((row) => wanted.has(row.workspaceId))
     },
     async searchByName(text, limit) {
       const needle = text.toLocaleLowerCase()
@@ -821,7 +929,11 @@ export function createInMemoryUnitOfWork(): InMemoryUnitOfWork {
 
   const revisionsRepository: RevisionsIndexRepository = {
     async append(input) {
-      const row: RevisionIndexRow = { ...input, createdAt: input.now }
+      const row: RevisionIndexRow = {
+        ...input,
+        authorUserId: input.authorUserId ?? null,
+        createdAt: input.now,
+      }
       revisions.unshift(row)
       return row
     },
@@ -848,6 +960,36 @@ export function createInMemoryUnitOfWork(): InMemoryUnitOfWork {
       return (
         revisions.find((row) => row.documentId === documentId && row.revision === revision) ?? null
       )
+    },
+    async listContributors(documentId) {
+      // The name each address last published under, as the adapter's
+      // `DISTINCT ON` produces, in order of address.
+      const latest = new Map<string, RevisionIndexRow>()
+      for (const row of revisions) {
+        if (row.documentId !== documentId) continue
+        const address = row.authorEmail.trim().toLowerCase()
+        const held = latest.get(address)
+        if (held === undefined || row.timestamp > held.timestamp) latest.set(address, row)
+      }
+      return [...latest]
+        .toSorted(([left], [right]) => left.localeCompare(right))
+        .map(([email, row]) => ({ name: row.authorName.trim(), email }))
+    },
+    async listContributorsForDocuments(documentIds) {
+      const wanted = new Set(documentIds)
+      // Newest first, so the first row met for an address is the name it last used.
+      const recentFirst = revisions
+        .filter((row) => wanted.has(row.documentId))
+        .toSorted((a, b) => b.timestamp.getTime() - a.timestamp.getTime())
+      const byDocument = new Map<DocumentId, Map<string, Contributor>>()
+      for (const row of recentFirst) {
+        const contributors = byDocument.get(row.documentId) ?? new Map<string, Contributor>()
+        const email = row.authorEmail.trim().toLowerCase()
+        if (!contributors.has(email))
+          contributors.set(email, { name: row.authorName.trim(), email })
+        byDocument.set(row.documentId, contributors)
+      }
+      return new Map([...byDocument].map(([id, found]) => [id, [...found.values()]]))
     },
   }
 
@@ -958,6 +1100,16 @@ export function createInMemoryUnitOfWork(): InMemoryUnitOfWork {
     },
   }
 
+  /** Sequential and readable in a failing assertion; the real generator draws UUIDs. */
+  // A batch asks for every id before any row is written, so the count is of ids issued as well as rows.
+  let issued = 0
+  const eventIds = {
+    uuid: () => {
+      issued = Math.max(issued, events.length) + 1
+      return `event-${String(issued)}`
+    },
+  }
+
   const outboxWriter: OutboxWriter = {
     async write({ id, type, payload, now }) {
       events.push({
@@ -970,6 +1122,9 @@ export function createInMemoryUnitOfWork(): InMemoryUnitOfWork {
         attempts: 0,
         lastError: null,
       })
+    },
+    async writeMany(inputs) {
+      for (const input of inputs) await outboxWriter.write(input)
     },
   }
 
@@ -1022,6 +1177,157 @@ export function createInMemoryUnitOfWork(): InMemoryUnitOfWork {
     },
   }
 
+  /** Every group nested inside `rootId`, itself included; a loop in the tree stops where it started. */
+  function groupAndDescendants(rootId: string): ReadonlySet<string> {
+    const found = new Set([rootId])
+    for (let grew = true; grew;) {
+      grew = false
+      for (const group of groups.values()) {
+        if (
+          group.parentGroupId !== null &&
+          found.has(group.parentGroupId) &&
+          !found.has(group.id)
+        ) {
+          found.add(group.id)
+          grew = true
+        }
+      }
+    }
+    return found
+  }
+
+  const reviewRepository: ReviewRepository = {
+    async create(input) {
+      const row: ReviewRequestRow = {
+        id: input.id,
+        documentId: input.documentId,
+        requestedBy: input.requestedBy,
+        draftVersion: input.draftVersion,
+        message: input.message,
+        status: 'open',
+        createdAt: input.now,
+        closedAt: null,
+      }
+      reviewRequests.push(row)
+      for (const reviewer of input.reviewers) {
+        reviewAssignments.push({
+          id: reviewer.id,
+          requestId: input.id,
+          principalKind: reviewer.kind,
+          principalId: reviewer.principalId,
+          state: 'pending',
+          decidedBy: null,
+          comment: null,
+          decidedAt: null,
+        })
+      }
+      return row
+    },
+    async findById(id) {
+      return reviewRequests.find((row) => row.id === id) ?? null
+    },
+    async findActiveForDocument(documentId) {
+      return (
+        reviewRequests.find((row) => row.documentId === documentId && isActiveReview(row)) ?? null
+      )
+    },
+    async findLatestForDocument(documentId) {
+      return (
+        reviewRequests
+          .filter((row) => row.documentId === documentId)
+          .toSorted((left, right) =>
+            isActiveReview(left) === isActiveReview(right)
+              ? newestFirst(left, right)
+              : isActiveReview(left)
+                ? -1
+                : 1,
+          )[0] ?? null
+      )
+    },
+    async setStatus(id, status, now) {
+      const index = reviewRequests.findIndex((row) => row.id === id)
+      const existing = reviewRequests[index]
+      if (existing === undefined) return null
+      const closing = status === 'withdrawn' || status === 'superseded' || status === 'published'
+      const updated: ReviewRequestRow = {
+        ...existing,
+        status,
+        closedAt: closing ? now : null,
+      }
+      reviewRequests[index] = updated
+      return updated
+    },
+    async listAssignments(requestIds) {
+      const wanted = new Set(requestIds)
+      return reviewAssignments.filter((row) => wanted.has(row.requestId))
+    },
+    async recordDecision({ assignmentIds, state, decidedBy, comment, now }) {
+      const wanted = new Set(assignmentIds)
+      reviewAssignments.forEach((row, index) => {
+        if (wanted.has(row.id)) {
+          reviewAssignments[index] = { ...row, state, decidedBy, comment, decidedAt: now }
+        }
+      })
+    },
+    async listAwaiting({ userId, groupIds, limit }) {
+      const held = new Set(groupIds)
+      const waiting = new Set(
+        reviewAssignments
+          .filter(
+            (row) =>
+              row.state === 'pending' &&
+              (row.principalKind === 'user'
+                ? row.principalId === userId
+                : held.has(row.principalId)),
+          )
+          .map((row) => row.requestId),
+      )
+      return reviewRequests
+        .filter((row) => isActiveReview(row) && waiting.has(row.id) && row.requestedBy !== userId)
+        .toSorted(newestFirst)
+        .slice(0, limit)
+    },
+    async listAnswered({ userId, limit }) {
+      return reviewRequests
+        .filter(
+          (row) =>
+            row.requestedBy === userId &&
+            (row.status === 'approved' || row.status === 'changes_requested'),
+        )
+        .toSorted(newestFirst)
+        .slice(0, limit)
+    },
+    async searchPeople(query, limit) {
+      return [...users.values()]
+        .filter((user) => matchesName(user.displayName, query))
+        .toSorted((left, right) => left.displayName.localeCompare(right.displayName))
+        .slice(0, limit)
+    },
+    async searchGroups(query, limit) {
+      return [...groups.values()]
+        .filter((group) => matchesName(group.name, query))
+        .toSorted((left, right) => left.name.localeCompare(right.name))
+        .slice(0, limit)
+    },
+    async countGroupMembers(groupIds) {
+      const counts = new Map<string, number>()
+      for (const groupId of groupIds) {
+        const within = groupAndDescendants(groupId)
+        const members = [...memberships].filter(([, held]) =>
+          [...held].some((id) => within.has(id)),
+        )
+        if (members.length > 0) counts.set(groupId, members.length)
+      }
+      return counts
+    },
+    async listMemberIdsDeep(groupIds) {
+      const within = new Set(groupIds.flatMap((groupId) => [...groupAndDescendants(groupId)]))
+      return [...memberships]
+        .filter(([, held]) => [...held].some((id) => within.has(id)))
+        .map(([member]) => member)
+    },
+  }
+
   const auditWriter: AuditWriter = {
     async write({ id, type, actorUserId, targetType, targetId, metadata, now }) {
       auditEvents.push({
@@ -1036,6 +1342,110 @@ export function createInMemoryUnitOfWork(): InMemoryUnitOfWork {
     },
   }
 
+  const documentViewRepository: DocumentViewRepository = {
+    async touch({ userId, documentId, workspaceId, now, debounceBefore }) {
+      const key = JSON.stringify([userId, documentId])
+      const existing = documentViews.get(key)
+      if (existing !== undefined && existing.lastViewedAt.getTime() >= debounceBefore.getTime()) {
+        return false
+      }
+      documentViews.set(key, {
+        userId,
+        documentId,
+        workspaceId,
+        lastViewedAt: now,
+        views: (existing?.views ?? 0) + 1,
+      })
+      return true
+    },
+    async listRecent({ userId, since, limit }) {
+      return [...documentViews.values()]
+        .filter((row) => row.userId === userId && row.lastViewedAt.getTime() >= since.getTime())
+        .toSorted((a, b) => b.lastViewedAt.getTime() - a.lastViewedAt.getTime())
+        .slice(0, limit)
+    },
+    async sumByWorkspace({ userId, since }) {
+      const mine = [...documentViews.values()].filter(
+        (row) => row.userId === userId && row.lastViewedAt.getTime() >= since.getTime(),
+      )
+      return [...Map.groupBy(mine, (row) => row.workspaceId)].map(([workspaceId, rows]) => ({
+        workspaceId,
+        views: rows.reduce((sum, row) => sum + row.views, 0),
+      }))
+    },
+    async deleteForUser(userId) {
+      const doomed = [...documentViews].filter(([, row]) => row.userId === userId)
+      for (const [key] of doomed) documentViews.delete(key)
+      return doomed.length
+    },
+    async deleteOlderThan(cutoff) {
+      const doomed = [...documentViews].filter(
+        ([, row]) => row.lastViewedAt.getTime() < cutoff.getTime(),
+      )
+      for (const [key] of doomed) documentViews.delete(key)
+      return doomed.length
+    },
+  }
+
+  const notificationRepository: NotificationRepository = {
+    async insertMany(rows) {
+      let written = 0
+      for (const row of rows) {
+        const exists = notifications.some(
+          (held) =>
+            held.requestId === row.requestId &&
+            held.recipientUserId === row.recipientUserId &&
+            held.kind === row.kind &&
+            held.actorUserId === row.actorUserId,
+        )
+        if (exists) continue
+        notifications.push({ ...row, readAt: null })
+        written += 1
+      }
+      return written
+    },
+    async markRequestKindRead({ requestId, kind, now }) {
+      const unread = notifications.filter(
+        (row) => row.requestId === requestId && row.kind === kind && row.readAt === null,
+      )
+      for (const row of unread) notifications[notifications.indexOf(row)] = { ...row, readAt: now }
+      return unread.length
+    },
+    async listForUser({ userId, after, limit }) {
+      return notifications
+        .filter((row) => row.recipientUserId === userId)
+        .toSorted(
+          (a, b) => b.createdAt.getTime() - a.createdAt.getTime() || b.id.localeCompare(a.id),
+        )
+        .filter(
+          (row) =>
+            after === null ||
+            row.createdAt.getTime() < after.createdAt.getTime() ||
+            (row.createdAt.getTime() === after.createdAt.getTime() && row.id < after.id),
+        )
+        .slice(0, limit)
+    },
+    async countUnread(userId) {
+      return notifications.filter((row) => row.recipientUserId === userId && row.readAt === null)
+        .length
+    },
+    async markRead({ userId, ids, now }) {
+      const unread = notifications.filter(
+        (row) =>
+          row.recipientUserId === userId &&
+          row.readAt === null &&
+          (ids === undefined || ids.includes(row.id)),
+      )
+      for (const row of unread) notifications[notifications.indexOf(row)] = { ...row, readAt: now }
+      return unread.length
+    },
+    async deleteOlderThan(cutoff) {
+      const doomed = notifications.filter((row) => row.createdAt.getTime() < cutoff.getTime())
+      for (const row of doomed) notifications.splice(notifications.indexOf(row), 1)
+      return doomed.length
+    },
+  }
+
   const personPreferencesRepository: PersonPreferencesRepository = {
     async find(userId) {
       return personPreferences.get(userId) ?? null
@@ -1044,6 +1454,94 @@ export function createInMemoryUnitOfWork(): InMemoryUnitOfWork {
       const row: PersonPreferencesRow = { userId, document, updatedAt: now }
       personPreferences.set(userId, row)
       return row
+    },
+  }
+
+  /**
+   * The same rules as the SQL: one row per `(scope, key)`, an atomic claim on
+   * a fetch, and a failure that never replaces a stored preview.
+   */
+  const linkPreviewRepository: LinkPreviewRepository = {
+    async findMany(scopes, keys) {
+      return keys.flatMap((key) =>
+        scopes.flatMap((scope) => linkPreviewRows.get(rowId(scope, key)) ?? []),
+      )
+    },
+    async requestFetch({ scope, keys, now, force }) {
+      const cutoff = now.getTime() - REQUEST_IN_FLIGHT_FOR_MS
+      const queued: string[] = []
+      for (const key of keys) {
+        const id = rowId(scope, key)
+        const row = linkPreviewRows.get(id)
+        if (row === undefined) {
+          linkPreviewRows.set(id, {
+            scope,
+            key,
+            state: 'pending',
+            document: null,
+            failure: null,
+            fetchedAt: now,
+            requestedAt: now,
+            retryAfter: null,
+          })
+          queued.push(key)
+        } else if (
+          (row.requestedAt === null || row.requestedAt.getTime() < cutoff) &&
+          (force || row.retryAfter === null || row.retryAfter.getTime() <= now.getTime())
+        ) {
+          linkPreviewRows.set(id, { ...row, requestedAt: now })
+          queued.push(key)
+        }
+      }
+      return queued
+    },
+    async putReady({ scope, key, document, now }) {
+      linkPreviewRows.set(rowId(scope, key), {
+        scope,
+        key,
+        state: 'ready',
+        document,
+        failure: null,
+        fetchedAt: now,
+        requestedAt: null,
+        retryAfter: null,
+      })
+    },
+    async putFailure({ scope, key, failure, now }) {
+      const id = rowId(scope, key)
+      const row = linkPreviewRows.get(id)
+      linkPreviewRows.set(
+        id,
+        row?.state === 'ready' && failure !== 'restricted'
+          ? { ...row, requestedAt: null, retryAfter: retryAfter(now) }
+          : {
+              scope,
+              key,
+              state: 'failed',
+              document: null,
+              failure,
+              fetchedAt: now,
+              requestedAt: null,
+              retryAfter: retryAfter(now),
+            },
+      )
+    },
+    async deleteFetchedBefore(before) {
+      const stale = [...linkPreviewRows].filter(
+        ([, row]) => row.fetchedAt.getTime() < before.getTime(),
+      )
+      for (const [id] of stale) linkPreviewRows.delete(id)
+      return stale.length
+    },
+    async isImageReferenced(hash) {
+      return [...linkPreviewRows.values()].some((row) => {
+        const { document } = row
+        if (typeof document !== 'object' || document === null) return false
+        return [Reflect.get(document, 'thumbnail'), Reflect.get(document, 'favicon')].some(
+          (image) =>
+            typeof image === 'object' && image !== null && Reflect.get(image, 'hash') === hash,
+        )
+      })
     },
   }
 
@@ -1110,7 +1608,7 @@ export function createInMemoryUnitOfWork(): InMemoryUnitOfWork {
     },
   }
 
-  const repos: RepositoryBundle = {
+  const bundleWith = (sink: (event: RecordedEvent) => void): RepositoryBundle => ({
     users: userRepository,
     sessions: sessionRepository,
     credentials: credentialRepository,
@@ -1122,6 +1620,7 @@ export function createInMemoryUnitOfWork(): InMemoryUnitOfWork {
     workspaceSlugHistory: workspaceSlugHistoryRepository,
     collections: collectionRepository,
     documents: documentRepository,
+    documentSummaries: documentSummaryRepository,
     drafts: draftRepository,
     locks: lockRepository,
     grants: grantRepository,
@@ -1133,17 +1632,35 @@ export function createInMemoryUnitOfWork(): InMemoryUnitOfWork {
     secrets: secretsRepository,
     attachments: attachmentRepository,
     personPreferences: personPreferencesRepository,
-    outbox: outboxWriter,
+    linkPreviews: linkPreviewRepository,
+    reviews: reviewRepository,
+    documentViews: documentViewRepository,
+    notifications: notificationRepository,
+    events: createEventRecorder({ outbox: outboxWriter, ids: eventIds, sink }),
     audit: auditWriter,
-  }
+  })
+
+  /** Outside a run each write commits as it is made, so what it recorded is announced at once. */
+  const repos = bundleWith((event) => {
+    void options.bus?.publish(event)
+  })
 
   return {
     repos,
     events,
     auditEvents,
     attachmentHistory,
+    summaries,
+    forgetDraft(documentId) {
+      drafts.delete(documentId)
+    },
     async run(fn) {
-      return fn(repos)
+      const pending: RecordedEvent[] = []
+      const result = await fn(bundleWith((event) => pending.push(event)))
+      // Only after the callback has returned: a callback that throws is a
+      // rolled-back transaction, and its events are never announced.
+      await Promise.all(pending.map((event) => options.bus?.publish(event)))
+      return result
     },
   }
 }

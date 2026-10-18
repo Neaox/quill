@@ -25,7 +25,6 @@ export {
   type RequestMagicLinkInput,
   type ConfirmPasswordResetInput,
 } from './auth.ts'
-export { useOidcProviders, oidcStartPath } from './oidc.ts'
 export {
   personPreferencesQueryOptions,
   usePersonPreferences,
@@ -35,6 +34,7 @@ export {
 
 export {
   unitsQueryOptions,
+  useAllUnits,
   useUnits,
   useCreateUnit,
   useRenameUnit,
@@ -44,15 +44,6 @@ export {
   type RenameUnitInput,
   type UnitNotEmptyDetails,
 } from './units.ts'
-export {
-  useCreateCollection,
-  useRenameCollection,
-  useDeleteCollection,
-  readDocumentCount,
-  type CreateCollectionInput,
-  type RenameCollectionInput,
-  type DeleteCollectionInput,
-} from './collections.ts'
 export {
   workspaceQueryOptions,
   workspaceListQueryOptions,
@@ -65,6 +56,39 @@ export {
   type CreateWorkspaceInput,
   type RenameWorkspaceInput,
 } from './workspaces.ts'
+export {
+  useAddGroupMember,
+  useCreateGroup,
+  useDeleteGroup,
+  useGroupMembers,
+  useGroups,
+  usePeopleSearch,
+  useRemoveGroupMember,
+  useRenameGroup,
+  groupsQueryOptions,
+  type CreateGroupInput,
+  type DeleteGroupInput,
+  type GroupMemberInput,
+  type RenameGroupInput,
+} from './groups.ts'
+export {
+  homeSummaryQueryOptions,
+  useClearViewingHistory,
+  useHomeSummary,
+  useRecordView,
+  type HomeScope,
+} from './home.ts'
+export { useMarkNotificationsRead, useNotifications } from './notifications.ts'
+export {
+  useAttention,
+  useDecideReview,
+  useRequestReview,
+  useReview,
+  useReviewerCandidates,
+  useWithdrawReview,
+  type ReviewDecision,
+  type ReviewerRef,
+} from './review.ts'
 export {
   documentQueryOptions,
   workspaceDocumentsQueryOptions,
@@ -82,7 +106,26 @@ export {
   type MoveDocumentInput,
   type DeleteDocumentInput,
 } from './documents.ts'
-export { draftQueryOptions, useDraft, useSaveDraft, type SaveDraftInput } from './drafts.ts'
+export {
+  NAVIGATION_PAGE_SIZE,
+  listKey,
+  useNavigationTree,
+  type NavigationCollection,
+  type NavigationList,
+  type NavigationNode,
+  type NavigationTree,
+} from './navigation-tree.ts'
+export {
+  draftQueryOptions,
+  useDraft,
+  usePutBackChanges,
+  useRevertPreview,
+  useSaveDraft,
+  useUndoPutBack,
+  type PutBackInput,
+  type SaveDraftInput,
+  type UndoPutBackInput,
+} from './drafts.ts'
 export { useAcquireLock, useHeartbeatLock, useReleaseLock, useTakeoverLock } from './locks.ts'
 export {
   renderedQueryOptions,
@@ -97,16 +140,15 @@ export {
   type ComparisonRange,
 } from './content.ts'
 export {
-  TREE_PAGE_SIZE,
-  treeChildrenQueryOptions,
-  treeCollectionsQueryOptions,
-  useTreeCollections,
-  useTreePosition,
-  type TreeLevel,
-} from './tree.ts'
+  linkPreviewImageUrl,
+  linkPreviewQueryOptions,
+  useLinkPreview,
+  useRefreshLinkPreview,
+  type LinkPreviewView,
+  type LinkPreview,
+} from './link-previews.ts'
 export {
   usePublishDocument,
-  useRevertPreview,
   useRestoreRevision,
   type PublishInput,
   type PublishOutcome,
@@ -122,26 +164,21 @@ export {
  * keeps the upload client in the editor's chunk. Please leave it that way; the
  * bundle gate is what notices if it moves.
  */
-export { useDraftClient, useLockClient } from './editor-clients.ts'
 export {
   MAX_QUERY_LENGTH,
   queryTooLong,
   readInvalidQuery,
+  RESULTS_FACETS,
   searchResultsQueryOptions,
   useSearch,
   useSearchResults,
+  useSearchSuggestions,
   type InvalidQuery,
   type InvalidQueryKind,
   type SearchInput,
+  type SearchResultsInput,
+  type SearchSuggestionsInput,
 } from './search.ts'
-export {
-  shareLinksQueryOptions,
-  useShareLinks,
-  useCreateShareLink,
-  useRevokeShareLink,
-  type CreateShareLinkInput,
-  type RevokeShareLinkInput,
-} from './share-links.ts'
 export {
   sharedBodyQueryOptions,
   sharedDocumentQueryOptions,
@@ -174,12 +211,6 @@ export {
   type SetSecretInput,
   type SettingsIssue,
 } from './settings.ts'
-export {
-  publicMenuTargetsQueryOptions,
-  useCollectionCandidates,
-  usePublicMenuTargets,
-  type MenuTargetIds,
-} from './public-menu.ts'
 
 export type {
   CollectionDto,
@@ -207,6 +238,15 @@ export type {
   UnitDto,
   WorkspaceDto,
   WorkspaceSummaryDto,
+  GroupSummaryDto,
+  PersonDto,
+  HomeSummaryDto,
+  ReviewRequestDto,
+  ReviewAssignmentDto,
+  ReviewerCandidates,
+  AttentionItem,
+  NotificationItem,
+  NotificationsDto,
   DocumentDto,
   DraftDto,
   SaveDraftResponse,
@@ -217,10 +257,8 @@ export type {
   CreateDocumentResponse,
   CreateDraftDto,
   CreateDocumentWarning,
-  TreeChildDto,
-  TreeChildrenPage,
+  TreeChildrenResponse,
   TreeCollectionDto,
-  TreePosition,
   WorkspaceTreeResponse,
   OutlineEntry,
   RenderedDocument,
@@ -238,9 +276,15 @@ export type {
   PublishedResult,
   MergeRequired,
   MergeConflict,
+  FacetName,
+  FacetValue,
+  SearchFacets,
   SearchResults,
   SearchHit,
   SearchSnippet,
+  SearchSuggestion,
+  SearchSuggestionField,
+  SearchSuggestions,
   ShareLinkDto,
   ShareLinkScope,
   ShareLinkList,
@@ -250,3 +294,6 @@ export type {
   SharedLink,
   SharedNode,
 } from './types.ts'
+
+export { useChildPagesLoader, useChildPagesOf, type ChildPagesLoader } from './child-pages.ts'
+export { useDocumentLinksLoader } from './document-links.ts'

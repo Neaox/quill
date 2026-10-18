@@ -2,8 +2,9 @@ import type { Node as PMNode } from '@tiptap/pm/model'
 import type { EditorView } from '@tiptap/pm/view'
 import { TableMap } from 'prosemirror-tables'
 
+import { pageLayoutFrame, pageNearness } from '../document/measuring.ts'
+
 import {
-  headersOf,
   insertLine,
   moveColumn,
   moveRow,
@@ -11,18 +12,17 @@ import {
   selectTable,
   setTableAttributeAt,
 } from './table-commands.ts'
-import { selectedLines, tableAt, tableContext, wholeTableSelected } from './table-context.ts'
-import type { LineSelection } from './table-context.ts'
 
 /**
  * The table's handles (ADR-040, phase 2), Confluence's at their best:
  *
- * - a grip above every column and beside every row: a click selects it (and
- *   the toolbar becomes that line's), a drag moves it;
- * - a "+" on every border between lines, and on the outer edges: pressing it
- *   inserts a line there, the caret in its first cell. It is a dot until the
- *   pointer comes near, then a button with a guide across the table showing
- *   where the line will go;
+ * - a grip above every column and beside every row: a click selects it, and
+ *   a drag moves it;
+ * - a corner where the two rows of grips meet: a click selects every cell,
+ *   so the table can be copied, cut or cleared whole;
+ * - a "+" on every boundary between them, and at both ends: it inserts a
+ *   row or column there, and while the pointer is on it a line across the
+ *   table shows where;
  * - a handle on every border between columns: a drag resizes the two
  *   columns either side, as proportions, with a live readout of both shares;
  * - a handle on the table's trailing edge: a drag sets its width, snapping
@@ -32,20 +32,28 @@ import type { LineSelection } from './table-context.ts'
  * Nothing reflows while the pointer moves: a drag moves an overlay with a
  * transform, or the column group's widths, inside one animation frame, and
  * the document changes once, on release, in one transaction (one undo).
- * The handles are for a pointer; the toolbar, the context menu and the keyboard
- * (Tab in the last cell, Alt+arrows) do everything they do, so they are hidden
- * from assistive technology. What they look like is `editor.css`'s ("Table
- * handles"), keyed on the classes and data attributes set here.
+ * The handles are for a pointer; the table toolbar and its keys
+ * (`table-actions.ts`) do everything they do, so they are hidden from
+ * assistive technology.
  */
 
 const SNAP = 16
 const MIN_COLUMN = 40
+
+/** How far a grip must travel before a press is a drag rather than a click. */
+const DRAG_THRESHOLD = 4
 
 /** The reading grid's three widths, in pixels, measured from its tracks. */
 export interface Tracks {
   readonly content: number
   readonly wide: number
   readonly full: number
+}
+
+/** Where a row or column starts along its axis, and how far it runs. */
+export interface Extent {
+  readonly start: number
+  readonly size: number
 }
 
 /** The grid's tracks from its computed `grid-template-columns`. */
@@ -91,27 +99,32 @@ export function proportionsOf(widths: readonly number[]): string {
   return widths.map((each) => `${Math.max(1, Math.round((each / total) * 100))}fr`).join(' ')
 }
 
-/**
- * Where a drag lands: the line the dragged line's middle is over, the first
- * line for anywhere before them and the last for anywhere after.
- */
-export function dropIndex(starts: readonly number[], at: number): number {
-  let index = 0
-  starts.forEach((start, line) => {
-    if (at >= start) index = line
-  })
-  return index
+/** Where a drag over these lines lands: the last line whose middle it has passed, or the first. */
+export function dropIndex(extents: readonly Extent[], at: number): number {
+  return extents.reduce(
+    (index, extent, line) => (at > extent.start + extent.size / 2 ? line : index),
+    0,
+  )
 }
 
-/** Where the border that puts a line at index `at` is: the line's leading edge, or the last one's trailing edge. */
-export function borderAt(
-  lines: readonly { readonly start: number; readonly size: number }[],
-  at: number,
-): number {
-  const line = lines[at]
-  if (line !== undefined) return line.start
-  const last = lines.at(-1)
-  return last === undefined ? 0 : last.start + last.size
+/** Each line's start, then the last one's end: where a "+" can insert. */
+export function boundaries(extents: readonly Extent[]): number[] {
+  return [
+    ...extents.map((extent) => extent.start),
+    extents.reduce((end, extent) => Math.max(end, extent.start + extent.size), 0),
+  ]
+}
+
+/** Calls `place` for each value and the element drawn for it, as far as both go. */
+function alongside<V, E>(
+  values: readonly V[],
+  elements: readonly E[],
+  place: (value: V, drawn: E, index: number) => void,
+): void {
+  values.forEach((value, index) => {
+    const drawn = elements[index]
+    if (drawn !== undefined) place(value, drawn, index)
+  })
 }
 
 function element<K extends keyof HTMLElementTagNameMap>(
@@ -125,21 +138,39 @@ function element<K extends keyof HTMLElementTagNameMap>(
 
 type Axis = 'row' | 'column'
 
+/** Where the handles go, as read from the table. */
+interface Placement {
+  readonly columns: readonly Extent[]
+  readonly lines: readonly Extent[]
+  readonly width: number
+  readonly height: number
+  /** Whether a row can go above the first, which a header row forbids. */
+  readonly aboveHeader: boolean | undefined
+}
+
 export class TableHandles {
   readonly layer: HTMLElement
-  private readonly grips: Record<Axis, HTMLButtonElement[]> = { row: [], column: [] }
-  /** `inserts[axis][at]` puts a new line at index `at`, so there is one more than there are lines. */
+  private readonly grips: Record<Axis, HTMLElement[]> = { row: [], column: [] }
+  private readonly corner: HTMLButtonElement
   private readonly inserts: Record<Axis, HTMLButtonElement[]> = { row: [], column: [] }
   private readonly borders: HTMLElement[] = []
-  private readonly corner: HTMLButtonElement
   private readonly edge: HTMLElement
   private readonly readout: HTMLElement
   private readonly ghost: HTMLElement
   private readonly line: HTMLElement
-  private frame = 0
+  // Placed in the page's layout frame, and only while near the screen: a
+  // long document's tables would each lay the page out again otherwise.
+  private readonly frame = pageLayoutFrame()
+  private near = false
+  private stale = true
+  private readonly unwatch: () => void
   private readonly onScroll = (): void => {
     this.schedule()
   }
+  // The frame changes size with the window and the panes beside it: the handles follow.
+  private readonly resizing = new ResizeObserver(() => {
+    this.schedule()
+  })
 
   private readonly view: EditorView
   private readonly getPos: () => number | undefined
@@ -159,158 +190,104 @@ export class TableHandles {
     this.layer = element('div', 'table-handles')
     this.layer.contentEditable = 'false'
     this.layer.setAttribute('aria-hidden', 'true')
-    this.corner = element('button', 'table-grip')
-    this.corner.type = 'button'
-    this.corner.tabIndex = -1
-    this.corner.dataset['axis'] = 'table'
+    this.corner = this.makeCorner()
     this.edge = element('div', 'table-width-handle')
     this.readout = element('div', 'table-readout')
     this.readout.hidden = true
     this.ghost = element('div', 'table-drag-ghost')
     this.line = element('div', 'table-drop-line')
     this.layer.append(this.corner, this.edge, this.readout, this.ghost, this.line)
-    this.corner.addEventListener('pointerdown', (event) => {
-      if (event.button === 0) this.selectAll(event)
-    })
-    this.layer.addEventListener('contextmenu', (event) => {
-      this.select(event)
-    })
     this.edge.addEventListener('pointerdown', (event) => {
       this.resizeWidth(event)
     })
     this.scroller.addEventListener('scroll', this.onScroll, { passive: true })
+    this.resizing.observe(this.scroller)
+    this.unwatch = pageNearness().watch(this.scroller, (near) => {
+      this.near = near
+      if (near && this.stale) this.schedule()
+    })
   }
 
   /** Brings the handles in line with the table's shape, then places them. */
   render(node: PMNode): void {
     const map = TableMap.get(node)
-    this.count('column', map.width)
-    this.count('row', map.height)
-    this.countInserts('column', map.width + 1)
-    this.countInserts('row', map.height + 1)
-    while (this.borders.length > Math.max(0, map.width - 1)) this.borders.pop()?.remove()
-    while (this.borders.length < map.width - 1) {
-      const border = element('div', 'table-column-border')
-      const index = this.borders.length
-      border.addEventListener('pointerdown', (event) => {
-        this.resizeColumns(event, index)
-      })
-      this.borders.push(border)
-      this.layer.append(border)
-    }
-    this.markSelection()
+    this.count(this.grips.row, map.height, (index) => this.grip('row', index))
+    this.count(this.grips.column, map.width, (index) => this.grip('column', index))
+    this.count(this.inserts.row, map.height + 1, (index) => this.insert('row', index))
+    this.count(this.inserts.column, map.width + 1, (index) => this.insert('column', index))
+    this.count(this.borders, map.width - 1, (index) => this.border(index))
     this.schedule()
   }
 
-  /** The corner pressed: every cell selected, so the table can be copied, cut or cleared whole. */
-  private selectAll(event: PointerEvent): void {
-    const pos = this.tablePos()
-    if (pos === undefined) return
-    // The caret stays where it was until the selection is made, as for a grip.
-    event.preventDefault()
-    selectTable(pos)(this.view.state, this.view.dispatch)
-    this.view.focus()
-  }
-
-  /** What of this table is selected as a whole: all of it, or whole rows or columns. */
-  private selected(): { readonly whole: boolean; readonly lines: LineSelection | undefined } {
-    const { state } = this.view
-    const context = tableContext(state)
-    const own = context !== undefined && context.tablePos === this.tablePos()
-    return {
-      whole: own && wholeTableSelected(context, state.selection),
-      lines: own ? selectedLines(context, state.selection) : undefined,
+  /** Adds or removes handles until there are `wanted`, making each new one with `make`. */
+  private count<E extends HTMLElement>(
+    list: E[],
+    wanted: number,
+    make: (index: number) => E,
+  ): void {
+    while (list.length > wanted) list.pop()?.remove()
+    while (list.length < wanted) {
+      const made = make(list.length)
+      list.push(made)
+      this.layer.append(made)
     }
   }
 
   /**
-   * A right-click on a handle is a menu about what the handle stands for: the
-   * table for the corner, the row or column for a grip. It selects that, unless it
-   * is selected already (a grip within several rows selected keeps all of them),
-   * so the menu opens on a selection and does not take one away.
+   * The corner: a button, named for the pointer's tooltip, and out of the tab
+   * order as every handle is (the menu's Select table and Ctrl+A are the
+   * keyboard's). A right-click selects the table too, before the context menu
+   * the editor opens for it, so the menu is about the whole table.
    */
-  private select(event: MouseEvent): void {
-    const handle = event.target instanceof Element ? event.target.closest('.table-grip') : null
-    const pos = this.tablePos()
-    if (!(handle instanceof HTMLElement) || pos === undefined) return
-    const { state, dispatch } = this.view
-    const { whole, lines } = this.selected()
-    const { axis } = handle.dataset
-    if (axis === 'table') {
-      if (!whole) selectTable(pos)(state, dispatch)
-    } else if (axis === 'row' || axis === 'column') {
-      const index = Number(handle.dataset['index'])
-      const covered = lines?.axis === axis && index >= lines.from && index < lines.to
-      if (!covered) selectLine(axis, index, pos)(state, dispatch)
+  private makeCorner(): HTMLButtonElement {
+    const corner = element('button', 'table-grip table-grip-table')
+    corner.type = 'button'
+    corner.tabIndex = -1
+    corner.title = 'Select table'
+    const selectAll = (): void => {
+      this.withTable((pos) => selectTable(pos)(this.view.state, this.view.dispatch))
+      this.view.focus()
     }
+    corner.addEventListener('pointerdown', (event) => {
+      if (event.button !== 0) return
+      // The caret stays where it was until the selection is made, as for a grip.
+      event.preventDefault()
+      selectAll()
+    })
+    corner.addEventListener('contextmenu', selectAll)
+    return corner
   }
 
-  /** The grips of a whole row or column that is selected say so: that is what the toolbar is about. */
-  private markSelection(): void {
-    const { whole, lines } = this.selected()
-    if (whole) this.corner.dataset['state'] = 'selected'
-    else delete this.corner.dataset['state']
-    for (const axis of ['row', 'column'] as const) {
-      this.grips[axis].forEach((grip, index) => {
-        const selected = lines?.axis === axis && index >= lines.from && index < lines.to
-        if (selected) grip.dataset['state'] = 'selected'
-        else delete grip.dataset['state']
-      })
-    }
+  private grip(axis: Axis, index: number): HTMLElement {
+    const grip = element('div', `table-grip table-grip-${axis}`)
+    grip.addEventListener('pointerdown', (event) => {
+      this.drag(event, grip, axis, index)
+    })
+    return grip
   }
 
-  private count(axis: Axis, wanted: number): void {
-    const list = this.grips[axis]
-    while (list.length > wanted) list.pop()?.remove()
-    while (list.length < wanted) {
-      const index = list.length
-      const grip = element('button', 'table-grip')
-      grip.type = 'button'
-      grip.tabIndex = -1
-      grip.dataset['axis'] = axis
-      grip.dataset['index'] = String(index)
-      grip.addEventListener('pointerdown', (event) => {
-        if (event.button === 0) this.drag(event, axis, index)
-      })
-      list.push(grip)
-      this.layer.append(grip)
-    }
+  private insert(axis: Axis, boundary: number): HTMLButtonElement {
+    const insert = element('button', `table-insert table-insert-${axis}`)
+    insert.type = 'button'
+    insert.tabIndex = -1
+    insert.textContent = '+'
+    // A press must not take the caret out of the document before the click lands.
+    insert.addEventListener('pointerdown', (event) => {
+      event.preventDefault()
+    })
+    insert.addEventListener('click', () => {
+      this.withTable((pos) => insertLine(axis, boundary, pos)(this.view.state, this.view.dispatch))
+      this.view.focus()
+    })
+    return insert
   }
 
-  /** One "+" for every border between lines and one for each outer edge: a line more than there are. */
-  private countInserts(axis: Axis, wanted: number): void {
-    const list = this.inserts[axis]
-    while (list.length > wanted) list.pop()?.remove()
-    while (list.length < wanted) {
-      const at = list.length
-      const insert = element('button', 'table-insert')
-      insert.type = 'button'
-      insert.tabIndex = -1
-      insert.dataset['axis'] = axis
-      // Pressing must not move the caret out of the table, as it would if the button took focus.
-      insert.addEventListener('pointerdown', (event) => {
-        event.preventDefault()
-      })
-      insert.addEventListener('click', () => {
-        this.insertAt(axis, at)
-      })
-      list.push(insert)
-      this.layer.append(insert)
-    }
-    // Nothing goes above the header row, so that border has no "+". Nor does the
-    // edge before the first column, which is the corner's (a column grip's
-    // toolbar inserts one there).
-    const above = this.inserts.row[0]
-    if (above !== undefined) above.hidden = this.headerRowFirst()
-    const before = this.inserts.column[0]
-    if (before !== undefined) before.hidden = true
-  }
-
-  /** Whether the table's first row is its header row, which GFM keeps first. */
-  private headerRowFirst(): boolean {
-    const pos = this.tablePos()
-    const context = pos === undefined ? undefined : tableAt(this.view.state, pos)
-    return context !== undefined && headersOf(context).row
+  private border(index: number): HTMLElement {
+    const border = element('div', 'table-column-border')
+    border.addEventListener('pointerdown', (event) => {
+      this.resizeColumns(event, border, index)
+    })
+    return border
   }
 
   /**
@@ -328,182 +305,187 @@ export class TableHandles {
     root.dataset['dragging'] = 'true'
   }
 
+  /** Places the handles in the next frame, or once the table comes near the screen. */
   private schedule(): void {
-    if (this.frame !== 0) return
-    this.frame = requestAnimationFrame(() => {
-      this.frame = 0
-      this.place()
-    })
+    this.stale = true
+    if (!this.near) return
+    this.frame.schedule(this, () => this.place())
   }
 
-  /** Every read first, then every write: the grips follow the cells. */
-  private place(): void {
-    const rows = [...this.table.rows]
-    const cells = [...(rows[0]?.cells ?? [])]
+  /** The columns' extents along the table, read from the first row's cells. */
+  private columnExtents(): Extent[] {
+    /* v8 ignore next -- a GFM table always has its header row. */
+    const cells = this.table.rows.item(0)?.cells ?? []
+    return Array.from(cells, (cell) => ({ start: cell.offsetLeft, size: cell.offsetWidth }))
+  }
+
+  /** The rows' extents down the table. */
+  private rowExtents(): Extent[] {
+    return Array.from(this.table.rows, (row) => ({ start: row.offsetTop, size: row.offsetHeight }))
+  }
+
+  /**
+   * Every read first, then every write, which the layout frame runs after
+   * every other control's reads: the grips and the "+"s follow the cells.
+   */
+  private place(): () => void {
+    this.stale = false
     const scrollLeft = this.scroller.scrollLeft
-    const columns = cells.map((cell) => ({
-      start: cell.offsetLeft - scrollLeft,
-      size: cell.offsetWidth,
+    const columns = this.columnExtents().map(({ start, size }) => ({
+      start: start - scrollLeft,
+      size,
     }))
-    const lines = rows.map((row) => ({ start: row.offsetTop, size: row.offsetHeight }))
-    const width = this.table.offsetWidth
+    const lines = this.rowExtents()
+    const width = Math.min(this.table.offsetWidth, this.scroller.clientWidth)
     const height = this.table.offsetHeight
-    const { offsetLeft, offsetTop } = this.table
-    this.layer.style.setProperty('--table-width', `${width}px`)
-    this.layer.style.setProperty('--table-height', `${height}px`)
-    const across = columns.map(({ start, size }) => ({ start: offsetLeft + start, size }))
-    const down = lines.map(({ start, size }) => ({ start: offsetTop + start, size }))
-    across.forEach(({ start, size }, index) => {
-      this.grips.column[index]?.style.setProperty('--start', `${start}px`)
-      this.grips.column[index]?.style.setProperty('--size', `${size}px`)
-      this.borders[index]?.style.setProperty('--start', `${start + size}px`)
-    })
-    down.forEach(({ start, size }, index) => {
-      this.grips.row[index]?.style.setProperty('--start', `${start}px`)
-      this.grips.row[index]?.style.setProperty('--size', `${size}px`)
-    })
-    this.inserts.column.forEach((insert, at) => {
-      insert.style.setProperty('--start', `${borderAt(across, at)}px`)
-    })
-    this.inserts.row.forEach((insert, at) => {
-      insert.style.setProperty('--start', `${borderAt(down, at)}px`)
-    })
-    this.edge.style.setProperty(
-      '--start',
-      `${offsetLeft + Math.min(width, this.scroller.clientWidth)}px`,
-    )
+    const aboveHeader = this.withTable((pos) => insertLine('row', 0, pos)(this.view.state))
+    return () => {
+      this.write({ columns, lines, width, height, aboveHeader })
+    }
   }
 
-  private tablePos(): number | undefined {
-    return this.getPos()
+  private write({ columns, lines, width, height, aboveHeader }: Placement): void {
+    this.layer.style.setProperty('--table-handles-width', `${String(width)}px`)
+    this.layer.style.setProperty('--table-handles-height', `${String(height)}px`)
+    alongside(columns, this.grips.column, ({ start, size }, grip) => {
+      grip.style.transform = `translateX(${String(start)}px)`
+      grip.style.width = `${String(size)}px`
+    })
+    alongside(columns, this.borders, ({ start, size }, border) => {
+      border.style.transform = `translateX(${String(start + size)}px)`
+    })
+    alongside(lines, this.grips.row, ({ start, size }, grip) => {
+      grip.style.transform = `translateY(${String(start)}px)`
+      grip.style.height = `${String(size)}px`
+    })
+    alongside(boundaries(columns), this.inserts.column, (at, insert) => {
+      insert.style.transform = `translateX(${String(at)}px)`
+      // A boundary scrolled out of the table's frame has nothing to insert beside.
+      insert.hidden = at < 0 || at > width
+    })
+    alongside(boundaries(lines), this.inserts.row, (at, insert, index) => {
+      insert.style.transform = `translateY(${String(at)}px)`
+      // Nothing goes above a header row.
+      insert.hidden = index === 0 && aboveHeader !== true
+    })
+    this.edge.style.transform = `translateX(${String(width)}px)`
   }
 
-  /** A "+" pressed: a line at this border, the caret in its first cell. One undo step. */
-  private insertAt(axis: Axis, at: number): void {
-    const pos = this.tablePos()
-    if (pos === undefined) return
-    insertLine(axis, at, pos)(this.view.state, this.view.dispatch)
-    this.view.focus()
+  /**
+   * Runs `act` with the table's position. A view's position is unknown only
+   * once its node has left the document, and its handles with it.
+   */
+  private withTable<T>(act: (pos: number) => T): T | undefined {
+    const pos = this.getPos()
+    /* v8 ignore next */
+    return pos === undefined ? undefined : act(pos)
+  }
+
+  /**
+   * Follows one drag on `handle`: `move` with each pointer move, then `end`,
+   * once, when the pointer is released or the drag is cancelled.
+   */
+  private follow(
+    event: PointerEvent,
+    handle: HTMLElement,
+    move: (next: PointerEvent) => void,
+    end: () => void,
+  ): void {
+    event.preventDefault()
+    handle.setPointerCapture(event.pointerId)
+    const finish = (): void => {
+      handle.removeEventListener('pointermove', move)
+      handle.removeEventListener('pointerup', finish)
+      handle.removeEventListener('pointercancel', finish)
+      this.dragging(undefined)
+      this.readout.hidden = true
+      end()
+      this.view.focus()
+    }
+    handle.addEventListener('pointermove', move)
+    handle.addEventListener('pointerup', finish)
+    handle.addEventListener('pointercancel', finish)
   }
 
   /**
    * A grip pressed: a click selects its row or column; a drag moves it. The
    * extents are read once, at the press; the ghost moves by transform.
    */
-  private drag(event: PointerEvent, axis: Axis, index: number): void {
-    const pos = this.tablePos()
-    if (pos === undefined) return
-    event.preventDefault()
-    const grip = event.currentTarget instanceof HTMLElement ? event.currentTarget : undefined
-    grip?.setPointerCapture?.(event.pointerId)
-    const rows = [...this.table.rows]
-    const extents =
-      axis === 'row'
-        ? rows.map((row) => ({
-            start: this.table.offsetTop + row.offsetTop,
-            size: row.offsetHeight,
-          }))
-        : [...(rows[0]?.cells ?? [])].map((cell) => ({
-            start: this.table.offsetLeft + cell.offsetLeft,
-            size: cell.offsetWidth,
-          }))
+  private drag(event: PointerEvent, grip: HTMLElement, axis: Axis, index: number): void {
+    const extents = axis === 'row' ? this.rowExtents() : this.columnExtents()
+    const own = extents[index]
+    /* v8 ignore next -- a grip is drawn for every row and column there is. */
+    if (own === undefined) return
     const origin = axis === 'row' ? event.clientY : event.clientX
-    const own = extents[index] ?? { start: 0, size: 0 }
+    const translate = axis === 'row' ? 'translateY' : 'translateX'
     let target = index
     let moved = false
     this.ghost.dataset['axis'] = axis
     this.line.dataset['axis'] = axis
     const move = (next: PointerEvent): void => {
       const delta = (axis === 'row' ? next.clientY : next.clientX) - origin
-      if (!moved && Math.abs(delta) < 4) return
+      if (!moved && Math.abs(delta) < DRAG_THRESHOLD) return
       moved = true
       this.dragging(axis)
-      const at = own.start + own.size / 2 + delta
-      target = dropIndex(
-        extents.map((extent) => extent.start),
-        at,
-      )
+      target = dropIndex(extents, own.start + own.size / 2 + delta)
+      /* v8 ignore next -- the drop index is one of the extents'. */
       const landing = extents[target] ?? own
-      this.ghost.style.setProperty('--start', `${own.start + delta}px`)
-      this.ghost.style.setProperty('--size', `${own.size}px`)
-      this.line.style.setProperty(
-        '--start',
-        `${target > index ? landing.start + landing.size : landing.start}px`,
-      )
+      const line = target > index ? landing.start + landing.size : landing.start
+      this.ghost.style.transform = `${translate}(${String(own.start + delta)}px)`
+      this.ghost.style.setProperty(axis === 'row' ? 'height' : 'width', `${String(own.size)}px`)
+      this.line.style.transform = `${translate}(${String(line)}px)`
     }
-    const end = (): void => {
-      grip?.removeEventListener('pointermove', move)
-      grip?.removeEventListener('pointerup', end)
-      grip?.removeEventListener('pointercancel', end)
-      this.dragging(undefined)
-      const { state, dispatch } = this.view
-      if (!moved) selectLine(axis, index, pos)(state, dispatch)
-      else if (target !== index) {
-        ;(axis === 'row' ? moveRow : moveColumn)(index, target, pos)(state, dispatch)
-      }
-      this.view.focus()
-    }
-    grip?.addEventListener('pointermove', move)
-    grip?.addEventListener('pointerup', end)
-    grip?.addEventListener('pointercancel', end)
+    this.follow(event, grip, move, () => {
+      this.withTable((pos) => {
+        const { state, dispatch } = this.view
+        if (!moved) selectLine(axis, index, pos)(state, dispatch)
+        else (axis === 'row' ? moveRow : moveColumn)(index, target, pos)(state, dispatch)
+      })
+    })
   }
 
   /** A border dragged: its two columns resize as proportions, previewed in the column group. */
-  private resizeColumns(event: PointerEvent, border: number): void {
-    const pos = this.tablePos()
-    const handle = event.currentTarget instanceof HTMLElement ? event.currentTarget : undefined
-    if (pos === undefined || handle === undefined) return
-    event.preventDefault()
-    handle.setPointerCapture?.(event.pointerId)
-    const widths = [...(this.table.rows[0]?.cells ?? [])].map((cell) => cell.offsetWidth)
+  private resizeColumns(event: PointerEvent, handle: HTMLElement, border: number): void {
+    const group = this.table.querySelector(':scope > colgroup')
+    /* v8 ignore next -- the table view draws every table with its column group. */
+    if (group === null) return
+    const widths = this.columnExtents().map((extent) => extent.size)
     const total = widths.reduce((sum, each) => sum + each, 0)
-    const cols = () => [...this.table.querySelectorAll(':scope > colgroup > col')]
     let current = widths
     this.dragging('border')
-    const preview = (next: readonly number[]): void => {
-      const existing = cols()
-      if (existing.length !== next.length) {
-        const group = this.table.querySelector(':scope > colgroup')
-        group?.replaceChildren(...next.map(() => document.createElement('col')))
-        this.table.classList.add('table-proportional')
-      }
-      cols().forEach((col, index) => {
-        if (col instanceof HTMLElement) col.style.width = `${((next[index] ?? 0) / total) * 100}%`
-      })
-      const share = (index: number): number => Math.round(((next[index] ?? 0) / total) * 100)
-      this.readout.textContent = `${share(border)}% · ${share(border + 1)}%`
-      this.readout.hidden = false
-    }
+    /* v8 ignore next -- the shares asked for are the two columns either side of a border. */
+    const share = (index: number): number => ((current[index] ?? 0) / total) * 100
     const move = (next: PointerEvent): void => {
       current = resized(widths, border, next.clientX - event.clientX)
-      preview(current)
+      // The table view's column group previews the new shares while the drag lasts.
+      if (group.children.length !== current.length) {
+        group.replaceChildren(...current.map(() => document.createElement('col')))
+        this.table.classList.add('table-proportional')
+      }
+      for (const [index, col] of group.querySelectorAll('col').entries()) {
+        col.style.width = `${String(share(index))}%`
+      }
+      this.readout.textContent = `${String(Math.round(share(border)))}% · ${String(Math.round(share(border + 1)))}%`
+      this.readout.style.transform = handle.style.transform
+      this.readout.hidden = false
     }
-    const end = (): void => {
-      handle.removeEventListener('pointermove', move)
-      handle.removeEventListener('pointerup', end)
-      handle.removeEventListener('pointercancel', end)
-      this.dragging(undefined)
-      this.readout.hidden = true
-      const { state, dispatch } = this.view
-      if (current !== widths)
-        setTableAttributeAt(pos, 'columns', proportionsOf(current))(state, dispatch)
-      this.view.focus()
-    }
-    handle.addEventListener('pointermove', move)
-    handle.addEventListener('pointerup', end)
-    handle.addEventListener('pointercancel', end)
+    this.follow(event, handle, move, () => {
+      if (current === widths) return
+      this.withTable((pos) =>
+        setTableAttributeAt(
+          pos,
+          'columns',
+          proportionsOf(current),
+        )(this.view.state, this.view.dispatch),
+      )
+    })
   }
 
   /** The trailing edge dragged: the table's width, snapped to the grid's tracks. */
   private resizeWidth(event: PointerEvent): void {
-    const pos = this.tablePos()
     const block = this.layer.closest('.table-block')
-    const grid = this.view.dom
-    if (pos === undefined || !(block instanceof HTMLElement)) return
-    const tracks = tracksOf(getComputedStyle(grid).gridTemplateColumns)
-    if (tracks === undefined) return
-    event.preventDefault()
-    this.edge.setPointerCapture?.(event.pointerId)
+    const tracks = tracksOf(getComputedStyle(this.view.dom).gridTemplateColumns)
+    if (!(block instanceof HTMLElement) || tracks === undefined) return
     const start = block.offsetWidth
     let chosen = widthFor(start, tracks)
     this.dragging('width')
@@ -512,26 +494,21 @@ export class TableHandles {
       chosen = widthFor(width, tracks)
       this.readout.textContent = chosen.label
       this.readout.hidden = false
-      this.edge.style.setProperty('--start', `${this.table.offsetLeft + width}px`)
+      this.edge.style.transform = `translateX(${String(width)}px)`
+      this.readout.style.transform = this.edge.style.transform
     }
-    const end = (): void => {
-      this.edge.removeEventListener('pointermove', move)
-      this.edge.removeEventListener('pointerup', end)
-      this.edge.removeEventListener('pointercancel', end)
-      this.dragging(undefined)
-      this.readout.hidden = true
-      const { state, dispatch } = this.view
-      setTableAttributeAt(pos, 'width', chosen.value)(state, dispatch)
+    this.follow(event, this.edge, move, () => {
+      this.withTable((pos) =>
+        setTableAttributeAt(pos, 'width', chosen.value)(this.view.state, this.view.dispatch),
+      )
       this.schedule()
-      this.view.focus()
-    }
-    this.edge.addEventListener('pointermove', move)
-    this.edge.addEventListener('pointerup', end)
-    this.edge.addEventListener('pointercancel', end)
+    })
   }
 
   destroy(): void {
-    cancelAnimationFrame(this.frame)
+    this.frame.cancel(this)
+    this.unwatch()
     this.scroller.removeEventListener('scroll', this.onScroll)
+    this.resizing.disconnect()
   }
 }

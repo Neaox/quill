@@ -47,11 +47,26 @@ describe('createMarkdownRegistry', () => {
     })
   })
 
+  it('keeps no data from an extension whose grant names none', () => {
+    const registry = createMarkdownRegistry([example({ sanitize: {} })])
+    expect(registry.drawing({ markup: '<svg>acme</svg>' })).toEqual({
+      kind: 'inline',
+      markup: '<svg>acme</svg>',
+      naturalSize: false,
+      data: {},
+    })
+  })
+
   it('grants an image rendering only the image grant', () => {
     const registry = createMarkdownRegistry([
       example({ render: () => ({ kind: 'image', data: { 'data-acme': '' } }) }),
     ])
     expect(registry.drawing({ markup: 'acme' })).toEqual({ kind: 'image', data: {} })
+  })
+
+  it('keeps no data attribute an extension has no grant for', () => {
+    const registry = createMarkdownRegistry([example({ sanitize: {} })])
+    expect(registry.drawing({ markup: 'acme' })).toMatchObject({ kind: 'inline', data: {} })
   })
 
   it('draws an unclaimed drawing as it is', () => {

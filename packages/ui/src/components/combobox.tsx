@@ -19,7 +19,7 @@ import { Spinner } from './spinner.tsx'
  * it belongs to the field, scrolls with it, and is the next thing in reading
  * order after it.
  *
- * The `inline` variant is a field that sits in a toolbar and shows a value — a
+ * The `flow` variant lays the popup in the document flow, for a field in a dialog. The `inline` variant is a field that sits in a toolbar and shows a value — a
  * code block's language — rather than a form row: its label is for assistive
  * technology only, and its popup is raised into the top layer (`popover`) and
  * anchored to the field with CSS anchor positioning, because a toolbar's card
@@ -42,6 +42,12 @@ export const comboboxStyles = tv({
   variants: {
     variant: {
       field: {},
+      /*
+       * The popup takes its place in the layout, under the field, rather than hanging over what
+       * follows: for a field inside a dialog, whose scrolling body would otherwise clip a popup
+       * that runs past its edge and leave the options below the fold.
+       */
+      flow: { popup: 'static inset-auto' },
       inline: {
         label: 'sr-only',
         control: [
@@ -105,6 +111,20 @@ export interface ComboboxProps {
    * it included) or on Enter.
    */
   readonly opens?: 'on-focus' | 'on-request' | undefined
+  /**
+   * Whether choosing this option leaves the popup open. Closing is right for a
+   * final answer; it is wrong for a step toward one, such as choosing a
+   * filter's name when its values are what comes next. The caller changes the
+   * options in the same update, so the popup shows the next step at once.
+   */
+  readonly keepsOpen?: ((optionId: string) => boolean) | undefined
+  /**
+   * Whether the first option is the active one before the arrows are used.
+   * `true`, the default, makes Enter choose it. `false` makes Enter the form's
+   * until the arrows have reached an option, for suggestions that must not
+   * hijack a search somebody has finished typing.
+   */
+  readonly preselect?: boolean | undefined
 }
 
 /**
@@ -147,9 +167,11 @@ export function Combobox({
   className,
   variant = 'field',
   opens = 'on-focus',
+  keepsOpen,
+  preselect = true,
 }: ComboboxProps) {
   const id = useId()
-  const cursor = useListboxCursor(groups)
+  const cursor = useListboxCursor(groups, { preselect })
   const [expanded, setExpanded] = useState(false)
   const field = inputStyles()
   const styles = comboboxStyles({ variant })
@@ -169,7 +191,8 @@ export function Combobox({
     .join(' ')
 
   function choose(optionId: string): void {
-    setExpanded(false)
+    setExpanded(keepsOpen?.(optionId) === true)
+    cursor.reset()
     onSelect(optionId)
   }
 

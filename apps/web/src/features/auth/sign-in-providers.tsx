@@ -1,6 +1,6 @@
 import { buttonClassName } from '@quill/ui'
 
-import { oidcStartPath, useOidcProviders } from '../../lib/api/index.ts'
+import { oidcStartPath, useOidcProviders } from '../../lib/api/oidc.ts'
 
 export interface SignInProvidersProps {
   /** The page that was being asked for, carried through the round trip. */

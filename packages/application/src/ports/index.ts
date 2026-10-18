@@ -14,15 +14,24 @@ export type {
   RevisionSummary,
   TreeEntry,
 } from './content-store.ts'
+export type { EventBus, EventRecorder, RecordedEvent } from './events.ts'
 export type { BlobRef, BlobStore } from './blob-store.ts'
 export { concatChunks, readBlob } from './blob-store.ts'
 export type {
+  Contributor,
+  FacetCount,
+  FacetCounts,
+  FacetName,
+  FacetsOptions,
   FieldFilterKey,
   FieldWeights,
   FilterClause,
   IndexableDocument,
   IndexableDocumentV1,
+  IndexableDocumentV2,
+  IndexableDocumentV3,
   IndexableHeading,
+  IndexedSuggestionField,
   PhraseClause,
   QueryClause,
   RankingProfile,
@@ -32,10 +41,13 @@ export type {
   SearchIndex,
   SearchIndexQueryOptions,
   SearchQuery,
+  SharedVisibility,
+  SuggestionRequest,
   TermClause,
   VisibilityFilter,
   WorkspaceAffinity,
 } from './search-index.ts'
+export type { SearchSuggestion } from '@quill/domain'
 export type { Clock, Hasher, IdGenerator, TokenService } from './system.ts'
 
 export type {
@@ -113,8 +125,6 @@ export type {
   CollectionRow,
   CreateAttachmentInput,
   ReviseAttachmentInput,
-  ChildCursor,
-  ChildPage,
   CreateDocumentInput,
   CreateDocumentOutcome,
   CreateGrantInput,
@@ -128,8 +138,11 @@ export type {
   DocumentLockRow,
   DocumentRepository,
   DocumentRow,
+  DocumentSummaryRepository,
+  DocumentSummaryRow,
   DraftRepository,
   DraftRow,
+  DraftStamp,
   GrantEffect,
   GrantId,
   GrantRepository,
@@ -149,7 +162,10 @@ export type {
   MagicLinkTokenRow,
   NewDocumentLink,
   OutboxEventRow,
+  OutboxEventInput,
   OutboxWriter,
+  LinkPreviewRepository,
+  LinkPreviewRow,
   PersonPreferencesRepository,
   PersonPreferencesRow,
   PrincipalKind,
@@ -187,3 +203,38 @@ export type {
   WriteDraftResult,
 } from './persistence.ts'
 export { LOCK_HEARTBEAT_MS, LOCK_TTL_MS } from './persistence.ts'
+
+export type {
+  LinkPreviewAudience,
+  LinkPreviewAudiences,
+  LinkPreviewRateLimits,
+  LinkPreviewResolver,
+  RateDecision,
+} from './link-previews.ts'
+export { PUBLIC_PREVIEW_SCOPE } from './link-previews.ts'
+
+export type {
+  ConnectorCredentialSource,
+  ConnectorCredentials,
+  ConnectorDraft,
+  ConnectorFailure,
+  LinkConnector,
+  LinkConnectorRegistry,
+} from './link-connectors.ts'
+export type { DocumentViewRepository, DocumentViewRow, WorkspaceViews } from './document-views.ts'
+export type {
+  NewNotification,
+  NotificationCursor,
+  NotificationKind,
+  NotificationRepository,
+  NotificationRow,
+} from './notifications.ts'
+export { NOTIFICATION_KINDS } from './notifications.ts'
+export type {
+  NewReviewRequest,
+  ReviewAssignmentId,
+  ReviewAssignmentRow,
+  ReviewRepository,
+  ReviewRequestId,
+  ReviewRequestRow,
+} from './reviews.ts'

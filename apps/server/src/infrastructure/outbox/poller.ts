@@ -36,8 +36,36 @@ export interface PollResult {
   readonly deadLettered: number
 }
 
-function backoffMs(attempts: number): number {
+export function backoffMs(attempts: number): number {
   return Math.min(2 ** attempts * 1000, MAX_BACKOFF_MS)
+}
+
+/**
+ * The statement that records one failed attempt: another attempt counted, the
+ * next one pushed out by backoff, and the event set aside once it has used
+ * them all. Shared by every way of polling, so there is one rule for when an
+ * event gives up.
+ */
+export function failedAttempt(
+  row: { readonly id: string; readonly attempts: number },
+  error: unknown,
+  now: Date,
+): { readonly sql: string; readonly params: readonly unknown[]; readonly exhausted: boolean } {
+  const attempts = row.attempts + 1
+  const exhausted = attempts >= MAX_OUTBOX_ATTEMPTS
+  return {
+    sql: `UPDATE outbox_events
+           SET attempts = $2, available_at = $3, last_error = $4, dead_lettered_at = $5
+           WHERE id = $1`,
+    params: [
+      row.id,
+      attempts,
+      new Date(now.getTime() + backoffMs(attempts)),
+      error instanceof Error ? error.message : String(error),
+      exhausted ? now : null,
+    ],
+    exhausted,
+  }
 }
 
 /**
@@ -80,6 +108,7 @@ export async function pollOutboxOnce(
     let failed = 0
     let deadLettered = 0
 
+    // oxlint-disable-next-line quill/no-independent-await-in-loop -- events are handled in created_at order, and the whole batch is one transaction on one connection
     for (const row of rows) {
       // The query claimed only types this map has, so every row has one.
       const consumer = requireRow(consumers.get(row.type), `poll: no consumer for ${row.type}`)
@@ -94,22 +123,9 @@ export async function pollOutboxOnce(
         )
         processed += 1
       } catch (error) {
-        const attempts = row.attempts + 1
-        const availableAt = new Date(options.now.getTime() + backoffMs(attempts))
-        const exhausted = attempts >= MAX_OUTBOX_ATTEMPTS
-        await client.query(
-          `UPDATE outbox_events
-           SET attempts = $2, available_at = $3, last_error = $4, dead_lettered_at = $5
-           WHERE id = $1`,
-          [
-            row.id,
-            attempts,
-            availableAt,
-            error instanceof Error ? error.message : String(error),
-            exhausted ? options.now : null,
-          ],
-        )
-        if (exhausted) deadLettered += 1
+        const failure = failedAttempt(row, error, options.now)
+        await client.query(failure.sql, [...failure.params])
+        if (failure.exhausted) deadLettered += 1
         else failed += 1
       }
     }

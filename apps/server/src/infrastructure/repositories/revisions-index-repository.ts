@@ -2,11 +2,12 @@ import { and, desc, eq, inArray, lt, or, sql } from 'drizzle-orm'
 
 import type {
   AppendRevisionInput,
+  Contributor,
   HistoryPage,
   RevisionIndexRow,
   RevisionsIndexRepository,
 } from '@quill/application'
-import type { DocumentId, RevisionId, WorkspaceId } from '@quill/domain'
+import type { DocumentId, RevisionId, UserId, WorkspaceId } from '@quill/domain'
 
 import { revisionsIndex } from '../db/schema.ts'
 import type { DrizzleClient } from '../db/types.ts'
@@ -29,6 +30,7 @@ function toRevisionRow(row: typeof revisionsIndex.$inferSelect): RevisionIndexRo
     revision: row.revision as RevisionId,
     authorName: row.authorName,
     authorEmail: row.authorEmail,
+    authorUserId: row.authorUserId as UserId | null,
     timestamp: row.timestamp,
     summary: row.summary,
     changeNote: row.changeNote,
@@ -57,6 +59,7 @@ export function createRevisionsIndexRepository(db: DrizzleClient): RevisionsInde
           revision: input.revision,
           authorName: input.authorName,
           authorEmail: input.authorEmail,
+          authorUserId: input.authorUserId ?? null,
           timestamp: input.timestamp,
           summary: input.summary,
           changeNote: input.changeNote,
@@ -153,6 +156,66 @@ export function createRevisionsIndexRepository(db: DrizzleClient): RevisionsInde
         .where(inArray(revisionsIndex.documentId, [...documentIds]))
         .orderBy(revisionsIndex.documentId, desc(revisionsIndex.timestamp), desc(revisionsIndex.id))
       return rows.map(toRevisionRow)
+    },
+
+    /**
+     * One row per address, under the name last published with, in one query.
+     *
+     * `DISTINCT ON` the folded address, newest first within each, so the name
+     * that survives is the latest and the address is the one `by:` and `team:`
+     * match (see the port). Ordered by address for a stable answer.
+     */
+    async listContributors(documentId: DocumentId): Promise<readonly Contributor[]> {
+      const address = sql<string>`lower(trim(${revisionsIndex.authorEmail}))`
+      const rows = await db
+        .selectDistinctOn([address], { name: revisionsIndex.authorName, email: address })
+        .from(revisionsIndex)
+        .where(eq(revisionsIndex.documentId, documentId))
+        .orderBy(address, desc(revisionsIndex.timestamp), desc(revisionsIndex.id))
+      return rows.map((row) => ({ name: row.name.trim(), email: row.email }))
+    },
+
+    /**
+     * Everyone who has published each of these documents, in one query.
+     *
+     * `DISTINCT ON` the document and the folded address, newest first within
+     * each, keeps the name last used; the people are then put in order of when
+     * they last published, newest first, which is how a result row names them.
+     * An empty request is answered without asking the database.
+     */
+    async listContributorsForDocuments(
+      documentIds: readonly DocumentId[],
+    ): Promise<ReadonlyMap<DocumentId, readonly Contributor[]>> {
+      if (documentIds.length === 0) return new Map()
+      const address = sql<string>`lower(trim(${revisionsIndex.authorEmail}))`
+      const rows = await db
+        .selectDistinctOn([revisionsIndex.documentId, address], {
+          documentId: revisionsIndex.documentId,
+          name: revisionsIndex.authorName,
+          email: address,
+          timestamp: revisionsIndex.timestamp,
+          id: revisionsIndex.id,
+        })
+        .from(revisionsIndex)
+        .where(inArray(revisionsIndex.documentId, [...documentIds]))
+        .orderBy(
+          revisionsIndex.documentId,
+          address,
+          desc(revisionsIndex.timestamp),
+          desc(revisionsIndex.id),
+        )
+
+      const newestFirst = rows.toSorted(
+        (left, right) =>
+          right.timestamp.getTime() - left.timestamp.getTime() || right.id.localeCompare(left.id),
+      )
+      const byDocument = Map.groupBy(newestFirst, (row) => row.documentId as DocumentId)
+      return new Map(
+        [...byDocument].map(([documentId, found]) => [
+          documentId,
+          found.map((row) => ({ name: row.name.trim(), email: row.email })),
+        ]),
+      )
     },
 
     async latestForDocument(documentId: DocumentId): Promise<RevisionIndexRow | null> {

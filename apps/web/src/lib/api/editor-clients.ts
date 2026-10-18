@@ -4,7 +4,9 @@ import { useMemo } from 'react'
 import type {
   AcquireResult,
   DocumentAst,
+  DraftAuthor,
   DraftClient,
+  DraftSaveNote,
   DraftSaveResult,
   HeartbeatResult,
   LoadedDraft,
@@ -149,7 +151,13 @@ export function useLockClient(documentId: string): LockClient {
  */
 const UNREADABLE_DRAFT = 'This draft was written by a newer version of the platform'
 
-export function useDraftClient(documentId: string): DraftClient {
+/**
+ * `author` is who this session saves as: every save stamps it on the draft,
+ * and a save that merges offline changes stamps it as the merger too, so
+ * whoever wrote the draft merged into is told (ADR-021, amendment of
+ * 2026-10-11). Undefined while the signed-in person is still loading.
+ */
+export function useDraftClient(documentId: string, author?: DraftAuthor): DraftClient {
   const apiClient = useApiClient()
   const queryClient = useQueryClient()
   const { mutateAsync: saveDraft } = useSaveDraft()
@@ -176,21 +184,38 @@ export function useDraftClient(documentId: string): DraftClient {
         // Through the query cache rather than a bare request, so the re-read
         // after a stale-version conflict updates the same entry the route
         // rendered from.
-        const draft = await queryClient.fetchQuery(draftQueryOptions(apiClient, documentId))
+        // Always from the server: a merge against a cached draft would merge
+        // against the past.
+        const draft = await queryClient.fetchQuery({
+          ...draftQueryOptions(apiClient, documentId),
+          staleTime: 0,
+        })
         const content = readDraftContent(draft.ast)
         if (content === null) throw new Error(UNREADABLE_DRAFT)
         return {
           ast: content.ast as DocumentAst,
           draftVersion: draft.draftVersion,
           baseRevision: draft.baseRevision,
+          writtenBy: content.writtenBy,
+          mergedBy: content.mergedBy,
         }
       },
 
-      async save(ast: DocumentAst, expectedVersion: number): Promise<DraftSaveResult> {
+      async save(
+        ast: DocumentAst,
+        expectedVersion: number,
+        note?: DraftSaveNote,
+      ): Promise<DraftSaveResult> {
+        const stamp =
+          author === undefined
+            ? {}
+            : note?.merged === true
+              ? { writtenBy: author, mergedBy: author }
+              : { writtenBy: author }
         try {
           const result = await saveDraft({
             documentId,
-            ast: withDocumentAst(await currentContent(), ast),
+            ast: withDocumentAst(await currentContent(), ast, stamp),
             expectedVersion,
           })
           return {
@@ -223,5 +248,5 @@ export function useDraftClient(documentId: string): DraftClient {
         }
       },
     }
-  }, [apiClient, documentId, queryClient, saveDraft])
+  }, [apiClient, author, documentId, queryClient, saveDraft])
 }

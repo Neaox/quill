@@ -72,7 +72,7 @@ own distinct settings):
 | --- | --- | --- | --- |
 | **The person's** | Colour scheme: System, Light or Dark (ADR-028, layer 3), and Preferences | The person menu's **Appearance** row, which goes round the three, applied at once and remembered in the browser; and **Preferences** | The avatar and name at the end of every signed-in bar |
 | **The workspace's** | Its layout, within the organisation's lock | `/w/<workspace>/settings` | The workspace's own overflow menu |
-| **The organisation's** | Organisation settings, Theme, Labels and emoji, Layout, Secrets and sign-in, and the unit and workspace tree | `/admin/settings/*` and `/admin/organisation`, instance administrators only | The person menu's **Organisation** group, in two items: **Organisation settings** (whose screens have a navigation of their own) and **Units and workspaces**; the command palette, which lists every screen; the home page's **Organisation** section and set-up checklist |
+| **The organisation's** | Organisation settings, Theme, Labels and emoji, Layout, Secrets and sign-in, the unit and workspace tree, and people and groups | `/admin/settings/*`, `/admin/organisation` and `/admin/groups`, instance administrators only | The person menu's **Organisation** group, in three items: **Organisation settings** (whose screens have a navigation of their own), **Units and workspaces**, and **People and groups**; the command palette, which lists every screen; the home page's **Organisation** section and set-up checklist |
 
 The rules behind that:
 
@@ -125,3 +125,9 @@ and versions aligned without a monospace face.
 
 Themes are unaffected in kind: every colour, face and radius above is a token,
 so an identity changes how the chrome looks without changing these rules.
+
+## Editing a template
+
+The writing surface has a second mode for templates, carried by the address, a
+band above the page, the page's edge, its own fields and panel, and how
+template blocks are drawn. The rules are in [`templates.md`](templates.md).

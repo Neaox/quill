@@ -17,13 +17,8 @@ import type {
 } from '../ports/persistence.ts'
 import type { Clock, IdGenerator } from '../ports/system.ts'
 import { canonicaliseLinks } from './canonical-links.ts'
-import {
-  DOCUMENT_PUBLISHED,
-  DOCUMENT_RENAMED,
-  EVENT_PAYLOAD_VERSION,
-  type DocumentPublishedPayload,
-  type DocumentRenamedPayload,
-} from './events.ts'
+import { documentPublished, documentRenamed } from './events.ts'
+import { closeReviewOnPublish } from './review.ts'
 import { createVersionedReader } from './versioned-reader.ts'
 
 /**
@@ -69,6 +64,11 @@ export interface PublishDocumentCommand {
   readonly author: PublishAuthor
   /** The session publishing, so the lock can be re-validated as it is for any other write. */
   readonly sessionId: SessionId
+  /**
+   * The origins this application is served at. A link pasted with one of
+   * them is this application's own address, stored relative (ADR-035).
+   */
+  readonly appOrigins?: readonly string[] | undefined
 }
 
 export interface PublishedOutcome {
@@ -132,7 +132,7 @@ export async function publishDocument(
   // A link an author pasted out of the address bar becomes the canonical
   // `/d/<uuid>` here, once, on the way into the store (ADR-035), so what the
   // store holds is always the form the link index understands.
-  const markdown = await canonicaliseLinks(repos.documents, prepared.markdown)
+  const markdown = await canonicaliseLinks(repos.documents, prepared.markdown, command.appOrigins)
 
   const result = await deps.contentStore.publish({
     workspaceId: document.workspaceId,
@@ -237,9 +237,23 @@ export async function recordPublish(
 
     const row = await tx.documents.update(
       document.id,
-      { headRevision: revision, status: 'published', ...(renamed ? { title } : {}) },
+      {
+        headRevision: revision,
+        status: 'published',
+        updatedBy: input.author.userId,
+        ...(renamed ? { title } : {}),
+      },
       now,
     )
+
+    // Whatever was being reviewed has now gone live, so the review is over:
+    // closed here, in the publish's own transaction (ADR-052).
+    await closeReviewOnPublish(tx, {
+      documentId: document.id,
+      publishedBy: input.author.userId,
+      now,
+      ids: deps.ids,
+    })
 
     // TODO(M3): a publish that wrote to the content store and then failed
     // here leaves the two stores disagreeing until someone republishes. The
@@ -255,34 +269,34 @@ export async function recordPublish(
         revision,
         authorName: input.author.name,
         authorEmail: input.author.email,
+        authorUserId: input.author.userId,
         timestamp: now,
         summary: input.summary,
         changeNote: input.changeNote,
         now,
       })
-      const published: DocumentPublishedPayload = {
-        version: EVENT_PAYLOAD_VERSION,
-        documentId: document.id,
-        workspaceId: document.workspaceId,
-        revision,
-        publishedBy: input.author.userId,
-      }
-      await tx.outbox.write({
-        id: deps.ids.uuid(),
-        type: DOCUMENT_PUBLISHED,
-        payload: published,
-        now,
-      })
-
-      if (renamed) {
-        const event: DocumentRenamedPayload = {
-          version: EVENT_PAYLOAD_VERSION,
+      await tx.events.record(
+        documentPublished,
+        {
           documentId: document.id,
           workspaceId: document.workspaceId,
-          from: document.title,
-          to: title,
-        }
-        await tx.outbox.write({ id: deps.ids.uuid(), type: DOCUMENT_RENAMED, payload: event, now })
+          revision,
+          publishedBy: input.author.userId,
+        },
+        now,
+      )
+
+      if (renamed) {
+        await tx.events.record(
+          documentRenamed,
+          {
+            documentId: document.id,
+            workspaceId: document.workspaceId,
+            from: document.title,
+            to: title,
+          },
+          now,
+        )
       }
     }
 

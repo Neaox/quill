@@ -1,0 +1,2 @@
+Fixed: Obsidian callouts are callouts again, in the reader and the editor: `> [!tip] A title` shows its title, a kind Quill does not have (`> [!faq]`, or one of your own) is drawn as the nearest callout and still named as you wrote it, changing a callout's type keeps its marker as typed, and every one is saved back byte for byte.
+Fixed: GitHub alerts can be given a title and the Info type from the editor, written as Obsidian writes them, and a new foldable callout is written with its body as a paragraph of its own under the title.

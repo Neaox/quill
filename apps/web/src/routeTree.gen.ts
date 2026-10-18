@@ -20,13 +20,16 @@ import { Route as VerifyEmailRouteImport } from './routes/verify-email'
 import { Route as AuthenticatedPreferencesRouteImport } from './routes/_authenticated/preferences'
 import { Route as ShareTokenRouteRouteImport } from './routes/share/$token/route'
 import { Route as AuthenticatedAdminIndexRouteImport } from './routes/_authenticated/admin/index'
+import { Route as AuthenticatedAdminGroupsRouteImport } from './routes/_authenticated/admin/groups'
 import { Route as AuthenticatedAdminOrganisationRouteImport } from './routes/_authenticated/admin/organisation'
 import { Route as AuthenticatedAdminSettingsRouteRouteImport } from './routes/_authenticated/admin/settings/route'
+import { Route as AuthenticatedDDocumentRefRouteRouteImport } from './routes/_authenticated/d/$documentRef/route'
 import { Route as AuthenticatedWWorkspaceSlugRouteRouteImport } from './routes/_authenticated/w/$workspaceSlug/route'
 import { Route as ShareTokenIndexRouteImport } from './routes/share/$token/index'
 import { Route as AuthenticatedAdminSettingsIndexRouteImport } from './routes/_authenticated/admin/settings/index'
 import { Route as AuthenticatedAdminSettingsLabelsRouteImport } from './routes/_authenticated/admin/settings/labels'
 import { Route as AuthenticatedAdminSettingsLayoutRouteImport } from './routes/_authenticated/admin/settings/layout'
+import { Route as AuthenticatedAdminSettingsLinksRouteImport } from './routes/_authenticated/admin/settings/links'
 import { Route as AuthenticatedAdminSettingsOrganisationRouteImport } from './routes/_authenticated/admin/settings/organisation'
 import { Route as AuthenticatedAdminSettingsSecretsRouteImport } from './routes/_authenticated/admin/settings/secrets'
 import { Route as AuthenticatedAdminSettingsThemeRouteImport } from './routes/_authenticated/admin/settings/theme'
@@ -93,6 +96,12 @@ const AuthenticatedAdminIndexRoute = AuthenticatedAdminIndexRouteImport.update({
   path: '/admin/',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
+const AuthenticatedAdminGroupsRoute =
+  AuthenticatedAdminGroupsRouteImport.update({
+    id: '/admin/groups',
+    path: '/admin/groups',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 const AuthenticatedAdminOrganisationRoute =
   AuthenticatedAdminOrganisationRouteImport.update({
     id: '/admin/organisation',
@@ -103,6 +112,12 @@ const AuthenticatedAdminSettingsRouteRoute =
   AuthenticatedAdminSettingsRouteRouteImport.update({
     id: '/admin/settings',
     path: '/admin/settings',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedDDocumentRefRouteRoute =
+  AuthenticatedDDocumentRefRouteRouteImport.update({
+    id: '/d/$documentRef',
+    path: '/d/$documentRef',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
 const AuthenticatedWWorkspaceSlugRouteRoute =
@@ -132,6 +147,12 @@ const AuthenticatedAdminSettingsLayoutRoute =
   AuthenticatedAdminSettingsLayoutRouteImport.update({
     id: '/layout',
     path: '/layout',
+    getParentRoute: () => AuthenticatedAdminSettingsRouteRoute,
+  } as any)
+const AuthenticatedAdminSettingsLinksRoute =
+  AuthenticatedAdminSettingsLinksRouteImport.update({
+    id: '/links',
+    path: '/links',
     getParentRoute: () => AuthenticatedAdminSettingsRouteRoute,
   } as any)
 const AuthenticatedAdminSettingsOrganisationRoute =
@@ -206,12 +227,15 @@ export interface FileRoutesByFullPath {
   '/share/$token': typeof ShareTokenRouteRouteWithChildren
   '/preferences': typeof AuthenticatedPreferencesRoute
   '/admin/settings': typeof AuthenticatedAdminSettingsRouteRouteWithChildren
+  '/d/$documentRef': typeof AuthenticatedDDocumentRefRouteRoute
   '/w/$workspaceSlug': typeof AuthenticatedWWorkspaceSlugRouteRouteWithChildren
+  '/admin/groups': typeof AuthenticatedAdminGroupsRoute
   '/admin/organisation': typeof AuthenticatedAdminOrganisationRoute
   '/admin/': typeof AuthenticatedAdminIndexRoute
   '/share/$token/': typeof ShareTokenIndexRoute
   '/admin/settings/labels': typeof AuthenticatedAdminSettingsLabelsRoute
   '/admin/settings/layout': typeof AuthenticatedAdminSettingsLayoutRoute
+  '/admin/settings/links': typeof AuthenticatedAdminSettingsLinksRoute
   '/admin/settings/organisation': typeof AuthenticatedAdminSettingsOrganisationRoute
   '/admin/settings/secrets': typeof AuthenticatedAdminSettingsSecretsRoute
   '/admin/settings/theme': typeof AuthenticatedAdminSettingsThemeRoute
@@ -233,11 +257,14 @@ export interface FileRoutesByTo {
   '/sign-up': typeof SignUpRoute
   '/verify-email': typeof VerifyEmailRoute
   '/preferences': typeof AuthenticatedPreferencesRoute
+  '/d/$documentRef': typeof AuthenticatedDDocumentRefRouteRoute
+  '/admin/groups': typeof AuthenticatedAdminGroupsRoute
   '/admin/organisation': typeof AuthenticatedAdminOrganisationRoute
   '/admin': typeof AuthenticatedAdminIndexRoute
   '/share/$token': typeof ShareTokenIndexRoute
   '/admin/settings/labels': typeof AuthenticatedAdminSettingsLabelsRoute
   '/admin/settings/layout': typeof AuthenticatedAdminSettingsLayoutRoute
+  '/admin/settings/links': typeof AuthenticatedAdminSettingsLinksRoute
   '/admin/settings/organisation': typeof AuthenticatedAdminSettingsOrganisationRoute
   '/admin/settings/secrets': typeof AuthenticatedAdminSettingsSecretsRoute
   '/admin/settings/theme': typeof AuthenticatedAdminSettingsThemeRoute
@@ -263,12 +290,15 @@ export interface FileRoutesById {
   '/share/$token': typeof ShareTokenRouteRouteWithChildren
   '/_authenticated/preferences': typeof AuthenticatedPreferencesRoute
   '/_authenticated/admin/settings': typeof AuthenticatedAdminSettingsRouteRouteWithChildren
+  '/_authenticated/d/$documentRef': typeof AuthenticatedDDocumentRefRouteRoute
   '/_authenticated/w/$workspaceSlug': typeof AuthenticatedWWorkspaceSlugRouteRouteWithChildren
+  '/_authenticated/admin/groups': typeof AuthenticatedAdminGroupsRoute
   '/_authenticated/admin/organisation': typeof AuthenticatedAdminOrganisationRoute
   '/_authenticated/admin/': typeof AuthenticatedAdminIndexRoute
   '/share/$token/': typeof ShareTokenIndexRoute
   '/_authenticated/admin/settings/labels': typeof AuthenticatedAdminSettingsLabelsRoute
   '/_authenticated/admin/settings/layout': typeof AuthenticatedAdminSettingsLayoutRoute
+  '/_authenticated/admin/settings/links': typeof AuthenticatedAdminSettingsLinksRoute
   '/_authenticated/admin/settings/organisation': typeof AuthenticatedAdminSettingsOrganisationRoute
   '/_authenticated/admin/settings/secrets': typeof AuthenticatedAdminSettingsSecretsRoute
   '/_authenticated/admin/settings/theme': typeof AuthenticatedAdminSettingsThemeRoute
@@ -294,12 +324,15 @@ export interface FileRouteTypes {
     | '/share/$token'
     | '/preferences'
     | '/admin/settings'
+    | '/d/$documentRef'
     | '/w/$workspaceSlug'
+    | '/admin/groups'
     | '/admin/organisation'
     | '/admin/'
     | '/share/$token/'
     | '/admin/settings/labels'
     | '/admin/settings/layout'
+    | '/admin/settings/links'
     | '/admin/settings/organisation'
     | '/admin/settings/secrets'
     | '/admin/settings/theme'
@@ -321,11 +354,14 @@ export interface FileRouteTypes {
     | '/sign-up'
     | '/verify-email'
     | '/preferences'
+    | '/d/$documentRef'
+    | '/admin/groups'
     | '/admin/organisation'
     | '/admin'
     | '/share/$token'
     | '/admin/settings/labels'
     | '/admin/settings/layout'
+    | '/admin/settings/links'
     | '/admin/settings/organisation'
     | '/admin/settings/secrets'
     | '/admin/settings/theme'
@@ -350,12 +386,15 @@ export interface FileRouteTypes {
     | '/share/$token'
     | '/_authenticated/preferences'
     | '/_authenticated/admin/settings'
+    | '/_authenticated/d/$documentRef'
     | '/_authenticated/w/$workspaceSlug'
+    | '/_authenticated/admin/groups'
     | '/_authenticated/admin/organisation'
     | '/_authenticated/admin/'
     | '/share/$token/'
     | '/_authenticated/admin/settings/labels'
     | '/_authenticated/admin/settings/layout'
+    | '/_authenticated/admin/settings/links'
     | '/_authenticated/admin/settings/organisation'
     | '/_authenticated/admin/settings/secrets'
     | '/_authenticated/admin/settings/theme'
@@ -460,6 +499,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedAdminIndexRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/admin/groups': {
+      id: '/_authenticated/admin/groups'
+      path: '/admin/groups'
+      fullPath: '/admin/groups'
+      preLoaderRoute: typeof AuthenticatedAdminGroupsRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/admin/organisation': {
       id: '/_authenticated/admin/organisation'
       path: '/admin/organisation'
@@ -472,6 +518,13 @@ declare module '@tanstack/react-router' {
       path: '/admin/settings'
       fullPath: '/admin/settings'
       preLoaderRoute: typeof AuthenticatedAdminSettingsRouteRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/d/$documentRef': {
+      id: '/_authenticated/d/$documentRef'
+      path: '/d/$documentRef'
+      fullPath: '/d/$documentRef'
+      preLoaderRoute: typeof AuthenticatedDDocumentRefRouteRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
     '/_authenticated/w/$workspaceSlug': {
@@ -507,6 +560,13 @@ declare module '@tanstack/react-router' {
       path: '/layout'
       fullPath: '/admin/settings/layout'
       preLoaderRoute: typeof AuthenticatedAdminSettingsLayoutRouteImport
+      parentRoute: typeof AuthenticatedAdminSettingsRouteRoute
+    }
+    '/_authenticated/admin/settings/links': {
+      id: '/_authenticated/admin/settings/links'
+      path: '/links'
+      fullPath: '/admin/settings/links'
+      preLoaderRoute: typeof AuthenticatedAdminSettingsLinksRouteImport
       parentRoute: typeof AuthenticatedAdminSettingsRouteRoute
     }
     '/_authenticated/admin/settings/organisation': {
@@ -585,6 +645,7 @@ declare module '@tanstack/react-router' {
 interface AuthenticatedAdminSettingsRouteRouteChildren {
   AuthenticatedAdminSettingsLabelsRoute: typeof AuthenticatedAdminSettingsLabelsRoute
   AuthenticatedAdminSettingsLayoutRoute: typeof AuthenticatedAdminSettingsLayoutRoute
+  AuthenticatedAdminSettingsLinksRoute: typeof AuthenticatedAdminSettingsLinksRoute
   AuthenticatedAdminSettingsOrganisationRoute: typeof AuthenticatedAdminSettingsOrganisationRoute
   AuthenticatedAdminSettingsSecretsRoute: typeof AuthenticatedAdminSettingsSecretsRoute
   AuthenticatedAdminSettingsThemeRoute: typeof AuthenticatedAdminSettingsThemeRoute
@@ -597,6 +658,7 @@ const AuthenticatedAdminSettingsRouteRouteChildren: AuthenticatedAdminSettingsRo
       AuthenticatedAdminSettingsLabelsRoute,
     AuthenticatedAdminSettingsLayoutRoute:
       AuthenticatedAdminSettingsLayoutRoute,
+    AuthenticatedAdminSettingsLinksRoute: AuthenticatedAdminSettingsLinksRoute,
     AuthenticatedAdminSettingsOrganisationRoute:
       AuthenticatedAdminSettingsOrganisationRoute,
     AuthenticatedAdminSettingsSecretsRoute:
@@ -640,7 +702,9 @@ const AuthenticatedWWorkspaceSlugRouteRouteWithChildren =
 interface AuthenticatedRouteRouteChildren {
   AuthenticatedPreferencesRoute: typeof AuthenticatedPreferencesRoute
   AuthenticatedAdminSettingsRouteRoute: typeof AuthenticatedAdminSettingsRouteRouteWithChildren
+  AuthenticatedDDocumentRefRouteRoute: typeof AuthenticatedDDocumentRefRouteRoute
   AuthenticatedWWorkspaceSlugRouteRoute: typeof AuthenticatedWWorkspaceSlugRouteRouteWithChildren
+  AuthenticatedAdminGroupsRoute: typeof AuthenticatedAdminGroupsRoute
   AuthenticatedAdminOrganisationRoute: typeof AuthenticatedAdminOrganisationRoute
   AuthenticatedAdminIndexRoute: typeof AuthenticatedAdminIndexRoute
   AuthenticatedWWorkspaceSlugDDocumentIdPresentRoute: typeof AuthenticatedWWorkspaceSlugDDocumentIdPresentRoute
@@ -650,8 +714,10 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedPreferencesRoute: AuthenticatedPreferencesRoute,
   AuthenticatedAdminSettingsRouteRoute:
     AuthenticatedAdminSettingsRouteRouteWithChildren,
+  AuthenticatedDDocumentRefRouteRoute: AuthenticatedDDocumentRefRouteRoute,
   AuthenticatedWWorkspaceSlugRouteRoute:
     AuthenticatedWWorkspaceSlugRouteRouteWithChildren,
+  AuthenticatedAdminGroupsRoute: AuthenticatedAdminGroupsRoute,
   AuthenticatedAdminOrganisationRoute: AuthenticatedAdminOrganisationRoute,
   AuthenticatedAdminIndexRoute: AuthenticatedAdminIndexRoute,
   AuthenticatedWWorkspaceSlugDDocumentIdPresentRoute:

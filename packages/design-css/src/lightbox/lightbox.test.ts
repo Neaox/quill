@@ -338,6 +338,12 @@ describe('the lightbox at its limits', () => {
   })
 })
 
+function pressKey(dialog: HTMLDialogElement, key: string): KeyboardEvent {
+  const event = new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true })
+  dialog.dispatchEvent(event)
+  return event
+}
+
 describe('the lightbox, for keyboard, speech and screen reader', () => {
   function opened(): { dialog: HTMLDialogElement; canvas: HTMLElement } {
     const article = page()
@@ -349,29 +355,23 @@ describe('the lightbox, for keyboard, speech and screen reader', () => {
     return { dialog, canvas }
   }
 
-  function press(dialog: HTMLDialogElement, key: string): KeyboardEvent {
-    const event = new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true })
-    dialog.dispatchEvent(event)
-    return event
-  }
-
   it('pans a zoomed drawing with the arrow keys, and fits it again with Home', () => {
     const { dialog, canvas } = opened()
-    press(dialog, '+')
+    pressKey(dialog, '+')
     const zoomed = canvas.style.transform
 
-    const right = press(dialog, 'ArrowRight')
+    const right = pressKey(dialog, 'ArrowRight')
     expect(right.defaultPrevented).toBe(true)
     expect(canvas.style.transform).not.toBe(zoomed)
-    press(dialog, 'ArrowLeft')
+    pressKey(dialog, 'ArrowLeft')
     expect(canvas.style.transform).toBe(zoomed)
-    press(dialog, 'ArrowDown')
-    press(dialog, 'ArrowUp')
+    pressKey(dialog, 'ArrowDown')
+    pressKey(dialog, 'ArrowUp')
     expect(canvas.style.transform).toBe(zoomed)
 
-    press(dialog, 'Home')
+    pressKey(dialog, 'Home')
     expect(canvas.style.transform).toBe('translate(0px, 0px) scale(1)')
-    expect(press(dialog, 'Tab').defaultPrevented).toBe(false)
+    expect(pressKey(dialog, 'Tab').defaultPrevented).toBe(false)
     dialog.close()
   })
 
@@ -380,7 +380,7 @@ describe('the lightbox, for keyboard, speech and screen reader', () => {
     const readout = document.querySelector<HTMLButtonElement>('[data-action="zoom"]')
 
     expect(readout?.getAttribute('aria-label')).toBe('100%, fit or twice the size')
-    press(dialog, '+')
+    pressKey(dialog, '+')
     expect(readout?.textContent).toBe('150%')
     expect(readout?.getAttribute('aria-label')).toBe('150%, fit or twice the size')
     expect(document.querySelector('[data-action="in"]')?.getAttribute('aria-keyshortcuts')).toBe(
@@ -441,6 +441,24 @@ describe('the lightbox, for keyboard, speech and screen reader', () => {
 
     dispose()
     expect(disconnect).toHaveBeenCalled()
+    Reflect.deleteProperty(window, 'ResizeObserver')
+  })
+
+  it('watches a drawing that scrolls when the whole page is the root, as the public reader passes it', () => {
+    page()
+    const observed: Element[] = []
+    class Observer {
+      observe = (target: Element): void => {
+        observed.push(target)
+      }
+      disconnect = vi.fn<() => void>()
+    }
+    Object.defineProperty(window, 'ResizeObserver', { value: Observer, configurable: true })
+
+    const dispose = enhanceDiagrams(document)
+
+    expect(observed).toEqual([...document.querySelectorAll('.diagram')])
+    dispose()
     Reflect.deleteProperty(window, 'ResizeObserver')
   })
 })

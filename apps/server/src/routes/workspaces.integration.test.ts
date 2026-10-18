@@ -228,87 +228,6 @@ describe('creating a document', () => {
   })
 })
 
-describe('the workspace tree, a level at a time', () => {
-  const children = async (query: string, cookies = editor) =>
-    await harness.app.inject({
-      method: 'GET',
-      url: `/api/workspaces/${tenancy.workspaceId}/tree/children?${query}`,
-      cookies,
-    })
-
-  it('pages the top of a collection, saying how many each has beneath it and where the next page begins', async () => {
-    const first = await children(`collectionId=${tenancy.collectionId}&limit=1`)
-
-    expect(first.statusCode).toBe(200)
-    expect(first.json().nodes).toHaveLength(1)
-    expect(first.json().nodes[0]).toMatchObject({
-      id: expect.any(String),
-      shortId: expect.any(String),
-      slug: expect.any(String),
-      childCount: expect.any(Number),
-    })
-    expect(first.json().next).toEqual(expect.any(String))
-
-    const second = await children(
-      `collectionId=${tenancy.collectionId}&limit=1&cursor=${String(first.json().next)}`,
-    )
-    expect(second.statusCode).toBe(200)
-    expect(second.json().nodes[0].id).not.toBe(first.json().nodes[0].id)
-  })
-
-  it('opens a parent: its children, and only its children', async () => {
-    const top = await children(`collectionId=${runbooks}`)
-    const database = top
-      .json()
-      .nodes.find((node: { title: string }) => node.title === 'Database runbooks')
-    expect(database.childCount).toBe(1)
-
-    const opened = await children(`collectionId=${runbooks}&parentId=${String(database.id)}`)
-
-    expect(opened.json().nodes.map((node: { title: string }) => node.title)).toEqual(['Failover'])
-    expect(opened.json()).not.toHaveProperty('next')
-  })
-
-  it('says where a document is, so the tree can be opened to it', async () => {
-    const top = await children(`collectionId=${runbooks}`)
-    const database = top
-      .json()
-      .nodes.find((node: { title: string }) => node.title === 'Database runbooks')
-    const opened = await children(`collectionId=${runbooks}&parentId=${String(database.id)}`)
-    const failover = opened.json().nodes[0]
-
-    const position = await harness.app.inject({
-      method: 'GET',
-      url: `/api/documents/${String(failover.id)}/tree-position`,
-      cookies: editor,
-    })
-
-    expect(position.statusCode).toBe(200)
-    expect(position.json()).toEqual({
-      collectionId: runbooks,
-      ancestors: [database.id],
-      childCount: 0,
-    })
-    const stranger = await harness.app.inject({
-      method: 'GET',
-      url: `/api/documents/${String(failover.id)}/tree-position`,
-      cookies: outsider,
-    })
-    expect(stranger.statusCode).toBe(403)
-  })
-
-  it('refuses a cursor it did not write, a page that is too large, and a stranger', async () => {
-    expect(
-      (await children(`collectionId=${tenancy.collectionId}&cursor=nonsense`)).statusCode,
-    ).toBe(422)
-    expect((await children(`collectionId=${tenancy.collectionId}&limit=100000`)).statusCode).toBe(
-      400,
-    )
-    expect((await children(`collectionId=${tenancy.collectionId}`, outsider)).statusCode).toBe(403)
-    expect((await children('collectionId=no-such-collection')).statusCode).toBe(404)
-  })
-})
-
 describe('the workspace tree', () => {
   it('lists collections with their documents nested', async () => {
     const response = await harness.app.inject({
@@ -706,4 +625,197 @@ describe('addressing a workspace by its slug', () => {
       slug: 'failover-runbook',
     })
   })
+})
+
+/*
+ * The tree a sidebar draws: a few levels, a page of each list, and the way
+ * down to the document being read, with the rest a page at a time. A large
+ * workspace's whole tree is megabytes; these are kilobytes, cut from the
+ * same reader-filtered tree, so a page never shows what the whole would hide.
+ */
+describe('the workspace tree, a page at a time', () => {
+  let shelf: DocumentId
+  let volumes: DocumentId[]
+
+  beforeAll(async () => {
+    const parent = await create({ collectionId: runbooks, title: 'Shelf' })
+    shelf = parent.json().document.id as DocumentId
+    volumes = []
+    for (const title of ['Volume 1', 'Volume 2', 'Volume 3']) {
+      // One at a time: the tree's order is creation order.
+      const made = await create({ collectionId: runbooks, parentId: shelf, title })
+      volumes.push(made.json().document.id as DocumentId)
+    }
+  })
+
+  type Node = {
+    id: string
+    title: string
+    childCount: number
+    childrenOffset: number
+    children: Node[]
+  }
+  type Collection = {
+    name: string
+    documents: Node[]
+    documentCount: number
+    documentsOffset: number
+    total: number
+  }
+
+  async function tree(query: string, cookies = editor) {
+    const response = await harness.app.inject({
+      method: 'GET',
+      url: `/api/workspaces/${tenancy.workspaceId}/tree?${query}`,
+      cookies,
+    })
+    expect(response.statusCode).toBe(200)
+    return (response.json().collections as Collection[]).find((entry) => entry.name === 'Runbooks')
+  }
+
+  it('cuts the tree to a depth, and counts what it left out', async () => {
+    const runbookTree = await tree('depth=1&limit=50')
+    const shelfNode = runbookTree?.documents.find((node) => node.id === shelf)
+
+    expect(shelfNode).toMatchObject({ childCount: 3, children: [] })
+    expect(runbookTree?.documentCount).toBe(runbookTree?.documents.length)
+    expect(runbookTree?.total).toBeGreaterThan(runbookTree?.documentCount ?? 0)
+  })
+
+  it('brings the way to a focused document with the first response', async () => {
+    const runbookTree = await tree(`depth=1&limit=2&focus=${String(volumes[2])}`)
+    const shelfNode = runbookTree?.documents.find((node) => node.id === shelf)
+
+    // The page of the shelf's children that holds Volume 3.
+    expect(shelfNode?.childrenOffset).toBe(2)
+    expect(shelfNode?.children.map((node) => node.title)).toEqual(['Volume 3'])
+  })
+
+  it('opens nothing for a focus that names no document', async () => {
+    const runbookTree = await tree('depth=1&limit=50&focus=no-such-document-zzzzzzzz')
+    const shelfNode = runbookTree?.documents.find((node) => node.id === shelf)
+
+    expect(shelfNode).toMatchObject({ childCount: 3, children: [] })
+  })
+
+  it('answers the rest of a list a page at a time', async () => {
+    const response = await harness.app.inject({
+      method: 'GET',
+      url: `/api/workspaces/${tenancy.workspaceId}/tree/children?parent=${shelf}&offset=1&limit=1`,
+      cookies: editor,
+    })
+
+    expect(response.statusCode).toBe(200)
+    expect(response.json()).toMatchObject({
+      total: 3,
+      offset: 1,
+      documents: [{ title: 'Volume 2', childCount: 0, children: [] }],
+    })
+    // A collection's top level the same way.
+    const top = await harness.app.inject({
+      method: 'GET',
+      url: `/api/workspaces/${tenancy.workspaceId}/tree/children?collection=${runbooks}&limit=1`,
+      cookies: editor,
+    })
+    expect(top.json()).toMatchObject({ offset: 0, documents: [expect.anything()] })
+  })
+
+  it('never pages out what a deny hides, and treats a hidden parent as not found', async () => {
+    const denied = await createGrant(harness.deps, {
+      principalKind: 'user',
+      principalId: tenancy.viewer,
+      scopeKind: 'document',
+      scopeId: shelf,
+      role: 'viewer',
+      effect: 'deny',
+      createdBy: tenancy.admin,
+    })
+    expect(denied.kind).toBe('created')
+
+    const hidden = await harness.app.inject({
+      method: 'GET',
+      url: `/api/workspaces/${tenancy.workspaceId}/tree/children?parent=${shelf}`,
+      cookies: viewer,
+    })
+    expect(hidden.statusCode).toBe(404)
+
+    const runbookTree = await tree('depth=1', viewer)
+    expect(runbookTree?.documents.map((node) => node.id)).not.toContain(shelf)
+  })
+
+  it('gives one answer for a parent or collection it cannot show, whatever the reason', async () => {
+    const answer = async (query: string, cookies = editor) => {
+      const response = await harness.app.inject({
+        method: 'GET',
+        url: `/api/workspaces/${tenancy.workspaceId}/tree/children?${query}`,
+        cookies,
+      })
+      return { status: response.statusCode, body: response.json() as unknown }
+    }
+    const answers = [
+      // A reference that names no document at all.
+      await answer('parent=no-such-document-zzzzzzzz'),
+      // A document id that exists nowhere.
+      await answer('parent=00000000-0000-4000-8000-00000000dead'),
+      // A collection named by something that is not an id, and one that is not here.
+      await answer('collection=not-a-collection'),
+      await answer('collection=00000000-0000-4000-8000-00000000dead'),
+    ]
+    expect(answers[0]?.status).toBe(404)
+    for (const other of answers) expect(other).toEqual(answers[0])
+  })
+
+  it('refuses a focus or an owner too long to name a document', async () => {
+    for (const query of [
+      `depth=1&focus=${'a'.repeat(257)}`,
+      `children?parent=${'a'.repeat(257)}`,
+      `children?collection=${'a'.repeat(257)}`,
+    ]) {
+      const [path, search] = query.startsWith('children?')
+        ? ['tree/children', query.slice('children?'.length)]
+        : ['tree', query]
+      const response = await harness.app.inject({
+        method: 'GET',
+        url: `/api/workspaces/${tenancy.workspaceId}/${path}?${search}`,
+        cookies: editor,
+      })
+      expect(response.statusCode).toBe(400)
+    }
+  })
+
+  it('refuses a request that names neither or both owners', async () => {
+    for (const query of ['', `parent=${shelf}&collection=${runbooks}`]) {
+      const response = await harness.app.inject({
+        method: 'GET',
+        url: `/api/workspaces/${tenancy.workspaceId}/tree/children?${query}`,
+        cookies: editor,
+      })
+      expect(response.statusCode).toBe(400)
+    }
+  })
+})
+
+describe('the budget in front of the tree', () => {
+  it('refuses a reader past it, on the tree and on its pages', async () => {
+    const small = await createServerHarness({ browseRateLimitMax: 2 })
+    try {
+      const fixture = await seedTenancy(small)
+      const cookies = await small.cookiesFor(fixture.viewer)
+      const ask = (path: string) =>
+        small.app.inject({
+          method: 'GET',
+          url: `/api/workspaces/${fixture.workspaceId}/${path}`,
+          cookies,
+        })
+      const answers = [
+        await ask('tree'),
+        await ask(`tree/children?collection=${fixture.collectionId}`),
+        await ask('tree'),
+      ]
+      expect(answers.map((response) => response.statusCode)).toEqual([200, 200, 429])
+      expect(answers[2]?.json().error).toMatchObject({ code: 'rate_limited' })
+    } finally {
+      await small.close()
+    }
+  }, 60_000)
 })

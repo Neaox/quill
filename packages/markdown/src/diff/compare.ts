@@ -18,6 +18,7 @@ import { visit } from 'unist-util-visit'
 import { calloutDirective, isCalloutType } from '../directives/callout.ts'
 import { claims } from '../directives/definition.ts'
 import { isPresenterNotes, stripPresenterNotes } from '../directives/strip-presenter-notes.ts'
+import { MARKER_LINE } from '../pipeline/github-alert.ts'
 import { DIAGRAM_LANGUAGES } from '../render/handlers.ts'
 import type { BlockAlignment } from './blocks.ts'
 import { alignBlocks } from './blocks.ts'
@@ -170,6 +171,7 @@ export function compareDocuments(before: Root, after: Root): DocumentComparison 
       wordsAdded: merged.added,
       wordsRemoved: merged.removed,
       index: children.length,
+      /* v8 ignore next -- `placesInNewer` gives every entry of the alignment a place. */
       at: standsAt[index] ?? blocksOf(after).length,
       previous: entry.kind === 'added' ? undefined : oldWas.get(entry.before),
       nodes: markFirst(merged.nodes, { change }),
@@ -221,6 +223,7 @@ function placesInNewer(
   const places: number[] = []
   let next = end
   for (const entry of alignment.toReversed()) {
+    /* v8 ignore next -- every block of the newer alignment is one the newer document read. */
     if (entry.kind !== 'removed') next = stands.get(entry.after) ?? next
     places.push(next)
   }
@@ -464,7 +467,6 @@ function mergeList(before: List, after: List): { node: List; added: number; remo
  * table, and is shown before and after instead (`undefined`).
  */
 function mergeTable(before: Table, after: Table): Merged<Table> | undefined {
-  const width = (table: Table) => table.children[0]?.children.length ?? 0
   const [olderHead, ...olderBody] = before.children
   const [newerHead, ...newerBody] = after.children
   if (width(before) !== width(after) || olderHead === undefined || newerHead === undefined) {
@@ -503,6 +505,11 @@ function mergeTable(before: Table, after: Table): Merged<Table> | undefined {
     }
   }
   return { nodes: [{ ...after, children: rows }], added, removed }
+}
+
+/** How many columns a table has: its header row's cells. */
+function width(table: Table): number {
+  return table.children[0]?.children.length ?? 0
 }
 
 function mergeRow(
@@ -555,7 +562,8 @@ function wrapped<T extends Nodes>(node: T, change: 'added' | 'removed'): T {
   const copy = structuredClone(node)
   visit(copy, (child) => {
     if (child.type === 'paragraph' || child.type === 'heading' || child.type === 'tableCell') {
-      child.children = wholly(change, child.children)
+      const [marker, rest] = alertMarker(child.children)
+      child.children = [...marker, ...wholly(change, rest)]
       return 'skip'
     }
     return undefined
@@ -563,14 +571,34 @@ function wrapped<T extends Nodes>(node: T, change: 'added' | 'removed'): T {
   return copy
 }
 
+/**
+ * A callout's marker line (`[!NOTE]`, `[!tip] Title`) kept outside the wrapper,
+ * where the renderer looks for it, so a removed alert is still drawn as an alert, struck through.
+ */
+function alertMarker(
+  children: PhrasingContent[],
+): readonly [marker: PhrasingContent[], rest: PhrasingContent[]] {
+  const [first, ...others] = children
+  const match = first?.type === 'text' ? MARKER_LINE.exec(first.value) : null
+  if (first?.type !== 'text' || match === null) return [[], children]
+  const remainder = first.value.slice(match[0].length)
+  return [
+    [{ type: 'text', value: match[0] }],
+    remainder === '' ? others : [{ type: 'text', value: remainder }, ...others],
+  ]
+}
+
 function wordsIn(node: Nodes): number {
   return countWords(plainText(node))
 }
 
+/** Phrasing without the white space between pictures. */
+function meaningful(children: readonly PhrasingContent[]): PhrasingContent[] {
+  return children.filter((child) => !(child.type === 'text' && child.value.trim() === ''))
+}
+
 /** A paragraph that is only a picture: an image, perhaps with a link around it. */
 function isImageParagraph(node: Paragraph): boolean {
-  const meaningful = (children: readonly PhrasingContent[]): PhrasingContent[] =>
-    children.filter((child) => !(child.type === 'text' && child.value.trim() === ''))
   const content = meaningful(node.children)
   return (
     content.length > 0 &&

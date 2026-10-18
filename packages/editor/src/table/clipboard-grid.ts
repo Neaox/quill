@@ -38,13 +38,14 @@ function span(element: Element, name: 'colspan' | 'rowspan'): number {
 }
 
 function textOf(element: Element): string {
+  /* v8 ignore next -- an element's text is a string; only a document's or a doctype's is null. */
   return (element.textContent ?? '').replace(/\s+/gu, ' ').trim()
 }
 
 /** Drops empty rows and columns from the grid's end, which spreadsheets copy along. */
 function trim(rows: PastedCell[][]): PastedCell[][] {
   const kept = [...rows]
-  while (kept.length > 0 && (kept.at(-1) ?? []).every((cell) => cell.text === '')) kept.pop()
+  while (kept.at(-1)?.every((cell) => cell.text === '') === true) kept.pop()
   const width = kept.reduce(
     (widest, row) => Math.max(widest, row.findLastIndex((cell) => cell.text !== '') + 1),
     0,
@@ -53,13 +54,22 @@ function trim(rows: PastedCell[][]): PastedCell[][] {
 }
 
 /** The first table in clipboard HTML, as a grid; undefined when there is none. */
+/** Whether every word in `content` is inside `table`: style and comments carry none. */
+function holdsAllText(content: DocumentFragment, table: Element): boolean {
+  for (const style of content.querySelectorAll('style, script, title')) style.remove()
+  return content.textContent.trim().length === table.textContent.trim().length
+}
+
 export function gridFromHtml(html: string, doc: Document): PastedGrid | undefined {
   if (!/<table[\s>]/iu.test(html)) return undefined
   // A template's content is inert: nothing pasted loads or runs while it is read.
   const template = doc.createElement('template')
   template.innerHTML = html
-  const table = template.content.querySelector('table')
-  if (table === null) return undefined
+  const tables = template.content.querySelectorAll('table')
+  const table = tables.length === 1 ? tables[0] : undefined
+  // A grid is a clipboard that is one table and nothing else; a table copied
+  // inside a document comes with the document, which is pasted as such.
+  if (table === undefined || !holdsAllText(template.content, table)) return undefined
   const grid: PastedCell[][] = []
   // Places a rowspan from an earlier row has already filled, by row and column.
   const covered = new Set<string>()
@@ -91,7 +101,7 @@ export function gridFromHtml(html: string, doc: Document): PastedGrid | undefine
       cells[column] = EMPTY
       column += 1
     }
-    grid.push(Array.from({ length: cells.length }, (_, index) => cells[index] ?? EMPTY))
+    grid.push(cells)
     rowIndex += 1
   }
   const rows = trim(grid)
@@ -106,13 +116,13 @@ export function gridFromHtml(html: string, doc: Document): PastedGrid | undefine
  */
 export function gridFromText(text: string): PastedGrid | undefined {
   if (!text.includes('\t')) return undefined
-  const rows: string[][] = [[]]
+  let current: string[] = []
+  const rows: string[][] = [current]
   let field = ''
   let quoted = false
   const source = text.replace(/\r\n?/gu, '\n').replace(/\n$/u, '')
   for (let index = 0; index < source.length; index += 1) {
     const char = source[index]
-    const current = rows.at(-1) ?? []
     if (quoted) {
       if (char === '"' && source[index + 1] === '"') {
         field += '"'
@@ -126,10 +136,11 @@ export function gridFromText(text: string): PastedGrid | undefined {
     } else if (char === '\n') {
       current.push(field)
       field = ''
-      rows.push([])
+      current = []
+      rows.push(current)
     } else field += char
   }
-  ;(rows.at(-1) ?? []).push(field)
+  current.push(field)
   const cells = trim(
     rows.map((row) =>
       row.map((value) => ({ element: null, text: value.replace(/\s+/gu, ' ').trim() })),

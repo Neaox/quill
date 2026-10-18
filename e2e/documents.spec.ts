@@ -5,7 +5,7 @@ import { expect, test } from '@playwright/test'
 import { seedDevelopmentData } from './support/seed.ts'
 
 test.describe('documents', () => {
-  test('creates a document and sees it in the tree', async ({ page }) => {
+  test('creates a document and sees it in the tree', async ({ page, isMobile }) => {
     const seed = seedDevelopmentData()
     const signIn = await page.context().request.post('/api/auth/sign-in', {
       data: { email: seed.adminEmail, password: seed.adminPassword },
@@ -32,10 +32,15 @@ test.describe('documents', () => {
 
     // Creating navigates straight to the new document.
     await expect(page.getByRole('heading', { level: 1, name: title })).toBeVisible()
-    await expect(page.getByRole('group', { name: 'Note: Nothing published yet' })).toBeVisible()
+    // A new document has a draft with its title and nothing written under it yet.
+    await expect(page.getByRole('group', { name: 'Note: Nothing written yet' })).toBeVisible()
 
     // The navigation tree (`WorkspaceTree`, `@quill/ui`'s `Tree`) shows it,
-    // marked as the current document.
+    // marked as the current document. On a phone the tree is a sheet behind
+    // the header's "Browse documents" (`document-shell.tsx`), so a reader
+    // there opens it first, as this does; wider, it is a column already on
+    // screen and the button is not drawn.
+    if (isMobile) await page.getByRole('button', { name: 'Browse documents' }).click()
     const treeLink = page
       .getByRole('navigation', { name: 'Documents' })
       .getByRole('link', { name: title })

@@ -61,11 +61,35 @@ describe('a pasted HTML table', () => {
     ])
   })
 
+  it('pads a row that is shorter than the widest with empty cells', () => {
+    const grid = gridFromHtml(
+      '<table><tr><td>a</td><td>b</td></tr><tr><td>c</td></tr></table>',
+      document,
+    )
+    expect(texts(grid)).toEqual([
+      ['a', 'b'],
+      ['c', ''],
+    ])
+  })
+
   it('is no grid without a table, or with an empty one', () => {
     expect(gridFromHtml('<p>Words.</p>', document)).toBeUndefined()
     expect(gridFromHtml('<table></table>', document)).toBeUndefined()
     expect(gridFromHtml('<!-- <table> -->', document)).toBeUndefined()
     expect(gridFromHtml('<table><tr><td> </td></tr></table>', document)).toBeUndefined()
+  })
+
+  it('is no grid when the table is only part of what was copied', () => {
+    // A document copied from Docs or Word holds tables among its prose; it is
+    // a document to paste, not a grid, and taking its first table alone
+    // would drop everything else.
+    const copied = '<p>Before.</p><table><tr><td>a</td><td>b</td></tr></table><p>After.</p>'
+    expect(gridFromHtml(copied, document)).toBeUndefined()
+    const twoTables = '<table><tr><td>a</td></tr></table><table><tr><td>b</td></tr></table>'
+    expect(gridFromHtml(twoTables, document)).toBeUndefined()
+    const sheets =
+      '<google-sheets-html-origin><style>td{}</style><table><tr><td>a</td><td>b</td></tr></table></google-sheets-html-origin>'
+    expect(texts(gridFromHtml(sheets, document))).toEqual([['a', 'b']])
   })
 
   it('reads a span it cannot use as one cell', () => {
@@ -90,6 +114,13 @@ describe('pasted tab-separated text', () => {
       ['us', 'said "hi" there'],
     ])
     expect(grid?.unmerged).toBe(false)
+  })
+
+  it('fills a short row out to the grid’s width', () => {
+    expect(texts(gridFromText('a\tb\tc\nd'))).toEqual([
+      ['a', 'b', 'c'],
+      ['d', '', ''],
+    ])
   })
 
   it('is no grid without a tab, or with nothing in it', () => {

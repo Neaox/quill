@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest'
 import {
   useDocumentEnvelope,
   useDocumentHistory,
+  pendingLinksInterval,
   usePublishedContent,
   useRenderedDocument,
   useComparison,
@@ -20,7 +21,21 @@ const BODY = {
   html: '<article><h1 id="runbook">Runbook</h1></article>',
   outline: [{ id: 'runbook', depth: 1, text: 'Runbook', children: [] }],
   slots: [],
+  pendingLinks: 0,
 }
+
+describe('pendingLinksInterval', () => {
+  it('does not look again when nothing is pending', () => {
+    expect(pendingLinksInterval(0, 1)).toBe(false)
+  })
+
+  it('waits twice as long each time, and then gives up', () => {
+    expect([1, 2, 3, 4].map((looks) => pendingLinksInterval(2, looks))).toEqual([
+      2_000, 4_000, 8_000, 16_000,
+    ])
+    expect(pendingLinksInterval(2, 5)).toBe(false)
+  })
+})
 
 describe('useRenderedDocument', () => {
   it('reads the body and keeps the render cache’s ETag with it', async () => {
@@ -206,63 +221,6 @@ describe('useComparison', () => {
       expect(result.current.data).toBeDefined()
     })
     expect(asked).toEqual([{ to: 'draft' }])
-  })
-})
-
-describe('useComparison drawn change by change', () => {
-  it('asks for the changes on their own, and keeps that answer apart from the plain one', async () => {
-    const asked: string[] = []
-    const wrapper = createHookWrapper({
-      'GET /api/documents/{id}/compare': (request) => {
-        asked.push(new URL(request.url).searchParams.get('patches') ?? 'no')
-        return jsonResponse(200, EMPTY_COMPARISON)
-      },
-    })
-
-    const plain = renderHook(() => useComparison('doc-1', { from: null, to: 'draft' }), { wrapper })
-    const detailed = renderHook(
-      () => useComparison('doc-1', { from: null, to: 'draft' }, { patches: true }),
-      { wrapper },
-    )
-    await waitFor(() => {
-      expect(plain.result.current.data).toBeDefined()
-      expect(detailed.result.current.data).toBeDefined()
-    })
-
-    expect(asked.toSorted()).toEqual(['no', 'true'])
-  })
-})
-
-describe('useComparison with the draft', () => {
-  it('asks again for each version of the draft that is saved, and keeps the last answer meanwhile', async () => {
-    let asked = 0
-    const wrapper = createHookWrapper({
-      'GET /api/documents/{id}/compare': () => {
-        asked += 1
-        return jsonResponse(200, {
-          ...EMPTY_COMPARISON,
-          summary: { ...EMPTY_COMPARISON.summary, changed: asked },
-        })
-      },
-    })
-
-    const { result, rerender } = renderHook(
-      ({ version }: { version: number }) =>
-        useComparison('doc-1', { from: 'a'.repeat(40), to: 'draft' }, { version }),
-      { wrapper, initialProps: { version: 1 } },
-    )
-    await waitFor(() => {
-      expect(result.current.data?.summary.changed).toBe(1)
-    })
-
-    rerender({ version: 2 })
-
-    // The summary of version one stays up while version two's is on its way.
-    expect(result.current.data?.summary.changed).toBe(1)
-    await waitFor(() => {
-      expect(result.current.data?.summary.changed).toBe(2)
-    })
-    expect(asked).toBe(2)
   })
 })
 

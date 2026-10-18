@@ -1,3 +1,4 @@
+import { LINK_DISPLAYS } from '@quill/domain'
 import { defaultSchema } from 'hast-util-sanitize'
 import type { Schema } from 'hast-util-sanitize'
 
@@ -10,6 +11,7 @@ import { TABLE_FREEZE_VALUES, TABLE_PERCENTS } from '../directives/table.ts'
 import { CODE_SANITIZE_GRANT } from '../code-group/render.ts'
 import { DETAILS_SANITIZE_GRANT } from '../details/render.ts'
 import { EMOJI_SANITIZE_GRANT } from '../emoji/emoji.ts'
+import { NAVIGATION_SANITIZE_GRANT } from '../navigation/render.ts'
 import { HEADING_ID_PREFIX } from './slug.ts'
 import { CELL_LABEL_LIMIT } from './table-columns.ts'
 
@@ -171,6 +173,19 @@ const attributes: Schema['attributes'] = {
     ['className', 'data-footnote-backref', 'heading-anchor'],
     ARIA_LABEL,
     ['href', /^(?!\/\/)/],
+    // `link-slots.ts`'s slot (ADR-042): what the author chose for a link and the
+    // address its preview is stored under. Inert text and fixed words; the page
+    // reads them and nothing executes them. `display` and `layout` are the
+    // directive's own enumerations, `image` has the one value `none`.
+    'data-link-slot',
+    'data-link-key',
+    'data-link-internal',
+    'data-link-words',
+    'data-title',
+    'data-description',
+    ['data-display', ...LINK_DISPLAYS],
+    ['data-layout', 'side', 'top'],
+    ['data-image', 'none'],
   ],
 
   // `handlers.ts`'s `code` handler: `data-lang` names a fenced block's language,
@@ -178,10 +193,6 @@ const attributes: Schema['attributes'] = {
   // computes (ADR-030). Both are literal, already-hyphenated property keys.
   /* v8 ignore next -- see the note above `defaultAttributes`: always defined. */
   code: [...(defaultAttributes['code'] ?? []), 'data-lang', 'data-tokens'],
-
-  // `html.ts`'s `documentHeader`: the front-matter summary block wrapping the
-  // `dl` of dates.
-  header: [['className', 'document-meta']],
 
   // `handlers.ts`'s `callout` and `labelledAside`: the callout and guidance
   // asides. `role` is always exactly `"note"`; the accessible name is carried
@@ -243,8 +254,22 @@ const attributes: Schema['attributes'] = {
   ],
 
   // `handlers.ts`'s `calloutAside`: the title paragraph rendered above a
-  // callout's body. Its `id` is the default's `'*'` attribute, prefixed.
-  p: [['className', 'callout-label']],
+  // callout's body. Its `id` is the default's `'*'` attribute, prefixed. A
+  // link slot's paragraph of its own (`link-slots.ts`, ADR-042) is its block form.
+  p: [['className', 'callout-label', 'link-slot-block', ...NAVIGATION_SANITIZE_GRANT.classes.p]],
+
+  // `navigation/render.ts` (ADR-058): a table of contents, a `nav` named by
+  // its title or by its one fixed name, with its list's style.
+  nav: [
+    ['className', ...NAVIGATION_SANITIZE_GRANT.classes.nav],
+    ...NAVIGATION_SANITIZE_GRANT.attributes.nav,
+  ],
+
+  // GFM's task lists (the default's own class), and a table of contents'
+  // nested lists. One `className` entry per element: the sanitiser reads the
+  // first definition of an attribute and ignores any after it.
+  ul: [...ARIA, ['className', 'contains-task-list', ...NAVIGATION_SANITIZE_GRANT.classes.list]],
+  ol: [...ARIA, ['className', 'contains-task-list', ...NAVIGATION_SANITIZE_GRANT.classes.list]],
 
   // `details/render.ts` (ADR-048): the browser's own details, a callout's
   // classes when it is a folded callout, `open`, and a name only in a
@@ -252,7 +277,11 @@ const attributes: Schema['attributes'] = {
   // `open` and `name` are taken out of the default's every-element list
   // below, so this is the only element that can carry either.
   details: [
-    ['className', ...DETAILS_SANITIZE_GRANT.classes.details],
+    [
+      'className',
+      ...DETAILS_SANITIZE_GRANT.classes.details,
+      ...NAVIGATION_SANITIZE_GRANT.classes.details,
+    ],
     ...DETAILS_SANITIZE_GRANT.attributes.details,
   ],
 
@@ -269,18 +298,22 @@ const attributes: Schema['attributes'] = {
   // `dataFootnotes` and the `footnotes` class are the default's own GFM
   // footnote support (mdast-util-to-hast's built-in handler), kept so footnote
   // rendering keeps working if a document uses it.
-  // `data-depth` is the `::children` block's parameter, a number from the
-  // directive definition and never the author's text.
   section: [
     'dataFootnotes',
-    ['className', 'footnotes', 'live-block', 'optional', 'repeat', 'card'],
+    [
+      'className',
+      'footnotes',
+      'live-block',
+      'optional',
+      'repeat',
+      'card',
+      ...NAVIGATION_SANITIZE_GRANT.classes.section,
+    ],
     'data-live-block',
-    ['data-depth', /^[1-5]$/],
+    // A child pages slot's key and title (ADR-058).
+    ...NAVIGATION_SANITIZE_GRANT.attributes.section,
     ARIA_LABEL,
   ],
-
-  // `handlers.ts`'s `tableOfContents`: the `::toc` block's navigation landmark.
-  nav: [['className', 'toc'], ARIA_LABEL],
 
   // `handlers.ts`'s `textDirective`: the inline `:placeholder[...]` span, and
   // `:badge[...]`, whose `data-tone` is one of `BADGE_TONES` because
@@ -388,7 +421,6 @@ const tagNames = [
   'article', // html.ts: the document's top-level wrapper
   'header', // html.ts: documentHeader
   'aside', // handlers.ts: callout, guidance
-  'nav', // handlers.ts: the table of contents
   'figure', // handlers.ts: a captioned image, and `:::figure`
   'figcaption',
   'small', // handlers.ts: `:small[...]`
@@ -398,6 +430,7 @@ const tagNames = [
   'colgroup',
   'col',
   'caption', // handlers.ts: a table's caption, which names it (ADR-040)
+  ...NAVIGATION_SANITIZE_GRANT.tagNames, // navigation/render.ts: a table of contents (ADR-058)
 ]
 
 const protocols: Schema['protocols'] = {

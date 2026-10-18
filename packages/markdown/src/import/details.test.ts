@@ -61,6 +61,35 @@ describe('importing collapsible sections from other platforms', () => {
     }
   })
 
+  it('converts a block with a title and no kind, and an accordion with no title', () => {
+    expect(importMkDocsDetails('??? "Plain"\n    x\n')).toBe(':::details[Plain]\nx\n:::\n')
+    expect(
+      importMdxAccordions('<Accordions>\n\n<Accordion>\nx\n</Accordion>\n</Accordions>\n'),
+    ).toBe('::::accordion\n:::details\nx\n:::\n::::\n')
+    expect(importMdxAccordions('<Accordions>\n</Accordions>\n')).toBe(
+      '<Accordions>\n</Accordions>\n',
+    )
+  })
+
+  it('converts a collapsible section that has a title but no kind and starts closed', () => {
+    expect(importMkDocsDetails('??? "Plain title"\n    Body.\n')).toBe(
+      ':::details[Plain title]\nBody.\n:::\n',
+    )
+  })
+
+  it('converts the accordions of a group with blank lines between them', () => {
+    expect(
+      importMdxAccordions(
+        '<Accordions>\n\n<Accordion title="A">\nx\n</Accordion>\n\n<Accordion title="B">\ny\n</Accordion>\n</Accordions>\n',
+      ),
+    ).toBe('::::accordion\n:::details[A]\nx\n:::\n:::details[B]\ny\n:::\n::::\n')
+  })
+
+  it('leaves a group with no accordions in it as written', () => {
+    const source = '<Accordions>\n\n</Accordions>\n'
+    expect(importMdxAccordions(source)).toBe(source)
+  })
+
   it('converts the accordions of a group it cannot convert, and leaves the group as written', () => {
     expect(
       importDetails(

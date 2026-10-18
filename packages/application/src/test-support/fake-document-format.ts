@@ -168,16 +168,17 @@ export function createFakeDocumentFormat(options: FakeDocumentFormatOptions = {}
         (_, index): ComparedChange | undefined => {
           const was = older[index]
           const now = newer[index]
-          if (was === now) return undefined
+          const shown = now ?? was
+          if (shown === undefined || was === now) return undefined
           const change = was === undefined ? 'added' : now === undefined ? 'removed' : 'changed'
           return {
             id: `c${index + 1}`,
             change,
             block: 'paragraph',
-            excerpt: now ?? was ?? '',
+            excerpt: shown,
             wordsAdded: now === undefined ? 0 : 1,
             wordsRemoved: was === undefined ? 0 : 1,
-            ...(patches === true ? { html: now ?? was ?? '' } : {}),
+            ...(patches === true ? { html: shown } : {}),
             ...(draft === undefined ? {} : { revertible: true }),
             ...(draft === undefined || !isFakeStamp(authorship)
               ? {}
@@ -281,6 +282,10 @@ function labelled(labels: RenderInput['labels']): string {
 }
 
 /** The emoji a body was rendered with, and each label's leading one (ADR-038). */
+function isFakeStamp(value: unknown): value is { by: string; at: string } {
+  return typeof value === 'object' && value !== null && 'by' in value && 'at' in value
+}
+
 function emojiShown(emoji: RenderInput['emoji'], leading: RenderInput['labelEmoji']): string {
   const images = [...(emoji ?? new Map())].map(
     ([name, image]) => `<emoji name="${name}" src="${image.src}"/>`,
@@ -289,10 +294,6 @@ function emojiShown(emoji: RenderInput['emoji'], leading: RenderInput['labelEmoj
     ([label, name]) => `<lead label="${label}" emoji="${name}"/>`,
   )
   return [...images, ...leads].join('')
-}
-
-function isFakeStamp(value: unknown): value is { by: string; at: string } {
-  return typeof value === 'object' && value !== null && 'by' in value && 'at' in value
 }
 
 /** The Markdown a document with this front matter and body would be written as. */

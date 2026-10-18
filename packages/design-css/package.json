@@ -15,10 +15,12 @@
     "./code-blocks": "./src/code-blocks/code-blocks.ts",
     "./copy": "./src/code-blocks/copy.ts",
     "./details": "./src/details/details.ts",
+    "./contents-spy": "./src/contents-spy/contents-spy.ts",
     "./animated-images": "./src/animated-images/animated-images.ts",
     "./tables": "./src/tables/tables.ts",
     "./layout.css": "./src/layout.css",
     "./prose.css": "./src/prose.css",
+    "./byline.css": "./src/byline.css",
     "./comparison.css": "./src/comparison.css",
     "./public-site.css": "./src/public-site.css"
   },

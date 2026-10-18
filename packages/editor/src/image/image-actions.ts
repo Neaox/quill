@@ -73,9 +73,10 @@ class ImageActionsView implements NodeView {
   }
 
   private render(): void {
-    const src = text(this.node.attrs['src']) ?? ''
+    // An image always has an address; the schema requires one.
+    const src = String(this.node.attrs['src'])
     const shown = this.actions.reduce(
-      (current, action) => action.displaySrc?.(current) ?? current,
+      (current, action) => (action.displaySrc === undefined ? current : action.displaySrc(current)),
       src,
     )
     if (this.image.getAttribute('src') !== shown) this.image.setAttribute('src', shown)
@@ -95,6 +96,7 @@ class ImageActionsView implements NodeView {
         button.dataset['action'] = action.id
         button.addEventListener('click', () => {
           const pos = this.getPos()
+          /* v8 ignore next -- a view whose node has left the document has no buttons to press. */
           if (pos === undefined) return
           action.run({ src, alt, title, pos })
         })
@@ -105,6 +107,7 @@ class ImageActionsView implements NodeView {
   }
 
   update(node: PMNode): boolean {
+    /* v8 ignore next -- ProseMirror may offer any node at this place; only an image is this view's. */
     if (node.type !== this.node.type) return false
     this.node = node
     this.render()

@@ -94,10 +94,29 @@ export function renderedQueryOptions(
   }
 }
 
+/** How long to wait before looking again for link previews that were being fetched, doubling each time. */
+const PENDING_LINKS_FIRST_WAIT_MS = 2_000
+const PENDING_LINKS_LOOKS = 5
+
+/**
+ * When to read a body again because some of its link previews were still
+ * being fetched (ADR-042): 2, 4, 8, 16 seconds, then give up. The links stay
+ * plain until a preview arrives, so giving up costs the reader nothing, and a
+ * reader never polls for a site that is slow or down.
+ */
+export function pendingLinksInterval(pendingLinks: number, looks: number): number | false {
+  if (pendingLinks === 0 || looks >= PENDING_LINKS_LOOKS) return false
+  return PENDING_LINKS_FIRST_WAIT_MS * 2 ** (looks - 1)
+}
+
 export function useRenderedDocument(documentId: string, revision?: string) {
   const client = useApiClient()
   const queryClient = useQueryClient()
-  return useQuery(renderedQueryOptions(client, queryClient, documentId, revision))
+  return useQuery({
+    ...renderedQueryOptions(client, queryClient, documentId, revision),
+    refetchInterval: (query) =>
+      pendingLinksInterval(query.state.data?.body.pendingLinks ?? 0, query.state.dataUpdateCount),
+  })
 }
 
 /**
@@ -108,14 +127,18 @@ export function useRenderedDocument(documentId: string, revision?: string) {
  * re-read whenever the window regains focus rather than held until something
  * invalidates it.
  */
-export function useDocumentEnvelope(documentId: string) {
+export function useDocumentEnvelope(documentId: string | undefined) {
   const client = useApiClient()
   return useQuery({
-    queryKey: queryKeys.envelope(documentId),
+    queryKey: queryKeys.envelope(documentId ?? ''),
     queryFn: () =>
       request<DocumentEnvelope>(
-        client.GET('/api/documents/{id}/envelope', { params: { path: { id: documentId } } }),
+        client.GET('/api/documents/{id}/envelope', {
+          params: { path: { id: documentId ?? '' } },
+        }),
       ),
+    // The frame asks on every place in a workspace; only a document has one.
+    enabled: documentId !== undefined,
   })
 }
 
@@ -169,45 +192,36 @@ export interface ComparisonRange {
   readonly to: string
 }
 
-function comparisonQuery(range: ComparisonRange, patches = false) {
-  return {
-    to: range.to,
-    ...(range.from === null ? {} : { from: range.from }),
-    ...(patches ? { patches } : {}),
-  }
+function comparisonQuery(range: ComparisonRange) {
+  return { to: range.to, ...(range.from === null ? {} : { from: range.from }) }
 }
 
 /**
  * Two versions as one page (`GET /documents/:id/compare`). Two revisions are
  * immutable, so their comparison is too; a comparison with the draft is
- * asked for again whenever it is shown, because the draft is being written,
- * and for each `version` of it that is saved.
+ * asked for again whenever it is shown, because the draft is being written.
  */
 export function useComparison(
   documentId: string,
   range: ComparisonRange,
   options: {
+    /**
+     * The version of the draft the answer is for, when the caller follows a draft being
+     * written: a new version is a new question, and between one and the next the last
+     * answer is the best there is, which keeps a summary of it from flickering.
+     */
     readonly version?: number
-    /** Each change drawn on its own, and which can be put back in the draft. */
-    readonly patches?: boolean
   } = {},
 ) {
   const client = useApiClient()
   return useQuery({
-    queryKey: queryKeys.comparison(
-      documentId,
-      range.from,
-      range.to,
-      options.version,
-      options.patches,
-    ),
-    // Between one version of the draft and the next, the last answer is the best
-    // there is, which is what lets a summary of it not flicker as the author types.
-    placeholderData: (previous) => (range.to === DRAFT_SIDE ? previous : undefined),
+    queryKey: queryKeys.comparison(documentId, range.from, range.to, options.version),
+    placeholderData: (previous: Comparison | undefined) =>
+      options.version === undefined ? undefined : previous,
     queryFn: () =>
       request<Comparison>(
         client.GET('/api/documents/{id}/compare', {
-          params: { path: { id: documentId }, query: comparisonQuery(range, options.patches) },
+          params: { path: { id: documentId }, query: comparisonQuery(range) },
         }),
       ),
     staleTime: range.to === DRAFT_SIDE ? 0 : Number.POSITIVE_INFINITY,

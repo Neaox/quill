@@ -34,7 +34,7 @@ Status values: `Proposed` (awaiting a spike or review), `Accepted`, `Superseded 
 | [026](0026-licence-and-naming.md)                     | Licence and naming                            | Accepted (naming open) |
 | [027](0027-block-layout-widths.md)                    | Block layout widths (breakout blocks)         | Accepted               |
 | [028](0028-theming-architecture.md)                   | Theming architecture                          | Accepted               |
-| [029](0029-template-model.md)                         | Template model                                | Accepted               |
+| [029](0029-template-model.md)                         | Template model                                | Accepted (amended)     |
 | [030](0030-syntax-highlighting.md)                    | Syntax highlighting                           | Accepted               |
 | [031](0031-render-caching.md)                         | Rendering and caching                         | Accepted               |
 | [032](0032-live-blocks.md)                            | Live blocks                                   | Accepted               |
@@ -57,4 +57,11 @@ Status values: `Proposed` (awaiting a spike or review), `Accepted`, `Superseded 
 | [049](0049-navigation-tree-ordering-and-paging.md)    | Navigation tree: ordering and paging          | Accepted               |
 | [050](0050-presenting-with-two-windows.md)            | Presenting with two windows                   | Accepted               |
 | [051](0051-find-and-replace.md)                       | Find and replace in the editor                | Accepted               |
-| [052](0052-component-blocks.md)                       | Component blocks, and MDX as a dialect        | Proposed               |
+| [052](0052-publish-capability-and-review-requests.md) | Publish capability and review requests        | Accepted               |
+| [053](0053-home-relevance.md)                         | What is relevant on the signed-in home        | Accepted               |
+| [054](0054-template-library-and-authoring.md)         | Template library and authoring                | Accepted               |
+| [055](0055-authorship-and-ownership.md)               | Authorship and ownership                      | Accepted               |
+| [056](0056-events-outbox-and-bus.md)                  | Events: the outbox is the truth, the bus the signal | Accepted         |
+| [058](0058-navigation-blocks.md)                     | Navigation blocks: contents and child pages   | Accepted               |
+| [059](0059-document-properties-on-every-surface.md)  | Document properties on every surface          | Accepted               |
+| [060](0060-component-blocks.md)                       | Component blocks, and MDX as a dialect        | Proposed               |

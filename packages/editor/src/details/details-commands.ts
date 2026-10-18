@@ -21,9 +21,9 @@ import { paragraph } from '../slash/slash-commands.ts'
  */
 
 /** A new details: an empty summary, where the caret goes, and an empty body. */
-export function createDetailsNode(schema: Schema, summary = ''): PMNode {
+export function createDetailsNode(schema: Schema): PMNode {
   return nodeType(schema, 'details').create(null, [
-    nodeType(schema, 'detailsSummary').create(null, summary === '' ? null : schema.text(summary)),
+    nodeType(schema, 'detailsSummary').create(),
     paragraph(schema),
   ])
 }
@@ -42,9 +42,14 @@ function detailsAt(doc: PMNode, pos: number): PMNode | undefined {
   return node?.type.name === 'details' ? node : undefined
 }
 
-function attributesOf(node: PMNode): Readonly<Record<string, unknown>> {
+function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+/** A details' attributes: `open`, `name` and `type`, and any others it was written with. */
+export function attributesOf(node: PMNode): Readonly<Record<string, unknown>> {
   const attributes: unknown = node.attrs['attributes']
-  return typeof attributes === 'object' && attributes !== null ? attributes : {}
+  return isRecord(attributes) ? attributes : {}
 }
 
 /** Whether a details opens for a reader by default: its `open` attribute, as a directive reads one. */
@@ -104,8 +109,7 @@ function unwrap(found: InDetails, caretAtEnd: boolean): Command {
     const blocks = unwrapped(state.schema, details)
     if (dispatch !== undefined) {
       const tr = state.tr.replaceWith(pos, pos + details.nodeSize, Fragment.from(blocks))
-      const summary = details.firstChild
-      const at = pos + 1 + (caretAtEnd ? (summary?.content.size ?? 0) : 0)
+      const at = pos + 1 + (caretAtEnd ? details.child(0).content.size : 0)
       dispatch(tr.setSelection(TextSelection.create(tr.doc, at)).scrollIntoView())
     }
     return true
@@ -119,18 +123,22 @@ function unwrap(found: InDetails, caretAtEnd: boolean): Command {
 export const enterFromSummary: Command = (state, dispatch) => {
   const { $from, empty } = state.selection
   if (!empty || $from.parent.type.name !== 'detailsSummary') return false
-  const found = enclosingDetails($from)
-  if (found === undefined) return false
   if (dispatch !== undefined) {
     // A line does not start with the space the caret was in front of.
-    const rest = $from.parent.textBetween($from.parentOffset, $from.parent.content.size, '', '￼')
-    const spaces = /^\s*/u.exec(rest)?.[0].length ?? 0
+    const rest = $from.parent.textBetween(
+      $from.parentOffset,
+      $from.parent.content.size,
+      '',
+      '\ufffc',
+    )
+    const spaces = rest.length - rest.trimStart().length
     const after = $from.parent.content.cut($from.parentOffset + spaces)
     const bodyStart = $from.after()
-    const first = found.details.maybeChild(1)
+    // A summary is always a details' first child, and its body's first line the second.
+    const first = $from.node(-1).child(1)
     const tr = state.tr.delete($from.pos, $from.end())
     const start = tr.mapping.map(bodyStart)
-    const reuse = after.size === 0 && first?.type.name === 'paragraph' && first.content.size === 0
+    const reuse = after.size === 0 && first.type.name === 'paragraph' && first.content.size === 0
     if (!reuse) tr.insert(start, nodeType(state.schema, 'paragraph').create(null, after))
     dispatch(tr.setSelection(TextSelection.create(tr.doc, start + 1)).scrollIntoView())
   }
@@ -155,7 +163,7 @@ export const backspaceInDetails: Command = (state, dispatch) => {
   const bodyIsEmpty = details.childCount === 2 && $from.parent.content.size === 0
   if (bodyIsEmpty) return unwrap(found, true)(state, dispatch)
   if (dispatch !== undefined) {
-    const summaryEnd = found.pos + 1 + (details.firstChild?.nodeSize ?? 2) - 1
+    const summaryEnd = found.pos + details.child(0).nodeSize
     dispatch(state.tr.setSelection(TextSelection.create(state.doc, summaryEnd)))
   }
   return true

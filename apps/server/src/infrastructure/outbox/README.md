@@ -14,8 +14,15 @@ a dead letter.
 | `render-on-publish.ts` | Renders the published body so the first reader never pays for a render (ADR-031). |
 | `index-on-publish.ts` | Puts the published document into the search index, and re-indexes a renamed one (ADR-010). |
 | `send-mail.ts` | Delivers queued mail, and redacts the token out of the row afterwards (ADR-011). |
+| `notify-on-review.ts` | Writes in-app notifications for review requests, answers and withdrawals (ADR-052, ADR-053); idempotent per request, recipient, kind and actor. |
 | `acknowledge.ts` | A consumer that deliberately does nothing, for a type nothing acts on yet. |
 | `combine.ts` | Several consumers of one event type, as the one consumer the runner registers. |
+
+Which consumers are registered, for the server and the test harness alike, is `../../jobs/register-consumers.ts`; its test pins that every event type Quill emits has one.
+
+## What is not a consumer
+
+Anything that must happen in *every* process, not once: a cache. A consumer is claimed by one poller, which is the right number of processes for indexing and the wrong one for a cache, and a poll interval is the wrong delay between revoking access and the cache knowing. Those are subscribers of the in-process event bus, told after the commit (ADR-056; `../../public-site/invalidation.ts` is the first).
 
 ## Two things on one event share a failure domain
 

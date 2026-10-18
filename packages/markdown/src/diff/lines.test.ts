@@ -1,4 +1,4 @@
-import fc from 'fast-check'
+import * as fc from 'fast-check'
 import { describe, expect, it } from 'vitest'
 
 import { compareLines, linesOf } from './lines.ts'
@@ -63,5 +63,10 @@ describe('linesOf', () => {
   it('ignores the trailing newline every file ends with', () => {
     expect(linesOf('a\nb\n')).toEqual(['a', 'b'])
     expect(linesOf('')).toEqual([])
+    expect(linesOf('a\nb')).toEqual(['a', 'b'])
+  })
+
+  it('keeps the last line of a text that does not end in a newline', () => {
+    expect(linesOf('a\nb')).toEqual(['a', 'b'])
   })
 })

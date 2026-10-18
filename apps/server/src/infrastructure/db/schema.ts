@@ -400,6 +400,13 @@ export const documents = pgTable(
     templateVersion: integer('template_version'),
     /** The revision this document was last published at (ADR-015). */
     headRevision: text('head_revision'),
+    /**
+     * Who created it and who last published, restored, renamed or moved it
+     * (ADR-053). Null for rows that predate the columns and never guessed
+     * afterwards: "mine" is an id, not an email match.
+     */
+    createdBy: text('created_by').references(() => users.id, { onDelete: 'set null' }),
+    updatedBy: text('updated_by').references(() => users.id, { onDelete: 'set null' }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull(),
   },
@@ -411,7 +418,8 @@ export const documents = pgTable(
       foreignColumns: [table.id],
       name: 'documents_parent_id_fk',
     }).onDelete('set null'),
-    // A page of siblings, in their order, from where the last page ended (ADR-049).
+    // A page of siblings, in their order, from where the last page ended
+    // (migration 0015, which databases migrated from main already have).
     index('documents_children_idx').on(
       table.workspaceId,
       table.collectionId,
@@ -434,8 +442,9 @@ export const drafts = pgTable('drafts', {
   ast: jsonb('ast').notNull().default({}),
   /**
    * Who wrote what is waiting in the draft (`packages/markdown`'s `Authorship`), kept beside
-   * the tree and cleared whenever the draft is moved onto a new base, because from then it
-   * says what is published. Versioned, and null for a draft that has none.
+   * the tree (migration 0014) and cleared whenever the draft is moved onto a new base,
+   * because from then it says what is published. Versioned, and null for a draft that has
+   * none.
    */
   authorship: jsonb('authorship'),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull(),
@@ -479,6 +488,8 @@ export const revisionsIndex = pgTable(
     revision: text('revision').notNull(),
     authorName: text('author_name').notNull(),
     authorEmail: text('author_email').notNull(),
+    /** The publisher's id (ADR-053); null for a revision recorded before the column existed. */
+    authorUserId: text('author_user_id').references(() => users.id, { onDelete: 'set null' }),
     timestamp: timestamp('timestamp', { withTimezone: true }).notNull(),
     summary: text('summary').notNull(),
     changeNote: text('change_note'),
@@ -742,7 +753,55 @@ export const documentSearch = pgTable(
       .array()
       .notNull()
       .default(sql`'{}'::text[]`),
+    /**
+     * Every tag and every ancestor of every tag (`area/billing` yields `area`
+     * and `area/billing`), normalised, from `expandTagPaths`: what `tag:` is
+     * matched against, so a parent finds its subtree and GIN serves it. `tags`
+     * keeps the tags as written, folded, for display.
+     */
+    tagPaths: text('tag_paths')
+      .array()
+      .notNull()
+      .default(sql`'{}'::text[]`),
+    /**
+     * The front-matter keys that are not core fields, as lower-case key to
+     * lower-case values (`{"severity": ["high"]}`): what `prop:key=value`
+     * asks about, by containment, served by a `jsonb_path_ops` GIN index.
+     */
+    properties: jsonb('properties')
+      .$type<Record<string, readonly string[]>>()
+      .notNull()
+      .default(sql`'{}'::jsonb`),
     status: text('status').notNull(),
+    /**
+     * What the document says it is about, in a sentence or two: its
+     * `description`, or else its first paragraph (ADR-058). Shown under its
+     * title in a child pages list; null for a row projected before it existed.
+     */
+    summary: text('summary'),
+    /** The document's own icon from its front matter, an emoji (ADR-058). */
+    icon: text('icon'),
+    /**
+     * The author's lifecycle from front matter `status` (`in-review`,
+     * `verified`, `deprecated`); null when unset, or for a row projected
+     * before it existed. Only `deprecated` affects ranking today
+     * (`RankingProfile.deprecatedPenalty`).
+     */
+    lifecycle: text('lifecycle'),
+    /**
+     * The addresses of everyone who has published a revision, lower case: what
+     * `by:me`, `by:<address>` and `team:` match exactly, served by GIN.
+     */
+    contributorEmails: text('contributor_emails')
+      .array()
+      .notNull()
+      .default(sql`'{}'::text[]`),
+    /**
+     * One lower-case line per contributor, name then address, for `by:<part of
+     * a name>`. A line each, so a needle (which has no line break in it) cannot
+     * run from one person into the next.
+     */
+    contributorsText: text('contributors_text').notNull().default(''),
     /** The document's own last update, which the recency boost decays from. */
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull(),
     /** The revision this row was projected from (ADR-034). Null for a row rebuilt from a workspace with no revision recorded. */
@@ -763,6 +822,12 @@ export const documentSearch = pgTable(
     // `tag:` and `owner:` filters are array containment, which GIN answers.
     index('document_search_tags_idx').using('gin', table.tags),
     index('document_search_owners_idx').using('gin', table.owners),
+    // `tag:` is containment over the tag and its ancestors.
+    index('document_search_tag_paths_idx').using('gin', table.tagPaths),
+    // `prop:key=value` is containment over the properties.
+    index('document_search_properties_idx').using('gin', table.properties.op('jsonb_path_ops')),
+    // `by:me`, `by:<address>` and `team:` are array overlap, which GIN answers.
+    index('document_search_contributor_emails_idx').using('gin', table.contributorEmails),
   ],
 )
 
@@ -857,3 +922,178 @@ export const personPreferences = pgTable('person_preferences', {
   document: jsonb('document').notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull(),
 })
+
+/**
+ * Stored link previews (ADR-042): snapshots of other people's pages, shared
+ * across the instance in the `public` scope and kept private to an audience
+ * in any other, keyed by the normalised URL.
+ *
+ * The preview itself is a versioned document read through the application's
+ * versioned reader (ADR-033), so a row written by another release is
+ * refetched rather than misread. It is derived data: every row can be thrown
+ * away and will be fetched again when next asked for, which is why nothing
+ * here references another table and no row is ever migrated.
+ *
+ * `requested_at` marks a fetch as wanted or running, and is the lock that
+ * makes two readers queue one fetch. `retry_after` is how a dead link is not
+ * asked for on every read. A row that holds a preview keeps it through a
+ * failed refresh.
+ */
+/** Where a stored preview keeps the hash of its picture; also what the indexes below are on. */
+export const THUMBNAIL_HASH = sql`(${sql.raw('document')}->'thumbnail'->>'hash')`
+export const FAVICON_HASH = sql`(${sql.raw('document')}->'favicon'->>'hash')`
+
+export const linkPreviews = pgTable(
+  'link_previews',
+  {
+    scope: text('scope').notNull(),
+    key: text('key').notNull(),
+    state: text('state').notNull(),
+    document: jsonb('document'),
+    failure: text('failure'),
+    fetchedAt: timestamp('fetched_at', { withTimezone: true }).notNull(),
+    requestedAt: timestamp('requested_at', { withTimezone: true }),
+    retryAfter: timestamp('retry_after', { withTimezone: true }),
+  },
+  (table) => [
+    primaryKey({ columns: [table.scope, table.key] }),
+    // Which stored previews show a given picture: the question the image route asks
+    // before it serves a hash, so it must not be a scan.
+    index('link_previews_thumbnail_idx').on(THUMBNAIL_HASH),
+    index('link_previews_favicon_idx').on(FAVICON_HASH),
+  ],
+)
+
+/**
+ * A request for other people's eyes on a draft (ADR-052). `draft_version` is
+ * the draft the request was made about: the draft is stale when its version
+ * has moved on, which needs no write. A request is *active* until `closed_at`
+ * is set (withdrawn, superseded or published), and at most one is active per
+ * document. Statuses are plain text so they can grow without a migration.
+ */
+export const reviewRequests = pgTable(
+  'review_requests',
+  {
+    id: text('id').primaryKey(),
+    documentId: text('document_id')
+      .notNull()
+      .references(() => documents.id, { onDelete: 'cascade' }),
+    requestedBy: text('requested_by')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    draftVersion: integer('draft_version').notNull(),
+    message: text('message'),
+    status: text('status').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull(),
+    closedAt: timestamp('closed_at', { withTimezone: true }),
+  },
+  (table) => [
+    // One active request per document, enforced where it cannot be raced.
+    uniqueIndex('review_requests_one_active_idx')
+      .on(table.documentId)
+      .where(sql`${table.closedAt} IS NULL`),
+    index('review_requests_document_idx').on(table.documentId, table.createdAt),
+    // "My requests that have been answered" is what home reads.
+    index('review_requests_requested_by_idx').on(table.requestedBy),
+  ],
+)
+
+/**
+ * One person or group asked to review a request. A group is answered by any
+ * one member, so `decided_by` names the member who did. `principal_id` is a
+ * user or group id by `principal_kind`, with no foreign key because it points
+ * at two tables; a removed user or group simply stops matching anyone.
+ */
+export const reviewAssignments = pgTable(
+  'review_assignments',
+  {
+    id: text('id').primaryKey(),
+    requestId: text('request_id')
+      .notNull()
+      .references(() => reviewRequests.id, { onDelete: 'cascade' }),
+    position: integer('position').notNull(),
+    principalKind: text('principal_kind').notNull(),
+    principalId: text('principal_id').notNull(),
+    state: text('state').notNull(),
+    decidedBy: text('decided_by').references(() => users.id, { onDelete: 'set null' }),
+    comment: text('comment'),
+    decidedAt: timestamp('decided_at', { withTimezone: true }),
+  },
+  (table) => [
+    unique('review_assignments_request_principal_key').on(
+      table.requestId,
+      table.principalKind,
+      table.principalId,
+    ),
+    // Finding what is waiting on a person starts from the principal.
+    index('review_assignments_principal_idx').on(table.principalKind, table.principalId),
+  ],
+)
+
+/**
+ * What a person has opened (ADR-053): their own record, one row per person and
+ * document, read only by that person and kept 90 days. `workspace_id` is where
+ * the document was when it was opened, so a workspace's engagement is one
+ * grouped read of the person's rows. Goes with the person and with the document.
+ */
+export const documentViews = pgTable(
+  'document_views',
+  {
+    userId: text('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    documentId: text('document_id')
+      .notNull()
+      .references(() => documents.id, { onDelete: 'cascade' }),
+    workspaceId: text('workspace_id')
+      .notNull()
+      .references(() => workspaces.id, { onDelete: 'cascade' }),
+    lastViewedAt: timestamp('last_viewed_at', { withTimezone: true }).notNull(),
+    views: integer('views').notNull().default(1),
+  },
+  (table) => [
+    primaryKey({ columns: [table.userId, table.documentId] }),
+    // Everything the home asks is "this person's, newest first".
+    index('document_views_user_recent_idx').on(table.userId, table.lastViewedAt.desc()),
+    // The 90-day cleanup walks by age across everybody.
+    index('document_views_last_viewed_idx').on(table.lastViewedAt),
+  ],
+)
+
+/**
+ * In-app notifications (ADR-053): one person's own row about a review request
+ * they were asked to look at, or asked someone to look at. Read only by the
+ * recipient and kept 90 days. `kind` is plain text so it can grow without a
+ * migration. The unique key is what makes an outbox event idempotent: a
+ * redelivered event finds its rows and writes none. `actor_user_id` is null
+ * once that person has gone; the row goes with its recipient, its document and
+ * its request.
+ */
+export const notifications = pgTable(
+  'notifications',
+  {
+    id: text('id').primaryKey(),
+    recipientUserId: text('recipient_user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    kind: text('kind').notNull(),
+    documentId: text('document_id')
+      .notNull()
+      .references(() => documents.id, { onDelete: 'cascade' }),
+    requestId: text('request_id')
+      .notNull()
+      .references(() => reviewRequests.id, { onDelete: 'cascade' }),
+    actorUserId: text('actor_user_id').references(() => users.id, { onDelete: 'set null' }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull(),
+    readAt: timestamp('read_at', { withTimezone: true }),
+  },
+  (table) => [
+    unique('notifications_event_key')
+      .on(table.requestId, table.recipientUserId, table.kind, table.actorUserId)
+      .nullsNotDistinct(),
+    // The list is "this person's, newest first".
+    index('notifications_recipient_recent_idx').on(table.recipientUserId, table.createdAt.desc()),
+    // The 90-day cleanup walks by age across everybody.
+    index('notifications_created_idx').on(table.createdAt),
+  ],
+)

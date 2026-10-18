@@ -9,6 +9,9 @@ function render(before: string, after: string) {
   return renderComparison(compareDocuments(parseDocument(before).ast, parseDocument(after).ast))
 }
 
+const notesDocument = (body: string) =>
+  `# Guide\n\n:::notes\n## Say this first\n:::\n\n## Install\n\n${body}\n`
+
 describe('renderComparison', () => {
   it('draws changed words as ins and del, each announced in words', () => {
     const { html } = render('Deploy on Monday.\n', 'Deploy on Tuesday.\n')
@@ -66,6 +69,27 @@ describe('renderComparison', () => {
     expect(opening('after')).not.toContain('data-change-id')
   })
 
+  it('keeps a removed GitHub alert an alert, its words struck through', () => {
+    const { html } = render('Keep.\n\n> [!NOTE]\n> Read this first.\n', 'Keep.\n')
+    expect(html).toMatch(/<aside[^>]*data-change="removed"/)
+    expect(html).toContain(
+      '<del data-diff="removed"><span data-diff-label="">Removed: </span>Read this first.</del>',
+    )
+  })
+
+  it('keeps a removed Obsidian callout a callout, titled as it was', () => {
+    const { html } = render('Keep.\n\n> [!tip] Before you begin\n> Read this first.\n', 'Keep.\n')
+    expect(html).toMatch(/<aside[^>]*class="callout callout-tip"[^>]*data-change="removed"/)
+    expect(html).toContain('Before you begin</p>')
+    expect(html).toContain('Read this first.</del>')
+  })
+
+  it('keeps a removed alert an alert when its first words are not plain text', () => {
+    const { html } = render('Keep.\n\n> [!WARNING]\n> **Stop** the deploy.\n', 'Keep.\n')
+    expect(html).toMatch(/<aside[^>]*data-change="removed"/)
+    expect(html).toMatch(/<del data-diff="removed">[\s\S]*<strong>Stop<\/strong>/)
+  })
+
   it('escapes whatever a removed or added passage says', () => {
     const { html } = render(
       'Safe.\n',
@@ -105,5 +129,35 @@ describe('renderComparison', () => {
     })
     // The ids resolve against the HTML they came with.
     for (const section of result.sections) expect(result.html).toContain(`id="${section.id}"`)
+  })
+
+  it('marks a captioned picture, which the renderer draws as a figure', () => {
+    const { html } = render('![Plan](/a.png "The plan")\n', '![Plan](/b.png "The plan")\n')
+    expect(html).toContain('<figure')
+    expect(html).toContain('data-change="changed"')
+  })
+
+  it('names a section by its own heading when presenter notes hold headings of their own', () => {
+    const result = render(notesDocument('Run it.'), notesDocument('Run it twice.'))
+    expect(result.sections.map((section) => section.title)).toEqual(['Guide', 'Install'])
+    expect(result.changes.map((change) => change.section?.title)).toEqual(['Install'])
+  })
+
+  it('names a removed heading by what it said', () => {
+    const result = render('# Guide\n\n## Gone\n\nText.\n', '# Guide\n')
+    expect(result.sections.map((section) => section.title)).toEqual(['Guide', 'Gone'])
+  })
+
+  it('reads a heading that is wholly new as it now stands', () => {
+    const result = render('# Guide\n', '# Guide\n\n## Fresh start\n\nText.\n')
+    expect(result.sections.map((section) => section.title)).toEqual(['Guide', 'Fresh start'])
+  })
+
+  it('draws a code block the way it was written, whether or not it names a language', () => {
+    const { html } = render('```ts\nconst a = 1\n```\n', '```ts\nconst a = 2\n```\n')
+    expect(html).toContain('data-lang="ts"')
+    const plain = render('```\nkeep\nconst a = 1\n```\n', '```\nkeep\nconst a = 2\n```\n').html
+    expect(plain).not.toContain('data-lang')
+    expect(plain).toContain('<span data-line="">keep</span>')
   })
 })

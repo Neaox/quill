@@ -2,7 +2,21 @@ import fastify from 'fastify'
 import type { FastifyInstance } from 'fastify'
 import { describe, expect, it } from 'vitest'
 
+import { EMBED_PROVIDERS } from '@quill/domain'
+
+import { linkEmbedRegistry } from '../infrastructure/link-preview/embed-config.ts'
 import { registerSecurityHeaders } from './security-headers.ts'
+
+const ALLOWED_ORIGINS = new Set(EMBED_PROVIDERS.flatMap((provider) => provider.frameOrigins))
+
+/** The sources a policy's `frame-src` lists. */
+function frameSources(policy: string | undefined): readonly string[] {
+  const directive = String(policy)
+    .split(';')
+    .map((part) => part.trim())
+    .find((part) => part.startsWith('frame-src '))
+  return directive === undefined ? [] : directive.split(/\s+/u).slice(1)
+}
 
 async function buildTestApp(options: {
   https: boolean
@@ -33,6 +47,48 @@ describe('registerSecurityHeaders', () => {
     expect(one['content-security-policy']).toContain("frame-ancestors 'none'")
     await strict.close()
     await framing.close()
+  })
+
+  describe('frame-src for link embeds (ADR-042)', () => {
+    async function policyFor(disabled: readonly string[]) {
+      const app = await buildTestApp({
+        https: true,
+        serveApiDocs: false,
+        frameSources: linkEmbedRegistry({ disabled }).frameSources(),
+      })
+      const response = await app.inject({ method: 'GET', url: '/thing' })
+      await app.close()
+      return response.headers['content-security-policy']
+    }
+
+    it('names exactly the allowlisted origins, each as an https origin, and nothing else', async () => {
+      const sources = frameSources(String(await policyFor([])))
+      expect(new Set(sources)).toEqual(ALLOWED_ORIGINS)
+      for (const source of sources) {
+        expect(source).toMatch(/^https:\/\/[a-z0-9.-]+$/u)
+        expect(source).not.toContain('*')
+      }
+    })
+
+    it('allows no frame source at all once every provider is switched off', async () => {
+      const policy = String(await policyFor(EMBED_PROVIDERS.map((provider) => provider.id)))
+      expect(policy).toContain("frame-src 'none'")
+    })
+
+    it('drops the origin of a provider an operator disabled, and only that one', async () => {
+      const sources = frameSources(String(await policyFor(['youtube'])))
+      expect(sources).not.toContain('https://www.youtube-nocookie.com')
+      expect(sources).toContain('https://player.vimeo.com')
+    })
+
+    it('does not widen any other fetch directive to make the frames work', async () => {
+      const policy = String(await policyFor([]))
+      expect(policy).toContain("default-src 'self'")
+      expect(policy).toContain("connect-src 'self'")
+      expect(policy).toContain("script-src 'self'")
+      expect(policy).not.toMatch(/(?:script|style|connect|img|media|default)-src[^;]*youtube/u)
+      expect(policy).toContain("frame-ancestors 'none'")
+    })
   })
 
   it('sets a strict, nonce-based CSP with no unsafe directives', async () => {

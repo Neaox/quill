@@ -122,6 +122,7 @@ describe('getEnvelope', () => {
       view: true,
       comment: true,
       edit: true,
+      publish: true,
       manage: false,
     })
   })
@@ -134,7 +135,87 @@ describe('getEnvelope', () => {
       lastPublished: null,
       review: null,
       health: [],
+      facts: { status: undefined, owners: [], tags: [] },
     })
+  })
+
+  it('states the published facts, with owners who are people named and never addressed', async () => {
+    await uow.repos.users.markEmailVerified(AUTHOR, NOW)
+    // An owner is named only to readers when they can view the document themselves.
+    await uow.repos.units.create({
+      id: 'acme',
+      parentId: null,
+      name: 'Acme',
+      slug: 'acme',
+      label: 'company',
+      now: NOW,
+    })
+    await uow.repos.grants.create({
+      id: 'grant-author',
+      principalKind: 'user',
+      principalId: AUTHOR,
+      scopeKind: 'workspace',
+      scopeId: WORKSPACE,
+      role: 'editor',
+      effect: 'allow',
+      createdBy: null,
+      now: NOW,
+    })
+    const id = await draft('Overview', '# Overview', {
+      status: 'draft',
+      type: 'Runbook',
+      owners: ['ada@example.com', 'platform'],
+      tags: ['ops'],
+      review: { interval: '6m', lastReviewed: '2026-01-02' },
+    })
+    await publishDocument(deps, { documentId: id, base: null, author, sessionId: SESSION })
+    const result = await getEnvelope(deps, { documentId: id, capabilities: editor })
+    expect(result.kind === 'envelope' && result.envelope.facts).toEqual({
+      status: 'draft',
+      lifecycle: undefined,
+      type: 'Runbook',
+      owners: [
+        { label: 'Ada', person: true },
+        { label: 'platform', person: false },
+      ],
+      tags: ['ops'],
+      reviewInterval: '6m',
+      lastReviewed: '2026-01-02',
+    })
+  })
+
+  it('says whether the draft holds changes nothing has published, to whoever may edit', async () => {
+    const id = await draft('Overview', '# Overview')
+    const envelope = async (capabilities = editor) => {
+      const result = await getEnvelope(deps, { documentId: id, capabilities })
+      if (result.kind !== 'envelope') throw new Error(result.kind)
+      return result.envelope
+    }
+    // Never published: the document is a draft, which is not "changes".
+    expect((await envelope()).unpublishedChanges).toBe(false)
+
+    await publishDocument(deps, { documentId: id, base: null, author, sessionId: SESSION })
+    // The publish moved the draft onto what it published.
+    expect((await envelope()).unpublishedChanges).toBe(false)
+
+    clock.advance(60_000)
+    await uow.repos.locks.acquire({
+      documentId: id,
+      userId: AUTHOR,
+      sessionId: SESSION,
+      now: clock.now(),
+    })
+    const saved = await uow.repos.drafts.find(id)
+    await uow.repos.drafts.write({
+      documentId: id,
+      sessionId: SESSION,
+      expectedVersion: saved?.draftVersion ?? 0,
+      ast: saved?.ast,
+      now: clock.now(),
+    })
+    expect((await envelope()).unpublishedChanges).toBe(true)
+    // A draft is unpublished work: only someone who may write it is told it exists.
+    expect((await envelope(capabilitiesForRole('viewer'))).unpublishedChanges).toBe(false)
   })
 
   it('names the lock holder and the last publish', async () => {
@@ -329,7 +410,7 @@ describe('the draft an editor has not published', () => {
     return result.kind === 'envelope' ? result.envelope.draft : undefined
   }
 
-  it('is reported to an editor when it says something the published page does not', async () => {
+  it('is reported to an editor when it was saved since the last publish', async () => {
     const id = await published('# Overview\nPublished.')
     clock.advance(60_000)
     await edit(id, '# Overview\nPublished.\nAnd more, not yet out.')
@@ -337,18 +418,8 @@ describe('the draft an editor has not published', () => {
     expect(await draftOf(id)).toEqual({ savedAt: clock.now() })
   })
 
-  it('is not reported once it says what the published page does', async () => {
+  it('is not reported once it is what was published', async () => {
     const id = await published('# Overview\nPublished.')
-
-    expect(await draftOf(id)).toBeNull()
-  })
-
-  it('is not reported when it was changed and changed back', async () => {
-    const id = await published('# Overview\nPublished.')
-    clock.advance(60_000)
-    await edit(id, '# Overview\nSomething else.')
-    clock.advance(60_000)
-    await edit(id, '# Overview\nPublished.')
 
     expect(await draftOf(id)).toBeNull()
   })

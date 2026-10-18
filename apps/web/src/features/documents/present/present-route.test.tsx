@@ -160,7 +160,10 @@ describe('presenting a document', () => {
     const article = within(step).getByRole('article', { name: 'Steps' })
 
     expect(article.querySelector(':scope > .layout-wide')).not.toBeNull()
-    expect(article.querySelector('code')?.querySelectorAll('.tok-keyword')).toHaveLength(1)
+    // The enhancers arrive as chunks of their own, so they land a moment after the body.
+    await waitFor(() => {
+      expect(article.querySelector('code')?.querySelectorAll('.tok-keyword')).toHaveLength(1)
+    })
     expect(article.querySelector('.table-scroll')).toHaveAttribute('role', 'group')
   })
 
@@ -651,6 +654,44 @@ describe('presenting a document', () => {
 
     await waitFor(() => expect(router.state.location.pathname).toBe('/w/acme/d/doc-1'))
     expect(router.state.location.hash).toBe('steps')
+  })
+
+  it('stays left once it has left, whatever the other window says while the reading view loads', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    // The reading view's workspace answers only when the test says, so the
+    // presentation is still on screen, leaving, when the presenter window steps.
+    const { promise: workspaceAnswered, resolve: answerWorkspace } =
+      Promise.withResolvers<Response>()
+    const { router } = renderApp(
+      '/w/acme/d/doc-1/present?step=2',
+      presentRoutes({ 'GET /api/workspaces/{id}': () => workspaceAnswered }),
+    )
+    await screen.findByRole('region', { name: 'Steps' })
+    const other = new BroadcastChannel(presentChannelName('doc-1'))
+    const steps: unknown[] = []
+    other.addEventListener('message', (event: MessageEvent<unknown>) => {
+      if (typeof event.data === 'object' && event.data !== null && 'index' in event.data) {
+        steps.push(event.data)
+      }
+    })
+
+    await userEvent.keyboard('{Escape}')
+    other.postMessage({
+      type: 'step',
+      index: 2,
+      revision: 'b'.repeat(40),
+      from: 'presenter-window',
+    })
+    await userEvent.keyboard('{ArrowRight}')
+    await new Promise((resolve) => setTimeout(resolve, 50))
+
+    expect(router.latestLocation.pathname).toBe('/w/acme/d/doc-1')
+    // Nor is the presenter window moved on from a presentation nobody is in any more.
+    expect(steps).toEqual([])
+    expect(warn).not.toHaveBeenCalledWith(expect.stringContaining('Could not find match'))
+    answerWorkspace(errorResponse(404, 'not_found', 'Gone'))
+    other.close()
+    warn.mockRestore()
   })
 
   it('offers Exit as a link, not a key nobody can see', async () => {

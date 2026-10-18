@@ -46,6 +46,7 @@ function thenFix(command: Command, fix: (tr: Transaction, before: TableContext) 
     const ran = command(state, (tr) => {
       captured = tr
     })
+    /* v8 ignore next -- the commands it wraps always run inside a table. */
     if (!ran || captured === undefined) return false
     fix(captured, before)
     normalise(captured, before.tablePos)
@@ -172,6 +173,7 @@ function unwrapIfEmpty(tr: Transaction, wrapperPos: number): void {
   const $from = tr.doc.resolve(wrapperPos + 1)
   const $to = tr.doc.resolve(wrapperPos + wrapper.nodeSize - 1)
   const range = $from.blockRange($to)
+  /* v8 ignore next -- a wrapper's content is a range a block can be lifted out of. */
   const target = range === null ? null : liftTarget(range)
   if (range !== null && target !== null) tr.lift(range, target)
 }
@@ -328,8 +330,7 @@ export const deleteRows: Command = (state, dispatch) => {
 }
 
 function writeColumns(tr: Transaction, before: TableContext, shares: readonly number[]): void {
-  const context = { ...before, wrapper: before.wrapper }
-  applyAttribute(tr, context, 'columns', shares.length === 0 ? undefined : writeProportions(shares))
+  applyAttribute(tr, before, 'columns', writeProportions(shares))
 }
 
 /**
@@ -371,6 +372,7 @@ export function moveColumn(from: number, to: number, tablePos?: number): Command
     const move = <T>(values: readonly T[]): T[] => {
       const next = [...values]
       const [moved] = next.splice(from, 1)
+      /* v8 ignore next -- `from` was checked to be a column above. */
       if (moved !== undefined) next.splice(to, 0, moved)
       return next
     }
@@ -379,6 +381,23 @@ export function moveColumn(from: number, to: number, tablePos?: number): Command
     if (shares !== undefined) writeColumns(captured, context, move(shares))
     normalise(captured, context.tablePos)
     dispatch(captured.scrollIntoView())
+    return true
+  }
+}
+
+/** Selects every cell of the table at `tablePos`, as its corner does. */
+export function selectTable(tablePos: number): Command {
+  return (state, dispatch) => {
+    const context = tableAt(state, tablePos)
+    if (context === undefined) return false
+    if (dispatch === undefined) return true
+    const { map } = context
+    const start = context.tablePos + 1
+    const first = map.map[0]
+    const last = map.map.at(-1)
+    /* v8 ignore next -- a table has a first and a last cell. */
+    if (first === undefined || last === undefined) return false
+    dispatch(state.tr.setSelection(CellSelection.create(state.doc, start + first, start + last)))
     return true
   }
 }
@@ -405,61 +424,30 @@ export function selectLine(kind: 'row' | 'column', index: number, tablePos: numb
   }
 }
 
-/** Selects every cell of a table, as the handle on its corner does, so it can be copied, cut or cleared whole. */
-export function selectTable(tablePos: number): Command {
-  return (state, dispatch) => {
-    const context = tableAt(state, tablePos)
-    if (context === undefined) return false
-    if (dispatch === undefined) return true
-    const { map } = context
-    const start = context.tablePos + 1
-    const first = map.map[0]
-    const last = map.map[map.map.length - 1]
-    /* v8 ignore next -- a table has a first and a last cell. */
-    if (first === undefined || last === undefined) return false
-    dispatch(state.tr.setSelection(CellSelection.create(state.doc, start + first, start + last)))
-    return true
-  }
-}
-
 /**
- * A row or column inserted so that it becomes line `at` (a "+" on the border
- * between `at - 1` and `at`), with the caret in its first cell, ready to type.
- * The insertion commands work beside the selection, so the line before the
- * border is picked first; the whole is one transaction and one undo step.
+ * Inserts a row or column at a boundary of the table at `tablePos`: before
+ * line `boundary`, or after the last when it is the count. What the "+"
+ * between two lines does, wherever the selection was; refused above the
+ * header row, as `addRow` refuses it.
  */
-export function insertLine(kind: 'row' | 'column', at: number, tablePos: number): Command {
+export function insertLine(kind: 'row' | 'column', boundary: number, tablePos: number): Command {
   return (state, dispatch) => {
     const context = tableAt(state, tablePos)
     if (context === undefined) return false
-    const lines = kind === 'row' ? context.map.height : context.map.width
-    if (at < 0 || at > lines) return false
-    // The header row stays first (see `addRow`).
-    if (kind === 'row' && at === 0 && headersOf(context).row) return false
-    let picked: EditorState | undefined
+    const count = kind === 'row' ? context.map.height : context.map.width
+    if (boundary < 0 || boundary > count) return false
+    const side = boundary === count ? 'after' : 'before'
+    let selected = state
     selectLine(
       kind,
-      Math.max(0, at - 1),
+      Math.min(boundary, count - 1),
       tablePos,
     )(state, (tr) => {
-      picked = state.apply(tr)
+      selected = state.apply(tr)
     })
-    /* v8 ignore next -- the border has a line beside it, and the table is where it was. */
-    if (picked === undefined) return false
-    const add =
-      kind === 'row'
-        ? addRow(at === 0 ? 'before' : 'after')
-        : addColumn(at === 0 ? 'before' : 'after')
-    if (dispatch === undefined) return add(picked)
-    return add(picked, (tr) => {
-      const table = tr.doc.nodeAt(tablePos)
-      const map = table === null ? undefined : TableMap.get(table)
-      const offset = map?.map[kind === 'row' ? at * map.width : at]
-      if (offset !== undefined) {
-        tr.setSelection(TextSelection.near(tr.doc.resolve(tablePos + 1 + offset + 1)))
-      }
-      dispatch(tr)
-    })
+    const add = kind === 'row' ? addRow(side) : addColumn(side)
+    // The selection only aims the insertion: the document is the same, so the step applies to `state`.
+    return add(selected, dispatch)
   }
 }
 
@@ -475,11 +463,10 @@ function inLastCell(state: EditorState, context: TableContext): boolean {
 }
 
 /**
- * Alt+Shift+Arrow: the cell beside this one in that direction, the caret at its start, however far
- * into its text the caret was. The arrow keys alone go a character at a time and Ctrl+Arrow a word
- * at a time, so across a row there is otherwise no quick way; Tab goes the way of the reading order
- * and wraps. At the table's edge nothing moves, and the key is still spent: left to the browser it
- * would extend a selection by a word, which is not what anyone pressing it in a grid wants.
+ * Alt+Shift+Arrow: the neighbouring cell at once, however far into its text
+ * the caret is (the plain arrows go a character at a time), with the caret at
+ * the start of the cell it arrives in. At the table's edge the key is spent
+ * doing nothing, rather than moving the caret out of the table by surprise.
  */
 export function goToCell(direction: 'up' | 'down' | 'left' | 'right'): Command {
   return (state, dispatch) => {
@@ -489,10 +476,8 @@ export function goToCell(direction: 'up' | 'down' | 'left' | 'right'): Command {
     const row = direction === 'up' ? rect.top - 1 : direction === 'down' ? rect.bottom : rect.top
     const column =
       direction === 'left' ? rect.left - 1 : direction === 'right' ? rect.right : rect.left
-    const offset =
-      row < 0 || row >= map.height || column < 0 || column >= map.width
-        ? undefined
-        : map.map[row * map.width + column]
+    const inside = row >= 0 && row < map.height && column >= 0 && column < map.width
+    const offset = inside ? map.map[row * map.width + column] : undefined
     if (offset !== undefined && dispatch !== undefined) {
       const start = context.tablePos + 1 + offset + 1
       dispatch(state.tr.setSelection(TextSelection.near(state.doc.resolve(start))).scrollIntoView())

@@ -11,13 +11,14 @@ import { drawioImageAction, drawioSlashContribution } from '../extensions/drawio
 import { createSlashRegistry } from '../slash/slash-registry.ts'
 import { editorSchema } from '../schema/editor-schema.ts'
 import { expectNoAccessibilityViolations } from '../testing/axe.ts'
-import type { ImageAction } from './image-actions.ts'
+import type { ImageAction, ImageRef } from './image-actions.ts'
 import { setImageSource } from './image-actions.ts'
+import { insertImage } from '../document/commands.ts'
 
 const DIAGRAM = '/api/attachments/3c9e1f4a-7b2d-4e8f-a1c6-5d0b9e2f8a17'
 const PHOTO = '/api/attachments/6f1d2b0e-5c3a-4b7e-9d21-0a8c4f3e7b19'
 
-const SOURCE = `Intro.\n\n![Request path](${DIAGRAM} "How a request moves")\n\n![A photo](${PHOTO})\n`
+const SOURCE = `Intro.\n\n![Request path](${DIAGRAM} "How a request moves")\n\n![A photo](${PHOTO})\n\n![](${PHOTO})\n`
 
 /** The set of diagram addresses the application keeps, which can change while the editor is open. */
 function diagramStore(initial: readonly string[]) {
@@ -60,9 +61,20 @@ function open(actions: readonly ImageAction[], source = SOURCE) {
   return { ...view, editor, markdown }
 }
 
+/** Where the first image in the document is. */
+function firstImage(editor: { readonly state: EditorState }): number {
+  let at = -1
+  editor.state.doc.descendants((node, pos) => {
+    if (at === -1 && node.type.name === 'image') at = pos
+    return at === -1
+  })
+  if (at === -1) throw new Error('There is no image.')
+  return at
+}
+
 describe('image actions', () => {
   it('offers "Edit diagram" on a draw.io diagram, not on a photo, and passes axe', async () => {
-    const onEdit = vi.fn()
+    const onEdit = vi.fn<(image: ImageRef) => void>()
     const store = diagramStore([DIAGRAM])
     const { container, markdown } = open([drawioImageAction({ ...store.options, onEdit })])
 
@@ -131,15 +143,36 @@ describe('image actions', () => {
     expect(screen.getByRole('img', { name: 'A photo' })).toHaveAttribute('src', PHOTO)
   })
 
+  it('runs nothing from a button whose image has left the document', () => {
+    const onEdit = vi.fn<(image: ImageRef) => void>()
+    const { editor } = open([drawioImageAction({ isDiagram: () => true, onEdit })])
+    const [stale] = screen.getAllByRole('button', { name: 'Edit diagram' })
+    if (stale === undefined) throw new Error('no button')
+
+    const at = firstImage(editor())
+    act(() => {
+      editor().view.dispatch(editor().state.tr.delete(at, at + 1))
+    })
+    stale.click()
+
+    expect(onEdit).not.toHaveBeenCalled()
+  })
+
   it('works without a way to hear about changes', () => {
-    open([drawioImageAction({ isDiagram: () => true, onEdit: () => {} })])
-    expect(screen.getAllByRole('button', { name: 'Edit diagram' })).toHaveLength(2)
+    const { editor } = open([drawioImageAction({ isDiagram: () => true, onEdit: () => {} })])
+    expect(screen.getAllByRole('button', { name: 'Edit diagram' })).toHaveLength(3)
+    act(() => {
+      editor().commands.command(({ state, dispatch }) =>
+        insertImage({ src: DIAGRAM })(state, dispatch),
+      )
+    })
+    expect(screen.getAllByRole('button', { name: 'Edit diagram' })).toHaveLength(4)
   })
 })
 
 describe('the draw.io slash item', () => {
   it('is named by the extension, sits with the diagrams, and asks the application to open the editor', () => {
-    const onInsert = vi.fn()
+    const onInsert = vi.fn<() => void>()
     let enabled = false
     const registry = createSlashRegistry({
       contributions: [drawioSlashContribution({ onInsert, enabled: () => enabled })],

@@ -1,8 +1,10 @@
 import type { Blockquote, Html, Paragraph, PhrasingContent, Root, RootContent } from 'mdast'
 
 import type { DirectiveAttributes } from '../directives/definition.ts'
+import type { DirectiveContent } from '../directives/definition.ts'
 import { splitFirstLine } from '../pipeline/first-line.ts'
 import type { Details } from './details.ts'
+import { isFlowContent } from './details.ts'
 
 /**
  * Reading GitHub's `<details>` and Obsidian's foldable callouts out of a
@@ -103,7 +105,7 @@ interface Frame {
   opening: string
   openingEndLine: number
   summary: PhrasingContent[] | undefined
-  readonly children: RootContent[]
+  readonly children: DirectiveContent
   /** The lines the first thing in the frame started on and the last ended on. */
   firstLine: number | undefined
   lastLine: number
@@ -128,17 +130,18 @@ function readHtmlSiblings(
     return undefined
   const out: RootContent[] = []
   const stack: Frame[] = []
-  let previousLine: number | undefined
 
-  const place = (item: Item): void => {
+  /** Puts a node where it belongs; false for one a details cannot hold, which reads nothing here. */
+  const place = (item: Item): boolean => {
     const top = stack.at(-1)
     if (top === undefined) out.push(item.node)
     else {
+      if (!isFlowContent(item.node)) return false
       top.children.push(item.node)
       top.firstLine ??= item.line
       top.lastLine = item.endLine
     }
-    previousLine = item.endLine
+    return true
   }
 
   for (const child of children) {
@@ -146,23 +149,20 @@ function readHtmlSiblings(
     const end = child.position?.end.line ?? start
     const tags = child.type === 'html' ? tagsOf(child) : undefined
     if (child.type !== 'html' || tags === undefined) {
-      place({ node: child, line: start, endLine: end })
+      if (!place({ node: child, line: start, endLine: end })) return undefined
       continue
     }
-    for (const [index, tag] of tags.entries()) {
+    // Where the last tag in this HTML block ended: nothing but white space
+    // separates tags in one block, and no blank line can.
+    let previousEnd: number | undefined
+    for (const tag of tags) {
       const { token } = tag
       const top = stack.at(-1)
       if (token.kind === 'open') {
-        const recorded = child.data?.sourceForm?.blankLines
         stack.push({
           open: token.open,
           openLine: tag.line,
-          blankLinesBefore:
-            index === 0
-              ? recorded
-              : previousLine === undefined
-                ? undefined
-                : tag.line - previousLine - 1,
+          blankLinesBefore: previousEnd === undefined ? child.data?.sourceForm?.blankLines : 0,
           opening: child.value.slice(tag.start, tag.end),
           openingEndLine: tag.endLine,
           summary: undefined,
@@ -170,7 +170,7 @@ function readHtmlSiblings(
           firstLine: undefined,
           lastLine: tag.endLine,
         })
-        previousLine = tag.endLine
+        previousEnd = tag.end
         continue
       }
       if (token.kind === 'summary') {
@@ -178,20 +178,22 @@ function readHtmlSiblings(
           return undefined
         const inline = readInline(token.text.trim())
         if (inline === undefined) return undefined
-        const gap =
-          index === 0 ? `\n${'\n'.repeat(Math.max(tag.line - top.openingEndLine - 1, 0))}` : ''
+        // A summary in an HTML block of its own is the blank lines after the opening away.
         const between =
-          index === 0 ? '' : child.value.slice(tags[index - 1]?.end ?? tag.start, tag.start)
-        top.opening = `${top.opening}${gap}${between}${child.value.slice(tag.start, tag.end)}`
+          previousEnd === undefined
+            ? '\n'.repeat(tag.line - top.openingEndLine)
+            : child.value.slice(previousEnd, tag.start)
+        top.opening = `${top.opening}${between}${child.value.slice(tag.start, tag.end)}`
         top.openingEndLine = tag.endLine
         top.lastLine = tag.endLine
         top.summary = inline
-        previousLine = tag.endLine
+        previousEnd = tag.end
         continue
       }
       const closing = stack.pop()
       if (closing === undefined) return undefined
-      previousLine = tag.endLine
+      previousEnd = tag.end
+      // A finished details is a block, which any frame can hold.
       place({ node: finish(closing, tag), line: closing.openLine, endLine: tag.endLine })
     }
   }
@@ -249,7 +251,7 @@ function fromCallout(node: Blockquote): Details | undefined {
   const title = trimEnd(split.line)
   const attributes: DirectiveAttributes = sign === '+' ? { type: kind, open: '' } : { type: kind }
   const joined = split.rest.length > 0
-  const body: RootContent[] = joined
+  const body: DirectiveContent = joined
     ? [{ type: 'paragraph', children: split.rest }, ...blocks]
     : blocks
   return {

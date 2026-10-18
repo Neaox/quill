@@ -1,8 +1,9 @@
-import type { ExtractedText, PublicNavigationNode } from '@quill/application'
+import type { PublicNavigationNode } from '@quill/application'
 import { publicPageHref } from '@quill/application'
 import type { Snippet } from '@quill/search'
 
 import { html, raw, toDocument, type Html } from './html.ts'
+import { PUBLISHED_DATE } from './templates/footer.ts'
 
 /**
  * The middles of the four public pages: a document, the site's index, the
@@ -35,14 +36,37 @@ export function renderDocumentMain(view: {
   readonly title: string
   readonly bodyHtml: string
   readonly rules: string
+  /** The facts under the title (`templates/byline.ts`); empty when it states none. */
+  readonly byline?: Html | undefined
 }): Html {
   const body = unwrapArticle(view.bodyHtml)
+  const byline = view.byline ?? raw('')
   const eyebrow = hasAuthoredEyebrow(body)
     ? ''
     : html`<p class="site-eyebrow">${view.collectionName}</p>`
   return html`<article class="layout-grid prose" data-rules="${view.rules}">
-    ${eyebrow} ${hasTopHeading(body) ? '' : html`<h1>${view.title}</h1>`} ${raw(body)}
+    ${eyebrow}
+    ${
+      hasTopHeading(body)
+        ? raw(afterTitle(body, byline.value))
+        : html`<h1>${view.title}</h1>
+            ${byline} ${raw(body)}`
+    }
   </article>`
+}
+
+/**
+ * The body with the byline straight after its title. The title is the first
+ * `<h1>` (ADR-015), and a heading cannot contain another, so the first
+ * `</h1>` closes it. Both strings are already safe: the body is the
+ * renderer's sanitised output and the byline is escaped by its template.
+ */
+function afterTitle(body: string, byline: string): string {
+  const close = body.search(/<\/h1>/iu)
+  /* v8 ignore next -- only called on a body `hasTopHeading` found an <h1> in. */
+  if (close === -1) return body
+  const end = close + '</h1>'.length
+  return `${body.slice(0, end)}${byline}${body.slice(end)}`
 }
 
 /**
@@ -122,23 +146,35 @@ export interface SearchResultView {
   readonly title: string
   readonly path: string
   readonly snippet: Snippet
+  /** The titles of the pages above this one on the site, outermost first; empty at the top. */
+  readonly trail: readonly string[]
+  readonly publishedAt: Date
 }
+
+/**
+ * Why a query was not run, in words for the person who typed it.
+ *
+ * A stranger typing into a search box is owed an explanation rather than an
+ * error page, and the parser already knows what was wrong with the text: so
+ * the page says it, in the same sentence the signed-in search gives.
+ */
+export type SearchRefusalView =
+  | { readonly kind: 'unparsed'; readonly message: string }
+  | { readonly kind: 'nothing-to-search-for' }
+  /** `by:`, `team:` and `prop:`, which a site open to the world does not answer: see `searchesPrivateFields`. */
+  | { readonly kind: 'people-not-offered' }
 
 export function renderSearchMain(view: {
   readonly siteSlug: string
   readonly query: string
   readonly results: readonly SearchResultView[]
+  readonly refusal: SearchRefusalView | null
+  /** Where the next page of results is, or null when this is the last one. */
+  readonly more: string | null
 }): Html {
   return html`<article class="layout-grid prose">
     <h1>Search</h1>
-    <p>
-      ${
-        view.results.length === 0
-          ? html`Nothing matched <strong>${view.query}</strong>.`
-          : html`${view.results.length} result${view.results.length === 1 ? '' : 's'} for
-              <strong>${view.query}</strong>.`
-      }
-    </p>
+    ${renderSearchSummary(view)}
     ${
       view.results.length === 0
         ? ''
@@ -149,11 +185,66 @@ export function renderSearchMain(view: {
                   >${result.title}</a
                 >
                 <p class="site-result-snippet">${renderSnippet(result.snippet)}</p>
+                <p class="site-result-meta">
+                  ${
+                    result.trail.length === 0
+                      ? ''
+                      : html`<span class="site-result-trail"
+                          >${result.trail.map(
+                            (step, index) => html`${index === 0 ? '' : ' / '}${step}`,
+                          )}</span
+                        >`
+                  }
+                  <time datetime="${result.publishedAt.toISOString()}"
+                    >${PUBLISHED_DATE.format(result.publishedAt)}</time
+                  >
+                </p>
               </li>`,
             )}
           </ul>`
     }
+    ${
+      view.more === null
+        ? ''
+        : html`<p class="site-results-more"><a href="${view.more}">More results</a></p>`
+    }
   </article>`
+}
+
+/**
+ * The sentence above the results: what was asked, what came of it, and what
+ * to do if that was nothing. A total is claimed only when the results are
+ * complete — a page that says "20 results" over a list with more behind it is
+ * telling a reader the site has twenty things to say about their question.
+ */
+function renderSearchSummary(view: {
+  readonly query: string
+  readonly results: readonly SearchResultView[]
+  readonly refusal: SearchRefusalView | null
+  readonly more: string | null
+}): Html {
+  if (view.refusal?.kind === 'unparsed') {
+    return html`<p>That search could not be read: ${view.refusal.message}</p>`
+  }
+  if (view.refusal?.kind === 'people-not-offered') {
+    return html`<p>Searching by person, team or property is not offered on this site.</p>`
+  }
+  if (view.refusal?.kind === 'nothing-to-search-for') {
+    return html`<p>A search needs a word or phrase to look for, not only things to leave out.</p>`
+  }
+  if (view.query === '') return html`<p>Type a word or phrase to search this site.</p>`
+
+  const count = view.results.length
+  if (count === 0) {
+    return html`<p>
+      Nothing matched <strong>${view.query}</strong>. Try different words, fewer words, or a
+      different spelling.
+    </p>`
+  }
+  const noun = `${count} result${count === 1 ? '' : 's'}`
+  return view.more === null
+    ? html`<p>${noun} for <strong>${view.query}</strong>.</p>`
+    : html`<p>Showing the first ${noun} for <strong>${view.query}</strong>.</p>`
 }
 
 /**
@@ -201,6 +292,124 @@ export function renderNoSitePage(): string {
       <main>
         <h1>Nothing is published here</h1>
         <p>There is no documentation at this address.</p>
+      </main>
+    </body>
+  </html>`)
+}
+
+export interface BotPageView {
+  readonly userAgent: string
+  readonly instanceName: string
+  readonly limits: {
+    readonly timeoutSeconds: number
+    readonly maxRedirects: number
+    readonly pageKiB: number
+    readonly imageMiB: number
+  }
+  /** The most requests to one host in a burst, and the steady rate after it, per second. */
+  readonly perHost: { readonly burst: number; readonly perSecond: number }
+  /** Services Quill asks through their own API (the connectors), if any are configured. */
+  readonly connectors?: readonly { readonly name: string; readonly apiHost: string }[]
+}
+
+/**
+ * The page the bot's user agent points at (ADR-042): what Quill fetches when
+ * somebody pastes a link, and how a site owner can stop it.
+ *
+ * Written for the person who found the name in their server log, and so about
+ * what they will want to know: why, how much, how often, what for, and how to
+ * make it stop. Every number is taken from where it is enforced, so the page
+ * cannot promise more than the client does.
+ */
+export function renderBotPage(view: BotPageView): string {
+  const { limits, perHost } = view
+  const connectors = view.connectors ?? []
+  return toDocument(html`<html lang="en">
+    <head>
+      <meta charset="utf-8" />
+      <meta name="viewport" content="width=device-width, initial-scale=1" />
+      <title>${view.instanceName} link preview bot</title>
+      <meta name="robots" content="noindex,follow" />
+    </head>
+    <body>
+      <main>
+        <h1>The ${view.instanceName} link preview bot</h1>
+        <p>
+          This is the page named in the user agent
+          <code>${view.userAgent}</code>. A request with that user agent came from a documentation
+          server (${view.instanceName}) because one of its members pasted a link to your site into a
+          document, and the server was making a small card to show for it: the page title, a short
+          description, and a picture.
+        </p>
+
+        <h2>What it fetches</h2>
+        <ul>
+          <li>
+            The top of one page: the head of the HTML, at most ${String(limits.pageKiB)} KiB,
+            stopping at the end of the head. Once for each link, then again at most every few days
+            while the link is still being read.
+          </li>
+          <li>
+            If the page names one, its social card image and its icon, at most
+            ${String(limits.imageMiB)} MiB each. These are re-encoded and stored; they are never
+            shown from your address.
+          </li>
+          <li>
+            If your site is a known embed provider, or the page advertises one, its oEmbed JSON.
+          </li>
+          <li>
+            If the address is a file (a PDF, a video, a document, a picture), only the response
+            headers: its type, its size and its name. None of the file is downloaded. For a picture,
+            a small thumbnail is also fetched and stored, within the same size limit.
+          </li>
+        </ul>
+
+        <h2>What it does not do</h2>
+        <ul>
+          <li>It does not crawl. It follows no links on your page and fetches nothing else.</li>
+          <li>
+            It does not run scripts, send cookies, sign in, or send a referrer, and it never asks
+            for anything that needs a credential.
+          </li>
+          <li>
+            It does not read <code>robots.txt</code>. A preview is a single fetch made for a person
+            who chose to share your link, not a crawl, in the same way as when a chat application
+            shows a link you paste into it.
+          </li>
+          <li>
+            It does not reach private addresses, other ports than 80 and 443, or addresses behind
+            more than ${String(limits.maxRedirects)} redirects.
+          </li>
+        </ul>
+
+        ${
+          connectors.length === 0
+            ? ''
+            : html`<h2>Services with an API</h2>
+                <p>
+                  For ${connectors.map((connector) => connector.name).join(', ')}, the server asks
+                  the service’s own API about a link instead of reading its page
+                  (${connectors.map((connector) => html`<code>${connector.apiHost}</code>`)}), using
+                  an access token that an administrator of ${view.instanceName} stored. It shows
+                  only what anyone can open without signing in: a link to something private gets no
+                  card. The token is sent to that API host and is never sent to any other site.
+                </p>`
+        }
+
+        <h2>How often</h2>
+        <p>
+          To any one host, a burst of at most ${String(perHost.burst)} requests and then no more
+          than one every ${String(1 / perHost.perSecond)} seconds. A request gives up after
+          ${String(limits.timeoutSeconds)} seconds.
+        </p>
+
+        <h2>To stop it</h2>
+        <p>
+          Answer requests with this user agent with <code>403</code>, <code>404</code> or
+          <code>410</code>. The failure is remembered for an hour, so it will not ask again soon,
+          and the people sharing your link will see a plain link. To have it stopped for a whole
+          site, or to ask a question, contact whoever runs ${view.instanceName}.
+        </p>
       </main>
     </body>
   </html>`)
@@ -261,29 +470,8 @@ function publicSiteLink(siteSlug: string): string {
   return `/s/${siteSlug}`
 }
 
-/**
- * The description a crawler and a chat client's unfurl show: the document's
- * first paragraph (use case 29).
- *
- * The extracted text is the prose of the document, one block per line, with
- * authoring scaffolding and presenter notes already gone (ADR-031), so the
- * first line is the first paragraph. It is trimmed to a length that survives a
- * search result and an unfurl, cut at a word rather than mid-word, with an
- * ellipsis so a reader can see it was cut.
- */
-export const DESCRIPTION_MAX_LENGTH = 200
-
-export function firstParagraph(text: ExtractedText): string | null {
-  const paragraph = text.body
-    .split('\n')
-    .find((line) => line.trim().length > 0)
-    ?.trim()
-  if (paragraph === undefined || paragraph.length === 0) return null
-  if (paragraph.length <= DESCRIPTION_MAX_LENGTH) return paragraph
-  const cut = paragraph.slice(0, DESCRIPTION_MAX_LENGTH)
-  const lastSpace = cut.lastIndexOf(' ')
-  return `${(lastSpace > 0 ? cut.slice(0, lastSpace) : cut).trimEnd()}…`
-}
+// The description helper lives with the use cases, which link cards use too (ADR-042).
+export { DESCRIPTION_MAX_LENGTH, firstParagraph } from '@quill/application'
 
 /**
  * `Article` structured data (schema.org), for the crawler that wants it.

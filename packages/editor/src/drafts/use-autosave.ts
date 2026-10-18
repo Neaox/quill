@@ -163,7 +163,7 @@ export function useAutosave(options: UseAutosaveOptions): Autosave {
   const lastEditRef = useRef(mountedAt)
 
   // Read once, like `documentVersion`: the content this session opened on.
-  const [loaded] = useState<DraftBase | undefined>(() =>
+  const [openedOn] = useState<DraftBase | undefined>(() =>
     options.documentAst === undefined
       ? undefined
       : { ast: options.documentAst, draftVersion: options.documentVersion },
@@ -171,8 +171,8 @@ export function useAutosave(options: UseAutosaveOptions): Autosave {
   // Records the draft as loaded as the merge base in the recovery store (an
   // external system) when this session starts from it, before any edit.
   useEffect(() => {
-    if (loaded !== undefined && store.read() === undefined) store.writeBase(loaded)
-  }, [loaded, store])
+    if (openedOn !== undefined && store.read() === undefined) store.writeBase(openedOn)
+  }, [openedOn, store])
 
   const apply = useCallback((event: AutosaveEvent) => {
     const next = autosaveReducer(stateRef.current, event)
@@ -243,23 +243,23 @@ export function useAutosave(options: UseAutosaveOptions): Autosave {
         apply({ type: 'stale', currentVersion })
         return
       }
-      let loaded
+      let latest
       try {
-        loaded = await client.load()
+        latest = await client.load()
       } catch {
         retryLater(null)
         return
       }
       const ours = candidates.find(
         (sent) =>
-          loaded.draftVersion === sent.expectedVersion + 1 && sameTree(loaded.ast, sent.ast),
+          latest.draftVersion === sent.expectedVersion + 1 && sameTree(latest.ast, sent.ast),
       )
       if (ours === undefined) {
         unconfirmedRef.current = []
-        apply({ type: 'stale', currentVersion: loaded.draftVersion })
+        apply({ type: 'stale', currentVersion: latest.draftVersion })
         return
       }
-      acknowledge(ours, loaded.draftVersion, clock.now())
+      acknowledge(ours, latest.draftVersion, clock.now())
     },
     [acknowledge, apply, client, clock, retryLater],
   )

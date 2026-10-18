@@ -1,3 +1,5 @@
+import { connect } from 'node:net'
+import { setTimeout as delay } from 'node:timers/promises'
 import { fileURLToPath } from 'node:url'
 
 import tailwindcss from '@tailwindcss/vite'
@@ -15,6 +17,105 @@ function htmlBrandPlugin(): Plugin {
       return html.replaceAll('%BRAND_NAME%', BRAND.name)
     },
   }
+}
+
+/** The API server. A Playwright run points this at its own (`e2e/support/env.ts`). */
+const API_URL = process.env['API_URL'] ?? 'http://localhost:3000'
+
+/**
+ * What the dev server proxies to the API. Beside the API itself, the
+ * server-rendered surfaces (`docs/architecture/public-site.md`): the public
+ * site and the reader preview are pages the server answers with HTML, so in
+ * development they are proxied like the API rather than falling through to
+ * the single-page app; and the pictures link previews show (ADR-042), which
+ * the server serves from its own origin.
+ */
+const API_PATHS = ['/api', '/s/', '/preview/', '/link-previews/', '/robots.txt']
+
+/**
+ * How often, and how many times, a proxied request looks for a restarting API
+ * before it is let through to fail: thirty seconds in all, because the API
+ * takes up to fifteen to start.
+ */
+const API_POLL_MS = 250
+const API_POLLS = 120
+
+/**
+ * Holds a proxied request while the API restarts, rather than answering 502.
+ *
+ * In development the API restarts on every save it imports (`node --watch`),
+ * and a request that lands in the second or two before it listens again
+ * fails at the proxy: a page that 502s at random. Retrying at the proxy would
+ * have to replay request bodies; waiting until the port accepts a connection
+ * before the request reaches the proxy needs no replay. A server that is
+ * really down still answers 502, once the wait runs out.
+ */
+function waitForApiPlugin(): Plugin {
+  const api = new URL(API_URL)
+  const host = api.hostname
+  const port = Number(api.port || (api.protocol === 'https:' ? 443 : 80))
+  return {
+    name: 'wait-for-api',
+    apply: 'serve',
+    configureServer(server) {
+      server.middlewares.use((request, _response, next) => {
+        if (!API_PATHS.some((path) => request.url?.startsWith(path) === true)) {
+          next()
+          return
+        }
+        void untilListening(host, port, API_POLLS).then(() => {
+          next()
+        })
+      })
+    },
+  }
+}
+
+async function untilListening(host: string, port: number, polls: number): Promise<void> {
+  if (polls === 0 || (await accepts(host, port))) return
+  await delay(API_POLL_MS)
+  await untilListening(host, port, polls - 1)
+}
+
+function accepts(host: string, port: number): Promise<boolean> {
+  return new Promise((resolve) => {
+    const socket = connect({ host, port })
+    const settle = (listening: boolean): void => {
+      socket.destroy()
+      resolve(listening)
+    }
+    socket.once('connect', () => {
+      settle(true)
+    })
+    socket.once('error', () => {
+      settle(false)
+    })
+  })
+}
+
+/** The design system's modules that nearly every screen uses (see the `ui-base` chunk below). */
+const UI_BASE_MODULES = [
+  'components/badge.tsx',
+  'components/button.tsx',
+  'components/callout.tsx',
+  'components/icons.tsx',
+  'components/layout-grid.tsx',
+  'components/local-time.tsx',
+  'components/relative-time.tsx',
+  'components/scroll-group.tsx',
+  'components/spinner.tsx',
+  'components/text-link.tsx',
+  'components/toast-tone.tsx',
+  'components/toast.ts',
+  'lib/class-names.ts',
+  'lib/link.tsx',
+  'lib/time/',
+]
+
+/** Module ids use the platform's separator, so compare on forward slashes. */
+function isUiBase(moduleId: string): boolean {
+  const path = moduleId.replaceAll('\\', '/')
+  return UI_BASE_MODULES.some((module) => path.includes(`packages/ui/src/${module}`))
 }
 
 export default defineConfig({
@@ -42,12 +143,32 @@ export default defineConfig({
     react(),
     tailwindcss(),
     htmlBrandPlugin(),
+    waitForApiPlugin(),
   ],
   build: {
     // Powers `scripts/check-bundle.ts` (quill-plan.md section 31): it reads
     // `dist/.vite/manifest.json` to resolve each route's static import graph
     // without guessing chunk names from hashed filenames.
     manifest: true,
+    rolldownOptions: {
+      output: {
+        codeSplitting: {
+          groups: [
+            {
+              // The primitives nearly every screen draws. Left to the automatic
+              // split, each is its own tiny chunk shared by whichever route
+              // components happen to use it, and a screen pays a request and a
+              // gzip header for each; together they compress far better than
+              // apart (quill-plan.md section 31: the reading route's budget is
+              // measured in gzipped bytes). Radix-backed components stay out,
+              // because they are what a route can choose not to load.
+              name: 'ui-base',
+              test: isUiBase,
+            },
+          ],
+        },
+      },
+    },
   },
   server: {
     port: 5173,
@@ -77,22 +198,8 @@ export default defineConfig({
         ),
       ],
     },
-    proxy: {
-      // A Playwright run points this at its own API server (`e2e/support/env.ts`).
-      '/api': { target: process.env['API_URL'] ?? 'http://localhost:3000', changeOrigin: true },
-      // The server-rendered surfaces (`docs/architecture/public-site.md`):
-      // the public site and the reader preview are pages the server answers
-      // with HTML, so in development they are proxied like the API rather
-      // than falling through to the single-page app.
-      '/s/': { target: process.env['API_URL'] ?? 'http://localhost:3000', changeOrigin: true },
-      '/preview/': {
-        target: process.env['API_URL'] ?? 'http://localhost:3000',
-        changeOrigin: true,
-      },
-      '/robots.txt': {
-        target: process.env['API_URL'] ?? 'http://localhost:3000',
-        changeOrigin: true,
-      },
-    },
+    proxy: Object.fromEntries(
+      API_PATHS.map((path) => [path, { target: API_URL, changeOrigin: true }]),
+    ),
   },
 })

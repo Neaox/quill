@@ -1,8 +1,9 @@
-import { act, screen, within } from '@testing-library/react'
+import { act, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, onTestFinished, vi } from 'vitest'
 
 import { packRanges } from '@quill/highlight'
+import { toast } from '@quill/ui'
 import { expectNoAccessibilityViolations } from '@quill/ui/testing/axe'
 
 import { intersectionObservers } from '../../../testing/browser-shims.ts'
@@ -94,7 +95,7 @@ const renderedAt = (request: Request) =>
 function envelope(overrides: Record<string, unknown> = {}) {
   return () =>
     jsonResponse(200, {
-      permissions: { view: true, comment: true, edit: true, manage: false },
+      permissions: { view: true, comment: true, edit: true, publish: true, manage: false },
       lock: null,
       lastPublished: { revision: 'b'.repeat(40), author: 'Ada', at: '2026-02-03T00:00:00.000Z' },
       review: null,
@@ -133,6 +134,50 @@ function readingRoutes(overrides: FakeRoutes = {}): FakeRoutes {
     ...overrides,
   }
 }
+
+describe('the reading view records that it was opened', () => {
+  it('tells the server once, for the person’s own history', async () => {
+    const opened: string[] = []
+    renderApp(
+      READING_PATH,
+      readingRoutes({
+        'POST /api/documents/{id}/view': (_request, params) => {
+          opened.push(String(params['id']))
+          return new Response(undefined, { status: 204 })
+        },
+      }),
+    )
+
+    await screen.findByRole('article', { name: 'Regional failover' })
+
+    await waitFor(() => {
+      expect(opened).toHaveLength(1)
+    })
+  })
+
+  it('reads fine when the record cannot be kept', async () => {
+    renderApp(
+      READING_PATH,
+      readingRoutes({
+        'POST /api/documents/{id}/view': () => errorResponse(500, 'internal', 'Boom'),
+      }),
+    )
+
+    expect(await screen.findByRole('article', { name: 'Regional failover' })).toBeInTheDocument()
+  })
+})
+
+const text = (value: string) => ({ type: 'text', value })
+const draftOf =
+  (...children: readonly object[]) =>
+  () =>
+    jsonResponse(200, {
+      documentId: 'doc-1',
+      draftVersion: 3,
+      baseRevision: null,
+      updatedAt: '2026-02-03T00:00:00.000Z',
+      ast: { version: 1, frontMatter: {}, ast: { type: 'root', children } },
+    })
 
 describe('the reading view', () => {
   it('renders the published body on the reading grid, with breakout widths intact', async () => {
@@ -180,65 +225,6 @@ describe('the reading view', () => {
     expect(links.map((link) => link.textContent)).toEqual(['Steps', 'Afterwards'])
   })
 
-  it('starts with no section marked, because nothing has been read yet', async () => {
-    renderApp(READING_PATH, readingRoutes())
-    const contents = await screen.findByRole('navigation', { name: 'On this page' })
-
-    act(() => {
-      for (const observer of intersectionObservers) {
-        observer.intersect({ steps: false, afterwards: false })
-      }
-    })
-
-    expect(within(contents).queryAllByRole('link', { current: true })).toEqual([])
-  })
-
-  it('marks the section being read when none of its headings is in view, from where the reader scrolled past', async () => {
-    renderApp(READING_PATH, readingRoutes())
-    const contents = await screen.findByRole('navigation', { name: 'On this page' })
-
-    act(() => {
-      for (const observer of intersectionObservers) {
-        observer.intersect({ steps: 'above', afterwards: 'below' })
-      }
-    })
-
-    expect(within(contents).getByRole('link', { name: 'Steps' })).toHaveAttribute(
-      'aria-current',
-      'true',
-    )
-  })
-
-  it('goes back up the contents as the reader scrolls back up the page', async () => {
-    renderApp(READING_PATH, readingRoutes())
-    const contents = await screen.findByRole('navigation', { name: 'On this page' })
-
-    act(() => {
-      for (const observer of intersectionObservers) {
-        observer.intersect({ steps: 'above', afterwards: true })
-      }
-    })
-    expect(within(contents).getByRole('link', { name: 'Afterwards' })).toHaveAttribute(
-      'aria-current',
-      'true',
-    )
-
-    // Back up: "Afterwards" slides out of the bottom of the band, and the one
-    // before it, which is above, is where the reader is.
-    act(() => {
-      for (const observer of intersectionObservers) {
-        observer.intersect({ afterwards: 'below' })
-      }
-    })
-    expect(within(contents).getByRole('link', { name: 'Steps' })).toHaveAttribute(
-      'aria-current',
-      'true',
-    )
-    expect(within(contents).getByRole('link', { name: 'Afterwards' })).not.toHaveAttribute(
-      'aria-current',
-    )
-  })
-
   it('follows the reader down the page', async () => {
     renderApp(READING_PATH, readingRoutes())
     const contents = await screen.findByRole('navigation', { name: 'On this page' })
@@ -264,10 +250,10 @@ describe('the reading view', () => {
     const revisions = await screen.findByRole('region', { name: 'Revisions' })
     expect(
       within(revisions)
-        .getAllByRole('link')
+        .getAllByRole('link', { name: /^v\d/ })
         .map((link) => link.textContent),
     ).toEqual([expect.stringContaining('v2'), expect.stringContaining('v1')])
-    expect(screen.getByText('published')).toBeInTheDocument()
+    expect(screen.getByText('Published')).toBeInTheDocument()
     // The person who published last is named as that. There is no "owner: —"
     // in the readout any more: an owner is ADR-029's `owners` front-matter
     // field, no M2 route carries it, and a fact nothing can answer is not
@@ -290,7 +276,7 @@ describe('the reading view', () => {
       READING_PATH,
       readingRoutes({
         'GET /api/documents/{id}/envelope': envelope({
-          permissions: { view: true, comment: false, edit: false, manage: false },
+          permissions: { view: true, comment: false, edit: false, publish: false, manage: false },
         }),
       }),
     )
@@ -340,7 +326,7 @@ describe('the reading view', () => {
       READING_PATH,
       readingRoutes({
         'GET /api/documents/{id}/envelope': envelope({
-          permissions: { view: true, comment: false, edit: false, manage: false },
+          permissions: { view: true, comment: false, edit: false, publish: false, manage: false },
           draft: { savedAt: '2026-02-04T09:30:00.000Z' },
         }),
       }),
@@ -427,18 +413,6 @@ describe('the reading view', () => {
         ...extra,
       })
 
-    const text = (value: string) => ({ type: 'text', value })
-    const draftOf =
-      (...children: readonly object[]) =>
-      () =>
-        jsonResponse(200, {
-          documentId: 'doc-1',
-          draftVersion: 3,
-          baseRevision: null,
-          updatedAt: '2026-02-03T00:00:00.000Z',
-          ast: { version: 1, frontMatter: {}, ast: { type: 'root', children } },
-        })
-
     it('says what is waiting to be published when there is a draft with writing in it, rather than that nothing is there', async () => {
       renderApp(
         READING_PATH,
@@ -523,7 +497,7 @@ describe('the reading view', () => {
         READING_PATH,
         unpublished({
           'GET /api/documents/{id}/envelope': envelope({
-            permissions: { view: true, comment: false, edit: false, manage: false },
+            permissions: { view: true, comment: false, edit: false, publish: false, manage: false },
           }),
         }),
       )
@@ -561,7 +535,9 @@ describe('the reading view', () => {
 
     expect(await screen.findByText("We couldn't find that document")).toBeInTheDocument()
     // The shell is still around it: the sidebar is how you get somewhere else.
-    expect(screen.getByRole('navigation', { name: 'Documents' })).toBeInTheDocument()
+    // The sidebar's tree is its own request now, opened down to the document
+    // (`useNavigationTree`), so it may land a moment after the notice.
+    expect(await screen.findByRole('navigation', { name: 'Documents' })).toBeInTheDocument()
   })
 
   it('has no axe violations', async () => {
@@ -581,6 +557,18 @@ describe('reading an older revision', () => {
       'href',
       READING_PATH,
     )
+  })
+
+  it('does not offer to restore a revision to somebody who cannot publish', async () => {
+    renderApp(`${READING_PATH}?rev=${'a'.repeat(40)}`, {
+      ...readingRoutes(),
+      'GET /api/documents/{id}/envelope': envelope({
+        permissions: { view: true, comment: true, edit: true, publish: false, manage: false },
+      }),
+    })
+
+    await screen.findByRole('article', { name: 'Regional failover' })
+    expect(screen.queryByRole('button', { name: 'Restore this revision' })).not.toBeInTheDocument()
   })
 
   it('restores it, which publishes a new revision and returns to the current one', async () => {
@@ -608,144 +596,516 @@ describe('reading an older revision', () => {
   })
 })
 
-describe('comparing two revisions', () => {
-  it('loads the diff view on demand and renders added and removed lines', async () => {
-    renderApp(`${READING_PATH}?from=${'a'.repeat(40)}&to=${'b'.repeat(40)}`, {
-      ...readingRoutes(),
-      'GET /api/documents/{id}/diff': () =>
-        jsonResponse(200, {
-          from: 'a'.repeat(40),
-          to: 'b'.repeat(40),
-          unified: '--- a\n+++ b\n@@ -1 +1 @@\n-old line\n+new line',
-          added: 1,
-          removed: 1,
-        }),
-    })
+const A = 'a'.repeat(40)
+const B = 'b'.repeat(40)
 
-    expect(await screen.findByRole('heading', { name: 'Comparing v1 with v2' })).toBeInTheDocument()
-    const diff = await screen.findByRole('group', { name: 'Unified diff' })
-    const added = within(diff).getByText('+new line').closest('span')
-    const removed = within(diff).getByText('-old line').closest('span')
-    // The change is an attribute on the line, so it is what the styling and
-    // the screen reader both read (docs/architecture/styling.md).
-    expect(added).toHaveAttribute('data-change', 'added')
-    expect(removed).toHaveAttribute('data-change', 'removed')
-    expect(within(diff).getByText('added:')).toBeInTheDocument()
-  })
-
-  it('compares the two revisions a reader picks', async () => {
-    renderApp(READING_PATH, {
-      ...readingRoutes(),
-      'GET /api/documents/{id}/diff': () =>
-        jsonResponse(200, { from: null, to: 'b', unified: '', added: 0, removed: 0 }),
-    })
-
-    await userEvent.click(await screen.findByText('Compare', { selector: 'summary' }))
-    await userEvent.selectOptions(screen.getByLabelText('From'), 'a'.repeat(40))
-    await userEvent.selectOptions(screen.getByLabelText('To'), 'b'.repeat(40))
-    await userEvent.click(screen.getByRole('button', { name: 'Compare' }))
-
-    expect(await screen.findByRole('heading', { name: 'Comparing v1 with v2' })).toBeInTheDocument()
-  })
-})
-
-const leaf = (id: string, title: string, children: unknown[] = []) => ({
-  id,
-  shortId: `${id}`.padEnd(10, '0'),
-  title,
-  slug: id,
-  status: 'published',
-  children,
-})
-
-describe('the child-documents block when reading', () => {
-  const CHILDREN_HTML = `<article>
-<h1 id="regional-failover">Regional failover</h1>
-<section class="live-block" data-live-block="children" aria-label="Live block: children" data-depth="2"><p>::children{depth="2"}</p></section>
+/** A comparison in exactly the shape `renderComparison` emits. */
+const COMPARISON_HTML = `<article>
+<h1 id="regional-failover">Regional failover<a class="heading-anchor" href="#regional-failover" aria-label="Permalink: Regional failover">#</a></h1>
+<p data-change="changed" data-change-id="c1">Move traffic <del data-diff="removed"><span data-diff-label="">Removed: </span>east</del><ins data-diff="added"><span data-diff-label="">Added: </span>west</ins>.</p>
+<p>Unchanged one.</p>
+<p>Unchanged two.</p>
+<p>Unchanged three.</p>
+<p>Unchanged four.</p>
+<p>Unchanged five.</p>
+<p>Unchanged six.</p>
+<h2 id="afterwards">Afterwards<a class="heading-anchor" href="#afterwards" aria-label="Permalink: Afterwards">#</a></h2>
+<p data-change="added" data-change-id="c2"><ins data-diff="added"><span data-diff-label="">Added: </span>Tell the on-call engineer.</ins></p>
 </article>`
 
-  const tree = () =>
+const comparison = () =>
+  jsonResponse(200, {
+    html: COMPARISON_HTML,
+    summary: {
+      sections: 2,
+      added: 1,
+      removed: 0,
+      changed: 1,
+      moved: 0,
+      wordsAdded: 6,
+      wordsRemoved: 1,
+    },
+    changes: [
+      {
+        id: 'c1',
+        change: 'changed',
+        block: 'paragraph',
+        excerpt: 'Move traffic west.',
+        wordsAdded: 1,
+        wordsRemoved: 1,
+        section: { id: 'regional-failover', title: 'Regional failover' },
+      },
+      {
+        id: 'c2',
+        change: 'added',
+        block: 'paragraph',
+        excerpt: 'Tell the on-call engineer.',
+        wordsAdded: 5,
+        wordsRemoved: 0,
+        section: { id: 'afterwards', title: 'Afterwards' },
+      },
+    ],
+    sections: [
+      { id: 'regional-failover', depth: 1, title: 'Regional failover', changes: 1 },
+      { id: 'afterwards', depth: 2, title: 'Afterwards', changes: 1 },
+    ],
+    properties: [{ name: 'status', before: 'draft', after: 'published' }],
+  })
+
+const sourceComparison = () =>
+  jsonResponse(200, {
+    lines: [
+      {
+        change: 'equal',
+        before: 1,
+        after: 1,
+        segments: [{ change: 'equal', text: '# Regional failover' }],
+      },
+      {
+        change: 'removed',
+        before: 2,
+        segments: [
+          { change: 'equal', text: 'Move traffic ' },
+          { change: 'removed', text: 'east' },
+          { change: 'equal', text: '.' },
+        ],
+      },
+      {
+        change: 'added',
+        after: 2,
+        segments: [
+          { change: 'equal', text: 'Move traffic ' },
+          { change: 'added', text: 'west' },
+          { change: 'equal', text: '.' },
+        ],
+      },
+    ],
+    wordsAdded: 1,
+    wordsRemoved: 1,
+  })
+
+const COMPARING = `${READING_PATH}?from=${A}&to=${B}`
+
+describe('comparing two revisions', () => {
+  it('draws the document with its changes marked, folds what did not change, and starts at the summary', async () => {
+    const { container } = renderApp(COMPARING, {
+      ...readingRoutes(),
+      'GET /api/documents/{id}/compare': comparison,
+    })
+
+    expect(
+      await screen.findByRole('heading', { level: 1, name: 'Changes between v1 and v2' }),
+    ).toBeInTheDocument()
+    const summary = await screen.findByRole('region', {
+      name: 'Summary of Changes between v1 and v2',
+    })
+    expect(summary).toHaveTextContent(
+      '2 sections changed · 1 added · 1 edited · 6 words added · 1 word removed',
+    )
+    expect(summary).toHaveFocus()
+    // Focus put there for a screen reader, which no key reaches, paints no ring.
+    expect(summary).toHaveAttribute('tabindex', '-1')
+    expect(summary).toHaveClass('focus:outline-hidden')
+    expect(within(summary).getByText('draft')).toBeInTheDocument()
+
+    const article = await screen.findByRole('article', { name: 'Changes between v1 and v2' })
+    expect(within(article).getAllByText(/Removed:/)).toHaveLength(1)
+    expect(
+      await within(article).findByRole('button', { name: 'Show 5 unchanged paragraphs' }),
+    ).toBeInTheDocument()
+    // No Git: nothing on the page names a hunk, a path or a hash.
+    expect(container.textContent).not.toMatch(/@@|runbooks\/failover\.md|[0-9a-f]{40}/)
+    await expectNoAccessibilityViolations(container)
+  })
+
+  it('steps through the changes with the buttons and with n and p', async () => {
+    renderApp(COMPARING, { ...readingRoutes(), 'GET /api/documents/{id}/compare': comparison })
+    const summary = await screen.findByRole('region', { name: /^Summary/ })
+    await screen.findByRole('button', { name: /unchanged paragraphs/ })
+
+    await userEvent.click(within(summary).getByRole('button', { name: 'Next' }))
+    expect(within(summary).getByText('Change 1 of 2')).toBeInTheDocument()
+    expect(window.document.querySelector('[data-change-id="c1"]')).toHaveAttribute(
+      'data-change-current',
+    )
+
+    await userEvent.keyboard('n')
+    expect(within(summary).getByText('Change 2 of 2')).toBeInTheDocument()
+    expect(window.document.querySelector('[data-change-id="c2"]')).toHaveFocus()
+
+    await userEvent.keyboard('k')
+    expect(within(summary).getByText('Change 1 of 2')).toBeInTheDocument()
+  })
+
+  it('lists the changes beside the page, and marks the sections that have them', async () => {
+    renderApp(COMPARING, { ...readingRoutes(), 'GET /api/documents/{id}/compare': comparison })
+
+    const list = await screen.findByRole('navigation', { name: 'Changes (2)' })
+    const added = within(list).getByRole('button', { name: /Added Paragraph/ })
+    // The section is said in full, never cut short, and read as where the change is.
+    expect(added).toHaveAccessibleName(/^Added Paragraph\s+in\s?Afterwards\s+Tell the on-call/)
+    await userEvent.click(added)
+    expect(added).toHaveAttribute('aria-current', 'true')
+
+    const sections = screen.getByRole('navigation', { name: 'Sections' })
+    expect(within(sections).getByRole('link', { name: /Afterwards/ })).toHaveTextContent('1 change')
+  })
+
+  it('chooses the versions from the pickers, and swaps them', async () => {
+    renderApp(COMPARING, { ...readingRoutes(), 'GET /api/documents/{id}/compare': comparison })
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Swap the two versions' }))
+    expect(
+      await screen.findByRole('heading', { level: 1, name: 'Changes between v2 and v1' }),
+    ).toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('button', { name: /^To: v1/ }))
+    const menu = await screen.findByRole('menu', { name: 'To' })
+    expect(within(menu).getByRole('menuitemradio', { name: /^v2/ })).toHaveAttribute(
+      'aria-disabled',
+      'true',
+    )
+    await userEvent.click(within(menu).getByRole('menuitemradio', { name: /^Your draft/ }))
+    expect(
+      await screen.findByRole('heading', { level: 1, name: 'Changes between v2 and your draft' }),
+    ).toBeInTheDocument()
+  })
+
+  it('shows the Markdown line by line, with no Git headers', async () => {
+    renderApp(`${COMPARING}&view=source&layout=unified`, {
+      ...readingRoutes(),
+      'GET /api/documents/{id}/compare': comparison,
+      'GET /api/documents/{id}/compare/source': sourceComparison,
+    })
+
+    const table = await screen.findByRole('table', {
+      name: 'Changes between v1 and v2, as Markdown',
+    })
+    expect(within(table).getByText('Removed line')).toBeInTheDocument()
+    expect(within(table).getByText('west').tagName).toBe('INS')
+    expect(table.textContent).not.toMatch(/@@|^---|^\+\+\+/m)
+    await expectNoAccessibilityViolations(table)
+  })
+
+  it('opens from the revisions beside a document, and offers each row its comparison', async () => {
+    renderApp(READING_PATH, {
+      ...readingRoutes(),
+      'GET /api/documents/{id}/compare': comparison,
+    })
+
+    expect(
+      await screen.findByRole('link', { name: 'Compare v2 with the previous version' }),
+    ).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('link', { name: 'Compare versions' }))
+    expect(
+      await screen.findByRole('heading', { level: 1, name: 'Changes between v1 and v2' }),
+    ).toBeInTheDocument()
+  })
+})
+
+/** The list of changes, once the draft it reverts into has been read. */
+async function changeList() {
+  const list = await screen.findByRole('navigation', { name: 'Changes (3)' })
+  await waitFor(() => {
+    expect(
+      within(list).getByRole('button', { name: /^Revert: Edited Paragraph/u }),
+    ).not.toHaveAttribute('aria-disabled')
+  })
+  return list
+}
+
+describe('comparing the published page with the draft', () => {
+  const COMPARING_DRAFT = `${READING_PATH}?from=${B}&to=draft`
+  const withDraftChanges = () =>
     jsonResponse(200, {
-      collections: [
+      html: COMPARISON_HTML,
+      summary: {
+        sections: 2,
+        added: 1,
+        removed: 0,
+        changed: 1,
+        moved: 1,
+        wordsAdded: 6,
+        wordsRemoved: 1,
+      },
+      changes: [
         {
-          id: 'col-1',
-          name: 'Runbooks',
-          slug: 'runbooks',
-          documents: [
-            leaf('doc-1', 'Regional failover', [
-              leaf('primary', 'Primary region', [leaf('detail', 'Detail', [leaf('deep', 'Deep')])]),
-              leaf('secondary', 'Secondary region'),
-            ]),
-            leaf('elsewhere', 'Somewhere else'),
-          ],
+          id: 'c1',
+          change: 'changed',
+          block: 'paragraph',
+          excerpt: 'Move traffic west.',
+          wordsAdded: 1,
+          wordsRemoved: 1,
+          section: { id: 'regional-failover', title: 'Regional failover' },
+          revertible: true,
+          author: { id: 'user-2', name: 'Ada', at: '2026-02-04T09:30:00.000Z' },
+        },
+        {
+          id: 'c2',
+          change: 'added',
+          block: 'paragraph',
+          excerpt: 'Tell the on-call engineer.',
+          wordsAdded: 5,
+          wordsRemoved: 0,
+          section: { id: 'afterwards', title: 'Afterwards' },
+          revertible: true,
+        },
+        {
+          id: 'c3',
+          change: 'moved',
+          block: 'paragraph',
+          excerpt: 'Check the dashboard.',
+          wordsAdded: 0,
+          wordsRemoved: 0,
+          section: { id: 'afterwards', title: 'Afterwards' },
+          revertible: false,
         },
       ],
+      sections: [
+        { id: 'regional-failover', depth: 1, title: 'Regional failover', changes: 1 },
+        { id: 'afterwards', depth: 2, title: 'Afterwards', changes: 2 },
+      ],
+      properties: [],
     })
 
-  const routes = (overrides: FakeRoutes = {}): FakeRoutes =>
-    readingRoutes({
-      'GET /api/documents/{id}/rendered': () =>
-        jsonResponse(200, {
-          revision: 'b'.repeat(40),
-          html: CHILDREN_HTML,
-          outline: [{ id: 'regional-failover', depth: 1, text: 'Regional failover', children: [] }],
-          slots: [],
-        }),
-      'GET /api/workspaces/{id}/tree': tree,
-      ...overrides,
+  function draftRoutes(extra: FakeRoutes = {}): FakeRoutes {
+    return readingRoutes({
+      'GET /api/documents/{id}/compare': withDraftChanges,
+      'GET /api/documents/{id}/draft': draftOf({ type: 'paragraph', children: [text('Draft.')] }),
+      ...extra,
     })
+  }
 
-  it('lists the documents beneath this one as links, as deep as the block asks', async () => {
-    renderApp(READING_PATH, routes())
+  it('says who made each change and when, from the draft’s record', async () => {
+    renderApp(COMPARING_DRAFT, draftRoutes())
 
-    const block = await screen.findByRole('region', { name: 'Child documents' })
-    expect(await within(block).findByRole('link', { name: 'Primary region' })).toBeVisible()
-    expect(
-      within(block)
-        .getAllByRole('link')
-        .map((link) => link.textContent),
-    ).toEqual(['Primary region', 'Detail', 'Secondary region'])
-    // Its own address, and not a sibling's.
-    expect(within(block).queryByText('Somewhere else')).toBeNull()
-    expect(within(block).queryByText('::children{depth="2"}')).toBeNull()
-  })
-
-  it('links to each document by its address (ADR-035)', async () => {
-    renderApp(READING_PATH, routes())
-    const block = await screen.findByRole('region', { name: 'Child documents' })
-    expect(await within(block).findByRole('link', { name: 'Secondary region' })).toHaveAttribute(
-      'href',
-      '/w/acme/d/secondary-region-secondary0',
+    const list = await screen.findByRole('navigation', { name: 'Changes (3)' })
+    const changed = within(list).getByRole('button', { name: /^Edited Paragraph/u })
+    expect(changed).toHaveTextContent('Ada ·')
+    expect(within(changed).getByRole('time')).toHaveAttribute(
+      'datetime',
+      '2026-02-04T09:30:00.000Z',
     )
   })
 
-  it('says so when there are none', async () => {
+  it('keeps Revert on a change that cannot be reverted, disabled, and says why', async () => {
+    renderApp(COMPARING_DRAFT, draftRoutes())
+
+    const list = await changeList()
+    const moved = within(list).getByRole('button', { name: /^Revert: Moved Paragraph/u })
+    expect(moved).toHaveAttribute('aria-disabled', 'true')
+    expect(moved).toHaveAccessibleDescription(/A move can’t be reverted/u)
+    expect(moved).toHaveAttribute('title', expect.stringMatching(/only its place differs/u))
+    expect(within(list).getByText('A move can’t be reverted')).toBeVisible()
+    expect(within(list).getByRole('checkbox', { name: /^Select: Moved Paragraph/u })).toBeDisabled()
+  })
+
+  it('reverts one change in the draft, as one save, and offers to undo it', async () => {
+    const success = vi.spyOn(toast, 'success')
+    onTestFinished(() => {
+      success.mockRestore()
+    })
+    const bodies: unknown[] = []
+    const undone: unknown[] = []
     renderApp(
-      READING_PATH,
-      routes({
-        'GET /api/workspaces/{id}/tree': () =>
-          jsonResponse(200, {
-            collections: [
-              {
-                id: 'col-1',
-                name: 'Runbooks',
-                slug: 'runbooks',
-                documents: [leaf('doc-1', 'Regional failover')],
-              },
-            ],
-          }),
+      COMPARING_DRAFT,
+      draftRoutes({
+        'POST /api/documents/{id}/draft/revert': async (request) => {
+          bodies.push(await request.json())
+          return jsonResponse(200, { draftVersion: 4, previous: { version: 1, kept: true } })
+        },
+        'POST /api/documents/{id}/draft/revert/undo': async (request) => {
+          undone.push(await request.json())
+          return jsonResponse(200, { draftVersion: 5 })
+        },
       }),
     )
-    const block = await screen.findByRole('region', { name: 'Child documents' })
-    expect(await within(block).findByText('This document has no child documents.')).toBeVisible()
+
+    const list = await changeList()
+    await userEvent.click(within(list).getByRole('button', { name: /^Revert: Edited Paragraph/u }))
+
+    await waitFor(() => {
+      expect(bodies).toEqual([{ from: B, draftVersion: 3, changes: ['c1'] }])
+    })
+    // The toast host is the shell's; what the toast offers is what is checked here.
+    await waitFor(() => {
+      expect(success).toHaveBeenCalledWith('Change reverted in your draft', expect.anything())
+    })
+    const offered = success.mock.calls[0]?.[1]
+    act(() => {
+      offered?.action?.onClick()
+    })
+    await waitFor(() => {
+      expect(undone).toEqual([{ draftVersion: 4, ast: { version: 1, kept: true } }])
+    })
   })
 
-  it('draws nothing until the tree has arrived, rather than claiming there are none', async () => {
+  it('reverts the changes picked, all in one save, and every revertible one at once', async () => {
+    const bodies: unknown[] = []
     renderApp(
-      READING_PATH,
-      routes({ 'GET /api/workspaces/{id}/tree': () => new Promise<Response>(() => {}) }),
+      COMPARING_DRAFT,
+      draftRoutes({
+        'POST /api/documents/{id}/draft/revert': async (request) => {
+          bodies.push(await request.json())
+          return jsonResponse(200, { draftVersion: 4, previous: { version: 1 } })
+        },
+      }),
     )
-    const block = await screen.findByRole('region', { name: 'Child documents' })
-    expect(block).toBeEmptyDOMElement()
+
+    const list = await changeList()
+    const selected = within(list).getByRole('button', { name: /^Revert selected/u })
+    expect(selected).toHaveAttribute('aria-disabled', 'true')
+    expect(selected).toHaveAccessibleDescription('Select the changes to revert')
+
+    await userEvent.click(within(list).getByRole('checkbox', { name: 'Select all revertible' }))
+    await userEvent.click(within(list).getByRole('button', { name: 'Revert 2 selected' }))
+
+    await waitFor(() => {
+      expect(bodies).toEqual([{ from: B, draftVersion: 3, changes: ['c1', 'c2'] }])
+    })
+  })
+
+  it('says why, when somebody else is editing the document', async () => {
+    const danger = vi.spyOn(toast, 'danger')
+    onTestFinished(() => {
+      danger.mockRestore()
+    })
+    renderApp(
+      COMPARING_DRAFT,
+      draftRoutes({
+        'POST /api/documents/{id}/draft/revert': () =>
+          errorResponse(423, 'lock_lost', 'You do not hold a valid lock on this document'),
+      }),
+    )
+
+    const list = await changeList()
+    await userEvent.click(within(list).getByRole('button', { name: /^Revert: Edited Paragraph/u }))
+
+    await waitFor(() => {
+      expect(danger).toHaveBeenCalledWith(expect.stringMatching(/edited in another session/u))
+    })
+  })
+
+  it('offers nothing to revert to somebody who may not edit', async () => {
+    renderApp(
+      COMPARING_DRAFT,
+      draftRoutes({
+        'GET /api/documents/{id}/envelope': envelope({
+          permissions: { view: true, comment: true, edit: false, publish: false, manage: false },
+        }),
+      }),
+    )
+
+    const list = await screen.findByRole('navigation', { name: 'Changes (3)' })
+    expect(within(list).queryByRole('button', { name: /^Revert/u })).not.toBeInTheDocument()
+  })
+
+  it('offers nothing to revert between two published revisions', async () => {
+    renderApp(COMPARING, draftRoutes())
+
+    const list = await screen.findByRole('navigation', { name: 'Changes (3)' })
+    expect(within(list).queryByRole('button', { name: /^Revert/u })).not.toBeInTheDocument()
+  })
+
+  it('has no axe violations with the authors and the revert controls showing', async () => {
+    const { container } = renderApp(COMPARING_DRAFT, draftRoutes())
+    await changeList()
+
+    await expectNoAccessibilityViolations(container)
+  })
+})
+
+/*
+ * On a phone the bar keeps the tree's button, Edit and the person menu, and
+ * folds the rest into the document's "…" menu (2026-10-17): at 320 pixels the
+ * compare page's bar ran 52 pixels off the screen. Folded, every control is
+ * still reachable, under the same conditions it is offered in the bar.
+ */
+/** Answers the medium-breakpoint query as a phone would; returns the undo. */
+function onAPhone(): () => void {
+  Object.defineProperty(globalThis, 'matchMedia', {
+    configurable: true,
+    value: (query: string) => ({
+      matches: query.includes('48rem'),
+      media: query,
+      addEventListener: () => {},
+      removeEventListener: () => {},
+    }),
+  })
+  return () => {
+    Reflect.deleteProperty(globalThis, 'matchMedia')
+  }
+}
+
+describe('the document bar on a phone', () => {
+  it('folds rename, present, preview and share into the menu, and keeps Edit', async () => {
+    const restore = onAPhone()
+    try {
+      renderApp(
+        READING_PATH,
+        readingRoutes({
+          'GET /api/documents/{id}/envelope': envelope({
+            permissions: { view: true, comment: true, edit: true, manage: true },
+          }),
+        }),
+      )
+
+      expect(await screen.findByRole('link', { name: 'Edit' })).toBeInTheDocument()
+      const bar = screen.getByRole('banner')
+      expect(within(bar).queryByRole('button', { name: 'Share' })).not.toBeInTheDocument()
+      expect(within(bar).queryByRole('link', { name: 'Present' })).not.toBeInTheDocument()
+      expect(within(bar).queryByRole('button', { name: /^Rename/ })).not.toBeInTheDocument()
+
+      await userEvent.click(
+        within(bar).getByRole('button', { name: 'More actions for Regional failover' }),
+      )
+      const menu = await screen.findByRole('menu')
+      const items = within(menu)
+        .getAllByRole('menuitem')
+        .map((item) => item.textContent)
+      expect(items).toEqual(
+        expect.arrayContaining(['Rename…', 'Present', 'Preview as a reader', 'Share…']),
+      )
+    } finally {
+      restore()
+    }
+  })
+
+  it('offers a request for review in the menu, which the bar has no room for', async () => {
+    const restore = onAPhone()
+    try {
+      renderApp(
+        READING_PATH,
+        readingRoutes({
+          'GET /api/documents/{id}/envelope': envelope({
+            draft: { savedAt: '2026-02-04T09:30:00.000Z' },
+          }),
+        }),
+      )
+
+      expect(await screen.findByRole('link', { name: 'Edit' })).toBeInTheDocument()
+      const bar = within(screen.getByRole('banner'))
+      await userEvent.click(bar.getByRole('button', { name: 'More actions for Regional failover' }))
+      await userEvent.click(await screen.findByRole('menuitem', { name: 'Request review…' }))
+
+      expect(await screen.findByRole('dialog', { name: 'Request a review' })).toBeInTheDocument()
+    } finally {
+      restore()
+    }
+  })
+
+  it('does not offer a review when the draft holds nothing new', async () => {
+    const restore = onAPhone()
+    try {
+      renderApp(READING_PATH, readingRoutes())
+
+      expect(await screen.findByRole('link', { name: 'Edit' })).toBeInTheDocument()
+      const bar = within(screen.getByRole('banner'))
+      await userEvent.click(bar.getByRole('button', { name: 'More actions for Regional failover' }))
+      await screen.findByRole('menu')
+      expect(screen.queryByRole('menuitem', { name: 'Request review…' })).not.toBeInTheDocument()
+    } finally {
+      restore()
+    }
   })
 })

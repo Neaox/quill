@@ -10,7 +10,12 @@ import type {
   WorkspaceId,
 } from '@quill/domain'
 
+import type { EventRecorder } from './events.ts'
+import type { Contributor } from './search-index.ts'
 import type { RenderedContent } from './document-format.ts'
+import type { DocumentViewRepository } from './document-views.ts'
+import type { NotificationRepository } from './notifications.ts'
+import type { ReviewRepository } from './reviews.ts'
 import type { SecretsRepository } from './secrets.ts'
 
 /**
@@ -66,6 +71,21 @@ export interface UserRepository {
   /** Several at once, in no particular order; an id that names nobody is simply absent. */
   listByIds(ids: readonly UserId[]): Promise<readonly UserRow[]>
   findByEmail(email: string): Promise<UserRow | null>
+  /**
+   * The verified people with these addresses, matched without regard to case,
+   * in one query: a byline names every owner at once, never one by one.
+   */
+  findVerifiedByEmails(emails: readonly string[]): Promise<readonly UserRow[]>
+  /**
+   * Verified people whose name or address contains `query`, without regard
+   * to case, ordered by name, at most `limit` of them: the people picker.
+   */
+  searchVerified(query: string, limit: number): Promise<readonly UserRow[]>
+  /**
+   * People whose display name or email starts with `query`, ignoring case,
+   * ordered by name and cut at `limit`: the admin's people picker.
+   */
+  searchByPrefix(query: string, limit: number): Promise<readonly UserRow[]>
   markEmailVerified(id: UserId, now: Date): Promise<void>
   setInstanceAdmin(id: UserId, isInstanceAdmin: boolean): Promise<void>
 }
@@ -268,6 +288,8 @@ export interface UnitRepository {
    * `findById` at a time.
    */
   listAncestors(id: UnitId): Promise<readonly UnitRow[]>
+  /** Every unit, for the screens that show a path for each (groups, in one query). */
+  listAll(): Promise<readonly UnitRow[]>
   rename(id: UnitId, name: string): Promise<UnitRow>
   delete(id: UnitId): Promise<void>
 }
@@ -289,6 +311,15 @@ export interface GroupRepository {
     readonly now: Date
   }): Promise<GroupRow>
   findById(id: GroupId): Promise<GroupRow | null>
+  list(): Promise<readonly GroupRow[]>
+  /** Members per group in one query; a group with nobody in it is absent. */
+  countMembers(): Promise<ReadonlyMap<GroupId, number>>
+  /** How many groups nest directly under this one. */
+  countChildren(id: GroupId): Promise<number>
+  listMemberIds(groupId: GroupId): Promise<readonly UserId[]>
+  rename(id: GroupId, name: string): Promise<GroupRow>
+  /** Removes the group and its memberships; grants that name it are the caller's to remove. */
+  delete(id: GroupId): Promise<void>
   addMember(input: {
     readonly groupId: GroupId
     readonly userId: UserId
@@ -302,6 +333,8 @@ export interface GroupRepository {
    * cost one round trip per level.
    */
   listForUser(userId: UserId): Promise<readonly GroupRow[]>
+  /** Every group of these units, in one query; the names a search's `team:` completes. */
+  listByUnits(unitIds: readonly UnitId[]): Promise<readonly GroupRow[]>
 }
 
 export interface WorkspaceRow {
@@ -424,6 +457,8 @@ export interface CollectionRepository {
   listByWorkspace(workspaceId: WorkspaceId): Promise<readonly CollectionRow[]>
   /** The collections with these ids, in no particular order; an unknown id is simply absent. */
   listByIds(ids: readonly CollectionId[]): Promise<readonly CollectionRow[]>
+  /** The collections of these workspaces, in one query, in no particular order. */
+  listByWorkspaces(workspaceIds: readonly WorkspaceId[]): Promise<readonly CollectionRow[]>
   /**
    * Collections in any workspace whose name contains `text`, ignoring case,
    * by name, at most `limit` of them: what a picker offers as somebody types
@@ -481,23 +516,15 @@ export interface DocumentRow {
   readonly templateVersion: number | null
   /** The revision this document was last published at, or null before its first publish. */
   readonly headRevision: RevisionId | null
+  /**
+   * Who created it. Null for a document that predates the column, and never
+   * guessed afterwards (ADR-053): "mine" is an id, not an email match.
+   */
+  readonly createdBy: UserId | null
+  /** Who last published, restored, renamed or moved it; null until somebody does. */
+  readonly updatedBy: UserId | null
   readonly createdAt: Date
   readonly updatedAt: Date
-}
-
-/** Where a page of siblings resumes: after the sibling with this creation time and id. */
-export interface ChildCursor {
-  readonly createdAt: Date
-  readonly id: DocumentId
-}
-
-export interface ChildPage {
-  readonly workspaceId: WorkspaceId
-  readonly collectionId: CollectionId
-  /** The parent, or null for the documents at the top of the collection. */
-  readonly parentId: DocumentId | null
-  readonly after: ChildCursor | null
-  readonly limit: number
 }
 
 export interface CreateDocumentInput {
@@ -512,6 +539,8 @@ export interface CreateDocumentInput {
   readonly status: DocumentStatus
   readonly templateId: string | null
   readonly templateVersion: number | null
+  /** Who is creating it; omitted is recorded as nobody. */
+  readonly createdBy?: UserId | null
   readonly now: Date
 }
 
@@ -523,6 +552,8 @@ export interface UpdateDocumentPatch {
   readonly parentId?: DocumentId | null
   readonly collectionId?: CollectionId | null
   readonly headRevision?: RevisionId | null
+  /** Who made this change; stamped with it, so "last changed by" never drifts from the change. */
+  readonly updatedBy?: UserId | null
 }
 
 /**
@@ -565,15 +596,6 @@ export interface DocumentRepository {
    * which reads rows the caller has already decided it cannot use.
    */
   listByCollection(collectionId: CollectionId): Promise<readonly DocumentRow[]>
-  /**
-   * One page of the documents directly under a parent (or at the top of a collection, for a
-   * null parent), in the order siblings have: oldest first, then by id, so a new document is
-   * last and nothing moves when it is made (ADR-049). The page after `after`, by key rather
-   * than by offset, so a document made while someone reads is neither repeated nor skipped.
-   */
-  listChildren(input: ChildPage): Promise<readonly DocumentRow[]>
-  /** How many documents each of these has directly beneath it; one with none is absent. */
-  countChildren(parentIds: readonly DocumentId[]): Promise<ReadonlyMap<DocumentId, number>>
   /** Resolving a body's outgoing links must cost one query, not one per link. */
   listByIds(ids: readonly DocumentId[]): Promise<readonly DocumentRow[]>
   /**
@@ -581,6 +603,16 @@ export interface DocumentRepository {
    * query — the ancestor half of a document's scope chain (ADR-012).
    */
   listAncestors(id: DocumentId): Promise<readonly DocumentRow[]>
+  /**
+   * Every document nested under this one, at most `depth` levels down, in one
+   * query however many there are: a child pages list's subtree (ADR-058).
+   * The document itself is not included.
+   */
+  /**
+   * The documents under `id`, to `depth` levels, nearest levels first, and at
+   * most `limit` of them: the walk stops there, however wide the tree.
+   */
+  listDescendants(id: DocumentId, depth: number, limit: number): Promise<readonly DocumentRow[]>
   update(id: DocumentId, patch: UpdateDocumentPatch, now: Date): Promise<DocumentRow>
   delete(id: DocumentId): Promise<void>
 }
@@ -594,6 +626,9 @@ export interface DraftRow {
   readonly authorship?: unknown
   readonly updatedAt: Date
 }
+
+/** A draft's row without its content. */
+export type DraftStamp = Pick<DraftRow, 'baseRevision' | 'updatedAt'>
 
 export type WriteDraftResult =
   | { readonly ok: true; readonly draft: DraftRow }
@@ -609,6 +644,12 @@ export interface DraftRepository {
     readonly now: Date
   }): Promise<DraftRow>
   find(documentId: DocumentId): Promise<DraftRow | null>
+  /**
+   * When the draft was last written and what it is based on, without its
+   * content: enough to tell whether it holds changes nothing has published,
+   * for a caller that has no use for the tree itself.
+   */
+  stamp(documentId: DocumentId): Promise<DraftStamp | null>
   /**
    * Optimistic, lock-gated write (ADR-021). Must run lock validation and the
    * version check inside one transaction so a concurrent takeover cannot
@@ -633,13 +674,19 @@ export interface DraftRepository {
    * holding content that would undo it on their next publish. Replacing the
    * content bumps the draft version, so an editor that was open when the
    * restore happened is told its write is stale and re-reads (ADR-021);
-   * leaving the content alone leaves the version alone with it. Either way the record of
-   * who wrote what is cleared: from here the draft says what is published.
+   * leaving the content alone leaves the version alone with it.
+   *
+   * The record of who wrote what is cleared when the base moves, because from there the
+   * draft says what is published, and kept when it does not (a rename, a revert), unless
+   * `authorship` gives the record as it now is. With `expectedVersion`, nothing is written
+   * unless the draft is at that version, and null says so.
    */
   rebase(input: {
     readonly documentId: DocumentId
     readonly baseRevision: RevisionId | null
     readonly ast?: unknown
+    readonly authorship?: unknown
+    readonly expectedVersion?: number
     readonly now: Date
   }): Promise<DraftRow | null>
 }
@@ -902,6 +949,8 @@ export interface RevisionIndexRow {
   readonly revision: RevisionId
   readonly authorName: string
   readonly authorEmail: string
+  /** The publisher's id; null for a revision recorded before the column existed (ADR-053). */
+  readonly authorUserId: UserId | null
   readonly timestamp: Date
   readonly summary: string
   readonly changeNote: string | null
@@ -915,6 +964,8 @@ export interface AppendRevisionInput {
   readonly revision: RevisionId
   readonly authorName: string
   readonly authorEmail: string
+  /** Omitted is recorded as nobody. */
+  readonly authorUserId?: UserId | null
   readonly timestamp: Date
   readonly summary: string
   readonly changeNote: string | null
@@ -951,6 +1002,30 @@ export interface RevisionsIndexRepository {
    * failure to read.
    */
   findForDocument(documentId: DocumentId, revision: RevisionId): Promise<RevisionIndexRow | null>
+  /**
+   * Everyone who has published a revision of this document, once each, in
+   * order of address, under the name they published under most recently.
+   *
+   * People are told apart by address, lower case: a person's name is edited
+   * and spelt differently in different tools, where the address is what stays
+   * the same (search's `by:` and `team:` match on it). Not an account: a
+   * revision that came through Git sync names someone who may never have had
+   * one.
+   */
+  listContributors(documentId: DocumentId): Promise<readonly Contributor[]>
+  /**
+   * {@link RevisionsIndexRepository.listContributors} for several documents at
+   * once, in one query: a page of search results names its contributors without
+   * asking once per hit (AGENTS.md rule 13).
+   *
+   * Each document's list is distinct by lower-cased trimmed address, under the
+   * name last used, and ordered by who published most recently first (the
+   * display wants "Ada, Sam +2", most recent publisher first). A document with
+   * no revisions is absent from the map.
+   */
+  listContributorsForDocuments(
+    documentIds: readonly DocumentId[],
+  ): Promise<ReadonlyMap<DocumentId, readonly Contributor[]>>
 }
 
 // ---------------------------------------------------------------------------
@@ -1160,6 +1235,95 @@ export interface PersonPreferencesRepository {
 }
 
 // ---------------------------------------------------------------------------
+// Link previews
+// ---------------------------------------------------------------------------
+
+/**
+ * One stored link preview, as it was written (ADR-042).
+ *
+ * `document` is the preview exactly as stored, read through the use case's
+ * versioned reader rather than trusted here, so a row written by another
+ * release is never misread by the storage layer (ADR-033). It is null for a
+ * row that holds no preview: one that has only been asked for, or one whose
+ * fetch failed.
+ */
+export interface LinkPreviewRow {
+  /** `public` for a preview anyone on the instance may be shown, else the owner it is private to. */
+  readonly scope: string
+  /** The normalised URL. */
+  readonly key: string
+  readonly state: 'ready' | 'failed' | 'pending'
+  readonly document: unknown
+  readonly failure: string | null
+  /** When this row's state was decided: the fetch that produced it, or the request that created it. */
+  readonly fetchedAt: Date
+  /** Set while a fetch is wanted or running. */
+  readonly requestedAt: Date | null
+  /** No new fetch before this, so a dead link is not asked for on every read. */
+  readonly retryAfter: Date | null
+}
+
+export interface LinkPreviewRepository {
+  /**
+   * Every row for these keys in any of these scopes, in one query, so a page
+   * with fifty links costs one read and never fifty.
+   */
+  findMany(scopes: readonly string[], keys: readonly string[]): Promise<readonly LinkPreviewRow[]>
+  /**
+   * Records that a fetch is wanted for each key, and answers which of them
+   * this caller is the one to queue: not one that another request already has
+   * in flight (made within `REQUEST_IN_FLIGHT_FOR_MS`), nor one that failed
+   * recently unless `force` is set. Atomic, so two readers asking at once
+   * queue one fetch, and one statement for any number of keys.
+   *
+   * A row that already holds a preview keeps it: the reader goes on being shown
+   * the old preview until the new one lands.
+   */
+  requestFetch(input: {
+    readonly scope: string
+    readonly keys: readonly string[]
+    readonly now: Date
+    readonly force: boolean
+  }): Promise<readonly string[]>
+  putReady(input: {
+    readonly scope: string
+    readonly key: string
+    readonly document: unknown
+    readonly now: Date
+  }): Promise<void>
+  /**
+   * Records a failed fetch. A row that already holds a preview keeps it, with
+   * a later `retryAfter`: a dead link's last good preview beats an empty card
+   * (ADR-032, "the last good snapshot with its age"). The one exception is the
+   * failure `restricted`: the link is no longer public, so what was kept from
+   * when it was is dropped rather than shown to people who could not open it.
+   */
+  putFailure(input: {
+    readonly scope: string
+    readonly key: string
+    readonly failure: string
+    readonly now: Date
+  }): Promise<void>
+  /**
+   * Forgets every row last fetched before `before`, whatever its state, and
+   * says how many went. Previews are derived data: a link someone still reads
+   * is refreshed long before this, so what is left to sweep is a link nobody
+   * has read in months, and one fetch brings it back if anyone ever does.
+   */
+  deleteFetchedBefore(before: Date): Promise<number>
+  /**
+   * Whether any stored preview shows the image with this hash, as its thumbnail
+   * or its icon.
+   *
+   * The blob store holds every kind of file by its hash, attachments included,
+   * so a route that serves an image by hash must first be sure the hash is one
+   * a preview put there. Otherwise it would be a way to read any stored file
+   * whose hash you know, past the permissions that guard it.
+   */
+  isImageReferenced(hash: string): Promise<boolean>
+}
+
+// ---------------------------------------------------------------------------
 // Outbox and audit
 // ---------------------------------------------------------------------------
 
@@ -1175,13 +1339,17 @@ export interface OutboxEventRow {
 }
 
 /** Written in the same transaction as the change that produced the event (plan §22). */
+export interface OutboxEventInput {
+  readonly id: string
+  readonly type: string
+  readonly payload: unknown
+  readonly now: Date
+}
+
 export interface OutboxWriter {
-  write(input: {
-    readonly id: string
-    readonly type: string
-    readonly payload: unknown
-    readonly now: Date
-  }): Promise<void>
+  write(input: OutboxEventInput): Promise<void>
+  /** Several events in one statement, for a use case that queues many (a page of links). */
+  writeMany(inputs: readonly OutboxEventInput[]): Promise<void>
 }
 
 export interface AuditEventRow {
@@ -1210,6 +1378,23 @@ export interface AuditWriter {
 // Unit of work
 // ---------------------------------------------------------------------------
 
+/**
+ * What a list shows under a document's title (ADR-058): its summary — the
+ * `description`, or the first paragraph — and its icon, as the search
+ * projection of its published head holds them. A document never published
+ * has none.
+ */
+export interface DocumentSummaryRow {
+  readonly documentId: DocumentId
+  readonly summary: string | null
+  readonly icon: string | null
+}
+
+export interface DocumentSummaryRepository {
+  /** The summaries of these documents, in one query; a document without one is absent. */
+  listByIds(ids: readonly DocumentId[]): Promise<readonly DocumentSummaryRow[]>
+}
+
 export interface RepositoryBundle {
   readonly users: UserRepository
   readonly sessions: SessionRepository
@@ -1222,6 +1407,7 @@ export interface RepositoryBundle {
   readonly workspaceSlugHistory: WorkspaceSlugHistoryRepository
   readonly collections: CollectionRepository
   readonly documents: DocumentRepository
+  readonly documentSummaries: DocumentSummaryRepository
   readonly drafts: DraftRepository
   readonly locks: LockRepository
   readonly grants: GrantRepository
@@ -1233,7 +1419,15 @@ export interface RepositoryBundle {
   readonly secrets: SecretsRepository
   readonly attachments: AttachmentRepository
   readonly personPreferences: PersonPreferencesRepository
-  readonly outbox: OutboxWriter
+  readonly linkPreviews: LinkPreviewRepository
+  readonly reviews: ReviewRepository
+  readonly documentViews: DocumentViewRepository
+  readonly notifications: NotificationRepository
+  /**
+   * The one way to emit an event (ADR-056): the outbox row in this transaction, and the
+   * announcement to the bus once it commits. The bare `OutboxWriter` is not on the bundle.
+   */
+  readonly events: EventRecorder
   readonly audit: AuditWriter
 }
 

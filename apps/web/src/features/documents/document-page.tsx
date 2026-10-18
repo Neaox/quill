@@ -1,28 +1,52 @@
-import { getRouteApi, Link } from '@tanstack/react-router'
-import { useState } from 'react'
+import { getRouteApi, Link, useNavigate } from '@tanstack/react-router'
+import { lazy, Suspense, useState } from 'react'
 
-import { Button, buttonClassName, Menu, PresentIcon, ShareIcon, type MenuItem } from '@quill/ui'
+import {
+  Button,
+  buttonClassName,
+  Menu,
+  PresentIcon,
+  ShareIcon,
+  Spinner,
+  useNarrowScreen,
+  type MenuItem,
+} from '@quill/ui'
 
 import {
   useDocumentEnvelope,
   useDocumentHistory,
   useLoadedDocument,
   useRenderedDocument,
-  useTreeCollections,
-  type DiffRange,
+  useNavigationTree,
+  useReview,
+  type ComparisonRange,
   type OutlineEntry,
 } from '../../lib/api/index.ts'
+import { useRecordViewOnOpen } from './use-record-view-on-open.ts'
 import { labelRevisions } from '../../lib/documents/revision-labels.ts'
 import { useDocumentActions } from '../workspaces/document-actions.tsx'
-import { RenameDocumentControl } from '../workspaces/rename-document-control.tsx'
+import {
+  RenameDocumentControl,
+  RenameDocumentDialog,
+} from '../workspaces/rename-document-control.tsx'
 import { ShellActions, ShellAside } from '../workspaces/shell-slots.tsx'
-import { AttachmentsPanel } from './attachments-panel.tsx'
-import { DraftNotice } from './draft-notice.tsx'
+import { ReviewActions } from '../review/review-actions.tsx'
+import { MountOnFirstOpen } from '../../lib/mount-on-first-open.tsx'
 import { DocumentReader } from './document-reader.tsx'
+import { DraftNotice } from './draft-notice.tsx'
+import { FactsByline } from './properties/facts-byline.tsx'
 import { HealthSignals } from './health-signals.tsx'
-import { PreviewLink } from './preview-link.tsx'
+import { PreviewLink, readerPreviewHref } from './preview-link.tsx'
 import { RevisionPanel } from './revision-panel.tsx'
 import { TableOfContents } from './table-of-contents.tsx'
+
+const ComparisonPage = lazy(async () => ({
+  default: (await import('./compare/comparison-page.tsx')).ComparisonPage,
+}))
+
+const AttachmentsPanel = lazy(async () => ({
+  default: (await import('./attachments-panel.tsx')).AttachmentsPanel,
+}))
 
 const routeApi = getRouteApi('/_authenticated/w/$workspaceSlug/d/$documentId/')
 
@@ -48,7 +72,7 @@ const NO_OUTLINE: readonly OutlineEntry[] = []
  */
 export function DocumentPage() {
   const { workspaceSlug, documentId } = routeApi.useParams()
-  const { rev, from, to } = routeApi.useSearch()
+  const { rev, from, to, view, layout } = routeApi.useSearch()
   // The route's loader awaited and canonicalised this document before the page
   // was rendered, so it is in the cache on the first render: a pending branch
   // here would be unreachable code pretending to be a state (ADR-013).
@@ -56,11 +80,21 @@ export function DocumentPage() {
   const envelope = useDocumentEnvelope(documentId)
   const history = useDocumentHistory(documentId)
   const rendered = useRenderedDocument(documentId, rev)
-  // The sidebar has already asked for the collections, so naming the collection is
-  // a cache read rather than a request of its own.
-  const collections = useTreeCollections(document.data.workspaceId)
+  // The sidebar has already asked for this tree, so naming the collection is
+  // a cache read rather than a request of its own. The same focus as the
+  // sidebar's, so whichever asks first asks for the same thing.
+  const tree = useNavigationTree(document.data.workspaceId, document.data.id)
   const actions = useDocumentActions()
   const [showingAttachments, setShowingAttachments] = useState(false)
+  const [renaming, setRenaming] = useState(false)
+  const [requestingReview, setRequestingReview] = useState(false)
+  const review = useReview(documentId)
+  // A phone's bar holds the tree's button, Edit and the person menu; the
+  // document's other controls fold into its "…" menu there, offered under the
+  // same conditions as in the bar.
+  const narrow = useNarrowScreen()
+  const navigate = useNavigate()
+  useRecordViewOnOpen(documentId)
 
   const revisions = labelRevisions(history.data?.revisions ?? [], {
     complete: history.data?.nextCursor === undefined,
@@ -68,9 +102,14 @@ export function DocumentPage() {
   const lastPublished = envelope.data?.lastPublished ?? null
   const permissions = envelope.data?.permissions
   const lock = envelope.data?.lock ?? null
-  const compare: DiffRange | undefined = to === undefined ? undefined : { from: from ?? null, to }
+  // What is waiting in the draft, for somebody who may edit; null for everybody else.
+  const waiting = permissions?.edit === true ? (envelope.data?.draft ?? null) : null
+  // Only a draft that holds what is not published is worth a review, and only one at a time.
+  const canRequestReview = waiting !== null
+  const compare: ComparisonRange | undefined =
+    to === undefined ? undefined : { from: from ?? null, to }
   const title = document.data.title
-  const collectionName = collections.data?.find(
+  const collectionName = tree.data?.collections.find(
     (collection) => collection.id === document.data.collectionId,
   )?.name
   /*
@@ -86,7 +125,56 @@ export function DocumentPage() {
   // Reachable by anyone who may read the document: the list is what it
   // carries, which is part of reading it. Deleting from the panel needs
   // `edit`, which the panel asks about itself.
+  const folded: readonly MenuItem[] = narrow
+    ? [
+        ...(actions.canManage
+          ? [
+              {
+                label: 'Rename…',
+                onSelect: () => {
+                  setRenaming(true)
+                },
+              },
+            ]
+          : []),
+        ...(lastPublished === null
+          ? []
+          : [
+              {
+                label: 'Present',
+                onSelect: () => {
+                  void navigate({
+                    to: '/w/$workspaceSlug/d/$documentId/present',
+                    params: { workspaceSlug, documentId },
+                    search: {},
+                  })
+                },
+              },
+              {
+                label: 'Preview as a reader',
+                onSelect: () => {
+                  globalThis.open(readerPreviewHref(documentId), '_blank', 'noopener')
+                },
+              },
+            ]),
+        ...(actions.canManage
+          ? [{ label: 'Share…', onSelect: actions.openShare, disabled: actions.isOpeningShare }]
+          : []),
+        // The header's request button gives way below `sm`, so a phone asks from here.
+        ...(canRequestReview && review.data?.status !== 'open'
+          ? [
+              {
+                label: 'Request review…',
+                onSelect: () => {
+                  setRequestingReview(true)
+                },
+              },
+            ]
+          : []),
+      ]
+    : []
   const menuItems: readonly MenuItem[] = [
+    ...folded,
     {
       label: 'Attachments…',
       onSelect: () => {
@@ -109,7 +197,7 @@ export function DocumentPage() {
             {lock.holderName} is editing
           </span>
         )}
-        {actions.canManage ? (
+        {actions.canManage && !narrow ? (
           <RenameDocumentControl documentId={documentId} title={title} />
         ) : undefined}
         <Menu label={title} items={menuItems} />
@@ -124,7 +212,7 @@ export function DocumentPage() {
           a published revision to present, since the presentation is built from
           the rendered body.
         */}
-        {lastPublished === null ? undefined : (
+        {lastPublished === null || narrow ? undefined : (
           <Link
             to="/w/$workspaceSlug/d/$documentId/present"
             params={{ workspaceSlug, documentId }}
@@ -141,7 +229,7 @@ export function DocumentPage() {
           own chrome and theme — from the latest published revision, so it is
           offered beside Present, under the same condition.
         */}
-        {lastPublished === null ? undefined : (
+        {lastPublished === null || narrow ? undefined : (
           <PreviewLink documentRef={documentId} variant="ghost" size="md" className="max-lg:px-2" />
         )}
         {/*
@@ -150,7 +238,7 @@ export function DocumentPage() {
           (`docs/architecture/api-contract-share-links.md`) — and beside Edit,
           where the canvas puts it.
         */}
-        {actions.canManage ? (
+        {actions.canManage && !narrow ? (
           <Button
             variant="ghost"
             className="max-lg:px-2"
@@ -162,6 +250,18 @@ export function DocumentPage() {
             <span className="max-lg:sr-only">Share</span>
           </Button>
         ) : undefined}
+        {permissions === undefined ? undefined : (
+          <ReviewActions
+            workspaceSlug={workspaceSlug}
+            documentId={documentId}
+            title={title}
+            canEdit={canRequestReview}
+            canPublish={permissions.publish}
+            published={lastPublished?.revision ?? null}
+            requesting={requestingReview}
+            onRequestingChange={setRequestingReview}
+          />
+        )}
         {permissions?.edit === true ? (
           <Link
             to="/w/$workspaceSlug/d/$documentId/edit"
@@ -173,67 +273,111 @@ export function DocumentPage() {
         ) : undefined}
       </ShellActions>
 
-      <AttachmentsPanel
-        documentId={documentId}
-        open={showingAttachments}
-        onOpenChange={setShowingAttachments}
-        canEdit={permissions?.edit === true}
-      />
-
-      {/*
-        Only above a page that exists: a document never published has no
-        "published page" readers still see, and its own empty state already
-        says what is waiting.
-      */}
-      {permissions?.edit === true && envelope.data?.draft != null && lastPublished !== null ? (
-        <DraftNotice
-          workspaceSlug={workspaceSlug}
+      {actions.canManage && narrow ? (
+        <RenameDocumentDialog
+          // Fresh per opening, so the field starts from the title as it is now.
+          key={renaming ? 'open' : 'closed'}
           documentId={documentId}
-          savedAt={envelope.data.draft.savedAt}
+          title={title}
+          open={renaming}
+          onOpenChange={setRenaming}
         />
       ) : undefined}
 
-      <DocumentReader
-        documentId={documentId}
-        workspaceSlug={workspaceSlug}
-        title={title}
-        revision={rev}
-        onScreen={onScreen}
-        compare={compare}
-        revisions={revisions}
-        canEdit={permissions?.edit === true}
-        eyebrow={collectionName}
-      />
+      <MountOnFirstOpen open={showingAttachments}>
+        <AttachmentsPanel
+          documentId={documentId}
+          open={showingAttachments}
+          onOpenChange={setShowingAttachments}
+          canEdit={permissions?.edit === true}
+        />
+      </MountOnFirstOpen>
 
-      {/*
-        After the reader, deliberately: "On this page" subscribes an
-        `IntersectionObserver` to the body's headings in an effect, and
-        `DocumentBody` puts that body in the DOM in an effect of its own.
-        React runs passive effects in tree order, so the observer has to be
-        mounted after the thing it observes — which is also the order the
-        shell paints them in, main before the complementary column.
-      */}
-      <ShellAside>
-        {/*
-          "On this page" first: it is what a reader reaches for while reading,
-          so it sits at the top of the column, level with the title. The
-          history and the health of the document follow, for the reader who
-          came to ask about it rather than to read it.
-        */}
-        <div className="flex flex-col gap-9">
-          <TableOfContents key={onScreen} outline={rendered.data?.body.outline ?? NO_OUTLINE} />
-          <RevisionPanel
+      {compare === undefined ? (
+        <>
+          {waiting !== null && lastPublished !== null && rev === undefined ? (
+            <DraftNotice
+              workspaceSlug={workspaceSlug}
+              documentId={documentId}
+              savedAt={waiting.savedAt}
+            />
+          ) : undefined}
+          <DocumentReader
             documentId={documentId}
             workspaceSlug={workspaceSlug}
+            title={title}
+            revision={rev}
+            onScreen={onScreen}
             revisions={revisions}
-            currentRevision={rev}
-            isPending={history.isPending}
-            canRestore={permissions?.edit === true}
-            {...(lastPublished === null ? {} : { lastPublishedBy: lastPublished.author })}
+            canEdit={permissions?.edit === true}
+            eyebrow={collectionName}
+            placement={{
+              workspaceId: document.data.workspaceId,
+              collectionId: document.data.collectionId ?? undefined,
+            }}
+            byline={
+              <FactsByline
+                workspaceSlug={workspaceSlug}
+                facts={envelope.data?.facts}
+                review={envelope.data?.review}
+                updatedAt={lastPublished?.at}
+              />
+            }
           />
-          <HealthSignals signals={envelope.data?.health ?? []} />
-        </div>
-      </ShellAside>
+
+          {/*
+          After the reader, deliberately: "On this page" subscribes an
+          `IntersectionObserver` to the body's headings in an effect, and
+          `DocumentBody` puts that body in the DOM in an effect of its own.
+          React runs passive effects in tree order, so the observer has to be
+          mounted after the thing it observes — which is also the order the
+          shell paints them in, main before the complementary column.
+        */}
+          <ShellAside>
+            {/*
+            "On this page" first: it is what a reader reaches for while reading,
+            so it sits at the top of the column, level with the title. The
+            history and the health of the document follow, for the reader who
+            came to ask about it rather than to read it.
+          */}
+            <div className="flex flex-col gap-9">
+              <TableOfContents key={onScreen} outline={rendered.data?.body.outline ?? NO_OUTLINE} />
+              <RevisionPanel
+                documentId={documentId}
+                workspaceSlug={workspaceSlug}
+                revisions={revisions}
+                currentRevision={rev}
+                isPending={history.isPending}
+                canRestore={permissions?.publish === true}
+                {...(lastPublished === null ? {} : { lastPublishedBy: lastPublished.author })}
+              />
+              <HealthSignals signals={envelope.data?.health ?? []} />
+            </div>
+          </ShellAside>
+        </>
+      ) : (
+        // The comparison is its own chunk: most readers never ask for one,
+        // so the reading route does not carry it (quill-plan.md section 31).
+        <Suspense
+          fallback={
+            <div className="flex min-h-60 items-center justify-center">
+              <Spinner className="size-5" />
+            </div>
+          }
+        >
+          <ComparisonPage
+            documentId={documentId}
+            workspaceSlug={workspaceSlug}
+            title={title}
+            revisions={revisions}
+            range={compare}
+            view={view ?? 'changes'}
+            layout={layout ?? 'split'}
+            canEdit={permissions?.edit === true}
+            canRestore={permissions?.publish === true}
+          />
+        </Suspense>
+      )}
     </>
   )
 }

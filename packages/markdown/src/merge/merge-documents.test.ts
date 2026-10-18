@@ -19,6 +19,17 @@ function merged(base: string, mine: string, theirs: string): string {
   return markdownOf(result.merged)
 }
 
+/** A tree from nodes of any shape, as a draft from another release may hold. */
+const odd = (...children: object[]): Root => ({ type: 'root', children: children as never })
+
+/** A paragraph remembering how its emphasis was written (`source-form.ts`). */
+const marked = (marker: string, words: string): Root =>
+  odd({
+    type: 'paragraph',
+    data: { sourceForm: { marker } },
+    children: [{ type: 'text', value: words }],
+  })
+
 const blocksOf = (blocks: readonly Root['children'][number][]): string =>
   markdownOf({ type: 'root', children: [...blocks] })
 
@@ -408,10 +419,6 @@ describe('mergeDocuments: inside a block both sides changed', () => {
     ).toBe('> One, mine.\n>\n> Two, theirs.\n')
   })
 
-  // A tree from another release can hold a node of a known type in an unknown
-  // shape; the merge refuses to guess, and offers both.
-  const odd = (...children: object[]): Root => ({ type: 'root', children: children as never })
-
   it('makes a conflict of a node whose children and value disagree in shape', () => {
     const result = mergeDocuments(
       odd({ type: 'paragraph', children: [{ type: 'text', value: 'same' }] }),
@@ -489,42 +496,25 @@ describe('mergeDocuments: inside a block both sides changed', () => {
   })
 
   it('makes a conflict of a leaf with no value that both sides changed', () => {
-    const block = (name: string): Root => ({
-      type: 'root',
-      children: [{ type: 'thematicBreak', data: { hName: name } }],
-    })
-    expect(mergeDocuments(block('a'), block('b'), block('c')).conflicts).toHaveLength(1)
+    const rule = (name: string) => odd({ type: 'thematicBreak', data: { hName: name } })
+    expect(mergeDocuments(rule('a'), rule('b'), rule('c')).conflicts).toHaveLength(1)
   })
 
   it('merges a leaf with no value by its fields', () => {
-    const block = (data: Record<string, string>): Root => ({
-      type: 'root',
-      children: [{ type: 'thematicBreak', data }],
-    })
     const result = mergeDocuments(
-      block({ a: '1', b: '1' }),
-      block({ a: '2', b: '1' }),
-      block({ a: '1', b: '2' }),
+      odd({ type: 'thematicBreak', data: { a: '1', b: '1' } }),
+      odd({ type: 'thematicBreak', data: { a: '2', b: '1' } }),
+      odd({ type: 'thematicBreak', data: { a: '1', b: '2' } }),
     )
     expect(result.conflicts).toEqual([])
     expect(result.merged.children[0]).toEqual({ type: 'thematicBreak', data: { a: '2', b: '2' } })
   })
 
   it('drops a remembered source form both sides changed rather than conflict over it', () => {
-    const block = (form: string, words: string): Root => ({
-      type: 'root',
-      children: [
-        {
-          type: 'paragraph',
-          data: { sourceForm: { marker: form } } as never,
-          children: [{ type: 'text', value: words }],
-        },
-      ],
-    })
     const result = mergeDocuments(
-      block('*', 'one two three'),
-      block('_', 'one 2 three'),
-      block('-', 'one two 3'),
+      marked('*', 'one two three'),
+      marked('_', 'one 2 three'),
+      marked('-', 'one two 3'),
     )
     expect(result.conflicts).toEqual([])
     expect(result.merged.children[0]).toEqual({

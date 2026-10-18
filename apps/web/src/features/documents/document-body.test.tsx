@@ -1,6 +1,6 @@
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { describe, expect, it, vi } from 'vitest'
+import { describe, expect, it } from 'vitest'
 
 import { expectNoAccessibilityViolations } from '@quill/ui/testing/axe'
 
@@ -34,24 +34,29 @@ async function mounted(html: string, eyebrow?: string) {
 }
 
 describe('DocumentBody', () => {
-  it('says when it has drawn the body, and again for a new one, so a surface can give it a state of its own', async () => {
-    const onMounted = vi.fn<() => void>()
-    const view = render(<DocumentBody html={TITLED} label="The sync map" onMounted={onMounted} />)
-    await waitFor(() => {
-      expect(onMounted).toHaveBeenCalledTimes(1)
-    })
+  it('puts what it is given straight under the body’s own title, across a new revision', async () => {
+    const { article, rerender } = await mounted(TITLED)
+    rerender(<DocumentBody html={TITLED} label="The sync map" afterTitle={<p>Facts</p>} />)
+    const slot = article.querySelector('[data-byline-slot]')
+    expect(slot?.previousElementSibling?.tagName).toBe('H1')
+    expect(slot).toHaveTextContent('Facts')
 
-    view.rerender(
+    rerender(
       <DocumentBody
-        html="<article><p>Another body.</p></article>"
+        html={TITLED.replace('How things move.', 'How things moved.')}
         label="The sync map"
-        onMounted={onMounted}
+        afterTitle={<p>Facts</p>}
       />,
     )
-
     await waitFor(() => {
-      expect(onMounted).toHaveBeenCalledTimes(2)
+      expect(article).toHaveTextContent('How things moved.')
     })
+    expect(article.querySelector('[data-byline-slot]')).toHaveTextContent('Facts')
+  })
+
+  it('has nowhere to put it in a body with no title of its own', async () => {
+    const { article } = await mounted('<article><h2>Only a section</h2></article>')
+    expect(article.querySelector('[data-byline-slot]')).toBeNull()
   })
 
   it('mounts the rendered body into the reading article', async () => {
@@ -241,32 +246,5 @@ describe('DocumentBody', () => {
 
       await expectNoAccessibilityViolations(container)
     })
-  })
-})
-
-describe('DocumentBody pictures', () => {
-  const WITH_PICTURE =
-    '<article><p>See <img src="/api/a.png" alt="The architecture"> below.</p></article>'
-
-  it('leaves a picture as a picture, unless asked to open pictures', async () => {
-    const { article } = await mounted(WITH_PICTURE)
-
-    expect(article.querySelector('img')?.hasAttribute('role')).toBe(false)
-  })
-
-  it('opens a picture in the viewer when asked to, and puts it back as it was when the body goes', async () => {
-    HTMLDialogElement.prototype.showModal = openDialog
-    HTMLDialogElement.prototype.close = closeDialog
-    Element.prototype.setPointerCapture = () => undefined
-    const view = render(<DocumentBody html={WITH_PICTURE} label="The sync map" expandImages />)
-    const article = screen.getByRole('article', { name: 'The sync map' })
-    const picture = await screen.findByRole('button', { name: 'Open image: The architecture' })
-
-    await userEvent.setup().click(picture)
-
-    expect(document.querySelector('dialog.lightbox')).not.toBeNull()
-    view.unmount()
-    expect(document.querySelector('dialog.lightbox')).toBeNull()
-    expect(article.isConnected).toBe(false)
   })
 })

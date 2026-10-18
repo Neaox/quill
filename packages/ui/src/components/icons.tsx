@@ -101,6 +101,16 @@ export function CloseIcon({ className }: IconProps) {
   )
 }
 
+/** A sidebar beside a page: the phone's way to the document tree. */
+export function SidebarIcon({ className }: IconProps) {
+  return (
+    <Glyph className={className}>
+      <rect x="2.25" y="2.75" width="11.5" height="10.5" rx="1.75" />
+      <path d="M6.25 2.75v10.5" />
+    </Glyph>
+  )
+}
+
 /** The rail's outline view: the document tree. */
 export function OutlineIcon({ className }: IconProps) {
   return (
@@ -296,6 +306,27 @@ export function UserIcon({ className }: IconProps) {
     <Glyph className={className}>
       <circle cx="8" cy="5.5" r="2.5" />
       <path d="M3 13.25c.6-2.3 2.6-3.5 5-3.5s4.4 1.2 5 3.5" />
+    </Glyph>
+  )
+}
+
+/** Notifications: a bell. */
+export function BellIcon({ className }: IconProps) {
+  return (
+    <Glyph className={className}>
+      <path d="M3.75 11.25h8.5l-1-1.5V6.5a3.25 3.25 0 0 0-6.5 0v3.25l-1 1.5Z" />
+      <path d="M6.5 13.25a1.5 1.5 0 0 0 3 0" />
+    </Glyph>
+  )
+}
+
+/** A group: two heads and shoulders, one behind the other. */
+export function UsersIcon({ className }: IconProps) {
+  return (
+    <Glyph className={className}>
+      <circle cx="6" cy="5.75" r="2.25" />
+      <path d="M1.75 13c.5-2 2.2-3.1 4.25-3.1s3.75 1.1 4.25 3.1" />
+      <path d="M10.25 3.75a2.25 2.25 0 0 1 0 4M11.25 10.1c1.6.4 2.7 1.4 3 2.9" />
     </Glyph>
   )
 }

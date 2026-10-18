@@ -140,3 +140,17 @@ describe('watchScrollingCode', () => {
     dispose()
   })
 })
+
+describe('watchScrollingCode over a whole page', () => {
+  it('reads the page’s own window when given the document', () => {
+    const article = page('<pre><code>x</code></pre>')
+    const pre = article.querySelector('pre')
+    if (pre === null) throw new Error('expected a pre')
+    width(pre, 900, 300)
+
+    const dispose = watchScrollingCode(document, name)
+
+    expect(pre.tabIndex).toBe(0)
+    dispose()
+  })
+})

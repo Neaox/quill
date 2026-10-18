@@ -222,6 +222,36 @@ describe('createAuthorizer: documents', () => {
     expect(access.ok && access.value.capabilities.manage).toBe(true)
   })
 
+  it('applies a group grant to every document one request asks about, not just the first', async () => {
+    await uow.repos.groups.create({
+      id: 'engineering',
+      unitId: 'acme',
+      parentGroupId: null,
+      name: 'Engineering',
+      now: NOW,
+    })
+    await uow.repos.groups.addMember({ groupId: 'engineering', userId: EDITOR, now: NOW })
+    await grant({
+      principalKind: 'group',
+      principalId: 'engineering',
+      scopeKind: 'workspace',
+      scopeId: WORKSPACE,
+      role: 'viewer',
+    })
+
+    const authorizer = forUser(EDITOR)
+    const verdicts = [
+      await authorizer.document(PARENT),
+      await authorizer.document(CHILD),
+      await authorizer.document(PARENT),
+    ]
+    expect(verdicts.map((access) => access.ok && access.value.capabilities.view)).toEqual([
+      true,
+      true,
+      true,
+    ])
+  })
+
   it('gives an instance admin owner access without reading a single grant', async () => {
     const access = await forUser(ADMIN).document(PARENT)
     expect(access.ok && access.value.role).toBe('owner')
@@ -329,6 +359,7 @@ describe('createAuthorizer: documents', () => {
       view: false,
       comment: false,
       edit: false,
+      publish: false,
       manage: false,
       own: false,
     })

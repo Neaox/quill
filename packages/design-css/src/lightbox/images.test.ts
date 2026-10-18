@@ -153,6 +153,21 @@ describe('enhanceImages', () => {
     expect(image?.hasAttribute('tabindex')).toBe(false)
   })
 
+  it('takes it away without error before anything was opened, and after the lightbox was closed', () => {
+    const article = page()
+    enhanceImages(article)()
+    expect(openers(article)).toEqual([])
+
+    const again = page()
+    const undo = enhanceImages(again)
+    openers(again)[0]?.click()
+    viewer()?.close()
+
+    undo()
+
+    expect(openers(again)).toEqual([])
+  })
+
   it('does not enhance a picture twice', () => {
     const article = page()
     enhanceImages(article)
@@ -161,5 +176,42 @@ describe('enhanceImages', () => {
     openers(article)[0]?.click()
 
     expect(document.querySelectorAll('dialog.lightbox')).toHaveLength(1)
+  })
+
+  it('names the lightbox by the picture’s words when it has them and no caption', () => {
+    const article = document.createElement('article')
+    article.innerHTML = '<p><img src="/api/c.png" alt="A standalone chart"></p>'
+    document.body.append(article)
+    enhanceImages(article)
+
+    openers(article)[0]?.click()
+
+    expect(viewer()?.getAttribute('aria-label')).toBe('A standalone chart')
+  })
+
+  it('shows the picture the browser chose from its source set, not the one it was written with', () => {
+    const article = document.createElement('article')
+    article.innerHTML = '<p><img src="/api/small.png" alt="Chart"></p>'
+    document.body.append(article)
+    const image = article.querySelector('img')
+    Object.defineProperty(image, 'currentSrc', { value: 'https://x.test/api/large.png' })
+    enhanceImages(article)
+
+    image?.click()
+
+    expect(viewer()?.querySelector('.lightbox-canvas img')?.getAttribute('src')).toBe(
+      'https://x.test/api/large.png',
+    )
+  })
+
+  it('opens a picture that has no source at all, showing nothing rather than failing', () => {
+    const article = document.createElement('article')
+    article.innerHTML = '<p><img alt="Missing"></p>'
+    document.body.append(article)
+    enhanceImages(article)
+
+    openers(article)[0]?.click()
+
+    expect(viewer()?.querySelector('.lightbox-canvas img')?.hasAttribute('src')).toBe(false)
   })
 })

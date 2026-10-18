@@ -1,5 +1,6 @@
 import type {
   BlobStore,
+  LinkPreviewPorts,
   Clock,
   ContentStore,
   DocumentFormat,
@@ -15,6 +16,7 @@ import type {
 } from '@quill/application'
 import type { SearchService } from '@quill/search'
 
+import type { ServerChildPagesCache } from './child-pages/cache.ts'
 import type { BreachedPasswordChecker } from './auth/breached-password.ts'
 import type { IdentityProviderRegistry } from './auth/oidc/registry.ts'
 import type { Mailer } from './auth/mailer.ts'
@@ -65,6 +67,11 @@ export interface AppDependencies {
    */
   readonly shareLinkPolicy: ShareLinkPolicy
   /**
+   * Link previews (ADR-042): what to read, what to ask for, and what fetches.
+   * A process that must not fetch is given `INERT_LINK_PREVIEW_PORTS`.
+   */
+  readonly linkPreviewPorts: LinkPreviewPorts
+  /**
    * The search engine (ADR-010). Both the index and the service over it are
    * here because they serve different callers: the outbox consumers and
    * `quill reindex` write through the index, while the route reads through
@@ -99,6 +106,11 @@ export interface AppDependencies {
    * change what a site shows.
    */
   readonly publicSiteCache: PublicSiteCache
+  /**
+   * The subtrees child pages lists are drawn from (ADR-058), invalidated by
+   * the outbox. Omitted, every list reads its subtree afresh.
+   */
+  readonly childPagesCache?: ServerChildPagesCache | undefined
   readonly mailer: Mailer
   /** The breached-password corpus (ADR-011). Fails open, and says so in the audit log. */
   readonly breachedPasswords: BreachedPasswordChecker

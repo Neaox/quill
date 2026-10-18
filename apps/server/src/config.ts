@@ -3,6 +3,8 @@ import { BRAND } from '@quill/brand'
 import { loadOidcProviders } from './auth/oidc/provider-config.ts'
 import { loadDrawioConfig } from './extensions/drawio/drawio-config.ts'
 import type { DrawioConfig } from './extensions/drawio/drawio-config.ts'
+import { loadLinkEmbedsConfig } from './infrastructure/link-preview/embed-config.ts'
+import type { LinkEmbedsConfig } from './infrastructure/link-preview/embed-config.ts'
 import type { OidcProviderConfig } from './auth/oidc/provider-config.ts'
 
 /**
@@ -45,6 +47,13 @@ export interface ServerConfig {
    */
   readonly searchRateLimitMax: number
   /**
+   * The budget, per session, for the signed-in reads that walk a tree on
+   * every request: the navigation tree and child pages lists. Counted in the
+   * same window `rateLimit.windowMs` sets, and far larger than search's,
+   * because opening one page asks for several of them at once.
+   */
+  readonly browseRateLimitMax: number
+  /**
    * The public site's own budget, per source address, counted in the same
    * window `rateLimit.windowMs` sets (ADR-023: "public search is scoped to
    * public content and rate limited"; `docs/product/personas.md`: a crawler
@@ -54,6 +63,15 @@ export interface ServerConfig {
    * whole office — or a whole crawler fleet — arrives from one address.
    */
   readonly publicSiteRateLimitMax: number
+  /**
+   * What a public search may cost, per source address, in the same window.
+   *
+   * Its own bucket and far smaller than the page budget: a page is read from a
+   * cache, and a search is a query against the index — the one request on this
+   * surface a stranger can choose the cost of. Thirty a minute is a person
+   * refining a question many times over; it is not a scraper's pace.
+   */
+  readonly publicSearchRateLimitMax: number
   /**
    * How many addresses one sitemap lists before a site answers with an index
    * of sitemaps instead (ADR-023).
@@ -99,6 +117,8 @@ export interface ServerConfig {
   readonly attachments: AttachmentConfig
   /** Where the draw.io editor is served from, if anywhere (ADR-043; `extensions/drawio`). */
   readonly drawio: DrawioConfig
+  /** Which live-embed providers the operator switched off (ADR-042; `LINK_EMBEDS_DISABLED`). */
+  readonly linkEmbeds: LinkEmbedsConfig
   /**
    * Lets the OIDC identity-provider registry reach a provider that is really
    * listening on loopback — the in-process fake `e2e/sso.spec.ts` and manual
@@ -450,8 +470,12 @@ const DEFAULT_RATE_LIMIT: RateLimitConfig = {
 
 /** Enough for a search box that answers as somebody types, and far short of a scraper. */
 const DEFAULT_SEARCH_RATE_LIMIT_MAX = 60
+const DEFAULT_BROWSE_RATE_LIMIT_MAX = 600
 /** Enough for a crawler working through a site at a civil pace, per address, per minute. */
 const DEFAULT_PUBLIC_SITE_RATE_LIMIT_MAX = 600
+
+/** A person refining a question, and far short of a scraper. */
+const DEFAULT_PUBLIC_SEARCH_RATE_LIMIT_MAX = 30
 /** A thousand addresses is a large sitemap and a small amount of work. */
 const DEFAULT_PUBLIC_SITEMAP_PAGE_SIZE = 1_000
 /** Per source address, per minute, across both OIDC endpoints. */
@@ -839,10 +863,20 @@ export function loadConfig(
       'SEARCH_RATE_LIMIT_MAX',
       DEFAULT_SEARCH_RATE_LIMIT_MAX,
     ),
+    browseRateLimitMax: parseCount(
+      env['BROWSE_RATE_LIMIT_MAX'],
+      'BROWSE_RATE_LIMIT_MAX',
+      DEFAULT_BROWSE_RATE_LIMIT_MAX,
+    ),
     publicSiteRateLimitMax: parseCount(
       env['PUBLIC_SITE_RATE_LIMIT_MAX'],
       'PUBLIC_SITE_RATE_LIMIT_MAX',
       DEFAULT_PUBLIC_SITE_RATE_LIMIT_MAX,
+    ),
+    publicSearchRateLimitMax: parseCount(
+      env['PUBLIC_SEARCH_RATE_LIMIT_MAX'],
+      'PUBLIC_SEARCH_RATE_LIMIT_MAX',
+      DEFAULT_PUBLIC_SEARCH_RATE_LIMIT_MAX,
     ),
     publicSitemapPageSize: parseCount(
       env['PUBLIC_SITEMAP_PAGE_SIZE'],
@@ -861,7 +895,8 @@ export function loadConfig(
     oidcRateLimit: loadOidcRateLimitConfig(env),
     blobStore: loadBlobStoreConfig(env),
     attachments: loadAttachmentConfig(env),
-    drawio: loadDrawioConfig(env, !isRealDeployment(appUrl)),
+    drawio: loadDrawioConfig(env, !isRealDeployment(appUrl), appUrl.origin),
+    linkEmbeds: loadLinkEmbedsConfig(env),
     oidcDevLoopback,
   }
 }

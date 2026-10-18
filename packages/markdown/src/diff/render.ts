@@ -125,10 +125,12 @@ function sectionsOf(comparison: DocumentComparison): {
   }
   const titled = outline.map((entry, index) => {
     const heading = headings[index]
+    /* v8 ignore next -- the outline and the walk find the same headings. */
     return { entry, title: heading === undefined ? entry.text : headingTitle(heading) }
   })
 
   const changes = comparison.changes.map((change): SectionedChange => {
+    /* v8 ignore next -- every change starts at a block of the tree. */
     const at = titled[lastHeadingAt[change.index] ?? -1]
     return at === undefined ? change : { ...change, section: { id: at.entry.id, title: at.title } }
   })
@@ -207,8 +209,11 @@ function changeElement(change: 'added' | 'removed', children: ElementContent[]):
  */
 function diffCode(node: DiffCode): Element {
   const lines = node.lines.flatMap((line): ElementContent[] => {
+    // Only the words that changed inside an edited line are picked out; a
+    // line wholly added or removed is marked by the line itself.
+    const wholeLine = line.segments.every((segment) => segment.change !== 'equal')
     const parts = line.segments.map((segment): ElementContent =>
-      segment.change === 'equal' || line.change === 'equal'
+      segment.change === 'equal' || line.change === 'equal' || wholeLine
         ? { type: 'text', value: segment.text }
         : element('span', { 'data-diff-word': '' }, [{ type: 'text', value: segment.text }]),
     )
@@ -275,28 +280,37 @@ function comparisonHandlers(handlers: Handlers): Handlers {
 const BLOCK_CHANGES = ['added', 'removed', 'changed', 'moved']
 const CHANGE_ID = /^c\d{1,6}$/
 
+/* v8 ignore next -- the document schema always has attributes. */
 const documentAttributes = sanitizeSchema.attributes ?? {}
+
+type AttributeList = NonNullable<Schema['attributes']>[string]
+
+/** What the document schema allows an element, and then the comparison's own marks. */
+const widened = (tagName: string, ...marks: AttributeList): AttributeList => [
+  ...(documentAttributes[tagName] ?? []),
+  ...marks,
+]
 
 /** The document schema, widened by the comparison's own marks and nothing else. */
 const COMPARISON_SCHEMA: Schema = {
   ...sanitizeSchema,
   attributes: {
     ...documentAttributes,
-    '*': [
-      ...(documentAttributes['*'] ?? []),
+    '*': widened(
+      '*',
       ['data-change', ...BLOCK_CHANGES],
       ['data-change-id', CHANGE_ID],
       ['data-side', 'before', 'after'],
-    ],
-    ins: [...(documentAttributes['ins'] ?? []), ['data-diff', 'added'], ['data-line', '']],
-    del: [...(documentAttributes['del'] ?? []), ['data-diff', 'removed'], ['data-line', '']],
-    span: [
-      ...(documentAttributes['span'] ?? []),
+    ),
+    ins: widened('ins', ['data-diff', 'added'], ['data-line', '']),
+    del: widened('del', ['data-diff', 'removed'], ['data-line', '']),
+    span: widened(
+      'span',
       ['data-diff-label', ''],
       ['data-diff-word', ''],
       ['data-diff-char', ''],
       ['data-line', ''],
-    ],
-    pre: [...(documentAttributes['pre'] ?? []), ['data-diff-code', '']],
+    ),
+    pre: widened('pre', ['data-diff-code', '']),
   },
 }

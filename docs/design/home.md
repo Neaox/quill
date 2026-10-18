@@ -17,51 +17,68 @@ the same to everyone.
 ## Signed-in home
 
 The person, not the workspace, is the subject. It is a calm dashboard: one
-accent, and nothing shown blank. It sits in the application column `AppPage`
-gives a full-width surface (centred, capped so a 2560-pixel window still reads
-as one composition, a 16px gutter on a phone). On a phone it is one column in
-the order below; from `lg` it is two columns, the long lists (the checklist,
-Recently updated) on the left and the short ones (Continue writing,
-Workspaces, Organisation) on the right, so a wide window is used and neither
-column runs on while the other stands empty. In
-order:
+accent, no walls of text, nothing shown blank. It sits in the application
+column `AppPage` gives a full-width surface. In order:
 
 1. **Who and when.** Today's date in the muted ink, then a greeting by the
    hour and the person's name. The organisation's name is already in the bar.
-2. **Search or jump to.** A full-width field that opens the command palette:
-   documents, workspaces, and (for an administrator) every setting, so the
-   page's first action reaches everything.
-3. **Set up your organisation** (administrators only). A checklist rather
-   than a card: name the organisation and choose its theme, create the first
-   workspace (a unit, then a workspace in it, through the same dialogs the
-   organisation page uses), publish the first document. Each step is answered
-   from what the API already says — a name other than the product's, a
-   workspace, a published document — with its action beside it and a count of
-   how many are done. It leaves once every step is done, and can be hidden
-   sooner; hiding is remembered per browser.
-4. **Continue writing.** Drafts that have never been published, newest first,
-   five at most, with the total beside the heading. Omitted when there are
-   none. (The list DTO cannot say whether a published document has a newer
-   draft, or who holds a lock; those are each document's envelope.)
-5. **Workspaces.** Every workspace the person can see, as cards: its name, its
-   unit's path, how many documents and drafts it holds, and when anything in
-   it last changed. If there is exactly one, home skips itself and opens it.
-6. **Recently updated.** Published changes across the person's workspaces,
-   newest first, eight at most, with the workspace and a relative date ("3
-   days ago", the exact date on hover and in `datetime`). Before anything is
-   published it says so in a sentence instead.
-7. **Organisation** (administrators only). Every settings screen as a list of
-   links in one card: the same destinations as the person menu's Organisation
-   group and the palette (`chrome.md`, "Reaching settings"), so the way in
-   stays on the page after the checklist has gone.
-8. **Recently viewed by you** and **Pinned** come with personal preferences;
+2. **Search or jump to.** A full-width field that opens the command palette.
+3. **Set up your organisation** (administrators only). A checklist until the
+   instance is set up, as before.
+4. **Needs your attention.** What is waiting on the person, as sentences that
+   say what is asked: a review requested of them or of a group they are in
+   ("Ada asked you to review Release notes"), changes asked for on their
+   draft, an approval of theirs (ADR-052). The only part of the page with an
+   accent edge, and omitted when empty. It is first because it is the one
+   thing somebody else is waiting on.
+5. **Continue writing.** The one place on the page that is a card: documents
+   **the person created** that have never been published, newest first, five at
+   most, with "5 of 23" when there are more. Omitted when there are none.
+6. **Jump back in.** The documents they opened most recently, as small links,
+   from their own viewing history (ADR-053). Omitted until they have opened
+   something; clearable from Preferences.
+7. **Recently updated** (left from `lg`). Published changes by other people,
+   newest first, ten at most, **under the day they happened** ("Today",
+   "Yesterday", "Friday", "20 September"). For somebody with a history it
+   covers **their places**, the workspaces they have opened or written in
+   lately, with a quiet switch to **Everywhere**; with no history it covers
+   everywhere and offers no switch. The day is the heading, so a row says only
+   the document, its workspace and the time of day. When their places are quiet
+   it says so and offers Everywhere.
+8. **Workspaces** (right from `lg`, first on a phone). Every workspace the
+   person can see, as rows rather than boxes: a monogram, the name, drafts,
+   how many documents, and when anything last changed (dropped when the column
+   is too narrow for it, by container width). The order is **theirs first**:
+   by how much they have been in it lately (opens and documents created), then
+   by recent change; with no history, the organisation's order. It scales by
+   what is there:
+   - **Twelve or fewer:** one flat list, each row naming its unit when they
+     differ. Three workspaces under three headings is furniture.
+   - **More:** the eight most relevant to them, and "Show all N", which opens
+     the whole list grouped under each unit's path. From sixty entries the
+     grouped list is a window onto its rows (`VirtualRows`), in a region of
+     bounded height, so a few thousand workspaces cost what a screenful does.
+   - **From eight:** a filter, which searches all of them by name or unit.
+   If there is exactly one, home skips itself and opens it.
+9. **Organisation** (administrators only). Every settings screen as a quiet
+   row of links: the same destinations as the person menu's Organisation group
+   and the palette (`chrome.md`, "Reaching settings").
+10. **Pinned** comes with personal preferences;
    **What others are reading** waits on a privacy decision (aggregate counts
    only, never who; off by default; an organisation setting; M4).
 
 A person with no workspace is told whom to ask; an administrator with none is
-pointed at Units and workspaces. Everything above is counted from the same
-per-workspace document lists the workspace pages read, fetched in parallel,
-so opening a workspace afterwards costs nothing.
+pointed at the set-up checklist, and at Units and workspaces once that is
+hidden (never both at once).
+
+Everything above comes from **one bounded request**, `GET /api/home`: a row of
+figures per workspace, the newest five drafts (with how many there are in
+all), and the newest ten published changes, counted on the server through the
+same visibility pass every other list uses. The page used to fetch every
+workspace's whole document list and count in the browser, which is a request
+per workspace and a payload per document. While it loads the page shows bars
+in the shape of what is coming; when it fails the workspaces still list, and
+the feed offers to try again.
 
 ## Workspace home
 

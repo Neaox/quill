@@ -79,6 +79,7 @@ export function EmbeddedEditorFrame({
   // for. The page stops scrolling behind it as it does behind the lightbox.
   useEffect(() => {
     const dialog = dialogRef.current
+    /* v8 ignore next -- the dialog is mounted by the time its effect runs. */
     if (dialog === null) return
     dialog.showModal()
     document.documentElement.classList.add('lightbox-open')

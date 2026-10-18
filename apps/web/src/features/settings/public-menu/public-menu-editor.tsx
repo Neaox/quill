@@ -3,11 +3,11 @@ import { useState, type DragEvent, type ReactNode } from 'react'
 import { Button, PlusIcon, tv, type MenuItem } from '@quill/ui'
 
 import {
-  usePublicMenuTargets,
   type PublicMenu,
   type PublicMenuItem,
   type PublicMenuLink,
 } from '../../../lib/api/index.ts'
+import { usePublicMenuTargets } from '../../../lib/api/public-menu.ts'
 import {
   appendGroup,
   appendLink,

@@ -2,7 +2,7 @@
 
 **Status:** Accepted
 **Date:** 2026-10-11
-**Related:** ADR-002 (Markdown is canonical), ADR-004 (one definition per directive), ADR-011 (security baseline), ADR-031 (render caching), ADR-032 (live blocks), ADR-036 (diagrams and reading blocks), ADR-037 (tenant labels), ADR-038 (emoji), quill-plan.md principle 9 ("open and extensible"); ADR-052 (proposed: component blocks)
+**Related:** ADR-002 (Markdown is canonical), ADR-004 (one definition per directive), ADR-011 (security baseline), ADR-031 (render caching), ADR-032 (live blocks), ADR-036 (diagrams and reading blocks), ADR-037 (tenant labels), ADR-038 (emoji), quill-plan.md principle 9 ("open and extensible"); ADR-060 (proposed: component blocks)
 **Guide:** [docs/extending/markdown-extensions.md](../../extending/markdown-extensions.md)
 
 ## Context

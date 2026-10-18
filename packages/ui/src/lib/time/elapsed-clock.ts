@@ -46,6 +46,15 @@ export interface ElapsedClock {
 /** A timer is never set for less than this: a handful of times on a boundary must not spin it. */
 const MIN_DELAY_MS = 250
 
+/**
+ * The longest the one timer waits. A saying that is days or years old changes only a few times a
+ * day, so waiting out the whole gap buys nothing, and a delay past a signed 32-bit count of
+ * milliseconds (about 24.8 days: "2 years ago" is months from changing) wraps round and fires at
+ * once, which would spin the clock. When it fires with nothing due it simply sets the next, and
+ * a saying is at worst this much late.
+ */
+const MAX_DELAY_MS = 60 * 60 * 1000
+
 export function createElapsedClock(host: ElapsedClockHost): ElapsedClock {
   const entries = new Set<Entry>()
   let clockNow = host.now()
@@ -77,7 +86,10 @@ export function createElapsedClock(host: ElapsedClockHost): ElapsedClock {
     const earliest = Math.min(...[...entries].map(({ changeAt }) => changeAt))
     if (earliest === Number.POSITIVE_INFINITY) return
     armedFor = earliest
-    cancel = host.schedule(tick, Math.max(earliest - host.now(), MIN_DELAY_MS))
+    cancel = host.schedule(
+      tick,
+      Math.min(Math.max(earliest - host.now(), MIN_DELAY_MS), MAX_DELAY_MS),
+    )
   }
 
   return {

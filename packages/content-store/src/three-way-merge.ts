@@ -20,7 +20,7 @@
  * already knows.
  */
 
-import { mergeMarkdown } from '@quill/markdown'
+import { mergeMarkdown, stringifyMdast, type DocumentMerge } from '@quill/markdown'
 import { merge } from 'node-diff3'
 
 export interface ThreeWayMerge {
@@ -40,9 +40,52 @@ export function conflictMarkers(base: string, ours: string, theirs: string): str
   }).result.join('\n')
 }
 
+const MARKER = '<<<<<<<'
+
+/**
+ * The engine's own conflicts between the same markers, block by block, for
+ * the rare clash a line merge does not see (a block one side moved and the
+ * other deleted): the merge view must never be shown a conflict without one.
+ */
+export function blockMarkers({ merged, conflicts }: DocumentMerge): string {
+  const write = (children: DocumentMerge['merged']['children']) =>
+    children.length === 0 ? '' : stringifyMdast({ ...merged, children: [...children] })
+  let text = ''
+  let next = 0
+  for (const conflict of conflicts) {
+    text += write(merged.children.slice(next, conflict.index))
+    text += [
+      `${MARKER} ${OURS_LABEL}\n`,
+      write([...conflict.mine]),
+      '=======\n',
+      write([...conflict.theirs]),
+      `>>>>>>> ${THEIRS_LABEL}\n`,
+    ].join('')
+    next = conflict.index
+  }
+  return text + write(merged.children.slice(next))
+}
+
+/** The text as whole lines, so a marker written after it starts on a line of its own. */
+const lines = (text: string): string => (text === '' || text.endsWith('\n') ? text : `${text}\n`)
+
+/**
+ * A document deleted on one side and edited on the other, as one clash.
+ *
+ * The merge engine reads a deletion as removing every line, which does not
+ * collide with an edit it can place, so it calls the pair clean and hands back
+ * the surviving side's text — a "conflict" whose text carries no markers and
+ * so shows a person nothing to choose between. Only a human can pick between
+ * keeping the document and removing it (ADR-015), so the whole of each side is
+ * shown, one of them empty, in the form every other conflict is shown in.
+ */
+export function deletionMarkers(ours: string, theirs: string): string {
+  return `<<<<<<< ${OURS_LABEL}\n${lines(ours)}=======\n${lines(theirs)}>>>>>>> ${THEIRS_LABEL}\n`
+}
+
 export function threeWayMerge(base: string, ours: string, theirs: string): ThreeWayMerge {
   const merged = mergeMarkdown(base, ours, theirs)
-  return merged.clean
-    ? { clean: true, text: merged.markdown }
-    : { clean: false, text: conflictMarkers(base, ours, theirs) }
+  if (merged.clean) return { clean: true, text: merged.markdown }
+  const byLine = conflictMarkers(base, ours, theirs)
+  return { clean: false, text: byLine.includes(MARKER) ? byLine : blockMarkers(merged.merge) }
 }

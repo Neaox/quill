@@ -1,4 +1,4 @@
-import fc from 'fast-check'
+import * as fc from 'fast-check'
 import type { RootContent } from 'mdast'
 import { toString } from 'mdast-util-to-string'
 import { describe, expect, it } from 'vitest'
@@ -101,12 +101,16 @@ describe('alignBlocks', () => {
           )
           expect(fromAfter).toEqual(after)
           expect(new Set(fromBefore).size).toBe(before.length)
-          for (const entry of alignment) {
-            if (entry.kind === 'unchanged' || entry.kind === 'moved') {
-              expect(toString(entry.before)).toBe(toString(entry.after))
-            }
-            if (entry.kind === 'changed') expect(entry.before.type).toBe(entry.after.type)
-          }
+          const same = alignment.flatMap((entry) =>
+            entry.kind === 'unchanged' || entry.kind === 'moved' ? [entry] : [],
+          )
+          expect(same.map((entry) => toString(entry.before))).toEqual(
+            same.map((entry) => toString(entry.after)),
+          )
+          const paired = alignment.flatMap((entry) => (entry.kind === 'changed' ? [entry] : []))
+          expect(paired.map((entry) => entry.before.type)).toEqual(
+            paired.map((entry) => entry.after.type),
+          )
         },
       ),
     )
@@ -114,6 +118,15 @@ describe('alignBlocks', () => {
 })
 
 describe('similarity', () => {
+  it('is one for two blocks with no words at all, and zero against one that has some', () => {
+    const [rule, otherRule, words] = blocks(['---', '***', 'Some words.'].join('\n\n'))
+    if (rule === undefined || otherRule === undefined || words === undefined)
+      throw new Error('blocks')
+    expect(similarity(rule, otherRule)).toBe(1)
+    expect(similarity(rule, words)).toBe(0)
+    expect(similarity(words, rule)).toBe(0)
+  })
+
   it('is one for equal text and zero for nothing in common', () => {
     const [left, right, other] = blocks('Same words.\n\nSame words.\n\nDifferent things.')
     if (left === undefined || right === undefined || other === undefined) throw new Error('blocks')

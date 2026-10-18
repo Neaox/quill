@@ -9,9 +9,19 @@ import {
   type ReactNode,
 } from 'react'
 
-import { useDocument, useDocumentEnvelope, useTreePosition } from '../../lib/api/index.ts'
-import { DeleteDocumentDialog } from './delete-document-dialog.tsx'
-import { MoveDocumentDialog } from './move-document-dialog.tsx'
+import { onDemand, ProgressBar, useOnDemand } from '@quill/ui'
+
+import { useDocument, useDocumentEnvelope, useNavigationTree } from '../../lib/api/index.ts'
+
+/**
+ * Moving and deleting are their own chunks too, for the same reason as
+ * sharing below, but they are reached from menus — no hover to preload on —
+ * so they are fetched in idle time once a document is open, and at once if a
+ * menu gets there first (`onDemand` in `@quill/ui`). Once here they stay
+ * mounted, so their dialogs open and close exactly as they always have.
+ */
+const moveDialog = onDemand(() => import('./move-document-dialog.tsx'))
+const deleteDialog = onDemand(() => import('./delete-document-dialog.tsx'))
 
 /**
  * Sharing is its own chunk, and its own module graph — the link list, the
@@ -88,7 +98,7 @@ export function DocumentActionsProvider({
 }: DocumentActionsProviderProps) {
   const document = useDocument(documentId)
   const envelope = useDocumentEnvelope(documentId)
-  const position = useTreePosition(resolvedDocumentId)
+  const tree = useNavigationTree(workspaceId, resolvedDocumentId)
   const [moveOpen, setMoveOpen] = useState(false)
   const [deleteOpen, setDeleteOpen] = useState(false)
   const [shareOpen, setShareOpen] = useState(false)
@@ -109,6 +119,9 @@ export function DocumentActionsProvider({
    * of a download on a slow connection.
    */
   const [isOpeningShare, beginOpeningShare] = useTransition()
+
+  const move = useOnDemand(moveDialog, moveOpen)
+  const remove = useOnDemand(deleteDialog, deleteOpen)
 
   const canManage = envelope.data?.permissions.manage === true
   const actions = useMemo<DocumentActions>(
@@ -141,29 +154,37 @@ export function DocumentActionsProvider({
       {children}
       {canManage && document.data !== undefined ? (
         <>
+          {/* Only while a dialog's chunk is still on its way: normally never. */}
+          {(moveOpen && move === undefined) || (deleteOpen && remove === undefined) ? (
+            <ProgressBar placement="top" label="Opening the dialog" />
+          ) : undefined}
           {/*
             A write addresses the *resolved* id, not the spelling in the
             address bar (ADR-035): the API resolves either, but the cache
             entries a move or a delete has to disturb are keyed by the id.
           */}
-          <MoveDocumentDialog
-            open={moveOpen}
-            onOpenChange={setMoveOpen}
-            workspaceId={workspaceId}
-            documentId={resolvedDocumentId ?? documentId}
-            documentTitle={document.data.title}
-            currentCollectionId={document.data.collectionId}
-            currentParentId={document.data.parentId}
-          />
-          <DeleteDocumentDialog
-            open={deleteOpen}
-            onOpenChange={setDeleteOpen}
-            workspaceSlug={workspaceSlug}
-            workspaceId={workspaceId}
-            documentId={resolvedDocumentId ?? documentId}
-            title={document.data.title}
-            childCount={position.data?.childCount ?? 0}
-          />
+          {move === undefined ? undefined : (
+            <move.MoveDocumentDialog
+              open={moveOpen}
+              onOpenChange={setMoveOpen}
+              workspaceId={workspaceId}
+              documentId={resolvedDocumentId ?? documentId}
+              documentTitle={document.data.title}
+              currentCollectionId={document.data.collectionId}
+              currentParentId={document.data.parentId}
+            />
+          )}
+          {remove === undefined ? undefined : (
+            <remove.DeleteDocumentDialog
+              open={deleteOpen}
+              onOpenChange={setDeleteOpen}
+              workspaceSlug={workspaceSlug}
+              workspaceId={workspaceId}
+              documentId={resolvedDocumentId ?? documentId}
+              title={document.data.title}
+              childCount={tree.data?.nodes.get(resolvedDocumentId ?? documentId)?.childCount ?? 0}
+            />
+          )}
           {shareOpenings === 0 ? undefined : (
             <Suspense fallback={null}>
               <ShareDialog

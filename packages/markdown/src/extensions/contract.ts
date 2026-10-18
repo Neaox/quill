@@ -112,7 +112,8 @@ export interface MarkdownExtension {
 
 const EXTENSION_ID = /^[a-z][a-z\d-]*(?:\.[a-z][a-z\d-]*)+$/
 const SEMVER = /^\d+\.\d+\.\d+$/
-const DATA_ATTRIBUTE = /^data-[a-z][a-z\d-]*$/
+/** The only attributes an extension may add, written as they are in HTML. */
+export const DATA_ATTRIBUTE = /^data-[a-z][a-z\d-]*$/
 
 /**
  * Why an extension cannot be registered, or nothing when it can. Checked by

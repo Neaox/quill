@@ -30,15 +30,28 @@ const SAVED =
 
 const EXISTING: DrawioDiagram = { attachmentId: 'a1', url: '/api/attachments/a1', version: 3 }
 
+// jsdom has no modal dialogs; the shims do what the browser's do, minus the top layer.
+function showModal(this: HTMLDialogElement): void {
+  this.setAttribute('open', '')
+}
+
+function close(this: HTMLDialogElement): void {
+  this.removeAttribute('open')
+}
+
 beforeAll(() => {
-  // jsdom has no modal dialogs; the shims do what the browser's do, minus the top layer.
-  HTMLDialogElement.prototype.showModal = function showModal(this: HTMLDialogElement) {
-    this.setAttribute('open', '')
-  }
-  HTMLDialogElement.prototype.close = function close(this: HTMLDialogElement) {
-    this.removeAttribute('open')
-  }
+  HTMLDialogElement.prototype.showModal = showModal
+  HTMLDialogElement.prototype.close = close
 })
+
+/** A message as the browser delivers one from a window on an origin. */
+function deliver(message: object, origin: string, source: Window): void {
+  act(() => {
+    window.dispatchEvent(
+      new MessageEvent('message', { data: JSON.stringify(message), origin, source }),
+    )
+  })
+}
 
 afterEach(() => {
   vi.useRealTimers()
@@ -46,10 +59,14 @@ afterEach(() => {
 
 function fakeFiles(overrides: Partial<DrawioFiles> = {}): DrawioFiles {
   return {
-    read: vi.fn(async () => ({ file: STORED, version: 3 })),
-    create: vi.fn(async () => ({ attachmentId: 'new', url: '/api/attachments/new', version: 1 })),
-    revise: vi.fn(async (diagram: DrawioDiagram) => ({
-      kind: 'revised' as const,
+    read: vi.fn<DrawioFiles['read']>(async () => ({ file: STORED, version: 3 })),
+    create: vi.fn<DrawioFiles['create']>(async () => ({
+      attachmentId: 'new',
+      url: '/api/attachments/new',
+      version: 1,
+    })),
+    revise: vi.fn<DrawioFiles['revise']>(async (diagram) => ({
+      kind: 'revised',
       diagram: { ...diagram, version: diagram.version + 1 },
     })),
     ...overrides,
@@ -57,8 +74,8 @@ function fakeFiles(overrides: Partial<DrawioFiles> = {}): DrawioFiles {
 }
 
 function open(props: Partial<DrawioEditorProps> = {}) {
-  const onSaved = vi.fn()
-  const onClose = vi.fn()
+  const onSaved = vi.fn<DrawioEditorProps['onSaved']>()
+  const onClose = vi.fn<DrawioEditorProps['onClose']>()
   const files = props.files ?? fakeFiles()
   const view = render(
     <DrawioEditor
@@ -80,11 +97,7 @@ function open(props: Partial<DrawioEditorProps> = {}) {
 
   /** A message from draw.io: its origin, its window. */
   const say = (message: object, origin = ORIGIN, source: Window = drawio) => {
-    act(() => {
-      window.dispatchEvent(
-        new MessageEvent('message', { data: JSON.stringify(message), origin, source }),
-      )
-    })
+    deliver(message, origin, source)
   }
   const actions = () =>
     sent.mock.calls.map(([data, origin]) => ({ ...JSON.parse(String(data)), to: origin }))
@@ -123,6 +136,12 @@ describe('the draw.io editor', () => {
     await expectNoAccessibilityViolations(container.ownerDocument.body, { iframes: false })
   })
 
+  it('speaks the language of the interface around it', () => {
+    const { frame } = open({ lang: 'pt-BR' })
+
+    expect(new URL(frame.getAttribute('src') ?? '').searchParams.get('lang')).toBe('pt-br')
+  })
+
   it('inserts: configures, loads an empty diagram, and saves it as a new .drawio.svg', async () => {
     const { say, save, actions, lastAction, files, onSaved } = open()
 
@@ -141,7 +160,6 @@ describe('the draw.io editor', () => {
         action: 'load',
         xml: EMPTY_DIAGRAM,
         autosave: 1,
-        title: 'Payment flow',
         to: ORIGIN,
       }),
     )
@@ -217,7 +235,7 @@ describe('the draw.io editor', () => {
 
   it('never overwrites a newer revision: it offers a copy, or a reload', async () => {
     const files = fakeFiles({
-      revise: vi.fn(async () => ({ kind: 'conflict' as const, currentVersion: 5 })),
+      revise: vi.fn<DrawioFiles['revise']>(async () => ({ kind: 'conflict', currentVersion: 5 })),
     })
     const { say, save, lastAction, onSaved } = open({
       files,
@@ -252,9 +270,39 @@ describe('the draw.io editor', () => {
     expect(files.create).toHaveBeenCalledWith(EXPORTED, 'request-path.drawio.svg')
   })
 
+  it('says why a save was refused, and keeps the work by saving it as a copy', async () => {
+    const files = fakeFiles({
+      revise: vi.fn<DrawioFiles['revise']>(async () => ({
+        kind: 'refused',
+        message: 'A published page shows this file.',
+      })),
+    })
+    const { say, save, lastAction, onSaved } = open({
+      files,
+      target: { kind: 'existing', diagram: EXISTING, title: 'Request path' },
+    })
+    say({ event: 'configure' })
+    say({ event: 'init' })
+    await waitFor(() => expect(lastAction()?.action).toBe('load'))
+    say({ event: 'load' })
+    await save({ xml: '<mxfile/>' })
+    say({ event: 'export', format: 'svg', data: EXPORTED })
+
+    const prompt = await screen.findByRole('alertdialog', { name: 'Your diagram is not saved' })
+    expect(prompt).toHaveTextContent('A published page shows this file.')
+    expect(screen.queryByRole('button', { name: 'Try again' })).toBeNull()
+    await userEvent.click(screen.getByRole('button', { name: 'Save mine as a copy' }))
+    await waitFor(() =>
+      expect(onSaved).toHaveBeenCalledWith({
+        kind: 'copied',
+        diagram: { attachmentId: 'new', url: '/api/attachments/new', version: 1 },
+      }),
+    )
+  })
+
   it('reloads the newer revision when asked, discarding the writer’s changes', async () => {
     const files = fakeFiles({
-      revise: vi.fn(async () => ({ kind: 'conflict' as const, currentVersion: 5 })),
+      revise: vi.fn<DrawioFiles['revise']>(async () => ({ kind: 'conflict', currentVersion: 5 })),
     })
     const { say, save, lastAction } = open({
       files,
@@ -327,14 +375,16 @@ describe('the draw.io editor', () => {
 
   it('says so when the editor never answers, and offers only to close', async () => {
     vi.useFakeTimers()
-    open({ timeoutMs: 1000 })
+    const { onClose } = open({ timeoutMs: 1000 })
     act(() => {
       vi.advanceTimersByTime(1000)
     })
     expect(screen.getByRole('alertdialog', { name: 'The diagram did not open' })).toHaveTextContent(
-      `The draw.io editor at ${ORIGIN} did not answer`,
+      `The diagram editor at ${ORIGIN} did not answer`,
     )
     expect(screen.queryByRole('button', { name: 'Try again' })).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Close' }))
+    expect(onClose).toHaveBeenCalledOnce()
   })
 
   it('keeps unsaved work when a save fails, and tries the save again', async () => {
@@ -374,12 +424,14 @@ describe('the draw.io editor', () => {
 
   it('reports a file that holds no diagram, and one that cannot be read', async () => {
     const notDrawio = open({
-      files: fakeFiles({ read: vi.fn(async () => ({ file: '<svg/>', version: 3 })) }),
+      files: fakeFiles({
+        read: vi.fn<DrawioFiles['read']>(async () => ({ file: '<svg/>', version: 3 })),
+      }),
       target: { kind: 'existing', diagram: EXISTING, title: 'x' },
     })
     notDrawio.say({ event: 'init' })
     expect(
-      await screen.findByText('This file holds no draw.io diagram Quill can open.'),
+      await screen.findByText('This file holds no diagram the editor can open.'),
     ).toBeInTheDocument()
     notDrawio.unmount()
 
@@ -397,11 +449,65 @@ describe('the draw.io editor', () => {
     await waitFor(() => expect(unreadable.lastAction()?.action).toBe('load'))
   })
 
+  it('ignores an export nobody asked for', () => {
+    const { say, actions, files } = open()
+    say({ event: 'load' })
+    say({ event: 'export', format: 'svg', data: EXPORTED })
+    expect(actions()).toEqual([{ action: 'spinner', show: false, to: ORIGIN }])
+    expect(files.create).not.toHaveBeenCalled()
+  })
+
+  it('asks for one export however often save is pressed while saving', async () => {
+    const { say, actions } = open()
+    say({ event: 'load' })
+    say({ event: 'save', xml: 'not a diagram' })
+    say({ event: 'save', xml: 'not a diagram' })
+    await waitFor(() =>
+      expect(actions().filter((action) => action.action === 'export')).toHaveLength(1),
+    )
+  })
+
   it('exports at once when what draw.io saved is not a diagram it can convert', async () => {
     const { say, lastAction } = open()
     say({ event: 'load' })
     say({ event: 'save', xml: 'not a diagram' })
     await waitFor(() => expect(lastAction()?.action).toBe('export'))
+  })
+
+  it('ignores a save draw.io sends after the session has closed', async () => {
+    const { say, actions, onClose } = open()
+    say({ event: 'load' })
+    say({ event: 'exit', modified: false })
+    expect(onClose).toHaveBeenCalledOnce()
+    const before = actions().length
+
+    say({ event: 'save', xml: SAVED })
+
+    expect(actions()).toHaveLength(before)
+  })
+
+  it('writes nothing for an export it did not ask for', async () => {
+    const { say, actions, files } = open()
+    say({ event: 'configure' })
+
+    say({ event: 'export', format: 'svg', data: EXPORTED })
+
+    expect(actions().at(-1)).toMatchObject({ action: 'spinner', show: false })
+    expect(files.create).not.toHaveBeenCalled()
+    expect(files.revise).not.toHaveBeenCalled()
+  })
+
+  it('closes from the prompt that says the diagram did not open', async () => {
+    const read = vi.fn<DrawioFiles['read']>().mockRejectedValueOnce(new Error('offline'))
+    const { say, onClose } = open({
+      files: fakeFiles({ read }),
+      target: { kind: 'existing', diagram: EXISTING, title: 'x' },
+    })
+    say({ event: 'init' })
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Close' }))
+
+    expect(onClose).toHaveBeenCalledOnce()
   })
 
   it('tells the writer when the editor is diagrams.net’s', () => {

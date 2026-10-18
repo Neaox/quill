@@ -36,7 +36,7 @@ import { GitRepository } from './git/git-repository.ts'
 import { parseContentPath, resolvePath, setPath, walkTree } from './git/tree-path.ts'
 import { KeyedMutex } from './keyed-mutex.ts'
 import type { ObjectStore, ObjectStoreProvider } from './object-store.ts'
-import { threeWayMerge } from './three-way-merge.ts'
+import { deletionMarkers, threeWayMerge } from './three-way-merge.ts'
 import { unifiedDiff } from './unified-diff.ts'
 
 export class ContentStoreError extends Error {
@@ -352,6 +352,7 @@ export class GitContentStore implements ContentStore {
       baseTree === undefined ? EMPTY_DOCUMENTS : await this.#documents.of(repository, baseTree)
     const merged: ContentChange[] = []
     const conflicts: MergeConflict[] = []
+    // oxlint-disable-next-line quill/no-independent-await-in-loop -- each reconcile reads blobs from the shared object store; unbounded fan-out over a large change set would exhaust file handles
     for (const change of changes) {
       const outcome = await this.#reconcile(repository, change, headDocuments, baseDocuments)
       if (outcome.kind === 'conflict') conflicts.push(outcome.conflict)
@@ -376,7 +377,13 @@ export class GitContentStore implements ContentStore {
     const relocated = theirs === null ? change : retarget(change, theirs.path)
     if (change.kind === 'delete') {
       return theirs !== null && ancestor !== null && theirs.markdown !== ancestor.markdown
-        ? conflictOf(change.documentId, theirs, '', ancestor.markdown)
+        ? conflictOf(
+            change.documentId,
+            theirs,
+            '',
+            ancestor.markdown,
+            deletionMarkers('', theirs.markdown),
+          )
         : { kind: 'change', change: relocated }
     }
     // A move that carries no content has nothing to merge; its path is already
@@ -392,6 +399,7 @@ export class GitContentStore implements ContentStore {
             { path: pathOf(change), markdown: '' },
             change.markdown,
             ancestor.markdown,
+            deletionMarkers(change.markdown, ''),
           )
     }
     if (theirs.markdown === change.markdown) return { kind: 'change', change: relocated }
@@ -504,7 +512,8 @@ function conflictOf(
   theirs: FoundDocument,
   ours: string,
   base: string,
-  conflicted?: string,
+  /** What a merge view shows: always with markers, so each caller says what it is. */
+  conflicted: string,
 ): ChangeOutcome {
   return {
     kind: 'conflict',
@@ -514,7 +523,7 @@ function conflictOf(
       ours,
       theirs: theirs.markdown,
       base,
-      conflicted: conflicted ?? threeWayMerge(base, ours, theirs.markdown).text,
+      conflicted,
     },
   }
 }

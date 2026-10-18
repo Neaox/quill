@@ -3,15 +3,26 @@ import type { Static } from '@sinclair/typebox'
 import type { TypeBoxTypeProvider } from '@fastify/type-provider-typebox'
 import {
   createShareLink,
+  documentReference,
   findShareLink,
   listShareLinks,
+  readPublicFacts,
   recordShareLinkUse,
   renderDocument,
   resolveDocumentReference,
   revokeShareLink,
   shareLinkNavigation,
+  surfaceLinkRewriter,
+  surfaceReplacement,
 } from '@quill/application'
-import type { DocumentRow, ShareLinkRow } from '@quill/application'
+import type {
+  Authorizer,
+  DocumentRow,
+  ResolvedShareLink,
+  SharedNavigationNode,
+  ShareLinkRow,
+} from '@quill/application'
+import { rewriteLinks } from '@quill/markdown'
 import { isUuid, ROLES, SHARE_LINK_ROLES, SHARE_LINK_SCOPES, slugify } from '@quill/domain'
 import type { DocumentId, Role, ShareLinkId, ShareLinkRole, ShareLinkScope } from '@quill/domain'
 import type { FastifyPluginAsync, FastifyReply } from 'fastify'
@@ -22,12 +33,24 @@ import {
   requireSharedDocument,
   SHARE_REFUSAL,
 } from '../application/authorization.ts'
+import {
+  drawnTag,
+  fillLinksForPublic,
+  internalLinks,
+  linkPreviewDependencies,
+} from '../application/fill-links.ts'
+import { linkEmbedRegistry } from '../infrastructure/link-preview/embed-config.ts'
 import { resolveDocumentId } from '../application/references.ts'
 import type { AppDependencies } from '../dependencies.ts'
 import { AppError, notFound, notModified, unprocessable } from '../errors.ts'
 import { requireAuthenticatedSession } from '../plugins/session.ts'
 import { addressRateLimit } from '../plugins/rate-limit.ts'
-import { IdParamsSchema, RenderedSchema } from './document-schemas.ts'
+import {
+  IdParamsSchema,
+  PublicFactsSchema,
+  publicFactsResponse,
+  RenderedSchema,
+} from './document-schemas.ts'
 
 /**
  * Share links (plan section 14; ADR-011; ADR-012).
@@ -156,6 +179,8 @@ const SharedDocumentFields = {
 export const SharedBodySchema = Type.Object({
   document: Type.Object(SharedDocumentFields),
   rendered: RenderedSchema,
+  /** What the document states about itself that an outsider may see (ADR-059). */
+  facts: PublicFactsSchema,
 })
 
 export const SharedDocumentSchema = Type.Object({
@@ -166,6 +191,7 @@ export const SharedDocumentSchema = Type.Object({
   }),
   document: Type.Object(SharedDocumentFields),
   rendered: RenderedSchema,
+  facts: PublicFactsSchema,
   /** Empty for a document-scoped link: the page offers no way out of its scope. */
   children: Type.Array(Type.Ref(SharedNodeSchema)),
 })
@@ -268,23 +294,93 @@ export function shareLinkRoutes(deps: AppDependencies): FastifyPluginAsync {
   // the route's own response schema, rather than annotated here: the type
   // provider's view of a `$ref` and TypeBox's `Static` of one are not the
   // same type, and the schema is the contract either way.
-  const publishedBody = async (document: DocumentRow) => {
+  const publishedBody = async (
+    document: DocumentRow,
+    scope: ShareScope,
+    authorizer: Authorizer,
+  ) => {
     const rendered = await renderDocument(deps, { documentId: document.id })
     if (rendered.kind !== 'rendered') throw notFound(SHARE_REFUSAL)
+    const facts = await readPublicFacts(deps, document, deps.clock.now())
+    // Whoever holds the link reads stored previews only; they cannot cause a fetch (ADR-042).
+    // The documents it links to are shown only if this link reaches them (ADR-042, "Internal links").
+    const filled = await fillLinksForPublic(
+      linkPreviewDependencies(deps),
+      rendered.content.html,
+      linkEmbedRegistry(deps.config.linkEmbeds),
+      internalLinks(deps, { kind: 'authorized', authorizer }),
+    )
+    // Then every link, the drawn previews' among them, is readdressed for this
+    // link's scope, so a card names no id the holder was not given (ADR-046).
+    const html = await sharedLinks(filled.html, scope)
+    const replacement =
+      facts?.lifecycle?.state === 'deprecated'
+        ? await sharedReplacement(facts.lifecycle.supersededBy, scope)
+        : undefined
     return {
-      // The render-cache key is the whole of the body's identity: what it was
-      // rendered from, and the render version (ADR-031).
-      etag: `"${rendered.key}"`,
+      // The render-cache key is the body's identity — what it was rendered
+      // from, and the render version (ADR-031) — until previews are drawn into
+      // it and its links readdressed for this link's scope, which the key
+      // does not cover.
+      etag: drawnTag(rendered.key, rendered.content.html, html),
       body: {
         document: sharedDocument(document),
         rendered: {
           revision: rendered.revision,
-          html: rendered.content.html,
+          html,
           outline: [...rendered.content.outline],
           slots: [...rendered.content.slots],
+          pendingLinks: filled.pending,
         },
+        /* v8 ignore next -- a document that rendered has a head revision to read. */
+        facts: publicFactsResponse(
+          facts ?? { status: undefined, lifecycle: undefined, tags: [], lastReviewed: undefined },
+          replacement,
+        ),
       },
     }
+  }
+
+  /**
+   * A shared body with its links to other documents readdressed (ADR-035,
+   * ADR-046): a page inside the link's scope is read under the same token,
+   * the shared page itself at the token's own address, and every other page
+   * is reduced to the link's words — its id, workspace and title are none of
+   * the holder's business, and a link into the application is a dead end for
+   * somebody without an account. The scope is only walked when the body
+   * links into the application at all.
+   */
+  const sharedLinks = async (html: string, scope: ShareScope): Promise<string> => {
+    // Any href with a `/d/` or `/w/` in it, absolute or not, in either case:
+    // the rewriter decides which of them are the application's.
+    if (!/href="[^"]*\/(?:d|w)\//iu.test(html)) return html
+    const root = scope.resolved.document
+    const reachable = [root, ...flattenNavigation(await scope.navigation())]
+    const base = `/share/${scope.token}`
+    return rewriteLinks(
+      html,
+      surfaceLinkRewriter(
+        reachable,
+        (document) => (document.id === root.id ? base : `${base}/d/${documentReference(document)}`),
+        [deps.config.appOrigin],
+      ),
+    )
+  }
+
+  /**
+   * A deprecated document's replacement on this link: named and linked under
+   * the same token when it is inside the link's scope, and not mentioned at
+   * all when it is not — the rule its body's links follow (ADR-046).
+   */
+  const sharedReplacement = async (reference: string | undefined, scope: ShareScope) => {
+    if (reference === undefined) return undefined
+    const root = scope.resolved.document
+    const base = `/share/${scope.token}`
+    return surfaceReplacement(
+      reference,
+      [root, ...flattenNavigation(await scope.navigation())],
+      (document) => (document.id === root.id ? base : `${base}/d/${documentReference(document)}`),
+    )
   }
 
   return async (rawApp) => {
@@ -390,7 +486,16 @@ export function shareLinkRoutes(deps: AppDependencies): FastifyPluginAsync {
         if (resolved === null) throw notFound(SHARE_REFUSAL)
 
         const access = await requireSharedDocument(authorizer, resolved.document.id, request.log)
-        const { body } = await publishedBody(access.document)
+        const children = await shareLinkNavigation(deps, resolved)
+        const { body } = await publishedBody(
+          access.document,
+          {
+            token: request.params.token,
+            resolved,
+            navigation: () => Promise.resolve(children),
+          },
+          authorizer,
+        )
         await recordShareLinkUse(deps, {
           link: resolved.link,
           documentId: access.document.id,
@@ -406,7 +511,7 @@ export function shareLinkRoutes(deps: AppDependencies): FastifyPluginAsync {
             expiresAt: resolved.link.expiresAt?.toISOString() ?? null,
           },
           ...body,
-          children: [...(await shareLinkNavigation(deps, resolved))],
+          children: [...children],
         }
       },
     )
@@ -429,7 +534,15 @@ export function shareLinkRoutes(deps: AppDependencies): FastifyPluginAsync {
         const documentId = await sharedDocumentId(request.params.id)
         if (documentId === null) throw notFound(SHARE_REFUSAL)
         const access = await requireSharedDocument(authorizer, documentId, request.log)
-        const { body, etag } = await publishedBody(access.document)
+        const { body, etag } = await publishedBody(
+          access.document,
+          {
+            token: request.params.token,
+            resolved,
+            navigation: () => shareLinkNavigation(deps, resolved),
+          },
+          authorizer,
+        )
         await recordShareLinkUse(deps, {
           link: resolved.link,
           documentId: access.document.id,
@@ -447,5 +560,21 @@ export function shareLinkRoutes(deps: AppDependencies): FastifyPluginAsync {
         return body
       },
     )
+  }
+}
+
+/** What a shared body's links may reach: the link, and the pages its scope offers. */
+interface ShareScope {
+  readonly token: string
+  readonly resolved: ResolvedShareLink
+  readonly navigation: () => Promise<readonly SharedNavigationNode[]>
+}
+
+function* flattenNavigation(
+  nodes: readonly SharedNavigationNode[],
+): Generator<SharedNavigationNode> {
+  for (const node of nodes) {
+    yield node
+    yield* flattenNavigation(node.children)
   }
 }

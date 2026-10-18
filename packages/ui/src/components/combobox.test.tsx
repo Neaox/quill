@@ -43,6 +43,16 @@ describe('Combobox', () => {
     expect(screen.queryByRole('listbox')).toBeNull()
   })
 
+  it('can lay its popup in the flow, so inside a scrolling dialog it pushes content down instead of being clipped', async () => {
+    render(<Harness variant="flow" />)
+
+    await userEvent.click(field())
+
+    const popup = screen.getByRole('listbox').parentElement
+    expect(popup).toHaveClass('static')
+    expect(popup).not.toHaveClass('absolute')
+  })
+
   it('opens as somebody types, and walks the options with the arrows without leaving the field', async () => {
     const user = userEvent.setup()
     const onSelect = vi.fn<(id: string) => void>()
@@ -75,6 +85,35 @@ describe('Combobox', () => {
     await user.type(field(), 'g')
     await user.click(screen.getByRole('option', { name: 'Guides' }))
     expect(onSelect).toHaveBeenCalledWith('guides')
+  })
+
+  it('stays open after an option the caller says is a step rather than an answer', async () => {
+    const user = userEvent.setup()
+    const onSelect = vi.fn<(id: string) => void>()
+    render(<Harness onSelect={onSelect} keepsOpen={(id) => id === 'sync'} />)
+    await user.type(field(), 'x')
+
+    await user.click(screen.getByRole('option', { name: 'The sync map' }))
+    expect(onSelect).toHaveBeenCalledWith('sync')
+    expect(field()).toHaveAttribute('aria-expanded', 'true')
+
+    await user.click(screen.getByRole('option', { name: 'Guides' }))
+    expect(field()).toHaveAttribute('aria-expanded', 'false')
+  })
+
+  it('without a preselected option leaves Enter alone until the arrows reach one', async () => {
+    const user = userEvent.setup()
+    const onSelect = vi.fn<(id: string) => void>()
+    render(<Harness onSelect={onSelect} preselect={false} />)
+    await user.type(field(), 'x')
+
+    expect(field()).toHaveAttribute('aria-expanded', 'true')
+    expect(field()).not.toHaveAttribute('aria-activedescendant')
+    await user.keyboard('{Enter}')
+    expect(onSelect).not.toHaveBeenCalled()
+
+    await user.keyboard('{ArrowDown}{Enter}')
+    expect(onSelect).toHaveBeenCalledWith('sync')
   })
 
   it('closes on Escape, and a second Escape is the caller’s to answer', async () => {

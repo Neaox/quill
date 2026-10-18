@@ -44,6 +44,10 @@
         ]
       }
     ],
+    // The core rule cannot tell a pagination cursor from an N+1; the quill
+    // rule flags only loops whose awaits are independent.
+    "no-await-in-loop": "off",
+    "quill/no-independent-await-in-loop": "error",
     "quill/no-brand-literal": "error",
     "quill/tailwind-v4": "error",
     "quill/classname-discipline": "error",
@@ -58,6 +62,21 @@
     "quill/no-relative-import-without-extension": "error"
   },
   "overrides": [
+    {
+      // Sequential awaits are the norm in tests, benches, probes, and one-shot scripts.
+      "files": [
+        "**/*.test.*",
+        "**/test-support/**",
+        "**/testing/**",
+        "**/*.bench.ts",
+        "e2e/**",
+        "scripts/**",
+        "apps/server/src/scripts/**"
+      ],
+      "rules": {
+        "quill/no-independent-await-in-loop": "off"
+      }
+    },
     {
       // apps/web only: packages/ui is exempt because a primitive's own tests
       // and specimens render Button bare, with no action to give it

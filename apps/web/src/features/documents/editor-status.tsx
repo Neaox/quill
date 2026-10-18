@@ -1,6 +1,18 @@
 import { Badge, Button, type BadgeTone } from '@quill/ui'
 
-import type { AutosaveStatus, LockStatus } from '@quill/editor'
+import {
+  isDisconnected,
+  type AutosaveStatus,
+  type LockStatus,
+  type ReconcileStatus,
+} from '@quill/editor'
+
+/**
+ * What the status says while this editor is out of touch with the server
+ * (ADR-021, amendment of 2026-10-11). The words are always there; the colour
+ * is never the only signal.
+ */
+export const OFFLINE_LABEL = 'Offline: your changes are kept on this device'
 
 /**
  * What the editor says about itself, in one line.
@@ -23,18 +35,24 @@ export interface EditorStatusInput {
   readonly autosave: AutosaveStatus
   readonly lock: LockStatus
   readonly holderName: string | undefined
+  /** Where bringing the session back in step with the server has got to. */
+  readonly reconcile?: ReconcileStatus | undefined
 }
 
 export function describeEditorStatus({
   autosave,
   lock,
   holderName,
+  reconcile = 'idle',
 }: EditorStatusInput): EditorStatusDescription {
   if (autosave === 'signed_out') {
     return { tone: 'danger', label: 'signed out', atRisk: true }
   }
-  if (autosave === 'blocked' || lock === 'lost') {
-    return { tone: 'danger', label: 'lock lost', atRisk: true }
+  if (reconcile === 'conflicted') {
+    return { tone: 'warning', label: 'changes to resolve', atRisk: true }
+  }
+  if (reconcile === 'merging') {
+    return { tone: 'neutral', label: 'merging your changes…', atRisk: true }
   }
   if (lock === 'held_by_other') {
     return {
@@ -43,23 +61,22 @@ export function describeEditorStatus({
       atRisk: true,
     }
   }
+  // Failures are the signal, not `navigator.onLine` alone: a save that could
+  // not be delivered or a heartbeat that did not come back.
+  if (isDisconnected(autosave, lock)) {
+    return { tone: 'warning', label: OFFLINE_LABEL, atRisk: true }
+  }
+  if (reconcile === 'relocking') {
+    return { tone: 'neutral', label: 'reconnecting…', atRisk: true }
+  }
+  if (autosave === 'blocked' || lock === 'lost') {
+    return { tone: 'danger', label: 'lock lost', atRisk: true }
+  }
   if (autosave === 'conflict') {
     return { tone: 'warning', label: 'draft changed elsewhere', atRisk: true }
   }
   if (autosave === 'failed') {
     return { tone: 'danger', label: 'couldn’t save', atRisk: true }
-  }
-  if (autosave === 'offline') {
-    return { tone: 'warning', label: 'offline — will retry', atRisk: true }
-  }
-  if (lock === 'at_risk') {
-    return { tone: 'warning', label: 'connection lost', atRisk: true }
-  }
-  if (lock === 'reconnecting') {
-    return { tone: 'neutral', label: 'reconnecting', atRisk: true }
-  }
-  if (autosave === 'retrying') {
-    return { tone: 'warning', label: 'not saved — retrying', atRisk: true }
   }
   if (lock === 'idle' || lock === 'acquiring') {
     return { tone: 'neutral', label: 'opening', atRisk: true }
@@ -85,10 +102,11 @@ export function EditorStatus({
   autosave,
   lock,
   holderName,
+  reconcile,
   className,
   onRetry,
 }: EditorStatusProps) {
-  const status = describeEditorStatus({ autosave, lock, holderName })
+  const status = describeEditorStatus({ autosave, lock, holderName, reconcile })
 
   return (
     <div className={className}>

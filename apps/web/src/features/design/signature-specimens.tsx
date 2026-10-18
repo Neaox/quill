@@ -14,6 +14,7 @@ import type { BuiltinThemeId, ThemeVariants } from '@quill/theme'
 import { HighlightedCode } from './highlighted-code.tsx'
 import {
   COMMENTS,
+  LARGE_TREE_SECTIONS,
   RAIL_ITEMS,
   REVISIONS,
   SAMPLE_CODE,
@@ -90,6 +91,39 @@ export function SignatureSpecimens({ variants, themeId }: SignatureSpecimensProp
             currentId="foundations"
             variant="tree"
             className="w-62 border-s border-border"
+          />
+        </div>
+      </Specimen>
+
+      <Specimen
+        label="Navigation · tree at scale"
+        note="closed by default · the way to the open document opens · long branches page"
+        bodyClassName="flex flex-wrap items-start gap-8"
+      >
+        <div className="flex flex-col gap-2">
+          <p className="meta">collapsed</p>
+          <Tree
+            label="Tree, collapsed example"
+            sections={LARGE_TREE_SECTIONS}
+            className="w-62 border-s border-border"
+          />
+        </div>
+        <div className="flex flex-col gap-2">
+          <p className="meta">deep document open</p>
+          <Tree
+            label="Tree, deep example"
+            sections={LARGE_TREE_SECTIONS}
+            currentId="level-9"
+            className="max-h-120 w-62 overflow-y-auto border-s border-border"
+          />
+        </div>
+        <div className="flex flex-col gap-2">
+          <p className="meta">far down a long branch</p>
+          <Tree
+            label="Tree, long branch example"
+            sections={LARGE_TREE_SECTIONS}
+            currentId="incident-1234"
+            className="max-h-120 w-62 overflow-y-auto border-s border-border"
           />
         </div>
       </Specimen>

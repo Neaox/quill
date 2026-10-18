@@ -119,9 +119,32 @@ briefly unreachable is asked again rather than being written off.
 - **An exact phrase** and **the current workspace** are multipliers. The
   workspace boost is applied before the cutoff, not after:
   `groupByWorkspaceAffinity` can only order what came back.
+- **A deprecated page** is a multiplier below one, from the row's `lifecycle`
+  column: demoted below a current page that matched as well, never hidden.
 - **Trigram similarity** is *added*, not multiplied, because a document the
   full-text query did not match has a relevance of zero and would otherwise
   stay at zero however close its title is.
+
+## Tags, properties and facets
+
+- **`tag:` is containment over `tag_paths`**: every tag and every ancestor of
+  every tag (`area/billing` yields `area` and `area/billing`), computed by
+  `expandTagPaths` in `@quill/search` when a row is written and by the
+  migration 0020 backfill for rows that already existed. The adapter never
+  reads a tag itself; it stores that function's answer and binds
+  `normaliseTag(value)` as the parameter.
+- **`prop:key=value` is containment over `properties`** (`jsonb`, GIN with
+  `jsonb_path_ops`): `properties @> jsonb_build_object(key, jsonb_build_array(value))`,
+  both parameters bound. A filter that is not `key=value` is `false`, never
+  everything. Properties are not backfilled (they live in the content store);
+  a row has them after its next publish or `quill reindex`.
+- **`facets` counts the strict match.** It runs the AND arm's candidate and
+  permission machinery (`candidates`, `commonPredicate`) once per batch of
+  workspaces, materialises the matching rows once, and groups them three ways in
+  one statement. Unlike `suggest` it cannot stop early: a count is over the
+  whole set, so every batch is walked and the counts are added
+  (`addCounts`), then ranked (`rankFacetCounts`). The OR widening is never
+  counted.
 
 ## Snippets are the core's
 

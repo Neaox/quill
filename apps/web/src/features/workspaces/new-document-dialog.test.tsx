@@ -309,6 +309,19 @@ describe('NewDocumentDialog', () => {
     expect(screen.queryByLabelText('Start from')).not.toBeInTheDocument()
   })
 
+  it('says it is loading the collections, not that there are none, until they have arrived', async () => {
+    const { promise: answered, resolve: answer } = Promise.withResolvers<Response>()
+    renderDialog({ 'GET /api/workspaces/{id}/tree': () => answered })
+    await userEvent.click(await screen.findByRole('button', { name: 'New document' }))
+
+    expect(await screen.findByRole('status')).toHaveTextContent('Loading collections')
+    expect(screen.queryByText('No collections yet')).not.toBeInTheDocument()
+    expect(screen.queryByLabelText('New collection')).not.toBeInTheDocument()
+
+    answer(TREE_WITH_ONE_COLLECTION())
+    expect(await screen.findByLabelText('Collection')).toHaveValue('col-guides')
+  })
+
   it('says so and disables Create when the workspace has no collections yet', async () => {
     renderDialog({ 'GET /api/workspaces/{id}/tree': () => jsonResponse(200, { collections: [] }) })
     await userEvent.click(await screen.findByRole('button', { name: 'New document' }))

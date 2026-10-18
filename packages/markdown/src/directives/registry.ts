@@ -7,20 +7,21 @@ import { codeGroupDirective } from '../code-group/code-group.ts'
 import { accordionDirective, detailsDirective } from '../details/details.ts'
 import { badgeDirective } from './badge.ts'
 import { calloutDirective } from './callout.ts'
-import { childrenDirective } from './children.ts'
 import { cardsDirective } from './cards.ts'
 import { figureDirective } from './figure.ts'
 import { guidanceDirective } from './guidance.ts'
 import { kbdDirective } from './kbd.ts'
 import { layoutDirective } from './layout.ts'
+import { linkDirective } from './link.ts'
 import { notesDirective } from './notes.ts'
 import { optionalDirective } from './optional.ts'
 import { placeholderDirective } from './placeholder.ts'
 import { repeatDirective } from './repeat.ts'
-import { tocDirective } from './toc.ts'
 import { smallDirective } from './small.ts'
 import { tableDirective } from './table.ts'
 import { whenDirective } from './when.ts'
+import { childrenDirective } from '../navigation/children.ts'
+import { tocDirective } from '../navigation/toc.ts'
 
 /** Every directive this package defines. A name absent from here is not an error. */
 export const KNOWN_DIRECTIVES: readonly DirectiveValidator[] = [
@@ -33,8 +34,6 @@ export const KNOWN_DIRECTIVES: readonly DirectiveValidator[] = [
   whenDirective,
   repeatDirective,
   notesDirective,
-  tocDirective,
-  childrenDirective,
   badgeDirective,
   smallDirective,
   figureDirective,
@@ -43,6 +42,9 @@ export const KNOWN_DIRECTIVES: readonly DirectiveValidator[] = [
   codeGroupDirective,
   detailsDirective,
   accordionDirective,
+  tocDirective,
+  childrenDirective,
+  linkDirective,
 ]
 
 export function findDirective(node: Directive): DirectiveValidator | undefined {

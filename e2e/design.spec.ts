@@ -26,6 +26,9 @@ const rootProperty = (page: Page, name: string) =>
 const overflows = (page: Page) =>
   page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth)
 
+// The scheme is one button that goes round System, Light and Dark (`theme-toggle.tsx`).
+const scheme = (page: Page) => page.getByRole('button', { name: /^Colour scheme:/ }).first()
+
 test.describe('the design system page', () => {
   test.beforeEach(async ({ page }) => {
     await page.setViewportSize({ width: 1440, height: 900 })
@@ -42,26 +45,28 @@ test.describe('the design system page', () => {
 
     await expect(root).not.toHaveAttribute('data-theme', /.*/)
 
-    await page.getByRole('radio', { name: 'Dark' }).check()
-    await expect(root).toHaveAttribute('data-theme', 'dark')
-
-    await page.getByRole('radio', { name: 'Light' }).check()
+    await scheme(page).click()
     await expect(root).toHaveAttribute('data-theme', 'light')
+
+    await scheme(page).click()
+    await expect(root).toHaveAttribute('data-theme', 'dark')
 
     // Switching scheme repaints colour and moves nothing.
     expect(await headingBox(page)).toEqual(before)
 
-    await page.getByRole('radio', { name: 'System' }).check()
+    await scheme(page).click()
     await expect(root).not.toHaveAttribute('data-theme', /.*/)
   })
 
   test('the chosen scheme survives a reload without a flash of the other one', async ({ page }) => {
-    await page.getByRole('radio', { name: 'Dark' }).check()
+    await scheme(page).click()
+    await scheme(page).click()
+    await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark')
     await page.reload()
 
     // Set by the inline script before first paint, not by React after hydration.
     await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark')
-    await expect(page.getByRole('radio', { name: 'Dark' })).toBeChecked()
+    await expect(scheme(page)).toHaveAccessibleName('Colour scheme: Dark')
   })
 
   test('the identity switcher changes the type and the accent', async ({ page }) => {
@@ -76,17 +81,18 @@ test.describe('the design system page', () => {
     }
     expect(instrument.sans).toContain('IBM Plex Sans')
 
-    await identity.getByRole('radio', { name: 'Press' }).check()
-    await expect(root).toHaveAttribute('data-theme-id', 'press')
+    await identity.getByRole('radio', { name: 'Editorial' }).check()
+    await expect(root).toHaveAttribute('data-theme-id', 'editorial')
 
-    const press = {
+    const editorial = {
       sans: await rootProperty(page, '--font-sans'),
       accent: await rootProperty(page, '--palette-accent'),
       reading: await rootProperty(page, '--font-reading'),
     }
-    expect(press.sans).toContain('Instrument Sans')
-    expect(press.reading).toContain('Newsreader')
-    expect(press.accent).not.toBe(instrument.accent)
+    // Editorial sets the chrome in Inter and the reading column in Source Serif 4.
+    expect(editorial.sans).toContain('Inter')
+    expect(editorial.reading).toContain('Source Serif')
+    expect(editorial.accent).not.toBe(instrument.accent)
 
     // An identity is a different type pairing, so the page re-sets rather than
     // staying pixel-identical — but it must not start scrolling sideways.
@@ -212,7 +218,9 @@ test.describe('the design system page', () => {
     expect(await overflows(page)).toBe(false)
   })
 
-  test('the shell becomes one column on a phone, in the same order', async ({ page }) => {
+  test('the shell becomes one column on a phone, with the tree a sheet behind Browse', async ({
+    page,
+  }) => {
     await page.setViewportSize({ width: 390, height: 844 })
 
     const region = async (selector: string) => {
@@ -221,19 +229,23 @@ test.describe('the design system page', () => {
       return { top: box?.y ?? 0, bottom: (box?.y ?? 0) + (box?.height ?? 0) }
     }
 
+    // One column: the header, then the document, with nothing between them. The rail and the
+    // tree are not drawn until they are asked for (`document-shell.tsx`).
     const header = await region('.shell-header')
-    const rail = await region('.shell-rail')
-    const nav = await region('.shell-nav')
     const main = await region('.shell-main')
+    expect(main.top).toBeCloseTo(header.bottom, 0)
+    await expect(page.locator('.shell-rail').first()).toBeHidden()
+    await expect(page.locator('.shell-nav').first()).toBeHidden()
+    expect(await overflows(page)).toBe(false)
 
-    expect(header.top).toBeLessThan(rail.top)
-    expect(rail.top).toBeLessThan(nav.top)
-    expect(nav.top).toBeLessThan(main.top)
-    // Stacked, with nothing between them: each column sits where the one
-    // above it ends, rather than being pushed down by the offset it hangs at
-    // when it is sticky beside the header instead of under it.
-    expect(rail.top).toBeCloseTo(header.bottom, 0)
-    expect(nav.top).toBeCloseTo(rail.bottom, 0)
+    // Browse opens the tree as a sheet from the header down, with the rail's sections at its top.
+    await page.getByRole('button', { name: 'Browse documents' }).click()
+    const sheet = await region('.shell-nav')
+    expect(sheet.top).toBeCloseTo(header.bottom, 0)
+    expect(sheet.bottom).toBeCloseTo(844, 0)
+    await expect(
+      page.locator('.shell-nav').getByRole('navigation', { name: 'Workspace' }),
+    ).toBeVisible()
     expect(await overflows(page)).toBe(false)
   })
 
@@ -250,6 +262,9 @@ test.describe('the design system page', () => {
     page,
   }) => {
     await page.setViewportSize({ width: 390, height: 844 })
+    // The tree is a sheet on a phone: open, so the column under test is laid out at all.
+    await page.getByRole('button', { name: 'Browse documents' }).click()
+    await expect(page.locator('.shell-nav').first()).toBeVisible()
     const before = await page.evaluate(() => document.documentElement.scrollHeight)
 
     await page.locator('.shell-nav').evaluate((column) => {

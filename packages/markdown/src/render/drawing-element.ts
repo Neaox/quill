@@ -1,6 +1,7 @@
 import type { Element, Properties } from 'hast'
 
 import type { DrawingRendering } from '../extensions/contract.ts'
+import { DATA_ATTRIBUTE } from '../extensions/contract.ts'
 import { sanitizeDrawing } from './drawing.ts'
 
 /**
@@ -18,10 +19,24 @@ export interface DrawingPlacement {
   readonly idPrefix: string
   /** The image's alternative text. */
   readonly label: string
+  /** The organisation's label names, kept as classes in an inline drawing (`drawing.ts`). */
+  readonly labels?: ReadonlySet<string> | undefined
 }
 
 /** A same-origin path, never a scheme or a protocol-relative address. */
 const SAME_ORIGIN_PATH = /^\/(?![/\\])/
+
+/**
+ * A rendering's data attributes, and nothing else. The registry has already
+ * dropped any its extension's grant does not name (`registry.ts`); this is
+ * the last word, so a rendering that reaches here some other way still
+ * cannot add a source, a handler, or a role.
+ */
+function dataOf(rendering: DrawingRendering): Properties {
+  return Object.fromEntries(
+    Object.entries(rendering.data).filter(([name]) => DATA_ATTRIBUTE.test(name)),
+  )
+}
 
 /** A number, the only thing a natural size is made of. */
 function dimension(value: string | undefined): number | undefined {
@@ -51,7 +66,7 @@ export function drawingElement(
         alt: placement.label,
         loading: 'lazy',
         decoding: 'async',
-        ...rendering.data,
+        ...dataOf(rendering),
       },
       children: [],
     }
@@ -59,6 +74,7 @@ export function drawingElement(
   const svg = sanitizeDrawing(rendering.markup, {
     idPrefix: placement.idPrefix,
     label: placement.label,
+    labels: placement.labels,
   })
   if (svg === null) return null
   return {
@@ -66,7 +82,7 @@ export function drawingElement(
     properties: {
       ...svg.properties,
       ...(rendering.naturalSize ? naturalSize(svg) : {}),
-      ...rendering.data,
+      ...dataOf(rendering),
     },
   }
 }

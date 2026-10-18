@@ -1,4 +1,5 @@
 import { toString } from 'mdast-util-to-string'
+import { normalizeUri } from 'micromark-util-sanitize-uri'
 import type { Element, ElementContent, Properties } from 'hast'
 import type { Blockquote, Code, Heading, Image, Paragraph, PhrasingContent, Table } from 'mdast'
 import type { ContainerDirective, LeafDirective, TextDirective } from 'mdast-util-directive'
@@ -6,13 +7,13 @@ import type { ContainerDirective, LeafDirective, TextDirective } from 'mdast-uti
 import type { CodeGroup } from '../code-group/code-group.ts'
 import { codeBlockCaption, codeCard, codeGroupElement } from '../code-group/render.ts'
 import type { Details } from '../details/details.ts'
-import { isAccordion, isDetailsNode } from '../details/details.ts'
+import { accordionDirective, detailsDirective } from '../details/details.ts'
 import { createDetailsRenderer } from '../details/render.ts'
 import { badgeDirective } from '../directives/badge.ts'
+import { linkDirective } from '../directives/link.ts'
 import type { CalloutType } from '../directives/callout.ts'
 import { calloutDirective } from '../directives/callout.ts'
 import { cardsDirective } from '../directives/cards.ts'
-import { childrenDirective } from '../directives/children.ts'
 import type { DirectiveAttributes, DirectiveContent } from '../directives/definition.ts'
 import { claims } from '../directives/definition.ts'
 import { figureDirective } from '../directives/figure.ts'
@@ -23,21 +24,23 @@ import { layoutDirective } from '../directives/layout.ts'
 import { optionalDirective } from '../directives/optional.ts'
 import { placeholderDirective } from '../directives/placeholder.ts'
 import { repeatDirective } from '../directives/repeat.ts'
-import { tocDirective } from '../directives/toc.ts'
-import type { OutlineEntry } from './outline.ts'
-import { outlineWithin } from './outline.ts'
 import { smallDirective } from '../directives/small.ts'
 import type { TableOptions } from '../directives/table.ts'
 import { DEFAULT_TABLE_OPTIONS, tableDirective, tableOf } from '../directives/table.ts'
 import type { ResolvedEmoji } from '../emoji/emoji.ts'
 import { emojiElement } from '../emoji/emoji.ts'
 import type { MarkdownRegistry } from '../extensions/registry.ts'
-import { splitAlert } from '../pipeline/github-alert.ts'
+import { markerName, splitAlert } from '../pipeline/github-alert.ts'
 import { drawingElement } from './drawing-element.ts'
+import { linkBlockSlot, linkInlineSlot } from './link-slots.ts'
 import type { Slugger } from './slug.ts'
 import { HEADING_ID_PREFIX, headingId } from './slug.ts'
 import type { Handlers, State } from './hast-state.ts'
 import { createTableRenderer } from './table-block.ts'
+import { childrenDirective } from '../navigation/children.ts'
+import { childPagesSlotElement, tableOfContentsElement } from '../navigation/render.ts'
+import { tableOfContentsEntries, tocDirective } from '../navigation/toc.ts'
+import type { OutlineEntry } from './outline.ts'
 import { listItem } from './task-list.ts'
 
 /** The handler map and its state, defined beside the other parts that render (`hast-state.ts`). */
@@ -125,11 +128,6 @@ function splitStatus(
 
 export interface HandlerOptions {
   readonly slug: Slugger
-  /**
-   * The document's headings, asked for only if a table of contents is rendered.
-   * A function so that a document without one never pays to extract them.
-   */
-  readonly outline: () => readonly OutlineEntry[]
   readonly highlighter?: Highlighter | undefined
   /** SVG drawings by the image URL that shows them (`RenderOptions.drawings`). */
   readonly drawings?: ReadonlyMap<string, string> | undefined
@@ -148,6 +146,12 @@ export interface HandlerOptions {
   readonly labels?: ReadonlySet<string> | undefined
   /** The emoji a label's pill leads with, by label name (`RenderOptions.labelEmoji`). */
   readonly labelEmoji: (label: string) => ResolvedEmoji | undefined
+  /**
+   * The document's headings, for a table of contents (ADR-058): taken from
+   * the same tree the headings are rendered from, so every entry links to the
+   * id its heading carries. Asked only when the body holds one.
+   */
+  readonly outline: () => readonly OutlineEntry[]
 }
 
 function element(tagName: string, properties: Properties, children: ElementContent[]): Element {
@@ -251,6 +255,14 @@ function directiveSource(
 }
 
 /**
+ * An image's source, percent-encoded as a link's is (mdast-util-to-hast's
+ * own image handler does the same), so a character a browser would read
+ * as something else, such as the backslash in `/\host`, which it reads as
+ * `//host`, stays a path on this origin.
+ */
+const imageSource = (node: Image): string => normalizeUri(node.url)
+
+/**
  * The mdast to hast handlers behind `renderHtml`. Every one of them exists to put
  * meaning in the markup: the right element for the job, a name for anything a
  * screen reader would otherwise meet unannounced, and no information carried by
@@ -259,13 +271,13 @@ function directiveSource(
 export function createHandlers(options: HandlerOptions): Handlers {
   const {
     slug,
-    outline,
     highlighter,
     drawings,
     extensions,
     placed = [],
     labels = new Set<string>(),
     labelEmoji,
+    outline,
   } = options
 
   /**
@@ -330,11 +342,15 @@ export function createHandlers(options: HandlerOptions): Handlers {
   const detailsRenderer = createDetailsRenderer()
 
   const image = (_state: State, node: Image): Element =>
-    element('img', { src: node.url, alt: altText(node.alt), title: node.title ?? undefined }, [])
+    element(
+      'img',
+      { src: imageSource(node), alt: altText(node.alt), title: node.title ?? undefined },
+      [],
+    )
 
   const figure = (node: Image, caption: string): Element =>
     element('figure', {}, [
-      element('img', { src: node.url, alt: altText(node.alt) }, []),
+      element('img', { src: imageSource(node), alt: altText(node.alt) }, []),
       element('figcaption', {}, [text(caption)]),
     ])
 
@@ -357,6 +373,7 @@ export function createHandlers(options: HandlerOptions): Handlers {
       url: node.url,
       idPrefix: `${HEADING_ID_PREFIX}d${placed.length + 1}-`,
       label: altText(node.alt),
+      labels,
     })
     if (drawing === null) return undefined
     placed.push(drawing)
@@ -434,9 +451,10 @@ export function createHandlers(options: HandlerOptions): Handlers {
     type: CalloutType,
     label: string | undefined,
     body: ElementContent[],
+    name: string = type,
   ): Element => {
     const id = `callout.${(callouts += 1)}`
-    const kind = capitalise(type)
+    const kind = capitalise(name)
     const words =
       label === undefined
         ? [text(kind)]
@@ -458,19 +476,24 @@ export function createHandlers(options: HandlerOptions): Handlers {
     )
   }
 
-  /** A GitHub alert (`> [!WARNING]`) is a callout, titled with its kind as GitHub titles it. */
+  /**
+   * A quote that opens `[!kind]` is a callout: GitHub's alert (`> [!WARNING]`),
+   * titled with its kind as GitHub titles it, or Obsidian's (`> [!tip] Title`),
+   * titled by the rest of its marker's line. A kind Quill does not have is drawn
+   * as the callout it is closest to, and still said as the author wrote it.
+   */
   const blockquote = (state: State, node: Blockquote): Element => {
     const alert = splitAlert(node)
     if (alert === undefined) {
       return element('blockquote', {}, state.wrap(state.all(node), true))
     }
-    // An Obsidian callout's title is the rest of its marker's line; GitHub's has none.
     const title = toString({ type: 'paragraph', children: alert.title }).trim()
     return calloutAside(
       state,
       alert.kind,
       title === '' ? undefined : title,
       state.all({ ...node, children: alert.body }),
+      markerName(alert.form.marker),
     )
   }
 
@@ -541,8 +564,8 @@ export function createHandlers(options: HandlerOptions): Handlers {
     node: ContainerDirective,
     parent: unknown,
   ): ElementContent | ElementContent[] => {
-    if (isDetailsNode(node)) return detailsRenderer.details(state, node, parent)
-    if (isAccordion(node)) return detailsRenderer.accordion(state, node)
+    if (claims(detailsDirective, node)) return detailsRenderer.details(state, node, parent)
+    if (claims(accordionDirective, node)) return detailsRenderer.accordion(state, node)
     if (claims(figureDirective, node)) return figureBlock(state, node)
     if (claims(cardsDirective, node)) return cards(state, node)
     if (claims(tableDirective, node)) {
@@ -582,6 +605,8 @@ export function createHandlers(options: HandlerOptions): Handlers {
 
   const textDirective = (state: State, node: TextDirective): ElementContent | ElementContent[] => {
     if (claims(kbdDirective, node)) return element('kbd', {}, state.all(node))
+    // A link with a stored choice (ADR-042): an ordinary anchor the page may later fill.
+    if (claims(linkDirective, node)) return linkInlineSlot(linkDirective.parse(node))
     // A badge with no label is the author's own text — `status:ok` parses as
     // a directive named `ok` — so it is written back as it was typed.
     if (claims(badgeDirective, node) && toString(node).trim().length > 0) {
@@ -604,32 +629,6 @@ export function createHandlers(options: HandlerOptions): Handlers {
     return directiveSource(state, node, ':')
   }
 
-  const outlineList = (entries: readonly OutlineEntry[]): Element =>
-    element(
-      'ol',
-      {},
-      entries.map((entry) =>
-        element('li', {}, [
-          element('a', { href: `#${entry.id}` }, [text(entry.text)]),
-          ...(entry.children.length === 0 ? [] : [outlineList(entry.children)]),
-        ]),
-      ),
-    )
-
-  /**
-   * `::toc` is a function of the headings and nothing else, so it is rendered
-   * into the body rather than left as a slot (ADR-031). A document with nothing
-   * for it to list renders nothing: an empty navigation landmark is noise.
-   */
-  const tableOfContents = (node: LeafDirective): Element | undefined => {
-    const { min, max } = tocDirective.parse(node)
-    const entries = outlineWithin(outline(), min, max)
-    if (entries.length === 0) return undefined
-    return element('nav', { className: ['toc'], 'aria-label': 'Table of contents' }, [
-      outlineList(entries),
-    ])
-  }
-
   /**
    * A leaf directive with no handler: the slot shape of ADR-032, holding the
    * directive's readable fallback.
@@ -640,27 +639,52 @@ export function createHandlers(options: HandlerOptions): Handlers {
    * from the rendered document. The section names the block's type and carries
    * the parameters as text, which is exactly what ADR-002 asks an unknown
    * directive to degrade to.
-   *
-   * `::children` is the first block type that has a slot to fill: its depth is a
-   * parameter the application reads off the slot (`data-depth`) to list the tree
-   * under the document.
    */
-  const leafDirective = (state: State, node: LeafDirective): Element | undefined => {
-    if (claims(tocDirective, node)) return tableOfContents(node)
-    const parameters: Properties = claims(childrenDirective, node)
-      ? { 'data-depth': String(childrenDirective.parse(node).depth) }
-      : {}
-    return element(
+  let contents = 0
+  let childPages = 0
+
+  /**
+   * The navigation blocks (ADR-058): a table of contents drawn from the
+   * outline, and the slot a child pages list is filled into as the page is
+   * assembled (ADR-032).
+   */
+  const navigationBlock = (node: LeafDirective): Element | undefined => {
+    if (claims(tocDirective, node)) {
+      const model = tocDirective.parse(node)
+      contents += 1
+      return tableOfContentsElement(
+        model,
+        tableOfContentsEntries(outline(), model.levels),
+        contents,
+      )
+    }
+    if (claims(childrenDirective, node)) {
+      childPages += 1
+      return childPagesSlotElement(childrenDirective.parse(node), childPages)
+    }
+    return undefined
+  }
+
+  /**
+   * The blocks a leaf directive draws: the navigation blocks, and a link with a
+   * stored block display (ADR-042), an ordinary anchor the page may later fill.
+   */
+  const claimedBlock = (node: LeafDirective): Element | undefined => {
+    if (claims(linkDirective, node)) return linkBlockSlot(linkDirective.parse(node))
+    return navigationBlock(node)
+  }
+
+  const leafDirective = (state: State, node: LeafDirective): Element =>
+    claimedBlock(node) ??
+    element(
       'section',
       {
         className: ['live-block'],
         'data-live-block': node.name,
         'aria-label': `Live block: ${node.name}`,
-        ...parameters,
       },
       state.wrap([element('p', {}, directiveSource(state, node, '::'))], true),
     )
-  }
 
   return {
     yaml: frontMatter,

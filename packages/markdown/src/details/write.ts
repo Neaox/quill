@@ -37,6 +37,8 @@ const BARE_URL = /^[^\s<>()\\]*$/u
 /**
  * Whether inline content is written on one line, and — for the HTML form,
  * where the summary sits between tags — without a `<` that would end it.
+ * Words, code, emphasis, plain links and inline directives; anything else is
+ * left to the directive, which can hold it.
  */
 function fitsOneLine(children: readonly PhrasingContent[], html: boolean): boolean {
   const plain = (value: string): boolean => !value.includes('\n') && !(html && value.includes('<'))
@@ -75,19 +77,25 @@ function summaryOf(node: Details): Paragraph | undefined {
   return isSummary(first) ? first : undefined
 }
 
-function bodyOf(node: Details): RootContent[] {
+function bodyOf(node: Details): Details['children'] {
   return node.children.filter((child) => !isSummary(child))
 }
 
-/** Whether the details can still be written in the syntax it was read in. */
-export function keepsSyntax(node: Details): boolean {
-  const attributes = Object.entries(node.attributes)
-  if (!attributes.every(([name]) => CARRIES[node.syntax].has(name))) return false
-  const html = node.syntax === 'html'
-  if (!fitsOneLine(summaryOf(node)?.children ?? [], html)) return false
-  if (html) return true
+/** How a details is written in its source form: GitHub's HTML, or Obsidian's marker and its kind. */
+type WrittenForm =
+  | { readonly syntax: 'html' }
+  | { readonly syntax: 'callout'; readonly type: string }
+
+/** The source form a details can still be written in, or undefined when it has outgrown it. */
+export function writtenForm(node: Details): WrittenForm | undefined {
+  const names = Object.keys(node.attributes)
+  if (!names.every((name) => CARRIES[node.syntax].has(name))) return undefined
+  if (!fitsOneLine(summaryOf(node)?.children ?? [], node.syntax === 'html')) return undefined
+  if (node.syntax === 'html') return { syntax: 'html' }
   const type = node.attributes['type']
   return typeof type === 'string' && MARKER_KIND.test(type)
+    ? { syntax: 'callout', type }
+    : undefined
 }
 
 /** The same details as Quill's own directive, which can say everything any form can. */
@@ -130,7 +138,7 @@ function writeHtml(node: Details, state: State, info: Info): string {
   }
   // Only another details' own tag may share the opening's HTML block; Markdown
   // written straight under it would be read as part of the HTML.
-  const nested = isDetails(first) && first.syntax === 'html' && keepsSyntax(first)
+  const nested = isDetails(first) && writtenForm(first)?.syntax === 'html'
   const afterOpening = Math.max(source?.afterOpening ?? 1, nested ? 0 : 1)
   const flow = state.containerFlow({ ...node, children: body }, info)
   return `${opening}${'\n'.repeat(1 + afterOpening)}${flow}${'\n'.repeat(1 + (source?.beforeClosing ?? 1))}</details>`
@@ -141,6 +149,7 @@ const LINE_BREAK: Text = { type: 'text', value: '\n' }
 
 function writeCallout(
   node: Details,
+  type: string,
   parent: Parameters<Handle>[1],
   state: State,
   info: Info,
@@ -149,10 +158,11 @@ function writeCallout(
   const marker =
     source !== undefined && source.read === calloutMarkerRead(node.attributes)
       ? source.marker
-      : `[!${node.attributes['type'] ?? ''}]${flag(node, 'open') ? '+' : '-'}`
+      : `[!${type}]${flag(node, 'open') ? '+' : '-'}`
   const title = summaryOf(node)?.children ?? []
   const body = bodyOf(node)
   const [lead, ...rest] = body
+  // A new callout's body is a paragraph of its own under its title, as Obsidian writes it.
   const joined = source?.joined === true && lead?.type === 'paragraph'
   const head: Paragraph = {
     type: 'paragraph',
@@ -170,10 +180,11 @@ function writeCallout(
 }
 
 const writeDetails: Handle = (node: Details, parent, state, info) => {
-  if (!keepsSyntax(node)) return state.handle(detailsDirectiveOf(node), parent, state, info)
-  return node.syntax === 'html'
+  const form = writtenForm(node)
+  if (form === undefined) return state.handle(detailsDirectiveOf(node), parent, state, info)
+  return form.syntax === 'html'
     ? writeHtml(node, state, info)
-    : writeCallout(node, parent, state, info)
+    : writeCallout(node, form.type, parent, state, info)
 }
 
 /**
@@ -183,10 +194,10 @@ const writeDetails: Handle = (node: Details, parent, state, info) => {
  * callout does after anything but another quote, which it would join.
  */
 const tightDetails: Join = (left, right) => {
-  if (!isDetails(right) || right.data?.sourceForm?.blankLines !== 0 || !keepsSyntax(right)) {
-    return undefined
-  }
-  if (right.syntax === 'html') return 0
+  if (!isDetails(right) || right.data?.sourceForm?.blankLines !== 0) return undefined
+  const form = writtenForm(right)
+  if (form === undefined) return undefined
+  if (form.syntax === 'html') return 0
   return left.type === 'blockquote' || (isDetails(left) && left.syntax === 'callout')
     ? undefined
     : 0

@@ -64,6 +64,9 @@ export function answerMergeRequest(request: MergeRequest): MergeResponse {
 /** Answers every merge request posted to `scope`; anything else is ignored. */
 export function serveMerges(scope: MergeWorkerScope): void {
   scope.addEventListener('message', ({ data }) => {
+    // A dedicated worker's `postMessage` answers its own page and takes no
+    // target origin; the rule is written for `window.postMessage`.
+    // oxlint-disable-next-line unicorn/require-post-message-target-origin
     if (isMergeRequest(data)) scope.postMessage(answerMergeRequest(data))
   })
 }

@@ -8,6 +8,7 @@ import {
   ALLOWED_MEDIA_TYPES,
   ATTACHMENT_URL_PREFIX,
   deleteAttachment,
+  documentsShowingAttachment,
   getAttachment,
   listAttachments,
   reviseAttachment,
@@ -32,6 +33,7 @@ import {
 import { resolveDocumentId } from '../application/references.ts'
 import type { AppDependencies } from '../dependencies.ts'
 import {
+  AppError,
   conflict,
   notFound,
   notModified,
@@ -244,6 +246,34 @@ export function attachmentRoutes(deps: AppDependencies): FastifyPluginAsync {
     }
 
     /**
+     * A revision is live the moment it is saved: every page that shows the
+     * file shows the new bytes, on the public site and through share links
+     * too, with no publish and no review. So when a published page shows it,
+     * saving one needs `publish` on the document that owns it and on every
+     * such page, which is what changing each of them otherwise asks (ADR-043,
+     * amendment of 2026-10-18). A file only drafts use needs `edit`, as
+     * before. The refusal names the pages the writer may see and counts the
+     * rest.
+     */
+    async function requirePublishWhereShown(
+      request: FastifyRequest,
+      row: AttachmentRow,
+    ): Promise<void> {
+      const showing = await documentsShowingAttachment(deps, row)
+      if (showing.length === 0) return
+      const authorizer = authorizerFor(deps, request)
+      const affected = [...new Set([row.documentId, ...showing])]
+      const verdicts = await Promise.all(affected.map(async (id) => authorizer.document(id)))
+      if (verdicts.every((access) => access.ok && access.value.capabilities.publish)) return
+      throw new AppError(
+        403,
+        'publish_required',
+        'A published page shows this file, so saving a new version changes it for its readers. That needs permission to publish every page that shows it.',
+        await visibleDocuments(authorizer, showing),
+      )
+    }
+
+    /**
      * The attachment behind a read, for a caller who may or may not have a
      * session.
      *
@@ -351,7 +381,8 @@ export function attachmentRoutes(deps: AppDependencies): FastifyPluginAsync {
             'Say which version of the file this saves over, as ?expectedVersion=<n>.',
           )
         }
-        await authorisedAttachment(request, 'edit')
+        const row = await authorisedAttachment(request, 'edit')
+        await requirePublishWhereShown(request, row)
         const budget = requireUploadBudget(request, session.userId)
         const part = await uploadedFile(request)
 
@@ -528,14 +559,15 @@ async function visibleDocuments(
   authorizer: Authorizer,
   documents: readonly DocumentId[],
 ): Promise<{ documents: string[]; hidden: number }> {
-  const visible: string[] = []
-  let hidden = 0
-  for (const documentId of documents) {
-    const access = await authorizer.document(documentId)
-    if (access.ok && access.value.capabilities.view) visible.push(documentId)
-    else hidden += 1
-  }
-  return { documents: visible, hidden }
+  const verdicts = await Promise.all(
+    documents.map(
+      async (documentId) => [documentId, await authorizer.document(documentId)] as const,
+    ),
+  )
+  const visible = verdicts
+    .filter(([, access]) => access.ok && access.value.capabilities.view)
+    .map(([documentId]) => documentId)
+  return { documents: visible, hidden: documents.length - visible.length }
 }
 
 /** The format's everyday name, for a refusal that has to say what it tried to read. */

@@ -68,7 +68,7 @@ interface Animated {
   inView: boolean
   /** Whether it has entered view once, which is when it plays unasked. */
   seen: boolean
-  /** What is left of its current turn; nought while it rests. */
+  /** What is left of its current turn, in milliseconds of the page's monotonic clock; nought while it rests. */
   remaining: number
   startedAt: number
   timer: ReturnType<typeof setTimeout> | undefined
@@ -122,7 +122,25 @@ interface Player {
 
 const players = new WeakMap<Document, Player>()
 
-function createPlayer(document: Document): Player {
+/**
+ * The time a turn is measured against, injected so a test can move it. This
+ * package has no dependencies, so it states the one thing it needs rather than
+ * importing a `Clock` port.
+ */
+export interface AnimationClock {
+  now(): number
+}
+
+/** Monotonic, so a turn is not stretched or cut short by the system clock changing. */
+const systemClock: AnimationClock = { now: () => performance.now() }
+
+function stopTimer(item: Animated): void {
+  if (item.timer === undefined) return
+  clearTimeout(item.timer)
+  item.timer = undefined
+}
+
+function createPlayer(document: Document, clock: AnimationClock): Player {
   const animated = new Map<Element, Animated>()
   const hidden = () => document.visibilityState === 'hidden'
 
@@ -131,16 +149,10 @@ function createPlayer(document: Document): Player {
     item.picture.setAttribute('data-state', playing ? 'playing' : 'resting')
   }
 
-  const stopTimer = (item: Animated) => {
-    if (item.timer === undefined) return
-    clearTimeout(item.timer)
-    item.timer = undefined
-  }
-
   /** Plays what is left of its turn, if it is in view on a page being looked at. */
   const resume = (item: Animated) => {
     if (item.remaining <= 0 || item.timer !== undefined || !item.inView || hidden()) return
-    item.startedAt = Date.now()
+    item.startedAt = clock.now()
     item.timer = setTimeout(() => {
       item.timer = undefined
       item.remaining = 0
@@ -153,7 +165,7 @@ function createPlayer(document: Document): Player {
   const pause = (item: Animated) => {
     if (item.timer === undefined) return
     stopTimer(item)
-    item.remaining -= Date.now() - item.startedAt
+    item.remaining -= clock.now() - item.startedAt
     show(item, false)
   }
 
@@ -249,10 +261,10 @@ function createPlayer(document: Document): Player {
   }
 }
 
-function playerFor(document: Document): Player {
+function playerFor(document: Document, clock: AnimationClock): Player {
   const existing = players.get(document)
   if (existing !== undefined) return existing
-  const player = createPlayer(document)
+  const player = createPlayer(document, clock)
   players.set(document, player)
   return player
 }
@@ -261,9 +273,12 @@ function playerFor(document: Document): Player {
  * Plays the animated emoji in `root` briefly, as above. Returns what gives
  * every picture back as it came and stops watching.
  */
-export function enhanceAnimatedImages(root: Element | Document): () => void {
+export function enhanceAnimatedImages(
+  root: Element | Document,
+  clock: AnimationClock = systemClock,
+): () => void {
   const document = 'documentElement' in root ? root : root.ownerDocument
-  const player = playerFor(document)
+  const player = playerFor(document, clock)
   player.roots += 1
   const mine = () => [...player.animated.values()].filter((item) => item.root === root)
 

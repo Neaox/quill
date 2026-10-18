@@ -78,6 +78,26 @@ export interface WorkspaceSummaryDto extends WorkspaceDto {
   }
 }
 
+/** `GET /api/home`: the signed-in home's figures and its two short lists, already bounded. */
+export type HomeSummaryDto = GetBody<'/api/home'>
+
+/** `GET /api/documents/:id/review`: the open review request on a document, or its latest closed one (ADR-052). */
+export type ReviewRequestDto = NonNullable<GetBody<'/api/documents/{id}/review'>['request']>
+
+/** One reviewer's place on a request: a person or a group, and whether they have answered. */
+export type ReviewAssignmentDto = ReviewRequestDto['assignments'][number]
+
+/** `GET /api/documents/:id/reviewer-candidates`: the people and groups who could be asked. */
+export type ReviewerCandidates = GetBody<'/api/documents/{id}/reviewer-candidates'>
+
+/** `GET /api/me/attention`: what is waiting on the signed-in person (ADR-053). */
+export type AttentionItem = GetBody<'/api/me/attention'>['items'][number]
+
+/** `GET /api/me/notifications`: what has happened that concerns the signed-in person (ADR-052). */
+export type NotificationsDto = GetBody<'/api/me/notifications'>
+
+export type NotificationItem = NotificationsDto['items'][number]
+
 export interface DocumentDto {
   readonly id: string
   /** The document's ten-character public handle, stable for its lifetime (ADR-035). */
@@ -117,14 +137,6 @@ export interface CreateDocumentResponse {
   readonly warnings: readonly CreateDocumentWarning[]
 }
 
-/** `GET /workspaces/:id/tree/children`: one page of one parent's children (ADR-049). */
-export type TreeChildrenPage = GetBody<'/api/workspaces/{id}/tree/children'>
-
-export type TreeChildDto = TreeChildrenPage['nodes'][number]
-
-/** `GET /documents/:id/tree-position`: where a document is, and what is beneath it (ADR-049). */
-export type TreePosition = GetBody<'/api/documents/{id}/tree-position'>
-
 /** `GET/POST/PATCH /(workspaces/:id|collections/:id)/collections`'s shape (`schema.gen.d.ts`'s `Collection`). */
 export type CollectionDto = components['schemas']['Collection']
 
@@ -133,7 +145,16 @@ export interface TreeCollectionDto {
   readonly name: string
   readonly slug: string
   readonly documents: readonly TreeNode[]
+  /** How many documents sit at the top level; more than `documents` when cut or paged. */
+  readonly documentCount?: number
+  /** Where `documents` starts among them. */
+  readonly documentsOffset?: number
+  /** Every document in the collection the reader can see, nesting included. */
+  readonly total?: number
 }
+
+/** `GET /workspaces/:id/tree/children`'s response: one page of a list in the tree. */
+export type TreeChildrenResponse = GetBody<'/api/workspaces/{id}/tree/children'>
 
 /** `GET /workspaces/:id/tree`'s response (`docs/architecture/api-contract-m2.md`). */
 export interface WorkspaceTreeResponse {
@@ -147,6 +168,11 @@ export interface DraftDto {
   readonly ast: unknown
   readonly updatedAt: string
 }
+
+/** `POST /documents/:id/draft/revert`: the draft's new version, and what it held before. */
+export type PutBackResponse = Json<
+  NonNullable<paths['/api/documents/{id}/draft/revert']['post']>['responses'][200]
+>
 
 export interface SaveDraftResponse {
   readonly draftVersion: number
@@ -182,6 +208,9 @@ export type OutlineEntry = components['schemas']['OutlineEntry']
 
 /** `GET /documents/:id/rendered`: the cached body, outline, and live-block slots (ADR-031). */
 export type RenderedDocument = GetBody<'/api/documents/{id}/rendered'>
+
+/** `GET /documents/:id/children`: what fills a child pages slot, for this reader (ADR-058). */
+export type ChildPagesList = GetBody<'/api/documents/{id}/children'>
 
 /** `GET /documents/:id/envelope`: everything that is a property of now, not of the revision. */
 export type DocumentEnvelope = GetBody<'/api/documents/{id}/envelope'>
@@ -309,6 +338,22 @@ export type OidcProviderSummary = OidcProviderList['providers'][number]
  */
 export type SearchResults = GetBody<'/api/search'>
 
+/**
+ * The counts that let a results page offer ways to narrow itself
+ * (`facets=` on `GET /api/search`): one list of values per facet asked for.
+ */
+export type SearchFacets = NonNullable<SearchResults['facets']>
+
+/** The facets the server can count, in the order the page shows them. */
+export type FacetName = keyof SearchFacets
+
+/**
+ * One value of a facet: `value` is exactly what follows the filter key
+ * (`tag:<value>`), `label` is what to show, `count` is over the whole match
+ * set rather than the page.
+ */
+export type FacetValue = NonNullable<SearchFacets[FacetName]>[number]
+
 /** One matching document, wherever it lives. */
 export type SearchHit = SearchResults['current'][number]
 
@@ -320,6 +365,16 @@ export type SearchGroup = SearchResults['elsewhere'][number]
  * HTML (ADR-010). Turning it into marks is `features/search/snippet.ts`'s job.
  */
 export type SearchSnippet = SearchHit['snippet']
+
+/** `GET /search/suggestions`: the values a filter could take, each as it is written and as it is shown. */
+export type SearchSuggestions = GetBody<'/api/search/suggestions'>
+
+export type SearchSuggestion = SearchSuggestions['suggestions'][number]
+
+/** The filters the server can suggest values for. */
+export type SearchSuggestionField = NonNullable<
+  paths['/api/search/suggestions']['get']['parameters']['query']
+>['field']
 
 /* --- Share links (`docs/architecture/api-contract-share-links.md`) --------- */
 
@@ -356,3 +411,9 @@ export type SharedNode = components['schemas']['SharedNode']
 
 /** What a reader is told about the link they are holding: nothing about who made it. */
 export type SharedLink = SharedDocument['link']
+
+/** `GET /api/groups`: one group with the unit it belongs to and how many people are in it. */
+export type GroupSummaryDto = GetBody<'/api/groups'>['groups'][number]
+
+/** `GET /api/people`: somebody an administrator can add to a group. */
+export type PersonDto = GetBody<'/api/people'>['people'][number]

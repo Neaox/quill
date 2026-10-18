@@ -3,10 +3,11 @@ import type { Command } from '@tiptap/pm/state'
 import { Selection, TextSelection } from '@tiptap/pm/state'
 import { useEditorState } from '@tiptap/react'
 import type { Editor } from '@tiptap/react'
-import { useMemo } from 'react'
+import { useLayoutEffect, useRef } from 'react'
 import { tv } from 'tailwind-variants'
 
 import { topLevelBlock } from '../block/commands.ts'
+import { pageLayoutFrame } from '../document/measuring.ts'
 import { nodeType } from '../schema/node-type.ts'
 
 /**
@@ -50,8 +51,6 @@ export const openInsertMenu: Command = (state, dispatch) => {
 
 /** How far the button's leading edge sits before the block's: its width and a small gap. */
 const GUTTER = 34
-/** How far below a table's top the button sits: clear of the handle on its corner. */
-const TABLE_INSET = 16
 /** The button's own height, `size-6`, so it can be centred on the first line. */
 const BUTTON = 27
 
@@ -72,15 +71,6 @@ export function gutterPosition(editor: Editor): GutterPosition | null {
   if (!(dom instanceof HTMLElement) || frame === null) return null
   const box = dom.getBoundingClientRect()
   const origin = frame.getBoundingClientRect()
-  // A table has handles on its corner, at its top-left, where the gutter's "+" would
-  // be; it sits beside the header row instead, below them.
-  const table = dom.matches('.table-editor') ? dom : dom.querySelector('.table-editor')
-  if (table !== null) {
-    return {
-      top: table.getBoundingClientRect().top + TABLE_INSET - origin.top,
-      left: box.left - origin.left - GUTTER,
-    }
-  }
   // Centred on the block's first line, so it sits level with a heading's
   // words as well as a paragraph's.
   const line = editor.view.coordsAtPos(Selection.near(editor.state.doc.resolve(block.pos + 1)).from)
@@ -111,18 +101,34 @@ export function BlockInserter({ editor }: BlockInserterProps) {
       return pos === undefined ? undefined : `${String(pos)}:${String(mounted)}`
     },
   })
-  // Measured when the block changes, not on every keystroke: reading the
-  // layout after each edit would make the browser lay the page out again
-  // between keys, which a long document cannot afford (section 31).
-  const position = useMemo(
-    () => (editor === null || block === undefined ? null : gutterPosition(editor)),
-    [editor, block],
-  )
+  const root = useRef<HTMLDivElement | null>(null)
+  // Measured when the block changes, not on every keystroke, and in the
+  // page's layout frame rather than while React renders: reading the layout
+  // straight after ProseMirror has written makes the browser lay a long
+  // document out again between keys (section 31, `document/measuring.ts`).
+  useLayoutEffect(() => {
+    const element = root.current
+    if (editor === null || block === undefined || element === null) return undefined
+    const frame = pageLayoutFrame()
+    const owner = {}
+    frame.schedule(owner, () => {
+      const position = gutterPosition(editor)
+      return () => {
+        element.hidden = position === null
+        if (position === null) return
+        element.style.top = `${String(position.top)}px`
+        element.style.left = `${String(position.left)}px`
+      }
+    })
+    return () => {
+      frame.cancel(owner)
+    }
+  }, [editor, block])
 
-  if (editor === null || position === null) return null
+  if (editor === null || block === undefined) return null
 
   return (
-    <div className={styles.root()} style={position}>
+    <div ref={root} className={styles.root()}>
       <button
         type="button"
         aria-label="Insert a block"

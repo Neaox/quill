@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { ExtractedText, PublicNavigationNode } from '@quill/application'
 import type { DocumentId } from '@quill/domain'
+import { raw } from './html.ts'
 
 import {
   articleStructuredData,
@@ -8,11 +9,14 @@ import {
   firstParagraph,
   renderDocumentMain,
   renderIndexMain,
+  renderBotPage,
   renderNotFoundMain,
   renderSearchMain,
   renderSnippet,
   unwrapArticle,
 } from './pages.ts'
+import { OPEN_WEB_LIMITS } from '../infrastructure/http/open-web-client.ts'
+import { DEFAULT_RATE_LIMITS } from '../infrastructure/link-preview/rate-limits.ts'
 
 const node = (title: string, path: string): PublicNavigationNode => ({
   documentId: path as DocumentId,
@@ -34,6 +38,27 @@ describe('the document page', () => {
     expect(main.value).toContain('<article class="layout-grid prose" data-rules="hairline">')
     expect(main.value).toContain('<div class="layout-wide">wide</div>')
     expect(main.value).not.toContain('<article><h1>')
+  })
+
+  it('puts the byline directly under the title, whoever supplied the title', () => {
+    const byline = raw('<div class="byline">facts</div>')
+    const authored = renderDocumentMain({
+      collectionName: 'Guides',
+      title: 'Rate limits',
+      bodyHtml: '<article><h1 id="rate-limits">Rate limits</h1><p>Body</p></article>',
+      rules: 'hairline',
+      byline,
+    }).value
+    expect(authored).toMatch(/<\/h1><div class="byline">facts<\/div><p>Body<\/p>/u)
+
+    const supplied = renderDocumentMain({
+      collectionName: 'Guides',
+      title: 'Rate limits',
+      bodyHtml: '<article><h2>Only a section</h2></article>',
+      rules: 'hairline',
+      byline,
+    }).value
+    expect(supplied).toMatch(/<h1>Rate limits<\/h1>\s*<div class="byline">facts<\/div>/u)
   })
 
   it('names the collection above the title, inside the grid where the title is', () => {
@@ -126,39 +151,103 @@ describe('the site index', () => {
 
 describe('the search results', () => {
   const snippet = { text: 'A rate limit of 100 a minute.', ranges: [{ start: 2, end: 12 }] }
+  const published = new Date('2026-03-04T09:00:00.000Z')
+  const row = (title: string, path: string, trail: readonly string[] = []) => ({
+    title,
+    path,
+    snippet,
+    trail,
+    publishedAt: published,
+  })
+  const view = (overrides: Partial<Parameters<typeof renderSearchMain>[0]> = {}) => ({
+    siteSlug: 'acme-docs',
+    query: 'rate limit',
+    results: [row('Rate limits', 'guides/rate-limits')],
+    refusal: null,
+    more: null,
+    ...overrides,
+  })
 
   it('counts the results and links each one', () => {
-    const main = renderSearchMain({
-      siteSlug: 'acme-docs',
-      query: 'rate limit',
-      results: [{ title: 'Rate limits', path: 'guides/rate-limits', snippet }],
-    })
+    const main = renderSearchMain(view())
     expect(main.value).toContain('1 result for')
     expect(main.value).toContain('href="/s/acme-docs/guides/rate-limits"')
     expect(main.value).toContain('<mark>rate limit</mark>')
   })
 
   it('pluralises', () => {
-    const main = renderSearchMain({
-      siteSlug: 'acme-docs',
-      query: 'x',
-      results: [
-        { title: 'One', path: 'g/one', snippet },
-        { title: 'Two', path: 'g/two', snippet },
-      ],
-    })
+    const main = renderSearchMain(
+      view({ results: [row('One', 'g/one'), row('Two', 'g/two')], query: 'x' }),
+    )
     expect(main.value).toContain('2 results for')
   })
 
-  it('says nothing matched, and escapes the query a stranger typed', () => {
-    const main = renderSearchMain({
-      siteSlug: 'acme-docs',
-      query: '<script>alert(1)</script>',
-      results: [],
-    })
+  it('says nothing matched, escapes the query a stranger typed, and says what to try', () => {
+    const main = renderSearchMain(view({ query: '<script>alert(1)</script>', results: [] }))
     expect(main.value).toContain('Nothing matched')
+    expect(main.value).toContain('different words')
     expect(main.value).not.toContain('<script>')
     expect(main.value).toContain('&lt;script&gt;')
+  })
+
+  it('names the section and the date each result was published, as machine-readable time', () => {
+    const main = renderSearchMain(view({ results: [row('Limits', 'g/limits', ['Guides', 'API'])] }))
+    expect(main.value).toContain('Guides')
+    expect(main.value).toContain('API')
+    expect(main.value).toMatch(
+      /<time datetime="2026-03-04T09:00:00\.000Z"\s*>\s*4 March 2026\s*<\/time\s*>/u,
+    )
+  })
+
+  it('shows no trail for a page at the top of the site', () => {
+    expect(renderSearchMain(view()).value).not.toContain('site-result-trail')
+  })
+
+  it('does not claim a total when there is more: it says how many are shown and links to the rest', () => {
+    const main = renderSearchMain(view({ more: '/s/acme-docs/search?q=rate+limit&cursor=abc' }))
+    expect(main.value).not.toContain('<p>1 result for')
+    expect(main.value).toContain('Showing the first 1 result for')
+    expect(main.value).toContain('href="/s/acme-docs/search?q=rate+limit&amp;cursor=abc"')
+    expect(main.value).toContain('More results')
+  })
+
+  it('offers no link to more when the results are complete', () => {
+    expect(renderSearchMain(view()).value).not.toContain('More results')
+  })
+
+  it('explains a query that could not be read, with the parser’s own words, escaped', () => {
+    const main = renderSearchMain(
+      view({
+        query: '"unclosed <b>',
+        results: [],
+        refusal: { kind: 'unparsed', message: 'The quote at 1 is never closed <b>' },
+      }),
+    )
+    expect(main.value).toContain('could not be read')
+    expect(main.value).toContain('The quote at 1 is never closed &lt;b&gt;')
+    expect(main.value).not.toContain('Nothing matched')
+  })
+
+  it('explains a query that only leaves things out', () => {
+    const main = renderSearchMain(
+      view({ query: '-draft', results: [], refusal: { kind: 'nothing-to-search-for' } }),
+    )
+    expect(main.value).toContain('word or phrase to look for')
+    expect(main.value).not.toContain('Nothing matched')
+  })
+
+  it('says searching by person, team or property is not offered here, and does not pretend nothing matched', () => {
+    const main = renderSearchMain(
+      view({ query: 'by:ada', results: [], refusal: { kind: 'people-not-offered' } }),
+    )
+    expect(main.value).toContain('not offered on this site')
+    expect(main.value).not.toContain('Nothing matched')
+  })
+
+  it('invites a search when nothing has been asked', () => {
+    const main = renderSearchMain(view({ query: '', results: [] }))
+    expect(main.value).toContain('Type a word or phrase')
+    expect(main.value).not.toContain('Nothing matched')
   })
 })
 
@@ -195,6 +284,17 @@ describe('the not-found page', () => {
 describe('firstParagraph', () => {
   it('is the first line of the extracted prose', () => {
     expect(firstParagraph(text('First paragraph.\nSecond paragraph.'))).toBe('First paragraph.')
+  })
+
+  it('says a link to a document in words, never by the id it is written with', () => {
+    const id = '0192f0a4-7c1e-7a3b-8d1e-4a5b6c7d8e9f'
+    expect(firstParagraph(text(`See /d/${id} and /w/team/d/plan-k7m3q9v2xd#steps.`))).toBe(
+      'See a linked document and a linked document',
+    )
+    // Somebody else's address that happens to have a `/d/` in it is theirs, and stays.
+    expect(firstParagraph(text('See https://docs.example/document/d/abc now.'))).toBe(
+      'See https://docs.example/document/d/abc now.',
+    )
   })
 
   it('skips leading blank lines', () => {
@@ -256,5 +356,76 @@ describe('articleStructuredData', () => {
       }),
     ) as Record<string, unknown>
     expect(data).not.toHaveProperty('description')
+  })
+})
+
+describe('the bot page', () => {
+  const view = {
+    userAgent: 'ExampleBot/1 (+https://docs.example.com/bot)',
+    instanceName: 'Acme Docs',
+    limits: { timeoutSeconds: 6, maxRedirects: 5, pageKiB: 512, imageMiB: 5 },
+    perHost: { burst: 5, perSecond: 0.5 },
+  }
+
+  it('says who is asking, what is fetched, how much and how often, and how to stop it', () => {
+    // The template is reflowed source; what matters is the words, not where the line broke.
+    const page = renderBotPage(view).replaceAll(/\s+/gu, ' ')
+    expect(page).toContain('ExampleBot/1 (+https://docs.example.com/bot)')
+    expect(page).toContain('Acme Docs')
+    expect(page).toContain('at most 512 KiB')
+    expect(page).toContain('at most 5 MiB')
+    expect(page).toContain('more than 5 redirects')
+    expect(page).toContain('at most 5 requests')
+    expect(page).toContain('one every 2 seconds')
+    expect(page).toContain('403')
+    expect(page).toContain('robots.txt')
+  })
+
+  it('says nothing about services with an API when there are none', () => {
+    expect(renderBotPage(view)).not.toContain('API')
+  })
+
+  it('names the services it asks through their API, and what it takes from them', () => {
+    const page = renderBotPage({
+      ...view,
+      connectors: [{ name: 'GitHub', apiHost: 'api.github.com' }],
+    }).replaceAll(/\s+/gu, ' ')
+    expect(page).toContain('GitHub')
+    expect(page).toContain('api.github.com')
+    expect(page).toContain('only what anyone can open without signing in')
+    expect(page).toContain('never sent to any other site')
+  })
+
+  it('escapes a connector’s name', () => {
+    const page = renderBotPage({
+      ...view,
+      connectors: [{ name: '<b>x</b>', apiHost: 'api.example.com' }],
+    })
+    expect(page).not.toContain('<b>x</b>')
+  })
+
+  it('is a complete page with a language, a title and one main landmark', () => {
+    const page = renderBotPage(view)
+    expect(page.startsWith('<!doctype html>')).toBe(true)
+    expect(page).toContain('<html lang="en">')
+    expect(page).toContain('<title>Acme Docs link preview bot</title>')
+    expect(page.match(/<main>/gu)).toHaveLength(1)
+    expect(page.match(/<h1>/gu)).toHaveLength(1)
+  })
+
+  it('escapes the instance name, which an administrator typed', () => {
+    const page = renderBotPage({ ...view, instanceName: '<script>alert(1)</script>' })
+    expect(page).not.toContain('<script>')
+    expect(page).toContain('&lt;script&gt;')
+  })
+
+  it('promises exactly what the client enforces', () => {
+    expect(OPEN_WEB_LIMITS).toEqual({
+      timeoutSeconds: 6,
+      maxRedirects: 5,
+      pageKiB: 512,
+      imageMiB: 5,
+    })
+    expect(DEFAULT_RATE_LIMITS.perHost).toEqual({ capacity: 5, refillPerSecond: 0.5 })
   })
 })

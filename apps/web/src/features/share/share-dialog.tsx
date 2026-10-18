@@ -15,14 +15,12 @@ import {
 
 import {
   ApiError,
-  useCreateShareLink,
   useMe,
-  useRevokeShareLink,
-  useShareLinks,
   type CreatedShareLink,
   type ShareLinkDto,
   type ShareLinkScope,
 } from '../../lib/api/index.ts'
+import { useCreateShareLink, useRevokeShareLink, useShareLinks } from '../../lib/api/share-links.ts'
 import { now } from '../../lib/time/clock.ts'
 import { SelectField } from '../../lib/forms/select-field.tsx'
 import { FormError } from '../../lib/forms/form-error.tsx'

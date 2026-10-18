@@ -2,7 +2,7 @@ import { Type } from '@sinclair/typebox'
 import { describe, expect, it, vi } from 'vitest'
 
 import { createFrameChannel, jsonStringCodec } from './frame-channel.ts'
-import type { FrameRejection } from './frame-channel.ts'
+import type { FrameRejection, FrameTarget } from './frame-channel.ts'
 
 const ORIGIN = 'https://draw.example.com'
 
@@ -13,8 +13,15 @@ const Inbound = Type.Union([
 
 type Outbound = { readonly action: 'load'; readonly xml: string }
 
+/** A message as the browser delivers one, from `source` on `origin`. */
+function deliver(data: unknown, origin: string, source: unknown): void {
+  window.dispatchEvent(
+    new MessageEvent('message', { data, origin, source: source as MessageEventSource }),
+  )
+}
+
 function setup() {
-  const frame = { postMessage: vi.fn() }
+  const frame = { postMessage: vi.fn<FrameTarget['postMessage']>() }
   const received: unknown[] = []
   const rejected: FrameRejection[] = []
   const channel = createFrameChannel({
@@ -27,9 +34,7 @@ function setup() {
     onReject: (reason) => rejected.push(reason),
   })
   const post = (data: unknown, origin = ORIGIN, source: unknown = frame) => {
-    window.dispatchEvent(
-      new MessageEvent('message', { data, origin, source: source as MessageEventSource }),
-    )
+    deliver(data, origin, source)
   }
   return { frame, channel, received, rejected, post }
 }

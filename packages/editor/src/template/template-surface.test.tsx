@@ -1,5 +1,5 @@
 import { parseDocument, serializeDocument } from '@quill/markdown'
-import { act, render, screen, within } from '@testing-library/react'
+import { act, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { createRef } from 'react'
 import { describe, expect, it } from 'vitest'
@@ -59,44 +59,6 @@ function markdown(ref: { current: DocumentEditorHandle | null }): string {
   return serializeDocument({ frontMatter: {}, ast: handle.toMdast() })
 }
 
-describe('presenter notes in the editor', () => {
-  const NOTES = ['## Rollout', '', ':::notes', 'Pause after the table.', ':::', ''].join('\n')
-
-  it('says what the block is, as a small heading in the box it already has', () => {
-    open(NOTES)
-
-    const notes = screen.getByRole('note', { name: 'Presenter notes' })
-    const heading = within(notes).getByText('Presenter notes')
-    // Drawn as a callout draws its title (the icon is the stylesheet's), and not part of what is written.
-    expect(heading).toHaveClass('callout-label')
-    expect(heading).toHaveAttribute('contenteditable', 'false')
-    expect(heading).toHaveAttribute('aria-hidden', 'true')
-    expect(within(notes).getByText('Pause after the table.')).toBeInTheDocument()
-  })
-
-  it('keeps the box a template block has, not a callout’s', () => {
-    open(NOTES)
-
-    const notes = screen.getByRole('note', { name: 'Presenter notes' })
-    expect(notes).toHaveClass('directive-notes')
-    expect(notes).not.toHaveClass('callout')
-  })
-
-  it('writes the same Markdown it read: the heading is the view’s, not the document’s', async () => {
-    const { ref, user } = open(NOTES)
-
-    await user.click(screen.getByRole('textbox', { name: 'Document' }))
-    act(() => {
-      ref.current?.editor?.commands.focus('end')
-    })
-    await user.keyboard('!')
-
-    expect(markdown(ref)).toBe(
-      ['## Rollout', '', ':::notes', 'Pause after the table.!', ':::', ''].join('\n'),
-    )
-  })
-})
-
 describe('the template surface', () => {
   it('shows guidance as a dismissible hint card', async () => {
     const { user, ref } = open()
@@ -125,7 +87,7 @@ describe('the template surface', () => {
 
   it('names a callout by the tone it carries', () => {
     open()
-    expect(screen.getByRole('group', { name: 'Callout: warning' })).toBeVisible()
+    expect(screen.getByRole('group', { name: 'Warning callout' })).toBeVisible()
   })
 
   it('renders the template surface without an accessibility violation', async () => {

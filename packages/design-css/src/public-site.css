@@ -915,6 +915,34 @@ a {
   color: var(--site-ink);
 }
 
+/*
+ * The section being read (`aria-current="location"`, set by the reader script
+ * as the page scrolls): the link in the ink and a little heavier, with a short
+ * accent bar laid over the list's rule beside it, so it is marked by position
+ * and weight as well as colour.
+ */
+.site-toc a[aria-current]:not([aria-current='false']) {
+  position: relative;
+  color: var(--site-ink);
+  font-weight: 500;
+}
+
+.site-toc a[aria-current]:not([aria-current='false'])::before {
+  content: '';
+  position: absolute;
+  inset-block: 0.25rem;
+  inset-inline-start: calc(-0.625rem - 1px);
+  inline-size: 2px;
+  border-radius: 1px;
+  background-color: var(--color-accent);
+}
+
+@media (forced-colors: active) {
+  .site-toc a[aria-current]:not([aria-current='false'])::before {
+    background-color: Highlight;
+  }
+}
+
 .site-toc .toc-depth-3 a {
   padding-inline-start: 0.75rem;
 }
@@ -1030,6 +1058,23 @@ a {
   margin: 0.25rem 0 0;
   color: var(--site-ink-2);
   font-size: 0.875rem;
+}
+
+.site-result-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 0.75rem;
+  margin: 0.375rem 0 0;
+  color: var(--site-ink-3);
+  font-size: 0.8125rem;
+}
+
+.site-results-more {
+  margin: 1.25rem 0 0;
+}
+
+.site-results-more a {
+  font-weight: 600;
 }
 
 .site-result-snippet mark {

@@ -44,6 +44,15 @@ describe('UserRepository', () => {
     expect(await users.findByEmail('ada@example.com')).toEqual(created)
   })
 
+  it('lists users by id in one query, and none for an empty list or an unknown id', async () => {
+    const id = userId('00000000-0000-4000-8000-000000000001')
+    await users.create({ id, email: 'ada@example.com', displayName: 'Ada', now: NOW })
+
+    expect((await users.listByIds([id])).map((user) => user.displayName)).toEqual(['Ada'])
+    expect(await users.listByIds([userId('00000000-0000-4000-8000-000000000099')])).toEqual([])
+    expect(await users.listByIds([])).toEqual([])
+  })
+
   it('returns null for an unknown id or email', async () => {
     expect(await users.findById(userId('00000000-0000-4000-8000-000000000099'))).toBeNull()
     expect(await users.findByEmail('nobody@example.com')).toBeNull()
@@ -55,6 +64,51 @@ describe('UserRepository', () => {
     const verifiedAt = new Date('2026-01-02T00:00:00.000Z')
     await users.markEmailVerified(id, verifiedAt)
     expect((await users.findById(id))?.emailVerifiedAt).toEqual(verifiedAt)
+  })
+
+  describe('the people directory', () => {
+    async function person(n: number, email: string, displayName: string, verified = true) {
+      const id = userId(`00000000-0000-4000-8000-0000000001${String(n).padStart(2, '0')}`)
+      await users.create({ id, email, displayName, now: NOW })
+      if (verified) await users.markEmailVerified(id, NOW)
+      return id
+    }
+
+    it('names many verified addresses in one query, whatever their case', async () => {
+      await person(1, 'ada@example.com', 'Ada Lovelace')
+      await person(2, 'grace@example.com', 'Grace Hopper')
+      await person(3, 'mallory@example.com', 'Mallory', false)
+      const found = await users.findVerifiedByEmails([
+        'ADA@example.com',
+        'grace@example.com',
+        'mallory@example.com',
+        'nobody@example.com',
+      ])
+      expect(found.map((user) => user.displayName).toSorted()).toEqual([
+        'Ada Lovelace',
+        'Grace Hopper',
+      ])
+      expect(await users.findVerifiedByEmails([])).toEqual([])
+    })
+
+    it('searches verified people by name or address, by name, a few at a time', async () => {
+      await person(1, 'ada@example.com', 'Ada Lovelace')
+      await person(2, 'grace@example.com', 'Grace Hopper')
+      await person(3, 'hop@example.com', 'Unverified Hopper', false)
+      await person(4, '100%_sure@example.com', 'Percy')
+      expect((await users.searchVerified('hop', 8)).map((user) => user.displayName)).toEqual([
+        'Grace Hopper',
+      ])
+      expect((await users.searchVerified('EXAMPLE', 2)).map((user) => user.displayName)).toEqual([
+        'Ada Lovelace',
+        'Grace Hopper',
+      ])
+      // What was typed is matched literally, never as a pattern.
+      expect((await users.searchVerified('%_', 8)).map((user) => user.displayName)).toEqual([
+        'Percy',
+      ])
+      expect(await users.searchVerified('_', 8)).toHaveLength(1)
+    })
   })
 
   it('sets and unsets instance admin', async () => {

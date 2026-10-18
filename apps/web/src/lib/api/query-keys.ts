@@ -17,6 +17,8 @@ export const queryKeys = {
   /** The sign-in page's provider buttons (ADR-011). One list per instance. */
   oidcProviders: ['oidc-providers'] as const,
   units: (parentId?: string) => ['units', parentId ?? null] as const,
+  /** Every unit at every depth, flat: what a unit picker reads. */
+  allUnits: () => ['units', 'all'] as const,
   /**
    * The organisation's settings (ADR-034). One entry for the instance: every
    * screen that renders with the theme, the navigation or the policies reads
@@ -49,6 +51,20 @@ export const queryKeys = {
   /** Every secret's name and key id. Never a value: none is ever sent. */
   secrets: () => ['secrets'] as const,
   workspaceList: () => ['workspace-list'] as const,
+  /** Every group, with its unit path and member count (instance admin). */
+  groups: () => ['groups'] as const,
+  /** Who is in one group. */
+  groupMembers: (groupId: string) => ['groups', groupId, 'members'] as const,
+  /** People whose name or email starts with what was typed, for adding to a group. */
+  groupPeople: (query: string) => ['group-people', query] as const,
+  /**
+   * The signed-in home's summary. One entry per session; the home page asks
+   * again every time it is opened (`staleTime` is zero), so no write needs to
+   * reach it.
+   */
+  home: (scope?: string) => ['home', scope ?? 'default'] as const,
+  /** Every scope of the home summary, for a write that changes all of them. */
+  homeAll: () => ['home'] as const,
   /**
    * A workspace is addressable two ways — its id and its slug (ADR-035) — and
    * a query is keyed by whichever spelling asked for it. `workspaces` is the
@@ -58,19 +74,6 @@ export const queryKeys = {
   workspace: (idOrSlug: string) => ['workspace', idOrSlug] as const,
   workspaceDocuments: (workspaceId: string) => ['workspace-documents', workspaceId] as const,
   workspaceTree: (workspaceId: string) => ['workspace-tree', workspaceId] as const,
-  /*
-   * What the navigation tree is built from, a level at a time (ADR-049). Every key begins with
-   * the workspace tree's, so what already invalidates that — a document made, renamed, moved or
-   * deleted — invalidates these too, and only the levels that are open are asked for again.
-   */
-  treeCollections: (workspaceId: string) => ['workspace-tree', workspaceId, 'collections'] as const,
-  treeChildren: (
-    workspaceId: string,
-    collectionId: string,
-    parentId: string | null,
-    cursor: string | null,
-  ) => ['workspace-tree', workspaceId, 'children', collectionId, parentId, cursor] as const,
-  treePosition: (documentId: string) => ['tree-position', documentId] as const,
   /**
    * A document is addressable three ways (its id, its short key, and a
    * title-slug plus that key — ADR-035), and a query is keyed by whichever
@@ -91,11 +94,28 @@ export const queryKeys = {
    * an invalidation of the current one, and `undefined` (the head revision)
    * is its own entry that a publish invalidates.
    */
+  /** One link's preview as the signed-in viewer is shown it (ADR-042), keyed by the address as written. */
+  linkPreview: (url: string) => ['link-preview', url] as const,
   rendered: (documentId: string, revision?: string) =>
     ['rendered', documentId, revision ?? null] as const,
   envelope: (documentId: string) => ['envelope', documentId] as const,
+  /**
+   * The people directory as one document's editor sees it: the names behind
+   * the addresses it holds, and searches for the owner picker. Under the
+   * document, because the server only answers someone who may edit it.
+   */
+  people: (documentId: string) => ['people', documentId] as const,
   /** Every share link on one document, as the share dialog lists them. */
   shareLinks: (documentId: string) => ['share-links', documentId] as const,
+  /** A document's review request (ADR-052): one entry, replaced by what the server answers to a write. */
+  review: (documentId: string) => ['review', documentId] as const,
+  /** Who could be asked to review a document, for what was typed. */
+  reviewerCandidates: (documentId: string, query: string) =>
+    ['reviewer-candidates', documentId, query] as const,
+  /** What is waiting on the signed-in person: review requests and the answers to theirs. */
+  attention: () => ['attention'] as const,
+  /** The notification list and its unread count. */
+  notifications: () => ['notifications'] as const,
   /**
    * The anonymous reading surface, keyed by the token that is the whole of
    * the capability. Its own top-level segments, sharing nothing with the
@@ -107,14 +127,8 @@ export const queryKeys = {
   sharedBody: (token: string, reference: string) => ['shared-body', token, reference] as const,
   publishedContent: (documentId: string) => ['published-content', documentId] as const,
   history: (documentId: string) => ['history', documentId] as const,
-  /** `version` is the draft's, for a comparison with it: each save is a new comparison. */
-  comparison: (
-    documentId: string,
-    from: string | null,
-    to: string,
-    version?: number,
-    patches?: boolean,
-  ) => ['comparison', documentId, from, to, version, patches === true] as const,
+  comparison: (documentId: string, from: string | null, to: string, version?: number) =>
+    ['comparison', documentId, from, to, version] as const,
   sourceComparison: (documentId: string, from: string | null, to: string) =>
     ['comparison-source', documentId, from, to] as const,
   /**
@@ -130,6 +144,10 @@ export const queryKeys = {
    */
   search: (workspaceId: string | null, query: string, cursor: string | null) =>
     ['search', workspaceId, query, cursor] as const,
-  searchResults: (workspaceId: string | null, query: string) =>
-    ['search-results', workspaceId, query] as const,
+  /** `facets` is part of the key: an answer with counts is not the same answer as one without. */
+  searchResults: (workspaceId: string | null, query: string, facets: string) =>
+    ['search-results', workspaceId, query, facets] as const,
+  /** Values a filter could take, by the workspace asked from, the filter, and what is typed of it. */
+  searchSuggestions: (workspaceId: string | null, field: string | null, prefix: string) =>
+    ['search-suggestions', workspaceId, field, prefix] as const,
 }

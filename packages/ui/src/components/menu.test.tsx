@@ -1,9 +1,10 @@
-import { render, screen } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { expectNoAccessibilityViolations } from '../../testing/axe.ts'
 import { Menu, MenuButton } from './menu.tsx'
+import type * as MenuPanels from './menu-panels.tsx'
 
 const ITEMS = [
   { label: 'Rename…', onSelect: () => {} },
@@ -35,7 +36,22 @@ describe('Menu', () => {
 
     expect(await screen.findByRole('menu')).toBeInTheDocument()
     expect(screen.getAllByRole('menuitem')).toHaveLength(3)
+    // The same element: the machinery attaches to the trigger, never replaces it.
     expect(trigger).toHaveAttribute('aria-expanded', 'true')
+  })
+
+  it('closes again on a second press of its trigger', async () => {
+    render(<Menu label="Failover" items={ITEMS} />)
+
+    const trigger = screen.getByRole('button', { name: 'More actions for Failover' })
+    await userEvent.click(trigger)
+    await screen.findByRole('menu')
+
+    await userEvent.click(trigger)
+    await waitFor(() => {
+      expect(screen.queryByRole('menu')).not.toBeInTheDocument()
+    })
+    expect(trigger).toHaveAttribute('aria-expanded', 'false')
   })
 
   it('leaves the page behind it usable, because a row menu is not a dialog', async () => {
@@ -219,39 +235,39 @@ describe('MenuButton', () => {
   })
 })
 
-describe('MenuButton rows', () => {
-  function renderRows(onCycle = vi.fn<() => void>()) {
-    render(
-      <MenuButton
-        label="Account menu for Ada Writer"
-        sections={[
-          {
-            id: 'person',
-            entries: [
-              {
-                kind: 'link',
-                label: 'Preferences',
-                target: { to: '/preferences' },
-                icon: <svg data-testid="prefs-icon" />,
-              },
-              {
-                kind: 'action',
-                label: 'Appearance',
-                icon: <svg data-testid="scheme-icon" />,
-                hint: 'System',
-                keepOpen: true,
-                onSelect: onCycle,
-              },
-            ],
-          },
-        ]}
-      >
-        <span>Ada Writer</span>
-      </MenuButton>,
-    )
-    return onCycle
-  }
+function renderRows(onCycle = vi.fn<() => void>()) {
+  render(
+    <MenuButton
+      label="Account menu for Ada Writer"
+      sections={[
+        {
+          id: 'person',
+          entries: [
+            {
+              kind: 'link',
+              label: 'Preferences',
+              target: { to: '/preferences' },
+              icon: <svg data-testid="prefs-icon" />,
+            },
+            {
+              kind: 'action',
+              label: 'Appearance',
+              icon: <svg data-testid="scheme-icon" />,
+              hint: 'System',
+              keepOpen: true,
+              onSelect: onCycle,
+            },
+          ],
+        },
+      ]}
+    >
+      <span>Ada Writer</span>
+    </MenuButton>,
+  )
+  return onCycle
+}
 
+describe('MenuButton rows', () => {
   it('draws an icon before a row, which says nothing the words do not and is hidden from assistive technology', async () => {
     renderRows()
 
@@ -290,5 +306,194 @@ describe('MenuButton rows', () => {
 
     expect(onCycle).toHaveBeenCalledTimes(2)
     expect(screen.getByRole('menu')).toBeInTheDocument()
+  })
+})
+
+/*
+ * The machinery behind a menu arrives on demand (quill-plan.md section 31):
+ * the page draws the closed trigger, and a press that lands before the module
+ * does is held rather than lost. Every test above runs with the module already
+ * here (`vitest.setup.ts`); these load a fresh copy of the menu whose module
+ * has not arrived, and decide when it does.
+ */
+async function freshMenus() {
+  vi.resetModules()
+  const { promise: arrived, resolve: arrive } = Promise.withResolvers<void>()
+  vi.doMock('./menu-panels.tsx', async () => {
+    await arrived
+    return vi.importActual('./menu-panels.tsx')
+  })
+  const menus = await import('./menu.tsx')
+  return { ...menus, arrive }
+}
+
+describe('a menu whose machinery has not arrived yet', () => {
+  afterEach(() => {
+    vi.doUnmock('./menu-panels.tsx')
+  })
+
+  it('draws a closed trigger that is announced as the menu button it will be', async () => {
+    const { Menu: FreshMenu } = await freshMenus()
+    const { container } = render(<FreshMenu label="Failover" items={ITEMS} />)
+
+    const trigger = screen.getByRole('button', { name: 'More actions for Failover' })
+    expect(trigger).toHaveAttribute('aria-haspopup', 'menu')
+    expect(trigger).toHaveAttribute('aria-expanded', 'false')
+    expect(trigger).toHaveAttribute('data-state', 'closed')
+    await expectNoAccessibilityViolations(container)
+  })
+
+  it('holds a click until the menu arrives, says it is busy meanwhile, then opens', async () => {
+    const { Menu: FreshMenu, arrive } = await freshMenus()
+    render(<FreshMenu label="Failover" items={ITEMS} />)
+
+    await userEvent.click(screen.getByRole('button', { name: 'More actions for Failover' }))
+    expect(screen.getByRole('button', { name: 'More actions for Failover' })).toHaveAttribute(
+      'aria-busy',
+      'true',
+    )
+
+    arrive()
+    expect(await screen.findByRole('menu')).toBeInTheDocument()
+    expect(screen.getAllByRole('menuitem')).toHaveLength(3)
+    expect(screen.getByRole('button', { name: 'More actions for Failover' })).toHaveAttribute(
+      'aria-expanded',
+      'true',
+    )
+  })
+
+  it('opens a menu asked for from the keyboard onto its first item', async () => {
+    const { Menu: FreshMenu, arrive } = await freshMenus()
+    render(<FreshMenu label="Failover" items={ITEMS} />)
+
+    screen.getByRole('button', { name: 'More actions for Failover' }).focus()
+    await userEvent.keyboard('{Enter}')
+    arrive()
+
+    await screen.findByRole('menu')
+    await waitFor(() => {
+      expect(screen.getByRole('menuitem', { name: 'Rename…' })).toHaveFocus()
+    })
+    await userEvent.keyboard('{ArrowDown}')
+    expect(screen.getByRole('menuitem', { name: 'Move to…' })).toHaveFocus()
+
+    await userEvent.keyboard('{Escape}')
+    expect(screen.getByRole('button', { name: 'More actions for Failover' })).toHaveFocus()
+  })
+
+  it('opens on the arrow key, as a menu button does', async () => {
+    const { MenuButton: FreshMenuButton, arrive } = await freshMenus()
+    render(
+      <FreshMenuButton
+        label="Account menu for Ada Writer"
+        sections={[
+          { id: 'session', entries: [{ kind: 'action', label: 'Sign out', onSelect: () => {} }] },
+        ]}
+      >
+        <span>Ada Writer</span>
+      </FreshMenuButton>,
+    )
+
+    screen.getByRole('button', { name: 'Account menu for Ada Writer' }).focus()
+    await userEvent.keyboard('{ArrowDown}')
+    arrive()
+
+    await waitFor(() => {
+      expect(screen.getByRole('menuitem', { name: 'Sign out' })).toHaveFocus()
+    })
+  })
+
+  it('keeps its trigger working when fetching the menu ahead of a press fails', async () => {
+    vi.resetModules()
+    vi.doMock('./menu-panels.tsx', () => {
+      throw new Error('offline')
+    })
+    const { Menu: FreshMenu } = await import('./menu.tsx')
+    render(<FreshMenu label="Failover" items={ITEMS} />)
+    const trigger = screen.getByRole('button', { name: 'More actions for Failover' })
+
+    await act(async () => {
+      fireEvent.pointerEnter(trigger)
+      fireEvent.focus(trigger)
+      await new Promise((resolve) => setTimeout(resolve, 0))
+    })
+    expect(trigger).toHaveAttribute('aria-expanded', 'false')
+    expect(screen.queryByRole('menu')).not.toBeInTheDocument()
+  })
+})
+
+/*
+ * Regression (2026-10-17): a sidebar draws one row menu per document, and the
+ * module's arrival used to re-render every one of them into a full Radix
+ * `DropdownMenu` in a single synchronous commit — twenty thousand of them for
+ * the seed's "Stress log", which hung every signed-in page. Only the menu a
+ * person presses may take the machinery on.
+ */
+describe('a page of many menus', () => {
+  afterEach(() => {
+    vi.doUnmock('./menu-panels.tsx')
+  })
+
+  it('mounts no Radix menu when the module arrives, and only the pressed one after', async () => {
+    vi.resetModules()
+    const mounted = new Set<string>()
+    const { promise: arrived, resolve: arrive } = Promise.withResolvers<void>()
+    vi.doMock('./menu-panels.tsx', async () => {
+      await arrived
+      const actual = await vi.importActual<typeof MenuPanels>('./menu-panels.tsx')
+      return {
+        ...actual,
+        RadixMenu: (props: Parameters<typeof actual.RadixMenu>[0]) => {
+          mounted.add(props.label)
+          return actual.RadixMenu(props)
+        },
+      }
+    })
+    const { Menu: FreshMenu, preloadMenus } = await import('./menu.tsx')
+    const labels = Array.from({ length: 1000 }, (_, index) => `Document ${index + 1}`)
+    render(
+      <ul>
+        {labels.map((label) => (
+          <li key={label}>
+            <FreshMenu label={label} items={ITEMS} />
+          </li>
+        ))}
+      </ul>,
+    )
+
+    const loading = preloadMenus()
+    arrive()
+    await act(async () => {
+      await loading
+    })
+    expect(mounted.size).toBe(0)
+
+    await userEvent.click(screen.getByRole('button', { name: 'More actions for Document 500' }))
+    expect(await screen.findByRole('menu')).toBeInTheDocument()
+    expect([...mounted]).toEqual(['Document 500'])
+  })
+})
+
+describe('a press that lands as the machinery arrives', () => {
+  afterEach(() => {
+    vi.doUnmock('./menu-panels.tsx')
+  })
+
+  it('opens the menu from the same trigger element', async () => {
+    const { Menu: FreshMenu, preloadMenus, arrive } = await freshMenus()
+    render(<FreshMenu label="Failover" items={ITEMS} />)
+    const trigger = screen.getByRole('button', { name: 'More actions for Failover' })
+
+    await act(async () => {
+      const loading = preloadMenus()
+      arrive()
+      await loading
+      fireEvent.pointerDown(trigger)
+      fireEvent.click(trigger)
+    })
+
+    expect(await screen.findByRole('menu')).toBeInTheDocument()
+    expect(trigger).toBeInTheDocument()
+    expect(trigger).toHaveAttribute('aria-expanded', 'true')
   })
 })

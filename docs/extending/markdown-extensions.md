@@ -2,7 +2,7 @@
 
 Quill documents are Markdown, and Quill's Markdown can be extended. This guide covers what an extension is, the three ways to add one, and what each must provide. The decision behind it is [ADR-039](../architecture/decisions/0039-markdown-extensions.md).
 
-> **Status, 11 October 2026.** The contract below is decided. The registry, the conformance kit and the declarative settings ship in stages (ADR-039, "Delivery"). Labels (ADR-037) and emoji (ADR-038) are the first declarative extensions. Until the packaged tier lands, a new feature is added to `packages/markdown` directly, in the same shape.
+> **Status, 11 October 2026.** The contract below is decided. The registry, the conformance kit and the declarative settings ship in stages (ADR-039, "Delivery"). Labels (ADR-037) and emoji (ADR-038) are the first declarative extensions. Until the packaged tier lands, a new feature is added to `packages/markdown` directly, in the same shape. The `MarkdownExtension` type and its registry exist for the first claim an extension can make, a drawing (`@quill/markdown/extension`), and draw.io is built on them as the reference extension: copy its shape (below).
 
 ## The one rule: both surfaces
 
@@ -123,12 +123,74 @@ What every item must do:
 - **Ask, never guess.** An item that needs input uses `pickerItem(meta, picker, available)`. The picker is a `list` source (filtered as the author types) or a `search` source (debounced and abortable). Cancelling it inserts nothing. An item that needs the application, such as an upload, calls `request(...)` with a `SlashRequest`.
 - **Round-trip.** Add the item to `slash-catalogue.test.ts`, which checks the Markdown it writes, where the caret lands, and that the Markdown survives the editor unchanged.
 
+### The context menu: entries for what is under the pointer
+
+The writing surface has its own context menu, opened by a right-click, by Shift+F10 or the context-menu key at the caret, and by a long press on a touch screen, where it is a sheet along the bottom of the screen. What it offers depends on what is under the pointer: words, a link, a table cell, a picture, a code block, a callout, and always the block as a whole. It is assembled from contributions through the context menu registry in `@quill/editor` (`packages/editor/src/context-menu`), the same shape as the slash menu's. Quill's own parts each live with the feature that owns them (`format/text-menu.ts`, `link/link-menu.ts`, `table/table-context-menu.ts`, `image/image-context-menu.ts`, `code-block/code-block-menu.ts`, `callout/callout-menu.ts`, `block/block-context-menu.ts`). Never add an entry by editing another feature's part or the menu itself.
+
+A contribution has an `id`, an `order` (lower comes first), an optional section `label`, and `entries(place)`. `place` is the editor view and state, the document position the menu acts on, and the `environment`: what the application lets the menu do, such as `openLink`, `linkTo`, `copyText`, `clipboard` and `requestImage`. Return no entries where your feature has nothing to say about the place.
+
+```ts
+import type { ContextMenuContribution } from '@quill/editor'
+
+export const footnoteMenu: ContextMenuContribution = {
+  id: 'quill.footnote',
+  order: 45,
+  label: 'Footnote',
+  entries: ({ view, state, pos }) => {
+    const at = state.doc.nodeAt(pos)
+    if (at?.type.name !== 'footnoteReference') return []
+    return [
+      {
+        kind: 'action',
+        id: 'footnote-go',
+        label: 'Go to footnote',
+        run: () => {
+          /* a command over view.state and view.dispatch */
+        },
+      },
+    ]
+  },
+}
+```
+
+Pass it to `DocumentEditor`'s `contextMenuContributions` prop, or add it to `builtInContextMenu` in `built-in-contributions.ts` for Quill's own features. The registry refuses two contributions with one id.
+
+Entries are `action` (with an optional `shortcut`, `icon`, `tone: 'danger'` and `checked` for a setting that is on or off), `choice` (one of several options, such as a callout's type) and `submenu` (actions and choices under a name). An entry that cannot act now gives a `disabledReason`, shown under its label: frequently used entries are disabled with their reason rather than hidden (`docs/design/feedback.md`, "Disable or hide"). Each `run` is one command, so one undo step.
+
+**The browser's own menu stays one modifier away.** Quill's menu replaces the browser's only inside the writing surface, and Shift with a right-click opens the browser's own menu there too. That is where its spelling suggestions, "Inspect" and other extensions' entries are. Everywhere outside the writing surface, a right-click is the browser's.
+
 ### What you cannot do
 
 - Change how core CommonMark or GFM syntax parses.
 - Read or change nodes your extension does not own.
 - Use the clock, randomness, the network or the file system while rendering. For the same source and version, rendering must give the same output every time.
 - Run code from a document. Authors get syntax, never expressions.
+
+## The reference extension: draw.io
+
+draw.io diagrams (ADR-043) are the first feature built to this contract, and every later extension copies their shape: one `drawio` module per package boundary, each part where the contract says it goes, nothing outside them knowing draw.io exists.
+
+| Part | Where | What it is |
+| --- | --- | --- |
+| The declaration | `packages/markdown/src/extensions/drawio/drawio-extension.ts` | The `MarkdownExtension`: id, version, the drawing it claims, how it renders, its grant (two data attributes), and its editor binding (an insert entry and an "Edit diagram" action) |
+| Reading | `packages/markdown/src/extensions/drawio/drawio-svg.ts` | Recognises a `.drawio.svg`, strips its embedded source, and chooses one of the platform's renderings: the SVG allowlist at its own size, or an `<img>` of the file when its labels are HTML |
+| The file format | `packages/markdown/src/extensions/drawio/drawio-file.ts` | Reads the embedded diagram and its labels within fixed limits; inflating is injected (`Inflate`) |
+| Search | `packages/application/src/ports/drawing-text.ts`, `apps/server/src/extensions/drawio/drawing-text.ts` | A port the attachment intake asks on upload and revision; the server's adapter inflates with zlib's own cap |
+| The editor binding | `packages/editor/src/extensions/drawio/drawio-binding.ts` | The slash item and the image action, named by the declaration; small, in the editor's main chunk |
+| The editing session | `packages/editor/src/extensions/drawio/` (`@quill/editor/drawio`) | The draw.io protocol adapter, the session state machine and the overlay; a lazy chunk |
+| The application | `apps/web/src/features/documents/drawio/` | Opens the session, implements the attachments port it needs, puts what was saved into the document |
+| The server | `apps/server/src/extensions/drawio/` | `DRAWIO_URL`, the CSP `frame-src` it implies, `GET /api/extensions/drawio` |
+
+The registry (`createMarkdownRegistry(extensions)`) is built at the composition root — the server's document format — and hands the renderer the drawing each extension claims. An extension never builds output itself: `render` returns a `DrawingRendering` (`inline` markup for the allowlist, or `image`), and the platform makes the markup, keeping only the data attributes the grant names. The installed ids and versions join the render cache key.
+
+### The external editor frame
+
+An extension whose editor is someone else's application — draw.io now, Figma or others later — embeds it with the generic external editor frame in `packages/editor/src/embedded-frame`, and writes only a protocol adapter:
+
+- `createFrameChannel` (framework-free) accepts a message only from the configured origin **and** the frame's own window, decodes it with the adapter's codec, and validates it against the adapter's TypeBox schema; anything else is dropped and reported. It posts only to that origin, never `'*'`.
+- `useFrameChannel` opens the channel for a component's life, with the handlers as effect events, and reports an editor that never answers.
+- `EmbeddedEditorFrame` is the reading surface's lightbox shell (the native `<dialog class="lightbox">`) with a bar naming the editor, the frame with the adapter's sandbox, and a place for the session's questions (`EmbeddedEditorPrompt`). Its Escape is a request: the session decides whether closing would lose work.
+- The adapter supplies the address, the sandbox — each token documented where it is chosen — the schemas and the session, as a reducer with discriminated-union states (`drawio-session.ts`).
 
 ## Adapted plugins
 

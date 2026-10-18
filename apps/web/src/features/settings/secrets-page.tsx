@@ -2,13 +2,8 @@ import { useState } from 'react'
 
 import { Badge, Button, Callout, DataTable, Dialog, Input, LocalTime, Spinner } from '@quill/ui'
 
-import {
-  useDeleteSecret,
-  useOidcProviders,
-  useSecrets,
-  useSetSecret,
-  type SecretDto,
-} from '../../lib/api/index.ts'
+import { useDeleteSecret, useSecrets, useSetSecret, type SecretDto } from '../../lib/api/index.ts'
+import { useOidcProviders } from '../../lib/api/oidc.ts'
 import { FormError } from '../../lib/forms/form-error.tsx'
 import { ConfirmDeleteDialog } from '../dialogs/confirm-delete-dialog.tsx'
 import { SettingsActions, SettingsSection } from './settings-frame.tsx'

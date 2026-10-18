@@ -1,4 +1,4 @@
-import { useId } from 'react'
+import { useEffect, useId, useRef, useState } from 'react'
 import { DropdownMenu } from 'radix-ui'
 
 import { tv } from '../lib/class-names.ts'
@@ -108,9 +108,27 @@ export function RevisionPicker({
   const styles = revisionPickerStyles()
   const headingId = useId()
   const current = choices.find((choice) => choice.id === value)
+  const [open, setOpen] = useState(false)
+  const content = useRef<HTMLDivElement | null>(null)
+
+  /* Synchronises focus with the open menu: it opens on the version already
+     chosen, as a select does, so the arrows move from where the person is
+     rather than from the top. A frame later than the menu's own focus, which
+     lands on the panel first. */
+  useEffect(() => {
+    if (!open) return undefined
+    const frame = requestAnimationFrame(() => {
+      content.current
+        ?.querySelector<HTMLElement>('[role="menuitemradio"][aria-checked="true"]')
+        ?.focus()
+    })
+    return () => {
+      cancelAnimationFrame(frame)
+    }
+  }, [open])
 
   return (
-    <DropdownMenu.Root modal={false}>
+    <DropdownMenu.Root modal={false} open={open} onOpenChange={setOpen}>
       <DropdownMenu.Trigger className={styles.trigger({ className })}>
         <span className="sr-only">{`${label}: ${spoken(current)}`}</span>
         <span aria-hidden="true" className={styles.triggerText()}>
@@ -130,18 +148,7 @@ export function RevisionPicker({
           sideOffset={6}
           collisionPadding={8}
           aria-labelledby={headingId}
-          // Open on the version already chosen, as a select does, so the
-          // arrows move from where the person is rather than from the top.
-          onOpenAutoFocus={(event) => {
-            const content = event.currentTarget
-            const checked =
-              content instanceof HTMLElement
-                ? content.querySelector<HTMLElement>('[role="menuitemradio"][aria-checked="true"]')
-                : null
-            if (checked === null) return
-            event.preventDefault()
-            checked.focus()
-          }}
+          ref={content}
           className={styles.content()}
         >
           <DropdownMenu.Label id={headingId} className={styles.heading()}>

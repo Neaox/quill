@@ -15,6 +15,9 @@ playwright-report/
 test-results/
 blob-report/
 
+# Scratch probes run by hand against a dev server; never committed
+e2e/.*
+
 # Environment
 .env
 .env.*
@@ -25,6 +28,7 @@ data/
 *.log
 
 # Local tooling state
+.tanstack/
 .claude/*
 !.claude/launch.json
 *.local
@@ -36,3 +40,7 @@ Thumbs.db
 .vscode/*
 !.vscode/extensions.json
 !.vscode/settings.json
+
+# Throw-away Playwright probes: scratch, never committed (they fail the gate by design).
+e2e/.probe-*
+e2e/.drawio-*

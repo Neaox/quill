@@ -1,6 +1,7 @@
 import type { Clock } from '@quill/application'
 
 import type { OutboxConsumer } from '../infrastructure/outbox/consumer.ts'
+import type { LaneResult } from '../infrastructure/outbox/lane.ts'
 import type { PollResult } from '../infrastructure/outbox/poller.ts'
 
 /**
@@ -13,8 +14,16 @@ export type OutboxPoll = (
   now: Date,
 ) => Promise<PollResult>
 
+/** Polls one lane (`infrastructure/outbox/lane.ts`): work that waits on other servers. */
+export type LanePoll = (
+  consumers: ReadonlyMap<string, OutboxConsumer>,
+  now: Date,
+) => Promise<LaneResult>
+
 export interface JobRunnerOptions {
   readonly poll: OutboxPoll
+  /** Polls the lane that `lane()` consumers run on. Required if any is registered. */
+  readonly pollLane?: LanePoll
   readonly clock: Clock
   /** Time between poll cycles while running. Defaults to 1000ms. */
   readonly intervalMs?: number
@@ -36,6 +45,12 @@ export interface ScheduledJob {
 
 export interface JobRunner {
   register(consumer: OutboxConsumer): void
+  /**
+   * Registers a consumer on the lane for slow work on other people's servers.
+   * It runs beside the main poll and never inside it, so a slow site cannot
+   * delay a publish or a mail, and the main poller never claims its events.
+   */
+  lane(consumer: OutboxConsumer): void
   /** Adds a periodic job. Its first run is one interval after `start()`. */
   schedule(job: ScheduledJob): void
   start(): void
@@ -43,6 +58,8 @@ export interface JobRunner {
   stop(): Promise<void>
   /** Runs one poll cycle immediately, outside the schedule; used by tests and manual triggers. */
   pollOnce(): Promise<PollResult>
+  /** Runs one cycle of the lane immediately; used by tests and manual triggers. */
+  pollLaneOnce(): Promise<LaneResult>
   /** Runs every scheduled job that is due, outside the timer; used by tests and manual triggers. */
   runDueJobs(): Promise<readonly string[]>
 }
@@ -50,6 +67,9 @@ export interface JobRunner {
 /** A small in-process job runner polling the outbox on an interval (plan §22). */
 export function createJobRunner(options: JobRunnerOptions): JobRunner {
   const consumers = new Map<string, OutboxConsumer>()
+  const laneConsumers = new Map<string, OutboxConsumer>()
+  let laneInFlight: Promise<void> | null = null
+  let laneTimer: ReturnType<typeof setInterval> | null = null
   const scheduled: { readonly job: ScheduledJob; dueAt: number }[] = []
   let timer: ReturnType<typeof setInterval> | null = null
   let inFlight: Promise<void> | null = null
@@ -63,6 +83,7 @@ export function createJobRunner(options: JobRunnerOptions): JobRunner {
    */
   async function runDue(now: Date): Promise<readonly string[]> {
     const ran: string[] = []
+    // oxlint-disable-next-line quill/no-independent-await-in-loop -- jobs share one connection pool with the poll that just ran, and housekeeping must never crowd it out
     for (const entry of scheduled) {
       if (now.getTime() < entry.dueAt) continue
       entry.dueAt = now.getTime() + entry.job.intervalMs
@@ -107,9 +128,35 @@ export function createJobRunner(options: JobRunnerOptions): JobRunner {
     }
   }
 
+  /**
+   * One lane cycle at a time, on its own clock. It is deliberately not part of
+   * `tick`: that waits for the main poll and then for each scheduled job, and a
+   * lane cycle may legitimately take half a minute.
+   */
+  async function laneTick(): Promise<void> {
+    if (laneInFlight !== null || laneConsumers.size === 0) return
+    const running = (async () => {
+      try {
+        await options.pollLane?.(laneConsumers, options.clock.now())
+      } catch (error) {
+        options.onPollError?.(error)
+      }
+    })()
+    laneInFlight = running
+    try {
+      await running
+    } finally {
+      laneInFlight = null
+    }
+  }
+
   return {
     register(consumer: OutboxConsumer): void {
       consumers.set(consumer.eventType, consumer)
+    },
+
+    lane(consumer: OutboxConsumer): void {
+      laneConsumers.set(consumer.eventType, consumer)
     },
 
     schedule(job: ScheduledJob): void {
@@ -124,6 +171,10 @@ export function createJobRunner(options: JobRunnerOptions): JobRunner {
         void tick()
       }, options.intervalMs ?? 1000)
       timer.unref()
+      laneTimer = setInterval(() => {
+        void laneTick()
+      }, options.intervalMs ?? 1000)
+      laneTimer.unref()
     },
 
     async stop(): Promise<void> {
@@ -131,11 +182,23 @@ export function createJobRunner(options: JobRunnerOptions): JobRunner {
         clearInterval(timer)
         timer = null
       }
-      await inFlight
+      if (laneTimer !== null) {
+        clearInterval(laneTimer)
+        laneTimer = null
+      }
+      await Promise.all([inFlight, laneInFlight])
     },
 
     pollOnce(): Promise<PollResult> {
       return options.poll(consumers, options.clock.now())
+    },
+
+    pollLaneOnce(): Promise<LaneResult> {
+      /* v8 ignore next 3 -- a runner with a lane consumer is always given the poll that serves it. */
+      if (options.pollLane === undefined) {
+        throw new Error('The job runner has a lane consumer but no pollLane')
+      }
+      return options.pollLane(laneConsumers, options.clock.now())
     },
 
     runDueJobs(): Promise<readonly string[]> {

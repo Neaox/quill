@@ -1,4 +1,4 @@
-import { render, screen, within } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { useState } from 'react'
 import { describe, expect, it } from 'vitest'
@@ -59,7 +59,9 @@ describe('RevisionPicker', () => {
     screen.getByRole('button', { name: /^From/ }).focus()
     await userEvent.keyboard('{Enter}')
     const menu = await screen.findByRole('menu', { name: 'From' })
-    expect(within(menu).getByRole('menuitemradio', { name: /^v2/ })).toHaveFocus()
+    await waitFor(() => {
+      expect(within(menu).getByRole('menuitemradio', { name: /^v2/ })).toHaveFocus()
+    })
     await userEvent.keyboard('{ArrowDown}{Enter}')
 
     expect(screen.queryByRole('menu')).not.toBeInTheDocument()
@@ -85,5 +87,39 @@ describe('RevisionPicker', () => {
       'aria-disabled',
       'true',
     )
+  })
+
+  it('says so when the value is not among the choices, and opens without a version to land on', async () => {
+    render(
+      <RevisionPicker
+        label="From"
+        value="gone"
+        choices={CHOICES}
+        onValueChange={() => undefined}
+      />,
+    )
+    const trigger = screen.getByRole('button', { name: 'From: none' })
+    expect(trigger).toHaveTextContent('Choose a version')
+
+    await userEvent.click(trigger)
+    const menu = await screen.findByRole('menu', { name: 'From' })
+    expect(within(menu).queryByRole('menuitemradio', { checked: true })).not.toBeInTheDocument()
+  })
+
+  it('names a version by its label alone when its date is not one', () => {
+    render(
+      <RevisionPicker
+        label="To"
+        value="odd"
+        choices={[{ id: 'odd', label: 'v9', at: 'not a date' }]}
+        onValueChange={() => undefined}
+      />,
+    )
+    expect(screen.getByRole('button', { name: 'To: v9' })).toBeInTheDocument()
+  })
+
+  it('names a draft, which has no publish date, by its label alone', () => {
+    render(<Harness initial="draft" />)
+    expect(screen.getByRole('button', { name: 'From: Your draft' })).toBeInTheDocument()
   })
 })

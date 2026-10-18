@@ -403,6 +403,16 @@ describe('createDocumentFormat: render and read', () => {
     expect(rendered.incompleteRequiredSections).toEqual(['Decision'])
   })
 
+  it('draws a table of contents into the body and lists each child pages slot (ADR-058)', () => {
+    const rendered = format.render({
+      markdown: '# Title\n\n::toc\n\n## Install\n\n::children{depth=2}\n',
+      linkTitles: new Map(),
+    })
+    expect(rendered.html).toContain('<a href="#user-content-install">Install</a>')
+    expect(rendered.html).toContain('data-live-key="children?depth=2&#x26;sort=manual"')
+    expect(rendered.slots).toEqual(['children?depth=2&sort=manual'])
+  })
+
   it('draws the SVG drawings the body shows, from the markup it was handed', () => {
     const url = '/api/attachments/0b6b0d2c-7f7e-4a39-8a8a-4a5f6d0c1a11'
     const rendered = format.render({
@@ -438,7 +448,7 @@ describe('createDocumentFormat: render and read', () => {
     expect(rendered.html).toContain(
       '<span class="emoji" role="img" aria-label="thumbs up">👍</span>',
     )
-    expect(rendered.html).toContain(`<img class="emoji" src="${src}" alt=":airbnb:"`)
+    expect(rendered.html).toContain(`<img class="emoji" src="${src}" alt="airbnb" title=":airbnb:"`)
     expect(rendered.html).toContain(
       `<span class="badge" data-label="airbnb"><img class="emoji" src="${src}" alt=""`,
     )
@@ -581,5 +591,55 @@ describe('createDocumentFormat: retitle', () => {
       title: 'Recovered',
     })
     expect(renamed.frontMatter).toEqual({ id: DOC, title: 'Recovered' })
+  })
+})
+
+describe('createDocumentFormat: compare', () => {
+  const context = { linkTitles: new Map() }
+
+  it('draws an unchanged SVG drawing from the markup it was handed', () => {
+    const url = '/api/attachments/0b6b0d2c-7f7e-4a39-8a8a-4a5f6d0c1a11'
+    const compared = format.compare({
+      before: `![The loop](${url})\n\nBefore.\n`,
+      after: `![The loop](${url})\n\nAfter.\n`,
+      context: {
+        ...context,
+        drawings: new Map([[url, { sha256: 'a', markup: '<svg viewBox="0 0 1 1"><rect/></svg>' }]]),
+      },
+    })
+    expect(compared.html).toContain('<svg viewBox="0 0 1 1"')
+  })
+
+  it('names who wrote each change of a draft that has a record, and none without one', () => {
+    const before = 'Kept.\n'
+    const previous = draftOf(before)
+    const next = draftOf('Kept.\n\nAdded by Ada.\n')
+    const authorship = format.stampAuthorship({
+      previous,
+      next,
+      authorship: undefined,
+      by: 'ada',
+      at: '2026-01-01T00:00:00.000Z',
+    })
+    const after = 'Kept.\n\nAdded by Ada.\n'
+
+    const stamped = format.compare({ before, after, context, draft: next, authorship })
+    expect(stamped.changes.map(({ revertible, author }) => ({ revertible, author }))).toEqual([
+      { revertible: true, author: { userId: 'ada', at: '2026-01-01T00:00:00.000Z' } },
+    ])
+
+    const unrecorded = format.compare({ before, after, context, draft: next })
+    expect(unrecorded.changes.map(({ revertible, author }) => ({ revertible, author }))).toEqual([
+      { revertible: true },
+    ])
+  })
+
+  it('puts a change back in the draft, and leaves the rest as the draft has it', () => {
+    const before = 'Kept.\n\nRestart nightly.\n'
+    const after = 'Kept.\n\nRestart weekly.\n'
+    const reverted = format.revert({ before, after, draft: draftOf(after), changes: ['c1'] })
+
+    expect(JSON.stringify(reverted.ast)).toContain('nightly')
+    expect(JSON.stringify(reverted.ast)).not.toContain('weekly')
   })
 })

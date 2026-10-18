@@ -42,8 +42,8 @@ function fold(pos: number, node: PMNode): Decoration {
 function holdingSelection(set: DecorationSet, selection: Selection): Decoration[] {
   const { doc } = selection.$from
   return set.find(selection.from, selection.to).filter((decoration) => {
-    const summary = doc.nodeAt(decoration.from)?.firstChild?.nodeSize ?? 0
-    const bodyStart = decoration.from + 1 + summary
+    // Inside the summary, two steps into the details; its end is where the body starts.
+    const bodyStart = doc.resolve(decoration.from + 2).after()
     return selection.from < decoration.to && selection.to > bodyStart
   })
 }

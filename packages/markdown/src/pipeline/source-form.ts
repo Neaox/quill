@@ -56,6 +56,11 @@ export interface SourceForm {
   readonly row?: { readonly written: string; readonly content: string }
   /** A directive's attributes as written, and the attributes they read as. */
   readonly attributes?: { readonly written: string; readonly read: string }
+  /**
+   * A `link` that was written as the directive (`:link[…]{…}`) and not as a link with a comment, so
+   * it is written back the way it was until an author changes it (`link-comment.ts`).
+   */
+  readonly directiveForm?: true
   /** A container directive with a blank line after its opening fence and before its closing one. */
   readonly padded?: true
   /**
@@ -127,7 +132,8 @@ function attributeBlock(source: string, from: number): string | undefined {
   return undefined
 }
 
-function withForm(node: Node, form: SourceForm): void {
+/** Adds to how a node was written. */
+export function withForm(node: Node, form: SourceForm): void {
   node.data = { ...node.data, sourceForm: { ...node.data?.sourceForm, ...form } }
 }
 

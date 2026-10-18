@@ -44,7 +44,9 @@ describe('loadConfig', () => {
       },
       rateLimit: { max: 10, windowMs: 60_000, maxWindowMs: 60 * 60_000 },
       searchRateLimitMax: 60,
+      browseRateLimitMax: 600,
       publicSiteRateLimitMax: 600,
+      publicSearchRateLimitMax: 30,
       publicSitemapPageSize: 1000,
       breachedPasswords: {
         enabled: true,
@@ -75,6 +77,8 @@ describe('loadConfig', () => {
           thirdParty: false,
         },
       },
+      // Every embed provider is on until an operator switches one off.
+      linkEmbeds: { disabled: [] },
     })
   })
 

@@ -14,12 +14,18 @@ const RUNBOOK = documentId('44444444-4444-4444-8444-444444444444')
 const CAMPAIGN = documentId('55555555-5555-4555-8555-555555555555')
 const NOW = new Date('2026-01-01T00:00:00.000Z')
 
-function hit(id: DocumentId, inWorkspace: WorkspaceId, title: string): SearchServiceHit {
+function hit(
+  id: DocumentId,
+  inWorkspace: WorkspaceId,
+  title: string,
+  tags: readonly string[] = [],
+): SearchServiceHit {
   return {
     documentId: id,
     workspaceId: inWorkspace,
     title,
     snippet: { text: 'a body', ranges: [{ start: 0, end: 1 }] },
+    tags,
     score: 1,
   }
 }
@@ -42,6 +48,8 @@ function document(
     templateId: null,
     templateVersion: null,
     headRevision: null,
+    createdBy: null,
+    updatedBy: null,
     createdAt: NOW,
     updatedAt: NOW,
   }
@@ -75,6 +83,7 @@ function context(overrides: Partial<SearchContext> = {}): SearchContext {
     collectionsById: new Map([
       [ARCHITECTURE, collection(ARCHITECTURE, ENGINEERING, 'Architecture')],
     ]),
+    contributorsById: new Map(),
     ...overrides,
   }
 }
@@ -83,6 +92,8 @@ const RESULTS: SearchServiceResults = {
   current: [hit(RUNBOOK, ENGINEERING, 'Database failover runbook')],
   elsewhere: [{ workspaceId: MARKETING, hits: [hit(CAMPAIGN, MARKETING, 'Launch campaign')] }],
 }
+
+const person = (name: string, email = `${name.toLowerCase()}@example.com`) => ({ name, email })
 
 describe('a search response', () => {
   it('carries everything a link and a result row need', () => {
@@ -100,8 +111,62 @@ describe('a search response', () => {
         breadcrumb: ['Engineering', 'Architecture'],
         snippet: { text: 'a body', ranges: [{ start: 0, end: 1 }] },
         score: 1,
+        status: 'published',
+        updatedAt: '2026-01-01T00:00:00.000Z',
+        tags: [],
+        contributors: [],
+        contributorCount: 0,
       },
     ])
+  })
+
+  describe('what a result row shows of the document', () => {
+    const rowFor = (tags: readonly string[], people: readonly ReturnType<typeof person>[]) =>
+      toSearchResponse(
+        'failover',
+        { current: [hit(RUNBOOK, ENGINEERING, 'Runbook', tags)], elsewhere: [] },
+        context({ contributorsById: new Map([[RUNBOOK, people]]) }),
+      ).current[0]
+
+    it('carries the status and the last update of the document row', () => {
+      const row = toSearchResponse(
+        'x',
+        RESULTS,
+        context({
+          documentsById: new Map([
+            [
+              RUNBOOK,
+              {
+                ...document(RUNBOOK, ENGINEERING, ARCHITECTURE),
+                status: 'draft',
+                updatedAt: new Date('2026-03-04T05:06:07.000Z'),
+              },
+            ],
+          ]),
+        }),
+      ).current[0]
+      expect(row?.status).toBe('draft')
+      expect(row?.updatedAt).toBe('2026-03-04T05:06:07.000Z')
+    })
+
+    it('keeps at most five tags, in the order they are stored', () => {
+      expect(rowFor(['f', 'e', 'd', 'c', 'b', 'a'], [])?.tags).toEqual(['f', 'e', 'd', 'c', 'b'])
+    })
+
+    it('names at most three people, most recent first, and counts them all', () => {
+      const row = rowFor(
+        [],
+        [person('Ada'), person('Sam'), person('Grace'), person('Alan'), person('Edsger')],
+      )
+      expect(row?.contributors).toEqual([{ name: 'Ada' }, { name: 'Sam' }, { name: 'Grace' }])
+      expect(row?.contributorCount).toBe(5)
+    })
+
+    it('never carries an address, even where a name is one', () => {
+      const row = rowFor([], [person('Ada Lovelace'), person('sam@example.com', 'sam@example.com')])
+      expect(row?.contributors).toEqual([{ name: 'Ada Lovelace' }, { name: 'sam' }])
+      expect(JSON.stringify(row)).not.toContain('@')
+    })
   })
 
   it('names the workspace of every other group', () => {

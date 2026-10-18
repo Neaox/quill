@@ -46,6 +46,12 @@ describe('the editor keyboard map', () => {
     expect(press('An item\n', 'Mod-Shift-9', 1)).toContain('[ ] An item')
   })
 
+  it('switches a list off with its own key, and one kind of list to another', () => {
+    expect(press('- An item\n', 'Mod-Shift-8', 3)).toBe('An item\n')
+    expect(press('1. An item\n', 'Mod-Shift-7', 4)).toBe('An item\n')
+    expect(press('- An item\n', 'Mod-Shift-7', 3)).toBe('1. An item\n')
+  })
+
   it('binds a code block, and a hard break', () => {
     expect(press('some code\n', 'Mod-Alt-c', 1)).toBe('```\nsome code\n```\n')
     expect(press('one two\n', 'Shift-Enter', 4)).toContain('\\\n')
@@ -56,47 +62,42 @@ describe('the editor keyboard map', () => {
     expect(press('- [x] one\n', 'Enter', 4)).toContain('- [x] o')
   })
 
-  it.each(['Up', 'Down', 'Left', 'Right'])(
-    'binds Alt+Shift+%s to a move between cells, and spends it outside none',
-    (direction) => {
-      expect(binding(`Alt-Shift-Arrow${direction}`)).toBeTypeOf('function')
-      expect(
-        press('A paragraph.' + String.fromCharCode(10), `Alt-Shift-Arrow${direction}`, 3),
-      ).toBeNull()
-    },
-  )
-
-  it('binds Select all to the block first, so it takes the paragraph before the document', () => {
-    const opened = harness.state(
-      'One.' + String.fromCharCode(10) + String.fromCharCode(10) + 'Two.',
-    )
-    const state = opened.apply(opened.tr.setSelection(TextSelection.create(opened.doc, 7)))
-    let selected = ''
-    binding('Mod-a')(state, (tr) => {
-      selected = tr.doc.textBetween(tr.selection.from, tr.selection.to)
-    })
-
-    expect(selected).toBe('Two.')
-  })
-
-  it('binds Mod+D to the word under the caret', () => {
-    const opened = harness.state('Some words.' + String.fromCharCode(10))
-    const state = opened.apply(opened.tr.setSelection(TextSelection.create(opened.doc, 8)))
-    let selected = ''
-    binding('Mod-d')(state, (tr) => {
-      selected = tr.doc.textBetween(tr.selection.from, tr.selection.to)
-    })
-
-    expect(selected).toBe('words')
-  })
-
-  it('moves a block with Alt+Up and Alt+Down outside a table, and a table’s row inside one', () => {
+  it('moves a table’s column with Alt+Left and Alt+Right, and spends them outside one', () => {
     const NL = String.fromCharCode(10)
-    expect(press('One.' + NL + NL + 'Two.' + NL, 'Alt-ArrowUp', 7)).toBe(
+    const table = '| a | b |' + NL + '| - | - |' + NL + '| c | d |' + NL
+    expect(press(table, 'Alt-ArrowRight', 4)).toContain('| b | a |')
+    expect(press('A paragraph.' + NL, 'Alt-ArrowLeft', 3)).toBeNull()
+  })
+
+  it('moves a table’s row with Alt+Up and Alt+Down, and the block or list item outside one', () => {
+    const NL = String.fromCharCode(10)
+    const table = '| a | b |' + NL + '| - | - |' + NL + '| c | d |' + NL + '| e | f |' + NL
+    // Position 28 is in the "e" cell of the last row, 16 in the "c" cell above it.
+    expect(press(table, 'Alt-ArrowUp', 28)).toContain('| e | f |' + NL + '| c | d |')
+    // Up from the first row under the header has nowhere to go, and the table stays where it is.
+    expect(press(table, 'Alt-ArrowUp', 16)).toBeNull()
+    expect(press('One.' + NL + NL + 'Two.' + NL, 'Alt-ArrowUp', 8)).toBe(
       'Two.' + NL + NL + 'One.' + NL,
     )
-    const table = '| a | b |' + NL + '| - | - |' + NL + '| c | d |' + NL + '| e | f |' + NL
-    expect(press(table, 'Alt-ArrowDown', 15)).toContain('| e | f |' + NL + '| c | d |')
+    expect(press('- one' + NL + '- two' + NL, 'Alt-ArrowDown', 3)).toBe('- two' + NL + '- one' + NL)
+  })
+
+  it('goes to the neighbouring cell with Alt+Shift and an arrow', () => {
+    const NL = String.fromCharCode(10)
+    const table = '| a | b |' + NL + '| - | - |' + NL + '| c | d |' + NL
+    expect(press(table, 'Alt-Shift-ArrowRight', 4)).toBe(table)
+    expect(press('A paragraph.' + NL, 'Alt-Shift-ArrowRight', 3)).toBeNull()
+  })
+
+  it('selects outwards with Mod-a, rather than the whole document at once', () => {
+    const opened = harness.state('One.\n\nTwo words.\n')
+    const state = opened.apply(opened.tr.setSelection(TextSelection.create(opened.doc, 9)))
+    let next: EditorState = state
+    binding('Mod-a')(state, (tr) => {
+      next = state.apply(tr)
+    })
+
+    expect(next.doc.textBetween(next.selection.from, next.selection.to)).toBe('Two words.')
   })
 
   it('leaves Enter to the document outside a list', () => {
@@ -135,5 +136,16 @@ describe('the editor keyboard map', () => {
     expect(press('A paragraph.\n', 'Mod-z', 1)).toBeNull()
     expect(press('A paragraph.\n', 'Mod-y', 1)).toBeNull()
     expect(press('A paragraph.\n', 'Mod-Shift-z', 1)).toBeNull()
+  })
+
+  it('binds select next occurrence to Ctrl+D, which selects the word at the caret first', () => {
+    const opened = harness.state('ship the ship\n')
+    const state = opened.apply(opened.tr.setSelection(TextSelection.create(opened.doc, 2)))
+    let next: EditorState | undefined
+    binding('Mod-d')(state, (tr) => {
+      next = state.apply(tr)
+    })
+    expect(next?.doc.textBetween(next.selection.from, next.selection.to)).toBe('ship')
+    expect(next?.selection.from).toBe(1)
   })
 })

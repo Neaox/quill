@@ -11,6 +11,13 @@ import { parseMarkdown } from '../pipeline/processor.ts'
 import { renderHtml } from './html.ts'
 import { sanitizeSchema } from './sanitize-schema.ts'
 
+const input = (properties: Properties): Element => ({
+  type: 'element',
+  tagName: 'input',
+  properties,
+  children: [],
+})
+
 const render = (markdown: string): string => renderHtml(parseMarkdown(markdown))
 
 // A genuine attribute breakout looks like `"` (closing the value early) then a
@@ -332,12 +339,6 @@ describe('renderHtml: directive attribute injection', () => {
   })
 
   it('admits a name on an input only as text, never another kind of input or a live one', () => {
-    const input = (properties: Properties): Element => ({
-      type: 'element',
-      tagName: 'input',
-      properties,
-      children: [],
-    })
     const tree: HastRoot = {
       type: 'root',
       children: [
@@ -400,6 +401,21 @@ describe('renderHtml: attachment images', () => {
     const html = render('[The runbook](/api/attachments/abc)\n')
 
     expect(html).toContain('<a href="/api/attachments/abc">The runbook</a>')
+  })
+
+  it('normalises an image source as it does a link, so a backslash cannot leave the origin', () => {
+    // Browsers read `/\host` as `//host`; encoded, it is a path on this origin.
+    for (const markdown of [
+      '![i](/\\evil.example/x.png)\n',
+      '![i](/\\evil.example/x.png "A caption")\n',
+      'Inline ![i](/\\evil.example/x.png) image.\n',
+    ]) {
+      const html = render(markdown)
+
+      expect(html).not.toContain('src="/\\')
+      expect(html).toContain('src="/%5Cevil.example/x.png"')
+    }
+    expect(render('![i](<a b%20c>)\n')).toContain('src="a%20b%20c"')
   })
 
   it('does not let the shape be a way past the rules that already hold', () => {

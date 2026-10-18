@@ -1,6 +1,8 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { documentId, revisionId, shareLinkId, userId, workspaceId } from '@quill/domain'
 
+import { createEventBus } from '../events/event-bus.ts'
+import { grantCreated } from '../use-cases/events.ts'
 import { createInMemoryUnitOfWork } from './in-memory-repositories.ts'
 import { aShortId } from './fakes.ts'
 
@@ -24,6 +26,24 @@ const OTHER_REVISION = revisionId('b'.repeat(40))
  */
 const NOW = new Date('2026-01-01T00:00:00.000Z')
 
+/** A bus with one listener for `GrantCreated`, and the mock that records what it heard. */
+const aBusWithAListener = () => {
+  const bus = createEventBus({ onError: vi.fn<(error: unknown) => void>() })
+  const heard = vi.fn<(payload: unknown) => void>()
+  bus.subscribe(grantCreated, heard)
+  return { bus, heard }
+}
+
+const GRANT = {
+  grantId: 'grant-1',
+  principalKind: 'public',
+  principalId: null,
+  scopeKind: 'collection',
+  scopeId: 'collection-1',
+  role: 'viewer',
+  effect: 'allow',
+} as const
+
 describe('createInMemoryUnitOfWork: users', () => {
   it('creates, finds, verifies, and promotes a user; misses report null or are no-ops', async () => {
     const uow = createInMemoryUnitOfWork()
@@ -40,6 +60,7 @@ describe('createInMemoryUnitOfWork: users', () => {
     expect(await uow.repos.users.findById(NOPE_USER)).toBeNull()
     expect(await uow.repos.users.findByEmail('a@example.com')).toEqual(user)
     expect(await uow.repos.users.findByEmail('nope@example.com')).toBeNull()
+    expect(await uow.repos.users.listByIds([NOPE_USER, USER_1])).toEqual([user])
 
     await uow.repos.users.markEmailVerified(USER_1, NOW)
     expect((await uow.repos.users.findById(USER_1))?.emailVerifiedAt).toEqual(NOW)
@@ -766,12 +787,11 @@ describe('createInMemoryUnitOfWork: share links', () => {
 })
 
 describe('createInMemoryUnitOfWork: outbox, audit, and run', () => {
-  it('records outbox writes and accepts audit writes', async () => {
+  it('records events and accepts audit writes', async () => {
     const uow = createInMemoryUnitOfWork()
-    await expect(
-      uow.repos.outbox.write({ id: 'event-1', type: 'DocumentCreated', payload: {}, now: NOW }),
-    ).resolves.toBeUndefined()
-    expect(uow.events.map((event) => event.type)).toEqual(['DocumentCreated'])
+    await expect(uow.repos.events.record(grantCreated, GRANT, NOW)).resolves.toBeUndefined()
+    expect(uow.events.map((event) => event.type)).toEqual(['GrantCreated'])
+    expect(uow.events[0]?.payload).toEqual({ ...GRANT, version: 1 })
     await expect(
       uow.repos.audit.write({
         id: 'audit-1',
@@ -794,6 +814,48 @@ describe('createInMemoryUnitOfWork: outbox, audit, and run', () => {
         createdAt: NOW,
       },
     ])
+  })
+
+  describe('announcing what was recorded', () => {
+    it('tells the bus only once the run has finished, so nothing is heard mid-transaction', async () => {
+      const { bus, heard } = aBusWithAListener()
+      const uow = createInMemoryUnitOfWork({ bus })
+
+      await uow.run(async (repos) => {
+        await repos.events.record(grantCreated, GRANT, NOW)
+        expect(heard).not.toHaveBeenCalled()
+      })
+      expect(heard).toHaveBeenCalledTimes(1)
+      expect(heard).toHaveBeenCalledWith({ ...GRANT, version: 1 })
+    })
+
+    it('never tells the bus about a run that failed', async () => {
+      const { bus, heard } = aBusWithAListener()
+      const uow = createInMemoryUnitOfWork({ bus })
+
+      await expect(
+        uow.run(async (repos) => {
+          await repos.events.record(grantCreated, GRANT, NOW)
+          throw new Error('rolled back')
+        }),
+      ).rejects.toThrow('rolled back')
+      expect(heard).not.toHaveBeenCalled()
+    })
+
+    it('tells the bus at once about an event recorded outside a run, which commits as it is written', async () => {
+      const { bus, heard } = aBusWithAListener()
+      const uow = createInMemoryUnitOfWork({ bus })
+
+      await uow.repos.events.record(grantCreated, GRANT, NOW)
+      await Promise.resolve()
+      expect(heard).toHaveBeenCalledTimes(1)
+    })
+
+    it('needs no bus at all', async () => {
+      const uow = createInMemoryUnitOfWork()
+      await uow.run((repos) => repos.events.record(grantCreated, GRANT, NOW))
+      expect(uow.events).toHaveLength(1)
+    })
   })
 
   it('runs a callback against the same repository bundle', async () => {
@@ -840,6 +902,20 @@ describe('createInMemoryUnitOfWork: groups', () => {
     ])
     expect(await uow.repos.groups.listForUser(USER_2)).toEqual([])
   })
+
+  it('lists the groups of several units at once', async () => {
+    const uow = createInMemoryUnitOfWork()
+    for (const [id, unitId] of [
+      ['a', 'unit-1'],
+      ['b', 'unit-2'],
+      ['c', 'unit-3'],
+    ] as const) {
+      await uow.repos.groups.create({ id, unitId, parentGroupId: null, name: id, now: NOW })
+    }
+    const found = await uow.repos.groups.listByUnits(['unit-1', 'unit-3'])
+    expect(found.map((group) => group.id)).toEqual(['a', 'c'])
+    expect(await uow.repos.groups.listByUnits([])).toEqual([])
+  })
 })
 
 describe('createInMemoryUnitOfWork: collections', () => {
@@ -858,6 +934,26 @@ describe('createInMemoryUnitOfWork: collections', () => {
     expect(await uow.repos.collections.findBySlug(WORKSPACE_1, 'nope')).toBeNull()
     expect(await uow.repos.collections.listByWorkspace(WORKSPACE_1)).toEqual([collection])
     expect(await uow.repos.collections.listByWorkspace(NOPE_WORKSPACE)).toEqual([])
+  })
+
+  it('lists the collections of several workspaces at once', async () => {
+    const uow = createInMemoryUnitOfWork()
+    for (const [id, workspace] of [
+      ['one', WORKSPACE_1],
+      ['two', NOPE_WORKSPACE],
+    ] as const) {
+      await uow.repos.collections.create({
+        id,
+        workspaceId: workspace,
+        name: id,
+        slug: id,
+        now: NOW,
+      })
+    }
+    expect(
+      (await uow.repos.collections.listByWorkspaces([WORKSPACE_1])).map((row) => row.id),
+    ).toEqual(['one'])
+    expect(await uow.repos.collections.listByWorkspaces([])).toEqual([])
   })
 
   it('finds and lists published sites, by the address rather than by the switch', async () => {
@@ -953,6 +1049,52 @@ describe('createInMemoryUnitOfWork: drafts, grants, revisions, renders, and link
     ).toBeNull()
   })
 
+  it('keeps who wrote what through a rebase that leaves the base, and lets it go with one that moves it', async () => {
+    const uow = createInMemoryUnitOfWork()
+    await uow.repos.drafts.init({ documentId: DOC_1, baseRevision: null, ast: {}, now: NOW })
+    const record = { version: 1, by: 'ada' }
+    await uow.repos.drafts.rebase({
+      documentId: DOC_1,
+      baseRevision: null,
+      ast: { a: 1 },
+      authorship: record,
+      now: NOW,
+    })
+
+    expect(
+      (await uow.repos.drafts.rebase({ documentId: DOC_1, baseRevision: null, ast: {}, now: NOW }))
+        ?.authorship,
+    ).toEqual(record)
+    expect(
+      (await uow.repos.drafts.rebase({ documentId: DOC_1, baseRevision: REVISION, now: NOW }))
+        ?.authorship,
+    ).toBeNull()
+  })
+
+  it('stamps a draft with its base and when it was saved, and has no stamp for a document without one', async () => {
+    const uow = createInMemoryUnitOfWork()
+    await uow.repos.drafts.init({ documentId: DOC_1, baseRevision: REVISION, ast: {}, now: NOW })
+
+    expect(await uow.repos.drafts.stamp(DOC_1)).toEqual({ baseRevision: REVISION, updatedAt: NOW })
+    expect(await uow.repos.drafts.stamp(NOPE_DOC)).toBeNull()
+  })
+
+  it('writes nothing in a rebase that expects another version of the draft', async () => {
+    const uow = createInMemoryUnitOfWork()
+    await uow.repos.drafts.init({ documentId: DOC_1, baseRevision: null, ast: {}, now: NOW })
+
+    expect(
+      await uow.repos.drafts.rebase({
+        documentId: DOC_1,
+        baseRevision: null,
+        ast: { a: 1 },
+        expectedVersion: 5,
+        now: NOW,
+      }),
+    ).toBeNull()
+    expect((await uow.repos.drafts.find(DOC_1))?.ast).toEqual({})
+  })
+
   it('lists grants for a set of scopes in one call', async () => {
     const uow = createInMemoryUnitOfWork()
     await uow.repos.grants.create({
@@ -983,6 +1125,83 @@ describe('createInMemoryUnitOfWork: drafts, grants, revisions, renders, and link
       { kind: 'document', id: DOC_1 },
     ])
     expect(found.map((grant) => grant.id).toSorted()).toEqual(['grant-1', 'grant-2'])
+  })
+
+  it('names each person who has published a document once, under the name they last used', async () => {
+    const uow = createInMemoryUnitOfWork()
+    const publish = (
+      id: string,
+      forDocument: typeof DOC_1,
+      name: string,
+      email: string,
+      at: number,
+    ) =>
+      uow.repos.revisions.append({
+        id,
+        documentId: forDocument,
+        workspaceId: WORKSPACE_1,
+        revision: id === 'a1' ? REVISION : OTHER_REVISION,
+        authorName: name,
+        authorEmail: email,
+        timestamp: new Date(NOW.getTime() + at),
+        summary: id,
+        changeNote: null,
+        now: NOW,
+      })
+    await publish('a1', DOC_1, 'Ada', 'Ada@Example.com', 1_000)
+    await publish('a2', DOC_1, 'Ada Lovelace', 'ada@example.com', 2_000)
+    await publish('s1', DOC_1, 'Sam Taylor', 'sam@example.com', 1_500)
+    await publish('g1', NOPE_DOC, 'Grace Hopper', 'grace@example.com', 1_000)
+
+    expect(await uow.repos.revisions.listContributors(DOC_1)).toEqual([
+      { name: 'Ada Lovelace', email: 'ada@example.com' },
+      { name: 'Sam Taylor', email: 'sam@example.com' },
+    ])
+    expect(
+      await uow.repos.revisions.listContributors(
+        documentId('00000000-0000-4000-8000-0000000002fe'),
+      ),
+    ).toEqual([])
+  })
+
+  it('names the contributors of several documents at once, most recent publisher first', async () => {
+    const uow = createInMemoryUnitOfWork()
+    const publish = (
+      id: string,
+      forDocument: typeof DOC_1,
+      name: string,
+      email: string,
+      at: number,
+    ) =>
+      uow.repos.revisions.append({
+        id,
+        documentId: forDocument,
+        workspaceId: WORKSPACE_1,
+        revision: id === 'a1' ? REVISION : OTHER_REVISION,
+        authorName: name,
+        authorEmail: email,
+        timestamp: new Date(NOW.getTime() + at),
+        summary: id,
+        changeNote: null,
+        now: NOW,
+      })
+    await publish('a1', DOC_1, 'Ada', 'Ada@Example.com', 1_000)
+    await publish('s1', DOC_1, 'Sam Taylor', 'sam@example.com', 2_000)
+    await publish('a2', DOC_1, 'Ada Lovelace', ' ada@example.com ', 3_000)
+    await publish('g1', NOPE_DOC, 'Grace Hopper', 'grace@example.com', 1_000)
+
+    const found = await uow.repos.revisions.listContributorsForDocuments([
+      DOC_1,
+      NOPE_DOC,
+      NO_LOCK_DOC,
+    ])
+    expect(found.get(DOC_1)).toEqual([
+      { name: 'Ada Lovelace', email: 'ada@example.com' },
+      { name: 'Sam Taylor', email: 'sam@example.com' },
+    ])
+    expect(found.get(NOPE_DOC)).toEqual([{ name: 'Grace Hopper', email: 'grace@example.com' }])
+    expect(found.has(NO_LOCK_DOC)).toBe(false)
+    expect((await uow.repos.revisions.listContributorsForDocuments([])).size).toBe(0)
   })
 
   it('pages revisions newest first from a cursor', async () => {
@@ -1343,5 +1562,114 @@ describe('secrets', () => {
         })
       ).map((row) => row.name),
     ).toEqual(['b', 'c'])
+  })
+})
+
+describe('createInMemoryUnitOfWork: renaming a group', () => {
+  it('renames one it holds and refuses one it does not', async () => {
+    const uow = createInMemoryUnitOfWork()
+    await uow.repos.groups.create({
+      id: 'engineering',
+      unitId: 'unit-1',
+      parentGroupId: null,
+      name: 'Engineering',
+      now: NOW,
+    })
+
+    expect((await uow.repos.groups.rename('engineering', 'Platform')).name).toBe('Platform')
+    expect((await uow.repos.groups.findById('engineering'))?.name).toBe('Platform')
+    await expect(uow.repos.groups.rename('ghost', 'x')).rejects.toThrow(
+      'rename: group ghost not found',
+    )
+  })
+})
+
+describe('createInMemoryUnitOfWork: review requests', () => {
+  const later = (minutes: number) => new Date(NOW.getTime() + minutes * 60_000)
+  const request = (id: string, now: Date) => ({
+    id,
+    documentId: DOC_1,
+    requestedBy: USER_1,
+    draftVersion: 1,
+    message: null,
+    reviewers: [],
+    now,
+  })
+
+  it('finds a request by id, or none', async () => {
+    const uow = createInMemoryUnitOfWork()
+    await uow.repos.reviews.create(request('r1', NOW))
+
+    expect((await uow.repos.reviews.findById('r1'))?.id).toBe('r1')
+    expect(await uow.repos.reviews.findById('nope')).toBeNull()
+  })
+
+  it('answers with the active request for a document, else the newest closed one', async () => {
+    const uow = createInMemoryUnitOfWork()
+    expect(await uow.repos.reviews.findLatestForDocument(DOC_1)).toBeNull()
+
+    await uow.repos.reviews.create(request('old', NOW))
+    await uow.repos.reviews.create(request('new', later(5)))
+    await uow.repos.reviews.setStatus('old', 'withdrawn', later(6))
+    await uow.repos.reviews.setStatus('new', 'superseded', later(7))
+    // Both closed: the more recently created one.
+    expect((await uow.repos.reviews.findLatestForDocument(DOC_1))?.id).toBe('new')
+
+    await uow.repos.reviews.create(request('active', later(1)))
+    // An active request wins over a newer closed one, however the two are listed.
+    expect((await uow.repos.reviews.findLatestForDocument(DOC_1))?.id).toBe('active')
+  })
+
+  it('breaks a tie in creation time by id, the later id first', async () => {
+    const uow = createInMemoryUnitOfWork()
+    await uow.repos.reviews.create(request('a', NOW))
+    await uow.repos.reviews.create(request('b', NOW))
+    await uow.repos.reviews.setStatus('a', 'withdrawn', later(1))
+    await uow.repos.reviews.setStatus('b', 'withdrawn', later(1))
+
+    expect((await uow.repos.reviews.findLatestForDocument(DOC_1))?.id).toBe('b')
+  })
+
+  it('closes a request when its status ends it, and ignores an unknown id', async () => {
+    const uow = createInMemoryUnitOfWork()
+    await uow.repos.reviews.create(request('r1', NOW))
+
+    const closed = await uow.repos.reviews.setStatus('r1', 'published', later(2))
+    expect(closed?.closedAt).toEqual(later(2))
+    expect(await uow.repos.reviews.setStatus('ghost', 'withdrawn', later(2))).toBeNull()
+  })
+})
+
+describe('createInMemoryUnitOfWork: the order review requests are found in', () => {
+  const later = (minutes: number) => new Date(NOW.getTime() + minutes * 60_000)
+  const request = (id: string, now: Date) => ({
+    id,
+    documentId: DOC_1,
+    requestedBy: USER_1,
+    draftVersion: 1,
+    message: null,
+    reviewers: [],
+    now,
+  })
+
+  it('puts the active request first whichever order they were made in', async () => {
+    const uow = createInMemoryUnitOfWork()
+    await uow.repos.reviews.create(request('active-first', NOW))
+    await uow.repos.reviews.create(request('closed-1', later(1)))
+    await uow.repos.reviews.create(request('closed-2', later(2)))
+    await uow.repos.reviews.setStatus('closed-1', 'withdrawn', later(3))
+    await uow.repos.reviews.setStatus('closed-2', 'withdrawn', later(3))
+
+    expect((await uow.repos.reviews.findLatestForDocument(DOC_1))?.id).toBe('active-first')
+  })
+
+  it('orders requests made at the same moment by id, however many there are', async () => {
+    const uow = createInMemoryUnitOfWork()
+    for (const id of ['b', 'c', 'a']) {
+      await uow.repos.reviews.create(request(id, NOW))
+      await uow.repos.reviews.setStatus(id, 'withdrawn', later(1))
+    }
+
+    expect((await uow.repos.reviews.findLatestForDocument(DOC_1))?.id).toBe('c')
   })
 })

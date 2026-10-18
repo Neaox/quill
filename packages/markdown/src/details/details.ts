@@ -1,4 +1,4 @@
-import type { Paragraph, Parent } from 'mdast'
+import type { Paragraph, Parent, RootContent } from 'mdast'
 import type { ContainerDirective } from 'mdast-util-directive'
 
 import type { CalloutType } from '../directives/callout.ts'
@@ -103,6 +103,9 @@ export const ACCORDION = 'accordion'
  */
 export const DETAILS_NAME = /^[A-Za-z0-9][\w-]{0,31}$/u
 
+/** A `:::details` container directive. */
+export type DetailsDirective = ContainerDirective & { readonly name: typeof DETAILS }
+
 /** Any of the three syntaxes, as the tree holds it. */
 export type DetailsNode = Details | ContainerDirective
 
@@ -125,11 +128,32 @@ export function isDetailsNode(node: {
   return isDetails(node) || isNamedContainer(node, DETAILS)
 }
 
-export function isAccordion(node: {
-  readonly type: string
-  readonly name?: unknown
-}): node is ContainerDirective {
-  return isNamedContainer(node, ACCORDION)
+/**
+ * Node types that only ever stand in a run of inline content or inside a
+ * list or a table, never among a container's blocks.
+ */
+const NOT_FLOW: ReadonlySet<string> = new Set([
+  'break',
+  'delete',
+  'emphasis',
+  'footnoteReference',
+  'image',
+  'imageReference',
+  'inlineCode',
+  'link',
+  'linkReference',
+  'listItem',
+  'strong',
+  'tableCell',
+  'tableRow',
+  'text',
+  'textDirective',
+  'yaml',
+])
+
+/** Whether a node can be one of a container's blocks, a details' body included. */
+export function isFlowContent(node: RootContent): node is DirectiveContent[number] {
+  return !NOT_FLOW.has(node.type)
 }
 
 /** A details' attributes, whichever syntax it was written in. */

@@ -69,8 +69,12 @@ export type DrawioLabels =
   | { readonly kind: 'not-drawio' }
   | { readonly kind: 'refused'; readonly reason: DrawioRefusal }
 
-/** The root `<svg …>` start tag; attribute values are quoted, so a `>` inside one is skipped. */
-const SVG_START_TAG = /<svg\b(?:[^>"']|"[^"]*"|'[^']*')*>/i
+/**
+ * The root `<svg …>` start tag; attribute values are quoted, so a `>` inside
+ * one is skipped. Nothing in a tag may be a `<` (XML refuses one even in a
+ * value), so a hostile file of unclosed tags is scanned once, not once per tag.
+ */
+const SVG_START_TAG = /<svg\b(?:[^<>"']|"[^<"]*"|'[^<']*')*>/i
 
 /** draw.io writes its attributes double-quoted, with `"` escaped, so a value never holds one. */
 const CONTENT_ATTRIBUTE = /\scontent\s*=\s*"([^"]*)"/i
@@ -91,8 +95,13 @@ export function drawioSourceOf(file: string): string | null {
   return DRAWIO_ROOT.test(source) ? source : null
 }
 
-/** One `<diagram …>…</diagram>` page; draw.io never nests them. */
-const DIAGRAM_PAGE = /<diagram\b(?:[^>"']|"[^"]*"|'[^']*')*?(?:\/>|>([\s\S]*?)<\/diagram>)/g
+/**
+ * One `<diagram …>…</diagram>` page; draw.io never nests them, so a page's
+ * content stops at the next `<diagram` as well as at its own close, and a
+ * file of pages that never close is scanned once rather than once per page.
+ */
+const DIAGRAM_PAGE =
+  /<diagram\b(?:[^<>"']|"[^<"]*"|'[^<']*')*?(?:\/>|>([^<]*(?:<(?!\/?diagram\b)[^<]*)*)<\/diagram>)/g
 
 const BASE64 = /^[A-Za-z\d+/=\s]*$/
 
@@ -120,6 +129,8 @@ export async function readDrawioModels(
     }
     if (page === '') continue
     if (!BASE64.test(page)) return { kind: 'refused', reason: 'malformed' }
+    // One page at a time: the pages share one budget, which each spends.
+    // oxlint-disable-next-line no-await-in-loop
     const inflated = await inflate(base64Bytes(page), budget)
     if (inflated.kind === 'refused') return inflated
     budget -= inflated.bytes.length
@@ -153,18 +164,21 @@ function uriDecoded(text: string): string | null {
 const LABELLED_ELEMENT =
   /<(mxCell|object|UserObject)((?:\s+[\w:.-]+\s*=\s*(?:"[^"]*"|'[^']*'))*)\s*\/?>/g
 
-const ATTRIBUTE = /([\w:.-]+)\s*=\s*(?:"([^"]*)"|'([^']*)')/g
+const ATTRIBUTE = /([\w:.-]+)\s*=\s*(["'])([\s\S]*?)\2/g
 
 /** Every element start in a model, for the element budget. */
 const ELEMENT_START = /<[A-Za-z]/g
 
 function attributesOf(source: string): ReadonlyMap<string, string> {
+  /* v8 ignore start -- a match of the pattern always has a name and one of its two quoted values. */
   return new Map(
     Array.from(source.matchAll(ATTRIBUTE), (match) => [
-      match[1] ?? '',
-      decodeEntities(match[2] ?? match[3] ?? ''),
+      // Groups the pattern always captures.
+      String(match[1]),
+      decodeEntities(String(match[3])),
     ]),
   )
+  /* v8 ignore stop */
 }
 
 /**
@@ -173,7 +187,7 @@ function attributesOf(source: string): ReadonlyMap<string, string> {
  */
 export function labelsOfModel(model: string): readonly string[] {
   return Array.from(model.matchAll(LABELLED_ELEMENT), (match) => {
-    const attributes = attributesOf(match[2] ?? '')
+    const attributes = attributesOf(String(match[2]))
     const raw = match[1] === 'mxCell' ? attributes.get('value') : attributes.get('label')
     return raw === undefined ? '' : plainText(raw)
   }).filter((label) => label !== '')
@@ -249,8 +263,8 @@ const SVG_LABELS = /(?:^|;)convertToSvg=1(?:;|$)/
 function hasHtmlLabels(model: string): boolean {
   return Array.from(model.matchAll(MX_CELL)).some(([, attributes = '']) => {
     if (!SHAPE_OR_LINE.test(attributes)) return false
-    const style = STYLE_ATTRIBUTE.exec(attributes)?.[2] ?? ''
-    return !SVG_LABELS.test(style)
+    const style = STYLE_ATTRIBUTE.exec(attributes)
+    return style === null || !SVG_LABELS.test(String(style[2]))
   })
 }
 
@@ -286,7 +300,8 @@ export async function editableDrawioSource(
   // `id` and `name`; an empty page stays empty.
   const xml = source.replaceAll(DIAGRAM_PAGE, (whole, inner: string | undefined) => {
     if (inner === undefined || inner.trim() === '') return whole
-    const model = models.shift() ?? ''
+    // One model was read for each page that is not empty, in this order.
+    const model = String(models.shift())
     const start = whole.slice(0, whole.length - inner.length - '</diagram>'.length)
     return `${start}${withSvgLabelCells(model)}</diagram>`
   })

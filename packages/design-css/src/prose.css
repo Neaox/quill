@@ -10,16 +10,98 @@
  * 0), so they are written once here and scale from `--text-reading`.
  *
  * `.prose` is applied to the layout grid itself, so every block of a document
- * is a grid item and asks for `content`, `wide`, or `full` by name. Vertical
- * rhythm is expressed as top margins only (grid items do not collapse
- * margins), which keeps the space between any two blocks a single number
- * rather than the sum of two.
+ * is a grid item and asks for `content`, `wide`, or `full` by name.
  *
  * Sizes are in `em` of the prose root, so changing `--text-reading` rescales
  * the whole document proportionally.
  */
 
+/*
+ * Vertical rhythm.
+ *
+ * Grid items do not collapse margins, so the space between two blocks is the
+ * first one's bottom margin plus the second one's top margin, and the rhythm
+ * gives each side its own half:
+ *
+ *   - every block but the first takes the space *above* it from its own kind
+ *     (`margin-top`): the flow, a heading's wider space, an object's air;
+ *   - a block that wants a different space *below* it than the flow (a
+ *     heading, the title, a rule, an object) gives or takes the difference
+ *     with its `margin-bottom`, measured against a plain block's flow, so a
+ *     plain block after it lands exactly where the leader asked.
+ *
+ * The flow itself uses no sibling combinator (`+`, `~`). That is a budget,
+ * not a taste: the editor inserts a block on every Enter and every pasted
+ * block, and Chrome re-checks a rule like `.prose > * + *` or
+ * `.prose > h2 + *` on each insertion, restyling every block it could match:
+ * 70 to 85 ms an Enter in a 1,200-block document (quill-plan.md section 31).
+ * `:first-child` and `:last-child` stay cheap, as they change only when the
+ * first or the last block does. The few pairs neither side can say alone (a
+ * heading straight after a heading sits at the after-heading space, in its
+ * own units) are written from the follower's side, so each insertion
+ * restyles only the elements such a pair could move: headings, rules,
+ * objects other than tables, the footnotes, the one lede. A table restyles
+ * its whole body, so it is never such a subject; the object or rule before
+ * it asks after it with `:has(+ .table-block)` instead.
+ * `packages/ui/src/styles/rhythm.test.ts` keeps the list closed.
+ *
+ * The theme's flow tokens may be written in `em`, and a heading's em is not
+ * a paragraph's, so they are resolved once on the prose root into lengths
+ * (registered, so they inherit as lengths rather than as text): what a
+ * heading leaves below it is then measured in the units of the paragraph
+ * that follows.
+ */
+@property --prose-space-block {
+  syntax: '<length>';
+  inherits: true;
+  initial-value: 0px;
+}
+
+@property --prose-space-after-heading {
+  syntax: '<length>';
+  inherits: true;
+  initial-value: 0px;
+}
+
+@property --prose-space-after-title {
+  syntax: '<length>';
+  inherits: true;
+  initial-value: 0px;
+}
+
+@property --prose-space-object-before {
+  syntax: '<length>';
+  inherits: true;
+  initial-value: 0px;
+}
+
+@property --prose-space-object-after {
+  syntax: '<length>';
+  inherits: true;
+  initial-value: 0px;
+}
+
+/* Registered so the themes' unitless `0` is a length a `calc()` can add. */
+@property --details-gap {
+  syntax: '<length>';
+  inherits: true;
+  initial-value: 0px;
+}
+
+@property --prose-space-rule {
+  syntax: '<length>';
+  inherits: true;
+  initial-value: 0px;
+}
+
 .prose {
+  --prose-space-block: var(--prose-flow-block, 1.15em);
+  --prose-space-after-heading: var(--prose-flow-after-heading, 0.75em);
+  --prose-space-after-title: var(--prose-flow-after-title, 0.75em);
+  --prose-space-object-before: var(--prose-flow-object-before, 1.6em);
+  --prose-space-object-after: var(--prose-flow-object-after, 1.6em);
+  --prose-space-rule: 2.4em;
+
   font-family: var(--font-reading);
   font-size: var(--text-reading);
   line-height: var(--leading-reading);
@@ -28,7 +110,7 @@
   hanging-punctuation: first last;
 }
 
-.prose > * + * {
+.prose > :where(:not(:first-child)) {
   margin-top: var(--prose-flow-block, 1.15em);
 }
 
@@ -107,19 +189,6 @@
   margin-inline-end: 0.4em;
 }
 
-/*
- * The hash is the public site's cue that a section is addressable. In the application it is
- * not wanted anywhere: on the writing surface it reads as Markdown that has lost a character,
- * on the reading page it is decoration beside a heading that already has its own link, and a
- * slide is a heading on its own. So the shell and the presentation do not draw it, whatever the
- * theme says; the public site, which is not the shell, keeps it.
- */
-[data-rules].document-shell .prose h2::before,
-[data-rules] .present-step .prose h2::before,
-[data-surface='present'] .prose h2::before {
-  content: none;
-}
-
 [data-rules='double'] .prose h2,
 .prose[data-rules='double'] h2 {
   border-bottom: 3px double var(--color-foreground);
@@ -142,34 +211,116 @@
   letter-spacing: var(--prose-h4-tracking, 0);
 }
 
-.prose > * + h2 {
+.prose > h2:where(:not(:first-child)) {
   margin-top: var(--prose-h2-space, 2.6em);
 }
 
-.prose > * + h3 {
+.prose > h3:where(:not(:first-child)) {
   margin-top: var(--prose-h3-space, 2em);
 }
 
-.prose > * + h4 {
+.prose > h4:where(:not(:first-child)) {
   margin-top: 1.6em;
 }
 
-/* A heading and the block it introduces belong together. */
-.prose > h2 + *,
-.prose > h3 + *,
-.prose > h4 + * {
-  margin-top: var(--prose-flow-after-heading, 0.75em);
+/*
+ * A heading and the block it introduces belong together: the heading draws
+ * the next block in with its own bottom margin, measured against a plain
+ * block's flow. A block that brings its own space (a heading, a rule, an
+ * object, the footnotes) keeps the space it always had after a heading, so
+ * it takes back what the heading drew in.
+ *
+ * These pairs are written from the follower's side on purpose: `:has(+ …)`
+ * with a heading as its subject restyles the whole editor on each Enter.
+ * That leaves a table straight under a heading (or under the title) as the
+ * one pair the rhythm does not make: the table keeps its own space above it,
+ * less what the heading drew in, because naming the table here would
+ * restyle every table on every insertion.
+ */
+.prose > :is(h2, h3, h4):where(:not(:last-child)) {
+  margin-bottom: calc(var(--prose-space-after-heading) - var(--prose-space-block));
 }
 
-.prose > h1 + * {
-  margin-top: var(--prose-flow-after-title, 0.75em);
+.prose > :is(h2, h3, h4) + :is(h2, h3, h4) {
+  margin-top: calc(
+    var(--prose-flow-after-heading, 0.75em) + var(--prose-space-block) -
+      var(--prose-space-after-heading)
+  );
 }
 
-.prose > h1 {
-  margin-bottom: 0;
+.prose > :is(h2, h3, h4) + hr {
+  margin-top: calc(2.4em + var(--prose-space-block) - var(--prose-space-after-heading));
+}
+
+.prose
+  > :is(h2, h3, h4)
+  + :where(
+    figure,
+    pre,
+    blockquote,
+    .table-scroll,
+    .callout,
+    .code-block,
+    .code-group,
+    .details,
+    .accordion
+  ),
+.prose > :is(h2, h3, h4) + .footnotes {
+  margin-top: calc(
+    var(--prose-flow-object-before, 1.6em) + var(--prose-space-block) -
+      var(--prose-space-after-heading)
+  );
+}
+
+/*
+ * The title draws in whatever follows it, the same way, and what brings its
+ * own space takes the title's instead, less what the title drew in. An
+ * object keeps the title's space too; only the footnotes keep their own.
+ */
+.prose > h1:where(:not(:last-child)) {
+  margin-bottom: calc(var(--prose-space-after-title) - var(--prose-space-block));
+}
+
+.prose
+  > h1
+  + :where(
+    h2,
+    h3,
+    h4,
+    h5,
+    h6,
+    figure,
+    pre,
+    blockquote,
+    .table-scroll,
+    .callout,
+    .code-block,
+    .code-group,
+    .details,
+    .accordion
+  ) {
+  margin-top: calc(
+    var(--prose-flow-after-title, 0.75em) + var(--prose-space-block) -
+      var(--prose-space-after-title)
+  );
+}
+
+.prose > h1 + hr {
+  margin-top: calc(2.4em + var(--prose-space-block) - var(--prose-space-after-title));
+}
+
+.prose > h1 + .footnotes {
+  margin-top: calc(
+    var(--prose-flow-object-before, 1.6em) + var(--prose-space-block) -
+      var(--prose-space-after-title)
+  );
 }
 
 .prose > h1 + p {
+  margin-top: calc(
+    var(--prose-flow-after-title, 0.75em) + var(--prose-space-block) -
+      var(--prose-space-after-title)
+  );
   font-size: var(--prose-lede-size, 1.1em);
   color: var(--color-body);
   line-height: var(--prose-lede-leading, 1.6);
@@ -309,7 +460,7 @@
   color: var(--color-muted);
 }
 
-.prose li + li {
+.prose li:where(:not(:first-child)) {
   margin-top: 0.4em;
 }
 
@@ -446,8 +597,7 @@
 
 .prose code {
   font-family: var(--font-mono);
-  /* A monospace face sits small beside the reading face at the same size, so it is a step up. */
-  font-size: 0.875em;
+  font-size: 0.85em;
   font-variant-ligatures: none;
 }
 
@@ -974,11 +1124,17 @@
   --table-header-rule: 1px solid var(--color-border);
 }
 
-.prose :is(thead th, :is(tbody, tfoot) th[scope='row']) {
+.prose
+  :is(
+    thead th,
+    :is(tbody, tfoot) th[scope='row'],
+    [data-part='head'] > *,
+    [data-part='row-header']
+  ) {
   background-color: var(--table-header-bg);
 }
 
-.prose thead th {
+.prose :is(thead th, [data-part='head'] > *) {
   color: var(--color-muted);
   font-weight: var(--table-header-weight);
   font-family: var(--font-mono);
@@ -992,8 +1148,9 @@
 }
 
 /* A row header's rule separates the header column from the data; so does the corner's. */
-.prose :is(tbody, tfoot) th[scope='row'],
-.table-block:is([data-headers='both'], [data-headers='row']) thead th:first-child {
+.prose :is(:is(tbody, tfoot) th[scope='row'], [data-part='row-header']),
+.table-block:is([data-headers='both'], [data-headers='row'])
+  :is(thead th, [data-part='head'] > *):first-child {
   border-inline-end: var(--table-header-rule);
 }
 
@@ -1024,8 +1181,7 @@
     [data-rules='cards'] .prose,
     .prose[data-rules='cards']
   )
-  thead
-  th {
+  :is(thead th, [data-part='head'] > *) {
   font-family: var(--font-sans);
   font-size: 0.8125rem;
   letter-spacing: 0;
@@ -1099,7 +1255,7 @@
  * A footer (`footer=N`): totals under a stronger rule, in the header's tone
  * on its surface, numbers still aligned in tabular figures.
  */
-.prose tfoot :is(th, td) {
+.prose :is(tfoot :is(th, td), [data-part='foot'] > *) {
   border-top: 2px solid var(--color-border-strong);
   border-bottom: 0;
   background-color: var(--color-surface);
@@ -1107,7 +1263,7 @@
   font-weight: 600;
 }
 
-.prose tfoot tr + tr :is(th, td) {
+.prose :is(tfoot tr:not(:first-child) :is(th, td), [data-part='foot'] + [data-part='foot'] > *) {
   border-top-width: 1px;
   border-top-color: var(--color-border);
 }
@@ -1117,7 +1273,7 @@
  * for a name: frozen at the left, it is what a reader holds on to while the
  * rest scrolls, so it is never squeezed to a word a line.
  */
-.prose :is(tbody, tfoot) th[scope='row'] {
+.prose :is(:is(tbody, tfoot) th[scope='row'], [data-part='row-header']) {
   min-width: min(9rem, 35cqi);
   color: var(--color-foreground);
   font-weight: 600;
@@ -1759,22 +1915,59 @@
   border-top: 1px solid var(--color-border);
 }
 
-.prose > * + hr {
+/*
+ * A rule is a pause: the same wide space above it and below it. Below it is
+ * the rule's own bottom margin, so what brings its own space after it (a
+ * heading, a rule, an object) takes the rule's space in its own units, less
+ * what the rule already left. A table cannot be told what came before it
+ * cheaply (see the headings), so the rule asks after it instead.
+ */
+.prose > hr:where(:not(:first-child)) {
   margin-top: 2.4em;
 }
 
-.prose > hr + * {
-  margin-top: 2.4em;
+.prose > hr:where(:not(:last-child)) {
+  margin-bottom: calc(var(--prose-space-rule) - var(--prose-space-block));
+}
+
+.prose > hr:has(+ .table-block) {
+  margin-bottom: calc(var(--prose-space-rule) - var(--prose-space-object-before));
+}
+
+.prose > hr + :is(h2, h3, h4, hr),
+.prose
+  > hr
+  + :where(
+    figure,
+    pre,
+    blockquote,
+    .table-scroll,
+    .callout,
+    .code-block,
+    .code-group,
+    .details,
+    .accordion
+  ) {
+  margin-top: calc(2.4em + var(--prose-space-block) - var(--prose-space-rule));
+}
+
+.prose > hr + .footnotes {
+  margin-top: calc(
+    var(--prose-flow-object-before, 1.6em) + var(--prose-space-block) - var(--prose-space-rule)
+  );
 }
 
 /*
- * Blocks that are not body text get a little more air around them. Every
- * selector here weighs the same (`:where` takes the classes' weight away), so
- * when two objects meet the space below the first wins, as source order says.
+ * Blocks that are not body text get a little more air around them: above
+ * them, their own; below them, their own bottom margin. What brings its own
+ * space after an object takes back what the object left: a heading or a rule
+ * keeps its own, and when two objects meet the space below the first wins.
+ * Every selector here weighs the same (`:where` takes the classes' weight
+ * away), so the more particular pairs below, a run of details for one, still
+ * say their own. A table after an object is the object's to ask about.
  */
 .prose
-  > *
-  + :where(
+  > :where(
     figure,
     pre,
     blockquote,
@@ -1785,7 +1978,7 @@
     .code-group,
     .details,
     .accordion
-  ) {
+  ):where(:not(:first-child)) {
   margin-top: var(--prose-flow-object-before, 1.6em);
 }
 
@@ -1801,15 +1994,12 @@
     .code-group,
     .details,
     .accordion
-  )
-  + * {
-  margin-top: var(--prose-flow-object-after, 1.6em);
+  ):where(:not(:last-child)) {
+  margin-bottom: calc(var(--prose-space-object-after) - var(--prose-space-block));
 }
 
-/* An object straight under a heading still takes the larger space above it. */
 .prose
-  > :is(h2, h3, h4)
-  + :where(
+  > :where(
     figure,
     pre,
     blockquote,
@@ -1820,8 +2010,130 @@
     .code-group,
     .details,
     .accordion
+  ):has(+ .table-block) {
+  margin-bottom: calc(var(--prose-space-object-after) - var(--prose-space-object-before));
+}
+
+.prose
+  > :where(
+    figure,
+    pre,
+    blockquote,
+    .table-block,
+    .table-scroll,
+    .callout,
+    .code-block,
+    .code-group,
+    .details,
+    .accordion
+  )
+  + h2 {
+  margin-top: calc(
+    var(--prose-h2-space, 2.6em) + var(--prose-space-block) - var(--prose-space-object-after)
+  );
+}
+
+.prose
+  > :where(
+    figure,
+    pre,
+    blockquote,
+    .table-block,
+    .table-scroll,
+    .callout,
+    .code-block,
+    .code-group,
+    .details,
+    .accordion
+  )
+  + h3 {
+  margin-top: calc(
+    var(--prose-h3-space, 2em) + var(--prose-space-block) - var(--prose-space-object-after)
+  );
+}
+
+.prose
+  > :where(
+    figure,
+    pre,
+    blockquote,
+    .table-block,
+    .table-scroll,
+    .callout,
+    .code-block,
+    .code-group,
+    .details,
+    .accordion
+  )
+  + h4 {
+  margin-top: calc(1.6em + var(--prose-space-block) - var(--prose-space-object-after));
+}
+
+.prose
+  > :where(
+    figure,
+    pre,
+    blockquote,
+    .table-block,
+    .table-scroll,
+    .callout,
+    .code-block,
+    .code-group,
+    .details,
+    .accordion
+  )
+  + hr {
+  margin-top: calc(2.4em + var(--prose-space-block) - var(--prose-space-object-after));
+}
+
+.prose
+  > :where(
+    figure,
+    pre,
+    blockquote,
+    .table-block,
+    .table-scroll,
+    .callout,
+    .code-block,
+    .code-group,
+    .details,
+    .accordion
+  )
+  + :where(
+    figure,
+    pre,
+    blockquote,
+    .table-scroll,
+    .callout,
+    .code-block,
+    .code-group,
+    .details,
+    .accordion
   ) {
-  margin-top: var(--prose-flow-object-before, 1.6em);
+  margin-top: calc(
+    var(--prose-flow-object-after, 1.6em) + var(--prose-space-block) -
+      var(--prose-space-object-after)
+  );
+}
+
+.prose
+  > :is(
+    figure,
+    pre,
+    blockquote,
+    .table-block,
+    .table-scroll,
+    .callout,
+    .code-block,
+    .code-group,
+    .details,
+    .accordion
+  )
+  + .footnotes {
+  margin-top: calc(
+    var(--prose-flow-object-before, 1.6em) + var(--prose-space-block) -
+      var(--prose-space-object-after)
+  );
 }
 
 /*
@@ -1846,8 +2158,12 @@
  * kind of document, or the part of the documentation it belongs to, in the
  * accent's small capitals. Plain Markdown, so it degrades to a line above the
  * heading anywhere else.
+ *
+ * It opens the document (in the editor, after the front matter it does not
+ * draw), and the rule says so before it asks `:has()`: a `:has()` asked of
+ * every paragraph is re-asked of them all on each Enter.
  */
-.prose > p:has(+ h1) {
+.prose > p:where(:first-child, .front-matter-node:first-child + p):has(+ h1) {
   font-family: var(--font-sans);
   font-size: var(--prose-eyebrow-size, 0.76rem);
   line-height: 1.4;
@@ -1857,7 +2173,8 @@
   color: var(--color-accent-ink, var(--color-accent));
 }
 
-.prose > p:has(+ h1) + h1 {
+/* The title under its eyebrow; `p + h1` is the same pair, said without `:has()`. */
+.prose > p + h1 {
   margin-top: 0.45em;
 }
 
@@ -2118,7 +2435,7 @@
   max-width: 48rem;
 }
 
-.prose figcaption > p + p {
+.prose figcaption > p:where(:not(:first-child)) {
   margin-top: 0.5em;
 }
 
@@ -2422,7 +2739,7 @@
   line-height: 1.6;
 }
 
-.prose .callout > * + * {
+.prose .callout > :where(:not(:first-child)) {
   margin-top: 0.55em;
 }
 
@@ -2544,10 +2861,24 @@
   background-color: var(--details-surface, transparent);
 }
 
+/*
+ * A run of details shares its rules: the one below drops its top border, and
+ * sits at the run's own gap (none, or the cards' small one), less what the
+ * details above already left below it.
+ */
 .prose > .details + .details,
 .prose .details-body > .details + .details {
-  margin-top: var(--details-gap, 0);
   border-top: var(--details-card, 0);
+}
+
+.prose > .details + .details {
+  margin-top: calc(var(--details-gap) + var(--prose-space-block) - var(--prose-space-object-after));
+}
+
+.prose .details-body > .details + .details {
+  margin-top: calc(
+    var(--details-gap) + var(--prose-space-block) - var(--prose-space-object-before)
+  );
 }
 
 .prose .accordion {
@@ -2638,23 +2969,58 @@
 }
 
 .prose .details-body {
+  /* The body is a flow of its own, in its own size (a folded callout's is smaller). */
+  --prose-space-block: var(--prose-flow-block, 1.15em);
+  --prose-space-object-before: var(--prose-flow-object-before, 1.6em);
+
   padding-block: 0.15rem 1.1rem;
   padding-inline: calc(var(--details-indent) + var(--details-inset, 0px)) var(--details-inset, 0px);
 }
 
-.prose .details-body > * + * {
+.prose .details-body > :where(:not(:first-child)) {
   margin-top: var(--prose-flow-block, 1.15em);
+}
+
+/* Inside a details an object takes the same air above it and below it. */
+.prose
+  .details-body
+  > :where(figure, pre, blockquote, .table-block, .callout, .code-block, .code-group):where(
+    :not(:first-child)
+  ) {
+  margin-top: var(--prose-flow-object-before, 1.6em);
+}
+
+.prose
+  .details-body
+  > :where(
+    figure,
+    pre,
+    blockquote,
+    .table-block,
+    .callout,
+    .code-block,
+    .code-group,
+    .details
+  ):where(:not(:last-child)) {
+  margin-bottom: calc(var(--prose-space-object-before) - var(--prose-space-block));
+}
+
+.prose
+  .details-body
+  > :where(figure, pre, blockquote, .table-block, .callout, .code-block, .code-group, .details):has(
+    + .table-block
+  ) {
+  margin-bottom: 0;
 }
 
 .prose
   .details-body
   > :where(figure, pre, blockquote, .table-block, .callout, .code-block, .code-group, .details)
-  + *,
-.prose
-  .details-body
-  > *
-  + :where(figure, pre, blockquote, .table-block, .callout, .code-block, .code-group) {
-  margin-top: var(--prose-flow-object-before, 1.6em);
+  + :where(figure, pre, blockquote, .callout, .code-block, .code-group) {
+  margin-top: calc(
+    var(--prose-flow-object-before, 1.6em) + var(--prose-space-block) -
+      var(--prose-space-object-before)
+  );
 }
 
 /*
@@ -2676,7 +3042,7 @@
 }
 
 .prose > .details.callout + .details.callout {
-  margin-top: 0.75rem;
+  margin-top: calc(0.75rem + var(--prose-space-block) - var(--prose-space-object-after));
 }
 
 /*
@@ -3138,40 +3504,804 @@ html.lightbox-open {
   }
 }
 
-/* --- Contents and child documents --------------------------------------- */
+/* --- Navigation blocks (ADR-058) ------------------------------------------ */
 
 /*
- * The `::toc` block and the `::children` block: nested lists of links that lead
- * somewhere else in the document, or beneath it. One card, so the two read as
- * the same kind of thing — a way around — and quiet by design, like the "On this
- * page" list they share a job with.
- *
- * Both lists reset the reading list style (`.prose ul`, `.prose ol`), and the
- * writing surface draws the same two blocks inside the same card, so this is
- * also what they look like while they are being written.
+ * A table of contents: a quiet card of links, nested as the headings are,
+ * with each deeper level hung from a rule the way the "On this page" rail
+ * draws one. The section being read (`aria-current="location"`, set by the
+ * contents spy) is marked by weight and an accent bar as well as colour.
  */
-.prose .toc,
-.prose .live-block[data-live-block='children'] {
-  font-family: var(--font-sans);
-  font-size: 0.92em;
-  line-height: 1.5;
-  padding: 0.75rem 1rem;
+.prose .toc {
+  /* As wide as its longest entry, within the measure, and never a sliver. */
+  justify-self: start;
+  inline-size: fit-content;
+  min-inline-size: min(100%, 18rem);
+  max-inline-size: 100%;
+  padding: 0.875rem 1.25rem 1rem 1.125rem;
   border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  background-color: var(--color-surface);
+  border-radius: var(--radius-lg);
+  background-color: var(--color-surface-raised);
+  font-family: var(--font-sans);
+  font-size: 0.9rem;
+  line-height: 1.4;
 }
 
-.prose :is(.toc, .live-block[data-live-block='children']) :is(ol, ul) {
-  list-style: none;
+.prose :is(.toc-title, .child-pages-title) {
+  margin: 0 0 0.5rem;
+  color: var(--color-muted);
+  font-family: var(--font-sans);
+  font-size: var(--text-xs, 0.75rem);
+  font-weight: 600;
+  letter-spacing: var(--tracking-caps, 0.06em);
+  line-height: 1.4;
+  text-transform: uppercase;
+}
+
+.prose .toc-list {
   margin: 0;
   padding: 0;
+  list-style: none;
 }
 
-.prose :is(.toc, .live-block[data-live-block='children']) :is(ol, ul) :is(ol, ul) {
-  margin-top: 0.2rem;
-  padding-inline-start: 1rem;
+.prose .toc-list .toc-list {
+  margin-block: 0.125rem 0.25rem;
+  margin-inline-start: 0.3125rem;
+  padding-inline-start: 0.75rem;
+  border-inline-start: 1px solid var(--color-border);
 }
 
-.prose :is(.toc, .live-block[data-live-block='children']) li + li {
-  margin-top: 0.2rem;
+.prose .toc li {
+  margin: 0;
+}
+
+.prose .toc a {
+  position: relative;
+  display: inline-block;
+  padding-block: 0.1875rem;
+  color: var(--color-body);
+  text-decoration: none;
+  transition: color var(--duration-fast, 120ms) var(--ease-standard, ease);
+}
+
+.prose .toc a:hover {
+  color: var(--color-foreground);
+  text-decoration: underline;
+  text-decoration-color: var(--color-border-strong);
+  text-underline-offset: 0.2em;
+}
+
+.prose .toc a:focus-visible {
+  border-radius: var(--radius-sm);
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 2px;
+}
+
+.prose .toc a[aria-current]:not([aria-current='false']) {
+  color: var(--color-foreground);
+  font-weight: 600;
+}
+
+.prose .toc a[aria-current]:not([aria-current='false'])::after {
+  content: '';
+  position: absolute;
+  inset-block: 0.3rem;
+  inset-inline-start: -0.5rem;
+  inline-size: 2px;
+  border-radius: 1px;
+  background-color: var(--color-accent);
+}
+
+@media (forced-colors: active) {
+  .prose .toc a[aria-current]:not([aria-current='false'])::after {
+    background-color: Highlight;
+  }
+}
+
+/* Numbered: `1`, `1.1`, `1.2`, by the list's own counters, in the margin's grey. */
+.prose .toc[data-style='numbered'] .toc-list {
+  counter-reset: toc;
+}
+
+.prose .toc[data-style='numbered'] li {
+  counter-increment: toc;
+}
+
+.prose .toc[data-style='numbered'] li > a::before {
+  content: counters(toc, '.') '\2002';
+  color: var(--color-muted);
+  font-variant-numeric: tabular-nums;
+  font-weight: 400;
+}
+
+/*
+ * Collapsed: a section with subsections has a disclosure beside its link,
+ * hung in the indent, never around the link. The browser's own `details`, so
+ * it opens without script and is announced as what it is.
+ */
+.prose .toc[data-collapsed] li {
+  position: relative;
+  padding-inline-start: 1.25rem;
+}
+
+.prose .toc[data-collapsed] .toc-list .toc-list {
+  margin-inline-start: 0;
+  padding-inline-start: 0;
+  border: 0;
+}
+
+.prose .toc-fold > summary {
+  position: absolute;
+  inset-block-start: 0.2rem;
+  inset-inline-start: 0;
+  display: grid;
+  place-items: center;
+  inline-size: 1.125rem;
+  block-size: 1.125rem;
+  border-radius: var(--radius-sm);
+  color: var(--color-muted);
+  cursor: pointer;
+  list-style: none;
+}
+
+.prose .toc-fold > summary::-webkit-details-marker {
+  display: none;
+}
+
+.prose .toc-fold > summary::before {
+  content: '';
+  inline-size: 0.35rem;
+  block-size: 0.35rem;
+  border-inline-end: 1.5px solid currentColor;
+  border-block-end: 1.5px solid currentColor;
+  transform: rotate(-45deg);
+  transition: transform var(--duration-base, 200ms) var(--ease-standard, ease);
+}
+
+.prose .toc-fold > summary:dir(rtl)::before {
+  transform: rotate(135deg);
+}
+
+.prose .toc-fold[open] > summary::before {
+  transform: translateY(-0.1rem) rotate(45deg);
+}
+
+.prose .toc-fold > summary:hover {
+  background-color: color-mix(in oklch, var(--color-foreground) 6%, transparent);
+  color: var(--color-foreground);
+}
+
+.prose .toc-fold > summary:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 1px;
+}
+
+.prose :is(.toc-empty, .child-pages-empty, .child-pages-fallback, .child-pages-more) {
+  margin: 0;
+  color: var(--color-muted);
+  font-family: var(--font-sans);
+  font-size: 0.9rem;
+}
+
+/*
+ * The pages under this one: a list of rows in one card, each page's title
+ * first, then its draft badge and its summary. Deeper levels hang from a
+ * rule inside their parent's row.
+ */
+.prose .child-pages-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-family: var(--font-sans);
+}
+
+.prose .child-pages > .child-pages-list {
+  overflow: hidden;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background-color: var(--color-surface-raised);
+}
+
+.prose .child-pages > .child-pages-list > .child-page {
+  padding: 0.625rem 1rem;
+}
+
+.prose .child-pages > .child-pages-list > .child-page:not(:first-child) {
+  margin: 0;
+  border-top: 1px solid var(--color-border);
+}
+
+.prose .child-page .child-pages-list {
+  margin-block: 0.375rem 0.125rem;
+  margin-inline-start: 0.375rem;
+  padding-inline-start: 0.875rem;
+  border-inline-start: 1px solid var(--color-border);
+}
+
+.prose .child-page .child-page {
+  margin: 0;
+  padding-block: 0.25rem;
+}
+
+.prose .child-page-link {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  color: var(--color-foreground);
+  font-weight: 600;
+  line-height: 1.4;
+  text-decoration: none;
+}
+
+.prose .child-page .child-page .child-page-link {
+  font-weight: 500;
+}
+
+.prose .child-page-link:hover .child-page-title {
+  text-decoration: underline;
+  text-decoration-color: var(--color-border-strong);
+  text-underline-offset: 0.2em;
+}
+
+.prose .child-page-link:focus-visible {
+  border-radius: var(--radius-sm);
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 2px;
+}
+
+.prose .child-page-icon {
+  flex: none;
+  inline-size: 1.25em;
+  text-align: center;
+}
+
+/*
+ * A page glyph, drawn from the muted token, for a page with no icon of its
+ * own: a folded corner and two lines of text, so it never reads as a task's
+ * checkbox.
+ */
+.prose .child-page-icon[data-icon='page'] {
+  --page-ink: var(--color-muted);
+
+  inline-size: 0.72em;
+  block-size: 0.92em;
+  margin-inline: 0.27em;
+  border: 1.5px solid var(--page-ink);
+  border-radius: 2px;
+  background:
+    linear-gradient(225deg, var(--page-ink) 0 24%, transparent 24%) no-repeat,
+    linear-gradient(var(--page-ink), var(--page-ink)) 50% 52% / 52% 1.5px no-repeat,
+    linear-gradient(var(--page-ink), var(--page-ink)) 50% 76% / 52% 1.5px no-repeat;
+  transform: translateY(0.12em);
+}
+
+.prose .child-page > .badge {
+  margin-inline-start: 0.5rem;
+  vertical-align: 0.1em;
+}
+
+.prose .child-page-excerpt {
+  margin: 0.125rem 0 0;
+  color: var(--color-muted);
+  font-size: 0.875rem;
+  font-weight: 400;
+  line-height: 1.45;
+}
+
+.prose .child-page:has(> .child-page-link .child-page-icon) > .child-page-excerpt {
+  padding-inline-start: 1.75em;
+}
+
+.prose .child-pages-empty,
+.prose .child-pages-fallback {
+  padding: 0.75rem 1rem;
+  border: 1px dashed var(--color-border-strong);
+  border-radius: var(--radius-lg);
+}
+
+/* A list cut short says so under its card (ADR-058). */
+.prose .child-pages-more {
+  margin-block-start: 0.5rem;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .prose .toc a,
+  .prose .toc-fold > summary::before {
+    transition: none;
+  }
+}
+
+/* An editor's way forward from an empty list (the app only). */
+.prose .child-pages-action {
+  margin: 0.75rem 0 0;
+}
+
+/* --- Link previews (ADR-042) ---------------------------------------------- */
+
+/*
+ * A link the author chose to show with its page's own title and picture. The
+ * body holds an ordinary anchor and the server swaps it for one of these when a
+ * preview is stored, so a link without one is just the link it always was.
+ *
+ * Both forms are a single anchor: one tab stop, one name for a screen reader,
+ * and the whole card is the target. Pictures carry the dimensions they were
+ * stored with (`width` and `height` attributes), so nothing moves as they load.
+ * Information is never carried by colour alone: the card has a border and the
+ * chip keeps its underline.
+ */
+
+.prose a.link-chip {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.35em;
+  max-inline-size: 100%;
+  vertical-align: baseline;
+}
+
+.prose .link-chip-icon {
+  align-self: center;
+  inline-size: 1em;
+  block-size: 1em;
+  flex: none;
+  border-radius: var(--radius-sm);
+  object-fit: contain;
+}
+
+.prose .link-chip-text {
+  min-inline-size: 0;
+  overflow-wrap: anywhere;
+}
+
+.prose a.link-card {
+  display: flex;
+  align-items: stretch;
+  inline-size: 100%;
+  max-inline-size: 42em;
+  overflow: hidden;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background-color: var(--color-surface-raised);
+  color: var(--color-foreground);
+  font-family: var(--font-sans);
+  font-size: 0.9em;
+  line-height: 1.4;
+  text-decoration: none;
+  transition:
+    border-color var(--duration-fast) var(--ease-standard),
+    background-color var(--duration-fast) var(--ease-standard);
+}
+
+.prose a.link-card:hover {
+  border-color: var(--color-border-strong);
+  color: var(--color-foreground);
+}
+
+.prose a.link-card:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 2px;
+}
+
+.prose .link-card-body {
+  display: flex;
+  min-inline-size: 0;
+  flex: 1 1 auto;
+  flex-direction: column;
+  justify-content: center;
+  gap: 0.25em;
+  padding: 0.75em 1em;
+}
+
+.prose .link-card-title {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.prose .link-card-description {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  color: var(--color-body);
+  overflow-wrap: anywhere;
+}
+
+.prose .link-card-site {
+  display: flex;
+  align-items: center;
+  gap: 0.4em;
+  overflow: hidden;
+  color: var(--color-muted);
+  font-size: 0.85em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The picture beside the words: a fixed-width column, cropped to fill it. */
+.prose .link-card-image {
+  inline-size: 9em;
+  flex: none;
+  align-self: stretch;
+  block-size: auto;
+  object-fit: cover;
+  border-inline-start: 1px solid var(--color-border);
+}
+
+/* The picture above the words, at the proportions of a shared link. */
+.prose a.link-card[data-layout='top'] {
+  max-inline-size: 28em;
+}
+
+.prose a.link-card[data-layout='top'][data-image='yes'] {
+  flex-direction: column-reverse;
+}
+
+.prose a.link-card[data-layout='top'] .link-card-image {
+  inline-size: 100%;
+  aspect-ratio: 1.91 / 1;
+  border-inline-start: 0;
+  border-block-end: 1px solid var(--color-border);
+}
+
+/* A narrow screen has no room for a column beside the words. */
+@media (width < 32.5rem) {
+  .prose a.link-card[data-image='yes'] {
+    flex-direction: column-reverse;
+  }
+
+  .prose .link-card-image {
+    inline-size: 100%;
+    aspect-ratio: 1.91 / 1;
+    border-inline-start: 0;
+    border-block-end: 1px solid var(--color-border);
+  }
+}
+
+@media (forced-colors: active) {
+  .prose a.link-card {
+    border-color: CanvasText;
+  }
+
+  .prose a.link-card:hover {
+    border-color: Highlight;
+  }
+}
+
+@media print {
+  .prose a.link-card {
+    break-inside: avoid;
+  }
+}
+
+/* --- Compact links and connector status (ADR-042) ------------------------- */
+
+/*
+ * One line: icon, title and site, as a block, for a list of references. A single anchor like a
+ * card, with the same border and focus ring, so the two read as one family.
+ */
+.prose a.link-compact {
+  display: flex;
+  align-items: center;
+  gap: 0.5em;
+  inline-size: 100%;
+  max-inline-size: 42em;
+  min-inline-size: 0;
+  padding: 0.4em 0.75em;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background-color: var(--color-surface-raised);
+  color: var(--color-foreground);
+  font-family: var(--font-sans);
+  font-size: 0.9em;
+  line-height: 1.4;
+  text-decoration: none;
+  transition: border-color var(--duration-fast) var(--ease-standard);
+}
+
+.prose a.link-compact:hover {
+  border-color: var(--color-border-strong);
+  color: var(--color-foreground);
+}
+
+.prose a.link-compact:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 2px;
+}
+
+/*
+ * A run of compact links is a list of references, so the lines sit closer than paragraphs do,
+ * and a line is never split across a printed page.
+ */
+.prose p:has(> a.link-compact) + p:has(> a.link-compact) {
+  margin-top: 0.4em;
+}
+
+@media print {
+  .prose a.link-compact {
+    break-inside: avoid;
+  }
+}
+
+.prose .link-compact-title {
+  min-inline-size: 0;
+  overflow: hidden;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.prose .link-compact-site {
+  margin-inline-start: auto;
+  overflow: hidden;
+  color: var(--color-muted);
+  font-size: 0.85em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/*
+ * The state a connector reports ("Open", "Merged"). The words say it; the tone only colours it,
+ * so nothing is carried by colour alone.
+ */
+.prose .link-status {
+  flex: none;
+  padding: 0.05em 0.5em;
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  color: var(--color-muted);
+  font-family: var(--font-sans);
+  font-size: 0.75em;
+  font-weight: 600;
+  line-height: 1.4;
+  white-space: nowrap;
+}
+
+.prose .link-status[data-tone='accent'] {
+  color: var(--color-accent);
+}
+
+.prose .link-status[data-tone='success'] {
+  color: var(--color-success);
+}
+
+.prose .link-status[data-tone='warning'] {
+  color: var(--color-warning);
+}
+
+.prose .link-status[data-tone='danger'] {
+  color: var(--color-danger);
+}
+
+/*
+ * A link to a file (ADR-042, "File links"): the same chip, line and card, led by an icon for the
+ * kind of file instead of a favicon. The icon is an empty, decorative span that the server writes
+ * with a `data-file-kind`, drawn here as a mask in the text colour, so one markup serves light,
+ * dark and forced-colours. The paths are the ones `FileIcon` in `@quill/ui` draws; a test in that
+ * package fails if the two drift apart. The words beside it always say the type, so the icon
+ * carries nothing alone.
+ */
+.prose .link-file-icon {
+  display: inline-block;
+  flex: none;
+  align-self: center;
+  inline-size: 1em;
+  block-size: 1em;
+  background-color: currentColor;
+  -webkit-mask: var(--link-file-icon) center / contain no-repeat;
+  mask: var(--link-file-icon) center / contain no-repeat;
+}
+
+.prose a.link-file .link-file-icon-large {
+  inline-size: 2.5em;
+  block-size: 2.5em;
+  margin-block: 0.6em;
+  margin-inline: 0.9em 0;
+  color: var(--color-muted);
+}
+
+.prose .link-file-icon[data-file-kind='image'] {
+  --link-file-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 2.75h5l3 3v7.5H4ZM9 2.75v3h3'/%3E%3Cpath d='m5.75 12 1.9-2.4 1.4 1.5.9-1 1.1 1.9'/%3E%3C/svg%3E");
+}
+
+.prose .link-file-icon[data-file-kind='pdf'] {
+  --link-file-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 2.75h5l3 3v7.5H4ZM9 2.75v3h3'/%3E%3Cpath d='M5.75 11.75c1.1-1.5 1.7-3 2.25-3s.1 1.6 2.25 2.5'/%3E%3C/svg%3E");
+}
+
+.prose .link-file-icon[data-file-kind='video'] {
+  --link-file-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 2.75h5l3 3v7.5H4ZM9 2.75v3h3'/%3E%3Cpath d='M7 8.75v3l2.75-1.5Z'/%3E%3C/svg%3E");
+}
+
+.prose .link-file-icon[data-file-kind='audio'] {
+  --link-file-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 2.75h5l3 3v7.5H4ZM9 2.75v3h3'/%3E%3Cpath d='M7.25 12V8.75l3-.75v3M7.25 12h.01M10.25 11h.01'/%3E%3C/svg%3E");
+}
+
+.prose .link-file-icon[data-file-kind='document'] {
+  --link-file-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 2.75h5l3 3v7.5H4ZM9 2.75v3h3'/%3E%3Cpath d='M6 8.5h4M6 10.5h4M6 12.25h2'/%3E%3C/svg%3E");
+}
+
+.prose .link-file-icon[data-file-kind='spreadsheet'] {
+  --link-file-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 2.75h5l3 3v7.5H4ZM9 2.75v3h3'/%3E%3Cpath d='M6 8.75h4M6 10.75h4M8 8v4.25'/%3E%3C/svg%3E");
+}
+
+.prose .link-file-icon[data-file-kind='presentation'] {
+  --link-file-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 2.75h5l3 3v7.5H4ZM9 2.75v3h3'/%3E%3Cpath d='M6 8.25h4v2.75H6ZM8 11v1.25'/%3E%3C/svg%3E");
+}
+
+.prose .link-file-icon[data-file-kind='text'] {
+  --link-file-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 2.75h5l3 3v7.5H4ZM9 2.75v3h3'/%3E%3Cpath d='M6 9h4M6 11h2.5'/%3E%3C/svg%3E");
+}
+
+.prose .link-file-icon[data-file-kind='archive'] {
+  --link-file-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 2.75h5l3 3v7.5H4ZM9 2.75v3h3'/%3E%3Cpath d='M8 3.5v1M8 5.5v1M8 7.5v1M7 9.5h2v2.5H7Z'/%3E%3C/svg%3E");
+}
+
+/* A link to a document the reader may not open: words, with nothing to follow. */
+.prose .link-unavailable {
+  color: var(--color-muted);
+  font-style: italic;
+}
+
+@media (forced-colors: active) {
+  .prose a.link-compact {
+    border-color: CanvasText;
+  }
+}
+
+/*
+ * A live embed (ADR-042): a sandboxed frame from the allowlist, in a box of its own shape so
+ * the page does not shift as it loads. The shape is a named token on the figure
+ * (`data-ratio`) because the Content-Security-Policy forbids an inline style, which is how
+ * an arbitrary ratio would otherwise be written. The caption's link is the fallback for a
+ * reader whose frame will not load, so it is always visible, never a hover affordance.
+ */
+.prose figure.link-embed {
+  inline-size: 100%;
+  max-inline-size: 42em;
+  margin-block: 1em;
+  margin-inline: 0;
+  font-family: var(--font-sans);
+  font-size: 0.9em;
+  line-height: 1.4;
+}
+
+.prose .link-embed-frame {
+  overflow: hidden;
+  aspect-ratio: 16 / 9;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background-color: var(--color-surface-raised);
+}
+
+.prose .link-embed[data-ratio='7-3'] .link-embed-frame {
+  aspect-ratio: 7 / 3;
+}
+
+.prose .link-embed[data-ratio='16-10'] .link-embed-frame {
+  aspect-ratio: 16 / 10;
+}
+
+.prose .link-embed[data-ratio='4-3'] .link-embed-frame {
+  aspect-ratio: 4 / 3;
+}
+
+.prose .link-embed[data-ratio='1-1'] .link-embed-frame {
+  aspect-ratio: 1 / 1;
+}
+
+.prose .link-embed[data-ratio='9-10'] .link-embed-frame {
+  aspect-ratio: 9 / 10;
+}
+
+.prose .link-embed-frame iframe {
+  display: block;
+  inline-size: 100%;
+  block-size: 100%;
+  border: 0;
+}
+
+.prose .link-embed-caption {
+  display: flex;
+  min-inline-size: 0;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.25em 1em;
+  padding-block-start: 0.4em;
+  color: var(--color-muted);
+}
+
+.prose .link-embed-caption a {
+  min-inline-size: 0;
+  color: var(--color-foreground);
+  overflow-wrap: anywhere;
+}
+
+.prose .link-embed-provider {
+  font-size: 0.85em;
+}
+
+/* On a slide the frame takes the width the slide gives it, and scales with it. */
+[data-surface='present'] .prose figure.link-embed {
+  max-inline-size: none;
+}
+
+/* --- A code permalink (ADR-042) ------------------------------------------- */
+
+/*
+ * Lines of source from a connector, as a figure: the caption is the one link, the lines are
+ * text. It reuses the code block's surface and tab size (`.prose pre`) so a snippet reads as
+ * code, and the card's border so it reads as a link. Line numbers are generated from
+ * `data-line`, which keeps them out of a copy. Nothing here is highlighted.
+ */
+.prose figure.link-code {
+  inline-size: 100%;
+  max-inline-size: 42em;
+  margin-block: 1em;
+  overflow: hidden;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background-color: var(--color-surface-raised);
+  font-family: var(--font-sans);
+  font-size: 0.9em;
+  line-height: 1.4;
+}
+
+.prose figure.link-code > figcaption {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25em 0.75em;
+  padding: 0.5em 1em;
+  border-block-end: 1px solid var(--color-border);
+  color: var(--color-muted);
+  font-size: 0.9em;
+}
+
+.prose figure.link-code .link-code-title {
+  min-inline-size: 0;
+  color: var(--color-foreground);
+  font-family: var(--font-mono);
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.prose figure.link-code .link-code-repository {
+  margin-inline-end: auto;
+}
+
+.prose figure.link-code pre.link-code-lines {
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+}
+
+.prose figure.link-code .link-code-line {
+  display: block;
+  padding-inline-start: 3.5ch;
+  position: relative;
+}
+
+.prose figure.link-code .link-code-line::before {
+  content: attr(data-line);
+  position: absolute;
+  inset-inline-start: 0;
+  inline-size: 3ch;
+  color: var(--color-muted);
+  text-align: end;
+  user-select: none;
+}
+
+@media (forced-colors: active) {
+  .prose figure.link-code {
+    border-color: CanvasText;
+  }
+}
+
+@media print {
+  .prose figure.link-code {
+    break-inside: avoid;
+  }
 }

@@ -17,8 +17,7 @@ import type {
 } from '../ports/persistence.ts'
 import type { Clock, IdGenerator } from '../ports/system.ts'
 import { documentPathCandidates, MAX_PATH_ATTEMPTS, namedSlug } from './document-path.ts'
-import { DOCUMENT_CREATED, EVENT_PAYLOAD_VERSION } from './events.ts'
-import type { DocumentCreatedPayload } from './events.ts'
+import { documentCreated } from './events.ts'
 
 /**
  * Creating a document: blank, or scaffolded from a template (ADR-029).
@@ -129,6 +128,7 @@ export async function createDocument(
         status: 'draft',
         templateId: command.templateId ?? null,
         templateVersion: templateVersion(created.content),
+        createdBy: command.createdBy,
         now,
       })
       if (claimed.kind === 'path-taken') continue
@@ -140,14 +140,16 @@ export async function createDocument(
         ast: created.content,
         now,
       })
-      const payload: DocumentCreatedPayload = {
-        version: EVENT_PAYLOAD_VERSION,
-        documentId,
-        workspaceId: command.workspaceId,
-        title: command.title,
-        createdBy: command.createdBy,
-      }
-      await tx.outbox.write({ id: deps.ids.uuid(), type: DOCUMENT_CREATED, payload, now })
+      await tx.events.record(
+        documentCreated,
+        {
+          documentId,
+          workspaceId: command.workspaceId,
+          title: command.title,
+          createdBy: command.createdBy,
+        },
+        now,
+      )
       return { kind: 'placed', document: claimed.document, draft }
     }
     return { kind: 'path-unavailable' }

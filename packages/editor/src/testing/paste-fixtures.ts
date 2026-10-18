@@ -22,10 +22,20 @@ function codeLine(index: number): string {
   return `export const rotate${String(index)} = (keys) =&gt; [...keys.slice(1), crypto.randomUUID()]`
 }
 
+function span(text: string, style = 'font-size:11pt;font-family:Arial'): string {
+  return `<span style="${style};color:#000000;background-color:transparent;font-weight:400">${text}</span>`
+}
+
+function listItem(text: string, level: number, position: 'First' | 'Middle' | 'Last'): string {
+  return `<p class=MsoListParagraphCxSp${position} style='margin-left:${String(36 * level)}pt;mso-add-space:auto;text-indent:-18.0pt;mso-list:l0 level${String(level)} lfo1'><![if !supportLists]><span style='font-family:Symbol'>·<span style='font:7.0pt "Times New Roman"'>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span></span><![endif]>${text}<o:p></o:p></p>`
+}
+
+function cell(text: string): string {
+  return `<td width=200 valign=top style='border:solid windowtext 1.0pt;padding:0cm 5.4pt 0cm 5.4pt'><p class=MsoNormal>${text}<o:p></o:p></p></td>`
+}
+
 function docsSection(index: number): string {
   const n = String(index + 1)
-  const span = (text: string, style = 'font-size:11pt;font-family:Arial') =>
-    `<span style="${style};color:#000000;background-color:transparent;font-weight:400">${text}</span>`
   return [
     `<h2 dir="ltr" style="line-height:1.38;margin-top:18pt;margin-bottom:6pt">${span(`Section ${n}: rotating the signing keys`, 'font-size:16pt;font-family:Arial')}</h2>`,
     `<p dir="ltr" style="line-height:1.38;margin-top:0pt;margin-bottom:0pt">${span('Every ')}<span style="font-weight:700">request</span>${span(` in section ${n} carries a `)}<span style="font-style:italic">short-lived</span>${span(' token, checked by the ')}<a href="https://example.com/gateway/${n}" style="text-decoration:none">${span('gateway', 'color:#1155cc;text-decoration:underline')}</a>.</p>`,
@@ -62,10 +72,6 @@ export function googleDocsHtml(sections: number = RICH_PASTE_SECTIONS): string {
 
 function wordSection(index: number): string {
   const n = String(index + 1)
-  const listItem = (text: string, level: number, position: 'First' | 'Middle' | 'Last') =>
-    `<p class=MsoListParagraphCxSp${position} style='margin-left:${String(36 * level)}pt;mso-add-space:auto;text-indent:-18.0pt;mso-list:l0 level${String(level)} lfo1'><![if !supportLists]><span style='font-family:Symbol'>·<span style='font:7.0pt "Times New Roman"'>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span></span><![endif]>${text}<o:p></o:p></p>`
-  const cell = (text: string) =>
-    `<td width=200 valign=top style='border:solid windowtext 1.0pt;padding:0cm 5.4pt 0cm 5.4pt'><p class=MsoNormal>${text}<o:p></o:p></p></td>`
   return [
     `<h2>Section ${n}: rotating the signing keys<o:p></o:p></h2>`,
     `<p class=MsoNormal>Every <b>request</b> in section ${n} carries a <i>short-lived</i> token, checked by the <a href="https://example.com/gateway/${n}">gateway</a>.<o:p></o:p></p>`,

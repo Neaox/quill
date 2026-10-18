@@ -204,11 +204,14 @@ test('a unit, a workspace, collections, documents, nesting, moving and deleting'
   // just rewritten (`support/editing.ts` for why that is not simply a click).
   const titleHeading = surface.getByRole('heading', { level: 1 }).first()
   await expect(titleHeading).toHaveText('Appendix A')
+  // The pointer is still where the Edit link was, which is over Publish once the editor is
+  // open: whatever that opens on hover must not cover the middle of the heading.
+  await page.mouse.move(0, 400)
   await caretAtEndOf(surface, titleHeading)
   await page.keyboard.press('Enter')
   await page.keyboard.type('Everything that did not fit in the plan.')
   await expect(page.getByText('draft saved')).toBeVisible({ timeout: 15_000 })
-  await page.getByRole('button', { name: 'Publish' }).click()
+  await page.getByRole('button', { name: 'Publish', exact: true }).click()
 
   const published = page.getByRole('article', { name: 'Appendix A' })
   await expect(published).toBeVisible()
@@ -280,8 +283,9 @@ test('the organise controls are reachable on a phone', async ({ page }) => {
   await page.goto('/admin/organisation')
   await page.getByRole('link', { name: WORKSPACE }).click()
 
-  // The sidebar stacks above the page at this width rather than disappearing,
-  // so every organise entry point is still there.
+  // At this width the sidebar is a sheet behind the header's "Browse documents"
+  // (`document-shell.tsx`), so every organise entry point is one press away.
+  await page.getByRole('button', { name: 'Browse documents' }).click()
   await expect(newCollection(page)).toBeVisible()
   await expect(page.getByRole('button', { name: 'New', exact: true })).toBeVisible()
   await expect(tree(page).getByRole('link', { name: 'Quarterly plan 2026' })).toBeVisible()

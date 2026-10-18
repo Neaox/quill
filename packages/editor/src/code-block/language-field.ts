@@ -19,6 +19,9 @@ export { languageName, PLAIN_TEXT } from './language-options.ts'
 /** Where the languages a person chose last are remembered in their browser. */
 export const RECENT_LANGUAGES_KEY = 'editor.code.recent-languages'
 
+/** Before the block has said what its language is. */
+const NOT_SHOWN = Symbol('not shown')
+
 let pageRecents: SlashRecents | undefined
 
 /** The page's recently used languages, shared by every block on it. */
@@ -32,11 +35,23 @@ export interface LanguageField {
   readonly element: HTMLElement
   /** Shows a block's language, as its name. */
   show(language: unknown): void
+  /**
+   * Allows a deferred field to be drawn; drawn at once if it has been shown
+   * a language, else with the first one it is shown.
+   */
+  draw(): void
   /** Takes the picker down with the node view. */
   destroy(): void
 }
 
 export interface LanguageFieldOptions {
+  /**
+   * Draws nothing until `draw` is called. A long document holds hundreds of
+   * code blocks, and a picker is a React root apiece: the ones far from the
+   * screen are not worth building as the document lands (quill-plan.md
+   * section 31).
+   */
+  readonly deferred?: boolean
   /** Told the fence name chosen; false when nothing changed, so the field shows the block again. */
   commit(name: string | null): boolean
   /** Escape: the field shows the block's language again, and the keyboard goes back to the code. */
@@ -52,15 +67,16 @@ export function createLanguageField(options: LanguageFieldOptions): LanguageFiel
   const element = document.createElement('div')
   element.className = 'contents'
   const root = createRoot(element)
-  let shown: unknown
-  let drawn = false
-  const show = (language: unknown): void => {
-    if (drawn && language === shown) return
-    drawn = true
-    shown = language
+  let shown: unknown = NOT_SHOWN
+  let drawnFor: unknown = NOT_SHOWN
+  let allowed = options.deferred !== true
+  let destroyed = false
+  const paintPicker = (): void => {
+    if (destroyed || !allowed || shown === NOT_SHOWN || shown === drawnFor) return
+    drawnFor = shown
     root.render(
       createElement(LanguagePicker, {
-        language,
+        language: shown,
         onChoose: (name) => options.commit(name),
         onDismiss: () => {
           options.cancel()
@@ -69,10 +85,19 @@ export function createLanguageField(options: LanguageFieldOptions): LanguageFiel
       }),
     )
   }
+  const show = (language: unknown): void => {
+    shown = language
+    paintPicker()
+  }
   return {
     element,
     show,
+    draw: () => {
+      allowed = true
+      paintPicker()
+    },
     destroy: () => {
+      destroyed = true
       // A node view is destroyed while ProseMirror, and so React, may be
       // mid-update; the root goes once that has finished.
       queueMicrotask(() => {

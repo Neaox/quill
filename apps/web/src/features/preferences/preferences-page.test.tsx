@@ -1,3 +1,4 @@
+import { BRAND } from '@quill/brand'
 import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -26,6 +27,20 @@ afterEach(() => {
 })
 
 describe('the preferences page', () => {
+  it('offers link previews on hover, on until it is turned off, and remembers the choice in this browser', async () => {
+    const user = userEvent.setup()
+    renderApp(PATH, routes())
+
+    const group = await screen.findByRole('group', { name: 'Link previews on hover' })
+    expect(group).toHaveAccessibleDescription(/this browser only/)
+    expect(screen.getByRole('radio', { name: 'Show' })).toBeChecked()
+
+    await user.click(screen.getByRole('radio', { name: 'Don’t show' }))
+
+    expect(screen.getByRole('radio', { name: 'Don’t show' })).toBeChecked()
+    expect(localStorage.getItem(`${BRAND.slug}.link-peek`)).toBe('off')
+  })
+
   it('offers the three ways animated images can play, with the one in force chosen', async () => {
     const { container } = renderApp(PATH, routes())
 
@@ -36,6 +51,29 @@ describe('the preferences page', () => {
     expect(screen.getByRole('radio', { name: 'Play on hover only' })).not.toBeChecked()
     expect(screen.getByRole('radio', { name: 'Never' })).not.toBeChecked()
     await expectNoAccessibilityViolations(container)
+  })
+
+  it('lets a person clear what Quill remembers of the documents they opened', async () => {
+    let cleared = 0
+    const success = vi.spyOn(toast, 'success')
+    renderApp(
+      PATH,
+      routes({
+        'DELETE /api/me/history': () => {
+          cleared += 1
+          return new Response(undefined, { status: 204 })
+        },
+      }),
+    )
+
+    const heading = await screen.findByRole('heading', { level: 2, name: 'Viewing history' })
+    expect(heading.parentElement).toHaveTextContent('Nobody else sees it, administrators included')
+    await userEvent.click(screen.getByRole('button', { name: 'Clear viewing history' }))
+
+    await waitFor(() => {
+      expect(cleared).toBe(1)
+    })
+    expect(success).toHaveBeenCalledWith('Viewing history cleared')
   })
 
   it('saves a choice as it is made, says so, and applies it to the page', async () => {

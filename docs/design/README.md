@@ -25,9 +25,23 @@ narrows.
 
 [`feedback.md`](feedback.md) sets the vocabulary for inline status, toasts, and blocking dialogs, and when a promise toast is the right way to show background work that concerns the current page.
 
+## Document properties
+
+[`properties.md`](properties.md) sets what a document's properties are for,
+the byline every surface shows under a title, who sees which facts, and how an
+author edits them in place.
+
+## Search
+
+[`search.md`](search.md) describes the search experience: the anatomy of a result, filter chips, typeahead, the states and keys of the palette and the results page, and what is deliberately not there yet.
+
 ## Home
 
 [`home.md`](home.md) defines the three first pages (signed-in home, workspace home, public site home), who each is for, and what M2 ships of them.
+
+## Templates
+
+[`templates.md`](templates.md) sets how editing a template is told apart from editing a document, the wording for publishing and sharing a template, the template panel on a document made from one, and the gallery.
 
 ## Product
 

@@ -143,7 +143,17 @@ const DOCUMENT_LINK_URL = new RegExp(
   'u',
 )
 const DOCUMENT_LINK_ANYWHERE = new RegExp(String.raw`/d/(${REFERENCE})`, 'gu')
-const WORKSPACE_DOCUMENT_LINK = new RegExp(String.raw`/w/${REFERENCE}/d/(${REFERENCE})`, 'gu')
+/**
+ * Where a relative link can start in Markdown or HTML: the start of the text,
+ * whitespace, or the bracket, angle or quote that opens a destination. Never
+ * after a host or a path, so `https://elsewhere.test/w/x/d/…` is not taken
+ * for one of this application's addresses.
+ */
+const LINK_START = String.raw`(?<=^|[\s(<"'=])`
+const WORKSPACE_DOCUMENT_LINK = new RegExp(
+  String.raw`${LINK_START}/w/${REFERENCE}/d/(${REFERENCE})`,
+  'gu',
+)
 
 /** The document a link URL names, in any form it may have been written in. */
 export function documentReferenceFromUrl(url: string): DocumentReference | null {
@@ -205,6 +215,38 @@ export function* workspaceLinkReferences(markdown: string): Generator<string> {
     seen.add(text)
     yield text
   }
+}
+
+/**
+ * A body with this application's own absolute document addresses made
+ * relative (ADR-035).
+ *
+ * A link copied out of the address bar is absolute
+ * (`https://docs.acme.test/w/engineering/d/the-title-k7m3q9v2xd`). Stored that
+ * way it would name one deployment's host for ever and would pass every
+ * surface by as an external link — the public site and a share page would
+ * hand a stranger its address. Without the origin it is the same relative
+ * address an internal link has, which the publish then canonicalises and
+ * every surface readdresses. Only the origins given are this application's;
+ * any other host is somebody else's link and is left exactly as written.
+ */
+export function withoutOwnOrigin(markdown: string, origins: readonly string[]): string {
+  if (origins.length === 0) return markdown
+  // The serialiser may escape the punctuation of a URL it writes
+  // (`http://localhost\:5173`), so each mark may arrive with a backslash.
+  const hosts = origins.map((origin) =>
+    origin.replaceAll(/[^\p{Letter}\p{Number}]/gu, (mark) => `\\\\?${escapeMark(mark)}`),
+  )
+  const own = new RegExp(
+    String.raw`${LINK_START}(?:${hosts.join('|')})(?=(?:/w/${REFERENCE})?/d/${REFERENCE})`,
+    'gu',
+  )
+  return markdown.replaceAll(own, '')
+}
+
+/** One punctuation mark of an origin, as a pattern matching it literally. */
+function escapeMark(mark: string): string {
+  return /[$()*+.?[\\\]^{|}/]/u.test(mark) ? `\\${mark}` : mark
 }
 
 /**

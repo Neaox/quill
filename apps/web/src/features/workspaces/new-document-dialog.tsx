@@ -5,11 +5,11 @@ import { Button, Callout, Dialog, Input, Spinner, Tree, type TreeSection } from 
 
 import {
   usePublishedContent,
-  useCreateCollection,
   useCreateDocument,
   useWorkspaceTree,
   type TreeCollectionDto,
 } from '../../lib/api/index.ts'
+import { useCreateCollection } from '../../lib/api/collections.ts'
 import {
   answersToSend,
   defaultAnswers,
@@ -234,7 +234,14 @@ export function NewDocumentDialog({
           }}
         />
 
-        {collections.length === 0 ? (
+        {tree.data === undefined && !tree.isError ? (
+          // Not known yet, which is not the same as none: saying "No collections yet" while the
+          // tree is on its way offers to create a collection the workspace may already have.
+          <p role="status" className="flex items-center gap-2 text-xs text-muted">
+            <Spinner className="size-3.5" />
+            Loading collections…
+          </p>
+        ) : collections.length === 0 ? (
           <div className="flex flex-col gap-2 rounded-md border border-border bg-surface p-3">
             <Callout tone="warning" title="No collections yet">
               This workspace has no collections to put a document in yet. Create one to continue.
