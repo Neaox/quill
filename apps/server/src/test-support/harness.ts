@@ -2,6 +2,7 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
+import type { LinkPreviewPorts } from '@quill/application'
 import { createEventBus } from '@quill/application'
 import type { EventBus } from '@quill/application'
 import { createSearchService } from '@quill/search'
@@ -51,6 +52,8 @@ import { injectAsBrowser } from './browser-client.ts'
 import { createFakeBreachedPasswordChecker, createRecordingMailer } from './fakes.ts'
 import type { FakeBreachedPasswordChecker, RecordingMailer } from './fakes.ts'
 import { createDrawioText } from '../extensions/drawio/drawing-text.ts'
+import { pollOutboxLane } from '../infrastructure/outbox/lane.ts'
+import { INERT_LINK_PREVIEW_PORTS } from '../infrastructure/link-preview/inert.ts'
 
 /**
  * A whole server against a real database, a real content store, and the real
@@ -122,6 +125,11 @@ export interface HarnessOptions {
    * instance. Defaults to a fresh one at `HARNESS_NOW`.
    */
   readonly clock?: FakeClock
+  /**
+   * What fetches, and whose rules apply, for link previews (ADR-042). Off unless
+   * a test supplies them, so no test reaches a real site.
+   */
+  readonly linkPreviewPorts?: LinkPreviewPorts
   /** Zero disables the public site's page cache, for a test about what is behind it. */
   readonly publicSiteCacheTtlMs?: number
   /** Shrunk by a test that wants to see a sitemap index without a thousand documents. */
@@ -220,6 +228,7 @@ export async function createServerHarness(options: HarnessOptions = {}): Promise
   const faceFiles = await loadFaceFiles()
   const themeStylesheets = createThemeStylesheets({ hasher, faceFiles })
   const deps: AppDependencies = {
+    linkPreviewPorts: options.linkPreviewPorts ?? INERT_LINK_PREVIEW_PORTS,
     uow,
     searchIndex,
     search: createSearchService(searchIndex),
@@ -273,6 +282,7 @@ export async function createServerHarness(options: HarnessOptions = {}): Promise
   const jobRunner = createJobRunner({
     clock,
     poll: (consumers, now) => pollOutboxOnce(database.pool, consumers, { now }),
+    pollLane: (consumers, now) => pollOutboxLane(database.pool, consumers, { now }),
   })
   // The same consumers the composition root registers, so an integration test
   // exercises the real delivery path rather than a shortcut (ADR-011).
@@ -319,8 +329,9 @@ export async function createServerHarness(options: HarnessOptions = {}): Promise
       let remaining = 10
       for (;;) {
         const result = await jobRunner.pollOnce()
+        const lane = await jobRunner.pollLaneOnce()
         remaining -= 1
-        if (result.processed === 0 || remaining === 0) return
+        if ((result.processed === 0 && lane.processed === 0) || remaining === 0) return
       }
     },
 

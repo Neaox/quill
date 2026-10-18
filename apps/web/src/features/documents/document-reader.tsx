@@ -242,6 +242,7 @@ function PublishedBody({
         onFollowLink={followLink}
         loadLinks={loadLinks}
         className={styles.body()}
+        linkPeek
       />
       {canCreateChild ? (
         <NewDocumentDialog

@@ -79,6 +79,8 @@ const ALLOWED: Readonly<Record<string, Readonly<Record<string, string>>>> = {
     '.prose > p:where(:first-child, .front-matter-node:first-child + p):has(+ h1)':
       'the eyebrow is a typographic role, the paragraph that opens the document straight before the title; only the first paragraph is asked',
     '.prose > p + h1': 'the title under its eyebrow; the subject is the title',
+    '.prose p:has(> a.link-compact) + p:has(> a.link-compact)':
+      'a run of compact links is a list of references (ADR-042), a role of its own, whose lines sit closer than paragraphs; only another compact link is asked',
     '.prose > h1 + p + p:has(> small:only-child)':
       'small print under the lede; only a paragraph holding nothing but `<small>` matches',
     '.prose > .details + .details, .prose .details-body > .details + .details':

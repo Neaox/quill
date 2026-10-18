@@ -9,7 +9,7 @@ import {
 import type { OrganisationSettings } from '@quill/application'
 import { pngFile } from '@quill/application/test-support'
 import { parseDocument } from '@quill/markdown'
-import { documentId, ok } from '@quill/domain'
+import { EMBED_PROVIDERS, documentId, ok } from '@quill/domain'
 import type { CollectionId, DocumentId } from '@quill/domain'
 
 import { PUBLIC_SITE_CACHE_TTL_MS } from '../public-site/cache.ts'
@@ -363,6 +363,18 @@ describe('a document page', () => {
     expect(policy).not.toContain('unsafe-inline')
     expect(policy).not.toContain('unsafe-eval')
     expect(policy).toContain("frame-ancestors 'none'")
+  })
+
+  it('frames only the embed allowlist and the editor, and nothing else, so no other frame can load', async () => {
+    const policy = String((await get(path)).headers['content-security-policy'])
+    const directive = policy.split(';').find((part) => part.trim().startsWith('frame-src'))
+    const sources = String(directive).trim().split(/\s+/u).slice(1)
+    const allowed = new Set(EMBED_PROVIDERS.flatMap((provider) => provider.frameOrigins))
+    // draw.io's editor is configured, never a public page's concern; everything else is the allowlist.
+    const others = sources.filter((source) => !allowed.has(source))
+    expect(others.every((source) => /^http:\/\/localhost:\d+$/u.test(source))).toBe(true)
+    expect(sources).not.toContain('*')
+    expect(sources).not.toContain('https:')
   })
 
   it('answers 304 to a reader that already holds the page', async () => {

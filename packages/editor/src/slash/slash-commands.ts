@@ -24,6 +24,11 @@ export type NodeFactory = (schema: Schema) => PMNode
 export interface InsertOptions {
   /** Select the first line of text in the new block, so typing replaces a prompt. */
   readonly selectText?: boolean
+  /**
+   * The block stands alone, like a divider: an empty paragraph follows it so there is somewhere
+   * to keep writing. A link card has words of its own, which are not typed into (ADR-042).
+   */
+  readonly standalone?: boolean
 }
 
 /** Puts the caret at the first spot after `from` that can hold it, optionally selecting that line. */
@@ -49,7 +54,8 @@ export function insertBlock(make: NodeFactory, options: InsertOptions = {}): Com
     const line = $from.parent
     if (!line.isTextblock || $from.depth === 0) return false
     const node = make(state.schema)
-    const nodes = node.isLeaf ? [node, nodeType(state.schema, 'paragraph').create()] : [node]
+    const standalone = node.isLeaf || options.standalone === true
+    const nodes = standalone ? [node, nodeType(state.schema, 'paragraph').create()] : [node]
     const parent = $from.node($from.depth - 1)
     const index = $from.index($from.depth - 1)
     const content = Fragment.from(nodes)
@@ -65,7 +71,7 @@ export function insertBlock(make: NodeFactory, options: InsertOptions = {}): Com
     const to = replacing ? $from.after() : from
     if (dispatch !== undefined) {
       const tr = state.tr.replaceWith(from, to, nodes)
-      placeCaret(tr, node.isLeaf ? from + node.nodeSize + 1 : from + 1, options.selectText === true)
+      placeCaret(tr, standalone ? from + node.nodeSize + 1 : from + 1, options.selectText === true)
       dispatch(tr.scrollIntoView())
     }
     return true

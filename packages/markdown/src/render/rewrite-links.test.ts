@@ -33,6 +33,20 @@ describe('rewriteLinks', () => {
     expect(rewritten).not.toContain('/d/abc')
   })
 
+  it('leaves a readdressed preview slot no key that names the stored address', () => {
+    const id = '0192f0a4-7c1e-7a3b-8d1e-4a5b6c7d8e9f'
+    const html = render(`See [the plan](/d/${id})<!-- quill:link display=inline --> now.`)
+    expect(html).toContain(`data-link-key="/d/${id}"`)
+
+    const moved = rewriteLinks(html, () => ({ kind: 'href', href: '/s/docs/plan' }))
+    expect(moved).toContain('href="/s/docs/plan"')
+    expect(moved).not.toContain(id)
+
+    const words = rewriteLinks(html, () => ({ kind: 'text' }))
+    expect(words).toContain('See the plan now.')
+    expect(words).not.toContain(id)
+  })
+
   it('handles every link in the body, nested or not', () => {
     const html = render(['- [one](/d/a)', '- [two](/d/b)', '', '> [three](/d/c)'].join('\n'))
     const seen: string[] = []

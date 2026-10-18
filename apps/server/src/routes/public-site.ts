@@ -1,3 +1,4 @@
+import { BRAND } from '@quill/brand'
 import { Type } from '@sinclair/typebox'
 import type { TypeBoxTypeProvider } from '@fastify/type-provider-typebox'
 import {
@@ -17,8 +18,18 @@ import { visibilityFilter } from '@quill/search'
 import type { FastifyPluginAsync, FastifyReply, FastifyRequest } from 'fastify'
 
 import { fillChildPages } from '../child-pages/fill.ts'
+import {
+  fillLinksForPublic,
+  internalLinks,
+  linkPreviewDependencies,
+} from '../application/fill-links.ts'
+import { linkEmbedRegistry } from '../infrastructure/link-preview/embed-config.ts'
 import type { AppDependencies } from '../dependencies.ts'
 import { notFound } from '../errors.ts'
+import { OPEN_WEB_LIMITS } from '../infrastructure/http/open-web-client.ts'
+import { GITHUB_SERVICE } from '../infrastructure/link-preview/connectors/github-connector.ts'
+import { linkPreviewUserAgent } from '../infrastructure/link-preview/user-agent.ts'
+import { DEFAULT_RATE_LIMITS } from '../infrastructure/link-preview/rate-limits.ts'
 import type { CachedPage } from '../public-site/cache.ts'
 import { html as markup } from '../public-site/html.ts'
 import {
@@ -26,6 +37,7 @@ import {
   firstParagraph,
   renderDocumentMain,
   renderIndexMain,
+  renderBotPage,
   renderNoSitePage,
   renderNotFoundMain,
   renderSearchMain,
@@ -309,12 +321,20 @@ export function publicSiteRoutes(deps: AppDependencies): FastifyPluginAsync {
     const workspace = await deps.uow.repos.workspaces.findById(site.collection.workspaceId)
     /* v8 ignore next -- a collection's workspace cannot be missing: the row cascades from it. */
     if (workspace === null) return notFoundPage(request, reply, site)
+    // Stored previews only: an anonymous page load never causes a fetch (ADR-042).
+    const { html: drawn } = await fillLinksForPublic(
+      linkPreviewDependencies(deps),
+      rendered.content.html,
+      linkEmbedRegistry(deps.config.linkEmbeds),
+      // Documents published on this site are previewed and linked to their public pages; no others exist here.
+      internalLinks(deps, { kind: 'site', site }),
+    )
     // The pages under this one, as the site lists them (ADR-058): only
     // published, public pages, at the site's own addresses. Filled before the
     // page is cached, and the cache is emptied by the same events that change
     // the list.
     const filled = await fillChildPages(deps, {
-      html: rendered.content.html,
+      html: drawn,
       parent: document,
       workspace,
       audience: { kind: 'public' },
@@ -324,7 +344,8 @@ export function publicSiteRoutes(deps: AppDependencies): FastifyPluginAsync {
     // Links to other documents (`/d/<id>`, ADR-035) go to their address on
     // this site when they are on it, and are reduced to their words when
     // they are not: a stranger is never handed the id, workspace or title of
-    // a page the site does not show (ADR-046), nor a link into the app.
+    // a page the site does not show (ADR-046), nor a link into the app. The
+    // previews drawn above are links like any other, so they are readdressed too.
     const bodyHtml = rewriteLinks(
       filled,
       surfaceLinkRewriter(
@@ -399,6 +420,34 @@ export function publicSiteRoutes(deps: AppDependencies): FastifyPluginAsync {
 
   return async (rawApp) => {
     const app = rawApp.withTypeProvider<TypeBoxTypeProvider>()
+
+    /**
+     * The page the link preview bot's user agent names (ADR-042).
+     *
+     * Public and static, with nothing taken from any document, because the person
+     * reading it is a stranger whose server was visited and who is owed an
+     * explanation. At the root, as the user agent says.
+     */
+    app.get('/bot', { config: budget, schema: { hide: true } }, async (request, reply) => {
+      const settings = await deps.settings.readOrganisation()
+      const instanceName = settings.kind === 'settings' ? settings.document.name : BRAND.name
+      return sendPage(
+        request,
+        reply,
+        finished(
+          renderBotPage({
+            userAgent: linkPreviewUserAgent(deps.config.appUrl),
+            instanceName,
+            limits: OPEN_WEB_LIMITS,
+            connectors: [GITHUB_SERVICE],
+            perHost: {
+              burst: DEFAULT_RATE_LIMITS.perHost.capacity,
+              perSecond: DEFAULT_RATE_LIMITS.perHost.refillPerSecond,
+            },
+          }),
+        ),
+      )
+    })
 
     /**
      * `robots.txt`, naming a sitemap per published site (use case 29).

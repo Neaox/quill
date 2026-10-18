@@ -38,6 +38,9 @@ export function rewriteLinks(html: string, rewrite: (href: string) => LinkRewrit
     const decision = rewrite(href)
     if (decision.kind === 'keep') return undefined
     changed = true
+    // A link preview's slot (`link-slots.ts`) repeats the stored address as the key it is
+    // looked up by; readdressed, that key would still name what the surface took away.
+    delete node.properties['dataLinkKey']
     if (decision.kind === 'href') {
       node.properties['href'] = decision.href
       return undefined

@@ -2,6 +2,7 @@ import { parseMarkdown, serializeDocument } from '@quill/markdown'
 import { blocksFromMdast } from '@quill/markdown/blocks'
 import { within } from '@testing-library/react'
 import { Editor } from '@tiptap/core'
+import { GapCursor } from '@tiptap/pm/gapcursor'
 import { undo } from '@tiptap/pm/history'
 import { TextSelection } from '@tiptap/pm/state'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -171,6 +172,27 @@ describe('a paste of Markdown', () => {
     )
     paste(editor, { 'text/plain': 'https://example.com/docs' })
     expect(written(editor)).toBe('Read the [docs](https://example.com/docs).\n')
+  })
+
+  describe('an address of another document of this instance', () => {
+    const address = '/d/0192f0a4-7c1e-7a3b-8d1e-4a5b6c7d8e9f'
+
+    it('becomes a link by its id, wherever the address was copied from', () => {
+      const editor = open('See \n')
+      caretAt(editor, 5)
+      const event = paste(editor, { 'text/plain': `${globalThis.location.origin}${address}` })
+      expect(event.defaultPrevented).toBe(true)
+      expect(written(editor)).toContain(address)
+      expect(written(editor)).not.toContain(globalThis.location.origin)
+    })
+
+    it('is linked as a plain address where a link by id cannot go', () => {
+      const editor = open('::link{url="https://blog.example/post" display=card}\n')
+      const beforeCard = editor.state.doc.resolve(0)
+      editor.view.dispatch(editor.state.tr.setSelection(new GapCursor(beforeCard)))
+      paste(editor, { 'text/plain': `${globalThis.location.origin}${address}` })
+      expect(written(editor)).toContain(address)
+    })
   })
 
   it('leaves rich content, a file, and a read-only document to the handlers after it', () => {

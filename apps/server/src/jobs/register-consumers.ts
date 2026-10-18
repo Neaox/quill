@@ -22,9 +22,11 @@ import {
   createRecordMoveRedirectConsumer,
   createRecordRenameRedirectConsumer,
 } from '../infrastructure/outbox/record-public-redirect.ts'
+import { createFetchLinkPreviewConsumer } from '../infrastructure/outbox/fetch-link-preview.ts'
 import { createNotifyOnReviewConsumers } from '../infrastructure/outbox/notify-on-review.ts'
 import { createRenderOnPublishConsumer } from '../infrastructure/outbox/render-on-publish.ts'
 import { createSendMailConsumer } from '../infrastructure/outbox/send-mail.ts'
+import { createWarmLinkPreviewsOnPublishConsumer } from '../infrastructure/outbox/warm-link-previews-on-publish.ts'
 import type { JobRunner } from './job-runner.ts'
 
 /**
@@ -45,7 +47,7 @@ import type { JobRunner } from './job-runner.ts'
  * wrong one for that.
  */
 export function registerOutboxConsumers(
-  jobRunner: Pick<JobRunner, 'register'>,
+  jobRunner: Pick<JobRunner, 'register' | 'lane'>,
   context: { readonly deps: AppDependencies; readonly mailer: Mailer },
 ): void {
   const { deps, mailer } = context
@@ -57,6 +59,8 @@ export function registerOutboxConsumers(
     combineConsumers(
       DOCUMENT_PUBLISHED,
       createRenderOnPublishConsumer(deps),
+      // Queues the previews of the document's links, so the first reader finds them stored (ADR-042).
+      createWarmLinkPreviewsOnPublishConsumer({ ...deps, ...deps.linkPreviewPorts }),
       createIndexOnPublishConsumer(deps),
     ),
   )
@@ -77,6 +81,17 @@ export function registerOutboxConsumers(
   // A re-saved diagram (ADR-043) changes the words and the picture of every
   // published body that shows it, without a publish.
   jobRunner.register(createIndexOnAttachmentRevisedConsumer(deps))
+  // A reader who finds no preview is shown a plain link and a fetch is queued; this answers it, on a
+  // lane of its own so slow sites never delay a publish or a mail, with retries for what is not the
+  // link's fault (ADR-042).
+  jobRunner.lane(
+    createFetchLinkPreviewConsumer({
+      uow: deps.uow,
+      clock: deps.clock,
+      ids: deps.ids,
+      ...deps.linkPreviewPorts,
+    }),
+  )
   // Delivery happens here rather than on the request path, so an address that
   // has an account costs no more than one that does not (ADR-011).
   jobRunner.register(createSendMailConsumer(mailer))

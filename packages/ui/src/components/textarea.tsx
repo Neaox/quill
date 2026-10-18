@@ -1,4 +1,10 @@
-import { type ChangeEvent, type ComponentPropsWithoutRef, useId, useState } from 'react'
+import {
+  type ChangeEvent,
+  type ComponentPropsWithoutRef,
+  type ReactNode,
+  useId,
+  useState,
+} from 'react'
 
 import { tv } from '../lib/class-names.ts'
 import { inputStyles } from './input.tsx'
@@ -20,9 +26,9 @@ export interface TextareaProps extends Omit<ComponentPropsWithoutRef<'textarea'>
   /** The visible label. Never optional, as on `Input`. */
   readonly label: string
   /** Help shown under the field. */
-  readonly description?: string
-  /** Validation message. Its presence is what marks the field invalid. */
-  readonly error?: string | undefined
+  readonly description?: ReactNode
+  /** Validation message, one sentence or a list of them. Its presence is what marks the field invalid. */
+  readonly error?: ReactNode | undefined
 }
 
 /**

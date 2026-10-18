@@ -10,6 +10,7 @@ import type { Details } from '../details/details.ts'
 import { accordionDirective, detailsDirective } from '../details/details.ts'
 import { createDetailsRenderer } from '../details/render.ts'
 import { badgeDirective } from '../directives/badge.ts'
+import { linkDirective } from '../directives/link.ts'
 import type { CalloutType } from '../directives/callout.ts'
 import { calloutDirective } from '../directives/callout.ts'
 import { cardsDirective } from '../directives/cards.ts'
@@ -31,6 +32,7 @@ import { emojiElement } from '../emoji/emoji.ts'
 import type { MarkdownRegistry } from '../extensions/registry.ts'
 import { markerName, splitAlert } from '../pipeline/github-alert.ts'
 import { drawingElement } from './drawing-element.ts'
+import { linkBlockSlot, linkInlineSlot } from './link-slots.ts'
 import type { Slugger } from './slug.ts'
 import { HEADING_ID_PREFIX, headingId } from './slug.ts'
 import type { Handlers, State } from './hast-state.ts'
@@ -603,6 +605,8 @@ export function createHandlers(options: HandlerOptions): Handlers {
 
   const textDirective = (state: State, node: TextDirective): ElementContent | ElementContent[] => {
     if (claims(kbdDirective, node)) return element('kbd', {}, state.all(node))
+    // A link with a stored choice (ADR-042): an ordinary anchor the page may later fill.
+    if (claims(linkDirective, node)) return linkInlineSlot(linkDirective.parse(node))
     // A badge with no label is the author's own text — `status:ok` parses as
     // a directive named `ok` — so it is written back as it was typed.
     if (claims(badgeDirective, node) && toString(node).trim().length > 0) {
@@ -661,8 +665,17 @@ export function createHandlers(options: HandlerOptions): Handlers {
     return undefined
   }
 
+  /**
+   * The blocks a leaf directive draws: the navigation blocks, and a link with a
+   * stored block display (ADR-042), an ordinary anchor the page may later fill.
+   */
+  const claimedBlock = (node: LeafDirective): Element | undefined => {
+    if (claims(linkDirective, node)) return linkBlockSlot(linkDirective.parse(node))
+    return navigationBlock(node)
+  }
+
   const leafDirective = (state: State, node: LeafDirective): Element =>
-    navigationBlock(node) ??
+    claimedBlock(node) ??
     element(
       'section',
       {

@@ -12,6 +12,7 @@ import { figureDirective } from './figure.ts'
 import { guidanceDirective } from './guidance.ts'
 import { kbdDirective } from './kbd.ts'
 import { layoutDirective } from './layout.ts'
+import { linkDirective } from './link.ts'
 import { notesDirective } from './notes.ts'
 import { optionalDirective } from './optional.ts'
 import { placeholderDirective } from './placeholder.ts'
@@ -43,6 +44,7 @@ export const KNOWN_DIRECTIVES: readonly DirectiveValidator[] = [
   accordionDirective,
   tocDirective,
   childrenDirective,
+  linkDirective,
 ]
 
 export function findDirective(node: Directive): DirectiveValidator | undefined {

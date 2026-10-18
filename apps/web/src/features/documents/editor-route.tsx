@@ -66,6 +66,8 @@ import { ReviewActions } from '../review/review-actions.tsx'
 import { DraftPreviewLink } from './draft-preview-link.tsx'
 import { PublishButton } from './publish-button.tsx'
 import { ReviewButton } from './review-button.tsx'
+import { useEditorLinkPreviews } from './editor-link-previews.ts'
+import { useEditorPaletteCommands } from './use-editor-palette-commands.ts'
 import { useDocumentLinkSearch } from './use-document-link-search.ts'
 import { DocumentPropertiesPanel } from './properties/document-properties-panel.tsx'
 import { useDraftFrontMatter } from './properties/draft-front-matter.ts'
@@ -244,6 +246,8 @@ function EditingSession({
   const navigate = useNavigate()
   const styles = editorRouteStyles()
 
+  const linkPreviews = useEditorLinkPreviews()
+
   // Who this session saves as, stamped on each draft it writes so a merge can
   // say whose changes it combined (ADR-021, amendment of 2026-10-11).
   const me = useMe()
@@ -298,6 +302,7 @@ function EditingSession({
   useUnsavedChangesGuard(autosave.unsaved)
 
   const editorRef = useRef<DocumentEditorHandle>(null)
+  useEditorPaletteCommands(editorRef)
   // Loaded before the editor mounts (the route's loader); a label changed while
   // somebody is editing reaches their editor on the next visit, which is enough.
   const labels = useOrganisationLabels()
@@ -839,6 +844,7 @@ function EditingSession({
           placeholder="Write, or press / for blocks"
           labels={labels}
           emoji={emoji}
+          linkPreviews={linkPreviews}
           className={styles.surface()}
           onChange={(handle) => {
             // How to read the tree, not the tree: converting a long document

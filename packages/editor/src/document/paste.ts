@@ -1,7 +1,10 @@
+import { internalDocumentAddress } from '@quill/markdown'
 import { Extension } from '@tiptap/core'
 import { Plugin } from '@tiptap/pm/state'
 import type { EditorState } from '@tiptap/pm/state'
 
+import { pasteAddress } from '../link/link-offer.ts'
+import { pasteDocumentLink } from '../link/new-link.ts'
 import { insertMarkdown, setLink } from './commands.ts'
 import { chooseFiles } from './files.ts'
 import { pageIdleQueue } from './idle-queue.ts'
@@ -55,6 +58,13 @@ export const LARGE_PASTE_CHARS = 16_384
 export type PasteAction =
   | { readonly kind: 'default' }
   | { readonly kind: 'link'; readonly href: string }
+  /** A bare address with nothing selected: linked at once, with an offer to show it another way. */
+  | { readonly kind: 'address'; readonly href: string }
+  /**
+   * A bare address of another document of this instance, with nothing selected: an inline
+   * link by its id, which shows the document's live title (ADR-042, "Internal links").
+   */
+  | { readonly kind: 'document'; readonly address: string }
   | { readonly kind: 'markdown'; readonly text: string }
 
 export interface PasteInput {
@@ -66,12 +76,27 @@ export interface PasteInput {
   readonly hasSelection: boolean
   /** A copied picture or file, which the file handler takes (`files.ts`). */
   readonly hasFiles: boolean
+  /** This instance's own origin, so a pasted app address is read as the document it names. */
+  readonly origin?: string | undefined
+}
+
+/** The `/d/<id>` address a pasted app URL names, or null when it is anything else. */
+export function documentAddressOf(text: string, origin: string | undefined): string | null {
+  if (origin === undefined || !text.startsWith(`${origin}/`)) return null
+  return internalDocumentAddress(text.slice(origin.length))
 }
 
 export function choosePaste(input: PasteInput): PasteAction {
   const text = input.text.trim()
   if (input.inCode || input.hasFiles || text.length === 0) return { kind: 'default' }
-  if (input.hasSelection && URL_ONLY.test(text)) return { kind: 'link', href: text }
+  if (URL_ONLY.test(text)) {
+    // A document of this instance is linked by its id, so the link survives a rename and a move.
+    const address = documentAddressOf(text, input.origin)
+    if (address !== null) {
+      return input.hasSelection ? { kind: 'link', href: address } : { kind: 'document', address }
+    }
+    return { kind: input.hasSelection ? 'link' : 'address', href: text }
+  }
   if (input.html.length > 0) return { kind: 'default' }
   return { kind: 'markdown', text: input.text }
 }
@@ -85,6 +110,7 @@ function inputFrom(state: EditorState, event: ClipboardEvent): PasteInput {
     inCode,
     hasSelection: !state.selection.empty,
     hasFiles: chooseFiles({ files: [...(data?.files ?? [])], inCode }).kind === 'files',
+    origin: globalThis.location?.origin,
   }
 }
 
@@ -161,6 +187,14 @@ export const MarkdownPaste = Extension.create<MarkdownPasteOptions>({
               if (action.kind === 'default') return false
               event.preventDefault()
               if (action.kind === 'link') return setLink(action.href)(view.state, view.dispatch)
+              if (action.kind === 'address')
+                return pasteAddress(action.href)(view.state, view.dispatch)
+              if (action.kind === 'document') {
+                return (
+                  pasteDocumentLink(action.address)(view.state, view.dispatch) ||
+                  pasteAddress(action.address)(view.state, view.dispatch)
+                )
+              }
               const context = contexts.get(view)
               if (action.text.length > LARGE_PASTE_CHARS && context !== undefined) {
                 startLargePaste(view, action.text, parse(), context)

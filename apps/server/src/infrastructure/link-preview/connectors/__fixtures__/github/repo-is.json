@@ -1,0 +1,17 @@
+{
+  "name": "is",
+  "full_name": "sindresorhus/is",
+  "private": false,
+  "visibility": "public",
+  "description": "Type check values",
+  "html_url": "https://github.com/sindresorhus/is",
+  "stargazers_count": 1798,
+  "archived": false,
+  "fork": false,
+  "language": "TypeScript",
+  "default_branch": "main",
+  "owner": {
+    "login": "sindresorhus",
+    "avatar_url": "https://avatars.githubusercontent.com/u/170270?v=4"
+  }
+}

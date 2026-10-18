@@ -1,5 +1,5 @@
 {
-  "id": "3aff5c81-8654-4325-bafe-1699239ecf37",
+  "id": "4163d6b9-d586-4e4a-90d8-dc430ab96610",
   "prevId": "f91b9bfd-9729-47aa-b77f-90f8aa26c9e9",
   "version": "7",
   "dialect": "postgresql",
@@ -921,24 +921,6 @@
           "type": "text",
           "primaryKey": false,
           "notNull": true
-        },
-        "summary": {
-          "name": "summary",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "icon": {
-          "name": "icon",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "lifecycle": {
-          "name": "lifecycle",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
         },
         "contributor_emails": {
           "name": "contributor_emails",
@@ -2012,6 +1994,106 @@
       "indexes": {},
       "foreignKeys": {},
       "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.link_previews": {
+      "name": "link_previews",
+      "schema": "",
+      "columns": {
+        "scope": {
+          "name": "scope",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "key": {
+          "name": "key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "state": {
+          "name": "state",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "document": {
+          "name": "document",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "failure": {
+          "name": "failure",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "fetched_at": {
+          "name": "fetched_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "requested_at": {
+          "name": "requested_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "retry_after": {
+          "name": "retry_after",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "link_previews_thumbnail_idx": {
+          "name": "link_previews_thumbnail_idx",
+          "columns": [
+            {
+              "expression": "(document->'thumbnail'->>'hash')",
+              "asc": true,
+              "isExpression": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "link_previews_favicon_idx": {
+          "name": "link_previews_favicon_idx",
+          "columns": [
+            {
+              "expression": "(document->'favicon'->>'hash')",
+              "asc": true,
+              "isExpression": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {
+        "link_previews_scope_key_pk": {
+          "name": "link_previews_scope_key_pk",
+          "columns": [
+            "scope",
+            "key"
+          ]
+        }
+      },
       "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {},

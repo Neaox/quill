@@ -1,0 +1,17 @@
+[
+  {
+    "name": "index.ts",
+    "path": "source/index.ts",
+    "type": "file"
+  },
+  {
+    "name": "types.ts",
+    "path": "source/types.ts",
+    "type": "file"
+  },
+  {
+    "name": "utilities.ts",
+    "path": "source/utilities.ts",
+    "type": "file"
+  }
+]

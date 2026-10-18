@@ -1,5 +1,6 @@
 import type {
   BlobStore,
+  LinkPreviewPorts,
   Clock,
   ContentStore,
   DocumentFormat,
@@ -65,6 +66,11 @@ export interface AppDependencies {
    * setting and nothing above it changes.
    */
   readonly shareLinkPolicy: ShareLinkPolicy
+  /**
+   * Link previews (ADR-042): what to read, what to ask for, and what fetches.
+   * A process that must not fetch is given `INERT_LINK_PREVIEW_PORTS`.
+   */
+  readonly linkPreviewPorts: LinkPreviewPorts
   /**
    * The search engine (ADR-010). Both the index and the service over it are
    * here because they serve different callers: the outbox consumers and

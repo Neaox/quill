@@ -1,3 +1,4 @@
+import type { EditorPaletteCommand } from '@quill/editor'
 import type { CommandPaletteGroup } from '@quill/ui'
 
 import type { WorkspaceSummaryDto } from '../../lib/api/index.ts'
@@ -21,6 +22,8 @@ export type CommandAction =
   | { readonly kind: 'workspace'; readonly workspaceSlug: string }
   | { readonly kind: 'organisation'; readonly to: OrganisationDestination['to'] }
   | { readonly kind: 'sign-out' }
+  /** Something the open editor does to the document at the cursor (ADR-042). */
+  | { readonly kind: 'editor'; readonly run: () => void }
 
 export interface PaletteCommand {
   /** Unique across commands and distinct from every search hit's option id. */
@@ -36,6 +39,8 @@ export interface PaletteCommand {
 
 /** The palette's command groups, in the order it lists them. */
 const COMMAND_GROUPS = [
+  // What the author's cursor is on comes first: it is the most specific thing the palette can offer.
+  { id: 'editor', label: 'At the cursor' },
   { id: 'go-to', label: 'Go to' },
   { id: 'organisation', label: 'Organisation' },
   { id: 'account', label: 'Account' },
@@ -46,11 +51,25 @@ type CommandGroupId = (typeof COMMAND_GROUPS)[number]['id']
 export interface CommandContext {
   readonly isInstanceAdmin: boolean
   readonly workspaces: readonly WorkspaceSummaryDto[]
+  /** What the open editor offers for the cursor's place in the document, when one is open. */
+  readonly editor?: readonly EditorPaletteCommand[]
 }
 
 /** Every command this person may run, in the order the palette lists them. */
-export function paletteCommands({ isInstanceAdmin, workspaces }: CommandContext): PaletteCommand[] {
+export function paletteCommands({
+  isInstanceAdmin,
+  workspaces,
+  editor = [],
+}: CommandContext): PaletteCommand[] {
   return [
+    ...editor.map((command): PaletteCommand => ({
+      id: `command:${command.id}`,
+      label: command.label,
+      group: 'editor',
+      keywords: command.keywords,
+      action: { kind: 'editor', run: () => command.run() },
+      suggested: true,
+    })),
     {
       id: 'command:home',
       label: 'Home',
