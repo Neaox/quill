@@ -58,6 +58,11 @@ interface AnchoredRootProps extends MenuAnchorProps {
   readonly sideOffset: number
   readonly className: string
   readonly children: ReactNode
+  /**
+   * Whether a row handed the focus on (`handsFocusOn`) for the close now
+   * happening; asking also forgets it, so the next close starts clean.
+   */
+  readonly takeFocusHandedOn?: (() => boolean) | undefined
 }
 
 /**
@@ -69,7 +74,8 @@ interface AnchoredRootProps extends MenuAnchorProps {
  * is labelled by it, a press on it is not treated as a press outside (the
  * trigger's own click closes the menu), and focus goes back to it on close —
  * unless the menu was closed by pressing somewhere else, where focus belongs
- * to whatever was pressed.
+ * to whatever was pressed, or by a row that hands the focus on to what it
+ * opened (`takeFocusHandedOn`).
  */
 function AnchoredRoot({
   open,
@@ -82,6 +88,7 @@ function AnchoredRoot({
   sideOffset,
   className,
   children,
+  takeFocusHandedOn,
 }: AnchoredRootProps) {
   // Once per mount: the press it answers happened once.
   const [onFocus] = useState(() => firstItemFocus(opening))
@@ -118,7 +125,8 @@ function AnchoredRoot({
           }}
           onCloseAutoFocus={(event) => {
             event.preventDefault()
-            if (!pressedElsewhere.current) trigger.current?.focus()
+            const handedOn = takeFocusHandedOn?.() === true
+            if (!pressedElsewhere.current && !handedOn) trigger.current?.focus()
             pressedElsewhere.current = false
           }}
         >
@@ -175,6 +183,7 @@ export function RadixMenuButton({
 }: MenuButtonProps & MenuAnchorProps) {
   const styles = menuStyles({ size: 'md' })
   const ids = useId()
+  const focusHandedOn = useRef(false)
   const shown = sections.filter((section) => section.entries.length > 0)
 
   return (
@@ -188,6 +197,11 @@ export function RadixMenuButton({
       align={align}
       sideOffset={6}
       className={styles.content({ className })}
+      takeFocusHandedOn={() => {
+        const handedOn = focusHandedOn.current
+        focusHandedOn.current = false
+        return handedOn
+      }}
     >
       {header === undefined ? undefined : <div className={styles.header()}>{header}</div>}
       {shown.map((section, index) => {
@@ -211,6 +225,9 @@ export function RadixMenuButton({
                 entry={entry}
                 linkComponent={linkComponent}
                 labelId={`${labelId}-${position}`}
+                onHandFocusOn={() => {
+                  focusHandedOn.current = true
+                }}
               />
             ))}
           </DropdownMenu.Group>
@@ -224,10 +241,12 @@ function MenuButtonEntry({
   entry,
   linkComponent: LinkElement,
   labelId,
+  onHandFocusOn,
 }: {
   readonly entry: MenuEntry
   readonly linkComponent: LinkComponent
   readonly labelId: string
+  readonly onHandFocusOn: () => void
 }) {
   const styles = menuStyles({ size: 'md' })
 
@@ -238,6 +257,7 @@ function MenuButtonEntry({
           disabled={entry.disabled === true}
           onSelect={(event) => {
             if (entry.keepOpen === true) event.preventDefault()
+            if (entry.handsFocusOn === true) onHandFocusOn()
             entry.onSelect()
           }}
           className={styles.item()}
