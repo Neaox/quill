@@ -655,11 +655,11 @@ export function DocumentProperties({
 
   function startAdding(field: LineField): void {
     setPending(field)
-    // The menu hands focus back to its trigger as it closes; the new
-    // property's editor opens once that has happened, and takes it.
-    setTimeout(() => {
-      setOpenEditor(`pending:${field}`)
-    }, 0)
+    // The new property's editor opens now and takes the focus. "Add property"
+    // hands it on rather than back to its trigger (`handsFocusOn`): focus
+    // returned as that menu closes would land after this editor opened, and
+    // close it as focus leaving.
+    setOpenEditor(`pending:${field}`)
   }
 
   /**
@@ -781,6 +781,7 @@ export function DocumentProperties({
                   entries: unset.map(({ field, label }) => ({
                     kind: 'action' as const,
                     label,
+                    handsFocusOn: true,
                     onSelect: () => {
                       startAdding(field)
                     },
