@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { enhanceDetails, textFragments } from './details.ts'
+import { enhanceDetails, exclusiveMode, textFragments } from './details.ts'
 
 /** A details as the renderer emits it (`@quill/markdown`, `details/render.ts`). */
 function details(summary: string, body: string, attributes = ''): string {
@@ -24,6 +24,11 @@ const disposers: (() => void)[] = []
 function enhance(...args: Parameters<typeof enhanceDetails>): void {
   disposers.push(enhanceDetails(...args))
 }
+
+// jsdom lays nothing out, so it has no `scrollIntoView`; every browser does.
+beforeEach(() => {
+  Element.prototype.scrollIntoView = vi.fn<() => void>()
+})
 
 afterEach(() => {
   for (const dispose of disposers.splice(0)) dispose()
@@ -97,6 +102,31 @@ describe('opening a details a link points into', () => {
   })
 })
 
+describe('where it is enhanced', () => {
+  it('works on a whole document, as the public reader runs it', () => {
+    window.history.replaceState(null, '', '#user-content-deep')
+    const root = page(details('Outer', '<p id="user-content-deep">Deep</p>'))
+    enhance(document)
+    expect(openOf(root)).toEqual([true])
+  })
+
+  it('does nothing in a document with no window', () => {
+    const detached = document.implementation.createHTMLDocument()
+    detached.body.innerHTML = details('A', 'a')
+    const dispose = enhanceDetails(detached)
+    dispose()
+    expect(detached.querySelector('details')?.open).toBe(false)
+  })
+
+  it('ignores clicks on what is not a link, and on what is not an element', () => {
+    const root = page(details('Outer', '<p id="user-content-x">Here</p>'))
+    enhance(root)
+    root.querySelector('p')?.click()
+    root.querySelector('p')?.firstChild?.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    expect(openOf(root)).toEqual([false])
+  })
+})
+
 describe('the browser’s find', () => {
   it('opens the details a match is found in, from the beforematch event', () => {
     const root = page(details('Outer', details('Inner', '<p>needle</p>')))
@@ -130,16 +160,28 @@ describe('text fragments', () => {
     expect(openOf(root)).toEqual([true, false])
   })
 
+  it('reads the fragment from the page’s own navigation entry when not told it', () => {
+    const entries = vi
+      .spyOn(window.performance, 'getEntriesByType')
+      .mockReturnValue([{ name: 'https://x.test/d#:~:text=rotate' } as PerformanceEntry])
+    const root = page(details('Keys', '<p>Rotate the keys.</p>'))
+
+    enhance(root)
+
+    expect(openOf(root)).toEqual([true])
+    entries.mockRestore()
+  })
+
   it('reads the fragment from the navigation entry, where the browser has taken it off the address', () => {
     const root = page(details('Keys', '<p>Rotate the keys.</p>'))
 
-    enhance(root, { navigationUrl: () => 'https://x.test/d#:~:text=rotate' })
+    enhance(root, { navigationUrl: 'https://x.test/d#:~:text=rotate' })
 
     expect(openOf(root)).toEqual([true])
   })
 })
 
-const toggle = (element: HTMLDetailsElement | undefined, open: boolean): void => {
+function toggle(element: HTMLDetailsElement | undefined, open: boolean): void {
   if (element === undefined) return
   element.open = open
   element.dispatchEvent(new Event('toggle'))
@@ -175,12 +217,22 @@ describe('accordions', () => {
   })
 
   it('asks the browser whether it groups details by name', () => {
+    expect(exclusiveMode({ HTMLDetailsElement: { prototype: { name: '' } } })).toBe('native')
+    expect(exclusiveMode({ HTMLDetailsElement: { prototype: {} } })).toBe('fallback')
     const root = accordion()
     enhance(root)
     toggle([...root.querySelectorAll('details')][1], true)
     expect(openOf(root)).toEqual(
-      'name' in HTMLDetailsElement.prototype ? [true, true, true] : [false, true, true],
+      exclusiveMode(window) === 'native' ? [true, true, true] : [false, true, true],
     )
+  })
+
+  it('leaves details without a name alone, and what fires toggle that is no details', () => {
+    const root = page(details('A', 'a', ' open') + details('B', 'b'))
+    enhance(root, { exclusive: 'fallback' })
+    toggle([...root.querySelectorAll('details')][1], true)
+    root.dispatchEvent(new Event('toggle'))
+    expect(openOf(root)).toEqual([true, true])
   })
 })
 
@@ -240,15 +292,6 @@ describe('where it is put', () => {
     root.querySelector('p')?.firstChild?.dispatchEvent(new Event('click', { bubbles: true }))
 
     expect(openOf(root)).toEqual([false])
-  })
-
-  it('leaves a details with an empty name out of any accordion', () => {
-    const root = page(details('A', 'a', ' name="" open') + details('B', 'b', ' name=""'))
-    enhance(root, { exclusive: 'fallback' })
-
-    toggle([...root.querySelectorAll('details')][1], true)
-
-    expect(openOf(root)).toEqual([true, true])
   })
 })
 

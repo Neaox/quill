@@ -1,356 +1,270 @@
-import { NodeSelection, TextSelection } from '@tiptap/pm/state'
-import type { Command, EditorState } from '@tiptap/pm/state'
+import { parseDocument, serializeDocument } from '@quill/markdown'
+import { EditorState, NodeSelection, TextSelection } from '@tiptap/pm/state'
+import type { Command } from '@tiptap/pm/state'
 import { describe, expect, it } from 'vitest'
 
-import { documentToMdast } from '../document/ast.ts'
-import { markType } from '../schema/node-type.ts'
-import { createEditorTestHarness } from '../testing/harness.ts'
-import { isExternal, normaliseHref } from './href.ts'
-import { applyLink, linkAt, unlink } from './links.ts'
+import { documentFromMdast, documentToMdast } from '../document/ast.ts'
+import { editorSchema } from '../schema/editor-schema.ts'
 import {
   clearFormatting,
-  describeKey,
-  describeShortcut,
-  INLINE_MARKS,
-  isMarkActive,
-  toggleInlineMark,
-} from './marks.ts'
-import { activeTextStyle, TEXT_STYLES, toggleTextStyle } from './text-styles.ts'
-import { inSequence, transactionOf } from './transactions.ts'
+  directiveActive,
+  hasFormatting,
+  markActive,
+  toggleFormatDirective,
+  toggleFormatMark,
+} from './format-commands.ts'
+import { SHORTCUTS, isApplePlatform, shortcutFor, shortcutLabel } from './shortcuts.ts'
+import { TURN_INTO, TURN_INTO_LABELS, currentKind, sequence, turnInto } from './turn-into.ts'
 
-const harness = createEditorTestHarness()
-
-function stateAt(markdown: string, from: number, to = from): EditorState {
-  const opened = harness.state(markdown)
-  return opened.apply(opened.tr.setSelection(TextSelection.create(opened.doc, from, to)))
+/** A state over Markdown, with the selection on the first occurrence of `words` (or a caret before `|`). */
+function stateOf(markdown: string, words?: string): EditorState {
+  const doc = documentFromMdast(parseDocument(markdown).ast, { softBreaks: 'collapse' }).doc
+  const state = EditorState.create({ schema: editorSchema, doc })
+  if (words === undefined) return state
+  let found: { from: number; to: number } | undefined
+  doc.descendants((node, pos) => {
+    if (found !== undefined || !node.isText) return found === undefined
+    const at = node.text?.indexOf(words) ?? -1
+    if (at >= 0) found = { from: pos + at, to: pos + at + words.length }
+    return false
+  })
+  if (found === undefined) throw new Error(`"${words}" is not in the document.`)
+  return state.apply(state.tr.setSelection(TextSelection.create(doc, found.from, found.to)))
 }
 
-/** A caret one character into the first text that contains `needle`. */
-function caretIn(markdown: string, needle: string): EditorState {
-  const { doc } = harness.state(markdown)
-  let found = -1
-  doc.descendants((node, pos) => {
-    if (found < 0 && node.isText && node.text?.includes(needle) === true) found = pos + 1
+function caretIn(markdown: string, words: string): EditorState {
+  const state = stateOf(markdown, words)
+  return state.apply(state.tr.setSelection(TextSelection.create(state.doc, state.selection.from)))
+}
+
+function run(state: EditorState, command: Command): EditorState {
+  let next = state
+  const applied = command(state, (tr) => {
+    next = state.apply(tr)
   })
-  return stateAt(markdown, found)
+  if (!applied) throw new Error('The command did not apply.')
+  return next
 }
 
 function markdownOf(state: EditorState): string {
-  return harness.read(documentToMdast(state.doc).tree)
+  return serializeDocument({ frontMatter: {}, ast: documentToMdast(state.doc).tree })
 }
 
-/** Applies a command and returns the Markdown it leaves, or null when it declined. */
-function run(command: Command, state: EditorState): string | null {
-  const tr = transactionOf(command, state)
-  return tr === null ? null : markdownOf(state.apply(tr))
-}
-
-function style(id: string) {
-  const found = TEXT_STYLES.find((candidate) => candidate.id === id)
-  if (found === undefined) throw new Error(`There is no "${id}" style.`)
-  return found
-}
-
-describe('normalising a link address', () => {
-  it.each([
-    ['https://example.com/a?b=1#c', 'https://example.com/a?b=1#c'],
-    ['http://example.com', 'http://example.com'],
-    ['  https://example.com  ', 'https://example.com'],
-    ['mailto:a@b.co', 'mailto:a@b.co'],
-    ['/docs/intro', '/docs/intro'],
-    ['#section', '#section'],
-    ['./sibling', './sibling'],
-    ['../parent', '../parent'],
-    ['?q=1', '?q=1'],
-    ['example.com', 'https://example.com'],
-    ['example.com/path?x=1', 'https://example.com/path?x=1'],
-    ['ada@example.com', 'mailto:ada@example.com'],
-  ])('accepts %j as %j', (typed, stored) => {
-    expect(normaliseHref(typed)).toBe(stored)
+describe('marks', () => {
+  it('toggle on and off across the selection, reporting whether all of it carries them', () => {
+    const state = stateOf('Make this bold.\n', 'this')
+    expect(markActive(state, 'bold')).toBe(false)
+    const bold = run(state, toggleFormatMark('bold'))
+    expect(markdownOf(bold)).toBe('Make **this** bold.\n')
+    expect(markActive(bold, 'bold')).toBe(true)
+    expect(markdownOf(run(bold, toggleFormatMark('bold')))).toBe('Make this bold.\n')
   })
 
-  it.each([
-    '',
-    '   ',
-    'javascript:alert(1)',
-    'JaVaScRiPt:alert(1)',
-    'data:text/html,<script>',
-    'vbscript:x',
-    'file:///etc/passwd',
-    '//evil.example/x',
-    'two words',
-    'intro',
-    'https://exa mple.com',
-  ])('refuses %j', (typed) => {
-    expect(normaliseHref(typed)).toBeNull()
+  it('are partly active when only some of the selection carries them, which reads as off', () => {
+    const state = stateOf('Some **bold** words.\n')
+    // From the start of "bold" to the end of "words".
+    const partly = state.apply(state.tr.setSelection(TextSelection.create(state.doc, 6, 16)))
+    expect(markActive(partly, 'bold')).toBe(false)
   })
 
-  it('knows which addresses leave the document', () => {
-    expect(isExternal('https://example.com')).toBe(true)
-    expect(isExternal('HTTP://example.com')).toBe(true)
-    expect(isExternal('/docs')).toBe(false)
-    expect(isExternal('mailto:a@b.co')).toBe(false)
-  })
-})
-
-describe('the inline marks', () => {
-  it('toggles each one on a selection, and off again', () => {
-    for (const mark of INLINE_MARKS) {
-      const on = stateAt('word\n', 1, 5)
-      const marked = on.apply(transactionOf(toggleInlineMark(mark.name), on) ?? on.tr)
-      expect(isMarkActive(marked, mark.name)).toBe(true)
-      const off = marked.apply(transactionOf(toggleInlineMark(mark.name), marked) ?? marked.tr)
-      expect(isMarkActive(off, mark.name)).toBe(false)
-    }
+  it('at a caret, say what typing would carry', () => {
+    expect(markActive(caretIn('Some *slanted* words.\n', 'lanted'), 'italic')).toBe(true)
+    expect(markActive(caretIn('Plain words.\n', 'words'), 'italic')).toBe(false)
   })
 
-  it('reads the mark a caret would type with', () => {
-    expect(isMarkActive(stateAt('**bold** plain\n', 3), 'bold')).toBe(true)
-    expect(isMarkActive(stateAt('**bold** plain\n', 9), 'bold')).toBe(false)
-    const stored = stateAt('plain\n', 3)
-    const typing = stored.apply(stored.tr.addStoredMark(markType(stored.schema, 'italic').create()))
-    expect(isMarkActive(typing, 'italic')).toBe(true)
+  it('say nothing is marked in a selection with no text in it', () => {
+    const state = stateOf('Words.\n\n---\n')
+    const rule = state.apply(state.tr.setSelection(NodeSelection.create(state.doc, 8)))
+    expect(markActive(rule, 'bold')).toBe(false)
   })
 
-  it('describes a binding the way the platform writes it', () => {
-    expect(describeKey('Mod-b', 'MacIntel')).toBe('⌘B')
-    expect(describeKey('Mod-Shift-x', 'MacIntel')).toBe('⌘⇧X')
-    expect(describeKey('Mod-b', 'Win32')).toBe('Ctrl+B')
-    expect(describeKey('Mod-Alt-1', 'Linux x86_64')).toBe('Ctrl+Alt+1')
-    expect(describeKey('Mod-Alt-1', 'iPhone')).toBe('⌘⌥1')
-  })
-
-  it('leaves a key that is not a single letter as it is written', () => {
-    expect(describeKey('Shift-Enter', 'Win32')).toBe('Shift+Enter')
-    expect(describeKey('Alt-F10', 'MacIntel')).toBe('⌥F10')
-    // The arrows are drawn as arrows, which is shorter than their names and what the keys show.
-    expect(describeKey('Alt-Shift-ArrowUp', 'Win32')).toBe('Alt+Shift+↑')
-    expect(describeKey('Mod-Alt-ArrowLeft', 'MacIntel')).toBe('⌘⌥←')
-  })
-
-  it('describes a key for the browser it is running in', () => {
-    expect(describeShortcut('Mod-b')).toBe(describeKey('Mod-b', navigator.platform))
-  })
-
-  it('binds every mark to a key the toolbar can show', () => {
-    expect(INLINE_MARKS.map((mark) => mark.key)).toEqual(['Mod-b', 'Mod-i', 'Mod-Shift-x', 'Mod-e'])
-  })
-})
-
-describe('links under the caret', () => {
-  const source = 'Read [the docs](https://example.com) now.\n'
-  // "Read " is 5 characters, so the link text starts at position 6 and ends at 14.
-
-  it('finds the whole link from a caret inside it', () => {
-    expect(linkAt(stateAt(source, 9))).toEqual({
-      from: 6,
-      to: 14,
-      href: 'https://example.com',
-      title: null,
-    })
-  })
-
-  it('finds it from a selection inside it, and not from one that spills out', () => {
-    expect(linkAt(stateAt(source, 7, 10))?.href).toBe('https://example.com')
-    expect(linkAt(stateAt(source, 3, 10))).toBeNull()
-  })
-
-  it('treats either end as outside, because typing there would not extend it', () => {
-    expect(linkAt(stateAt(source, 6))).toBeNull()
-    expect(linkAt(stateAt(source, 14))).toBeNull()
-    expect(linkAt(stateAt(source, 2))).toBeNull()
-  })
-
-  it('joins neighbouring text that shares one address into one link', () => {
-    const state = stateAt('[a **b**](https://example.com)\n', 2)
-    expect(linkAt(state)).toMatchObject({ from: 1, to: 4 })
-  })
-
-  it('keeps links that go to different places apart', () => {
-    const state = stateAt('[a](/one)[b](/two)\n', 1)
-    expect(linkAt(stateAt('[a](/one)[bb](/two)\n', 3))).toMatchObject({
-      href: '/two',
-      from: 2,
-      to: 4,
-    })
-    expect(state.selection.empty).toBe(true)
-  })
-
-  it('reads a link with no address as an empty one, rather than failing', () => {
-    const opened = harness.state('Some words\n')
-    const type = markType(opened.schema, 'link')
-    const linked = opened.apply(opened.tr.addMark(1, 5, type.create({})))
-    const inside = linked.apply(linked.tr.setSelection(TextSelection.create(linked.doc, 3)))
-    expect(linkAt(inside)).toEqual({ from: 1, to: 5, href: '', title: null })
-  })
-
-  it('reports a title when the link has one', () => {
-    expect(linkAt(stateAt('[a b](/x "Tip")\n', 2))?.title).toBe('Tip')
-  })
-
-  it('changes where a link points, from the caret or from a selection', () => {
-    expect(run(applyLink('/new'), stateAt(source, 9))).toBe('Read [the docs](/new) now.\n')
-    expect(run(applyLink('/new'), stateAt('plain words\n', 1, 6))).toBe('[plain](/new) words\n')
-  })
-
-  it('declines to link a caret that is not in a link', () => {
-    expect(run(applyLink('/new'), stateAt('plain words\n', 3))).toBeNull()
-  })
-
-  it('removes a link from the caret or from a selection', () => {
-    expect(run(unlink, stateAt(source, 9))).toBe('Read the docs now.\n')
-    expect(run(unlink, stateAt(source, 6, 14))).toBe('Read the docs now.\n')
-    expect(run(unlink, stateAt('plain words\n', 3))).toBeNull()
-  })
-})
-
-describe('turning a block into a style', () => {
-  it('makes a heading, a quote, a code block and a list out of a paragraph', () => {
-    const at = (id: string) => run(style(id).command, stateAt('Some words\n', 3))
-    expect(at('heading-1')).toBe('# Some words\n')
-    expect(at('heading-4')).toBe('#### Some words\n')
-    expect(at('blockquote')).toBe('> Some words\n')
-    expect(at('code-block')).toBe('```\nSome words\n```\n')
-    expect(at('bullet-list')).toBe('- Some words\n')
-    expect(at('ordered-list')).toBe('1. Some words\n')
-    expect(at('task-list')).toBe('- [ ] Some words\n')
-  })
-
-  it('sets a style rather than toggling it, so choosing it twice changes nothing more', () => {
-    expect(run(style('heading-2').command, stateAt('## Same\n', 3))?.trim()).toBe('## Same')
-    expect(run(style('bullet-list').command, stateAt('- Same\n', 3))).toBeNull()
-    expect(run(style('blockquote').command, stateAt('> Same\n', 3))).toBeNull()
-  })
-
-  it('returns to plain text out of a heading, a list item and a quote', () => {
-    const plain = style('paragraph').command
-    expect(run(plain, stateAt('## Title\n', 3))).toBe('Title\n')
-    expect(run(plain, stateAt('- One\n', 3))).toBe('One\n')
-    expect(run(plain, stateAt('> Quoted\n', 3))).toBe('Quoted\n')
-  })
-
-  it('leaves a nested list entirely, not one level at a time', () => {
-    expect(run(style('paragraph').command, caretIn('- One\n  - Two\n', 'Two'))).toBe(
-      '- One\n\nTwo\n',
+  it('cover strikethrough and inline code', () => {
+    expect(markdownOf(run(stateOf('Old words.\n', 'Old'), toggleFormatMark('strike')))).toBe(
+      '~~Old~~ words.\n',
     )
-  })
-
-  it('makes a heading out of a list item, which has to leave the list to be one', () => {
-    expect(run(style('heading-2').command, stateAt('- One\n', 3))).toBe('## One\n')
-  })
-
-  it('changes one kind of list into another in a single step', () => {
-    const before = stateAt('- One\n- Two\n', 3)
-    const tr = transactionOf(style('ordered-list').command, before)
-    expect(tr).not.toBeNull()
-    expect(markdownOf(before.apply(tr ?? before.tr))).toContain('1. One')
-    expect(run(style('task-list').command, stateAt('1. One\n', 4))).toContain('[ ] One')
-  })
-
-  it('declines to make a list of something that cannot be in one', () => {
-    const opened = harness.state('---\n\nText.\n')
-    const rule = opened.apply(opened.tr.setSelection(NodeSelection.create(opened.doc, 0)))
-    expect(transactionOf(style('bullet-list').command, rule)).toBeNull()
-  })
-
-  it('puts a list inside a quote ahead of the quote, and a heading ahead of both', () => {
-    const inQuote = activeTextStyle(caretIn('> - Item\n', 'Item'))
-    expect(inQuote?.id).toBe('bullet-list')
-  })
-
-  it('puts a heading ahead of the quote it is in', () => {
-    expect(activeTextStyle(caretIn('> ## Quoted heading\n', 'Quoted'))?.id).toBe('heading-2')
-  })
-
-  it('says which style the caret is in, most specific first', () => {
-    const at = (markdown: string, pos: number) => activeTextStyle(stateAt(markdown, pos))?.id
-    expect(at('Plain\n', 2)).toBe('paragraph')
-    expect(at('## Title\n', 3)).toBe('heading-2')
-    expect(at('- Item\n', 3)).toBe('bullet-list')
-    expect(at('1. Item\n', 4)).toBe('ordered-list')
-    expect(at('- [ ] Item\n', 4)).toBe('task-list')
-    expect(at('> Quote\n', 3)).toBe('blockquote')
-    expect(at('```\ncode\n```\n', 3)).toBe('code-block')
-  })
-
-  it('offers each style a unique id and a label', () => {
-    expect(new Set(TEXT_STYLES.map((each) => each.id)).size).toBe(TEXT_STYLES.length)
-    expect(TEXT_STYLES.every((each) => each.label.length > 0 && each.description.length > 0)).toBe(
-      true,
+    expect(markdownOf(run(stateOf('Run npm now.\n', 'npm'), toggleFormatMark('code')))).toBe(
+      'Run `npm` now.\n',
     )
   })
 })
 
-describe('turning a style on and off', () => {
-  it('turns a list on, and off again, as the one button or key', () => {
-    const on = run(toggleTextStyle(style('bullet-list')), caretIn('One.\n', 'One'))
-    expect(on).toBe('- One.\n')
-
-    const opened = caretIn('- One.\n', 'One')
-    expect(run(toggleTextStyle(style('bullet-list')), opened)).toBe('One.\n')
-  })
-
-  it('turns a quote on and off', () => {
-    expect(run(toggleTextStyle(style('blockquote')), caretIn('One.\n', 'One'))).toBe('> One.\n')
-    expect(run(toggleTextStyle(style('blockquote')), caretIn('> One.\n', 'One'))).toBe('One.\n')
-  })
-
-  it('turns one kind of list into another, rather than off', () => {
-    expect(run(toggleTextStyle(style('ordered-list')), caretIn('- One.\n', 'One'))).toBe(
-      '1. One.\n',
+describe('small print and badges', () => {
+  it('wrap the selected words, which stay selected', () => {
+    const small = run(
+      stateOf('Drawn from main today.\n', 'from main'),
+      toggleFormatDirective('small'),
     )
+    expect(markdownOf(small)).toBe('Drawn :small[from main] today.\n')
+    expect(small.doc.textBetween(small.selection.from, small.selection.to)).toBe('from main')
+    expect(directiveActive(small, 'small')).toBe(true)
   })
 
-  it('leaves a style that is a choice as one: made, and made again, is the same', () => {
-    expect(run(toggleTextStyle(style('heading-2')), caretIn('One.\n', 'One'))).toBe('## One.\n')
-    expect(run(toggleTextStyle(style('heading-2')), caretIn('## One.\n', 'One'))).toBe('## One.\n')
+  it('unwrap when the selection is already inside one', () => {
+    const state = stateOf('Status :badge[Built] today.\n', 'Built')
+    expect(directiveActive(state, 'badge')).toBe(true)
+    const plain = run(state, toggleFormatDirective('badge'))
+    expect(markdownOf(plain)).toBe('Status Built today.\n')
+  })
+
+  it('keep formatting inside what they wrap', () => {
+    expect(
+      markdownOf(run(stateOf('A **bold** word.\n', 'bold'), toggleFormatDirective('badge'))),
+    ).toBe('A :badge[**bold**] word.\n')
+  })
+
+  it('do nothing at a caret, across two lines, or in code', () => {
+    const caret = caretIn('Words.\n', 'ords')
+    expect(toggleFormatDirective('small')(caret)).toBe(false)
+    const two = stateOf('One.\n\nTwo.\n')
+    const across = two.apply(two.tr.setSelection(TextSelection.create(two.doc, 2, 9)))
+    expect(toggleFormatDirective('small')(across)).toBe(false)
+    expect(toggleFormatDirective('small')(stateOf('```\ncode here\n```\n', 'code'))).toBe(false)
+  })
+
+  it('is not active across the edge of one', () => {
+    expect(
+      directiveActive(stateOf('A :small[quiet] word.\n', 'quiet] w'.slice(0, 5)), 'small'),
+    ).toBe(true)
+    expect(directiveActive(stateOf('A :small[quiet] and loud.\n', 'and'), 'small')).toBe(false)
   })
 })
 
 describe('clearing formatting', () => {
-  it('takes the marks off the selection, and leaves the words and any link', () => {
-    const source = 'Some **bold _and italic_** and [a link](/x) and `code`.\n'
-    const state = stateAt(source, 1, 1 + (harness.state(source).doc.firstChild?.content.size ?? 0))
-
-    expect(run(clearFormatting, state)).toBe('Some bold and italic and [a link](/x) and code.\n')
+  it('takes off marks, small print and badges, but keeps links', () => {
+    const source = 'A **bold** *it* :small[quiet] :badge[Built] [link](https://example.com) end.\n'
+    const state = stateOf(source)
+    const all = state.apply(
+      state.tr.setSelection(TextSelection.create(state.doc, 1, state.doc.content.size - 1)),
+    )
+    expect(hasFormatting(all)).toBe(true)
+    const cleared = run(all, clearFormatting)
+    expect(markdownOf(cleared)).toBe('A bold it quiet Built [link](https://example.com) end.\n')
+    expect(cleared.selection.empty).toBe(false)
   })
 
-  it('clears what the next typed character would be, for a caret', () => {
-    const state = caretIn('Some **bold** text.\n', 'bold')
-    const bold = state.apply(state.tr.setStoredMarks([markType(state.schema, 'bold').create()]))
-
-    const cleared = transactionOf(clearFormatting, bold)
-
-    expect(cleared && bold.apply(cleared).storedMarks).toEqual([])
+  it('unwraps the small print the selection is inside', () => {
+    const cleared = run(stateOf('A :small[quiet words] here.\n', 'quiet'), clearFormatting)
+    expect(markdownOf(cleared)).toBe('A quiet words here.\n')
   })
 
-  it('declines a selection with nothing to clear', () => {
-    expect(run(clearFormatting, stateAt('Plain words.\n', 1, 6))).toBeNull()
-    expect(run(clearFormatting, stateAt('Plain words.\n', 3))).toBeNull()
+  it('has nothing to do on plain words or at a caret', () => {
+    expect(clearFormatting(stateOf('Plain words.\n', 'Plain'))).toBe(false)
+    expect(hasFormatting(caretIn('A **bold** word.\n', 'old'))).toBe(false)
   })
 })
 
-describe('commands in sequence', () => {
-  it("joins what each did into one transaction, each seeing the last one's document", () => {
-    const state = stateAt('One two\n', 1, 4)
-    const tr = inSequence(state, [
-      () => toggleInlineMark('bold'),
-      (current) =>
-        current.doc.textContent === 'One two' ? toggleInlineMark('italic') : () => false,
-    ])
-    expect(tr).not.toBeNull()
-    expect(markdownOf(state.apply(tr ?? state.tr))).toBe('***One*** two\n')
+describe('turning a block into another', () => {
+  it('knows what the caret’s block is now', () => {
+    expect(currentKind(caretIn('Words.\n', 'ords'))).toBe('paragraph')
+    expect(currentKind(caretIn('## Title\n', 'itle'))).toBe('heading-2')
+    expect(currentKind(caretIn('#### Deep\n', 'eep'))).toBeUndefined()
+    expect(currentKind(caretIn('- item\n', 'tem'))).toBe('bullet-list')
+    expect(currentKind(caretIn('1. item\n', 'tem'))).toBe('numbered-list')
+    expect(currentKind(caretIn('- [ ] item\n', 'tem'))).toBe('task-list')
+    expect(currentKind(caretIn('> quoted\n', 'uoted'))).toBe('quote')
+    expect(currentKind(caretIn('> [!NOTE]\n> noted\n', 'oted'))).toBe('callout')
+    expect(currentKind(caretIn(':::callout{type="tip"}\ntipped\n:::\n', 'ipped'))).toBe('callout')
+    expect(currentKind(caretIn('```\ncode\n```\n', 'ode'))).toBeUndefined()
+    // Inside a table cell, the cell is not a wrapper "Turn into" takes it out of.
+    expect(currentKind(caretIn('| a |\n| - |\n| b |\n', 'b'))).toBe('paragraph')
   })
 
-  it('treats a command that applies without dispatching as having built nothing', () => {
-    const state = stateAt('One\n', 1)
-    expect(transactionOf(() => true, state)).toBeNull()
+  it.each([
+    ['heading-1', '# Words\n'],
+    ['heading-3', '### Words\n'],
+    ['bullet-list', '- Words\n'],
+    ['numbered-list', '1. Words\n'],
+    ['task-list', '- [ ] Words\n'],
+    ['quote', '> Words\n'],
+    ['callout', ':::callout{type="note"}\nWords\n:::\n'],
+  ] as const)('turns text into %s', (target, expected) => {
+    expect(markdownOf(run(caretIn('Words\n', 'ords'), turnInto(target)))).toBe(expected)
   })
 
-  it('skips a command that does not apply, and says so when none did', () => {
-    const state = stateAt('One\n', 1)
-    expect(inSequence(state, [() => () => false])).toBeNull()
-    expect(inSequence(state, [])).toBeNull()
-    expect(transactionOf(() => false, state)).toBeNull()
+  it('takes a block out of its list, quote or callout first', () => {
+    expect(markdownOf(run(caretIn('- Words\n', 'ords'), turnInto('paragraph')))).toBe('Words\n')
+    expect(markdownOf(run(caretIn('> Words\n', 'ords'), turnInto('heading-2')))).toBe('## Words\n')
+    expect(markdownOf(run(caretIn('- Words\n', 'ords'), turnInto('numbered-list')))).toBe(
+      '1. Words\n',
+    )
+    expect(
+      markdownOf(run(caretIn(':::callout{type="tip"}\nWords\n:::\n', 'ords'), turnInto('quote'))),
+    ).toBe('> Words\n')
+  })
+
+  it('turns a heading into a list item as a paragraph, since an item opens with one', () => {
+    expect(markdownOf(run(caretIn('## Words\n', 'ords'), turnInto('bullet-list')))).toBe(
+      '- Words\n',
+    )
+  })
+
+  it('is one undo step, and does nothing when the block is already that kind', () => {
+    expect(turnInto('paragraph')(caretIn('Words\n', 'ords'))).toBe(false)
+    expect(turnInto('quote')(caretIn('```\ncode\n```\n', 'ode'))).toBe(false)
+  })
+
+  it('names every kind', () => {
+    expect(TURN_INTO.map((target) => TURN_INTO_LABELS[target])).toContain('Bulleted list')
+  })
+})
+
+const never: Command = () => false
+
+describe('running commands in sequence', () => {
+  it('does nothing when the last command cannot act, whatever came before', () => {
+    const state = caretIn('Words\n', 'ords')
+    expect(sequence(turnInto('heading-1'), never)(state)).toBe(false)
+    expect(sequence(never, turnInto('heading-1'))(state)).toBe(true)
+  })
+})
+
+describe('shortcut labels', () => {
+  it('read as Ctrl on most platforms and as symbols on Apple’s', () => {
+    expect(shortcutLabel(SHORTCUTS.strike, false)).toBe('Ctrl+Shift+X')
+    expect(shortcutLabel(SHORTCUTS.strike, true)).toBe('⌘⇧X')
+    expect(shortcutLabel(SHORTCUTS.clearFormatting, false)).toBe('Ctrl+\\')
+    expect(shortcutLabel(SHORTCUTS.toolbar, true)).toBe('⌥F10')
+    expect(shortcutLabel(SHORTCUTS.moveUp, false)).toBe('Ctrl+Shift+↑')
+    expect(shortcutLabel('Ctrl-Alt-q', true)).toBe('⌃⌥Q')
+    expect(shortcutLabel('Hyper-q', true)).toBe('HyperQ')
+  })
+
+  it('tell Apple’s platforms from the rest', () => {
+    expect(isApplePlatform({ platform: 'MacIntel' })).toBe(true)
+    expect(isApplePlatform({ userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0)' })).toBe(true)
+    expect(isApplePlatform({ platform: 'Win32' })).toBe(false)
+    expect(isApplePlatform({})).toBe(false)
+    expect(shortcutFor('bold')).toMatch(/B$/)
+  })
+})
+
+describe('the edges of formatting', () => {
+  it('does not count a selection that runs out of small print as inside it', () => {
+    const state = stateOf('A :small[quiet] and loud.\n')
+    let quiet = 0
+    let and = 0
+    state.doc.descendants((node, pos) => {
+      if (node.isText && node.text === 'quiet') quiet = pos
+      if (node.isText && node.text?.includes('and') === true) and = pos + 3
+      return true
+    })
+    const across = state.apply(
+      state.tr.setSelection(TextSelection.create(state.doc, quiet + 1, and)),
+    )
+    expect(directiveActive(across, 'small')).toBe(false)
+  })
+
+  it('answers whether it would act without acting', () => {
+    const badge = stateOf('Status :badge[Built] today.\n', 'Built')
+    expect(toggleFormatDirective('badge')(badge)).toBe(true)
+    expect(toggleFormatDirective('small')(stateOf('Words.\n', 'Words'))).toBe(true)
+    expect(clearFormatting(stateOf('A **bold** word.\n', 'bold'))).toBe(true)
+  })
+
+  it('leaves a block in a details where it is, turning only the block', () => {
+    const source = ':::details[More]\nHidden words\n:::\n'
+    expect(markdownOf(run(caretIn(source, 'idden'), turnInto('heading-2')))).toBe(
+      ':::details[More]\n## Hidden words\n:::\n',
+    )
   })
 })

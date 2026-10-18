@@ -2,6 +2,7 @@ import type { EditorState } from '@tiptap/pm/state'
 
 import { codeGroupItems } from '../code-block/code-group-slash.ts'
 import { detailsItems } from '../details/details-slash.ts'
+import { navigationItems } from '../navigation/navigation-slash.ts'
 import { blockItems } from './catalogue/blocks.ts'
 import { dataItems } from './catalogue/data.ts'
 import { mediaItems } from './catalogue/media.ts'
@@ -30,6 +31,7 @@ export const BUILT_IN_SLASH_CONTRIBUTIONS: readonly SlashContribution[] = [
   textItems,
   blockItems,
   detailsItems,
+  navigationItems,
   mediaItems,
   codeGroupItems,
   dataItems,

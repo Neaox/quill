@@ -4,7 +4,7 @@ import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it } from 'vitest'
 
-import { THEME_ATTRIBUTE, toast, Toaster } from '@quill/ui'
+import { THEME_ATTRIBUTE, toast } from '@quill/ui'
 import { THEME_ID_ATTRIBUTE } from '@quill/ui/theme'
 
 import { DesignPage } from './design-page.tsx'
@@ -21,7 +21,17 @@ afterEach(() => {
   })
 })
 
-const colourSchemeToggle = () => screen.getByRole('button', { name: /^Colour scheme:/u })
+/**
+ * The page's own header, found without a role query: the showcase is thousands
+ * of elements, and a role query walks every one of them.
+ */
+function pageHeader() {
+  const header = document.querySelector('header')
+  if (header === null) throw new Error('The page has no header')
+  return within(header)
+}
+
+const colourSchemeToggle = () => pageHeader().getByRole('button', { name: /^Colour scheme:/u })
 
 describe('DesignPage', () => {
   it('is the shell it is showing, with every region in a landmark', () => {
@@ -56,145 +66,6 @@ describe('DesignPage', () => {
     )
   })
 
-  it('shows every button variant and both busy and unavailable states', () => {
-    render(<DesignPage />)
-
-    for (const name of ['Primary', 'Secondary', 'Ghost', 'Danger']) {
-      expect(screen.getByRole('button', { name })).toBeInTheDocument()
-    }
-    expect(screen.getByRole('button', { name: 'Publishing' })).toHaveAttribute('aria-busy', 'true')
-    expect(screen.getByRole('button', { name: 'Unavailable' })).toBeDisabled()
-  })
-
-  it('shows labelled fields, including the described and invalid ones', () => {
-    render(<DesignPage />)
-
-    expect(screen.getByLabelText('Slug')).toHaveAccessibleDescription(
-      'Lowercase letters, numbers, and hyphens.',
-    )
-    expect(screen.getByLabelText('Share link expiry')).toHaveAttribute('aria-invalid', 'true')
-    expect(screen.getByLabelText('Owner')).toBeDisabled()
-  })
-
-  it('shows a callout in every tone', () => {
-    render(<DesignPage />)
-
-    expect(screen.getByRole('group', { name: 'Note' })).toBeInTheDocument()
-    expect(
-      screen.getByRole('group', { name: 'Success: Published to the public collection' }),
-    ).toBeInTheDocument()
-    expect(
-      screen.getByRole('group', { name: /^Warning: This document has drifted/ }),
-    ).toBeInTheDocument()
-    expect(screen.getByRole('group', { name: /^Danger: Another author holds/ })).toBeInTheDocument()
-  })
-
-  it('shows both forms of every signature variant', () => {
-    const { container } = render(<DesignPage />)
-
-    // Header: readout and breadcrumb, side by side.
-    expect(container.querySelectorAll('[data-header="readout"]').length).toBeGreaterThan(0)
-    expect(container.querySelectorAll('[data-header="breadcrumb"]').length).toBeGreaterThan(0)
-    expect(screen.getAllByRole('navigation', { name: 'Breadcrumb' }).length).toBeGreaterThan(0)
-
-    // History: the always-visible timeline and the popover trigger.
-    expect(screen.getAllByRole('region', { name: 'Revisions' }).length).toBeGreaterThan(0)
-    expect(screen.getByRole('button', { name: 'History' })).toBeInTheDocument()
-
-    // Comments: the panel, with its count in the region name.
-    expect(screen.getAllByRole('region', { name: 'Comments, 3' }).length).toBeGreaterThan(0)
-  })
-
-  it('colours the code sample with the real token classes, once the tokenizer arrives', async () => {
-    const { container } = render(<DesignPage />)
-
-    // The grammars are a separate chunk (ADR-030), so the code is readable
-    // before they load and coloured after.
-    await waitFor(() => {
-      expect(container.querySelector('.tok-keyword')).not.toBeNull()
-    })
-    expect(container.querySelector('.tok-comment')).not.toBeNull()
-  })
-
-  it('moves between tabs with the arrow keys', async () => {
-    render(<DesignPage />)
-
-    const contentTab = screen.getByRole('tab', { name: 'Content' })
-    contentTab.focus()
-
-    await userEvent.keyboard('{ArrowRight}')
-
-    expect(screen.getByRole('tab', { name: 'History', selected: true })).toBeInTheDocument()
-    expect(screen.getByRole('tab', { name: 'Settings' })).toBeDisabled()
-  })
-
-  it('opens the dialog, traps focus in it, and closes it on Escape', async () => {
-    render(<DesignPage />)
-
-    await userEvent.click(screen.getByRole('button', { name: 'Discard draft' }))
-    const dialog = await screen.findByRole('dialog', { name: 'Discard this draft?' })
-
-    await waitFor(() => {
-      expect(dialog.contains(document.activeElement)).toBe(true)
-    })
-
-    await userEvent.keyboard('{Escape}')
-
-    await waitFor(() => {
-      expect(screen.queryByRole('dialog', { name: 'Discard this draft?' })).not.toBeInTheDocument()
-    })
-  })
-
-  it('closes the dialog from either footer button', async () => {
-    render(<DesignPage />)
-
-    await userEvent.click(screen.getByRole('button', { name: 'Discard draft' }))
-    await screen.findByRole('dialog', { name: 'Discard this draft?' })
-    await userEvent.click(screen.getByRole('button', { name: 'Keep editing' }))
-    await waitFor(() => {
-      expect(screen.queryByRole('dialog', { name: 'Discard this draft?' })).not.toBeInTheDocument()
-    })
-
-    await userEvent.click(screen.getByRole('button', { name: 'Discard draft' }))
-    await screen.findByRole('dialog', { name: 'Discard this draft?' })
-    await userEvent.click(screen.getByRole('button', { name: 'Discard' }))
-    await waitFor(() => {
-      expect(screen.queryByRole('dialog', { name: 'Discard this draft?' })).not.toBeInTheDocument()
-    })
-  })
-
-  it('tells the truth through a toast instead of silently doing nothing when a specimen is pressed', async () => {
-    render(
-      <>
-        <Toaster />
-        <DesignPage />
-      </>,
-    )
-
-    await userEvent.click(screen.getByRole('button', { name: 'Restore revision' }))
-
-    // A generous wait: the toast host is a chunk of its own (`Toaster` loads
-    // it as soon as it mounts), so the very first toast in a test file waits
-    // for that import as well as for the click.
-    expect(await screen.findByText('Specimen', undefined, { timeout: 5000 })).toBeInTheDocument()
-    expect(
-      screen.getByText('This shows the button; restoring a revision happens from the editor.'),
-    ).toBeInTheDocument()
-  })
-
-  it('shows the sample document with a content paragraph, a wide table, and a full image', () => {
-    render(<DesignPage />)
-
-    const article = screen.getByRole('article', { name: 'Sample document: regional failover' })
-    expect(article).toHaveClass('layout-grid', 'prose')
-
-    const table = within(article).getByRole('table')
-    expect(table.closest('.layout-wide')).not.toBeNull()
-
-    const image = within(article).getByRole('img', { name: /system landscape/i })
-    expect(image.closest('.layout-full')).not.toBeNull()
-  })
-
   it('draws the three layout widths of the named-line grid', () => {
     const { container } = render(<DesignPage />)
 
@@ -203,16 +74,20 @@ describe('DesignPage', () => {
     expect(container.querySelector('.layout-grid > .layout-full')).not.toBeNull()
   })
 
-  it('reports contrast for every pair, in both schemes, from the generator itself', () => {
-    render(<DesignPage />)
+  it('composes every specimen into the page', () => {
+    // Each specimen has tests of its own; this says the page shows them.
+    const { container } = render(<DesignPage />)
 
-    const table = screen.getByRole('table', { name: /Generated from this identity/ })
-    const row = within(table).getByRole('rowheader', { name: 'foreground on background' })
-    const cells = row.parentElement?.querySelectorAll('td') ?? []
-
-    expect(cells[0]?.textContent).toMatch(/^\d+\.\d\d:1$/)
-    expect(cells[1]?.textContent).toMatch(/^\d+\.\d\d:1$/)
-    expect(cells[3]?.textContent).toBe('pass')
+    // By id and by text rather than by role: a role query walks the whole showcase.
+    for (const id of ['foundations', 'colour', 'contrast', 'controls', 'messaging', 'signature']) {
+      expect(container.querySelector(`main section#${id}`)).not.toBeNull()
+    }
+    expect(screen.getByText('Discard draft')).toBeInTheDocument()
+    expect(screen.getByText('foreground on background')).toBeInTheDocument()
+    expect(container.querySelector('main [data-header="readout"]')).not.toBeNull()
+    expect(
+      container.querySelector('main article[aria-label="Sample document: regional failover"]'),
+    ).not.toBeNull()
   })
 })
 
@@ -220,8 +95,8 @@ describe('DesignPage theme controls', () => {
   it('follows the system scheme and the default identity until either is chosen', () => {
     render(<DesignPage />)
 
-    expect(screen.getByRole('button', { name: 'Colour scheme: System' })).toBeInTheDocument()
-    expect(screen.getAllByRole('radio', { name: 'Instrument' })[0]).toBeChecked()
+    expect(pageHeader().getByRole('button', { name: 'Colour scheme: System' })).toBeInTheDocument()
+    expect(pageHeader().getByRole('radio', { name: 'Instrument' })).toBeChecked()
     expect(document.documentElement.hasAttribute(THEME_ATTRIBUTE)).toBe(false)
     expect(document.documentElement.hasAttribute(THEME_ID_ATTRIBUTE)).toBe(false)
   })
@@ -262,13 +137,13 @@ describe('DesignPage theme controls', () => {
 
     render(<DesignPage />)
 
-    expect(screen.getByRole('button', { name: 'Colour scheme: Dark' })).toBeInTheDocument()
+    expect(pageHeader().getByRole('button', { name: 'Colour scheme: Dark' })).toBeInTheDocument()
   })
 
   it('sets data-theme-id when another identity is chosen', async () => {
     render(<DesignPage />)
 
-    await userEvent.click(screen.getAllByRole('radio', { name: 'Editorial' })[0] as HTMLElement)
+    await userEvent.click(pageHeader().getByRole('radio', { name: 'Editorial' }))
 
     await waitFor(() => {
       expect(document.documentElement.getAttribute(THEME_ID_ATTRIBUTE)).toBe('editorial')
@@ -283,7 +158,7 @@ describe('DesignPage theme controls', () => {
       'tree',
     )
 
-    await userEvent.click(screen.getAllByRole('radio', { name: 'Atelier' })[0] as HTMLElement)
+    await userEvent.click(pageHeader().getByRole('radio', { name: 'Atelier' }))
 
     await waitFor(() => {
       expect(screen.getByRole('navigation', { name: 'Showcase documents' })).toHaveAttribute(
@@ -299,12 +174,12 @@ describe('DesignPage theme controls', () => {
   it('drops back to the default identity without writing its name', async () => {
     render(<DesignPage />)
 
-    await userEvent.click(screen.getAllByRole('radio', { name: 'Grid' })[0] as HTMLElement)
+    await userEvent.click(pageHeader().getByRole('radio', { name: 'Grid' }))
     await waitFor(() => {
       expect(document.documentElement.hasAttribute(THEME_ID_ATTRIBUTE)).toBe(true)
     })
 
-    await userEvent.click(screen.getAllByRole('radio', { name: 'Instrument' })[0] as HTMLElement)
+    await userEvent.click(pageHeader().getByRole('radio', { name: 'Instrument' }))
 
     await waitFor(() => {
       expect(document.documentElement.hasAttribute(THEME_ID_ATTRIBUTE)).toBe(false)

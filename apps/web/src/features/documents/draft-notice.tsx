@@ -1,5 +1,4 @@
 import { Link } from '@tanstack/react-router'
-import type { ReactNode } from 'react'
 
 import { Block, buttonClassName, Callout, LayoutGrid, RelativeTime } from '@quill/ui'
 
@@ -15,9 +14,12 @@ import { PreviewLink } from './preview-link.tsx'
  * something about it, and goes straight to the two things they would: carry on
  * writing, or look at the draft as readers will.
  *
- * Told by the envelope, which is the one authority on whether the draft says
- * something the published page does not; this only says so when it is asked to,
- * and to a person who may edit.
+ * Told by the envelope, which is the one authority on whether the draft holds
+ * what the published page does not; this only says so when it is asked to, and
+ * to a person who may edit. Only above a page that exists: a document never
+ * published has no published page that readers still see, and its own empty
+ * state says what is waiting (`document-reader.tsx`). Asking for a review is in
+ * the header, or in the document's menu on a phone.
  */
 
 export interface DraftNoticeProps {
@@ -26,11 +28,9 @@ export interface DraftNoticeProps {
   readonly documentId: string
   /** When the draft was last saved, as an ISO timestamp. */
   readonly savedAt: string
-  /** More to do with the draft, beside the two here: a phone's way to ask for a review. */
-  readonly actions?: ReactNode
 }
 
-export function DraftNotice({ workspaceSlug, documentId, savedAt, actions }: DraftNoticeProps) {
+export function DraftNotice({ workspaceSlug, documentId, savedAt }: DraftNoticeProps) {
   return (
     <LayoutGrid className="pt-6">
       <Block>
@@ -47,7 +47,6 @@ export function DraftNotice({ workspaceSlug, documentId, savedAt, actions }: Dra
               Resume editing
             </Link>
             <PreviewLink documentRef={documentId} draft variant="ghost" size="sm" />
-            {actions}
           </p>
         </Callout>
       </Block>

@@ -101,7 +101,7 @@ function frontMatterOf(markdown: string): string {
 
 describe('the fidelity corpus', () => {
   it('has the documents the research measured', () => {
-    expect(FILES).toHaveLength(27)
+    expect(FILES).toHaveLength(28)
   })
 
   for (const mode of ['wrapper', 'attr'] as const) {

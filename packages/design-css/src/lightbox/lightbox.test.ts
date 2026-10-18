@@ -443,6 +443,24 @@ describe('the lightbox, for keyboard, speech and screen reader', () => {
     expect(disconnect).toHaveBeenCalled()
     Reflect.deleteProperty(window, 'ResizeObserver')
   })
+
+  it('watches a drawing that scrolls when the whole page is the root, as the public reader passes it', () => {
+    page()
+    const observed: Element[] = []
+    class Observer {
+      observe = (target: Element): void => {
+        observed.push(target)
+      }
+      disconnect = vi.fn<() => void>()
+    }
+    Object.defineProperty(window, 'ResizeObserver', { value: Observer, configurable: true })
+
+    const dispose = enhanceDiagrams(document)
+
+    expect(observed).toEqual([...document.querySelectorAll('.diagram')])
+    dispose()
+    Reflect.deleteProperty(window, 'ResizeObserver')
+  })
 })
 
 describe('the lightbox and text selection', () => {

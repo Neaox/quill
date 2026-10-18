@@ -38,6 +38,8 @@ export interface RevertDraftChangesCommand {
   readonly draftVersion: number
   /** The ids of the changes, as the comparison named them. */
   readonly changes: readonly string[]
+  /** The origins this application is served at, as a comparison takes them (ADR-035). */
+  readonly appOrigins?: readonly string[] | undefined
 }
 
 export type RevertDraftChangesResult =
@@ -60,6 +62,7 @@ export async function revertDraftChanges(
     documentId: command.documentId,
     from: command.from,
     to: 'draft',
+    appOrigins: command.appOrigins,
   })
   if (sides.kind !== 'sides') return sides
   /* v8 ignore next -- the newer side is the draft, which carries its content. */

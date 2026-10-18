@@ -26,6 +26,14 @@ function span(text: string, style = 'font-size:11pt;font-family:Arial'): string 
   return `<span style="${style};color:#000000;background-color:transparent;font-weight:400">${text}</span>`
 }
 
+function listItem(text: string, level: number, position: 'First' | 'Middle' | 'Last'): string {
+  return `<p class=MsoListParagraphCxSp${position} style='margin-left:${String(36 * level)}pt;mso-add-space:auto;text-indent:-18.0pt;mso-list:l0 level${String(level)} lfo1'><![if !supportLists]><span style='font-family:Symbol'>·<span style='font:7.0pt "Times New Roman"'>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span></span><![endif]>${text}<o:p></o:p></p>`
+}
+
+function cell(text: string): string {
+  return `<td width=200 valign=top style='border:solid windowtext 1.0pt;padding:0cm 5.4pt 0cm 5.4pt'><p class=MsoNormal>${text}<o:p></o:p></p></td>`
+}
+
 function docsSection(index: number): string {
   const n = String(index + 1)
   return [
@@ -60,14 +68,6 @@ export function googleDocsHtml(sections: number = RICH_PASTE_SECTIONS): string {
     ...Array.from({ length: sections }, (_, index) => docsSection(index)),
     '</b>',
   ].join('')
-}
-
-function listItem(text: string, level: number, position: 'First' | 'Middle' | 'Last'): string {
-  return `<p class=MsoListParagraphCxSp${position} style='margin-left:${String(36 * level)}pt;mso-add-space:auto;text-indent:-18.0pt;mso-list:l0 level${String(level)} lfo1'><![if !supportLists]><span style='font-family:Symbol'>·<span style='font:7.0pt "Times New Roman"'>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span></span><![endif]>${text}<o:p></o:p></p>`
-}
-
-function cell(text: string): string {
-  return `<td width=200 valign=top style='border:solid windowtext 1.0pt;padding:0cm 5.4pt 0cm 5.4pt'><p class=MsoNormal>${text}<o:p></o:p></p></td>`
 }
 
 function wordSection(index: number): string {

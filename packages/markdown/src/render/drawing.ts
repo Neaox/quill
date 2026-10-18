@@ -32,6 +32,12 @@ export interface DrawingOptions {
   readonly idPrefix: string
   /** What the drawing shows, for assistive technology: the image's alternative text. */
   readonly label: string
+  /**
+   * The organisation's label names (ADR-037), which the theme stylesheet
+   * colours inside a drawing, so they are kept as classes beside the
+   * reading stylesheet's own vocabulary.
+   */
+  readonly labels?: ReadonlySet<string> | undefined
 }
 
 /** More elements than any diagram a person draws; past it, the file is not a diagram. */
@@ -127,15 +133,28 @@ const REFERENCE = new Set(['marker-start', 'marker-mid', 'marker-end', 'clip-pat
 /** Numbers, lists of numbers, units and keywords: nothing with a parenthesis, colon or quote. */
 const PLAIN_VALUE = /^[\w\s.,%#+-]*$/
 
-/** `matrix(…)`, `translate(…)` and their kind, and nothing else. */
+/**
+ * `matrix(…)`, `translate(…)` and their kind, and nothing else, separated by
+ * whitespace and at most one comma. Each run of whitespace has exactly one
+ * place it can be matched (before the comma, or after it), so a value that
+ * fails is refused in linear time rather than by trying every way to split
+ * its whitespace between neighbouring quantifiers.
+ */
 const TRANSFORM_VALUE =
-  /^(?:\s*(?:matrix|translate|scale|rotate|skewX|skewY)\([\d\s.,eE+-]*\)\s*,?)*\s*$/
+  /^\s*(?:(?:matrix|translate|scale|rotate|skewX|skewY)\([\d\s.,eE+-]*\)\s*(?:,\s*)?)*$/
 
 const REFERENCE_VALUE = /^url\(#([A-Za-z][\w.-]*)\)$/
 
-/** A colour as CSS writes one, without `url(` and without anything that could become one. */
+/**
+ * A colour as CSS writes one, without `url(` and without anything that could
+ * become one. The run after an angle's unit belongs to the unit, so the two
+ * runs of arguments never compete for the same characters.
+ */
 const COLOUR_VALUE =
-  /^(?:none|currentColor|transparent|context-fill|context-stroke|[a-z]+|#[\da-f]{3,8}|(?:rgba?|hsla?|hwb|lab|lch|oklab|oklch)\([\d\s.,%/+-]*(?:deg|turn|rad)?[\d\s.,%/+-]*\))$/i
+  /^(?:none|currentColor|transparent|context-fill|context-stroke|[a-z]+|#[\da-f]{3,8}|(?:rgba?|hsla?|hwb|lab|lch|oklab|oklch)\([\d\s.,%/+-]*(?:(?:deg|turn|rad)[\d\s.,%/+-]*)?\))$/i
+
+/** Longer than any colour, `light-dark()` pair included; past it, a value is not one. */
+const MAX_COLOUR_LENGTH = 256
 
 /**
  * `light-dark(<colour>, <colour>)`: a colour for each scheme, picked by the
@@ -160,6 +179,7 @@ function isLightDark(value: string): boolean {
 }
 
 function isColour(value: string): boolean {
+  if (value.length > MAX_COLOUR_LENGTH) return false
   return COLOUR_VALUE.test(value) || isLightDark(value)
 }
 
@@ -167,7 +187,39 @@ const FONT_FAMILY_VALUE = /^[\w\s,'"-]*$/
 
 const ID_VALUE = /^[A-Za-z][\w.-]*$/
 
-const CLASS_TOKEN = /^[A-Za-z][\w-]*$/
+/**
+ * The classes the reading stylesheet styles inside a drawing
+ * (`packages/design-css/src/prose.css`, `.diagram[data-diagram='svg']`).
+ * Nothing else is kept: the page's global utilities (`fixed`, `inset-0`,
+ * `z-50`) would otherwise let a drawing lay itself over the application.
+ */
+const DRAWING_CLASSES: ReadonlySet<string> = new Set([
+  'arrow-check',
+  'arrow-planned',
+  'arrow-receive',
+  'arrow-send',
+  'box',
+  'check',
+  'focus',
+  'group',
+  'heading',
+  'inner',
+  'key',
+  'label',
+  'label-warn',
+  'label-zone',
+  'large',
+  'lifeline',
+  'planned',
+  'receive',
+  'send',
+  'step',
+  'step-text',
+  'strong',
+  'sub',
+  'title',
+  'zone',
+])
 
 /** The attribute a hast property was parsed from, in the SVG space. */
 function attributeOf(property: string): string {
@@ -188,11 +240,14 @@ function text(value: unknown): string {
  * One attribute's value as it may be kept, or undefined to drop it. References
  * are rewritten to the prefixed ids here.
  */
-function keep(attribute: string, value: string, prefix: string): string | undefined {
+function keep(attribute: string, value: string, context: Context): string | undefined {
+  const { prefix } = context
   const reference = (id: string): string => `url(#${prefix}${id})`
   if (attribute === 'id') return ID_VALUE.test(value) ? `${prefix}${value}` : undefined
   if (attribute === 'class') {
-    const tokens = value.split(/\s+/).filter((token) => CLASS_TOKEN.test(token))
+    const tokens = value
+      .split(/\s+/)
+      .filter((token) => DRAWING_CLASSES.has(token) || context.labels.has(token))
     return tokens.length === 0 ? undefined : tokens.join(' ')
   }
   if (PAINT.has(attribute)) {
@@ -236,7 +291,7 @@ function styleDeclarations(properties: Properties): ReadonlyMap<string, string> 
   )
 }
 
-function sanitizeProperties(properties: Properties, prefix: string): Properties {
+function sanitizeProperties(properties: Properties, context: Context): Properties {
   const declared = styleDeclarations(properties)
   const attributes = new Map(
     Object.entries(properties).map(([property, raw]) => [attributeOf(property), text(raw)]),
@@ -244,11 +299,11 @@ function sanitizeProperties(properties: Properties, prefix: string): Properties 
   // A declaration this file cannot keep leaves the attribute it would have
   // overridden in place: the attribute is the drawing's own fallback for it.
   for (const [name, value] of declared) {
-    if (keep(name, value, prefix) !== undefined) attributes.set(name, value)
+    if (keep(name, value, context) !== undefined) attributes.set(name, value)
   }
   return Object.fromEntries(
     [...attributes].flatMap(([attribute, value]) => {
-      const kept = keep(attribute, value, prefix)
+      const kept = keep(attribute, value, context)
       return kept === undefined ? [] : [[find(svg, attribute).property, kept]]
     }),
   )
@@ -258,9 +313,15 @@ interface Budget {
   remaining: number
 }
 
+/** What every element of one drawing is checked against. */
+interface Context {
+  readonly prefix: string
+  readonly labels: ReadonlySet<string>
+}
+
 function sanitizeChildren(
   children: readonly (ElementContent | RootContent)[],
-  prefix: string,
+  context: Context,
   budget: Budget,
 ): ElementContent[] {
   return children.flatMap((child): ElementContent[] => {
@@ -272,8 +333,8 @@ function sanitizeChildren(
       {
         type: 'element',
         tagName: child.tagName,
-        properties: sanitizeProperties(child.properties, prefix),
-        children: sanitizeChildren(child.children, prefix, budget),
+        properties: sanitizeProperties(child.properties, context),
+        children: sanitizeChildren(child.children, context, budget),
       },
     ]
   })
@@ -303,14 +364,11 @@ export function sanitizeDrawing(markup: string, options: DrawingOptions): Elemen
   if (root === undefined) return null
 
   const budget: Budget = { remaining: MAX_ELEMENTS }
-  const children = sanitizeChildren(root.children, options.idPrefix, budget)
+  const context: Context = { prefix: options.idPrefix, labels: options.labels ?? new Set() }
+  const children = sanitizeChildren(root.children, context, budget)
   if (budget.remaining < 0) return null
 
-  const {
-    width: _width,
-    height: _height,
-    ...kept
-  } = sanitizeProperties(root.properties, options.idPrefix)
+  const { width: _width, height: _height, ...kept } = sanitizeProperties(root.properties, context)
   const viewBox = viewBoxOf(root.properties)
   return {
     type: 'element',

@@ -1,10 +1,10 @@
 import { parseDocument, serializeDocument } from '@quill/markdown'
-import { render, screen } from '@testing-library/react'
+import { act, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { AllSelection, EditorState, TextSelection } from '@tiptap/pm/state'
 import type { Editor } from '@tiptap/react'
 import { createRef } from 'react'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
 import { documentFromMdast, documentToMdast } from '../document/ast.ts'
 import { DocumentEditor } from '../document/document-editor.tsx'
@@ -12,6 +12,8 @@ import type { DocumentEditorHandle } from '../document/document-editor.tsx'
 import { editorSchema } from '../schema/editor-schema.ts'
 import { expectNoAccessibilityViolations } from '../testing/axe.ts'
 import { BlockInserter, gutterPosition, openInsertMenu } from './block-inserter.tsx'
+
+const NL = String.fromCharCode(10)
 
 function stateAt(markdown: string, position: number): EditorState {
   const state = EditorState.create({
@@ -102,24 +104,57 @@ describe('the insert button', () => {
     expect(gutterPosition(editor)?.left).toBe(-24)
   })
 
-  it('sits below the corner of a table, whose handle it would otherwise be over', () => {
+  it('is measured in the next frame, not while the caret’s move is being drawn', async () => {
+    // Measured while React renders, the layout is read straight after
+    // ProseMirror has written the new block, and laid out again for it.
     const ref = createRef<DocumentEditorHandle>()
-    render(
-      <DocumentEditor ast={parseDocument('| a | b |\n| - | - |\n| 1 | 2 |\n').ast} ref={ref} />,
+    const { container } = render(
+      <DocumentEditor ast={parseDocument('One\n\nTwo\n').ast} ref={ref} />,
     )
     const editor = ref.current?.editor
     if (editor === null || editor === undefined) throw new Error('No editor.')
-    const block = editor.view.nodeDOM(0)
-    const table = block instanceof HTMLElement ? block.querySelector('table') : null
-    if (!(block instanceof HTMLElement) || table === null) throw new Error('No table.')
-    // A caption above the table puts the block's own top above the table's.
-    block.getBoundingClientRect = () => new DOMRect(100, 20, 600, 120)
-    const card = block.matches('.table-editor') ? block : block.querySelector('.table-editor')
-    if (card === null) throw new Error('No card.')
-    card.getBoundingClientRect = () => new DOMRect(100, 44, 600, 96)
+    await act(async () => {
+      await new Promise((resolve) => requestAnimationFrame(resolve))
+    })
+    const second = editor.view.nodeDOM(5)
+    if (!(second instanceof HTMLElement)) throw new Error('No second block.')
+    const measure = vi.fn<() => DOMRect>(() => new DOMRect(100, 80, 600, 24))
+    second.getBoundingClientRect = measure
 
-    // The table's top, 44, and the corner handle's reach above it: it starts well below.
-    expect(gutterPosition(editor)).toEqual({ top: 60, left: 66 })
+    act(() => {
+      editor.view.dispatch(editor.state.tr.setSelection(TextSelection.create(editor.state.doc, 6)))
+    })
+    expect(measure).not.toHaveBeenCalled()
+
+    await act(async () => {
+      await new Promise((resolve) => requestAnimationFrame(resolve))
+    })
+    expect(measure).toHaveBeenCalled()
+    const gutter = container.querySelector<HTMLElement>('.block-inserter')
+    expect(gutter?.style.top).toBe('80px')
+    expect(gutter?.style.left).toBe('66px')
+  })
+
+  it('hides itself when the caret’s block has nothing drawn to sit beside', async () => {
+    const ref = createRef<DocumentEditorHandle>()
+    const { container } = render(
+      <DocumentEditor ast={parseDocument('One' + NL + NL + 'Two' + NL).ast} ref={ref} />,
+    )
+    const editor = ref.current?.editor
+    if (editor === null || editor === undefined) throw new Error('No editor.')
+    await act(async () => {
+      await new Promise((resolve) => requestAnimationFrame(resolve))
+    })
+    vi.spyOn(editor.view, 'nodeDOM').mockReturnValue(null)
+
+    act(() => {
+      editor.view.dispatch(editor.state.tr.setSelection(TextSelection.create(editor.state.doc, 6)))
+    })
+    await act(async () => {
+      await new Promise((resolve) => requestAnimationFrame(resolve))
+    })
+
+    expect(container.querySelector<HTMLElement>('.block-inserter')?.hidden).toBe(true)
   })
 
   it('has no place without a block or a frame to measure against', () => {

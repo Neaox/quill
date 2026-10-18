@@ -1,11 +1,10 @@
 import type { Element, ElementContent, Properties } from 'hast'
-import type { AlignType, PhrasingContent, Table, TableRow } from 'mdast'
+import type { PhrasingContent, Table, TableRow } from 'mdast'
 
 import type { TableOptions } from '../directives/table.ts'
 import { columnPercentages, renderedPercent, TABLE_FROZEN_PARTS } from '../directives/table.ts'
 import type { State } from './hast-state.ts'
-import type { ColumnShape } from './table-columns.ts'
-import { columnLabels, columnShape } from './table-columns.ts'
+import { columnClasses, columnLabels, columnShape } from './table-columns.ts'
 
 /**
  * A table in its block (ADR-040), as the renderer emits it:
@@ -25,24 +24,6 @@ import { columnLabels, columnShape } from './table-columns.ts'
 
 function element(tagName: string, properties: Properties, children: ElementContent[]): Element {
   return { type: 'element', tagName, properties, children }
-}
-
-/** How a shape of column is set (`table-columns.ts`), beyond its alignment. */
-const SHAPE_CLASSES: Readonly<Record<ColumnShape, readonly string[]>> = {
-  numeric: [],
-  token: ['column-nowrap'],
-  long: ['column-long'],
-  text: [],
-}
-
-/**
- * A column's classes: the author's alignment, else `align-numeric` for a
- * column of numbers; then its shape's.
- */
-export function columnClasses(align: AlignType | undefined, shape: ColumnShape): string[] {
-  const authored = align !== null && align !== undefined
-  const alignment = authored ? [`align-${align}`] : shape === 'numeric' ? ['align-numeric'] : []
-  return [...alignment, ...SHAPE_CLASSES[shape]]
 }
 
 /**

@@ -67,8 +67,8 @@ import type {
  *
  * **Ranking is the `RankingProfile`, translated.** Field weights become
  * `ts_rank_cd`'s weight array against the A/B/C columns the schema generates;
- * the recency curve, the exact-phrase boost, the current-workspace boost and
- * trigram similarity become terms on the rank. No number about what matters
+ * the recency curve, the exact-phrase boost, the current-workspace boost, the
+ * deprecation penalty and trigram similarity become terms on the rank. No number about what matters
  * more is invented here — `DEFAULT_RANKING_PROFILE` is where they live and R9
  * is what may change them.
  */
@@ -758,7 +758,7 @@ function scoreExpression(plan: QueryPlan, match: SQL | null): SQL {
       ? sql`(${relevance} + similarity(${documentSearch.title}, ${plan.translated.text})::float8)`
       : relevance
 
-  return sql`${withTypos} * ${recencyExpression(plan)} * ${phraseExpression(plan)} * ${affinityExpression(plan)}`
+  return sql`${withTypos} * ${recencyExpression(plan)} * ${phraseExpression(plan)} * ${affinityExpression(plan)} * ${deprecationExpression(plan)}`
 }
 
 /**
@@ -798,6 +798,18 @@ function affinityExpression(plan: QueryPlan): SQL {
   return plan.currentWorkspaceId === undefined
     ? sql`1`
     : sql`(CASE WHEN ${documentSearch.workspaceId} = ${plan.currentWorkspaceId} THEN ${plan.profile.workspaceAffinity.currentWorkspaceBoost}::float8 ELSE 1 END)`
+}
+
+/**
+ * The deprecation penalty: a document its author marked `deprecated` is
+ * multiplied down, not filtered out. Someone searching for a retired page
+ * often wants it, if only to follow it to what replaced it, so it still
+ * appears; it just no longer outranks a current page that matched as well.
+ * A row with no lifecycle (unset, or projected before the column existed)
+ * is left alone.
+ */
+function deprecationExpression(plan: QueryPlan): SQL {
+  return sql`(CASE WHEN ${documentSearch.lifecycle} = 'deprecated' THEN ${plan.profile.deprecatedPenalty}::float8 ELSE 1 END)`
 }
 
 /**

@@ -282,6 +282,10 @@ function labelled(labels: RenderInput['labels']): string {
 }
 
 /** The emoji a body was rendered with, and each label's leading one (ADR-038). */
+function isFakeStamp(value: unknown): value is { by: string; at: string } {
+  return typeof value === 'object' && value !== null && 'by' in value && 'at' in value
+}
+
 function emojiShown(emoji: RenderInput['emoji'], leading: RenderInput['labelEmoji']): string {
   const images = [...(emoji ?? new Map())].map(
     ([name, image]) => `<emoji name="${name}" src="${image.src}"/>`,
@@ -290,10 +294,6 @@ function emojiShown(emoji: RenderInput['emoji'], leading: RenderInput['labelEmoj
     ([label, name]) => `<lead label="${label}" emoji="${name}"/>`,
   )
   return [...images, ...leads].join('')
-}
-
-function isFakeStamp(value: unknown): value is { by: string; at: string } {
-  return typeof value === 'object' && value !== null && 'by' in value && 'at' in value
 }
 
 /** The Markdown a document with this front matter and body would be written as. */

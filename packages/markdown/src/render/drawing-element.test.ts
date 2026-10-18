@@ -60,4 +60,53 @@ describe('drawingElement', () => {
       expect(drawingElement({ kind: 'image', data: {} }, { ...placement, url })).toBeNull()
     }
   })
+
+  it('keeps only data attributes from a rendering, and none that override the platform', () => {
+    const hostile = {
+      'data-drawio': 'fixed',
+      src: 'https://evil.example/x.svg',
+      onload: 'alert(1)',
+      role: 'presentation',
+      'aria-label': 'Something else',
+      'data-Bad': 'x',
+    }
+    const image = html(drawingElement({ kind: 'image', data: hostile }, placement))
+    const inline = html(
+      drawingElement(
+        { kind: 'inline', markup: '<svg><rect/></svg>', naturalSize: false, data: hostile },
+        placement,
+      ),
+    )
+
+    for (const drawn of [image, inline]) {
+      expect(drawn).toContain('data-drawio="fixed"')
+      for (const absent of [
+        'evil.example',
+        'onload',
+        'presentation',
+        'Something else',
+        'data-Bad',
+      ]) {
+        expect(drawn).not.toContain(absent)
+      }
+    }
+    expect(image).toContain('src="/api/attachments/a"')
+    expect(inline).toContain('role="img" aria-label="Flow"')
+  })
+
+  it("keeps the organisation's label classes in an inline drawing", () => {
+    expect(
+      html(
+        drawingElement(
+          {
+            kind: 'inline',
+            markup: '<svg><rect class="acme fixed"/></svg>',
+            naturalSize: false,
+            data: {},
+          },
+          { ...placement, labels: new Set(['acme']) },
+        ),
+      ),
+    ).toContain('<rect class="acme">')
+  })
 })

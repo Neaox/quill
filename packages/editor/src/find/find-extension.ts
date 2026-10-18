@@ -2,6 +2,7 @@ import { Extension } from '@tiptap/core'
 import type { KeyboardShortcutCommand } from '@tiptap/core'
 import type { Command } from '@tiptap/pm/state'
 
+import { SHORTCUTS } from '../format/shortcuts.ts'
 import { closeFind, findNext, findPrevious, openFind } from './find-commands.ts'
 import { findPlugin, findStateOf } from './find-plugin.ts'
 
@@ -27,13 +28,13 @@ export const FindAndReplace = Extension.create({
   name: 'findAndReplace',
   addProseMirrorPlugins: () => [findPlugin()],
   addKeyboardShortcuts: () => ({
-    'Mod-f': bound(openFind(false)),
-    'Mod-h': bound(openFind(true)),
-    'Mod-Alt-f': bound(openFind(true)),
-    F3: bound(whileOpen(findNext)),
-    'Mod-g': bound(whileOpen(findNext)),
-    'Shift-F3': bound(whileOpen(findPrevious)),
-    'Mod-Shift-g': bound(whileOpen(findPrevious)),
+    [SHORTCUTS.find]: bound(openFind(false)),
+    [SHORTCUTS.replace]: bound(openFind(true)),
+    [SHORTCUTS.replaceAlternative]: bound(openFind(true)),
+    [SHORTCUTS.findNext]: bound(whileOpen(findNext)),
+    [SHORTCUTS.findNextAlternative]: bound(whileOpen(findNext)),
+    [SHORTCUTS.findPrevious]: bound(whileOpen(findPrevious)),
+    [SHORTCUTS.findPreviousAlternative]: bound(whileOpen(findPrevious)),
     Escape: bound(whileOpen(closeFind)),
   }),
 })

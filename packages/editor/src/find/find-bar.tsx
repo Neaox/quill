@@ -5,7 +5,7 @@ import type { Editor } from '@tiptap/react'
 import { useEffect, useEffectEvent, useId, useRef } from 'react'
 import type { KeyboardEvent, ReactNode } from 'react'
 
-import { describeShortcut } from '../format/marks.ts'
+import { shortcutLabel } from '../format/shortcuts.ts'
 import {
   closeFind,
   editFind,
@@ -88,7 +88,7 @@ function Toggle({ label, keys, pressed, onPress, children }: ToggleProps) {
       className={styles().toggle()}
       aria-pressed={pressed}
       aria-label={label}
-      title={`${label} (${describeShortcut(keys)})`}
+      title={`${label} (${shortcutLabel(keys)})`}
       onClick={onPress}
     >
       {children}
@@ -284,7 +284,7 @@ function OpenFindBar({ editor, find }: OpenFindBarProps) {
             size="sm"
             className="size-7 shrink-0 px-0"
             aria-label="Previous match"
-            title={`Previous match (${describeShortcut('Shift-Enter')})`}
+            title={`Previous match (${shortcutLabel('Shift-Enter')})`}
             disabled={nothing}
             onClick={() => {
               step(findPrevious)
@@ -298,7 +298,7 @@ function OpenFindBar({ editor, find }: OpenFindBarProps) {
             size="sm"
             className="size-7 shrink-0 px-0"
             aria-label="Next match"
-            title={`Next match (${describeShortcut('Enter')})`}
+            title={`Next match (${shortcutLabel('Enter')})`}
             disabled={nothing}
             onClick={() => {
               step(findNext)
@@ -322,7 +322,7 @@ function OpenFindBar({ editor, find }: OpenFindBarProps) {
             size="sm"
             className="size-7 shrink-0 px-0"
             aria-label="Close"
-            title={`Close (${describeShortcut('Escape')})`}
+            title={`Close (${shortcutLabel('Escape')})`}
             onClick={close}
           >
             <CloseIcon />
@@ -361,7 +361,7 @@ function OpenFindBar({ editor, find }: OpenFindBarProps) {
               variant="secondary"
               size="sm"
               disabled={nothing}
-              title={`Replace (${describeShortcut('Enter')})`}
+              title={`Replace (${shortcutLabel('Enter')})`}
               onClick={() => {
                 step(replaceCurrent)
               }}
@@ -373,7 +373,7 @@ function OpenFindBar({ editor, find }: OpenFindBarProps) {
               variant="secondary"
               size="sm"
               disabled={nothing}
-              title={`Replace all (${describeShortcut('Mod-Alt-Enter')})`}
+              title={`Replace all (${shortcutLabel('Mod-Alt-Enter')})`}
               onClick={() => {
                 perform(replaceAll)
               }}

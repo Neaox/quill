@@ -22,6 +22,8 @@ import { createTestDatabase } from '../infrastructure/db/test-database.ts'
 import type { TestDatabase } from '../infrastructure/db/test-database.ts'
 import { createHasher } from '../infrastructure/hasher.ts'
 import { createDocumentFormat } from '../infrastructure/markdown/document-format.ts'
+import { CHILD_PAGES_CACHE_TTL_MS, createChildPagesCache } from '../child-pages/cache.ts'
+import { subscribeChildPagesInvalidation } from '../child-pages/invalidation.ts'
 import { pollOutboxOnce } from '../infrastructure/outbox/poller.ts'
 import { createPostgresSearchIndex } from '../infrastructure/search/postgres-search-index.ts'
 import { createVisibleDocumentResolver } from '../infrastructure/search/visible-documents.ts'
@@ -111,6 +113,10 @@ export interface HarnessOptions {
    * *about* the rate limit rather than merely subject to it.
    */
   readonly rateLimit?: RateLimitConfig
+  /** Shrinks search's per-session budget (the people directory shares it), for a test about it. */
+  readonly searchRateLimitMax?: number
+  /** Shrinks the tree's and child pages' per-session budget, for a test about it. */
+  readonly browseRateLimitMax?: number
   /** `SHARE_LINKS=off`, for the tests that check the policy closes the door. */
   readonly shareLinksAllowed?: boolean
   /**
@@ -179,6 +185,12 @@ export async function createServerHarness(options: HarnessOptions = {}): Promise
   const config = {
     ...loaded,
     ...(options.rateLimit === undefined ? {} : { rateLimit: options.rateLimit }),
+    ...(options.searchRateLimitMax === undefined
+      ? {}
+      : { searchRateLimitMax: options.searchRateLimitMax }),
+    ...(options.browseRateLimitMax === undefined
+      ? {}
+      : { browseRateLimitMax: options.browseRateLimitMax }),
     ...(options.publicSitemapPageSize === undefined
       ? {}
       : { publicSitemapPageSize: options.publicSitemapPageSize }),
@@ -212,6 +224,7 @@ export async function createServerHarness(options: HarnessOptions = {}): Promise
     clock,
     ttlMs: options.publicSiteCacheTtlMs ?? PUBLIC_SITE_CACHE_TTL_MS,
   })
+  const childPagesCache = createChildPagesCache({ clock, ttlMs: CHILD_PAGES_CACHE_TTL_MS })
   const faceFiles = await loadFaceFiles()
   const themeStylesheets = createThemeStylesheets({ hasher, faceFiles })
   const deps: AppDependencies = {
@@ -231,6 +244,7 @@ export async function createServerHarness(options: HarnessOptions = {}): Promise
       designSystemCss: await loadDesignSystemCss(),
     }),
     publicSiteCache,
+    childPagesCache,
     contentStore,
     // The real settings adapter over the real content store: an integration
     // test of a settings write exercises the publish path and its
@@ -276,6 +290,7 @@ export async function createServerHarness(options: HarnessOptions = {}): Promise
   // And the same subscription that tells the cache, so a test sees it cleared
   // by a commit exactly as a running server does (ADR-056).
   subscribePublicSiteInvalidation(eventBus, publicSiteCache)
+  subscribeChildPagesInvalidation(eventBus, childPagesCache, deps)
   jobRunner.schedule(createSweepJob({ uow, clock, session: config.session }))
 
   let sessions = 0

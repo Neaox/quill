@@ -1,5 +1,13 @@
 import { useQueryClient } from '@tanstack/react-query'
-import { useCallback } from 'react'
+import { useCallback, useState } from 'react'
+
+import {
+  frontMatterRecord,
+  frontMatterSource,
+  type DocumentAst,
+  type DocumentEditorHandle,
+} from '@quill/editor'
+import { frontMatterNode } from '@quill/markdown'
 
 import { queryKeys, type DraftDto } from '../../../lib/api/index.ts'
 import { readDraftContent } from '../../../lib/documents/draft-content.ts'
@@ -40,4 +48,50 @@ export function useWriteDraftFrontMatter(
     },
     [documentId, queryClient],
   )
+}
+
+type Editor = NonNullable<DocumentEditorHandle['editor']>
+
+export interface DraftFrontMatter {
+  /** The record the properties line shows and edits. */
+  readonly record: Readonly<Record<string, unknown>>
+  /** The block's YAML as written, for editing it as source. */
+  readonly source: string | undefined
+  /** Called on every editor change: picks up a front matter block that moved. */
+  follow(editor: Editor | null): void
+}
+
+/**
+ * The front matter of a document being edited, following its block.
+ *
+ * Every property change is a transaction on the document's front matter block
+ * (`applyFrontMatter`), so it is one step of the editor's undo history, and an
+ * undo or a redo moves the block too. The record therefore *follows the
+ * block*: whenever an edit leaves the block's YAML different, the record is
+ * read back from it, shown, and written to the draft envelope that autosave
+ * sends. Comparing the YAML first keeps that to the edits that touched it;
+ * typing in the body costs one string comparison.
+ */
+export function useDraftFrontMatter(
+  documentId: string,
+  initial: Readonly<Record<string, unknown>>,
+  initialAst: DocumentAst | undefined,
+): DraftFrontMatter {
+  const write = useWriteDraftFrontMatter(documentId)
+  const [front, setFront] = useState(() => ({
+    record: initial,
+    source: initialAst === undefined ? undefined : frontMatterNode(initialAst)?.value,
+  }))
+
+  return {
+    ...front,
+    follow(editor) {
+      if (editor === null) return
+      const source = frontMatterSource(editor.state.doc)
+      if (source === front.source) return
+      const record = { ...frontMatterRecord(editor.state.doc, initial) }
+      setFront({ record, source })
+      write(record)
+    },
+  }
 }

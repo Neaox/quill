@@ -29,8 +29,8 @@ const upload = (bytes: Uint8Array, declaredContentType: string) => {
   }
 }
 
-/** The GIF's NETSCAPE loop-count byte: how many more times it plays. */
-const loopCount = (bytes: Uint8Array | null) => {
+/** A GIF's loop count, from its loop extension. */
+function loopCount(bytes: Uint8Array | null): number | undefined {
   const at = new TextDecoder('latin1').decode(bytes ?? new Uint8Array()).indexOf('NETSCAPE2.0')
   return bytes?.[at + 13]
 }

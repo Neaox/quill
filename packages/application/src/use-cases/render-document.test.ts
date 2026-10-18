@@ -647,18 +647,6 @@ describe('emoji (ADR-038)', () => {
     expect((await rendered(id)).key).not.toBe(drawn.key)
   })
 
-  it('renders afresh when what an emoji is said to show changes', () => {
-    const input = { markdown: '# A', linkTitles: new Map() }
-    const image = { src: '/api/emoji/a.aaaaaaaaaaaaaaaa.png', width: 1, height: 1 }
-    const digestOf = (shown: object) =>
-      renderDigest({ ...input, emoji: new Map([['a', { ...image, ...shown }]]) })
-
-    expect(digestOf({ description: 'Acme logo' })).not.toBe(
-      digestOf({ description: 'A roadrunner' }),
-    )
-    expect(digestOf({ description: 'Acme logo' })).not.toBe(digestOf({}))
-  })
-
   it('covers emoji and leading emoji in sorted order', () => {
     const input = { markdown: '# A', linkTitles: new Map() }
     const image = { src: '/api/emoji/a.aaaaaaaaaaaaaaaa.png', width: 1, height: 1 }

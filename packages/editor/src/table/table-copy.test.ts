@@ -1,11 +1,13 @@
+import { Editor } from '@tiptap/core'
 import { Slice } from '@tiptap/pm/model'
 import { TextSelection } from '@tiptap/pm/state'
 import type { EditorState } from '@tiptap/pm/state'
 import { describe, expect, it } from 'vitest'
 
+import { buildExtensions } from '../document/extensions.ts'
 import { createEditorTestHarness } from '../testing/harness.ts'
 import { selectLine, selectTable } from './table-commands.ts'
-import { markdownOfTable, tableOfSlice, tsvOfTable } from './table-copy.ts'
+import { markdownOfTable, tableCopyKey, tableOfSlice, tsvOfTable } from './table-copy.ts'
 
 const harness = createEditorTestHarness()
 
@@ -82,5 +84,30 @@ describe('a table as Markdown', () => {
     const table = tableOfSlice(select(selectLine('row', 2, 0)).selection.content())
 
     expect(table && markdownOfTable(table)).toContain('| us | Data, ops |')
+  })
+})
+
+describe('the plain text of a copy', () => {
+  it('is the tabs and lines of copied cells, and left to the editor for anything else', () => {
+    const editor = new Editor({
+      element: document.createElement('div'),
+      extensions: buildExtensions(),
+      content: harness.state(TABLE).doc.toJSON(),
+    })
+    const plugin = tableCopyKey.get(editor.state)
+    const serializer = plugin?.props.clipboardTextSerializer
+    if (plugin === undefined || serializer === undefined) {
+      throw new Error('The table copy plugin is not installed.')
+    }
+    const serialize = (...args: Parameters<typeof serializer>) => serializer.call(plugin, ...args)
+    const text = harness.state('Some text.\n')
+    const words = text.apply(text.tr.setSelection(TextSelection.create(text.doc, 1, 5)))
+
+    expect(serialize(select(selectLine('row', 1, 0)).selection.content(), editor.view)).toBe(
+      'eu\tPlatform',
+    )
+    // Nothing of its own, so ProseMirror writes the text as it always does.
+    expect(serialize(words.selection.content(), editor.view)).toBe('')
+    editor.destroy()
   })
 })

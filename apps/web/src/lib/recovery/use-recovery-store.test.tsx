@@ -40,7 +40,7 @@ describe('useRecoveryStore under StrictMode', () => {
     result.current.store.write(EDIT)
 
     await waitFor(() => {
-      expect(rows.get('doc-1')).toEqual(EDIT)
+      expect(rows.get('doc-1')).toEqual({ format: 2, pending: EDIT })
     })
   })
 
@@ -67,7 +67,7 @@ describe('useRecoveryStore under StrictMode', () => {
     result.current.setAside.write(EDIT)
 
     await waitFor(() => {
-      expect(rows.get('doc-1:set-aside')).toEqual(EDIT)
+      expect(rows.get('doc-1:set-aside')).toEqual({ format: 2, pending: EDIT })
     })
     expect(rows.has('doc-1')).toBe(false)
   })

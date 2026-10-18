@@ -3,10 +3,8 @@ import { act, fireEvent, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { undo } from '@tiptap/pm/history'
 import { DOMParser as ProseMirrorParser } from '@tiptap/pm/model'
-import { inputRules } from '@tiptap/pm/inputrules'
-import { EditorState as ProseMirrorState, TextSelection } from '@tiptap/pm/state'
+import { TextSelection } from '@tiptap/pm/state'
 import type { Command, EditorState } from '@tiptap/pm/state'
-import { EditorView } from '@tiptap/pm/view'
 import { createRef } from 'react'
 import { describe, expect, it } from 'vitest'
 
@@ -14,18 +12,15 @@ import { documentToMdast } from '../document/ast.ts'
 import { DocumentEditor } from '../document/document-editor.tsx'
 import type { DocumentEditorHandle } from '../document/document-editor.tsx'
 import { editorSchema } from '../schema/editor-schema.ts'
-import { nodeType } from '../schema/node-type.ts'
 import { expectNoAccessibilityViolations } from '../testing/axe.ts'
 import { createEditorTestHarness } from '../testing/harness.ts'
 import {
   backspaceInDetails,
-  createDetailsNode,
   enterFromSummary,
   exitDetails,
   isOpenByDefault,
   setOpenByDefault,
 } from './details-commands.ts'
-import { detailsInputRule } from './details-extension.ts'
 import { setFolded } from './details-folds.ts'
 import { DetailsNodeView } from './details-view.ts'
 
@@ -305,6 +300,10 @@ describe('making a details', () => {
       editorOf(ref).view.dispatch(editorOf(ref).state.tr.replaceSelection(slice))
     })
     expect(markdown(ref)).toBe(':::details[Pasted]{open}\nInside.\n:::\n')
+    const closed = document.createElement('div')
+    closed.innerHTML = '<details><summary>Closed</summary><p>x</p></details>'
+    const node = ProseMirrorParser.fromSchema(editorOf(ref).schema).parse(closed).firstChild
+    expect(node?.attrs['attributes']).toEqual({})
   })
 
   it('reads GitHub’s details out of pasted Markdown', () => {
@@ -321,167 +320,123 @@ describe('making a details', () => {
   })
 })
 
-/* --- The edges: what a command does when only asked, or asked in the wrong place ----- */
-
-type Block = ReturnType<typeof editorSchema.node>
-
-function block(name: string, ...children: Block[]): Block {
-  return nodeType(editorSchema, name).create(null, children)
+function selecting(state: EditorState, from: number, to: number): EditorState {
+  return state.apply(state.tr.setSelection(TextSelection.create(state.doc, from, to)))
 }
 
-function textLine(name: string, text: string): Block {
-  return nodeType(editorSchema, name).create(
-    null,
-    text === '' ? undefined : editorSchema.text(text),
-  )
-}
-
-/** A state over `doc` with the caret inside the first textblock that reads `text`. */
-function caretInDoc(doc: Block, text: string): ProseMirrorState {
-  let found = -1
-  doc.descendants((child, pos) => {
-    if (found === -1 && child.isTextblock && child.textContent === text) found = pos + 1
-    return found === -1
-  })
-  if (found === -1) throw new Error(`No line reads "${text}".`)
-  const state = ProseMirrorState.create({ schema: editorSchema, doc })
-  return state.apply(state.tr.setSelection(TextSelection.create(doc, found)))
-}
-
-describe('details commands, at their edges', () => {
-  it('makes a details with the words of a summary when it is given them', () => {
-    const made = createDetailsNode(editorSchema, 'Why?')
-    expect(made.child(0).textContent).toBe('Why?')
-    expect(createDetailsNode(editorSchema).child(0).content.size).toBe(0)
-  })
-
-  it('answers whether it would apply without changing anything when it is only asked', () => {
+describe('what the details commands and view decline', () => {
+  it('reports without acting when asked without a dispatch', () => {
+    const state = harness.state(':::details[Title]\nBody.\n\n:::\n')
     expect(enterFromSummary(caretIn(':::details[Title]\nBody.\n:::\n', 'Title', 2))).toBe(true)
     expect(backspaceInDetails(caretIn(':::details[Title]\nBody.\n:::\n', 'Title'))).toBe(true)
     expect(backspaceInDetails(caretIn(':::details[Title]\nBody.\n:::\n', 'Body.'))).toBe(true)
+    expect(backspaceInDetails(caretInEmptyBody(':::details[Title]\n:::\n'))).toBe(true)
+    expect(setOpenByDefault(0, true)(state)).toBe(true)
+    const end = (state.doc.firstChild?.nodeSize ?? 0) - 1
+    const grown = state.apply(state.tr.insert(end, editorSchema.nodes['paragraph']?.create() ?? []))
+    const onLastLine = grown.apply(grown.tr.setSelection(TextSelection.create(grown.doc, end + 1)))
+    expect(onLastLine.selection.$from.parent.content.size).toBe(0)
+    expect(exitDetails(onLastLine)).toBe(true)
   })
 
-  it('answers whether leaving would apply without leaving, when it is only asked', () => {
-    const state = harness.state(':::details[Title]\nBody.\n:::\n')
-    const details = state.doc.firstChild
+  it('declines a selection, a line with words, a line elsewhere, and a line that is not last', () => {
+    const source = ':::details[Title]\nOne.\n\n- item\n\nTwo.\n:::\n\nAfter.\n'
+    expect(enterFromSummary(selecting(caretIn(source, 'Title'), 2, 4))).toBe(false)
+    expect(backspaceInDetails(selecting(caretIn(source, 'Title'), 2, 4))).toBe(false)
+    expect(backspaceInDetails(caretIn(source, 'After.'))).toBe(false)
+    expect(backspaceInDetails(caretIn(source, 'item'))).toBe(false)
+    expect(exitDetails(selecting(caretIn(source, 'One.'), 1, 3))).toBe(false)
+    expect(exitDetails(caretIn(source, 'Two.'))).toBe(false)
+    expect(exitDetails(caretIn(':::details[Title]\n## Heading\n:::\n', 'Heading'))).toBe(false)
+    expect(exitDetails(caretIn('\n', ''))).toBe(false)
+    const listed = harness.state(':::details[Title]\n- \n\nx\n:::\n')
+    let inItem = -1
+    listed.doc.descendants((node, pos) => {
+      if (inItem === -1 && node.type.name === 'paragraph' && node.content.size === 0)
+        inItem = pos + 1
+      return inItem === -1
+    })
+    expect(
+      exitDetails(listed.apply(listed.tr.setSelection(TextSelection.create(listed.doc, inItem)))),
+    ).toBe(false)
+    const middle = harness.state(':::details[Title]\nOne.\n:::\n')
+    const details = middle.doc.firstChild
     if (details === null) throw new Error('No details.')
-    const end = details.nodeSize - 1
-    const withLine = state.apply(state.tr.insert(end, block('paragraph')))
-    const caret = withLine.apply(
-      withLine.tr.setSelection(TextSelection.create(withLine.doc, end + 1)),
+    const withLines = middle.apply(
+      middle.tr.insert(details.nodeSize - 1, [
+        editorSchema.nodes['paragraph']?.create() ?? details,
+        editorSchema.nodes['paragraph']?.create(null, editorSchema.text('Last.')) ?? details,
+      ]),
     )
-    expect(exitDetails(caret)).toBe(true)
+    let empty = -1
+    withLines.doc.descendants((node, pos) => {
+      if (empty === -1 && node.type.name === 'paragraph' && node.content.size === 0) empty = pos + 1
+      return empty === -1
+    })
+    const onEmpty = withLines.apply(
+      withLines.tr.setSelection(TextSelection.create(withLines.doc, empty)),
+    )
+    expect(onEmpty.selection.$from.index(1)).toBe(2)
+    expect(exitDetails(onEmpty)).toBe(false)
   })
 
-  it('takes a details whose attributes are not a record to be closed', () => {
-    const odd = nodeType(editorSchema, 'details').create({ attributes: null }, [
-      textLine('detailsSummary', 'Odd'),
-      block('paragraph'),
+  it('reads a details whose attributes are missing as closed', () => {
+    const node = editorSchema.nodes['details']?.create({ attributes: null }, [
+      editorSchema.nodes['detailsSummary']?.create() ?? editorSchema.text('x'),
+      editorSchema.nodes['paragraph']?.create() ?? editorSchema.text('x'),
     ])
-    expect(isOpenByDefault(odd)).toBe(false)
-  })
-
-  it('leaves a summary that is not in a details to its own keys', () => {
-    const state = caretInDoc(block('doc', textLine('detailsSummary', 'Loose')), 'Loose')
-    expect(enterFromSummary(state)).toBe(false)
-  })
-
-  it('does not leave when the empty line is not a line of a details’ own body', () => {
-    expect(exitDetails(caretIn(':::details[Title]\nBody.\n:::\n', 'Body.', 2))).toBe(false)
-    const outside = caretInDoc(block('doc', textLine('paragraph', '')), '')
-    expect(exitDetails(outside)).toBe(false)
-
-    const quoted = block(
-      'details',
-      textLine('detailsSummary', 'Title'),
-      textLine('paragraph', 'Body.'),
-      block('blockquote', textLine('paragraph', '')),
-    )
-    expect(exitDetails(caretInDoc(block('doc', quoted), ''))).toBe(false)
+    expect(node === undefined ? undefined : isOpenByDefault(node)).toBe(false)
   })
 })
 
-describe('the +++ autoformat, at its edges', () => {
-  /** Types a space after the caret, which is at the end of the first line reading `text`. */
-  function spaceAfter(doc: Block, text: string): boolean {
-    const state = caretInDoc(doc, text)
-    const host = document.createElement('div')
-    document.body.append(host)
-    const view = new EditorView(host, {
-      state: ProseMirrorState.create({
-        schema: editorSchema,
-        doc,
-        selection: state.selection,
-        plugins: [inputRules({ rules: [detailsInputRule(editorSchema)] })],
-      }),
-    })
-    const { from } = view.state.selection
-    const at = from + 3
-    view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, at)))
-    const handled = view.someProp('handleTextInput', (handle) =>
-      handle(view, at, at, ' ', () => view.state.tr),
-    )
-    view.destroy()
-    return handled === true
+describe('the details view, on its own', () => {
+  function viewOf(source: string, getPos: () => number | undefined = () => 0) {
+    const { ref } = open(source)
+    const editor = editorOf(ref)
+    const node = editor.state.doc.firstChild
+    if (node === null) throw new Error('No details.')
+    return { view: new DetailsNodeView(node, editor.view, getPos, []), editor, node }
   }
 
-  it('makes a details out of a line that holds only the fence', () => {
-    expect(spaceAfter(block('doc', textLine('paragraph', '+++')), '+++')).toBe(true)
+  it('does nothing once it has left the document', () => {
+    const { view, editor } = viewOf(':::details[A]\nx\n:::\n', () => undefined)
+    const before = editor.state
+    view.dom.querySelector<HTMLButtonElement>('.details-editor-toggle')?.click()
+    view.dom.querySelector<HTMLButtonElement>('.details-editor-default')?.click()
+    expect(editor.state.doc.eq(before.doc)).toBe(true)
   })
 
-  it('leaves a line that is not a paragraph, or that has more on it, alone', () => {
-    expect(spaceAfter(block('doc', textLine('heading', '+++')), '+++')).toBe(false)
-    expect(spaceAfter(block('doc', textLine('paragraph', '+++tail')), '+++tail')).toBe(false)
-  })
-
-  it('leaves a line where a details cannot go, such as the first line of a list item', () => {
-    const list = block('bulletList', block('listItem', textLine('paragraph', '+++')))
-    expect(spaceAfter(block('doc', list), '+++')).toBe(false)
+  it('is redrawn for another node only of its own type, and keeps its controls its own', () => {
+    const { view } = viewOf(':::details[A]{type=shout}\nx\n:::\n')
+    expect(view.dom).toHaveClass('callout', 'callout-note')
+    const paragraph = editorSchema.nodes['paragraph']?.create()
+    if (paragraph === undefined) throw new Error('No paragraph node.')
+    expect(view.update(paragraph, [])).toBe(false)
+    const toggle = view.dom.querySelector('.details-editor-toggle')
+    expect(view.stopEvent(new MouseEvent('click'))).toBe(false)
+    const click = new MouseEvent('click', { bubbles: true })
+    toggle?.dispatchEvent(click)
+    expect(view.stopEvent(click)).toBe(true)
+    const inside = new MouseEvent('click', { bubbles: true })
+    view.contentDOM.dispatchEvent(inside)
+    expect(view.stopEvent(inside)).toBe(false)
+    expect(view.ignoreMutation({ target: view.dom })).toBe(true)
+    expect(view.ignoreMutation({ target: view.contentDOM })).toBe(false)
   })
 })
 
-describe('the details node view, on its own', () => {
-  function mount(pos: () => number | undefined, attributes: unknown = {}) {
-    const details = nodeType(editorSchema, 'details').create({ attributes }, [
-      textLine('detailsSummary', 'Title'),
-      textLine('paragraph', 'Body.'),
-    ])
-    const host = document.createElement('div')
-    document.body.append(host)
-    const view = new EditorView(host, {
-      state: ProseMirrorState.create({ schema: editorSchema, doc: block('doc', details) }),
+describe('typing +++ where a details cannot go', () => {
+  it.each([
+    ['in a heading', '# \n', 'end'],
+    ['before words', 'Words\n', 'start'],
+    ['as a list item’s first line', '- \n', 'end'],
+  ] as const)('leaves it as typed %s', async (_where, source, position) => {
+    const { ref, user } = open(source)
+    await user.click(surface())
+    act(() => {
+      editorOf(ref).commands.focus(position)
     })
-    const nodeView = new DetailsNodeView(details, view, pos, [])
-    return { view, nodeView, details }
-  }
-
-  it('does nothing when its buttons are pressed after it has left the document', () => {
-    const { view, nodeView } = mount(() => undefined)
-    const before = view.state.doc
-    for (const control of nodeView.dom.querySelectorAll('button')) control.click()
-    expect(view.state.doc).toBe(before)
-    view.destroy()
-  })
-
-  it('keeps its draw for a node of its own type and refuses any other', () => {
-    const { view, nodeView } = mount(() => 0)
-    expect(nodeView.update(block('paragraph'), [])).toBe(false)
-    const renamed = block('details', textLine('detailsSummary', 'New'), block('paragraph'))
-    expect(nodeView.update(renamed, [])).toBe(true)
-    expect(nodeView.dom).toHaveAccessibleName('Details: New')
-    view.destroy()
-  })
-
-  it('leaves the mutations of its own content to ProseMirror, and takes the rest', () => {
-    const { view, nodeView } = mount(() => 0)
-    expect(nodeView.ignoreMutation({ target: nodeView.contentDOM })).toBe(false)
-    expect(nodeView.ignoreMutation({ target: nodeView.dom })).toBe(true)
-    view.destroy()
-  })
-
-  it('draws a type it does not know as a note, and a type that is not a word as no callout', () => {
-    expect(mount(() => 0, { type: 'wat' }).nodeView.dom).toHaveClass('callout-note')
-    expect(mount(() => 0, { type: 5 }).nodeView.dom).not.toHaveClass('callout')
-    expect(mount(() => 0, { other: 'x' }).nodeView.dom).not.toHaveClass('callout')
+    await user.keyboard('+++ ')
+    expect(markdown(ref)).not.toContain(':::details')
   })
 })

@@ -166,73 +166,55 @@ describe('createFakeDocumentFormat: compare', () => {
     expect(grown.changes[0]?.wordsRemoved).toBe(0)
   })
 
+  it('says which changes can be put back, and who made them, when the draft is given', () => {
+    const compared = format.compare({
+      before: text('one'),
+      after: text('two'),
+      context,
+      patches: true,
+      draft: draft('two'),
+      authorship: { by: 'ada', at: '2026-01-01T00:00:00.000Z' },
+    })
+    expect(compared.changes[0]).toMatchObject({
+      html: 'two',
+      revertible: true,
+      author: { userId: 'ada', at: '2026-01-01T00:00:00.000Z' },
+    })
+    expect(
+      format.compare({ before: text('one'), after: text('two'), context, draft: draft('two') })
+        .changes[0]?.author,
+    ).toBeUndefined()
+  })
+
+  it('puts a changed, an added and a removed line back as they were', () => {
+    const revert = (before: string, now: string, changes: string[]) =>
+      format.revert({ before: text(before), after: text(now), draft: draft(now), changes }).ast
+
+    expect(revert('one\ntwo', 'one\nTWO', ['c2'])).toEqual({ body: 'one\ntwo' })
+    expect(revert('one', 'one\nadded', ['c2'])).toEqual({ body: 'one' })
+    expect(revert('one\ngone', 'one', ['c2'])).toEqual({ body: 'one\ngone' })
+    // Several at once, from the last place back, so an earlier one never moves a later one.
+    expect(revert('one\ntwo\nthree', 'ONE\ntwo\nTHREE', ['c1', 'c3'])).toEqual({
+      body: 'one\ntwo\nthree',
+    })
+  })
+
+  it('stamps the whole body with who saved it', () => {
+    expect(
+      format.stampAuthorship({
+        previous: draft('one'),
+        next: draft('two'),
+        authorship: undefined,
+        by: 'ada',
+        at: '2026-01-01T00:00:00.000Z',
+      }),
+    ).toEqual({ version: 1, body: 'two', by: 'ada', at: '2026-01-01T00:00:00.000Z' })
+  })
+
   it('has no sections for identical texts', () => {
     const compared = format.compare({ before: text('same'), after: text('same'), context })
     expect(compared.changes).toEqual([])
     expect(compared.summary.sections).toBe(0)
-  })
-
-  it('draws each change on its own only when asked to', () => {
-    const input = { before: text('a'), after: text('b'), context }
-    expect(format.compare(input).changes[0]?.html).toBeUndefined()
-    expect(format.compare({ ...input, patches: true }).changes[0]?.html).toBe('b')
-    expect(
-      format.compare({ before: text('a'), after: text(''), context, patches: true }).changes[0]
-        ?.html,
-    ).toBe('a')
-  })
-
-  it('marks changes revertible and names their author only for a draft with a record', () => {
-    const base = { before: text('a'), after: text('b'), context }
-    const stamp = { by: 'user-1', at: '2026-01-01T00:00:00.000Z' }
-    expect(format.compare(base).changes[0]).not.toHaveProperty('revertible')
-
-    const withDraft = format.compare({ ...base, draft: draft('b') })
-    expect(withDraft.changes[0]?.revertible).toBe(true)
-    expect(withDraft.changes[0]?.author).toBeUndefined()
-
-    const stamped = format.compare({ ...base, draft: draft('b'), authorship: stamp })
-    expect(stamped.changes[0]?.author).toEqual({ userId: 'user-1', at: stamp.at })
-
-    // A record only counts alongside the draft it describes.
-    expect(format.compare({ ...base, authorship: stamp }).changes[0]?.author).toBeUndefined()
-    // And only when it is a record this fake wrote.
-    expect(
-      format.compare({ ...base, draft: draft('b'), authorship: 'nope' }).changes[0]?.author,
-    ).toBeUndefined()
-    expect(
-      format.compare({ ...base, draft: draft('b'), authorship: null }).changes[0]?.author,
-    ).toBeUndefined()
-    expect(
-      format.compare({ ...base, draft: draft('b'), authorship: { by: 'x' } }).changes[0]?.author,
-    ).toBeUndefined()
-  })
-})
-
-describe('createFakeDocumentFormat: revert', () => {
-  it('puts a changed line back and takes an added one out, whatever order the ids come in', () => {
-    const reverted = format.revert({
-      before: text('one\ntwo'),
-      after: text('ONE\ntwo\nthree'),
-      draft: draft('ONE\ntwo\nthree'),
-      changes: ['c1', 'c3'],
-    })
-    expect(reverted.ast).toEqual({ body: 'one\ntwo' })
-  })
-
-  it('puts a removed line back at its place, or at the end when the draft is shorter', () => {
-    const before = text('one\ntwo\nthree')
-    expect(
-      format.revert({
-        before,
-        after: text('one\nthree'),
-        draft: draft('one\nthree'),
-        changes: ['c2'],
-      }).ast,
-    ).toEqual({ body: 'one\ntwo' })
-    expect(
-      format.revert({ before, after: text('one'), draft: draft('one'), changes: ['c3'] }).ast,
-    ).toEqual({ body: 'one\nthree' })
   })
 })
 

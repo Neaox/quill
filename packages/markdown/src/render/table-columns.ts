@@ -1,5 +1,5 @@
 import { toString } from 'mdast-util-to-string'
-import type { TableRow } from 'mdast'
+import type { AlignType, TableRow } from 'mdast'
 
 /**
  * A cell that reads as one number: an optional sign and currency, digits with
@@ -41,16 +41,16 @@ const LONG_TEXT = 40
 export type ColumnShape = 'numeric' | 'token' | 'long' | 'text'
 
 export function columnShape(rows: readonly TableRow[], column: number): ColumnShape {
-  return shapeOfCells(
+  return shapeOf(
     rows
       .map((row) => row.children[column])
-      .map((cell) => (cell === undefined ? '' : toString(cell).trim())),
+      .map((cell) => (cell === undefined ? '' : toString(cell))),
   )
 }
 
-/** The shape of a column from the text of its body cells, wherever they are read from. */
-export function shapeOfCells(texts: readonly string[]): ColumnShape {
-  const values = texts.map((text) => text.trim()).filter((value) => !BLANK.test(value))
+/** The shape of a column from its body cells' text: what the editor, which has no mdast, decides by. */
+export function shapeOf(cells: readonly string[]): ColumnShape {
+  const values = cells.map((value) => value.trim()).filter((value) => !BLANK.test(value))
   if (values.length === 0) return 'text'
   if (values.every((value) => NUMBER.test(value))) return 'numeric'
   if (values.every((value) => TOKEN.test(value)) && values.some((value) => BREAKS.test(value))) {
@@ -58,6 +58,25 @@ export function shapeOfCells(texts: readonly string[]): ColumnShape {
   }
   const average = values.reduce((sum, value) => sum + value.length, 0) / values.length
   return average >= LONG_TEXT ? 'long' : 'text'
+}
+
+/** How a shape of column is set, beyond its alignment. */
+const SHAPE_CLASSES: Readonly<Record<ColumnShape, readonly string[]>> = {
+  numeric: [],
+  token: ['column-nowrap'],
+  long: ['column-long'],
+  text: [],
+}
+
+/**
+ * A column's classes, on every cell in it: the author's alignment, else
+ * `align-numeric` for a column of numbers; then its shape's. The renderer
+ * and the editor set a column alike from this.
+ */
+export function columnClasses(align: AlignType | undefined, shape: ColumnShape): string[] {
+  const authored = align !== null && align !== undefined
+  const alignment = authored ? [`align-${align}`] : shape === 'numeric' ? ['align-numeric'] : []
+  return [...alignment, ...SHAPE_CLASSES[shape]]
 }
 
 /**

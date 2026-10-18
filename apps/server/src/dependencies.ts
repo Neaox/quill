@@ -16,6 +16,7 @@ import type {
 } from '@quill/application'
 import type { SearchService } from '@quill/search'
 
+import type { ServerChildPagesCache } from './child-pages/cache.ts'
 import type { BreachedPasswordChecker } from './auth/breached-password.ts'
 import type { IdentityProviderRegistry } from './auth/oidc/registry.ts'
 import type { Mailer } from './auth/mailer.ts'
@@ -105,6 +106,11 @@ export interface AppDependencies {
    * change what a site shows.
    */
   readonly publicSiteCache: PublicSiteCache
+  /**
+   * The subtrees child pages lists are drawn from (ADR-058), invalidated by
+   * the outbox. Omitted, every list reads its subtree afresh.
+   */
+  readonly childPagesCache?: ServerChildPagesCache | undefined
   readonly mailer: Mailer
   /** The breached-password corpus (ADR-011). Fails open, and says so in the audit log. */
   readonly breachedPasswords: BreachedPasswordChecker

@@ -107,6 +107,27 @@ export {
   type DeleteDocumentInput,
 } from './documents.ts'
 export {
+  NAVIGATION_PAGE_SIZE,
+  listKey,
+  useNavigationTree,
+  type NavigationCollection,
+  type NavigationList,
+  type NavigationNode,
+  type NavigationTree,
+} from './navigation-tree.ts'
+export {
+  draftQueryOptions,
+  useDraft,
+  usePutBackChanges,
+  useRevertPreview,
+  useSaveDraft,
+  useUndoPutBack,
+  type PutBackInput,
+  type SaveDraftInput,
+  type UndoPutBackInput,
+} from './drafts.ts'
+export { useAcquireLock, useHeartbeatLock, useReleaseLock, useTakeoverLock } from './locks.ts'
+export {
   renderedQueryOptions,
   useDocumentEnvelope,
   useDocumentHistory,
@@ -127,16 +148,7 @@ export {
   type LinkPreview,
 } from './link-previews.ts'
 export {
-  TREE_PAGE_SIZE,
-  treeChildrenQueryOptions,
-  treeCollectionsQueryOptions,
-  useTreeCollections,
-  useTreePosition,
-  type TreeLevel,
-} from './tree.ts'
-export {
   usePublishDocument,
-  useRevertPreview,
   useRestoreRevision,
   type PublishInput,
   type PublishOutcome,
@@ -245,10 +257,8 @@ export type {
   CreateDocumentResponse,
   CreateDraftDto,
   CreateDocumentWarning,
-  TreeChildDto,
-  TreeChildrenPage,
+  TreeChildrenResponse,
   TreeCollectionDto,
-  TreePosition,
   WorkspaceTreeResponse,
   OutlineEntry,
   RenderedDocument,
@@ -284,3 +294,6 @@ export type {
   SharedLink,
   SharedNode,
 } from './types.ts'
+
+export { useChildPagesLoader, useChildPagesOf, type ChildPagesLoader } from './child-pages.ts'
+export { useDocumentLinksLoader } from './document-links.ts'

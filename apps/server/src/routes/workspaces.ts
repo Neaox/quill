@@ -1,18 +1,22 @@
 import { Type } from '@sinclair/typebox'
 import type { TypeBoxTypeProvider } from '@fastify/type-provider-typebox'
 import {
+  childrenPage,
   createDocument,
   createWorkspace,
   deleteWorkspace,
   getWorkspaceTree,
-  listTreeChildren,
   listVisibleDocuments,
   listVisibleWorkspaces,
   renameWorkspace,
+  windowTree,
+  type ChildrenOwner,
+  type WindowedCollection,
+  type WindowedNode,
 } from '@quill/application'
-import { documentId, slugify } from '@quill/domain'
+import { collectionId, isUuid, slugify } from '@quill/domain'
 import type { CollectionId, DocumentId } from '@quill/domain'
-import type { FastifyPluginAsync } from 'fastify'
+import type { FastifyPluginAsync, FastifyRequest } from 'fastify'
 
 import {
   authorizerFor,
@@ -23,20 +27,24 @@ import {
 import { resolveDocumentId, resolveWorkspaceId } from '../application/references.ts'
 import type { AppDependencies } from '../dependencies.ts'
 import { AppError, conflict, notFound, unprocessable } from '../errors.ts'
+import { sessionRateLimit } from '../plugins/rate-limit.ts'
 import { requireAuthenticatedSession } from '../plugins/session.ts'
 import {
   CreateDocumentBodySchema,
   CreatedDocumentSchema,
-  DEFAULT_CHILDREN_PAGE,
   DocumentSchema,
   IdParamsSchema,
   TreeChildrenQuerySchema,
   TreeChildrenSchema,
   WorkspaceIdParamsSchema,
+  WorkspaceTreeQuerySchema,
   WorkspaceTreeSchema,
   documentResponse,
   draftResponse,
 } from './document-schemas.ts'
+
+/** A sidebar's page: what `TREE_PAGE_SIZE` draws before "Show more". */
+const TREE_PAGE_LIMIT = 50
 
 const CreateWorkspaceBody = Type.Object({
   unitId: Type.String(),
@@ -90,6 +98,13 @@ const WorkspaceListItemSchema = Type.Object({
  * permission resolver: reading the tree needs view, creating a document needs
  * edit, and renaming or deleting the workspace needs manage.
  */
+/** A collection named by its id; anything else names none. */
+function collectionOwner(reference: string): ChildrenOwner | undefined {
+  return isUuid(reference)
+    ? { kind: 'collection', collectionId: collectionId(reference) }
+    : undefined
+}
+
 export function workspaceRoutes(deps: AppDependencies): FastifyPluginAsync {
   return async (rawApp) => {
     const app = rawApp.withTypeProvider<TypeBoxTypeProvider>()
@@ -220,35 +235,73 @@ export function workspaceRoutes(deps: AppDependencies): FastifyPluginAsync {
       },
     )
 
+    /** The reader's whole tree: the one pass every cut of it is taken from. */
+    /** The tree's reads walk the whole workspace, so a reader's budget bounds how often. */
+    const treeBudget = sessionRateLimit('tree', deps.config.browseRateLimitMax)
+
+    async function documentOwner(reference: string): Promise<ChildrenOwner | undefined> {
+      const parentId = await resolveDocumentId(deps, reference).catch(() => undefined)
+      return parentId === undefined ? undefined : { kind: 'document', parentId }
+    }
+
+    async function readerTree(request: FastifyRequest, workspace: string) {
+      const target = await resolveWorkspaceId(deps, workspace)
+      const authorizer = authorizerFor(deps, request)
+      const access = await requireWorkspaceAccess(authorizer, target, 'view')
+      const tree = await getWorkspaceTree(deps, {
+        workspaceId: target,
+        identities: await authorizer.identities(),
+        seesEverything: access.isInstanceAdmin,
+      })
+      /* v8 ignore next 2 -- the authorizer has already walked this workspace's tree. */
+      if (tree.kind !== 'tree') throw notFound('Workspace not found')
+      return tree.collections
+    }
+
+    /*
+     * Without `depth`, the whole tree, as it has always been answered. With
+     * it, the tree a sidebar draws: that many levels, a page of each list,
+     * and — with `focus` — the way down to the document being read, its page
+     * of siblings at every level, and its own children (ADR-033: additive).
+     */
     app.get(
       '/api/workspaces/:id/tree',
       {
         preHandler: app.requireSession,
-        schema: { params: IdParamsSchema, response: { 200: WorkspaceTreeSchema } },
+        config: treeBudget,
+        schema: {
+          params: IdParamsSchema,
+          querystring: WorkspaceTreeQuerySchema,
+          response: { 200: WorkspaceTreeSchema },
+        },
       },
       async (request) => {
-        const target = await resolveWorkspaceId(deps, request.params.id)
-        const authorizer = authorizerFor(deps, request)
-        const access = await requireWorkspaceAccess(authorizer, target, 'view')
-        const tree = await getWorkspaceTree(deps, {
-          workspaceId: target,
-          identities: await authorizer.identities(),
-          seesEverything: access.isInstanceAdmin,
+        const collections = await readerTree(request, request.params.id)
+        const { depth, limit, focus } = request.query
+        const focused =
+          focus === undefined
+            ? undefined
+            : // A focus that does not resolve simply opens nothing.
+              await resolveDocumentId(deps, focus).catch(() => undefined)
+        const windowed = windowTree(collections, {
+          depth,
+          limit: depth === undefined ? Number.POSITIVE_INFINITY : (limit ?? TREE_PAGE_LIMIT),
+          focus: focused,
         })
-        /* v8 ignore next 2 -- the authorizer has already walked this workspace's tree. */
-        if (tree.kind !== 'tree') throw notFound('Workspace not found')
-        return { collections: tree.collections.map(toCollectionResponse) }
+        return { collections: windowed.map(toCollectionResponse) }
       },
     )
 
-    /**
-     * One page of the documents directly under a parent: what a navigation tree that opens a
-     * level at a time asks for (ADR-049). Nothing in the answer grows with the workspace.
+    /*
+     * One page of a list in the tree: a collection's top level or a
+     * document's children, each entry with its count. Cut from the same
+     * reader-filtered tree, so a parent the reader cannot see is not found.
      */
     app.get(
       '/api/workspaces/:id/tree/children',
       {
         preHandler: app.requireSession,
+        config: treeBudget,
         schema: {
           params: IdParamsSchema,
           querystring: TreeChildrenQuerySchema,
@@ -256,29 +309,24 @@ export function workspaceRoutes(deps: AppDependencies): FastifyPluginAsync {
         },
       },
       async (request) => {
-        const target = await resolveWorkspaceId(deps, request.params.id)
-        const authorizer = authorizerFor(deps, request)
-        const access = await requireWorkspaceAccess(authorizer, target, 'view')
-        const { collectionId, parentId, cursor, limit = DEFAULT_CHILDREN_PAGE } = request.query
-        const after = cursor === undefined ? null : readCursor(cursor)
-        if (after === undefined)
-          throw unprocessable('invalid_cursor', 'That page is not one to resume from')
-        const page = await listTreeChildren(deps, {
-          workspaceId: target,
-          collectionId: collectionId as CollectionId,
-          parentId: parentId === undefined ? null : await resolveDocumentId(deps, parentId),
-          after,
-          limit,
-          identities: await authorizer.identities(),
-          seesEverything: access.isInstanceAdmin,
-        })
-        if (page.kind === 'collection-not-found') throw notFound('Collection not found')
-        /* v8 ignore next 2 -- the authorizer has already walked this workspace's tree. */
-        if (page.kind !== 'children') throw notFound('Workspace not found')
-        return {
-          nodes: page.nodes.map((node) => ({ ...node, slug: slugify(node.title) })),
-          ...(page.next === null ? {} : { next: writeCursor(page.next) }),
+        const { parent, collection, offset, limit } = request.query
+        if ((parent === undefined) === (collection === undefined)) {
+          throw new AppError(400, 'invalid_query', 'Name exactly one of parent and collection')
         }
+        const collections = await readerTree(request, request.params.id)
+        // A parent that names nothing, one in another workspace and one the
+        // reader cannot see are all one answer, so the answer says nothing
+        // about which documents exist (ADR-012).
+        /* v8 ignore next -- `parent` is always given without a collection: the check above. */
+        const owner = await (collection === undefined
+          ? documentOwner(parent ?? '')
+          : collectionOwner(collection))
+        const page =
+          owner === undefined ? undefined : childrenPage(collections, owner, { offset, limit })
+        if (page === undefined || page.kind === 'not-found') {
+          throw notFound('Not found in this workspace')
+        }
+        return { documents: page.documents.map(toTreeNode), total: page.total, offset: page.offset }
       },
     )
 
@@ -378,46 +426,26 @@ export function workspaceRoutes(deps: AppDependencies): FastifyPluginAsync {
   }
 }
 
-/** A page's resume point as the opaque string a client hands back: where the last row stood. */
-function writeCursor(cursor: { readonly createdAt: Date; readonly id: string }): string {
-  return Buffer.from(`${cursor.createdAt.toISOString()}|${cursor.id}`).toString('base64url')
-}
-
-/** The resume point a cursor names; `undefined` for one that was not written by `writeCursor`. */
-function readCursor(
-  value: string,
-): { readonly createdAt: Date; readonly id: DocumentId } | undefined {
-  const [at = '', id, ...rest] = Buffer.from(value, 'base64url').toString().split('|')
-  const createdAt = new Date(at)
-  if (id === undefined || rest.length > 0 || Number.isNaN(createdAt.getTime())) return undefined
-  try {
-    return { createdAt, id: documentId(id) }
-  } catch {
-    return undefined
-  }
-}
-
-function toCollectionResponse(collection: {
-  id: string
-  name: string
-  slug: string
-  documents: readonly TreeNodeView[]
-}): { id: string; name: string; slug: string; documents: TreeNodeResponse[] } {
+function toCollectionResponse(collection: WindowedCollection): CollectionResponse {
   return {
     id: collection.id,
     name: collection.name,
     slug: collection.slug,
     documents: collection.documents.map(toTreeNode),
+    documentCount: collection.documentCount,
+    documentsOffset: collection.documentsOffset,
+    total: collection.total,
   }
 }
 
-interface TreeNodeView {
-  readonly id: string
-  readonly shortId: string
-  readonly title: string
-  readonly slug: string
-  readonly status: ReturnType<typeof documentResponse>['status']
-  readonly children: readonly TreeNodeView[]
+interface CollectionResponse {
+  id: string
+  name: string
+  slug: string
+  documents: TreeNodeResponse[]
+  documentCount: number
+  documentsOffset: number
+  total: number
 }
 
 interface TreeNodeResponse {
@@ -425,12 +453,14 @@ interface TreeNodeResponse {
   shortId: string
   title: string
   slug: string
-  status: TreeNodeView['status']
+  status: WindowedNode['status']
   children: TreeNodeResponse[]
+  childCount: number
+  childrenOffset: number
 }
 
 /** The slug travels derived from the title, exactly as it does on a document (ADR-035). */
-function toTreeNode(node: TreeNodeView): TreeNodeResponse {
+function toTreeNode(node: WindowedNode): TreeNodeResponse {
   return {
     id: node.id,
     shortId: node.shortId,
@@ -438,5 +468,7 @@ function toTreeNode(node: TreeNodeView): TreeNodeResponse {
     slug: slugify(node.title),
     status: node.status,
     children: node.children.map(toTreeNode),
+    childCount: node.childCount,
+    childrenOffset: node.childrenOffset,
   }
 }

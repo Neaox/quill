@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { ExtractedText, PublicNavigationNode } from '@quill/application'
 import type { DocumentId } from '@quill/domain'
+import { raw } from './html.ts'
 
 import {
   articleStructuredData,
@@ -37,6 +38,27 @@ describe('the document page', () => {
     expect(main.value).toContain('<article class="layout-grid prose" data-rules="hairline">')
     expect(main.value).toContain('<div class="layout-wide">wide</div>')
     expect(main.value).not.toContain('<article><h1>')
+  })
+
+  it('puts the byline directly under the title, whoever supplied the title', () => {
+    const byline = raw('<div class="byline">facts</div>')
+    const authored = renderDocumentMain({
+      collectionName: 'Guides',
+      title: 'Rate limits',
+      bodyHtml: '<article><h1 id="rate-limits">Rate limits</h1><p>Body</p></article>',
+      rules: 'hairline',
+      byline,
+    }).value
+    expect(authored).toMatch(/<\/h1><div class="byline">facts<\/div><p>Body<\/p>/u)
+
+    const supplied = renderDocumentMain({
+      collectionName: 'Guides',
+      title: 'Rate limits',
+      bodyHtml: '<article><h2>Only a section</h2></article>',
+      rules: 'hairline',
+      byline,
+    }).value
+    expect(supplied).toMatch(/<h1>Rate limits<\/h1>\s*<div class="byline">facts<\/div>/u)
   })
 
   it('names the collection above the title, inside the grid where the title is', () => {
@@ -262,6 +284,17 @@ describe('the not-found page', () => {
 describe('firstParagraph', () => {
   it('is the first line of the extracted prose', () => {
     expect(firstParagraph(text('First paragraph.\nSecond paragraph.'))).toBe('First paragraph.')
+  })
+
+  it('says a link to a document in words, never by the id it is written with', () => {
+    const id = '0192f0a4-7c1e-7a3b-8d1e-4a5b6c7d8e9f'
+    expect(firstParagraph(text(`See /d/${id} and /w/team/d/plan-k7m3q9v2xd#steps.`))).toBe(
+      'See a linked document and a linked document',
+    )
+    // Somebody else's address that happens to have a `/d/` in it is theirs, and stays.
+    expect(firstParagraph(text('See https://docs.example/document/d/abc now.'))).toBe(
+      'See https://docs.example/document/d/abc now.',
+    )
   })
 
   it('skips leading blank lines', () => {

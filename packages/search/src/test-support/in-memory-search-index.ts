@@ -262,6 +262,8 @@ function scoreDocument(
   const ageDays = Math.max(0, (now.getTime() - doc.updatedAt.getTime()) / (24 * 60 * 60 * 1000))
   score *= recencyMultiplier(profile, ageDays)
 
+  if (doc.lifecycle === 'deprecated') score *= profile.deprecatedPenalty
+
   if (options.currentWorkspaceId !== undefined && doc.workspaceId === options.currentWorkspaceId) {
     score *= profile.workspaceAffinity.currentWorkspaceBoost
   }

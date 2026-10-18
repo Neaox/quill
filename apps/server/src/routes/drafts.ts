@@ -43,6 +43,7 @@ export function draftRoutes(deps: AppDependencies): FastifyPluginAsync {
           request,
           documentId: await resolveDocumentId(deps, request.params.id),
         })
+        /* v8 ignore next -- only a delete racing the read finds no draft (`readDraft`). */
         if (draft === null) {
           throw notFound('Draft not found')
         }

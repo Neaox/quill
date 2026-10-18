@@ -90,39 +90,6 @@ export function useRestoreRevision() {
   })
 }
 
-export interface RevertPreviewInput {
-  readonly documentId: string
-  /** The published revision the changes are since; `null` before the first publish. */
-  readonly from: string | null
-  /** The version of the draft being looked at. */
-  readonly draftVersion: number
-  readonly changes: readonly string[]
-}
-
-/**
- * The draft as it would be with some changes put back (`POST /documents/:id/draft/revert-preview`).
- *
- * Not a write: the answer is handed to the editor, which applies it as an edit of its own, so
- * it can be undone and is saved the way anything typed is. A `409` means the draft moved on
- * under the person looking at it, which the caller says in words.
- */
-export function useRevertPreview() {
-  const client = useApiClient()
-  return useMutation({
-    mutationFn: async ({ documentId, from, draftVersion, changes }: RevertPreviewInput) => {
-      const { data, error, response } = await client.POST(
-        '/api/documents/{id}/draft/revert-preview',
-        {
-          params: { path: { id: documentId } },
-          body: { ...(from === null ? {} : { from }), draftVersion, changes: [...changes] },
-        },
-      )
-      if (!response.ok || data === undefined) throw toApiError(response.status, error)
-      return data
-    },
-  })
-}
-
 /**
  * `openapi-fetch` puts a non-2xx body in `error`, typed as the union of every
  * declared failure. This narrows it to the merge case by the discriminant the

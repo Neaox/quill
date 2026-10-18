@@ -47,7 +47,9 @@ function labelWarnings(
     const end = position + node.nodeSize
     decorations.push(
       Decoration.node(position, end, { 'data-unknown-label': 'true', title: warning }, { warning }),
-      Decoration.widget(end, () => reason(warning), { side: 1 }),
+      // Keyed by its words, so a block drawn again keeps the element rather
+      // than swapping it for an equal one on every keystroke (section 31).
+      Decoration.widget(end, () => reason(warning), { side: 1, key: `unknown-label:${warning}` }),
     )
     return false
   })

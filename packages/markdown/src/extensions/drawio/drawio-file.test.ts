@@ -125,6 +125,11 @@ describe('labelsOfModel', () => {
   })
 })
 
+/** Root tags that never close, which a pattern scanning to the end from each would read n² times. */
+const UNCLOSED_SVG_TAGS = '<svg '.repeat(20_000)
+/** Pages that never close, likewise. */
+const UNCLOSED_PAGES = `<mxfile>${'<diagram>'.repeat(20_000)}</mxfile>`
+
 describe('the limits, against hostile files', () => {
   const tight: DrawioLimits = {
     maxInflatedBytes: 4096,
@@ -215,6 +220,25 @@ describe('the limits, against hostile files', () => {
     expect(performance.now() - started).toBeLessThan(1000)
   })
 
+  it('finds no root tag, and no pages, in a file of tags that never close', async () => {
+    expect(drawioSourceOf(UNCLOSED_SVG_TAGS)).toBeNull()
+    expect(await readDrawioModels(UNCLOSED_PAGES, inflate)).toEqual({ kind: 'models', models: [] })
+  })
+
+  // Skipped under coverage, where instrumentation decides the time; the
+  // answers above still fail on the test timeout if the scan were quadratic.
+  it.skipIf(process.env['QUILL_COVERAGE'] === '1')(
+    'finds them without rescanning the file per tag',
+    async () => {
+      let started = performance.now()
+      drawioSourceOf(UNCLOSED_SVG_TAGS)
+      expect(performance.now() - started).toBeLessThan(50)
+      started = performance.now()
+      await readDrawioModels(UNCLOSED_PAGES, inflate)
+      expect(performance.now() - started).toBeLessThan(50)
+    },
+  )
+
   it('is generous enough for a real diagram', () => {
     expect(DRAWIO_LIMITS.maxInflatedBytes).toBeGreaterThanOrEqual(8 * 1024 * 1024)
     expect(DRAWIO_LIMITS.maxElements).toBeGreaterThanOrEqual(100_000)
@@ -225,6 +249,17 @@ describe('readDrawioModels', () => {
   it('reads a bare model as one page', async () => {
     const bare = model(shape('a', 'Solo'))
     expect(await readDrawioModels(bare, inflate)).toEqual({ kind: 'models', models: [bare] })
+  })
+
+  it('skips a page that is closed on itself, and counts no elements in a page of words', async () => {
+    expect(await readDrawioModels(mxfile('<diagram id="s" name="s"/>'), inflate)).toEqual({
+      kind: 'models',
+      models: [],
+    })
+    expect(await readDrawioLabels(mxfile(page(compress('just words'))), inflate)).toEqual({
+      kind: 'labels',
+      labels: [],
+    })
   })
 
   it('skips an empty page', async () => {

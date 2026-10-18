@@ -28,6 +28,8 @@ export interface DraftChangesOptions {
 export interface DraftChanges {
   /** What differs, once it is known; the last answer while a newer one is on its way. */
   readonly described: DescribedChanges | undefined
+  /** How many changes are waiting, the properties among them, as last known. */
+  readonly total: number
   /** The draft, as it is now and fully saved, has nothing that is not published. */
   readonly nothing: boolean
   readonly unsaved: boolean
@@ -81,6 +83,7 @@ export function useDraftChanges({
 
   return {
     described,
+    total: described === undefined ? 0 : described.items.length + described.more,
     nothing,
     others,
     unsaved,

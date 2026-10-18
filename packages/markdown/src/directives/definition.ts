@@ -70,7 +70,7 @@ export function attribute(node: Directive, name: string): string | undefined {
  * HTML included (ADR-048).
  */
 export function flag(
-  node: { readonly attributes?: DirectiveAttributes | null | undefined },
+  node: Directive | { readonly type: 'details'; readonly attributes: DirectiveAttributes },
   name: string,
 ): boolean {
   const attributes = node.attributes
@@ -117,42 +117,4 @@ export function issue(
 
 export function textChildren(value: string): PhrasingContent[] {
   return [{ type: 'text', value }]
-}
-
-export interface IntegerRange {
-  readonly min: number
-  readonly max: number
-}
-
-/**
- * An attribute read as a whole number inside a closed range, or `undefined` when
- * it is absent, not a number, or out of range. Callers pick their own default,
- * which is what lets a directive degrade rather than fail (ADR-002).
- */
-export function integerAttribute(
-  attributes: DirectiveAttributes | null | undefined,
-  name: string,
-  { min, max }: IntegerRange,
-): number | undefined {
-  const written = attributes?.[name] ?? undefined
-  if (written === undefined || !/^\d+$/.test(written)) return undefined
-  const value = Number(written)
-  return value >= min && value <= max ? value : undefined
-}
-
-/** A warning for an attribute that was written but could not be read as a number in range. */
-export function integerIssues(
-  attributes: DirectiveAttributes | null | undefined,
-  name: string,
-  range: IntegerRange,
-): readonly DirectiveIssue[] {
-  const written = attributes?.[name] ?? undefined
-  if (written === undefined || integerAttribute(attributes, name, range) !== undefined) return []
-  return [
-    issue(
-      name,
-      `"${name}" must be a whole number from ${String(range.min)} to ${String(range.max)}; found "${written}".`,
-      'warning',
-    ),
-  ]
 }

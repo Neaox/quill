@@ -358,6 +358,17 @@ quillctl traffic set --region eu-west-1 --weight 0
 +   interval: 180d
 \`\`\`
 
+## Navigation blocks
+
+A table of contents, drawn from this page's own headings; scroll and the
+section being read is marked in it:
+
+::toc[In this tour]{levels=2}
+
+The pages under this one, as each reader may see them:
+
+::children{depth=2 excerpts icons}
+
 ## Before this ships
 
 - [x] Every callout tone renders

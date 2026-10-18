@@ -14,11 +14,13 @@ export const slashMenuStyles = tv({
     root:
       'slash-menu fixed z-30 flex flex-col overflow-hidden rounded-md border ' +
       'border-border-strong/70 bg-surface-raised shadow-raised',
-    list: 'min-h-0 overflow-y-auto overscroll-contain px-1 touch-pan-y [scrollbar-width:thin]',
+    list: 'min-h-0 overflow-y-auto overscroll-contain px-1 py-1 touch-pan-y [scrollbar-width:thin]',
     heading:
-      'flex items-end px-2 pb-1 text-2xs font-medium tracking-caps text-muted ' +
+      'flex h-7 items-end px-2 pb-1 text-2xs font-medium tracking-caps text-muted ' +
       'uppercase select-none data-offscreen:sr-only',
-    option: 'flex cursor-pointer items-center gap-3 rounded-sm px-2 text-sm data-active:bg-surface',
+    option:
+      'flex h-11 cursor-pointer items-center gap-3 rounded-sm px-2 text-sm ' +
+      'data-active:bg-surface',
     icon:
       'flex size-8 shrink-0 items-center justify-center rounded-sm border border-border ' +
       'bg-surface text-foreground-soft',
@@ -35,43 +37,33 @@ export const slashMenuStyles = tv({
   },
 })
 
-/** The list's own padding above its first row and below its last, in pixels. */
+/** The list's own padding above its first row and below its last, in pixels: `py-1`. */
 export const LIST_PADDING = 4
 
-/**
- * How tall each kind of row is, in rem. The list is windowed by arithmetic, so
- * a row's height has to be a number the code knows as well as the stylesheet
- * does. It is given as an inline height in rem rather than as a spacing class
- * for that reason: a spacing class follows the design's density, which code
- * cannot read, while a rem is the root font size times a number, which it can
- * (`rootFontSize`). The two cannot drift apart, which is how the last rows of
- * the list ended up out of reach when the real rows were taller than the sums.
- */
-export const OPTION_REM = 2.75
-export const HEADING_REM = 1.75
+/** The panel's border, top and bottom, which the list scrolls inside. */
+export const PANEL_FRAME = 2
 
-export const OPTION_STYLE: CSSProperties = { height: `${String(OPTION_REM)}rem` }
-export const HEADING_STYLE: CSSProperties = { height: `${String(HEADING_REM)}rem` }
-
-/** The root font size in pixels, which a rem is a multiple of; 16 where the browser cannot say. */
-export function rootFontSize(): number {
-  const size = Number.parseFloat(getComputedStyle(document.documentElement).fontSize)
-  return Number.isFinite(size) && size > 0 ? size : 16
+/** The height the list scrolls in, given the panel's: the panel less its border. */
+export function listViewport(panelHeight: number): number {
+  return Math.max(0, panelHeight - PANEL_FRAME)
 }
 
-/** Where a placement puts the menu, as the few numbers a stylesheet cannot know. */
-
 /**
- * The space the windowed-out rows would take, kept as padding so the list
- * scrolls as if every row were drawn. Geometry, not design: no token can say it.
+ * The space the windowed-out rows would take, kept as padding on the rows'
+ * own box inside the list, so the list scrolls as if every row were drawn.
+ * Never on the scrolling list itself: an element cannot be shorter than its
+ * padding, so a list padded by a thousand pixels of absent rows grows past
+ * the panel's height, the panel clips it, and the end can never be scrolled
+ * to. Geometry, not design: no token can say it.
  */
 export function windowStyle(window: {
   readonly before: number
   readonly after: number
 }): CSSProperties {
-  return { paddingTop: LIST_PADDING + window.before, paddingBottom: LIST_PADDING + window.after }
+  return { paddingTop: window.before, paddingBottom: window.after }
 }
 
+/** Where a placement puts the menu, as the few numbers a stylesheet cannot know. */
 export function placementStyle(placement: MenuPlacement): CSSProperties {
   return {
     left: placement.left,

@@ -163,7 +163,7 @@ export function useAutosave(options: UseAutosaveOptions): Autosave {
   const lastEditRef = useRef(mountedAt)
 
   // Read once, like `documentVersion`: the content this session opened on.
-  const [loaded] = useState<DraftBase | undefined>(() =>
+  const [openedOn] = useState<DraftBase | undefined>(() =>
     options.documentAst === undefined
       ? undefined
       : { ast: options.documentAst, draftVersion: options.documentVersion },
@@ -171,8 +171,8 @@ export function useAutosave(options: UseAutosaveOptions): Autosave {
   // Records the draft as loaded as the merge base in the recovery store (an
   // external system) when this session starts from it, before any edit.
   useEffect(() => {
-    if (loaded !== undefined && store.read() === undefined) store.writeBase(loaded)
-  }, [loaded, store])
+    if (openedOn !== undefined && store.read() === undefined) store.writeBase(openedOn)
+  }, [openedOn, store])
 
   const apply = useCallback((event: AutosaveEvent) => {
     const next = autosaveReducer(stateRef.current, event)

@@ -1,142 +1,153 @@
-import { Selection } from '@tiptap/pm/state'
+import { ContextMenu } from '@quill/ui'
+import type {
+  ContextMenuAction,
+  ContextMenuChoice,
+  ContextMenuEntry,
+  ContextMenuSection as UiSection,
+} from '@quill/ui'
 import type { Editor } from '@tiptap/react'
-import { useCallback, useEffect, useState } from 'react'
+import { useEffect, useSyncExternalStore } from 'react'
 
-import { contextMenuGroups } from '../actions/context-groups.ts'
-import type { CommentRequest } from '../block/comment-request.ts'
-import { pointRect } from '../floating/placement.ts'
-import { ActionMenu } from '../menu/action-menu.tsx'
-import type { CloseReason } from '../menu/action-menu.tsx'
-import { useEditorSnapshot, useRunAction } from '../toolbar/hooks.ts'
-import type { LinkEditing } from '../toolbar/hooks.ts'
+import type {
+  ContextMenuEnvironment,
+  ContextMenuRegistry,
+  ContextMenuSection,
+  MenuAction,
+  MenuChoice,
+  MenuEditorBridge,
+  MenuEntry,
+} from './context-menu-registry.ts'
+import type { OverlayStore } from './overlay-store.ts'
 
 /**
- * The right-click menu of the writing surface.
- *
- * What it offers depends on where the author pointed (`contextMenuGroups`), so
- * the same gesture gives table tools in a table, variants in a callout, and link
- * tools on a link. Three conventions keep it from being in the way:
- *
- * - Shift + right-click opens the browser's own menu, which is where spelling
- *   suggestions, "Search the web" and the clipboard live, and which this menu
- *   does not try to replace.
- * - A right-click outside the selection moves the caret there first, as the
- *   browser's menu would, so the menu always acts on what was clicked.
- * - The keyboard's Menu key and Shift+F10 raise the same event, with no pointer
- *   position; the menu then opens at the caret.
+ * The context menu, drawn: the registry's sections for the place it was
+ * opened at, in the design system's `ContextMenu` (`@quill/ui`).
  */
 
-interface Point {
-  readonly x: number
-  readonly y: number
+function uiLeaf(entry: MenuAction | MenuChoice): ContextMenuAction | ContextMenuChoice {
+  if (entry.kind === 'choice') {
+    return {
+      kind: 'choice',
+      id: entry.id,
+      label: entry.label,
+      value: entry.value,
+      options: entry.options.map(({ icon: Icon, ...option }) => ({
+        ...option,
+        ...(Icon === undefined ? {} : { icon: <Icon /> }),
+      })),
+      onValueChange: entry.choose,
+    }
+  }
+  const Icon = entry.icon
+  return {
+    kind: 'action',
+    id: entry.id,
+    label: entry.label,
+    icon: Icon === undefined ? undefined : <Icon />,
+    shortcut: entry.shortcut,
+    disabledReason: entry.disabledReason,
+    tone: entry.tone,
+    checked: entry.checked,
+    onSelect: entry.run,
+  }
+}
+
+function uiEntry(entry: MenuEntry): ContextMenuEntry {
+  if (entry.kind !== 'submenu') return uiLeaf(entry)
+  const Icon = entry.icon
+  return {
+    kind: 'submenu',
+    id: entry.id,
+    label: entry.label,
+    icon: Icon === undefined ? undefined : <Icon />,
+    entries: entry.entries.map(uiLeaf),
+  }
+}
+
+/**
+ * A menu opened from one control — a toolbar's "Turn into" — that has one
+ * submenu in it is that submenu: a menu whose only item opens another is a
+ * step for nothing.
+ */
+export function unwrapLone(sections: readonly ContextMenuSection[]): readonly ContextMenuSection[] {
+  const [only] = sections
+  const [entry] = only?.entries ?? []
+  if (sections.length !== 1 || only?.entries.length !== 1 || entry?.kind !== 'submenu') {
+    return sections
+  }
+  return [{ id: only.id, label: entry.label, entries: entry.entries }]
 }
 
 export interface EditorContextMenuProps {
   readonly editor: Editor
-  readonly linkEditing: LinkEditing
-  readonly onComment?: ((request: CommentRequest) => void) | undefined
+  readonly store: OverlayStore
+  readonly registry: ContextMenuRegistry
+  readonly environment: ContextMenuEnvironment
+  readonly bridge: MenuEditorBridge
 }
 
-/** A context menu raised from the keyboard has no pointer, and reports it at the origin. */
-function isFromKeyboard(event: MouseEvent): boolean {
-  return event.clientX === 0 && event.clientY === 0
-}
+export function EditorContextMenu({
+  editor,
+  store,
+  registry,
+  environment,
+  bridge,
+}: EditorContextMenuProps) {
+  const overlay = useSyncExternalStore(store.subscribe, store.getSnapshot)
+  const open = overlay.kind === 'context-menu'
+  const sections = open
+    ? unwrapLone(
+        registry.sectionsFor(
+          {
+            view: editor.view,
+            state: editor.state,
+            pos: Math.min(overlay.pos, editor.state.doc.content.size),
+            environment,
+            editor: bridge,
+          },
+          overlay.only,
+        ),
+      )
+    : []
+  const empty = open && sections.length === 0
 
-/**
- * Moves the caret to where was clicked, unless that is inside what is already
- * selected. What is selected is its ranges, not the span from its first end to
- * its last: cells selected down a column have the whole next column between them,
- * and a click there is outside the selection.
- */
-function selectUnderPointer(editor: Editor, point: Point): void {
-  const { view, state } = editor
-  const hit = view.posAtCoords({ left: point.x, top: point.y })
-  if (hit === null) return
-  const { selection } = state
-  const inside = selection.ranges.some(
-    (range) => hit.pos >= range.$from.pos && hit.pos <= range.$to.pos,
-  )
-  if (!selection.empty && inside) return
-  view.dispatch(state.tr.setSelection(Selection.near(state.doc.resolve(hit.pos))))
-}
-
-function caretPoint(editor: Editor): Point {
-  const { left, bottom } = editor.view.coordsAtPos(editor.state.selection.from)
-  return { x: left, y: bottom }
-}
-
-export function EditorContextMenu({ editor, linkEditing, onComment }: EditorContextMenuProps) {
-  const [point, setPoint] = useState<Point | null>(null)
-
-  // Listens for the document's own contextmenu event, which React does not
-  // render: the browser raises it on the editor's DOM, not on anything in the tree.
+  // Nothing to offer at this place: the store, which the menu's opener
+  // reads, is told the menu is not open after all.
   useEffect(() => {
-    const dom = editor.view.dom
-    const open = (event: MouseEvent): void => {
-      if (event.shiftKey || !editor.isEditable) return
-      event.preventDefault()
-      if (isFromKeyboard(event)) {
-        setPoint(caretPoint(editor))
-        return
-      }
-      const where = { x: event.clientX, y: event.clientY }
-      // A table's handles select what they stand for themselves, and stand outside the
-      // text, so where they are is not a place to put a caret.
-      if (!(event.target instanceof Element && event.target.closest('.table-handles'))) {
-        selectUnderPointer(editor, where)
-      }
-      setPoint(where)
-    }
-    dom.addEventListener('contextmenu', open)
-    return () => {
-      dom.removeEventListener('contextmenu', open)
-    }
-  }, [editor])
+    if (empty) store.close()
+  }, [empty, store])
 
-  const close = useCallback(
-    (reason: CloseReason) => {
-      setPoint(null)
-      if (reason === 'escape') editor.view.focus()
-    },
-    [editor],
-  )
+  if (!open || empty) return null
 
-  return point === null ? null : (
-    <OpenContextMenu
-      editor={editor}
-      point={point}
-      linkEditing={linkEditing}
-      onComment={onComment}
-      onClose={close}
-    />
-  )
-}
-
-interface OpenContextMenuProps extends EditorContextMenuProps {
-  readonly point: Point
-  onClose(reason: CloseReason): void
-}
-
-/** The menu at a point, for as long as it is open. */
-function OpenContextMenu({ editor, point, linkEditing, onComment, onClose }: OpenContextMenuProps) {
-  const state = useEditorSnapshot(editor)
-  const run = useRunAction(editor)
-  const locate = useCallback(() => pointRect(point.x, point.y), [point])
-  const groups = contextMenuGroups(state, {
-    edit: () => {
-      linkEditing.open()
-    },
-    onComment,
-  })
+  const drawn: UiSection[] = sections.map((section) => ({
+    id: section.id,
+    // A menu opened for one thing is named for it; its section needs no heading as well.
+    label: overlay.only === undefined ? section.label : undefined,
+    entries: section.entries.map(uiEntry),
+  }))
 
   return (
-    <ActionMenu
-      label="Context menu"
-      groups={groups}
-      state={state}
-      locate={locate}
-      onChoose={run}
-      onClose={onClose}
+    <ContextMenu
+      open
+      label={overlay.label}
+      anchor={overlay.anchor}
+      presentation={overlay.presentation}
+      sections={drawn}
+      onOpenChange={() => {
+        // Only ever to close. An entry may have opened something else in the
+        // menu's place — the link popover — which closing the menu must not close.
+        if (store.getSnapshot() === overlay) store.close()
+      }}
+      onCloseFocus={() => {
+        // Only focus the closing took away goes back. An entry that put the
+        // caret somewhere — a new title, selected to type over — has said
+        // where focus goes, and a menu opened since has it now.
+        // Something an entry opened in the menu's place — the link popover —
+        // takes focus itself.
+        const active = document.activeElement
+        const lost = active === null || active === document.body
+        if (lost && store.getSnapshot().kind === 'none') overlay.returnFocus()
+      }}
     />
   )
 }

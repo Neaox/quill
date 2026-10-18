@@ -20,7 +20,7 @@ export const calloutStyles = tv({
     ],
     icon: 'mt-px size-3.5',
     heading: 'meta',
-    body: 'col-start-2 [&>*+*]:mt-2',
+    body: 'col-start-2 [&>:where(:not(:first-child))]:mt-2',
   },
   variants: {
     tone: {

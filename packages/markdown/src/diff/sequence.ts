@@ -103,11 +103,11 @@ function myers(left: Int32Array, right: Int32Array, offset: number): readonly Ed
     if (d > MAX_EDIT_DISTANCE) return null
     trace.push({ d, values: frontier.slice(centre - d - 1, centre + d + 2) })
     for (let k = -d; k <= d; k += 2) {
-      /* v8 ignore next -- the frontier has a slot either side of every diagonal. */
+      /* v8 ignore start -- the frontier has a slot either side of every diagonal. */
       const down = frontier[centre + k + 1] ?? 0
-      /* v8 ignore next -- the frontier has a slot either side of every diagonal. */
-      const rightward = frontier[centre + k - 1] ?? 0
-      let x = k === -d || (k !== d && rightward < down) ? down : rightward + 1
+      const across = frontier[centre + k - 1] ?? 0
+      /* v8 ignore stop */
+      let x = k === -d || (k !== d && across < down) ? down : across + 1
       let y = x - k
       while (x < n && y < m && left[x] === right[y]) {
         x += 1

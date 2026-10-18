@@ -1,4 +1,4 @@
-import { stampDraftAuthorship } from '@quill/application'
+import { openDraft, stampDraftAuthorship } from '@quill/application'
 import type {
   AcquireLockResult,
   DraftRow,
@@ -120,7 +120,13 @@ export function createEditingService(deps: AppDependencies) {
       readonly documentId: DocumentId
     }): Promise<DraftRow | null> {
       await requireDocumentAccess(authorizerFor(deps, input.request), input.documentId, 'edit')
-      return drafts.find(input.documentId)
+      // A document with no draft yet — imported, seeded, or older than
+      // drafts — starts one rather than answering "not found" (`openDraft`).
+      const opened = await openDraft(deps, input.documentId)
+      // The access check has just found the document, so only a delete landing
+      // between the two leaves nothing to open.
+      /* v8 ignore next -- that race is not reproducible from a request. */
+      return opened.kind === 'draft' ? opened.draft : null
     },
 
     async writeDraft(input: {
@@ -135,7 +141,9 @@ export function createEditingService(deps: AppDependencies) {
       await requireEdit(input.request, input.documentId, input.sessionId)
       const now = deps.clock.now()
       // Compared with what the draft holds now. The write is refused unless that is still
-      // the version this one was based on, so the record is never built on another's draft.
+      // the version this one was based on, so the record is never built on another's draft;
+      // a save that merges offline changes in is compared with the draft it merged into, so
+      // what the merge kept keeps its author and what it brought is the saver's.
       const previous = await drafts.find(input.documentId)
       return drafts.write({
         documentId: input.documentId,

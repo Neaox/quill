@@ -62,6 +62,7 @@ function mount(routes: FakeRoutes, props: Partial<Parameters<typeof ReviewAction
   return render(
     <Wrapper>
       <ReviewActions
+        workspaceSlug="engineering"
         documentId={DOCUMENT}
         title="Regional failover"
         canEdit

@@ -208,7 +208,8 @@ function describeHunk<T>(
   for (; next < added.length; next += 1) insert(hunk.baseEnd, next)
 }
 
-function countKeys(keys: Iterable<string>): Map<string, number> {
+/** How many times each key occurs. */
+function tally(keys: Iterable<string>): Map<string, number> {
   const counts = new Map<string, number>()
   for (const itemKey of keys) counts.set(itemKey, (counts.get(itemKey) ?? 0) + 1)
   return counts
@@ -221,8 +222,8 @@ function movedContent(
   matches: Int32Array,
 ): ReadonlySet<string> {
   const matchedSide = new Set(matches)
-  const left = countKeys(baseKeys.filter((_, index) => at(matches, index) === -1))
-  const arrived = countKeys(sideKeys.filter((_, index) => !matchedSide.has(index)))
+  const left = tally(baseKeys.filter((_, index) => at(matches, index) === -1))
+  const arrived = tally(sideKeys.filter((_, index) => !matchedSide.has(index)))
   return new Set(
     [...left]
       .filter(([itemKey, times]) => times === 1 && arrived.get(itemKey) === 1)

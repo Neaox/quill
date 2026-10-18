@@ -119,7 +119,7 @@ describe('the language picker', () => {
     expect(recent.read()).toEqual(['rust'])
   })
 
-  it('does not remember a language the block would not take', async () => {
+  it('remembers nothing when the block could not take the language', async () => {
     const recent = memoryRecents()
     const { field, onChoose, user } = picker('ts', recent)
     onChoose.mockReturnValue(false)

@@ -142,8 +142,31 @@ describe('validateFrontMatter', () => {
     expect(issues[0]?.path).toBe('owners[1]')
   })
 
-  it('rejects a status outside the document lifecycle', () => {
-    expect(validateFrontMatter({ id: ID, status: 'in-review' }).valid).toBe(false)
+  it('accepts each lifecycle state with what it carries', () => {
+    for (const status of ['in-review', 'verified', 'deprecated']) {
+      expect(validateFrontMatter({ id: ID, status }).valid).toBe(true)
+    }
+    expect(
+      validateFrontMatter({
+        id: ID,
+        status: 'verified',
+        verified: { by: 'ada@example.com', at: '2026-10-02' },
+      }).valid,
+    ).toBe(true)
+    expect(validateFrontMatter({ id: ID, status: 'deprecated', supersededBy: ID }).valid).toBe(true)
+  })
+
+  it('still accepts the statuses earlier releases wrote', () => {
+    for (const status of ['draft', 'published', 'archived']) {
+      expect(validateFrontMatter({ id: ID, status }).valid).toBe(true)
+    }
+  })
+
+  it('warns about a status in neither vocabulary, and a verification without a date', () => {
+    expect(validateFrontMatter({ id: ID, status: 'approved' }).valid).toBe(false)
+    expect(validateFrontMatter({ id: ID, verified: { at: 'last week' } }).issues[0]?.path).toBe(
+      'verified.at',
+    )
   })
 
   it('rejects a layout width that is not one of the three', () => {

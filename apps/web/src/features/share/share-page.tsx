@@ -26,6 +26,7 @@ export function SharePage() {
       outline={shared.rendered.outline}
       target={shared.document}
       navigation={shared.children}
+      facts={shared.facts}
     />
   )
 }

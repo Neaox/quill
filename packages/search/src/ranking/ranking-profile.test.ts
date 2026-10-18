@@ -15,6 +15,10 @@ describe('DEFAULT_RANKING_PROFILE', () => {
     expect(DEFAULT_RANKING_PROFILE.exactPhraseBoost).toBe(2)
   })
 
+  it('pins the default deprecation penalty: lower, never hidden', () => {
+    expect(DEFAULT_RANKING_PROFILE.deprecatedPenalty).toBe(0.5)
+  })
+
   it('pins the default workspace affinity', () => {
     expect(DEFAULT_RANKING_PROFILE.workspaceAffinity).toEqual({
       currentWorkspaceBoost: 2,

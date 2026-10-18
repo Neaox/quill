@@ -5,7 +5,8 @@ import type { Node as PMNode } from '@tiptap/pm/model'
 import { NodeSelection, Selection, TextSelection } from '@tiptap/pm/state'
 import type { Command, EditorState, Transaction } from '@tiptap/pm/state'
 
-import { linkAt } from '../format/links.ts'
+import { linkInSelection } from './link-commands.ts'
+import type { LinkRange } from './link-commands.ts'
 import { linkDefaultDisplayOf } from './link-default-display.ts'
 import { embedHintFor } from './link-embeds.ts'
 import { markType, nodeType } from '../schema/node-type.ts'
@@ -28,6 +29,17 @@ import { directiveAttributes, directiveName } from '../schema/directive-attribut
  * it, so the file an edit produces is the file the renderer reads.
  */
 
+/** A link written as a directive: an inline `:link`, or a `::link` card. */
+export interface DirectiveLinkTarget {
+  readonly form: 'text' | 'leaf'
+  readonly from: number
+  readonly to: number
+  readonly href: string
+  readonly display: LinkDisplay
+  readonly node: PMNode
+  readonly link: Link
+}
+
 export type LinkTarget =
   | {
       readonly form: 'mark'
@@ -36,15 +48,7 @@ export type LinkTarget =
       readonly href: string
       readonly display: 'url'
     }
-  | {
-      readonly form: 'text' | 'leaf'
-      readonly from: number
-      readonly to: number
-      readonly href: string
-      readonly display: LinkDisplay
-      readonly node: PMNode
-      readonly link: Link
-    }
+  | DirectiveLinkTarget
 
 const LINK = 'link'
 
@@ -59,7 +63,7 @@ function modelOf(node: PMNode): Link {
   })
 }
 
-function directiveTarget(node: PMNode, from: number, fallback: LinkDisplay): LinkTarget {
+function directiveTarget(node: PMNode, from: number, fallback: LinkDisplay): DirectiveLinkTarget {
   const link = modelOf(node)
   return {
     form: link.form === 'leaf' ? 'leaf' : 'text',
@@ -75,6 +79,17 @@ function directiveTarget(node: PMNode, from: number, fallback: LinkDisplay): Lin
 const isLinkDirective = (node: PMNode): boolean =>
   (node.type.name === 'leafDirective' || node.type.name === 'textDirective') &&
   directiveName(node) === LINK
+
+/**
+ * The link written as a directive whose node starts at `pos`, or null: what the
+ * link popover edits when it is opened on an inline `:link` or a card.
+ */
+export function directiveLinkAt(state: EditorState, pos: number): DirectiveLinkTarget | null {
+  const node = state.doc.nodeAt(pos)
+  return node !== null && isLinkDirective(node)
+    ? directiveTarget(node, pos, linkDefaultDisplayOf(state))
+    : null
+}
 
 /**
  * The link the selection is in or on, in whichever form it is written, or null.
@@ -97,10 +112,22 @@ export function linkTargetAt(state: EditorState): LinkTarget | null {
       return directiveTarget(node, $from.before(depth), linkDefaultDisplayOf(state))
     }
   }
-  const run = linkAt(state)
-  return run === null
+  const run = markLinkAt(state)
+  return run === undefined
     ? null
     : { form: 'mark', from: run.from, to: run.to, href: run.href, display: 'url' }
+}
+
+/**
+ * The ordinary link the selection is in or covers. A caret at either end of a
+ * link is outside it, because that is where typing would put new text: a link
+ * does not grow when you type after it.
+ */
+function markLinkAt(state: EditorState): LinkRange | undefined {
+  const run = linkInSelection(state)
+  if (run === undefined || !state.selection.empty) return run
+  const { from } = state.selection
+  return run.from < from && from < run.to ? run : undefined
 }
 
 /** What the target is now, as the model a directive is written from. */
@@ -182,7 +209,7 @@ function placeCard(tr: Transaction, target: LinkTarget, card: PMNode): number | 
 /**
  * A caret inside the link that was just drawn, as far along its words as the old
  * one was, so the toolbar still has the link to point at and typing carries on
- * where it was. A caret at the very edge of a link is outside it (`linkAt`), so
+ * where it was. A caret at the very edge of a link is outside it (`markLinkAt`), so
  * an ordinary link keeps the caret one character in.
  */
 function caretInside(tr: Transaction, from: number, node: PMNode, offset: number): Transaction {

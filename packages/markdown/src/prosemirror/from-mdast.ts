@@ -1,9 +1,18 @@
 import { toString } from 'mdast-util-to-string'
 import type { Mark, Node as PMNode } from 'prosemirror-model'
-import type { Code, List, ListItem, PhrasingContent, Root, RootContent, TableRow } from 'mdast'
+import type {
+  Blockquote,
+  Code,
+  List,
+  ListItem,
+  PhrasingContent,
+  Root,
+  RootContent,
+  TableRow,
+} from 'mdast'
 
 import type { DetailsNode } from '../details/details.ts'
-import { detailsModel, isDetails, isDetailsNode } from '../details/details.ts'
+import { DETAILS, detailsModel, isDetails } from '../details/details.ts'
 import { splitAlert } from '../pipeline/github-alert.ts'
 import type { SourceForm } from '../pipeline/source-form.ts'
 import type { Warning } from '../warnings.ts'
@@ -209,6 +218,27 @@ export function mdastToProseMirror(
     )
   }
 
+  /**
+   * A quote, or a callout when it opens `[!kind]` (`github-alert.ts`): titled by
+   * the rest of that line when it has one, and written back as the quote it was,
+   * its marker as typed carried on the node as `alert`. A callout with nothing
+   * but its marker holds the synthetic paragraph.
+   */
+  function blockquote(current: Blockquote): PMNode {
+    const alert = splitAlert(current)
+    if (alert === undefined) return node('blockquote', formOf(current), blocks(current.children))
+    const title =
+      alert.title.length === 0
+        ? []
+        : [node('paragraph', { directiveLabel: true }, inlines(alert.title, []))]
+    const content = [...title, ...blocks(alert.body)]
+    return node(
+      'containerDirective',
+      { name: 'callout', attributes: { type: alert.kind }, alert: alert.form, ...formOf(current) },
+      content.length === 0 ? [node('paragraph', { synthetic: true })] : content,
+    )
+  }
+
   function block(current: RootContent): PMNode[] {
     switch (current.type) {
       case 'yaml':
@@ -229,30 +259,8 @@ export function mdastToProseMirror(
             inlines(current.children, []),
           ),
         ]
-      case 'blockquote': {
-        const alert = splitAlert(current)
-        if (alert === undefined)
-          return [node('blockquote', formOf(current), blocks(current.children))]
-        // A quote that opens `[!kind]` is a callout, titled by the rest of that line when it
-        // has one; it is written back as the quote it was.
-        const title =
-          alert.title.length === 0
-            ? []
-            : [node('paragraph', { directiveLabel: true }, inlines(alert.title, []))]
-        const content = [...title, ...blocks(alert.body)]
-        return [
-          node(
-            'containerDirective',
-            {
-              name: 'callout',
-              attributes: { type: alert.kind },
-              alert: alert.form,
-              ...formOf(current),
-            },
-            content.length === 0 ? [node('paragraph', { synthetic: true })] : content,
-          ),
-        ]
-      }
+      case 'blockquote':
+        return [blockquote(current)]
       case 'list': {
         const kind = listKind(current)
         const attrs: Attributes = { spread: current.spread, ...formOf(current) }
@@ -295,7 +303,7 @@ export function mdastToProseMirror(
       case 'details':
         return [details(current)]
       case 'containerDirective': {
-        if (isDetailsNode(current)) return [details(current)]
+        if (current.name === DETAILS) return [details(current)]
         // `:::callout` with nothing in it is valid Markdown — it is what an
         // emptied callout is written as — but the node must hold a block, so
         // it holds the synthetic paragraph, which is written back as nothing.

@@ -8,7 +8,9 @@ export { createFakeClock, systemClock } from './clock.ts'
 export type {
   AcquireResult,
   DocumentAst,
+  DraftAuthor,
   DraftClient,
+  DraftSaveNote,
   DraftSaveResult,
   HeartbeatResult,
   LoadedDraft,
@@ -35,3 +37,24 @@ export { browserConnectivity, createFakeConnectivity } from './connectivity.ts'
 export type { DraftChannel, DraftSavedMessage } from './draft-channel.ts'
 export { createBroadcastDraftChannel, createMemoryDraftChannels } from './draft-channel.ts'
 export { useUnsavedChangesGuard } from './use-unsaved-changes-guard.ts'
+export type { ConnectionStatus, UseConnectionStatusOptions } from './use-connection-status.ts'
+export { isDisconnected, LOCK_EXPIRY_MS, useConnectionStatus } from './use-connection-status.ts'
+export type { ReconcileNeed, ReconcilePhase, ReconcileStatus } from './reconcile-machine.ts'
+export { reconcileNeed, reconcileReducer } from './reconcile-machine.ts'
+export type {
+  DraftReconciliation,
+  MergeRunner,
+  UseDraftReconciliationOptions,
+} from './use-draft-reconciliation.ts'
+export {
+  mergeOnThisThread,
+  RECONCILE_RETRY_MS,
+  useDraftReconciliation,
+} from './use-draft-reconciliation.ts'
+export type { MergeWorkerLike } from './merge-runner.ts'
+export {
+  pageMergeRunner,
+  sizedMergeRunner,
+  WORKER_BLOCKS,
+  workerMergeRunner,
+} from './merge-runner.ts'

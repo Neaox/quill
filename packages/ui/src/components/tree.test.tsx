@@ -5,7 +5,7 @@ import { describe, expect, it, vi } from 'vitest'
 
 import { expectNoAccessibilityViolations } from '../../testing/axe.ts'
 import { ThemeVariantsProvider } from '../theme/theme-variants.tsx'
-import { Tree, type TreeNode, type TreeSection } from './tree.tsx'
+import { Tree, type TreeLoadRequest, type TreeNode, type TreeSection } from './tree.tsx'
 
 const SECTIONS: readonly TreeSection[] = [
   {
@@ -96,13 +96,21 @@ describe('Tree', () => {
   })
 
   it('indents a nested branch and leaves the top level flush', () => {
-    const { container } = render(<Tree label="Documents" sections={SECTIONS} />)
+    const { container } = render(
+      <Tree label="Documents" sections={SECTIONS} currentId="authentication" />,
+    )
 
     expect(container.querySelectorAll('.tree-branch')).toHaveLength(1)
   })
 
   it('reaches every document from the keyboard, in reading order', async () => {
-    render(<Tree label="Documents" sections={SECTIONS} />)
+    render(<Tree label="Documents" sections={SECTIONS} currentId="authentication" />)
+
+    await userEvent.tab()
+    expect(screen.getByRole('button', { name: /engineering/ })).toHaveFocus()
+
+    await userEvent.tab()
+    expect(screen.getByRole('button', { name: 'Collapse architecture' })).toHaveFocus()
 
     await userEvent.tab()
     expect(screen.getByRole('link', { name: 'architecture' })).toHaveFocus()
@@ -359,5 +367,503 @@ describe('Tree', () => {
       )
       await expectNoAccessibilityViolations(container)
     })
+  })
+})
+
+/** A collection shaped like the seed's "Stress log": thousands of siblings, one deep chain. */
+function stressSection(siblings: number): TreeSection {
+  let deep: TreeNode = { id: 'deep-5', label: 'Deep 5', link: { to: '#deep-5' } }
+  for (let level = 4; level >= 1; level -= 1) {
+    deep = {
+      id: `deep-${level}`,
+      label: `Deep ${level}`,
+      link: { to: `#deep-${level}` },
+      children: [deep],
+    }
+  }
+  return {
+    id: 'stress',
+    label: 'Stress log',
+    nodes: [
+      deep,
+      ...Array.from({ length: siblings }, (_, index) => ({
+        id: `entry-${index + 1}`,
+        label: `Entry ${index + 1}`,
+        link: { to: `#entry-${index + 1}` },
+      })),
+    ],
+  }
+}
+
+describe('a tree that folds and pages', () => {
+  it('starts closed, with a named disclosure beside each node that has children', async () => {
+    const { container } = render(<Tree label="Documents" sections={SECTIONS} />)
+
+    const disclosure = screen.getByRole('button', { name: 'Expand architecture' })
+    expect(disclosure).toHaveAttribute('aria-expanded', 'false')
+    // Closed children are not drawn at all, not merely hidden.
+    expect(screen.queryByRole('link', { name: 'system-overview' })).not.toBeInTheDocument()
+    // A leaf has no disclosure.
+    expect(screen.queryByRole('button', { name: /runbooks$/ })).not.toBeInTheDocument()
+    await expectNoAccessibilityViolations(container)
+
+    await userEvent.click(disclosure)
+    expect(screen.getByRole('button', { name: 'Collapse architecture' })).toHaveAttribute(
+      'aria-expanded',
+      'true',
+    )
+    expect(screen.getByRole('link', { name: 'system-overview' })).toBeInTheDocument()
+    await expectNoAccessibilityViolations(container)
+  })
+
+  it('opens with ArrowRight and closes with ArrowLeft from the disclosure', async () => {
+    render(<Tree label="Documents" sections={SECTIONS} />)
+
+    screen.getByRole('button', { name: 'Expand architecture' }).focus()
+    await userEvent.keyboard('{ArrowRight}')
+    expect(screen.getByRole('link', { name: 'authentication' })).toBeInTheDocument()
+
+    await userEvent.keyboard('{ArrowLeft}')
+    expect(screen.queryByRole('link', { name: 'authentication' })).not.toBeInTheDocument()
+  })
+
+  it('opens the ancestors of the document being read, and nothing else', () => {
+    render(<Tree label="Documents" sections={[stressSection(3)]} currentId="deep-5" />)
+
+    expect(screen.getByRole('link', { name: 'Deep 5' })).toHaveAttribute('aria-current', 'page')
+    for (const level of [1, 2, 3, 4]) {
+      expect(screen.getByRole('button', { name: `Collapse Deep ${level}` })).toBeInTheDocument()
+    }
+  })
+
+  it('reopens what was folded by hand when a document inside it is opened', async () => {
+    const { rerender } = render(
+      <Tree label="Documents" sections={SECTIONS} currentId="authentication" />,
+    )
+    await userEvent.click(screen.getByRole('button', { name: 'Collapse architecture' }))
+    expect(screen.queryByRole('link', { name: 'authentication' })).not.toBeInTheDocument()
+
+    rerender(<Tree label="Documents" sections={SECTIONS} currentId="system-overview" />)
+    expect(screen.getByRole('link', { name: 'system-overview' })).toHaveAttribute(
+      'aria-current',
+      'page',
+    )
+  })
+
+  it('folds a whole section from its label', async () => {
+    render(<Tree label="Documents" sections={SECTIONS} />)
+
+    const toggle = screen.getByRole('button', { name: 'product' })
+    expect(toggle).toHaveAttribute('aria-expanded', 'true')
+    await userEvent.click(toggle)
+
+    expect(toggle).toHaveAttribute('aria-expanded', 'false')
+    expect(screen.queryByRole('link', { name: 'specifications' })).not.toBeInTheDocument()
+  })
+
+  it('folds a section from the keyboard, ArrowLeft to close and ArrowRight to open', async () => {
+    render(<Tree label="Documents" sections={SECTIONS} />)
+
+    const toggle = screen.getByRole('button', { name: 'product' })
+    toggle.focus()
+    await userEvent.keyboard('{ArrowLeft}')
+    expect(toggle).toHaveAttribute('aria-expanded', 'false')
+    await userEvent.keyboard('{ArrowRight}')
+    expect(toggle).toHaveAttribute('aria-expanded', 'true')
+  })
+
+  it('remembers what was opened by hand for the session, under its key', async () => {
+    const first = render(<Tree label="Documents" sections={SECTIONS} persistenceKey="ws-1" />)
+    await userEvent.click(screen.getByRole('button', { name: 'Expand architecture' }))
+    first.unmount()
+
+    render(<Tree label="Documents" sections={SECTIONS} persistenceKey="ws-1" />)
+    expect(screen.getByRole('link', { name: 'system-overview' })).toBeInTheDocument()
+    sessionStorage.clear()
+  })
+
+  it('draws one page of a branch of thousands, and the rest a press at a time', async () => {
+    const { container } = render(
+      <Tree label="Documents" sections={[stressSection(20_000)]} pageSize={50} />,
+    )
+
+    expect(screen.getAllByRole('link')).toHaveLength(50)
+    const more = screen.getByRole('button', {
+      name: /^Show 50 more,\s*19,951 not shown, in Stress log$/,
+    })
+    await userEvent.click(more)
+    expect(screen.getAllByRole('link')).toHaveLength(100)
+    // The control stays where it was, with focus, for the next page.
+    expect(screen.getByRole('button', { name: /^Show 50 more/ })).toHaveFocus()
+    await expectNoAccessibilityViolations(container)
+  })
+
+  it('draws the page that holds the open document, not everything before it', async () => {
+    render(
+      <Tree
+        label="Documents"
+        sections={[stressSection(20_000)]}
+        currentId="entry-12345"
+        pageSize={50}
+      />,
+    )
+
+    expect(screen.getByRole('link', { name: 'Entry 12345' })).toHaveAttribute(
+      'aria-current',
+      'page',
+    )
+    expect(screen.getAllByRole('link')).toHaveLength(50)
+
+    await userEvent.click(screen.getByRole('button', { name: /^Show 50 earlier/ }))
+    expect(screen.getAllByRole('link')).toHaveLength(100)
+    // Focus lands on the first row revealed rather than falling to the page.
+    expect(screen.getByRole('link', { name: 'Entry 12250' })).toHaveFocus()
+  })
+
+  it('scrolls the open document to the middle of its region when it is out of sight', async () => {
+    const scrolled = vi.fn<(this: Element, options?: ScrollToOptions) => void>()
+    const measure = vi
+      .spyOn(Element.prototype, 'getBoundingClientRect')
+      .mockImplementation(function (this: Element) {
+        return this instanceof HTMLLIElement
+          ? new DOMRect(0, 5_000, 200, 28)
+          : new DOMRect(0, 100, 200, 600)
+      })
+    Object.assign(Element.prototype, { scrollTo: scrolled })
+    try {
+      render(
+        <div data-testid="region">
+          <Tree label="Documents" sections={[stressSection(3)]} currentId="deep-5" />
+        </div>,
+      )
+      // A region of its own, as the sidebar is; set before the next frame, when the tree looks.
+      screen.getByTestId('region').style.overflowY = 'auto'
+      // Far below the window: the region alone is scrolled, in the next frame, so the page
+      // around it stays where it is.
+      await waitFor(() => {
+        expect(scrolled.mock.contexts).toContain(screen.getByTestId('region'))
+      })
+      expect(
+        scrolled.mock.contexts.every((element) => element === screen.getByTestId('region')),
+      ).toBe(true)
+    } finally {
+      measure.mockRestore()
+      Reflect.deleteProperty(Element.prototype, 'scrollTo')
+    }
+  })
+
+  it('leaves the open document where it is when it is already in view', async () => {
+    const scrolled = vi.fn<(this: Element, options?: ScrollToOptions) => void>()
+    const measure = vi
+      .spyOn(Element.prototype, 'getBoundingClientRect')
+      .mockImplementation(function (this: Element) {
+        return this instanceof HTMLLIElement
+          ? new DOMRect(0, 150, 200, 28)
+          : new DOMRect(0, 100, 200, 600)
+      })
+    Object.assign(Element.prototype, { scrollTo: scrolled })
+    try {
+      render(
+        <div data-testid="region">
+          <Tree label="Documents" sections={[stressSection(3)]} currentId="deep-5" />
+        </div>,
+      )
+      screen.getByTestId('region').style.overflowY = 'auto'
+      // A row just clicked does not jump.
+      await new Promise((resolve) => requestAnimationFrame(resolve))
+      await new Promise((resolve) => requestAnimationFrame(resolve))
+      expect(scrolled).not.toHaveBeenCalled()
+    } finally {
+      measure.mockRestore()
+      Reflect.deleteProperty(Element.prototype, 'scrollTo')
+    }
+  })
+
+  it('leaves the page where it is when the tree is part of the page rather than a region of its own', async () => {
+    const scrolled = vi.fn<(this: Element, options?: ScrollToOptions) => void>()
+    const measure = vi
+      .spyOn(Element.prototype, 'getBoundingClientRect')
+      .mockReturnValue(new DOMRect(0, 5_000, 200, 28))
+    Object.assign(Element.prototype, { scrollTo: scrolled })
+    try {
+      // A tree on a long page, say: bringing its open row into view would scroll the page
+      // away from wherever the reader is, and again whenever the layout settles.
+      render(<Tree label="Documents" sections={[stressSection(3)]} currentId="deep-5" />)
+      await new Promise((resolve) => requestAnimationFrame(resolve))
+      await new Promise((resolve) => requestAnimationFrame(resolve))
+      expect(scrolled).not.toHaveBeenCalled()
+    } finally {
+      measure.mockRestore()
+      Reflect.deleteProperty(Element.prototype, 'scrollTo')
+    }
+  })
+
+  it('pages back to a newly opened document a widened window no longer holds', async () => {
+    const { rerender } = render(
+      <Tree
+        label="Documents"
+        sections={[stressSection(2000)]}
+        currentId="entry-10"
+        pageSize={50}
+      />,
+    )
+    await userEvent.click(screen.getByRole('button', { name: /^Show 50 more/ }))
+    expect(screen.getAllByRole('link')).toHaveLength(100)
+
+    rerender(
+      <Tree
+        label="Documents"
+        sections={[stressSection(2000)]}
+        currentId="entry-1500"
+        pageSize={50}
+      />,
+    )
+    expect(screen.getByRole('link', { name: 'Entry 1500' })).toHaveAttribute('aria-current', 'page')
+    expect(screen.getAllByRole('link')).toHaveLength(50)
+  })
+
+  it('brings the open document into view once where layout cannot be watched', async () => {
+    vi.stubGlobal('ResizeObserver', undefined)
+    try {
+      const { unmount } = render(
+        <Tree label="Documents" sections={[stressSection(3)]} currentId="deep-5" />,
+      )
+      await new Promise((resolve) => requestAnimationFrame(resolve))
+      expect(screen.getByRole('link', { name: 'Deep 5' })).toHaveAttribute('aria-current', 'page')
+      unmount()
+    } finally {
+      vi.unstubAllGlobals()
+    }
+  })
+
+  it('brings a picker’s current destination into view when nothing is chosen yet', () => {
+    const sections: readonly TreeSection[] = [
+      {
+        id: 's',
+        label: 'Guides',
+        nodes: [
+          {
+            id: 'top',
+            label: 'Top',
+            children: [{ id: 'here', label: 'Here', current: true }],
+          },
+        ],
+      },
+    ]
+    render(<Tree label="Choose a destination" selectable sections={sections} />)
+
+    expect(screen.getByRole('button', { name: /^Here/ })).toBeInTheDocument()
+  })
+
+  it('opens the way to the chosen and the current destination in a picker', () => {
+    render(
+      <Tree
+        label="Choose a destination"
+        selectable
+        selectedId="deep-3"
+        sections={[stressSection(5)]}
+      />,
+    )
+
+    expect(screen.getByRole('button', { name: 'Deep 3' })).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.queryByRole('button', { name: 'Deep 5' })).not.toBeInTheDocument()
+  })
+})
+
+/** A section of 120 documents of which 50 were sent, the first with children not sent. */
+const lazy = (children?: readonly TreeNode[]): readonly TreeSection[] => [
+  {
+    id: 'guides',
+    label: 'Guides',
+    nodeCount: 120,
+    nodes: Array.from({ length: 50 }, (_, index) => ({
+      id: `top-${index}`,
+      label: `Top ${index}`,
+      link: { to: `#top-${index}` },
+      ...(index === 0 ? { childCount: 3, children: children ?? [] } : {}),
+    })),
+  },
+]
+
+/** A chain four levels deep with twenty siblings at each level. */
+function siblingChain(depth: number): TreeNode {
+  return {
+    id: `level-${depth}`,
+    label: `Level ${depth}`,
+    link: { to: '#' },
+    children: [
+      ...Array.from({ length: 20 }, (_, index) => ({
+        id: `level-${depth}-sibling-${index}`,
+        label: `Sibling ${depth}.${index}`,
+        link: { to: '#' },
+      })),
+      ...(depth < 4 ? [siblingChain(depth + 1)] : []),
+    ],
+  }
+}
+
+describe('a tree given only part of its lists', () => {
+  it('asks for the children of a node it opens, and says it is loading them', async () => {
+    const onLoad = vi.fn<(request: TreeLoadRequest) => void>()
+    const { rerender, container } = render(
+      <Tree label="Documents" sections={lazy()} onLoad={onLoad} />,
+    )
+
+    await userEvent.click(screen.getByRole('button', { name: 'Expand Top 0' }))
+    expect(onLoad).toHaveBeenCalledWith({
+      owner: { kind: 'node', id: 'top-0' },
+      offset: 0,
+      limit: 3,
+    })
+    expect(screen.getByRole('status')).toHaveTextContent('Loading documents in Top 0')
+    await expectNoAccessibilityViolations(container)
+
+    rerender(
+      <Tree
+        label="Documents"
+        sections={lazy([{ id: 'child', label: 'Child', link: { to: '#child' } }])}
+        onLoad={onLoad}
+      />,
+    )
+    expect(screen.getByRole('link', { name: 'Child' })).toBeInTheDocument()
+  })
+
+  it('asks for nothing for a list that is empty', () => {
+    const onLoad = vi.fn<(request: TreeLoadRequest) => void>()
+    render(
+      <Tree
+        label="Documents"
+        sections={[{ id: 'empty', label: 'Empty', nodeCount: 0, nodes: [] }]}
+        onLoad={onLoad}
+      />,
+    )
+
+    expect(onLoad).not.toHaveBeenCalled()
+    expect(screen.queryByRole('status')).not.toBeInTheDocument()
+  })
+
+  it('asks for the part of a page it holds only the end of', () => {
+    const onLoad = vi.fn<(request: TreeLoadRequest) => void>()
+    render(
+      <Tree
+        label="Documents"
+        sections={[
+          {
+            id: 'guides',
+            label: 'Guides',
+            nodeCount: 120,
+            nodesOffset: 50,
+            nodes: Array.from({ length: 50 }, (_, index) => ({
+              id: `late-${index}`,
+              label: `Late ${index}`,
+              link: { to: '#' },
+            })),
+          },
+        ]}
+        onLoad={onLoad}
+      />,
+    )
+
+    expect(onLoad).toHaveBeenCalledWith({
+      owner: { kind: 'section', id: 'guides' },
+      offset: 0,
+      limit: 50,
+    })
+  })
+
+  it('counts what it was not given, and asks for the next page when it is wanted', async () => {
+    const onLoad = vi.fn<(request: TreeLoadRequest) => void>()
+    render(<Tree label="Documents" sections={lazy()} onLoad={onLoad} />)
+
+    await userEvent.click(screen.getByRole('button', { name: /^Show 50 more,\s*70 not shown/ }))
+    expect(onLoad).toHaveBeenCalledWith({
+      owner: { kind: 'section', id: 'guides' },
+      offset: 50,
+      limit: 50,
+    })
+  })
+
+  it('shows the way down and a few rows around it at each ancestor level', () => {
+    render(
+      <Tree
+        label="Documents"
+        sections={[{ id: 's', label: 's', nodes: [siblingChain(1)] }]}
+        currentId="level-4-sibling-10"
+      />,
+    )
+
+    // Levels 1–3 show the way down and three rows either side; level 4, the
+    // open document's own, shows its page.
+    const links = screen.getAllByRole('link').map((link) => link.textContent)
+    expect(links.filter((name) => name?.startsWith('Sibling 2.'))).toHaveLength(3)
+    expect(links.filter((name) => name?.startsWith('Sibling 4.'))).toHaveLength(20)
+    // One press shows all of them, so no second count repeats the first.
+    expect(screen.getAllByRole('button', { name: /^Show 17 earlier, in Level \d$/ })).toHaveLength(
+      3,
+    )
+  })
+
+  it('says that a list could not be loaded, and asks again when the reader says to', async () => {
+    const onLoad = vi.fn<(request: TreeLoadRequest) => void>()
+    const { container } = render(
+      <Tree
+        label="Documents"
+        sections={lazy()}
+        onLoad={onLoad}
+        loadFailed={(owner) => owner.kind === 'node' && owner.id === 'top-0'}
+      />,
+    )
+
+    await userEvent.click(screen.getByRole('button', { name: 'Expand Top 0' }))
+    expect(screen.queryByText('Loading…')).not.toBeInTheDocument()
+    expect(screen.getByRole('status')).toHaveTextContent('Couldn’t load the documents in Top 0')
+    onLoad.mockClear()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Try again, in Top 0' }))
+    expect(onLoad).toHaveBeenCalledWith({
+      owner: { kind: 'node', id: 'top-0' },
+      offset: 0,
+      limit: 3,
+    })
+    await expectNoAccessibilityViolations(container)
+  })
+})
+
+describe('a tree drawn a window at a time', () => {
+  it('says where each drawn document is among all of its siblings, which the list alone cannot', () => {
+    render(
+      <Tree
+        label="Documents"
+        sections={[stressSection(20_000)]}
+        currentId="entry-12345"
+        pageSize={50}
+      />,
+    )
+
+    const current = screen.getByRole('link', { name: 'Entry 12345' }).closest('li')
+    expect(current).toHaveAttribute('aria-posinset', '12346')
+    expect(current).toHaveAttribute('aria-setsize', '20001')
+  })
+
+  it('leaves a list that is drawn whole to say its own count', () => {
+    render(<Tree label="Documents" sections={SECTIONS} />)
+
+    for (const item of screen.getAllByRole('listitem')) {
+      expect(item).not.toHaveAttribute('aria-posinset')
+      expect(item).not.toHaveAttribute('aria-setsize')
+    }
+  })
+
+  it('keeps the collection being scrolled through pinned at the top of the sidebar', () => {
+    const { container, rerender } = render(<Tree label="Documents" sections={SECTIONS} />)
+    for (const header of container.querySelectorAll('[data-section-header]')) {
+      expect(header).toHaveAttribute('data-pinned')
+    }
+
+    // A picker in a dialog scrolls on another ground, and its sections are places, not headings.
+    rerender(<Tree label="Documents" sections={SECTIONS} selectable onSelect={() => undefined} />)
+    for (const header of container.querySelectorAll('[data-section-header]')) {
+      expect(header).not.toHaveAttribute('data-pinned')
+    }
   })
 })

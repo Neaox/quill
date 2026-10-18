@@ -28,6 +28,26 @@ import { configDefaults, defineConfig } from 'vitest/config'
 const BUDGET = { testTimeout: 30_000, hookTimeout: 60_000 } as const
 
 /**
+ * Whether this run instruments the code for coverage, told to every test as
+ * `QUILL_COVERAGE=1`.
+ *
+ * Instrumented code runs several times slower and unevenly, so a performance
+ * budget measured under it says nothing about the code: a budget test skips
+ * itself here (`it.skipIf`) and still runs in a plain `pnpm test`, where its
+ * timing means something. Coverage is only ever switched on from the command
+ * line (`pnpm test:coverage`), which is what this reads.
+ */
+const COVERAGE = process.argv.some(
+  (argument) =>
+    argument === '--coverage' ||
+    argument === '--coverage.enabled' ||
+    argument === '--coverage.enabled=true',
+)
+
+/** What every project shares; a project does not inherit the root's test options. */
+const SHARED = { ...BUDGET, env: { QUILL_COVERAGE: COVERAGE ? '1' : '' } } as const
+
+/**
  * Half the cores, and never fewer than two.
  *
  * Vitest's default is one worker per core less one, and every worker is a
@@ -49,8 +69,7 @@ const MAX_WORKERS = Math.max(2, Math.floor(availableParallelism() / 2))
  * they are measured honestly.
  */
 const BUDGET_FILES = ['**/*-budget.test.*', '**/*-performance.test.*']
-const INSTRUMENTED = process.argv.includes('--coverage')
-const exclude = INSTRUMENTED ? [...configDefaults.exclude, ...BUDGET_FILES] : configDefaults.exclude
+const exclude = COVERAGE ? [...configDefaults.exclude, ...BUDGET_FILES] : configDefaults.exclude
 
 export default defineConfig({
   test: {
@@ -63,7 +82,7 @@ export default defineConfig({
           environment: 'node',
           include: ['packages/*/src/**/*.test.ts'],
           exclude: [...exclude, 'packages/ui/**', 'packages/editor/**'],
-          ...BUDGET,
+          ...SHARED,
         },
       },
       {
@@ -74,7 +93,7 @@ export default defineConfig({
           setupFiles: ['./packages/editor/vitest.setup.ts'],
           include: ['packages/editor/src/**/*.test.{ts,tsx}'],
           exclude,
-          ...BUDGET,
+          ...SHARED,
         },
       },
       {
@@ -85,7 +104,7 @@ export default defineConfig({
           setupFiles: ['./packages/ui/vitest.setup.ts'],
           include: ['packages/ui/src/**/*.test.{ts,tsx}'],
           exclude,
-          ...BUDGET,
+          ...SHARED,
         },
       },
       {
@@ -94,7 +113,7 @@ export default defineConfig({
           environment: 'node',
           include: ['apps/server/src/**/*.test.ts'],
           exclude,
-          ...BUDGET,
+          ...SHARED,
         },
       },
       {
@@ -105,7 +124,7 @@ export default defineConfig({
           setupFiles: ['./apps/web/vitest.setup.ts'],
           include: ['apps/web/src/**/*.test.{ts,tsx}'],
           exclude,
-          ...BUDGET,
+          ...SHARED,
         },
       },
       {
@@ -114,7 +133,7 @@ export default defineConfig({
           environment: 'node',
           include: ['tools/**/*.test.ts'],
           exclude,
-          ...BUDGET,
+          ...SHARED,
         },
       },
       {
@@ -123,7 +142,7 @@ export default defineConfig({
           environment: 'node',
           include: ['scripts/**/*.test.ts'],
           exclude,
-          ...BUDGET,
+          ...SHARED,
         },
       },
     ],

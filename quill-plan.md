@@ -235,7 +235,7 @@ Restore is a new commit with old content. Move and rename are commits at a new p
 | Typing, autosave | Draft written to Postgres. Content store untouched. |
 | Publish | One commit, authored by the user. |
 | History | Read from the revisions index, keyed by document ID. |
-| Compare | Two blobs by hash, diffed and rendered. |
+| Compare | Two blobs by hash, read and compared as documents rather than as text: blocks matched by content and position (added, removed, changed, moved), then words, table rows and cells, list items and code lines within them, drawn by the reader's renderer with every change marked, and the Markdown line by line as an option. The same block matching and inline diff are the three-way merge's (ADR-021 amendment, `packages/markdown/src/diff/`); nothing about Git reaches the comparison. |
 | Restore | New commit with the old content. |
 | Move or rename | Commit at the new path; history follows the ID. |
 | Delete | Commit removing the file; recoverable from history. |
@@ -522,6 +522,9 @@ Numbers to design against, revisited after the first release:
 | Document open, cached | under 200 ms to content |
 | Document open, cold | under 1 s to content |
 | Editor keystroke latency | under 16 ms |
+| Paste of a 4,100-line Markdown document, on a production build, measured with Chrome at 4× CPU throttling and unthrottled | **under 100 ms** the paste is acknowledged where it will land: a "Pasting…" card with progress and a polite live-region status; **under 300 ms** the first screenful is on screen; **under 1 s** the whole paste has landed. Throughout: no main-thread task over 50 ms; typing, scrolling and selection never wait; Escape (or Cancel) takes the paste back; one undo step removes it although it lands in batches; autosave and the offline merge see one coherent change. Long pastes show progress, settle with "Pasted 1,200 blocks", and a paste that cannot be read says so and offers Try again |
+| After any paste | no main-thread task longer than 50 ms: code blocks open, are coloured and are saved in idle time, one task at a time |
+| Paste of 10,000 plain lines, or a large Google Docs or Word document | the tab never freezes; a large Markdown paste says so where it will land in the paste's own task |
 | Publish round trip | under 1 s for a 30-page document |
 | Search query | under 300 ms at 50,000 documents |
 | Workspace tree | 10,000 documents without virtualisation problems |
@@ -535,7 +538,7 @@ Performance is considered in every change, not added afterwards. Practices that 
 - **Streaming for size.** Exports, imports, and attachment transfers stream; nothing large is buffered in memory.
 - **Render discipline.** Virtualise long lists and trees, split routes, load the editor and heavy renderers on demand, and avoid re-render cascades. Memoise only where a measurement shows it matters.
 - **Caching by content hash (ADR-031).** The rendered body is a pure function of the Markdown and is cached indefinitely by content hash; a publish produces a new key rather than invalidating an old one. Everything that changes without a revision (presence, comments, permissions, staleness, backlinks, revision list) travels in a separate live envelope fetched per request, and external content (branch source references, embed metadata) is cached with a lifetime and a visible freshness stamp. The body keeps itself cacheable by emitting id links, absolute times, class names, and token ranges, never titles, relative dates, colours, or per-viewer data.
-- **Measure.** Hot paths get a benchmark next to their tests, and the budgets above are checked before and after changes to them.
+- **Measure.** Hot paths get a benchmark next to their tests, and the budgets above are checked before and after changes to them. The paste budgets are guarded by `packages/editor/src/document/paste-budget.test.tsx` (the card in the paste's own task, pieces landing as the whole document, no mdast conversion in the page, one undo step, one change heard by autosave, a linear decoration pass, no slice over half a frame on a fake clock, no CodeMirror off screen, each deferred step under 50 ms), by the property tests of `packages/markdown/src/pipeline/parse-chunk.test.ts` (a document parsed in pieces is the document parsed whole, byte for byte), and next to them the keystroke budget's `keystroke-budget.test.tsx`.
 
 ## 32. Code review heuristics
 

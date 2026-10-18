@@ -464,7 +464,9 @@ export function enhanceDiagrams(root: ParentNode): () => void {
 
   // A drawing wider than its column scrolls sideways in place, so while it
   // does it is a named, focusable group a keyboard can scroll (WCAG 2.1.1).
-  const Observer = root.ownerDocument?.defaultView?.ResizeObserver
+  // The public reader passes the document itself, whose `ownerDocument` is null.
+  const page = root instanceof Document ? root : root.ownerDocument
+  const Observer = page?.defaultView?.ResizeObserver
   const scrollable = (): void => {
     for (const diagram of diagrams) {
       const scrolls = diagram.scrollWidth > diagram.clientWidth + 1

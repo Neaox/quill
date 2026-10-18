@@ -324,3 +324,24 @@ export function RepeatIcon({ className }: IconProps) {
     </Glyph>
   )
 }
+
+/** A table of contents: entries at two depths, each with its leader dot. */
+export function TableOfContentsIcon({ className }: IconProps) {
+  return (
+    <Glyph className={className}>
+      <path d="M2.75 3.75h.01M5.75 3.75h7.5M5.25 7.25h.01M8.25 7.25h5M5.25 10.75h.01M8.25 10.75h5M2.75 13.75h.01M5.75 13.75h7.5" />
+    </Glyph>
+  )
+}
+
+/** The pages under this one: a page, with two hanging from it. */
+export function ChildPagesIcon({ className }: IconProps) {
+  return (
+    <Glyph className={className}>
+      <rect x="2.25" y="1.75" width="5.5" height="4.5" rx="1" />
+      <path d="M4.25 6.25v6.5h3.5M4.25 9h3.5" />
+      <rect x="8.25" y="7.5" width="5.5" height="3" rx="0.75" />
+      <rect x="8.25" y="11.25" width="5.5" height="3" rx="0.75" />
+    </Glyph>
+  )
+}

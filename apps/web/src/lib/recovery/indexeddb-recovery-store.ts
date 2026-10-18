@@ -24,6 +24,36 @@ import type { DraftBase, PendingDraft, RecoveryStore } from '@quill/editor'
 const DATABASE_VERSION = 1
 const OBJECT_STORE = 'pending-drafts'
 
+/**
+ * What one document's row holds, in the format this release writes. The row
+ * is a persisted format, so it carries its version and the reader dispatches
+ * on it (ADR-033, AGENTS.md rule 17):
+ *
+ * - **Format 1** (no `format` field) is the unsent edit itself, as releases
+ *   before ADR-021's amendment of 2026-10-11 wrote it. It is read as an edit
+ *   with no base, and the merge it might need runs against an empty ancestor:
+ *   everything both sides hold is offered, nothing is overwritten.
+ *   Those releases kept the base, when they had one, in a row of its own
+ *   under `<documentId>#base` ({@link legacyBaseKey}). It is read when the
+ *   document's row has no base of its own, then folded into a format 2 row
+ *   and deleted, so the base of an edit made on an older release survives
+ *   the upgrade.
+ * - **Format 2** keeps the unsent edit beside its base — the draft as this
+ *   browser last agreed it with the server — so a reconnect can merge three
+ *   ways. A row with a base and no edit is kept; one with neither is deleted.
+ *
+ * The object store and the database version are unchanged: the format lives
+ * in the row, so a row is upgraded the next time it is written, and an older
+ * release reading a format 2 row finds no edit rather than a wrong one.
+ */
+const RECORD_FORMAT = 2
+
+interface StoredRecord {
+  readonly format: typeof RECORD_FORMAT
+  readonly pending?: PendingDraft
+  readonly base?: DraftBase
+}
+
 /** One database per install, named for the product rather than for a feature. */
 const DEFAULT_DATABASE_NAME = `${BRAND.slug}-recovery`
 
@@ -68,21 +98,48 @@ function openDatabase(factory: IDBFactory, name: string): Promise<IDBDatabase> {
   return toPromise(request)
 }
 
-/** The base lives beside the edit, under a key a document id cannot collide with. */
-function baseKey(documentId: string): string {
-  return `${documentId}#base`
+function isPendingDraft(value: unknown): value is PendingDraft {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    'expectedVersion' in value &&
+    typeof value.expectedVersion === 'number' &&
+    'savedAt' in value &&
+    typeof value.savedAt === 'number'
+  )
 }
 
 function isDraftBase(value: unknown): value is DraftBase {
-  if (typeof value !== 'object' || value === null) return false
-  const candidate = value as { draftVersion?: unknown; ast?: unknown }
-  return typeof candidate.draftVersion === 'number' && typeof candidate.ast === 'object'
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    'draftVersion' in value &&
+    typeof value.draftVersion === 'number' &&
+    'ast' in value &&
+    typeof value.ast === 'object' &&
+    value.ast !== null
+  )
 }
 
-function isPendingDraft(value: unknown): value is PendingDraft {
-  if (typeof value !== 'object' || value === null) return false
-  const candidate = value as { expectedVersion?: unknown; savedAt?: unknown }
-  return typeof candidate.expectedVersion === 'number' && typeof candidate.savedAt === 'number'
+/** Where releases before row format 2 kept a document's base, as a bare `DraftBase`. */
+function legacyBaseKey(documentId: string): string {
+  return `${documentId}#base`
+}
+
+interface RecoveredRow {
+  readonly pending: PendingDraft | undefined
+  readonly base: DraftBase | undefined
+}
+
+/** A stored row, whichever format wrote it. */
+export function readRow(value: unknown): RecoveredRow {
+  if (typeof value === 'object' && value !== null && 'format' in value) {
+    if (value.format !== RECORD_FORMAT) return { pending: undefined, base: undefined }
+    const pending = 'pending' in value && isPendingDraft(value.pending) ? value.pending : undefined
+    const base = 'base' in value && isDraftBase(value.base) ? value.base : undefined
+    return { pending, base }
+  }
+  return { pending: isPendingDraft(value) ? value : undefined, base: undefined }
 }
 
 export function createIndexedDbRecoveryStore(
@@ -92,10 +149,7 @@ export function createIndexedDbRecoveryStore(
   const databaseName = options.databaseName ?? DEFAULT_DATABASE_NAME
 
   let entry: PendingDraft | undefined
-  // The draft as this editor last agreed with the server, kept for a three-way
-  // merge; held and mirrored the same way as the edit.
   let base: DraftBase | undefined
-  let baseWritten = false
   // A write that happens while the database is still opening must win: the
   // author's current edit is never replaced by one recovered from disk.
   let written = false
@@ -122,7 +176,7 @@ export function createIndexedDbRecoveryStore(
           () => undefined,
         )
 
-  /** One read of a key, which a refused database answers with nothing. */
+  /** One read of a key, which a refused read answers with nothing. */
   const load = (opened: IDBDatabase, key: string): Promise<unknown> =>
     toPromise(
       opened.transaction(OBJECT_STORE, 'readonly').objectStore(OBJECT_STORE).get(key),
@@ -130,12 +184,15 @@ export function createIndexedDbRecoveryStore(
 
   const ready = connection.then(async (opened) => {
     if (opened === undefined) return entry
-    const [storedEntry, storedBase] = await Promise.all([
-      written ? undefined : load(opened, documentId),
-      baseWritten ? undefined : load(opened, baseKey(documentId)),
+    const [stored, legacyBase] = await Promise.all([
+      load(opened, documentId),
+      load(opened, legacyBaseKey(documentId)),
     ])
-    if (!written && isPendingDraft(storedEntry)) entry = storedEntry
-    if (!baseWritten && isDraftBase(storedBase)) base = storedBase
+    const row = readRow(stored)
+    // A base written while the database was opening is newer than either.
+    base ??= row.base ?? (isDraftBase(legacyBase) ? legacyBase : undefined)
+    if (!written) entry = row.pending
+    if (legacyBase !== undefined) mirror([legacyBaseKey(documentId)])
     return entry
   })
 
@@ -155,24 +212,44 @@ export function createIndexedDbRecoveryStore(
       })
   }
 
+  /**
+   * Mirrors the edit and the base as one row, so the two never disagree on
+   * disk, and deletes `superseded` rows in the same transaction: a migrated
+   * row goes only once what it held is written.
+   */
+  function mirror(superseded: readonly string[] = []): void {
+    const row: StoredRecord = {
+      format: RECORD_FORMAT,
+      ...(entry === undefined ? {} : { pending: entry }),
+      ...(base === undefined ? {} : { base }),
+    }
+    enqueue((store) => {
+      const request =
+        entry === undefined && base === undefined
+          ? store.delete(documentId)
+          : store.put(row, documentId)
+      for (const key of superseded) store.delete(key)
+      return request
+    })
+  }
+
   return {
     ready,
     read: () => entry,
     write(next) {
       written = true
       entry = next
-      enqueue((store) => store.put(next, documentId))
+      mirror()
     },
     clear() {
       written = true
       entry = undefined
-      enqueue((store) => store.delete(documentId))
+      mirror()
     },
     readBase: () => base,
     writeBase(next) {
-      baseWritten = true
       base = next
-      enqueue((store) => store.put(next, baseKey(documentId)))
+      mirror()
     },
     close() {
       closed = true

@@ -51,6 +51,14 @@ export const DOCUMENT_RENAMED = 'DocumentRenamed'
 export const DOCUMENT_MOVED = 'DocumentMoved'
 
 /**
+ * A document was nested under another parent, or lifted to the top, inside
+ * its own collection (ADR-058). Nothing on the web moves — `DocumentMoved`
+ * covers a change of collection — but the pages listed under both parents
+ * change, which is what a child pages list shows.
+ */
+export const DOCUMENT_NESTED = 'DocumentNested'
+
+/**
  * An attachment's bytes were replaced by a new revision under the same URL
  * (ADR-043). Every published body that shows it changes without being
  * republished, so what was derived from those bodies — the search index, the
@@ -58,6 +66,11 @@ export const DOCUMENT_MOVED = 'DocumentMoved'
  */
 export const ATTACHMENT_REVISED = 'AttachmentRevised'
 
+/**
+ * A document was deleted. Its children were lifted to the top of its
+ * collection by the same delete, so every list that showed it, or showed them
+ * under it, has changed (ADR-058).
+ */
 export const DOCUMENT_DELETED = 'DocumentDeleted'
 export const COLLECTION_DELETED = 'CollectionDeleted'
 
@@ -122,6 +135,14 @@ export interface DocumentMovedPayload {
   readonly toCollectionId: CollectionId | null
 }
 
+export interface DocumentNestedPayload {
+  readonly version: number
+  readonly documentId: DocumentId
+  readonly workspaceId: WorkspaceId
+  readonly fromParentId: DocumentId | null
+  readonly toParentId: DocumentId | null
+}
+
 export interface AttachmentRevisedPayload {
   readonly version: number
   readonly attachmentId: string
@@ -136,6 +157,8 @@ export interface DocumentDeletedPayload {
   readonly documentId: DocumentId
   readonly workspaceId: WorkspaceId
   readonly collectionId: string | null
+  /** The parent it was listed under; null at the top of its collection, or in an event written before it was recorded. */
+  readonly parentId: DocumentId | null
   readonly deletedBy: UserId | null
 }
 
@@ -308,6 +331,21 @@ export const documentMoved = defineEvent<DocumentMovedPayload>(DOCUMENT_MOVED, {
   },
 })
 
+export const documentNested = defineEvent<DocumentNestedPayload>(DOCUMENT_NESTED, {
+  [EVENT_PAYLOAD_VERSION]: (payload) => {
+    const documentId = readString(payload, 'documentId')
+    const workspaceId = readString(payload, 'workspaceId')
+    if (documentId === null || workspaceId === null) return null
+    return {
+      version: EVENT_PAYLOAD_VERSION,
+      documentId: documentId as DocumentId,
+      workspaceId: workspaceId as WorkspaceId,
+      fromParentId: readString(payload, 'fromParentId') as DocumentId | null,
+      toParentId: readString(payload, 'toParentId') as DocumentId | null,
+    }
+  },
+})
+
 export const attachmentRevised = defineEvent<AttachmentRevisedPayload>(ATTACHMENT_REVISED, {
   [EVENT_PAYLOAD_VERSION]: (payload) => {
     const attachmentId = readString(payload, 'attachmentId')
@@ -336,6 +374,7 @@ export const documentDeleted = defineEvent<DocumentDeletedPayload>(DOCUMENT_DELE
       documentId: documentId as DocumentId,
       workspaceId: workspaceId as WorkspaceId,
       collectionId: readString(payload, 'collectionId'),
+      parentId: readString(payload, 'parentId') as DocumentId | null,
       deletedBy: readString(payload, 'deletedBy') as UserId | null,
     }
   },
@@ -512,6 +551,8 @@ export const parseDocumentPublished = documentPublished.parse
 export const parseDocumentRenamed = documentRenamed.parse
 export const parseDocumentMoved = documentMoved.parse
 export const parseAttachmentRevised = attachmentRevised.parse
+export const parseDocumentNested = documentNested.parse
+export const parseDocumentDeleted = documentDeleted.parse
 export const parseReviewRequested = reviewRequested.parse
 export const parseReviewDecided = reviewDecided.parse
 export const parseReviewWithdrawn = reviewWithdrawn.parse

@@ -1,7 +1,8 @@
-import { writeFrontMatter } from '@quill/markdown'
+import { readFrontMatter, writeFrontMatter } from '@quill/markdown'
 import type { Extensions, NodeConfig } from '@tiptap/core'
 import type { Node as PMNode } from '@tiptap/pm/model'
-import type { Command } from '@tiptap/pm/state'
+import { closeHistory, redo, undo } from '@tiptap/pm/history'
+import type { Command, Transaction } from '@tiptap/pm/state'
 import type { NodeView } from '@tiptap/pm/view'
 
 import { nodeType } from '../schema/node-type.ts'
@@ -73,6 +74,55 @@ export function frontMatterSource(doc: PMNode): string | undefined {
 }
 
 /**
+ * The record the block holds, or `fallback` when the document has no block.
+ *
+ * While a document is being edited its front matter block is the source of
+ * truth: a property change is a transaction on it, so an undo of that change
+ * is too, and whoever keeps the record beside the tree (the draft envelope)
+ * follows the block rather than the other way round. With no block, nothing
+ * has been written yet and the record the document came with still stands.
+ */
+export function frontMatterRecord(
+  doc: PMNode,
+  fallback: Readonly<Record<string, unknown>>,
+): Readonly<Record<string, unknown>> {
+  const source = frontMatterSource(doc)
+  return source === undefined ? fallback : readFrontMatter(source).value
+}
+
+/**
+ * The step a property change is: one of its own in the undo history, never
+ * merged with typing that happened a moment before, so Ctrl+Z undoes exactly
+ * the change the author made in the properties line.
+ */
+function asOwnStep(tr: Transaction): Transaction {
+  return closeHistory(tr)
+}
+
+/** Undo and redo of the document's history, for a control outside the writing surface. */
+export const undoEdit: Command = undo
+export const redoEdit: Command = redo
+
+/**
+ * Puts YAML on the front matter block exactly as written: the power user's
+ * edit, comments and quoting included. A document with no block gets one.
+ */
+export function applyFrontMatterSource(yaml: string): Command {
+  return (state, dispatch) => {
+    const found = frontMatterPosition(state.doc)
+    if (found === undefined) {
+      if (yaml.trim().length === 0) return false
+      const node = nodeType(state.schema, 'frontMatter').create({ value: yaml })
+      dispatch?.(asOwnStep(state.tr.insert(0, node)))
+      return true
+    }
+    if (yaml === frontMatterSource(state.doc)) return false
+    dispatch?.(asOwnStep(state.tr.setNodeAttribute(found.pos, 'value', yaml)))
+    return true
+  }
+}
+
+/**
  * Writes a front matter record onto the document's front matter block.
  *
  * The YAML is produced by `writeFrontMatter`, which edits the block the author's
@@ -89,12 +139,12 @@ export function applyFrontMatter(value: Record<string, unknown>): Command {
     if (found === undefined) {
       if (yaml.length === 0) return false
       const node = nodeType(state.schema, 'frontMatter').create({ value: yaml })
-      dispatch?.(state.tr.insert(0, node))
+      dispatch?.(asOwnStep(state.tr.insert(0, node)))
       return true
     }
 
     if (yaml === source) return false
-    dispatch?.(state.tr.setNodeAttribute(found.pos, 'value', yaml))
+    dispatch?.(asOwnStep(state.tr.setNodeAttribute(found.pos, 'value', yaml)))
     return true
   }
 }

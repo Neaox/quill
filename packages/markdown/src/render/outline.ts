@@ -61,30 +61,3 @@ export function extractOutline(ast: Root): readonly OutlineEntry[] {
   })
   return nestOutline(headings)
 }
-
-/** Every entry of an outline in document order, without building an array of them. */
-export function* walkOutline(outline: readonly OutlineEntry[]): Generator<OutlineEntry> {
-  for (const entry of outline) {
-    yield entry
-    yield* walkOutline(entry.children)
-  }
-}
-
-/**
- * The headings between two depths, re-nested.
- *
- * Dropping a level splices its children into the level above rather than losing
- * them: a contents list of `h3`s alone still has to list every `h3`.
- */
-export function outlineWithin(
-  outline: readonly OutlineEntry[],
-  min: number,
-  max: number,
-): readonly OutlineEntry[] {
-  function* between(): Generator<OutlineEntry> {
-    for (const entry of walkOutline(outline)) {
-      if (entry.depth >= min && entry.depth <= max) yield entry
-    }
-  }
-  return nestOutline(between())
-}

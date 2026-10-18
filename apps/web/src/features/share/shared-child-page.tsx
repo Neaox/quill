@@ -30,6 +30,7 @@ export function SharedChildPage() {
       outline={body.rendered.outline}
       target={shared.document}
       navigation={shared.children}
+      facts={body.facts}
     />
   )
 }

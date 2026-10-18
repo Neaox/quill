@@ -137,14 +137,6 @@ export interface CreateDocumentResponse {
   readonly warnings: readonly CreateDocumentWarning[]
 }
 
-/** `GET /workspaces/:id/tree/children`: one page of one parent's children (ADR-049). */
-export type TreeChildrenPage = GetBody<'/api/workspaces/{id}/tree/children'>
-
-export type TreeChildDto = TreeChildrenPage['nodes'][number]
-
-/** `GET /documents/:id/tree-position`: where a document is, and what is beneath it (ADR-049). */
-export type TreePosition = GetBody<'/api/documents/{id}/tree-position'>
-
 /** `GET/POST/PATCH /(workspaces/:id|collections/:id)/collections`'s shape (`schema.gen.d.ts`'s `Collection`). */
 export type CollectionDto = components['schemas']['Collection']
 
@@ -153,7 +145,16 @@ export interface TreeCollectionDto {
   readonly name: string
   readonly slug: string
   readonly documents: readonly TreeNode[]
+  /** How many documents sit at the top level; more than `documents` when cut or paged. */
+  readonly documentCount?: number
+  /** Where `documents` starts among them. */
+  readonly documentsOffset?: number
+  /** Every document in the collection the reader can see, nesting included. */
+  readonly total?: number
 }
+
+/** `GET /workspaces/:id/tree/children`'s response: one page of a list in the tree. */
+export type TreeChildrenResponse = GetBody<'/api/workspaces/{id}/tree/children'>
 
 /** `GET /workspaces/:id/tree`'s response (`docs/architecture/api-contract-m2.md`). */
 export interface WorkspaceTreeResponse {
@@ -167,6 +168,11 @@ export interface DraftDto {
   readonly ast: unknown
   readonly updatedAt: string
 }
+
+/** `POST /documents/:id/draft/revert`: the draft's new version, and what it held before. */
+export type PutBackResponse = Json<
+  NonNullable<paths['/api/documents/{id}/draft/revert']['post']>['responses'][200]
+>
 
 export interface SaveDraftResponse {
   readonly draftVersion: number
@@ -202,6 +208,9 @@ export type OutlineEntry = components['schemas']['OutlineEntry']
 
 /** `GET /documents/:id/rendered`: the cached body, outline, and live-block slots (ADR-031). */
 export type RenderedDocument = GetBody<'/api/documents/{id}/rendered'>
+
+/** `GET /documents/:id/children`: what fills a child pages slot, for this reader (ADR-058). */
+export type ChildPagesList = GetBody<'/api/documents/{id}/children'>
 
 /** `GET /documents/:id/envelope`: everything that is a property of now, not of the revision. */
 export type DocumentEnvelope = GetBody<'/api/documents/{id}/envelope'>

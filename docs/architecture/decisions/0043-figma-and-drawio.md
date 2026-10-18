@@ -78,6 +78,21 @@ Both are packaged extensions under ADR-039:
 
 They use the shared viewer (lightbox), the snapshot store and the embed allowlist. Neither adds a parallel mechanism.
 
+### What delivery of steps 1 and 2 established (2026-10-11)
+
+Verified against draw.io 32.4 (`jgraph/drawio:32.4.1`, the Compose service):
+
+- **"Convert labels to SVG" is a cell style, not an export option.** In draw.io 32 it is `convertToSvg=1` on each cell (with `svgWhiteSpace=wrap` for a wrapping label); `export` with `format: 'xmlsvg'` has no switch for it. Quill sets it on every shape and line when it opens a diagram, configures it as the default style for new ones, and — because a shape dragged from the sidebar brings its own style — converts and reloads (`load`) a saved diagram that still has an HTML label before asking for the export. `merge` would keep the writer's view but resolves a shape added since the load in favour of its own copy, so it is not used. Vertical text still comes out as `foreignObject`; that file reads as an image.
+- **The export** is `{ action: 'export', format: 'xmlsvg', asText: true, embedFonts: false }`, answered by `{ event: 'export', format: 'svg', data: <the SVG> }` with the diagram in the root's `content` attribute, compressed (URI-encoded, raw deflate, base64).
+- **Adaptive colours.** draw.io 32 writes a diagram's light and dark colours as `light-dark()` in `style` attributes and leaves the shape background to its own stylesheet (`var(--ge-adaptive-bg)`). The allowlist now reads a `style` declaration as the presentation attribute it would keep, and admits `light-dark(<colour>, <colour>)` with each half checked as a colour; the extension writes the adaptive background out as `light-dark(<light>, #121212)`. A diagram drawn with fixed colours is marked `data-drawio="fixed"` and set on paper in the dark.
+- **The image fallback** covers HTML labels (`foreignObject`) and embedded pictures (`image`), which the allowlist would otherwise drop silently. It is marked `data-drawio-legacy`; editing such a diagram here converts its labels on open.
+- **Diagrams are drawn at their own size**, never stretched past it, and shrink to fit.
+- **Revisions.** An attachment has a `version`; `PUT /api/attachments/:id?expectedVersion=n` writes a new revision under the same id and URL, keeps the state it replaced in `attachment_revisions`, and answers `409 attachment_version_conflict` with the current attachment when a newer one exists. A revision keeps its media type. An `AttachmentRevised` outbox event re-indexes the published documents that show it and refreshes the public site's cache, because their bodies change without a publish. The editor draws a re-saved diagram from `?v=<version>` so the browser's five-minute cache does not show the old one; the Markdown keeps the plain address.
+- **Search** keeps a drawing's labels on its attachment (`search_text`), read on upload and on each revision, within fixed limits: 8 MiB inflated per file (the cap is zlib's own `maxOutputLength`), 100,000 elements, 100 pages, 64 KiB of text. A file past any limit is stored and drawn, and has no words.
+- **Where the editor runs.** `DRAWIO_URL`, defaulting to the Compose service while the app is on loopback; a real deployment names it or has no editor. diagrams.net's hosts are refused unless `DRAWIO_ALLOW_THIRD_PARTY=true`, and the editor tells a writer when it is diagrams.net's. The frame is sandboxed to `allow-scripts allow-same-origin` — the second so the frame keeps its own origin, which the message check depends on — which is safe only because the editor is never on the app's origin; the server refuses that at boot. The CSP's `frame-src` is generated from the configured origin.
+- **`.drawio` uploads** are accepted as `application/vnd.jgraph.mxfile`, served as a download, and read for search; the editor imports one by dragging it into draw.io. A **`.drawio.png`** is an ordinary PNG to the platform, and its metadata stripping removes the embedded diagram, so it is a picture only.
+- **The document's own diagrams** are what the editor offers to edit: its attachments named `.drawio.svg`. A diagram attached to another document and shown here reads, but is edited from its own document.
+
 ## Alternatives considered
 
 - **Store `.drawio` XML in the document and render it server-side.** Rendering needs draw.io's own JavaScript in a headless browser on the server, and the Markdown would be unreadable. `.drawio.svg` gives a picture everywhere for free.
@@ -98,3 +113,9 @@ They use the shared viewer (lightbox), the snapshot store and the embed allowlis
 2. The draw.io embed editor: insert and edit, save as an attachment revision, the self-hosted bundle, and settings.
 3. Figma cards via ADR-042.
 4. The Figma connector, image snapshots, the webhook refresh, and the embed upgrade.
+
+## Amendment, 2026-10-18: a revision that readers will see needs publish
+
+This ADR was written when anyone who could edit a document could publish it, so a revision needed only `edit` on the document that owns the attachment. ADR-052 (#21) has since split publishing out of editing: a contributor writes drafts and asks for a review, and an editor publishes. A revision bypassed that split. It overwrites the bytes under the same URL, so every page that shows the file shows the new version at once, on the public site and through share links too, with no publish and no review. An attachment owned by one document and shown in another also let `edit` on the first change the second.
+
+So `PUT /api/attachments/:id` now asks, from the link index of published heads, which documents' published revisions show the attachment (`documentsShowingAttachment`). When none do, the file is used only in drafts and `edit` on the owning document is enough, as before. When any do, the writer needs `publish` on the owning document and on every one of those documents, which is what changing each of them otherwise asks. The refusal is `403 publish_required`, and it names the documents the writer may see and counts the rest, by the checklist's rule for refusals.

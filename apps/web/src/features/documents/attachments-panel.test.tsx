@@ -6,7 +6,8 @@ import { expectNoAccessibilityViolations } from '@quill/ui/testing/axe'
 
 import { createHookWrapper } from '../../lib/api/hook-wrapper.tsx'
 import { errorResponse, jsonResponse, type FakeRoutes } from '../../lib/api/testing.ts'
-import { AttachmentsPanel, fileSize, inUse, typeLabel } from './attachments-panel.tsx'
+import { fileSize, inUse, typeLabel } from './attachments-dialog.tsx'
+import { AttachmentsPanel } from './attachments-panel.tsx'
 
 /**
  * The other half of attachments: the list, and the one refusal that is a rule

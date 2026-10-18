@@ -40,7 +40,10 @@ function label(title: string | undefined): string {
 
 /** The colons a container needs to hold `lines`: one more than the longest fence inside it. */
 function fenceFor(lines: readonly string[]): string {
-  const deepest = Math.max(2, ...lines.map((line) => /^\s*(:{3,})/u.exec(line)?.[1]?.length ?? 0))
+  const deepest = Math.max(
+    2,
+    ...lines.map((line) => /^\s*:{3,}/u.exec(line)?.[0].trim().length ?? 0),
+  )
   return ':'.repeat(deepest + 1)
 }
 
@@ -63,10 +66,9 @@ function trimTrailing(lines: readonly string[]): string[] {
 const MKDOCS_DETAILS = /^(\s*)\?\?\?(\+)?(?:\s+([\w-]+)(?:\s+[\w-]+)*)?(?:\s+"([^"]*)")?\s*$/u
 
 function mkdocsEnd(rest: readonly string[]): number | undefined {
-  const opening = MKDOCS_DETAILS.exec(firstOf(rest))
-  if (opening === null) return undefined
-  /* v8 ignore next -- the first group of the pattern always takes part in a match. */
-  const depth = (opening[1] ?? '').length + 4
+  const first = firstOf(rest)
+  if (!MKDOCS_DETAILS.test(first)) return undefined
+  const depth = indentOf(first) + 4
   let end: number | undefined
   for (const [index, line] of rest.entries()) {
     if (index === 0 || line.trim() === '') continue
@@ -76,9 +78,13 @@ function mkdocsEnd(rest: readonly string[]): number | undefined {
   return end
 }
 
-function mkdocsDetails(block: readonly string[]): string {
-  /* v8 ignore next -- a block is only converted after `mkdocsEnd` matched its first line. */
-  const [, indent = '', open, type, title] = MKDOCS_DETAILS.exec(firstOf(block)) ?? []
+function mkdocsDetails(block: readonly string[]): string | undefined {
+  const first = firstOf(block)
+  const match = MKDOCS_DETAILS.exec(first)
+  /* v8 ignore next -- `mkdocsEnd` has matched this line already. */
+  if (match === null) return undefined
+  const [, , open, type, title] = match
+  const indent = first.slice(0, indentOf(first))
   const depth = indent.length + 4
   const content = block.slice(1).map((line) => line.slice(depth))
   const body = importMkDocsDetails(content.join('\n')).split('\n')
@@ -102,11 +108,15 @@ export function importMkDocsDetails(markdown: string): string {
 
 const VITEPRESS_DETAILS = /^(\s*)(:{3,})\s*details(?:\s+(.*?))?\s*$/u
 
+/** How many colons open a container on this line. */
+function colonsOf(line: string): number {
+  return line.trimStart().search(/[^:]/u)
+}
+
 function vitepressEnd(rest: readonly string[]): number | undefined {
-  const opening = VITEPRESS_DETAILS.exec(firstOf(rest))
-  if (opening === null) return undefined
-  /* v8 ignore next -- the colons of the pattern always take part in a match. */
-  const length = (opening[2] ?? '').length
+  const first = firstOf(rest)
+  if (!VITEPRESS_DETAILS.test(first)) return undefined
+  const length = colonsOf(first)
   // markdown-it-container closes at the first line of at least as many colons.
   const end = rest.findIndex(
     (line, index) => index > 0 && /^\s*:+\s*$/u.test(line) && line.trim().length >= length,
@@ -114,9 +124,14 @@ function vitepressEnd(rest: readonly string[]): number | undefined {
   return end === -1 ? undefined : end
 }
 
-function vitepressDetails(block: readonly string[]): string {
-  /* v8 ignore next -- a block is only converted after `vitepressEnd` matched its first line. */
-  const [, indent = '', colons = ':::', title] = VITEPRESS_DETAILS.exec(firstOf(block)) ?? []
+function vitepressDetails(block: readonly string[]): string | undefined {
+  const first = firstOf(block)
+  const match = VITEPRESS_DETAILS.exec(first)
+  /* v8 ignore next -- `vitepressEnd` has matched this line already. */
+  if (match === null) return undefined
+  const [, , , title] = match
+  const indent = first.slice(0, indentOf(first))
+  const colons = ':'.repeat(colonsOf(first))
   const body = importVitePressDetails(block.slice(1, -1).join('\n'))
   return [`${indent}${colons}details${label(title)}`, body, `${indent}${colons}`].join('\n')
 }
@@ -134,10 +149,8 @@ const GROUP_OPEN = /^\s*<(?:Accordions|AccordionGroup)(\s[^>]*)?>\s*$/u
 const GROUP_CLOSE = /^\s*<\/(?:Accordions|AccordionGroup)>\s*$/u
 
 function accordion(block: readonly string[]): string {
-  /* v8 ignore next -- a block is only converted after its opening line matched. */
-  const [, attributes = ''] = ACCORDION_OPEN.exec(firstOf(block)) ?? []
   const body = trimTrailing(dedent(block.slice(1, -1)))
-  return container('details', '', label(jsxAttribute(attributes, 'title')), body)
+  return container('details', '', label(jsxAttribute(firstOf(block), 'title')), body)
 }
 
 /** A group that holds accordions and nothing else, as an accordion; undefined otherwise. */

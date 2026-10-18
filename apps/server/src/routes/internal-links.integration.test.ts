@@ -310,4 +310,35 @@ describe('a published page, read by a stranger', () => {
     expect(response.body).toContain('link-unavailable')
     expect(resolve).not.toHaveBeenCalled()
   })
+
+  it('names no document by its id, on the site or off it', async () => {
+    const response = await harness.app.inject({ method: 'GET', url: PAGE })
+    expect(response.body).not.toContain(secret)
+    expect(response.body).not.toContain(runbook)
+  })
+})
+
+describe('a page read through a share link', () => {
+  it('previews nothing the link does not reach, and names none of it', async () => {
+    const created = await harness.app.inject({
+      method: 'POST',
+      url: `/api/documents/${page}/share-links`,
+      cookies: admin,
+      payload: { scope: 'document' },
+    })
+    expect(created.statusCode).toBe(201)
+    const token = created.json().token as string
+    const response = await harness.app.inject({ method: 'GET', url: `/api/share/${token}` })
+    expect(response.statusCode).toBe(200)
+    const html = response.json().rendered.html as string
+    // The page beside it and the private page are words, never their titles or ids.
+    expect(html).not.toContain('Deploy runbook')
+    expect(html).not.toContain('Secret plan')
+    expect(html).not.toContain(runbook)
+    expect(html).not.toContain(secret)
+    expect(html).toContain('link-unavailable')
+    // Nothing on this page is addressed into the application.
+    expect(html).not.toMatch(/href="\/(?:d|w)\//u)
+    expect(resolve).not.toHaveBeenCalled()
+  })
 })

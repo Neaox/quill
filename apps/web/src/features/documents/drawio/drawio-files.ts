@@ -71,6 +71,13 @@ export function createDrawioFiles(options: DrawioFilesOptions): DrawioFiles {
         file: new Blob([svg], { type: SVG }),
         filename: 'diagram.drawio.svg',
       })
+      if (response.status === 403) {
+        const refusal = toApiError(response.status, error)
+        // Saving again would be refused again; the editor offers a copy instead.
+        if (refusal.code === 'publish_required')
+          return { kind: 'refused', message: refusal.message }
+        throw refusal
+      }
       if (response.status === 409) {
         const failure = toApiError(response.status, error)
         const version = currentVersion(failure.details)

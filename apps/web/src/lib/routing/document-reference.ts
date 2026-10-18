@@ -167,6 +167,57 @@ export function documentLink(
   }
 }
 
+/** Which way the comparison view shows two versions (`routes/.../$documentId/index.tsx`). */
+export type ComparisonView = 'changes' | 'source'
+
+/** How the source view sets the two texts out. */
+export type ComparisonLayout = 'split' | 'unified'
+
+export interface ComparisonLinkSearch {
+  /** The older side; absent compares against nothing, as a first revision reads. */
+  readonly from?: string | undefined
+  /** The newer side: a revision, or `draft`. Its presence is what makes the page a comparison. */
+  readonly to: string
+  readonly view?: ComparisonView | undefined
+  readonly layout?: ComparisonLayout | undefined
+}
+
+export type ComparisonLinkTarget = {
+  readonly to: '/w/$workspaceSlug/d/$documentId'
+  readonly params: { readonly workspaceSlug: string; readonly documentId: string }
+  readonly search: {
+    readonly from?: string
+    readonly to: string
+    readonly view?: ComparisonView
+    readonly layout?: ComparisonLayout
+  }
+}
+
+/**
+ * Where two versions of a document are compared. A comparison is a place
+ * (ADR-013): the two versions and the view are in the address, so it can be
+ * linked to and the back button steps out of it. Defaults are left out, so
+ * one comparison has one address.
+ */
+export function comparisonLink(
+  workspaceSlug: string,
+  documentId: string,
+  search: ComparisonLinkSearch,
+): ComparisonLinkTarget {
+  return {
+    to: '/w/$workspaceSlug/d/$documentId',
+    params: { workspaceSlug, documentId },
+    search: {
+      ...(search.from === undefined ? {} : { from: search.from }),
+      to: search.to,
+      ...(search.view === undefined || search.view === 'changes' ? {} : { view: search.view }),
+      ...(search.layout === undefined || search.layout === 'split'
+        ? {}
+        : { layout: search.layout }),
+    },
+  }
+}
+
 /**
  * Where the target of a share link is read: the token, and nothing else.
  *

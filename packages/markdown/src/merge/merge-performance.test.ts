@@ -13,6 +13,11 @@ import { mergeDocuments } from './merge-documents.ts'
  * holds the editor up. Measured on trees already parsed, which is what the
  * editor has; the median of several runs, each over fresh trees, so no key
  * computed in one run is cached for the next.
+ *
+ * Skipped under coverage (`QUILL_COVERAGE`, set by the root Vitest config):
+ * instrumented code runs several times slower, so the timing would measure the
+ * instrumentation, and parsing fifteen 4,000-line trees under it is most of a
+ * CI worker's test budget. A plain `pnpm test` holds the merge to it.
  */
 
 // jsdom serves modules over http, so the corpus is found from the file's own directory.
@@ -49,25 +54,29 @@ describe('merge performance', () => {
   const mine = `${replaceNth(replaceNth(base, 'the ', 'THE ', 3), ' a ', ' A ', 200)}\n# Added by mine\n\nNew words.\n`
   const theirs = replaceNth(replaceNth(base, 'the ', 'that ', 400), ' a ', ' an ', 230)
 
-  it(`merges a ${LINES}-line document in under ${BUDGET_MS} ms`, () => {
-    expect(base.split('\n').length).toBeGreaterThanOrEqual(LINES)
-    const timings: number[] = []
-    let result: ReturnType<typeof mergeDocuments> | undefined
-    for (let run = 0; run < RUNS; run += 1) {
-      const trees: [Root, Root, Root] = [
-        parseMarkdown(base),
-        parseMarkdown(mine),
-        parseMarkdown(theirs),
-      ]
-      const started = performance.now()
-      result = mergeDocuments(...trees)
-      timings.push(performance.now() - started)
-    }
-    const median = timings.toSorted((left, right) => left - right)[Math.floor(RUNS / 2)] ?? Infinity
-    process.stdout.write(
-      `merge of ${base.split('\n').length} lines: median ${median.toFixed(1)} ms over ${timings.map((t) => t.toFixed(1)).join(', ')}\n`,
-    )
-    expect(result?.conflicts).toEqual([])
-    expect(median).toBeLessThan(BUDGET_MS)
-  })
+  it.skipIf(process.env['QUILL_COVERAGE'] === '1')(
+    `merges a ${LINES}-line document in under ${BUDGET_MS} ms`,
+    () => {
+      expect(base.split('\n').length).toBeGreaterThanOrEqual(LINES)
+      const timings: number[] = []
+      let result: ReturnType<typeof mergeDocuments> | undefined
+      for (let run = 0; run < RUNS; run += 1) {
+        const trees: [Root, Root, Root] = [
+          parseMarkdown(base),
+          parseMarkdown(mine),
+          parseMarkdown(theirs),
+        ]
+        const started = performance.now()
+        result = mergeDocuments(...trees)
+        timings.push(performance.now() - started)
+      }
+      const median =
+        timings.toSorted((left, right) => left - right)[Math.floor(RUNS / 2)] ?? Infinity
+      process.stdout.write(
+        `merge of ${base.split('\n').length} lines: median ${median.toFixed(1)} ms over ${timings.map((t) => t.toFixed(1)).join(', ')}\n`,
+      )
+      expect(result?.conflicts).toEqual([])
+      expect(median).toBeLessThan(BUDGET_MS)
+    },
+  )
 })

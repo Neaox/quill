@@ -78,6 +78,8 @@ Drafts are not in the content store (ADR-021). At 5 to 7 new objects and about 1
 
 Stale-base publishes and external edits are merged with `node-diff3`. Its output is byte-identical to `git merge-file`, including conflict markers, at 0.011 ms against 39.6 ms for the shell-out.
 
+*Since ADR-021's amendment of 2026-10-11:* whether a stale-base publish merges, and what it merges into, is decided by the one block-level merge engine in `packages/markdown/src/merge/`, the same one that merges offline drafts, so drafts and publishing agree on what a conflict is. A conflict is still presented as `git merge-file` would write it, with `node-diff3` (`conflictMarkers` in `three-way-merge.ts`, still tested byte for byte against the git CLI); the rare clash a line merge does not see (a block one side moved and the other deleted) is marked block by block instead.
+
 ### On-disk layout
 
 Human-readable: one directory per workspace, `index.md` for documents with children, `.quill/workspace.yaml` for settings. A clone produces exactly the tree in the plan's section 9.5 and `git log` and `git show` read it.

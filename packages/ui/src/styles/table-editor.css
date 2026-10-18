@@ -1,0 +1,430 @@
+/* ------------------------------------------------------------------------
+ * The table editor (ADR-040, phase 2).
+ *
+ * A table is written as it is read: the same card (`.table-block`), the
+ * same scroller, the same widths, and the same header row, footer and row
+ * headers (`data-part`, from `table-decorations.ts`, which the reading
+ * stylesheet reads). Around it, the handles: a grip above every column and
+ * beside every row, a "+" on every boundary between them, a border handle
+ * between columns, and a width handle on the trailing edge. They are an
+ * overlay — absolutely placed, taking no room — shown while the pointer is
+ * over the table, the caret is in it or a drag is under way, and the table
+ * toolbar does all they do for a keyboard.
+ * ---------------------------------------------------------------------- */
+
+.document-editor-content > :is(.table-block, .table-editor) {
+  grid-column: wide;
+}
+
+.document-editor-content > .table-block[data-width='content'] {
+  grid-column: content;
+}
+
+.document-editor-content > .table-block[data-width='full'],
+.document-editor-content > .table-block[data-width='percent'] {
+  grid-column: full;
+}
+
+@container grid (width < 48rem) {
+  .document-editor-content > :is(.table-block, .table-editor) {
+    grid-column: content;
+  }
+}
+
+/* The card is drawn once: by the wrapper, or by a bare table's own view. */
+.table-block-editor {
+  overflow: visible;
+}
+
+.table-block > .table-editor {
+  border: 0;
+  background: none;
+}
+
+.table-editor {
+  position: relative;
+}
+
+/*
+ * Room for the table toolbar (`table-toolbar.tsx`) under the table the caret
+ * is in: its height and the gap above it. Confluence floats its toolbar in
+ * the same place, under the table, and lets it cover the next block; here the
+ * table holds that room open while the toolbar is shown, so the toolbar never
+ * covers what follows and nothing above the table moves. The room comes on
+ * top of the space the table leaves below it in prose's rhythm (`prose.css`),
+ * which depends on the block after it, not instead of it.
+ */
+.table-block:has(> .table-editor[data-active]),
+.table-block.table-editor[data-active] {
+  margin-block-end: var(--table-toolbar-room, 2.625rem);
+}
+
+.prose
+  > :is(
+    .table-block:has(> .table-editor[data-active]),
+    .table-block.table-editor[data-active]
+  ):where(:not(:last-child)) {
+  margin-block-end: calc(
+    var(--table-toolbar-room, 2.625rem) + var(--prose-space-object-after) - var(--prose-space-block)
+  );
+}
+
+.prose
+  > :is(.table-block:has(> .table-editor[data-active]), .table-block.table-editor[data-active]):has(
+    + .table-block
+  ) {
+  margin-block-end: calc(
+    var(--table-toolbar-room, 2.625rem) + var(--prose-space-object-after) -
+      var(--prose-space-object-before)
+  );
+}
+
+/* A caption, as the author writes it: the `[label]` line above the table. */
+.table-block-editor > p {
+  margin: 0;
+  padding: 0.6875rem 0.75rem 0.5rem;
+  font-family: var(--font-sans);
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--color-foreground);
+}
+
+.table-block-editor[data-caption='bottom'] {
+  display: flex;
+  flex-direction: column-reverse;
+}
+
+/* Proportional columns hold exactly while written, as on the page. */
+.table-editor table.table-proportional {
+  table-layout: fixed;
+}
+
+/* --- The handles ------------------------------------------------------- */
+
+.table-handles {
+  --table-grip-reach: 0.75rem;
+  /* How far the column grips stand above the table: clear of it, just outside the card. */
+  --table-grip-lift: var(--table-grip-reach);
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity var(--duration-fast, 120ms) var(--ease-standard, ease);
+  /* A wide table's grips scroll with it: those past the frame's right edge are cut there. */
+  clip-path: inset(-3rem calc(100% - var(--table-handles-width, 100%) - 0.5rem) -3rem -3rem);
+}
+
+.table-editor:is(:hover, [data-active]) > .table-handles,
+.table-handles[data-dragging] {
+  opacity: 1;
+}
+
+.table-grip,
+.table-insert,
+.table-column-border,
+.table-width-handle {
+  position: absolute;
+  inset-block-start: 0;
+  inset-inline-start: 0;
+  pointer-events: auto;
+}
+
+/* A grip: a bar along its column's top edge, or its row's leading edge, just outside the table. */
+.table-grip {
+  cursor: grab;
+}
+
+.table-grip::before {
+  content: '';
+  position: absolute;
+  border-radius: 999px;
+  background-color: var(--color-border-strong);
+  transition: background-color var(--duration-fast, 120ms) var(--ease-standard, ease);
+}
+
+.table-grip:hover::before {
+  background-color: var(--color-accent);
+}
+
+.table-grip-column {
+  inset-block-start: calc(-1 * var(--table-grip-lift));
+  height: var(--table-grip-reach);
+}
+
+/*
+ * A caption above the table fills the room the grips stand in: there they sit
+ * astride the header row's top edge, below the caption, rather than across it.
+ */
+.table-block-editor:not([data-caption='bottom']):has(> p) > .table-editor > .table-handles {
+  --table-grip-lift: 0.5rem;
+}
+
+.table-grip-column::before {
+  inset: 0.375rem 3px 0.125rem;
+}
+
+.table-grip-row {
+  inset-inline-start: calc(-1 * var(--table-grip-reach));
+  width: var(--table-grip-reach);
+}
+
+.table-grip-row::before {
+  inset: 3px 0.125rem 3px 0.375rem;
+}
+
+/*
+ * The corner selects the whole table. It sits where the row and column grips
+ * meet, just outside the table's top-left corner, drawn as a small square
+ * where they are bars, and stands above the "+"s at both ends of the first
+ * boundaries, whose dots stay clear of it. Its target reaches further out
+ * than it is drawn, up and to the left, where the pointer comes from.
+ */
+.table-grip-table {
+  z-index: 2;
+  inset-block-start: calc(-1 * var(--table-grip-lift));
+  inset-inline-start: calc(-1 * var(--table-grip-reach));
+  width: calc(var(--table-grip-reach) - 2px);
+  height: calc(var(--table-grip-lift) - 2px);
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
+}
+
+.table-grip-table::before {
+  inset: auto 0.125rem 0.125rem auto;
+  width: 0.4375rem;
+  height: 0.4375rem;
+  border-radius: 2px;
+}
+
+.table-grip-table::after {
+  content: '';
+  position: absolute;
+  inset: -0.5rem 0 0 -0.5rem;
+}
+
+.table-editor[data-selected='table'] > .table-handles .table-grip-table::before {
+  background-color: var(--color-accent);
+}
+
+@media (forced-colors: active) {
+  .table-grip-table::before {
+    background-color: ButtonText;
+  }
+
+  .table-grip-table:hover::before,
+  .table-editor[data-selected='table'] > .table-handles .table-grip-table::before {
+    background-color: Highlight;
+  }
+}
+
+/*
+ * A "+" on each boundary between grips: a dot at rest, the "+" under the
+ * pointer, with a line across the table where the row or column will go.
+ */
+/* Above the column borders it sits astride, so the "+" is what a press finds. */
+.table-insert {
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  width: 1.25rem;
+  height: 1.25rem;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: transparent;
+  font: 600 0.8125rem / 1 var(--font-sans);
+  cursor: pointer;
+}
+
+.table-insert[hidden] {
+  display: none;
+}
+
+.table-insert::before {
+  content: '';
+  grid-area: 1 / 1;
+  z-index: -1;
+  width: 0.375rem;
+  height: 0.375rem;
+  border-radius: 999px;
+  background-color: var(--color-border-strong);
+  transition:
+    width var(--duration-fast, 120ms) var(--ease-standard, ease),
+    height var(--duration-fast, 120ms) var(--ease-standard, ease);
+}
+
+.table-insert:hover {
+  z-index: 2;
+  color: var(--color-accent-foreground);
+}
+
+.table-insert:hover::before {
+  width: 1.125rem;
+  height: 1.125rem;
+  background-color: var(--color-accent);
+}
+
+.table-insert::after {
+  content: '';
+  position: absolute;
+  display: none;
+  background-color: var(--color-accent);
+  pointer-events: none;
+}
+
+.table-insert:hover::after {
+  display: block;
+}
+
+/* Centred on its boundary, in the middle of the grips' bar. */
+.table-insert-column {
+  isolation: isolate;
+  inset-block-start: calc(-1 * var(--table-grip-lift) - 0.125rem);
+  margin-inline-start: -0.625rem;
+}
+
+.table-insert-column::after {
+  inset-block-start: calc(var(--table-grip-lift) + 0.125rem);
+  inset-inline-start: calc(50% - 1px);
+  width: 2px;
+  height: var(--table-handles-height, 100%);
+}
+
+.table-insert-row {
+  isolation: isolate;
+  inset-inline-start: calc(-1 * var(--table-grip-reach) - 0.125rem);
+  margin-block-start: -0.625rem;
+}
+
+.table-insert-row::after {
+  inset-inline-start: calc(var(--table-grip-reach) + 0.125rem);
+  inset-block-start: calc(50% - 1px);
+  width: var(--table-handles-width, 100%);
+  height: 2px;
+}
+
+/* Between columns: a bar the height of the table, drawn under the pointer. */
+.table-column-border {
+  width: 0.5rem;
+  height: 100%;
+  margin-inline-start: -0.25rem;
+  cursor: col-resize;
+}
+
+.table-column-border::before {
+  content: '';
+  position: absolute;
+  inset-block: 0;
+  inset-inline-start: calc(50% - 1px);
+  width: 2px;
+  background-color: transparent;
+}
+
+.table-column-border:hover::before,
+.table-handles[data-dragging='border'] .table-column-border:active::before {
+  background-color: var(--color-accent);
+}
+
+/*
+ * The trailing edge: the table's width. Its bar shows only under the pointer
+ * or in a drag, like the column borders: at rest a bar there read as a stray
+ * scrollbar beside the rows. The resize cursor finds it.
+ */
+.table-width-handle {
+  width: 0.75rem;
+  height: 100%;
+  margin-inline-start: -0.375rem;
+  cursor: ew-resize;
+}
+
+.table-width-handle::before {
+  content: '';
+  position: absolute;
+  inset-block: calc(50% - 1rem);
+  inset-inline-start: calc(50% - 2px);
+  width: 4px;
+  border-radius: 999px;
+  background-color: transparent;
+}
+
+.table-width-handle:hover::before,
+.table-handles[data-dragging='width'] .table-width-handle::before {
+  background-color: var(--color-accent);
+}
+
+/* What a drag shows: a readout of the widths, a ghost of the moving line, where it will land. */
+.table-readout,
+.table-drag-ghost,
+.table-drop-line {
+  position: absolute;
+  inset-block-start: 0;
+  inset-inline-start: 0;
+  display: none;
+  pointer-events: none;
+}
+
+.table-readout:not([hidden]) {
+  display: block;
+  z-index: 2;
+  inset-block-start: -2.25rem;
+  translate: -50% 0;
+  padding: 0.125rem 0.5rem;
+  border-radius: var(--radius-sm);
+  background-color: var(--color-foreground);
+  color: var(--color-background);
+  font: 500 0.75rem / 1.5 var(--font-sans);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.table-handles:is([data-dragging='row'], [data-dragging='column'])
+  :is(.table-drag-ghost, .table-drop-line) {
+  display: block;
+}
+
+.table-drag-ghost {
+  background-color: color-mix(in oklch, var(--color-accent) 14%, transparent);
+  outline: 1px solid var(--color-accent);
+  will-change: transform;
+}
+
+.table-drag-ghost[data-axis='row'] {
+  inset-inline: 0;
+}
+
+.table-drag-ghost[data-axis='column'] {
+  inset-block: 0;
+}
+
+.table-drop-line {
+  background-color: var(--color-accent);
+  will-change: transform;
+}
+
+.table-drop-line[data-axis='row'] {
+  inset-inline: 0;
+  height: 2px;
+  margin-block-start: -1px;
+}
+
+.table-drop-line[data-axis='column'] {
+  inset-block: 0;
+  width: 2px;
+  margin-inline-start: -1px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .table-handles,
+  .table-grip::before,
+  .table-insert::before {
+    transition: none;
+  }
+}
+
+@media print {
+  .table-handles {
+    display: none;
+  }
+}

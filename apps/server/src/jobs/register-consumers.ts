@@ -2,6 +2,7 @@ import {
   COLLECTION_DELETED,
   DOCUMENT_CREATED,
   DOCUMENT_DELETED,
+  DOCUMENT_NESTED,
   DOCUMENT_PUBLISHED,
   DOCUMENT_RENAMED,
   GRANT_CREATED,
@@ -107,7 +108,15 @@ export function registerOutboxConsumers(
   // The caches that depend on these are told by the bus. What is durable about
   // them is the effective-permission table (quill-plan.md §15), which is
   // rebuilt from them and does not exist yet.
-  for (const eventType of [GRANT_CREATED, GRANT_REVOKED, DOCUMENT_DELETED, COLLECTION_DELETED]) {
+  // A re-nesting (ADR-058) changes only what caches hold: the navigation and
+  // the child pages lists.
+  for (const eventType of [
+    GRANT_CREATED,
+    GRANT_REVOKED,
+    DOCUMENT_DELETED,
+    DOCUMENT_NESTED,
+    COLLECTION_DELETED,
+  ]) {
     jobRunner.register(
       createAcknowledgingConsumer(
         eventType,

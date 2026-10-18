@@ -1,4 +1,4 @@
-import { screen, waitFor } from '@testing-library/react'
+import { cleanup, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it } from 'vitest'
 
@@ -168,7 +168,9 @@ describe('the workspace shell', () => {
     })
 
     expect(await screen.findByText("We couldn't find that document")).toBeInTheDocument()
-    expect(screen.getByRole('navigation', { name: 'Documents' })).toBeInTheDocument()
+    // The sidebar's tree is its own request now, opened down to the document
+    // (`useNavigationTree`), so it may land a moment after the notice.
+    expect(await screen.findByRole('navigation', { name: 'Documents' })).toBeInTheDocument()
   })
 
   it('names the document in the tab title when it is opened for editing', async () => {
@@ -188,7 +190,9 @@ describe('the workspace shell', () => {
     })
 
     expect(await screen.findByText("We couldn't find that document")).toBeInTheDocument()
-    expect(screen.getByRole('navigation', { name: 'Documents' })).toBeInTheDocument()
+    // The sidebar's tree is its own request now, opened down to the document
+    // (`useNavigationTree`), so it may land a moment after the notice.
+    expect(await screen.findByRole('navigation', { name: 'Documents' })).toBeInTheDocument()
   })
 
   it('shows the route notice rather than a raw error screen when a load fails outright', async () => {
@@ -260,6 +264,25 @@ describe('canonicalising a document address', () => {
     const router = await openAndSettle(`/w/${WORKSPACE_ID}/d/${reference(FIRST)}`)
 
     expect(router.state.location.pathname).toBe(`/w/${WORKSPACE_ID}/d/${reference(FIRST)}`)
+  })
+
+  // Regression (2026-10-17): the correction dropped the query, so a shared
+  // link to a revision or a comparison opened the head instead.
+  it('keeps the revision and comparison it was asked for while correcting the address', async () => {
+    const reading = await openAndSettle(`/w/acme/d/${FIRST.shortId}?rev=${'a'.repeat(40)}`)
+    expect(reading.state.location.pathname).toBe(`/w/acme/d/${reference(FIRST)}`)
+    expect(reading.state.location.search).toEqual({ rev: 'a'.repeat(40) })
+
+    cleanup()
+    const comparing = await openAndSettle(
+      `/w/archive/d/${FIRST.shortId}?from=${'b'.repeat(40)}&to=draft&view=source`,
+    )
+    expect(comparing.state.location.pathname).toBe(`/w/acme/d/${reference(FIRST)}`)
+    expect(comparing.state.location.search).toEqual({
+      from: 'b'.repeat(40),
+      to: 'draft',
+      view: 'source',
+    })
   })
 
   it('replaces rather than pushes, so Back does not land on the address just left', async () => {

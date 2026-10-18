@@ -57,17 +57,34 @@ export const documentHeaderStyles = tv({
      */
     flag: [
       'inline-flex items-center gap-1.5 rounded-full bg-surface px-2 py-0.5',
-      'font-medium text-foreground-soft capitalize',
+      'font-medium text-foreground-soft',
     ],
-    dot: 'size-1.5 rounded-full bg-border-strong data-[state=published]:bg-accent',
+    // Published, with or without changes since, is the accent; changes add a
+    // ring, so the two differ in shape as well as in words.
+    dot: [
+      'size-1.5 rounded-full bg-border-strong',
+      'data-[state=changed]:bg-accent data-[state=published]:bg-accent',
+      'data-[state=changed]:ring-2 data-[state=changed]:ring-accent/30',
+    ],
     // On a phone the controls are the whole bar, so they take its width and
     // the first of them (search, normally) can sit at the start of it.
     actions: 'flex items-center gap-1.5 ps-3 pe-4 max-sm:grow max-sm:gap-1 max-sm:ps-2 max-sm:pe-2',
   },
 })
 
-/** The publication state of a document. The word is the signal, not the dot. */
-export type DocumentState = 'draft' | 'in review' | 'published' | 'archived'
+/**
+ * The publication state of a document: the system's answer to "is this
+ * published?", never an author's (ADR-005 amendment). `changed` is published
+ * with changes not yet published. The word is the signal, not the dot.
+ */
+export type DocumentState = 'draft' | 'published' | 'changed' | 'archived'
+
+const STATE_WORDS: Readonly<Record<DocumentState, string>> = {
+  draft: 'Draft',
+  published: 'Published',
+  changed: 'Published, with unpublished changes',
+  archived: 'Archived',
+}
 
 /**
  * The facts above a document. Everything but the trail is optional, because
@@ -101,6 +118,8 @@ export interface DocumentHeaderProps {
   readonly actions?: ReactNode | undefined
   /** The workspace mark, at the start of the bar. */
   readonly mark?: ReactNode | undefined
+  /** Before everything else in the bar: the shell's own control for the tree on a phone. */
+  readonly start?: ReactNode | undefined
   /**
    * How a trail step renders, in both variants: the application's router
    * `Link`. Defaults to `PlainLink`, which is what the design showcase and any
@@ -176,6 +195,7 @@ export function DocumentHeader({
   variant,
   actions,
   mark,
+  start,
   linkComponent = PlainLink,
   className,
 }: DocumentHeaderProps) {
@@ -185,6 +205,7 @@ export function DocumentHeader({
 
   return (
     <header data-header={header} className={styles.root({ className })}>
+      {start}
       {mark === undefined ? undefined : <div className={styles.mark()}>{mark}</div>}
 
       {header === 'readout' ? (
@@ -203,7 +224,7 @@ export function DocumentHeader({
               <dd>
                 <span className={styles.flag()}>
                   <span aria-hidden="true" data-state={status.state} className={styles.dot()} />
-                  {status.state}
+                  {STATE_WORDS[status.state]}
                 </span>
               </dd>
             </div>

@@ -1,13 +1,23 @@
 import { BRAND } from '@quill/brand'
 import { Type } from '@sinclair/typebox'
 import type { TypeBoxTypeProvider } from '@fastify/type-provider-typebox'
-import { publicPageHref, publicSiteHref, publishedAt, renderDocument } from '@quill/application'
+import {
+  publicPageHref,
+  publicSiteHref,
+  publishedAt,
+  readPublicFacts,
+  renderDocument,
+  surfaceLinkRewriter,
+  surfaceReplacement,
+} from '@quill/application'
 import type { DocumentRow, PublicSite } from '@quill/application'
-import { PUBLIC_PRINCIPAL } from '@quill/domain'
+import { rewriteLinks } from '@quill/markdown'
+import { PUBLIC_PRINCIPAL, tagQuery } from '@quill/domain'
 import type { CollectionId, DocumentId, WorkspaceId } from '@quill/domain'
 import { visibilityFilter } from '@quill/search'
 import type { FastifyPluginAsync, FastifyReply, FastifyRequest } from 'fastify'
 
+import { fillChildPages } from '../child-pages/fill.ts'
 import {
   fillLinksForPublic,
   internalLinks,
@@ -21,6 +31,7 @@ import { GITHUB_SERVICE } from '../infrastructure/link-preview/connectors/github
 import { linkPreviewUserAgent } from '../infrastructure/link-preview/user-agent.ts'
 import { DEFAULT_RATE_LIMITS } from '../infrastructure/link-preview/rate-limits.ts'
 import type { CachedPage } from '../public-site/cache.ts'
+import { html as markup } from '../public-site/html.ts'
 import {
   articleStructuredData,
   firstParagraph,
@@ -38,6 +49,8 @@ import { createReaderScript } from '../public-site/reader-script.ts'
 import { cachedHeaderMenu, cachedPublicSiteLoader } from '../public-site/menu.ts'
 import { createSchemeScript } from '../public-site/scheme-script.ts'
 import { ASSET_MAX_AGE_SECONDS } from '../public-site/stylesheet.ts'
+import { renderByline } from '../public-site/templates/byline.ts'
+import { renderLifecycleNotice } from '../public-site/templates/lifecycle-notice.ts'
 import { navigationSection } from '../public-site/templates/navigation.ts'
 import { renderPage } from '../public-site/templates/page.ts'
 import { pageLayoutAttributes } from '../theme/page-attributes.ts'
@@ -305,14 +318,69 @@ export function publicSiteRoutes(deps: AppDependencies): FastifyPluginAsync {
     /* v8 ignore next 2 -- the site only holds documents with a head revision. */
     if (rendered.kind !== 'rendered') return notFoundPage(request, reply, site)
 
+    const workspace = await deps.uow.repos.workspaces.findById(site.collection.workspaceId)
+    /* v8 ignore next -- a collection's workspace cannot be missing: the row cascades from it. */
+    if (workspace === null) return notFoundPage(request, reply, site)
     // Stored previews only: an anonymous page load never causes a fetch (ADR-042).
-    const { html: bodyHtml } = await fillLinksForPublic(
+    const { html: drawn } = await fillLinksForPublic(
       linkPreviewDependencies(deps),
       rendered.content.html,
       linkEmbedRegistry(deps.config.linkEmbeds),
       // Documents published on this site are previewed and linked to their public pages; no others exist here.
       internalLinks(deps, { kind: 'site', site }),
     )
+    // The pages under this one, as the site lists them (ADR-058): only
+    // published, public pages, at the site's own addresses. Filled before the
+    // page is cached, and the cache is emptied by the same events that change
+    // the list.
+    const filled = await fillChildPages(deps, {
+      html: drawn,
+      parent: document,
+      workspace,
+      audience: { kind: 'public' },
+      /* v8 ignore next -- every document in the collection is in the path table. */
+      hrefOf: (child) => publicPageHref(site.siteSlug, site.pathById.get(child.id) ?? ''),
+    })
+    // Links to other documents (`/d/<id>`, ADR-035) go to their address on
+    // this site when they are on it, and are reduced to their words when
+    // they are not: a stranger is never handed the id, workspace or title of
+    // a page the site does not show (ADR-046), nor a link into the app. The
+    // previews drawn above are links like any other, so they are readdressed too.
+    const bodyHtml = rewriteLinks(
+      filled,
+      surfaceLinkRewriter(
+        site.pages.values(),
+        /* v8 ignore next -- every page of the site is in the path table. */
+        (page) => publicPageHref(site.siteSlug, site.pathById.get(page.id) ?? ''),
+        [deps.config.appOrigin],
+      ),
+    )
+
+    // What the page states about itself that a stranger may see (ADR-059):
+    // its tags lead to this site's own search, never into the application.
+    const facts = await readPublicFacts(deps, document, deps.clock.now())
+    const searchHref = `${publicSiteHref(site.siteSlug)}/search`
+    // A deprecated page names its replacement only when this site shows it,
+    // by the rule a link in its body follows (ADR-046).
+    const notice =
+      facts?.lifecycle?.state === 'deprecated'
+        ? renderLifecycleNotice(
+            surfaceReplacement(
+              facts.lifecycle.supersededBy,
+              site.pages.values(),
+              /* v8 ignore next -- every page of the site is in the path table. */
+              (page) => publicPageHref(site.siteSlug, site.pathById.get(page.id) ?? ''),
+            ),
+          )
+        : markup``
+    /* v8 ignore next -- the page was just rendered from its published source, which has facts. */
+    const byline =
+      facts === null
+        ? undefined
+        : markup`${renderByline({
+            facts,
+            tagHref: (tag) => `${searchHref}?q=${encodeURIComponent(tagQuery(tag))}`,
+          })}${notice}`
 
     const stamps = await publishedAt(deps, [document])
     /* v8 ignore next -- `publishedAt` answers for every document it is given. */
@@ -333,6 +401,7 @@ export function publicSiteRoutes(deps: AppDependencies): FastifyPluginAsync {
           title: document.title,
           bodyHtml,
           rules: site.organisation.layout.default.rules,
+          byline,
         }),
         updatedAt,
         structuredData: articleStructuredData({

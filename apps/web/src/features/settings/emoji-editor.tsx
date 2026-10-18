@@ -14,7 +14,9 @@ import {
   useUploadEmojiImage,
 } from '../../lib/api/emoji.ts'
 import { useCustomProperty } from '../../lib/dom/use-custom-property.ts'
+import { readAnimationFrames, type AnimationFrames } from '../../lib/media/animation-frames.ts'
 import { EmojiImage, type ServedEmoji } from './emoji-image.tsx'
+import { PosterFrame } from './poster-frame.tsx'
 
 export type { ServedEmoji } from './emoji-image.tsx'
 
@@ -173,6 +175,23 @@ export interface EmojiEditorProps {
   readonly light: TokenMap
   readonly dark: TokenMap
   readonly onEmojiChange: (emoji: CustomEmojiList | undefined) => void
+  /** How a chosen file's frames are read for its poster frame; the browser's own unless a test gives another. */
+  readonly readFrames?: (file: File) => Promise<AnimationFrames | undefined>
+}
+
+/**
+ * What a saved emoji is, as its list item states it: "GIF, animated · 12
+ * frames, 1.2 s", or for an animation with no still yet (WebP, AVIF) that it
+ * plays as uploaded, which is the image pipeline's to change (ADR-047).
+ */
+function emojiFacts(entry: CustomEmoji): string {
+  const type = EMOJI_TYPE_NAMES[entry.mediaType]
+  if (entry.still === undefined) {
+    return entry.frames === undefined ? type : `${type}, animated, plays as uploaded`
+  }
+  if (entry.frames === undefined || entry.milliseconds === undefined) return `${type}, animated`
+  const seconds = (entry.milliseconds / 1000).toFixed(1)
+  return `${type}, animated · ${String(entry.frames)} frames, ${seconds} s`
 }
 
 /**
@@ -187,12 +206,19 @@ export interface EmojiEditorProps {
  * An upload stores the image and nothing else; the emoji exists once the
  * settings are saved, with the rest of the page.
  */
-export function EmojiEditor({ emoji, served, light, dark, onEmojiChange }: EmojiEditorProps) {
+export function EmojiEditor({
+  emoji,
+  served,
+  light,
+  dark,
+  onEmojiChange,
+  readFrames = readAnimationFrames,
+}: EmojiEditorProps) {
   const entries = emoji ?? []
   const styles = emojiStyles()
   // Images chosen on this visit are shown from the file itself, because the
   // server serves only an emoji that has been saved.
-  const [local, setLocal] = useState<ReadonlyMap<string, string>>(new Map())
+  const [local, setLocal] = useState<ReadonlyMap<string, ServedEmoji>>(new Map())
   const created = useRef<string[]>([])
   // Synchronises with the browser's object-URL registry: every preview URL
   // this form created is released when the form goes away.
@@ -205,7 +231,7 @@ export function EmojiEditor({ emoji, served, light, dark, onEmojiChange }: Emoji
 
   const sourceOf = (entry: CustomEmoji): ServedEmoji | undefined => {
     const chosen = local.get(entry.hash)
-    if (chosen !== undefined) return { src: chosen }
+    if (chosen !== undefined) return chosen
     const saved = served.get(entry.name)
     return saved?.src.includes(entry.hash.slice(0, 16)) === true ? saved : undefined
   }
@@ -238,9 +264,7 @@ export function EmojiEditor({ emoji, served, light, dark, onEmojiChange }: Emoji
                   <div className={styles.identity()}>
                     <code className={styles.name()}>:{entry.name}:</code>
                     <span className={styles.facts()}>
-                      {EMOJI_TYPE_NAMES[entry.mediaType]}
-                      {entry.still === undefined ? '' : ', animated'} · {entry.width} ×{' '}
-                      {entry.height}
+                      {emojiFacts(entry)} · {entry.width} × {entry.height}
                     </span>
                   </div>
                   <Button
@@ -306,9 +330,10 @@ export function EmojiEditor({ emoji, served, light, dark, onEmojiChange }: Emoji
       ) : (
         <EmojiAdder
           existing={entries.map((entry) => entry.name)}
-          onAdd={(entry, url) => {
-            created.current.push(url)
-            setLocal((current) => new Map([...current, [entry.hash, url]]))
+          readFrames={readFrames}
+          onAdd={(entry, image) => {
+            created.current.push(image.src, ...(image.still === undefined ? [] : [image.still]))
+            setLocal((current) => new Map([...current, [entry.hash, image]]))
             replace([...entries, entry])
           }}
         />
@@ -319,10 +344,12 @@ export function EmojiEditor({ emoji, served, light, dark, onEmojiChange }: Emoji
 
 interface EmojiAdderProps {
   readonly existing: readonly string[]
-  readonly onAdd: (entry: CustomEmoji, objectUrl: string) => void
+  readonly readFrames: (file: File) => Promise<AnimationFrames | undefined>
+  /** The entry, and its preview from the file itself (with its chosen poster) until it is served. */
+  readonly onAdd: (entry: CustomEmoji, preview: ServedEmoji) => void
 }
 
-function EmojiAdder({ existing, onAdd }: EmojiAdderProps) {
+function EmojiAdder({ existing, readFrames, onAdd }: EmojiAdderProps) {
   // Plain fields, not a settings draft: they hold an emoji on its way into
   // the settings, have no revision, and are never saved on their own.
   const [file, setFile] = useState<File | undefined>(undefined)
@@ -334,36 +361,113 @@ function EmojiAdder({ existing, onAdd }: EmojiAdderProps) {
   const upload = useUploadEmojiImage()
   const styles = emojiStyles()
   const problem = name === '' ? undefined : emojiNameProblem(name, existing)
+  // An animation's frames, as the browser reads them, and the poster chosen
+  // among them (ADR-047): the first unless another is chosen.
+  const [frames, setFrames] = useState<AnimationFrames | undefined>(undefined)
+  const [poster, setPoster] = useState(0)
+  const [posterPreview, setPosterPreview] = useState<string | undefined>(undefined)
+  // The latest of each, for the asynchronous answers to check they still apply.
+  const current = useRef<{
+    file: File | undefined
+    frames: AnimationFrames | undefined
+    poster: number
+    preview: string | undefined
+  }>({ file: undefined, frames: undefined, poster: 0, preview: undefined })
+  // Synchronises with the browser's decoder and object-URL registry: what
+  // this form holds is let go when it goes away.
+  useEffect(
+    () => () => {
+      current.current.frames?.close()
+      if (current.current.preview !== undefined) URL.revokeObjectURL(current.current.preview)
+    },
+    [],
+  )
+
+  function showPreview(url: string | undefined) {
+    if (current.current.preview !== undefined) URL.revokeObjectURL(current.current.preview)
+    current.current.preview = url
+    setPosterPreview(url)
+  }
+
+  function choosePoster(index: number, of: AnimationFrames) {
+    current.current.poster = index
+    setPoster(index)
+    void of.frame(index).then((blob) => {
+      if (current.current.frames === of && current.current.poster === index) {
+        showPreview(URL.createObjectURL(blob))
+      }
+    })
+  }
+
+  function letGoOfFrames() {
+    current.current.frames?.close()
+    current.current.frames = undefined
+    current.current.poster = 0
+    setFrames(undefined)
+    setPoster(0)
+    showPreview(undefined)
+  }
 
   function choose(chosen: File | undefined) {
     upload.reset()
     setFile(chosen)
     setTooLarge(chosen !== undefined && chosen.size > EMOJI_MAX_BYTES)
     if (chosen !== undefined && name === '') setName(nameFromFile(chosen.name))
+    letGoOfFrames()
+    current.current.file = chosen
+    if (chosen === undefined) return
+    void readFrames(chosen).then((read) => {
+      if (read === undefined) return
+      if (current.current.file !== chosen) {
+        read.close()
+        return
+      }
+      current.current.frames = read
+      setFrames(read)
+      choosePoster(0, read)
+    })
   }
 
-  function add(chosen: File) {
-    upload.mutate(chosen, {
-      onSuccess: async ({ hash, mediaType, still }) => {
-        const url = URL.createObjectURL(chosen)
-        const size = await measure(url)
-        onAdd(
-          {
-            name,
-            hash,
-            mediaType,
-            ...(still === undefined ? {} : { still }),
-            description: description.trim(),
-            ...size,
-          },
-          url,
-        )
-        setFile(undefined)
-        setName('')
-        setDescription('')
-        if (picker.current !== null) picker.current.value = ''
-      },
-    })
+  /** The chosen poster frame, uploaded as the still, when it is not the first. */
+  async function uploadPoster(): Promise<Partial<CustomEmoji>> {
+    if (frames === undefined || poster === 0) return {}
+    const drawn = await frames.frame(poster)
+    const cut = await upload.mutateAsync(
+      new File([drawn], `${name}-poster.png`, { type: 'image/png' }),
+    )
+    return { still: cut.hash, stillType: 'image/png', poster }
+  }
+
+  async function add(chosen: File) {
+    let entry: CustomEmoji
+    try {
+      const { hash, mediaType, ...animation } = await upload.mutateAsync(chosen)
+      entry = {
+        name,
+        hash,
+        mediaType,
+        ...animation,
+        ...(await uploadPoster()),
+        description: description.trim(),
+        width: 0,
+        height: 0,
+      }
+    } catch {
+      // The upload's own error is shown below the form.
+      return
+    }
+    const src = URL.createObjectURL(chosen)
+    const size = await measure(src)
+    const still = entry.poster === undefined ? undefined : posterPreview
+    onAdd({ ...entry, ...size }, { src, ...(still === undefined ? {} : { still }) })
+    // The poster's preview now belongs to the saved emoji's.
+    if (still !== undefined) current.current.preview = undefined
+    letGoOfFrames()
+    current.current.file = undefined
+    setFile(undefined)
+    setName('')
+    setDescription('')
+    if (picker.current !== null) picker.current.value = ''
   }
 
   return (
@@ -399,9 +503,20 @@ function EmojiAdder({ existing, onAdd }: EmojiAdderProps) {
         </div>
         <p className={styles.help()}>
           An animation may have at most {EMOJI_MAX_FRAMES} frames and {EMOJI_MAX_SECONDS} seconds.
-          Readers who ask for less motion see its first frame.
+          It plays briefly, then rests on its poster frame, which is all readers who ask for less
+          motion see.
         </p>
       </div>
+      {frames === undefined ? undefined : (
+        <PosterFrame
+          count={frames.count}
+          value={poster}
+          preview={posterPreview}
+          onValueChange={(index) => {
+            choosePoster(index, frames)
+          }}
+        />
+      )}
       <Input
         label="Name"
         value={name}
@@ -448,7 +563,7 @@ function EmojiAdder({ existing, onAdd }: EmojiAdderProps) {
           description.trim() === ''
         }
         onClick={() => {
-          if (file !== undefined) add(file)
+          if (file !== undefined) void add(file)
         }}
       >
         Add emoji

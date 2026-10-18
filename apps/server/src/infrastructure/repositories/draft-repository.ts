@@ -1,4 +1,4 @@
-import { eq, sql } from 'drizzle-orm'
+import { and, eq, sql } from 'drizzle-orm'
 import type pg from 'pg'
 
 import type {
@@ -112,21 +112,49 @@ export function createDraftRepository(db: DrizzleClient, pool: pg.Pool): DraftRe
       return row === undefined ? null : toDraftRowFrom(row)
     },
 
+    /** Two columns, never the tree: the envelope asks on every read of a document. */
+    async stamp(documentId: DocumentId) {
+      const rows = await db
+        .select({ baseRevision: drafts.baseRevision, updatedAt: drafts.updatedAt })
+        .from(drafts)
+        .where(eq(drafts.documentId, documentId))
+      const row = rows[0]
+      return row === undefined
+        ? null
+        : { baseRevision: row.baseRevision as RevisionId | null, updatedAt: row.updatedAt }
+    },
+
     /**
      * Moving the base alone leaves the content and the version alone; moving
      * the content as well — a restore — bumps the version, so an editor that
      * was open when it landed is told its next write is stale (ADR-021).
+     * The record of who wrote what goes with a base that moves, and stays
+     * with one that does not, unless the caller gives it as it now is.
      */
-    async rebase({ documentId, baseRevision, ast, now }): Promise<DraftRow | null> {
+    async rebase({
+      documentId,
+      baseRevision,
+      ast,
+      authorship,
+      expectedVersion,
+      now,
+    }): Promise<DraftRow | null> {
       const rows = await db
         .update(drafts)
         .set({
           baseRevision,
-          authorship: null,
           updatedAt: now,
+          authorship:
+            authorship === undefined
+              ? sql`CASE WHEN ${drafts.baseRevision} IS NOT DISTINCT FROM ${baseRevision}::text THEN ${drafts.authorship} ELSE NULL END`
+              : authorship,
           ...(ast === undefined ? {} : { ast, draftVersion: sql`${drafts.draftVersion} + 1` }),
         })
-        .where(eq(drafts.documentId, documentId))
+        .where(
+          expectedVersion === undefined
+            ? eq(drafts.documentId, documentId)
+            : and(eq(drafts.documentId, documentId), eq(drafts.draftVersion, expectedVersion)),
+        )
         .returning()
       const row = rows[0]
       return row === undefined ? null : toDraftRowFrom(row)

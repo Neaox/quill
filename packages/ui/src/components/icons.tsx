@@ -101,6 +101,16 @@ export function CloseIcon({ className }: IconProps) {
   )
 }
 
+/** A sidebar beside a page: the phone's way to the document tree. */
+export function SidebarIcon({ className }: IconProps) {
+  return (
+    <Glyph className={className}>
+      <rect x="2.25" y="2.75" width="11.5" height="10.5" rx="1.75" />
+      <path d="M6.25 2.75v10.5" />
+    </Glyph>
+  )
+}
+
 /** The rail's outline view: the document tree. */
 export function OutlineIcon({ className }: IconProps) {
   return (

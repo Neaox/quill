@@ -1,7 +1,7 @@
 import { Dialog, tv } from '@quill/ui'
 import { useId } from 'react'
 
-import { describeShortcut } from '../format/marks.ts'
+import { shortcutLabel } from '../format/shortcuts.ts'
 import { SHORTCUT_GROUPS } from './shortcut-catalogue.ts'
 import type { Shortcut, ShortcutGroup } from './shortcut-catalogue.ts'
 
@@ -32,7 +32,7 @@ const styles = tv({
 function keysOf(shortcut: Shortcut): readonly string[] {
   return shortcut.kind === 'typed'
     ? [shortcut.text]
-    : [shortcut.keys, ...shortcut.alternatives].map(describeShortcut)
+    : [shortcut.keys, ...shortcut.alternatives].map((binding) => shortcutLabel(binding))
 }
 
 function Group({ group }: { readonly group: ShortcutGroup }) {

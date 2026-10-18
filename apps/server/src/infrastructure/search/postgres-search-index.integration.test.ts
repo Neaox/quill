@@ -842,6 +842,56 @@ describe('the PostgreSQL search index', () => {
     expect(titles(found)).toEqual(['Onboarding guide, revised'])
   })
 
+  it('ranks a deprecated document below one that matched as well, and still returns it', async () => {
+    // The deprecated one has the lower id, so on a tie the order would put it
+    // first: only the penalty can put it second.
+    const deprecated = toDocumentId('00000000-0000-4000-8000-0000000000e1')
+    const current = toDocumentId('00000000-0000-4000-8000-0000000000e2')
+    await Promise.all(
+      [deprecated, current].map((id) =>
+        fixture.uow.repos.documents.create({
+          id,
+          shortId: id.slice(-10) as ShortId,
+          workspaceId: fixture.engineering,
+          collectionId: fixture.guides,
+          parentId: null,
+          slug: `zymurgy-${id.slice(-2)}`,
+          path: `guides/${id.slice(-4)}.md`,
+          title: 'Zymurgy handbook',
+          status: 'published',
+          templateId: null,
+          templateVersion: null,
+          now: NOW,
+        }),
+      ),
+    )
+    const twin: SeedDocument = {
+      id: deprecated,
+      workspaceId: fixture.engineering,
+      collectionId: fixture.guides,
+      title: 'Zymurgy handbook',
+      body: 'How the zymurgy pipeline ferments its batches.',
+    }
+    await fixture.index.index({
+      ...toIndexable(twin, fixture.engineering, fixture.guides),
+      lifecycle: 'deprecated',
+    })
+    await fixture.index.index({
+      ...toIndexable({ ...twin, id: current }, fixture.engineering, fixture.guides),
+      lifecycle: 'verified',
+    })
+
+    const found = await search('zymurgy', asMember(fixture.engineering))
+    expect(found.hits.map((hit) => hit.documentId)).toEqual([current, deprecated])
+    const [first, second] = found.hits
+    expect(second?.score).toBeCloseTo(
+      (first?.score ?? 0) * DEFAULT_RANKING_PROFILE.deprecatedPenalty,
+    )
+
+    await fixture.index.remove(deprecated)
+    await fixture.index.remove(current)
+  })
+
   it('removes an entry, and removing one that is not there is not an error', async () => {
     await fixture.index.remove(CAMPAIGN)
     expect((await search('campaign', asMember(fixture.marketing))).hits).toEqual([])

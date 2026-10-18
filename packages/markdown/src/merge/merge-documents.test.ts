@@ -19,30 +19,19 @@ function merged(base: string, mine: string, theirs: string): string {
   return markdownOf(result.merged)
 }
 
-const blocksOf = (blocks: readonly Root['children'][number][]): string =>
-  markdownOf({ type: 'root', children: [...blocks] })
-
-// A tree from another release can hold a node of a known type in an unknown
-// shape; the merge refuses to guess, and offers both.
+/** A tree from nodes of any shape, as a draft from another release may hold. */
 const odd = (...children: object[]): Root => ({ type: 'root', children: children as never })
 
-/** A document of one thematic break, with the given data. */
-const thematicBreak = (data: Record<string, string>): Root => ({
-  type: 'root',
-  children: [{ type: 'thematicBreak', data }],
-})
+/** A paragraph remembering how its emphasis was written (`source-form.ts`). */
+const marked = (marker: string, words: string): Root =>
+  odd({
+    type: 'paragraph',
+    data: { sourceForm: { marker } },
+    children: [{ type: 'text', value: words }],
+  })
 
-/** A one-paragraph document whose paragraph remembers the marker it was written with. */
-const markedParagraph = (marker: string, words: string): Root => ({
-  type: 'root',
-  children: [
-    {
-      type: 'paragraph',
-      data: { sourceForm: { marker } } as never,
-      children: [{ type: 'text', value: words }],
-    },
-  ],
-})
+const blocksOf = (blocks: readonly Root['children'][number][]): string =>
+  markdownOf({ type: 'root', children: [...blocks] })
 
 describe('mergeDocuments: whole documents', () => {
   const base = tree('# Title\n\nOne.\n')
@@ -507,20 +496,15 @@ describe('mergeDocuments: inside a block both sides changed', () => {
   })
 
   it('makes a conflict of a leaf with no value that both sides changed', () => {
-    expect(
-      mergeDocuments(
-        thematicBreak({ hName: 'a' }),
-        thematicBreak({ hName: 'b' }),
-        thematicBreak({ hName: 'c' }),
-      ).conflicts,
-    ).toHaveLength(1)
+    const rule = (name: string) => odd({ type: 'thematicBreak', data: { hName: name } })
+    expect(mergeDocuments(rule('a'), rule('b'), rule('c')).conflicts).toHaveLength(1)
   })
 
   it('merges a leaf with no value by its fields', () => {
     const result = mergeDocuments(
-      thematicBreak({ a: '1', b: '1' }),
-      thematicBreak({ a: '2', b: '1' }),
-      thematicBreak({ a: '1', b: '2' }),
+      odd({ type: 'thematicBreak', data: { a: '1', b: '1' } }),
+      odd({ type: 'thematicBreak', data: { a: '2', b: '1' } }),
+      odd({ type: 'thematicBreak', data: { a: '1', b: '2' } }),
     )
     expect(result.conflicts).toEqual([])
     expect(result.merged.children[0]).toEqual({ type: 'thematicBreak', data: { a: '2', b: '2' } })
@@ -528,9 +512,9 @@ describe('mergeDocuments: inside a block both sides changed', () => {
 
   it('drops a remembered source form both sides changed rather than conflict over it', () => {
     const result = mergeDocuments(
-      markedParagraph('*', 'one two three'),
-      markedParagraph('_', 'one 2 three'),
-      markedParagraph('-', 'one two 3'),
+      marked('*', 'one two three'),
+      marked('_', 'one 2 three'),
+      marked('-', 'one two 3'),
     )
     expect(result.conflicts).toEqual([])
     expect(result.merged.children[0]).toEqual({

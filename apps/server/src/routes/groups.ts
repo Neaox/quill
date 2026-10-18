@@ -7,7 +7,7 @@ import {
   listGroups,
   removeGroupMember,
   renameGroup,
-  searchPeople,
+  searchPeopleForGroups,
 } from '@quill/application'
 import type { GroupRow } from '@quill/application'
 import { userId } from '@quill/domain'
@@ -248,7 +248,9 @@ export function groupRoutes(deps: AppDependencies): FastifyPluginAsync {
       },
       async (request) => {
         await requireAdmin(request)
-        return { people: [...(await searchPeople(deps, { query: request.query.q ?? '' }))] }
+        return {
+          people: [...(await searchPeopleForGroups(deps, { query: request.query.q ?? '' }))],
+        }
       },
     )
   }

@@ -78,3 +78,48 @@ describe('canonicaliseLinks', () => {
     expect(await canonicaliseLinks(uow.repos.documents, markdown)).toBe(markdown)
   })
 })
+
+describe('canonicaliseLinks with the application’s own origin', () => {
+  const ORIGINS = ['https://docs.acme.test']
+
+  it('stores an absolute address of this application relative, then canonical', async () => {
+    const markdown = [
+      `[a](https://docs.acme.test/w/engineering/d/authentication-${KEY}#user-content-setup)`,
+      `[b](https://docs.acme.test/d/${OTHER_KEY}?tab=python)`,
+      `[c](https://docs.acme.test/d/${OTHER})`,
+    ].join('\n')
+
+    expect(await canonicaliseLinks(uow.repos.documents, markdown, ORIGINS)).toBe(
+      [
+        `[a](/d/${DOC}#user-content-setup)`,
+        `[b](/d/${OTHER_KEY}?tab=python)`,
+        `[c](/d/${OTHER})`,
+      ].join('\n'),
+    )
+  })
+
+  it('leaves another origin, and this origin’s other addresses, exactly as written', async () => {
+    const markdown = [
+      `[a](https://elsewhere.test/w/engineering/d/authentication-${KEY})`,
+      `[b](https://docs.acme.test.evil.test/d/${OTHER})`,
+      '[c](https://docs.acme.test/s/site/page)',
+      `[d](http://docs.acme.test/d/${OTHER})`,
+    ].join('\n')
+
+    expect(await canonicaliseLinks(uow.repos.documents, markdown, ORIGINS)).toBe(markdown)
+  })
+
+  it('recognises the origin with its punctuation escaped, as the serialiser writes a port', async () => {
+    const markdown = String.raw`[a](http://localhost\:5173/d/${OTHER})`
+
+    expect(await canonicaliseLinks(uow.repos.documents, markdown, ['http://localhost:5173'])).toBe(
+      `[a](/d/${OTHER})`,
+    )
+  })
+
+  it('touches no absolute address when it is not told which origin is its own', async () => {
+    const markdown = `[a](https://docs.acme.test/d/${OTHER})`
+
+    expect(await canonicaliseLinks(uow.repos.documents, markdown)).toBe(markdown)
+  })
+})

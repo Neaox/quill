@@ -1,4 +1,4 @@
-import { render, screen, within } from '@testing-library/react'
+import { fireEvent, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { useState } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -8,6 +8,7 @@ import { expectNoAccessibilityViolations } from '@quill/ui/testing/axe'
 
 import { createHookWrapper } from '../../lib/api/hook-wrapper.tsx'
 import { errorResponse, jsonResponse, type FakeRoutes } from '../../lib/api/testing.ts'
+import type { AnimationFrames } from '../../lib/media/animation-frames.ts'
 import {
   EmojiEditor,
   emojiNameProblem,
@@ -33,9 +34,11 @@ const NO_SERVED: ReadonlyMap<string, ServedEmoji> = new Map()
 function Harness({
   initial,
   served = NO_SERVED,
+  readFrames,
 }: {
   readonly initial?: CustomEmojiList | undefined
   readonly served?: ReadonlyMap<string, ServedEmoji>
+  readonly readFrames?: (file: File) => Promise<AnimationFrames | undefined>
 }) {
   const [emoji, setEmoji] = useState<CustomEmojiList | undefined>(initial)
   const generated = generateTheme(instrument)
@@ -47,6 +50,7 @@ function Harness({
         light={generated.light}
         dark={generated.dark}
         onEmojiChange={setEmoji}
+        {...(readFrames === undefined ? {} : { readFrames })}
       />
       <output data-testid="emoji">{JSON.stringify(emoji ?? null)}</output>
     </>
@@ -66,9 +70,26 @@ const svgFile = (name = 'Acme logo.svg', size = 120) =>
 
 // jsdom has no object URLs; the form makes one per chosen file.
 beforeEach(() => {
-  URL.createObjectURL = vi.fn<(object: Blob) => string>(() => 'blob:preview')
+  let made = 0
+  URL.createObjectURL = vi.fn<(object: Blob) => string>((object) => {
+    made += 1
+    return object instanceof File ? 'blob:preview' : `blob:frame-${String(made)}`
+  })
   URL.revokeObjectURL = vi.fn<(url: string) => void>()
 })
+
+const partyGif = () => new File(['GIF89a'], 'party.gif', { type: 'image/gif' })
+
+/** Four frames, each drawn as a PNG naming its index. */
+function fourFrames() {
+  const close = vi.fn<() => void>()
+  const frames: AnimationFrames = {
+    count: 4,
+    frame: (index) => Promise.resolve(new Blob([`frame ${String(index)}`], { type: 'image/png' })),
+    close,
+  }
+  return { frames, close, readFrames: () => Promise.resolve(frames) }
+}
 
 describe('EmojiEditor (ADR-038)', () => {
   it('previews a saved emoji at text size, in light and dark, and removes it', async () => {
@@ -158,6 +179,125 @@ describe('EmojiEditor (ADR-038)', () => {
           height: 64,
         },
       ])
+    })
+  })
+
+  describe('the poster frame (ADR-047)', () => {
+    const POSTER = 'abcdefabcdefabcd'.repeat(4)
+    const ORIGINAL = '9876543210fedcba'.repeat(4)
+    const STILL = 'fedcba9876543210'.repeat(4)
+    const ANIMATION = {
+      hash: HASH,
+      mediaType: 'image/gif',
+      still: STILL,
+      frames: 4,
+      milliseconds: 400,
+      plays: 3,
+      original: ORIGINAL,
+    }
+    it('offers a scrubber over the frames, the first chosen, each previewed as it is reached', async () => {
+      const user = userEvent.setup()
+      const { readFrames } = fourFrames()
+      const { container } = renderEditor({ readFrames })
+      await user.upload(screen.getByLabelText('Image'), partyGif())
+
+      const scrubber = await screen.findByRole('slider', { name: 'Poster frame' })
+      expect(scrubber).toHaveAttribute('aria-valuetext', 'Frame 1 of 4')
+      expect(await screen.findByRole('img', { name: 'Frame 1 of 4' })).toHaveAttribute(
+        'src',
+        expect.stringMatching(/^blob:frame-/u),
+      )
+      expect(screen.getByText(/rests on after playing/u)).toBeInTheDocument()
+
+      // The native slider: arrows, Home and End are the browser's own.
+      fireEvent.change(scrubber, { target: { value: '3' } })
+      expect(scrubber).toHaveAttribute('aria-valuetext', 'Frame 3 of 4')
+      expect(await screen.findByRole('img', { name: 'Frame 3 of 4' })).toBeInTheDocument()
+      await expectNoAccessibilityViolations(container)
+    })
+
+    it('cuts the chosen frame as the still, and records which it is', async () => {
+      const user = userEvent.setup()
+      const { readFrames } = fourFrames()
+      // The animation first, then the frame the browser cut as a PNG.
+      const answers = [
+        jsonResponse(201, ANIMATION),
+        jsonResponse(201, { hash: POSTER, mediaType: 'image/png' }),
+      ]
+      renderEditor(
+        { readFrames },
+        { [UPLOAD]: () => answers.shift() ?? errorResponse(500, 'unexpected', 'A third upload') },
+      )
+      await user.upload(screen.getByLabelText('Image'), partyGif())
+      fireEvent.change(await screen.findByRole('slider', { name: 'Poster frame' }), {
+        target: { value: '3' },
+      })
+      await user.type(screen.getByLabelText('Alt text'), 'A dancing parrot')
+      await user.click(screen.getByRole('button', { name: 'Add emoji' }))
+
+      await vi.waitFor(() => {
+        expect(saved()).toEqual([
+          {
+            ...ANIMATION,
+            name: 'party',
+            still: POSTER,
+            stillType: 'image/png',
+            poster: 2,
+            description: 'A dancing parrot',
+            width: 64,
+            height: 64,
+          },
+        ])
+      })
+      expect(answers).toEqual([])
+      expect(screen.getByText('GIF, animated · 4 frames, 0.4 s · 64 × 64')).toBeInTheDocument()
+      expect(screen.queryByRole('slider', { name: 'Poster frame' })).toBeNull()
+    })
+
+    it('keeps the still the server cut when the first frame is the poster', async () => {
+      const user = userEvent.setup()
+      const { readFrames, close } = fourFrames()
+      renderEditor({ readFrames }, { [UPLOAD]: () => jsonResponse(201, ANIMATION) })
+      await user.upload(screen.getByLabelText('Image'), partyGif())
+      await screen.findByRole('slider', { name: 'Poster frame' })
+      await user.type(screen.getByLabelText('Alt text'), 'A dancing parrot')
+      await user.click(screen.getByRole('button', { name: 'Add emoji' }))
+
+      await vi.waitFor(() => {
+        expect(saved()).toEqual([
+          { ...ANIMATION, name: 'party', description: 'A dancing parrot', width: 64, height: 64 },
+        ])
+      })
+      expect(close).toHaveBeenCalled()
+    })
+
+    it('offers no scrubber where the browser has no frames to give', async () => {
+      const user = userEvent.setup()
+      renderEditor({ readFrames: () => Promise.resolve(undefined) })
+      await user.upload(screen.getByLabelText('Image'), partyGif())
+      expect(screen.queryByRole('slider', { name: 'Poster frame' })).toBeNull()
+    })
+
+    it('lets go of the frames of a file chosen over', async () => {
+      const user = userEvent.setup()
+      const first = fourFrames()
+      const second = fourFrames()
+      const readers = [first.readFrames, second.readFrames]
+      renderEditor({ readFrames: async () => (readers.shift() ?? second.readFrames)() })
+      await user.upload(screen.getByLabelText('Image'), partyGif())
+      await screen.findByRole('slider', { name: 'Poster frame' })
+      await user.upload(screen.getByLabelText('Image'), partyGif())
+      await vi.waitFor(() => {
+        expect(first.close).toHaveBeenCalled()
+      })
+      expect(second.close).not.toHaveBeenCalled()
+    })
+
+    it('says an animated WebP plays as uploaded, its still waiting for the image pipeline', () => {
+      renderEditor({
+        initial: [{ ...ACME, name: 'spin', mediaType: 'image/webp', frames: 8, milliseconds: 800 }],
+      })
+      expect(screen.getByText('WebP, animated, plays as uploaded · 64 × 64')).toBeInTheDocument()
     })
   })
 

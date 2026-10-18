@@ -4,6 +4,7 @@ import {
   SettingsIcon,
   SignOutIcon,
   UserIcon,
+  UsersIcon,
   WorkspacesIcon,
   tv,
   type MenuSection,
@@ -13,6 +14,7 @@ import { useMe, useSignOut } from '../../lib/api/index.ts'
 import { NotificationsBell } from '../notifications/notifications-bell.tsx'
 import { RouterLink } from '../../lib/routing/router-link.tsx'
 import {
+  ORGANISATION_PEOPLE,
   ORGANISATION_SETTINGS_HOME,
   ORGANISATION_STRUCTURE,
 } from '../admin/organisation-destinations.ts'
@@ -72,9 +74,9 @@ export function initialsOf(name: string): string {
  *   round System, Light and Dark each time it is pressed, with the scheme it
  *   is on beside it. It is set once and left alone, so it lives here, and the
  *   menu stays open so the change can be seen and pressed again.
- * - **Organisation**, for an instance administrator only, in two items: its
- *   settings, whose screens have a navigation of their own, and its units and
- *   workspaces. The same `isInstanceAdmin` the `/admin` routes gate on, so
+ * - **Organisation**, for an instance administrator only, in three items:
+ *   its settings, whose screens have a navigation of their own, its units and
+ *   workspaces, and its people and groups. The same `isInstanceAdmin` the `/admin` routes gate on, so
  *   nobody is offered a page that would answer not-found. The palette and the
  *   home page still list each screen by name.
  * - **Sign out**, last, where every product puts it.
@@ -129,6 +131,12 @@ export function SignedInHeader() {
               label: 'Units and workspaces',
               icon: <WorkspacesIcon />,
               target: { to: ORGANISATION_STRUCTURE },
+            },
+            {
+              kind: 'link' as const,
+              label: 'People and groups',
+              icon: <UsersIcon />,
+              target: { to: ORGANISATION_PEOPLE },
             },
           ]
         : [],

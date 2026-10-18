@@ -15,7 +15,7 @@ import type {
 import { DETAILS } from '../details/details.ts'
 import type { CalloutType } from '../directives/callout.ts'
 import { isCalloutType } from '../directives/callout.ts'
-import { markerFor, markerType } from '../pipeline/github-alert.ts'
+import { markerFor, markerType, readAlertForm } from '../pipeline/github-alert.ts'
 import type { AlertForm } from '../pipeline/github-alert.ts'
 import type { SourceForm } from '../pipeline/source-form.ts'
 import type { Warning } from '../warnings.ts'
@@ -62,15 +62,14 @@ interface AlertWriting extends AlertForm {
  */
 function alertFormOf(node: PMNode): AlertWriting | undefined {
   const { attrs } = node
-  const form: unknown = attrs['alert']
+  const form = readAlertForm(attrs['alert'])
   const attributes: unknown = attrs['attributes']
-  if (attrs['name'] !== 'callout' || typeof form !== 'object' || form === null) return undefined
+  if (attrs['name'] !== 'callout' || form === undefined) return undefined
   if (typeof attributes !== 'object' || attributes === null) return undefined
-  if (!('marker' in form) || typeof form.marker !== 'string') return undefined
   const entries = Object.entries(attributes)
   const type = entries.length === 1 ? entries[0]?.[1] : undefined
   if (typeof type !== 'string' || !isCalloutType(type)) return undefined
-  return { marker: form.marker, own: 'own' in form && form.own === true, type }
+  return { ...form, type }
 }
 
 /** The title a callout's first block is, and the body that follows it. */
@@ -82,6 +81,15 @@ function titleAndBody(body: readonly BlockNode[]): {
   return first?.type === 'paragraph' && first.data?.directiveLabel === true
     ? { title: first.children, rest }
     : { title: [], rest: body }
+}
+
+/** Whether a title can stand on its marker's line: no line break in it, a hard one or a soft. */
+function fitsMarkerLine(title: readonly PhrasingContent[]): boolean {
+  return title.every((child) => {
+    if (child.type === 'break') return false
+    if ('value' in child) return !child.value.includes('\n')
+    return !('children' in child) || fitsMarkerLine(child.children)
+  })
 }
 
 /** Text nodes that touch are one: what the parser would have read the written text as. */
@@ -109,8 +117,11 @@ function alertBlockquote(
     ...title,
   ]
   const [first, ...others] = rest
-  const blocks: BlockNode[] =
-    !form.own && first?.type === 'paragraph'
+  // A first line the author emptied is not written: the marker stands alone.
+  const emptied = first?.type === 'paragraph' && first.children.length === 0
+  const blocks: BlockNode[] = emptied
+    ? [{ type: 'paragraph', children: joinText(line) }, ...others]
+    : !form.own && first?.type === 'paragraph'
       ? [
           {
             ...first,
@@ -435,7 +446,10 @@ export function proseMirrorToMdast(doc: PMNode): MdastDocument {
         // The line an empty container holds only because it must is not written.
         const content = blocks(children(node).filter((kid) => !isSyntheticParagraph(kid)))
         const alert = alertFormOf(node)
-        if (alert !== undefined) return [alertBlockquote(alert, content, dataOf(node))]
+        // A title broken over lines would end the marker's line, and the callout with it.
+        if (alert !== undefined && fitsMarkerLine(titleAndBody(content).title)) {
+          return [alertBlockquote(alert, content, dataOf(node))]
+        }
         return [
           {
             type: 'containerDirective',

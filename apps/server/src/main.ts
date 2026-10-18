@@ -23,6 +23,8 @@ import { createHasher } from './infrastructure/hasher.ts'
 import { createOutboundClient } from './infrastructure/http/outbound-client.ts'
 import { runMigrations } from './infrastructure/db/migrator.ts'
 import { createDocumentFormat } from './infrastructure/markdown/document-format.ts'
+import { CHILD_PAGES_CACHE_TTL_MS, createChildPagesCache } from './child-pages/cache.ts'
+import { subscribeChildPagesInvalidation } from './child-pages/invalidation.ts'
 import { createOpenWebClient } from './infrastructure/http/open-web-client.ts'
 import { linkPublicPolicy, linkSettingsPolicy } from './application/link-settings.ts'
 import { createLinkPreviewAudiences } from './infrastructure/link-preview/audiences.ts'
@@ -203,6 +205,7 @@ const attachmentRateLimiter = createRateLimiter({ clock, config: config.attachme
 // One Argon2id hash at startup, so no request ever pays for the dummy.
 const passwords = await createPasswordHasher()
 const publicSiteCache = createPublicSiteCache({ clock, ttlMs: PUBLIC_SITE_CACHE_TTL_MS })
+const childPagesCache = createChildPagesCache({ clock, ttlMs: CHILD_PAGES_CACHE_TTL_MS })
 const searchIndex = createPostgresSearchIndex({
   db: database.db,
   visibility: createVisibleDocumentResolver({ uow }),
@@ -271,6 +274,7 @@ const deps = {
     designSystemCss: await loadDesignSystemCss(),
   }),
   publicSiteCache,
+  childPagesCache,
   contentStore,
   settings,
   secrets,
@@ -304,6 +308,8 @@ registerOutboxConsumers(jobRunner, { deps, mailer })
 // The public site's cache is this process's own, so the bus tells it, the
 // moment a commit that changes what a site shows (or who may read it) lands.
 subscribePublicSiteInvalidation(eventBus, publicSiteCache)
+// The child pages lists (ADR-058) are this process's own in the same way.
+subscribeChildPagesInvalidation(eventBus, childPagesCache, deps)
 jobRunner.schedule(createSweepJob({ uow, clock, session: config.session }))
 jobRunner.schedule(createSweepLinkPreviewsJob({ uow, clock }))
 jobRunner.start()

@@ -1,6 +1,7 @@
-import type { Root, RootContent } from 'mdast'
+import type { Nodes, Root, RootContent } from 'mdast'
 import { isDeepEqual } from 'remeda'
 
+import { similarity as blockSimilarity } from '../diff/blocks.ts'
 import { readFrontMatter, writeFrontMatter } from '../front-matter/yaml-document.ts'
 import { cleanItems, mergeSequences } from './merge-sequences.ts'
 import type { MergeSegment, SequenceMergeOptions } from './merge-sequences.ts'
@@ -52,10 +53,12 @@ export type ConflictResolution =
   | { readonly kind: 'both' }
   | { readonly kind: 'edited'; readonly blocks: readonly RootContent[] }
 
-/** The shape every node shares; the walk below is structural so new node types merge too. */
-interface TreeNode {
-  readonly type: string
-}
+/**
+ * Any mdast node. The walk below is structural — fields, children, value —
+ * so node types this module has never heard of (an extension's, a newer
+ * release's) merge too; a node is recognised by having a string `type`.
+ */
+type TreeNode = Nodes
 
 const keys = new WeakMap<object, string>()
 
@@ -79,37 +82,6 @@ export function contentKey(node: object): string {
 
 const nodeType = (node: TreeNode): string => node.type
 
-/** Anything between words, for comparing what two blocks say. */
-const NOT_A_WORD = /[^\p{L}\p{N}]+/u
-
-const vocabularies = new WeakMap<object, ReadonlySet<string>>()
-
-/** The words a node's text holds, at any depth. */
-function vocabulary(node: TreeNode): ReadonlySet<string> {
-  const cached = vocabularies.get(node)
-  if (cached !== undefined) return cached
-  const found = new Set<string>()
-  for (const word of (valueOf(node) ?? '').toLowerCase().split(NOT_A_WORD)) found.add(word)
-  for (const child of childrenOf(node) ?? []) for (const word of vocabulary(child)) found.add(word)
-  found.delete('')
-  vocabularies.set(node, found)
-  return found
-}
-
-/**
- * How alike two blocks are: the share of their words they have in common
- * (Jaccard), or 1 when neither has any. A block one side removed and one it
- * wrote in the same place that share no word were rewritten from scratch,
- * and are merged as a deletion and an insertion rather than an edit.
- */
-function similarity(before: TreeNode, after: TreeNode): number {
-  const left = vocabulary(before)
-  const right = vocabulary(after)
-  if (left.size === 0 && right.size === 0) return 1
-  let shared = 0
-  for (const word of left) if (right.has(word)) shared += 1
-  return shared / (left.size + right.size - shared)
-}
 const identity = (token: string): string => token
 
 function isNode(value: unknown): value is TreeNode {
@@ -306,7 +278,7 @@ const CHILD_MERGE = {
   key: contentKey,
   pairKey: nodeType,
   mergeItem: mergeNode,
-  similarity,
+  similarity: blockSimilarity,
   detectMoves: true,
 } satisfies SequenceMergeOptions<TreeNode>
 
@@ -322,7 +294,7 @@ const BLOCK_MERGE = {
     const merged = mergeNode<TreeNode>(base, mine, theirs)
     return merged !== undefined && sameKind(base, merged) ? merged : undefined
   },
-  similarity,
+  similarity: blockSimilarity,
   detectMoves: true,
 } satisfies SequenceMergeOptions<RootContent>
 

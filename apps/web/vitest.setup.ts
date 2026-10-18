@@ -3,6 +3,9 @@ import { afterEach } from 'vitest'
 
 import '@testing-library/jest-dom/vitest'
 
+import { preloadOverlays } from '@quill/ui'
+
+import { preloadDocumentEnhancements } from './src/features/documents/document-body.tsx'
 import { installBrowserShims, resetObservers } from './testing/browser-shims.ts'
 
 // Registered explicitly rather than relying on Testing Library's automatic
@@ -23,3 +26,17 @@ configure({ asyncUtilTimeout: 5000 })
 // `testing/browser-shims.ts`.
 installBrowserShims()
 afterEach(resetObservers)
+
+/*
+ * Menus, dialogs and popovers fetch their machinery on demand in the app
+ * (`packages/ui/src/lib/on-demand.ts`). Fetched here, before any test, so a
+ * component renders as it does on a page that has settled.
+ */
+await preloadOverlays()
+
+/*
+ * Likewise the document body's deferred enhancements (code colours, diagrams,
+ * animated emoji): a page asks for them while the body is on its way, so they
+ * are normally applied with it, and under test they always are.
+ */
+await preloadDocumentEnhancements()

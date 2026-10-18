@@ -100,6 +100,8 @@ describe('MoveDocumentDialog', () => {
     expect(await within(dialog).findByRole('button', { name: 'Parent doc' })).toBeInTheDocument()
     expect(within(dialog).getByRole('button', { name: /Top level of Guides/ })).toBeInTheDocument()
     expect(within(dialog).getByRole('button', { name: 'Top level of Archive' })).toBeInTheDocument()
+    // A branch is closed until opened, so a workspace of thousands is a short list.
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Expand Quarterly plan' }))
     expect(
       within(dialog).getByRole('button', { name: /Quarterly plan detail/ }),
     ).toBeInTheDocument()
@@ -115,6 +117,7 @@ describe('MoveDocumentDialog', () => {
   it('disallows moving the document into its own subtree, or into itself', async () => {
     renderDialog()
 
+    await userEvent.click(await screen.findByRole('button', { name: 'Expand Quarterly plan' }))
     const descendant = await screen.findByRole('button', { name: /Quarterly plan detail/ })
     expect(descendant).toBeDisabled()
     expect(within(descendant).getByText('Would move the document into itself')).toBeInTheDocument()

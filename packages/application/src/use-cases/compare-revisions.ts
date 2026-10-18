@@ -56,6 +56,11 @@ export interface CompareRevisionsCommand {
   readonly to: RevisionId | typeof DRAFT
   /** The key of a comparison the caller already holds. */
   readonly known?: string | undefined
+  /**
+   * The origins this application is served at. A link pasted with one of
+   * them is this application's own address, stored relative (ADR-035).
+   */
+  readonly appOrigins?: readonly string[] | undefined
   /** Draw each change on its own too, and say which can be put back in the draft. */
   readonly patches?: boolean | undefined
 }
@@ -167,7 +172,7 @@ export async function compareRevisionSources(
  */
 export async function readSides(
   deps: Pick<CompareRevisionsDependencies, 'uow' | 'contentStore' | 'format'>,
-  command: Pick<CompareRevisionsCommand, 'documentId' | 'from' | 'to'>,
+  command: Pick<CompareRevisionsCommand, 'documentId' | 'from' | 'to' | 'appOrigins'>,
 ): Promise<Sides | Failure> {
   const document = await deps.uow.repos.documents.findById(command.documentId)
   if (document === null) return { kind: 'not-found', documentId: command.documentId }
@@ -183,7 +188,7 @@ export async function readSides(
   }
   const [before, after] = await Promise.all([
     command.from === null ? { kind: 'side' as const, markdown: '' } : published(command.from),
-    command.to === DRAFT ? draftSide(deps, document) : published(command.to),
+    command.to === DRAFT ? draftSide(deps, document, command.appOrigins) : published(command.to),
   ])
   if (before.kind !== 'side') return before
   if (after.kind !== 'side') return after
@@ -210,6 +215,7 @@ interface Side {
 async function draftSide(
   deps: Pick<CompareRevisionsDependencies, 'uow' | 'format'>,
   document: DocumentRow,
+  appOrigins: readonly string[] | undefined,
 ): Promise<Side | Failure> {
   const draft = await deps.uow.repos.drafts.find(document.id)
   const content = draft === null ? null : readDraftContent(draft.ast)
@@ -217,7 +223,7 @@ async function draftSide(
   const prepared = deps.format.prepareForPublish({ documentId: document.id, content })
   return {
     kind: 'side',
-    markdown: await canonicaliseLinks(deps.uow.repos.documents, prepared.markdown),
+    markdown: await canonicaliseLinks(deps.uow.repos.documents, prepared.markdown, appOrigins),
     draft: { content, version: draft.draftVersion, authorship: draft.authorship },
   }
 }
@@ -245,7 +251,7 @@ function comparisonKey(
   draft: Sides['draft'],
   patches: boolean,
 ): string {
-  const digest = `${renderDigest(before, deps.format.extensions)}${renderDigest(after, deps.format.extensions)}`
+  const digest = `${renderDigest(before, deps.format.extensions)}\u0003${renderDigest(after, deps.format.extensions)}`
   const detail = `${patches ? ':patches' : ''}${draft === undefined ? '' : `:draft-${String(draft.version)}`}`
   return `${deps.hasher.contentHash(digest)}:${RENDER_VERSION}:compare-${COMPARED_CONTENT_VERSION}${detail}`
 }

@@ -228,8 +228,8 @@ const ContainerDirective = Node.create({
   addAttributes: () => ({
     name: { default: null },
     attributes: { default: {} },
-    // A callout that was written as a GitHub alert (`> [!NOTE]`), and how: it is
-    // written back as one. Not drawn: it is how the Markdown was spelled.
+    // A callout that was written as a quote (`> [!NOTE]`, `> [!tip] Title`), and
+    // how: it is written back as one. Not drawn: it is how the Markdown was spelled.
     alert: { default: null, rendered: false },
     ...attributes(...BLOCK),
   }),

@@ -68,7 +68,8 @@ export type DrawioAction =
       readonly xml: string
       /** Asks for an `autosave` message on each change, which is how Quill knows there are unsaved ones. */
       readonly autosave: 1
-      readonly title: string
+      // No `title`: draw.io sets it over its own menu bar, where on a phone
+      // it collides with the menus; the frame's own bar names the editor.
     }
   | {
       readonly action: 'export'
@@ -117,8 +118,25 @@ export const DRAWIO_ALLOW = 'clipboard-read; clipboard-write'
 export interface DrawioUrlOptions {
   /** Matches the reader's light or dark mode. */
   readonly dark: boolean
-  /** The interface language, when the application knows the reader's. */
-  readonly lang?: string
+  /** The interface language, as draw.io names it (`drawioLanguage`), when the application knows it. */
+  readonly lang?: string | undefined
+}
+
+/**
+ * The language draw.io is asked to speak, from a BCP 47 tag such as the page's
+ * own `lang`: its primary subtag, lower case, except the two languages draw.io
+ * splits by region, Brazilian Portuguese (`pt-br`) and traditional Chinese
+ * (`zh-tw`). Nothing for a tag that names no language, so draw.io keeps its own
+ * guess rather than being told something it cannot use.
+ */
+export function drawioLanguage(tag: string): string | undefined {
+  const [primary = '', ...rest] = tag.trim().toLowerCase().split(/[-_]/)
+  if (!/^[a-z]{2,3}$/.test(primary)) return undefined
+  if (primary === 'pt' && rest.includes('br')) return 'pt-br'
+  if (primary === 'zh' && rest.some((part) => ['hant', 'tw', 'hk', 'mo'].includes(part))) {
+    return 'zh-tw'
+  }
+  return primary
 }
 
 /**
@@ -128,7 +146,8 @@ export interface DrawioUrlOptions {
  * - `spin=1`: draw.io shows its own spinner while it loads;
  * - `saveAndExit=1&noSaveBtn=0`: both "Save" and "Save & Exit";
  * - `configure=1`: waits for the configuration before `init`;
- * - `dark=1|0`: the reader's colour scheme.
+ * - `dark=1|0`: the reader's colour scheme;
+ * - `lang`: the interface language, when known.
  */
 export function drawioEditorUrl(base: string, options: DrawioUrlOptions): string {
   const url = new URL(base)

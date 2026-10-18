@@ -1,5 +1,5 @@
 import { parseDocument, serializeDocument } from '@quill/markdown'
-import { render, screen } from '@testing-library/react'
+import { act, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { createRef } from 'react'
 import { describe, expect, it, vi } from 'vitest'
@@ -7,6 +7,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { expectNoAccessibilityViolations } from '../testing/axe.ts'
 import { DocumentEditor } from './document-editor.tsx'
 import type { DocumentEditorHandle } from './document-editor.tsx'
+import { isPasteLanding } from './large-paste.ts'
 
 const SOURCE = [
   '# Authentication architecture',
@@ -32,6 +33,8 @@ const SOURCE = [
   ':::',
   '',
 ].join('\n')
+
+const NL = String.fromCharCode(10)
 
 function open(source: string = SOURCE) {
   const ref = createRef<DocumentEditorHandle>()
@@ -94,6 +97,32 @@ describe('the document editor', () => {
     await user.keyboard('!')
     expect(onChange).toHaveBeenCalled()
     expect(markdown(ref.current)).toContain('!')
+  })
+
+  it('reports a large paste once it has landed, never half pasted', async () => {
+    const { onChange, ref } = open('Hello' + NL)
+    const editor = ref.current?.editor
+    if (editor === null || editor === undefined) throw new Error('No editor.')
+    const lines = Array.from({ length: 600 }, (_, index) => `Line ${String(index)} of the paste.`)
+    const clipboardData = new DataTransfer()
+    clipboardData.setData('text/plain', lines.join(NL + NL))
+    const seen: boolean[] = []
+    onChange.mockImplementation(() => {
+      seen.push(isPasteLanding(editor.state))
+    })
+
+    act(() => {
+      editor.view.dom.dispatchEvent(
+        new ClipboardEvent('paste', { clipboardData, bubbles: true, cancelable: true }),
+      )
+    })
+    await waitFor(() => {
+      expect(isPasteLanding(editor.state)).toBe(false)
+    })
+
+    expect(markdown(ref.current)).toContain('Line 599 of the paste.')
+    expect(seen.length).toBeGreaterThan(0)
+    expect(seen.every((landing) => !landing)).toBe(true)
   })
 
   it('shows a paragraph wrapped in the source as one line, as a reader sees it', () => {

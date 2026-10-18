@@ -21,10 +21,13 @@ export const browserInflate: Inflate = async (compressed, maxBytes) => {
   let total = 0
   try {
     for (;;) {
+      // A stream is read in order; each chunk is counted before the next.
+      // oxlint-disable-next-line no-await-in-loop
       const { done, value } = await reader.read()
       if (done) break
       total += value.length
       if (total > maxBytes) {
+        // oxlint-disable-next-line no-await-in-loop -- leaves the loop at once
         await reader.cancel()
         return { kind: 'refused', reason: 'too-large' }
       }

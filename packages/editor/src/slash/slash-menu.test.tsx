@@ -2,7 +2,7 @@ import { parseDocument, serializeDocument } from '@quill/markdown'
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { createRef } from 'react'
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { EditorState } from '@tiptap/pm/state'
 
@@ -11,11 +11,13 @@ import { DocumentEditor } from '../document/document-editor.tsx'
 import type { DocumentEditorHandle, DocumentEditorProps } from '../document/document-editor.tsx'
 import { expectNoAccessibilityViolations } from '../testing/axe.ts'
 import type { DocumentLinkTarget, SlashContribution, SlashRequest } from './slash-item.ts'
-import { SlashMenu } from './slash-menu.tsx'
+import { HEADING_HEIGHT, OPTION_HEIGHT, SlashMenu } from './slash-menu.tsx'
 import { SEARCH_DELAY_MS } from './slash-picker.tsx'
 import { createSlashRegistry } from './slash-registry.ts'
 import { slashSections } from './slash-sections.ts'
 import { createSlashStore } from './slash-store.ts'
+import { LIST_PADDING, listViewport } from './slash-styles.ts'
+import { scrollHeight } from './windowed-list.ts'
 import { editorSchema } from '../schema/editor-schema.ts'
 
 /**
@@ -257,32 +259,6 @@ describe('the keyboard', () => {
     expect(list.scrollTop).toBe(0)
   })
 
-  it('keeps the list’s space above and below its rows inside the scroller, never as its padding', async () => {
-    const { user, ref } = open('\n')
-    await slash(user, ref)
-    const list = menu()
-    // A box cannot be shorter than its padding. With the catalogue's worth of
-    // space as padding on the scroller, the scroller was as tall as the whole
-    // catalogue, the menu clipped it, and the last blocks could not be reached.
-    expect(list.getAttribute('style')).toBeNull()
-    const spacer = list.firstElementChild
-    expect(spacer).toHaveStyle({ paddingTop: '4px' })
-    expect(spacer?.getAttribute('style')).toMatch(/padding-bottom: [0-9]+px/)
-  })
-
-  it('gives every row its height in rem, so the sums the list is windowed by are the real heights', async () => {
-    const { user, ref } = open('\n')
-    await slash(user, ref)
-    for (const option of screen.getAllByRole('option')) {
-      expect(option.style.height).toBe('2.75rem')
-    }
-    const drawn = within(menu())
-      .getAllByRole('presentation')
-      // A heading scrolled out of the window is only a name, and takes no space.
-      .filter((heading) => !heading.hasAttribute('data-offscreen'))
-    for (const heading of drawn) expect(heading.style.height).toBe('1.75rem')
-  })
-
   it('inserts with Enter, and with Tab', async () => {
     const enter = open('\n')
     await slash(enter.user, enter.ref, 'h2')
@@ -352,7 +328,7 @@ describe('inserting', () => {
     await caretAt(user, ref, 8)
     await user.keyboard('{Enter}/callout note{Enter}Noted')
     expect(editorOf(ref).state.doc.childCount).toBe(3)
-    expect(markdown(ref)).toBe('Before.\n\n> [!NOTE]\n> Noted\n\nAfter.\n')
+    expect(markdown(ref)).toBe('Before.\n\n:::callout{type="note"}\nNoted\n:::\n\nAfter.\n')
   })
 
   it('puts a block after a line with words in it, removing only the query', async () => {
@@ -457,6 +433,7 @@ describe('what stands before an item', () => {
       .getAllByRole('option')
       .map((option) => option.firstElementChild)
     expect(marks.map((mark) => mark?.childElementCount)).toEqual([0, 1, 1])
+    // The words beside it are what is read: the mark itself says nothing more.
     expect(menu().querySelector('[aria-hidden="true"]')).toHaveTextContent('🎉')
     expect(menu().querySelector('img')).toHaveAttribute('alt', '')
   })
@@ -758,4 +735,131 @@ describe('the menu on its own', () => {
     const { container } = render(<SlashMenu store={store} editor={null} />)
     expect(container).toBeEmptyDOMElement()
   })
+})
+
+/**
+ * The list laid out as a browser lays it out, from the rows actually drawn:
+ * jsdom has no layout, so the height a browser would scroll through is summed
+ * here from what is in the DOM — the padding the window keeps for the rows it
+ * leaves out, and the rows it draws at their fixed heights. A window whose
+ * arithmetic disagrees with what it draws is the classic cause of a list
+ * whose end cannot be scrolled to.
+ */
+function laidOut(list: HTMLElement) {
+  const rows = list.firstElementChild
+  if (!(rows instanceof HTMLElement)) throw new Error('The list has no rows box.')
+  const drawnOptions = list.querySelectorAll('[role="option"]').length
+  const drawnHeadings = list.querySelectorAll('[role="presentation"]:not([data-offscreen])').length
+  const content =
+    LIST_PADDING * 2 +
+    Number.parseFloat(rows.style.paddingTop) +
+    Number.parseFloat(rows.style.paddingBottom) +
+    drawnOptions * OPTION_HEIGHT +
+    drawnHeadings * HEADING_HEIGHT
+  const panel = list.parentElement
+  const client = Math.min(content, listViewport(Number.parseFloat(panel?.style.maxHeight ?? '0')))
+  return { content, client, max: Math.max(0, content - client) }
+}
+
+/** Scrolls as far down as the browser would let a wheel go, until the window settles. */
+function wheelToEnd(list: HTMLElement): void {
+  for (let settle = 0; settle < 10; settle += 1) {
+    const { max } = laidOut(list)
+    if (list.scrollTop === max) return
+    list.scrollTop = max
+    fireEvent.scroll(list)
+  }
+}
+
+describe('reaching the end of a long list', () => {
+  const CARETS = [
+    ['at the top of the window', 80],
+    ['in the middle', 420],
+    ['at the bottom', 860],
+  ] as const
+
+  function openLong(caretTop: number) {
+    vi.stubGlobal('innerHeight', 900)
+    vi.stubGlobal('innerWidth', 1440)
+    vi.stubGlobal('visualViewport', null)
+    const registry = createSlashRegistry({ contributions: [hundred()] })
+    const store = createSlashStore()
+    render(<SlashMenu store={store} editor={null} />)
+    const sections = slashSections('', registry.items, [])
+    act(() => {
+      store.showMenu({
+        query: '',
+        sections,
+        rect: { top: caretTop, bottom: caretTop + 20, left: 200 },
+        apply: () => {},
+      })
+    })
+    const heights = sections.flatMap((section) => [
+      ...(section.title === null ? [] : [HEADING_HEIGHT]),
+      ...section.matches.map(() => OPTION_HEIGHT),
+    ])
+    return { store, list: menu(), total: scrollHeight(heights, LIST_PADDING) }
+  }
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  it.each(CARETS)('keeps its whole height while it scrolls, %s', (_where, caretTop) => {
+    const { list, total } = openLong(caretTop)
+    for (const scrollTop of [0, 300, 1200, 2400, 3600]) {
+      list.scrollTop = scrollTop
+      fireEvent.scroll(list)
+      expect(laidOut(list).content).toBe(total)
+      // The rows left out are space inside the list, never padding on the
+      // list itself: a box cannot be shorter than its padding, so a padded
+      // list would outgrow the panel and its end would be clipped away.
+      expect(list.style.paddingTop).toBe('')
+      expect(list.style.paddingBottom).toBe('')
+    }
+  })
+
+  it('draws each row at the height the arithmetic counts, whatever the theme’s spacing', () => {
+    const { list } = openLong(420)
+    for (const option of within(list).getAllByRole('option')) {
+      expect(option.style.height).toBe(`${String(OPTION_HEIGHT)}px`)
+    }
+    for (const heading of list.querySelectorAll<HTMLElement>('[role="presentation"]')) {
+      expect(heading.style.height).toBe(`${String(HEADING_HEIGHT)}px`)
+    }
+  })
+
+  it.each(CARETS)('lets the wheel reach the last item, %s', (_where, caretTop) => {
+    const { list } = openLong(caretTop)
+    wheelToEnd(list)
+    const options = within(list).getAllByRole('option')
+    expect(options.at(-1)).toHaveAttribute('aria-posinset', '100')
+    // The whole panel is on screen, so the end of the list is too.
+    const panel = list.parentElement
+    const height = Number.parseFloat(panel?.style.maxHeight ?? '0')
+    // Below the caret it hangs from its top; above it, from its bottom.
+    const top =
+      panel?.style.top === ''
+        ? 900 - Number.parseFloat(panel.style.bottom) - height
+        : Number.parseFloat(panel?.style.top ?? '0')
+    expect(top).toBeGreaterThanOrEqual(8)
+    expect(top + height).toBeLessThanOrEqual(900 - 8)
+  })
+
+  it.each(CARETS)(
+    'brings the last item fully into view from the keyboard, %s',
+    (_where, caretTop) => {
+      const { store, list } = openLong(caretTop)
+      act(() => {
+        store.handleKey('End')
+      })
+      const { max } = laidOut(list)
+      expect(list.scrollTop).toBe(max)
+      expect(within(list).getAllByRole('option').at(-1)).toHaveAttribute('aria-selected', 'true')
+      act(() => {
+        store.handleKey('Home')
+      })
+      expect(list.scrollTop).toBe(0)
+    },
+  )
 })

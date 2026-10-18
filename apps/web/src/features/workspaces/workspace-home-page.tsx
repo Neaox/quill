@@ -7,7 +7,7 @@ import {
   ApiError,
   useDocuments,
   useLoadedWorkspace,
-  useWorkspaceTree,
+  useNavigationTree,
 } from '../../lib/api/index.ts'
 import { CreateCollectionDialog } from './collection-dialogs.tsx'
 import { DocumentList } from './document-list.tsx'
@@ -35,7 +35,8 @@ export function WorkspaceHomePage() {
   const workspace = useLoadedWorkspace(workspaceSlug).data
   const workspaceId = workspace.id
   const documents = useDocuments(workspaceId)
-  const tree = useWorkspaceTree(workspaceId)
+  // Names and order only: the sidebar's tree, a level deep, already has them.
+  const tree = useNavigationTree(workspaceId, undefined)
   const [creatingCollection, setCreatingCollection] = useState(false)
 
   const collections = tree.data?.collections ?? []

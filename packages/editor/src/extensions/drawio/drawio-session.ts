@@ -16,7 +16,16 @@
  * save that failed again, or nothing — an editor that never answered is not
  * fixed by asking it again.
  */
-export type DrawioRetry = 'open' | 'save' | 'none'
+/**
+ * What a failure offers: open or save again, keep the work as a new diagram
+ * (`copy`, when the save was refused rather than lost), or nothing.
+ */
+export type DrawioRetry = 'open' | 'save' | 'copy' | 'none'
+
+/** Whether a failure is the save's: one to try again, or one to keep as a copy. */
+export function savingFailed(retry: DrawioRetry): boolean {
+  return retry === 'save' || retry === 'copy'
+}
 
 export type DrawioSessionState =
   /** The editor page is loading, or loading the diagram. */
@@ -111,9 +120,8 @@ export function drawioSessionReducer(
       }
     case 'retried':
       if (state.status !== 'error' || state.retry === 'none') return state
-      return state.retry === 'save'
-        ? { status: 'saving', exit: false, copy: false }
-        : { status: 'loading' }
+      if (state.retry === 'open') return { status: 'loading' }
+      return { status: 'saving', exit: false, copy: state.retry === 'copy' }
     case 'reload-requested':
       return { status: 'loading' }
     case 'close-requested':

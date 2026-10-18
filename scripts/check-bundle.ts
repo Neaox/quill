@@ -64,6 +64,14 @@ interface RouteConfig {
   readonly entries: readonly string[]
   /** Gzip byte budget, or `undefined` for an informational row that never fails the gate. */
   readonly budgetBytes: number | undefined
+  /**
+   * Manifest keys of modules this route fetches on demand, and must keep on
+   * demand: each has to be a chunk of its own (a dynamic entry, so the manifest
+   * names it) that the route's static graph never reaches. The budget alone
+   * would let one of them slide back into the first-render graph unnoticed
+   * until the total crossed the line; this fails the gate the day it happens.
+   */
+  readonly onDemand?: readonly string[]
 }
 
 /** The manifest key the router plugin gives a route file's split component. */
@@ -89,6 +97,26 @@ const ROUTES: readonly RouteConfig[] = [
       routeComponent('_authenticated/w/$workspaceSlug/d/$documentId/index.tsx'),
     ],
     budgetBytes: 250 * KB,
+    onDemand: [
+      // The editor (quill-plan.md section 31: "editor loaded on demand").
+      routeComponent('_authenticated/w/$workspaceSlug/d/$documentId/edit.tsx'),
+      // The overlays' machinery: drawn closed without it, fetched in idle time
+      // (`packages/ui/src/lib/on-demand.ts`).
+      '../../packages/ui/src/components/menu-panels.tsx',
+      '../../packages/ui/src/components/dialog-panels.tsx',
+      '../../packages/ui/src/components/tooltip-panels.tsx',
+      '../../packages/ui/src/components/popover-panels.tsx',
+      '../../packages/ui/src/components/sonner-toaster.tsx',
+      // What a body can take a moment after it is drawn: code colours,
+      // diagrams, animated emoji.
+      'src/features/documents/deferred-enhancements.ts',
+      // Dialogs a reader opens rarely, if ever.
+      'src/features/search/search-dialog.tsx',
+      'src/features/share/share-dialog.tsx',
+      'src/features/workspaces/move-document-dialog.tsx',
+      'src/features/workspaces/delete-document-dialog.tsx',
+      'src/features/documents/attachments-dialog.tsx',
+    ],
   },
   {
     name: 'workspace home',
@@ -163,6 +191,7 @@ interface ManifestChunk {
   readonly css?: readonly string[]
   readonly imports?: readonly string[]
   readonly dynamicImports?: readonly string[]
+  readonly isDynamicEntry?: boolean
 }
 
 type Manifest = Readonly<Record<string, ManifestChunk>>
@@ -171,7 +200,12 @@ type Manifest = Readonly<Record<string, ManifestChunk>>
 function resolveRouteFiles(
   manifest: Manifest,
   entryKeys: readonly string[],
-): { readonly js: readonly string[]; readonly css: readonly string[] } {
+): {
+  readonly js: readonly string[]
+  readonly css: readonly string[]
+  /** Every manifest key the walk visited. */
+  readonly keys: ReadonlySet<string>
+} {
   const js = new Set<string>()
   const css = new Set<string>()
   const seen = new Set<string>()
@@ -191,7 +225,7 @@ function resolveRouteFiles(
     // dynamicImports deliberately not queued: those are separate on-demand chunks.
   }
 
-  return { js: [...js], css: [...css] }
+  return { js: [...js], css: [...css], keys: seen }
 }
 
 interface FileMeasurement {
@@ -222,6 +256,8 @@ interface RouteReport {
   readonly gzipBytes: number
   readonly brotliBytes: number
   readonly budgetBytes: number | undefined
+  /** Why an on-demand module is not, one sentence each; empty when all are. */
+  readonly onDemandViolations: readonly string[]
   readonly status: 'PASS' | 'FAIL' | 'INFO'
 }
 
@@ -229,15 +265,35 @@ function sum(measurements: readonly FileMeasurement[], key: keyof FileMeasuremen
   return measurements.reduce((total, measurement) => total + (measurement[key] as number), 0)
 }
 
-function statusFor(gzipBytes: number, budgetBytes: number | undefined): RouteReport['status'] {
+function statusFor(
+  gzipBytes: number,
+  budgetBytes: number | undefined,
+  violations: readonly string[],
+): RouteReport['status'] {
+  if (violations.length > 0) return 'FAIL'
   if (budgetBytes === undefined) return 'INFO'
   return gzipBytes <= budgetBytes ? 'PASS' : 'FAIL'
 }
 
+/** What is wrong with each of the route's on-demand modules, if anything. */
+function onDemandViolations(
+  manifest: Manifest,
+  reached: ReadonlySet<string>,
+  onDemand: readonly string[],
+): readonly string[] {
+  return onDemand.flatMap((key) => {
+    if (manifest[key]?.isDynamicEntry !== true) {
+      return [`${key} is not a chunk of its own; something imports it statically`]
+    }
+    return reached.has(key) ? [`${key} is loaded with the route, not on demand`] : []
+  })
+}
+
 function measureRoute(distDir: string, manifest: Manifest, route: RouteConfig): RouteReport {
-  const { js, css } = resolveRouteFiles(manifest, route.entries)
+  const { js, css, keys } = resolveRouteFiles(manifest, route.entries)
   const files = [...js, ...css].map((relPath) => measureFile(distDir, relPath))
   const gzipBytes = sum(files, 'gzipBytes')
+  const violations = onDemandViolations(manifest, keys, route.onDemand ?? [])
   return {
     name: route.name,
     files,
@@ -245,7 +301,8 @@ function measureRoute(distDir: string, manifest: Manifest, route: RouteConfig): 
     gzipBytes,
     brotliBytes: sum(files, 'brotliBytes'),
     budgetBytes: route.budgetBytes,
-    status: statusFor(gzipBytes, route.budgetBytes),
+    onDemandViolations: violations,
+    status: statusFor(gzipBytes, route.budgetBytes, violations),
   }
 }
 
@@ -383,8 +440,16 @@ function main(): void {
     console.log(renderTopFiles(topLargestFiles(reading.files)))
   }
 
+  for (const report of reports) {
+    for (const violation of report.onDemandViolations) {
+      console.error(`\n${report.name}: ${violation}.`)
+    }
+  }
+
   if (exitCode !== 0) {
-    console.error('\ncheck:bundle: at least one route exceeds its gzip budget.')
+    console.error(
+      '\ncheck:bundle: at least one route exceeds its gzip budget or loads an on-demand module up front.',
+    )
   } else {
     console.log('\ncheck:bundle: all budgeted routes are within budget.')
   }

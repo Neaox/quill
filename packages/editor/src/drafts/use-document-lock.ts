@@ -41,12 +41,7 @@ export interface UseDocumentLockOptions {
 }
 
 export interface DocumentLock extends LockState {
-  /**
-   * Asks for the lock, and says where that left it: `held` when it is the author's, and
-   * otherwise why not (`held_by_other`, or `acquiring` while the server could not be reached),
-   * so that whoever pressed the button can tell the author whether it worked.
-   */
-  acquire(): Promise<LockStatus>
+  acquire(): Promise<void>
   /**
    * Asks for the lock once more, quietly: what the author sees does not
    * change until the answer does, and a failed request is simply not an
@@ -54,8 +49,7 @@ export interface DocumentLock extends LockState {
    * 2026-10-11), where the next ask is never far off.
    */
   reacquire(): Promise<void>
-  /** Takes the lock from whoever holds it (managers only), and says where that left it. */
-  takeover(): Promise<LockStatus>
+  takeover(): Promise<void>
   release(): Promise<void>
 }
 
@@ -196,14 +190,12 @@ export function useDocumentLock(options: UseDocumentLockOptions): DocumentLock {
    * rejected: a rejection left the lock "opening" for good, and autosave with
    * it, while the author typed into a buffer that was never sent.
    */
-  const attemptAcquire = async (attempt: number): Promise<LockStatus> => {
+  const attemptAcquire = async (attempt: number): Promise<void> => {
     let result
     try {
       result = await client.acquire()
     } catch {
-      if (!mountedRef.current || stateRef.current.status !== 'acquiring') {
-        return stateRef.current.status
-      }
+      if (!mountedRef.current || stateRef.current.status !== 'acquiring') return
       timerRef.current.handle = clock.setTimeout(
         () => {
           timerRef.current.handle = undefined
@@ -211,16 +203,15 @@ export function useDocumentLock(options: UseDocumentLockOptions): DocumentLock {
         },
         backoffDelay(attempt, { baseMs, capMs, random }),
       )
-      return stateRef.current.status
+      return
     }
     apply({ type: 'acquire-result', result })
     startHeartbeatRef.current?.()
-    return stateRef.current.status
   }
 
-  const acquire = async (): Promise<LockStatus> => {
+  const acquire = async (): Promise<void> => {
     apply({ type: 'acquire-started' })
-    return await attemptAcquire(1)
+    await attemptAcquire(1)
   }
 
   const reacquire = async (): Promise<void> => {
@@ -234,11 +225,10 @@ export function useDocumentLock(options: UseDocumentLockOptions): DocumentLock {
     startHeartbeatRef.current?.()
   }
 
-  const takeover = async (): Promise<LockStatus> => {
+  const takeover = async (): Promise<void> => {
     const result = await client.takeover()
     apply({ type: 'takeover-result', result })
     startHeartbeatRef.current?.()
-    return stateRef.current.status
   }
 
   const release = async (): Promise<void> => {

@@ -5,7 +5,8 @@ import type {
   RevisionId,
   WorkspaceId,
 } from '@quill/domain'
-import { extractOutline, extractText } from '@quill/markdown'
+import { isDocumentStatus, isLifecycleState } from '@quill/domain'
+import { documentIcon, documentSummary, extractOutline, extractText } from '@quill/markdown'
 import type { CoreFrontMatter, OutlineEntry } from '@quill/markdown'
 import type { Root } from 'mdast'
 
@@ -79,8 +80,14 @@ export function projectIndexableDocument(input: ProjectIndexableDocumentInput): 
     body: [text.body, ...(input.drawingText ?? [])].filter((part) => part !== '').join('\n'),
     tags: input.frontMatter.tags ?? [],
     owners: input.frontMatter.owners ?? [],
-    status: input.frontMatter.status ?? DEFAULT_STATUS,
+    // One front-matter field, two meanings (ADR-005 amendment of 2026-10-17):
+    // a legacy publication word is the `status:` filter's, a lifecycle state
+    // is ranking's, and neither is ever read as the other.
+    status: isDocumentStatus(input.frontMatter.status) ? input.frontMatter.status : DEFAULT_STATUS,
+    lifecycle: isLifecycleState(input.frontMatter.status) ? input.frontMatter.status : undefined,
     updatedAt: input.updatedAt,
+    summary: documentSummary(input.ast, input.frontMatter),
+    icon: documentIcon(input.frontMatter),
     contributors: distinctContributors(input.contributors ?? []),
     properties: extractProperties(input.rawFrontMatter ?? {}),
   }

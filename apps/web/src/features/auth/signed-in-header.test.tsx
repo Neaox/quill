@@ -74,7 +74,7 @@ describe('the person menu', () => {
     ).not.toBeInTheDocument()
   })
 
-  it('gives an instance administrator the organisation in two items: its settings, which have a navigation of their own, and its units and workspaces', async () => {
+  it('gives an instance administrator the organisation in three items: its settings, which have a navigation of their own, its units and workspaces, and its people and groups', async () => {
     const { container } = signedIn(true)
 
     await userEvent.click(await trigger())
@@ -84,6 +84,7 @@ describe('the person menu', () => {
     expect(links.map((link) => [link.textContent, link.getAttribute('href')])).toEqual([
       ['Organisation settings', '/admin/settings'],
       ['Units and workspaces', '/admin/organisation'],
+      ['People and groups', '/admin/groups'],
     ])
     // The panel is portalled to the end of the body, outside every landmark,
     // as every popover is; it is checked on its own and the page on its own.

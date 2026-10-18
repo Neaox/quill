@@ -1,8 +1,9 @@
-import { Popover } from 'radix-ui'
+import { useId, useRef, useState, type ReactNode } from 'react'
 
 import type { ThemeVariants } from '@quill/theme'
 
 import { tv } from '../lib/class-names.ts'
+import { onDemand, useOnDemandWhen } from '../lib/on-demand.ts'
 import { PlainLink, type LinkComponent, type LinkTarget } from '../lib/link.tsx'
 import { useThemeVariants } from '../theme/theme-variants.tsx'
 import { buttonClassName } from './button.tsx'
@@ -18,6 +19,10 @@ import { RelativeTime } from './relative-time.tsx'
 export const revisionTimelineStyles = tv({
   slots: {
     root: '',
+    /** The history control: `relative`, so the open panel hangs from a box laid over it. */
+    trigger: 'relative',
+    /** That box: the control's own bounds, inert (`popover-panels.tsx`). */
+    anchor: 'pointer-events-none absolute inset-0',
     heading: 'section-label pb-2.5',
     list: 'timeline ps-3',
     /*
@@ -151,26 +156,25 @@ export function RevisionTimeline({
 
   if (history === 'menu') {
     return (
-      <Popover.Root>
-        <Popover.Trigger
-          className={buttonClassName({ variant: 'secondary', size: 'sm', className })}
-        >
-          <HistoryIcon />
-          <span>{triggerLabel}</span>
-        </Popover.Trigger>
-        <Popover.Portal>
-          <Popover.Content
-            align="end"
-            sideOffset={6}
-            collisionPadding={8}
-            aria-label={label}
-            className={styles.panel()}
-          >
-            <p className={styles.heading()}>{label}</p>
-            <Ticks revisions={revisions} currentId={currentId} linkComponent={linkComponent} />
-          </Popover.Content>
-        </Popover.Portal>
-      </Popover.Root>
+      <HistoryPopover
+        label={label}
+        triggerClassName={buttonClassName({
+          variant: 'secondary',
+          size: 'sm',
+          className: styles.trigger({ className }),
+        })}
+        anchorClassName={styles.anchor()}
+        className={styles.panel()}
+        trigger={
+          <>
+            <HistoryIcon />
+            <span>{triggerLabel}</span>
+          </>
+        }
+      >
+        <p className={styles.heading()}>{label}</p>
+        <Ticks revisions={revisions} currentId={currentId} linkComponent={linkComponent} />
+      </HistoryPopover>
     )
   }
 
@@ -179,5 +183,81 @@ export function RevisionTimeline({
       <p className={styles.heading()}>{label}</p>
       <Ticks revisions={revisions} currentId={currentId} linkComponent={linkComponent} />
     </section>
+  )
+}
+
+/**
+ * The popover's machinery, fetched on demand (quill-plan.md section 31;
+ * `lib/on-demand.ts`): the closed control is drawn without it, and a press
+ * that lands before it arrives is held.
+ */
+const popovers = onDemand(() => import('./popover-panels.tsx'))
+
+/** Fetches the history popover's machinery now; safe to call repeatedly. */
+export function preloadPopovers(): Promise<unknown> {
+  return popovers.load()
+}
+
+function HistoryPopover({
+  label,
+  trigger,
+  triggerClassName,
+  anchorClassName,
+  className,
+  children,
+}: {
+  readonly label: string
+  readonly trigger: ReactNode
+  readonly triggerClassName: string
+  readonly anchorClassName: string
+  readonly className: string
+  readonly children: ReactNode
+}) {
+  const [open, setOpen] = useState(false)
+  // This popover only, once pressed: one per page, but the module's arrival
+  // must still never take a closed one over (`useOnDemandWhen`).
+  const loaded = useOnDemandWhen(popovers, open)
+  const button = useRef<HTMLButtonElement>(null)
+  const contentId = useId()
+  const shown = open && loaded !== undefined
+
+  const preload = () => {
+    void popovers.load().catch(() => undefined)
+  }
+  return (
+    // The trigger is always this button, so a press that lands as the
+    // machinery arrives is on the element that is still the trigger after it.
+    <button
+      ref={button}
+      type="button"
+      aria-haspopup="dialog"
+      aria-expanded={shown}
+      {...(shown ? { 'aria-controls': contentId } : {})}
+      aria-busy={open && loaded === undefined ? true : undefined}
+      data-state={shown ? 'open' : 'closed'}
+      className={triggerClassName}
+      onPointerEnter={preload}
+      onFocus={preload}
+      onClick={(event) => {
+        // The panel is a React child in a portal: its clicks bubble here.
+        if (!(event.target instanceof Node) || !event.currentTarget.contains(event.target)) return
+        setOpen(!open)
+      }}
+    >
+      {trigger}
+      {loaded === undefined ? undefined : (
+        <loaded.RadixPopover
+          label={label}
+          className={className}
+          anchorClassName={anchorClassName}
+          open={open}
+          onOpenChange={setOpen}
+          trigger={button}
+          contentId={contentId}
+        >
+          {children}
+        </loaded.RadixPopover>
+      )}
+    </button>
   )
 }

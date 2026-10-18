@@ -36,6 +36,8 @@ import {
   RepeatIcon,
   DetailsIcon,
   AccordionIcon,
+  TableOfContentsIcon,
+  ChildPagesIcon,
 } from './block-icons.tsx'
 
 const ICONS = [
@@ -72,6 +74,8 @@ const ICONS = [
   ['RepeatIcon', RepeatIcon],
   ['DetailsIcon', DetailsIcon],
   ['AccordionIcon', AccordionIcon],
+  ['TableOfContentsIcon', TableOfContentsIcon],
+  ['ChildPagesIcon', ChildPagesIcon],
 ] as const
 
 describe('block icons', () => {

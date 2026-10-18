@@ -8,9 +8,13 @@ import type { DocumentEditorHandle } from '../document/document-editor.tsx'
 import { createEditorTestHarness } from '../testing/harness.ts'
 import {
   applyFrontMatter,
+  applyFrontMatterSource,
   FrontMatterNodeView,
   frontMatterPosition,
+  frontMatterRecord,
   frontMatterSource,
+  redoEdit,
+  undoEdit,
 } from './front-matter-view.ts'
 
 const SOURCE = [
@@ -131,5 +135,69 @@ describe('writing a record onto the front matter block', () => {
     const state = harness.state(SOURCE)
     expect(applyFrontMatter({})(state, undefined)).toBe(false)
     expect(frontMatterSource(state.doc)).toContain('somethingNobodyKnows: kept')
+  })
+})
+
+describe('front matter as source', () => {
+  const harness = createEditorTestHarness()
+
+  it('puts the YAML on the block exactly as it was written, comments and all', () => {
+    const state = harness.state(SOURCE)
+    let next = state
+    const yaml = '# edited by hand\ntitle: Reading surface tour\ntype: runbook # was design'
+    expect(
+      applyFrontMatterSource(yaml)(state, (tr) => {
+        next = state.apply(tr)
+      }),
+    ).toBe(true)
+    expect(frontMatterSource(next.doc)).toBe(yaml)
+  })
+
+  it('reports nothing to do when the source is unchanged, and adds a block where there is none', () => {
+    const state = harness.state(SOURCE)
+    expect(applyFrontMatterSource(frontMatterSource(state.doc) ?? '')(state, undefined)).toBe(false)
+
+    const blank = harness.state('# A blank document\n')
+    let next = blank
+    applyFrontMatterSource('type: design')(blank, (tr) => {
+      next = blank.apply(tr)
+    })
+    expect(frontMatterSource(next.doc)).toBe('type: design')
+    expect(applyFrontMatterSource('')(blank, undefined)).toBe(false)
+  })
+
+  it('reads the block back as a record, or keeps the one it had when there is no block', () => {
+    expect(frontMatterRecord(harness.state(SOURCE).doc, {})).toMatchObject({
+      type: 'design',
+      somethingNobodyKnows: 'kept',
+    })
+    const fallback = { id: 'doc-1' }
+    expect(frontMatterRecord(harness.state('# Blank\n').doc, fallback)).toBe(fallback)
+  })
+})
+
+describe('a property change in the undo history', () => {
+  it('is its own step, undone and redone like any edit', () => {
+    const { ref } = open()
+    const editor = ref.current?.editor
+    if (editor == null) throw new Error('The editor did not mount.')
+    const base = frontMatterRecord(editor.state.doc, {})
+
+    applyFrontMatter({ ...base, type: 'runbook' })(editor.state, editor.view.dispatch)
+    applyFrontMatter({ ...base, type: 'runbook', status: 'draft' })(
+      editor.state,
+      editor.view.dispatch,
+    )
+    expect(frontMatterRecord(editor.state.doc, {})).toMatchObject({
+      type: 'runbook',
+      status: 'draft',
+    })
+
+    expect(undoEdit(editor.state, editor.view.dispatch)).toBe(true)
+    expect(frontMatterRecord(editor.state.doc, {})).toMatchObject({ type: 'runbook' })
+    expect(frontMatterRecord(editor.state.doc, {})['status']).toBeUndefined()
+
+    expect(redoEdit(editor.state, editor.view.dispatch)).toBe(true)
+    expect(frontMatterRecord(editor.state.doc, {})['status']).toBe('draft')
   })
 })

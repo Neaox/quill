@@ -6,6 +6,7 @@ import {
   createRouter,
 } from '@tanstack/react-router'
 import { render, screen, within } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { describe, expect, it } from 'vitest'
 
 import { ApiClientProvider } from '../../lib/api/client-context.tsx'
@@ -81,5 +82,17 @@ describe('DocumentList', () => {
   it("shows each document's status as a badge", async () => {
     renderDocumentList([document({ title: 'Launch plan', status: 'published' })])
     expect(await screen.findByText('published')).toBeInTheDocument()
+  })
+
+  it('draws a page of a large collection and the rest a press at a time', async () => {
+    renderDocumentList(
+      Array.from({ length: 5_000 }, (_, index) =>
+        document({ id: `d-${index}`, title: `Entry ${index + 1}`, collectionId: 'log' }),
+      ),
+    )
+
+    expect(await screen.findAllByRole('link')).toHaveLength(50)
+    await userEvent.click(screen.getByRole('button', { name: /^Show 50 more/ }))
+    expect(screen.getAllByRole('link')).toHaveLength(100)
   })
 })

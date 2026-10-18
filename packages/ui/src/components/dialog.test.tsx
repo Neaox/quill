@@ -1,6 +1,6 @@
-import { render, screen, waitFor, within } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { expectNoAccessibilityViolations } from '../../testing/axe.ts'
 import { Button } from './button.tsx'
@@ -261,5 +261,156 @@ describe('Dialog', () => {
     )
 
     expect(await screen.findByRole('dialog')).toHaveClass('dialog-panel', 'top-1/2')
+  })
+})
+
+/*
+ * The dialog's machinery arrives on demand (quill-plan.md section 31). Every
+ * test above runs with it already here (`vitest.setup.ts`); these load a fresh
+ * copy of the dialog whose machinery has not arrived, and decide when it does.
+ */
+async function freshDialog() {
+  vi.resetModules()
+  const { promise: arrived, resolve: arrive } = Promise.withResolvers<void>()
+  vi.doMock('./dialog-panels.tsx', async () => {
+    await arrived
+    return vi.importActual('./dialog-panels.tsx')
+  })
+  const dialog = await import('./dialog.tsx')
+  return { ...dialog, arrive }
+}
+
+describe('a dialog whose machinery has not arrived yet', () => {
+  afterEach(() => {
+    vi.doUnmock('./dialog-panels.tsx')
+  })
+
+  it('draws its trigger alone, announced as the trigger of a dialog', async () => {
+    const { Dialog: FreshDialog } = await freshDialog()
+    const { container } = render(
+      <FreshDialog title="Delete document" trigger={<Button>Delete</Button>}>
+        This cannot be undone.
+      </FreshDialog>,
+    )
+
+    const trigger = screen.getByRole('button', { name: 'Delete' })
+    expect(trigger).toHaveAttribute('aria-haspopup', 'dialog')
+    expect(trigger).toHaveAttribute('aria-expanded', 'false')
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    await expectNoAccessibilityViolations(container)
+  })
+
+  it('holds a press on its trigger and opens once the machinery arrives', async () => {
+    const { Dialog: FreshDialog, arrive } = await freshDialog()
+    render(
+      <FreshDialog title="Delete document" trigger={<Button>Delete</Button>}>
+        This cannot be undone.
+      </FreshDialog>,
+    )
+
+    await userEvent.click(screen.getByRole('button', { name: 'Delete' }))
+    expect(screen.getByRole('button', { name: 'Delete' })).toHaveAttribute('aria-busy', 'true')
+
+    arrive()
+    const dialog = await screen.findByRole('dialog', { name: 'Delete document' })
+    await waitFor(() => {
+      expect(dialog.contains(document.activeElement)).toBe(true)
+    })
+  })
+
+  it('asks its owner to open when it is controlled', async () => {
+    const { Dialog: FreshDialog } = await freshDialog()
+    const onOpenChange = vi.fn<(open: boolean) => void>()
+    render(
+      <FreshDialog
+        open={false}
+        onOpenChange={onOpenChange}
+        title="Delete document"
+        trigger={<Button>Delete</Button>}
+      >
+        This cannot be undone.
+      </FreshDialog>,
+    )
+
+    await userEvent.click(screen.getByRole('button', { name: 'Delete' }))
+    expect(onOpenChange).toHaveBeenCalledWith(true)
+  })
+
+  it('opens when it is opened, as soon as the machinery arrives', async () => {
+    const { Dialog: FreshDialog, arrive } = await freshDialog()
+    render(
+      <FreshDialog open title="Delete document">
+        This cannot be undone.
+      </FreshDialog>,
+    )
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+
+    arrive()
+    expect(await screen.findByRole('dialog', { name: 'Delete document' })).toBeInTheDocument()
+  })
+
+  it('draws a close control as its child alone until the machinery arrives', async () => {
+    const { DialogClose: FreshDialogClose } = await freshDialog()
+    render(
+      <FreshDialogClose>
+        <Button>Cancel</Button>
+      </FreshDialogClose>,
+    )
+    expect(screen.getByRole('button', { name: 'Cancel' })).toBeInTheDocument()
+  })
+
+  it('keeps its trigger working when fetching the machinery ahead of a press fails', async () => {
+    vi.resetModules()
+    vi.doMock('./dialog-panels.tsx', () => {
+      throw new Error('offline')
+    })
+    const { Dialog: FreshDialog } = await import('./dialog.tsx')
+    render(
+      <FreshDialog title="Delete document" trigger={<Button>Delete</Button>}>
+        This cannot be undone.
+      </FreshDialog>,
+    )
+    const trigger = screen.getByRole('button', { name: 'Delete' })
+
+    await act(async () => {
+      fireEvent.pointerEnter(trigger)
+      fireEvent.focus(trigger)
+      await new Promise((resolve) => setTimeout(resolve, 0))
+    })
+    expect(trigger).toHaveAttribute('aria-expanded', 'false')
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  })
+})
+
+/*
+ * The trigger is never replaced by the machinery (2026-10-17): a press that
+ * lands in the same task as the module arriving is on a node that is still
+ * the trigger afterwards, so it opens the dialog rather than vanishing.
+ */
+describe('a press that lands as the machinery arrives', () => {
+  afterEach(() => {
+    vi.doUnmock('./dialog-panels.tsx')
+  })
+
+  it('opens the dialog from the same trigger element', async () => {
+    const { Dialog: FreshDialog, preloadDialogs, arrive } = await freshDialog()
+    render(
+      <FreshDialog title="Delete document" trigger={<Button>Delete</Button>}>
+        Body.
+      </FreshDialog>,
+    )
+    const trigger = screen.getByRole('button', { name: 'Delete' })
+
+    await act(async () => {
+      const loading = preloadDialogs()
+      arrive()
+      await loading
+      fireEvent.pointerDown(trigger)
+      fireEvent.click(trigger)
+    })
+
+    expect(await screen.findByRole('dialog', { name: 'Delete document' })).toBeInTheDocument()
+    expect(trigger).toBeInTheDocument()
+    expect(trigger).toHaveAttribute('aria-expanded', 'true')
   })
 })

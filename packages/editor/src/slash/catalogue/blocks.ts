@@ -1,22 +1,10 @@
 import { CALLOUT_TYPES, LAYOUT_WIDTHS } from '@quill/markdown'
 import type { CalloutType, LayoutWidth } from '@quill/markdown'
-import {
-  CalloutIcon,
-  CardsIcon,
-  DangerIcon,
-  FigureIcon,
-  InfoIcon,
-  NotesIcon,
-  SuccessIcon,
-  WarningIcon,
-  WidthIcon,
-} from '@quill/ui'
-import type { IconProps } from '@quill/ui'
-import type { ComponentType } from 'react'
+import { CALLOUT_ICONS, CardsIcon, FigureIcon, NotesIcon, WidthIcon } from '@quill/ui'
 
 import { setBlockWidth } from '../../block/commands.ts'
 import { nodeType } from '../../schema/node-type.ts'
-import { calloutBlock, containerDirective, insertBlock, paragraph } from '../slash-commands.ts'
+import { containerDirective, insertBlock, paragraph } from '../slash-commands.ts'
 import { commandItem } from '../slash-item.ts'
 import type { SlashContribution, SlashItem } from '../slash-item.ts'
 
@@ -38,16 +26,6 @@ const CALLOUT_DESCRIPTIONS: Readonly<Record<CalloutType, string>> = {
   caution: 'Something with consequences',
 }
 
-/** Each tone's own mark, so six callouts are told apart at a glance and not by their labels alone. */
-const CALLOUT_ICONS: Readonly<Record<CalloutType, ComponentType<IconProps>>> = {
-  note: CalloutIcon,
-  info: InfoIcon,
-  tip: SuccessIcon,
-  important: CalloutIcon,
-  warning: WarningIcon,
-  caution: DangerIcon,
-}
-
 function calloutItem(type: CalloutType): SlashItem {
   return commandItem(
     {
@@ -59,7 +37,7 @@ function calloutItem(type: CalloutType): SlashItem {
       aliases: ['admonition'],
       icon: CALLOUT_ICONS[type],
     },
-    insertBlock(calloutBlock(type)),
+    insertBlock(containerDirective('callout', { type })),
   )
 }
 

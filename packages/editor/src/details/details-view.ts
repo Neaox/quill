@@ -3,7 +3,7 @@ import type { Node as PMNode } from '@tiptap/pm/model'
 import type { Command } from '@tiptap/pm/state'
 import type { Decoration, EditorView, NodeView } from '@tiptap/pm/view'
 
-import { isOpenByDefault, setOpenByDefault } from './details-commands.ts'
+import { attributesOf, isOpenByDefault, setOpenByDefault } from './details-commands.ts'
 import { isFolded, setFolded } from './details-folds.ts'
 
 /**
@@ -34,11 +34,9 @@ function button(className: string): HTMLButtonElement {
   return created
 }
 
+/** The callout a details is drawn as, as the reader draws it (`calloutKindOf`). */
 function kindOf(node: PMNode): string | undefined {
-  const attributes: unknown = node.attrs['attributes']
-  if (typeof attributes !== 'object' || attributes === null || !('type' in attributes))
-    return undefined
-  const { type } = attributes
+  const type = attributesOf(node)['type']
   return typeof type === 'string' ? (knownCalloutKind(type) ?? 'note') : undefined
 }
 

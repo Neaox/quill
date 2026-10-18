@@ -33,9 +33,16 @@ describe('resetDatabase', () => {
    * schemas around it. The assertions above it are done by then; this hook
    * only tidies up, so it gets the time rather than leaving a
    * `reset_*_test` database behind on a busy machine.
+   *
+   * Nothing here holds a connection to it by then: `resetDatabase` and
+   * `withClient` each end their client before returning. `FORCE` is for what
+   * this file does not control, such as an autovacuum worker that has just
+   * connected to the new database, which would otherwise refuse the drop.
    */
   afterAll(async () => {
-    await withClient('postgres', (client) => client.query(`DROP DATABASE IF EXISTS "${NAME}"`))
+    await withClient('postgres', (client) =>
+      client.query(`DROP DATABASE IF EXISTS "${NAME}" WITH (FORCE)`),
+    )
   }, 300_000)
 
   it('creates a missing disposable database, then empties an existing one', async () => {

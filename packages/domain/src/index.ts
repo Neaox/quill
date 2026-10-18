@@ -154,6 +154,30 @@ export type {
 } from './permissions/materialise.ts'
 export { materialiseEffectivePermissions } from './permissions/materialise.ts'
 
+export type { DocumentFacts, PublicDocumentFacts, PublicLifecycle } from './document-facts.ts'
+export {
+  calendarDate,
+  describeInterval,
+  documentFacts,
+  isReviewInterval,
+  nextReviewDue,
+  publicDocumentFacts,
+  reviewDueAt,
+  statusLabel,
+  tagQuery,
+  verificationLapsed,
+} from './document-facts.ts'
+export type { DocumentLifecycle, LifecycleState, ReviewFreshness } from './document-lifecycle.ts'
+export {
+  DEPRECATED_CANNOT_BE_VERIFIED,
+  LEGACY_STATUSES,
+  LIFECYCLE_STATES,
+  REVIEW_DUE_SOON_DAYS,
+  canMoveLifecycle,
+  isLifecycleState,
+  lifecycleLabel,
+  reviewFreshness,
+} from './document-lifecycle.ts'
 export { MAX_URL_LENGTH, normaliseUrl } from './link-preview/normalise-url.ts'
 export {
   FILE_KINDS,

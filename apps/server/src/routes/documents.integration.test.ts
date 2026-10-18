@@ -502,11 +502,12 @@ describe('the content journey', () => {
     const row = await harness.deps.uow.repos.documents.findById(id)
     expect(row?.path).toBeTruthy()
 
-    for (const path of [
-      `/api/documents/${id}/compare?${range}`,
-      `/api/documents/${id}/compare/source?${range}`,
-    ]) {
-      const response = await get(path, viewer)
+    const responses = await Promise.all(
+      [`/api/documents/${id}/compare?${range}`, `/api/documents/${id}/compare/source?${range}`].map(
+        (path) => get(path, viewer),
+      ),
+    )
+    for (const response of responses) {
       expect(response.statusCode).toBe(200)
       // No storage path, no revision hash, no hunk or file header, no Git words.
       expect(response.body).not.toContain(row?.path)
@@ -656,6 +657,123 @@ describe('the content journey', () => {
       editor,
     )
     expect(afterwards.json().changes).toEqual([])
+  })
+
+  it('puts a change back in the draft and saves it, and undoes that with what it hands back', async () => {
+    const id = await createDocument('Putting back')
+    await writeDraft(id, '# Putting back\n\nRestart the queue first.\n', 0)
+    const published = await publish(id, await baseOf(id))
+    await writeDraft(id, '# Putting back\n\nRestart the queue first, then wait.\n', 1)
+    const from = published.json().revision
+    const range = `from=${from}&to=draft&patches=true`
+    const [change] = (await get(`/api/documents/${id}/compare?${range}`, editor)).json().changes
+
+    const put = await harness.app.inject({
+      method: 'POST',
+      url: `/api/documents/${id}/draft/revert`,
+      cookies: editor,
+      payload: { from, draftVersion: 2, changes: [change.id] },
+    })
+
+    expect(put.statusCode).toBe(200)
+    expect(put.json().draftVersion).toBe(3)
+    const saved = (await get(`/api/documents/${id}/draft`, editor)).json()
+    expect(JSON.stringify(saved.ast)).not.toContain('then wait')
+    expect((await get(`/api/documents/${id}/compare?${range}`, editor)).json().changes).toEqual([])
+
+    const undone = await harness.app.inject({
+      method: 'POST',
+      url: `/api/documents/${id}/draft/revert/undo`,
+      cookies: editor,
+      payload: { draftVersion: 3, ast: put.json().previous },
+    })
+
+    expect(undone.statusCode).toBe(200)
+    expect(undone.json().draftVersion).toBe(4)
+    expect(JSON.stringify((await get(`/api/documents/${id}/draft`, editor)).json().ast)).toContain(
+      'then wait',
+    )
+  })
+
+  it('refuses to put a change back while somebody else is editing, or for a reader', async () => {
+    const id = await createDocument('Held elsewhere')
+    await writeDraft(id, '# Held elsewhere\n\nOne.\n', 0)
+    const published = await publish(id, await baseOf(id))
+    await writeDraft(id, '# Held elsewhere\n\nOne, edited.\n', 1)
+    const from = published.json().revision
+    const putBack = async (cookies: Record<string, string>, draftVersion = 2) =>
+      await harness.app.inject({
+        method: 'POST',
+        url: `/api/documents/${id}/draft/revert`,
+        cookies,
+        payload: { from, draftVersion, changes: ['c1'] },
+      })
+    const undo = async (cookies: Record<string, string>, ast: unknown) =>
+      await harness.app.inject({
+        method: 'POST',
+        url: `/api/documents/${id}/draft/revert/undo`,
+        cookies,
+        payload: { draftVersion: 2, ast } as Record<string, unknown>,
+      })
+
+    expect((await putBack(viewer)).statusCode).toBe(403)
+    expect((await putBack(editor, 1)).statusCode).toBe(409)
+    expect((await undo(editor, { version: 99 })).statusCode).toBe(422)
+    expect((await undo(viewer, draftOf('# Held elsewhere\n'))).statusCode).toBe(403)
+
+    // Another person's session holds the document: the write would land under them.
+    const other = admin
+    const held = await harness.app.inject({
+      method: 'POST',
+      url: `/api/documents/${id}/lock/acquire`,
+      cookies: other,
+    })
+    expect(held.statusCode).toBe(200)
+    expect((await putBack(editor)).statusCode).toBe(423)
+    expect((await undo(editor, draftOf('# Held elsewhere\n'))).statusCode).toBe(423)
+    await harness.app.inject({ method: 'DELETE', url: `/api/documents/${id}/lock`, cookies: other })
+  })
+
+  it('answers each way a revert or its undo can be refused, in the words of the contract', async () => {
+    const id = await createDocument('Refused reverts')
+    await writeDraft(id, '# Refused reverts\n\nOne.\n', 0)
+    const published = await publish(id, await baseOf(id))
+    await writeDraft(id, '# Refused reverts\n\nOne, edited.\n', 1)
+    const post = async (url: string, payload: Record<string, unknown>) =>
+      await harness.app.inject({ method: 'POST', url, cookies: editor, payload })
+
+    const from = published.json().revision
+    expect(
+      (await post(`/api/documents/${id}/draft/revert`, { from, draftVersion: 2, changes: ['c9'] }))
+        .statusCode,
+    ).toBe(422)
+    expect(
+      (
+        await post(`/api/documents/${id}/draft/revert`, {
+          from: 'f'.repeat(40),
+          draftVersion: 2,
+          changes: ['c1'],
+        })
+      ).statusCode,
+    ).toBe(404)
+    expect(
+      (
+        await post(`/api/documents/${id}/draft/revert/undo`, {
+          draftVersion: 1,
+          ast: draftOf('# Refused reverts\n') as Record<string, unknown>,
+        })
+      ).statusCode,
+    ).toBe(409)
+
+    await harness.database.pool.query('DELETE FROM drafts WHERE document_id = $1', [id])
+    expect(
+      (
+        await post(`/api/documents/${id}/draft/revert/undo`, {
+          draftVersion: 2,
+          ast: draftOf('# Refused reverts\n') as Record<string, unknown>,
+        })
+      ).statusCode,
+    ).toBe(404)
   })
 
   it('revalidates a comparison by its tag', async () => {
@@ -843,6 +961,104 @@ describe('the content journey', () => {
       'broken-link',
     ])
     expect(envelope.json().lock).toMatchObject({ holderName: 'Editor' })
+    expect(envelope.json().facts).toEqual({ owners: [], tags: [], reviewInterval: '30d' })
+  })
+
+  it('states what the document says about itself, naming owners who are people', async () => {
+    const id = await createDocument('Facts')
+    await writeDraft(
+      id,
+      `---
+id: ${id}
+title: Facts
+status: draft
+owners: [editor@example.com, platform]
+tags: [ops]
+---
+
+# Facts
+`,
+      0,
+    )
+    expect((await publish(id, await baseOf(id))).statusCode).toBe(200)
+    const envelope = await get(`/api/documents/${id}/envelope`, viewer)
+    expect(envelope.json().facts).toEqual({
+      status: 'draft',
+      owners: [
+        { label: 'Editor', person: true },
+        { label: 'platform', person: false },
+      ],
+      tags: ['ops'],
+    })
+    expect(JSON.stringify(envelope.json().facts)).not.toContain('editor@example.com')
+  })
+})
+
+describe('the lifecycle in the envelope (ADR-005 amendment)', () => {
+  it('names who verified a page as a person, never by address', async () => {
+    const id = await createDocument('Verified page')
+    await writeDraft(
+      id,
+      `---\nid: ${id}\nstatus: verified\nverified:\n  by: editor@example.com\n  at: 2026-10-02\n---\n\n# Verified page\n`,
+      0,
+    )
+    expect((await publish(id, await baseOf(id))).statusCode).toBe(200)
+    const facts = (await get(`/api/documents/${id}/envelope`, viewer)).json().facts
+    expect(facts.lifecycle).toEqual({
+      state: 'verified',
+      verifiedBy: { label: 'Editor', person: true },
+      verifiedAt: '2026-10-02',
+    })
+    expect(JSON.stringify(facts)).not.toContain('editor@example.com')
+  })
+
+  it('leads a deprecated page to its replacement only when it names one the reader may open', async () => {
+    const replacement = await createDocument('The new way')
+    const id = await createDocument('The old way')
+    await writeDraft(
+      id,
+      `---\nid: ${id}\nstatus: deprecated\nsupersededBy: ${replacement}\n---\n\n# The old way\n`,
+      0,
+    )
+    expect((await publish(id, await baseOf(id))).statusCode).toBe(200)
+    const lifecycle = (await get(`/api/documents/${id}/envelope`, viewer)).json().facts.lifecycle
+    expect(lifecycle.state).toBe('deprecated')
+    expect(lifecycle.replacement.title).toBe('The new way')
+    expect(lifecycle.replacement.href).toMatch(/^\/w\/[^/]+\/d\/the-new-way-[0-9a-z]{10}$/u)
+
+    const nowhere = await createDocument('Pointing nowhere')
+    await writeDraft(
+      nowhere,
+      `---\nid: ${nowhere}\nstatus: deprecated\nsupersededBy: 00000000-0000-4000-8000-00000000dead\n---\n\n# Pointing nowhere\n`,
+      0,
+    )
+    expect((await publish(nowhere, await baseOf(nowhere))).statusCode).toBe(200)
+    expect(
+      (await get(`/api/documents/${nowhere}/envelope`, viewer)).json().facts.lifecycle,
+    ).toEqual({ state: 'deprecated' })
+  })
+
+  it('tells someone who may edit that the draft holds unpublished changes, and nobody else', async () => {
+    const id = await createDocument('Changing page')
+    await writeDraft(id, '# Changing page\n\nFirst.\n', 0)
+    expect((await publish(id, await baseOf(id))).statusCode).toBe(200)
+    expect((await get(`/api/documents/${id}/envelope`, editor)).json().unpublishedChanges).toBe(
+      false,
+    )
+    // An edit made after the publish, as any edit is.
+    harness.clock.advance(60_000)
+    await writeDraft(id, '# Changing page\n\nSecond.\n', 1)
+    expect((await get(`/api/documents/${id}/envelope`, editor)).json().unpublishedChanges).toBe(
+      true,
+    )
+    expect((await get(`/api/documents/${id}/envelope`, viewer)).json().unpublishedChanges).toBe(
+      false,
+    )
+    // When it was saved, for the notice above the page, to the same people.
+    expect((await get(`/api/documents/${id}/envelope`, editor)).json().draft).toEqual({
+      savedAt: expect.any(String),
+    })
+    expect((await get(`/api/documents/${id}/envelope`, viewer)).json().draft).toBeNull()
   })
 })
 
@@ -1381,5 +1597,24 @@ describe('addressing a document by its short key', () => {
     const document = (await get(`/api/documents/${key}`, editor)).json()
     expect(document.shortId).toBe(key)
     expect(document.slug).toBe('after-the-rename')
+  })
+})
+
+/*
+ * Regression (2026-10-17): a document with no draft row — imported, seeded,
+ * or older than drafts — answered the editor with "Draft not found". Opening
+ * it now starts the draft, from the published revision when there is one.
+ */
+describe('opening the editor on a document that has no draft yet', () => {
+  it('starts a draft rather than answering not found', async () => {
+    const id = await createDocument('Imported page')
+    await harness.database.pool.query('DELETE FROM drafts WHERE document_id = $1', [id])
+
+    const response = await get(`/api/documents/${id}/draft`, editor)
+
+    expect(response.statusCode).toBe(200)
+    expect(response.json()).toMatchObject({ documentId: id, draftVersion: 0, baseRevision: null })
+    // Readers cannot open one for editing, draft or not.
+    expect((await get(`/api/documents/${id}/draft`, viewer)).statusCode).toBe(403)
   })
 })

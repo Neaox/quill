@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest'
 import { useRenderedDocument } from './content.ts'
 import { ApiError } from './errors.ts'
 import { createHookWrapper } from './hook-wrapper.tsx'
-import { usePublishDocument, useRestoreRevision, useRevertPreview } from './publishing.ts'
+import { usePublishDocument, useRestoreRevision } from './publishing.ts'
 import { errorResponse, jsonResponse } from './testing.ts'
 
 const PUBLISHED = {
@@ -155,66 +155,5 @@ describe('invalidation after a publish', () => {
     await waitFor(() => {
       expect(requested.length).toBeGreaterThan(1)
     })
-  })
-})
-
-describe('useRevertPreview', () => {
-  it('asks for the draft with the named changes put back, as of the version looked at', async () => {
-    const bodies: unknown[] = []
-    const wrapper = createHookWrapper({
-      'POST /api/documents/{id}/draft/revert-preview': async (request) => {
-        bodies.push(await request.json())
-        return jsonResponse(200, { draftVersion: 4, ast: { version: 1 } })
-      },
-    })
-
-    const { result } = renderHook(() => useRevertPreview(), { wrapper })
-    const reverted = await result.current.mutateAsync({
-      documentId: 'doc-1',
-      from: 'a'.repeat(40),
-      draftVersion: 4,
-      changes: ['c1', 'c3'],
-    })
-
-    expect(reverted).toEqual({ draftVersion: 4, ast: { version: 1 } })
-    expect(bodies).toEqual([{ from: 'a'.repeat(40), draftVersion: 4, changes: ['c1', 'c3'] }])
-  })
-
-  it('leaves out the revision for a document never published', async () => {
-    const bodies: unknown[] = []
-    const wrapper = createHookWrapper({
-      'POST /api/documents/{id}/draft/revert-preview': async (request) => {
-        bodies.push(await request.json())
-        return jsonResponse(200, { draftVersion: 1, ast: {} })
-      },
-    })
-
-    const { result } = renderHook(() => useRevertPreview(), { wrapper })
-    await result.current.mutateAsync({
-      documentId: 'doc-1',
-      from: null,
-      draftVersion: 1,
-      changes: ['c1'],
-    })
-
-    expect(bodies).toEqual([{ draftVersion: 1, changes: ['c1'] }])
-  })
-
-  it('throws a typed error when the draft has moved on', async () => {
-    const wrapper = createHookWrapper({
-      'POST /api/documents/{id}/draft/revert-preview': () =>
-        errorResponse(409, 'stale_version', 'This draft has moved on since you read it'),
-    })
-
-    const { result } = renderHook(() => useRevertPreview(), { wrapper })
-
-    await expect(
-      result.current.mutateAsync({
-        documentId: 'doc-1',
-        from: null,
-        draftVersion: 1,
-        changes: ['c1'],
-      }),
-    ).rejects.toMatchObject({ status: 409 })
   })
 })
