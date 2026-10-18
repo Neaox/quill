@@ -13,10 +13,10 @@ import type {
 
 import type { DetailsNode } from '../details/details.ts'
 import { DETAILS, detailsModel, isDetails } from '../details/details.ts'
+import { splitAlert } from '../pipeline/github-alert.ts'
 import type { SourceForm } from '../pipeline/source-form.ts'
 import type { Warning } from '../warnings.ts'
 import { warning } from '../warnings.ts'
-import { readAlert } from './alert.ts'
 import { schema } from './schema.ts'
 import { collapseSoftBreaks } from './soft-breaks.ts'
 
@@ -219,17 +219,22 @@ export function mdastToProseMirror(
   }
 
   /**
-   * A quote, and a GitHub alert as a quote that knows it is one, its marker
-   * line carried on the node rather than in its text (`alert.ts`). An alert
-   * with nothing but its marker holds the synthetic paragraph.
+   * A quote, or a callout when it opens `[!kind]` (`github-alert.ts`): titled by
+   * the rest of that line when it has one, and written back as the quote it was,
+   * its marker as typed carried on the node as `alert`. A callout with nothing
+   * but its marker holds the synthetic paragraph.
    */
   function blockquote(current: Blockquote): PMNode {
-    const alert = readAlert(current)
+    const alert = splitAlert(current)
     if (alert === undefined) return node('blockquote', formOf(current), blocks(current.children))
-    const content = blocks(alert.children)
+    const title =
+      alert.title.length === 0
+        ? []
+        : [node('paragraph', { directiveLabel: true }, inlines(alert.title, []))]
+    const content = [...title, ...blocks(alert.body)]
     return node(
-      'blockquote',
-      { alert: alert.form, ...formOf(current) },
+      'containerDirective',
+      { name: 'callout', attributes: { type: alert.kind }, alert: alert.form, ...formOf(current) },
       content.length === 0 ? [node('paragraph', { synthetic: true })] : content,
     )
   }

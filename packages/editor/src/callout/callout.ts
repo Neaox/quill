@@ -1,9 +1,9 @@
 import {
-  alertForm,
-  alertType,
-  isAlertType,
   isCalloutType,
-  retypeAlert,
+  markerName,
+  markerOf,
+  markerType,
+  readAlertForm,
   withAttribute,
 } from '@quill/markdown'
 import type { AlertForm, CalloutType, WithAttribute } from '@quill/markdown'
@@ -16,12 +16,15 @@ import { nodeType } from '../schema/node-type.ts'
 /**
  * Callouts as the editor changes them.
  *
- * A callout is written in one of two ways, and the author's choice is kept:
- * a GitHub alert (`> [!WARNING]`), which every Markdown reader shows as a
- * quote, and a `:::callout{type=warning}` directive, which can carry Quill's
- * `info` type and a title of its own. Changing the type changes the type word
- * and nothing else — an alert stays an alert, a directive keeps its attribute
- * block as written — so a switch is a one-word diff and one undo step.
+ * A callout is a `:::callout` container directive in the editor, whichever way
+ * it is written, and the author's choice of way is kept: as a quote (GitHub's
+ * `> [!WARNING]`, Obsidian's `> [!tip] Title`, of any kind Obsidian has or the
+ * author made up), which every Markdown reader shows as a quote and whose
+ * marker the node carries as its `alert` form, or as `:::callout{type=warning}`.
+ * Changing the type changes the type and nothing else — a quote stays a quote,
+ * its marker in the case it was typed, and a directive keeps its attribute
+ * block as written — so a switch is a one-word diff and one undo step, and
+ * switching back gives the marker back exactly as it was.
  */
 
 export type CalloutSyntax = 'alert' | 'directive'
@@ -31,10 +34,13 @@ export interface CalloutRef {
   /** The position before the callout. */
   readonly pos: number
   readonly syntax: CalloutSyntax
+  /** The type it is drawn as. */
   readonly type: CalloutType
-  /** The directive's own title, `:::callout[Before you begin]`; undefined when it has none. */
+  /** What its kind is called: the type's label, or the kind the author wrote (`Faq`). */
+  readonly name: string
+  /** Its own title, `:::callout[Before you begin]` or `> [!tip] Before you begin`. */
   readonly title: string | undefined
-  /** How an alert's marker was written; undefined for a directive. */
+  /** How a quote's marker was written; undefined for a directive. */
   readonly alert?: AlertForm | undefined
 }
 
@@ -47,11 +53,10 @@ export const CALLOUT_LABELS: Readonly<Record<CalloutType, string>> = {
   caution: 'Caution',
 }
 
-/** Why a type or a title cannot be given to an alert. */
-export const ALERT_LIMITS = {
-  info: 'GitHub alerts have no Info type',
-  title: 'GitHub alerts have no title; a callout block can have one',
-} as const
+/** A kind the author wrote, as a label: `faq` is `Faq`. */
+function asLabel(kind: string): string {
+  return `${kind.charAt(0).toUpperCase()}${kind.slice(1)}`
+}
 
 function stringAttributes(node: PMNode): Readonly<Record<string, string>> {
   const attributes: unknown = node.attrs['attributes']
@@ -61,7 +66,7 @@ function stringAttributes(node: PMNode): Readonly<Record<string, string>> {
   )
 }
 
-/** A callout block's title paragraph, `:::callout[Title]`, or undefined when it has none. */
+/** A callout's title paragraph, `:::callout[Title]`, or undefined when it has none. */
 export function labelParagraph(node: PMNode): PMNode | undefined {
   const first = node.firstChild
   return first?.type.name === 'paragraph' && first.attrs['directiveLabel'] === true
@@ -71,21 +76,19 @@ export function labelParagraph(node: PMNode): PMNode | undefined {
 
 /** The callout a node is, or undefined when it is not one. */
 export function calloutOf(node: PMNode, pos: number): CalloutRef | undefined {
-  if (node.type.name === 'blockquote') {
-    const form = alertForm(node.attrs['alert'])
-    if (form === undefined) return undefined
-    return { node, pos, syntax: 'alert', type: alertType(form), title: undefined, alert: form }
-  }
   if (node.type.name !== 'containerDirective' || node.attrs['name'] !== 'callout') return undefined
-  const type = stringAttributes(node)['type']
-  const title = labelParagraph(node)?.textContent
-  return {
-    node,
-    pos,
-    syntax: 'directive',
-    type: isCalloutType(type) ? type : 'note',
-    title: title === undefined || title === '' ? undefined : title,
+  const written = stringAttributes(node)['type']
+  const type = isCalloutType(written) ? written : 'note'
+  const label = labelParagraph(node)?.textContent
+  const title = label === undefined || label === '' ? undefined : label
+  const alert = readAlertForm(node.attrs['alert'])
+  if (alert === undefined) {
+    return { node, pos, syntax: 'directive', type, name: CALLOUT_LABELS[type], title }
   }
+  // The kind is said as it was written for as long as it is the type it was read as.
+  const name =
+    markerType(alert.marker) === type ? asLabel(markerName(alert.marker)) : CALLOUT_LABELS[type]
+  return { node, pos, syntax: 'alert', type, name, title, alert }
 }
 
 /** The innermost callout around a position. */
@@ -107,17 +110,9 @@ export function calloutAt(state: EditorState, at = state.selection.from): Callou
 export function quoteAt(state: EditorState, at = state.selection.from): number | undefined {
   const $pos = state.doc.resolve(at)
   for (let depth = $pos.depth; depth > 0; depth -= 1) {
-    const node = $pos.node(depth)
-    if (node.type.name === 'blockquote') {
-      return node.attrs['alert'] === null ? $pos.before(depth) : undefined
-    }
+    if ($pos.node(depth).type.name === 'blockquote') return $pos.before(depth)
   }
   return undefined
-}
-
-/** Why a callout cannot take a type, or undefined when it can. */
-export function typeUnavailable(callout: CalloutRef, type: CalloutType): string | undefined {
-  return callout.syntax === 'alert' && !isAlertType(type) ? ALERT_LIMITS.info : undefined
 }
 
 function calloutStarting(state: EditorState, pos: number): CalloutRef | undefined {
@@ -135,14 +130,14 @@ export function setCalloutType(pos: number, type: CalloutType): Command {
   return (state, dispatch) => {
     const callout = calloutStarting(state, pos)
     if (callout === undefined || callout.type === type) return false
-    const { node, alert } = callout
-    if (alert !== undefined) {
-      if (!isAlertType(type)) return false
-      dispatch?.(state.tr.setNodeAttribute(pos, 'alert', retypeAlert(alert, type)))
-      return true
-    }
     if (dispatch === undefined) return true
-    const next = withAttribute(stringAttributes(node), sourceFormOf(node), 'type', type)
+    const { node, alert } = callout
+    // A quote's marker is written from its type (`to-mdast.ts`), and its form is
+    // kept, so the marker comes back as it was typed when the type does.
+    const next =
+      alert === undefined
+        ? withAttribute(stringAttributes(node), sourceFormOf(node), 'type', type)
+        : { attributes: { type }, sourceForm: sourceFormOf(node) }
     dispatch(
       state.tr.setNodeMarkup(pos, undefined, {
         ...node.attrs,
@@ -155,13 +150,13 @@ export function setCalloutType(pos: number, type: CalloutType): Command {
 }
 
 /**
- * Gives a directive callout a title of its own, or takes it away with an
- * empty one. An alert cannot have one: GitHub would stop reading it as one.
+ * Gives a callout a title of its own, or takes it away with an empty one. A
+ * quote's title is written after its marker, as Obsidian writes it.
  */
 export function setCalloutTitle(pos: number, title: string): Command {
   return (state, dispatch) => {
     const callout = calloutStarting(state, pos)
-    if (callout === undefined || callout.syntax !== 'directive') return false
+    if (callout === undefined) return false
     const words = title.trim()
     if ((callout.title ?? '') === words) return false
     if (dispatch === undefined) return true
@@ -184,38 +179,37 @@ export function setCalloutTitle(pos: number, title: string): Command {
   }
 }
 
-/** A plain quote becomes a callout, as a GitHub alert: it is still a quote to every reader. */
+/**
+ * A plain quote becomes a callout, written as the quote GitHub and Obsidian
+ * read (`> [!NOTE]`): it is still a quote to every other reader.
+ */
 export function quoteToCallout(pos: number, type: CalloutType = 'note'): Command {
   return (state, dispatch) => {
     const node = state.doc.nodeAt(pos)
-    if (node?.type.name !== 'blockquote' || node.attrs['alert'] !== null) return false
-    if (!isAlertType(type)) return false
-    dispatch?.(
-      state.tr.setNodeAttribute(pos, 'alert', {
-        marker: `[!${type.toUpperCase()}]\n`,
-        alone: false,
-      }),
+    if (node?.type.name !== 'blockquote') return false
+    if (dispatch === undefined) return true
+    const callout = nodeType(state.schema, 'containerDirective').create(
+      {
+        name: 'callout',
+        attributes: { type },
+        alert: { marker: markerOf(type), own: false },
+        layout: node.attrs['layout'],
+      },
+      node.content,
     )
+    dispatch(state.tr.replaceWith(pos, pos + node.nodeSize, callout))
     return true
   }
 }
 
-/**
- * A callout becomes a plain quote, its words kept. An alert drops its marker;
- * a directive's title, if it had one, becomes the quote's first line.
- */
+/** A callout becomes a plain quote, its words kept: its title, if it had one, its first line. */
 export function calloutToQuote(pos: number): Command {
   return (state, dispatch) => {
     const callout = calloutStarting(state, pos)
     if (callout === undefined) return false
     if (dispatch === undefined) return true
-    const { node } = callout
-    if (callout.syntax === 'alert') {
-      dispatch(state.tr.setNodeAttribute(pos, 'alert', null))
-      return true
-    }
     const content: PMNode[] = []
-    node.forEach((child) => {
+    callout.node.forEach((child) => {
       const isLabel = child.type.name === 'paragraph' && child.attrs['directiveLabel'] === true
       content.push(
         isLabel
@@ -224,10 +218,10 @@ export function calloutToQuote(pos: number): Command {
       )
     })
     const quote = nodeType(state.schema, 'blockquote').create(
-      { layout: node.attrs['layout'] },
+      { layout: callout.node.attrs['layout'] },
       Fragment.from(content),
     )
-    dispatch(state.tr.replaceWith(pos, pos + node.nodeSize, quote))
+    dispatch(state.tr.replaceWith(pos, pos + callout.node.nodeSize, quote))
     return true
   }
 }

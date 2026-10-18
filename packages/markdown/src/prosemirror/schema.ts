@@ -57,16 +57,12 @@ const Heading = Node.create({
   addAttributes: () => ({ level: { default: 1 }, ...attributes(...BLOCK) }),
 })
 
-/**
- * `alert` is a GitHub alert's marker line, lifted off the quote's text and
- * kept as it was written (`alert.ts`); null for an ordinary quote.
- */
 const Blockquote = Node.create({
   name: 'blockquote',
   group: 'block',
   content: 'block+',
   defining: true,
-  addAttributes: () => attributes('alert', ...BLOCK),
+  addAttributes: () => attributes(...BLOCK),
 })
 
 const CodeBlock = Node.create({
@@ -232,6 +228,9 @@ const ContainerDirective = Node.create({
   addAttributes: () => ({
     name: { default: null },
     attributes: { default: {} },
+    // A callout that was written as a quote (`> [!NOTE]`, `> [!tip] Title`), and
+    // how: it is written back as one. Not drawn: it is how the Markdown was spelled.
+    alert: { default: null, rendered: false },
     ...attributes(...BLOCK),
   }),
 })

@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest'
 import type { Root } from 'mdast'
 
+import { CALLOUT_TYPES } from '../directives/callout.ts'
 import { mdastToProseMirror } from '../prosemirror/from-mdast.ts'
 import { liftLayout, wrapLayout } from '../prosemirror/layout.ts'
 import { proseMirrorToMdast } from '../prosemirror/to-mdast.ts'
+import { markerOf } from './github-alert.ts'
 import { parseDocument } from './parse-document.ts'
 import { parseMarkdown, stringifyMdast } from './processor.ts'
 import { serializeDocument } from './serialize-document.ts'
@@ -111,6 +113,102 @@ describe('GitHub alerts on a save', () => {
         {
           type: 'blockquote',
           children: [{ type: 'paragraph', children: [{ type: 'text', value: '[!NOTE]\nBody.' }] }],
+        },
+      ],
+    }
+
+    expect(stringifyMdast(tree)).toBe('> [!NOTE]\n> Body.\n')
+  })
+})
+
+describe('Obsidian callouts on a save', () => {
+  const SOURCES = [
+    '> [!tip] Before you begin\n> Read this first.\n',
+    '> [!TIP] Before you begin\n> Read this first.\n',
+    '> [!faq] Why?\n> Because.\n',
+    '> [!bug]\n> Fix it.\n',
+    '> [!my-own-kind] Hello\n> Body.\n',
+    '> [!note] A **bold** and *slanted* title\n> Body.\n',
+    '> [!note] A title\n',
+    '> [!note] A title\n>\n> Body.\n',
+    '- An item.\n\n  > [!tip] A title\n  > Body.\n',
+  ]
+
+  it.each(SOURCES)('keep %j byte for byte', (source) => {
+    expect(stringifyMdast(parseMarkdown(source))).toBe(source)
+    expect(saved(source)).toBe(source)
+  })
+
+  it('keep the title on its line when the body’s soft wraps collapse', () => {
+    const source = '> [!tip] A title\n> The first line\n> and the second.\n'
+
+    expect(stringifyMdast(parseMarkdown(source))).toBe(source)
+    expect(saved(source)).toBe('> [!tip] A title\n> The first line and the second.\n')
+  })
+
+  it('keep a title that is formatted, whichever node the line break is in', () => {
+    const source = '> [!tip] **Bold** title\n> Body text\n> more.\n'
+
+    expect(saved(source)).toBe('> [!tip] **Bold** title\n> Body text more.\n')
+  })
+
+  it('write one the editor built as one', () => {
+    const tree: Root = {
+      type: 'root',
+      children: [
+        {
+          type: 'blockquote',
+          children: [
+            { type: 'paragraph', children: [{ type: 'text', value: '[!tip] A title\nBody.' }] },
+          ],
+        },
+      ],
+    }
+
+    expect(stringifyMdast(tree)).toBe('> [!tip] A title\n> Body.\n')
+  })
+
+  it('still escape a marker that would read back as a reference', () => {
+    const source = '> \\[!tip] A title\n> Body.\n\n[!tip]: https://example.com\n'
+    const tree = parseMarkdown(source)
+
+    expect(semantics(parseMarkdown(stringifyMdast(tree)))).toBe(semantics(tree))
+  })
+})
+
+describe('the marker a callout is written with', () => {
+  it('is GitHub’s own capitals for GitHub’s kinds, and lower case for the one it lacks', () => {
+    expect(CALLOUT_TYPES.map((type) => markerOf(type))).toEqual([
+      '[!NOTE]',
+      '[!info]',
+      '[!TIP]',
+      '[!IMPORTANT]',
+      '[!WARNING]',
+      '[!CAUTION]',
+    ])
+  })
+})
+
+describe('GitHub alerts as an editor builds them', () => {
+  it('ignore the spaces that end a formatted title', () => {
+    expect(saved('> [!tip] **Bold**&#32;\n> Body.\n')).toBe('> [!tip] **Bold**\n> Body.\n')
+  })
+
+  it('keep a marker on its own line when the text after it is a node of its own', () => {
+    const tree: Root = {
+      type: 'root',
+      children: [
+        {
+          type: 'blockquote',
+          children: [
+            {
+              type: 'paragraph',
+              children: [
+                { type: 'text', value: '[!NOTE]' },
+                { type: 'text', value: '\nBody.' },
+              ],
+            },
+          ],
         },
       ],
     }

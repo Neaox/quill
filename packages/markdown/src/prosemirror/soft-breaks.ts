@@ -10,20 +10,22 @@ import { rewriteTree } from '../tree.ts'
  * document with, and so what the first publish from the editor writes, once,
  * as a formatting-only change (ADR-002, ADR-003 requirement 5).
  *
- * One line break is not a soft wrap: the one that ends a GitHub alert's marker
- * line. Joined to its body, `> [!NOTE] Body.` is no longer an alert to GitHub
- * or to the renderer, so it is kept.
+ * One line break is not a soft wrap: the one that ends a callout's marker line,
+ * `> [!NOTE]` or `> [!tip] Its title`. Joined to its body, the body is no longer
+ * a body but a title, and a GitHub alert is no longer an alert, so it is kept.
  */
 export function collapseSoftBreaks(tree: Root): Root {
-  const markerLines = new Map<Text, number>()
+  const kept = new Map<Text, number>()
   visit(tree, 'blockquote', (node) => {
-    const opening = alertOpening(node)
-    if (opening !== undefined) markerLines.set(opening.text, opening.line)
+    const end = alertOpening(node)?.lineEnd
+    if (end !== undefined) kept.set(end.text, end.after)
   })
   return rewriteTree(tree, (node) => {
     if (node.type !== 'text' && node.type !== 'inlineCode') return undefined
-    const kept = node.type === 'text' ? (markerLines.get(node) ?? 0) : 0
-    const value = node.value.slice(0, kept) + node.value.slice(kept).replaceAll('\n', ' ')
+    // What is before the marker line's break is the marker and its title, which have no
+    // other breaks; what is after it is the body, whose soft wraps collapse.
+    const keep = node.type === 'text' ? (kept.get(node) ?? 0) : 0
+    const value = node.value.slice(0, keep) + node.value.slice(keep).replaceAll('\n', ' ')
     return [{ ...node, value }]
   })
 }

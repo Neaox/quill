@@ -2,6 +2,7 @@ import { parseDocument, serializeDocument } from '@quill/markdown'
 import { CALLOUT_ICON_SHAPES } from '@quill/ui'
 import { act, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { Editor } from '@tiptap/core'
 import { undo } from '@tiptap/pm/history'
 import { EditorState, TextSelection } from '@tiptap/pm/state'
 import type { Command } from '@tiptap/pm/state'
@@ -11,11 +12,11 @@ import { describe, expect, it } from 'vitest'
 import { documentFromMdast, documentToMdast } from '../document/ast.ts'
 import { DocumentEditor } from '../document/document-editor.tsx'
 import type { DocumentEditorHandle } from '../document/document-editor.tsx'
-import { editorSchema } from '../schema/editor-schema.ts'
+import { baseExtensions, editorSchema } from '../schema/editor-schema.ts'
 import { nodeType } from '../schema/node-type.ts'
 import { expectNoAccessibilityViolations } from '../testing/axe.ts'
+import { withCalloutViews } from './callout-view.ts'
 import {
-  ALERT_LIMITS,
   calloutAt,
   calloutOf,
   calloutToQuote,
@@ -23,7 +24,6 @@ import {
   quoteToCallout,
   setCalloutTitle,
   setCalloutType,
-  typeUnavailable,
 } from './callout.ts'
 
 /**
@@ -49,7 +49,25 @@ function markdownOf(state: EditorState): string {
 describe('reading a callout', () => {
   it('knows an alert, a directive, its type and title, and an ordinary quote', () => {
     const alert = stateOf('> [!WARNING]\n> Mind.\n')
-    expect(calloutAt(alert, 2)).toMatchObject({ syntax: 'alert', type: 'warning', pos: 0 })
+    expect(calloutAt(alert, 2)).toMatchObject({
+      syntax: 'alert',
+      type: 'warning',
+      name: 'Warning',
+      title: undefined,
+      pos: 0,
+    })
+    const obsidian = stateOf('> [!faq] Why?\n> Because.\n')
+    expect(calloutAt(obsidian, 3)).toMatchObject({
+      syntax: 'alert',
+      type: 'info',
+      name: 'Faq',
+      title: 'Why?',
+    })
+    expect(calloutAt(stateOf('> [!my-own-kind] Hello\n> Body.\n'), 3)).toMatchObject({
+      type: 'note',
+      name: 'My-own-kind',
+      title: 'Hello',
+    })
     const directive = stateOf(':::callout[Heads up]{type=info}\nBody.\n:::\n')
     expect(calloutAt(directive, 3)).toMatchObject({
       syntax: 'directive',
@@ -74,6 +92,7 @@ describe('reading a callout', () => {
   it('finds the quote around a position, and not a callout', () => {
     expect(quoteAt(stateOf('> Plain.\n'), 2)).toBe(0)
     expect(quoteAt(stateOf('> [!NOTE]\n> Alert.\n'), 2)).toBeUndefined()
+    expect(quoteAt(stateOf('> [!tip] Title\n> Alert.\n'), 3)).toBeUndefined()
     expect(quoteAt(stateOf('Words.\n'), 1)).toBeUndefined()
   })
 })
@@ -96,13 +115,29 @@ describe('changing the type', () => {
     ).toBe(':::callout{type=warning #keep}\nBody.\n:::\n')
   })
 
-  it('offers an alert no Info, and says why', () => {
-    const alert = stateOf('> [!NOTE]\n> Body.\n')
-    const callout = calloutAt(alert, 2)
-    if (callout === undefined) throw new Error('Expected a callout.')
-    expect(typeUnavailable(callout, 'info')).toBe(ALERT_LIMITS.info)
-    expect(typeUnavailable(callout, 'tip')).toBeUndefined()
-    expect(setCalloutType(0, 'info')(alert)).toBe(false)
+  it('gives an alert any type, Info written as the quote Obsidian reads', () => {
+    expect(markdownOf(run(stateOf('> [!NOTE]\n> Body.\n'), setCalloutType(0, 'info')))).toBe(
+      '> [!INFO]\n> Body.\n',
+    )
+  })
+
+  it('keeps an Obsidian callout’s marker and title as written, and gives the marker back', () => {
+    const faq = stateOf('> [!faq] Why?\n> Because.\n')
+    const warning = run(faq, setCalloutType(0, 'warning'))
+    expect(markdownOf(warning)).toBe('> [!warning] Why?\n> Because.\n')
+    expect(calloutAt(warning, 3)?.name).toBe('Warning')
+    const back = run(warning, setCalloutType(0, 'info'))
+    expect(markdownOf(back)).toBe('> [!faq] Why?\n> Because.\n')
+    expect(calloutAt(back, 3)?.name).toBe('Faq')
+    expect(markdownOf(run(stateOf('> [!Note]\n> Body.\n'), setCalloutType(0, 'tip')))).toBe(
+      '> [!Tip]\n> Body.\n',
+    )
+  })
+
+  it('keeps a kind nobody knows until it is changed', () => {
+    const own = stateOf('> [!my-own-kind] Hello\n> Body.\n')
+    expect(markdownOf(own)).toBe('> [!my-own-kind] Hello\n> Body.\n')
+    expect(markdownOf(run(own, setCalloutType(0, 'tip')))).toBe('> [!tip] Hello\n> Body.\n')
   })
 
   it('does nothing for the type it already is, or where there is no callout', () => {
@@ -124,8 +159,17 @@ describe('the title', () => {
     )
   })
 
-  it('is refused on an alert, unchanged, and dry-run without changing anything', () => {
-    expect(setCalloutTitle(0, 'Title')(stateOf('> [!NOTE]\n> Body.\n'))).toBe(false)
+  it('is written after an alert’s marker, as Obsidian writes it, and taken off again', () => {
+    const titled = run(stateOf('> [!NOTE]\n> Body.\n'), setCalloutTitle(0, 'A title'))
+    expect(markdownOf(titled)).toBe('> [!NOTE] A title\n> Body.\n')
+    expect(markdownOf(run(titled, setCalloutTitle(0, '')))).toBe('> [!NOTE]\n> Body.\n')
+    expect(markdownOf(run(stateOf('> [!tip] Old\n> Body.\n'), setCalloutTitle(0, 'New')))).toBe(
+      '> [!tip] New\n> Body.\n',
+    )
+  })
+
+  it('is refused where nothing would change, and dry-run without changing anything', () => {
+    expect(setCalloutTitle(0, 'Title')(stateOf('Words.\n'))).toBe(false)
     expect(setCalloutTitle(0, '')(stateOf(':::callout{type=tip}\nBody.\n:::\n'))).toBe(false)
     expect(setCalloutTitle(0, 'New')(stateOf(':::callout{type=tip}\nBody.\n:::\n'))).toBe(true)
   })
@@ -144,6 +188,18 @@ describe('quotes and callouts', () => {
     expect(markdownOf(run(callout, calloutToQuote(0)))).toBe('> Plain words.\n')
   })
 
+  it('turns a quote into an Info callout, written as Obsidian writes the kind GitHub lacks', () => {
+    expect(markdownOf(run(stateOf('> Plain.\n'), quoteToCallout(0, 'info')))).toBe(
+      '> [!info]\n> Plain.\n',
+    )
+  })
+
+  it('turns an Obsidian callout into a quote, its title its first line', () => {
+    expect(markdownOf(run(stateOf('> [!tip] Heads up\n> Body.\n'), calloutToQuote(0)))).toBe(
+      '> Heads up\n>\n> Body.\n',
+    )
+  })
+
   it('turns a callout block into a quote, its title its first line', () => {
     const state = stateOf(':::callout[Heads up]{type=tip}\nBody.\n:::\n')
     expect(markdownOf(run(state, calloutToQuote(0)))).toBe('> Heads up\n>\n> Body.\n')
@@ -152,9 +208,26 @@ describe('quotes and callouts', () => {
   it('refuses what is not there to change', () => {
     expect(quoteToCallout(0)(stateOf('Words.\n'))).toBe(false)
     expect(quoteToCallout(0)(stateOf('> [!NOTE]\n> Already.\n'))).toBe(false)
-    expect(quoteToCallout(0, 'info')(stateOf('> Plain.\n'))).toBe(false)
     expect(calloutToQuote(0)(stateOf('Words.\n'))).toBe(false)
     expect(calloutToQuote(0)(stateOf('> [!NOTE]\n> Body.\n'))).toBe(true)
+    expect(quoteToCallout(0)(stateOf('> Plain.\n'))).toBe(true)
+  })
+})
+
+describe('the callout view over the other directives', () => {
+  it('leaves a directive nothing else draws a plain block that holds its content', () => {
+    const element = document.createElement('div')
+    document.body.append(element)
+    const editor = new Editor({
+      element,
+      extensions: withCalloutViews(baseExtensions),
+      content: stateOf(':::aside\nBody.\n:::\n\n> [!TIP]\n> Tip.\n').doc.toJSON(),
+    })
+
+    expect(element.querySelector('.callout-tip')).not.toBeNull()
+    expect(element).toHaveTextContent('Body.')
+    editor.destroy()
+    element.remove()
   })
 })
 
@@ -187,9 +260,8 @@ describe('a callout in the editor', () => {
     const { user, saved, ref } = open('> [!WARNING]\n> Mind the gap.\n')
     await user.click(screen.getByRole('button', { name: 'Warning, change type' }))
     const menu = await screen.findByRole('menu', { name: 'Callout type' })
-    const info = within(menu).getByRole('menuitemradio', { name: /Info/ })
-    expect(info).toHaveAttribute('data-disabled')
-    expect(info).toHaveTextContent(ALERT_LIMITS.info)
+    const info = within(menu).getByRole('menuitemradio', { name: 'Info' })
+    expect(info).not.toHaveAttribute('data-disabled')
     // Each kind wears the reader's own mark: the caution octagon, not a generic sign.
     const caution = within(menu).getByRole('menuitemradio', { name: 'Caution' })
     const [octagon] = CALLOUT_ICON_SHAPES.caution
@@ -237,17 +309,47 @@ describe('a callout in the editor', () => {
     const { user, saved } = open('> [!NOTE]\n> Body.\n')
     await user.click(screen.getByRole('button', { name: 'Note, change type' }))
     const menu = await screen.findByRole('menu', { name: 'Callout type' })
-    expect(within(menu).getByRole('menuitem', { name: /Add title/ })).toHaveAttribute(
-      'data-disabled',
-    )
     await user.click(within(menu).getByRole('menuitem', { name: 'Turn into a plain quote' }))
     expect(saved()).toBe('> Body.\n')
     expect(screen.queryByRole('group', { name: /callout/ })).not.toBeInTheDocument()
   })
 
+  it('gives an alert a title from its switcher, written after its marker', async () => {
+    const { user, saved } = open('> [!IMPORTANT]\n> Delete every mark.\n')
+    await user.click(screen.getByRole('button', { name: 'Important, change type' }))
+    await user.click(await screen.findByRole('menuitem', { name: 'Add title' }))
+    await user.keyboard('Read this')
+    expect(saved()).toBe('> [!IMPORTANT] Read this\n> Delete every mark.\n')
+  })
+
+  it('shows an Obsidian callout’s title, and a kind of the author’s own, and passes axe', async () => {
+    const { container } = open(
+      '> [!my-own-kind] Hello\n> Body.\n\n> [!tip] Custom title\n> Body.\n',
+    )
+    const own = screen.getByRole('group', { name: 'My-own-kind callout' })
+    expect(own).toHaveClass('callout', 'callout-note')
+    expect(own).toHaveTextContent('Hello')
+    expect(own).not.toHaveTextContent('[!my-own-kind]')
+    expect(within(own).getByRole('button', { name: 'My-own-kind, change type' })).toBeVisible()
+    const tip = screen.getByRole('group', { name: 'Tip callout' })
+    expect(tip).toHaveTextContent('Custom title')
+    await expectNoAccessibilityViolations(container)
+  })
+
+  it('switches an Obsidian callout’s type keeping how it was written', async () => {
+    const { user, saved } = open('> [!faq] Why?\n> Because.\n')
+    await user.click(screen.getByRole('button', { name: 'Faq, change type' }))
+    await user.click(await screen.findByRole('menuitemradio', { name: 'Warning' }))
+    expect(saved()).toBe('> [!warning] Why?\n> Because.\n')
+    await user.click(screen.getByRole('button', { name: 'Warning, change type' }))
+    await user.click(await screen.findByRole('menuitemradio', { name: 'Info' }))
+    expect(saved()).toBe('> [!faq] Why?\n> Because.\n')
+  })
+
   it('keeps a quote a quote until it is made a callout', () => {
     const { container } = open('> Plain.\n')
-    expect(container.querySelector('blockquote.blockquote')).not.toBeNull()
+    expect(container.querySelector('blockquote')).not.toBeNull()
+    expect(screen.queryByRole('group', { name: /callout/ })).not.toBeInTheDocument()
   })
 
   it('draws a callout in a read-only editor too, with nowhere for its button to go', async () => {
@@ -261,17 +363,23 @@ describe('a callout in the editor', () => {
   })
 
   it('redraws when its type changes underneath it, and rebuilds when it stops being one', () => {
-    const { ref } = open('> [!NOTE]\n> Body.\n')
+    const { ref, saved } = open('> [!NOTE]\n> Body.\n')
     const editor = ref.current?.editor
     if (editor === null || editor === undefined) throw new Error('No editor.')
     act(() => {
-      editor.view.dispatch(
-        editor.state.tr.setNodeAttribute(0, 'alert', { marker: '[!TIP]\n', alone: false }),
-      )
+      editor.view.dispatch(editor.state.tr.setNodeAttribute(0, 'attributes', { type: 'tip' }))
     })
     expect(screen.getByRole('group', { name: 'Tip callout' })).toBeInTheDocument()
     act(() => {
+      // Written as a directive from here on: the same callout, drawn anew.
       editor.view.dispatch(editor.state.tr.setNodeAttribute(0, 'alert', null))
+    })
+    expect(screen.getByRole('group', { name: 'Tip callout' })).toHaveAttribute(
+      'data-syntax',
+      'directive',
+    )
+    act(() => {
+      editor.view.dispatch(editor.state.tr.setNodeAttribute(0, 'name', 'aside'))
     })
     expect(screen.queryByRole('group', { name: /callout/ })).not.toBeInTheDocument()
     act(() => {
@@ -279,6 +387,6 @@ describe('a callout in the editor', () => {
         editor.state.tr.setSelection(TextSelection.create(editor.state.doc, 2)).insertText('x'),
       )
     })
-    expect(document.querySelector('blockquote.blockquote')).not.toBeNull()
+    expect(saved()).toContain('x')
   })
 })

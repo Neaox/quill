@@ -11,7 +11,7 @@ import { accordionDirective, detailsDirective } from '../details/details.ts'
 import { createDetailsRenderer } from '../details/render.ts'
 import { badgeDirective } from '../directives/badge.ts'
 import type { CalloutType } from '../directives/callout.ts'
-import { calloutDirective, isCalloutType } from '../directives/callout.ts'
+import { calloutDirective } from '../directives/callout.ts'
 import { cardsDirective } from '../directives/cards.ts'
 import type { DirectiveAttributes, DirectiveContent } from '../directives/definition.ts'
 import { claims } from '../directives/definition.ts'
@@ -29,7 +29,7 @@ import { DEFAULT_TABLE_OPTIONS, tableDirective, tableOf } from '../directives/ta
 import type { ResolvedEmoji } from '../emoji/emoji.ts'
 import { emojiElement } from '../emoji/emoji.ts'
 import type { MarkdownRegistry } from '../extensions/registry.ts'
-import { ALERT_MARKER } from '../pipeline/github-alert.ts'
+import { markerName, splitAlert } from '../pipeline/github-alert.ts'
 import { drawingElement } from './drawing-element.ts'
 import type { Slugger } from './slug.ts'
 import { HEADING_ID_PREFIX, headingId } from './slug.ts'
@@ -85,28 +85,6 @@ const FENCE_LANGUAGE = /^[A-Za-z0-9][\w+#.-]{0,31}$/
  * readable as.
  */
 export const DIAGRAM_LANGUAGES: ReadonlySet<string> = new Set(['mermaid'])
-
-/**
- * A GitHub alert's kind, and its body with the marker taken off; or undefined
- * when the blockquote is not one. The Markdown is left as written — an alert
- * is a blockquote to every parser, which is what makes it degrade — and only
- * its rendering changes.
- */
-function alertOf(
-  node: Blockquote,
-): { kind: CalloutType; body: Blockquote['children'] } | undefined {
-  const [first, ...rest] = node.children
-  if (first?.type !== 'paragraph') return undefined
-  const [opening, ...inline] = first.children
-  if (opening?.type !== 'text') return undefined
-  const match = ALERT_MARKER.exec(opening.value)
-  const kind = match?.[1]?.toLowerCase()
-  if (match === null || !isCalloutType(kind)) return undefined
-  const remainder = opening.value.slice(match[0].length)
-  const children = remainder.length === 0 ? inline : [{ ...opening, value: remainder }, ...inline]
-  const lead: Paragraph[] = children.length === 0 ? [] : [{ ...first, children }]
-  return { kind, body: [...lead, ...rest] }
-}
 
 /** Whether inline content is drawn as a pill: a badge, or one of the organisation's labels. */
 function isPill(child: PhrasingContent | undefined, labels: ReadonlySet<string>): boolean {
@@ -471,9 +449,10 @@ export function createHandlers(options: HandlerOptions): Handlers {
     type: CalloutType,
     label: string | undefined,
     body: ElementContent[],
+    name: string = type,
   ): Element => {
     const id = `callout.${(callouts += 1)}`
-    const kind = capitalise(type)
+    const kind = capitalise(name)
     const words =
       label === undefined
         ? [text(kind)]
@@ -495,13 +474,25 @@ export function createHandlers(options: HandlerOptions): Handlers {
     )
   }
 
-  /** A GitHub alert (`> [!WARNING]`) is a callout, titled with its kind as GitHub titles it. */
+  /**
+   * A quote that opens `[!kind]` is a callout: GitHub's alert (`> [!WARNING]`),
+   * titled with its kind as GitHub titles it, or Obsidian's (`> [!tip] Title`),
+   * titled by the rest of its marker's line. A kind Quill does not have is drawn
+   * as the callout it is closest to, and still said as the author wrote it.
+   */
   const blockquote = (state: State, node: Blockquote): Element => {
-    const alert = alertOf(node)
+    const alert = splitAlert(node)
     if (alert === undefined) {
       return element('blockquote', {}, state.wrap(state.all(node), true))
     }
-    return calloutAside(state, alert.kind, undefined, state.all({ ...node, children: alert.body }))
+    const title = toString({ type: 'paragraph', children: alert.title }).trim()
+    return calloutAside(
+      state,
+      alert.kind,
+      title === '' ? undefined : title,
+      state.all({ ...node, children: alert.body }),
+      markerName(alert.form.marker),
+    )
   }
 
   const labelledAside = (

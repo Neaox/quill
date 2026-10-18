@@ -209,8 +209,24 @@ describe('GitHub alerts', () => {
   })
 
   it('leave any other blockquote a blockquote', () => {
-    expect(render('> [!SHOUT]\n> Text.\n')).toContain('<blockquote>')
     expect(render('> Plain [!NOTE] text.\n')).toContain('<blockquote>')
+    expect(render('> [!NOTE]text with no space.\n')).toContain('<blockquote>')
+    expect(render('> Words first.\n> [!NOTE]\n')).toContain('<blockquote>')
+  })
+
+  it('read Obsidian’s callouts: a kind of any name, and the title after it', () => {
+    const titled = render('> [!tip] Before you begin\n> Read **this**.\n')
+
+    expect(titled).toContain('callout callout-tip')
+    expect(titled).toContain('Before you begin')
+    expect(titled).toContain('<strong>this</strong>')
+    expect(titled).not.toContain('[!tip]')
+  })
+
+  it('read an Obsidian kind as the callout it is drawn as, and one nobody knows as a note', () => {
+    expect(render('> [!faq]\n> Why?\n')).toContain('callout-info')
+    expect(render('> [!bug] A bug\n> Fix.\n')).toContain('callout-caution')
+    expect(render('> [!custom-kind]\n> Text.\n')).toContain('callout-note')
   })
 })
 

@@ -77,6 +77,13 @@ describe('renderComparison', () => {
     )
   })
 
+  it('keeps a removed Obsidian callout a callout, titled as it was', () => {
+    const { html } = render('Keep.\n\n> [!tip] Before you begin\n> Read this first.\n', 'Keep.\n')
+    expect(html).toMatch(/<aside[^>]*class="callout callout-tip"[^>]*data-change="removed"/)
+    expect(html).toContain('Before you begin</p>')
+    expect(html).toContain('Read this first.</del>')
+  })
+
   it('keeps a removed alert an alert when its first words are not plain text', () => {
     const { html } = render('Keep.\n\n> [!WARNING]\n> **Stop** the deploy.\n', 'Keep.\n')
     expect(html).toMatch(/<aside[^>]*data-change="removed"/)

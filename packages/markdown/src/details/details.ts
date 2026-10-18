@@ -103,6 +103,9 @@ export const ACCORDION = 'accordion'
  */
 export const DETAILS_NAME = /^[A-Za-z0-9][\w-]{0,31}$/u
 
+/** A `:::details` container directive. */
+export type DetailsDirective = ContainerDirective & { readonly name: typeof DETAILS }
+
 /** Any of the three syntaxes, as the tree holds it. */
 export type DetailsNode = Details | ContainerDirective
 

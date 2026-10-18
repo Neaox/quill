@@ -31,21 +31,40 @@ const CARRIES: Readonly<Record<Details['syntax'], ReadonlySet<string>>> = {
 /** A callout kind as Obsidian writes it in a marker. */
 const MARKER_KIND = /^[A-Za-z][\w-]*$/u
 
+/** A link destination that needs no angle brackets and no escapes. */
+const BARE_URL = /^[^\s<>()\\]*$/u
+
 /**
  * Whether inline content is written on one line, and — for the HTML form,
  * where the summary sits between tags — without a `<` that would end it.
- * Words, code and emphasis; anything else, a link included, is left to the
- * directive, which can hold it.
+ * Words, code, emphasis, plain links and inline directives; anything else is
+ * left to the directive, which can hold it.
  */
 function fitsOneLine(children: readonly PhrasingContent[], html: boolean): boolean {
+  const plain = (value: string): boolean => !value.includes('\n') && !(html && value.includes('<'))
   return children.every((child) => {
-    if (child.type === 'text' || child.type === 'inlineCode') {
-      return !child.value.includes('\n') && !(html && child.value.includes('<'))
+    switch (child.type) {
+      case 'text':
+      case 'inlineCode':
+        return plain(child.value)
+      case 'emphasis':
+      case 'strong':
+      case 'delete':
+        return fitsOneLine(child.children, html)
+      case 'link':
+        return (
+          BARE_URL.test(child.url) &&
+          (child.title ?? null) === null &&
+          fitsOneLine(child.children, html)
+        )
+      case 'textDirective':
+        return (
+          Object.values(child.attributes ?? {}).every((value) => plain(value ?? '')) &&
+          fitsOneLine(child.children, html)
+        )
+      default:
+        return false
     }
-    if (child.type === 'emphasis' || child.type === 'strong') {
-      return fitsOneLine(child.children, html)
-    }
-    return false
   })
 }
 
@@ -143,8 +162,8 @@ function writeCallout(
   const title = summaryOf(node)?.children ?? []
   const body = bodyOf(node)
   const [lead, ...rest] = body
-  // A new callout's body starts on the line under its title, as Obsidian writes it.
-  const joined = (source?.joined ?? true) && lead?.type === 'paragraph'
+  // A new callout's body is a paragraph of its own under its title, as Obsidian writes it.
+  const joined = source?.joined === true && lead?.type === 'paragraph'
   const head: Paragraph = {
     type: 'paragraph',
     children: [

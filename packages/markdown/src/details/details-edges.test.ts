@@ -4,9 +4,10 @@ import type { ContainerDirective, TextDirective } from 'mdast-util-directive'
 
 import { validateDirectives } from '../directives/registry.ts'
 import { mdastToProseMirror } from '../prosemirror/from-mdast.ts'
+import { schema } from '../prosemirror/schema.ts'
 import { proseMirrorToMdast } from '../prosemirror/to-mdast.ts'
 import { parseMarkdown, stringifyMdast } from '../pipeline/processor.ts'
-import type { Details } from './details.ts'
+import type { Details, DetailsDirective } from './details.ts'
 import { accordionDirective, detailsDirective, detailsModel, isDetails } from './details.ts'
 import { readDetails } from './read.ts'
 
@@ -48,7 +49,7 @@ const fresh = (
 
 describe('a details with no attributes at all', () => {
   it('is a closed section nobody has named or typed', () => {
-    const bare: ContainerDirective = { type: 'containerDirective', name: 'details', children: [] }
+    const bare: DetailsDirective = { type: 'containerDirective', name: 'details', children: [] }
     expect(detailsModel(bare)).toMatchObject({
       open: false,
       name: undefined,
@@ -138,6 +139,11 @@ describe('reading a foldable callout', () => {
     ])
   })
 
+  it('ignores spaces that end a title on a line of its own', () => {
+    const node = detailsOf('> [!note]- **Bold**&#32;\n> body\n')
+    expect(detailsModel(node).summary?.children.map((child) => child.type)).toEqual(['strong'])
+  })
+
   it('writes a callout that follows a paragraph with no blank line the way it was written', () => {
     const markdown = 'Intro:\n> [!tip]- A\n> x\n'
     expect(stringifyMdast(parseMarkdown(markdown))).toBe(markdown)
@@ -157,16 +163,16 @@ describe('writing a details the editor made', () => {
     )
   })
 
-  it.each([['emphasis', '*docs*', '<summary>*docs*</summary>']])(
-    'writes %s in an HTML summary as HTML',
-    (_name, source, expected) => {
-      const summary = parseMarkdown(`:::details[${source}]\nx\n:::\n`)
-      const [node] = summary.children as [ContainerDirective]
-      const [first] = node.children
-      if (first === undefined) throw new Error('expected a summary')
-      expect(stringifyMdast(asRoot(fresh('html', {}, first, paragraph('x'))))).toContain(expected)
-    },
-  )
+  it.each([
+    ['a link', '[docs](https://example.com/a)', '<summary>[docs](https://example.com/a)</summary>'],
+    ['emphasis', '*docs*', '<summary>*docs*</summary>'],
+  ])('writes %s in an HTML summary as HTML', (_name, source, expected) => {
+    const summary = parseMarkdown(`:::details[${source}]\nx\n:::\n`)
+    const [node] = summary.children as [ContainerDirective]
+    const [first] = node.children
+    if (first === undefined) throw new Error('expected a summary')
+    expect(stringifyMdast(asRoot(fresh('html', {}, first, paragraph('x'))))).toContain(expected)
+  })
 
   it.each([
     ['a link with a title', '[docs](https://example.com "Docs")'],
@@ -181,6 +187,47 @@ describe('writing a details the editor made', () => {
     expect(stringifyMdast(asRoot(fresh('html', {}, first, paragraph('x'))))).toContain(
       ':::details[',
     )
+  })
+
+  it('writes an inline directive in an HTML summary when its attributes fit', () => {
+    const parsed = parseMarkdown(':::details[:kbd[Ctrl]{title="plain"}]\nx\n:::\n')
+    const [node] = parsed.children as [ContainerDirective]
+    const [first] = node.children
+    if (first === undefined) throw new Error('expected a summary')
+    expect(stringifyMdast(asRoot(fresh('html', {}, first, paragraph('x'))))).toContain('<summary>')
+  })
+
+  it('writes an inline directive with no attributes, or a valueless one, in an HTML summary', () => {
+    for (const attributes of [undefined, { flag: null }]) {
+      const summary: RootContent = {
+        type: 'paragraph',
+        data: { directiveLabel: true },
+        children: [
+          {
+            type: 'textDirective',
+            name: 'kbd',
+            ...(attributes === undefined ? {} : { attributes }),
+            children: [text('Ctrl')],
+          },
+        ],
+      }
+      expect(stringifyMdast(asRoot(fresh('html', {}, summary, paragraph('x'))))).toContain(
+        '<details>\n<summary>:kbd[Ctrl]',
+      )
+    }
+  })
+
+  it('writes a new Obsidian callout closed and open', () => {
+    expect(
+      stringifyMdast(
+        asRoot(fresh('callout', { type: 'warning' }, label('Careful'), paragraph('x'))),
+      ),
+    ).toBe('> [!warning]- Careful\n>\n> x\n')
+    expect(
+      stringifyMdast(
+        asRoot(fresh('callout', { type: 'warning', open: '' }, label('Careful'), paragraph('x'))),
+      ),
+    ).toBe('> [!warning]+ Careful\n>\n> x\n')
   })
 
   it('writes a callout details that has a name, which a marker cannot hold, as the directive', () => {
@@ -257,5 +304,17 @@ describe('a details the editor opens and saves', () => {
     const [saved] = proseMirrorToMdast(doc).tree.children
     if (saved === undefined || !isDetails(saved)) throw new Error('expected a details')
     expect(saved).not.toHaveProperty('source')
+  })
+
+  it('saves a details whose summary node is missing as one with no summary', () => {
+    const details = schema.nodes['details']
+    if (details === undefined) throw new Error('schema')
+    const doc = schema.nodes['doc']?.create(null, [
+      details.create({ syntax: 'directive', attributes: {}, source: null }, []),
+    ])
+    if (doc === undefined) throw new Error('schema')
+    const [saved] = proseMirrorToMdast(doc).tree.children
+    expect(saved?.type).toBe('containerDirective')
+    expect(saved && 'children' in saved ? saved.children : undefined).toEqual([])
   })
 })

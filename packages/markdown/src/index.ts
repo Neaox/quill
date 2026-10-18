@@ -261,8 +261,14 @@ export { proseMirrorToMdast } from './prosemirror/to-mdast.ts'
 export { liftLayout, wrapLayout } from './prosemirror/layout.ts'
 export type { WithAttribute } from './pipeline/written-attribute.ts'
 export { withAttribute } from './pipeline/written-attribute.ts'
-export type { AlertForm, AlertType } from './prosemirror/alert.ts'
-export { ALERT_TYPES, alertForm, alertType, isAlertType, retypeAlert } from './prosemirror/alert.ts'
+export type { AlertForm } from './pipeline/github-alert.ts'
+export {
+  markerFor,
+  markerName,
+  markerOf,
+  markerType,
+  readAlertForm,
+} from './pipeline/github-alert.ts'
 
 // Three-way merge of drafts and of publishes (ADR-021, amendment of 2026-10-11)
 export type { BlockConflict, ConflictResolution, DocumentMerge } from './merge/merge-documents.ts'

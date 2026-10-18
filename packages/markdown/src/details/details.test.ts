@@ -490,9 +490,9 @@ describe('the edges of each form', () => {
     }
     expect(
       stringifyMdast(root({ type: 'blockquote', children: [text('q')] } as RootContent, tight)),
-    ).toBe('> q\n\n> [!tip]-\n> x\n')
+    ).toBe('> q\n\n> [!tip]-\n>\n> x\n')
     expect(stringifyMdast(root(fresh('callout', { type: 'note' }), tight))).toBe(
-      '> [!note]-\n> x\n\n> [!tip]-\n> x\n',
+      '> [!note]-\n>\n> x\n\n> [!tip]-\n>\n> x\n',
     )
     const named: Details = {
       ...fresh('html', { name: 'faq' }),
@@ -512,7 +512,7 @@ describe('the edges of each form', () => {
       stringifyMdast(
         root(fresh('callout', { type: 'tip', open: '' }, [{ type: 'text', value: 'A' }])),
       ),
-    ).toBe('> [!tip]+ A\n> x\n')
+    ).toBe('> [!tip]+ A\n>\n> x\n')
     expect(stringifyMdast(root(fresh('callout', { type: '9 bad' })))).toBe(
       ':::details{type="9 bad"}\nx\n:::\n',
     )
@@ -528,7 +528,15 @@ describe('the edges of each form', () => {
     const linked: PhrasingContent[] = [
       { type: 'link', url: '/a', children: [{ type: 'text', value: 'A' }] },
     ]
-    expect(stringifyMdast(root(fresh('html', {}, linked)))).toBe(':::details[[A](/a)]\nx\n:::\n')
+    expect(stringifyMdast(root(fresh('html', {}, linked)))).toBe(
+      '<details>\n<summary>[A](/a)</summary>\n\nx\n\n</details>\n',
+    )
+    const titled: PhrasingContent[] = [
+      { type: 'link', url: '/a', title: 'T', children: [{ type: 'text', value: 'A' }] },
+    ]
+    expect(stringifyMdast(root(fresh('html', {}, titled)))).toBe(
+      ':::details[[A](/a "T")]\nx\n:::\n',
+    )
     const broken: PhrasingContent[] = [{ type: 'text', value: 'one\ntwo' }]
     expect(stringifyMdast(root(fresh('callout', { type: 'tip' }, broken)))).toContain(':::details[')
   })

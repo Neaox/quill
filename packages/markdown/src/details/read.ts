@@ -2,6 +2,7 @@ import type { Blockquote, Html, Paragraph, PhrasingContent, Root, RootContent } 
 
 import type { DirectiveAttributes } from '../directives/definition.ts'
 import type { DirectiveContent } from '../directives/definition.ts'
+import { splitFirstLine } from '../pipeline/first-line.ts'
 import type { Details } from './details.ts'
 import { isFlowContent } from './details.ts'
 
@@ -232,27 +233,6 @@ function finish(frame: Frame, closing: Located): Details {
 /** `[!kind]-` or `[!kind]+` opening a blockquote's first line, and the spaces after it. */
 const FOLDABLE_MARKER = /^\[!([A-Za-z][\w-]*)\]([+-])[^\S\n]*/u
 
-/** The inline content of a paragraph up to its first line break, and what follows it. */
-function splitFirstLine(
-  children: readonly PhrasingContent[],
-): { readonly line: PhrasingContent[]; readonly rest: PhrasingContent[] } | undefined {
-  const line: PhrasingContent[] = []
-  for (const [index, child] of children.entries()) {
-    if (child.type === 'break') return undefined
-    if (child.type === 'text' && child.value.includes('\n')) {
-      const cut = child.value.indexOf('\n')
-      const before = child.value.slice(0, cut)
-      const after = child.value.slice(cut + 1)
-      return {
-        line: [...line, ...(before === '' ? [] : [{ ...child, value: before }])],
-        rest: [...(after === '' ? [] : [{ ...child, value: after }]), ...children.slice(index + 1)],
-      }
-    }
-    line.push(child)
-  }
-  return { line, rest: [] }
-}
-
 /** A blockquote opening with a foldable marker, as a `details` node; undefined for any other quote. */
 function fromCallout(node: Blockquote): Details | undefined {
   const [paragraph, ...blocks] = node.children
@@ -268,8 +248,7 @@ function fromCallout(node: Blockquote): Details | undefined {
     ...inline,
   ])
   if (split === undefined) return undefined
-  // CommonMark has already taken the spaces off the end of the line.
-  const title = split.line
+  const title = trimEnd(split.line)
   const attributes: DirectiveAttributes = sign === '+' ? { type: kind, open: '' } : { type: kind }
   const joined = split.rest.length > 0
   const body: DirectiveContent = joined
@@ -289,6 +268,14 @@ function fromCallout(node: Blockquote): Details | undefined {
     ...(node.position === undefined ? {} : { position: node.position }),
     ...(node.data === undefined ? {} : { data: node.data }),
   }
+}
+
+/** Inline content without the spaces a line ends on, which no reader sees. */
+function trimEnd(children: PhrasingContent[]): PhrasingContent[] {
+  const last = children.at(-1)
+  if (last?.type !== 'text') return children
+  const value = last.value.trimEnd()
+  return value === '' ? children.slice(0, -1) : [...children.slice(0, -1), { ...last, value }]
 }
 
 /* --- The walk ------------------------------------------------------------ */

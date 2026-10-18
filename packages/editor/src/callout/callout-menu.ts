@@ -8,7 +8,6 @@ import type {
   MenuPlace,
 } from '../context-menu/context-menu-registry.ts'
 import {
-  ALERT_LIMITS,
   CALLOUT_LABELS,
   calloutAt,
   calloutToQuote,
@@ -16,16 +15,15 @@ import {
   quoteToCallout,
   setCalloutTitle,
   setCalloutType,
-  typeUnavailable,
 } from './callout.ts'
 import type { CalloutRef } from './callout.ts'
 
 /**
  * The callout's part of the context menu, and the whole of the switcher its
- * type button opens: the six types (an alert offers GitHub's five and says
- * why it has no Info), a title for a callout block, and turning a callout
- * into a plain quote and a quote into a callout. Every change is one undo
- * step and keeps the author's syntax (`callout.ts`).
+ * type button opens: the six types, a title of the callout's own, and turning
+ * a callout into a plain quote and a quote into a callout. Every change is one
+ * undo step and keeps the author's syntax (`callout.ts`): a quote stays a quote,
+ * its marker in the case it was typed.
  */
 
 /** The word put in as a new title, selected so typing replaces it. */
@@ -56,7 +54,6 @@ function calloutEntries(place: MenuPlace, callout: CalloutRef): MenuEntry[] {
         value: type,
         label: CALLOUT_LABELS[type],
         icon: CALLOUT_ICONS[type],
-        disabledReason: typeUnavailable(callout, type),
       })),
       choose: (value) => {
         const type = CALLOUT_TYPES.find((each) => each === value)
@@ -69,7 +66,6 @@ function calloutEntries(place: MenuPlace, callout: CalloutRef): MenuEntry[] {
       id: titled ? 'remove-callout-title' : 'add-callout-title',
       label: titled ? 'Remove title' : 'Add title',
       icon: PencilIcon,
-      disabledReason: callout.syntax === 'alert' ? ALERT_LIMITS.title : undefined,
       run: () => {
         if (!titled) {
           addTitle(place, callout)

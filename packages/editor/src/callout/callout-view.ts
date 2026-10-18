@@ -2,7 +2,7 @@ import type { Extensions, NodeConfig, NodeViewRenderer } from '@tiptap/core'
 import type { Node as PMNode } from '@tiptap/pm/model'
 import type { NodeView } from '@tiptap/pm/view'
 
-import { CALLOUT_LABELS, calloutOf } from './callout.ts'
+import { calloutOf } from './callout.ts'
 import type { CalloutRef } from './callout.ts'
 
 /**
@@ -13,8 +13,10 @@ import type { CalloutRef } from './callout.ts'
  *
  * The title line is the view's, not the document's: it says the type and is
  * the button that changes it, which opens the type switcher
- * (`callout-menu.ts`). An alert's marker never appears as text — the quote
- * carries it (`@quill/markdown`'s `alert.ts`) — and a directive's own title is
+ * (`callout-menu.ts`). It says the kind as the author wrote it (`Faq`, a kind
+ * of their own), drawn as the type Quill has for it. A quote's marker never
+ * appears as text — the node carries it (`@quill/markdown`'s `github-alert.ts`)
+ * — and a title of the author's own, a directive's or one after the marker, is
  * the first line of its body, editable like any other.
  */
 
@@ -81,8 +83,7 @@ export class CalloutView implements NodeView {
   }
 
   private render(): void {
-    const { type, syntax } = this.callout
-    const kind = CALLOUT_LABELS[type]
+    const { type, syntax, name: kind } = this.callout
     this.dom.className = `callout callout-${type}`
     this.dom.dataset['syntax'] = syntax
     this.dom.setAttribute('aria-label', `${kind} callout`)
@@ -107,29 +108,18 @@ export class CalloutView implements NodeView {
   }
 }
 
-/** A quote that is not an alert, drawn as ProseMirror would draw it without a view. */
-class QuoteView implements NodeView {
-  readonly dom: HTMLElement
-  readonly contentDOM: HTMLElement
-
-  constructor() {
-    this.dom = document.createElement('blockquote')
-    this.dom.className = 'blockquote'
-    this.contentDOM = this.dom
-  }
-
-  update(node: PMNode): boolean {
-    return node.type.name === 'blockquote' && calloutOf(node, 0) === undefined
-  }
+/** A directive with no view of its own to fall back to: a block that holds its content. */
+class PlainView implements NodeView {
+  readonly dom: HTMLElement = document.createElement('div')
+  readonly contentDOM: HTMLElement = this.dom
 }
 
 function calloutViews(
   options: CalloutViewOptions,
   parent: NodeViewRenderer | null | undefined,
 ): NodeViewRenderer {
-  // A quote has no view of its own to fall back to; every other directive
-  // keeps the one it had (`template/directive-view.ts`).
-  const otherwise = parent ?? (() => new QuoteView())
+  // Every other directive keeps the view it had (`template/directive-view.ts`).
+  const otherwise = parent ?? (() => new PlainView())
   return (props) => {
     const callout = calloutOf(props.node, 0)
     return callout === undefined
@@ -139,8 +129,9 @@ function calloutViews(
 }
 
 /**
- * Gives alerts and `:::callout` directives their callout view. Applied over
- * the directive views, so every other directive keeps its own.
+ * Gives callouts their view, whether they are written as quotes or as
+ * `:::callout`. Applied over the directive views, so every other directive
+ * keeps its own.
  */
 export function withCalloutViews(
   extensions: Extensions,
@@ -148,7 +139,7 @@ export function withCalloutViews(
 ): Extensions {
   return extensions.map((extension) => {
     if (extension.type !== 'node') return extension
-    if (extension.name !== 'blockquote' && extension.name !== 'containerDirective') return extension
+    if (extension.name !== 'containerDirective') return extension
     const config: Partial<NodeConfig> = {
       addNodeView() {
         return calloutViews(options, this.parent?.())

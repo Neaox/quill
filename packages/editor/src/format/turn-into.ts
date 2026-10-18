@@ -81,10 +81,7 @@ const TEXT_KINDS: Readonly<Record<string, TurnIntoTarget>> = {
 }
 
 function isCallout(node: PMNode): boolean {
-  return (
-    (node.type.name === 'containerDirective' && node.attrs['name'] === 'callout') ||
-    (node.type.name === 'blockquote' && node.attrs['alert'] !== null)
-  )
+  return node.type.name === 'containerDirective' && node.attrs['name'] === 'callout'
 }
 
 /** What the block the caret is in is now, in "Turn into"'s terms; undefined for anything else. */

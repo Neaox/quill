@@ -58,6 +58,16 @@ describe('reading a foldable callout out of a tree built in memory', () => {
     expect(node?.type === 'details' && node.children[0]?.type).toBe('paragraph')
   })
 
+  it('drops the spaces a title line ends on, and the text node they leave empty', () => {
+    const [node] = read(
+      callout(text('[!note]- '), { type: 'emphasis', children: [text('Title')] }, text('   ')),
+    ).children
+
+    expect(node?.type === 'details' && node.children[0]).toMatchObject({
+      children: [{ type: 'emphasis' }],
+    })
+  })
+
   it('keeps the position and the data of the quote it read', () => {
     const position = { start: { line: 3, column: 1 }, end: { line: 4, column: 1 } }
     const [node] = read({

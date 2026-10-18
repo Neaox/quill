@@ -18,7 +18,7 @@ import { visit } from 'unist-util-visit'
 import { calloutDirective, isCalloutType } from '../directives/callout.ts'
 import { claims } from '../directives/definition.ts'
 import { isPresenterNotes, stripPresenterNotes } from '../directives/strip-presenter-notes.ts'
-import { ALERT_MARKER } from '../pipeline/github-alert.ts'
+import { MARKER_LINE } from '../pipeline/github-alert.ts'
 import { DIAGRAM_LANGUAGES } from '../render/handlers.ts'
 import type { BlockAlignment } from './blocks.ts'
 import { alignBlocks } from './blocks.ts'
@@ -572,14 +572,14 @@ function wrapped<T extends Nodes>(node: T, change: 'added' | 'removed'): T {
 }
 
 /**
- * A GitHub alert's `[!NOTE]` kept outside the wrapper, where the renderer
- * looks for it, so a removed alert is still drawn as an alert, struck through.
+ * A callout's marker line (`[!NOTE]`, `[!tip] Title`) kept outside the wrapper,
+ * where the renderer looks for it, so a removed alert is still drawn as an alert, struck through.
  */
 function alertMarker(
   children: PhrasingContent[],
 ): readonly [marker: PhrasingContent[], rest: PhrasingContent[]] {
   const [first, ...others] = children
-  const match = first?.type === 'text' ? ALERT_MARKER.exec(first.value) : null
+  const match = first?.type === 'text' ? MARKER_LINE.exec(first.value) : null
   if (first?.type !== 'text' || match === null) return [[], children]
   const remainder = first.value.slice(match[0].length)
   return [

@@ -7,7 +7,6 @@ import type { Root } from 'mdast'
 import type { Node as PMNode } from 'prosemirror-model'
 import { visit } from 'unist-util-visit'
 
-import { ALERT_MARKER } from '../pipeline/github-alert.ts'
 import { parseDocument } from '../pipeline/parse-document.ts'
 import { parseMarkdown } from '../pipeline/processor.ts'
 import { serializeDocument } from '../pipeline/serialize-document.ts'
@@ -122,12 +121,15 @@ function withSoftWrapsCollapsed(markdown: string): string {
       .replace(/[ \t]*\n[ \t>]*/g, (wrap: string, at: number) => {
         if (isKept(start + at + wrap.indexOf('\n'))) return wrap
         const line = `${collapsed.slice(start, start + at)}\n`
-        return ALERT_MARKER.exec(line)?.[0] === line ? wrap.replace(/^[ \t]+/, '') : ' '
+        return MARKER_LINE.test(line) ? wrap.replace(/^[ \t]+/, '') : ' '
       })
     collapsed = collapsed.slice(0, start) + inside + collapsed.slice(end)
   }
   return collapsed
 }
+
+/** A callout's first line: a marker, the title after it if there is one, and its line break. */
+const MARKER_LINE = /^\[![A-Za-z][\w-]*\](?:[^\S\n].*)?\n$/u
 
 /** Byte offsets are not semantics, nor is how a node was spelled. */
 function semantics(tree: Root): string {
