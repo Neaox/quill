@@ -11,6 +11,13 @@ import { parseMarkdown } from '../pipeline/processor.ts'
 import { renderHtml } from './html.ts'
 import { sanitizeSchema } from './sanitize-schema.ts'
 
+const input = (properties: Properties): Element => ({
+  type: 'element',
+  tagName: 'input',
+  properties,
+  children: [],
+})
+
 const render = (markdown: string): string => renderHtml(parseMarkdown(markdown))
 
 // A genuine attribute breakout looks like `"` (closing the value early) then a
@@ -19,14 +26,6 @@ const render = (markdown: string): string => renderHtml(parseMarkdown(markdown))
 // quote, whitespace, an attribute name, `=`, quote — never legitimately occurs;
 // its presence would mean an attacker's value closed the tag's real attribute
 // and opened their own.
-/** An input element, as hast-util-sanitize meets one. */
-const input = (properties: Properties): Element => ({
-  type: 'element',
-  tagName: 'input',
-  properties,
-  children: [],
-})
-
 const ATTRIBUTE_BREAKOUT = /"\s+on[a-z-]+\s*=\s*"/i
 
 /**

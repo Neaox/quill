@@ -1,4 +1,4 @@
-# ADR-057: Document properties on every surface
+# ADR-059: Document properties on every surface
 
 **Status:** Accepted
 **Date:** 2026-10-17

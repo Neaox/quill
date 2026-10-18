@@ -104,6 +104,17 @@ export interface ListboxCursor {
   readonly activeOption: () => string | undefined
 }
 
+export interface ListboxCursorOptions {
+  /**
+   * Whether the first option is active before the arrows are used. On by
+   * default, which suits a list that is the answer (a palette, where Enter
+   * opens the top result). Off suits suggestions beside a field whose own Enter
+   * means something else, such as submitting a search: nothing is chosen until
+   * the arrows reach it.
+   */
+  readonly preselect?: boolean
+}
+
 /**
  * Which option the arrows have reached, and the ids that wire the field to it.
  *
@@ -111,9 +122,15 @@ export interface ListboxCursor {
  * results that arrive shorter than the list they replace move the active
  * option to the new end on the very render that shortened it.
  */
-export function useListboxCursor(groups: readonly ListboxGroup[]): ListboxCursor {
+export function useListboxCursor(
+  groups: readonly ListboxGroup[],
+  { preselect = true }: ListboxCursorOptions = {},
+): ListboxCursor {
   const idPrefix = useId()
-  const [wanted, setWanted] = useState(0)
+  // `-1` is "none yet": the arrows have not been used, so Enter is still the
+  // field's own (a form's submit) rather than a choice nobody made.
+  const first = preselect ? 0 : -1
+  const [wanted, setWanted] = useState(first)
   const { groups: rows, ids } = positionOptions(groups)
   const active = ids.length === 0 ? -1 : Math.min(wanted, ids.length - 1)
   const activeId = active === -1 ? undefined : `${idPrefix}-option-${active}`
@@ -138,7 +155,7 @@ export function useListboxCursor(groups: readonly ListboxGroup[]): ListboxCursor
       setWanted(Math.min(ids.length - 1, Math.max(0, active + by)))
     },
     reset: () => {
-      setWanted(0)
+      setWanted(first)
     },
     activeOption: () => ids[active],
   }

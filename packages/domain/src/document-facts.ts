@@ -7,7 +7,7 @@ import { isDocumentStatus, type DocumentStatus } from './document-status.ts'
 
 /**
  * The facts a document states about itself, as a reader is shown them
- * (`docs/design/properties.md`, ADR-057).
+ * (`docs/design/properties.md`, ADR-059).
  *
  * Front matter is whatever its author wrote (ADR-005): a value can be the wrong
  * type, a status the schema does not know, an interval nobody can count. The
@@ -41,7 +41,7 @@ export interface DocumentFacts {
 
 /**
  * The lifecycle as an outsider is told it: never who verified (a person,
- * ADR-057), and a verification only while it stands — the review cycle that
+ * ADR-059), and a verification only while it stands — the review cycle that
  * would say it has lapsed is internal, so a lapsed one is simply not claimed.
  */
 export type PublicLifecycle =

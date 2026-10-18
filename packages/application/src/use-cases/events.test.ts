@@ -2,8 +2,13 @@ import { describe, expect, it } from 'vitest'
 import { documentId, revisionId, userId, workspaceId } from '@quill/domain'
 
 import {
+  attachmentRevised,
+  collectionDeleted,
+  documentDeleted,
   EVENT_PAYLOAD_VERSION,
-  parseAttachmentRevised,
+  grantCreated,
+  grantRevoked,
+  parseDocumentCreated,
   parseDocumentDeleted,
   parseDocumentMoved,
   parseDocumentNested,
@@ -149,7 +154,7 @@ describe('parseDocumentMoved', () => {
   })
 })
 
-describe('parseDocumentNested and parseDocumentDeleted (ADR-056)', () => {
+describe('parseDocumentNested and parseDocumentDeleted (ADR-058)', () => {
   const nested = {
     version: EVENT_PAYLOAD_VERSION,
     documentId: DOC,
@@ -161,8 +166,9 @@ describe('parseDocumentNested and parseDocumentDeleted (ADR-056)', () => {
     version: EVENT_PAYLOAD_VERSION,
     documentId: DOC,
     workspaceId: WORKSPACE,
-    parentId: null,
     collectionId: 'guides',
+    parentId: null,
+    deletedBy: USER,
   }
 
   it('reads a nesting and a delete', () => {
@@ -193,26 +199,109 @@ describe('parseDocumentNested and parseDocumentDeleted (ADR-056)', () => {
   })
 })
 
-describe('parseAttachmentRevised (ADR-043)', () => {
+describe('the grant events', () => {
+  const grant = {
+    version: EVENT_PAYLOAD_VERSION,
+    grantId: 'grant-1',
+    principalKind: 'public',
+    principalId: null,
+    scopeKind: 'collection',
+    scopeId: 'collection-1',
+    role: 'viewer',
+    effect: 'allow',
+  }
+
+  it('reads a grant as it was, for both the grant and its revoke', () => {
+    expect(grantCreated.parse(grant)).toEqual(grant)
+    expect(grantRevoked.parse(grant)).toEqual(grant)
+  })
+
+  it('keeps the principal and the scope an instance-wide grant has none of as null', () => {
+    expect(grantCreated.parse({ ...grant, scopeKind: 'instance', scopeId: null })).toMatchObject({
+      scopeKind: 'instance',
+      scopeId: null,
+    })
+  })
+
+  it('refuses a grant naming a role, effect, scope or principal that does not exist', () => {
+    expect(grantCreated.parse({ ...grant, role: 'superuser' })).toBeNull()
+    expect(grantCreated.parse({ ...grant, effect: 'maybe' })).toBeNull()
+    expect(grantCreated.parse({ ...grant, scopeKind: 'galaxy' })).toBeNull()
+    expect(grantCreated.parse({ ...grant, principalKind: 'robot' })).toBeNull()
+    expect(grantCreated.parse({ ...grant, grantId: '' })).toBeNull()
+    expect(grantCreated.parse({ ...grant, version: 2 })).toBeNull()
+  })
+})
+
+describe('the deletion events', () => {
+  it('reads a deleted document, with the collection it was in and who deleted it', () => {
+    const deleted = {
+      version: EVENT_PAYLOAD_VERSION,
+      documentId: DOC,
+      workspaceId: WORKSPACE,
+      collectionId: 'collection-1',
+      parentId: null,
+      deletedBy: USER,
+    }
+    expect(documentDeleted.parse(deleted)).toEqual(deleted)
+    expect(
+      documentDeleted.parse({ ...deleted, collectionId: undefined, deletedBy: undefined }),
+    ).toMatchObject({ collectionId: null, parentId: null, deletedBy: null })
+    expect(documentDeleted.parse({ ...deleted, documentId: '' })).toBeNull()
+  })
+
+  it('reads a deleted collection', () => {
+    const deleted = {
+      version: EVENT_PAYLOAD_VERSION,
+      collectionId: 'collection-1',
+      workspaceId: WORKSPACE,
+      deletedBy: USER,
+    }
+    expect(collectionDeleted.parse(deleted)).toEqual(deleted)
+    expect(collectionDeleted.parse({ ...deleted, collectionId: '' })).toBeNull()
+  })
+})
+
+describe('attachmentRevised', () => {
   const revised = {
     version: EVENT_PAYLOAD_VERSION,
-    attachmentId: '00000000-0000-4000-8000-000000000301',
+    attachmentId: 'attachment-1',
     documentId: DOC,
     workspaceId: WORKSPACE,
     attachmentVersion: 2,
   }
 
-  it('reads a payload this release wrote', () => {
-    expect(parseAttachmentRevised(revised)).toEqual(revised)
+  it('reads a revision of an attachment with the version it reached', () => {
+    expect(attachmentRevised.parse(revised)).toEqual(revised)
   })
 
-  it('leaves one it cannot read', () => {
-    expect(parseAttachmentRevised({ ...revised, version: 99 })).toBeNull()
-    expect(parseAttachmentRevised({ ...revised, attachmentId: '' })).toBeNull()
-    expect(parseAttachmentRevised({ ...revised, attachmentVersion: '2' })).toBeNull()
-    expect(parseAttachmentRevised({ ...revised, attachmentVersion: undefined })).toBeNull()
-    expect(parseAttachmentRevised({ ...revised, documentId: '' })).toBeNull()
-    expect(parseAttachmentRevised({ ...revised, workspaceId: '' })).toBeNull()
+  it('refuses a payload missing an id or carrying a version that is not a number', () => {
+    expect(attachmentRevised.parse({ ...revised, attachmentId: '' })).toBeNull()
+    expect(attachmentRevised.parse({ ...revised, documentId: '' })).toBeNull()
+    expect(attachmentRevised.parse({ ...revised, workspaceId: '' })).toBeNull()
+    expect(attachmentRevised.parse({ ...revised, attachmentVersion: '2' })).toBeNull()
+    expect(attachmentRevised.parse({ ...revised, version: 99 })).toBeNull()
+  })
+})
+
+describe('parseDocumentCreated', () => {
+  const created = {
+    version: EVENT_PAYLOAD_VERSION,
+    documentId: DOC,
+    workspaceId: WORKSPACE,
+    title: 'Runbook',
+    createdBy: USER,
+  }
+
+  it('reads a payload of the version it knows', () => {
+    expect(parseDocumentCreated(created)).toEqual(created)
+  })
+
+  it('refuses anything it cannot read', () => {
+    expect(parseDocumentCreated({ ...created, version: 99 })).toBeNull()
+    for (const field of ['documentId', 'workspaceId', 'title', 'createdBy']) {
+      expect(parseDocumentCreated({ ...created, [field]: '' })).toBeNull()
+    }
   })
 })
 

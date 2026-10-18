@@ -31,6 +31,10 @@ narrows.
 the byline every surface shows under a title, who sees which facts, and how an
 author edits them in place.
 
+## Search
+
+[`search.md`](search.md) describes the search experience: the anatomy of a result, filter chips, typeahead, the states and keys of the palette and the results page, and what is deliberately not there yet.
+
 ## Home
 
 [`home.md`](home.md) defines the three first pages (signed-in home, workspace home, public site home), who each is for, and what M2 ships of them.

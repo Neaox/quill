@@ -45,7 +45,7 @@ export interface SharedDocumentViewProps {
   readonly target: { readonly id: string; readonly title: string; readonly shortId: string }
   /** Empty for a document-scoped link: there is no navigation out of a link's scope. */
   readonly navigation: readonly SharedNode[]
-  /** What the document states about itself that an outsider may see (ADR-057). */
+  /** What the document states about itself that an outsider may see (ADR-059). */
   readonly facts?: SharedDocument['facts'] | undefined
 }
 

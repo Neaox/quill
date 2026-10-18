@@ -2,7 +2,7 @@ import type { ChildPagesCache, ChildPagesStructure, Clock } from '@quill/applica
 import type { DocumentId } from '@quill/domain'
 
 /**
- * What a child pages list remembers between requests (ADR-056): the subtree
+ * What a child pages list remembers between requests (ADR-058): the subtree
  * under a page, keyed by the page and the depth, and never anything about
  * who read it — visibility is decided per request, so a new deny applies at
  * once.
@@ -10,9 +10,9 @@ import type { DocumentId } from '@quill/domain'
  * Bounded three ways, like the public site's cache (`public-site/cache.ts`):
  *
  * - **Events.** Creating, publishing, renaming, moving, nesting and deleting
- *   a document each arrive as an outbox event, and
- *   `invalidate-child-pages.ts` drops every entry the document is in, or is
- *   under, or that is under it (`invalidate`).
+ *   a document each arrive from the in-process event bus once the commit
+ *   lands (ADR-056), and `invalidation.ts` drops every entry the document is
+ *   in, or is under, or that is under it (`invalidate`).
  * - **Time.** Anything no event reports is caught by a short time to live.
  * - **Size.** Oldest first, so a crawl of a large tree cannot grow the process.
  */

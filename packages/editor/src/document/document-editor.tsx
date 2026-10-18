@@ -138,7 +138,7 @@ export interface DocumentEditorProps {
    */
   searchDocuments?(query: string, signal: AbortSignal): Promise<readonly DocumentLinkTarget[]>
   /**
-   * Lists this page's children for a child pages block's preview (ADR-056);
+   * Lists this page's children for a child pages block's preview (ADR-058);
    * the request is the application's. Omitted, the block says in words what
    * it will list. Whether it is given is read once, when the editor is built.
    */

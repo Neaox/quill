@@ -8,7 +8,7 @@ import { seedTenancy } from '../test-support/tenancy-fixture.ts'
 import type { TenancyFixture } from '../test-support/tenancy-fixture.ts'
 
 /**
- * `GET /api/documents/:id/children` over a real database (ADR-056): the
+ * `GET /api/documents/:id/children` over a real database (ADR-058): the
  * list a `::children` slot is filled with in the app, for this reader, and
  * kept fresh by the outbox.
  */
@@ -162,13 +162,11 @@ describe('the children of a document', () => {
     expect(html).toBe('<p class="child-pages-empty">No child pages yet</p>')
   })
 
-  it('shows a new child once the outbox has said so, and not from a stale subtree', async () => {
+  it('shows a new child the moment its creation commits, and not from a stale subtree', async () => {
     expect((await children('', editor)).json<{ count: number }>().count).toBe(2)
+    // The cached subtree is dropped by the bus when the creation commits
+    // (ADR-056), not when the outbox is next polled.
     await create('Upgrade', parent)
-    // The subtree is cached until the creation is delivered…
-    expect((await children('', editor)).json<{ count: number }>().count).toBe(2)
-    await harness.drainOutbox()
-    // …and invalidated by it.
     expect((await children('', editor)).json<{ count: number }>().count).toBe(3)
   })
 

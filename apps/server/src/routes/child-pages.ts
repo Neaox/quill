@@ -30,7 +30,7 @@ const ChildPagesSchema = Type.Object({
 
 /**
  * `GET /api/documents/:id/children`: what fills a `::children` slot in the
- * app (ADR-056, ADR-032).
+ * app (ADR-058, ADR-032).
  *
  * The body is cached for every reader (ADR-031); this is the part that
  * depends on who is reading, so it is answered per request, through the one

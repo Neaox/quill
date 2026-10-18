@@ -21,7 +21,7 @@ const inflateRawAsync = promisify(inflateRaw)
 /** zlib's code for output past `maxOutputLength`. */
 const BUFFER_TOO_LARGE = 'ERR_BUFFER_TOO_LARGE'
 
-/** The Node error code of whatever zlib threw. */
+/** A thrown value's `code`, or undefined for one that has none (`Object` boxes a primitive). */
 function errorCode(error: unknown): unknown {
   return Reflect.get(Object(error), 'code')
 }

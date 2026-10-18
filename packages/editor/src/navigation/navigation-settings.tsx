@@ -11,7 +11,7 @@ import { useId, useState } from 'react'
 import type { ChangeEvent, KeyboardEvent, ReactNode } from 'react'
 
 /**
- * The settings of a navigation block (ADR-056), in a small panel held
+ * The settings of a navigation block (ADR-058), in a small panel held
  * against its Settings button. Every choice is written at once, as one
  * change the author can undo; the title is written when the field is left
  * or Enter is pressed, so typing a title is one step of undo, not one per

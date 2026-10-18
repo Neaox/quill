@@ -11,7 +11,7 @@ import { createUnitRepository } from './unit-repository.ts'
 import { createWorkspaceRepository } from './workspace-repository.ts'
 
 /**
- * A child pages list's two reads against a real Postgres (ADR-056): the
+ * A child pages list's two reads against a real Postgres (ADR-058): the
  * subtree in one recursive query bounded by its depth, and the summaries of
  * any number of pages in one more.
  */

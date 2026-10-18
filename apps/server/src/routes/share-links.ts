@@ -171,7 +171,7 @@ const SharedDocumentFields = {
 export const SharedBodySchema = Type.Object({
   document: Type.Object(SharedDocumentFields),
   rendered: RenderedSchema,
-  /** What the document states about itself that an outsider may see (ADR-057). */
+  /** What the document states about itself that an outsider may see (ADR-059). */
   facts: PublicFactsSchema,
 })
 

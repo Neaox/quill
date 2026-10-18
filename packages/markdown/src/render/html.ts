@@ -41,7 +41,7 @@ export interface RenderOptions {
   readonly highlighter?: Highlighter | undefined
   /**
    * Document metadata. Accepted and not drawn: what a document states about
-   * itself is the byline's to show, per reader (ADR-057), never the cached
+   * itself is the byline's to show, per reader (ADR-059), never the cached
    * body's. Kept so a caller that still passes it is not refused.
    */
   readonly frontMatter?: Record<string, unknown> | undefined
@@ -132,7 +132,7 @@ export function renderHtmlWith(
     options.emoji ?? new Map<string, CustomEmoji>(),
     options.standardEmoji ?? (() => undefined),
   )
-  // Taken at most once, and only when a table of contents asks (ADR-056):
+  // Taken at most once, and only when a table of contents asks (ADR-058):
   // from the tree the headings are rendered from, so the ids agree.
   let outline: readonly OutlineEntry[] | undefined
   const outlineOf = (): readonly OutlineEntry[] => (outline ??= extractOutline(ast))

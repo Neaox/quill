@@ -44,6 +44,15 @@ describe('UserRepository', () => {
     expect(await users.findByEmail('ada@example.com')).toEqual(created)
   })
 
+  it('lists users by id in one query, and none for an empty list or an unknown id', async () => {
+    const id = userId('00000000-0000-4000-8000-000000000001')
+    await users.create({ id, email: 'ada@example.com', displayName: 'Ada', now: NOW })
+
+    expect((await users.listByIds([id])).map((user) => user.displayName)).toEqual(['Ada'])
+    expect(await users.listByIds([userId('00000000-0000-4000-8000-000000000099')])).toEqual([])
+    expect(await users.listByIds([])).toEqual([])
+  })
+
   it('returns null for an unknown id or email', async () => {
     expect(await users.findById(userId('00000000-0000-4000-8000-000000000099'))).toBeNull()
     expect(await users.findByEmail('nobody@example.com')).toBeNull()

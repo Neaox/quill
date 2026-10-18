@@ -148,39 +148,103 @@ describe('the site index', () => {
 
 describe('the search results', () => {
   const snippet = { text: 'A rate limit of 100 a minute.', ranges: [{ start: 2, end: 12 }] }
+  const published = new Date('2026-03-04T09:00:00.000Z')
+  const row = (title: string, path: string, trail: readonly string[] = []) => ({
+    title,
+    path,
+    snippet,
+    trail,
+    publishedAt: published,
+  })
+  const view = (overrides: Partial<Parameters<typeof renderSearchMain>[0]> = {}) => ({
+    siteSlug: 'acme-docs',
+    query: 'rate limit',
+    results: [row('Rate limits', 'guides/rate-limits')],
+    refusal: null,
+    more: null,
+    ...overrides,
+  })
 
   it('counts the results and links each one', () => {
-    const main = renderSearchMain({
-      siteSlug: 'acme-docs',
-      query: 'rate limit',
-      results: [{ title: 'Rate limits', path: 'guides/rate-limits', snippet }],
-    })
+    const main = renderSearchMain(view())
     expect(main.value).toContain('1 result for')
     expect(main.value).toContain('href="/s/acme-docs/guides/rate-limits"')
     expect(main.value).toContain('<mark>rate limit</mark>')
   })
 
   it('pluralises', () => {
-    const main = renderSearchMain({
-      siteSlug: 'acme-docs',
-      query: 'x',
-      results: [
-        { title: 'One', path: 'g/one', snippet },
-        { title: 'Two', path: 'g/two', snippet },
-      ],
-    })
+    const main = renderSearchMain(
+      view({ results: [row('One', 'g/one'), row('Two', 'g/two')], query: 'x' }),
+    )
     expect(main.value).toContain('2 results for')
   })
 
-  it('says nothing matched, and escapes the query a stranger typed', () => {
-    const main = renderSearchMain({
-      siteSlug: 'acme-docs',
-      query: '<script>alert(1)</script>',
-      results: [],
-    })
+  it('says nothing matched, escapes the query a stranger typed, and says what to try', () => {
+    const main = renderSearchMain(view({ query: '<script>alert(1)</script>', results: [] }))
     expect(main.value).toContain('Nothing matched')
+    expect(main.value).toContain('different words')
     expect(main.value).not.toContain('<script>')
     expect(main.value).toContain('&lt;script&gt;')
+  })
+
+  it('names the section and the date each result was published, as machine-readable time', () => {
+    const main = renderSearchMain(view({ results: [row('Limits', 'g/limits', ['Guides', 'API'])] }))
+    expect(main.value).toContain('Guides')
+    expect(main.value).toContain('API')
+    expect(main.value).toMatch(
+      /<time datetime="2026-03-04T09:00:00\.000Z"\s*>\s*4 March 2026\s*<\/time\s*>/u,
+    )
+  })
+
+  it('shows no trail for a page at the top of the site', () => {
+    expect(renderSearchMain(view()).value).not.toContain('site-result-trail')
+  })
+
+  it('does not claim a total when there is more: it says how many are shown and links to the rest', () => {
+    const main = renderSearchMain(view({ more: '/s/acme-docs/search?q=rate+limit&cursor=abc' }))
+    expect(main.value).not.toContain('<p>1 result for')
+    expect(main.value).toContain('Showing the first 1 result for')
+    expect(main.value).toContain('href="/s/acme-docs/search?q=rate+limit&amp;cursor=abc"')
+    expect(main.value).toContain('More results')
+  })
+
+  it('offers no link to more when the results are complete', () => {
+    expect(renderSearchMain(view()).value).not.toContain('More results')
+  })
+
+  it('explains a query that could not be read, with the parser’s own words, escaped', () => {
+    const main = renderSearchMain(
+      view({
+        query: '"unclosed <b>',
+        results: [],
+        refusal: { kind: 'unparsed', message: 'The quote at 1 is never closed <b>' },
+      }),
+    )
+    expect(main.value).toContain('could not be read')
+    expect(main.value).toContain('The quote at 1 is never closed &lt;b&gt;')
+    expect(main.value).not.toContain('Nothing matched')
+  })
+
+  it('explains a query that only leaves things out', () => {
+    const main = renderSearchMain(
+      view({ query: '-draft', results: [], refusal: { kind: 'nothing-to-search-for' } }),
+    )
+    expect(main.value).toContain('word or phrase to look for')
+    expect(main.value).not.toContain('Nothing matched')
+  })
+
+  it('says searching by person, team or property is not offered here, and does not pretend nothing matched', () => {
+    const main = renderSearchMain(
+      view({ query: 'by:ada', results: [], refusal: { kind: 'people-not-offered' } }),
+    )
+    expect(main.value).toContain('not offered on this site')
+    expect(main.value).not.toContain('Nothing matched')
+  })
+
+  it('invites a search when nothing has been asked', () => {
+    const main = renderSearchMain(view({ query: '', results: [] }))
+    expect(main.value).toContain('Type a word or phrase')
+    expect(main.value).not.toContain('Nothing matched')
   })
 })
 

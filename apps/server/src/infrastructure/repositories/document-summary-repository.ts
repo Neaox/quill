@@ -10,7 +10,7 @@ import type { DrizzleClient } from '../db/types.ts'
 const FALLBACK_LENGTH = 240
 
 /**
- * What a child pages list shows under each title (ADR-056), read from the
+ * What a child pages list shows under each title (ADR-058), read from the
  * search projection of each page's published head: one query for any number
  * of pages, and nothing read from the content store.
  *

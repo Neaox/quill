@@ -3,6 +3,7 @@ import type { UserId, WorkspaceId } from '@quill/domain'
 import type { Clock, IdGenerator } from '../ports/system.ts'
 import type { CollectionId, CollectionRow, UnitOfWork } from '../ports/persistence.ts'
 import { namedSlug } from './document-path.ts'
+import { collectionDeleted } from './events.ts'
 
 /**
  * Collections: the first-level containers in a workspace, and a permission
@@ -126,7 +127,19 @@ export async function deleteCollection(
   const documents = await repos.collections.countDocuments(command.collectionId)
   if (documents > 0) return { kind: 'not-empty', documents }
 
-  await repos.collections.delete(command.collectionId)
+  // The deletion and its announcement commit together, or neither does.
+  await deps.uow.run(async (tx) => {
+    await tx.collections.delete(command.collectionId)
+    await tx.events.record(
+      collectionDeleted,
+      {
+        collectionId: existing.id,
+        workspaceId: existing.workspaceId,
+        deletedBy: command.deletedBy,
+      },
+      deps.clock.now(),
+    )
+  })
   await audit(deps, {
     type: COLLECTION_AUDIT_EVENTS.deleted,
     actorUserId: command.deletedBy,

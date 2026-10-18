@@ -61,5 +61,6 @@ Status values: `Proposed` (awaiting a spike or review), `Accepted`, `Superseded 
 | [053](0053-home-relevance.md)                         | What is relevant on the signed-in home        | Accepted               |
 | [054](0054-template-library-and-authoring.md)         | Template library and authoring                | Accepted               |
 | [055](0055-authorship-and-ownership.md)               | Authorship and ownership                      | Accepted               |
-| [056](0056-navigation-blocks.md)                     | Navigation blocks: contents and child pages   | Accepted               |
-| [057](0057-document-properties-on-every-surface.md)  | Document properties on every surface          | Accepted               |
+| [056](0056-events-outbox-and-bus.md)                  | Events: the outbox is the truth, the bus the signal | Accepted         |
+| [058](0058-navigation-blocks.md)                     | Navigation blocks: contents and child pages   | Accepted               |
+| [059](0059-document-properties-on-every-surface.md)  | Document properties on every surface          | Accepted               |

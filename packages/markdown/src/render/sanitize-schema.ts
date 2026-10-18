@@ -243,7 +243,7 @@ const attributes: Schema['attributes'] = {
   // callout's body. Its `id` is the default's `'*'` attribute, prefixed.
   p: [['className', 'callout-label', ...NAVIGATION_SANITIZE_GRANT.classes.p]],
 
-  // `navigation/render.ts` (ADR-056): a table of contents, a `nav` named by
+  // `navigation/render.ts` (ADR-058): a table of contents, a `nav` named by
   // its title or by its one fixed name, with its list's style.
   nav: [
     ['className', ...NAVIGATION_SANITIZE_GRANT.classes.nav],
@@ -295,7 +295,7 @@ const attributes: Schema['attributes'] = {
       ...NAVIGATION_SANITIZE_GRANT.classes.section,
     ],
     'data-live-block',
-    // A child pages slot's key and title (ADR-056).
+    // A child pages slot's key and title (ADR-058).
     ...NAVIGATION_SANITIZE_GRANT.attributes.section,
     ARIA_LABEL,
   ],
@@ -415,7 +415,7 @@ const tagNames = [
   'colgroup',
   'col',
   'caption', // handlers.ts: a table's caption, which names it (ADR-040)
-  ...NAVIGATION_SANITIZE_GRANT.tagNames, // navigation/render.ts: a table of contents (ADR-056)
+  ...NAVIGATION_SANITIZE_GRANT.tagNames, // navigation/render.ts: a table of contents (ADR-058)
 ]
 
 const protocols: Schema['protocols'] = {

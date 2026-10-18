@@ -273,7 +273,7 @@ export function DesignPage() {
               id="navigation-blocks"
               overline="Navigation blocks"
               title="Contents and child pages"
-              description="ADR-056: a table of contents drawn from the page's own headings, and the pages under this one, filled for each reader as the page is assembled. Scroll the page and the section being read is marked in every contents."
+              description="ADR-058: a table of contents drawn from the page's own headings, and the pages under this one, filled for each reader as the page is assembled. Scroll the page and the section being read is marked in every contents."
             >
               <p className="text-xs leading-relaxed text-muted">
                 Each specimen's Markdown is under it.

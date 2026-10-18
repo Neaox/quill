@@ -21,7 +21,7 @@ import {
 } from './navigation-settings.tsx'
 
 /**
- * A navigation block as the author meets it (ADR-056): a live preview of
+ * A navigation block as the author meets it (ADR-058): a live preview of
  * what a reader will be shown, drawn by the reader's own template, and a
  * Settings button opening a panel of the block's options. The whole block is
  * the view's — its label is written from the panel — so ProseMirror treats

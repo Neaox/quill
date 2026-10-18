@@ -11,7 +11,7 @@ import type {
 import { visibleDocumentIds } from './list-visible-documents.ts'
 
 /**
- * The pages under a document, for a child pages list (ADR-056).
+ * The pages under a document, for a child pages list (ADR-058).
  *
  * The list is a slot filled as a page is assembled (ADR-032), because it
  * depends on other documents and on who is reading. Answering it costs a
@@ -114,7 +114,7 @@ export type ListChildPagesResult =
     }
   | { readonly kind: 'broken-tree'; readonly failure: ScopeChainFailure }
 
-/** The deepest a list may reach (ADR-056). */
+/** The deepest a list may reach (ADR-058). */
 export const MAX_CHILD_PAGES_DEPTH = 6
 
 /**
@@ -255,7 +255,7 @@ async function readable(
   }
 }
 
-/** Created first: the navigation's order until manual ordering lands (ADR-056). */
+/** Created first: the navigation's order until manual ordering lands (ADR-058). */
 const manual = (left: DocumentRow, right: DocumentRow): number =>
   left.createdAt.getTime() - right.createdAt.getTime() || (left.id < right.id ? -1 : 1)
 

@@ -292,6 +292,24 @@ describe('unpublishing a collection', () => {
     expect(await publicGrants()).toEqual([])
   })
 
+  it('announces the public grant it created, and the one it removed', async () => {
+    await publish({ siteSlug: 'acme-docs' })
+    expect(uow.events.map((event) => event.type)).toContain('GrantCreated')
+    const [grant] = await publicGrants()
+
+    const before = uow.events.length
+    await unpublishCollection(deps, { collectionId: 'guides', unpublishedBy: ADMIN })
+    const emitted = uow.events.slice(before)
+    expect(emitted.map((event) => event.type)).toEqual(['GrantRevoked'])
+    expect(emitted[0]?.payload).toMatchObject({
+      grantId: grant?.id,
+      principalKind: 'public',
+      scopeKind: 'collection',
+      scopeId: 'guides',
+      effect: 'allow',
+    })
+  })
+
   it('writes an audit row', async () => {
     await publish({ siteSlug: 'acme-docs' })
     await unpublishCollection(deps, { collectionId: 'guides', unpublishedBy: ADMIN })

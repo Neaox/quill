@@ -1,5 +1,5 @@
 /**
- * A child pages slot's key and the options it names (ADR-056), apart from
+ * A child pages slot's key and the options it names (ADR-058), apart from
  * the directive so a reader can read a slot without the Markdown pipeline:
  * this module imports nothing, and is what `@quill/markdown/child-pages-slot`
  * gives the web app's reading bundle.

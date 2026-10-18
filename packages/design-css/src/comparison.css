@@ -310,3 +310,8 @@
   outline-offset: 2px;
   border-radius: var(--radius-sm);
 }
+
+/* A folded block stays folded even where the reading grid gives its blocks a display of their own. */
+.prose > [hidden] {
+  display: none;
+}

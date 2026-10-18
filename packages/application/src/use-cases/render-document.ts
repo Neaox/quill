@@ -76,13 +76,13 @@ import { createVersionedReader } from './versioned-reader.ts'
  * `<details>`, which was escaped to text before, and Obsidian's foldable
  * callouts, which were quotes.
  *
- * Version 10 draws the navigation blocks (ADR-056): `::toc` as the
+ * Version 10 draws the navigation blocks (ADR-058): `::toc` as the
  * document's own table of contents, and `::children` as the slot a child
  * pages list is filled into, where both were the live-block fallback before.
  *
  * Version 11 leaves front matter out of the body: the dates it carried were
  * drawn as a list of raw key paths, which the page then read as its eyebrow.
- * What a document states about itself is each surface's byline (ADR-057).
+ * What a document states about itself is each surface's byline (ADR-059).
  *
  * Version 12 merges two lines of work that each numbered their own 10 (the
  * other line's 10 named custom emoji by their description). It is above both,

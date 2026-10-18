@@ -18,6 +18,7 @@ function hit(workspace: WorkspaceId, score: number): SearchServiceHit {
     workspaceId: workspace,
     title: `Document ${counter}`,
     snippet: { text: '', ranges: [] },
+    tags: [],
     score,
   }
 }

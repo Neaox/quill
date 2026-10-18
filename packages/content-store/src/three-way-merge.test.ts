@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest'
 
-import { conflictMarkers, OURS_LABEL, THEIRS_LABEL, threeWayMerge } from './three-way-merge.ts'
+import {
+  conflictMarkers,
+  deletionMarkers,
+  OURS_LABEL,
+  THEIRS_LABEL,
+  threeWayMerge,
+} from './three-way-merge.ts'
 
 const BASE = 'one\ntwo\nthree\nfour\nfive\n'
 
@@ -70,5 +76,32 @@ describe('threeWayMerge: a conflict only the block merge sees', () => {
       clean: false,
       text: `Bravo.\n\nCharlie.\n<<<<<<< ${OURS_LABEL}\nAlpha.\n=======\n>>>>>>> ${THEIRS_LABEL}\n`,
     })
+  })
+})
+
+describe('deletionMarkers', () => {
+  it('shows an edit against a deletion as the whole document on one side and nothing on the other', () => {
+    expect(deletionMarkers('Ours.\n', '')).toBe(
+      `<<<<<<< ${OURS_LABEL}\nOurs.\n=======\n>>>>>>> ${THEIRS_LABEL}\n`,
+    )
+  })
+
+  it('shows a deletion against an edit the same way round', () => {
+    expect(deletionMarkers('', 'Theirs.\n')).toBe(
+      `<<<<<<< ${OURS_LABEL}\n=======\nTheirs.\n>>>>>>> ${THEIRS_LABEL}\n`,
+    )
+  })
+
+  it('ends every line it writes, so a side without a final newline cannot swallow a marker', () => {
+    expect(deletionMarkers('Ours.', '')).toBe(
+      `<<<<<<< ${OURS_LABEL}\nOurs.\n=======\n>>>>>>> ${THEIRS_LABEL}\n`,
+    )
+  })
+
+  it('is a conflict even where a line merge would have called it clean', () => {
+    // The merge engine reads a deletion as removing every line, which does not
+    // clash with an edit it can place; a person still has to choose.
+    expect(threeWayMerge('Base.\n', 'Ours.\n', '').clean).toBe(true)
+    expect(deletionMarkers('Ours.\n', '')).toContain('<<<<<<<')
   })
 })

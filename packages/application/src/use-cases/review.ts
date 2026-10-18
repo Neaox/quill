@@ -18,17 +18,7 @@ import type {
 } from '../ports/reviews.ts'
 import type { Clock, IdGenerator } from '../ports/system.ts'
 import type { Authorizer } from './authorizer.ts'
-import {
-  EVENT_PAYLOAD_VERSION,
-  REVIEW_DECIDED,
-  REVIEW_REQUESTED,
-  REVIEW_WITHDRAWN,
-} from './events.ts'
-import type {
-  ReviewDecidedPayload,
-  ReviewRequestedPayload,
-  ReviewWithdrawnPayload,
-} from './events.ts'
+import { reviewDecided, reviewRequested, reviewWithdrawn } from './events.ts'
 import { createReviewerAccessProbe } from './review-access.ts'
 import type { ReviewerRef } from './review-access.ts'
 
@@ -325,15 +315,14 @@ export async function requestReview(
       now,
     })
 
-    const payload: ReviewRequestedPayload = {
-      version: EVENT_PAYLOAD_VERSION,
+    const payload = {
       requestId,
       documentId: command.documentId,
       workspaceId: document.workspaceId,
       requestedBy: command.requestedBy,
       reviewers: reviewers.map((r) => ({ kind: r.kind, id: r.id })),
     }
-    await tx.outbox.write({ id: deps.ids.uuid(), type: REVIEW_REQUESTED, payload, now })
+    await tx.events.record(reviewRequested, payload, now)
     await tx.audit.write({
       id: deps.ids.uuid(),
       type: REVIEW_AUDIT_EVENTS.requested,
@@ -371,15 +360,17 @@ async function recordWithdrawal(
     readonly now: Date
   },
 ): Promise<void> {
-  const payload: ReviewWithdrawnPayload = {
-    version: EVENT_PAYLOAD_VERSION,
-    requestId: input.request.id,
-    documentId: input.request.documentId,
-    workspaceId: input.workspaceId,
-    withdrawnBy: input.by,
-    reason: input.reason,
-  }
-  await tx.outbox.write({ id: deps.ids.uuid(), type: REVIEW_WITHDRAWN, payload, now: input.now })
+  await tx.events.record(
+    reviewWithdrawn,
+    {
+      requestId: input.request.id,
+      documentId: input.request.documentId,
+      workspaceId: input.workspaceId,
+      withdrawnBy: input.by,
+      reason: input.reason,
+    },
+    input.now,
+  )
   await tx.audit.write({
     id: deps.ids.uuid(),
     type:
@@ -440,8 +431,7 @@ export async function decideReview(
       assignments.map((assignment) => (answered.has(assignment.id) ? state : assignment.state)),
     )
     const updated = await tx.reviews.setStatus(request.id, status, now)
-    const payload: ReviewDecidedPayload = {
-      version: EVENT_PAYLOAD_VERSION,
+    const payload = {
       requestId: request.id,
       documentId: command.documentId,
       workspaceId: document.workspaceId,
@@ -449,7 +439,7 @@ export async function decideReview(
       decision: command.decision,
       status,
     }
-    await tx.outbox.write({ id: deps.ids.uuid(), type: REVIEW_DECIDED, payload, now })
+    await tx.events.record(reviewDecided, payload, now)
     await tx.audit.write({
       id: deps.ids.uuid(),
       type: REVIEW_AUDIT_EVENTS.decided,

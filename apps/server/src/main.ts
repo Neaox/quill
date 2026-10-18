@@ -24,23 +24,9 @@ import { createOutboundClient } from './infrastructure/http/outbound-client.ts'
 import { runMigrations } from './infrastructure/db/migrator.ts'
 import { createDocumentFormat } from './infrastructure/markdown/document-format.ts'
 import { CHILD_PAGES_CACHE_TTL_MS, createChildPagesCache } from './child-pages/cache.ts'
-import { createInvalidateChildPagesConsumers } from './child-pages/invalidate-child-pages.ts'
-import { combineConsumers } from './infrastructure/outbox/combine.ts'
-import {
-  createIndexOnPublishConsumer,
-  createIndexOnAttachmentRevisedConsumer,
-  createIndexOnRenameConsumer,
-} from './infrastructure/outbox/index-on-publish.ts'
-import {
-  createRecordMoveRedirectConsumer,
-  createRecordRenameRedirectConsumer,
-} from './infrastructure/outbox/record-public-redirect.ts'
-import { createInvalidatePublicSiteConsumers } from './infrastructure/outbox/invalidate-public-site.ts'
-import { createNotifyOnReviewConsumers } from './infrastructure/outbox/notify-on-review.ts'
-import { createRenderOnPublishConsumer } from './infrastructure/outbox/render-on-publish.ts'
+import { subscribeChildPagesInvalidation } from './child-pages/invalidation.ts'
 import { createPostgresSearchIndex } from './infrastructure/search/postgres-search-index.ts'
 import { createVisibleDocumentResolver } from './infrastructure/search/visible-documents.ts'
-import { createSendMailConsumer } from './infrastructure/outbox/send-mail.ts'
 import { pollOutboxOnce } from './infrastructure/outbox/poller.ts'
 import { createUnitOfWork } from './infrastructure/repositories/unit-of-work.ts'
 import { createEnvelopeCipher } from './infrastructure/secrets/envelope-cipher.ts'
@@ -50,23 +36,17 @@ import { validateSecretsConfigured } from './infrastructure/secrets/boot-validat
 import type { SecretExistenceCheck } from './infrastructure/secrets/boot-validation.ts'
 import { createSettingsStore } from './infrastructure/settings-store.ts'
 import { createPublicSiteCache, PUBLIC_SITE_CACHE_TTL_MS } from './public-site/cache.ts'
+import { subscribePublicSiteInvalidation } from './public-site/invalidation.ts'
 import { createPublicStylesheets, loadDesignSystemCss } from './public-site/stylesheet.ts'
 import { loadFaceFiles } from './theme/face-files.ts'
 import { createThemeStylesheets } from './theme/theme-stylesheet.ts'
 import { createSystemClock } from './infrastructure/system-clock.ts'
 import { createUuidGenerator } from './infrastructure/uuid-generator.ts'
 import { createJobRunner } from './jobs/job-runner.ts'
+import { registerOutboxConsumers } from './jobs/register-consumers.ts'
 import { createShutdown } from './shutdown.ts'
 import { createSweepJob } from './jobs/sweep-expired.ts'
-import {
-  ATTACHMENT_REVISED,
-  DOCUMENT_CREATED,
-  DOCUMENT_DELETED,
-  DOCUMENT_MOVED,
-  DOCUMENT_NESTED,
-  DOCUMENT_PUBLISHED,
-  DOCUMENT_RENAMED,
-} from '@quill/application'
+import { createEventBus } from '@quill/application'
 import { createSearchService } from '@quill/search'
 import { createDrawioText } from './extensions/drawio/drawing-text.ts'
 
@@ -93,7 +73,16 @@ const tokens = createTokenService()
 const database = createDatabase({ connectionString: config.databaseUrl })
 await runMigrations(database.pool)
 
-const uow = createUnitOfWork(database.db, database.pool, ids)
+// What a transaction recorded is announced here once it has committed
+// (ADR-056). A listener that fails is logged and never fails the request that
+// made the change, which has already happened; `app` exists by the time any
+// request can.
+const eventBus = createEventBus({
+  onError: (error, event) => {
+    app.log.error({ err: error, eventType: event.type }, 'an event listener failed')
+  },
+})
+const uow = createUnitOfWork(database.db, database.pool, ids, eventBus)
 const contentStore = createContentStore(config.contentStore, clock)
 // Settings are files in a system workspace of that same content store, and
 // secrets are envelope-encrypted rows under the instance master key (ADR-034).
@@ -249,109 +238,12 @@ const jobRunner = createJobRunner({
   clock,
   poll: (consumers, now) => pollOutboxOnce(database.pool, consumers, { now }),
 })
-// Two things happen on a publish, in this order: the body is rendered, so
-// the first reader never pays for a render (ADR-031), and the document is
-// indexed, so it is findable (ADR-010). The runner holds one consumer per
-// event type, so they are combined rather than one silently replacing the
-// other.
-// A fourth consumer of the same three events throws the public site's page
-// cache away, because all three change what a published page says (ADR-023).
-const invalidatePublicSite = new Map(
-  createInvalidatePublicSiteConsumers(publicSiteCache).map((consumer) => [
-    consumer.eventType,
-    consumer,
-  ]),
-)
-/* v8 ignore next 3 -- `createInvalidatePublicSiteConsumers` answers for each of the three. */
-const invalidationOf = (eventType: string) => {
-  const consumer = invalidatePublicSite.get(eventType)
-  if (consumer === undefined) throw new Error(`no public-site invalidation for ${eventType}`)
-  return consumer
-}
-
-// The child pages lists (ADR-056) are invalidated by six events, each a
-// subtree's worth of entries at most.
-const invalidateChildPages = new Map(
-  createInvalidateChildPagesConsumers(childPagesCache, deps).map((consumer) => [
-    consumer.eventType,
-    consumer,
-  ]),
-)
-/* v8 ignore next 5 -- `createInvalidateChildPagesConsumers` answers for each of the six. */
-const childPagesOf = (eventType: string) => {
-  const consumer = invalidateChildPages.get(eventType)
-  if (consumer === undefined) throw new Error(`no child pages invalidation for ${eventType}`)
-  return consumer
-}
-
-jobRunner.register(
-  combineConsumers(
-    DOCUMENT_PUBLISHED,
-    createRenderOnPublishConsumer(deps),
-    createIndexOnPublishConsumer(deps),
-    invalidationOf(DOCUMENT_PUBLISHED),
-    childPagesOf(DOCUMENT_PUBLISHED),
-  ),
-)
-// A rename writes the new title into the document itself, and the title is
-// the most heavily weighted field in the index (ADR-010). Nothing else acts
-// on it: a body that links to the renamed document simply renders under a new
-// cache key (ADR-031).
-jobRunner.register(
-  combineConsumers(
-    DOCUMENT_RENAMED,
-    createIndexOnRenameConsumer(deps),
-    // A rename changes a public address, so the old one is recorded and
-    // answered with a 301 (ADR-035).
-    createRecordRenameRedirectConsumer(deps),
-    invalidationOf(DOCUMENT_RENAMED),
-    childPagesOf(DOCUMENT_RENAMED),
-  ),
-)
-// A move between collections changes the collection segment of a public
-// address in the same way, and may change which site the page is on at all.
-jobRunner.register(
-  combineConsumers(
-    DOCUMENT_MOVED,
-    createRecordMoveRedirectConsumer(deps),
-    invalidationOf(DOCUMENT_MOVED),
-    childPagesOf(DOCUMENT_MOVED),
-  ),
-)
-// A re-saved diagram (ADR-043) changes the words and the picture of every
-// published body that shows it, without a publish.
-jobRunner.register(
-  combineConsumers(
-    ATTACHMENT_REVISED,
-    createIndexOnAttachmentRevisedConsumer(deps),
-    invalidationOf(ATTACHMENT_REVISED),
-  ),
-)
-// A re-saved diagram (ADR-043) changes the words and the picture of every
-// published body that shows it, without a publish.
-jobRunner.register(
-  combineConsumers(
-    ATTACHMENT_REVISED,
-    createIndexOnAttachmentRevisedConsumer(deps),
-    invalidationOf(ATTACHMENT_REVISED),
-  ),
-)
-// Delivery happens here rather than on the request path, so an address that
-// has an account costs no more than one that does not (ADR-011).
-jobRunner.register(createSendMailConsumer(mailer))
-for (const consumer of createNotifyOnReviewConsumers(deps)) jobRunner.register(consumer)
-// Every type something emits has a consumer, even when the consumer does
-// nothing yet: the poller claims only registered types, so an unregistered
-// one would accumulate for ever (review finding H6).
-// A new page changes the child pages lists above it (ADR-056); it has
-// nothing to index or render until it is published.
-jobRunner.register(childPagesOf(DOCUMENT_CREATED))
-// Nesting and deleting change the lists and the public navigation (ADR-056).
-for (const eventType of [DOCUMENT_NESTED, DOCUMENT_DELETED]) {
-  jobRunner.register(
-    combineConsumers(eventType, childPagesOf(eventType), invalidationOf(eventType)),
-  )
-}
+registerOutboxConsumers(jobRunner, { deps, mailer })
+// The public site's cache is this process's own, so the bus tells it, the
+// moment a commit that changes what a site shows (or who may read it) lands.
+subscribePublicSiteInvalidation(eventBus, publicSiteCache)
+// The child pages lists (ADR-058) are this process's own in the same way.
+subscribeChildPagesInvalidation(eventBus, childPagesCache, deps)
 jobRunner.schedule(createSweepJob({ uow, clock, session: config.session }))
 jobRunner.start()
 

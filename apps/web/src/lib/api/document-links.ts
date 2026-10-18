@@ -9,7 +9,7 @@ import { request } from './http.ts'
  *
  * Not a query: the answer depends on who is reading and on other documents'
  * titles, and it is only ever wanted for the body that is mounted, so it is
- * asked for afresh each time a body is, like its child pages (ADR-056).
+ * asked for afresh each time a body is, like its child pages (ADR-058).
  */
 /** The server's bound on one request; links past it keep their stored form and resolve when followed. */
 const MAX_REFERENCES = 200

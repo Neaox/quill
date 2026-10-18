@@ -5,6 +5,8 @@ import { describe, expect, it } from 'vitest'
 import { expectNoAccessibilityViolations } from '@quill/ui/testing/axe'
 
 import { renderApp } from '../../lib/api/render-app.tsx'
+import type { SearchHit } from '../../lib/api/index.ts'
+import { searchHitFixture } from '../../lib/api/search-fixtures.ts'
 import { errorResponse, jsonResponse, type FakeRoutes } from '../../lib/api/testing.ts'
 
 const me = () =>
@@ -25,22 +27,11 @@ const workspace = () =>
     createdAt: '2026-01-01T00:00:00.000Z',
   })
 
-function hit(title: string, overrides: Record<string, unknown> = {}) {
-  return {
+function hit(title: string, overrides: Partial<SearchHit> = {}) {
+  return searchHitFixture(title, {
     documentId: '11111111-1111-4111-8111-111111111111',
-    shortId: 'k7m3q9v2xd',
-    slug: 'regional-failover',
-    title,
-    path: 'runbooks/regional-failover',
-    workspaceId: 'ws-1',
-    breadcrumb: ['Engineering', 'Runbooks'],
-    snippet: {
-      text: 'Follow the failover runbook.',
-      ranges: [{ start: 11, end: 19 }],
-    },
-    score: 1,
     ...overrides,
-  }
+  })
 }
 
 const RESULTS = {
@@ -562,5 +553,158 @@ describe('the search palette', () => {
 
       await expectNoAccessibilityViolations(document.body, AXE_WITH_FOCUS_TRAP)
     })
+  })
+})
+
+const suggestionsRoute = () =>
+  jsonResponse(200, {
+    field: 'by',
+    suggestions: [
+      { value: 'ada', label: 'Ada Lovelace' },
+      { value: 'sam', label: 'Sam Taylor' },
+    ],
+  })
+
+describe('the search palette: filters', () => {
+  const filterRoutes = (): FakeRoutes => ({
+    ...shellRoutes(() => jsonResponse(200, RESULTS)),
+    'GET /api/search/suggestions': suggestionsRoute,
+  })
+
+  it('shows the live query’s filters as chips between the field and the list', async () => {
+    await openPalette(filterRoutes())
+
+    await userEvent.type(field(), 'failover by:me -tag:old')
+
+    const list = await screen.findByRole('list', { name: 'Filters' })
+    expect(
+      within(list)
+        .getAllByRole('listitem')
+        .map((item) => item.textContent),
+    ).toEqual(['By: me', 'Not tag: old'])
+  })
+
+  it('describes each hit in one compact line: status, contributors and age, without tags', async () => {
+    const enriched = hit('Regional failover', {
+      status: 'draft',
+      tags: ['incident'],
+      contributors: [{ name: 'Ada Lovelace' }],
+      contributorCount: 3,
+    })
+    await openPalette(
+      shellRoutes(() =>
+        jsonResponse(200, { query: 'failover', current: [enriched], elsewhere: [] }),
+      ),
+    )
+
+    await userEvent.type(field(), 'failover')
+
+    const option = await screen.findByRole('option', { name: 'Regional failover' })
+    expect(within(option).getByText('draft')).toBeInTheDocument()
+    expect(within(option).getByText('by Ada Lovelace +2')).toBeInTheDocument()
+    expect(within(option).getByText(/^Updated/)).toBeInTheDocument()
+    expect(within(option).queryByText('incident')).not.toBeInTheDocument()
+  })
+
+  it('shows no chip list and no empty rule for a query without filters', async () => {
+    await openPalette(filterRoutes())
+
+    await userEvent.type(field(), 'failover')
+
+    expect(screen.queryByRole('list', { name: 'Filters' })).not.toBeInTheDocument()
+  })
+
+  it('takes a filter off the query and puts focus back in the field', async () => {
+    await openPalette(filterRoutes())
+    await userEvent.type(field(), 'failover by:me -tag:old')
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Remove filter By: me' }))
+
+    expect(field()).toHaveValue('failover -tag:old')
+    expect(field()).toHaveFocus()
+    expect(screen.getByRole('dialog')).toBeInTheDocument()
+  })
+
+  it('puts the values of the filter being typed first, before commands and results', async () => {
+    await openPalette(filterRoutes())
+
+    await userEvent.type(field(), 'by:ad')
+
+    await screen.findByRole('option', { name: 'Ada Lovelace' })
+    expect(groupLabels()[0]).toBe('By')
+  })
+
+  it('completes a value in the query without closing the palette or going anywhere', async () => {
+    const { router } = await openPalette(filterRoutes())
+
+    await userEvent.type(field(), 'failover by:ad')
+    await userEvent.click(await screen.findByRole('option', { name: 'Ada Lovelace' }))
+
+    expect(field()).toHaveValue('failover by:ada ')
+    expect(screen.getByRole('dialog')).toBeInTheDocument()
+    expect(router.state.location.pathname).toBe('/w/engineering')
+    expect(await screen.findByRole('list', { name: 'Filters' })).toBeInTheDocument()
+  })
+
+  it('offers the filters a word begins, and completing one carries on to its values', async () => {
+    await openPalette(filterRoutes())
+
+    await userEvent.type(field(), 'te')
+    await userEvent.click(await screen.findByRole('option', { name: 'Team' }))
+
+    expect(field()).toHaveValue('team:')
+    expect(screen.getByRole('dialog')).toBeInTheDocument()
+  })
+
+  it('still opens a result with Enter when there is nothing to complete', async () => {
+    const { router } = await openPalette(filterRoutes())
+
+    await userEvent.type(field(), 'failover')
+    await screen.findByRole('option', { name: 'Regional failover' })
+    await userEvent.keyboard('{Enter}')
+
+    await waitFor(() => {
+      expect(router.state.location.pathname).toBe('/w/engineering/d/regional-failover-k7m3q9v2xd')
+    })
+  })
+
+  it('does not scold somebody half-way through a filter whose values it is offering', async () => {
+    await openPalette({
+      ...shellRoutes((request) => {
+        const asked = new URL(request.url).searchParams.get('q') ?? ''
+        return asked === 'team:'
+          ? errorResponse(422, 'invalid_query', 'That filter has no value', {
+              kind: 'empty-filter-value',
+              position: 4,
+            })
+          : jsonResponse(200, { query: asked, current: [], elsewhere: [] })
+      }),
+      'GET /api/search/suggestions': () =>
+        jsonResponse(200, {
+          field: 'team',
+          suggestions: [{ value: 'Platform', label: 'Platform' }],
+        }),
+    })
+
+    await userEvent.type(field(), 'team:')
+
+    // The values are the help; "nothing after its colon" is what they are for.
+    expect(await screen.findByRole('option', { name: 'Platform' })).toBeInTheDocument()
+    await waitFor(() => {
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    })
+    expect(screen.queryByText(/nothing after its colon/u)).not.toBeInTheDocument()
+  })
+
+  it('keeps "Nothing matched" for the answers, not the suggestions', async () => {
+    await openPalette({
+      ...shellRoutes(() => jsonResponse(200, { query: 'te', current: [], elsewhere: [] })),
+      'GET /api/search/suggestions': suggestionsRoute,
+    })
+
+    await userEvent.type(field(), 'te')
+
+    expect(await screen.findByText(/Nothing matched/)).toBeInTheDocument()
+    expect(screen.getByRole('option', { name: 'Team' })).toBeInTheDocument()
   })
 })

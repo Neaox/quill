@@ -753,14 +753,33 @@ export const documentSearch = pgTable(
       .array()
       .notNull()
       .default(sql`'{}'::text[]`),
+    /**
+     * Every tag and every ancestor of every tag (`area/billing` yields `area`
+     * and `area/billing`), normalised, from `expandTagPaths`: what `tag:` is
+     * matched against, so a parent finds its subtree and GIN serves it. `tags`
+     * keeps the tags as written, folded, for display.
+     */
+    tagPaths: text('tag_paths')
+      .array()
+      .notNull()
+      .default(sql`'{}'::text[]`),
+    /**
+     * The front-matter keys that are not core fields, as lower-case key to
+     * lower-case values (`{"severity": ["high"]}`): what `prop:key=value`
+     * asks about, by containment, served by a `jsonb_path_ops` GIN index.
+     */
+    properties: jsonb('properties')
+      .$type<Record<string, readonly string[]>>()
+      .notNull()
+      .default(sql`'{}'::jsonb`),
     status: text('status').notNull(),
     /**
      * What the document says it is about, in a sentence or two: its
-     * `description`, or else its first paragraph (ADR-056). Shown under its
+     * `description`, or else its first paragraph (ADR-058). Shown under its
      * title in a child pages list; null for a row projected before it existed.
      */
     summary: text('summary'),
-    /** The document's own icon from its front matter, an emoji (ADR-056). */
+    /** The document's own icon from its front matter, an emoji (ADR-058). */
     icon: text('icon'),
     /**
      * The author's lifecycle from front matter `status` (`in-review`,
@@ -769,6 +788,20 @@ export const documentSearch = pgTable(
      * (`RankingProfile.deprecatedPenalty`).
      */
     lifecycle: text('lifecycle'),
+    /**
+     * The addresses of everyone who has published a revision, lower case: what
+     * `by:me`, `by:<address>` and `team:` match exactly, served by GIN.
+     */
+    contributorEmails: text('contributor_emails')
+      .array()
+      .notNull()
+      .default(sql`'{}'::text[]`),
+    /**
+     * One lower-case line per contributor, name then address, for `by:<part of
+     * a name>`. A line each, so a needle (which has no line break in it) cannot
+     * run from one person into the next.
+     */
+    contributorsText: text('contributors_text').notNull().default(''),
     /** The document's own last update, which the recency boost decays from. */
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull(),
     /** The revision this row was projected from (ADR-034). Null for a row rebuilt from a workspace with no revision recorded. */
@@ -789,6 +822,12 @@ export const documentSearch = pgTable(
     // `tag:` and `owner:` filters are array containment, which GIN answers.
     index('document_search_tags_idx').using('gin', table.tags),
     index('document_search_owners_idx').using('gin', table.owners),
+    // `tag:` is containment over the tag and its ancestors.
+    index('document_search_tag_paths_idx').using('gin', table.tagPaths),
+    // `prop:key=value` is containment over the properties.
+    index('document_search_properties_idx').using('gin', table.properties.op('jsonb_path_ops')),
+    // `by:me`, `by:<address>` and `team:` are array overlap, which GIN answers.
+    index('document_search_contributor_emails_idx').using('gin', table.contributorEmails),
   ],
 )
 

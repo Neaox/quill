@@ -11,7 +11,7 @@ import { NavigationBlockView } from './navigation-view.ts'
 import type { NavigationViewOptions } from './navigation-view.ts'
 
 /**
- * The navigation blocks' place in the editor (ADR-056): their node views,
+ * The navigation blocks' place in the editor (ADR-058): their node views,
  * the outline a table of contents is drawn from, and a guard that keeps the
  * caret out of a block whose words are written from its settings.
  */

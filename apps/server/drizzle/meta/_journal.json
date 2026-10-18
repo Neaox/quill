@@ -138,8 +138,22 @@
     {
       "idx": 19,
       "version": "7",
-      "when": 1792211740135,
-      "tag": "0019_document_summaries_and_lifecycle",
+      "when": 1792193146639,
+      "tag": "0019_people_search",
+      "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1792208381016,
+      "tag": "0020_tags_properties",
+      "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1792300725497,
+      "tag": "0021_document_summaries_and_lifecycle",
       "breakpoints": true
     }
   ]

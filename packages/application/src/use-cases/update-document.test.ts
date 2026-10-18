@@ -255,7 +255,7 @@ describe('updateDocument', () => {
     ])
   })
 
-  it('announces a change of parent inside the collection as a nesting (ADR-056)', async () => {
+  it('announces a change of parent inside the collection as a nesting (ADR-058)', async () => {
     await updateDocument(deps, { documentId: CHILD, sessionId: SESSION, patch: { parentId: null } })
     await updateDocument(deps, { documentId: CHILD, sessionId: SESSION, patch: { parentId: null } })
     expect(uow.events.filter((event) => event.type === DOCUMENT_NESTED)).toMatchObject([
@@ -620,6 +620,25 @@ describe('renaming, which is a write to the document', () => {
 })
 
 describe('deleteDocument', () => {
+  it('announces it, with the collection it was in, so what was derived from it follows', async () => {
+    const before = uow.events.length
+    await deleteDocument(deps, { documentId: PARENT, deletedBy: ACTOR })
+    const emitted = uow.events.slice(before)
+    expect(emitted.map((event) => event.type)).toEqual(['DocumentDeleted'])
+    expect(emitted[0]?.payload).toMatchObject({
+      documentId: PARENT,
+      workspaceId: WORKSPACE,
+      collectionId: ARCHITECTURE,
+      deletedBy: ACTOR,
+    })
+  })
+
+  it('announces nothing for a document that was not there', async () => {
+    const before = uow.events.length
+    await deleteDocument(deps, { documentId: MISSING, deletedBy: ACTOR })
+    expect(uow.events.slice(before)).toEqual([])
+  })
+
   it('deletes it and records how many children were lifted to the root', async () => {
     expect(await deleteDocument(deps, { documentId: PARENT, deletedBy: ACTOR })).toEqual({
       kind: 'deleted',
@@ -633,7 +652,7 @@ describe('deleteDocument', () => {
     })
   })
 
-  it('announces the delete, with where the document was, for the lists that showed it (ADR-056)', async () => {
+  it('announces the delete, with where the document was, for the lists that showed it (ADR-058)', async () => {
     await deleteDocument(deps, { documentId: CHILD, deletedBy: ACTOR })
     expect(uow.events.filter((event) => event.type === DOCUMENT_DELETED)).toMatchObject([
       {

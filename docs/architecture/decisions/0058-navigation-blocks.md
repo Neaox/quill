@@ -1,4 +1,4 @@
-# ADR-056: Navigation blocks
+# ADR-058: Navigation blocks
 
 **Status:** Accepted
 **Date:** 2026-10-17
@@ -95,7 +95,7 @@ A document with no headings at those levels shows one quiet line saying so, rath
 
 **Permissions.** A child the reader cannot read is never listed, and its subtree is not reached through it. Visibility is the same materialise-and-combine pass the navigation tree and the public site use (ADR-012), over one collection, because a document's children are always in its collection. When the materialised effective-permission table lands (quill-plan.md section 15), this pass becomes a join and nothing above it changes.
 
-**Cost.** One query for the subtree, a recursive query bounded by the depth, and one for the summaries, however many pages there are; never one per page. The subtree's structure is cached in the process, keyed by the parent and the options, and invalidated by the outbox's `DocumentCreated`, `DocumentPublished`, `DocumentRenamed`, `DocumentMoved`, `DocumentNested` and `DocumentDeleted` events for anything in or under it. Permissions are never cached here: they are answered per request, so a new deny takes effect at once.
+**Cost.** One query for the subtree, a recursive query bounded by the depth, and one for the summaries, however many pages there are; never one per page. The subtree's structure is cached in the process, keyed by the parent and the options, and invalidated by the `DocumentCreated`, `DocumentPublished`, `DocumentRenamed`, `DocumentMoved`, `DocumentNested` and `DocumentDeleted` events for anything in or under it. The cache is the process's own, so it hears them from the in-process event bus the moment the commit lands (ADR-056, `child-pages/invalidation.ts`), as the public site's cache does, rather than from an outbox consumer that only one process would claim. Permissions are never cached here: they are answered per request, so a new deny takes effect at once.
 
 **The empty state** says "No child pages yet". In the app, someone who can edit the page is also offered "Create a child page", which opens the New document dialog with this page as the parent.
 
@@ -134,7 +134,7 @@ Every change in the popover is one transaction, so one undo takes it back. The s
 
 - `RENDER_VERSION` is bumped, because `::toc` and `::children` now render differently from the live-block fallback they rendered as before.
 - The search projection carries each page's summary and icon (a nullable column each), so the children list never reads the content store. Pages indexed before this read their excerpt from the first line of their indexed body until they are republished or reindexed.
-- Two new outbox events, `DocumentNested` (a document re-parented within its collection) and `DocumentDeleted`, close gaps that also mattered elsewhere: nothing announced either before.
+- A new event, `DocumentNested` (a document re-parented within its collection), closes a gap that also mattered elsewhere: nothing announced it before. It is recorded like every other (ADR-056) and acknowledged in the outbox, because only caches act on it. `DocumentDeleted`, which main's event work also added, carries the parent the document was listed under.
 
 ## Delivery
 

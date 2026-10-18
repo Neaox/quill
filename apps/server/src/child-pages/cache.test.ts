@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import type { ChildPagesStructure, DocumentRow } from '@quill/application'
 import {
   createFakeClock,
@@ -6,6 +6,7 @@ import {
   aShortId,
 } from '@quill/application/test-support'
 import {
+  createEventBus,
   DOCUMENT_CREATED,
   DOCUMENT_DELETED,
   DOCUMENT_MOVED,
@@ -17,7 +18,7 @@ import { documentId, workspaceId } from '@quill/domain'
 import type { DocumentId } from '@quill/domain'
 
 import { CHILD_PAGES_CACHE_TTL_MS, createChildPagesCache } from './cache.ts'
-import { createInvalidateChildPagesConsumers } from './invalidate-child-pages.ts'
+import { CHILD_PAGES_EVENTS, subscribeChildPagesInvalidation } from './invalidation.ts'
 
 const NOW = new Date('2026-01-01T00:00:00.000Z')
 const WORKSPACE = workspaceId('00000000-0000-4000-8000-000000000101')
@@ -109,7 +110,7 @@ describe('the child pages cache', () => {
   })
 })
 
-describe('invalidating child pages from the outbox', () => {
+describe('invalidating child pages from the bus', () => {
   async function setUp() {
     const uow = createInMemoryUnitOfWork()
     await Promise.all(
@@ -123,18 +124,28 @@ describe('invalidating child pages from the outbox', () => {
       ).map(([n, parent]) => uow.repos.documents.create({ ...row(n, parent), now: NOW })),
     )
     const cache = createChildPagesCache({ clock: createFakeClock(NOW), ttlMs: 1000 })
-    const consumers = new Map(
-      createInvalidateChildPagesConsumers(cache, { uow }).map((consumer) => [
-        consumer.eventType,
-        consumer,
-      ]),
-    )
-    return { cache, consumers }
+    const bus = createEventBus({ onError: vi.fn<(error: unknown) => void>() })
+    const unsubscribe = subscribeChildPagesInvalidation(bus, cache, { uow })
+    // One payload every event's reader accepts: what each needs besides the document.
+    const announce = (type: string, named: string) =>
+      bus.publish({
+        type,
+        payload: {
+          version: 1,
+          documentId: named,
+          workspaceId: WORKSPACE,
+          title: 'A page',
+          createdBy: 'someone',
+          revision: 'r',
+          publishedBy: 'someone',
+          to: 'A page',
+        },
+      })
+    return { cache, announce, unsubscribe }
   }
 
-  it('listens to every event that changes a list', async () => {
-    const { consumers } = await setUp()
-    expect([...consumers.keys()]).toEqual([
+  it('listens to every event that changes a list', () => {
+    expect(CHILD_PAGES_EVENTS.map((definition) => definition.type)).toEqual([
       DOCUMENT_CREATED,
       DOCUMENT_PUBLISHED,
       DOCUMENT_RENAMED,
@@ -145,29 +156,34 @@ describe('invalidating child pages from the outbox', () => {
   })
 
   it('drops the lists above a new page, which held nothing of it yet', async () => {
-    const { cache, consumers } = await setUp()
+    const { cache, announce } = await setUp()
     cache.remember('grandparent', structure(1, [], [2]))
     cache.remember('elsewhere', structure(9, [], []))
     // Document 3 is new under 2, which is under 1.
-    await consumers.get(DOCUMENT_CREATED)?.handle({ version: 1, documentId: id(3) })
+    await announce(DOCUMENT_CREATED, id(3))
     expect(cache.find('grandparent')).toBeUndefined()
     expect(cache.find('elsewhere')).toBeDefined()
   })
 
   it('drops a list that held a deleted page, which has no ancestors left to read', async () => {
-    const { cache, consumers } = await setUp()
+    const { cache, announce } = await setUp()
     cache.remember('listed it', structure(9, [], [42]))
-    await consumers.get(DOCUMENT_DELETED)?.handle({ version: 1, documentId: id(42) })
+    await announce(DOCUMENT_DELETED, id(42))
     expect(cache.find('listed it')).toBeUndefined()
   })
 
-  it('clears everything for an event it cannot read', async () => {
-    const { cache, consumers } = await setUp()
+  it('clears everything for an event naming something that is no document', async () => {
+    const { cache, announce } = await setUp()
     cache.remember('a', structure(9, [], []))
-    await consumers.get(DOCUMENT_NESTED)?.handle({ version: 1, documentId: 'not-a-uuid' })
+    await announce(DOCUMENT_NESTED, 'not-a-uuid')
     expect(cache.find('a')).toBeUndefined()
-    cache.remember('a', structure(9, [], []))
-    await consumers.get(DOCUMENT_MOVED)?.handle(null)
-    expect(cache.find('a')).toBeUndefined()
+  })
+
+  it('stops listening when told to', async () => {
+    const { cache, announce, unsubscribe } = await setUp()
+    cache.remember('listed it', structure(9, [], [42]))
+    unsubscribe()
+    await announce(DOCUMENT_MOVED, id(42))
+    expect(cache.find('listed it')).toBeDefined()
   })
 })

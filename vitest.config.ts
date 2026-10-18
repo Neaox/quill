@@ -1,13 +1,14 @@
 import { availableParallelism } from 'node:os'
 
-import { defineConfig } from 'vitest/config'
+import { configDefaults, defineConfig } from 'vitest/config'
 
 /**
  * Root Vitest configuration.
  *
- * Coverage policy (quill-plan.md, section 27): full behavioural coverage on
- * the domain, application, markdown, content-store, search, and server
- * packages; UI packages are measured but gated on behaviour, not lines.
+ * Coverage policy (quill-plan.md, section 27; ADR-017): full behavioural
+ * coverage on every package that is not a UI surface, and on the server; the
+ * UI packages (design-css, editor, ui) and the web app are gated on
+ * behaviour, with an 80 percent floor under the number.
  */
 
 /**
@@ -59,6 +60,17 @@ const SHARED = { ...BUDGET, env: { QUILL_COVERAGE: COVERAGE ? '1' : '' } } as co
  */
 const MAX_WORKERS = Math.max(2, Math.floor(availableParallelism() / 2))
 
+/**
+ * Performance budgets are measured where a budget means something: not under
+ * v8 coverage, which instruments every function and put a 40 ms merge at 100 to
+ * 150 ms, and not beside several hundred other test files. So a coverage run
+ * leaves them out, and `pnpm test:budgets` runs them one file at a time with no
+ * instrumentation, as its own step of `pnpm check`. They keep their budgets;
+ * they are measured honestly.
+ */
+const BUDGET_FILES = ['**/*-budget.test.*', '**/*-performance.test.*']
+const exclude = COVERAGE ? [...configDefaults.exclude, ...BUDGET_FILES] : configDefaults.exclude
+
 export default defineConfig({
   test: {
     globals: true,
@@ -69,7 +81,7 @@ export default defineConfig({
           name: 'packages',
           environment: 'node',
           include: ['packages/*/src/**/*.test.ts'],
-          exclude: ['packages/ui/**', 'packages/editor/**'],
+          exclude: [...exclude, 'packages/ui/**', 'packages/editor/**'],
           ...SHARED,
         },
       },
@@ -80,6 +92,7 @@ export default defineConfig({
           environment: 'jsdom',
           setupFiles: ['./packages/editor/vitest.setup.ts'],
           include: ['packages/editor/src/**/*.test.{ts,tsx}'],
+          exclude,
           ...SHARED,
         },
       },
@@ -90,6 +103,7 @@ export default defineConfig({
           environment: 'jsdom',
           setupFiles: ['./packages/ui/vitest.setup.ts'],
           include: ['packages/ui/src/**/*.test.{ts,tsx}'],
+          exclude,
           ...SHARED,
         },
       },
@@ -98,6 +112,7 @@ export default defineConfig({
           name: 'server',
           environment: 'node',
           include: ['apps/server/src/**/*.test.ts'],
+          exclude,
           ...SHARED,
         },
       },
@@ -108,6 +123,7 @@ export default defineConfig({
           environment: 'jsdom',
           setupFiles: ['./apps/web/vitest.setup.ts'],
           include: ['apps/web/src/**/*.test.{ts,tsx}'],
+          exclude,
           ...SHARED,
         },
       },
@@ -116,6 +132,7 @@ export default defineConfig({
           name: 'tools',
           environment: 'node',
           include: ['tools/**/*.test.ts'],
+          exclude,
           ...SHARED,
         },
       },
@@ -124,6 +141,7 @@ export default defineConfig({
           name: 'scripts',
           environment: 'node',
           include: ['scripts/**/*.test.ts'],
+          exclude,
           ...SHARED,
         },
       },
@@ -153,13 +171,18 @@ export default defineConfig({
         'apps/web/src/app/**',
       ],
       thresholds: {
-        'packages/**/src/**/*.{ts,tsx}': {
-          statements: 100,
-          branches: 100,
-          functions: 100,
-          lines: 100,
-        },
+        // Everything that is not a UI surface (ADR-017): full coverage.
+        'packages/{api-client,application,brand,config,content-store,domain,highlight,markdown,search,theme}/src/**/*.{ts,tsx}':
+          { statements: 100, branches: 100, functions: 100, lines: 100 },
         'apps/server/src/**/*.ts': { statements: 100, branches: 100, functions: 100, lines: 100 },
+        // The UI surfaces (ADR-017, amended 2026-10-17): the gate is behavioural
+        // tests of interaction and accessibility, with a floor under the number.
+        'packages/{design-css,editor,ui}/src/**/*.{ts,tsx}': {
+          statements: 80,
+          branches: 80,
+          functions: 80,
+          lines: 80,
+        },
         'apps/web/src/**/*.{ts,tsx}': { statements: 80, branches: 80, functions: 80, lines: 80 },
       },
     },

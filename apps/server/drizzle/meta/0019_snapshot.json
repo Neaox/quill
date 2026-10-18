@@ -1,5 +1,5 @@
 {
-  "id": "a3f2b781-bfa3-4d05-9ccd-57ab1694e9c2",
+  "id": "0df8ba1d-7004-47bc-b2d1-f918fcdc7c1a",
   "prevId": "02a0c3f7-3927-4d25-8012-514be6ba52bb",
   "version": "7",
   "dialect": "postgresql",
@@ -908,23 +908,19 @@
           "primaryKey": false,
           "notNull": true
         },
-        "summary": {
-          "name": "summary",
-          "type": "text",
+        "contributor_emails": {
+          "name": "contributor_emails",
+          "type": "text[]",
           "primaryKey": false,
-          "notNull": false
+          "notNull": true,
+          "default": "'{}'::text[]"
         },
-        "icon": {
-          "name": "icon",
+        "contributors_text": {
+          "name": "contributors_text",
           "type": "text",
           "primaryKey": false,
-          "notNull": false
-        },
-        "lifecycle": {
-          "name": "lifecycle",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
+          "notNull": true,
+          "default": "''"
         },
         "updated_at": {
           "name": "updated_at",
@@ -1028,6 +1024,21 @@
           "columns": [
             {
               "expression": "owners",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "gin",
+          "with": {}
+        },
+        "document_search_contributor_emails_idx": {
+          "name": "document_search_contributor_emails_idx",
+          "columns": [
+            {
+              "expression": "contributor_emails",
               "isExpression": false,
               "asc": true,
               "nulls": "last"

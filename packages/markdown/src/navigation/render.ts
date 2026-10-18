@@ -16,7 +16,7 @@ import type { TableOfContents, TocEntry } from './toc.ts'
 import { TOC_STYLES } from './toc.ts'
 
 /**
- * How the navigation blocks are drawn (ADR-056): one template each, shared by
+ * How the navigation blocks are drawn (ADR-058): one template each, shared by
  * the app, the public site and export (AGENTS.md rule 16).
  *
  * - A **table of contents** is a `nav` named by its title, or "Table of
@@ -156,7 +156,7 @@ export interface ChildPage {
 export const NO_CHILD_PAGES = 'No child pages yet'
 
 /**
- * Said under a list cut at the most pages one list draws (ADR-056), so a
+ * Said under a list cut at the most pages one list draws (ADR-058), so a
  * reader knows the list is not the whole subtree. In words, after the list,
  * so it is read in order and needs no colour or icon to mean anything.
  */

@@ -1,0 +1,4 @@
+Added: Search results tell you more about what you are looking at. Each result now shows its status when it is not published, who wrote it ("by Ada Lovelace, Sam Taylor +2"), when it was last updated, and, on the results page, its tags.
+Added: Filters in a search are shown as chips you can remove. On the results page and in the search palette, `by:me` or `-tag:old` appears as a chip under the field; removing it searches again without it.
+Added: Search completes filters as you type. Start a word like `te` and Quill offers the filters it begins; type `by:` and it offers people, and likewise for team, tag, collection, workspace and status. The results page also has an "Add a filter" row so you do not need to know the syntax to begin.
+Changed: The "nothing matched" message on the results page suggests removing a filter when the search has any.

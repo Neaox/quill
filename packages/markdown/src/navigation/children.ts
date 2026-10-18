@@ -32,7 +32,7 @@ export {
 } from './slot-key.ts'
 
 /**
- * `::children`: the pages under this one (ADR-056).
+ * `::children`: the pages under this one (ADR-058).
  *
  * `::children[In this section]{depth=2 sort=title excerpts icons}`. The label
  * is an optional title; `depth` how many levels of descendants, 1 to 6;

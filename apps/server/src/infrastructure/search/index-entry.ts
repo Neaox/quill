@@ -1,5 +1,7 @@
 import type { IndexableDocument, IndexableHeading } from '@quill/application'
 
+import { expandTagPaths } from '@quill/search'
+
 import type { documentSearch } from '../db/schema.ts'
 
 /**
@@ -20,6 +22,10 @@ import type { documentSearch } from '../db/schema.ts'
  *   document's own front matter — so folding them is what makes
  *   `tag:Runbook` and `tag:runbook` the same question while array containment
  *   stays served by the GIN index.
+ * - **Tags are a hierarchy, expanded here.** `tag_paths` holds every tag and
+ *   every ancestor of it, so `tag:area` is plain containment and still served
+ *   by GIN. The reading of a tag (case, spaces, separators) is `expandTagPaths`
+ *   in `@quill/search`; this only stores its answer.
  */
 
 export type DocumentSearchRow = typeof documentSearch.$inferInsert
@@ -47,7 +53,13 @@ export function toIndexRow(input: IndexEntryInput): DocumentSearchRow {
     headings: weightedHeadings(document.headings),
     body: truncateToBytes(document.body, input.bodyByteLimit),
     tags: fold(document.tags),
+    tagPaths: [...expandTagPaths(document.tags)],
+    properties: document.properties,
     owners: fold(document.owners),
+    contributorEmails: document.contributors.map((contributor) => contributor.email.toLowerCase()),
+    contributorsText: document.contributors
+      .map((contributor) => `${contributor.name} ${contributor.email}`.toLowerCase())
+      .join('\n'),
     status: document.status,
     summary: document.summary ?? null,
     icon: document.icon ?? null,

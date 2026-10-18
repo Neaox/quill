@@ -403,7 +403,7 @@ describe('createDocumentFormat: render and read', () => {
     expect(rendered.incompleteRequiredSections).toEqual(['Decision'])
   })
 
-  it('draws a table of contents into the body and lists each child pages slot (ADR-056)', () => {
+  it('draws a table of contents into the body and lists each child pages slot (ADR-058)', () => {
     const rendered = format.render({
       markdown: '# Title\n\n::toc\n\n## Install\n\n::children{depth=2}\n',
       linkTitles: new Map(),

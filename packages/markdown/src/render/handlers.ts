@@ -167,7 +167,7 @@ export interface HandlerOptions {
   /** The emoji a label's pill leads with, by label name (`RenderOptions.labelEmoji`). */
   readonly labelEmoji: (label: string) => ResolvedEmoji | undefined
   /**
-   * The document's headings, for a table of contents (ADR-056): taken from
+   * The document's headings, for a table of contents (ADR-058): taken from
    * the same tree the headings are rendered from, so every entry links to the
    * id its heading carries. Asked only when the body holds one.
    */
@@ -649,7 +649,7 @@ export function createHandlers(options: HandlerOptions): Handlers {
   let childPages = 0
 
   /**
-   * The navigation blocks (ADR-056): a table of contents drawn from the
+   * The navigation blocks (ADR-058): a table of contents drawn from the
    * outline, and the slot a child pages list is filled into as the page is
    * assembled (ADR-032).
    */

@@ -12,7 +12,7 @@ import {
 import type { DocumentRow, PublicSite } from '@quill/application'
 import { rewriteLinks } from '@quill/markdown'
 import { PUBLIC_PRINCIPAL, tagQuery } from '@quill/domain'
-import type { DocumentId, WorkspaceId } from '@quill/domain'
+import type { CollectionId, DocumentId, WorkspaceId } from '@quill/domain'
 import { visibilityFilter } from '@quill/search'
 import type { FastifyPluginAsync, FastifyReply, FastifyRequest } from 'fastify'
 
@@ -30,7 +30,8 @@ import {
   renderNotFoundMain,
   renderSearchMain,
 } from '../public-site/pages.ts'
-import type { SearchResultView } from '../public-site/pages.ts'
+import type { SearchRefusalView, SearchResultView } from '../public-site/pages.ts'
+import { createTrailReader } from '../public-site/trail.ts'
 import { renderRobots, renderSitemap, renderSitemapIndex } from '../public-site/sitemap.ts'
 import { createReaderScript } from '../public-site/reader-script.ts'
 import { cachedHeaderMenu, cachedPublicSiteLoader } from '../public-site/menu.ts'
@@ -42,7 +43,8 @@ import { navigationSection } from '../public-site/templates/navigation.ts'
 import { renderPage } from '../public-site/templates/page.ts'
 import { pageLayoutAttributes } from '../theme/page-attributes.ts'
 import { addressRateLimit } from '../plugins/rate-limit.ts'
-import { unsearchable } from './search-query.ts'
+import { decodeSearchCursor } from '../infrastructure/search/cursor.ts'
+import { searchesPrivateFields, unsearchable } from './search-query.ts'
 
 /**
  * The public site (ADR-023, ADR-035; `docs/architecture/public-site.md`).
@@ -81,6 +83,9 @@ import { unsearchable } from './search-query.ts'
 /** One budget for the whole anonymous HTML surface, keyed by source address. */
 export const PUBLIC_SITE_BUCKET = 'public-site'
 
+/** Searches are counted apart from page views: one is a cache read, the other an index query. */
+export const PUBLIC_SEARCH_BUCKET = 'public-search'
+
 /** How long a shared cache may hold a page before asking again (ADR-031). */
 export const PAGE_SHARED_MAX_AGE_SECONDS = 60
 
@@ -90,7 +95,11 @@ const PageParams = Type.Object({
   '*': Type.String({ maxLength: 400 }),
 })
 const AssetParams = Type.Object({ file: Type.String({ maxLength: 100 }) })
-const SearchQuery = Type.Object({ q: Type.Optional(Type.String({ maxLength: 512 })) })
+const SearchQuery = Type.Object({
+  q: Type.Optional(Type.String({ maxLength: 512 })),
+  /** Where the previous page stopped; opaque, and one that is not ours is a first page. */
+  cursor: Type.Optional(Type.String({ maxLength: 1024 })),
+})
 const SitemapPageParams = Type.Object({
   siteSlug: Type.String({ minLength: 1, maxLength: 200 }),
   page: Type.String({ maxLength: 10 }),
@@ -117,6 +126,7 @@ const SCRIPT_FILE = /^(scheme|reader)-([0-9a-f]{32})\.js$/u
 
 export function publicSiteRoutes(deps: AppDependencies): FastifyPluginAsync {
   const budget = addressRateLimit(PUBLIC_SITE_BUCKET, deps.config.publicSiteRateLimitMax)
+  const searchBudget = addressRateLimit(PUBLIC_SEARCH_BUCKET, deps.config.publicSearchRateLimitMax)
   const pageSize = deps.config.publicSitemapPageSize
   const schemeScript = createSchemeScript(deps.hasher)
   const readerScript = createReaderScript(deps.hasher)
@@ -299,7 +309,7 @@ export function publicSiteRoutes(deps: AppDependencies): FastifyPluginAsync {
     const workspace = await deps.uow.repos.workspaces.findById(site.collection.workspaceId)
     /* v8 ignore next -- a collection's workspace cannot be missing: the row cascades from it. */
     if (workspace === null) return notFoundPage(request, reply, site)
-    // The pages under this one, as the site lists them (ADR-056): only
+    // The pages under this one, as the site lists them (ADR-058): only
     // published, public pages, at the site's own addresses. Filled before the
     // page is cached, and the cache is emptied by the same events that change
     // the list.
@@ -325,7 +335,7 @@ export function publicSiteRoutes(deps: AppDependencies): FastifyPluginAsync {
       ),
     )
 
-    // What the page states about itself that a stranger may see (ADR-057):
+    // What the page states about itself that a stranger may see (ADR-059):
     // its tags lead to this site's own search, never into the application.
     const facts = await readPublicFacts(deps, document, deps.clock.now())
     const searchHref = `${publicSiteHref(site.siteSlug)}/search`
@@ -513,36 +523,52 @@ export function publicSiteRoutes(deps: AppDependencies): FastifyPluginAsync {
      */
     app.get(
       '/s/:siteSlug/search',
-      { config: budget, schema: { params: SiteParams, querystring: SearchQuery, hide: true } },
+      {
+        config: searchBudget,
+        schema: { params: SiteParams, querystring: SearchQuery, hide: true },
+      },
       async (request, reply) => {
         const site = await siteAt(request.params.siteSlug)
         if (site === null) return noSitePage(request, reply)
         const query = request.query.q?.trim() ?? ''
-        const results = query === '' ? [] : await searchSite(deps, site, query)
+        // A cursor this engine did not issue starts again from the top, rather
+        // than being an error page for somebody who edited an address — and is
+        // settled here, before the cache, so garbage cannot make keys.
+        const cursor =
+          request.query.cursor !== undefined && decodeSearchCursor(request.query.cursor) !== null
+            ? request.query.cursor
+            : undefined
 
-        return sendPage(
-          request,
-          reply,
-          finished(
-            renderPage({
-              ...(await shellOf(site, null, `${publicSiteHref(site.siteSlug)}/search`)),
-              // The query is *not* in the title. A search page is an address
-              // anybody can choose the text of, and a title built from it
-              // unfurls in a chat client as the organisation's own page saying
-              // whatever the linker wrote. It is in the page, where the person
-              // who typed it is looking, and nowhere a crawler quotes.
-              title: 'Search',
-              description: null,
-              canonical: null,
-              robots: NOT_A_PUBLISHED_DOCUMENT,
-              outline: [],
-              main: renderSearchMain({ siteSlug: site.siteSlug, query, results }),
-              updatedAt: null,
-              structuredData: null,
-              query,
-            }),
-          ),
+        const held = deps.publicSiteCache.search(site.siteSlug, query, cursor)
+        if (held !== null) return sendPage(request, reply, held)
+
+        const found = query === '' ? EMPTY_SEARCH : await searchSite(deps, site, query, cursor)
+        const page = finished(
+          renderPage({
+            ...(await shellOf(site, null, `${publicSiteHref(site.siteSlug)}/search`)),
+            // The query is *not* in the title. A search page is an address
+            // anybody can choose the text of, and a title built from it
+            // unfurls in a chat client as the organisation's own page saying
+            // whatever the linker wrote. It is in the page, where the person
+            // who typed it is looking, and nowhere a crawler quotes.
+            title: 'Search',
+            description: null,
+            canonical: null,
+            robots: NOT_A_PUBLISHED_DOCUMENT,
+            outline: [],
+            main: renderSearchMain({ siteSlug: site.siteSlug, query, ...found }),
+            updatedAt: null,
+            structuredData: null,
+            query,
+          }),
         )
+        // Only an answer that cost an engine query is worth keeping: an empty
+        // box and a refused query are rendered without one, and remembering
+        // them would spend the bound on questions nobody asked.
+        if (query !== '' && found.refusal === null) {
+          deps.publicSiteCache.rememberSearch(site.siteSlug, query, cursor, page)
+        }
+        return sendPage(request, reply, page)
       },
     )
 
@@ -638,41 +664,101 @@ function newest(stamps: Iterable<Date>): Date | null {
   return latest
 }
 
-/** The site's own matches, in rank order, each with the address it is published at. */
+/** What a search page is made of, apart from the query that was typed. */
+interface SiteSearch {
+  readonly results: readonly SearchResultView[]
+  readonly refusal: SearchRefusalView | null
+  readonly more: string | null
+}
+
+const EMPTY_SEARCH: SiteSearch = { results: [], refusal: null, more: null }
+
+/** One trail reader per loaded site: the cached site is the same object until it is invalidated. */
+const trailReaders = new WeakMap<PublicSite, (documentId: DocumentId) => readonly string[]>()
+
+function trailReaderFor(site: PublicSite): (documentId: DocumentId) => readonly string[] {
+  const held = trailReaders.get(site)
+  if (held !== undefined) return held
+  const reader = createTrailReader(site.pages.values())
+  trailReaders.set(site, reader)
+  return reader
+}
+
+/**
+ * One page of the site's own matches, in rank order, each with the address it
+ * is published at, where it sits, and when it was published — or the reason
+ * the query was not run, which a person typing into a box is owed in words.
+ */
 async function searchSite(
   deps: AppDependencies,
   site: PublicSite,
   query: string,
-): Promise<readonly SearchResultView[]> {
+  cursor: string | undefined,
+): Promise<SiteSearch> {
   const workspaceId = site.collection.workspaceId as WorkspaceId
   // The same rule `/api/search` refuses with: a query naming only exclusions
   // is an enumeration of the whole site rather than a search (ADR-010). Here
-  // it simply finds nothing — a stranger typing into a box is owed a page,
-  // not an error.
-  if (unsearchable(query) !== null) return []
+  // it is answered as a sentence on the page, not as an error status.
+  if (searchesPrivateFields(query)) {
+    return { ...EMPTY_SEARCH, refusal: { kind: 'people-not-offered' } }
+  }
+  const refusal = unsearchable(query)
+  if (refusal !== null) {
+    return {
+      ...EMPTY_SEARCH,
+      refusal:
+        refusal.kind === 'unparsed'
+          ? { kind: 'unparsed', message: refusal.error.message }
+          : refusal,
+    }
+  }
 
   const results = await deps.search.search({
     queryText: query,
     filter: visibilityFilter([workspaceId], [PUBLIC_PRINCIPAL]),
     currentWorkspaceId: workspaceId,
+    scope: { collectionId: site.collection.id as CollectionId },
     limit: PUBLIC_SEARCH_LIMIT,
+    ...(cursor === undefined ? {} : { cursor }),
   })
   /* v8 ignore next -- `unsearchable` parsed this very text a moment ago. */
-  if (!results.ok) return []
+  if (!results.ok) return EMPTY_SEARCH
 
-  return results.value.current.flatMap((hit) => {
+  const onSite = results.value.current.flatMap((hit) => {
     const path = site.pathById.get(hit.documentId)
-    return path === undefined || !site.pages.has(path)
-      ? []
-      : [{ title: hit.title, path, snippet: hit.snippet }]
+    const document = path === undefined ? undefined : site.pages.get(path)
+    return path === undefined || document === undefined ? [] : [{ hit, path, document }]
   })
+  // One query for the whole page, never one per result (AGENTS.md rule 13).
+  const stamps = await publishedAt(
+    deps,
+    onSite.map((match) => match.document),
+  )
+  const trailOf = trailReaderFor(site)
+
+  return {
+    results: onSite.map(({ hit, path, document }) => ({
+      title: hit.title,
+      path,
+      snippet: hit.snippet,
+      trail: trailOf(document.id),
+      /* v8 ignore next -- `publishedAt` answers for every document it is given. */
+      publishedAt: stamps.get(document.id) ?? document.updatedAt,
+    })),
+    refusal: null,
+    more:
+      results.value.nextCursor === undefined
+        ? null
+        : `${publicSiteHref(site.siteSlug)}/search?${new URLSearchParams({ q: query, cursor: results.value.nextCursor })}`,
+  }
 }
 
 /**
  * How many matches a public search asks the engine for.
  *
- * More than it shows, because the engine answers for the whole workspace and
- * the site is one collection of it: asking for exactly a page's worth would
- * hand back a short page whenever the workspace has other public collections.
+ * The engine is scoped to the site's collection, so this is a page of the
+ * site's own best matches. The site's page table still has the last word on
+ * what is shown, so a document carved out of the site between the index and
+ * this request is dropped rather than linked to.
  */
-export const PUBLIC_SEARCH_LIMIT = 50
+export const PUBLIC_SEARCH_LIMIT = 20

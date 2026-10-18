@@ -676,16 +676,16 @@ function draftRecord(value: unknown): Record<string, unknown> {
   return typeof value === 'object' && value !== null ? { ...value } : {}
 }
 
-function comparisonRefused(kind: 'not-found' | 'revision-not-found' | 'no-draft'): Error {
-  switch (kind) {
-    case 'revision-not-found':
-      return notFound('That revision does not exist for this document')
-    case 'no-draft':
-      return notFound('This document has no draft to compare with')
-    /* v8 ignore next 2 -- the authorizer has already loaded this document. */
-    case 'not-found':
-      return notFound('Document not found')
-  }
+const COMPARISON_REFUSALS = {
+  'not-found': 'Document not found',
+  'revision-not-found': 'That revision does not exist for this document',
+  'no-draft': 'This document has no draft to compare with',
+} as const
+
+type ComparisonRefusal = keyof typeof COMPARISON_REFUSALS
+
+function comparisonRefused(kind: ComparisonRefusal): Error {
+  return notFound(COMPARISON_REFUSALS[kind])
 }
 
 function readBase(value: string | null | undefined): RevisionId | null {

@@ -188,7 +188,7 @@ export function readerPreviewRoutes(deps: AppDependencies): FastifyPluginAsync {
     const { document, collection, workspace, organisation } = preview
     const { content, updatedAt } = shown
     // The pages under this one, as this reader may see them, each opening its
-    // own preview (ADR-056).
+    // own preview (ADR-058).
     const bodyHtml =
       content === null
         ? ''
@@ -200,7 +200,7 @@ export function readerPreviewRoutes(deps: AppDependencies): FastifyPluginAsync {
             hrefOf: (child) => readerPreviewHref(documentReference(child)),
           })
     // The facts a public reader would see, as they would see them; a preview
-    // has no search, so its tags are words (ADR-057). They are the published
+    // has no search, so its tags are words (ADR-059). They are the published
     // page's, so a preview of the draft, which may say otherwise, has none.
     const facts =
       content === null || shown.draft

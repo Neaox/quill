@@ -2,12 +2,13 @@ import type { Result } from '@quill/domain'
 import { ok } from '@quill/domain'
 
 import { parseQuery, type QueryParseError } from '../query/parse.ts'
+import { filter } from '../query/query.ts'
 import type { PhraseClause, SearchQuery, TermClause } from '../query/query.ts'
 import { DEFAULT_RANKING_PROFILE, type RankingProfile } from '../ranking/ranking-profile.ts'
 import { buildSnippet } from '../snippet/snippet.ts'
 import { groupByWorkspaceAffinity } from './group-by-workspace-affinity.ts'
-import type { SearchRequest } from './search-request.ts'
-import type { SearchHit, SearchIndex } from './search-index.ts'
+import type { FacetsRequest, SearchRequest, SearchScope } from './search-request.ts'
+import type { FacetCounts, SearchHit, SearchIndex } from './search-index.ts'
 import type { SearchServiceHit, SearchServiceResults } from './search-result.ts'
 
 const DEFAULT_LIMIT = 20
@@ -15,6 +16,8 @@ const DEFAULT_LIMIT = 20
 export interface SearchService {
   readonly profile: RankingProfile
   search(request: SearchRequest): Promise<Result<SearchServiceResults, QueryParseError>>
+  /** What the query matches, counted by tag, status and collection: see `SearchIndex.facets`. */
+  facets(request: FacetsRequest): Promise<Result<FacetCounts, QueryParseError>>
 }
 
 /**
@@ -38,17 +41,38 @@ export function createSearchService(
   return {
     profile,
 
+    async facets(request) {
+      const parsed = parseQuery(request.queryText)
+      if (!parsed.ok) return parsed
+      return ok(
+        await index.facets(scoped(parsed.value, request.scope), request.filter, {
+          facets: request.facets,
+          limit: request.limit,
+          ...(request.currentWorkspaceId === undefined
+            ? {}
+            : { currentWorkspaceId: request.currentWorkspaceId }),
+          ...(request.visibility === undefined ? {} : { visibility: request.visibility }),
+        }),
+      )
+    },
+
     async search(request) {
       const parsed = parseQuery(request.queryText)
       if (!parsed.ok) return parsed
 
-      const hits = await index.search(parsed.value, request.filter, profile, {
-        limit: request.limit ?? DEFAULT_LIMIT,
-        ...(request.cursor === undefined ? {} : { cursor: request.cursor }),
-        ...(request.currentWorkspaceId === undefined
-          ? {}
-          : { currentWorkspaceId: request.currentWorkspaceId }),
-      })
+      const hits = await index.search(
+        scoped(parsed.value, request.scope),
+        request.filter,
+        profile,
+        {
+          limit: request.limit ?? DEFAULT_LIMIT,
+          ...(request.cursor === undefined ? {} : { cursor: request.cursor }),
+          ...(request.currentWorkspaceId === undefined
+            ? {}
+            : { currentWorkspaceId: request.currentWorkspaceId }),
+          ...(request.visibility === undefined ? {} : { visibility: request.visibility }),
+        },
+      )
 
       const terms = matchableTerms(parsed.value.clauses)
       const scored = hits.hits.map((hit) => toServiceHit(hit, terms))
@@ -61,6 +85,19 @@ export function createSearchService(
       })
     },
   }
+}
+
+/**
+ * The query with the caller's scope as one more required filter.
+ *
+ * Expressed in the query language rather than as a new engine option, so every
+ * adapter already knows how to apply it — and applies it, like any filter,
+ * inside the query where the limit is spent.
+ */
+function scoped(query: SearchQuery, scope: SearchScope | undefined): SearchQuery {
+  return scope === undefined
+    ? query
+    : { clauses: [...query.clauses, filter('collection', scope.collectionId)] }
 }
 
 /** The words worth highlighting: positive terms and phrases, never an exclusion or a field filter's value. */
@@ -78,6 +115,7 @@ function toServiceHit(hit: SearchHit, terms: readonly string[]): SearchServiceHi
     workspaceId: hit.workspaceId,
     title: hit.title,
     snippet: buildSnippet(hit.body, terms),
+    tags: hit.tags,
     score: hit.score,
   }
 }

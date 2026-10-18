@@ -311,7 +311,7 @@ function EditingSession({
   // Whether the dialog was asked for a picture or for an SVG drawing.
   const [imagePurpose, setImagePurpose] = useState<'image' | 'drawing'>('image')
   const searchDocuments = useDocumentLinkSearch(workspaceSlug)
-  // What a child pages block previews: this page's children, for this person (ADR-056).
+  // What a child pages block previews: this page's children, for this person (ADR-058).
   const childPages = useChildPagesOf(documentId)
   // What the slash menu remembers is this person's, so it is kept under their id.
   const recentsKey = me.data === undefined ? undefined : `editor.slash.recent.${me.data.id}`

@@ -209,7 +209,7 @@ export type OutlineEntry = components['schemas']['OutlineEntry']
 /** `GET /documents/:id/rendered`: the cached body, outline, and live-block slots (ADR-031). */
 export type RenderedDocument = GetBody<'/api/documents/{id}/rendered'>
 
-/** `GET /documents/:id/children`: what fills a child pages slot, for this reader (ADR-056). */
+/** `GET /documents/:id/children`: what fills a child pages slot, for this reader (ADR-058). */
 export type ChildPagesList = GetBody<'/api/documents/{id}/children'>
 
 /** `GET /documents/:id/envelope`: everything that is a property of now, not of the revision. */
@@ -338,6 +338,22 @@ export type OidcProviderSummary = OidcProviderList['providers'][number]
  */
 export type SearchResults = GetBody<'/api/search'>
 
+/**
+ * The counts that let a results page offer ways to narrow itself
+ * (`facets=` on `GET /api/search`): one list of values per facet asked for.
+ */
+export type SearchFacets = NonNullable<SearchResults['facets']>
+
+/** The facets the server can count, in the order the page shows them. */
+export type FacetName = keyof SearchFacets
+
+/**
+ * One value of a facet: `value` is exactly what follows the filter key
+ * (`tag:<value>`), `label` is what to show, `count` is over the whole match
+ * set rather than the page.
+ */
+export type FacetValue = NonNullable<SearchFacets[FacetName]>[number]
+
 /** One matching document, wherever it lives. */
 export type SearchHit = SearchResults['current'][number]
 
@@ -349,6 +365,16 @@ export type SearchGroup = SearchResults['elsewhere'][number]
  * HTML (ADR-010). Turning it into marks is `features/search/snippet.ts`'s job.
  */
 export type SearchSnippet = SearchHit['snippet']
+
+/** `GET /search/suggestions`: the values a filter could take, each as it is written and as it is shown. */
+export type SearchSuggestions = GetBody<'/api/search/suggestions'>
+
+export type SearchSuggestion = SearchSuggestions['suggestions'][number]
+
+/** The filters the server can suggest values for. */
+export type SearchSuggestionField = NonNullable<
+  paths['/api/search/suggestions']['get']['parameters']['query']
+>['field']
 
 /* --- Share links (`docs/architecture/api-contract-share-links.md`) --------- */
 

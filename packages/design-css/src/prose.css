@@ -3504,7 +3504,7 @@ html.lightbox-open {
   }
 }
 
-/* --- Navigation blocks (ADR-056) ------------------------------------------ */
+/* --- Navigation blocks (ADR-058) ------------------------------------------ */
 
 /*
  * A table of contents: a quiet card of links, nested as the headings are,
@@ -3799,7 +3799,7 @@ html.lightbox-open {
   border-radius: var(--radius-lg);
 }
 
-/* A list cut short says so under its card (ADR-056). */
+/* A list cut short says so under its card (ADR-058). */
 .prose .child-pages-more {
   margin-block-start: 0.5rem;
 }

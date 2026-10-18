@@ -62,6 +62,15 @@ export interface ServerConfig {
    */
   readonly publicSiteRateLimitMax: number
   /**
+   * What a public search may cost, per source address, in the same window.
+   *
+   * Its own bucket and far smaller than the page budget: a page is read from a
+   * cache, and a search is a query against the index — the one request on this
+   * surface a stranger can choose the cost of. Thirty a minute is a person
+   * refining a question many times over; it is not a scraper's pace.
+   */
+  readonly publicSearchRateLimitMax: number
+  /**
    * How many addresses one sitemap lists before a site answers with an index
    * of sitemaps instead (ADR-023).
    *
@@ -460,6 +469,9 @@ const DEFAULT_SEARCH_RATE_LIMIT_MAX = 60
 const DEFAULT_BROWSE_RATE_LIMIT_MAX = 600
 /** Enough for a crawler working through a site at a civil pace, per address, per minute. */
 const DEFAULT_PUBLIC_SITE_RATE_LIMIT_MAX = 600
+
+/** A person refining a question, and far short of a scraper. */
+const DEFAULT_PUBLIC_SEARCH_RATE_LIMIT_MAX = 30
 /** A thousand addresses is a large sitemap and a small amount of work. */
 const DEFAULT_PUBLIC_SITEMAP_PAGE_SIZE = 1_000
 /** Per source address, per minute, across both OIDC endpoints. */
@@ -856,6 +868,11 @@ export function loadConfig(
       env['PUBLIC_SITE_RATE_LIMIT_MAX'],
       'PUBLIC_SITE_RATE_LIMIT_MAX',
       DEFAULT_PUBLIC_SITE_RATE_LIMIT_MAX,
+    ),
+    publicSearchRateLimitMax: parseCount(
+      env['PUBLIC_SEARCH_RATE_LIMIT_MAX'],
+      'PUBLIC_SEARCH_RATE_LIMIT_MAX',
+      DEFAULT_PUBLIC_SEARCH_RATE_LIMIT_MAX,
     ),
     publicSitemapPageSize: parseCount(
       env['PUBLIC_SITEMAP_PAGE_SIZE'],

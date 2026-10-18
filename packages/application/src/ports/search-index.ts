@@ -33,8 +33,29 @@ import type {
 // The query language
 // ---------------------------------------------------------------------------
 
-/** The field names a filter clause may name. `in` currently only takes `workspace`. */
-export type FieldFilterKey = 'title' | 'tag' | 'owner' | 'status' | 'collection' | 'in'
+/**
+ * The field names a filter clause may name. `in` currently only takes `workspace`.
+ *
+ * `by` is a person who has published a revision of the document (a name, an
+ * email, or `me`), and `team` is a group or unit whose members have; the
+ * engine resolves both against what it knows, as it resolves `collection` and
+ * `in`, and neither is available to a caller who is not signed in.
+ *
+ * `tag` is hierarchical (`/` separates a tag from its parent): `tag:area`
+ * finds a document tagged `area` or anything beneath it. `prop` is `key=value`
+ * over the front-matter keys that are not core fields; it is available to
+ * signed-in callers only, like `by` and `team`.
+ */
+export type FieldFilterKey =
+  | 'title'
+  | 'tag'
+  | 'owner'
+  | 'status'
+  | 'collection'
+  | 'in'
+  | 'by'
+  | 'team'
+  | 'prop'
 
 /** A bare word, unquoted, matched against any indexed field. */
 export interface TermClause {
@@ -122,15 +143,51 @@ export interface IndexableDocumentV1 {
   readonly lifecycle?: LifecycleState | undefined
   /**
    * What the document is about in a sentence or two — its `description`, or
-   * its first paragraph — for lists that show it under its title (ADR-056).
+   * its first paragraph — for lists that show it under its title (ADR-058).
    * Optional, so a projection written before it existed still reads.
    */
   readonly summary?: string | undefined
-  /** The document's own icon, an emoji from its front matter (ADR-056). */
+  /** The document's own icon, an emoji from its front matter (ADR-058). */
   readonly icon?: string | undefined
 }
 
-export type IndexableDocument = IndexableDocumentV1
+/**
+ * Someone who has published a revision of a document, as the revision recorded
+ * them: the name and address they published under, not an account. A person
+ * who published through Git sync has no account here and is still findable,
+ * and one who has left is still named on what they wrote.
+ */
+export interface Contributor {
+  readonly name: string
+  /** Lower case and trimmed: it is what `by:` and `team:` match exactly. */
+  readonly email: string
+}
+
+/**
+ * Version 2 adds who has published (`by:` and `team:`). Version 1 documents
+ * are still read as they were written (rule 17): a row indexed before this
+ * carries no contributors until it is next published or `quill reindex` runs.
+ */
+export interface IndexableDocumentV2 extends Omit<IndexableDocumentV1, 'version'> {
+  readonly version: 2
+  readonly contributors: readonly Contributor[]
+}
+
+/**
+ * Version 3 adds the generic properties (`prop:key=value`): the front-matter
+ * keys that are not core fields, folded and bounded by `extractProperties`
+ * (`@quill/search`). Versions 1 and 2 are still read as they were written
+ * (rule 17): a row carries no properties until it is next published or
+ * `quill reindex` runs, because they live in the content store and cannot be
+ * derived by a migration.
+ */
+export interface IndexableDocumentV3 extends Omit<IndexableDocumentV2, 'version'> {
+  readonly version: 3
+  /** Lower-case key to its lower-case values; absent keys have none. */
+  readonly properties: Readonly<Record<string, readonly string[]>>
+}
+
+export type IndexableDocument = IndexableDocumentV3
 
 // ---------------------------------------------------------------------------
 // Ranking, as data
@@ -212,6 +269,26 @@ export interface VisibilityFilter {
   readonly principalKeys: readonly string[]
 }
 
+/**
+ * One caller's visibility, shared by the calls a single request makes
+ * (ADR-010, amendment of 2026-10-17).
+ *
+ * Working out which documents a caller may read is the expensive part of a
+ * query, and a request that asks for a page and its facet counts asks it twice.
+ * Passing the same `SharedVisibility` as `visibility` to `search` and `facets`
+ * lets an adapter answer once: it keeps what it resolved against this object
+ * and reuses it, including while the two calls are in flight together.
+ *
+ * It carries the {@link VisibilityFilter} it was made for and an adapter uses
+ * it only for a call made with that very filter, so a handle can never widen
+ * (or narrow) the visibility of a different caller. It lives for one request:
+ * the answer is never kept past it, because permissions change and a stale
+ * one would show somebody a document that was just taken away from them.
+ */
+export interface SharedVisibility {
+  readonly filter: VisibilityFilter
+}
+
 // ---------------------------------------------------------------------------
 // The engine boundary
 // ---------------------------------------------------------------------------
@@ -222,6 +299,8 @@ export interface SearchHit {
   readonly workspaceId: WorkspaceId
   readonly title: string
   readonly body: string
+  /** The tags the document was indexed with, folded to lower case, in the order they were written. */
+  readonly tags: readonly string[]
   readonly score: number
 }
 
@@ -243,6 +322,9 @@ export interface SearchIndexQueryOptions {
    * the chance `groupByWorkspaceAffinity` would otherwise give it.
    */
   readonly currentWorkspaceId?: WorkspaceId
+
+  /** Resolve the caller's visibility once with `facets`, if the request asks for both: see {@link SharedVisibility}. */
+  readonly visibility?: SharedVisibility
 }
 
 /**
@@ -261,6 +343,23 @@ export interface SearchIndexQueryOptions {
  * The method is named `search`, not `query` as ADR-010's interface sketch
  * shows, because it returns already-scored hits rather than a bag of results
  * to score — a naming choice, not a contradiction of the decision.
+ *
+ * `suggest` completes a filter's value as somebody types it (ADR-010,
+ * amendment of 2026-10-17). It takes the same `filter` and applies it the same
+ * way, inside the query, so a name or a tag that appears only on a document the
+ * caller may not read is never offered: a suggestion is a search result with
+ * the document left off, and obeys the same rule. Values come back ordered by
+ * relevance (prefix matches first, then other substring matches, alphabetical
+ * within each), case-insensitively de-duplicated, at most `limit` of them.
+ *
+ * `facets` counts what the query matches, for people to refine it with. It takes
+ * the same `filter` and applies it inside the query, so a document the caller
+ * may not read contributes to no count: a count is a search result with the
+ * document left off. The match is the strict one (every word has to appear):
+ * the OR widening `search` falls back on when it finds too little is not
+ * counted, because a facet describes the results somebody asked for, and a
+ * refinement is only useful if its count is what the refinement then returns.
+ * Each count is over the whole matching set, not the page a client has seen.
  */
 export interface SearchIndex {
   index(doc: IndexableDocument): Promise<void>
@@ -271,4 +370,59 @@ export interface SearchIndex {
     profile: RankingProfile,
     options: SearchIndexQueryOptions,
   ): Promise<SearchHits>
+  suggest(request: SuggestionRequest, filter: VisibilityFilter): Promise<readonly string[]>
+  facets(query: SearchQuery, filter: VisibilityFilter, options: FacetsOptions): Promise<FacetCounts>
+}
+
+/** The facets a search can count (ADR-010, amendment of 2026-10-17). */
+export type FacetName = 'tag' | 'status' | 'collection'
+
+/** One value of a facet and how many matching documents carry it. */
+export interface FacetCount {
+  /**
+   * A tag path (`area/billing`), a status, or a collection id: the engine
+   * knows collections by id, and it is the application that names them (and
+   * merges collections that share a name).
+   */
+  readonly value: string
+  readonly count: number
+}
+
+export type FacetCounts = Readonly<Partial<Record<FacetName, readonly FacetCount[]>>>
+
+export interface FacetsOptions {
+  /** Which facets to count: nothing is counted that is not named. */
+  readonly facets: readonly FacetName[]
+  /**
+   * The most values of `tag` and `status` to return, by count (largest
+   * first) and then by value in code-point order. `collection` is returned
+   * whole, because the application merges collections that share a name
+   * before it chooses the top values.
+   */
+  readonly limit: number
+  /**
+   * The workspace the caller is in, so that facets and the page agree on the
+   * order workspaces are resolved in and can share it: it changes the order of
+   * the walk, never the counts.
+   */
+  readonly currentWorkspaceId?: WorkspaceId
+  /** Resolve the caller's visibility once with `search`, if the request asks for both: see {@link SharedVisibility}. */
+  readonly visibility?: SharedVisibility
+}
+
+/**
+ * The filters whose values the index itself knows: the names of the accounts
+ * that have published a document the caller may read, and the tags those
+ * documents carry. The other filters complete from tables the index does not
+ * own (workspaces, collections, groups) and are answered by the application.
+ */
+export type IndexedSuggestionField = 'by' | 'tag'
+
+export interface SuggestionRequest {
+  readonly field: IndexedSuggestionField
+  /** Matched as a case-insensitive substring; empty matches everything. */
+  readonly prefix: string
+  readonly limit: number
+  /** Resolved first, as for a search, so the values from where the caller is looking are found first. */
+  readonly currentWorkspaceId?: WorkspaceId
 }

@@ -1,5 +1,12 @@
 import type pg from 'pg'
-import type { IdGenerator, RepositoryBundle, UnitOfWork } from '@quill/application'
+import { createEventRecorder } from '@quill/application'
+import type {
+  EventBus,
+  IdGenerator,
+  RecordedEvent,
+  RepositoryBundle,
+  UnitOfWork,
+} from '@quill/application'
 
 import type { DrizzleClient } from '../db/types.ts'
 import { createAttachmentRepository } from './attachment-repository.ts'
@@ -41,7 +48,12 @@ import { createWorkspaceSlugHistoryRepository } from './workspace-slug-history-r
  * its draft are one transaction, and the pool, because `write` runs its own
  * `SELECT ... FOR UPDATE` transaction and must not nest inside another.
  */
-function buildBundle(db: DrizzleClient, pool: pg.Pool, ids: IdGenerator): RepositoryBundle {
+function buildBundle(
+  db: DrizzleClient,
+  pool: pg.Pool,
+  ids: IdGenerator,
+  sink: (event: RecordedEvent) => void,
+): RepositoryBundle {
   return {
     users: createUserRepository(db),
     sessions: createSessionRepository(db),
@@ -69,7 +81,7 @@ function buildBundle(db: DrizzleClient, pool: pg.Pool, ids: IdGenerator): Reposi
     reviews: createReviewRepository(db),
     documentViews: createDocumentViewRepository(db),
     notifications: createNotificationRepository(db),
-    outbox: createOutboxWriter(db),
+    events: createEventRecorder({ outbox: createOutboxWriter(db), ids, sink }),
     audit: createAuditWriter(db),
   }
 }
@@ -83,12 +95,33 @@ function buildBundle(db: DrizzleClient, pool: pg.Pool, ids: IdGenerator): Reposi
  * exactly that — so ids that every other part of the harness controlled were
  * uncontrolled here, and nothing said so. The process that wires the
  * application chooses the generator; this only uses it.
+ *
+ * `bus`, when there is one, is told what a transaction recorded — and only
+ * once that transaction has committed, never before it and never if it rolls
+ * back (ADR-056). A process with nothing to tell, a script or a benchmark,
+ * passes none and the events are written to the outbox all the same.
  */
-export function createUnitOfWork(db: DrizzleClient, pool: pg.Pool, ids: IdGenerator): UnitOfWork {
+export function createUnitOfWork(
+  db: DrizzleClient,
+  pool: pg.Pool,
+  ids: IdGenerator,
+  bus?: EventBus,
+): UnitOfWork {
   return {
-    repos: buildBundle(db, pool, ids),
+    // Outside a transaction each write commits as it is made, so what it
+    // recorded is announced at once. `publish` never rejects.
+    repos: buildBundle(db, pool, ids, (event) => {
+      void bus?.publish(event)
+    }),
     async run(fn) {
-      return db.transaction((tx) => fn(buildBundle(tx, pool, ids)))
+      const pending: RecordedEvent[] = []
+      const result = await db.transaction((tx) =>
+        fn(buildBundle(tx, pool, ids, (event) => pending.push(event))),
+      )
+      // Awaited, so a request that revoked access has cleared what depended on
+      // it by the time it answers; a throw above skips this, which is the rollback.
+      await Promise.all(pending.map((event) => bus?.publish(event)))
+      return result
     },
   }
 }

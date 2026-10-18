@@ -1,22 +1,35 @@
+import { ROLES } from '@quill/domain'
 import type {
   DocumentId,
   ReviewDecision,
   ReviewerKind,
   ReviewStatus,
   RevisionId,
+  Role,
   UserId,
   WorkspaceId,
 } from '@quill/domain'
 
-import type { CollectionId, MagicLinkPurpose } from '../ports/persistence.ts'
-import { createVersionedReader } from './versioned-reader.ts'
+import { defineEvent } from '../events/define-event.ts'
+import type { EventPayloadInput } from '../events/define-event.ts'
+import type {
+  CollectionId,
+  GrantEffect,
+  GrantRow,
+  MagicLinkPurpose,
+  PrincipalKind,
+  ScopeKind,
+} from '../ports/persistence.ts'
 
 /**
- * The outbox events the publish path emits (plan §22).
+ * Every event Quill emits (plan §22, ADR-056).
  *
- * Every payload carries a version and every reader dispatches on it
- * (ADR-033): an event written by one release is read by a consumer running a
- * later one, so the shape can grow but never silently change meaning.
+ * Each is one `defineEvent`: its type name, the version this release writes,
+ * and a reader for every version ever shipped (ADR-033) — an event written by
+ * one release is read by a consumer running a later one, so the shape can
+ * grow but never silently change meaning. The `X` constants and `parseX`
+ * functions below are those definitions under the names the rest of the code
+ * already uses.
  */
 
 /**
@@ -39,18 +52,11 @@ export const DOCUMENT_MOVED = 'DocumentMoved'
 
 /**
  * A document was nested under another parent, or lifted to the top, inside
- * its own collection (ADR-056). Nothing on the web moves — `DocumentMoved`
+ * its own collection (ADR-058). Nothing on the web moves — `DocumentMoved`
  * covers a change of collection — but the pages listed under both parents
  * change, which is what a child pages list shows.
  */
 export const DOCUMENT_NESTED = 'DocumentNested'
-
-/**
- * A document was deleted (ADR-056). Its children were lifted to the top of
- * its collection by the same delete, so every list that showed it, or showed
- * them under it, has changed.
- */
-export const DOCUMENT_DELETED = 'DocumentDeleted'
 
 /**
  * An attachment's bytes were replaced by a new revision under the same URL
@@ -59,6 +65,24 @@ export const DOCUMENT_DELETED = 'DocumentDeleted'
  * public site's cached pages — is brought up to date from this.
  */
 export const ATTACHMENT_REVISED = 'AttachmentRevised'
+
+/**
+ * A document was deleted. Its children were lifted to the top of its
+ * collection by the same delete, so every list that showed it, or showed them
+ * under it, has changed (ADR-058).
+ */
+export const DOCUMENT_DELETED = 'DocumentDeleted'
+export const COLLECTION_DELETED = 'CollectionDeleted'
+
+/**
+ * Who may read what changed (ADR-012). The two are events of their own rather
+ * than one "grant changed" because what is derived from them treats them
+ * differently, and because a revoke is the one that must not be late: a stale
+ * cache after a grant is a page nobody can reach, and after a revoke it is a
+ * page somebody still can.
+ */
+export const GRANT_CREATED = 'GrantCreated'
+export const GRANT_REVOKED = 'GrantRevoked'
 
 /**
  * Review requests (ADR-052). Payloads name ids and never the message or a
@@ -111,14 +135,6 @@ export interface DocumentNestedPayload {
   readonly toParentId: DocumentId | null
 }
 
-export interface DocumentDeletedPayload {
-  readonly version: number
-  readonly documentId: DocumentId
-  readonly workspaceId: WorkspaceId
-  readonly parentId: DocumentId | null
-  readonly collectionId: CollectionId | null
-}
-
 export interface AttachmentRevisedPayload {
   readonly version: number
   readonly attachmentId: string
@@ -126,6 +142,38 @@ export interface AttachmentRevisedPayload {
   readonly workspaceId: WorkspaceId
   /** The attachment's own version after the revision. */
   readonly attachmentVersion: number
+}
+
+export interface DocumentDeletedPayload {
+  readonly version: number
+  readonly documentId: DocumentId
+  readonly workspaceId: WorkspaceId
+  readonly collectionId: string | null
+  /** The parent it was listed under; null at the top of its collection, or in an event written before it was recorded. */
+  readonly parentId: DocumentId | null
+  readonly deletedBy: UserId | null
+}
+
+export interface CollectionDeletedPayload {
+  readonly version: number
+  readonly collectionId: string
+  readonly workspaceId: WorkspaceId
+  readonly deletedBy: UserId | null
+}
+
+/**
+ * A grant, as it was: the row is gone once a revoke has happened, and what is
+ * derived from it still has to know which scope and which principal to look at.
+ */
+export interface GrantChangedPayload {
+  readonly version: number
+  readonly grantId: string
+  readonly principalKind: PrincipalKind
+  readonly principalId: string | null
+  readonly scopeKind: ScopeKind
+  readonly scopeId: string | null
+  readonly role: Role
+  readonly effect: GrantEffect
 }
 
 export interface ReviewRequestedPayload {
@@ -182,14 +230,50 @@ export type MailRequestedPayload =
       readonly signInUrl: string
     }
 
-const MAGIC_LINK_PURPOSES = new Set<string>(['sign-in', 'email-verification', 'password-reset'])
+const MAGIC_LINK_PURPOSES = ['sign-in', 'email-verification', 'password-reset'] as const
+const PRINCIPAL_KINDS = ['user', 'group', 'public', 'share_link'] as const
+const SCOPE_KINDS = ['instance', 'unit', 'workspace', 'collection', 'document'] as const
+const GRANT_EFFECTS = ['allow', 'deny'] as const
+
+function readField(payload: unknown, key: string): unknown {
+  return (payload as Record<string, unknown>)[key]
+}
 
 function readString(payload: unknown, key: string): string | null {
-  const value = (payload as Record<string, unknown>)[key]
+  const value = readField(payload, key)
   return typeof value === 'string' && value.length > 0 ? value : null
 }
 
-const publishedReader = createVersionedReader<DocumentPublishedPayload>({
+/** One of a closed set of strings, found by comparison rather than asserted. */
+function readMember<T extends string>(
+  payload: unknown,
+  key: string,
+  allowed: readonly T[],
+): T | null {
+  const value = readField(payload, key)
+  return allowed.find((member) => member === value) ?? null
+}
+
+export const documentCreated = defineEvent<DocumentCreatedPayload>(DOCUMENT_CREATED, {
+  [EVENT_PAYLOAD_VERSION]: (payload) => {
+    const documentId = readString(payload, 'documentId')
+    const workspaceId = readString(payload, 'workspaceId')
+    const title = readString(payload, 'title')
+    const createdBy = readString(payload, 'createdBy')
+    if (documentId === null || workspaceId === null || title === null || createdBy === null) {
+      return null
+    }
+    return {
+      version: EVENT_PAYLOAD_VERSION,
+      documentId: documentId as DocumentId,
+      workspaceId: workspaceId as WorkspaceId,
+      title,
+      createdBy: createdBy as UserId,
+    }
+  },
+})
+
+export const documentPublished = defineEvent<DocumentPublishedPayload>(DOCUMENT_PUBLISHED, {
   [EVENT_PAYLOAD_VERSION]: (payload) => {
     const documentId = readString(payload, 'documentId')
     const workspaceId = readString(payload, 'workspaceId')
@@ -208,7 +292,7 @@ const publishedReader = createVersionedReader<DocumentPublishedPayload>({
   },
 })
 
-const renamedReader = createVersionedReader<DocumentRenamedPayload>({
+export const documentRenamed = defineEvent<DocumentRenamedPayload>(DOCUMENT_RENAMED, {
   [EVENT_PAYLOAD_VERSION]: (payload) => {
     const documentId = readString(payload, 'documentId')
     const workspaceId = readString(payload, 'workspaceId')
@@ -224,7 +308,7 @@ const renamedReader = createVersionedReader<DocumentRenamedPayload>({
   },
 })
 
-const movedReader = createVersionedReader<DocumentMovedPayload>({
+export const documentMoved = defineEvent<DocumentMovedPayload>(DOCUMENT_MOVED, {
   [EVENT_PAYLOAD_VERSION]: (payload) => {
     const documentId = readString(payload, 'documentId')
     const workspaceId = readString(payload, 'workspaceId')
@@ -239,7 +323,7 @@ const movedReader = createVersionedReader<DocumentMovedPayload>({
   },
 })
 
-const nestedReader = createVersionedReader<DocumentNestedPayload>({
+export const documentNested = defineEvent<DocumentNestedPayload>(DOCUMENT_NESTED, {
   [EVENT_PAYLOAD_VERSION]: (payload) => {
     const documentId = readString(payload, 'documentId')
     const workspaceId = readString(payload, 'workspaceId')
@@ -254,27 +338,12 @@ const nestedReader = createVersionedReader<DocumentNestedPayload>({
   },
 })
 
-const deletedReader = createVersionedReader<DocumentDeletedPayload>({
-  [EVENT_PAYLOAD_VERSION]: (payload) => {
-    const documentId = readString(payload, 'documentId')
-    const workspaceId = readString(payload, 'workspaceId')
-    if (documentId === null || workspaceId === null) return null
-    return {
-      version: EVENT_PAYLOAD_VERSION,
-      documentId: documentId as DocumentId,
-      workspaceId: workspaceId as WorkspaceId,
-      parentId: readString(payload, 'parentId') as DocumentId | null,
-      collectionId: readString(payload, 'collectionId'),
-    }
-  },
-})
-
-const revisedReader = createVersionedReader<AttachmentRevisedPayload>({
+export const attachmentRevised = defineEvent<AttachmentRevisedPayload>(ATTACHMENT_REVISED, {
   [EVENT_PAYLOAD_VERSION]: (payload) => {
     const attachmentId = readString(payload, 'attachmentId')
     const documentId = readString(payload, 'documentId')
     const workspaceId = readString(payload, 'workspaceId')
-    const attachmentVersion = (payload as Record<string, unknown>)['attachmentVersion']
+    const attachmentVersion = readField(payload, 'attachmentVersion')
     if (attachmentId === null || documentId === null || workspaceId === null) return null
     if (typeof attachmentVersion !== 'number') return null
     return {
@@ -287,86 +356,129 @@ const revisedReader = createVersionedReader<AttachmentRevisedPayload>({
   },
 })
 
-const mailReader = createVersionedReader<MailRequestedPayload>({
+export const documentDeleted = defineEvent<DocumentDeletedPayload>(DOCUMENT_DELETED, {
   [EVENT_PAYLOAD_VERSION]: (payload) => {
-    const to = readString(payload, 'to')
-    if (to === null) return null
-    if (readString(payload, 'kind') === 'account-exists') {
-      const signInUrl = readString(payload, 'signInUrl')
-      return signInUrl === null
-        ? null
-        : { version: EVENT_PAYLOAD_VERSION, kind: 'account-exists', to, signInUrl }
-    }
-    const url = readString(payload, 'url')
-    const purpose = readString(payload, 'purpose')
-    if (url === null || purpose === null || !MAGIC_LINK_PURPOSES.has(purpose)) return null
+    const documentId = readString(payload, 'documentId')
+    const workspaceId = readString(payload, 'workspaceId')
+    if (documentId === null || workspaceId === null) return null
     return {
       version: EVENT_PAYLOAD_VERSION,
-      kind: 'magic-link',
-      to,
-      url,
-      purpose: purpose as MagicLinkPurpose,
+      documentId: documentId as DocumentId,
+      workspaceId: workspaceId as WorkspaceId,
+      collectionId: readString(payload, 'collectionId'),
+      parentId: readString(payload, 'parentId') as DocumentId | null,
+      deletedBy: readString(payload, 'deletedBy') as UserId | null,
     }
   },
 })
 
-/** A `MailRequested` payload, or null when it is not one this release can read. */
-export function parseMailRequested(payload: unknown): MailRequestedPayload | null {
-  return mailReader.read(payload)
+export const collectionDeleted = defineEvent<CollectionDeletedPayload>(COLLECTION_DELETED, {
+  [EVENT_PAYLOAD_VERSION]: (payload) => {
+    const collectionId = readString(payload, 'collectionId')
+    const workspaceId = readString(payload, 'workspaceId')
+    if (collectionId === null || workspaceId === null) return null
+    return {
+      version: EVENT_PAYLOAD_VERSION,
+      collectionId,
+      workspaceId: workspaceId as WorkspaceId,
+      deletedBy: readString(payload, 'deletedBy') as UserId | null,
+    }
+  },
+})
+
+/** The reader both grant events share: they carry the same snapshot of the grant. */
+function readGrantChanged(payload: unknown): GrantChangedPayload | null {
+  const grantId = readString(payload, 'grantId')
+  const principalKind = readMember(payload, 'principalKind', PRINCIPAL_KINDS)
+  const scopeKind = readMember(payload, 'scopeKind', SCOPE_KINDS)
+  const role = readMember(payload, 'role', ROLES)
+  const effect = readMember(payload, 'effect', GRANT_EFFECTS)
+  if (
+    grantId === null ||
+    principalKind === null ||
+    scopeKind === null ||
+    role === null ||
+    effect === null
+  ) {
+    return null
+  }
+  return {
+    version: EVENT_PAYLOAD_VERSION,
+    grantId,
+    principalKind,
+    principalId: readString(payload, 'principalId'),
+    scopeKind,
+    scopeId: readString(payload, 'scopeId'),
+    role,
+    effect,
+  }
 }
 
 /**
- * A `DocumentPublished` payload, or null when it is not one this release can
- * read. An unreadable event is left for a release that understands it rather
- * than failing the consumer for ever.
+ * A grant row as the payload of the event that reports it. One function for
+ * both events, so what a revoke says about the grant is exactly what its
+ * creation said.
  */
-export function parseDocumentPublished(payload: unknown): DocumentPublishedPayload | null {
-  return publishedReader.read(payload)
+export function grantChange(grant: GrantRow): EventPayloadInput<GrantChangedPayload> {
+  return {
+    grantId: grant.id,
+    principalKind: grant.principalKind,
+    principalId: grant.principalId,
+    scopeKind: grant.scopeKind,
+    scopeId: grant.scopeId,
+    role: grant.role,
+    effect: grant.effect,
+  }
 }
 
-/** A `DocumentRenamed` payload, or null when it is not one this release can read. */
-export function parseDocumentRenamed(payload: unknown): DocumentRenamedPayload | null {
-  return renamedReader.read(payload)
-}
+export const grantCreated = defineEvent<GrantChangedPayload>(GRANT_CREATED, {
+  [EVENT_PAYLOAD_VERSION]: readGrantChanged,
+})
 
-/** A `DocumentMoved` payload, or null when it is not one this release can read. */
-export function parseDocumentMoved(payload: unknown): DocumentMovedPayload | null {
-  return movedReader.read(payload)
-}
+export const grantRevoked = defineEvent<GrantChangedPayload>(GRANT_REVOKED, {
+  [EVENT_PAYLOAD_VERSION]: readGrantChanged,
+})
 
-/** An `AttachmentRevised` payload, or null when it is not one this release can read. */
-export function parseAttachmentRevised(payload: unknown): AttachmentRevisedPayload | null {
-  return revisedReader.read(payload)
-}
+export const mailRequested = defineEvent<MailRequestedPayload>(
+  MAIL_REQUESTED,
+  {
+    [EVENT_PAYLOAD_VERSION]: (payload) => {
+      const to = readString(payload, 'to')
+      if (to === null) return null
+      if (readString(payload, 'kind') === 'account-exists') {
+        const signInUrl = readString(payload, 'signInUrl')
+        return signInUrl === null
+          ? null
+          : { version: EVENT_PAYLOAD_VERSION, kind: 'account-exists', to, signInUrl }
+      }
+      const url = readString(payload, 'url')
+      const purpose = readMember(payload, 'purpose', MAGIC_LINK_PURPOSES)
+      if (url === null || purpose === null) return null
+      return { version: EVENT_PAYLOAD_VERSION, kind: 'magic-link', to, url, purpose }
+    },
+  },
+  // A magic link's payload carries its token (ADR-011), which is in the
+  // database only until the mail is sent and has no business on a bus.
+  { announced: false },
+)
 
-/** A `DocumentNested` payload, or null when it is not one this release can read. */
-export function parseDocumentNested(payload: unknown): DocumentNestedPayload | null {
-  return nestedReader.read(payload)
-}
+const REVIEWER_KINDS = ['user', 'group'] as const
+const REVIEW_DECISIONS = ['approve', 'request_changes'] as const
 
-/** A `DocumentDeleted` payload, or null when it is not one this release can read. */
-export function parseDocumentDeleted(payload: unknown): DocumentDeletedPayload | null {
-  return deletedReader.read(payload)
-}
-
-const REVIEWER_KINDS = new Set<string>(['user', 'group'])
-
-const reviewRequestedReader = createVersionedReader<ReviewRequestedPayload>({
+export const reviewRequested = defineEvent<ReviewRequestedPayload>(REVIEW_REQUESTED, {
   [EVENT_PAYLOAD_VERSION]: (payload) => {
     const requestId = readString(payload, 'requestId')
     const documentId = readString(payload, 'documentId')
     const workspaceId = readString(payload, 'workspaceId')
     const requestedBy = readString(payload, 'requestedBy')
-    const reviewers = (payload as Record<string, unknown>)['reviewers']
+    const reviewers = readField(payload, 'reviewers')
     if (requestId === null || documentId === null || workspaceId === null) return null
     if (requestedBy === null || !Array.isArray(reviewers)) return null
     const readable = reviewers.flatMap((reviewer: unknown) => {
       if (typeof reviewer !== 'object' || reviewer === null) return []
-      const kind = readString(reviewer, 'kind')
+      const kind = readMember(reviewer, 'kind', REVIEWER_KINDS)
       const id = readString(reviewer, 'id')
-      return kind !== null && id !== null && REVIEWER_KINDS.has(kind)
-        ? [{ kind: kind as ReviewerKind, id }]
-        : []
+      return kind !== null && id !== null ? [{ kind, id }] : []
     })
     return {
       version: EVENT_PAYLOAD_VERSION,
@@ -379,17 +491,16 @@ const reviewRequestedReader = createVersionedReader<ReviewRequestedPayload>({
   },
 })
 
-const reviewDecidedReader = createVersionedReader<ReviewDecidedPayload>({
+export const reviewDecided = defineEvent<ReviewDecidedPayload>(REVIEW_DECIDED, {
   [EVENT_PAYLOAD_VERSION]: (payload) => {
     const requestId = readString(payload, 'requestId')
     const documentId = readString(payload, 'documentId')
     const workspaceId = readString(payload, 'workspaceId')
     const decidedBy = readString(payload, 'decidedBy')
-    const decision = readString(payload, 'decision')
+    const decision = readMember(payload, 'decision', REVIEW_DECISIONS)
     const status = readString(payload, 'status')
     if (requestId === null || documentId === null || workspaceId === null) return null
-    if (decidedBy === null || status === null) return null
-    if (decision !== 'approve' && decision !== 'request_changes') return null
+    if (decidedBy === null || status === null || decision === null) return null
     return {
       version: EVENT_PAYLOAD_VERSION,
       requestId,
@@ -402,7 +513,7 @@ const reviewDecidedReader = createVersionedReader<ReviewDecidedPayload>({
   },
 })
 
-const reviewWithdrawnReader = createVersionedReader<ReviewWithdrawnPayload>({
+export const reviewWithdrawn = defineEvent<ReviewWithdrawnPayload>(REVIEW_WITHDRAWN, {
   [EVENT_PAYLOAD_VERSION]: (payload) => {
     const requestId = readString(payload, 'requestId')
     const documentId = readString(payload, 'documentId')
@@ -421,17 +532,19 @@ const reviewWithdrawnReader = createVersionedReader<ReviewWithdrawnPayload>({
   },
 })
 
-/** A `ReviewRequested` payload, or null when it is not one this release can read. */
-export function parseReviewRequested(payload: unknown): ReviewRequestedPayload | null {
-  return reviewRequestedReader.read(payload)
-}
-
-/** A `ReviewDecided` payload, or null when it is not one this release can read. */
-export function parseReviewDecided(payload: unknown): ReviewDecidedPayload | null {
-  return reviewDecidedReader.read(payload)
-}
-
-/** A `ReviewWithdrawn` payload, or null when it is not one this release can read. */
-export function parseReviewWithdrawn(payload: unknown): ReviewWithdrawnPayload | null {
-  return reviewWithdrawnReader.read(payload)
-}
+/**
+ * Each payload, or null when it is not one this release can read. An
+ * unreadable event is left for a release that understands it rather than
+ * failing the consumer for ever.
+ */
+export const parseMailRequested = mailRequested.parse
+export const parseDocumentCreated = documentCreated.parse
+export const parseDocumentPublished = documentPublished.parse
+export const parseDocumentRenamed = documentRenamed.parse
+export const parseDocumentMoved = documentMoved.parse
+export const parseAttachmentRevised = attachmentRevised.parse
+export const parseDocumentNested = documentNested.parse
+export const parseDocumentDeleted = documentDeleted.parse
+export const parseReviewRequested = reviewRequested.parse
+export const parseReviewDecided = reviewDecided.parse
+export const parseReviewWithdrawn = reviewWithdrawn.parse

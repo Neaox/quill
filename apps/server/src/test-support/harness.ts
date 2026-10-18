@@ -2,15 +2,8 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import {
-  ATTACHMENT_REVISED,
-  DOCUMENT_CREATED,
-  DOCUMENT_DELETED,
-  DOCUMENT_MOVED,
-  DOCUMENT_NESTED,
-  DOCUMENT_PUBLISHED,
-  DOCUMENT_RENAMED,
-} from '@quill/application'
+import { createEventBus } from '@quill/application'
+import type { EventBus } from '@quill/application'
 import { createSearchService } from '@quill/search'
 import { BRAND } from '@quill/brand'
 import { createFakeClock, createFakeIdGenerator } from '@quill/application/test-support'
@@ -29,30 +22,18 @@ import type { TestDatabase } from '../infrastructure/db/test-database.ts'
 import { createHasher } from '../infrastructure/hasher.ts'
 import { createDocumentFormat } from '../infrastructure/markdown/document-format.ts'
 import { CHILD_PAGES_CACHE_TTL_MS, createChildPagesCache } from '../child-pages/cache.ts'
-import { createInvalidateChildPagesConsumers } from '../child-pages/invalidate-child-pages.ts'
+import { subscribeChildPagesInvalidation } from '../child-pages/invalidation.ts'
 import { pollOutboxOnce } from '../infrastructure/outbox/poller.ts'
-import { combineConsumers } from '../infrastructure/outbox/combine.ts'
-import {
-  createIndexOnAttachmentRevisedConsumer,
-  createIndexOnPublishConsumer,
-  createIndexOnRenameConsumer,
-} from '../infrastructure/outbox/index-on-publish.ts'
-import {
-  createRecordMoveRedirectConsumer,
-  createRecordRenameRedirectConsumer,
-} from '../infrastructure/outbox/record-public-redirect.ts'
-import { createInvalidatePublicSiteConsumers } from '../infrastructure/outbox/invalidate-public-site.ts'
-import { createNotifyOnReviewConsumers } from '../infrastructure/outbox/notify-on-review.ts'
-import { createRenderOnPublishConsumer } from '../infrastructure/outbox/render-on-publish.ts'
 import { createPostgresSearchIndex } from '../infrastructure/search/postgres-search-index.ts'
 import { createVisibleDocumentResolver } from '../infrastructure/search/visible-documents.ts'
-import { createSendMailConsumer } from '../infrastructure/outbox/send-mail.ts'
 import { createUnitOfWork } from '../infrastructure/repositories/unit-of-work.ts'
 import { createEnvelopeCipher } from '../infrastructure/secrets/envelope-cipher.ts'
 import { createKeyProvider } from '../infrastructure/secrets/key-provider.ts'
 import { createSecretResolver } from '../infrastructure/secrets/resolve-secret.ts'
 import { createSettingsStore } from '../infrastructure/settings-store.ts'
 import { createPublicSiteCache, PUBLIC_SITE_CACHE_TTL_MS } from '../public-site/cache.ts'
+import { subscribePublicSiteInvalidation } from '../public-site/invalidation.ts'
+import { registerOutboxConsumers } from '../jobs/register-consumers.ts'
 import { createPublicStylesheets, loadDesignSystemCss } from '../public-site/stylesheet.ts'
 import { loadFaceFiles } from '../theme/face-files.ts'
 import { createThemeStylesheets } from '../theme/theme-stylesheet.ts'
@@ -96,6 +77,10 @@ export interface ServerHarness {
   /** Where the harness's attachments landed, so a test can look at the files. */
   readonly blobRoot: string
   readonly jobRunner: JobRunner
+  /** What the server's in-process observers are told; a test may subscribe to what it provokes. */
+  readonly eventBus: EventBus
+  /** Every listener failure the bus swallowed, so a test can insist there were none. */
+  readonly listenerFailures: readonly unknown[]
   /** A session cookie header for a user, ready to pass to `app.inject`. */
   cookiesFor(userId: UserId): Promise<Record<string, string>>
   /** Runs the outbox consumers once, as the job runner would on its next tick. */
@@ -141,6 +126,8 @@ export interface HarnessOptions {
   readonly publicSiteCacheTtlMs?: number
   /** Shrunk by a test that wants to see a sitemap index without a thousand documents. */
   readonly publicSitemapPageSize?: number
+  /** Lowered by a test about the public search budget, which is otherwise out of its way. */
+  readonly publicSearchRateLimitMax?: number
   readonly oidcProviders?: readonly OidcProviderConfig[]
   readonly createOidcClient?: OutboundClientFactory
   /**
@@ -160,7 +147,11 @@ export async function createServerHarness(options: HarnessOptions = {}): Promise
   const blobRoot = await mkdtemp(join(tmpdir(), `${BRAND.slug}-blobs-`))
   const clock = options.clock ?? createFakeClock(HARNESS_NOW)
   const ids = createFakeIdGenerator()
-  const uow = createUnitOfWork(database.db, database.pool, ids)
+  // A listener that fails must fail the test that provoked it, not vanish into
+  // a log nobody reads: the bus never rejects, so the harness reports it itself.
+  const listenerFailures: unknown[] = []
+  const eventBus = createEventBus({ onError: (error) => listenerFailures.push(error) })
+  const uow = createUnitOfWork(database.db, database.pool, ids, eventBus)
   // A year on both session clocks: several tests jump the fake clock months
   // ahead to exercise a review interval or a stale lock, and must not be
   // incidentally signed out while doing it. The timeouts themselves are
@@ -195,6 +186,9 @@ export async function createServerHarness(options: HarnessOptions = {}): Promise
     ...(options.publicSitemapPageSize === undefined
       ? {}
       : { publicSitemapPageSize: options.publicSitemapPageSize }),
+    ...(options.publicSearchRateLimitMax === undefined
+      ? {}
+      : { publicSearchRateLimitMax: options.publicSearchRateLimitMax }),
     oidcProviders: options.oidcProviders ?? [],
   }
   const breachedPasswords = createFakeBreachedPasswordChecker()
@@ -282,76 +276,11 @@ export async function createServerHarness(options: HarnessOptions = {}): Promise
   })
   // The same consumers the composition root registers, so an integration test
   // exercises the real delivery path rather than a shortcut (ADR-011).
-  const invalidate = new Map(
-    createInvalidatePublicSiteConsumers(publicSiteCache).map((consumer) => [
-      consumer.eventType,
-      consumer,
-    ]),
-  )
-  /* v8 ignore next 3 -- one consumer per event type, by construction. */
-  const invalidationOf = (eventType: string) => {
-    const consumer = invalidate.get(eventType)
-    if (consumer === undefined) throw new Error(`no public-site invalidation for ${eventType}`)
-    return consumer
-  }
-
-  const invalidateChildPages = new Map(
-    createInvalidateChildPagesConsumers(childPagesCache, deps).map((consumer) => [
-      consumer.eventType,
-      consumer,
-    ]),
-  )
-  /* v8 ignore next 5 -- one consumer per event type, by construction. */
-  const childPagesOf = (eventType: string) => {
-    const consumer = invalidateChildPages.get(eventType)
-    if (consumer === undefined) throw new Error(`no child pages invalidation for ${eventType}`)
-    return consumer
-  }
-
-  jobRunner.register(
-    combineConsumers(
-      DOCUMENT_PUBLISHED,
-      createRenderOnPublishConsumer(deps),
-      createIndexOnPublishConsumer(deps),
-      invalidationOf(DOCUMENT_PUBLISHED),
-      childPagesOf(DOCUMENT_PUBLISHED),
-    ),
-  )
-  jobRunner.register(
-    combineConsumers(
-      DOCUMENT_RENAMED,
-      createIndexOnRenameConsumer(deps),
-      createRecordRenameRedirectConsumer(deps),
-      invalidationOf(DOCUMENT_RENAMED),
-      childPagesOf(DOCUMENT_RENAMED),
-    ),
-  )
-  jobRunner.register(
-    combineConsumers(
-      DOCUMENT_MOVED,
-      createRecordMoveRedirectConsumer(deps),
-      invalidationOf(DOCUMENT_MOVED),
-      childPagesOf(DOCUMENT_MOVED),
-    ),
-  )
-  jobRunner.register(
-    combineConsumers(
-      ATTACHMENT_REVISED,
-      createIndexOnAttachmentRevisedConsumer(deps),
-      invalidationOf(ATTACHMENT_REVISED),
-    ),
-  )
-  jobRunner.register(createSendMailConsumer(mailer))
-  for (const consumer of createNotifyOnReviewConsumers(deps)) jobRunner.register(consumer)
-  // A new page changes the child pages lists above it (ADR-056); it has
-  // nothing to index or render until it is published.
-  jobRunner.register(childPagesOf(DOCUMENT_CREATED))
-  // Nesting and deleting change the lists and the public navigation (ADR-056).
-  for (const eventType of [DOCUMENT_NESTED, DOCUMENT_DELETED]) {
-    jobRunner.register(
-      combineConsumers(eventType, childPagesOf(eventType), invalidationOf(eventType)),
-    )
-  }
+  registerOutboxConsumers(jobRunner, { deps, mailer })
+  // And the same subscription that tells the cache, so a test sees it cleared
+  // by a commit exactly as a running server does (ADR-056).
+  subscribePublicSiteInvalidation(eventBus, publicSiteCache)
+  subscribeChildPagesInvalidation(eventBus, childPagesCache, deps)
   jobRunner.schedule(createSweepJob({ uow, clock, session: config.session }))
 
   let sessions = 0
@@ -364,6 +293,8 @@ export async function createServerHarness(options: HarnessOptions = {}): Promise
     database,
     blobRoot,
     jobRunner,
+    eventBus,
+    listenerFailures,
 
     async cookiesFor(userId: UserId): Promise<Record<string, string>> {
       sessions += 1

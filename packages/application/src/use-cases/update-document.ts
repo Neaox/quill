@@ -11,19 +11,7 @@ import type {
   UpdateDocumentPatch,
 } from '../ports/persistence.ts'
 import type { Clock, IdGenerator } from '../ports/system.ts'
-import {
-  DOCUMENT_DELETED,
-  DOCUMENT_MOVED,
-  DOCUMENT_NESTED,
-  DOCUMENT_RENAMED,
-  EVENT_PAYLOAD_VERSION,
-} from './events.ts'
-import type {
-  DocumentDeletedPayload,
-  DocumentMovedPayload,
-  DocumentNestedPayload,
-  DocumentRenamedPayload,
-} from './events.ts'
+import { documentDeleted, documentMoved, documentNested, documentRenamed } from './events.ts'
 import { heldByAnother, readDraftContent } from './publish-document.ts'
 
 /**
@@ -196,26 +184,30 @@ export async function updateDocument(
     // page under a sibling moves nothing on the web and an event saying it
     // had would make the redirect table describe addresses that never existed.
     if (movingCollection) {
-      const payload: DocumentMovedPayload = {
-        version: EVENT_PAYLOAD_VERSION,
-        documentId: document.id,
-        workspaceId: document.workspaceId,
-        fromCollectionId: document.collectionId,
-        toCollectionId: updated.collectionId,
-      }
-      await tx.outbox.write({ id: deps.ids.uuid(), type: DOCUMENT_MOVED, payload, now })
+      await tx.events.record(
+        documentMoved,
+        {
+          documentId: document.id,
+          workspaceId: document.workspaceId,
+          fromCollectionId: document.collectionId,
+          toCollectionId: updated.collectionId,
+        },
+        now,
+      )
       await auditMove(deps, tx, { document, updated, now, sessionId: command.sessionId })
     } else if (updated.parentId !== document.parentId) {
       // A re-nesting inside the collection moves nothing on the web, but it
-      // changes the pages listed under both parents (ADR-056).
-      const payload: DocumentNestedPayload = {
-        version: EVENT_PAYLOAD_VERSION,
-        documentId: document.id,
-        workspaceId: document.workspaceId,
-        fromParentId: document.parentId,
-        toParentId: updated.parentId,
-      }
-      await tx.outbox.write({ id: deps.ids.uuid(), type: DOCUMENT_NESTED, payload, now })
+      // changes the pages listed under both parents (ADR-058).
+      await tx.events.record(
+        documentNested,
+        {
+          documentId: document.id,
+          workspaceId: document.workspaceId,
+          fromParentId: document.parentId,
+          toParentId: updated.parentId,
+        },
+        now,
+      )
     }
     return { kind: 'updated', document: updated }
   })
@@ -314,19 +306,16 @@ async function applyRename(
   // publish is what changed the title — an author editing the first heading —
   // so a rename is announced exactly once (`recordPublish`).
   if (input.title !== input.document.title) {
-    const payload: DocumentRenamedPayload = {
-      version: EVENT_PAYLOAD_VERSION,
-      documentId: input.document.id,
-      workspaceId: input.document.workspaceId,
-      from: input.document.title,
-      to: input.title,
-    }
-    await tx.outbox.write({
-      id: deps.ids.uuid(),
-      type: DOCUMENT_RENAMED,
-      payload,
-      now: input.now,
-    })
+    await tx.events.record(
+      documentRenamed,
+      {
+        documentId: input.document.id,
+        workspaceId: input.document.workspaceId,
+        from: input.document.title,
+        to: input.title,
+      },
+      input.now,
+    )
   }
   return null
 }
@@ -387,22 +376,22 @@ export async function deleteDocument(
   const siblings = await repos.documents.listByWorkspace(document.workspaceId)
   const orphaned = siblings.filter((row) => row.parentId === command.documentId).length
 
-  const payload: DocumentDeletedPayload = {
-    version: EVENT_PAYLOAD_VERSION,
-    documentId: document.id,
-    workspaceId: document.workspaceId,
-    parentId: document.parentId,
-    collectionId: document.collectionId,
-  }
+  const now = deps.clock.now()
+  // The deletion, its audit row and its announcement commit together: the
+  // pages listed under its parent, and the ones it lifted, have changed (ADR-058).
   await deps.uow.run(async (tx) => {
     await tx.documents.delete(command.documentId)
-    // The pages listed under its parent, and the ones it lifted, have changed (ADR-056).
-    await tx.outbox.write({
-      id: deps.ids.uuid(),
-      type: DOCUMENT_DELETED,
-      payload,
-      now: deps.clock.now(),
-    })
+    await tx.events.record(
+      documentDeleted,
+      {
+        documentId: document.id,
+        workspaceId: document.workspaceId,
+        collectionId: document.collectionId,
+        parentId: document.parentId,
+        deletedBy: command.deletedBy,
+      },
+      now,
+    )
     await tx.audit.write({
       id: deps.ids.uuid(),
       type: DOCUMENT_AUDIT_EVENTS.deleted,
@@ -416,7 +405,7 @@ export async function deleteDocument(
         path: document.path,
         childrenLifted: orphaned,
       },
-      now: deps.clock.now(),
+      now,
     })
   })
   return { kind: 'deleted' }

@@ -36,7 +36,7 @@ import { GitRepository } from './git/git-repository.ts'
 import { parseContentPath, resolvePath, setPath, walkTree } from './git/tree-path.ts'
 import { KeyedMutex } from './keyed-mutex.ts'
 import type { ObjectStore, ObjectStoreProvider } from './object-store.ts'
-import { conflictMarkers, threeWayMerge } from './three-way-merge.ts'
+import { deletionMarkers, threeWayMerge } from './three-way-merge.ts'
 import { unifiedDiff } from './unified-diff.ts'
 
 export class ContentStoreError extends Error {
@@ -377,7 +377,13 @@ export class GitContentStore implements ContentStore {
     const relocated = theirs === null ? change : retarget(change, theirs.path)
     if (change.kind === 'delete') {
       return theirs !== null && ancestor !== null && theirs.markdown !== ancestor.markdown
-        ? conflictOf(change.documentId, theirs, '', ancestor.markdown)
+        ? conflictOf(
+            change.documentId,
+            theirs,
+            '',
+            ancestor.markdown,
+            deletionMarkers('', theirs.markdown),
+          )
         : { kind: 'change', change: relocated }
     }
     // A move that carries no content has nothing to merge; its path is already
@@ -393,6 +399,7 @@ export class GitContentStore implements ContentStore {
             { path: pathOf(change), markdown: '' },
             change.markdown,
             ancestor.markdown,
+            deletionMarkers(change.markdown, ''),
           )
     }
     if (theirs.markdown === change.markdown) return { kind: 'change', change: relocated }
@@ -505,7 +512,8 @@ function conflictOf(
   theirs: FoundDocument,
   ours: string,
   base: string,
-  conflicted?: string,
+  /** What a merge view shows: always with markers, so each caller says what it is. */
+  conflicted: string,
 ): ChangeOutcome {
   return {
     kind: 'conflict',
@@ -515,7 +523,7 @@ function conflictOf(
       ours,
       theirs: theirs.markdown,
       base,
-      conflicted: conflicted ?? conflictMarkers(base, ours, theirs.markdown),
+      conflicted,
     },
   }
 }

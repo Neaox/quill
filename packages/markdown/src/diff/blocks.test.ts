@@ -118,6 +118,15 @@ describe('alignBlocks', () => {
 })
 
 describe('similarity', () => {
+  it('is one for two blocks with no words at all, and zero against one that has some', () => {
+    const [rule, otherRule, words] = blocks(['---', '***', 'Some words.'].join('\n\n'))
+    if (rule === undefined || otherRule === undefined || words === undefined)
+      throw new Error('blocks')
+    expect(similarity(rule, otherRule)).toBe(1)
+    expect(similarity(rule, words)).toBe(0)
+    expect(similarity(words, rule)).toBe(0)
+  })
+
   it('is one for equal text and zero for nothing in common', () => {
     const [left, right, other] = blocks('Same words.\n\nSame words.\n\nDifferent things.')
     if (left === undefined || right === undefined || other === undefined) throw new Error('blocks')

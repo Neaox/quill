@@ -9,7 +9,7 @@ import {
   SPECIMEN_CHILD_PAGES,
 } from './navigation-specimens.tsx'
 
-describe('the navigation specimens (ADR-056)', () => {
+describe('the navigation specimens (ADR-058)', () => {
   it('are drawn by the renderer, and filled by the template, as they are today', () => {
     for (const specimen of NAVIGATION_BLOCK_SPECIMENS) {
       const body = renderHtml(parseMarkdown(specimen.markdown))
