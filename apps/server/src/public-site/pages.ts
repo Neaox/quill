@@ -3,6 +3,7 @@ import { publicPageHref } from '@quill/application'
 import type { Snippet } from '@quill/search'
 
 import { html, raw, toDocument, type Html } from './html.ts'
+import { PUBLISHED_DATE } from './templates/footer.ts'
 
 /**
  * The middles of the four public pages: a document, the site's index, the
@@ -122,23 +123,35 @@ export interface SearchResultView {
   readonly title: string
   readonly path: string
   readonly snippet: Snippet
+  /** The titles of the pages above this one on the site, outermost first; empty at the top. */
+  readonly trail: readonly string[]
+  readonly publishedAt: Date
 }
+
+/**
+ * Why a query was not run, in words for the person who typed it.
+ *
+ * A stranger typing into a search box is owed an explanation rather than an
+ * error page, and the parser already knows what was wrong with the text: so
+ * the page says it, in the same sentence the signed-in search gives.
+ */
+export type SearchRefusalView =
+  | { readonly kind: 'unparsed'; readonly message: string }
+  | { readonly kind: 'nothing-to-search-for' }
+  /** `by:`, `team:` and `prop:`, which a site open to the world does not answer: see `searchesPrivateFields`. */
+  | { readonly kind: 'people-not-offered' }
 
 export function renderSearchMain(view: {
   readonly siteSlug: string
   readonly query: string
   readonly results: readonly SearchResultView[]
+  readonly refusal: SearchRefusalView | null
+  /** Where the next page of results is, or null when this is the last one. */
+  readonly more: string | null
 }): Html {
   return html`<article class="layout-grid prose">
     <h1>Search</h1>
-    <p>
-      ${
-        view.results.length === 0
-          ? html`Nothing matched <strong>${view.query}</strong>.`
-          : html`${view.results.length} result${view.results.length === 1 ? '' : 's'} for
-              <strong>${view.query}</strong>.`
-      }
-    </p>
+    ${renderSearchSummary(view)}
     ${
       view.results.length === 0
         ? ''
@@ -149,11 +162,66 @@ export function renderSearchMain(view: {
                   >${result.title}</a
                 >
                 <p class="site-result-snippet">${renderSnippet(result.snippet)}</p>
+                <p class="site-result-meta">
+                  ${
+                    result.trail.length === 0
+                      ? ''
+                      : html`<span class="site-result-trail"
+                          >${result.trail.map(
+                            (step, index) => html`${index === 0 ? '' : ' / '}${step}`,
+                          )}</span
+                        >`
+                  }
+                  <time datetime="${result.publishedAt.toISOString()}"
+                    >${PUBLISHED_DATE.format(result.publishedAt)}</time
+                  >
+                </p>
               </li>`,
             )}
           </ul>`
     }
+    ${
+      view.more === null
+        ? ''
+        : html`<p class="site-results-more"><a href="${view.more}">More results</a></p>`
+    }
   </article>`
+}
+
+/**
+ * The sentence above the results: what was asked, what came of it, and what
+ * to do if that was nothing. A total is claimed only when the results are
+ * complete — a page that says "20 results" over a list with more behind it is
+ * telling a reader the site has twenty things to say about their question.
+ */
+function renderSearchSummary(view: {
+  readonly query: string
+  readonly results: readonly SearchResultView[]
+  readonly refusal: SearchRefusalView | null
+  readonly more: string | null
+}): Html {
+  if (view.refusal?.kind === 'unparsed') {
+    return html`<p>That search could not be read: ${view.refusal.message}</p>`
+  }
+  if (view.refusal?.kind === 'people-not-offered') {
+    return html`<p>Searching by person, team or property is not offered on this site.</p>`
+  }
+  if (view.refusal?.kind === 'nothing-to-search-for') {
+    return html`<p>A search needs a word or phrase to look for, not only things to leave out.</p>`
+  }
+  if (view.query === '') return html`<p>Type a word or phrase to search this site.</p>`
+
+  const count = view.results.length
+  if (count === 0) {
+    return html`<p>
+      Nothing matched <strong>${view.query}</strong>. Try different words, fewer words, or a
+      different spelling.
+    </p>`
+  }
+  const noun = `${count} result${count === 1 ? '' : 's'}`
+  return view.more === null
+    ? html`<p>${noun} for <strong>${view.query}</strong>.</p>`
+    : html`<p>Showing the first ${noun} for <strong>${view.query}</strong>.</p>`
 }
 
 /**

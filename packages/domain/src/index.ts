@@ -35,6 +35,9 @@ export {
 
 export { MAX_SLUG_LENGTH, slugify } from './slug.ts'
 
+export type { SearchSuggestion } from './suggestion-ranking.ts'
+export { compareCodePoints, rankSuggestions, suggestion } from './suggestion-ranking.ts'
+
 export type { Result } from './result.ts'
 export { err, ok } from './result.ts'
 

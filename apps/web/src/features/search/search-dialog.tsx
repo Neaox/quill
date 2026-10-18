@@ -20,7 +20,9 @@ import {
 } from '../../lib/routing/document-reference.ts'
 import { currentEditorCommands } from './editor-commands.ts'
 import { commandGroups, matchCommands, paletteCommands, type CommandAction } from './commands.ts'
+import { FilterChipList } from './filter-chip-list.tsx'
 import { InvalidQueryNotice } from './invalid-query-notice.tsx'
+import { FILTERS, filterChips, tokenAt, withoutClause } from './search-filters.ts'
 import { SearchHitDetail, searchHitLink } from './search-hit.tsx'
 import {
   QUERY_TOO_LONG,
@@ -31,6 +33,7 @@ import {
   type SearchSection,
 } from './sections.ts'
 import { useDebouncedValue } from './use-debounced-value.ts'
+import { useFilterTypeahead } from './use-filter-typeahead.tsx'
 
 export const searchDialogStyles = tv({
   slots: {
@@ -124,7 +127,7 @@ export function SearchDialog({ open, onOpenChange, workspaceSlug }: SearchDialog
         // The title alone is the option's name; everything else describes it,
         // so the arrow keys announce "Regional failover" rather than the whole
         // snippet (`search-hit.tsx`).
-        return { id, label: hit.title, detail: <SearchHitDetail hit={hit} /> }
+        return { id, label: hit.title, detail: <SearchHitDetail hit={hit} density="compact" /> }
       }),
     }))
     return { groups: rendered, targets: destinations }
@@ -132,7 +135,27 @@ export function SearchDialog({ open, onOpenChange, workspaceSlug }: SearchDialog
 
   // Commands first: a handful of named places that answer at once, then the
   // documents, which take a round trip.
-  const allGroups = [...commandGroups(matchedCommands), ...groups]
+  const answerGroups = [...commandGroups(matchedCommands), ...groups]
+
+  // The palette does not expose its caret, so the token being typed is the last
+  // one — which is where somebody typing a query is nearly always typing. Its
+  // suggestions come before everything else: they complete the query, and the
+  // rest answer it.
+  const typeahead = useFilterTypeahead({
+    text: query,
+    caret: query.length,
+    workspaceId: workspace?.id ?? null,
+  })
+  const allGroups = [...typeahead.groups, ...answerGroups]
+  const chips = filterChips(query)
+  // Half-way through `team:`, with its values on offer, the server's "nothing
+  // after the colon" is the very thing the values are for, not a mistake to
+  // be told about. A filter with no values to offer (`owner:`) still is.
+  const finishing = tokenAt(query, query.length)
+  const offeringValues =
+    finishing.key !== null &&
+    finishing.value === '' &&
+    FILTERS.some((filter) => filter.key === finishing.key && filter.suggests)
 
   const typed = query.trim()
   /**
@@ -167,7 +190,25 @@ export function SearchDialog({ open, onOpenChange, workspaceSlug }: SearchDialog
       // `aria-busy` there presents the previous query's hits as the answer to
       // this one (`docs/design/feedback.md`).
       busy={results.isFetching || settling}
+      renderFilters={({ focusField }) =>
+        chips.length === 0 ? undefined : (
+          <FilterChipList
+            chips={chips}
+            onRemove={(chip) => {
+              setQuery(withoutClause(query, chip.clause))
+              focusField()
+            }}
+          />
+        )
+      }
       onSelect={(id) => {
+        // Completing a filter edits the query and keeps the palette open: it
+        // is a step toward a search, not somewhere to go.
+        const edit = typeahead.accept(id)
+        if (edit !== undefined) {
+          setQuery(edit.text)
+          return
+        }
         const action = actions.get(id)
         if (action !== undefined) {
           onOpenChange(false)
@@ -224,7 +265,11 @@ export function SearchDialog({ open, onOpenChange, workspaceSlug }: SearchDialog
     // Everything below describes an answer, so it waits for one. While a
     // keystroke is settling, the field is busy and the last answer stands.
     if (!settled()) return undefined
-    if (invalid !== undefined) return <InvalidQueryNotice query={answering} invalid={invalid} />
+    if (invalid !== undefined) {
+      return offeringValues && invalid.kind === 'empty-filter-value' ? undefined : (
+        <InvalidQueryNotice query={answering} invalid={invalid} />
+      )
+    }
     if (results.isError) {
       return (
         <p role="alert" className={styles.prompt()}>
@@ -232,7 +277,7 @@ export function SearchDialog({ open, onOpenChange, workspaceSlug }: SearchDialog
         </p>
       )
     }
-    if (allGroups.length === 0) {
+    if (answerGroups.length === 0) {
       return <p className={styles.prompt()}>Nothing matched “{answering}”.</p>
     }
     return undefined

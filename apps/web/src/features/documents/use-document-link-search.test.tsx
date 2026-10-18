@@ -5,21 +5,20 @@ import { describe, expect, it, vi } from 'vitest'
 
 import { ApiClientProvider } from '../../lib/api/client-context.tsx'
 import { createQueryClient } from '../../lib/api/query-client.ts'
+import { searchHitFixture } from '../../lib/api/search-fixtures.ts'
 import { createFakeApiClient, jsonResponse } from '../../lib/api/testing.ts'
 import { linkTargets, useDocumentLinkSearch } from './use-document-link-search.ts'
 
 function hit(documentId: string, title: string, breadcrumb: string[] = []) {
-  return {
+  return searchHitFixture(title, {
     documentId,
     shortId: documentId,
     slug: title.toLowerCase(),
-    title,
     path: `/${title}`,
     workspaceId: 'engineering',
     breadcrumb,
     snippet: { text: '', ranges: [] },
-    score: 1,
-  }
+  })
 }
 
 const RESULTS = {

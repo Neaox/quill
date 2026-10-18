@@ -39,6 +39,17 @@ function writtenAs(markdown: string, attributes: Readonly<Record<string, string>
   return stringifyMdast(proseMirrorToMdast(changed).tree)
 }
 
+/** The document with some of its one callout's attributes replaced by anything at all, written. */
+function writtenWith(markdown: string, replaced: Readonly<Record<string, unknown>>): string {
+  const doc = open(markdown)
+  const [callout] = blocks(doc)
+  if (callout === undefined) throw new Error('No callout.')
+  const changed = doc.type.create(null, [
+    callout.type.create({ ...callout.attrs, ...replaced }, callout.content),
+  ])
+  return stringifyMdast(proseMirrorToMdast(changed).tree)
+}
+
 /** The document with its one callout given a title, written. */
 function writtenTitled(markdown: string, title: string): string {
   const doc = open(markdown)
@@ -210,5 +221,20 @@ describe('a callout written back as a quote', () => {
     expect(saved(':::callout{type=note}\nRead this first.\n:::\n')).toBe(
       ':::callout{type=note}\nRead this first.\n:::\n',
     )
+  })
+})
+
+describe('a callout that is no longer one a quote can say', () => {
+  const NOTE = '> [!NOTE]\n> Read this first.\n'
+
+  it.each([
+    ['attributes that are not an object', { attributes: null }],
+    ['a form that has lost its marker', { alert: {} }],
+    ['no kind', { attributes: {} }],
+    ['more to say than a kind', { attributes: { type: 'tip', title: 'Heads up' } }],
+    ['a kind that is not a callout kind', { attributes: { type: 'shout' } }],
+    ['an attribute that is not a kind', { attributes: { title: 'Heads up' } }],
+  ])('is written as the directive when it has %s', (_what, replaced) => {
+    expect(writtenWith(NOTE, replaced)).toMatch(/^:::callout/u)
   })
 })

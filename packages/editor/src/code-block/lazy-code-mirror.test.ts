@@ -108,6 +108,36 @@ afterEach(() => {
   document.body.replaceChildren()
 })
 
+describe('the furniture around a block', () => {
+  it('is called for once the block is painted, and not again when it opens', () => {
+    const { mounting, watched } = manualMounting()
+    const given = options()
+    const wanted = vi.fn<() => void>()
+    createLazyCodeMirror({ ...given, mounting, onWanted: wanted })
+    expect(wanted).not.toHaveBeenCalled()
+    const block = watched.get(still(given.parent) ?? given.parent)
+    block?.paint()
+    block?.paint()
+    block?.open()
+    expect(wanted).toHaveBeenCalledOnce()
+  })
+
+  it('is called for when the block is opened before it was ever near', () => {
+    const { mounting, watched } = manualMounting()
+    const given = options()
+    const wanted = vi.fn<() => void>()
+    createLazyCodeMirror({ ...given, mounting, onWanted: wanted })
+    watched.get(still(given.parent) ?? given.parent)?.open()
+    expect(wanted).toHaveBeenCalledOnce()
+  })
+
+  it('is called for at once where every block is opened as it is drawn', () => {
+    const wanted = vi.fn<() => void>()
+    createLazyCodeMirror({ ...options(), mounting: eagerMounting, onWanted: wanted })
+    expect(wanted).toHaveBeenCalledOnce()
+  })
+})
+
 describe('a code block before it is opened', () => {
   it('is the static block, with its text and no editor', () => {
     const { mounting } = manualMounting()

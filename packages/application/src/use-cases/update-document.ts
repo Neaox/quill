@@ -11,8 +11,7 @@ import type {
   UpdateDocumentPatch,
 } from '../ports/persistence.ts'
 import type { Clock, IdGenerator } from '../ports/system.ts'
-import { DOCUMENT_MOVED, DOCUMENT_RENAMED, EVENT_PAYLOAD_VERSION } from './events.ts'
-import type { DocumentMovedPayload, DocumentRenamedPayload } from './events.ts'
+import { documentDeleted, documentMoved, documentRenamed } from './events.ts'
 import { heldByAnother, readDraftContent } from './publish-document.ts'
 
 /**
@@ -185,14 +184,16 @@ export async function updateDocument(
     // page under a sibling moves nothing on the web and an event saying it
     // had would make the redirect table describe addresses that never existed.
     if (movingCollection) {
-      const payload: DocumentMovedPayload = {
-        version: EVENT_PAYLOAD_VERSION,
-        documentId: document.id,
-        workspaceId: document.workspaceId,
-        fromCollectionId: document.collectionId,
-        toCollectionId: updated.collectionId,
-      }
-      await tx.outbox.write({ id: deps.ids.uuid(), type: DOCUMENT_MOVED, payload, now })
+      await tx.events.record(
+        documentMoved,
+        {
+          documentId: document.id,
+          workspaceId: document.workspaceId,
+          fromCollectionId: document.collectionId,
+          toCollectionId: updated.collectionId,
+        },
+        now,
+      )
       await auditMove(deps, tx, { document, updated, now, sessionId: command.sessionId })
     }
     return { kind: 'updated', document: updated }
@@ -292,19 +293,16 @@ async function applyRename(
   // publish is what changed the title — an author editing the first heading —
   // so a rename is announced exactly once (`recordPublish`).
   if (input.title !== input.document.title) {
-    const payload: DocumentRenamedPayload = {
-      version: EVENT_PAYLOAD_VERSION,
-      documentId: input.document.id,
-      workspaceId: input.document.workspaceId,
-      from: input.document.title,
-      to: input.title,
-    }
-    await tx.outbox.write({
-      id: deps.ids.uuid(),
-      type: DOCUMENT_RENAMED,
-      payload,
-      now: input.now,
-    })
+    await tx.events.record(
+      documentRenamed,
+      {
+        documentId: input.document.id,
+        workspaceId: input.document.workspaceId,
+        from: input.document.title,
+        to: input.title,
+      },
+      input.now,
+    )
   }
   return null
 }
@@ -365,21 +363,35 @@ export async function deleteDocument(
   const siblings = await repos.documents.listByWorkspace(document.workspaceId)
   const orphaned = siblings.filter((row) => row.parentId === command.documentId).length
 
-  await repos.documents.delete(command.documentId)
-  await repos.audit.write({
-    id: deps.ids.uuid(),
-    type: DOCUMENT_AUDIT_EVENTS.deleted,
-    actorUserId: command.deletedBy,
-    targetType: 'document',
-    targetId: document.id,
-    metadata: {
-      workspaceId: document.workspaceId,
-      collectionId: document.collectionId,
-      title: document.title,
-      path: document.path,
-      childrenLifted: orphaned,
-    },
-    now: deps.clock.now(),
+  const now = deps.clock.now()
+  // The deletion, its audit row and its announcement commit together.
+  await deps.uow.run(async (tx) => {
+    await tx.documents.delete(command.documentId)
+    await tx.events.record(
+      documentDeleted,
+      {
+        documentId: document.id,
+        workspaceId: document.workspaceId,
+        collectionId: document.collectionId,
+        deletedBy: command.deletedBy,
+      },
+      now,
+    )
+    await tx.audit.write({
+      id: deps.ids.uuid(),
+      type: DOCUMENT_AUDIT_EVENTS.deleted,
+      actorUserId: command.deletedBy,
+      targetType: 'document',
+      targetId: document.id,
+      metadata: {
+        workspaceId: document.workspaceId,
+        collectionId: document.collectionId,
+        title: document.title,
+        path: document.path,
+        childrenLifted: orphaned,
+      },
+      now,
+    })
   })
   return { kind: 'deleted' }
 }

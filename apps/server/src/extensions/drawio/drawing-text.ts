@@ -21,8 +21,9 @@ const inflateRawAsync = promisify(inflateRaw)
 /** zlib's code for output past `maxOutputLength`. */
 const BUFFER_TOO_LARGE = 'ERR_BUFFER_TOO_LARGE'
 
+/** A thrown value's `code`, or undefined for one that has none (`Object` boxes a primitive). */
 function errorCode(error: unknown): unknown {
-  return typeof error === 'object' && error !== null && 'code' in error ? error.code : undefined
+  return Reflect.get(Object(error), 'code')
 }
 
 export const zlibInflate: Inflate = async (compressed, maxBytes) => {

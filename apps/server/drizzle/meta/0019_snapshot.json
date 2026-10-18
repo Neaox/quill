@@ -1,5 +1,5 @@
 {
-  "id": "dcc7b471-2c09-4d55-a35a-9faee1bc5e6a",
+  "id": "0df8ba1d-7004-47bc-b2d1-f918fcdc7c1a",
   "prevId": "02a0c3f7-3927-4d25-8012-514be6ba52bb",
   "version": "7",
   "dialect": "postgresql",
@@ -908,6 +908,20 @@
           "primaryKey": false,
           "notNull": true
         },
+        "contributor_emails": {
+          "name": "contributor_emails",
+          "type": "text[]",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{}'::text[]"
+        },
+        "contributors_text": {
+          "name": "contributors_text",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "''"
+        },
         "updated_at": {
           "name": "updated_at",
           "type": "timestamp with time zone",
@@ -1010,6 +1024,21 @@
           "columns": [
             {
               "expression": "owners",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "gin",
+          "with": {}
+        },
+        "document_search_contributor_emails_idx": {
+          "name": "document_search_contributor_emails_idx",
+          "columns": [
+            {
+              "expression": "contributor_emails",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -1920,106 +1949,6 @@
       "indexes": {},
       "foreignKeys": {},
       "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
-    "public.link_previews": {
-      "name": "link_previews",
-      "schema": "",
-      "columns": {
-        "scope": {
-          "name": "scope",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "key": {
-          "name": "key",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "state": {
-          "name": "state",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "document": {
-          "name": "document",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "failure": {
-          "name": "failure",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "fetched_at": {
-          "name": "fetched_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "requested_at": {
-          "name": "requested_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "retry_after": {
-          "name": "retry_after",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        }
-      },
-      "indexes": {
-        "link_previews_thumbnail_idx": {
-          "name": "link_previews_thumbnail_idx",
-          "columns": [
-            {
-              "expression": "(document->'thumbnail'->>'hash')",
-              "asc": true,
-              "isExpression": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "link_previews_favicon_idx": {
-          "name": "link_previews_favicon_idx",
-          "columns": [
-            {
-              "expression": "(document->'favicon'->>'hash')",
-              "asc": true,
-              "isExpression": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {},
-      "compositePrimaryKeys": {
-        "link_previews_scope_key_pk": {
-          "name": "link_previews_scope_key_pk",
-          "columns": [
-            "scope",
-            "key"
-          ]
-        }
-      },
       "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {},

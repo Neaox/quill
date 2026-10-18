@@ -13505,6 +13505,15 @@
             "in": "query",
             "name": "cursor",
             "required": false
+          },
+          {
+            "schema": {
+              "pattern": "^(tag|status|collection)(,(tag|status|collection))*$",
+              "type": "string"
+            },
+            "in": "query",
+            "name": "facets",
+            "required": false
           }
         ],
         "responses": {
@@ -13536,7 +13545,12 @@
                           "workspaceId",
                           "breadcrumb",
                           "snippet",
-                          "score"
+                          "score",
+                          "status",
+                          "updatedAt",
+                          "tags",
+                          "contributors",
+                          "contributorCount"
                         ],
                         "properties": {
                           "documentId": {
@@ -13597,6 +13611,36 @@
                           },
                           "score": {
                             "type": "number"
+                          },
+                          "status": {
+                            "type": "string"
+                          },
+                          "updatedAt": {
+                            "type": "string"
+                          },
+                          "tags": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          },
+                          "contributors": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "required": [
+                                "name"
+                              ],
+                              "properties": {
+                                "name": {
+                                  "type": "string"
+                                }
+                              }
+                            }
+                          },
+                          "contributorCount": {
+                            "minimum": 0,
+                            "type": "integer"
                           }
                         }
                       }
@@ -13642,7 +13686,12 @@
                                 "workspaceId",
                                 "breadcrumb",
                                 "snippet",
-                                "score"
+                                "score",
+                                "status",
+                                "updatedAt",
+                                "tags",
+                                "contributors",
+                                "contributorCount"
                               ],
                               "properties": {
                                 "documentId": {
@@ -13703,6 +13752,36 @@
                                 },
                                 "score": {
                                   "type": "number"
+                                },
+                                "status": {
+                                  "type": "string"
+                                },
+                                "updatedAt": {
+                                  "type": "string"
+                                },
+                                "tags": {
+                                  "type": "array",
+                                  "items": {
+                                    "type": "string"
+                                  }
+                                },
+                                "contributors": {
+                                  "type": "array",
+                                  "items": {
+                                    "type": "object",
+                                    "required": [
+                                      "name"
+                                    ],
+                                    "properties": {
+                                      "name": {
+                                        "type": "string"
+                                      }
+                                    }
+                                  }
+                                },
+                                "contributorCount": {
+                                  "minimum": 0,
+                                  "type": "integer"
                                 }
                               }
                             }
@@ -13712,6 +13791,198 @@
                     },
                     "nextCursor": {
                       "type": "string"
+                    },
+                    "facets": {
+                      "type": "object",
+                      "properties": {
+                        "tag": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "required": [
+                              "value",
+                              "label",
+                              "count"
+                            ],
+                            "properties": {
+                              "value": {
+                                "type": "string"
+                              },
+                              "label": {
+                                "type": "string"
+                              },
+                              "count": {
+                                "minimum": 1,
+                                "type": "integer"
+                              }
+                            }
+                          }
+                        },
+                        "status": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "required": [
+                              "value",
+                              "label",
+                              "count"
+                            ],
+                            "properties": {
+                              "value": {
+                                "type": "string"
+                              },
+                              "label": {
+                                "type": "string"
+                              },
+                              "count": {
+                                "minimum": 1,
+                                "type": "integer"
+                              }
+                            }
+                          }
+                        },
+                        "collection": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "required": [
+                              "value",
+                              "label",
+                              "count"
+                            ],
+                            "properties": {
+                              "value": {
+                                "type": "string"
+                              },
+                              "label": {
+                                "type": "string"
+                              },
+                              "count": {
+                                "minimum": 1,
+                                "type": "integer"
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/search/suggestions": {
+      "get": {
+        "parameters": [
+          {
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "enum": [
+                    "by"
+                  ]
+                },
+                {
+                  "type": "string",
+                  "enum": [
+                    "team"
+                  ]
+                },
+                {
+                  "type": "string",
+                  "enum": [
+                    "tag"
+                  ]
+                },
+                {
+                  "type": "string",
+                  "enum": [
+                    "collection"
+                  ]
+                },
+                {
+                  "type": "string",
+                  "enum": [
+                    "in"
+                  ]
+                },
+                {
+                  "type": "string",
+                  "enum": [
+                    "status"
+                  ]
+                }
+              ]
+            },
+            "in": "query",
+            "name": "field",
+            "required": true
+          },
+          {
+            "schema": {
+              "maxLength": 100,
+              "type": "string"
+            },
+            "in": "query",
+            "name": "prefix",
+            "required": false
+          },
+          {
+            "schema": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "in": "query",
+            "name": "workspace",
+            "required": false
+          },
+          {
+            "schema": {
+              "minimum": 1,
+              "maximum": 10,
+              "type": "integer"
+            },
+            "in": "query",
+            "name": "limit",
+            "required": false
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "field",
+                    "suggestions"
+                  ],
+                  "properties": {
+                    "field": {
+                      "type": "string"
+                    },
+                    "suggestions": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "value",
+                          "label"
+                        ],
+                        "properties": {
+                          "value": {
+                            "type": "string"
+                          },
+                          "label": {
+                            "type": "string"
+                          }
+                        }
+                      }
                     }
                   }
                 }

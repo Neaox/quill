@@ -12,7 +12,10 @@ export { createAuthorizer, toGrants } from './authorizer.ts'
 
 export type {
   AttachmentRevisedPayload,
+  CollectionDeletedPayload,
   DocumentCreatedPayload,
+  DocumentDeletedPayload,
+  GrantChangedPayload,
   DocumentMovedPayload,
   DocumentPublishedPayload,
   DocumentRenamedPayload,
@@ -23,17 +26,33 @@ export type {
 } from './events.ts'
 export {
   ATTACHMENT_REVISED,
+  attachmentRevised,
+  COLLECTION_DELETED,
+  collectionDeleted,
   DOCUMENT_CREATED,
+  DOCUMENT_DELETED,
   DOCUMENT_MOVED,
   DOCUMENT_PUBLISHED,
   DOCUMENT_RENAMED,
+  documentCreated,
+  documentDeleted,
+  documentMoved,
+  documentPublished,
+  documentRenamed,
   EVENT_PAYLOAD_VERSION,
   LINK_PREVIEW_REQUESTED,
+  GRANT_CREATED,
+  GRANT_REVOKED,
+  grantChange,
+  grantCreated,
+  grantRevoked,
   MAIL_REQUESTED,
+  mailRequested,
   REVIEW_DECIDED,
   REVIEW_REQUESTED,
   REVIEW_WITHDRAWN,
   parseAttachmentRevised,
+  parseDocumentCreated,
   parseDocumentMoved,
   parseDocumentPublished,
   parseDocumentRenamed,
@@ -41,6 +60,9 @@ export {
   parseReviewDecided,
   parseReviewRequested,
   parseReviewWithdrawn,
+  reviewDecided,
+  reviewRequested,
+  reviewWithdrawn,
 } from './events.ts'
 
 export type { DocumentPlacement, DocumentReference, PathCandidate } from './document-path.ts'
@@ -543,6 +565,12 @@ export {
   readPersonPreferences,
   updatePersonPreferences,
 } from './person-preferences.ts'
+export type {
+  SuggestionField,
+  SuggestSearchValuesCommand,
+  SuggestSearchValuesDependencies,
+} from './suggest-search-values.ts'
+export { suggestSearchValues } from './suggest-search-values.ts'
 
 export type {
   LinkPreviewDependencies,

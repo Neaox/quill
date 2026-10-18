@@ -46,6 +46,8 @@ export {
 } from './lib/link.tsx'
 
 export { Badge, badgeStyles, type BadgeProps, type BadgeTone } from './components/badge.tsx'
+export { FilterChip, filterChipStyles, type FilterChipProps } from './components/filter-chip.tsx'
+export { PillButton, pillButtonStyles, type PillButtonProps } from './components/pill-button.tsx'
 export { Breadcrumb, type BreadcrumbItem, type BreadcrumbProps } from './components/breadcrumb.tsx'
 export {
   Button,
@@ -61,6 +63,7 @@ export { Combobox, comboboxStyles, type ComboboxProps } from './components/combo
 export {
   CommandPalette,
   commandPaletteStyles,
+  type CommandPaletteFiltersApi,
   type CommandPaletteGroup,
   type CommandPaletteOption,
   type CommandPaletteProps,

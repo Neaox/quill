@@ -10,6 +10,8 @@ import type {
   WorkspaceId,
 } from '@quill/domain'
 
+import type { EventRecorder } from './events.ts'
+import type { Contributor } from './search-index.ts'
 import type { RenderedContent } from './document-format.ts'
 import type { DocumentViewRepository } from './document-views.ts'
 import type { NotificationRepository } from './notifications.ts'
@@ -321,6 +323,8 @@ export interface GroupRepository {
    * cost one round trip per level.
    */
   listForUser(userId: UserId): Promise<readonly GroupRow[]>
+  /** Every group of these units, in one query; the names a search's `team:` completes. */
+  listByUnits(unitIds: readonly UnitId[]): Promise<readonly GroupRow[]>
 }
 
 export interface WorkspaceRow {
@@ -443,6 +447,8 @@ export interface CollectionRepository {
   listByWorkspace(workspaceId: WorkspaceId): Promise<readonly CollectionRow[]>
   /** The collections with these ids, in no particular order; an unknown id is simply absent. */
   listByIds(ids: readonly CollectionId[]): Promise<readonly CollectionRow[]>
+  /** The collections of these workspaces, in one query, in no particular order. */
+  listByWorkspaces(workspaceIds: readonly WorkspaceId[]): Promise<readonly CollectionRow[]>
   /**
    * Collections in any workspace whose name contains `text`, ignoring case,
    * by name, at most `limit` of them: what a picker offers as somebody types
@@ -985,6 +991,30 @@ export interface RevisionsIndexRepository {
    * failure to read.
    */
   findForDocument(documentId: DocumentId, revision: RevisionId): Promise<RevisionIndexRow | null>
+  /**
+   * Everyone who has published a revision of this document, once each, in
+   * order of address, under the name they published under most recently.
+   *
+   * People are told apart by address, lower case: a person's name is edited
+   * and spelt differently in different tools, where the address is what stays
+   * the same (search's `by:` and `team:` match on it). Not an account: a
+   * revision that came through Git sync names someone who may never have had
+   * one.
+   */
+  listContributors(documentId: DocumentId): Promise<readonly Contributor[]>
+  /**
+   * {@link RevisionsIndexRepository.listContributors} for several documents at
+   * once, in one query: a page of search results names its contributors without
+   * asking once per hit (AGENTS.md rule 13).
+   *
+   * Each document's list is distinct by lower-cased trimmed address, under the
+   * name last used, and ordered by who published most recently first (the
+   * display wants "Ada, Sam +2", most recent publisher first). A document with
+   * no revisions is absent from the map.
+   */
+  listContributorsForDocuments(
+    documentIds: readonly DocumentId[],
+  ): Promise<ReadonlyMap<DocumentId, readonly Contributor[]>>
 }
 
 // ---------------------------------------------------------------------------
@@ -1364,7 +1394,11 @@ export interface RepositoryBundle {
   readonly reviews: ReviewRepository
   readonly documentViews: DocumentViewRepository
   readonly notifications: NotificationRepository
-  readonly outbox: OutboxWriter
+  /**
+   * The one way to emit an event (ADR-056): the outbox row in this transaction, and the
+   * announcement to the bus once it commits. The bare `OutboxWriter` is not on the bundle.
+   */
+  readonly events: EventRecorder
   readonly audit: AuditWriter
 }
 

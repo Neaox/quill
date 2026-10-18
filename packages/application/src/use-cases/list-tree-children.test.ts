@@ -171,6 +171,37 @@ describe('listTreeChildren', () => {
     })
   })
 
+  it('reports a broken tree rather than looping on it', async () => {
+    await uow.repos.units.create({
+      id: 'loop',
+      parentId: 'loop',
+      name: 'Loop',
+      slug: 'loop',
+      label: 'team',
+      now: NOW,
+    })
+    const looping = workspaceId('00000000-0000-4000-8000-000000000102')
+    await uow.repos.workspaces.create({
+      id: looping,
+      unitId: 'loop',
+      name: 'Looping',
+      slug: 'looping',
+      now: NOW,
+    })
+    await uow.repos.collections.create({
+      id: 'log',
+      workspaceId: looping,
+      name: 'Log',
+      slug: 'log',
+      now: NOW,
+    })
+
+    expect(await ask({ workspaceId: looping, seesEverything: false })).toEqual({
+      kind: 'broken-tree',
+      failure: { kind: 'unit-cycle', unitId: 'loop' },
+    })
+  })
+
   describe('for a reader who may see only some of it', () => {
     beforeEach(async () => {
       await aDocument(1, 'Hidden one')
