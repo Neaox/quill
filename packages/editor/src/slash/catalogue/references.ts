@@ -1,7 +1,7 @@
-import { DocumentIcon, FootnoteIcon, SmallPrintIcon } from '@quill/ui'
+import { DocumentIcon, FootnoteIcon, LinkIcon, SmallPrintIcon } from '@quill/ui'
 
-import { insertLink } from '../../document/commands.ts'
-import { insertFootnote, insertInline, textDirective } from '../slash-commands.ts'
+import { blockLinkNode, inlineLinkNode, previewableAddress } from '../../link/new-link.ts'
+import { insertBlock, insertFootnote, insertInline, textDirective } from '../slash-commands.ts'
 import { commandItem, pickerItem } from '../slash-item.ts'
 import type { SlashContribution, SlashEnvironment, SlashItem } from '../slash-item.ts'
 
@@ -10,6 +10,11 @@ import type { SlashContribution, SlashEnvironment, SlashItem } from '../slash-it
  * by the document's id (`/d/<id>`, AGENTS.md rule 8), so it survives the
  * document being renamed or moved; finding the document is the
  * application's, which owns search.
+ *
+ * It is an inline `:link` whose words are its address, which the reader draws as
+ * the document's *live* title, for what that reader may see (ADR-042, "Internal
+ * links"). Words typed in beside it would be the author's, and so would never
+ * follow a rename.
  */
 
 function documentLinkItem(
@@ -43,9 +48,92 @@ function documentLinkItem(
           }))
         },
       },
-      choose: (option) => insertLink({ href: `/d/${option.id}`, text: option.label }),
+      choose: (option) => insertInline((schema) => inlineLinkNode(schema, `/d/${option.id}`)),
     },
     (place) => place.state.selection.$from.parent.inlineContent,
+  )
+}
+
+/** What each way of making a link with a preview says about itself in the slash menu. */
+const LINK_PREVIEW_ITEMS = {
+  card: {
+    id: 'link-card',
+    label: 'Link card',
+    description: 'A web page as a card: its title, summary and picture',
+    aliases: ['bookmark', 'card'],
+    title: 'Link card address',
+    offer: 'Insert as a card',
+  },
+  compact: {
+    id: 'link-compact',
+    label: 'Compact link',
+    description: 'A web page’s icon, title and site on one line, for lists of references',
+    aliases: ['reference', 'compact'],
+    title: 'Compact link address',
+    offer: 'Insert as a compact line',
+  },
+  inline: {
+    id: 'link-inline',
+    label: 'Link with preview',
+    description: 'A web page’s icon and title, in the line',
+    aliases: ['chip'],
+    title: 'Link address',
+    offer: 'Insert inline',
+  },
+} as const
+
+/**
+ * A link that shows the page it goes to, made from an address typed or pasted
+ * into the menu's second step (ADR-042: `/link card`, `/link compact`,
+ * `/link inline`). There is one option, and only once what was typed is an
+ * address worth previewing.
+ */
+function linkPreviewItem(display: 'inline' | 'compact' | 'card'): SlashItem {
+  const words = LINK_PREVIEW_ITEMS[display]
+  const block = display !== 'inline'
+  return pickerItem(
+    {
+      id: words.id,
+      label: words.label,
+      description: words.description,
+      group: 'References',
+      keywords: [
+        'link',
+        'url',
+        'web',
+        'website',
+        'preview',
+        'bookmark',
+        'embed',
+        'unfurl',
+        display,
+      ],
+      aliases: words.aliases,
+      icon: LinkIcon,
+      inline: !block,
+    },
+    {
+      title: words.title,
+      placeholder: 'Paste or type a web address',
+      empty: (query) =>
+        query.trim() === ''
+          ? 'Paste or type a web address'
+          : 'That is not a web address (https://…)',
+      source: {
+        kind: 'list',
+        options: (query) => {
+          const address = previewableAddress(query)
+          return address === null ? [] : [{ id: address, label: address, description: words.offer }]
+        },
+      },
+      choose: (option) =>
+        display === 'inline'
+          ? insertInline((schema) => inlineLinkNode(schema, option.id))
+          : insertBlock((schema) => blockLinkNode(schema, option.id, display), {
+              standalone: true,
+            }),
+    },
+    (place) => (block ? true : place.state.selection.$from.parent.inlineContent),
   )
 }
 
@@ -55,6 +143,9 @@ export const referenceItems: SlashContribution = {
     ...(environment.searchDocuments === undefined
       ? []
       : [documentLinkItem(environment.searchDocuments)]),
+    linkPreviewItem('card'),
+    linkPreviewItem('compact'),
+    linkPreviewItem('inline'),
     commandItem(
       {
         id: 'footnote',

@@ -9,6 +9,8 @@ import { BlockMenu } from '../block/block-menu.tsx'
 import { FindBar } from '../find/find-bar.tsx'
 import type { CommentRequest } from '../block/block-menu.tsx'
 import type { ChildPagesPreview } from '../navigation/navigation-view.ts'
+import { LinkPreviewProvider, NO_LINK_PREVIEWS } from '../blocks/link-preview-context.tsx'
+import type { LinkPreviewSource } from '../blocks/link-preview-context.tsx'
 import type { ImageAction } from '../image/image-actions.ts'
 import { BlockInserter } from '../slash/block-inserter.tsx'
 import type { DocumentLinkTarget, SlashContribution, SlashRequest } from '../slash/slash-item.ts'
@@ -17,6 +19,10 @@ import { ShortcutsDialog } from '../shortcuts/shortcuts-dialog.tsx'
 import { TableToolbar } from '../table/table-toolbar.tsx'
 import { createSlashRecents, emojiRecentsKey } from '../slash/slash-recents.ts'
 import { createSlashRegistry } from '../slash/slash-registry.ts'
+import { withLinkDefaultDisplay } from '../link/link-default-display.ts'
+import { LinkEmbedSync } from '../link/link-embed-sync.tsx'
+import { LinkOfferBar } from '../link/link-offer-bar.tsx'
+import { LiveLinkTitles } from '../link/live-link-titles.tsx'
 import { createSlashStore } from '../slash/slash-store.ts'
 import { builtInContextMenu } from '../context-menu/built-in-contributions.ts'
 import { createContextMenuRegistry } from '../context-menu/context-menu-registry.ts'
@@ -112,6 +118,11 @@ export interface DocumentEditorProps {
    * the browser's local storage, which the application makes per person.
    */
   readonly recentsKey?: string
+  /**
+   * How to look up the preview of a link, for the link cards it draws (ADR-042). The editor
+   * cannot ask the server itself; omitted, a card is drawn from its address alone.
+   */
+  readonly linkPreviews?: LinkPreviewSource | undefined
   readonly className?: string
   readonly ref?: Ref<DocumentEditorHandle>
   /**
@@ -197,6 +208,7 @@ export function DocumentEditor({
   slashContributions,
   imageActions,
   recentsKey,
+  linkPreviews,
   className,
   ref,
   onChange,
@@ -384,34 +396,49 @@ export function DocumentEditor({
     restoreWrapping(editor.view)
   }, [editor])
 
+  // Tells the editor's state what an unchosen link is shown as, which the organisation decides
+  // (ADR-042). The commands that ask what a link is shown as read it from the state, so it is
+  // put there when the application learns it, and again if it changes.
+  const defaultDisplay = linkPreviews?.defaultDisplay
+  // Synchronises the ProseMirror state, which React does not render, with the application's setting.
+  useEffect(() => {
+    if (defaultDisplay === undefined || editor.isDestroyed) return
+    editor.view.dispatch(withLinkDefaultDisplay(editor.state.tr, defaultDisplay))
+  }, [editor, defaultDisplay])
+
   return (
     <div className={cx('document-editor relative', className)}>
-      <FindBar editor={editor} />
-      <BlockMenu editor={editor} {...(onComment === undefined ? {} : { onComment })} />
-      {editable ? <BlockInserter editor={editor} /> : null}
-      {editable ? <TableToolbar editor={editor} /> : null}
-      <EditorContent editor={editor} />
-      <SlashMenu store={store} editor={editor} />
-      {editable ? (
-        <EditorOverlays
-          editor={editor}
-          store={overlays}
-          registry={contextMenu}
-          environment={environment}
-          focusToolbar={focusToolbar}
-          onComment={onComment}
-          {...(searchDocuments === undefined ? {} : { searchDocuments })}
+      <LinkPreviewProvider value={linkPreviews ?? NO_LINK_PREVIEWS}>
+        <FindBar editor={editor} />
+        <BlockMenu editor={editor} {...(onComment === undefined ? {} : { onComment })} />
+        {editable ? <BlockInserter editor={editor} /> : null}
+        {editable ? <TableToolbar editor={editor} /> : null}
+        <EditorContent editor={editor} />
+        <SlashMenu store={store} editor={editor} />
+        {editable ? (
+          <EditorOverlays
+            editor={editor}
+            store={overlays}
+            registry={contextMenu}
+            environment={environment}
+            focusToolbar={focusToolbar}
+            onComment={onComment}
+            {...(searchDocuments === undefined ? {} : { searchDocuments })}
+          />
+        ) : null}
+        <LinkEmbedSync editor={editor} />
+        <LinkOfferBar editor={editor} />
+        <LiveLinkTitles editor={editor} />
+        <ShortcutsDialog
+          open={shortcutsOpen}
+          onOpenChange={setShortcutsOpen}
+          onCloseAutoFocus={(event) => {
+            // Back to the words, not to the page's first control.
+            event.preventDefault()
+            editor.commands.focus()
+          }}
         />
-      ) : null}
-      <ShortcutsDialog
-        open={shortcutsOpen}
-        onOpenChange={setShortcutsOpen}
-        onCloseAutoFocus={(event) => {
-          // Back to the words, not to the page's first control.
-          event.preventDefault()
-          editor.commands.focus()
-        }}
-      />
+      </LinkPreviewProvider>
     </div>
   )
 }

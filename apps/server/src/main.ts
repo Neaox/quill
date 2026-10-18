@@ -25,6 +25,24 @@ import { runMigrations } from './infrastructure/db/migrator.ts'
 import { createDocumentFormat } from './infrastructure/markdown/document-format.ts'
 import { CHILD_PAGES_CACHE_TTL_MS, createChildPagesCache } from './child-pages/cache.ts'
 import { subscribeChildPagesInvalidation } from './child-pages/invalidation.ts'
+import { createOpenWebClient } from './infrastructure/http/open-web-client.ts'
+import { linkPublicPolicy, linkSettingsPolicy } from './application/link-settings.ts'
+import { createLinkPreviewAudiences } from './infrastructure/link-preview/audiences.ts'
+import { createConnectorCredentialSource } from './infrastructure/link-preview/connectors/credentials.ts'
+import {
+  GITHUB_API_HOST,
+  createGitHubConnector,
+} from './infrastructure/link-preview/connectors/github-connector.ts'
+import { createFetchObserver } from './infrastructure/link-preview/fetch-log.ts'
+import { createImageIngestor } from './infrastructure/link-preview/image-ingestor.ts'
+import { createIsolatedTranscoder } from './infrastructure/link-preview/isolated-transcoder.ts'
+import { linkEmbedRegistry } from './infrastructure/link-preview/embed-config.ts'
+import { createLinkPreviewProvider } from './infrastructure/link-preview/link-preview-provider.ts'
+import { OEMBED_PROVIDERS } from './infrastructure/link-preview/oembed-providers.gen.ts'
+import { createOembedRegistry } from './infrastructure/link-preview/oembed-registry.ts'
+import { createLinkPreviewRateLimits } from './infrastructure/link-preview/rate-limits.ts'
+import { linkPreviewUserAgent } from './infrastructure/link-preview/user-agent.ts'
+import { pollOutboxLane } from './infrastructure/outbox/lane.ts'
 import { createPostgresSearchIndex } from './infrastructure/search/postgres-search-index.ts'
 import { createVisibleDocumentResolver } from './infrastructure/search/visible-documents.ts'
 import { pollOutboxOnce } from './infrastructure/outbox/poller.ts'
@@ -46,7 +64,8 @@ import { createJobRunner } from './jobs/job-runner.ts'
 import { registerOutboxConsumers } from './jobs/register-consumers.ts'
 import { createShutdown } from './shutdown.ts'
 import { createSweepJob } from './jobs/sweep-expired.ts'
-import { createEventBus } from '@quill/application'
+import { createEventBus, createLinkConnectorRegistry } from '@quill/application'
+import { createSweepLinkPreviewsJob } from './jobs/sweep-link-previews.ts'
 import { createSearchService } from '@quill/search'
 import { createDrawioText } from './extensions/drawio/drawing-text.ts'
 
@@ -196,7 +215,52 @@ const searchIndex = createPostgresSearchIndex({
 // in a stylesheet never touches the filesystem (ADR-028).
 const faceFiles = await loadFaceFiles()
 const themeStylesheets = createThemeStylesheets({ hasher, faceFiles })
+// Link previews (ADR-042). Fetching goes through the open-web client, a second
+// instance with its own stricter limits, never the allowlisted one above, and
+// images are decoded in a child process with no environment. What Quill may
+// fetch, and what the public site may draw, is the organisation's own setting,
+// read on each request so that a change takes effect at once.
+const openWeb = createOpenWebClient({
+  userAgent: linkPreviewUserAgent(config.appUrl),
+  // One log line per fetch: the host and how it went, never the path or the response.
+  observe: createFetchObserver(() => app.log),
+})
+// Connectors (layer 1) carry credentials, so they never use the open-web client: the GitHub
+// connector reaches its API through the allowlisted client, whose one host is the API's, and
+// reads its token from the secrets store at the moment of use (ADR-042, ADR-034).
+const connectorUserAgent = linkPreviewUserAgent(config.appUrl)
+const gitHubApi = createOutboundClient({
+  allowedHosts: [GITHUB_API_HOST],
+  timeoutMs: 8_000,
+  // A file's contents arrive base64-encoded inside JSON.
+  maxResponseBytes: 2 * 1024 * 1024,
+})
+const linkConnectors = createLinkConnectorRegistry([
+  createGitHubConnector({ client: gitHubApi, clock, userAgent: connectorUserAgent }),
+])
+const linkPreviewPorts = {
+  audiences: createLinkPreviewAudiences(
+    () => linkSettingsPolicy(settings),
+    () => linkPublicPolicy(settings),
+  ),
+  resolver: createLinkPreviewProvider({
+    reader: openWeb,
+    images: createImageIngestor({
+      reader: openWeb,
+      transcoder: createIsolatedTranscoder(),
+      blobs: blobStore,
+    }),
+    oembed: createOembedRegistry(OEMBED_PROVIDERS),
+    embeds: linkEmbedRegistry(config.linkEmbeds),
+    clock,
+    connectors: linkConnectors,
+    credentials: createConnectorCredentialSource({ uow, secrets, clock, ids }),
+  }),
+  limits: createLinkPreviewRateLimits(clock),
+}
+
 const deps = {
+  linkPreviewPorts,
   uow,
   searchIndex,
   search: createSearchService(searchIndex),
@@ -237,6 +301,8 @@ for (const { details, message } of startupWarnings) app.log.warn(details, messag
 const jobRunner = createJobRunner({
   clock,
   poll: (consumers, now) => pollOutboxOnce(database.pool, consumers, { now }),
+  // Slow work on other people's servers has its own lane, so it never delays a publish or a mail.
+  pollLane: (consumers, now) => pollOutboxLane(database.pool, consumers, { now }),
 })
 registerOutboxConsumers(jobRunner, { deps, mailer })
 // The public site's cache is this process's own, so the bus tells it, the
@@ -245,6 +311,7 @@ subscribePublicSiteInvalidation(eventBus, publicSiteCache)
 // The child pages lists (ADR-058) are this process's own in the same way.
 subscribeChildPagesInvalidation(eventBus, childPagesCache, deps)
 jobRunner.schedule(createSweepJob({ uow, clock, session: config.session }))
+jobRunner.schedule(createSweepLinkPreviewsJob({ uow, clock }))
 jobRunner.start()
 
 // The order matters and is pinned by `shutdown.test.ts`: the job runner

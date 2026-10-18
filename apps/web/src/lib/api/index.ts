@@ -140,6 +140,14 @@ export {
   type ComparisonRange,
 } from './content.ts'
 export {
+  linkPreviewImageUrl,
+  linkPreviewQueryOptions,
+  useLinkPreview,
+  useRefreshLinkPreview,
+  type LinkPreviewView,
+  type LinkPreview,
+} from './link-previews.ts'
+export {
   usePublishDocument,
   useRestoreRevision,
   type PublishInput,

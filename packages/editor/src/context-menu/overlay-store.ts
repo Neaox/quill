@@ -1,6 +1,7 @@
 /**
  * What the writing surface is showing over the document, besides the slash
- * menu: the context menu, the link popover, or the alternative-text field.
+ * menu: the context menu, the link popover, a card's preview details, or the
+ * alternative-text field.
  *
  * One at a time, so it is one state, a discriminated union, held outside
  * React like the slash menu's (`slash/slash-store.ts`): ProseMirror plugins
@@ -39,6 +40,14 @@ export interface LinkOverlay {
   readonly to: number
 }
 
+/** A link card's own title and description (ADR-042). */
+export interface LinkDetailsOverlay {
+  readonly kind: 'link-details'
+  readonly anchor: OverlayAnchor
+  /** The card. */
+  readonly pos: number
+}
+
 export interface AltTextOverlay {
   readonly kind: 'alt-text'
   readonly anchor: OverlayAnchor
@@ -46,7 +55,7 @@ export interface AltTextOverlay {
   readonly pos: number
 }
 
-export type Overlay = ContextMenuOverlay | LinkOverlay | AltTextOverlay
+export type Overlay = ContextMenuOverlay | LinkOverlay | LinkDetailsOverlay | AltTextOverlay
 
 export type OverlaySnapshot = Overlay | { readonly kind: 'none' }
 

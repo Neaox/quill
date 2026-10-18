@@ -42,7 +42,11 @@ function placeIn(editor: ReturnType<typeof mount>['editor']): MenuPlace {
     state: editor.state,
     pos: editor.state.selection.from,
     environment: {},
-    editor: { editLink: vi.fn<() => void>(), editAltText: vi.fn<(pos: number) => void>() },
+    editor: {
+      editLink: vi.fn<() => void>(),
+      editLinkDetails: vi.fn<(pos: number) => void>(),
+      editAltText: vi.fn<(pos: number) => void>(),
+    },
   }
 }
 

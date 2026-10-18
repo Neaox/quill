@@ -1851,6 +1851,7 @@ export interface paths {
                         "application/json": {
                             html: string;
                             outline: components["schemas"]["OutlineEntry"][];
+                            pendingLinks: number;
                             revision: string;
                             slots: string[];
                         };
@@ -2735,6 +2736,215 @@ export interface paths {
         };
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/link-previews/refresh": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        url: string;
+                    };
+                };
+            };
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            preview: {
+                                canonicalUrl: string;
+                                code?: {
+                                    language: string | null;
+                                    lines: string[];
+                                    path: string;
+                                    repository: string;
+                                    startLine: number;
+                                };
+                                description: string | null;
+                                embed?: {
+                                    aspectRatio: number;
+                                    provider: string;
+                                    src: string;
+                                };
+                                favicon: {
+                                    hash: string;
+                                    height: number;
+                                    mediaType: string;
+                                    width: number;
+                                } | null;
+                                fetchedAt: string;
+                                file?: {
+                                    bytes: number | null;
+                                    mediaType: string;
+                                    name: string | null;
+                                };
+                                /** @enum {string} */
+                                kind: "website" | "article" | "video" | "audio" | "image" | "profile" | "repository" | "issue";
+                                /** @enum {string} */
+                                layer: "connector" | "oembed" | "open-graph" | "twitter-card" | "page" | "internal";
+                                siteName: string | null;
+                                status?: {
+                                    label: string;
+                                    /** @enum {string} */
+                                    tone: "neutral" | "accent" | "success" | "warning" | "danger";
+                                };
+                                thumbnail: {
+                                    hash: string;
+                                    height: number;
+                                    mediaType: string;
+                                    width: number;
+                                } | null;
+                                title: string;
+                                url: string;
+                            };
+                            stale: boolean;
+                            /** @enum {string} */
+                            state: "ready";
+                        } | {
+                            /** @enum {string} */
+                            state: "pending";
+                        } | {
+                            /** @enum {string} */
+                            reason: "invalid_url" | "unreachable" | "not_a_page" | "no_metadata" | "restricted" | "blocked" | "busy";
+                            /** @enum {string} */
+                            state: "unavailable";
+                        } | {
+                            /** @enum {string} */
+                            state: "blocked";
+                        };
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/link-previews/resolve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        urls: string[];
+                    };
+                };
+            };
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            previews: {
+                                url: string;
+                                view: {
+                                    preview: {
+                                        canonicalUrl: string;
+                                        code?: {
+                                            language: string | null;
+                                            lines: string[];
+                                            path: string;
+                                            repository: string;
+                                            startLine: number;
+                                        };
+                                        description: string | null;
+                                        embed?: {
+                                            aspectRatio: number;
+                                            provider: string;
+                                            src: string;
+                                        };
+                                        favicon: {
+                                            hash: string;
+                                            height: number;
+                                            mediaType: string;
+                                            width: number;
+                                        } | null;
+                                        fetchedAt: string;
+                                        file?: {
+                                            bytes: number | null;
+                                            mediaType: string;
+                                            name: string | null;
+                                        };
+                                        /** @enum {string} */
+                                        kind: "website" | "article" | "video" | "audio" | "image" | "profile" | "repository" | "issue";
+                                        /** @enum {string} */
+                                        layer: "connector" | "oembed" | "open-graph" | "twitter-card" | "page" | "internal";
+                                        siteName: string | null;
+                                        status?: {
+                                            label: string;
+                                            /** @enum {string} */
+                                            tone: "neutral" | "accent" | "success" | "warning" | "danger";
+                                        };
+                                        thumbnail: {
+                                            hash: string;
+                                            height: number;
+                                            mediaType: string;
+                                            width: number;
+                                        } | null;
+                                        title: string;
+                                        url: string;
+                                    };
+                                    stale: boolean;
+                                    /** @enum {string} */
+                                    state: "ready";
+                                } | {
+                                    /** @enum {string} */
+                                    state: "pending";
+                                } | {
+                                    /** @enum {string} */
+                                    reason: "invalid_url" | "unreachable" | "not_a_page" | "no_metadata" | "restricted" | "blocked" | "busy";
+                                    /** @enum {string} */
+                                    state: "unavailable";
+                                } | {
+                                    /** @enum {string} */
+                                    state: "blocked";
+                                };
+                            }[];
+                        };
+                    };
+                };
+            };
+        };
         delete?: never;
         options?: never;
         head?: never;
@@ -3696,6 +3906,7 @@ export interface paths {
                             rendered: {
                                 html: string;
                                 outline: components["schemas"]["OutlineEntry"][];
+                                pendingLinks: number;
                                 revision: string;
                                 slots: string[];
                             };
@@ -3772,6 +3983,7 @@ export interface paths {
                             rendered: {
                                 html: string;
                                 outline: components["schemas"]["OutlineEntry"][];
+                                pendingLinks: number;
                                 revision: string;
                                 slots: string[];
                             };
@@ -4667,6 +4879,13 @@ export interface components {
                     rules: "double" | "hairline" | "cards" | "plain";
                 };
                 locked: boolean;
+            };
+            linkPreviews?: {
+                allow: string[];
+                block: string[];
+                defaultDisplay: "url" | "inline" | "compact" | "card";
+                mode: "off" | "text" | "rich";
+                publicSite: boolean;
             };
             logo?: {
                 alt: string;

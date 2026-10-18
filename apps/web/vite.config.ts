@@ -27,9 +27,10 @@ const API_URL = process.env['API_URL'] ?? 'http://localhost:3000'
  * server-rendered surfaces (`docs/architecture/public-site.md`): the public
  * site and the reader preview are pages the server answers with HTML, so in
  * development they are proxied like the API rather than falling through to
- * the single-page app.
+ * the single-page app; and the pictures link previews show (ADR-042), which
+ * the server serves from its own origin.
  */
-const API_PATHS = ['/api', '/s/', '/preview/', '/robots.txt']
+const API_PATHS = ['/api', '/s/', '/preview/', '/link-previews/', '/robots.txt']
 
 /**
  * How often, and how many times, a proxied request looks for a restarting API

@@ -87,8 +87,14 @@ import { createVersionedReader } from './versioned-reader.ts'
  * Version 12 merges two lines of work that each numbered their own 10 (the
  * other line's 10 named custom emoji by their description). It is above both,
  * so a body cached by either line is never served as current by this one.
+ *
+ * Version 13 draws a link with a display of its own (ADR-042: the
+ * `<!-- quill:link … -->` comment beside it, or the older `:link`/`::link`
+ * directives) as the slot its preview is drawn into per reader, where it was
+ * the directive's text or the live-block fallback before. Main brought this in
+ * at its 10, below this line's 12, so it needs a version above both.
  */
-export const RENDER_VERSION = 12
+export const RENDER_VERSION = 13
 
 export interface RenderDocumentDependencies {
   readonly uow: UnitOfWork

@@ -924,6 +924,47 @@ export const personPreferences = pgTable('person_preferences', {
 })
 
 /**
+ * Stored link previews (ADR-042): snapshots of other people's pages, shared
+ * across the instance in the `public` scope and kept private to an audience
+ * in any other, keyed by the normalised URL.
+ *
+ * The preview itself is a versioned document read through the application's
+ * versioned reader (ADR-033), so a row written by another release is
+ * refetched rather than misread. It is derived data: every row can be thrown
+ * away and will be fetched again when next asked for, which is why nothing
+ * here references another table and no row is ever migrated.
+ *
+ * `requested_at` marks a fetch as wanted or running, and is the lock that
+ * makes two readers queue one fetch. `retry_after` is how a dead link is not
+ * asked for on every read. A row that holds a preview keeps it through a
+ * failed refresh.
+ */
+/** Where a stored preview keeps the hash of its picture; also what the indexes below are on. */
+export const THUMBNAIL_HASH = sql`(${sql.raw('document')}->'thumbnail'->>'hash')`
+export const FAVICON_HASH = sql`(${sql.raw('document')}->'favicon'->>'hash')`
+
+export const linkPreviews = pgTable(
+  'link_previews',
+  {
+    scope: text('scope').notNull(),
+    key: text('key').notNull(),
+    state: text('state').notNull(),
+    document: jsonb('document'),
+    failure: text('failure'),
+    fetchedAt: timestamp('fetched_at', { withTimezone: true }).notNull(),
+    requestedAt: timestamp('requested_at', { withTimezone: true }),
+    retryAfter: timestamp('retry_after', { withTimezone: true }),
+  },
+  (table) => [
+    primaryKey({ columns: [table.scope, table.key] }),
+    // Which stored previews show a given picture: the question the image route asks
+    // before it serves a hash, so it must not be a scan.
+    index('link_previews_thumbnail_idx').on(THUMBNAIL_HASH),
+    index('link_previews_favicon_idx').on(FAVICON_HASH),
+  ],
+)
+
+/**
  * A request for other people's eyes on a draft (ADR-052). `draft_version` is
  * the draft the request was made about: the draft is stale when its version
  * has moved on, which needs no write. A request is *active* until `closed_at`

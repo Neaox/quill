@@ -97,6 +97,8 @@ export interface MenuPlace {
 export interface MenuEditorBridge {
   /** Opens the link popover on the selection. */
   editLink(): void
+  /** Opens the own title and description of the link card at `pos` (ADR-042). */
+  editLinkDetails(pos: number): void
   /** Opens the alternative text field for the image at `pos`. */
   editAltText(pos: number): void
 }

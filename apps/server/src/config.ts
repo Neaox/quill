@@ -3,6 +3,8 @@ import { BRAND } from '@quill/brand'
 import { loadOidcProviders } from './auth/oidc/provider-config.ts'
 import { loadDrawioConfig } from './extensions/drawio/drawio-config.ts'
 import type { DrawioConfig } from './extensions/drawio/drawio-config.ts'
+import { loadLinkEmbedsConfig } from './infrastructure/link-preview/embed-config.ts'
+import type { LinkEmbedsConfig } from './infrastructure/link-preview/embed-config.ts'
 import type { OidcProviderConfig } from './auth/oidc/provider-config.ts'
 
 /**
@@ -115,6 +117,8 @@ export interface ServerConfig {
   readonly attachments: AttachmentConfig
   /** Where the draw.io editor is served from, if anywhere (ADR-043; `extensions/drawio`). */
   readonly drawio: DrawioConfig
+  /** Which live-embed providers the operator switched off (ADR-042; `LINK_EMBEDS_DISABLED`). */
+  readonly linkEmbeds: LinkEmbedsConfig
   /**
    * Lets the OIDC identity-provider registry reach a provider that is really
    * listening on loopback — the in-process fake `e2e/sso.spec.ts` and manual
@@ -892,6 +896,7 @@ export function loadConfig(
     blobStore: loadBlobStoreConfig(env),
     attachments: loadAttachmentConfig(env),
     drawio: loadDrawioConfig(env, !isRealDeployment(appUrl), appUrl.origin),
+    linkEmbeds: loadLinkEmbedsConfig(env),
     oidcDevLoopback,
   }
 }

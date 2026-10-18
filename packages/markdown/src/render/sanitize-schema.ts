@@ -1,3 +1,4 @@
+import { LINK_DISPLAYS } from '@quill/domain'
 import { defaultSchema } from 'hast-util-sanitize'
 import type { Schema } from 'hast-util-sanitize'
 
@@ -172,6 +173,19 @@ const attributes: Schema['attributes'] = {
     ['className', 'data-footnote-backref', 'heading-anchor'],
     ARIA_LABEL,
     ['href', /^(?!\/\/)/],
+    // `link-slots.ts`'s slot (ADR-042): what the author chose for a link and the
+    // address its preview is stored under. Inert text and fixed words; the page
+    // reads them and nothing executes them. `display` and `layout` are the
+    // directive's own enumerations, `image` has the one value `none`.
+    'data-link-slot',
+    'data-link-key',
+    'data-link-internal',
+    'data-link-words',
+    'data-title',
+    'data-description',
+    ['data-display', ...LINK_DISPLAYS],
+    ['data-layout', 'side', 'top'],
+    ['data-image', 'none'],
   ],
 
   // `handlers.ts`'s `code` handler: `data-lang` names a fenced block's language,
@@ -240,8 +254,9 @@ const attributes: Schema['attributes'] = {
   ],
 
   // `handlers.ts`'s `calloutAside`: the title paragraph rendered above a
-  // callout's body. Its `id` is the default's `'*'` attribute, prefixed.
-  p: [['className', 'callout-label', ...NAVIGATION_SANITIZE_GRANT.classes.p]],
+  // callout's body. Its `id` is the default's `'*'` attribute, prefixed. A
+  // link slot's paragraph of its own (`link-slots.ts`, ADR-042) is its block form.
+  p: [['className', 'callout-label', 'link-slot-block', ...NAVIGATION_SANITIZE_GRANT.classes.p]],
 
   // `navigation/render.ts` (ADR-058): a table of contents, a `nav` named by
   // its title or by its one fixed name, with its list's style.

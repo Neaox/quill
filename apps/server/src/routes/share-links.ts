@@ -16,6 +16,7 @@ import {
   surfaceReplacement,
 } from '@quill/application'
 import type {
+  Authorizer,
   DocumentRow,
   ResolvedShareLink,
   SharedNavigationNode,
@@ -32,6 +33,13 @@ import {
   requireSharedDocument,
   SHARE_REFUSAL,
 } from '../application/authorization.ts'
+import {
+  drawnTag,
+  fillLinksForPublic,
+  internalLinks,
+  linkPreviewDependencies,
+} from '../application/fill-links.ts'
+import { linkEmbedRegistry } from '../infrastructure/link-preview/embed-config.ts'
 import { resolveDocumentId } from '../application/references.ts'
 import type { AppDependencies } from '../dependencies.ts'
 import { AppError, notFound, notModified, unprocessable } from '../errors.ts'
@@ -286,23 +294,35 @@ export function shareLinkRoutes(deps: AppDependencies): FastifyPluginAsync {
   // the route's own response schema, rather than annotated here: the type
   // provider's view of a `$ref` and TypeBox's `Static` of one are not the
   // same type, and the schema is the contract either way.
-  const publishedBody = async (document: DocumentRow, scope: ShareScope) => {
+  const publishedBody = async (
+    document: DocumentRow,
+    scope: ShareScope,
+    authorizer: Authorizer,
+  ) => {
     const rendered = await renderDocument(deps, { documentId: document.id })
     if (rendered.kind !== 'rendered') throw notFound(SHARE_REFUSAL)
     const facts = await readPublicFacts(deps, document, deps.clock.now())
-    const html = await sharedLinks(rendered.content.html, scope)
+    // Whoever holds the link reads stored previews only; they cannot cause a fetch (ADR-042).
+    // The documents it links to are shown only if this link reaches them (ADR-042, "Internal links").
+    const filled = await fillLinksForPublic(
+      linkPreviewDependencies(deps),
+      rendered.content.html,
+      linkEmbedRegistry(deps.config.linkEmbeds),
+      internalLinks(deps, { kind: 'authorized', authorizer }),
+    )
+    // Then every link, the drawn previews' among them, is readdressed for this
+    // link's scope, so a card names no id the holder was not given (ADR-046).
+    const html = await sharedLinks(filled.html, scope)
     const replacement =
       facts?.lifecycle?.state === 'deprecated'
         ? await sharedReplacement(facts.lifecycle.supersededBy, scope)
         : undefined
     return {
       // The render-cache key is the body's identity — what it was rendered
-      // from, and the render version (ADR-031) — until its links are
-      // readdressed for this link's scope, which the key does not cover.
-      etag:
-        html === rendered.content.html
-          ? `"${rendered.key}"`
-          : `"${rendered.key}.${deps.hasher.contentHash(html).slice(0, 16)}"`,
+      // from, and the render version (ADR-031) — until previews are drawn into
+      // it and its links readdressed for this link's scope, which the key
+      // does not cover.
+      etag: drawnTag(rendered.key, rendered.content.html, html),
       body: {
         document: sharedDocument(document),
         rendered: {
@@ -310,6 +330,7 @@ export function shareLinkRoutes(deps: AppDependencies): FastifyPluginAsync {
           html,
           outline: [...rendered.content.outline],
           slots: [...rendered.content.slots],
+          pendingLinks: filled.pending,
         },
         /* v8 ignore next -- a document that rendered has a head revision to read. */
         facts: publicFactsResponse(
@@ -466,11 +487,15 @@ export function shareLinkRoutes(deps: AppDependencies): FastifyPluginAsync {
 
         const access = await requireSharedDocument(authorizer, resolved.document.id, request.log)
         const children = await shareLinkNavigation(deps, resolved)
-        const { body } = await publishedBody(access.document, {
-          token: request.params.token,
-          resolved,
-          navigation: () => Promise.resolve(children),
-        })
+        const { body } = await publishedBody(
+          access.document,
+          {
+            token: request.params.token,
+            resolved,
+            navigation: () => Promise.resolve(children),
+          },
+          authorizer,
+        )
         await recordShareLinkUse(deps, {
           link: resolved.link,
           documentId: access.document.id,
@@ -509,11 +534,15 @@ export function shareLinkRoutes(deps: AppDependencies): FastifyPluginAsync {
         const documentId = await sharedDocumentId(request.params.id)
         if (documentId === null) throw notFound(SHARE_REFUSAL)
         const access = await requireSharedDocument(authorizer, documentId, request.log)
-        const { body, etag } = await publishedBody(access.document, {
-          token: request.params.token,
-          resolved,
-          navigation: () => shareLinkNavigation(deps, resolved),
-        })
+        const { body, etag } = await publishedBody(
+          access.document,
+          {
+            token: request.params.token,
+            resolved,
+            navigation: () => shareLinkNavigation(deps, resolved),
+          },
+          authorizer,
+        )
         await recordShareLinkUse(deps, {
           link: resolved.link,
           documentId: access.document.id,

@@ -61,7 +61,11 @@ function placeIn(
     state: editor.state,
     pos,
     environment,
-    editor: { editLink: vi.fn<() => void>(), editAltText: vi.fn<(pos: number) => void>() },
+    editor: {
+      editLink: vi.fn<() => void>(),
+      editLinkDetails: vi.fn<(pos: number) => void>(),
+      editAltText: vi.fn<(pos: number) => void>(),
+    },
   }
 }
 
@@ -217,7 +221,11 @@ describe('the menu itself', () => {
         store={store}
         registry={registry}
         environment={{}}
-        bridge={{ editLink: vi.fn<() => void>(), editAltText: vi.fn<(pos: number) => void>() }}
+        bridge={{
+          editLink: vi.fn<() => void>(),
+          editLinkDetails: vi.fn<(pos: number) => void>(),
+          editAltText: vi.fn<(pos: number) => void>(),
+        }}
       />,
     )
     act(() => {
@@ -260,7 +268,11 @@ describe('the menu itself', () => {
         store={store}
         registry={registry}
         environment={{}}
-        bridge={{ editLink: vi.fn<() => void>(), editAltText: vi.fn<(pos: number) => void>() }}
+        bridge={{
+          editLink: vi.fn<() => void>(),
+          editLinkDetails: vi.fn<(pos: number) => void>(),
+          editAltText: vi.fn<(pos: number) => void>(),
+        }}
       />,
     )
     act(() => {
@@ -444,5 +456,72 @@ describe('a link made at a caret with no words', () => {
       applyLink({ from: 6, to: 6, href: 'https://a.b' })(editor.state, editor.view.dispatch)
     })
     expect(editor.state.doc.textContent).toBe('Starthttps://a.b')
+  })
+})
+
+function menuChoice(entries: readonly MenuEntry[], id: string) {
+  const found = entries.find((entry) => entry.id === id)
+  if (found?.kind !== 'choice') throw new Error(`No choice "${id}".`)
+  return found
+}
+
+describe('how a link is shown, from the context menu', () => {
+  /** The place with the caret at `pos`, as a right-click leaves it. */
+  function caretAt(editor: ReturnType<typeof mount>['editor'], pos: number): MenuPlace {
+    act(() => {
+      editor.view.dispatch(
+        editor.state.tr.setSelection(TextSelection.create(editor.state.doc, pos)),
+      )
+    })
+    return placeIn(editor, pos)
+  }
+
+  it('is offered wherever the caret is in a link, and nowhere else', () => {
+    const { editor } = mount('[a link](/x) and words\n')
+    expect(menuChoice(linkMenu.entries(caretAt(editor, 3)), 'link-display').value).toBe(
+      'link-show-url',
+    )
+    const elsewhere = linkMenu.entries(caretAt(editor, 12))
+    expect(elsewhere.some((entry) => entry.id === 'link-display')).toBe(false)
+  })
+
+  it('says why a card cannot go in a heading, and shows a link inline when chosen', () => {
+    const { editor } = mount('# [a link](https://example.com/x)\n')
+    const display = menuChoice(linkMenu.entries(caretAt(editor, 3)), 'link-display')
+    expect(
+      display.options.find((option) => option.value === 'link-show-card')?.disabledReason,
+    ).toMatch(/line of its own/u)
+    act(() => {
+      display.choose('link-show-inline')
+    })
+    expect(editor.state.doc.firstChild?.firstChild?.type.name).toBe('textDirective')
+  })
+
+  it('offers a card’s layout, picture and own words, and opens its details', () => {
+    const { editor } = mount('<https://example.com/x> <!-- quill:link display=card -->\n')
+    act(() => {
+      editor.commands.setNodeSelection(0)
+    })
+    const place = placeIn(editor, 0)
+    const entries = linkMenu.entries(place)
+    expect(menuChoice(entries, 'card-layout').value).toBe('card-layout-side')
+    act(() => {
+      menuChoice(entries, 'card-layout').choose('card-layout-top')
+    })
+    expect(menuChoice(linkMenu.entries(placeIn(editor, 0)), 'card-layout').value).toBe(
+      'card-layout-top',
+    )
+    const image = action(linkMenu.entries(placeIn(editor, 0)), 'card-image')
+    expect(image.checked).toBe(true)
+    act(() => {
+      image.run()
+    })
+    expect(action(linkMenu.entries(placeIn(editor, 0)), 'card-image').checked).toBe(false)
+    act(() => {
+      action(entries, 'card-details').run()
+    })
+    expect(place.editor.editLinkDetails).toHaveBeenCalledWith(0)
+    expect(action(entries, 'open-link').label).toBe('Open link')
+    expect(entries.some((entry) => entry.id === 'unlink')).toBe(false)
   })
 })

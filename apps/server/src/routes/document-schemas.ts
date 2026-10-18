@@ -91,6 +91,8 @@ export const RenderedSchema = Type.Object({
   outline: Type.Array(Type.Ref(OutlineEntrySchema)),
   /** Live-block slots the body carries (ADR-032); empty until a block type is registered. */
   slots: Type.Array(Type.String()),
+  /** Links whose preview is being fetched; look again shortly (ADR-042). Absent from older servers. */
+  pendingLinks: Type.Integer({ minimum: 0 }),
 })
 
 export const HealthSignalSchema = Type.Object({

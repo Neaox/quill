@@ -16,7 +16,8 @@ import { FindAndReplace } from '../find/find-extension.ts'
 import { withImageActions } from '../image/image-actions.ts'
 import { HeldSelection } from '../link/held-selection.ts'
 import type { ImageAction } from '../image/image-actions.ts'
-import { NavigationBlocks, withNavigationViews } from '../navigation/navigation-extension.ts'
+import { withLeafDirectiveViews } from '../blocks/leaf-directive-views.ts'
+import { NavigationBlocks } from '../navigation/navigation-extension.ts'
 import type { NavigationViewOptions } from '../navigation/navigation-view.ts'
 import { withFrontMatterView } from '../properties/front-matter-view.ts'
 import { withLabels } from '../schema/dom.ts'
@@ -35,6 +36,9 @@ import type { FileDropOptions } from './files.ts'
 import { CaretContext } from './caret-context.ts'
 import { HoldStopsAtBlockEdge } from './hold-guard.ts'
 import { KeyboardShortcuts } from './keymap.ts'
+import { LinkDefaultDisplayExtension } from '../link/link-default-display.ts'
+import { LinkEmbedsExtension } from '../link/link-embeds.ts'
+import { LinkOfferExtension } from '../link/link-offer.ts'
 import { MarkdownPaste } from './paste.ts'
 import { WordSelection } from '../selection/word-selection.ts'
 import { shortcutsHelp } from '../shortcuts/shortcuts-help.ts'
@@ -139,7 +143,7 @@ export function buildExtensions(options: EditorExtensionOptions = {}): Extension
               withCodeBlockView(
                 withFootnoteView(
                   withTaskItemView(
-                    withNavigationViews(
+                    withLeafDirectiveViews(
                       withTableViews(withLabels(baseExtensions, options.labels ?? [])),
                       options.navigation,
                     ),
@@ -186,6 +190,9 @@ export function buildExtensions(options: EditorExtensionOptions = {}): Extension
     // A table's header, footer, row headers and columns, as the reader draws them.
     TableDecorations,
     MarkdownPaste,
+    LinkOfferExtension,
+    LinkDefaultDisplayExtension,
+    LinkEmbedsExtension,
     GuidanceDismissal,
     PlaceholderTyping,
     RequiredSections,

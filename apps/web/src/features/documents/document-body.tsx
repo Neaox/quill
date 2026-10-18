@@ -12,6 +12,7 @@ import { readableBodyLinks, routeBodyLinks } from './body-links.ts'
 import type { DocumentLinksLoader } from './body-links.ts'
 import { fillChildPageSlots } from './child-pages-slots.ts'
 import type { ChildPagesSlotsOptions } from './child-pages-slots.ts'
+import { LinkPeek } from './link-peek/link-peek.tsx'
 
 export interface DocumentBodyProps {
   /** The cached body from `GET /documents/:id/rendered` (ADR-031). */
@@ -67,6 +68,11 @@ export interface DocumentBodyProps {
    */
   readonly expandImages?: boolean | undefined
   /**
+   * Links that leave the application show a small card of the page they go to while the pointer
+   * rests on them (ADR-042). For a surface with a session to ask with: a shared link has none.
+   */
+  readonly linkPeek?: boolean | undefined
+  /**
    * Called each time the body has been drawn into the page and given its layout enhancements: for
    * a surface that has to give what it mounted a state of its own (the presentation's open
    * sections, ADR-050), which the HTML cannot carry.
@@ -103,6 +109,7 @@ export function DocumentBody({
   onFollowLink,
   loadLinks,
   expandImages = false,
+  linkPeek = false,
   onMounted,
   className,
 }: DocumentBodyProps) {
@@ -209,6 +216,7 @@ export function DocumentBody({
     <div ref={host} className={cx(className)}>
       <Prose label={label}>{null}</Prose>
       {afterTitle === undefined ? undefined : createPortal(afterTitle, titleSlot)}
+      {linkPeek ? <LinkPeek host={host} /> : null}
     </div>
   )
 }

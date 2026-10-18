@@ -3815,3 +3815,493 @@ html.lightbox-open {
 .prose .child-pages-action {
   margin: 0.75rem 0 0;
 }
+
+/* --- Link previews (ADR-042) ---------------------------------------------- */
+
+/*
+ * A link the author chose to show with its page's own title and picture. The
+ * body holds an ordinary anchor and the server swaps it for one of these when a
+ * preview is stored, so a link without one is just the link it always was.
+ *
+ * Both forms are a single anchor: one tab stop, one name for a screen reader,
+ * and the whole card is the target. Pictures carry the dimensions they were
+ * stored with (`width` and `height` attributes), so nothing moves as they load.
+ * Information is never carried by colour alone: the card has a border and the
+ * chip keeps its underline.
+ */
+
+.prose a.link-chip {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.35em;
+  max-inline-size: 100%;
+  vertical-align: baseline;
+}
+
+.prose .link-chip-icon {
+  align-self: center;
+  inline-size: 1em;
+  block-size: 1em;
+  flex: none;
+  border-radius: var(--radius-sm);
+  object-fit: contain;
+}
+
+.prose .link-chip-text {
+  min-inline-size: 0;
+  overflow-wrap: anywhere;
+}
+
+.prose a.link-card {
+  display: flex;
+  align-items: stretch;
+  inline-size: 100%;
+  max-inline-size: 42em;
+  overflow: hidden;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background-color: var(--color-surface-raised);
+  color: var(--color-foreground);
+  font-family: var(--font-sans);
+  font-size: 0.9em;
+  line-height: 1.4;
+  text-decoration: none;
+  transition:
+    border-color var(--duration-fast) var(--ease-standard),
+    background-color var(--duration-fast) var(--ease-standard);
+}
+
+.prose a.link-card:hover {
+  border-color: var(--color-border-strong);
+  color: var(--color-foreground);
+}
+
+.prose a.link-card:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 2px;
+}
+
+.prose .link-card-body {
+  display: flex;
+  min-inline-size: 0;
+  flex: 1 1 auto;
+  flex-direction: column;
+  justify-content: center;
+  gap: 0.25em;
+  padding: 0.75em 1em;
+}
+
+.prose .link-card-title {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.prose .link-card-description {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  color: var(--color-body);
+  overflow-wrap: anywhere;
+}
+
+.prose .link-card-site {
+  display: flex;
+  align-items: center;
+  gap: 0.4em;
+  overflow: hidden;
+  color: var(--color-muted);
+  font-size: 0.85em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The picture beside the words: a fixed-width column, cropped to fill it. */
+.prose .link-card-image {
+  inline-size: 9em;
+  flex: none;
+  align-self: stretch;
+  block-size: auto;
+  object-fit: cover;
+  border-inline-start: 1px solid var(--color-border);
+}
+
+/* The picture above the words, at the proportions of a shared link. */
+.prose a.link-card[data-layout='top'] {
+  max-inline-size: 28em;
+}
+
+.prose a.link-card[data-layout='top'][data-image='yes'] {
+  flex-direction: column-reverse;
+}
+
+.prose a.link-card[data-layout='top'] .link-card-image {
+  inline-size: 100%;
+  aspect-ratio: 1.91 / 1;
+  border-inline-start: 0;
+  border-block-end: 1px solid var(--color-border);
+}
+
+/* A narrow screen has no room for a column beside the words. */
+@media (width < 32.5rem) {
+  .prose a.link-card[data-image='yes'] {
+    flex-direction: column-reverse;
+  }
+
+  .prose .link-card-image {
+    inline-size: 100%;
+    aspect-ratio: 1.91 / 1;
+    border-inline-start: 0;
+    border-block-end: 1px solid var(--color-border);
+  }
+}
+
+@media (forced-colors: active) {
+  .prose a.link-card {
+    border-color: CanvasText;
+  }
+
+  .prose a.link-card:hover {
+    border-color: Highlight;
+  }
+}
+
+@media print {
+  .prose a.link-card {
+    break-inside: avoid;
+  }
+}
+
+/* --- Compact links and connector status (ADR-042) ------------------------- */
+
+/*
+ * One line: icon, title and site, as a block, for a list of references. A single anchor like a
+ * card, with the same border and focus ring, so the two read as one family.
+ */
+.prose a.link-compact {
+  display: flex;
+  align-items: center;
+  gap: 0.5em;
+  inline-size: 100%;
+  max-inline-size: 42em;
+  min-inline-size: 0;
+  padding: 0.4em 0.75em;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background-color: var(--color-surface-raised);
+  color: var(--color-foreground);
+  font-family: var(--font-sans);
+  font-size: 0.9em;
+  line-height: 1.4;
+  text-decoration: none;
+  transition: border-color var(--duration-fast) var(--ease-standard);
+}
+
+.prose a.link-compact:hover {
+  border-color: var(--color-border-strong);
+  color: var(--color-foreground);
+}
+
+.prose a.link-compact:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 2px;
+}
+
+/*
+ * A run of compact links is a list of references, so the lines sit closer than paragraphs do,
+ * and a line is never split across a printed page.
+ */
+.prose p:has(> a.link-compact) + p:has(> a.link-compact) {
+  margin-top: 0.4em;
+}
+
+@media print {
+  .prose a.link-compact {
+    break-inside: avoid;
+  }
+}
+
+.prose .link-compact-title {
+  min-inline-size: 0;
+  overflow: hidden;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.prose .link-compact-site {
+  margin-inline-start: auto;
+  overflow: hidden;
+  color: var(--color-muted);
+  font-size: 0.85em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/*
+ * The state a connector reports ("Open", "Merged"). The words say it; the tone only colours it,
+ * so nothing is carried by colour alone.
+ */
+.prose .link-status {
+  flex: none;
+  padding: 0.05em 0.5em;
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  color: var(--color-muted);
+  font-family: var(--font-sans);
+  font-size: 0.75em;
+  font-weight: 600;
+  line-height: 1.4;
+  white-space: nowrap;
+}
+
+.prose .link-status[data-tone='accent'] {
+  color: var(--color-accent);
+}
+
+.prose .link-status[data-tone='success'] {
+  color: var(--color-success);
+}
+
+.prose .link-status[data-tone='warning'] {
+  color: var(--color-warning);
+}
+
+.prose .link-status[data-tone='danger'] {
+  color: var(--color-danger);
+}
+
+/*
+ * A link to a file (ADR-042, "File links"): the same chip, line and card, led by an icon for the
+ * kind of file instead of a favicon. The icon is an empty, decorative span that the server writes
+ * with a `data-file-kind`, drawn here as a mask in the text colour, so one markup serves light,
+ * dark and forced-colours. The paths are the ones `FileIcon` in `@quill/ui` draws; a test in that
+ * package fails if the two drift apart. The words beside it always say the type, so the icon
+ * carries nothing alone.
+ */
+.prose .link-file-icon {
+  display: inline-block;
+  flex: none;
+  align-self: center;
+  inline-size: 1em;
+  block-size: 1em;
+  background-color: currentColor;
+  -webkit-mask: var(--link-file-icon) center / contain no-repeat;
+  mask: var(--link-file-icon) center / contain no-repeat;
+}
+
+.prose a.link-file .link-file-icon-large {
+  inline-size: 2.5em;
+  block-size: 2.5em;
+  margin-block: 0.6em;
+  margin-inline: 0.9em 0;
+  color: var(--color-muted);
+}
+
+.prose .link-file-icon[data-file-kind='image'] {
+  --link-file-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 2.75h5l3 3v7.5H4ZM9 2.75v3h3'/%3E%3Cpath d='m5.75 12 1.9-2.4 1.4 1.5.9-1 1.1 1.9'/%3E%3C/svg%3E");
+}
+
+.prose .link-file-icon[data-file-kind='pdf'] {
+  --link-file-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 2.75h5l3 3v7.5H4ZM9 2.75v3h3'/%3E%3Cpath d='M5.75 11.75c1.1-1.5 1.7-3 2.25-3s.1 1.6 2.25 2.5'/%3E%3C/svg%3E");
+}
+
+.prose .link-file-icon[data-file-kind='video'] {
+  --link-file-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 2.75h5l3 3v7.5H4ZM9 2.75v3h3'/%3E%3Cpath d='M7 8.75v3l2.75-1.5Z'/%3E%3C/svg%3E");
+}
+
+.prose .link-file-icon[data-file-kind='audio'] {
+  --link-file-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 2.75h5l3 3v7.5H4ZM9 2.75v3h3'/%3E%3Cpath d='M7.25 12V8.75l3-.75v3M7.25 12h.01M10.25 11h.01'/%3E%3C/svg%3E");
+}
+
+.prose .link-file-icon[data-file-kind='document'] {
+  --link-file-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 2.75h5l3 3v7.5H4ZM9 2.75v3h3'/%3E%3Cpath d='M6 8.5h4M6 10.5h4M6 12.25h2'/%3E%3C/svg%3E");
+}
+
+.prose .link-file-icon[data-file-kind='spreadsheet'] {
+  --link-file-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 2.75h5l3 3v7.5H4ZM9 2.75v3h3'/%3E%3Cpath d='M6 8.75h4M6 10.75h4M8 8v4.25'/%3E%3C/svg%3E");
+}
+
+.prose .link-file-icon[data-file-kind='presentation'] {
+  --link-file-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 2.75h5l3 3v7.5H4ZM9 2.75v3h3'/%3E%3Cpath d='M6 8.25h4v2.75H6ZM8 11v1.25'/%3E%3C/svg%3E");
+}
+
+.prose .link-file-icon[data-file-kind='text'] {
+  --link-file-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 2.75h5l3 3v7.5H4ZM9 2.75v3h3'/%3E%3Cpath d='M6 9h4M6 11h2.5'/%3E%3C/svg%3E");
+}
+
+.prose .link-file-icon[data-file-kind='archive'] {
+  --link-file-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 2.75h5l3 3v7.5H4ZM9 2.75v3h3'/%3E%3Cpath d='M8 3.5v1M8 5.5v1M8 7.5v1M7 9.5h2v2.5H7Z'/%3E%3C/svg%3E");
+}
+
+/* A link to a document the reader may not open: words, with nothing to follow. */
+.prose .link-unavailable {
+  color: var(--color-muted);
+  font-style: italic;
+}
+
+@media (forced-colors: active) {
+  .prose a.link-compact {
+    border-color: CanvasText;
+  }
+}
+
+/*
+ * A live embed (ADR-042): a sandboxed frame from the allowlist, in a box of its own shape so
+ * the page does not shift as it loads. The shape is a named token on the figure
+ * (`data-ratio`) because the Content-Security-Policy forbids an inline style, which is how
+ * an arbitrary ratio would otherwise be written. The caption's link is the fallback for a
+ * reader whose frame will not load, so it is always visible, never a hover affordance.
+ */
+.prose figure.link-embed {
+  inline-size: 100%;
+  max-inline-size: 42em;
+  margin-block: 1em;
+  margin-inline: 0;
+  font-family: var(--font-sans);
+  font-size: 0.9em;
+  line-height: 1.4;
+}
+
+.prose .link-embed-frame {
+  overflow: hidden;
+  aspect-ratio: 16 / 9;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background-color: var(--color-surface-raised);
+}
+
+.prose .link-embed[data-ratio='7-3'] .link-embed-frame {
+  aspect-ratio: 7 / 3;
+}
+
+.prose .link-embed[data-ratio='16-10'] .link-embed-frame {
+  aspect-ratio: 16 / 10;
+}
+
+.prose .link-embed[data-ratio='4-3'] .link-embed-frame {
+  aspect-ratio: 4 / 3;
+}
+
+.prose .link-embed[data-ratio='1-1'] .link-embed-frame {
+  aspect-ratio: 1 / 1;
+}
+
+.prose .link-embed[data-ratio='9-10'] .link-embed-frame {
+  aspect-ratio: 9 / 10;
+}
+
+.prose .link-embed-frame iframe {
+  display: block;
+  inline-size: 100%;
+  block-size: 100%;
+  border: 0;
+}
+
+.prose .link-embed-caption {
+  display: flex;
+  min-inline-size: 0;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.25em 1em;
+  padding-block-start: 0.4em;
+  color: var(--color-muted);
+}
+
+.prose .link-embed-caption a {
+  min-inline-size: 0;
+  color: var(--color-foreground);
+  overflow-wrap: anywhere;
+}
+
+.prose .link-embed-provider {
+  font-size: 0.85em;
+}
+
+/* On a slide the frame takes the width the slide gives it, and scales with it. */
+[data-surface='present'] .prose figure.link-embed {
+  max-inline-size: none;
+}
+
+/* --- A code permalink (ADR-042) ------------------------------------------- */
+
+/*
+ * Lines of source from a connector, as a figure: the caption is the one link, the lines are
+ * text. It reuses the code block's surface and tab size (`.prose pre`) so a snippet reads as
+ * code, and the card's border so it reads as a link. Line numbers are generated from
+ * `data-line`, which keeps them out of a copy. Nothing here is highlighted.
+ */
+.prose figure.link-code {
+  inline-size: 100%;
+  max-inline-size: 42em;
+  margin-block: 1em;
+  overflow: hidden;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background-color: var(--color-surface-raised);
+  font-family: var(--font-sans);
+  font-size: 0.9em;
+  line-height: 1.4;
+}
+
+.prose figure.link-code > figcaption {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25em 0.75em;
+  padding: 0.5em 1em;
+  border-block-end: 1px solid var(--color-border);
+  color: var(--color-muted);
+  font-size: 0.9em;
+}
+
+.prose figure.link-code .link-code-title {
+  min-inline-size: 0;
+  color: var(--color-foreground);
+  font-family: var(--font-mono);
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.prose figure.link-code .link-code-repository {
+  margin-inline-end: auto;
+}
+
+.prose figure.link-code pre.link-code-lines {
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+}
+
+.prose figure.link-code .link-code-line {
+  display: block;
+  padding-inline-start: 3.5ch;
+  position: relative;
+}
+
+.prose figure.link-code .link-code-line::before {
+  content: attr(data-line);
+  position: absolute;
+  inset-inline-start: 0;
+  inline-size: 3ch;
+  color: var(--color-muted);
+  text-align: end;
+  user-select: none;
+}
+
+@media (forced-colors: active) {
+  .prose figure.link-code {
+    border-color: CanvasText;
+  }
+}
+
+@media print {
+  .prose figure.link-code {
+    break-inside: avoid;
+  }
+}
