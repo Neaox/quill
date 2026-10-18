@@ -64,3 +64,4 @@ Status values: `Proposed` (awaiting a spike or review), `Accepted`, `Superseded 
 | [056](0056-events-outbox-and-bus.md)                  | Events: the outbox is the truth, the bus the signal | Accepted         |
 | [058](0058-navigation-blocks.md)                     | Navigation blocks: contents and child pages   | Accepted               |
 | [059](0059-document-properties-on-every-surface.md)  | Document properties on every surface          | Accepted               |
+| [060](0060-component-blocks.md)                       | Component blocks, and MDX as a dialect        | Proposed               |

@@ -2,7 +2,7 @@
 
 **Status:** Accepted (public publishing implemented 13 September 2026; share links ship separately)
 **Date:** 2026-09-12
-**Related:** quill-plan.md section 14; ADR-012, ADR-013; decisions D13, D14
+**Related:** quill-plan.md section 14; ADR-012, ADR-013; decisions D13, D14; ADR-060 (proposed: opt-in public islands)
 
 ## Context
 
