@@ -307,6 +307,57 @@ describe('MenuButton rows', () => {
     expect(onCycle).toHaveBeenCalledTimes(2)
     expect(screen.getByRole('menu')).toBeInTheDocument()
   })
+
+  /*
+   * A row whose action opens something that takes the focus (the editor for a
+   * property just added) must not have it taken back as the panel closes. The
+   * panel closes after the action runs, so focus handed back to the trigger
+   * would land *after* the new surface opened, and a non-modal surface reads a
+   * focus outside it as a reason to close (CI, 2026-10-18).
+   */
+  it('leaves the focus where a row that hands it on put it, instead of taking it back to the trigger', async () => {
+    render(
+      <>
+        <MenuButton
+          label="Add property"
+          sections={[
+            {
+              id: 'add',
+              entries: [
+                {
+                  kind: 'action',
+                  label: 'Layout',
+                  handsFocusOn: true,
+                  // As an editor that opens once the panel has gone does.
+                  onSelect: () => {
+                    setTimeout(() => {
+                      screen.getByRole('button', { name: 'Layout editor' }).focus()
+                    }, 0)
+                  },
+                },
+              ],
+            },
+          ]}
+        >
+          <span>Add property</span>
+        </MenuButton>
+        <button type="button">Layout editor</button>
+      </>,
+    )
+    const trigger = screen.getByRole('button', { name: 'Add property' })
+    const focusedTrigger = vi.fn<() => void>()
+
+    await userEvent.click(trigger)
+    const layout = await screen.findByRole('menuitem', { name: 'Layout' })
+    trigger.addEventListener('focus', focusedTrigger)
+    await userEvent.click(layout)
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Layout editor' })).toHaveFocus()
+    })
+
+    expect(screen.queryByRole('menu')).not.toBeInTheDocument()
+    expect(focusedTrigger).not.toHaveBeenCalled()
+  })
 })
 
 /*

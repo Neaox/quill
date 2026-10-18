@@ -111,6 +111,13 @@ export type MenuEntry =
       readonly disabled?: boolean | undefined
       /** Stays open after it runs, for a row that is pressed again: one that cycles a setting. */
       readonly keepOpen?: boolean | undefined
+      /**
+       * Opens something that takes the focus itself, such as the editor for a
+       * property just added, so the closing menu leaves the focus alone rather
+       * than handing it back to its trigger. Handed back, it would land after
+       * the new surface had opened and read to it as focus leaving.
+       */
+      readonly handsFocusOn?: boolean | undefined
     })
   | (MenuRowDetails & {
       readonly kind: 'link'

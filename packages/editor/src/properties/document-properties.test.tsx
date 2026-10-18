@@ -576,6 +576,39 @@ describe('each value’s editor, closely', () => {
     // Two menus open and close in turn; generous, for a loaded machine.
   }, 15_000)
 
+  /*
+   * "Add property" closes after the property's editor has been asked to open.
+   * Had it handed the focus back to its trigger, that focus could land after
+   * the editor opened, read as focus leaving it, and close it — taking the
+   * property being added with it (CI, 2026-10-18). So the focus goes to the
+   * editor, and "Add property" never takes it back on the way.
+   */
+  it('hands the focus to the property it adds, never back to "Add property"', async () => {
+    const { user } = mount({ initial: { id: 'doc-1' } })
+    const add = screen.getByRole('button', { name: 'Add property' })
+    await user.click(add)
+    const layout = await screen.findByRole('menuitem', { name: 'Layout' })
+    const focusedAdd = vi.fn<() => void>()
+    add.addEventListener('focus', focusedAdd)
+
+    await user.click(layout)
+    await screen.findAllByRole('menuitemradio')
+    // Whatever was queued behind the two menus has run.
+    await act(async () => {
+      await new Promise((resolve) => {
+        setTimeout(resolve, 0)
+      })
+    })
+
+    expect(focusedAdd).not.toHaveBeenCalled()
+    expect(screen.getAllByRole('menuitemradio').map((option) => option.textContent)).toEqual([
+      'Content',
+      'Wide',
+      'Full',
+    ])
+    expect(screen.getByRole('menu').contains(document.activeElement)).toBe(true)
+  }, 15_000)
+
   it('takes the type away when its words are cleared', async () => {
     const onRecord = vi.fn<(next: Record<string, unknown>) => void>()
     const { user } = mount({ onRecord })
