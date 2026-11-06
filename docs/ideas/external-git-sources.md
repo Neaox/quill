@@ -1,6 +1,6 @@
 # External Git repositories as read-only document sources
 
-- **Status:** proposed
+- **Status:** promoted to [ADR-061](../architecture/decisions/0061-read-only-external-git-sources.md) and milestone M3a in `quill-plan.md` §33 (2026-11-07). The ADR decides what this left open: fetching with a partial, sparse `git` CLI clone, identity through a path map, assets, and links. Where the two differ, the ADR wins.
 - **Recorded:** 2026-09-12
 - **Trigger:** a team asks to index documentation that lives next to their code without moving it, or remote sync (`quill-plan.md` §9.6) is scheduled, since this is its read half and should be designed with it.
 
