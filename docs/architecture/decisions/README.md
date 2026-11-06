@@ -65,4 +65,4 @@ Status values: `Proposed` (awaiting a spike or review), `Accepted`, `Superseded 
 | [058](0058-navigation-blocks.md)                     | Navigation blocks: contents and child pages   | Accepted               |
 | [059](0059-document-properties-on-every-surface.md)  | Document properties on every surface          | Accepted               |
 | [060](0060-component-blocks.md)                       | Component blocks, and MDX as a dialect        | Proposed               |
-| [061](0061-read-only-external-git-sources.md)         | Read-only external Git sources                | Proposed               |
+| [061](0061-read-only-external-git-sources.md)         | Read-only external Git sources                | Accepted               |

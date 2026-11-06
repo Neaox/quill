@@ -1,6 +1,6 @@
 # ADR-061: Read-only external Git sources
 
-**Status:** Proposed
+**Status:** Accepted
 **Date:** 2026-11-07
 **Related:** quill-plan.md sections 9.4 to 9.6, 12 and 33; `docs/ideas/external-git-sources.md` (the idea this adopts); ADR-005 (front matter), ADR-011 (security baseline, outbound requests, uploads), ADR-012 (permissions), ADR-014 (content store, remote sync's wire choice), ADR-015 (publish semantics), ADR-022 (comment anchoring), ADR-031 (render caching), ADR-034 (secrets), ADR-035 (addresses), ADR-036 (drawings), ADR-044 (heading anchors), ADR-046 (dead links), ADR-047 (images), ADR-049 (tree order), ADR-055 (ownership), ADR-056 (outbox), ADR-058 (navigation blocks); decisions D5, D15, D16, D17
 
