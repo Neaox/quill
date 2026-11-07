@@ -15,3 +15,11 @@ packageExtensions:
 # each skipped build is explicitly allowed or denied here.
 allowBuilds:
   esbuild: true
+
+# Radix's hover card starts its open timer on both pointerenter and focus, and
+# overwrites the timer's id without clearing the earlier one, so a click
+# leaves a timer that unmounting cannot cancel. In tests it fired after jsdom
+# was torn down ("window is not defined", CI 2026-11-07). The patch clears the
+# earlier timer first; drop it once a release does the same.
+patchedDependencies:
+  '@radix-ui/react-hover-card@1.1.23': patches/@radix-ui__react-hover-card@1.1.23.patch
