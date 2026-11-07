@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { DOCUMENT_ID_TRAILER } from './branding.ts'
+import { DOCUMENT_ID_TRAILER, SOURCE_COMMIT_TRAILER } from './branding.ts'
 import { changedDocumentIds, toRevisionSummary, walkCommits } from './commit-walk.ts'
 import { UTC, type GitCommit } from './git/commit.ts'
 import { GitRepository } from './git/git-repository.ts'
@@ -68,5 +68,14 @@ describe('toRevisionSummary', () => {
 
   it('reads the timestamp from the author, in seconds', () => {
     expect(toRevisionSummary(walked('Subject\n')).timestamp).toEqual(new Date(1_700_000_000_000))
+  })
+
+  it('reads the source revision a replayed revision came from (ADR-061)', () => {
+    const message = `Subject\n\n${SOURCE_COMMIT_TRAILER}: ${'c'.repeat(40)}\n`
+    expect(toRevisionSummary(walked(message)).sourceRevision).toBe('c'.repeat(40))
+  })
+
+  it('leaves the source revision out of a native revision', () => {
+    expect(toRevisionSummary(walked('Subject\n'))).not.toHaveProperty('sourceRevision')
   })
 })

@@ -12,7 +12,13 @@ export type {
   PutFileRequest,
   PutFileResult,
   RevisionSummary,
+  SourceStampProblem,
   TreeEntry,
+} from './content-store.ts'
+export {
+  AUTHORED_AT_MAX_SKEW_MS,
+  checkSourceStamp,
+  SOURCE_REVISION_MAX_LENGTH,
 } from './content-store.ts'
 export type { EventBus, EventRecorder, RecordedEvent } from './events.ts'
 export type { BlobRef, BlobStore } from './blob-store.ts'

@@ -1,9 +1,16 @@
-import type { ContentChange, PublishResult, PutFileResult } from '@quill/application'
+import type {
+  ContentChange,
+  PublishRequest,
+  PublishResult,
+  PutFileResult,
+} from '@quill/application'
 import { revisionId, type DocumentId, type RevisionId, type WorkspaceId } from '@quill/domain'
 import { beforeEach, describe, expect, it } from 'vitest'
 
-import { CHANGE_NOTE_TRAILER, DOCUMENT_ID_TRAILER } from './branding.ts'
+import { CHANGE_NOTE_TRAILER, DOCUMENT_ID_TRAILER, SOURCE_COMMIT_TRAILER } from './branding.ts'
 import { ContentStoreError, GitContentStore, type HistorySlice } from './git-content-store.ts'
+import type { GitCommit } from './git/commit.ts'
+import { GitRepository } from './git/git-repository.ts'
 import { parseTrailers, trailerValues } from './git/trailers.ts'
 import { MemoryObjectStore, MemoryObjectStoreProvider } from './memory-object-store.ts'
 import type { ObjectEntry, ObjectStore, ObjectStoreProvider } from './object-store.ts'
@@ -44,7 +51,7 @@ function writtenRevision(result: PutFileResult): RevisionId {
 async function publish(
   changes: readonly ContentChange[],
   base: RevisionId | null,
-  extra: { summary?: string; changeNote?: string } = {},
+  extra: Pick<PublishRequest, 'summary' | 'changeNote' | 'authoredAt' | 'sourceRevision'> = {},
 ): Promise<PublishResult> {
   return await store.publish({ workspaceId: workspace, changes, author: AUTHOR, base, ...extra })
 }
@@ -139,6 +146,68 @@ describe('publish and read', () => {
     const [summary] = await store.history(workspace, ONBOARDING, { limit: 1 })
     expect(summary).toMatchObject({ revision, author: AUTHOR })
     expect(summary?.timestamp).toEqual(new Date('2026-09-12T10:00:00Z'))
+  })
+})
+
+describe('publish of a revision replayed from an external source (ADR-061)', () => {
+  const AUTHORED_AT = new Date('2019-03-01T08:30:00Z')
+  const SOURCE_COMMIT = 'c'.repeat(40)
+
+  async function commitOf(revision: RevisionId): Promise<GitCommit> {
+    return await new GitRepository(await provider.forWorkspace(workspace)).readCommit(revision)
+  }
+
+  async function replay(stamp: {
+    authoredAt?: Date
+    sourceRevision?: string
+  }): Promise<RevisionId> {
+    return published(
+      await publish([write(ONBOARDING, 'a.md', markdown(ONBOARDING, 'Onboarding'))], null, stamp),
+    )
+  }
+
+  it('is authored when the source says, and committed when the store did it', async () => {
+    const revision = await replay({ authoredAt: AUTHORED_AT, sourceRevision: SOURCE_COMMIT })
+    const commit = await commitOf(revision)
+    expect(commit.author.when).toBe(AUTHORED_AT.getTime() / 1000)
+    expect(commit.committer.when).toBe(NOW().getTime() / 1000)
+    expect(trailerValues(parseTrailers(commit.message), SOURCE_COMMIT_TRAILER)).toEqual([
+      SOURCE_COMMIT,
+    ])
+  })
+
+  it('shows the source time and the source revision in history', async () => {
+    const revision = await replay({ authoredAt: AUTHORED_AT, sourceRevision: SOURCE_COMMIT })
+    const [summary] = await store.history(workspace, ONBOARDING, { limit: 1 })
+    expect(summary).toMatchObject({
+      revision,
+      author: AUTHOR,
+      timestamp: AUTHORED_AT,
+      sourceRevision: SOURCE_COMMIT,
+    })
+  })
+
+  it('stamps a native publish exactly as before: the clock, and no source', async () => {
+    const revision = await replay({})
+    const commit = await commitOf(revision)
+    expect(commit.author.when).toBe(NOW().getTime() / 1000)
+    expect(commit.committer.when).toBe(NOW().getTime() / 1000)
+    expect(trailerValues(parseTrailers(commit.message), SOURCE_COMMIT_TRAILER)).toEqual([])
+    const [summary] = await store.history(workspace, ONBOARDING, { limit: 1 })
+    expect(summary).not.toHaveProperty('sourceRevision')
+  })
+
+  it('refuses a time too far in the future, and writes nothing', async () => {
+    const tomorrow = new Date(NOW().getTime() + 24 * 60 * 60 * 1000)
+    await expect(replay({ authoredAt: tomorrow })).rejects.toThrow(ContentStoreError)
+    expect(await store.head(workspace)).toBeNull()
+  })
+
+  it('refuses a source revision that could not be one trailer line, and writes nothing', async () => {
+    await expect(
+      replay({ sourceRevision: `${SOURCE_COMMIT}\n${DOCUMENT_ID_TRAILER}: x` }),
+    ).rejects.toThrow(ContentStoreError)
+    expect(await store.head(workspace)).toBeNull()
   })
 })
 

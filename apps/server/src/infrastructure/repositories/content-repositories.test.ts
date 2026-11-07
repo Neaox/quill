@@ -442,6 +442,39 @@ describe('RevisionsIndexRepository', () => {
     ).toMatchObject({ id: 'revision-other' })
   })
 
+  it('records the source revision a replayed revision came from, and none for a native one', async () => {
+    await seedDocuments()
+    const entry = {
+      documentId: DOC,
+      workspaceId: WORKSPACE,
+      authorName: 'Ada',
+      authorEmail: 'ada@example.com',
+      summary: 'Update',
+      changeNote: null,
+      now: NOW,
+    }
+    const authoredAt = new Date('2019-03-01T08:30:00.000Z')
+    const replayed = await revisions.append({
+      ...entry,
+      id: 'revision-replayed',
+      revision: revisionId('a'.repeat(40)),
+      timestamp: authoredAt,
+      sourceRevision: 'c'.repeat(40),
+    })
+    const native = await revisions.append({
+      ...entry,
+      id: 'revision-native',
+      revision: revisionId('b'.repeat(40)),
+      timestamp: NOW,
+    })
+
+    expect(replayed).toMatchObject({ timestamp: authoredAt, sourceRevision: 'c'.repeat(40) })
+    expect(native.sourceRevision).toBeNull()
+    expect(
+      (await revisions.listForDocument(DOC, { limit: 10 })).map((row) => row.sourceRevision),
+    ).toEqual([null, 'c'.repeat(40)])
+  })
+
   it('names each person who has published a document once, under the name they last used', async () => {
     await seedDocuments()
     let published = 0

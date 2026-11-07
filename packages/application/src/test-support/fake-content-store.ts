@@ -43,6 +43,7 @@ interface StoredRevision {
   readonly summary: string
   readonly changeNote: string | undefined
   readonly timestamp: Date
+  readonly sourceRevision: string | undefined
 }
 
 export interface FakeContentStore extends ContentStore {
@@ -129,7 +130,8 @@ export function createFakeContentStore(options: FakeContentStoreOptions = {}): F
         author: request.author,
         summary: request.summary ?? 'Publish',
         changeNote: request.changeNote,
-        timestamp: now(),
+        timestamp: request.authoredAt ?? now(),
+        sourceRevision: request.sourceRevision,
       })
       requests.push(request)
       return { kind: 'published', revision } satisfies PublishResult
@@ -151,6 +153,7 @@ export function createFakeContentStore(options: FakeContentStoreOptions = {}): F
         summary: entry.summary,
         documentIds: entry.changed,
         ...(entry.changeNote === undefined ? {} : { changeNote: entry.changeNote }),
+        ...(entry.sourceRevision === undefined ? {} : { sourceRevision: entry.sourceRevision }),
       }))
     },
 
@@ -223,6 +226,7 @@ export function createFakeContentStore(options: FakeContentStoreOptions = {}): F
         summary: request.summary ?? `Update ${request.path}`,
         changeNote: request.changeNote,
         timestamp: now(),
+        sourceRevision: undefined,
       })
       writtenFiles.push(request)
       return { kind: 'published', revision } satisfies PutFileResult

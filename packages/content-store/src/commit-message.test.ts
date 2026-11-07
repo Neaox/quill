@@ -1,7 +1,7 @@
 import type { ContentChange } from '@quill/application'
 import { describe, expect, it } from 'vitest'
 
-import { CHANGE_NOTE_TRAILER, DOCUMENT_ID_TRAILER } from './branding.ts'
+import { CHANGE_NOTE_TRAILER, DOCUMENT_ID_TRAILER, SOURCE_COMMIT_TRAILER } from './branding.ts'
 import { buildCommitMessage, buildFileCommitMessage } from './commit-message.ts'
 import { parseTrailers, trailerValues } from './git/trailers.ts'
 import { markdown, newDocument, write } from './test-fixtures.ts'
@@ -9,6 +9,7 @@ import { markdown, newDocument, write } from './test-fixtures.ts'
 const ID = newDocument()
 const OTHER = newDocument()
 const TITLED = markdown(ID, 'Onboarding')
+const SOURCE_COMMIT = 'c'.repeat(40)
 
 const subject = (message: string): string => message.split('\n')[0] ?? ''
 
@@ -88,6 +89,21 @@ describe('buildCommitMessage trailers', () => {
       'First line. Second line. Fourth line.',
     ])
     expect(trailerValues(trailers, DOCUMENT_ID_TRAILER)).toEqual([ID])
+  })
+
+  it('records the source revision a replayed publish came from (ADR-061)', () => {
+    const message = buildCommitMessage({
+      changes: [write(ID, 'a.md', TITLED)],
+      sourceRevision: SOURCE_COMMIT,
+    })
+    const trailers = parseTrailers(message)
+    expect(trailerValues(trailers, SOURCE_COMMIT_TRAILER)).toEqual([SOURCE_COMMIT])
+    expect(trailerValues(trailers, DOCUMENT_ID_TRAILER)).toEqual([ID])
+  })
+
+  it('carries no source trailer for a native publish', () => {
+    const message = buildCommitMessage({ changes: [write(ID, 'a.md', TITLED)] })
+    expect(trailerValues(parseTrailers(message), SOURCE_COMMIT_TRAILER)).toEqual([])
   })
 
   it('separates the subject from the trailers with a blank line', () => {

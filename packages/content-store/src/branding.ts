@@ -17,3 +17,10 @@ export const PRODUCT_EMAIL = `${BRAND.slug}@${BRAND.slug}.invalid`
 export const DOCUMENT_ID_TRAILER = `${BRAND.name}-Document-Id`
 
 export const CHANGE_NOTE_TRAILER = `${BRAND.name}-Change-Note`
+
+/**
+ * The external source revision a replayed revision came from (ADR-061). It is
+ * what makes a replay resumable: a commit already carried here is not replayed
+ * again.
+ */
+export const SOURCE_COMMIT_TRAILER = `${BRAND.name}-Source-Commit`
