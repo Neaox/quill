@@ -108,10 +108,11 @@ Before each fetch, the remote's host is checked against the outbound policy of A
 
 - **One revision per first-parent commit.** Each commit on the branch's first-parent line that changes the source becomes one publish of all its changes to the cone.
 - **Authorship is the commit's.** The revision is authored as the commit's author (name and address), timestamped with the commit's committer date (when it reached the branch), and carries a `Quill-Source-Commit` trailer with the commit id. "Changed by" is therefore true.
+- **History follows the branch, not the clock.** A sourced document's history lists revisions in replay order, which is first-parent order, so a commit dated earlier than its parent still appears after it. The store's `authoredAt` holds the committer date; a commit dated more than five minutes ahead of the instance's clock is stamped with the instance's time, and its own date stays readable from the trailer's commit.
 - **Merge-commit workflows credit the merger.** In squash-merge and rebase-merge workflows the first-parent commit's author is the change's author. In merge-commit workflows it is whoever merged, and that is a known limitation.
 - **Authors are names, not accounts.** An author is shown as the commit's name. It is linked to a Quill person only when the address is one that person has verified, and it never creates an account.
 - **The first sync replays the source's history** back to the source's history setting: `full` (the default), from a date, or `head` (one revision, "Imported at `<commit>`").
-- **Replay is resumable.** A commit whose trailer is already in the revisions index is skipped, so an interrupted first sync picks up where it stopped.
+- **Replay is resumable.** A commit whose trailer is already in the revisions index is skipped, so an interrupted first sync picks up where it stopped. The revisions index has a lookup by workspace and source revision for this. The sync job records a revision through its own use case, not the draft-and-lock publish path.
 - **The port gains two optional fields.** `PublishRequest` gets `authoredAt` and `sourceRevision`. Only the sync job's composition sets them, and the revisions index records the source revision so a page can show the commit it was rendered from.
 
 ### Freshness: one idempotent sync job, three triggers
