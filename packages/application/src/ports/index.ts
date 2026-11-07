@@ -18,6 +18,19 @@ export type { EventBus, EventRecorder, RecordedEvent } from './events.ts'
 export type { BlobRef, BlobStore } from './blob-store.ts'
 export { concatChunks, readBlob } from './blob-store.ts'
 export type {
+  ExternalSource,
+  ExternalSourceFailure,
+  OutboundHostPolicy,
+  OutboundHostVerdict,
+  SourceChange,
+  SourceFile,
+  SourceFileContent,
+  SourceFileId,
+  SourceRevision,
+  SourceRevisionId,
+} from './external-source.ts'
+export { ExternalSourceError } from './external-source.ts'
+export type {
   Contributor,
   FacetCount,
   FacetCounts,

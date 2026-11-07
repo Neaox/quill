@@ -52,3 +52,17 @@ serialises the pass against this process's publishes, checks the ref lock before
 cached packfiles afterwards, and reports `locked: false` when the ref moved underneath it. It cannot
 *exclude* an outside `git gc` or another server's publish: a compare-and-swap is the only primitive
 the port has, and a compare-and-swap cannot be held open.
+
+**External sources (ADR-061).** `GitCliExternalSource` implements the application's `ExternalSource`
+port: a repository Quill reads and never writes. It drives the `git` CLI (2.49 or later, checked by
+`open`) in a partial clone under a cache directory the source owns: `--filter=blob:none --no-checkout
+--sparse`, sparse-checkout patterns built from the source's paths, then `git backfill --sparse`, and
+every other command with `GIT_NO_LAZY_FETCH=1`. The patterns are non-cone (`/docs/guides` and
+`/docs/guides/**`), because cone mode always brings the root's files and every parent directory's
+files with it. A glob is widened to its literal directory, or refused when the source is strict.
+`git` runs with no shell, an environment built from nothing (no system or global configuration, an
+empty `HOME`, no prompts, hooks, submodules or LFS), https only, redirects refused, a timeout and an
+output cap on every command, and the remote's host checked against the `OutboundHostPolicy` before
+each request. The credential travels as an `http.extraHeader` in the environment, never in an
+argument or on disk. Files are read by object id with `git cat-file --batch`, never from a working
+tree; there is none.
