@@ -170,6 +170,20 @@ export default defineConfig({
       },
     },
   },
+  optimizeDeps: {
+    /*
+     * The dependency scan starts from `index.html` and follows imports, but
+     * not into a module worker (`new Worker(new URL(...))`), so whatever only
+     * a worker imports (`character-entities`, for the paste parser the editor
+     * warms when it opens) was found when the first editor of a run opened.
+     * Vite then bundled the dependencies again and, because that changed the
+     * shared chunks, reloaded every page it was serving: in a Playwright run,
+     * the page each of the four workers was in the middle of, losing
+     * keystrokes and navigations (CI, 2026-11-07). With the workers as
+     * entries of their own, the scan finds their imports before any page loads.
+     */
+    entries: ['index.html', '../../packages/*/src/**/*.worker.ts'],
+  },
   server: {
     port: 5173,
     strictPort: true,

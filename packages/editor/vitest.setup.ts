@@ -148,16 +148,6 @@ if (!('ClipboardEvent' in globalThis)) {
   defineMissing(globalThis, 'ClipboardEvent', ClipboardEventShim)
 }
 
-/**
- * `findBy*` and `waitFor` run on Testing Library's own clock, not Vitest's,
- * and its default is one second — comfortable on an idle machine, and not
- * enough when every jsdom project is rendering at once on a loaded one or a
- * small CI runner. The per-test timeout in `vitest.config.ts` is what
- * actually bounds a test that has hung; this only stops a slow render being
- * reported as a missing element.
- */
-configure({ asyncUtilTimeout: 5_000 })
-
 /*
  * A code block loads `@quill/highlight`'s grammars as a chunk of their own the
  * first time it needs colour (`code-mirror.ts`). Loaded once here, that import
