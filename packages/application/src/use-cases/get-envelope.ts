@@ -65,6 +65,7 @@ export interface EnvelopeView {
     readonly comment: boolean
     readonly edit: boolean
     readonly publish: boolean
+    readonly arrange: boolean
     readonly manage: boolean
   }
   readonly lock: LockView | null
@@ -136,6 +137,7 @@ export async function getEnvelope(
     comment: command.capabilities.comment,
     edit: command.capabilities.edit,
     publish: command.capabilities.publish,
+    arrange: command.capabilities.arrange,
     manage: command.capabilities.manage,
   }
   const lockView = await toLockView(deps, lock, now)

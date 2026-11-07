@@ -1,0 +1,3 @@
+Changed: Renaming, moving and deleting documents, and creating, renaming and deleting collections, now ask for a new `arrange` permission, which every role that could manage a document or collection already holds; sharing, settings and the public site still ask for `manage`.
+Added: The document envelope reports `arrange` beside `manage`, and the document header and tree offer rename, move and delete only to someone who holds it.
+Added: Workspaces have an origin, native by default; a workspace that reads from an external source turns off editing, publishing and arranging for everyone, instance administrators included (ADR-061).

@@ -86,6 +86,7 @@ function envelope(permissions: Record<string, boolean> = {}) {
         comment: true,
         edit: true,
         publish: true,
+        arrange: false,
         manage: false,
         ...permissions,
       },

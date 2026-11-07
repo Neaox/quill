@@ -28,10 +28,12 @@ import { requireAuthenticatedSession } from '../plugins/session.ts'
  * (`docs/architecture/api-contract-m2.md`).
  *
  * A collection is a permission scope, not a folder (ADR-012), so the checks
- * are not all about the workspace: creating one is workspace administration,
- * while renaming or deleting one asks about that collection — which resolves
- * through the workspace above it anyway, and lets a grant made at the
- * collection answer for it. The rules about what a collection may become live
+ * are not all about the workspace: creating one asks for `arrange` on the
+ * workspace, while renaming or deleting one asks for it on that collection —
+ * which resolves through the workspace above it anyway, and lets a grant made
+ * at the collection answer for it. `arrange` rather than `manage`, because
+ * they change the tree, which a workspace read from a repository takes from
+ * its manifest instead (ADR-061). The rules about what a collection may become live
  * in the use cases; this layer decides who is allowed to ask.
  *
  * Publishing a collection to the web (ADR-023) is here for the same reason:
@@ -159,7 +161,7 @@ export function collectionRoutes(deps: AppDependencies): FastifyPluginAsync {
       async (request, reply) => {
         const workspaceId = await resolveWorkspaceId(deps, request.params.id)
         const session = requireAuthenticatedSession(request)
-        await requireWorkspaceAccess(authorizerFor(deps, request), workspaceId, 'manage')
+        await requireWorkspaceAccess(authorizerFor(deps, request), workspaceId, 'arrange')
 
         const result = await createCollection(deps, {
           workspaceId,
@@ -196,7 +198,7 @@ export function collectionRoutes(deps: AppDependencies): FastifyPluginAsync {
       async (request) => {
         const collectionId = request.params.id as CollectionId
         const session = requireAuthenticatedSession(request)
-        await requireCollectionAccess(authorizerFor(deps, request), collectionId, 'manage')
+        await requireCollectionAccess(authorizerFor(deps, request), collectionId, 'arrange')
 
         const result = await renameCollection(deps, {
           collectionId,
@@ -215,7 +217,7 @@ export function collectionRoutes(deps: AppDependencies): FastifyPluginAsync {
       async (request, reply) => {
         const collectionId = request.params.id as CollectionId
         const session = requireAuthenticatedSession(request)
-        await requireCollectionAccess(authorizerFor(deps, request), collectionId, 'manage')
+        await requireCollectionAccess(authorizerFor(deps, request), collectionId, 'arrange')
 
         const result = await deleteCollection(deps, { collectionId, deletedBy: session.userId })
         /* v8 ignore next 2 -- the authorizer has already loaded this collection. */

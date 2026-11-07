@@ -180,7 +180,7 @@ describe('MoveDocumentDialog', () => {
       {},
       {
         'PATCH /api/documents/{id}': () =>
-          errorResponse(403, 'forbidden', 'You do not have manage access to Archive'),
+          errorResponse(403, 'forbidden', 'You do not have permission to arrange this'),
       },
     )
 
@@ -188,7 +188,7 @@ describe('MoveDocumentDialog', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Move' }))
 
     expect(await screen.findByRole('alert')).toHaveTextContent(
-      'You do not have manage access to Archive',
+      'You do not have permission to arrange this',
     )
     expect(screen.getByRole('dialog', { name: 'Move to…' })).toBeInTheDocument()
   })

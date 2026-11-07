@@ -951,6 +951,7 @@ describe('the content journey', () => {
       comment: false,
       edit: false,
       publish: false,
+      arrange: false,
       manage: false,
     })
     expect(envelope.json().lastPublished).toMatchObject({ author: 'Editor' })
@@ -1131,7 +1132,12 @@ describe('permissions on the content routes', () => {
     const asContributor = await get(`/api/documents/${id}/envelope`, contributor)
     expect(asContributor.json().permissions).toMatchObject({ edit: true, publish: false })
     const asEditor = await get(`/api/documents/${id}/envelope`, editor)
-    expect(asEditor.json().permissions).toMatchObject({ edit: true, publish: true })
+    expect(asEditor.json().permissions).toMatchObject({
+      edit: true,
+      publish: true,
+      arrange: false,
+      manage: false,
+    })
     // An editor can, and the contributor's words go live.
     expect((await publish(id, null, editor)).statusCode).toBe(200)
   })
@@ -1384,11 +1390,11 @@ describe('moving a document', () => {
   })
 
   /**
-   * The destination exists and the caller — an instance admin — may manage
+   * The destination exists and the caller — an instance admin — may arrange
    * it, so only the use case can refuse: a document and its collection have
    * to be in one workspace, or the scope chain contradicts itself.
    */
-  it('refuses a destination in another workspace, even to somebody who may manage it', async () => {
+  it('refuses a destination in another workspace, even to somebody who may arrange it', async () => {
     const elsewhere = await harness.deps.uow.repos.workspaces.create({
       id: harness.deps.ids.uuid() as WorkspaceId,
       unitId: tenancy.unitId,
@@ -1478,21 +1484,19 @@ describe('moving a document', () => {
     expect(response.json().error.code).toBe('parent_cycle')
   })
 
-  it('needs manage at the destination as well as at the source', async () => {
+  it('needs arrange at the destination as well as at the source', async () => {
     const parent = await createDocument('A parent')
     const child = await createDocument('A child')
-    // The editor may not manage either, so the move is refused before the
+    // The editor may not arrange either, so the move is refused before the
     // destination is even considered.
-    expect(
-      (
-        await harness.app.inject({
-          method: 'PATCH',
-          url: `/api/documents/${child}`,
-          cookies: editor,
-          payload: { parentId: parent },
-        })
-      ).statusCode,
-    ).toBe(403)
+    const refused = await harness.app.inject({
+      method: 'PATCH',
+      url: `/api/documents/${child}`,
+      cookies: editor,
+      payload: { parentId: parent },
+    })
+    expect(refused.statusCode).toBe(403)
+    expect(refused.json().error.message).toMatch(/arrange/)
   })
 })
 
