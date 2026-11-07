@@ -550,7 +550,7 @@ export function documentRoutes(deps: AppDependencies): FastifyPluginAsync {
     /**
      * Renaming a document, and moving it.
      *
-     * `manage` is required at the source *and* at every destination the patch
+     * `arrange` is required at the source *and* at every destination the patch
      * names, because a move is two decisions: may this person take the
      * document out of where it is, and may they put it where they are asking
      * (review finding H5). The destination itself is validated by the use
@@ -578,12 +578,12 @@ export function documentRoutes(deps: AppDependencies): FastifyPluginAsync {
         const patch = request.body
         const session = requireAuthenticatedSession(request)
         const authorizer = authorizerFor(deps, request)
-        await requireDocumentAccess(authorizer, documentId, 'manage')
+        await requireDocumentAccess(authorizer, documentId, 'arrange')
         if (patch.collectionId !== undefined) {
-          await requireCollectionAccess(authorizer, patch.collectionId, 'manage')
+          await requireCollectionAccess(authorizer, patch.collectionId, 'arrange')
         }
         if (typeof patch.parentId === 'string' && patch.parentId.length > 0) {
-          await requireDocumentAccess(authorizer, patch.parentId as DocumentId, 'manage')
+          await requireDocumentAccess(authorizer, patch.parentId as DocumentId, 'arrange')
         }
 
         const result = await updateDocument(deps, {
@@ -637,7 +637,7 @@ export function documentRoutes(deps: AppDependencies): FastifyPluginAsync {
       async (request, reply) => {
         const documentId = await resolveDocumentId(deps, request.params.id)
         const session = requireAuthenticatedSession(request)
-        await requireDocumentAccess(authorizerFor(deps, request), documentId, 'manage')
+        await requireDocumentAccess(authorizerFor(deps, request), documentId, 'arrange')
         const result = await deleteDocument(deps, { documentId, deletedBy: session.userId })
         /* v8 ignore next 2 -- the authorizer has already loaded this document. */
         if (result.kind === 'not-found') throw notFound('Document not found')

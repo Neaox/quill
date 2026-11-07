@@ -14,7 +14,7 @@ All routes are under `/api`, require a session unless stated, and use the error 
 | `GET /documents/:id/content` | Published source | `{ revision, markdown, frontMatter }` or 404 before first publish |
 | `GET /documents/:id/rendered?revision=` | Rendered body from the render cache (ADR-031) | `{ revision, html, outline: OutlineEntry[], slots: SlotKey[] }` |
 | `GET /documents/:id/children?depth=&sort=&excerpts=&icons=` | What fills a `::children` slot for this reader (ADR-058): `depth` 1–6, `sort` `manual`, `title` or `updated`. Never lists a page the reader may not read; `private, no-cache` | `{ html, count }` |
-| `GET /documents/:id/envelope` | The live envelope (ADR-031) | `{ permissions: { view, comment, edit, manage }, lock: { holderUserId, holderName, expiresAt } \| null, lastPublished: { revision, author, at } \| null, review: { dueAt, overdue } \| null, health: HealthSignal[] }` |
+| `GET /documents/:id/envelope` | The live envelope (ADR-031) | `{ permissions: { view, comment, edit, publish, arrange, manage }, lock: { holderUserId, holderName, expiresAt } \| null, lastPublished: { revision, author, at } \| null, review: { dueAt, overdue } \| null, health: HealthSignal[] }` |
 | `POST /documents/:id/publish` | Publish the current draft | body `{ base: revision \| null, changeNote? }` → `{ kind: 'published', revision }` or `409 { kind: 'merge-required', current, conflicts }`; `423 lock_lost`; `422 stale_base` |
 | `GET /documents/:id/history?limit=&cursor=` | Revisions touching this document | `{ revisions: RevisionSummary[], nextCursor? }` |
 | `GET /documents/:id/compare?from=&to=` | Two versions as one page, and what changed (ADR-015) | `{ html, summary, changes: Change[], sections: Section[], properties: PropertyChange[] }` |
@@ -22,9 +22,11 @@ All routes are under `/api`, require a session unless stated, and use the error 
 | `POST /documents/:id/draft/revert-preview` | Changes since a revision put back in the draft, not saved: for an editor to apply as its own edit | body `{ from?, draftVersion, changes: id[] }` → `{ draftVersion, ast }`; `409 stale_version`; `422 not_revertible` |
 | `POST /documents/:id/draft/revert` | The same, saved, from outside the editor (the comparison page) | body as above → `{ draftVersion, previous }`; `409 stale_version`; `422 not_revertible`; `423 lock_lost` while another session edits |
 | `POST /documents/:id/draft/revert/undo` | A revert undone with the `previous` it answered | body `{ draftVersion, ast }` → `{ draftVersion }`; `409`; `422 draft_unreadable`; `423 lock_lost` |
-| `PATCH /documents/:id` | Rename a document, and move it | body `{ title?, slug?, path?, status?, collectionId?, parentId? }` → `Document`; `423 lock_lost`; `404`; `409 parent_outside_collection` / `parent_cycle` |
-| `DELETE /documents/:id` | Delete a document, lifting its children to the root of their collection | `204` |
+| `PATCH /documents/:id` | Rename a document, and move it (`arrange` here and at the destination) | body `{ title?, slug?, path?, status?, collectionId?, parentId? }` → `Document`; `423 lock_lost`; `404`; `409 parent_outside_collection` / `parent_cycle` |
+| `DELETE /documents/:id` | Delete a document, lifting its children to the root of their collection (`arrange`) | `204` |
 | `POST /documents/:id/restore` | New revision equal to an older one | body `{ revision, changeNote? }` → `{ kind: 'published', revision }` or `409 { kind: 'merge-required', current, conflicts }`; `423 lock_lost` |
+
+**What the envelope's permissions mean.** `edit` writes the draft, `publish` makes it live, `arrange` changes the tree (renaming, moving and deleting documents; creating, renaming and deleting collections), and `manage` grants access (share links, settings, the public site). A role grants `arrange` exactly where it grants `manage`. They are separate because a workspace that reads its documents from a Git repository (ADR-061) has `edit`, `publish` and `arrange` off for everyone, instance administrators included, and keeps `manage`, `comment` and `view`. The client offers a control only when the matching permission is true. Every workspace is native until sources are built, so today `arrange` and `manage` always agree.
 
 `GET /documents/:id/rendered` sets an `ETag` of the render-cache key — the hash of everything the body was rendered from, plus the render version — and honours `If-None-Match` (ADR-031). The key, rather than the revision, because a rename in a document this body links to changes the body without changing its revision.
 
@@ -80,7 +82,7 @@ A document nobody is editing, and a document whose lock has lapsed, both publish
 
 `GET /workspaces` decides visibility with the same resolver `GET /workspaces/:id` uses, so the picker can never offer a workspace a direct read would refuse: a workspace appears when the caller's identity resolves to at least `view` at the workspace or anywhere on the unit chain above it, and an instance administrator sees them all. The list is sorted by unit path and then by name, in code-point order, so it comes back the same way on every host. It needs a session but no other permission; a caller with no grants gets an empty array rather than a `403`.
 
-Collections are a permission scope, not folders (ADR-012). Creating one needs `manage` on the workspace; renaming and deleting one need `manage` on that collection, which a grant at the workspace or a unit above it already confers. Listing needs only `view`.
+Collections are a permission scope, not folders (ADR-012). Creating one needs `arrange` on the workspace; renaming and deleting one need `arrange` on that collection, which a grant at the workspace or a unit above it already confers. Listing needs only `view`. Publishing one to the web is access, not structure, and still needs `manage` (`docs/architecture/public-site.md`).
 
 Renaming a *workspace* leaves its slug alone unless the request names a new one. Moving a slug keeps the old one as a forwarding address for a year, so links written before the move still resolve (`workspace_slug_history`, ADR-035); a slug another workspace holds is refused with `409 workspace_slug_taken`.
 

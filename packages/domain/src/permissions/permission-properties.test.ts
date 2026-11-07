@@ -79,6 +79,8 @@ const CAPABILITY_KEYS = [
   'view',
   'comment',
   'edit',
+  'publish',
+  'arrange',
   'manage',
   'own',
 ] as const satisfies readonly (keyof Capabilities)[]

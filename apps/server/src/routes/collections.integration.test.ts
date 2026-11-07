@@ -86,7 +86,7 @@ describe('creating a collection', () => {
     expect(again.json().error.code).toBe('collection_slug_taken')
   })
 
-  it('needs manage on the workspace', async () => {
+  it('needs arrange on the workspace', async () => {
     // The fixture's editor holds `editor` at the workspace, which is not
     // enough to reshape the workspace's containers.
     expect((await create('From an editor', editor)).statusCode).toBe(403)
@@ -110,7 +110,7 @@ describe('renaming a collection', () => {
     expect(renamed.json()).toMatchObject({ name: 'After', slug: 'before' })
   })
 
-  it('refuses a caller who may not manage it, and hides one they cannot see', async () => {
+  it('refuses a caller who may not arrange it, and hides one they cannot see', async () => {
     const created = await create('Managed only')
     const id = created.json().id as CollectionId
 
@@ -183,7 +183,7 @@ describe('deleting a collection', () => {
     })
   })
 
-  it('refuses a caller who may not manage it', async () => {
+  it('refuses a caller who may not arrange it', async () => {
     const created = await create('Not yours to delete')
     const id = created.json().id as CollectionId
     expect(
