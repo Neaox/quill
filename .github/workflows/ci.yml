@@ -102,7 +102,13 @@ jobs:
           path: ~/.cache/ms-playwright
           key: ${{ runner.os }}-playwright-${{ hashFiles('pnpm-lock.yaml') }}
       - run: pnpm exec playwright install --with-deps
+      # The journeys run against the built app (`playwright.config.ts`,
+      # `E2E_WEB_SERVER`): bundled chunks rather than the dev server's
+      # per-module, on-demand compiles, and the code users get.
+      - run: pnpm --filter @quill/web build
       - run: pnpm test:e2e
+        env:
+          E2E_WEB_SERVER: preview
       - uses: actions/upload-artifact@v4
         if: always()
         with:

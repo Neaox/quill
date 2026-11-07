@@ -13,11 +13,27 @@ import {
 const isCI = process.env['CI'] !== undefined
 
 /**
+ * Which web server the journeys run against. `dev` (the default) is the Vite
+ * dev server, so a developer's run picks up an edit without a build. `preview`
+ * serves `apps/web/dist`, which `pnpm --filter @quill/web build` must have
+ * produced first; CI uses it (`.github/workflows/ci.yml`). Under the dev
+ * server a route's first load is one request per module (about 520 for the
+ * design page), compiled on demand, and on a CI runner that load overlapped
+ * the WebKit journeys and missed their ten-second expectations; the build
+ * serves a few bundled chunks, and it is what users get.
+ */
+const webServer = process.env['E2E_WEB_SERVER'] ?? 'dev'
+if (webServer !== 'dev' && webServer !== 'preview') {
+  throw new Error(`E2E_WEB_SERVER must be "dev" or "preview", received "${webServer}"`)
+}
+
+/**
  * Run order for `pnpm test:e2e` (Playwright's own task order — every
  * `webServer` is started and waited on to answer its health/url check
  * *before* any `globalSetup` file runs, not after):
  *
- * 1. `webServer` starts the API server, the Vite dev server, and the
+ * 1. `webServer` starts the API server, the web server (Vite's dev or
+ *    preview server, `E2E_WEB_SERVER` above), and the
  *    in-process fake OpenID Connect provider `e2e/sso.spec.ts` drives, in
  *    the array order below, all three left running for every test. The API
  *    server's command first empties the run's own database (`db:reset`),
@@ -29,8 +45,9 @@ const isCI = process.env['CI'] !== undefined
  *    database and content store, with the exact same env the API server
  *    just booted with (`apiServerEnv()`), so what it writes is what the
  *    already-running server reads.
- * 3. Tests run against the Vite dev server, which proxies `/api` to the API
- *    server (`apps/web/vite.config.ts`).
+ * 3. Tests run against the web server, which proxies `/api` to the API
+ *    server (`apps/web/vite.config.ts`; the preview server reuses the dev
+ *    server's proxy).
  */
 export default defineConfig({
   testDir: './e2e',
@@ -78,7 +95,7 @@ export default defineConfig({
       env: apiServerEnv(),
     },
     {
-      command: `pnpm --filter @quill/web dev --port ${WEB_PORT}`,
+      command: `pnpm --filter @quill/web ${webServer} --port ${WEB_PORT} --strictPort`,
       url: WEB_ORIGIN,
       reuseExistingServer: !isCI,
       timeout: 60_000,

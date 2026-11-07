@@ -1,6 +1,6 @@
-import { render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
 import { expectNoAccessibilityViolations } from '../../testing/axe.ts'
 import { HoverCard } from './hover-card.tsx'
@@ -30,6 +30,22 @@ describe('HoverCard', () => {
     const panel = await screen.findByText('Two sections changed.')
     expect(panel).toBeVisible()
     expect(screen.getByText('Changes to publish')).toBeVisible()
+  })
+
+  it('leaves no timer behind when the pointer and focus both ask for it before it unmounts', () => {
+    vi.useFakeTimers()
+    try {
+      const { unmount } = renderCard()
+      const trigger = screen.getByRole('button', { name: 'Publish' })
+
+      fireEvent.pointerEnter(trigger, { pointerType: 'mouse' })
+      fireEvent.focus(trigger)
+      unmount()
+
+      expect(vi.getTimerCount()).toBe(0)
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('opens for the keyboard, which has no pointer to rest', async () => {
