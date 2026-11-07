@@ -1,0 +1,1 @@
+Added: The content store can read a Git repository Quill does not own (ADR-061): a partial, sparse clone over the git CLI (2.49 or later) that fetches file contents only under the source's paths, lists files, history and renames there, and checks the remote against the outbound request policy before each fetch.
