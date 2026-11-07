@@ -1,0 +1,1 @@
+ALTER TABLE "revisions_index" ADD COLUMN "source_revision" text;

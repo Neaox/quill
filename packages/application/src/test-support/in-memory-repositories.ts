@@ -932,6 +932,7 @@ export function createInMemoryUnitOfWork(
       const row: RevisionIndexRow = {
         ...input,
         authorUserId: input.authorUserId ?? null,
+        sourceRevision: input.sourceRevision ?? null,
         createdAt: input.now,
       }
       revisions.unshift(row)

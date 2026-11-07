@@ -157,6 +157,24 @@ describe('createFakeContentStore', () => {
     expect(next[0]).not.toHaveProperty('changeNote')
   })
 
+  it('carries a replayed revision’s source time and source revision into history', async () => {
+    const first = await write('one', null)
+    const authoredAt = new Date('2019-03-01T08:30:00.000Z')
+    await store.publish({
+      workspaceId: WORKSPACE,
+      base: first,
+      author,
+      authoredAt,
+      sourceRevision: 'c'.repeat(40),
+      changes: [{ kind: 'write', documentId: DOC, path: 'a.md', markdown: 'two' }],
+    })
+
+    const [replayed, native] = await store.history(WORKSPACE, DOC, { limit: 2 })
+    expect(replayed).toMatchObject({ timestamp: authoredAt, sourceRevision: 'c'.repeat(40) })
+    expect(native?.timestamp).toEqual(new Date('2026-01-01T00:00:00.000Z'))
+    expect(native).not.toHaveProperty('sourceRevision')
+  })
+
   it('diffs a revision against another and against nothing', async () => {
     const first = await write('one', null)
     const second = await write('two', first)

@@ -10,20 +10,21 @@
  */
 
 import { setTimeout as sleep } from 'node:timers/promises'
-import type {
-  ContentAuthor,
-  ContentChange,
-  ContentDiff,
-  ContentFile,
-  ContentStore,
-  DocumentSource,
-  MergeConflict,
-  Page,
-  PublishResult,
-  PutFileRequest,
-  PutFileResult,
-  RevisionSummary,
-  TreeEntry,
+import {
+  checkSourceStamp,
+  type ContentAuthor,
+  type ContentChange,
+  type ContentDiff,
+  type ContentFile,
+  type ContentStore,
+  type DocumentSource,
+  type MergeConflict,
+  type Page,
+  type PublishResult,
+  type PutFileRequest,
+  type PutFileResult,
+  type RevisionSummary,
+  type TreeEntry,
 } from '@quill/application'
 import { revisionId, type DocumentId, type RevisionId, type WorkspaceId } from '@quill/domain'
 import { PRODUCT_EMAIL, PRODUCT_NAME } from './branding.ts'
@@ -149,6 +150,9 @@ export class GitContentStore implements ContentStore {
   async publish(request: PublishRequest): Promise<PublishResult> {
     const changes = request.changes.map(normaliseChange)
     if (changes.length === 0) throw new ContentStoreError('A publish must change something')
+    const problem = checkSourceStamp(request, this.#now())
+    if (problem !== null)
+      throw new ContentStoreError(`A publish's source stamp is refused: ${problem}`)
     return await this.#publishes.run(request.workspaceId, () => this.#publish(request, changes))
   }
 
@@ -276,11 +280,14 @@ export class GitContentStore implements ContentStore {
       const revision = repository.stageCommit({
         tree: await buildTree(repository, head, effective),
         parents: head === null ? [] : [head],
-        ...this.#identities(request.author),
+        ...this.#identities(request.author, request.authoredAt),
         message: buildCommitMessage({
           changes: effective,
           ...(request.summary === undefined ? {} : { summary: request.summary }),
           ...(request.changeNote === undefined ? {} : { changeNote: request.changeNote }),
+          ...(request.sourceRevision === undefined
+            ? {}
+            : { sourceRevision: request.sourceRevision }),
         }),
       })
       await repository.flush()
@@ -411,12 +418,24 @@ export class GitContentStore implements ContentStore {
     return { kind: 'change', change: edited(change, theirs.path, outcome.text) }
   }
 
-  /** The user authors a revision; the product commits it (ADR-014). */
-  #identities(author: ContentAuthor): { author: GitIdentity; committer: GitIdentity } {
-    const when = Math.floor(this.#now().getTime() / 1000)
+  /**
+   * The user authors a revision; the product commits it (ADR-014). A revision
+   * replayed from an external source is authored when the source says, and
+   * still committed now, because now is when the product wrote it (ADR-061).
+   */
+  #identities(
+    author: ContentAuthor,
+    authoredAt?: Date,
+  ): { author: GitIdentity; committer: GitIdentity } {
+    const now = toGitTime(this.#now())
     return {
-      author: { name: author.name, email: author.email, when, timezone: UTC },
-      committer: { name: PRODUCT_NAME, email: PRODUCT_EMAIL, when, timezone: UTC },
+      author: {
+        name: author.name,
+        email: author.email,
+        when: authoredAt === undefined ? now : toGitTime(authoredAt),
+        timezone: UTC,
+      },
+      committer: { name: PRODUCT_NAME, email: PRODUCT_EMAIL, when: now, timezone: UTC },
     }
   }
 
@@ -462,6 +481,11 @@ type ChangeOutcome =
   | { readonly kind: 'conflict'; readonly conflict: MergeConflict }
 
 const EMPTY_DOCUMENTS: TreeDocuments = { byId: new Map(), idByPath: new Map() }
+
+/** Git records whole seconds. */
+function toGitTime(date: Date): number {
+  return Math.floor(date.getTime() / 1000)
+}
 
 function positive(value: number, what: string): number {
   if (!Number.isInteger(value) || value <= 0) {

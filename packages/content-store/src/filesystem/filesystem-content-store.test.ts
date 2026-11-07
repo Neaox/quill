@@ -76,6 +76,23 @@ describe('a workspace on disk', () => {
     expect(await store.history(workspace, id, { limit: 10 })).toHaveLength(2)
   })
 
+  it('keeps a replayed revision’s source time and source revision on disk (ADR-061)', async () => {
+    const id = newDocument()
+    const authoredAt = new Date('2019-03-01T08:30:00Z')
+    await store.publish({
+      workspaceId: workspace,
+      changes: [write(id, 'a.md', markdown(id, 'Onboarding'))],
+      author: AUTHOR,
+      base: null,
+      authoredAt,
+      sourceRevision: 'c'.repeat(40),
+    })
+    const reopened = contentStore(join(root, `run-${roots}`))
+    expect(await reopened.history(workspace, id, { limit: 1 })).toMatchObject([
+      { timestamp: authoredAt, sourceRevision: 'c'.repeat(40) },
+    ])
+  })
+
   it('writes one bare repository per workspace, named by its id', async () => {
     const id = newDocument()
     const other = newWorkspaceId()

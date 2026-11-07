@@ -162,6 +162,13 @@
       "when": 1792303903015,
       "tag": "0022_document_summaries_and_lifecycle",
       "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1794014767310,
+      "tag": "0023_revisions_source_revision",
+      "breakpoints": true
     }
   ]
 }
