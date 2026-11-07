@@ -112,7 +112,7 @@ function workspaceRoutes(): FakeRoutes {
     },
     'GET /api/documents/{id}/envelope': () =>
       jsonResponse(200, {
-        permissions: { view: true, comment: false, edit: true, manage: true },
+        permissions: { view: true, comment: false, edit: true, arrange: true, manage: true },
         lock: null,
         lastPublished: null,
         review: null,

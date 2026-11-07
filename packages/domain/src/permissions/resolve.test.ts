@@ -58,6 +58,7 @@ describe('resolvePermission', () => {
       comment: false,
       edit: false,
       publish: false,
+      arrange: false,
       manage: false,
       own: false,
     })
@@ -80,6 +81,7 @@ describe('resolvePermission', () => {
       comment: true,
       edit: true,
       publish: true,
+      arrange: false,
       manage: false,
       own: false,
     })
@@ -137,6 +139,7 @@ describe('resolvePermission', () => {
       comment: true,
       edit: true,
       publish: true,
+      arrange: true,
       manage: true,
       own: true,
     })

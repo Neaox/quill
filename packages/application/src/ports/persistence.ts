@@ -8,6 +8,7 @@ import type {
   ShortId,
   UserId,
   WorkspaceId,
+  WorkspaceOrigin,
 } from '@quill/domain'
 
 import type { EventRecorder } from './events.ts'
@@ -343,6 +344,11 @@ export interface WorkspaceRow {
   readonly name: string
   readonly slug: string
   readonly createdAt: Date
+  /**
+   * Where its content comes from (ADR-061), which narrows what anybody may do
+   * in it (`narrowByOrigin`). Native until sources are stored.
+   */
+  readonly origin: WorkspaceOrigin
 }
 
 export interface WorkspaceRepository {

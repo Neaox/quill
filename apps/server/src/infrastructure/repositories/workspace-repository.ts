@@ -1,6 +1,7 @@
 import { eq } from 'drizzle-orm'
 
 import type { UnitId, WorkspaceRepository, WorkspaceRow } from '@quill/application'
+import { NATIVE_ORIGIN } from '@quill/domain'
 import type { WorkspaceId } from '@quill/domain'
 
 import { workspaces } from '../db/schema.ts'
@@ -14,6 +15,9 @@ function toWorkspaceRow(row: typeof workspaces.$inferSelect): WorkspaceRow {
     name: row.name,
     slug: row.slug,
     createdAt: row.createdAt,
+    // Every stored workspace is native until sources are stored (ADR-061); the
+    // origin will be read from the workspace's source then.
+    origin: NATIVE_ORIGIN,
   }
 }
 

@@ -40,11 +40,16 @@ const ShareDialog = lazy(async () => ({
  * Moving and deleting a document are offered from two places — the tree row
  * and the document header — and they are the same two dialogs either way, so
  * the dialogs and their state live here, once, and both places are triggers.
- * A person without `manage` gets `canManage: false` and neither trigger is
+ * A person without `arrange` gets `canArrange: false` and neither trigger is
  * rendered at all, rather than a control that does nothing when pressed
- * (`docs/design/feedback.md`).
+ * (`docs/design/feedback.md`); one without `manage` gets no Share. The two
+ * are separate because a workspace read from a repository turns `arrange`
+ * off and keeps `manage` (ADR-061).
  */
 export interface DocumentActions {
+  /** Rename, move and delete: changing the tree. */
+  readonly canArrange: boolean
+  /** Share: granting access. */
   readonly canManage: boolean
   readonly openMove: () => void
   readonly openDelete: () => void
@@ -61,6 +66,7 @@ export interface DocumentActions {
 const noAction = () => undefined
 
 const DocumentActionsContext = createContext<DocumentActions>({
+  canArrange: false,
   canManage: false,
   openMove: noAction,
   openDelete: noAction,
@@ -84,8 +90,8 @@ export interface DocumentActionsProviderProps {
 
 /**
  * Mounted by the workspace layout only while a document is open, so the
- * envelope it needs — the one route that answers "may this person manage this
- * document" — is fetched for a document that exists, and never for the
+ * envelope it needs — the one route that answers "may this person arrange or
+ * manage this document" — is fetched for a document that exists, and never for the
  * workspace home. It is the same cache entry the reading page reads, so this
  * costs no extra request.
  */
@@ -123,9 +129,11 @@ export function DocumentActionsProvider({
   const move = useOnDemand(moveDialog, moveOpen)
   const remove = useOnDemand(deleteDialog, deleteOpen)
 
+  const canArrange = envelope.data?.permissions.arrange === true
   const canManage = envelope.data?.permissions.manage === true
   const actions = useMemo<DocumentActions>(
     () => ({
+      canArrange,
       canManage,
       isOpeningShare,
       openMove: () => {
@@ -146,13 +154,13 @@ export function DocumentActionsProvider({
         })
       },
     }),
-    [canManage, isOpeningShare, beginOpeningShare],
+    [canArrange, canManage, isOpeningShare, beginOpeningShare],
   )
 
   return (
     <DocumentActionsContext value={actions}>
       {children}
-      {canManage && document.data !== undefined ? (
+      {canArrange && document.data !== undefined ? (
         <>
           {/* Only while a dialog's chunk is still on its way: normally never. */}
           {(moveOpen && move === undefined) || (deleteOpen && remove === undefined) ? (
@@ -185,18 +193,18 @@ export function DocumentActionsProvider({
               childCount={tree.data?.nodes.get(resolvedDocumentId ?? documentId)?.childCount ?? 0}
             />
           )}
-          {shareOpenings === 0 ? undefined : (
-            <Suspense fallback={null}>
-              <ShareDialog
-                key={shareOpenings}
-                open={shareOpen}
-                onOpenChange={setShareOpen}
-                documentId={resolvedDocumentId ?? documentId}
-                title={document.data.title}
-              />
-            </Suspense>
-          )}
         </>
+      ) : undefined}
+      {canManage && document.data !== undefined && shareOpenings > 0 ? (
+        <Suspense fallback={null}>
+          <ShareDialog
+            key={shareOpenings}
+            open={shareOpen}
+            onOpenChange={setShareOpen}
+            documentId={resolvedDocumentId ?? documentId}
+            title={document.data.title}
+          />
+        </Suspense>
       ) : undefined}
     </DocumentActionsContext>
   )

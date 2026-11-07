@@ -47,6 +47,7 @@ export { DOCUMENT_STATUSES, isDocumentStatus } from './document-status.ts'
 export type { Role } from './roles.ts'
 export {
   ROLES,
+  canArrange,
   canComment,
   canEdit,
   canManage,
@@ -68,6 +69,8 @@ export {
 export type { Instance } from './tenancy/instance.ts'
 export type { OrganisationalUnit } from './tenancy/organisational-unit.ts'
 export type { Workspace } from './tenancy/workspace.ts'
+export type { WorkspaceOrigin } from './tenancy/workspace-origin.ts'
+export { NATIVE_ORIGIN } from './tenancy/workspace-origin.ts'
 export type { Collection } from './tenancy/collection.ts'
 export type { Document } from './tenancy/document.ts'
 export type { Group } from './tenancy/group.ts'
@@ -109,7 +112,7 @@ export {
 } from './permissions/scope.ts'
 
 export type { Capabilities } from './permissions/capabilities.ts'
-export { NO_CAPABILITIES, capabilitiesForRole } from './permissions/capabilities.ts'
+export { NO_CAPABILITIES, capabilitiesForRole, narrowByOrigin } from './permissions/capabilities.ts'
 
 export type { Grant, GrantEffect, GrantViolation } from './permissions/grant.ts'
 export { GRANT_EFFECTS, validateGrant } from './permissions/grant.ts'

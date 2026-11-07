@@ -422,6 +422,14 @@ describe('createInMemoryUnitOfWork: workspaces', () => {
       `rename: workspace ${NOPE_WORKSPACE} not found`,
     )
 
+    // A workspace is native until a test makes it read from a source (ADR-061).
+    expect(renamed.origin).toEqual({ kind: 'native' })
+    uow.sourceWorkspace(WORKSPACE_1)
+    expect((await uow.repos.workspaces.findById(WORKSPACE_1))?.origin).toEqual({ kind: 'sourced' })
+    expect(() => {
+      uow.sourceWorkspace(NOPE_WORKSPACE)
+    }).toThrow(`sourceWorkspace: workspace ${NOPE_WORKSPACE} not found`)
+
     await uow.repos.workspaces.delete(WORKSPACE_1)
     expect(await uow.repos.workspaces.findById(WORKSPACE_1)).toBeNull()
   })

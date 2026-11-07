@@ -127,7 +127,7 @@ export function DocumentPage() {
   // `edit`, which the panel asks about itself.
   const folded: readonly MenuItem[] = narrow
     ? [
-        ...(actions.canManage
+        ...(actions.canArrange
           ? [
               {
                 label: 'Rename…',
@@ -181,7 +181,7 @@ export function DocumentPage() {
         setShowingAttachments(true)
       },
     },
-    ...(actions.canManage
+    ...(actions.canArrange
       ? [
           { label: 'Move to…', onSelect: actions.openMove },
           { label: 'Delete…', onSelect: actions.openDelete },
@@ -197,7 +197,7 @@ export function DocumentPage() {
             {lock.holderName} is editing
           </span>
         )}
-        {actions.canManage && !narrow ? (
+        {actions.canArrange && !narrow ? (
           <RenameDocumentControl documentId={documentId} title={title} />
         ) : undefined}
         <Menu label={title} items={menuItems} />
@@ -273,7 +273,7 @@ export function DocumentPage() {
         ) : undefined}
       </ShellActions>
 
-      {actions.canManage && narrow ? (
+      {actions.canArrange && narrow ? (
         <RenameDocumentDialog
           // Fresh per opening, so the field starts from the title as it is now.
           key={renaming ? 'open' : 'closed'}

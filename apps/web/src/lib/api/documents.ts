@@ -164,7 +164,7 @@ export interface MoveDocumentInput {
  * Moves a document to a different collection and/or parent: `PATCH
  * /documents/:id` with `collectionId`/`parentId`. The server is gaining
  * validation that the destination is in the same workspace and collection and
- * that the caller holds `manage` there (403/422); this hook does not swallow
+ * that the caller holds `arrange` there (403/422); this hook does not swallow
  * those, so `MoveDocumentDialog` can show the message inline.
  *
  * Both the flat document list and the nested workspace tree carry the moved
