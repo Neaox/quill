@@ -16,6 +16,7 @@ export {
   DOCUMENT_ID_TRAILER,
   PRODUCT_EMAIL,
   PRODUCT_NAME,
+  SOURCE_COMMIT_TRAILER,
 } from './branding.ts'
 export { buildCommitMessage, type CommitMessage } from './commit-message.ts'
 export { changedDocumentIds, toRevisionSummary, walkCommits } from './commit-walk.ts'

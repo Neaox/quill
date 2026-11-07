@@ -432,6 +432,28 @@ describe('publishDocument', () => {
       documentId: MISSING,
     })
   })
+
+  it('stamps its revision with the clock and no source, whatever the caller sends (ADR-061)', async () => {
+    const id = await newDocument()
+    await writeDraft(id, '# Authentication architecture')
+    // Only the sync job may replay a source revision; a command that smuggles
+    // the stamp in must not reach the store with it.
+    const smuggled = {
+      documentId: id,
+      base: null,
+      author,
+      sessionId: SESSION,
+      authoredAt: new Date('2019-03-01T08:30:00.000Z'),
+      sourceRevision: 'c'.repeat(40),
+    }
+
+    const result = await publishDocument(deps, smuggled)
+    expect(result.kind).toBe('published')
+    expect(contentStore.requests[0]).not.toHaveProperty('authoredAt')
+    expect(contentStore.requests[0]).not.toHaveProperty('sourceRevision')
+    const [revision] = await uow.repos.revisions.listForDocument(id, { limit: 1 })
+    expect(revision).toMatchObject({ timestamp: NOW, sourceRevision: null })
+  })
 })
 
 describe('recordPublish', () => {

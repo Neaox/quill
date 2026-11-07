@@ -7,7 +7,7 @@
  */
 
 import type { ContentChange } from '@quill/application'
-import { CHANGE_NOTE_TRAILER, DOCUMENT_ID_TRAILER } from './branding.ts'
+import { CHANGE_NOTE_TRAILER, DOCUMENT_ID_TRAILER, SOURCE_COMMIT_TRAILER } from './branding.ts'
 import { readTitle } from './document-front-matter.ts'
 import { foldTrailerValue, formatTrailer } from './git/trailers.ts'
 
@@ -15,6 +15,8 @@ export interface CommitMessage {
   readonly changes: readonly ContentChange[]
   readonly summary?: string
   readonly changeNote?: string
+  /** The external source revision a replayed publish came from (ADR-061). */
+  readonly sourceRevision?: string
 }
 
 export function buildCommitMessage(message: CommitMessage): string {
@@ -23,6 +25,9 @@ export function buildCommitMessage(message: CommitMessage): string {
   const trailers = [...ids].map((id) => formatTrailer(DOCUMENT_ID_TRAILER, id))
   if (message.changeNote !== undefined) {
     trailers.push(formatTrailer(CHANGE_NOTE_TRAILER, message.changeNote))
+  }
+  if (message.sourceRevision !== undefined) {
+    trailers.push(formatTrailer(SOURCE_COMMIT_TRAILER, message.sourceRevision))
   }
   return `${subject}\n\n${trailers.join('\n')}\n`
 }

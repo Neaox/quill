@@ -17,7 +17,12 @@ import { join } from 'node:path'
 import type { WorkspaceId } from '@quill/domain'
 import { afterAll, describe, expect, it } from 'vitest'
 
-import { CHANGE_NOTE_TRAILER, DOCUMENT_ID_TRAILER, PRODUCT_NAME } from './branding.ts'
+import {
+  CHANGE_NOTE_TRAILER,
+  DOCUMENT_ID_TRAILER,
+  PRODUCT_NAME,
+  SOURCE_COMMIT_TRAILER,
+} from './branding.ts'
 import { FilesystemObjectStore } from './filesystem/filesystem-object-store.ts'
 import { GitContentStore } from './git-content-store.ts'
 import type { ObjectStoreProvider } from './object-store.ts'
@@ -185,6 +190,27 @@ describe.skipIf(VERSION === null)('a repository the git CLI can read', () => {
       .trim()
     expect(documentIds).toBe(ONBOARDING)
     expect(note).toBe('Rewrote the introduction. Also fixed a typo.')
+  })
+
+  it('reads a replayed revision as authored at the source and committed by the store (ADR-061)', async () => {
+    const repo = await repository()
+    const authoredAt = new Date('2019-03-01T08:30:00Z')
+    const sourceCommit = 'c'.repeat(40)
+    await repo.store.publish({
+      workspaceId: repo.workspace,
+      changes: [write(ONBOARDING, 'a.md', markdown(ONBOARDING, 'Onboarding'))],
+      author: AUTHOR,
+      base: null,
+      authoredAt,
+      sourceRevision: sourceCommit,
+    })
+    const [authorTime, committerTime, source] = repo
+      .git('log', '-1', `--format=%at%n%ct%n%(trailers:key=${SOURCE_COMMIT_TRAILER},valueonly)`)
+      .split('\n')
+    expect(Number(authorTime)).toBe(authoredAt.getTime() / 1000)
+    expect(Number(committerTime)).toBe(NOW().getTime() / 1000)
+    expect(source).toBe(sourceCommit)
+    expect(repo.git('fsck', '--strict', '--no-dangling', '--no-progress').trim()).toBe('')
   })
 
   it('shows the document content byte for byte', async () => {

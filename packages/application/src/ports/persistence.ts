@@ -960,6 +960,8 @@ export interface RevisionIndexRow {
   readonly timestamp: Date
   readonly summary: string
   readonly changeNote: string | null
+  /** The external source revision this revision replays (ADR-061); null for a native one. */
+  readonly sourceRevision: string | null
   readonly createdAt: Date
 }
 
@@ -975,6 +977,8 @@ export interface AppendRevisionInput {
   readonly timestamp: Date
   readonly summary: string
   readonly changeNote: string | null
+  /** The external source revision this revision replays (ADR-061); omitted is recorded as none. */
+  readonly sourceRevision?: string | null
   readonly now: Date
 }
 
