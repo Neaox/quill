@@ -50,6 +50,17 @@ export interface GitCommand {
   readonly answers?: readonly number[]
   /** Overrides the output cap, for a command whose caller bounds what it keeps. */
   readonly maxOutputBytes?: number
+  /**
+   * A limit shared by several commands, such as one whole fetch. The command
+   * stops at its own timeout or at the deadline, whichever comes first.
+   */
+  readonly deadline?: Deadline
+}
+
+export interface Deadline {
+  readonly signal: AbortSignal
+  /** What the deadline bounds, and how long it had, for the refusal. */
+  readonly description: string
 }
 
 export interface GitResult {
@@ -98,7 +109,10 @@ export class GitCli {
       cwd: command.cwd,
       env: this.#environment(command),
       stdio: ['pipe', 'pipe', 'pipe'],
-      signal: AbortSignal.timeout(timeoutMs),
+      signal:
+        command.deadline === undefined
+          ? AbortSignal.timeout(timeoutMs)
+          : AbortSignal.any([AbortSignal.timeout(timeoutMs), command.deadline.signal]),
       windowsHide: true,
     })
     // `null` when a signal ended it; reported as such rather than mistaken for an answer.
@@ -139,7 +153,7 @@ export class GitCli {
       finished = true
       return code
     } catch (error) {
-      throw translate(error, name, timeoutMs, secrets)
+      throw translate(error, name, timeoutMs, secrets, command.deadline)
     } finally {
       if (!finished) {
         child.kill()
@@ -253,10 +267,16 @@ function translate(
   name: string,
   timeoutMs: number,
   secrets: readonly string[],
+  deadline: Deadline | undefined,
 ): ExternalSourceError {
   if (error instanceof ExternalSourceError) return error
   if (error instanceof Error && error.name === 'AbortError') {
-    return new ExternalSourceError('timeout', `git ${name} did not finish within ${timeoutMs} ms`)
+    return new ExternalSourceError(
+      'timeout',
+      deadline?.signal.aborted === true
+        ? `git ${name} was stopped: ${deadline.description}`
+        : `git ${name} did not finish within ${timeoutMs} ms`,
+    )
   }
   return new ExternalSourceError(
     'git-unavailable',
