@@ -23,6 +23,22 @@ const rootProperty = (page: Page, name: string) =>
     name,
   )
 
+/**
+ * Resolves once the organisation's theme stylesheet has loaded.
+ *
+ * Every page links a stylesheet the server generates from the organisation's
+ * theme, after the first render, and writes `data-theme-id` when it has
+ * loaded (`organisation-theme-link.ts`). On this page the identity switcher
+ * also writes that attribute when it mounts, and the two land in either
+ * order, so what the page starts on is not fixed. Waiting for the sheet means
+ * nothing changes under a test once it starts.
+ */
+const organisationThemeLoaded = (page: Page) =>
+  page.waitForFunction(() => {
+    const link = document.querySelector('link[data-organisation-theme]')
+    return link instanceof HTMLLinkElement && link.sheet !== null
+  })
+
 const overflows = (page: Page) =>
   page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth)
 
@@ -46,6 +62,7 @@ test.describe('the design system page', () => {
     await page.setViewportSize({ width: 1440, height: 900 })
     await page.goto('/design')
     await expect(heading(page)).toBeVisible()
+    await organisationThemeLoaded(page)
     // Every measurement below is of a settled page. The self-hosted faces
     // arrive after `load`, and a swap from the fallback face moves lines.
     await page.evaluate(() => document.fonts.ready)
@@ -85,14 +102,10 @@ test.describe('the design system page', () => {
     const root = page.locator('html')
     const identity = page.getByRole('group', { name: 'Identity' })
 
-    await expect(root).not.toHaveAttribute('data-theme-id', /.*/)
-    const instrument = {
-      sans: await rootProperty(page, '--font-sans'),
-      accent: await rootProperty(page, '--palette-accent'),
-      reading: await rootProperty(page, '--font-reading'),
-    }
-    expect(instrument.sans).toContain('IBM Plex Sans')
-
+    // Chosen explicitly, both of them: the page starts on the organisation's
+    // theme or on the built-in default, depending on which wrote
+    // `data-theme-id` last (`organisationThemeLoaded`), and in CI the test
+    // measured one and then the other (2026-11-07).
     await identity.getByRole('radio', { name: 'Editorial' }).check()
     await expect(root).toHaveAttribute('data-theme-id', 'editorial')
 
@@ -104,7 +117,6 @@ test.describe('the design system page', () => {
     // Editorial sets the chrome in Inter and the reading column in Source Serif 4.
     expect(editorial.sans).toContain('Inter')
     expect(editorial.reading).toContain('Source Serif')
-    expect(editorial.accent).not.toBe(instrument.accent)
 
     // An identity is a different type pairing, so the page re-sets rather than
     // staying pixel-identical — but it must not start scrolling sideways.
@@ -113,7 +125,15 @@ test.describe('the design system page', () => {
     // The default identity is the absence of the attribute, not its name.
     await identity.getByRole('radio', { name: 'Instrument' }).check()
     await expect(root).not.toHaveAttribute('data-theme-id', /.*/)
-    expect(await rootProperty(page, '--font-sans')).toBe(instrument.sans)
+    const instrument = {
+      sans: await rootProperty(page, '--font-sans'),
+      accent: await rootProperty(page, '--palette-accent'),
+      reading: await rootProperty(page, '--font-reading'),
+    }
+    expect(instrument.sans).toContain('IBM Plex Sans')
+    expect(instrument.sans).not.toBe(editorial.sans)
+    expect(instrument.reading).not.toBe(editorial.reading)
+    expect(instrument.accent).not.toBe(editorial.accent)
   })
 
   test('the identity carries its signature variants with it', async ({ page }) => {
