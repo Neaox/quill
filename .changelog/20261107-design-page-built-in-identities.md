@@ -1,0 +1,1 @@
+Fixed: The design page shows each built-in identity as it ships. The organisation's theme is no longer applied there, so the page always opens on Instrument, and the organisation's theme no longer replaces an identity picked while it was still loading.

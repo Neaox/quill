@@ -59,6 +59,24 @@ describe('the organisation’s theme', () => {
     expect(document.documentElement).toHaveAttribute('data-align', 'start')
   })
 
+  it('comes off on the design showcase, which shows the built-in identities as they ship', async () => {
+    const { router } = renderApp('/sign-in', {
+      'GET /api/settings/organisation/theme': () => jsonResponse(200, AFTER),
+    })
+    await loaded(AFTER.stylesheetHref)
+    expect(document.documentElement).toHaveAttribute('data-theme-id', 'grid')
+
+    await router.navigate({ to: '/design' })
+
+    expect(
+      await screen.findByRole('heading', { level: 1, name: 'The design system' }),
+    ).toBeVisible()
+    expect(themeLinks()).toEqual([])
+    expect(document.documentElement).not.toHaveAttribute('data-theme-id')
+    expect(document.documentElement).not.toHaveAttribute('data-rules')
+    expect(document.documentElement).not.toHaveAttribute('data-align')
+  })
+
   it('leaves the bundled identity in place when the theme cannot be read', async () => {
     renderApp('/sign-in', {})
 
