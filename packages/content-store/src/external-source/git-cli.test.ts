@@ -178,6 +178,31 @@ describe('GitCli', () => {
     expect(error.reason).toBe('timeout')
   })
 
+  it('stops a command at a shared deadline that comes before its own timeout', async () => {
+    const deadline = {
+      signal: AbortSignal.timeout(300),
+      description: 'the fetch did not finish within its deadline of 300 ms',
+    }
+
+    const error = await failure(cli().run(script('setTimeout(() => {}, 60000)', { deadline })))
+
+    expect(error.reason).toBe('timeout')
+    expect(error.message).toBe(
+      'git -e was stopped: the fetch did not finish within its deadline of 300 ms',
+    )
+  })
+
+  it('stops a command at its own timeout when that comes before the deadline', async () => {
+    const deadline = { signal: AbortSignal.timeout(60_000), description: 'a later deadline' }
+
+    const error = await failure(
+      cli({ localTimeoutMs: 300 }).run(script('setTimeout(() => {}, 60000)', { deadline })),
+    )
+
+    expect(error.reason).toBe('timeout')
+    expect(error.message).toContain('did not finish within 300 ms')
+  })
+
   it('stops a command that writes more than the cap', async () => {
     const error = await failure(
       cli({ maxOutputBytes: 1000 }).run(script("process.stdout.write('x'.repeat(5000))")),
