@@ -1,6 +1,6 @@
 import type { CollectionRow, DocumentRow, WorkspaceRow } from '@quill/application'
 import type { SearchServiceHit, SearchServiceResults } from '@quill/search'
-import { collectionId, documentId, workspaceId } from '@quill/domain'
+import { NATIVE_ORIGIN, collectionId, documentId, workspaceId } from '@quill/domain'
 import type { CollectionId, DocumentId, ShortId, WorkspaceId } from '@quill/domain'
 import { describe, expect, it } from 'vitest'
 
@@ -56,7 +56,7 @@ function document(
 }
 
 function workspace(id: WorkspaceId, name: string, slug: string): WorkspaceRow {
-  return { id, unitId: 'unit', name, slug, createdAt: NOW }
+  return { id, unitId: 'unit', name, slug, createdAt: NOW, origin: NATIVE_ORIGIN }
 }
 
 function collection(id: CollectionId, inWorkspace: WorkspaceId, name: string): CollectionRow {

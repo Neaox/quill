@@ -282,7 +282,7 @@ export function WorkspaceTree({
   // Stable across renders, so the tree's memoised rows are not redrawn every
   // time the page around the sidebar settles a query.
   const treeData = tree.data
-  const { canManage, openMove, openDelete } = documentActions
+  const { canArrange, openMove, openDelete } = documentActions
   const nodeActions = useCallback(
     (node: TreeNode): readonly TreeNodeAction[] => {
       const actions: TreeNodeAction[] = [
@@ -299,13 +299,13 @@ export function WorkspaceTree({
           },
         },
       ]
-      if (canManage && node.id === currentDocumentId) {
+      if (canArrange && node.id === currentDocumentId) {
         actions.push({ label: 'Move to…', onSelect: openMove })
         actions.push({ label: 'Delete…', onSelect: openDelete })
       }
       return actions
     },
-    [treeData, canManage, openMove, openDelete, currentDocumentId],
+    [treeData, canArrange, openMove, openDelete, currentDocumentId],
   )
 
   // Built once per tree response, not per render: the walk visits every

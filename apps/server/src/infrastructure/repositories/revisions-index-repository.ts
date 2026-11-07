@@ -34,6 +34,7 @@ function toRevisionRow(row: typeof revisionsIndex.$inferSelect): RevisionIndexRo
     timestamp: row.timestamp,
     summary: row.summary,
     changeNote: row.changeNote,
+    sourceRevision: row.sourceRevision,
     createdAt: row.createdAt,
   }
 }
@@ -63,6 +64,7 @@ export function createRevisionsIndexRepository(db: DrizzleClient): RevisionsInde
           timestamp: input.timestamp,
           summary: input.summary,
           changeNote: input.changeNote,
+          sourceRevision: input.sourceRevision ?? null,
           createdAt: input.now,
         })
         .onConflictDoNothing({ target: [revisionsIndex.documentId, revisionsIndex.revision] })

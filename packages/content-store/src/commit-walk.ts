@@ -9,7 +9,7 @@
 
 import type { RevisionSummary } from '@quill/application'
 import { documentId, isUuid, revisionId, type DocumentId } from '@quill/domain'
-import { CHANGE_NOTE_TRAILER, DOCUMENT_ID_TRAILER } from './branding.ts'
+import { CHANGE_NOTE_TRAILER, DOCUMENT_ID_TRAILER, SOURCE_COMMIT_TRAILER } from './branding.ts'
 import type { GitCommit } from './git/commit.ts'
 import type { GitRepository } from './git/git-repository.ts'
 import { parseTrailers, trailerValues, type Trailer } from './git/trailers.ts'
@@ -45,6 +45,7 @@ export function changedDocumentIds(trailers: readonly Trailer[]): DocumentId[] {
 export function toRevisionSummary(walked: WalkedCommit): RevisionSummary {
   const { commit, trailers } = walked
   const changeNote = trailerValues(trailers, CHANGE_NOTE_TRAILER).at(0)
+  const sourceRevision = trailerValues(trailers, SOURCE_COMMIT_TRAILER).at(0)
   return {
     revision: revisionId(walked.revision),
     author: { name: commit.author.name, email: commit.author.email },
@@ -52,6 +53,7 @@ export function toRevisionSummary(walked: WalkedCommit): RevisionSummary {
     summary: commit.message.slice(0, indexOfLineBreak(commit.message)),
     ...(changeNote === undefined ? {} : { changeNote }),
     documentIds: changedDocumentIds(trailers),
+    ...(sourceRevision === undefined ? {} : { sourceRevision }),
   }
 }
 

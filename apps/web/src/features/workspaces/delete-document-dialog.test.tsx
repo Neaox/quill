@@ -89,7 +89,7 @@ function routes(overrides: FakeRoutes = {}): FakeRoutes {
       ),
     'GET /api/documents/{id}/envelope': () =>
       jsonResponse(200, {
-        permissions: { view: true, comment: false, edit: true, manage: true },
+        permissions: { view: true, comment: false, edit: true, arrange: true, manage: true },
         lock: null,
         lastPublished: null,
         review: null,
@@ -192,7 +192,7 @@ describe('deleting a document', () => {
       routes({
         'GET /api/documents/{id}/envelope': () =>
           jsonResponse(200, {
-            permissions: { view: true, comment: false, edit: false, manage: false },
+            permissions: { view: true, comment: false, edit: false, arrange: false, manage: false },
             lock: null,
             lastPublished: null,
             review: null,

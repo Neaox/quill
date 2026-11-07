@@ -61,6 +61,58 @@ export interface PublishRequest {
    * with no revisions yet. A stale base triggers a three-way merge.
    */
   readonly base: RevisionId | null
+  /**
+   * When the change was made, for a revision replayed from a read-only external
+   * source (ADR-061): the source revision's own time. Absent, the revision is
+   * stamped with the store's clock. Only the sync job sets it; see
+   * {@link checkSourceStamp} for what the store accepts.
+   */
+  readonly authoredAt?: Date
+  /**
+   * The external source revision this publish replays (ADR-061): an opaque id,
+   * recorded on the revision and in the revisions index so a replay can resume
+   * and a page can name what it was rendered from. Only the sync job sets it.
+   */
+  readonly sourceRevision?: string
+}
+
+/** How far ahead of the store's clock `authoredAt` may be: forges' clocks drift. */
+export const AUTHORED_AT_MAX_SKEW_MS = 5 * 60 * 1000
+
+/** The longest source revision id accepted; a SHA-256 commit id is 64 characters. */
+export const SOURCE_REVISION_MAX_LENGTH = 128
+
+/** Visible ASCII only, so the id is safe as a single-line trailer and in a log. */
+const SOURCE_REVISION_PATTERN = new RegExp(`^[\\x21-\\x7e]{1,${SOURCE_REVISION_MAX_LENGTH}}$`)
+
+export type SourceStampProblem =
+  | 'authored-at-invalid'
+  | 'authored-at-in-future'
+  | 'source-revision-invalid'
+
+/**
+ * Why a publish's source stamp cannot be stored, or null when it can (ADR-061).
+ *
+ * A publish without `authoredAt` or `sourceRevision` always passes, so a
+ * native publish is unaffected. The store refuses a stamp that fails; the sync
+ * job checks first, because what it is given comes from someone else's
+ * repository.
+ */
+export function checkSourceStamp(
+  request: Pick<PublishRequest, 'authoredAt' | 'sourceRevision'>,
+  now: Date,
+): SourceStampProblem | null {
+  const { authoredAt, sourceRevision } = request
+  if (authoredAt !== undefined) {
+    if (!Number.isFinite(authoredAt.getTime())) return 'authored-at-invalid'
+    if (authoredAt.getTime() > now.getTime() + AUTHORED_AT_MAX_SKEW_MS) {
+      return 'authored-at-in-future'
+    }
+  }
+  if (sourceRevision !== undefined && !SOURCE_REVISION_PATTERN.test(sourceRevision)) {
+    return 'source-revision-invalid'
+  }
+  return null
 }
 
 export interface MergeConflict {
@@ -89,6 +141,8 @@ export interface RevisionSummary {
   readonly summary: string
   readonly changeNote?: string
   readonly documentIds: readonly DocumentId[]
+  /** The external source revision this revision replays (ADR-061); absent for a native one. */
+  readonly sourceRevision?: string
 }
 
 export interface Page {

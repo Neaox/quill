@@ -119,6 +119,27 @@ describe('restoreRevision', () => {
     expect(restored.document.headRevision).toBe(restored.revision)
   })
 
+  it('restores as a native revision, never as one replayed from a source (ADR-061)', async () => {
+    const id = await newDocument()
+    const first = await publish(id, '# Overview\n\nThe original.')
+    await publish(id, '# Overview\n\nA regrettable edit.')
+    const smuggled = {
+      documentId: id,
+      revision: first,
+      author,
+      sessionId: SESSION,
+      authoredAt: new Date('2019-03-01T08:30:00.000Z'),
+      sourceRevision: 'c'.repeat(40),
+    }
+
+    expect((await restoreRevision(deps, smuggled)).kind).toBe('published')
+    const restore = contentStore.requests.at(-1)
+    expect(restore).not.toHaveProperty('authoredAt')
+    expect(restore).not.toHaveProperty('sourceRevision')
+    const [newest] = await uow.repos.revisions.listForDocument(id, { limit: 1 })
+    expect(newest).toMatchObject({ timestamp: NOW, sourceRevision: null })
+  })
+
   it('records who restored it, on the document and on the new revision', async () => {
     const id = await newDocument()
     const first = await publish(id, '# Overview\n\nThe original.')

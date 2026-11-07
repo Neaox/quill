@@ -360,6 +360,7 @@ describe('createAuthorizer: documents', () => {
       comment: false,
       edit: false,
       publish: false,
+      arrange: false,
       manage: false,
       own: false,
     })
@@ -633,5 +634,75 @@ describe('createAuthorizer: a collection in a broken tree', () => {
     // The workspace's unit is gone, so there is no chain to resolve against.
     await uow.repos.units.delete('platform')
     expect(failureOf(await forUser(EDITOR).collection('architecture'))).toBe('broken-tree')
+  })
+})
+
+/**
+ * A sourced workspace's content is written only by its sync job (ADR-061), so
+ * the authorizer narrows whatever a role grants there, for documents, the
+ * workspace and its collections alike, and for instance administrators too.
+ */
+describe('createAuthorizer: a sourced workspace', () => {
+  const READ_ONLY = { edit: false, publish: false, arrange: false }
+
+  beforeEach(() => {
+    uow.sourceWorkspace(WORKSPACE)
+  })
+
+  it('turns off writing and arranging on its documents and keeps access', async () => {
+    await grant({ scopeKind: 'workspace', scopeId: WORKSPACE, role: 'owner' })
+
+    const access = await forUser(EDITOR).document(CHILD)
+    if (!access.ok) throw new Error(`unexpected failure: ${access.error.kind}`)
+    // The role is what the grants say; only what it may do is narrowed.
+    expect(access.value.role).toBe('owner')
+    expect(access.value.capabilities).toEqual({
+      view: true,
+      comment: true,
+      ...READ_ONLY,
+      manage: true,
+      own: true,
+    })
+  })
+
+  it('narrows the workspace and its collections the same way', async () => {
+    await grant({ scopeKind: 'workspace', scopeId: WORKSPACE, role: 'admin' })
+    const authorizer = forUser(EDITOR)
+
+    const workspace = await authorizer.workspace(WORKSPACE)
+    expect(workspace.ok && workspace.value.capabilities).toMatchObject({
+      ...READ_ONLY,
+      manage: true,
+    })
+    const collection = await authorizer.collection('architecture')
+    expect(collection.ok && collection.value.capabilities).toMatchObject({
+      ...READ_ONLY,
+      manage: true,
+    })
+  })
+
+  it('narrows an instance administrator too', async () => {
+    const access = await forUser(ADMIN).document(PARENT)
+    expect(access.ok && access.value.isInstanceAdmin).toBe(true)
+    expect(access.ok && access.value.capabilities).toMatchObject({ ...READ_ONLY, manage: true })
+  })
+
+  it('leaves a native workspace beside it as the role says', async () => {
+    await uow.repos.workspaces.create({
+      id: OTHER_WORKSPACE,
+      unitId: 'platform',
+      name: 'Handbook',
+      slug: 'handbook',
+      now: NOW,
+    })
+    await grant({ scopeKind: 'unit', scopeId: 'platform', role: 'admin' })
+
+    const native = await forUser(EDITOR).workspace(OTHER_WORKSPACE)
+    expect(native.ok && native.value.capabilities).toMatchObject({
+      edit: true,
+      publish: true,
+      arrange: true,
+      manage: true,
+    })
   })
 })

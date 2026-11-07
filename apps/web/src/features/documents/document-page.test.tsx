@@ -285,6 +285,72 @@ describe('the reading view', () => {
     expect(screen.queryByRole('link', { name: 'Edit' })).not.toBeInTheDocument()
   })
 
+  it('offers rename, move and delete to someone who may arrange, and Share to someone who may manage', async () => {
+    renderApp(
+      READING_PATH,
+      readingRoutes({
+        'GET /api/documents/{id}/envelope': envelope({
+          permissions: {
+            view: true,
+            comment: true,
+            edit: true,
+            publish: true,
+            arrange: true,
+            manage: true,
+          },
+        }),
+      }),
+    )
+
+    await screen.findByRole('article', { name: 'Regional failover' })
+    const bar = await screen.findByRole('banner')
+    expect(await within(bar).findByRole('button', { name: 'Share' })).toBeInTheDocument()
+    expect(within(bar).getByRole('button', { name: /^Rename/ })).toBeInTheDocument()
+    await userEvent.click(
+      within(bar).getByRole('button', { name: 'More actions for Regional failover' }),
+    )
+    const items = within(await screen.findByRole('menu'))
+      .getAllByRole('menuitem')
+      .map((item) => item.textContent)
+    expect(items).toEqual(expect.arrayContaining(['Move to…', 'Delete…']))
+  })
+
+  /**
+   * A workspace read from a repository takes its tree from the repository
+   * (ADR-061): its envelope keeps `manage` and turns off `arrange`, so Share
+   * stays and nothing that reshapes the tree is offered.
+   */
+  it('keeps Share and offers no rename, move or delete to someone who may manage but not arrange', async () => {
+    renderApp(
+      READING_PATH,
+      readingRoutes({
+        'GET /api/documents/{id}/envelope': envelope({
+          permissions: {
+            view: true,
+            comment: true,
+            edit: false,
+            publish: false,
+            arrange: false,
+            manage: true,
+          },
+        }),
+      }),
+    )
+
+    await screen.findByRole('article', { name: 'Regional failover' })
+    const bar = await screen.findByRole('banner')
+    expect(await within(bar).findByRole('button', { name: 'Share' })).toBeInTheDocument()
+    expect(within(bar).queryByRole('button', { name: /^Rename/ })).not.toBeInTheDocument()
+    await userEvent.click(
+      within(bar).getByRole('button', { name: 'More actions for Regional failover' }),
+    )
+    const items = within(await screen.findByRole('menu'))
+      .getAllByRole('menuitem')
+      .map((item) => item.textContent)
+    expect(items).not.toContain('Move to…')
+    expect(items).not.toContain('Delete…')
+  })
+
   it('tells an editor about changes that are saved and not published, and how to go on', async () => {
     renderApp(
       READING_PATH,
@@ -1045,7 +1111,7 @@ describe('the document bar on a phone', () => {
         READING_PATH,
         readingRoutes({
           'GET /api/documents/{id}/envelope': envelope({
-            permissions: { view: true, comment: true, edit: true, manage: true },
+            permissions: { view: true, comment: true, edit: true, arrange: true, manage: true },
           }),
         }),
       )

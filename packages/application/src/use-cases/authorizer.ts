@@ -7,6 +7,7 @@ import {
   documentScope,
   err,
   groupPrincipal,
+  narrowByOrigin,
   ok,
   principalIdentities,
   PUBLIC_PRINCIPAL,
@@ -95,6 +96,7 @@ export interface RequestPrincipal {
 
 export interface Access {
   readonly role: Role | null
+  /** What the role grants, narrowed by the workspace's origin (ADR-061). */
   readonly capabilities: Capabilities
   /** Instance admins bypass resolution entirely (ADR-012). */
   readonly isInstanceAdmin: boolean
@@ -199,8 +201,22 @@ export function createAuthorizer(
     return resolved
   }
 
-  /** The verdict for one chain: an instance admin's owner access, or what the grants say. */
-  async function decide(chain: ScopeChain): Promise<Access> {
+  /**
+   * The verdict for one chain in one workspace: an instance admin's owner
+   * access, or what the grants say, narrowed by where the workspace's content
+   * comes from (ADR-061). Narrowed here, once, so that no route can ask a
+   * sourced workspace for a capability its origin has taken away.
+   */
+  async function decide(chain: ScopeChain, workspace: WorkspaceRow): Promise<Access> {
+    const access = await resolve(chain)
+    return {
+      ...access,
+      capabilities: narrowByOrigin(access.capabilities, workspace.origin),
+    }
+  }
+
+  /** What the grants on one chain allow, before the workspace's origin narrows it. */
+  async function resolve(chain: ScopeChain): Promise<Access> {
     const who = await requestIdentity()
     if (who.isInstanceAdmin) return OWNER_ACCESS
     const selectors = chain.map(toSelector)
@@ -256,7 +272,7 @@ export function createAuthorizer(
         documentChain(repos, document, workspace),
       )
       if (!chain.ok) return chain
-      return ok({ document, workspace, ...(await decide(chain.value)) })
+      return ok({ document, workspace, ...(await decide(chain.value, workspace)) })
     },
 
     async workspace(workspaceId) {
@@ -269,7 +285,7 @@ export function createAuthorizer(
         workspaceChain(repos, workspace),
       )
       if (!chain.ok) return chain
-      return ok({ workspace, ...(await decide(chain.value)) })
+      return ok({ workspace, ...(await decide(chain.value, workspace)) })
     },
 
     async collection(collectionId) {
@@ -291,7 +307,7 @@ export function createAuthorizer(
           : above
       })
       if (!chain.ok) return chain
-      return ok({ collection, workspace, ...(await decide(chain.value)) })
+      return ok({ collection, workspace, ...(await decide(chain.value, workspace)) })
     },
 
     async identities() {

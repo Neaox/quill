@@ -1,5 +1,5 @@
-import { REQUEST_IN_FLIGHT_FOR_MS, retryAfter } from '@quill/domain'
-import type { DocumentId, ShortId, UserId } from '@quill/domain'
+import { NATIVE_ORIGIN, REQUEST_IN_FLIGHT_FOR_MS, retryAfter } from '@quill/domain'
+import type { DocumentId, ShortId, UserId, WorkspaceId } from '@quill/domain'
 
 import type {
   AttachmentRepository,
@@ -97,6 +97,11 @@ export interface InMemoryUnitOfWork extends UnitOfWork {
   readonly summaries: Map<DocumentId, DocumentSummaryRow>
   /** Drops a document's draft row, as a document imported or seeded without one has none. */
   forgetDraft(documentId: DocumentId): void
+  /**
+   * Makes a workspace read from an external source (ADR-061), which no port
+   * can do until sources are stored: how a test builds a sourced workspace.
+   */
+  sourceWorkspace(workspaceId: WorkspaceId): void
 }
 
 /** The `(created_at, name)` order the secrets rotation pages by. */
@@ -472,7 +477,7 @@ export function createInMemoryUnitOfWork(
 
   const workspaceRepository: WorkspaceRepository = {
     async create({ id, unitId, name, slug, now }) {
-      const row: WorkspaceRow = { id, unitId, name, slug, createdAt: now }
+      const row: WorkspaceRow = { id, unitId, name, slug, createdAt: now, origin: NATIVE_ORIGIN }
       workspaces.set(id, row)
       return row
     },
@@ -932,6 +937,7 @@ export function createInMemoryUnitOfWork(
       const row: RevisionIndexRow = {
         ...input,
         authorUserId: input.authorUserId ?? null,
+        sourceRevision: input.sourceRevision ?? null,
         createdAt: input.now,
       }
       revisions.unshift(row)
@@ -1653,6 +1659,12 @@ export function createInMemoryUnitOfWork(
     summaries,
     forgetDraft(documentId) {
       drafts.delete(documentId)
+    },
+    sourceWorkspace(workspaceId) {
+      const existing = workspaces.get(workspaceId)
+      if (existing === undefined)
+        throw new Error(`sourceWorkspace: workspace ${workspaceId} not found`)
+      workspaces.set(workspaceId, { ...existing, origin: { kind: 'sourced' } })
     },
     async run(fn) {
       const pending: RecordedEvent[] = []

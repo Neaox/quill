@@ -493,6 +493,8 @@ export const revisionsIndex = pgTable(
     timestamp: timestamp('timestamp', { withTimezone: true }).notNull(),
     summary: text('summary').notNull(),
     changeNote: text('change_note'),
+    /** The external source revision this revision replays (ADR-061); null for a native one. */
+    sourceRevision: text('source_revision'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull(),
   },
   (table) => [

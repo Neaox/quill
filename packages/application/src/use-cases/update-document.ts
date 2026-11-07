@@ -44,7 +44,7 @@ import { heldByAnother, readDraftContent } from './publish-document.ts'
  *   destination says so in the same request.
  *
  * Whether the *caller* may put a document there is the route's question, and
- * it asks the authorizer for `manage` at the destination as well as at the
+ * it asks the authorizer for `arrange` at the destination as well as at the
  * source (`routes/documents.ts`).
  *
  * A **rename** is the fifth rule, and it is about content rather than about

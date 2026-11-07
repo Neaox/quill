@@ -30,6 +30,18 @@ const overflows = (page: Page) =>
 const scheme = (page: Page) => page.getByRole('button', { name: /^Colour scheme:/ }).first()
 
 test.describe('the design system page', () => {
+  /*
+   * One test at a time, in order, each still in a fresh context of its own.
+   * Every test here starts with a cold load of the heaviest page there is
+   * (every specimen: some 560 modules through the dev server, then one long
+   * render), and run fully parallel, four workers did that at once. On the
+   * four-core CI runner that made a WebKit load take eleven to fourteen
+   * seconds where alone it takes two, and the heading missed its ten
+   * (CI, 2026-11-07). Nothing is shared between the tests; they only stop
+   * loading the page on top of each other.
+   */
+  test.describe.configure({ mode: 'default' })
+
   test.beforeEach(async ({ page }) => {
     await page.setViewportSize({ width: 1440, height: 900 })
     await page.goto('/design')

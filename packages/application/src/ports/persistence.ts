@@ -8,6 +8,7 @@ import type {
   ShortId,
   UserId,
   WorkspaceId,
+  WorkspaceOrigin,
 } from '@quill/domain'
 
 import type { EventRecorder } from './events.ts'
@@ -343,6 +344,11 @@ export interface WorkspaceRow {
   readonly name: string
   readonly slug: string
   readonly createdAt: Date
+  /**
+   * Where its content comes from (ADR-061), which narrows what anybody may do
+   * in it (`narrowByOrigin`). Native until sources are stored.
+   */
+  readonly origin: WorkspaceOrigin
 }
 
 export interface WorkspaceRepository {
@@ -954,6 +960,8 @@ export interface RevisionIndexRow {
   readonly timestamp: Date
   readonly summary: string
   readonly changeNote: string | null
+  /** The external source revision this revision replays (ADR-061); null for a native one. */
+  readonly sourceRevision: string | null
   readonly createdAt: Date
 }
 
@@ -969,6 +977,8 @@ export interface AppendRevisionInput {
   readonly timestamp: Date
   readonly summary: string
   readonly changeNote: string | null
+  /** The external source revision this revision replays (ADR-061); omitted is recorded as none. */
+  readonly sourceRevision?: string | null
   readonly now: Date
 }
 

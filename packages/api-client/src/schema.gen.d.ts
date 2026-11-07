@@ -1480,6 +1480,7 @@ export interface paths {
                                 holderUserId: string;
                             } | null;
                             permissions: {
+                                arrange: boolean;
                                 comment: boolean;
                                 edit: boolean;
                                 manage: boolean;

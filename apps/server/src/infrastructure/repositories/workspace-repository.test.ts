@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
-import { workspaceId } from '@quill/domain'
+import { NATIVE_ORIGIN, workspaceId } from '@quill/domain'
 
 import { createTestDatabase, type TestDatabase } from '../db/test-database.ts'
 import { createUnitRepository } from './unit-repository.ts'
@@ -50,6 +50,8 @@ describe('WorkspaceRepository', () => {
       name: 'Engineering',
       slug: 'engineering',
       createdAt: now,
+      // No workspace reads from a source until sources are stored (ADR-061).
+      origin: NATIVE_ORIGIN,
     })
     expect(await workspaces.findById(ENGINEERING)).toEqual(created)
     expect(await workspaces.findBySlug('engineering')).toEqual(created)

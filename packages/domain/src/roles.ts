@@ -43,7 +43,17 @@ export function canPublish(role: Role): boolean {
   return roleAtLeast(role, 'editor')
 }
 
-/** Manage members, grants, share-link policy, and publish settings. */
+/**
+ * Change the tree: rename, move and delete documents, and create, rename and
+ * delete collections. Granted exactly where `canManage` is (ADR-061); it is a
+ * capability of its own because a sourced workspace turns it off and keeps
+ * `manage`.
+ */
+export function canArrange(role: Role): boolean {
+  return roleAtLeast(role, 'admin')
+}
+
+/** Manage members, grants, share links, settings, and the public site. */
 export function canManage(role: Role): boolean {
   return roleAtLeast(role, 'admin')
 }
