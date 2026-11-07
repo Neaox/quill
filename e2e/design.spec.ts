@@ -23,22 +23,6 @@ const rootProperty = (page: Page, name: string) =>
     name,
   )
 
-/**
- * Resolves once the organisation's theme stylesheet has loaded.
- *
- * Every page links a stylesheet the server generates from the organisation's
- * theme, after the first render, and writes `data-theme-id` when it has
- * loaded (`organisation-theme-link.ts`). On this page the identity switcher
- * also writes that attribute when it mounts, and the two land in either
- * order, so what the page starts on is not fixed. Waiting for the sheet means
- * nothing changes under a test once it starts.
- */
-const organisationThemeLoaded = (page: Page) =>
-  page.waitForFunction(() => {
-    const link = document.querySelector('link[data-organisation-theme]')
-    return link instanceof HTMLLinkElement && link.sheet !== null
-  })
-
 const overflows = (page: Page) =>
   page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth)
 
@@ -62,7 +46,6 @@ test.describe('the design system page', () => {
     await page.setViewportSize({ width: 1440, height: 900 })
     await page.goto('/design')
     await expect(heading(page)).toBeVisible()
-    await organisationThemeLoaded(page)
     // Every measurement below is of a settled page. The self-hosted faces
     // arrive after `load`, and a swap from the fallback face moves lines.
     await page.evaluate(() => document.fonts.ready)
@@ -102,10 +85,11 @@ test.describe('the design system page', () => {
     const root = page.locator('html')
     const identity = page.getByRole('group', { name: 'Identity' })
 
-    // Chosen explicitly, both of them: the page starts on the organisation's
-    // theme or on the built-in default, depending on which wrote
-    // `data-theme-id` last (`organisationThemeLoaded`), and in CI the test
-    // measured one and then the other (2026-11-07).
+    // The page shows the built-in identities, never the organisation's theme
+    // (`routes/design.tsx`), so it opens on the default.
+    await expect(page.locator('link[data-organisation-theme]')).toHaveCount(0)
+    await expect(root).not.toHaveAttribute('data-theme-id', /.*/)
+
     await identity.getByRole('radio', { name: 'Editorial' }).check()
     await expect(root).toHaveAttribute('data-theme-id', 'editorial')
 
