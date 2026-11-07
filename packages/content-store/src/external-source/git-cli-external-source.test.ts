@@ -649,6 +649,20 @@ describe('GitCliExternalSource', () => {
       await expect(readdir(cache)).resolves.toEqual(['home'])
     })
 
+    it('stops a whole fetch at its deadline, and leaves no clone behind', async () => {
+      const { source, cache } = await open(published, {
+        paths: ['docs'],
+        fetchDeadlineMs: 1,
+        networkTimeoutMs: 60_000,
+      })
+
+      const error = await refusal(source.fetch())
+
+      expect(error.reason).toBe('timeout')
+      expect(error.message).toContain('the fetch did not finish within its deadline of 1 ms')
+      await expect(readdir(cache)).resolves.toEqual(['home'])
+    })
+
     it('says git could not be run when there is no git', async () => {
       const error = await refusal(open(published, { executable: join(root, 'no-such-git') }))
 

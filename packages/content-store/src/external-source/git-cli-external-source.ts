@@ -15,7 +15,7 @@ import type {
 } from '@quill/application'
 
 import { GitCli } from './git-cli.ts'
-import type { GitCommand, SourceCredential } from './git-cli.ts'
+import type { Deadline, GitCommand, SourceCredential } from './git-cli.ts'
 import { batchObjects, nulFields } from './git-output.ts'
 import { supportedGitVersion } from './git-version.ts'
 import { sourcePrefixes, sparsePatterns } from './source-paths.ts'
@@ -63,6 +63,12 @@ export interface GitCliExternalSourceOptions {
   readonly localTimeoutMs?: number
   /** For a clone, a fetch, or a backfill, which move the source's history. */
   readonly networkTimeoutMs?: number
+  /**
+   * For a whole fetch: clone or fetch, then backfill, together. A slow remote
+   * cannot hold the sync job's lock past it. Each command stops at its own
+   * timeout or at this deadline, whichever comes first.
+   */
+  readonly fetchDeadlineMs?: number
   /** The most a listing may write. */
   readonly maxOutputBytes?: number
   /** Files larger than this are reported as `too-large`, not read. */
@@ -78,6 +84,7 @@ export interface GitCliExternalSourceOptions {
 
 const DEFAULT_LOCAL_TIMEOUT_MS = 60_000
 const DEFAULT_NETWORK_TIMEOUT_MS = 10 * 60_000
+const DEFAULT_FETCH_DEADLINE_MS = 15 * 60_000
 const DEFAULT_MAX_OUTPUT_BYTES = 64 * 1024 * 1024
 const DEFAULT_MAX_FILE_BYTES = 16 * 1024 * 1024
 
@@ -108,6 +115,7 @@ interface Settings {
   readonly outboundPolicy: OutboundHostPolicy
   readonly credential: () => Promise<SourceCredential | null>
   readonly maxFileBytes: number
+  readonly fetchDeadlineMs: number
 }
 
 export class GitCliExternalSource implements ExternalSource {
@@ -155,6 +163,7 @@ export class GitCliExternalSource implements ExternalSource {
       outboundPolicy: options.outboundPolicy,
       credential: options.credential ?? (() => Promise.resolve(null)),
       maxFileBytes: options.maxFileBytes ?? DEFAULT_MAX_FILE_BYTES,
+      fetchDeadlineMs: options.fetchDeadlineMs ?? DEFAULT_FETCH_DEADLINE_MS,
     })
   }
 
@@ -188,6 +197,11 @@ export class GitCliExternalSource implements ExternalSource {
   }
 
   async fetch(): Promise<SourceRevisionId> {
+    const { fetchDeadlineMs } = this.#settings
+    const deadline: Deadline = {
+      signal: AbortSignal.timeout(fetchDeadlineMs),
+      description: `the fetch did not finish within its deadline of ${fetchDeadlineMs} ms`,
+    }
     const network = await this.#network()
     if (await exists(join(this.#repository, '.git'))) {
       // The address the policy just checked is the one fetched from, and the
@@ -195,6 +209,7 @@ export class GitCliExternalSource implements ExternalSource {
       await this.#git({
         subcommand: 'config',
         args: ['remote.origin.url', this.#settings.remote.href],
+        deadline,
       })
       await this.#git({
         subcommand: 'fetch',
@@ -207,9 +222,10 @@ export class GitCliExternalSource implements ExternalSource {
           `+refs/heads/${this.#settings.branch}:${this.#trackingRef}`,
         ],
         network,
+        deadline,
       })
     } else {
-      await this.#clone(network)
+      await this.#clone(network, deadline)
     }
     // Set on every fetch: a source's paths can change between fetches, and
     // the next backfill then fetches the history of any path just added.
@@ -217,11 +233,12 @@ export class GitCliExternalSource implements ExternalSource {
       subcommand: 'sparse-checkout',
       args: ['set', '--no-cone', '--stdin'],
       stdin: `${sparsePatterns(this.#settings.prefixes).join('\n')}\n`,
+      deadline,
     })
-    const head = await this.#commit(this.#trackingRef)
+    const head = await this.#commit(this.#trackingRef, deadline)
     // `git backfill` walks from HEAD, so HEAD follows the branch.
-    await this.#git({ subcommand: 'update-ref', args: ['--no-deref', 'HEAD', head] })
-    await this.#git({ subcommand: 'backfill', args: ['--sparse'], network })
+    await this.#git({ subcommand: 'update-ref', args: ['--no-deref', 'HEAD', head], deadline })
+    await this.#git({ subcommand: 'backfill', args: ['--sparse'], network, deadline })
     return head
   }
 
@@ -365,7 +382,7 @@ export class GitCliExternalSource implements ExternalSource {
    * Clones beside the final directory and moves it into place, so an
    * interrupted clone is never mistaken for a finished one.
    */
-  async #clone(network: Network): Promise<void> {
+  async #clone(network: Network, deadline: Deadline): Promise<void> {
     const staging = `${this.#repository}.partial`
     await rm(staging, { recursive: true, force: true })
     try {
@@ -387,6 +404,7 @@ export class GitCliExternalSource implements ExternalSource {
         ],
         cwd: this.#home,
         network,
+        deadline,
       })
     } catch (error) {
       await rm(staging, { recursive: true, force: true })
@@ -412,11 +430,12 @@ export class GitCliExternalSource implements ExternalSource {
     return code === 0
   }
 
-  async #commit(name: string): Promise<string> {
+  async #commit(name: string, deadline?: Deadline): Promise<string> {
     const { code, stdout } = await this.#git({
       subcommand: 'rev-parse',
       args: ['--verify', '--quiet', '--end-of-options', `${name}^{commit}`],
       answers: [1],
+      ...(deadline === undefined ? {} : { deadline }),
     })
     if (code === 1) {
       throw new ExternalSourceError('unknown-revision', `The source has not fetched ${name}.`)

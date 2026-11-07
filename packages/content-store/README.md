@@ -62,7 +62,7 @@ every other command with `GIT_NO_LAZY_FETCH=1`. The patterns are non-cone (`/doc
 files with it. A glob is widened to its literal directory, or refused when the source is strict.
 `git` runs with no shell, an environment built from nothing (no system or global configuration, an
 empty `HOME`, no prompts, hooks, submodules or LFS), https only, redirects refused, a timeout and an
-output cap on every command, and the remote's host checked against the `OutboundHostPolicy` before
+output cap on every command, one deadline over a whole fetch (clone or fetch, then backfill), and the remote's host checked against the `OutboundHostPolicy` before
 each request. The credential travels as an `http.extraHeader` in the environment, never in an
 argument or on disk. Files are read by object id with `git cat-file --batch`, never from a working
 tree; there is none.
