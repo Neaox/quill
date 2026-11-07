@@ -22,9 +22,15 @@ export function useThemeId(initial: BuiltinThemeId = DEFAULT_THEME_ID): ThemeIdC
   const [themeId, setThemeId] = useState<BuiltinThemeId>(initial)
 
   // Synchronises the document element, an external system React does not
-  // render, with the identity being previewed (ADR-028).
+  // render, with the identity being previewed (ADR-028). Leaving the page
+  // takes the preview off, so the next screen does not show it until the
+  // organisation's theme loads.
   useEffect(() => {
-    applyThemeId(document.documentElement, themeId)
+    const root = document.documentElement
+    applyThemeId(root, themeId)
+    return () => {
+      applyThemeId(root, DEFAULT_THEME_ID)
+    }
   }, [themeId])
 
   return { themeId, setThemeId }
