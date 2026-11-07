@@ -1,0 +1,24 @@
+diff --git a/dist/index.js b/dist/index.js
+index 3d743f9582bf22fbcddd2c53bd28b5e999cb16c2..6f65f17b37604e351bfba9f454c5240941946bd2 100644
+--- a/dist/index.js
++++ b/dist/index.js
+@@ -89,6 +89,7 @@ var HoverCard = /* @__PURE__ */ __name((props) => {
+   });
+   const handleOpen = React.useCallback(() => {
+     clearTimeout(closeTimerRef.current);
++    clearTimeout(openTimerRef.current);
+     openTimerRef.current = window.setTimeout(() => setOpen(true), openDelay);
+   }, [openDelay, setOpen]);
+   const handleClose = React.useCallback(() => {
+diff --git a/dist/index.mjs b/dist/index.mjs
+index d9548d9084add72716c98fb04ff14be47a38dc50..9d57bd34d5011c0006fb178c2276ff7bdab4590f 100644
+--- a/dist/index.mjs
++++ b/dist/index.mjs
+@@ -45,6 +45,7 @@ var HoverCard = /* @__PURE__ */ __name((props) => {
+   });
+   const handleOpen = React.useCallback(() => {
+     clearTimeout(closeTimerRef.current);
++    clearTimeout(openTimerRef.current);
+     openTimerRef.current = window.setTimeout(() => setOpen(true), openDelay);
+   }, [openDelay, setOpen]);
+   const handleClose = React.useCallback(() => {
