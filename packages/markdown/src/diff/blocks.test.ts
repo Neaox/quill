@@ -59,6 +59,22 @@ describe('alignBlocks', () => {
     ])
   })
 
+  it('passes over an unrelated addition to pair the edited block after it', () => {
+    expect(
+      show(
+        alignBlocks(
+          blocks('A.\n\nThe service restarts nightly at two.\n\nZ.'),
+          blocks('A.\n\nQueues drain slowly.\n\nThe service restarts nightly at three.\n\nZ.'),
+        ),
+      ),
+    ).toEqual([
+      'unchanged:A.',
+      'added:Queues drain slowly.',
+      'changed:The service restarts nightly at three.',
+      'unchanged:Z.',
+    ])
+  })
+
   it('recognises a block moved elsewhere', () => {
     const before = blocks('# Title\n\nFirst paragraph with enough words.\n\nSecond.\n\nThird.')
     const after = blocks('# Title\n\nSecond.\n\nThird.\n\nFirst paragraph with enough words.')
