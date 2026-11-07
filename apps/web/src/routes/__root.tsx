@@ -1,4 +1,4 @@
-import { HeadContent, Outlet, createRootRouteWithContext } from '@tanstack/react-router'
+import { HeadContent, Outlet, createRootRouteWithContext, useMatches } from '@tanstack/react-router'
 
 import { BRAND } from '@quill/brand'
 
@@ -43,14 +43,21 @@ export const Route = createRootRouteWithContext<RouterContext>()({
 /**
  * The organisation's theme is applied here, above every route, so every
  * screen wears it — signed in or not — and a saved theme changes all of them
- * at once (ADR-028, "Delivery").
+ * at once (ADR-028, "Delivery"). A route that shows the built-in identities
+ * as they ship (`staticData.builtInIdentitiesOnly`, the design showcase) is
+ * the exception.
  */
 function RootLayout() {
   const { apiClient, queryClient } = Route.useRouteContext()
+  const builtInIdentitiesOnly = useMatches({
+    select: (matches) => matches.some((match) => match.staticData.builtInIdentitiesOnly === true),
+  })
   return (
     <>
       <HeadContent />
-      <OrganisationTheme apiClient={apiClient} queryClient={queryClient} />
+      {builtInIdentitiesOnly ? null : (
+        <OrganisationTheme apiClient={apiClient} queryClient={queryClient} />
+      )}
       <Outlet />
     </>
   )

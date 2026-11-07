@@ -89,4 +89,12 @@ declare module '@tanstack/react-router' {
   interface Register {
     router: AppRouter
   }
+
+  interface StaticDataRouteOption {
+    /**
+     * Set on a route that shows the built-in identities as they ship, so the
+     * organisation's theme is not applied while it is open (`__root.tsx`).
+     */
+    readonly builtInIdentitiesOnly?: true
+  }
 }
