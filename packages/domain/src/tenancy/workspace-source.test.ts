@@ -7,8 +7,12 @@ import {
   MAX_SOURCE_USERNAME_LENGTH,
   checkSourceBranch,
   checkSourcePath,
+  checkSourcePattern,
   checkSourceRemote,
   checkSourceUsername,
+  isSourceGlob,
+  sourcePatternMatcher,
+  sourcePatternPrefix,
 } from './workspace-source.ts'
 
 const HTTPS_ONLY = { allowFileRemotes: false }
@@ -94,6 +98,87 @@ describe('checkSourcePath', () => {
 
   it('refuses a path that is too long', () => {
     expect(checkSourcePath('a'.repeat(MAX_SOURCE_PATH_LENGTH + 1)).ok).toBe(false)
+  })
+})
+
+describe('checkSourcePattern', () => {
+  it.each([
+    ['docs/guides/', 'docs/guides'],
+    ['README.md', 'README.md'],
+    ['packages/**/README.md', 'packages/**/README.md'],
+    ['docs/*.md', 'docs/*.md'],
+    ['docs/adr/00??-*.md', 'docs/adr/00??-*.md'],
+    ['docs/**', 'docs/**'],
+  ])('accepts %s', (pattern, value) => {
+    expect(checkSourcePattern(pattern)).toEqual({ ok: true, value })
+  })
+
+  it.each(['', '/docs', 'docs/../x', 'docs\\a'])(
+    'refuses %j as not a plain relative path',
+    (pattern) => {
+      expect(checkSourcePattern(pattern)).toEqual({
+        ok: false,
+        error: expect.stringContaining('plain segments'),
+      })
+    },
+  )
+
+  it.each(['docs/[ab].md', 'docs/{a,b}', 'docs/a**', 'docs/**b/c'])(
+    'refuses %s, whose wildcard this version does not read',
+    (pattern) => {
+      expect(checkSourcePattern(pattern)).toEqual({
+        ok: false,
+        error: expect.stringContaining('wildcard'),
+      })
+    },
+  )
+
+  it.each(['**/*.md', '*.md', 'doc?/a.md'])(
+    'refuses %s, which has no directory to widen to',
+    (pattern) => {
+      expect(checkSourcePattern(pattern)).toEqual({
+        ok: false,
+        error: expect.stringContaining('no directory'),
+      })
+    },
+  )
+
+  it('refuses a pattern that is too long', () => {
+    expect(checkSourcePattern('a'.repeat(MAX_SOURCE_PATH_LENGTH + 1)).ok).toBe(false)
+  })
+})
+
+describe('isSourceGlob and sourcePatternPrefix', () => {
+  it('tell a glob from a path, and find the directory in front of it', () => {
+    expect(isSourceGlob('docs/guides')).toBe(false)
+    expect(isSourceGlob('packages/**/README.md')).toBe(true)
+    expect(sourcePatternPrefix('packages/**/README.md')).toBe('packages')
+    expect(sourcePatternPrefix('docs/adr/*.md')).toBe('docs/adr')
+    expect(sourcePatternPrefix('docs/guides')).toBe('docs/guides')
+  })
+})
+
+describe('sourcePatternMatcher', () => {
+  it.each([
+    ['docs', 'docs/a.md', true],
+    ['docs', 'docs', true],
+    ['docs', 'docsite/a.md', false],
+    ['docs/*', 'docs/a.md', true],
+    ['docs/*', 'docs/guides/b.md', true],
+    ['docs/*.md', 'docs/a.md', true],
+    ['docs/*.md', 'docs/a.txt', false],
+    ['docs/*.md', 'docs/guides/b.md', false],
+    ['packages/**/README.md', 'packages/README.md', true],
+    ['packages/**/README.md', 'packages/ui/README.md', true],
+    ['packages/**/README.md', 'packages/ui/src/README.md', true],
+    ['packages/**/README.md', 'packages/ui/notes.md', false],
+    ['docs/**', 'docs/a/b/c.md', true],
+    ['docs/adr/00??-*.md', 'docs/adr/0012-auth.md', true],
+    ['docs/adr/00??-*.md', 'docs/adr/012-auth.md', false],
+    ['docs/v1.0/*.md', 'docs/v1x0/a.md', false],
+    ['docs/v1.0/*.md', 'docs/v1.0/a.md', true],
+  ])('%s covers %s: %s', (pattern, path, covered) => {
+    expect(sourcePatternMatcher(pattern)(path)).toBe(covered)
   })
 })
 

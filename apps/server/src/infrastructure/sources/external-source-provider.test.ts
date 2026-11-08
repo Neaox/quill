@@ -59,11 +59,15 @@ async function configure(credential: { username: string; secretName: string } | 
 }
 
 /** A source whose every answer is canned, so a test sees what was opened and asked. */
-function cannedSource(): ExternalSource {
+function cannedSource(narrowed: (readonly string[])[] = []): ExternalSource {
   const change = { kind: 'removed', path: 'docs/a.md' } as const
   return {
     head: async () => 'h',
     fetch: async () => 'f',
+    narrow: async (paths) => {
+      narrowed.push(paths)
+    },
+    file: async (_revision, path) => ({ path, fileId: 'm', kind: 'file' }),
     async *files() {
       yield { path: 'docs/a.md', fileId: 'a', kind: 'file' }
     },
@@ -142,8 +146,8 @@ describe('the external source provider', () => {
     expect(open.mock.calls[0]?.[0]).toEqual({
       remote: 'https://github.com/acme/handbook.git',
       branch: 'main',
-      paths: ['docs/guides', 'docs/adr'],
-      strictPrefixes: true,
+      paths: ['.quill/workspace.yaml'],
+      strictPrefixes: false,
       cacheDirectory: join('cache', 'sources', HANDBOOK),
       outboundPolicy: POLICY,
       credential: expect.any(Function),
@@ -211,10 +215,18 @@ async function all<T>(items: AsyncIterable<T>): Promise<T[]> {
 
 describe('openedOnFirstUse', () => {
   it('passes every question through to the source it opens', async () => {
-    const open = vi.fn<() => Promise<ExternalSource>>(async () => cannedSource())
+    const narrowed: (readonly string[])[] = []
+    const open = vi.fn<() => Promise<ExternalSource>>(async () => cannedSource(narrowed))
     const source = openedOnFirstUse(open)
     expect(open).not.toHaveBeenCalled()
 
+    await source.narrow(['docs'])
+    expect(narrowed).toEqual([['docs']])
+    expect(await source.file('r1', 'docs/a.md')).toEqual({
+      path: 'docs/a.md',
+      fileId: 'm',
+      kind: 'file',
+    })
     expect(await all(source.files('r1'))).toEqual([
       { path: 'docs/a.md', fileId: 'a', kind: 'file' },
     ])

@@ -672,12 +672,26 @@ export {
   requestReview,
   withdrawReview,
 } from './review.ts'
+export type {
+  ManifestCollection,
+  ManifestEntry,
+  ManifestProblem,
+  SourceManifest,
+  UnknownManifestKey,
+} from './source-manifest.ts'
+export {
+  describeManifestProblem,
+  parseSourceManifest,
+  selectManifestEntry,
+  SOURCE_MANIFEST_PATH,
+} from './source-manifest.ts'
 export type { SyncSourceCommand, SyncSourceDependencies, SyncSourceResult } from './sync-source.ts'
 export {
   archivedPath,
   handleSourceSyncRequested,
   HISTORY_REWRITTEN_SUMMARY,
   importedAtSummary,
+  LAYOUT_CHANGED_SUMMARY,
   requestSourceSync,
   syncSource,
 } from './sync-source.ts'

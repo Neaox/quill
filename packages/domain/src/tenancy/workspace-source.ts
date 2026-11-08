@@ -20,6 +20,15 @@ export type SourceHistorySetting = (typeof SOURCE_HISTORY_SETTINGS)[number]
 export const SOURCE_COMMIT_MESSAGE_SETTINGS = ['subject', 'none'] as const
 export type SourceCommitMessageSetting = (typeof SOURCE_COMMIT_MESSAGE_SETTINGS)[number]
 
+/**
+ * How a collection orders the documents that do not say where they go
+ * (ADR-061, "Tree, titles and order"): by `title` (the default), by file
+ * name, or by when each first appeared in the source, `newest` or `oldest`
+ * first.
+ */
+export const SOURCE_COLLECTION_ORDERS = ['title', 'filename', 'newest', 'oldest'] as const
+export type SourceCollectionOrder = (typeof SOURCE_COLLECTION_ORDERS)[number]
+
 export const MAX_SOURCE_REMOTE_LENGTH = 2048
 export const MAX_SOURCE_BRANCH_LENGTH = 255
 export const MAX_SOURCE_PATH_LENGTH = 1024
@@ -73,31 +82,132 @@ export function checkSourceBranch(value: string): Result<string, string> {
 const GLOB_CHARACTERS = /[*?[{]/u
 const UNSAFE_IN_SEGMENT = /[\\\p{Cc}]/u
 
+/** `value` without a trailing `/`, when it is plain segments separated by `/`; null otherwise. */
+function plainSegments(value: string): string | null {
+  const path = value.replace(/\/+$/u, '')
+  const plain = path
+    .split('/')
+    .every(
+      (segment) =>
+        segment !== '' && segment !== '.' && segment !== '..' && !UNSAFE_IN_SEGMENT.test(segment),
+    )
+  return plain ? path : null
+}
+
 /**
  * A path in the source: a directory or a file, as plain segments separated by
  * `/`, relative to the repository's root. A trailing `/` is dropped.
  *
- * Globs are refused for now: the sync job places a file by the longest
- * literal path it lies under, and globs arrive with the manifest, which
- * narrows a widened glob again when it reads.
+ * Globs are refused in a source's stored settings: they belong in the
+ * manifest (`checkSourcePattern`), which the sync job narrows again when it
+ * reads.
  */
 export function checkSourcePath(value: string): Result<string, string> {
   if (value.length > MAX_SOURCE_PATH_LENGTH) {
     return err(`The path is longer than ${MAX_SOURCE_PATH_LENGTH} characters.`)
   }
-  const path = value.replace(/\/+$/u, '')
-  const segments = path.split('/')
-  const plain = segments.every(
-    (segment) =>
-      segment !== '' && segment !== '.' && segment !== '..' && !UNSAFE_IN_SEGMENT.test(segment),
-  )
-  if (!plain) {
+  const path = plainSegments(value)
+  if (path === null) {
     return err(`"${value}" is not a relative path of plain segments separated by "/".`)
   }
   if (GLOB_CHARACTERS.test(path)) {
     return err(`"${value}" is a glob; name a directory or a file.`)
   }
   return ok(path)
+}
+
+/** Wildcards a manifest's paths may not use: character classes and braces. */
+const UNREAD_WILDCARDS = /[[\]{}]/u
+
+/** `*` within a segment, `**` as a whole segment, `?` for one character. */
+function isReadableSegment(segment: string): boolean {
+  if (UNREAD_WILDCARDS.test(segment)) return false
+  return segment === '**' || !segment.includes('**')
+}
+
+/**
+ * A path a manifest names (ADR-061): a directory, a file, or a glob such as
+ * `packages/**\/README.md`. A trailing `/` is dropped.
+ *
+ * A glob needs a literal directory in front of its first wildcard, because
+ * the fetch is widened to that directory, and a glob with none would widen
+ * to the whole repository. `**` stands alone as a segment, and character
+ * classes and braces are refused, so a pattern means the same here as in
+ * `sourcePatternMatcher`.
+ */
+export function checkSourcePattern(value: string): Result<string, string> {
+  if (value.length > MAX_SOURCE_PATH_LENGTH) {
+    return err(`The path is longer than ${MAX_SOURCE_PATH_LENGTH} characters.`)
+  }
+  const path = plainSegments(value)
+  if (path === null) {
+    return err(`"${value}" is not a relative path of plain segments separated by "/".`)
+  }
+  const segments = path.split('/')
+  if (!segments.every(isReadableSegment)) {
+    return err(
+      `"${value}" uses a wildcard this version does not read: use "*", "**" as a whole segment, or "?".`,
+    )
+  }
+  if (isSourceGlob(path.split('/', 1).join(''))) {
+    return err(
+      `"${value}" is a glob with no directory in front of it, which would read everything.`,
+    )
+  }
+  return ok(path)
+}
+
+/** Whether a pattern from `checkSourcePattern` holds a wildcard. */
+export function isSourceGlob(pattern: string): boolean {
+  return GLOB_CHARACTERS.test(pattern)
+}
+
+/** The literal directories in front of a pattern's first wildcard; the whole pattern when it has none. */
+export function sourcePatternPrefix(pattern: string): string {
+  const segments = pattern.split('/')
+  const firstGlob = segments.findIndex((segment) => GLOB_CHARACTERS.test(segment))
+  return firstGlob === -1 ? pattern : segments.slice(0, firstGlob).join('/')
+}
+
+const REGEX_SPECIAL = /[.+^$()|\\{}[\]]/gu
+
+/** A pattern from `checkSourcePattern` as an expression over a whole path. */
+function patternExpression(pattern: string): RegExp {
+  const segments = pattern.split('/')
+  const body = segments
+    .map((segment, index) => {
+      const last = index === segments.length - 1
+      // `a/**/b` matches `a/b` too: `**` takes the slash after it with it.
+      if (segment === '**') return last ? '.*' : '(?:[^/]+/)*'
+      const literal = segment
+        .replaceAll(REGEX_SPECIAL, '\\$&')
+        .replaceAll('*', '[^/]*')
+        .replaceAll('?', '[^/]')
+      return last ? literal : `${literal}/`
+    })
+    .join('')
+  return new RegExp(`^${body}$`, 'u')
+}
+
+/**
+ * A test of whether a file lies under a pattern: the pattern names the file,
+ * or one of the directories it is in. `docs` covers `docs/a.md`; `docs/*`
+ * covers `docs/a.md` and `docs/guides/b.md`; `packages/**\/README.md` covers
+ * `packages/README.md` and `packages/ui/README.md`. Made once per pattern, so
+ * a long list of files is tested against one compiled expression.
+ */
+export function sourcePatternMatcher(pattern: string): (path: string) => boolean {
+  if (!isSourceGlob(pattern)) {
+    return (path) => path === pattern || path.startsWith(`${pattern}/`)
+  }
+  const expression = patternExpression(pattern)
+  return (path) => {
+    const segments = path.split('/')
+    for (let length = segments.length; length > 0; length -= 1) {
+      if (expression.test(segments.slice(0, length).join('/'))) return true
+    }
+    return false
+  }
 }
 
 /**

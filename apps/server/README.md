@@ -462,6 +462,17 @@ The job runs the `git` CLI (2.49 or later) against a partial clone of each sourc
 `SOURCE_CACHE_PATH`. Before every request the remote's host is checked against the outbound
 policy (ADR-011).
 
+**The manifest decides the structure.** A repository with `.quill/workspace.yaml` names the
+workspace's collections there (each a slug, a title, a path that may be a glob, and an optional
+`order` of `title`, `filename`, `newest` or `oldest`), with `exclude` and `redirects`. The job
+reads the head's manifest first and fetches only what it names. Where a revision has no manifest,
+the collections in the stored settings place its files, so a repository without one syncs as
+before. A collection the settings name and the manifest does not is kept, empty; one the manifest
+created and stops naming is retired. A change of layout, from the manifest or the settings,
+re-plans the whole tree in the next sync. A manifest at the head that does not read stops the sync
+with `invalid-manifest` and the line; the workspace stays as it was. Documents are ordered by their
+front matter `order`, then by the collection's rule, as sort keys the tree and the public site read.
+
 ## The content API (M2)
 
 `docs/architecture/api-contract-m2.md` is the contract; the TypeBox schemas in `routes/document-schemas.ts` are its implementation, and the OpenAPI description is generated from them.

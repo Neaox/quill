@@ -111,6 +111,19 @@ describe('getWorkspaceTree', () => {
     expect(result.collections[1]?.documents).toEqual([])
   })
 
+  it('puts siblings in their order: by sort key first, keyless last (ADR-049)', async () => {
+    await uow.repos.documents.update(SECRET, { sortKey: 1 }, NOW)
+    const result = await getWorkspaceTree(
+      { uow },
+      { workspaceId: WORKSPACE, identities, seesEverything: true },
+    )
+    if (result.kind !== 'tree') throw new Error(`unexpected ${result.kind}`)
+    expect(titles(result.collections[0]?.documents ?? [])).toEqual([
+      { title: 'Salaries', children: [] },
+      { title: 'Authentication', children: [{ title: 'Token exchange', children: [] }] },
+    ])
+  })
+
   it('shows a reader only the documents their grants reach', async () => {
     await uow.repos.grants.create({
       id: 'grant-1',

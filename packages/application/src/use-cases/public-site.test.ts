@@ -221,6 +221,17 @@ describe('loading a public site', () => {
     expect(JSON.stringify(loaded.navigation)).not.toContain('Half written')
   })
 
+  it('puts documents a sourced collection ordered first, in that order', async () => {
+    await uow.repos.documents.update(SECRET, { sortKey: 1 }, NOW)
+    await uow.repos.documents.update(OVERVIEW, { sortKey: 2 }, NOW)
+    const loaded = await site()
+    expect(loaded.navigation.map(({ title }) => title)).toEqual([
+      'Salaries',
+      'Overview',
+      'Authentication',
+    ])
+  })
+
   it('leaves a document denied to the public off the navigation, the pages and nothing else', async () => {
     await createGrant(deps, {
       principalKind: 'public',

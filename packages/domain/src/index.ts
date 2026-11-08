@@ -72,6 +72,7 @@ export type { Workspace } from './tenancy/workspace.ts'
 export type { WorkspaceOrigin } from './tenancy/workspace-origin.ts'
 export { NATIVE_ORIGIN, SOURCED_ORIGIN } from './tenancy/workspace-origin.ts'
 export type {
+  SourceCollectionOrder,
   SourceCommitMessageSetting,
   SourceHistorySetting,
   SourceRemoteOptions,
@@ -81,12 +82,17 @@ export {
   MAX_SOURCE_PATH_LENGTH,
   MAX_SOURCE_REMOTE_LENGTH,
   MAX_SOURCE_USERNAME_LENGTH,
+  SOURCE_COLLECTION_ORDERS,
   SOURCE_COMMIT_MESSAGE_SETTINGS,
   SOURCE_HISTORY_SETTINGS,
   checkSourceBranch,
   checkSourcePath,
+  checkSourcePattern,
   checkSourceRemote,
   checkSourceUsername,
+  isSourceGlob,
+  sourcePatternMatcher,
+  sourcePatternPrefix,
 } from './tenancy/workspace-source.ts'
 export type { Collection } from './tenancy/collection.ts'
 export type { Document } from './tenancy/document.ts'

@@ -2,6 +2,7 @@ import { and, eq } from 'drizzle-orm'
 
 import type {
   RefusedSourceFile,
+  SourceLayoutRecord,
   SourcePathMapRepository,
   SourcePathRow,
   SourceSyncFailure,
@@ -30,11 +31,17 @@ export function createSourcePathMapRepository(db: DrizzleClient): SourcePathMapR
         path: row.path,
         documentId: row.documentId as DocumentId,
         archivedAt: row.archivedAt,
+        order: row.frontMatterOrder,
       }))
     },
 
     async put(row: SourcePathRow, now: Date): Promise<void> {
-      const values = { documentId: row.documentId, archivedAt: row.archivedAt, updatedAt: now }
+      const values = {
+        documentId: row.documentId,
+        archivedAt: row.archivedAt,
+        frontMatterOrder: row.order,
+        updatedAt: now,
+      }
       await db
         .insert(sourcePathMap)
         .values({ workspaceId: row.workspaceId, path: row.path, ...values })
@@ -72,16 +79,18 @@ export function createSourceSyncStateRepository(db: DrizzleClient): SourceSyncSt
         lastAttemptAt: row.lastAttemptAt,
         failure: readFailure(row.failure),
         refused: readRefused(row.refused),
+        layout: readLayout(row.layout),
       }
     },
 
-    async recordSynced({ workspaceId, revision, refused, now }): Promise<void> {
+    async recordSynced({ workspaceId, revision, refused, layout, now }): Promise<void> {
       const values = {
         lastSyncedRevision: revision,
         lastSyncedAt: now,
         lastAttemptAt: now,
         failure: null,
         refused: { version: STATE_VERSION, files: refused },
+        layout: { version: STATE_VERSION, ...layout },
       }
       await db
         .insert(sourceSyncState)
@@ -121,6 +130,32 @@ function readFailure(value: unknown): SourceSyncFailure | null {
     reason: reason as SourceSyncFailure['reason'],
     message,
     revision: typeof revision === 'string' ? revision : null,
+  }
+}
+
+/**
+ * The stored layout; an absent or unreadable one reads as unknown, which
+ * re-plans the tree at the next sync and records it again.
+ */
+function readLayout(value: unknown): SourceLayoutRecord | null {
+  if (!isRecord(value) || value['version'] !== STATE_VERSION) return null
+  const { origin, fingerprint, collectionIds, unknownKeys } = value
+  if (
+    (origin !== 'manifest' && origin !== 'settings') ||
+    typeof fingerprint !== 'string' ||
+    !Array.isArray(collectionIds) ||
+    !Array.isArray(unknownKeys)
+  ) {
+    return null
+  }
+  return {
+    origin,
+    fingerprint,
+    collectionIds: collectionIds.filter((id) => typeof id === 'string'),
+    unknownKeys: unknownKeys.filter(isRecord).map(({ key, line }) => ({
+      key: String(key),
+      line: typeof line === 'number' ? line : null,
+    })),
   }
 }
 
