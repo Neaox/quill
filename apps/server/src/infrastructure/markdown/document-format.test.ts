@@ -496,6 +496,16 @@ describe('the document id', () => {
       }).frontMatter['id'],
     ).toBe(other)
   })
+
+  it("replaces a source file's own id in the stored copy and leaves its body alone", () => {
+    const source = '---\nid: copied\ntitle: Setup\n---\n# Setup\n\n*Run* it.\n'
+    const stamped = format.stampIdentity(source, DOC)
+    expect(stamped).toBe(`---\nid: ${DOC}\ntitle: Setup\n---\n# Setup\n\n*Run* it.\n`)
+    expect(format.read(stamped)).toEqual({
+      frontMatter: { id: DOC, title: 'Setup' },
+      title: 'Setup',
+    })
+  })
 })
 
 /**

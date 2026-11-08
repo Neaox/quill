@@ -100,6 +100,15 @@ export const REVIEW_REQUESTED = 'ReviewRequested'
 export const REVIEW_DECIDED = 'ReviewDecided'
 export const REVIEW_WITHDRAWN = 'ReviewWithdrawn'
 
+/**
+ * A sourced workspace should catch up with its source (ADR-061). The push
+ * webhook, the daily reconciliation and the check on read all write this one
+ * event, and its one consumer is the sync job. The payload is a hint, never an
+ * instruction: the job derives what changed from the source itself, so a
+ * repeated or missed request cannot change what is stored.
+ */
+export const SOURCE_SYNC_REQUESTED = 'SourceSyncRequested'
+
 export const EVENT_PAYLOAD_VERSION = 1
 
 export interface DocumentCreatedPayload {
@@ -115,7 +124,8 @@ export interface DocumentPublishedPayload {
   readonly documentId: DocumentId
   readonly workspaceId: WorkspaceId
   readonly revision: RevisionId
-  readonly publishedBy: UserId
+  /** Null for a revision replayed from an external source, which nobody here published (ADR-061). */
+  readonly publishedBy: UserId | null
 }
 
 export interface DocumentRenamedPayload {
@@ -286,16 +296,13 @@ export const documentPublished = defineEvent<DocumentPublishedPayload>(DOCUMENT_
     const documentId = readString(payload, 'documentId')
     const workspaceId = readString(payload, 'workspaceId')
     const revision = readString(payload, 'revision')
-    const publishedBy = readString(payload, 'publishedBy')
-    if (documentId === null || workspaceId === null || revision === null || publishedBy === null) {
-      return null
-    }
+    if (documentId === null || workspaceId === null || revision === null) return null
     return {
       version: EVENT_PAYLOAD_VERSION,
       documentId: documentId as DocumentId,
       workspaceId: workspaceId as WorkspaceId,
       revision: revision as RevisionId,
-      publishedBy: publishedBy as UserId,
+      publishedBy: readString(payload, 'publishedBy') as UserId | null,
     }
   },
 })
@@ -540,6 +547,25 @@ export const reviewWithdrawn = defineEvent<ReviewWithdrawnPayload>(REVIEW_WITHDR
   },
 })
 
+/** What asked for the sync; recorded for the operator, never acted on. */
+export const SOURCE_SYNC_TRIGGERS = ['webhook', 'schedule', 'read', 'manual'] as const
+export type SourceSyncTrigger = (typeof SOURCE_SYNC_TRIGGERS)[number]
+
+export interface SourceSyncRequestedPayload {
+  readonly version: number
+  readonly workspaceId: WorkspaceId
+  readonly trigger: SourceSyncTrigger
+}
+
+export const sourceSyncRequested = defineEvent<SourceSyncRequestedPayload>(SOURCE_SYNC_REQUESTED, {
+  [EVENT_PAYLOAD_VERSION]: (payload) => {
+    const workspaceId = readString(payload, 'workspaceId')
+    const trigger = readMember(payload, 'trigger', SOURCE_SYNC_TRIGGERS)
+    if (workspaceId === null || trigger === null) return null
+    return { version: EVENT_PAYLOAD_VERSION, workspaceId: workspaceId as WorkspaceId, trigger }
+  },
+})
+
 /**
  * Each payload, or null when it is not one this release can read. An
  * unreadable event is left for a release that understands it rather than
@@ -556,3 +582,4 @@ export const parseDocumentDeleted = documentDeleted.parse
 export const parseReviewRequested = reviewRequested.parse
 export const parseReviewDecided = reviewDecided.parse
 export const parseReviewWithdrawn = reviewWithdrawn.parse
+export const parseSourceSyncRequested = sourceSyncRequested.parse

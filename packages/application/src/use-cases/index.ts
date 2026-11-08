@@ -24,6 +24,8 @@ export type {
   ReviewDecidedPayload,
   ReviewRequestedPayload,
   ReviewWithdrawnPayload,
+  SourceSyncRequestedPayload,
+  SourceSyncTrigger,
 } from './events.ts'
 export {
   ATTACHMENT_REVISED,
@@ -68,6 +70,10 @@ export {
   reviewDecided,
   reviewRequested,
   reviewWithdrawn,
+  SOURCE_SYNC_REQUESTED,
+  SOURCE_SYNC_TRIGGERS,
+  parseSourceSyncRequested,
+  sourceSyncRequested,
 } from './events.ts'
 
 export type { DocumentPlacement, DocumentReference, PathCandidate } from './document-path.ts'
@@ -666,3 +672,16 @@ export {
   requestReview,
   withdrawReview,
 } from './review.ts'
+export type { SyncSourceCommand, SyncSourceDependencies, SyncSourceResult } from './sync-source.ts'
+export {
+  archivedPath,
+  handleSourceSyncRequested,
+  HISTORY_REWRITTEN_SUMMARY,
+  importedAtSummary,
+  requestSourceSync,
+  syncSource,
+} from './sync-source.ts'
+export {
+  refuseWritesToSourcedWorkspaces,
+  WorkspaceReadOnlyError,
+} from './read-only-content-store.ts'
