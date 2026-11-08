@@ -218,6 +218,14 @@ describe('warming the previews of a publish that cannot be read', () => {
     expect(resolve).not.toHaveBeenCalled()
   })
 
+  it('does nothing for a revision replayed from a source, which nobody here published', async () => {
+    resolve.mockClear()
+    await expect(
+      consumer().handle({ ...published(documentId), publishedBy: null }),
+    ).resolves.toBeUndefined()
+    expect(resolve).not.toHaveBeenCalled()
+  })
+
   it('does nothing for a document that is no longer there, and does not fail the event', async () => {
     resolve.mockClear()
     await expect(

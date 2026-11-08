@@ -28,7 +28,10 @@ export function createWarmLinkPreviewsOnPublishConsumer(
     eventType: DOCUMENT_PUBLISHED,
     async handle(payload: unknown): Promise<void> {
       const event = parseDocumentPublished(payload)
-      if (event === null) return
+      // A revision replayed from an external source was published by nobody
+      // here (ADR-061), so there is no one whose allowance to spend: its
+      // first reader fetches the previews.
+      if (event === null || event.publishedBy === null) return
       try {
         const rendered = await renderDocument(deps, {
           documentId: event.documentId,
