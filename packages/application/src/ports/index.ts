@@ -37,6 +37,20 @@ export type {
 } from './external-source.ts'
 export { ExternalSourceError } from './external-source.ts'
 export type {
+  ConnectedSource,
+  ExternalSourceProvider,
+  RefusedSourceFile,
+  SourceCollection,
+  SourcePathMapRepository,
+  SourcePathRow,
+  SourceSettings,
+  SourceSyncFailure,
+  SourceSyncFailureReason,
+  SourceSyncLock,
+  SourceSyncStateRepository,
+  SourceSyncStateRow,
+} from './source-sync.ts'
+export type {
   Contributor,
   FacetCount,
   FacetCounts,

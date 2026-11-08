@@ -18,6 +18,7 @@ import {
   parseReviewDecided,
   parseReviewRequested,
   parseReviewWithdrawn,
+  parseSourceSyncRequested,
 } from './events.ts'
 
 const DOC = documentId('00000000-0000-4000-8000-000000000201')
@@ -45,7 +46,26 @@ describe('parseDocumentPublished', () => {
     expect(parseDocumentPublished({ ...published, documentId: '' })).toBeNull()
     expect(parseDocumentPublished({ ...published, workspaceId: 7 })).toBeNull()
     expect(parseDocumentPublished({ ...published, revision: undefined })).toBeNull()
-    expect(parseDocumentPublished({ ...published, publishedBy: null })).toBeNull()
+  })
+
+  it('reads a revision replayed from an external source as published by nobody', () => {
+    expect(parseDocumentPublished({ ...published, publishedBy: null })).toEqual({
+      ...published,
+      publishedBy: null,
+    })
+  })
+})
+
+describe('parseSourceSyncRequested', () => {
+  const requested = { version: EVENT_PAYLOAD_VERSION, workspaceId: WORKSPACE, trigger: 'webhook' }
+
+  it('reads a payload of the version it knows', () => {
+    expect(parseSourceSyncRequested(requested)).toEqual(requested)
+  })
+
+  it('refuses a payload without a workspace or with a trigger it does not know', () => {
+    expect(parseSourceSyncRequested({ ...requested, workspaceId: '' })).toBeNull()
+    expect(parseSourceSyncRequested({ ...requested, trigger: 'cron' })).toBeNull()
   })
 })
 

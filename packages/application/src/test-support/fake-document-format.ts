@@ -146,6 +146,12 @@ export function createFakeDocumentFormat(options: FakeDocumentFormatOptions = {}
       return { frontMatter, title: titleOf(frontMatter, body) }
     },
 
+    stampIdentity(markdown, documentId): string {
+      const { frontMatter, body } = parse(markdown)
+      const { id: _declared, ...rest } = frontMatter
+      return serialise({ id: documentId, ...rest }, body)
+    },
+
     toDraft(markdown): DraftContent {
       const { frontMatter, body } = parse(markdown)
       return { version: DRAFT_CONTENT_VERSION, frontMatter, ast: { body } }

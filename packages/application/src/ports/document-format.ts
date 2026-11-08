@@ -355,6 +355,13 @@ export interface DocumentFormat {
   render(input: RenderInput): RenderedContent
   read(markdown: string): PublishedDocumentView
   /**
+   * A file read from an external source, as the store keeps it (ADR-061):
+   * `documentId` first in its front matter, replacing any id the file
+   * declared, and every other byte as the file had it, so the store finds the
+   * document by its id and a compare shows only what the source changed.
+   */
+  stampIdentity(markdown: string, documentId: DocumentId): string
+  /**
    * Published Markdown back to the content a draft holds, so restoring an
    * older revision gives the author that revision to carry on from rather
    * than leaving their draft on the content the restore undid (ADR-015).
