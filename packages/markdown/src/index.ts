@@ -58,6 +58,7 @@ export {
 } from './front-matter/validate.ts'
 export type { DocumentIdAssignment } from './front-matter/document-id.ts'
 export { ensureDocumentId } from './front-matter/document-id.ts'
+export { stampDocumentId } from './front-matter/stamp-document-id.ts'
 export type { FrontMatterRead } from './front-matter/yaml-document.ts'
 export { readFrontMatter, writeFrontMatter } from './front-matter/yaml-document.ts'
 
