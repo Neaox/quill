@@ -1,6 +1,6 @@
 import { join } from 'node:path'
 
-import { ExternalSourceError, getSecret } from '@quill/application'
+import { ExternalSourceError, getSecret, SOURCE_MANIFEST_PATH } from '@quill/application'
 import type {
   ExternalSource,
   ExternalSourceProvider,
@@ -29,6 +29,13 @@ import type { WorkspaceId } from '@quill/domain'
  * A credential whose secret is gone or does not open stops the sync with
  * `credential-unavailable` rather than fetching anonymously, which would
  * report a private repository as missing.
+ *
+ * **Opened on the manifest alone.** The source's paths come from its
+ * manifest at the head, which the sync job reads first and then narrows the
+ * source to (ADR-061, "Fetching"), so nothing the manifest does not name is
+ * fetched first. Paths are not strict: a manifest's glob is fetched by the
+ * directory in front of it, as the ADR's default has it, and a glob with no
+ * such directory is refused.
  */
 
 export interface ExternalSourceProviderOptions {
@@ -56,9 +63,8 @@ export function createExternalSourceProvider(
       const settings: GitCliExternalSourceOptions = {
         remote: source.remote,
         branch: source.branch,
-        paths: source.collections.map(({ path }) => path),
-        // Paths are literal until the manifest brings globs (`checkSourcePath`).
-        strictPrefixes: true,
+        paths: [SOURCE_MANIFEST_PATH],
+        strictPrefixes: false,
         cacheDirectory: join(options.cacheRoot, workspaceId),
         outboundPolicy: options.outboundPolicy,
         credential: credentialFor(options.secrets, source),
@@ -104,9 +110,13 @@ export function openedOnFirstUse(open: () => Promise<ExternalSource>): ExternalS
   return {
     head: async () => await (await source()).head(),
     fetch: async () => await (await source()).fetch(),
+    narrow: async (paths) => {
+      await (await source()).narrow(paths)
+    },
     async *files(revision) {
       yield* (await source()).files(revision)
     },
+    file: async (revision, path) => await (await source()).file(revision, path),
     async *readFiles(fileIds) {
       yield* (await source()).readFiles(fileIds)
     },

@@ -530,6 +530,7 @@ export function createInMemoryUnitOfWork(
       const row: DocumentRow = {
         ...input,
         headRevision: null,
+        sortKey: input.sortKey ?? null,
         createdBy: input.createdBy ?? null,
         updatedBy: null,
         createdAt: input.now,
@@ -984,7 +985,7 @@ export function createInMemoryUnitOfWork(
     async find(workspaceId) {
       return sourceSyncStates.get(workspaceId) ?? null
     },
-    async recordSynced({ workspaceId, revision, refused, now }) {
+    async recordSynced({ workspaceId, revision, refused, layout, now }) {
       sourceSyncStates.set(workspaceId, {
         workspaceId,
         lastSyncedRevision: revision,
@@ -992,6 +993,7 @@ export function createInMemoryUnitOfWork(
         lastAttemptAt: now,
         failure: null,
         refused,
+        layout,
       })
     },
     async recordFailure({ workspaceId, failure, now }) {
@@ -1003,6 +1005,7 @@ export function createInMemoryUnitOfWork(
         lastAttemptAt: now,
         failure,
         refused: existing?.refused ?? [],
+        layout: existing?.layout ?? null,
       })
     },
   }

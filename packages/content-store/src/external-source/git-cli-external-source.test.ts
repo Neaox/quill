@@ -304,6 +304,23 @@ describe('GitCliExternalSource', () => {
       expect(files[0]?.fileId).toBe(repository.blobAt(head, 'docs/guides/a.md'))
     })
 
+    it('finds one file at a revision, and nothing outside the source paths', async () => {
+      await expect(source.file(head, 'docs/guides/a.md')).resolves.toEqual({
+        path: 'docs/guides/a.md',
+        fileId: repository.blobAt(head, 'docs/guides/a.md'),
+        kind: 'file',
+      })
+      await expect(source.file(revision('start'), 'docs/guides/b.md')).resolves.toMatchObject({
+        path: 'docs/guides/b.md',
+      })
+      await expect(source.file(head, 'docs/guides/missing.md')).resolves.toBeNull()
+      await expect(source.file(head, 'docs/guides')).resolves.toBeNull()
+      await expect(source.file(head, 'README.md')).resolves.toBeNull()
+      await expect(refusal(source.file('f'.repeat(40), 'docs/guides/a.md'))).resolves.toMatchObject(
+        { reason: 'unknown-revision' },
+      )
+    })
+
     it('reads files by id, in the order asked, a symbolic link as its target', async () => {
       const a = repository.blobAt(head, 'docs/guides/a.md')
       const link = repository.blobAt(head, 'docs/guides/link')
@@ -436,6 +453,45 @@ describe('GitCliExternalSource', () => {
       })
       await expect(refusal(collect(source.changes('HEAD', head)))).resolves.toMatchObject({
         reason: 'unknown-revision',
+      })
+    })
+  })
+
+  describe('narrowing', () => {
+    it('widens to a glob by its directory and fetches the history under it', async () => {
+      const { source, cache } = await open(repository, { paths: ['.quill/workspace.yaml'] })
+      // Before the first fetch there is no clone to narrow: the fetch takes the paths.
+      await source.narrow(['docs/guides'])
+      const head = await source.fetch()
+      expect(heldBlobs(cache)).toEqual(repository.blobsUnder('docs/guides'))
+
+      await source.narrow(['docs/guides', 'packages/**/README.md'])
+
+      const held = heldBlobs(cache)
+      for (const blob of repository.blobsUnder('packages')) expect(held.has(blob)).toBe(true)
+      expect(held.has(repository.blobAt(revision('start'), 'README.md'))).toBe(false)
+      const files = await collect(source.files(head))
+      expect(files.map(({ path }) => path)).toContain('packages/p1/README.md')
+      expect(files.map(({ path }) => path)).toContain('packages/p1/src.ts')
+
+      // The same paths again fetch nothing more.
+      await source.narrow(['packages/**/README.md', 'docs/guides'])
+      expect(heldBlobs(cache)).toEqual(held)
+      // Narrower paths list less, and keep what is held.
+      await source.narrow(['docs/guides'])
+      expect((await collect(source.files(head))).map(({ path }) => path)).not.toContain(
+        'packages/p1/README.md',
+      )
+    })
+
+    it('refuses a path it cannot read, and a glob when its prefixes are strict', async () => {
+      const { source } = await open(repository)
+      await expect(refusal(source.narrow(['../outside']))).resolves.toMatchObject({
+        reason: 'invalid-path',
+      })
+      const strict = (await open(repository, { strictPrefixes: true })).source
+      await expect(refusal(strict.narrow(['packages/**/README.md']))).resolves.toMatchObject({
+        reason: 'invalid-path',
       })
     })
   })

@@ -24,9 +24,10 @@ export interface SourceCollection {
 
 export interface SourceSettings {
   /**
-   * The collections the source's files are placed in, as the manifest names
-   * them. A file belongs to the collection with the longest path it lies
-   * under; a file under none of them is not read.
+   * The collections the source's files are placed in when the source has no
+   * manifest (ADR-061): the manifest decides wherever it is present. A file
+   * belongs to the collection with the longest path it lies under; a file
+   * under none of them is not read.
    */
   readonly collections: readonly SourceCollection[]
   /** `full` replays every revision; `head` imports only the current one as one revision. */
@@ -128,6 +129,12 @@ export interface SourcePathRow {
   readonly documentId: DocumentId
   /** When the file left the source; null while it is there. */
   readonly archivedAt: Date | null
+  /**
+   * The `order` its front matter gave when it was last read, or null: what
+   * the collection's sort keys are projected from (ADR-049). Null for a row
+   * written before it was recorded.
+   */
+  readonly order: number | null
 }
 
 /**
@@ -149,6 +156,8 @@ export type SourceSyncFailureReason =
   | 'store-moved'
   /** The store refused what the job asked of it, such as a revision id it cannot record. */
   | 'store-refused'
+  /** The manifest at the head does not read; the message names the line. */
+  | 'invalid-manifest'
   /** Anything unforeseen: a database or store failure. */
   | 'unexpected'
 
@@ -166,6 +175,20 @@ export interface RefusedSourceFile {
   readonly reason: 'too-large' | 'not-utf8' | 'symbolic-link' | 'outside-collections'
 }
 
+/**
+ * The layout the workspace was last placed by: whether the manifest or the
+ * stored settings decided it, the fingerprint a later sync compares to know
+ * the tree must be re-planned, the collections the manifest created (which
+ * it retires again when it stops naming them), and the manifest's keys this
+ * release does not read, for the source's admin page.
+ */
+export interface SourceLayoutRecord {
+  readonly origin: 'manifest' | 'settings'
+  readonly fingerprint: string
+  readonly collectionIds: readonly string[]
+  readonly unknownKeys: readonly { readonly key: string; readonly line: number | null }[]
+}
+
 export interface SourceSyncStateRow {
   readonly workspaceId: WorkspaceId
   /** The last source revision the workspace holds in full; null before the first sync. */
@@ -176,6 +199,8 @@ export interface SourceSyncStateRow {
   readonly failure: SourceSyncFailure | null
   /** The files the last revisions replayed did not store. */
   readonly refused: readonly RefusedSourceFile[]
+  /** What placed the tree last; null before this was recorded, which re-plans the tree once. */
+  readonly layout: SourceLayoutRecord | null
 }
 
 export interface SourceSyncStateRepository {
@@ -188,6 +213,7 @@ export interface SourceSyncStateRepository {
     readonly workspaceId: WorkspaceId
     readonly revision: SourceRevisionId
     readonly refused: readonly RefusedSourceFile[]
+    readonly layout: SourceLayoutRecord
     readonly now: Date
   }): Promise<void>
   /** The attempt stopped. What was synced before it stays as it was. */

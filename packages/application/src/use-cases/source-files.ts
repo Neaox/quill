@@ -1,9 +1,8 @@
-import type { SourceCollection } from '../ports/source-sync.ts'
-
 /**
- * The small, pure rules the sync job applies to a source's paths (ADR-061):
- * which files are documents, which collection a file belongs to, and what a
- * document with no title of its own is called.
+ * The small, pure rules the sync job applies to a source's files (ADR-061):
+ * which files are documents, and what a document with no title of its own is
+ * called. Which collection a file belongs to is the layout's
+ * (`source-layout.ts`).
  */
 
 const DOCUMENT_EXTENSION = /\.(?:md|markdown)$/i
@@ -12,28 +11,6 @@ const FOLDER_DOCUMENT = /^(?:index|readme)$/i
 /** A Markdown file is a document; anything else under the source's paths is not, yet. */
 export function isDocumentPath(path: string): boolean {
   return DOCUMENT_EXTENSION.test(path)
-}
-
-/**
- * The collection a file belongs to: the one with the longest path the file
- * lies under, so a collection nested inside another's directory takes its
- * own files. Null when no collection reads it.
- */
-export function collectionFor(
-  path: string,
-  collections: readonly SourceCollection[],
-): SourceCollection | null {
-  let best: SourceCollection | null = null
-  let bestLength = -1
-  for (const collection of collections) {
-    const prefix = collection.path.replace(/^\.?\/+/, '').replace(/\/+$/, '')
-    const covers = prefix === '' || path === prefix || path.startsWith(`${prefix}/`)
-    if (covers && prefix.length > bestLength) {
-      best = collection
-      bestLength = prefix.length
-    }
-  }
-  return best
 }
 
 /**

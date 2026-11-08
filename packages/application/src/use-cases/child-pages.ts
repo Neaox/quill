@@ -9,6 +9,7 @@ import type {
   WorkspaceRow,
 } from '../ports/persistence.ts'
 import { visibleDocumentIds } from './list-visible-documents.ts'
+import { compareSiblings } from './sibling-order.ts'
 
 /**
  * The pages under a document, for a child pages list (ADR-058).
@@ -255,9 +256,8 @@ async function readable(
   }
 }
 
-/** Created first: the navigation's order until manual ordering lands (ADR-058). */
-const manual = (left: DocumentRow, right: DocumentRow): number =>
-  left.createdAt.getTime() - right.createdAt.getTime() || (left.id < right.id ? -1 : 1)
+/** The navigation's own order (ADR-049, ADR-058). */
+const manual = compareSiblings
 
 const ORDER: Readonly<Record<ChildPagesSort, (left: DocumentRow, right: DocumentRow) => number>> = {
   manual,

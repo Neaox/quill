@@ -41,6 +41,7 @@ export type {
   ExternalSourceProvider,
   RefusedSourceFile,
   SourceCollection,
+  SourceLayoutRecord,
   SourcePathMapRepository,
   SourcePathRow,
   SourceSettings,

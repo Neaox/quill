@@ -1,5 +1,11 @@
 import { describe, expect, it, vi } from 'vitest'
-import { documentId, workspaceId } from '@quill/domain'
+import {
+  documentId,
+  sourcePatternMatcher,
+  sourcePatternPrefix,
+  unitId,
+  workspaceId,
+} from '@quill/domain'
 import type { DocumentId, WorkspaceId } from '@quill/domain'
 
 import { AUTHORED_AT_MAX_SKEW_MS } from '../ports/content-store.ts'
@@ -24,6 +30,7 @@ import {
 } from '../test-support/index.ts'
 import type { FakeContentStore, InMemoryUnitOfWork } from '../test-support/index.ts'
 import {
+  COLLECTION_DELETED,
   DOCUMENT_MOVED,
   DOCUMENT_PUBLISHED,
   DOCUMENT_RENAMED,
@@ -35,6 +42,7 @@ import {
   handleSourceSyncRequested,
   HISTORY_REWRITTEN_SUMMARY,
   importedAtSummary,
+  LAYOUT_CHANGED_SUMMARY,
   requestSourceSync,
   syncSource,
 } from './sync-source.ts'
@@ -93,8 +101,31 @@ class FakeSource implements ExternalSource {
     return await this.head()
   }
 
+  /** What the source was narrowed to, each time. */
+  readonly narrowed: (readonly string[])[] = []
+
+  async narrow(paths: readonly string[]): Promise<void> {
+    this.narrowed.push(paths)
+  }
+
+  /** Whether a path is under what the source was last narrowed to; everything before that. */
+  #within(path: string): boolean {
+    const paths = this.narrowed.at(-1)
+    if (paths === undefined) return true
+    return paths.some((pattern) => sourcePatternMatcher(sourcePatternPrefix(pattern))(path))
+  }
+
   async *files(revision: string): AsyncIterable<SourceFile> {
-    yield* Object.entries(this.#commit(revision).files).map(([path, spec]) => toFile(path, spec))
+    for (const [path, spec] of Object.entries(this.#commit(revision).files)) {
+      if (this.#within(path)) yield toFile(path, spec)
+    }
+  }
+
+  async file(revision: string, path: string): Promise<SourceFile | null> {
+    // A source none of whose revisions exist yet has no files at its head.
+    if (this.chain.length === 0) return null
+    const spec = this.#commit(revision).files[path]
+    return spec === undefined ? null : toFile(path, spec)
   }
 
   async *readFiles(fileIds: Iterable<string>): AsyncIterable<SourceFileContent> {
@@ -123,6 +154,21 @@ class FakeSource implements ExternalSource {
   }
 
   async *changes(from: string | null, to: string): AsyncIterable<SourceChange> {
+    // As a diff limited to the source's paths sees it: a rename across their
+    // edge is a removal or an addition.
+    for await (const change of this.#allChanges(from, to)) {
+      if (change.kind === 'removed') {
+        if (this.#within(change.path)) yield change
+      } else if (change.kind !== 'renamed' || this.#within(change.fromPath)) {
+        if (this.#within(change.file.path)) yield change
+        else if (change.kind === 'renamed') yield { kind: 'removed', path: change.fromPath }
+      } else if (this.#within(change.file.path)) {
+        yield { kind: 'added', file: change.file }
+      }
+    }
+  }
+
+  async *#allChanges(from: string | null, to: string): AsyncIterable<SourceChange> {
     const before = from === null ? {} : this.#commit(from).files
     const after = this.#commit(to)
     const renames = after.renames ?? {}
@@ -211,6 +257,8 @@ interface Harness {
   readonly lock: ReturnType<typeof inMemoryLock>
   readonly clock: ReturnType<typeof createFakeClock>
   sync(): ReturnType<typeof syncSource>
+  /** Changes the source's stored settings, as an administrator would. */
+  configure(settings: Partial<SourceSettings>): void
   idAt(path: string): Promise<DocumentId>
   stored(path: string): Promise<string | undefined>
 }
@@ -225,7 +273,7 @@ function harness(
   const store = createFakeContentStore({ now: () => clock.now() })
   const source = new FakeSource(commits)
   const lock = inMemoryLock()
-  const resolved: SourceSettings = {
+  let resolved: SourceSettings = {
     collections: [
       { collectionId: GUIDES, path: 'docs' },
       { collectionId: DECISIONS, path: 'docs/adr/' },
@@ -260,6 +308,9 @@ function harness(
     lock,
     clock,
     sync: () => syncSource(deps, { workspaceId: WORKSPACE }),
+    configure: (changed) => {
+      resolved = { ...resolved, ...changed }
+    },
     idAt,
     stored: async (path) => {
       const tree = await store.listTree(WORKSPACE)
@@ -620,9 +671,10 @@ describe('syncSource', () => {
           { path: 'docs/link.md', revision: 'c1', reason: 'symbolic-link' },
           { path: 'docs/huge.md', revision: 'c1', reason: 'too-large' },
           { path: 'docs/latin1.md', revision: 'c1', reason: 'not-utf8' },
-          { path: 'elsewhere/x.md', revision: 'c1', reason: 'outside-collections' },
         ]),
       )
+      // A file no collection reads is left out, not refused.
+      expect((await state(h))?.refused.map(({ path }) => path)).not.toContain('elsewhere/x.md')
     })
 
     it('drops a file from the list once a revision stores or removes it', async () => {
@@ -727,6 +779,7 @@ describe('syncSource', () => {
         path: 'docs/ghost.md',
         documentId: documentId('00000000-0000-4000-8000-00000000aaaa'),
         archivedAt: NOW,
+        order: null,
       },
       NOW,
     )
@@ -873,6 +926,514 @@ function someDocument(seed = 0) {
     now: NOW,
   }
 }
+
+// ---------------------------------------------------------------------------
+// The manifest and the tree
+// ---------------------------------------------------------------------------
+
+const MANIFEST = '.quill/workspace.yaml'
+
+function manifest(...collections: string[]): string {
+  return ['version: 1', 'collections:', ...collections.map((line) => `  - ${line}`)].join('\n')
+}
+
+const GUIDES_AT_DOCS = '{ slug: guides, title: Guides, path: docs/guides }'
+
+async function collectionsOf(h: Harness) {
+  return await h.uow.repos.collections.listByWorkspace(WORKSPACE)
+}
+
+async function documentAt(h: Harness, path: string) {
+  const row = await h.uow.repos.documents.findById(await h.idAt(path))
+  if (row === null) throw new Error(`no document at ${path}`)
+  return row
+}
+
+describe('syncSource with a manifest', () => {
+  it('creates its collections by slug, places files in them, and narrows the source to them', async () => {
+    const h = harness([
+      {
+        id: 'c1',
+        files: {
+          [MANIFEST]: manifest(
+            GUIDES_AT_DOCS,
+            '{ slug: decisions, title: Decisions, path: docs/adr, order: filename }',
+          ),
+          'docs/guides/setup.md': '# Setup',
+          'docs/adr/0001-auth.md': '# Auth',
+          'docs/other.md': '# Other',
+        },
+      },
+    ])
+    expect(await h.sync()).toEqual({ kind: 'synced', revision: 'c1', published: 1 })
+
+    const collections = await collectionsOf(h)
+    expect(collections.map(({ slug, name }) => [slug, name]).toSorted()).toEqual([
+      ['decisions', 'Decisions'],
+      ['guides', 'Guides'],
+    ])
+    const bySlug = new Map(collections.map((row) => [row.slug, row.id]))
+    expect((await documentAt(h, 'docs/guides/setup.md')).collectionId).toBe(bySlug.get('guides'))
+    expect((await documentAt(h, 'docs/adr/0001-auth.md')).collectionId).toBe(
+      bySlug.get('decisions'),
+    )
+    await expect(h.idAt('docs/other.md')).rejects.toThrow('no path map entry')
+    expect(h.source.narrowed).toEqual([[MANIFEST, 'docs/guides', 'docs/adr']])
+    expect((await state(h))?.layout).toMatchObject({
+      origin: 'manifest',
+      collectionIds: expect.arrayContaining([bySlug.get('guides'), bySlug.get('decisions')]),
+      unknownKeys: [],
+    })
+  })
+
+  it('adopts a collection by its slug, retitled as the manifest says, and records keys it does not read', async () => {
+    const h = harness(
+      [
+        {
+          id: 'c1',
+          files: {
+            [MANIFEST]: `${manifest('{ slug: guides, title: How-to guides, path: docs }')}\nowner: docs-team`,
+            'docs/a.md': '# A',
+          },
+        },
+      ],
+      { collections: [{ collectionId: GUIDES, path: 'docs' }] },
+    )
+    await h.uow.repos.collections.create({
+      id: GUIDES,
+      workspaceId: WORKSPACE,
+      name: 'Guides',
+      slug: 'guides',
+      now: NOW,
+    })
+    await h.sync()
+    expect(await collectionsOf(h)).toEqual([
+      expect.objectContaining({ id: GUIDES, name: 'How-to guides' }),
+    ])
+    expect((await documentAt(h, 'docs/a.md')).collectionId).toBe(GUIDES)
+    expect((await state(h))?.layout?.unknownKeys).toEqual([{ key: 'owner', line: 4 }])
+  })
+
+  it('reads the entry for its own workspace from a manifest of several', async () => {
+    const h = harness([
+      {
+        id: 'c1',
+        files: {
+          [MANIFEST]: [
+            'version: 1',
+            'workspaces:',
+            '  - { slug: internal, collections: [{ slug: all, title: All, path: docs }] }',
+            '  - { slug: handbook, collections: [{ slug: public, title: Public, path: docs/public }] }',
+          ].join('\n'),
+          'docs/public/a.md': '# A',
+          'docs/private/b.md': '# B',
+        },
+      },
+    ])
+    await h.uow.repos.workspaces.create({
+      id: WORKSPACE,
+      unitId: unitId('00000000-0000-4000-8000-000000000001'),
+      name: 'Handbook',
+      slug: 'handbook',
+      now: NOW,
+    })
+    await h.sync()
+    expect((await collectionsOf(h)).map(({ slug }) => slug)).toEqual(['public'])
+    await expect(h.idAt('docs/private/b.md')).rejects.toThrow('no path map entry')
+  })
+
+  it('reads a glob, and leaves out what the manifest excludes', async () => {
+    const h = harness([
+      {
+        id: 'c1',
+        files: {
+          [MANIFEST]: [
+            manifest(
+              '{ slug: packages, title: Packages, path: "packages/**/README.md" }',
+              GUIDES_AT_DOCS,
+            ),
+            'exclude: [docs/guides/drafts]',
+          ].join('\n'),
+          'packages/ui/README.md': '# UI',
+          'packages/ui/notes.md': '# Notes',
+          'docs/guides/a.md': '# A',
+          'docs/guides/drafts/b.md': '# B',
+        },
+      },
+    ])
+    await h.sync()
+    const paths = await h.uow.repos.sourcePaths.listByWorkspace(WORKSPACE)
+    expect(paths.map(({ path }) => path).toSorted()).toEqual([
+      'docs/guides/a.md',
+      'packages/ui/README.md',
+    ])
+  })
+
+  it('re-plans the whole tree when the manifest changes: adds, moves and retires', async () => {
+    const h = harness([
+      {
+        id: 'c1',
+        files: {
+          [MANIFEST]: manifest(
+            '{ slug: guides, title: Guides, path: docs/guides }',
+            '{ slug: notes, title: Notes, path: docs/notes }',
+          ),
+          'docs/guides/a.md': '# A',
+          'docs/notes/n.md': '# N',
+          'docs/extra/x.md': '# X',
+        },
+      },
+    ])
+    await h.sync()
+    const notes = (await collectionsOf(h)).find(({ slug }) => slug === 'notes')
+    const a = await h.idAt('docs/guides/a.md')
+    const n = await h.idAt('docs/notes/n.md')
+
+    // Only the manifest changes: the guides now read all of docs, and the notes go.
+    h.source.push({
+      id: 'c2',
+      files: {
+        [MANIFEST]: manifest('{ slug: guides, title: Guides, path: docs, order: oldest }'),
+        'docs/guides/a.md': '# A',
+        'docs/notes/n.md': '# N',
+        'docs/extra/x.md': '# X',
+      },
+    })
+    expect(await h.sync()).toEqual({ kind: 'synced', revision: 'c2', published: 1 })
+
+    const collections = await collectionsOf(h)
+    expect(collections.map(({ slug }) => slug)).toEqual(['guides'])
+    expect(h.uow.events.map((event) => event.type)).toContain(COLLECTION_DELETED)
+    expect(h.store.requests[1]?.changes).toEqual([
+      expect.objectContaining({ kind: 'write', path: 'docs/extra/x.md' }),
+    ])
+    expect(await h.idAt('docs/guides/a.md')).toBe(a)
+    // The notes' document is placed again among the guides: same file, same id.
+    expect(await h.idAt('docs/notes/n.md')).toBe(n)
+    for (const path of ['docs/guides/a.md', 'docs/notes/n.md', 'docs/extra/x.md']) {
+      expect((await documentAt(h, path)).collectionId).toBe(collections[0]?.id)
+    }
+    expect(await h.uow.repos.collections.findById(notes?.id ?? '')).toBeNull()
+  })
+
+  it('archives a document the manifest newly excludes, and goes back to the settings without it', async () => {
+    const h = harness([{ id: 'c1', files: { 'docs/a.md': '# A', 'docs/drafts/b.md': '# B' } }], {
+      collections: [{ collectionId: GUIDES, path: 'docs' }],
+    })
+    await h.sync()
+    const b = await h.idAt('docs/drafts/b.md')
+    h.source.push({
+      id: 'c2',
+      files: {
+        [MANIFEST]: `${manifest('{ slug: docs, title: Docs, path: docs }')}\nexclude: [docs/drafts]`,
+        'docs/a.md': '# A',
+        'docs/drafts/b.md': '# B',
+      },
+    })
+    await h.sync()
+    expect((await h.uow.repos.documents.findById(b))?.status).toBe('archived')
+    expect(h.store.requests[1]?.changes).toEqual([
+      { kind: 'delete', documentId: b, path: 'docs/drafts/b.md' },
+    ])
+    const docs = (await collectionsOf(h)).find(({ slug }) => slug === 'docs')
+    expect((await documentAt(h, 'docs/a.md')).collectionId).toBe(docs?.id)
+    expect(h.uow.events.map((event) => event.type)).toContain(DOCUMENT_MOVED)
+    expect((await state(h))?.layout?.origin).toBe('manifest')
+
+    // The manifest goes: the settings place the tree again, and its collection retires.
+    h.source.push({ id: 'c3', files: { 'docs/a.md': '# A', 'docs/drafts/b.md': '# B' } })
+    await h.sync()
+    expect((await documentAt(h, 'docs/a.md')).collectionId).toBe(GUIDES)
+    expect(await h.idAt('docs/drafts/b.md')).toBe(b)
+    expect((await h.uow.repos.documents.findById(b))?.status).toBe('published')
+    expect(await h.uow.repos.collections.findById(docs?.id ?? '')).toBeNull()
+    expect((await state(h))?.layout).toMatchObject({ origin: 'settings', collectionIds: [] })
+  })
+
+  it("gives a removed file's id to the file the manifest redirects it to", async () => {
+    const redirects =
+      'redirects: { docs/guides/old.md: docs/guides/new.md, docs/guides/other.md: docs/guides/new.md }'
+    const h = harness([
+      {
+        id: 'c1',
+        files: { [MANIFEST]: manifest(GUIDES_AT_DOCS), 'docs/guides/old.md': '# Old' },
+      },
+    ])
+    await h.sync()
+    const id = await h.idAt('docs/guides/old.md')
+    h.source.push({
+      id: 'c2',
+      files: {
+        [MANIFEST]: `${manifest(GUIDES_AT_DOCS)}\n${redirects}`,
+        'docs/guides/new.md': '# Completely rewritten',
+        'docs/guides/unrelated.md': '# Unrelated',
+      },
+    })
+    await h.sync()
+    expect(await h.idAt('docs/guides/new.md')).toBe(id)
+    expect(h.store.requests[1]?.changes).toEqual([
+      expect.objectContaining({
+        kind: 'move',
+        fromPath: 'docs/guides/old.md',
+        toPath: 'docs/guides/new.md',
+      }),
+      expect.objectContaining({ kind: 'write', path: 'docs/guides/unrelated.md' }),
+    ])
+  })
+
+  it('orders each collection: front matter order first, then the rule, as sort keys', async () => {
+    const h = harness([
+      {
+        id: 'c1',
+        files: {
+          [MANIFEST]: manifest(GUIDES_AT_DOCS),
+          'docs/guides/zebra.md': '# Zebra',
+          'docs/guides/apple.md': '# Apple',
+          'docs/guides/intro.md': serialise({ order: 1 }, '# Introduction'),
+        },
+      },
+    ])
+    await h.sync()
+    const keys = async (): Promise<Record<string, number | null>> => {
+      const rows = await h.uow.repos.sourcePaths.listByWorkspace(WORKSPACE)
+      const entries = await Promise.all(
+        ['intro', 'apple', 'zebra', 'mango'].map(async (name) => {
+          const row = rows.find((candidate) => candidate.path === `docs/guides/${name}.md`)
+          const document =
+            row === undefined ? null : await h.uow.repos.documents.findById(row.documentId)
+          return [name, document?.sortKey ?? null] as const
+        }),
+      )
+      return Object.fromEntries(entries)
+    }
+    expect(await keys()).toEqual({ intro: 1, apple: 2, zebra: 3, mango: null })
+
+    h.source.push({
+      id: 'c2',
+      files: {
+        [MANIFEST]: manifest(GUIDES_AT_DOCS),
+        'docs/guides/zebra.md': '# Zebra',
+        'docs/guides/apple.md': '# Apple',
+        'docs/guides/intro.md': serialise({ order: 1 }, '# Introduction'),
+        'docs/guides/mango.md': '# Mango',
+      },
+    })
+    await h.sync()
+    expect(await keys()).toEqual({ intro: 1, apple: 2, mango: 3, zebra: 4 })
+
+    // Newest first instead, and the introduction no longer says where it goes.
+    h.source.push({
+      id: 'c3',
+      files: {
+        [MANIFEST]: manifest('{ slug: guides, title: Guides, path: docs/guides, order: newest }'),
+        'docs/guides/zebra.md': '# Zebra',
+        'docs/guides/apple.md': '# Apple',
+        'docs/guides/intro.md': '# Introduction',
+        'docs/guides/mango.md': '# Mango',
+      },
+    })
+    await h.sync()
+    const after = await keys()
+    expect(after['mango']).toBe(1)
+    expect(Object.values(after).toSorted()).toEqual([1, 2, 3, 4])
+  })
+
+  it('re-plans when the stored settings change and the source has not moved', async () => {
+    const h = harness([{ id: 'c1', files: { 'docs/a.md': '# A', 'ops/run.md': '# Run' } }], {
+      collections: [{ collectionId: GUIDES, path: 'docs' }],
+    })
+    await h.sync()
+    expect(await h.sync()).toEqual({ kind: 'up-to-date', revision: 'c1' })
+
+    h.configure({
+      collections: [
+        { collectionId: GUIDES, path: 'docs' },
+        { collectionId: DECISIONS, path: 'ops' },
+      ],
+    })
+    expect(await h.sync()).toEqual({ kind: 'synced', revision: 'c1', published: 1 })
+    expect(h.store.requests[1]?.changeNote).toBe(LAYOUT_CHANGED_SUMMARY)
+    expect((await documentAt(h, 'ops/run.md')).collectionId).toBe(DECISIONS)
+    expect(await h.sync()).toEqual({ kind: 'up-to-date', revision: 'c1' })
+
+    // A change that only moves documents publishes nothing to the store.
+    h.configure({
+      collections: [
+        { collectionId: DECISIONS, path: 'docs' },
+        { collectionId: GUIDES, path: 'ops' },
+      ],
+    })
+    expect(await h.sync()).toEqual({ kind: 'synced', revision: 'c1', published: 0 })
+    expect((await documentAt(h, 'docs/a.md')).collectionId).toBe(DECISIONS)
+    expect(h.store.requests).toHaveLength(2)
+
+    // A path taken away archives what it held.
+    h.configure({ collections: [{ collectionId: DECISIONS, path: 'docs' }] })
+    expect(await h.sync()).toEqual({ kind: 'synced', revision: 'c1', published: 1 })
+    expect((await documentAt(h, 'ops/run.md')).status).toBe('archived')
+  })
+
+  it('stays up to date under a manifest whatever the settings say', async () => {
+    const h = harness([
+      { id: 'c1', files: { [MANIFEST]: manifest(GUIDES_AT_DOCS), 'docs/guides/a.md': '# A' } },
+    ])
+    await h.sync()
+    h.configure({ collections: [{ collectionId: DECISIONS, path: 'elsewhere' }] })
+    expect(await h.sync()).toEqual({ kind: 'up-to-date', revision: 'c1' })
+  })
+
+  it('re-plans once a tree placed before its layout was recorded', async () => {
+    const h = harness([{ id: 'c1', files: { 'docs/a.md': serialise({ order: 4 }, '# A') } }])
+    await h.sync()
+    const recorded = await state(h)
+    vi.spyOn(h.uow.repos.sourceSyncState, 'find').mockResolvedValueOnce(
+      recorded === null ? null : { ...recorded, layout: null },
+    )
+    expect(await h.sync()).toEqual({ kind: 'synced', revision: 'c1', published: 0 })
+    expect((await documentAt(h, 'docs/a.md')).sortKey).toBe(4)
+  })
+
+  it('stops at a manifest at the head that does not read, naming its line', async () => {
+    const h = harness([
+      {
+        id: 'c1',
+        files: {
+          [MANIFEST]: manifest('{ slug: guides, title: Guides, path: "**/*.md" }'),
+          'docs/a.md': '# A',
+        },
+      },
+    ])
+    expect(await h.sync()).toEqual({
+      kind: 'failed',
+      failure: {
+        reason: 'invalid-manifest',
+        message: expect.stringMatching(
+          /^\.quill\/workspace\.yaml, line 3: .*no directory.* \(at c1\)$/,
+        ),
+        revision: 'c1',
+      },
+    })
+    expect(h.store.requests).toEqual([])
+  })
+
+  it.each([
+    [{ kind: 'symbolic-link', target: 'elsewhere.yaml' }, 'symbolic link'],
+    [{ kind: 'too-large' }, 'larger than'],
+    [{ kind: 'bytes', bytes: new Uint8Array([0xff, 0xfe]) }, 'not UTF-8'],
+    [
+      [
+        'version: 1',
+        'workspaces:',
+        '  - { slug: a, collections: [{ slug: g, title: G, path: d }] }',
+        '  - { slug: b, collections: [{ slug: g, title: G, path: d }] }',
+      ].join('\n'),
+      'none has the slug',
+    ],
+  ] as const)('refuses a manifest that is %j', async (spec, message) => {
+    const h = harness([{ id: 'c1', files: { [MANIFEST]: spec, 'docs/a.md': '# A' } }])
+    expect(await h.sync()).toMatchObject({
+      kind: 'failed',
+      failure: { reason: 'invalid-manifest', message: expect.stringContaining(message) },
+    })
+  })
+
+  it('stops when the source does not return the manifest', async () => {
+    const h = harness([{ id: 'c1', files: { [MANIFEST]: manifest(GUIDES_AT_DOCS) } }])
+    h.source.missing.add(`${MANIFEST}#${JSON.stringify(manifest(GUIDES_AT_DOCS))}`)
+    expect(await h.sync()).toMatchObject({ kind: 'failed', failure: { reason: 'file-missing' } })
+  })
+
+  it('keeps the layout before a revision whose manifest does not read', async () => {
+    const h = harness([
+      { id: 'c1', files: { [MANIFEST]: manifest(GUIDES_AT_DOCS), 'docs/guides/a.md': '# A' } },
+      {
+        id: 'c2',
+        files: { [MANIFEST]: 'version: [', 'docs/guides/a.md': '# A', 'docs/guides/b.md': '# B' },
+      },
+      {
+        id: 'c3',
+        files: {
+          [MANIFEST]: manifest(GUIDES_AT_DOCS),
+          'docs/guides/a.md': '# A',
+          'docs/guides/b.md': '# B',
+        },
+      },
+    ])
+    expect(await h.sync()).toEqual({ kind: 'synced', revision: 'c3', published: 2 })
+    expect(await h.idAt('docs/guides/b.md')).toBeDefined()
+  })
+
+  it("places a first revision whose manifest does not read by the head's layout", async () => {
+    const h = harness([
+      { id: 'c1', files: { [MANIFEST]: 'version: [', 'docs/guides/a.md': '# A' } },
+      { id: 'c2', files: { [MANIFEST]: manifest(GUIDES_AT_DOCS), 'docs/guides/a.md': '# A' } },
+    ])
+    expect(await h.sync()).toEqual({ kind: 'synced', revision: 'c2', published: 1 })
+    const guides = (await collectionsOf(h)).find(({ slug }) => slug === 'guides')
+    expect((await documentAt(h, 'docs/guides/a.md')).collectionId).toBe(guides?.id)
+  })
+
+  it('archives a document renamed onto a symbolic link', async () => {
+    const h = harness([{ id: 'c1', files: { 'docs/a.md': '# A' } }])
+    await h.sync()
+    const id = await h.idAt('docs/a.md')
+    h.source.push({
+      id: 'c2',
+      files: { 'docs/b.md': { kind: 'symbolic-link', target: 'a.md' } },
+      renames: { 'docs/a.md': 'docs/b.md' },
+    })
+    await h.sync()
+    expect((await h.uow.repos.documents.findById(id))?.status).toBe('archived')
+    expect((await state(h))?.refused).toEqual([
+      { path: 'docs/b.md', revision: 'c2', reason: 'symbolic-link' },
+    ])
+  })
+
+  it('reads the layout again after a revision it skipped on resuming', async () => {
+    const h = harness([
+      { id: 'c1', files: { [MANIFEST]: manifest(GUIDES_AT_DOCS), 'docs/guides/a.md': '# A' } },
+    ])
+    await h.sync()
+    h.source.push({
+      id: 'c2',
+      files: { [MANIFEST]: manifest(GUIDES_AT_DOCS), 'docs/guides/a.md': '# A, again' },
+    })
+    h.source.push({
+      id: 'c3',
+      files: { [MANIFEST]: manifest(GUIDES_AT_DOCS), 'docs/guides/a.md': '# A, a third time' },
+    })
+    await h.sync()
+    const recorded = await state(h)
+    // As if the sync had stopped after recording c2 and c3 but before its state said so.
+    vi.spyOn(h.uow.repos.sourceSyncState, 'find').mockResolvedValueOnce(
+      recorded === null ? null : { ...recorded, lastSyncedRevision: 'c1' },
+    )
+    expect(await h.sync()).toEqual({ kind: 'synced', revision: 'c3', published: 0 })
+  })
+
+  it('leaves a collection it retires alone when it is already gone', async () => {
+    const h = harness([
+      { id: 'c1', files: { [MANIFEST]: manifest(GUIDES_AT_DOCS), 'docs/guides/a.md': '# A' } },
+    ])
+    await h.sync()
+    const recorded = await state(h)
+    vi.spyOn(h.uow.repos.sourceSyncState, 'find').mockResolvedValueOnce(
+      recorded?.layout == null
+        ? null
+        : {
+            ...recorded,
+            layout: {
+              ...recorded.layout,
+              origin: 'settings',
+              fingerprint: 'older',
+              collectionIds: ['gone'],
+            },
+          },
+    )
+    expect(await h.sync()).toEqual({ kind: 'synced', revision: 'c1', published: 0 })
+    expect(h.uow.events.map((event) => event.type)).not.toContain(COLLECTION_DELETED)
+  })
+})
 
 describe('requestSourceSync and its consumer', () => {
   it('queues a request that the consumer turns into a sync', async () => {

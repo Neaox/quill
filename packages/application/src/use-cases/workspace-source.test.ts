@@ -16,6 +16,12 @@ import type { CollectionRow } from '../ports/persistence.ts'
 import type { ConfigureWorkspaceSourceCommand } from './workspace-source.ts'
 
 const NOW = new Date('2026-01-01T00:00:00.000Z')
+const LAYOUT = {
+  origin: 'settings',
+  fingerprint: '[]',
+  collectionIds: [],
+  unknownKeys: [],
+} as const
 const WORKSPACE = workspaceId('00000000-0000-4000-8000-000000000101')
 const ACTOR = userId('00000000-0000-4000-8000-000000000001')
 
@@ -160,37 +166,27 @@ describe('configureWorkspaceSource', () => {
     })
   })
 
-  it('fixes the collections and paths once the source has synced, and only then', async () => {
+  it('lets the collections and paths change after a sync, which re-plans the tree', async () => {
     await configureWorkspaceSource(deps, command())
-    const moved = command({
-      collections: [
-        { slug: 'guides', name: 'Guides', path: 'docs/how-to' },
-        { slug: 'decisions', name: 'Decisions', path: 'docs/adr' },
-      ],
-    })
-    // Before any sync, nothing has been read yet, so anything may change.
-    expect((await configureWorkspaceSource(deps, moved)).kind).toBe('configured')
     await uow.repos.sourceSyncState.recordSynced({
       workspaceId: WORKSPACE,
       revision: 'abc',
       refused: [],
+      layout: LAYOUT,
       now: NOW,
     })
-
-    expect(await configureWorkspaceSource(deps, command())).toMatchObject({
-      kind: 'invalid',
-      field: 'collections',
-      message: expect.stringContaining('cannot change yet'),
-    })
-    const renamed = command({
-      branch: 'release',
-      commitMessages: 'none',
+    const moved = command({
       collections: [
-        { slug: 'decisions', name: 'Architecture decisions', path: 'docs/adr/' },
-        { slug: 'guides', name: 'How-to guides', path: 'docs/how-to' },
+        { slug: 'guides', name: 'Guides', path: 'docs/how-to' },
+        { slug: 'runbooks', name: 'Runbooks', path: 'ops/runbooks' },
       ],
     })
-    expect((await configureWorkspaceSource(deps, renamed)).kind).toBe('configured')
+    const result = await configureWorkspaceSource(deps, moved)
+    if (result.kind !== 'configured') throw new Error(`unexpected result: ${result.kind}`)
+    expect(result.view.collections.map(({ slug, path }) => [slug, path])).toEqual([
+      ['guides', 'docs/how-to'],
+      ['runbooks', 'ops/runbooks'],
+    ])
   })
 
   it('changes the settings of a sourced workspace that already holds documents', async () => {
@@ -288,6 +284,7 @@ describe('getWorkspaceSource', () => {
       workspaceId: WORKSPACE,
       revision: 'abc',
       refused: [],
+      layout: LAYOUT,
       now: NOW,
     })
     const view = await getWorkspaceSource(deps, WORKSPACE)

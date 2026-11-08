@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { collectionFor, decodeUtf8, isDocumentPath, titleFromPath } from './source-files.ts'
+import { decodeUtf8, isDocumentPath, titleFromPath } from './source-files.ts'
 
 describe('isDocumentPath', () => {
   it('takes Markdown files, in either spelling and any case', () => {
@@ -8,29 +8,6 @@ describe('isDocumentPath', () => {
     expect(isDocumentPath('docs/A.MARKDOWN')).toBe(true)
     expect(isDocumentPath('docs/a.mdx')).toBe(false)
     expect(isDocumentPath('docs/md')).toBe(false)
-  })
-})
-
-describe('collectionFor', () => {
-  const docs = { collectionId: 'docs', path: './docs/' }
-  const adr = { collectionId: 'adr', path: 'docs/adr' }
-  const readme = { collectionId: 'readme', path: 'README.md' }
-
-  it('picks the collection with the longest path the file lies under', () => {
-    expect(collectionFor('docs/adr/1.md', [docs, adr])).toBe(adr)
-    expect(collectionFor('docs/adr/1.md', [adr, docs])).toBe(adr)
-    expect(collectionFor('docs/guide.md', [docs, adr])).toBe(docs)
-  })
-
-  it('matches a collection that is one file, and never a sibling sharing a prefix', () => {
-    expect(collectionFor('README.md', [readme])).toBe(readme)
-    expect(collectionFor('docs-old/a.md', [docs])).toBeNull()
-  })
-
-  it('lets a collection at the root read every file', () => {
-    const root = { collectionId: 'root', path: '' }
-    expect(collectionFor('anything/at/all.md', [root])).toBe(root)
-    expect(collectionFor('docs/a.md', [root, docs])).toBe(docs)
   })
 })
 
