@@ -504,8 +504,58 @@ export const revisionsIndex = pgTable(
     // a retried publish must find its own row rather than add another
     // (ADR-015).
     unique('revisions_index_document_id_revision_key').on(table.documentId, table.revision),
+    // A replay that was interrupted asks which source revisions it already
+    // recorded (ADR-061); only replayed revisions carry one.
+    index('revisions_index_source_revision_idx')
+      .on(table.workspaceId, table.sourceRevision)
+      .where(sql`${table.sourceRevision} IS NOT NULL`),
   ],
 )
+
+/**
+ * The path map of a sourced workspace (ADR-061, "Identity without front
+ * matter"): each path its source has had under the manifest's paths, and the
+ * document id minted the first time the sync job saw it. Written only by the
+ * sync job, in the transaction that records the revision that changed it.
+ */
+export const sourcePathMap = pgTable(
+  'source_path_map',
+  {
+    workspaceId: text('workspace_id')
+      .notNull()
+      .references(() => workspaces.id, { onDelete: 'cascade' }),
+    path: text('path').notNull(),
+    documentId: text('document_id')
+      .notNull()
+      .references(() => documents.id, { onDelete: 'cascade' }),
+    /** When the file left the source; null while it is there. */
+    archivedAt: timestamp('archived_at', { withTimezone: true }),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.workspaceId, table.path] }),
+    // A document is at one path at a time.
+    unique('source_path_map_document_id_key').on(table.documentId),
+  ],
+)
+
+/**
+ * How far each sourced workspace has synced from its source, and what stopped
+ * its last attempt (ADR-061, "A failed sync never empties a workspace"). The
+ * source's admin page reads it.
+ */
+export const sourceSyncState = pgTable('source_sync_state', {
+  workspaceId: text('workspace_id')
+    .primaryKey()
+    .references(() => workspaces.id, { onDelete: 'cascade' }),
+  lastSyncedRevision: text('last_synced_revision'),
+  lastSyncedAt: timestamp('last_synced_at', { withTimezone: true }),
+  lastAttemptAt: timestamp('last_attempt_at', { withTimezone: true }).notNull(),
+  /** `{ version, reason, message, revision }`, or null when the last attempt finished. */
+  failure: jsonb('failure'),
+  /** `{ version, files: [{ path, revision, reason }] }`: the files not stored. */
+  refused: jsonb('refused').notNull(),
+})
 
 /**
  * One rendered body, addressed by what it was rendered from (ADR-031).

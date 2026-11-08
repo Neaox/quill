@@ -473,6 +473,12 @@ describe('RevisionsIndexRepository', () => {
     expect(
       (await revisions.listForDocument(DOC, { limit: 10 })).map((row) => row.sourceRevision),
     ).toEqual([null, 'c'.repeat(40)])
+
+    // How an interrupted replay finds what it already recorded (ADR-061).
+    expect(await revisions.findBySourceRevision(WORKSPACE, 'c'.repeat(40))).toMatchObject({
+      id: 'revision-replayed',
+    })
+    expect(await revisions.findBySourceRevision(WORKSPACE, 'd'.repeat(40))).toBeNull()
   })
 
   it('names each person who has published a document once, under the name they last used', async () => {

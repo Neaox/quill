@@ -64,7 +64,11 @@ import { createJobRunner } from './jobs/job-runner.ts'
 import { registerOutboxConsumers } from './jobs/register-consumers.ts'
 import { createShutdown } from './shutdown.ts'
 import { createSweepJob } from './jobs/sweep-expired.ts'
-import { createEventBus, createLinkConnectorRegistry } from '@quill/application'
+import {
+  createEventBus,
+  createLinkConnectorRegistry,
+  refuseWritesToSourcedWorkspaces,
+} from '@quill/application'
 import { createSweepLinkPreviewsJob } from './jobs/sweep-link-previews.ts'
 import { createSearchService } from '@quill/search'
 import { createDrawioText } from './extensions/drawio/drawing-text.ts'
@@ -102,7 +106,12 @@ const eventBus = createEventBus({
   },
 })
 const uow = createUnitOfWork(database.db, database.pool, ids, eventBus)
-const contentStore = createContentStore(config.contentStore, clock)
+// The store that writes is for the sync job of a sourced workspace, its
+// only writer (ADR-061). Everything a person asks for is composed with the
+// one that refuses to write a sourced workspace, so a route that forgot its
+// capability check still cannot.
+const writingContentStore = createContentStore(config.contentStore, clock)
+const contentStore = refuseWritesToSourcedWorkspaces(writingContentStore, uow.repos.workspaces)
 // Settings are files in a system workspace of that same content store, and
 // secrets are envelope-encrypted rows under the instance master key (ADR-034).
 const settings = createSettingsStore(contentStore)
