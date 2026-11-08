@@ -2,7 +2,9 @@ import { STATUS_CODES } from 'node:http'
 
 import type { FastifyError, FastifyInstance } from 'fastify'
 
-import { AppError } from '../errors.ts'
+import { WorkspaceReadOnlyError } from '@quill/application'
+
+import { AppError, workspaceReadOnly } from '../errors.ts'
 import { redactShareToken } from './logging.ts'
 
 interface ErrorBody {
@@ -83,7 +85,10 @@ function clientErrorCode(error: FastifyError, status: number): string {
  * reported as a generic `500` without leaking internals.
  */
 export function registerErrorHandler(app: FastifyInstance): void {
-  app.setErrorHandler((error: FastifyError | AppError, request, reply) => {
+  app.setErrorHandler((raised: FastifyError | AppError, request, reply) => {
+    // The content store refused a write to a sourced workspace (ADR-061): a
+    // route that forgot its capability check, answered as the check would have.
+    const error = raised instanceof WorkspaceReadOnlyError ? workspaceReadOnly() : raised
     if (error instanceof AppError) {
       // A 304 answers with headers only; anything else would be a body the
       // client is being told it already has.

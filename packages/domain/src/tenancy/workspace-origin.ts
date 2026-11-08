@@ -12,3 +12,5 @@
 export type WorkspaceOrigin = { readonly kind: 'native' } | { readonly kind: 'sourced' }
 
 export const NATIVE_ORIGIN: WorkspaceOrigin = { kind: 'native' }
+
+export const SOURCED_ORIGIN: WorkspaceOrigin = { kind: 'sourced' }

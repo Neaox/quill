@@ -62,6 +62,7 @@ describe('loadConfig', () => {
       oidcDevLoopback: false,
       contentStore: { driver: 'filesystem', path: './data/content' },
       shareLinks: { enabled: true },
+      sources: { cachePath: './data/sources', privateHostsAllowed: [] },
       masterKey: { driver: 'environment', keys: [Buffer.alloc(32).toString('base64')] },
       blobStore: { driver: 'filesystem', path: './data/blobs' },
       attachments: {
@@ -550,6 +551,34 @@ describe('loadConfig: the content store', () => {
   it('refuses a backend it does not have, and a filesystem backend with nowhere to write', () => {
     expect(() => loadConfig({ CONTENT_STORE: 's3' })).toThrow(/CONTENT_STORE must be/)
     expect(() => loadConfig({ CONTENT_STORE_PATH: '' })).toThrow(/CONTENT_STORE_PATH/)
+  })
+})
+
+describe('loadConfig: external sources', () => {
+  it('keeps clones under ./data/sources and vouches for no private host by default', () => {
+    expect(loadConfig({}).sources).toEqual({ cachePath: './data/sources', privateHostsAllowed: [] })
+  })
+
+  it('reads the cache path, the private hosts and the egress proxy', () => {
+    expect(
+      loadConfig({
+        SOURCE_CACHE_PATH: '/var/cache/quill',
+        SOURCE_PRIVATE_HOSTS: ' Git.Internal , ,gitea.lan',
+        SOURCE_EGRESS_PROXY: 'http://proxy.internal:3128',
+      }).sources,
+    ).toEqual({
+      cachePath: '/var/cache/quill',
+      privateHostsAllowed: ['git.internal', 'gitea.lan'],
+      egressProxy: 'http://proxy.internal:3128',
+    })
+  })
+
+  it('refuses an empty cache path and a proxy that is not an http address', () => {
+    expect(() => loadConfig({ SOURCE_CACHE_PATH: '' })).toThrow(/SOURCE_CACHE_PATH/)
+    expect(() => loadConfig({ SOURCE_EGRESS_PROXY: 'socks5://proxy:1080' })).toThrow(
+      /SOURCE_EGRESS_PROXY/,
+    )
+    expect(() => loadConfig({ SOURCE_EGRESS_PROXY: 'proxy' })).toThrow(/SOURCE_EGRESS_PROXY/)
   })
 })
 

@@ -119,6 +119,8 @@ export interface ServerConfig {
   readonly drawio: DrawioConfig
   /** Which live-embed providers the operator switched off (ADR-042; `LINK_EMBEDS_DISABLED`). */
   readonly linkEmbeds: LinkEmbedsConfig
+  /** How the sync job reaches external Git sources (ADR-061). */
+  readonly sources: SourcesConfig
   /**
    * Lets the OIDC identity-provider registry reach a provider that is really
    * listening on loopback — the in-process fake `e2e/sso.spec.ts` and manual
@@ -319,10 +321,28 @@ export interface ConfigWarn {
   (message: string): void
 }
 
+/**
+ * External Git sources (ADR-061): where their clones are kept, which private
+ * hosts the operator vouches for, and the egress proxy, if any, that enforces
+ * the outbound policy on every connection `git` makes.
+ */
+export interface SourcesConfig {
+  /** `SOURCE_CACHE_PATH`: one disposable clone per sourced workspace beneath it. */
+  readonly cachePath: string
+  /**
+   * `SOURCE_PRIVATE_HOSTS`: exact host names a source may be fetched from
+   * although they resolve to private addresses — a self-hosted Git server.
+   */
+  readonly privateHostsAllowed: readonly string[]
+  /** `SOURCE_EGRESS_PROXY`: an http(s) proxy every fetch goes through. */
+  readonly egressProxy?: string
+}
+
 const LOG_LEVELS = new Set(['fatal', 'error', 'warn', 'info', 'debug', 'trace'])
 
 const DEFAULT_CONTENT_STORE_PATH = './data/content'
 const DEFAULT_BLOB_STORE_PATH = './data/blobs'
+const DEFAULT_SOURCE_CACHE_PATH = './data/sources'
 /** 25 MiB: enough for a page of screenshots, far short of anything a document needs. */
 const DEFAULT_ATTACHMENT_MAX_BYTES = 25 * 1024 * 1024
 
@@ -353,6 +373,24 @@ function loadContentStoreConfig(env: NodeJS.ProcessEnv): ContentStoreConfig {
     throw new Error('CONTENT_STORE_PATH must not be empty when CONTENT_STORE=filesystem')
   }
   return { driver: 'filesystem', path }
+}
+
+function loadSourcesConfig(env: NodeJS.ProcessEnv): SourcesConfig {
+  const cachePath = env['SOURCE_CACHE_PATH'] ?? DEFAULT_SOURCE_CACHE_PATH
+  if (cachePath.length === 0) throw new Error('SOURCE_CACHE_PATH must not be empty')
+  const privateHostsAllowed = (env['SOURCE_PRIVATE_HOSTS'] ?? '')
+    .split(',')
+    .map((host) => host.trim().toLowerCase())
+    .filter((host) => host.length > 0)
+  const egressProxy = env['SOURCE_EGRESS_PROXY'] ?? ''
+  if (egressProxy === '') return { cachePath, privateHostsAllowed }
+  const protocol = URL.canParse(egressProxy) ? new URL(egressProxy).protocol : ''
+  if (protocol !== 'http:' && protocol !== 'https:') {
+    throw new Error(
+      `SOURCE_EGRESS_PROXY must be an http or https address, received "${egressProxy}"`,
+    )
+  }
+  return { cachePath, privateHostsAllowed, egressProxy }
 }
 
 /**
@@ -897,6 +935,7 @@ export function loadConfig(
     attachments: loadAttachmentConfig(env),
     drawio: loadDrawioConfig(env, !isRealDeployment(appUrl), appUrl.origin),
     linkEmbeds: loadLinkEmbedsConfig(env),
+    sources: loadSourcesConfig(env),
     oidcDevLoopback,
   }
 }

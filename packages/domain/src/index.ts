@@ -70,7 +70,24 @@ export type { Instance } from './tenancy/instance.ts'
 export type { OrganisationalUnit } from './tenancy/organisational-unit.ts'
 export type { Workspace } from './tenancy/workspace.ts'
 export type { WorkspaceOrigin } from './tenancy/workspace-origin.ts'
-export { NATIVE_ORIGIN } from './tenancy/workspace-origin.ts'
+export { NATIVE_ORIGIN, SOURCED_ORIGIN } from './tenancy/workspace-origin.ts'
+export type {
+  SourceCommitMessageSetting,
+  SourceHistorySetting,
+  SourceRemoteOptions,
+} from './tenancy/workspace-source.ts'
+export {
+  MAX_SOURCE_BRANCH_LENGTH,
+  MAX_SOURCE_PATH_LENGTH,
+  MAX_SOURCE_REMOTE_LENGTH,
+  MAX_SOURCE_USERNAME_LENGTH,
+  SOURCE_COMMIT_MESSAGE_SETTINGS,
+  SOURCE_HISTORY_SETTINGS,
+  checkSourceBranch,
+  checkSourcePath,
+  checkSourceRemote,
+  checkSourceUsername,
+} from './tenancy/workspace-source.ts'
 export type { Collection } from './tenancy/collection.ts'
 export type { Document } from './tenancy/document.ts'
 export type { Group } from './tenancy/group.ts'
@@ -112,7 +129,12 @@ export {
 } from './permissions/scope.ts'
 
 export type { Capabilities } from './permissions/capabilities.ts'
-export { NO_CAPABILITIES, capabilitiesForRole, narrowByOrigin } from './permissions/capabilities.ts'
+export {
+  NO_CAPABILITIES,
+  capabilitiesForRole,
+  isTakenByOrigin,
+  narrowByOrigin,
+} from './permissions/capabilities.ts'
 
 export type { Grant, GrantEffect, GrantViolation } from './permissions/grant.ts'
 export { GRANT_EFFECTS, validateGrant } from './permissions/grant.ts'

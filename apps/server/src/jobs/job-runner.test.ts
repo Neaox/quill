@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { createFakeClock } from '../test-support/fakes.ts'
-import { createJobRunner, type LanePoll, type OutboxPoll } from './job-runner.ts'
+import { DEFAULT_LANE, createJobRunner, type LanePoll, type OutboxPoll } from './job-runner.ts'
 import type { LaneResult } from '../infrastructure/outbox/lane.ts'
 import type { OutboxConsumer } from '../infrastructure/outbox/consumer.ts'
 import type { PollResult } from '../infrastructure/outbox/poller.ts'
@@ -302,6 +302,46 @@ describe('the lane for slow work', () => {
     held.release()
     await stopping
     expect(finished).toBe(true)
+  })
+
+  it('polls each named lane with its own consumers and its name', async () => {
+    const pollLane = vi.fn<LanePoll>().mockResolvedValue(LANE_RESULT)
+    const { runner } = setUp(pollLane)
+    runner.lane(laneConsumer)
+    runner.lane({ eventType: 'Slower', handle: async () => undefined }, 'sources')
+    runner.lane({ eventType: 'Slowest', handle: async () => undefined }, 'sources')
+
+    expect(await runner.pollLaneOnce('sources')).toEqual(LANE_RESULT)
+    expect(pollLane).toHaveBeenLastCalledWith(expect.any(Map), expect.any(Date), 'sources')
+    expect([...(pollLane.mock.lastCall?.[0].keys() ?? [])]).toEqual(['Slower', 'Slowest'])
+
+    // Unnamed, every lane in turn, reported together.
+    expect(await runner.pollLaneOnce()).toEqual({ ...LANE_RESULT, processed: 2 })
+    expect(pollLane.mock.calls.map((call) => call[2])).toEqual(['sources', DEFAULT_LANE, 'sources'])
+    expect(await runner.pollLaneOnce('nothing-here')).toEqual({
+      processed: 0,
+      failed: 0,
+      deferred: 0,
+      deadLettered: 0,
+    })
+  })
+
+  it('does not hold up one lane while another is in a long cycle', async () => {
+    const held = pause()
+    const pollLane = vi.fn<LanePoll>(async (_consumers, _now, lane) => {
+      if (lane === 'sources') await held.waited
+      return LANE_RESULT
+    })
+    const { runner } = setUp(pollLane)
+    runner.lane(laneConsumer)
+    runner.lane({ eventType: 'Sync', handle: async () => undefined }, 'sources')
+    runner.start()
+    await vi.advanceTimersByTimeAsync(4000)
+    const lanes = pollLane.mock.calls.map((call) => call[2])
+    expect(lanes.filter((lane) => lane === 'sources')).toHaveLength(1)
+    expect(lanes.filter((lane) => lane === DEFAULT_LANE).length).toBeGreaterThanOrEqual(3)
+    held.release()
+    await runner.stop()
   })
 
   it('reports a lane failure and carries on', async () => {
