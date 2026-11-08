@@ -34,6 +34,10 @@ import { createRevisionsIndexRepository } from './revisions-index-repository.ts'
 import { createSecretRepository } from './secret-repository.ts'
 import { createSessionRepository } from './session-repository.ts'
 import { createShareLinkRepository } from './share-link-repository.ts'
+import {
+  createSourcePathMapRepository,
+  createSourceSyncStateRepository,
+} from './source-sync-repositories.ts'
 import { createUnitRepository } from './unit-repository.ts'
 import { createUserRepository } from './user-repository.ts'
 import { createWorkspaceRepository } from './workspace-repository.ts'
@@ -83,6 +87,8 @@ function buildBundle(
     reviews: createReviewRepository(db),
     documentViews: createDocumentViewRepository(db),
     notifications: createNotificationRepository(db),
+    sourcePaths: createSourcePathMapRepository(db),
+    sourceSyncState: createSourceSyncStateRepository(db),
     events: createEventRecorder({ outbox: createOutboxWriter(db), ids, sink }),
     audit: createAuditWriter(db),
   }

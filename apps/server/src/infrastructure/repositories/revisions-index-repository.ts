@@ -127,6 +127,25 @@ export function createRevisionsIndexRepository(db: DrizzleClient): RevisionsInde
       return rows.map(toRevisionRow)
     },
 
+    /** Served by the partial index on `(workspace_id, source_revision)`. */
+    async findBySourceRevision(
+      workspaceId: WorkspaceId,
+      sourceRevision: string,
+    ): Promise<RevisionIndexRow | null> {
+      const rows = await db
+        .select()
+        .from(revisionsIndex)
+        .where(
+          and(
+            eq(revisionsIndex.workspaceId, workspaceId),
+            eq(revisionsIndex.sourceRevision, sourceRevision),
+          ),
+        )
+        .limit(1)
+      const row = rows[0]
+      return row === undefined ? null : toRevisionRow(row)
+    },
+
     async findForDocument(
       documentId: DocumentId,
       revision: RevisionId,
