@@ -3,6 +3,9 @@ import { Type } from '@sinclair/typebox'
 import type { TypeBoxTypeProvider } from '@fastify/type-provider-typebox'
 import { describe, expect, it } from 'vitest'
 
+import { WorkspaceReadOnlyError } from '@quill/application'
+import { workspaceId } from '@quill/domain'
+
 import { AppError } from '../errors.ts'
 import { registerErrorHandler } from './error-handler.ts'
 
@@ -15,6 +18,9 @@ function buildTestApp() {
   })
   app.get('/app-error-no-details', async () => {
     throw new AppError(401, 'unauthenticated', 'sign in')
+  })
+  app.get('/read-only', async () => {
+    throw new WorkspaceReadOnlyError(workspaceId('00000000-0000-4000-8000-000000000101'))
   })
   app.get('/boom', async () => {
     throw new Error('unexpected')
@@ -58,6 +64,17 @@ describe('registerErrorHandler', () => {
     expect(response.statusCode).toBe(423)
     expect(response.json()).toEqual({
       error: { code: 'lock_lost', message: 'no lock', details: { holder: 'bob' } },
+    })
+  })
+
+  it('answers a store that refused to write a sourced workspace as the capability check would', async () => {
+    const response = await app.inject({ method: 'GET', url: '/read-only' })
+    expect(response.statusCode).toBe(403)
+    expect(response.json()).toEqual({
+      error: {
+        code: 'workspace_read_only',
+        message: 'This workspace is read from a repository; edit it there.',
+      },
     })
   })
 

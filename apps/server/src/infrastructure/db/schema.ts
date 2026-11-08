@@ -513,6 +513,48 @@ export const revisionsIndex = pgTable(
 )
 
 /**
+ * Where a sourced workspace reads from (ADR-061, "A source is configured on a
+ * workspace"). A row is what makes a workspace sourced: the workspace's
+ * origin is read from it, and its sync job is then the workspace's only
+ * writer.
+ *
+ * The credential is a user name and the *name* of a product secret (ADR-034),
+ * never the secret. `collections` is a versioned document,
+ * `{ version, collections: [{ collectionId, path }] }`, so a later release can
+ * read it (ADR-033).
+ */
+export const workspaceSources = pgTable(
+  'workspace_sources',
+  {
+    workspaceId: text('workspace_id')
+      .primaryKey()
+      .references(() => workspaces.id, { onDelete: 'cascade' }),
+    remote: text('remote').notNull(),
+    branch: text('branch').notNull(),
+    collections: jsonb('collections').notNull(),
+    history: text('history').notNull(),
+    commitMessages: text('commit_messages').notNull(),
+    credentialUsername: text('credential_username'),
+    credentialSecret: text('credential_secret'),
+    configuredBy: text('configured_by').references(() => users.id, { onDelete: 'set null' }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull(),
+  },
+  (table) => [
+    check('workspace_sources_history_check', sql`${table.history} IN ('full', 'head')`),
+    check(
+      'workspace_sources_commit_messages_check',
+      sql`${table.commitMessages} IN ('subject', 'none')`,
+    ),
+    // A user name with no secret, or a secret with no user name, is no credential.
+    check(
+      'workspace_sources_credential_check',
+      sql`(${table.credentialUsername} IS NULL) = (${table.credentialSecret} IS NULL)`,
+    ),
+  ],
+)
+
+/**
  * The path map of a sourced workspace (ADR-061, "Identity without front
  * matter"): each path its source has had under the manifest's paths, and the
  * document id minted the first time the sync job saw it. Written only by the

@@ -91,6 +91,8 @@ export type ExternalSourceFailure =
   | 'remote-not-allowed'
   /** The outbound policy (ADR-011) refused the remote's host. */
   | 'blocked-by-outbound-policy'
+  /** The secret the source's credential names is not in the secrets store, or does not open. */
+  | 'credential-unavailable'
   /** A configured path is not a plain relative path, or is a glob where globs are refused. */
   | 'invalid-path'
   | 'branch-not-found'

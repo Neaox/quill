@@ -1,4 +1,4 @@
-import { NATIVE_ORIGIN, REQUEST_IN_FLIGHT_FOR_MS, retryAfter } from '@quill/domain'
+import { NATIVE_ORIGIN, REQUEST_IN_FLIGHT_FOR_MS, SOURCED_ORIGIN, retryAfter } from '@quill/domain'
 import type { DocumentId, ShortId, UserId, WorkspaceId } from '@quill/domain'
 
 import type {
@@ -6,6 +6,8 @@ import type {
   SourcePathRow,
   SourceSyncStateRepository,
   SourceSyncStateRow,
+  WorkspaceSourceRepository,
+  WorkspaceSourceRow,
 } from '../ports/source-sync.ts'
 import type {
   AttachmentRepository,
@@ -942,6 +944,30 @@ export function createInMemoryUnitOfWork(
   const sourcePaths = new Map<string, SourcePathRow>()
   const sourceSyncStates = new Map<WorkspaceId, SourceSyncStateRow>()
 
+  const workspaceSources = new Map<WorkspaceId, WorkspaceSourceRow>()
+
+  const workspaceSourceRepository: WorkspaceSourceRepository = {
+    async find(workspaceId) {
+      return workspaceSources.get(workspaceId) ?? null
+    },
+    async put({ now, ...input }) {
+      const workspace = workspaces.get(input.workspaceId)
+      // The foreign key the table has.
+      if (workspace === undefined) {
+        throw new Error(`put: workspace ${input.workspaceId} not found`)
+      }
+      const row: WorkspaceSourceRow = {
+        ...input,
+        createdAt: workspaceSources.get(input.workspaceId)?.createdAt ?? now,
+        updatedAt: now,
+      }
+      workspaceSources.set(input.workspaceId, row)
+      // A stored source is what makes a workspace sourced.
+      workspaces.set(input.workspaceId, { ...workspace, origin: SOURCED_ORIGIN })
+      return row
+    },
+  }
+
   const sourcePathRepository: SourcePathMapRepository = {
     async listByWorkspace(workspaceId) {
       return [...sourcePaths.values()].filter((row) => row.workspaceId === workspaceId)
@@ -1698,6 +1724,7 @@ export function createInMemoryUnitOfWork(
     reviews: reviewRepository,
     documentViews: documentViewRepository,
     notifications: notificationRepository,
+    workspaceSources: workspaceSourceRepository,
     sourcePaths: sourcePathRepository,
     sourceSyncState: sourceSyncStateRepository,
     events: createEventRecorder({ outbox: outboxWriter, ids: eventIds, sink }),
@@ -1722,7 +1749,7 @@ export function createInMemoryUnitOfWork(
       const existing = workspaces.get(workspaceId)
       if (existing === undefined)
         throw new Error(`sourceWorkspace: workspace ${workspaceId} not found`)
-      workspaces.set(workspaceId, { ...existing, origin: { kind: 'sourced' } })
+      workspaces.set(workspaceId, { ...existing, origin: SOURCED_ORIGIN })
     },
     async run(fn) {
       const pending: RecordedEvent[] = []

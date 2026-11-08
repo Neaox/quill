@@ -14,11 +14,13 @@ import {
   REVIEW_DECIDED,
   REVIEW_REQUESTED,
   REVIEW_WITHDRAWN,
+  SOURCE_SYNC_REQUESTED,
 } from '@quill/application'
 import { describe, expect, it } from 'vitest'
 
 import type { OutboxConsumer } from '../infrastructure/outbox/consumer.ts'
-import { registerOutboxConsumers } from './register-consumers.ts'
+import { SOURCE_SYNC_LANE, SOURCE_SYNC_LANE_OPTIONS } from '../infrastructure/outbox/sync-source.ts'
+import { laneLimits, registerOutboxConsumers } from './register-consumers.ts'
 
 /**
  * The poller claims only the event types something is registered for, and an
@@ -42,6 +44,7 @@ const EMITTED = [
   REVIEW_DECIDED,
   REVIEW_REQUESTED,
   REVIEW_WITHDRAWN,
+  SOURCE_SYNC_REQUESTED,
 ]
 
 function registered(): readonly OutboxConsumer[] {
@@ -84,5 +87,12 @@ describe('registerOutboxConsumers', () => {
         GRANT_REVOKED,
       ].toSorted(),
     )
+  })
+})
+
+describe('laneLimits', () => {
+  it('gives the sources lane room for a whole fetch, and every other lane its defaults', () => {
+    expect(laneLimits(SOURCE_SYNC_LANE)).toBe(SOURCE_SYNC_LANE_OPTIONS)
+    expect(laneLimits('default')).toEqual({})
   })
 })

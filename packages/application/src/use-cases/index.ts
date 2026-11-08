@@ -681,6 +681,23 @@ export {
   requestSourceSync,
   syncSource,
 } from './sync-source.ts'
+export type {
+  ConfigureWorkspaceSourceCommand,
+  ConfigureWorkspaceSourceResult,
+  RequestManualSourceSyncResult,
+  SourceCollectionInput,
+  WorkspaceSourceDependencies,
+  WorkspaceSourceField,
+  WorkspaceSourceView,
+} from './workspace-source.ts'
+export {
+  configureWorkspaceSource,
+  getWorkspaceSource,
+  MAX_SOURCE_COLLECTION_NAME_LENGTH,
+  MAX_SOURCE_COLLECTIONS,
+  requestManualSourceSync,
+  WORKSPACE_SOURCE_AUDIT_EVENTS,
+} from './workspace-source.ts'
 export {
   refuseWritesToSourcedWorkspaces,
   WorkspaceReadOnlyError,

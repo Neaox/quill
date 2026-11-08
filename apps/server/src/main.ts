@@ -1,3 +1,5 @@
+import { resolve } from 'node:path'
+
 import { createShareLinkPolicy } from './application/share-link-policy.ts'
 import { buildApp } from './app.ts'
 import {
@@ -21,6 +23,9 @@ import { createContentStore } from './infrastructure/content-store.ts'
 import { createDatabase } from './infrastructure/db/connection.ts'
 import { createHasher } from './infrastructure/hasher.ts'
 import { createOutboundClient } from './infrastructure/http/outbound-client.ts'
+import { createOutboundHostPolicy } from './infrastructure/http/outbound-host-policy.ts'
+import { createExternalSourceProvider } from './infrastructure/sources/external-source-provider.ts'
+import { createPostgresSourceSyncLock } from './infrastructure/sources/source-sync-lock.ts'
 import { runMigrations } from './infrastructure/db/migrator.ts'
 import { createDocumentFormat } from './infrastructure/markdown/document-format.ts'
 import { CHILD_PAGES_CACHE_TTL_MS, createChildPagesCache } from './child-pages/cache.ts'
@@ -61,7 +66,7 @@ import { createThemeStylesheets } from './theme/theme-stylesheet.ts'
 import { createSystemClock } from './infrastructure/system-clock.ts'
 import { createUuidGenerator } from './infrastructure/uuid-generator.ts'
 import { createJobRunner } from './jobs/job-runner.ts'
-import { registerOutboxConsumers } from './jobs/register-consumers.ts'
+import { laneLimits, registerOutboxConsumers } from './jobs/register-consumers.ts'
 import { createShutdown } from './shutdown.ts'
 import { createSweepJob } from './jobs/sweep-expired.ts'
 import {
@@ -268,8 +273,26 @@ const linkPreviewPorts = {
   limits: createLinkPreviewRateLimits(clock),
 }
 
+// The sync job of a sourced workspace (ADR-061): the store that writes, the
+// `git` adapter behind the outbound policy, and a lock that holds across
+// processes. Each source's clone lives under the cache path and is disposable.
+const sourceSync = {
+  contentStore: writingContentStore,
+  sources: createExternalSourceProvider({
+    secrets: { uow, secrets, clock, ids },
+    outboundPolicy: createOutboundHostPolicy({
+      privateHostsAllowed: config.sources.privateHostsAllowed,
+    }),
+    cacheRoot: resolve(config.sources.cachePath),
+    egressProxy: config.sources.egressProxy,
+  }),
+  lock: createPostgresSourceSyncLock(database.pool),
+  allowFileRemotesForTesting: false,
+}
+
 const deps = {
   linkPreviewPorts,
+  sourceSync,
   uow,
   searchIndex,
   search: createSearchService(searchIndex),
@@ -311,7 +334,8 @@ const jobRunner = createJobRunner({
   clock,
   poll: (consumers, now) => pollOutboxOnce(database.pool, consumers, { now }),
   // Slow work on other people's servers has its own lane, so it never delays a publish or a mail.
-  pollLane: (consumers, now) => pollOutboxLane(database.pool, consumers, { now }),
+  pollLane: (consumers, now, lane) =>
+    pollOutboxLane(database.pool, consumers, { now, ...laneLimits(lane) }),
 })
 registerOutboxConsumers(jobRunner, { deps, mailer })
 // The public site's cache is this process's own, so the bus tells it, the

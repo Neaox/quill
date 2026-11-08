@@ -18,7 +18,11 @@ import type { DocumentViewRepository } from './document-views.ts'
 import type { NotificationRepository } from './notifications.ts'
 import type { ReviewRepository } from './reviews.ts'
 import type { SecretsRepository } from './secrets.ts'
-import type { SourcePathMapRepository, SourceSyncStateRepository } from './source-sync.ts'
+import type {
+  SourcePathMapRepository,
+  SourceSyncStateRepository,
+  WorkspaceSourceRepository,
+} from './source-sync.ts'
 
 /**
  * Repository ports for everything the server persists in Postgres (plan
@@ -347,7 +351,8 @@ export interface WorkspaceRow {
   readonly createdAt: Date
   /**
    * Where its content comes from (ADR-061), which narrows what anybody may do
-   * in it (`narrowByOrigin`). Native until sources are stored.
+   * in it (`narrowByOrigin`). Sourced exactly when the workspace has a
+   * stored source (`WorkspaceSourceRepository`).
    */
   readonly origin: WorkspaceOrigin
 }
@@ -1443,6 +1448,8 @@ export interface RepositoryBundle {
   readonly reviews: ReviewRepository
   readonly documentViews: DocumentViewRepository
   readonly notifications: NotificationRepository
+  /** Where each sourced workspace reads from (ADR-061). */
+  readonly workspaceSources: WorkspaceSourceRepository
   /** Where each file of a sourced workspace's source is, and the id minted for it (ADR-061). */
   readonly sourcePaths: SourcePathMapRepository
   /** How far each sourced workspace has synced, and what stopped it (ADR-061). */

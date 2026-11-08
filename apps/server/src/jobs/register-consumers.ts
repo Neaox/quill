@@ -25,7 +25,13 @@ import {
 import { createFetchLinkPreviewConsumer } from '../infrastructure/outbox/fetch-link-preview.ts'
 import { createNotifyOnReviewConsumers } from '../infrastructure/outbox/notify-on-review.ts'
 import { createRenderOnPublishConsumer } from '../infrastructure/outbox/render-on-publish.ts'
+import type { LaneOptions } from '../infrastructure/outbox/lane.ts'
 import { createSendMailConsumer } from '../infrastructure/outbox/send-mail.ts'
+import {
+  SOURCE_SYNC_LANE,
+  SOURCE_SYNC_LANE_OPTIONS,
+  createSyncSourceConsumer,
+} from '../infrastructure/outbox/sync-source.ts'
 import { createWarmLinkPreviewsOnPublishConsumer } from '../infrastructure/outbox/warm-link-previews-on-publish.ts'
 import type { JobRunner } from './job-runner.ts'
 
@@ -92,6 +98,10 @@ export function registerOutboxConsumers(
       ...deps.linkPreviewPorts,
     }),
   )
+  // A sourced workspace's sync (ADR-061) fetches from a remote and may replay a
+  // long history: on a lane of its own, so it holds up neither the main poller
+  // nor the link previews.
+  jobRunner.lane(createSyncSourceConsumer(deps), SOURCE_SYNC_LANE)
   // Delivery happens here rather than on the request path, so an address that
   // has an account costs no more than one that does not (ADR-011).
   jobRunner.register(createSendMailConsumer(mailer))
@@ -124,4 +134,9 @@ export function registerOutboxConsumers(
       ),
     )
   }
+}
+
+/** The limits each lane is polled with; a lane not named here takes the lane's defaults. */
+export function laneLimits(lane: string): Partial<LaneOptions> {
+  return lane === SOURCE_SYNC_LANE ? SOURCE_SYNC_LANE_OPTIONS : {}
 }

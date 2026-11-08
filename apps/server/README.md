@@ -439,6 +439,29 @@ slug alone (documents are addressed by id, so nothing has to move), and a collec
 holds documents refuses to be deleted, because removing the row would set `collection_id` null
 and take every one of those documents out of the permission tree.
 
+## Workspaces read from a repository (ADR-061)
+
+A workspace becomes **sourced** when an instance administrator gives it a source with
+`PUT /api/workspaces/:id/source`: an `https` remote, a branch, the collections it fills (each a
+slug, a name and a directory or file in the repository), the history setting (`full` or `head`),
+the commit message setting (`subject` or `none`), and optionally a credential, which is a user
+name and the *name* of a secret in the secrets store (ADR-034), never its value. Only an empty
+workspace can be made sourced; a sourced one can change its settings. Configuring a source is
+instance administration because the credential's secret is sent to the remote the source names.
+
+From then on the sync job is the workspace's only writer: the authorizer turns `edit`, `publish`
+and `arrange` off (answering `403 workspace_read_only`), and the content store that routes are given
+refuses to write it. Configuring asks for a sync; `POST /api/workspaces/:id/source/sync` (needs
+`manage`) asks again, and `GET /api/workspaces/:id/source` shows the settings and how far the
+last sync got, with what stopped it. Each request is a `SourceSyncRequested` outbox event,
+handled on a lane of its own (`sources`) by the sync job under a Postgres advisory lock per
+source, so a slow fetch never holds up a publish or a link preview, and a request that arrives
+while its source is syncing waits for that sync rather than being dropped.
+
+The job runs the `git` CLI (2.49 or later) against a partial clone of each source under
+`SOURCE_CACHE_PATH`. Before every request the remote's host is checked against the outbound
+policy (ADR-011).
+
 ## The content API (M2)
 
 `docs/architecture/api-contract-m2.md` is the contract; the TypeBox schemas in `routes/document-schemas.ts` are its implementation, and the OpenAPI description is generated from them.
@@ -457,6 +480,10 @@ One outbox consumer keeps the reading view honest: `DocumentPublished` renders t
 | --- | --- | --- |
 | `CONTENT_STORE` | `filesystem` | `filesystem` or `memory` (ADR-014) |
 | `CONTENT_STORE_PATH` | `./data/content` | Where the filesystem backend keeps one bare repository per workspace |
+
+| `SOURCE_CACHE_PATH` | `./data/sources` | Where each sourced workspace keeps its disposable partial clone (ADR-061) |
+| `SOURCE_PRIVATE_HOSTS` | (none) | Comma-separated host names a source may be fetched from although they resolve to private addresses |
+| `SOURCE_EGRESS_PROXY` | (none) | An `http(s)` proxy every fetch goes through, for an instance that must rule out DNS rebinding |
 
 A repository the platform writes is readable by the `git` command line: `git log` and `git show` work inside `data/content/<workspace-id>.git`.
 

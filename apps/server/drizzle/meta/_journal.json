@@ -176,6 +176,13 @@
       "when": 1794169270491,
       "tag": "0024_source_sync",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1794174953699,
+      "tag": "0025_workspace_sources",
+      "breakpoints": true
     }
   ]
 }

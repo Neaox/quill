@@ -7,12 +7,14 @@ import type {
   DocumentAccess,
   RequestPrincipal,
   WorkspaceAccess,
+  WorkspaceRow,
 } from '@quill/application'
+import { isTakenByOrigin } from '@quill/domain'
 import type { Capabilities, DocumentId, Result, WorkspaceId } from '@quill/domain'
 import type { FastifyRequest } from 'fastify'
 
 import type { AppDependencies } from '../dependencies.ts'
-import { AppError, forbidden, notFound } from '../errors.ts'
+import { AppError, forbidden, notFound, workspaceReadOnly } from '../errors.ts'
 
 /**
  * How a route asks what the request may do (ADR-012).
@@ -68,12 +70,14 @@ function toAppError(failure: AccessFailure): AppError {
   }
 }
 
-function granted<T extends { readonly capabilities: Capabilities }>(
-  access: Result<T, AccessFailure>,
-  capability: Capability,
-): T {
+function granted<
+  T extends { readonly capabilities: Capabilities; readonly workspace: WorkspaceRow },
+>(access: Result<T, AccessFailure>, capability: Capability): T {
   if (!access.ok) throw toAppError(access.error)
   if (!access.value.capabilities[capability]) {
+    // Nobody may write a workspace read from a repository (ADR-061), and the
+    // answer says so rather than suggesting the reader lacks a permission.
+    if (isTakenByOrigin(capability, access.value.workspace.origin)) throw workspaceReadOnly()
     throw forbidden(`You do not have permission to ${capability} this`)
   }
   return access.value

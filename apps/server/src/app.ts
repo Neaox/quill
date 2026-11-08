@@ -34,6 +34,7 @@ import { settingsRoutes } from './routes/settings.ts'
 import { themeRoutes } from './routes/theme.ts'
 import { unitRoutes } from './routes/units.ts'
 import { workspaceRoutes } from './routes/workspaces.ts'
+import { workspaceSourceRoutes } from './routes/workspace-source.ts'
 import { registerCompression } from './plugins/compression.ts'
 import { registerCsrfProtection } from './plugins/csrf.ts'
 import { registerErrorHandler } from './plugins/error-handler.ts'
@@ -187,6 +188,7 @@ export function buildApp(options: AppOptions = {}): FastifyInstance {
     app.register(unitRoutes(deps))
     app.register(groupRoutes(deps))
     app.register(workspaceRoutes(deps))
+    app.register(workspaceSourceRoutes(deps))
     app.register(collectionRoutes(deps))
     app.register(documentRoutes(deps))
     app.register(childPagesRoutes(deps))
