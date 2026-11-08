@@ -35,6 +35,7 @@ function toDocumentRow(row: typeof documents.$inferSelect): DocumentRow {
     templateId: row.templateId,
     templateVersion: row.templateVersion,
     headRevision: row.headRevision as RevisionId | null,
+    sortKey: row.sortKey,
     createdBy: row.createdBy as UserId | null,
     updatedBy: row.updatedBy as UserId | null,
     createdAt: row.createdAt,
@@ -55,6 +56,7 @@ interface DocumentRecord extends Record<string, unknown> {
   template_id: string | null
   template_version: number | null
   head_revision: string | null
+  sort_key: number | null
   created_by: string | null
   updated_by: string | null
   /**
@@ -84,6 +86,7 @@ function fromRecord(record: DocumentRecord): DocumentRow {
     templateId: record.template_id,
     templateVersion: record.template_version,
     headRevision: record.head_revision as RevisionId | null,
+    sortKey: record.sort_key,
     createdBy: record.created_by as UserId | null,
     updatedBy: record.updated_by as UserId | null,
     createdAt: toDate(record.created_at),
@@ -108,6 +111,7 @@ export function createDocumentRepository(db: DrizzleClient): DocumentRepository 
           status: input.status,
           templateId: input.templateId,
           templateVersion: input.templateVersion,
+          sortKey: input.sortKey ?? null,
           createdBy: input.createdBy ?? null,
           createdAt: input.now,
           updatedAt: input.now,

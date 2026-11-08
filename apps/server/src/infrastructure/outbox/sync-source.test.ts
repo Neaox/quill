@@ -20,7 +20,9 @@ const PAYLOAD = { version: 1, workspaceId: HANDBOOK, trigger: 'manual' }
 const UNMOVED: ExternalSource = {
   head: async () => 'r1',
   fetch: async () => 'r1',
+  narrow: async () => {},
   files: async function* () {},
+  file: async () => null,
   readFiles: async function* () {},
   history: async function* () {},
   changes: async function* () {},
@@ -61,6 +63,7 @@ describe('the SourceSyncRequested consumer', () => {
       workspaceId: HANDBOOK,
       revision: 'r1',
       refused: [],
+      layout: { origin: 'manifest', fingerprint: 'f', collectionIds: [], unknownKeys: [] },
       now: new Date(0),
     })
     await handler.handle(PAYLOAD)

@@ -48,6 +48,7 @@ function document(
     templateId: null,
     templateVersion: null,
     headRevision: null,
+    sortKey: null,
     createdBy: null,
     updatedBy: null,
     createdAt: NOW,

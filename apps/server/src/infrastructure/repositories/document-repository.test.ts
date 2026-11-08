@@ -145,6 +145,7 @@ describe('DocumentRepository', () => {
       templateId: null,
       templateVersion: null,
       headRevision: null,
+      sortKey: null,
       // Nobody is named until a caller says who made it (ADR-053): never guessed.
       createdBy: null,
       updatedBy: null,

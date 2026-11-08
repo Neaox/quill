@@ -110,7 +110,7 @@ interface Settings {
   readonly git: GitCli
   readonly remote: URL
   readonly branch: string
-  readonly prefixes: readonly string[]
+  readonly strictPrefixes: boolean
   readonly cacheDirectory: string
   readonly outboundPolicy: OutboundHostPolicy
   readonly credential: () => Promise<SourceCredential | null>
@@ -120,6 +120,8 @@ interface Settings {
 
 export class GitCliExternalSource implements ExternalSource {
   readonly #settings: Settings
+  /** The literal prefixes every command is limited to; `narrow` moves them. */
+  #prefixes: readonly string[]
   readonly #repository: string
   readonly #home: string
   readonly #trackingRef: string
@@ -154,11 +156,11 @@ export class GitCliExternalSource implements ExternalSource {
     const { stdout } = await git.run({ subcommand: '--version', cwd: home })
     supportedGitVersion(stdout.toString('utf8'))
 
-    return new GitCliExternalSource({
+    return new GitCliExternalSource(prefixes.value, {
       git,
       remote,
       branch: options.branch,
-      prefixes: prefixes.value,
+      strictPrefixes: options.strictPrefixes === true,
       cacheDirectory: options.cacheDirectory,
       outboundPolicy: options.outboundPolicy,
       credential: options.credential ?? (() => Promise.resolve(null)),
@@ -167,7 +169,8 @@ export class GitCliExternalSource implements ExternalSource {
     })
   }
 
-  private constructor(settings: Settings) {
+  private constructor(prefixes: readonly string[], settings: Settings) {
+    this.#prefixes = prefixes
     this.#settings = settings
     this.#repository = join(settings.cacheDirectory, 'repository')
     this.#home = join(settings.cacheDirectory, 'home')
@@ -197,11 +200,7 @@ export class GitCliExternalSource implements ExternalSource {
   }
 
   async fetch(): Promise<SourceRevisionId> {
-    const { fetchDeadlineMs } = this.#settings
-    const deadline: Deadline = {
-      signal: AbortSignal.timeout(fetchDeadlineMs),
-      description: `the fetch did not finish within its deadline of ${fetchDeadlineMs} ms`,
-    }
+    const deadline = this.#fetchDeadline()
     const network = await this.#network()
     if (await exists(join(this.#repository, '.git'))) {
       // The address the policy just checked is the one fetched from, and the
@@ -227,31 +226,75 @@ export class GitCliExternalSource implements ExternalSource {
     } else {
       await this.#clone(network, deadline)
     }
-    // Set on every fetch: a source's paths can change between fetches, and
-    // the next backfill then fetches the history of any path just added.
-    await this.#git({
-      subcommand: 'sparse-checkout',
-      args: ['set', '--no-cone', '--stdin'],
-      stdin: `${sparsePatterns(this.#settings.prefixes).join('\n')}\n`,
-      deadline,
-    })
     const head = await this.#commit(this.#trackingRef, deadline)
     // `git backfill` walks from HEAD, so HEAD follows the branch.
     await this.#git({ subcommand: 'update-ref', args: ['--no-deref', 'HEAD', head], deadline })
-    await this.#git({ subcommand: 'backfill', args: ['--sparse'], network, deadline })
+    await this.#backfill(network, deadline)
     return head
+  }
+
+  async narrow(paths: readonly string[]): Promise<void> {
+    const prefixes = sourcePrefixes(paths, { strict: this.#settings.strictPrefixes })
+    if (!prefixes.ok) throw new ExternalSourceError('invalid-path', prefixes.error)
+    const unchanged =
+      prefixes.value.length === this.#prefixes.length &&
+      prefixes.value.every((prefix, index) => prefix === this.#prefixes[index])
+    this.#prefixes = prefixes.value
+    // Before the first fetch there is nothing to narrow: that fetch takes these.
+    if (unchanged || !(await exists(join(this.#repository, '.git')))) return
+    await this.#backfill(await this.#network(), this.#fetchDeadline())
+  }
+
+  /**
+   * Sets the sparse patterns to the source's paths, then fetches the
+   * contents under them that the clone lacks, for every revision. Set on
+   * every fetch and every narrowing: a source's paths can change, and the
+   * backfill then fetches the history of any path just added.
+   */
+  async #backfill(network: Network, deadline: Deadline): Promise<void> {
+    await this.#git({
+      subcommand: 'sparse-checkout',
+      args: ['set', '--no-cone', '--stdin'],
+      stdin: `${sparsePatterns(this.#prefixes).join('\n')}\n`,
+      deadline,
+    })
+    await this.#git({ subcommand: 'backfill', args: ['--sparse'], network, deadline })
+  }
+
+  #fetchDeadline(): Deadline {
+    const { fetchDeadlineMs } = this.#settings
+    return {
+      signal: AbortSignal.timeout(fetchDeadlineMs),
+      description: `the fetch did not finish within its deadline of ${fetchDeadlineMs} ms`,
+    }
   }
 
   async *files(revision: SourceRevisionId): AsyncGenerator<SourceFile> {
     const commit = await this.#revision(revision)
     const fields = this.#fields({
       subcommand: 'ls-tree',
-      args: ['-r', '-z', '--full-tree', commit, '--', ...this.#settings.prefixes],
+      args: ['-r', '-z', '--full-tree', commit, '--', ...this.#prefixes],
     })
     for await (const field of fields) {
       const file = treeEntry(field)
       if (file !== null) yield file
     }
+  }
+
+  async file(revision: SourceRevisionId, path: string): Promise<SourceFile | null> {
+    const within = this.#prefixes.some((prefix) => path === prefix || path.startsWith(`${prefix}/`))
+    if (!within) return null
+    const commit = await this.#revision(revision)
+    const fields = this.#fields({
+      subcommand: 'ls-tree',
+      args: ['-z', '--full-tree', commit, '--', path],
+    })
+    let found: SourceFile | null = null
+    for await (const field of fields) {
+      const file = treeEntry(field)
+      if (file?.path === path) found = file
+    }
+    return found
   }
 
   async *readFiles(fileIds: Iterable<SourceFileId>): AsyncGenerator<SourceFileContent> {
@@ -309,7 +352,7 @@ export class GitCliExternalSource implements ExternalSource {
         head,
         ...(base === null ? [] : [`^${base}`]),
         '--',
-        ...this.#settings.prefixes,
+        ...this.#prefixes,
       ],
     })
     let record: string[] = []
@@ -334,16 +377,7 @@ export class GitCliExternalSource implements ExternalSource {
     const after = await this.#revision(to)
     const fields = this.#fields({
       subcommand: 'diff-tree',
-      args: [
-        '-r',
-        '-z',
-        '--raw',
-        '--find-renames',
-        before,
-        after,
-        '--',
-        ...this.#settings.prefixes,
-      ],
+      args: ['-r', '-z', '--raw', '--find-renames', before, after, '--', ...this.#prefixes],
     })
     let raw: RawChange | null = null
     let renamedFrom: string | null = null

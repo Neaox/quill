@@ -30,10 +30,13 @@ import { isSecretName } from './secrets.ts'
  * Configuring where a sourced workspace reads from, and asking it to sync
  * (ADR-061, "A source is configured on a workspace" and "Freshness").
  *
- * Until the manifest is read, the settings name the workspace's collections
- * themselves: each by a slug, a name and the path in the repository it reads.
- * A collection keeps its identity by its slug, as the manifest's will: a new
- * slug creates a collection, and a new name for a known slug renames it.
+ * The settings name collections of their own: each by a slug, a name and the
+ * path in the repository it reads. They place the source's files wherever
+ * the source has no manifest (`.quill/workspace.yaml`); where it has one, the
+ * manifest decides, and a collection the settings name that the manifest
+ * does not stays, empty, because it is the administrator's. A collection
+ * keeps its identity by its slug, as the manifest's do: a new slug creates a
+ * collection, and a new name for a known slug renames it.
  *
  * Four rules are worth stating:
  *
@@ -46,13 +49,10 @@ import { isSecretName } from './secrets.ts'
  *   here rather than at the first fetch; its value is read at each fetch.
  * - **Configuring asks for a sync**, in the same transaction, so the first
  *   sync needs no second step.
- * - **What a synced source reads does not change yet.** The sync job replays
- *   what changed between revisions, so a path added after the first sync
- *   would bring in only the files a later revision touches, and a path taken
- *   away would leave its documents behind. Changing the collections and paths
- *   needs the whole tree re-planned, which arrives with the manifest; until
- *   then they are fixed once the source has synced. The remote, branch,
- *   credential, names and commit message setting may change.
+ * - **Every setting may change after a sync.** The sync job compares the
+ *   layout it last placed the tree by with the one it reads now, and a new
+ *   one re-plans the whole tree: a path added brings in every file under
+ *   it, and a path taken away archives what it held.
  */
 
 export const WORKSPACE_SOURCE_AUDIT_EVENTS = {
@@ -148,9 +148,6 @@ export async function configureWorkspaceSource(
   if (workspace.origin.kind === 'native') {
     const documents = await repos.documents.listByWorkspace(command.workspaceId)
     if (documents.length > 0) return { kind: 'not-empty' }
-  } else {
-    const fixed = await refuseNewPathsAfterSync(deps, command.workspaceId, valid.collections)
-    if (fixed !== null) return fixed
   }
 
   const now = deps.clock.now()
@@ -274,41 +271,6 @@ async function validateCredential(
     return invalid('credential', `No secret is stored as "${credential.secretName}".`)
   }
   return null
-}
-
-/** What a source reads, as one comparable string: each collection's slug and path. */
-function reads(pairs: readonly { slug: string | undefined; path: string }[]): string {
-  return pairs
-    .map(({ slug, path }) => JSON.stringify([slug, path]))
-    .toSorted()
-    .join(',')
-}
-
-async function refuseNewPathsAfterSync(
-  deps: WorkspaceSourceDependencies,
-  workspaceId: WorkspaceId,
-  collections: readonly SourceCollectionInput[],
-): Promise<Invalid | null> {
-  const { repos } = deps.uow
-  const [source, state] = await Promise.all([
-    repos.workspaceSources.find(workspaceId),
-    repos.sourceSyncState.find(workspaceId),
-  ])
-  if (source === null || state?.lastSyncedRevision == null) return null
-  const slugs = new Map(
-    (await repos.collections.listByIds(source.collections.map(({ collectionId: id }) => id))).map(
-      (row) => [row.id, row.slug],
-    ),
-  )
-  const before = reads(
-    source.collections.map(({ collectionId: id, path }) => ({ slug: slugs.get(id), path })),
-  )
-  if (before === reads(collections)) return null
-  return invalid(
-    'collections',
-    'The collections and paths of a source that has synced cannot change yet: ' +
-      'that needs the whole tree re-planned, which arrives with the manifest.',
-  )
 }
 
 /** Each configured collection's row: found by slug, renamed to its new name, or created. */

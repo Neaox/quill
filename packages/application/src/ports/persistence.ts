@@ -529,6 +529,13 @@ export interface DocumentRow {
   /** The revision this document was last published at, or null before its first publish. */
   readonly headRevision: RevisionId | null
   /**
+   * Where it goes among its siblings (ADR-049): siblings are ordered by
+   * `(sortKey, createdAt, id)`, a document with no key after every one with
+   * a key. Null for a document nothing has placed; the sync job projects a
+   * sourced collection's order onto it (ADR-061).
+   */
+  readonly sortKey: number | null
+  /**
    * Who created it. Null for a document that predates the column, and never
    * guessed afterwards (ADR-053): "mine" is an id, not an email match.
    */
@@ -553,6 +560,8 @@ export interface CreateDocumentInput {
   readonly templateVersion: number | null
   /** Who is creating it; omitted is recorded as nobody. */
   readonly createdBy?: UserId | null
+  /** Where it goes among its siblings; omitted is no key (ADR-049). */
+  readonly sortKey?: number | null
   readonly now: Date
 }
 
@@ -564,6 +573,7 @@ export interface UpdateDocumentPatch {
   readonly parentId?: DocumentId | null
   readonly collectionId?: CollectionId | null
   readonly headRevision?: RevisionId | null
+  readonly sortKey?: number | null
   /** Who made this change; stamped with it, so "last changed by" never drifts from the change. */
   readonly updatedBy?: UserId | null
 }

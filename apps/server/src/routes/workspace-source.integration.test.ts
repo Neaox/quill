@@ -349,3 +349,236 @@ describe('a workspace read from a repository', () => {
     expect(response.json()).toMatchObject({ error: { code: 'workspace_not_empty' } })
   })
 })
+
+/** A second repository, whose manifest decides the workspace's structure. */
+interface Repository {
+  readonly work: string
+  readonly bare: string
+}
+
+async function createRepository(name: string): Promise<Repository> {
+  const repository = { work: join(root, `${name}-work`), bare: join(root, `${name}.git`) }
+  await mkdir(repository.work)
+  git(repository.work, ['init', '--quiet', '--initial-branch=main'])
+  git(root, ['init', '--quiet', '--bare', '--initial-branch=main', repository.bare])
+  git(repository.bare, ['config', 'uploadpack.allowFilter', 'true'])
+  return repository
+}
+
+/** Writes and removes files, commits, and pushes; answers the commit. */
+async function commitTo(
+  repository: Repository,
+  message: string,
+  files: Readonly<Record<string, string | null>>,
+  committedAt: string,
+): Promise<string> {
+  for (const [path, content] of Object.entries(files)) {
+    if (content === null) {
+      git(repository.work, ['rm', '--quiet', path])
+      continue
+    }
+    await mkdir(dirname(join(repository.work, path)), { recursive: true })
+    await writeFile(join(repository.work, path), content)
+  }
+  git(repository.work, ['add', '--all'])
+  git(repository.work, ['commit', '--quiet', '--no-verify', '-m', message], committedAt)
+  git(repository.work, ['push', '--quiet', repository.bare, 'HEAD:refs/heads/main'])
+  return git(repository.work, ['rev-parse', 'HEAD'])
+}
+
+interface TreeDocument {
+  readonly id: string
+  readonly title: string
+  readonly children: readonly TreeDocument[]
+}
+
+interface TreeCollection {
+  readonly slug: string
+  readonly name: string
+  readonly documents: readonly TreeDocument[]
+}
+
+const manifest = (lines: readonly string[]) => `${['version: 1', ...lines].join('\n')}\n`
+
+const titlesIn = (collections: readonly TreeCollection[], slug: string) =>
+  collections.find((collection) => collection.slug === slug)?.documents.map(({ title }) => title)
+
+describe('a workspace whose repository has a manifest', () => {
+  const manifestPath = '.quill/workspace.yaml'
+  let repository: Repository
+  let workspace: string
+  let setupId: string
+
+  const firstManifest = manifest([
+    'collections:',
+    '  - { slug: guides, title: Guides, path: docs/guides }',
+    '  - { slug: decisions, title: Decisions, path: docs/adr, order: filename }',
+    'exclude: [docs/guides/drafts]',
+    'owner: docs-team',
+  ])
+
+  async function tree(): Promise<readonly TreeCollection[]> {
+    const response = await harness.app.inject({
+      method: 'GET',
+      url: `/api/workspaces/${workspace}/tree`,
+      cookies: admin,
+    })
+    expect(response.statusCode).toBe(200)
+    return response.json<{ collections: readonly TreeCollection[] }>().collections
+  }
+
+  async function sourceOf(): Promise<{ sync: Record<string, unknown> }> {
+    const response = await harness.app.inject({
+      method: 'GET',
+      url: `/api/workspaces/${workspace}/source`,
+      cookies: admin,
+    })
+    return response.json<{ sync: Record<string, unknown> }>()
+  }
+
+  async function syncWorkspace(): Promise<void> {
+    expect((await syncNow(admin, workspace)).statusCode).toBe(202)
+    await harness.drainOutbox()
+  }
+
+  beforeAll(async () => {
+    repository = await createRepository('manifest')
+    const created = await harness.app.inject({
+      method: 'POST',
+      url: '/api/workspaces',
+      cookies: admin,
+      payload: { unitId: tenancy.unitId, name: 'Manifest handbook', slug: 'manifest-handbook' },
+    })
+    workspace = created.json<{ id: string }>().id
+  })
+
+  it('places the files by the manifest: its collections, nested folders, an index, an order', async () => {
+    const head = await commitTo(
+      repository,
+      'Write the handbook',
+      {
+        [manifestPath]: firstManifest,
+        'docs/guides/intro.md': '---\norder: 1\n---\n\n# Introduction\n',
+        'docs/guides/setup.md': '# Setup\n\nInstall the tools.\n',
+        'docs/guides/advanced/index.md': 'All about the advanced topics.\n',
+        'docs/guides/advanced/tuning.md': '# Tuning\n',
+        'docs/guides/drafts/wip.md': '# Not ready\n',
+        'docs/adr/0001-first.md': '# Zeta decision\n',
+        'docs/adr/0002-second.md': '# Alpha decision\n',
+        'src/app.ts': 'export {}\n',
+      },
+      '2025-12-30T00:00:00Z',
+    )
+    const configured = await harness.app.inject({
+      method: 'PUT',
+      url: `/api/workspaces/${workspace}/source`,
+      cookies: admin,
+      payload: {
+        remote: pathToFileURL(repository.bare).href,
+        branch: 'main',
+        // Where the source has a manifest, the manifest decides; this collection is adopted by slug.
+        collections: [{ slug: 'guides', name: 'Guides from the settings', path: 'docs' }],
+        history: 'full',
+        commitMessages: 'subject',
+        credential: null,
+      },
+    })
+    expect(configured.statusCode).toBe(200)
+    await harness.drainOutbox()
+
+    expect((await sourceOf()).sync).toMatchObject({ lastSyncedRevision: head, failure: null })
+    const collections = await tree()
+    expect(collections.map(({ slug, name }) => [slug, name]).toSorted()).toEqual([
+      ['decisions', 'Decisions'],
+      ['guides', 'Guides'],
+    ])
+    // Front matter order first, then by title; the excluded draft is not read; an index is named by its folder.
+    expect(titlesIn(collections, 'guides')).toEqual(['Introduction', 'Advanced', 'Setup', 'Tuning'])
+    // By file name, whatever the titles say.
+    expect(titlesIn(collections, 'decisions')).toEqual(['Zeta decision', 'Alpha decision'])
+    setupId = await documentIn(workspace, 'Setup')
+  })
+
+  it('keeps the id of a file the manifest redirects to its rewritten replacement', async () => {
+    await commitTo(
+      repository,
+      'Rewrite the setup guide as getting started',
+      {
+        [manifestPath]: `${firstManifest}redirects: { docs/guides/setup.md: docs/guides/getting-started.md }\n`,
+        'docs/guides/setup.md': null,
+        'docs/guides/getting-started.md':
+          '# Getting started\n\nNothing like the old guide at all.\n',
+      },
+      '2025-12-31T00:00:00Z',
+    )
+    await syncWorkspace()
+    expect(await documentIn(workspace, 'Getting started')).toBe(setupId)
+  })
+
+  it('re-plans the tree when only the manifest changes', async () => {
+    const decisions = await documentIn(workspace, 'Zeta decision')
+    const head = await commitTo(
+      repository,
+      'Fold the decisions into the guides',
+      {
+        [manifestPath]: manifest([
+          'collections:',
+          '  - { slug: guides, title: The guides, path: docs, order: filename }',
+          'exclude: [docs/guides/drafts]',
+        ]),
+      },
+      '2025-12-31T06:00:00Z',
+    )
+    await syncWorkspace()
+
+    expect((await sourceOf()).sync).toMatchObject({ lastSyncedRevision: head, failure: null })
+    const collections = await tree()
+    expect(collections.map(({ slug, name }) => [slug, name])).toEqual([['guides', 'The guides']])
+    // The introduction still says it goes first; the rest by file name now.
+    expect(titlesIn(collections, 'guides')).toEqual([
+      'Introduction',
+      'Zeta decision',
+      'Alpha decision',
+      'Getting started',
+      'Advanced',
+      'Tuning',
+    ])
+    // The same document, moved: its file did not change.
+    expect(await documentIn(workspace, 'Zeta decision')).toBe(decisions)
+  })
+
+  it('records a manifest that does not read, with its line, and keeps what was synced', async () => {
+    await commitTo(
+      repository,
+      'Break the manifest',
+      {
+        [manifestPath]: manifest([
+          'collections:',
+          '  - { slug: guides, title: The guides, path: "**/*.md" }',
+        ]),
+      },
+      '2025-12-31T09:00:00Z',
+    )
+    await syncWorkspace()
+    expect((await sourceOf()).sync).toMatchObject({
+      failure: {
+        reason: 'invalid-manifest',
+        message: expect.stringContaining('.quill/workspace.yaml, line 3'),
+      },
+    })
+    expect(titlesIn(await tree(), 'guides')).toHaveLength(6)
+  })
+})
+
+async function documentIn(workspace: string, title: string): Promise<string> {
+  const response = await harness.app.inject({
+    method: 'GET',
+    url: `/api/workspaces/${workspace}/documents`,
+    cookies: admin,
+  })
+  const found = response
+    .json<{ id: string; title: string }[]>()
+    .find((document) => document.title === title)
+  if (found === undefined) throw new Error(`no document titled ${title}`)
+  return found.id
+}

@@ -9,6 +9,7 @@ import type {
 
 import type { CollectionId, DocumentRow, UnitOfWork } from '../ports/persistence.ts'
 import { visibleDocumentIds } from './list-visible-documents.ts'
+import { compareSiblings } from './sibling-order.ts'
 
 /**
  * The navigation tree of a workspace: its collections, and the documents
@@ -102,9 +103,10 @@ export async function getWorkspaceTree(
  * costs one pass over the documents rather than one scan per parent. A
  * document whose parent the reader cannot see is lifted to the top of its
  * collection rather than disappearing with it: it is the reader's document,
- * and its own grant said so.
+ * and its own grant said so. Siblings are in their order (ADR-049).
  */
-function nest(documents: readonly DocumentRow[]): readonly TreeNode[] {
+function nest(unordered: readonly DocumentRow[]): readonly TreeNode[] {
+  const documents = unordered.toSorted(compareSiblings)
   const byParent = Map.groupBy(documents, (document) => document.parentId)
   const present = new Set(documents.map((document) => document.id))
 

@@ -6,6 +6,7 @@ import type { Settings } from '../ports/settings.ts'
 import type { OrganisationSettings } from '../settings/documents.ts'
 import { visibleDocumentIds } from './list-visible-documents.ts'
 import { readOrganisationSettings } from './settings.ts'
+import { compareSortKeys } from './sibling-order.ts'
 import type { SettingsDependencies } from './settings.ts'
 
 /**
@@ -217,7 +218,10 @@ export function publicNavigationOf(
   )
   const build = (rows: readonly DocumentRow[]): readonly PublicNavigationNode[] =>
     rows
-      .toSorted((left, right) => left.title.localeCompare(right.title))
+      // A sourced collection's order where it has one (ADR-061); by title otherwise.
+      .toSorted(
+        (left, right) => compareSortKeys(left, right) || left.title.localeCompare(right.title),
+      )
       .map((row) => ({
         documentId: row.id,
         title: row.title,

@@ -401,6 +401,12 @@ export const documents = pgTable(
     /** The revision this document was last published at (ADR-015). */
     headRevision: text('head_revision'),
     /**
+     * Where it goes among its siblings (ADR-049): siblings are ordered by
+     * `(sort_key, created_at, id)`, nulls last. The sync job projects a
+     * sourced collection's order onto it (ADR-061); null for the rest.
+     */
+    sortKey: integer('sort_key'),
+    /**
      * Who created it and who last published, restored, renamed or moved it
      * (ADR-053). Null for rows that predate the columns and never guessed
      * afterwards: "mine" is an id, not an email match.
@@ -572,6 +578,8 @@ export const sourcePathMap = pgTable(
       .references(() => documents.id, { onDelete: 'cascade' }),
     /** When the file left the source; null while it is there. */
     archivedAt: timestamp('archived_at', { withTimezone: true }),
+    /** The `order` its front matter gave when last read, which its sort key is projected from. */
+    frontMatterOrder: integer('front_matter_order'),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull(),
   },
   (table) => [
@@ -597,6 +605,12 @@ export const sourceSyncState = pgTable('source_sync_state', {
   failure: jsonb('failure'),
   /** `{ version, files: [{ path, revision, reason }] }`: the files not stored. */
   refused: jsonb('refused').notNull(),
+  /**
+   * `{ version, origin, fingerprint, collectionIds, unknownKeys }`: the layout
+   * the tree was last placed by. Null before it was recorded, which re-plans
+   * the tree once.
+   */
+  layout: jsonb('layout'),
 })
 
 /**

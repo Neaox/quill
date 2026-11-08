@@ -38,6 +38,7 @@ const parent: DocumentRow = {
   title: 'Authentication',
   status: 'published',
   templateId: null,
+  sortKey: null,
   templateVersion: null,
   headRevision: null,
   createdBy: null,

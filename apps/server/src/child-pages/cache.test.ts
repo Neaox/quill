@@ -39,6 +39,7 @@ function row(n: number, parent: number | null): DocumentRow {
     templateId: null,
     templateVersion: null,
     headRevision: null,
+    sortKey: null,
     createdBy: null,
     updatedBy: null,
     createdAt: NOW,

@@ -66,8 +66,18 @@ export interface ExternalSource {
    * returns the revision fetched.
    */
   fetch(): Promise<SourceRevisionId>
+  /**
+   * Narrows or widens the source to these paths from now on, and fetches the
+   * contents under them that the instance does not hold yet, for every
+   * revision. Paths are directories, files or globs, as the source was opened
+   * with. Called once the fetched revision's own layout is known: the source
+   * is opened with only the paths that tell it what to read.
+   */
+  narrow(paths: readonly string[]): Promise<void>
   /** The files under the source's paths at a fetched revision. */
   files(revision: SourceRevisionId): AsyncIterable<SourceFile>
+  /** One file at a fetched revision; null when it is not there or not under the source's paths. */
+  file(revision: SourceRevisionId, path: string): Promise<SourceFile | null>
   /** File contents by id, in the order asked for. Never read from a working tree. */
   readFiles(fileIds: Iterable<SourceFileId>): AsyncIterable<SourceFileContent>
   /**
