@@ -18,9 +18,11 @@ import {
   renderDocument,
   resolveTemplate,
   serializeDocument,
+  stampDocumentId,
   stripAuthoringBlocks,
   validateFrontMatter,
 } from '@quill/markdown'
+import type { DocumentId } from '@quill/domain'
 import { standardEmoji } from '@quill/markdown/emoji-shortcodes'
 import { createMarkdownRegistry } from '@quill/markdown/extension'
 import type { MarkdownRegistry } from '@quill/markdown/extension'
@@ -192,6 +194,11 @@ export function createDocumentFormat(options: DocumentFormatOptions = {}): Docum
     read(markdown: string): PublishedDocumentView {
       const { frontMatter, ast } = parseDocument(markdown)
       return { frontMatter, title: documentTitle(frontMatter, ast) }
+    },
+
+    /** A source's file as the store keeps it: only its front matter's first line is Quill's (ADR-061). */
+    stampIdentity(markdown: string, documentId: DocumentId): string {
+      return stampDocumentId(markdown, documentId)
     },
 
     /** Published Markdown back to what a draft row holds, for a restore (ADR-015). */

@@ -18,6 +18,7 @@ import type { DocumentViewRepository } from './document-views.ts'
 import type { NotificationRepository } from './notifications.ts'
 import type { ReviewRepository } from './reviews.ts'
 import type { SecretsRepository } from './secrets.ts'
+import type { SourcePathMapRepository, SourceSyncStateRepository } from './source-sync.ts'
 
 /**
  * Repository ports for everything the server persists in Postgres (plan
@@ -1013,6 +1014,15 @@ export interface RevisionsIndexRepository {
    */
   findForDocument(documentId: DocumentId, revision: RevisionId): Promise<RevisionIndexRow | null>
   /**
+   * A revision of the workspace that replays this external source revision
+   * (ADR-061), or null when none does: how an interrupted replay knows what it
+   * has already recorded. Any one of the revision's rows; they share it.
+   */
+  findBySourceRevision(
+    workspaceId: WorkspaceId,
+    sourceRevision: string,
+  ): Promise<RevisionIndexRow | null>
+  /**
    * Everyone who has published a revision of this document, once each, in
    * order of address, under the name they published under most recently.
    *
@@ -1433,6 +1443,10 @@ export interface RepositoryBundle {
   readonly reviews: ReviewRepository
   readonly documentViews: DocumentViewRepository
   readonly notifications: NotificationRepository
+  /** Where each file of a sourced workspace's source is, and the id minted for it (ADR-061). */
+  readonly sourcePaths: SourcePathMapRepository
+  /** How far each sourced workspace has synced, and what stopped it (ADR-061). */
+  readonly sourceSyncState: SourceSyncStateRepository
   /**
    * The one way to emit an event (ADR-056): the outbox row in this transaction, and the
    * announcement to the bus once it commits. The bare `OutboxWriter` is not on the bundle.

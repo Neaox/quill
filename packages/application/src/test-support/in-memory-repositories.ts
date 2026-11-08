@@ -2,6 +2,12 @@ import { NATIVE_ORIGIN, REQUEST_IN_FLIGHT_FOR_MS, retryAfter } from '@quill/doma
 import type { DocumentId, ShortId, UserId, WorkspaceId } from '@quill/domain'
 
 import type {
+  SourcePathMapRepository,
+  SourcePathRow,
+  SourceSyncStateRepository,
+  SourceSyncStateRow,
+} from '../ports/source-sync.ts'
+import type {
   AttachmentRepository,
   AttachmentRow,
   AuditEventRow,
@@ -932,6 +938,49 @@ export function createInMemoryUnitOfWork(
     },
   }
 
+  /** Keyed by `(workspace, path)`, which is what the primary key makes unique. */
+  const sourcePaths = new Map<string, SourcePathRow>()
+  const sourceSyncStates = new Map<WorkspaceId, SourceSyncStateRow>()
+
+  const sourcePathRepository: SourcePathMapRepository = {
+    async listByWorkspace(workspaceId) {
+      return [...sourcePaths.values()].filter((row) => row.workspaceId === workspaceId)
+    },
+    async put(row) {
+      sourcePaths.set(rowId(row.workspaceId, row.path), row)
+    },
+    async remove(workspaceId, path) {
+      sourcePaths.delete(rowId(workspaceId, path))
+    },
+  }
+
+  const sourceSyncStateRepository: SourceSyncStateRepository = {
+    async find(workspaceId) {
+      return sourceSyncStates.get(workspaceId) ?? null
+    },
+    async recordSynced({ workspaceId, revision, refused, now }) {
+      sourceSyncStates.set(workspaceId, {
+        workspaceId,
+        lastSyncedRevision: revision,
+        lastSyncedAt: now,
+        lastAttemptAt: now,
+        failure: null,
+        refused,
+      })
+    },
+    async recordFailure({ workspaceId, failure, now }) {
+      const existing = sourceSyncStates.get(workspaceId)
+      sourceSyncStates.set(workspaceId, {
+        workspaceId,
+        lastSyncedRevision: existing?.lastSyncedRevision ?? null,
+        lastSyncedAt: existing?.lastSyncedAt ?? null,
+        lastAttemptAt: now,
+        failure,
+        refused: existing?.refused ?? [],
+      })
+    },
+  }
+
   const revisionsRepository: RevisionsIndexRepository = {
     async append(input) {
       const row: RevisionIndexRow = {
@@ -965,6 +1014,13 @@ export function createInMemoryUnitOfWork(
     async findForDocument(documentId, revision) {
       return (
         revisions.find((row) => row.documentId === documentId && row.revision === revision) ?? null
+      )
+    },
+    async findBySourceRevision(workspaceId, sourceRevision) {
+      return (
+        revisions.find(
+          (row) => row.workspaceId === workspaceId && row.sourceRevision === sourceRevision,
+        ) ?? null
       )
     },
     async listContributors(documentId) {
@@ -1642,6 +1698,8 @@ export function createInMemoryUnitOfWork(
     reviews: reviewRepository,
     documentViews: documentViewRepository,
     notifications: notificationRepository,
+    sourcePaths: sourcePathRepository,
+    sourceSyncState: sourceSyncStateRepository,
     events: createEventRecorder({ outbox: outboxWriter, ids: eventIds, sink }),
     audit: auditWriter,
   })
