@@ -14,11 +14,18 @@ export type OutboxPoll = (
   now: Date,
 ) => Promise<PollResult>
 
-/** Polls one lane (`infrastructure/outbox/lane.ts`): work that waits on other servers. */
+/**
+ * Polls one lane (`infrastructure/outbox/lane.ts`): work that waits on other
+ * servers. Told which lane, so each can have limits of its own.
+ */
 export type LanePoll = (
   consumers: ReadonlyMap<string, OutboxConsumer>,
   now: Date,
+  lane: string,
 ) => Promise<LaneResult>
+
+/** The lane a consumer is put on when it names none: link previews' (ADR-042). */
+export const DEFAULT_LANE = 'default'
 
 export interface JobRunnerOptions {
   readonly poll: OutboxPoll
@@ -46,11 +53,14 @@ export interface ScheduledJob {
 export interface JobRunner {
   register(consumer: OutboxConsumer): void
   /**
-   * Registers a consumer on the lane for slow work on other people's servers.
+   * Registers a consumer on a lane for slow work on other people's servers.
    * It runs beside the main poll and never inside it, so a slow site cannot
    * delay a publish or a mail, and the main poller never claims its events.
+   *
+   * Each named lane has its own cycle, so work that takes minutes (a source's
+   * sync, ADR-061) never holds up work that takes seconds (a link preview).
    */
-  lane(consumer: OutboxConsumer): void
+  lane(consumer: OutboxConsumer, name?: string): void
   /** Adds a periodic job. Its first run is one interval after `start()`. */
   schedule(job: ScheduledJob): void
   start(): void
@@ -58,17 +68,25 @@ export interface JobRunner {
   stop(): Promise<void>
   /** Runs one poll cycle immediately, outside the schedule; used by tests and manual triggers. */
   pollOnce(): Promise<PollResult>
-  /** Runs one cycle of the lane immediately; used by tests and manual triggers. */
-  pollLaneOnce(): Promise<LaneResult>
+  /**
+   * Runs one cycle of a lane immediately, or of every lane in turn when none
+   * is named, and reports them together; used by tests and manual triggers.
+   */
+  pollLaneOnce(name?: string): Promise<LaneResult>
   /** Runs every scheduled job that is due, outside the timer; used by tests and manual triggers. */
   runDueJobs(): Promise<readonly string[]>
+}
+
+/** A lane's consumers, and its cycle in flight. */
+interface Lane {
+  readonly consumers: Map<string, OutboxConsumer>
+  inFlight: Promise<void> | null
 }
 
 /** A small in-process job runner polling the outbox on an interval (plan §22). */
 export function createJobRunner(options: JobRunnerOptions): JobRunner {
   const consumers = new Map<string, OutboxConsumer>()
-  const laneConsumers = new Map<string, OutboxConsumer>()
-  let laneInFlight: Promise<void> | null = null
+  const lanes = new Map<string, Lane>()
   let laneTimer: ReturnType<typeof setInterval> | null = null
   const scheduled: { readonly job: ScheduledJob; dueAt: number }[] = []
   let timer: ReturnType<typeof setInterval> | null = null
@@ -129,25 +147,34 @@ export function createJobRunner(options: JobRunnerOptions): JobRunner {
   }
 
   /**
-   * One lane cycle at a time, on its own clock. It is deliberately not part of
-   * `tick`: that waits for the main poll and then for each scheduled job, and a
-   * lane cycle may legitimately take half a minute.
+   * One cycle at a time per lane, on its own clock. It is deliberately not
+   * part of `tick`: that waits for the main poll and then for each scheduled
+   * job, and a lane cycle may legitimately take half a minute — or, on the
+   * sources lane, the length of a fetch.
    */
-  async function laneTick(): Promise<void> {
-    if (laneInFlight !== null || laneConsumers.size === 0) return
+  async function laneTick(name: string, lane: Lane): Promise<void> {
+    if (lane.inFlight !== null) return
     const running = (async () => {
       try {
-        await options.pollLane?.(laneConsumers, options.clock.now())
+        await options.pollLane?.(lane.consumers, options.clock.now(), name)
       } catch (error) {
         options.onPollError?.(error)
       }
     })()
-    laneInFlight = running
+    lane.inFlight = running
     try {
       await running
     } finally {
-      laneInFlight = null
+      lane.inFlight = null
     }
+  }
+
+  function pollLaneNow(name: string, lane: Lane): Promise<LaneResult> {
+    /* v8 ignore next 3 -- a runner with a lane consumer is always given the poll that serves it. */
+    if (options.pollLane === undefined) {
+      throw new Error('The job runner has a lane consumer but no pollLane')
+    }
+    return options.pollLane(lane.consumers, options.clock.now(), name)
   }
 
   return {
@@ -155,8 +182,10 @@ export function createJobRunner(options: JobRunnerOptions): JobRunner {
       consumers.set(consumer.eventType, consumer)
     },
 
-    lane(consumer: OutboxConsumer): void {
-      laneConsumers.set(consumer.eventType, consumer)
+    lane(consumer: OutboxConsumer, name = DEFAULT_LANE): void {
+      const lane = lanes.get(name) ?? { consumers: new Map(), inFlight: null }
+      lane.consumers.set(consumer.eventType, consumer)
+      lanes.set(name, lane)
     },
 
     schedule(job: ScheduledJob): void {
@@ -172,7 +201,7 @@ export function createJobRunner(options: JobRunnerOptions): JobRunner {
       }, options.intervalMs ?? 1000)
       timer.unref()
       laneTimer = setInterval(() => {
-        void laneTick()
+        for (const [name, lane] of lanes) void laneTick(name, lane)
       }, options.intervalMs ?? 1000)
       laneTimer.unref()
     },
@@ -186,19 +215,27 @@ export function createJobRunner(options: JobRunnerOptions): JobRunner {
         clearInterval(laneTimer)
         laneTimer = null
       }
-      await Promise.all([inFlight, laneInFlight])
+      await Promise.all([inFlight, ...[...lanes.values()].map((lane) => lane.inFlight)])
     },
 
     pollOnce(): Promise<PollResult> {
       return options.poll(consumers, options.clock.now())
     },
 
-    pollLaneOnce(): Promise<LaneResult> {
-      /* v8 ignore next 3 -- a runner with a lane consumer is always given the poll that serves it. */
-      if (options.pollLane === undefined) {
-        throw new Error('The job runner has a lane consumer but no pollLane')
+    async pollLaneOnce(name?: string): Promise<LaneResult> {
+      const chosen = name === undefined ? [...lanes] : [[name, lanes.get(name)] as const]
+      const total = { processed: 0, failed: 0, deferred: 0, deadLettered: 0 }
+      // One lane after another, as a test drains them.
+      // oxlint-disable-next-line quill/no-independent-await-in-loop -- lanes share one connection pool, and a drain reads clearer in order
+      for (const [laneName, lane] of chosen) {
+        if (lane === undefined) continue
+        const result = await pollLaneNow(laneName, lane)
+        total.processed += result.processed
+        total.failed += result.failed
+        total.deferred += result.deferred
+        total.deadLettered += result.deadLettered
       }
-      return options.pollLane(laneConsumers, options.clock.now())
+      return total
     },
 
     runDueJobs(): Promise<readonly string[]> {

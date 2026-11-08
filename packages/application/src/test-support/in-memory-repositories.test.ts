@@ -435,6 +435,25 @@ describe('createInMemoryUnitOfWork: workspaces', () => {
   })
 })
 
+describe('createInMemoryUnitOfWork: workspace sources', () => {
+  it('refuses a source for a workspace that does not exist, as the foreign key does', async () => {
+    const uow = createInMemoryUnitOfWork()
+    await expect(
+      uow.repos.workspaceSources.put({
+        workspaceId: NOPE_WORKSPACE,
+        remote: 'https://github.com/acme/handbook.git',
+        branch: 'main',
+        collections: [],
+        history: 'full',
+        commitMessages: 'subject',
+        credential: null,
+        configuredBy: userId('00000000-0000-4000-8000-000000000001'),
+        now: new Date(0),
+      }),
+    ).rejects.toThrow(`put: workspace ${NOPE_WORKSPACE} not found`)
+  })
+})
+
 describe('createInMemoryUnitOfWork: documents', () => {
   const input = {
     id: DOC_1,

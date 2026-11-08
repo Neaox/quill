@@ -66,6 +66,19 @@ export function payloadTooLarge(message: string, details?: unknown): AppError {
 }
 
 /** The request was well formed, but what it names cannot be processed as it stands. */
+/**
+ * The workspace reads its content from a repository (ADR-061): its sync job is
+ * its only writer, whoever is asking. A code of its own, so a client can say
+ * where to edit rather than that a permission is missing.
+ */
+export function workspaceReadOnly(): AppError {
+  return new AppError(
+    403,
+    'workspace_read_only',
+    'This workspace is read from a repository; edit it there.',
+  )
+}
+
 export function unprocessable(code: string, message: string, details?: unknown): AppError {
   return new AppError(422, code, message, details)
 }

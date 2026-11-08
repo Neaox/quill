@@ -1,4 +1,10 @@
-import type { DocumentId, WorkspaceId } from '@quill/domain'
+import type {
+  DocumentId,
+  SourceCommitMessageSetting,
+  SourceHistorySetting,
+  UserId,
+  WorkspaceId,
+} from '@quill/domain'
 
 import type { ExternalSource, ExternalSourceFailure, SourceRevisionId } from './external-source.ts'
 
@@ -24,9 +30,9 @@ export interface SourceSettings {
    */
   readonly collections: readonly SourceCollection[]
   /** `full` replays every revision; `head` imports only the current one as one revision. */
-  readonly history: 'full' | 'head'
+  readonly history: SourceHistorySetting
   /** `subject` shows each revision's subject as its change note; `none` shows no message. */
-  readonly commitMessages: 'subject' | 'none'
+  readonly commitMessages: SourceCommitMessageSetting
 }
 
 export interface ConnectedSource {
@@ -54,6 +60,56 @@ export interface SourceSyncLock {
     workspaceId: WorkspaceId,
     work: () => Promise<T>,
   ): Promise<{ readonly kind: 'ran'; readonly value: T } | { readonly kind: 'busy' }>
+}
+
+// ---------------------------------------------------------------------------
+// Persistence: where a sourced workspace reads from
+// ---------------------------------------------------------------------------
+
+/**
+ * The credential a source is fetched with (ADR-061, ADR-034): an HTTP Basic
+ * user name, and the name of the product secret that holds the password or
+ * token. The value is read from the secrets store at the moment of each fetch
+ * and never stored here.
+ */
+export interface WorkspaceSourceCredential {
+  readonly username: string
+  readonly secretName: string
+}
+
+/**
+ * A sourced workspace's source, as an administrator configured it (ADR-061,
+ * "A source is configured on a workspace"). Its presence is what makes the
+ * workspace sourced: `WorkspaceRow.origin` is read from it.
+ *
+ * The remote and branch are where the composition root opens the source; the
+ * rest is what the sync job reads as `SourceSettings`.
+ */
+export interface WorkspaceSourceRow extends SourceSettings {
+  readonly workspaceId: WorkspaceId
+  /** An `https` address with no credentials in it. */
+  readonly remote: string
+  readonly branch: string
+  readonly credential: WorkspaceSourceCredential | null
+  readonly configuredBy: UserId | null
+  readonly createdAt: Date
+  readonly updatedAt: Date
+}
+
+export interface WorkspaceSourceRepository {
+  find(workspaceId: WorkspaceId): Promise<WorkspaceSourceRow | null>
+  /** Writes the workspace's source whole; the first write makes the workspace sourced. */
+  put(input: {
+    readonly workspaceId: WorkspaceId
+    readonly remote: string
+    readonly branch: string
+    readonly collections: readonly SourceCollection[]
+    readonly history: SourceHistorySetting
+    readonly commitMessages: SourceCommitMessageSetting
+    readonly credential: WorkspaceSourceCredential | null
+    readonly configuredBy: UserId
+    readonly now: Date
+  }): Promise<WorkspaceSourceRow>
 }
 
 // ---------------------------------------------------------------------------

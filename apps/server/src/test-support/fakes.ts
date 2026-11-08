@@ -11,6 +11,7 @@ import { createEnvelopeCipher } from '../infrastructure/secrets/envelope-cipher.
 import { createKeyProvider } from '../infrastructure/secrets/key-provider.ts'
 import { createHasher } from '../infrastructure/hasher.ts'
 import { createSettingsStore } from '../infrastructure/settings-store.ts'
+import { inertSourceSync } from '../infrastructure/sources/inert-source-sync.ts'
 import { createPublicSiteCache } from '../public-site/cache.ts'
 import { createPublicStylesheets } from '../public-site/stylesheet.ts'
 import { loadFaceFiles } from '../theme/face-files.ts'
@@ -38,6 +39,7 @@ export async function inMemorySettings(
   Pick<
     AppDependencies,
     | 'contentStore'
+    | 'sourceSync'
     | 'settings'
     | 'secrets'
     | 'faceFiles'
@@ -51,6 +53,7 @@ export async function inMemorySettings(
   const themeStylesheets = createThemeStylesheets({ hasher: createHasher(), faceFiles })
   return {
     contentStore,
+    sourceSync: inertSourceSync(contentStore),
     settings: createSettingsStore(contentStore),
     secrets: createEnvelopeCipher(await createKeyProvider(config.masterKey)),
     faceFiles,

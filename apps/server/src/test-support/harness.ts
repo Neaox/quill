@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 import type { LinkPreviewPorts } from '@quill/application'
-import { createEventBus } from '@quill/application'
+import { createEventBus, refuseWritesToSourcedWorkspaces } from '@quill/application'
 import type { EventBus } from '@quill/application'
 import { createSearchService } from '@quill/search'
 import { BRAND } from '@quill/brand'
@@ -34,7 +34,10 @@ import { createSecretResolver } from '../infrastructure/secrets/resolve-secret.t
 import { createSettingsStore } from '../infrastructure/settings-store.ts'
 import { createPublicSiteCache, PUBLIC_SITE_CACHE_TTL_MS } from '../public-site/cache.ts'
 import { subscribePublicSiteInvalidation } from '../public-site/invalidation.ts'
-import { registerOutboxConsumers } from '../jobs/register-consumers.ts'
+import { laneLimits, registerOutboxConsumers } from '../jobs/register-consumers.ts'
+import { createOutboundHostPolicy } from '../infrastructure/http/outbound-host-policy.ts'
+import { createExternalSourceProvider } from '../infrastructure/sources/external-source-provider.ts'
+import { createPostgresSourceSyncLock } from '../infrastructure/sources/source-sync-lock.ts'
 import { createPublicStylesheets, loadDesignSystemCss } from '../public-site/stylesheet.ts'
 import { loadFaceFiles } from '../theme/face-files.ts'
 import { createThemeStylesheets } from '../theme/theme-stylesheet.ts'
@@ -153,6 +156,7 @@ export interface HarnessOptions {
 export async function createServerHarness(options: HarnessOptions = {}): Promise<ServerHarness> {
   const database = await createTestDatabase()
   const blobRoot = await mkdtemp(join(tmpdir(), `${BRAND.slug}-blobs-`))
+  const sourceCacheRoot = await mkdtemp(join(tmpdir(), `${BRAND.slug}-sources-`))
   const clock = options.clock ?? createFakeClock(HARNESS_NOW)
   const ids = createFakeIdGenerator()
   // A listener that fails must fail the test that provoked it, not vanish into
@@ -209,7 +213,11 @@ export async function createServerHarness(options: HarnessOptions = {}): Promise
     visibility: createVisibleDocumentResolver({ uow }),
     clock,
   })
-  const contentStore = createContentStore({ driver: 'memory' }, clock)
+  // As the composition root composes it (ADR-061): people's requests get a
+  // store that refuses to write a sourced workspace, and the sync job the one
+  // underneath.
+  const writingContentStore = createContentStore({ driver: 'memory' }, clock)
+  const contentStore = refuseWritesToSourcedWorkspaces(writingContentStore, uow.repos.workspaces)
   const secrets = createEnvelopeCipher(await createKeyProvider(config.masterKey))
   // A test that wants a provider's secret resolved from the store rather
   // than from `clientSecretEnvValue` calls `setSecret` against `deps` itself
@@ -229,6 +237,19 @@ export async function createServerHarness(options: HarnessOptions = {}): Promise
   const themeStylesheets = createThemeStylesheets({ hasher, faceFiles })
   const deps: AppDependencies = {
     linkPreviewPorts: options.linkPreviewPorts ?? INERT_LINK_PREVIEW_PORTS,
+    // The real adapter and the real lock. A test's source is a bare repository
+    // on this disk, served over `file://`, which only a test may configure.
+    sourceSync: {
+      contentStore: writingContentStore,
+      sources: createExternalSourceProvider({
+        secrets: { uow, secrets, clock, ids },
+        outboundPolicy: createOutboundHostPolicy({}),
+        cacheRoot: sourceCacheRoot,
+        allowFileRemotesForTesting: true,
+      }),
+      lock: createPostgresSourceSyncLock(database.pool),
+      allowFileRemotesForTesting: true,
+    },
     uow,
     searchIndex,
     search: createSearchService(searchIndex),
@@ -282,7 +303,8 @@ export async function createServerHarness(options: HarnessOptions = {}): Promise
   const jobRunner = createJobRunner({
     clock,
     poll: (consumers, now) => pollOutboxOnce(database.pool, consumers, { now }),
-    pollLane: (consumers, now) => pollOutboxLane(database.pool, consumers, { now }),
+    pollLane: (consumers, now, lane) =>
+      pollOutboxLane(database.pool, consumers, { now, ...laneLimits(lane) }),
   })
   // The same consumers the composition root registers, so an integration test
   // exercises the real delivery path rather than a shortcut (ADR-011).
@@ -340,6 +362,7 @@ export async function createServerHarness(options: HarnessOptions = {}): Promise
       await app.close()
       await database.drop()
       await rm(blobRoot, { recursive: true, force: true })
+      await rm(sourceCacheRoot, { recursive: true, force: true, maxRetries: 5 })
     },
   }
 }

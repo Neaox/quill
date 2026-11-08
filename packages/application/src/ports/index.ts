@@ -49,6 +49,9 @@ export type {
   SourceSyncLock,
   SourceSyncStateRepository,
   SourceSyncStateRow,
+  WorkspaceSourceCredential,
+  WorkspaceSourceRepository,
+  WorkspaceSourceRow,
 } from './source-sync.ts'
 export type {
   Contributor,

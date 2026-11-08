@@ -76,3 +76,12 @@ export function narrowByOrigin(capabilities: Capabilities, origin: WorkspaceOrig
       return { ...capabilities, edit: false, publish: false, arrange: false }
   }
 }
+
+/**
+ * Whether the workspace's origin, rather than anybody's role, is what takes
+ * this capability away (ADR-061): a refusal for that reason answers
+ * `workspace_read_only`, and says where to edit instead.
+ */
+export function isTakenByOrigin(capability: keyof Capabilities, origin: WorkspaceOrigin): boolean {
+  return !narrowByOrigin(capabilitiesForRole('owner'), origin)[capability]
+}

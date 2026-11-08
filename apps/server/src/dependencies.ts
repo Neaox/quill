@@ -5,10 +5,12 @@ import type {
   ContentStore,
   DocumentFormat,
   DrawingText,
+  ExternalSourceProvider,
   Hasher,
   IdGenerator,
   SearchIndex,
   ShareLinkPolicy,
+  SourceSyncLock,
   TokenService,
   SecretCipher,
   Settings,
@@ -29,6 +31,23 @@ import type { FaceFiles } from './theme/face-files.ts'
 import type { ThemeStylesheets } from './theme/theme-stylesheet.ts'
 
 /**
+ * What the sync job of a sourced workspace is composed with (ADR-061), apart
+ * from everything else: it is the one writer of a sourced workspace, so it
+ * alone holds the content store that writes one.
+ */
+export interface SourceSyncPorts {
+  /**
+   * The store underneath `AppDependencies.contentStore`, which refuses to
+   * write a sourced workspace. Nothing but the sync job may use it.
+   */
+  readonly contentStore: ContentStore
+  readonly sources: ExternalSourceProvider
+  readonly lock: SourceSyncLock
+  /** Accept `file://` remotes when a source is configured. Tests only. */
+  readonly allowFileRemotesForTesting: boolean
+}
+
+/**
  * Everything a route or a use case needs that isn't pure business logic.
  * `buildApp` registers the full route set only when this is supplied, so
  * `app.test.ts` (which builds the app with no dependencies) keeps exercising
@@ -39,7 +58,10 @@ import type { ThemeStylesheets } from './theme/theme-stylesheet.ts'
  */
 export interface AppDependencies {
   readonly uow: UnitOfWork
+  /** The store people's requests use; it refuses to write a sourced workspace (ADR-061). */
   readonly contentStore: ContentStore
+  /** The sync job's own composition: the store that writes, the sources, and their lock. */
+  readonly sourceSync: SourceSyncPorts
   /** Organisation and workspace settings, as files in the content store (ADR-034). */
   readonly settings: Settings
   /**

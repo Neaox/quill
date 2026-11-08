@@ -30,6 +30,7 @@ import { createPublicSiteCache } from '../public-site/cache.ts'
 import { pagelessStylesheets } from '../theme/pageless.ts'
 import { createDrawioText } from '../extensions/drawio/drawing-text.ts'
 import { INERT_LINK_PREVIEW_PORTS } from '../infrastructure/link-preview/inert.ts'
+import { inertSourceSync } from '../infrastructure/sources/inert-source-sync.ts'
 
 /**
  * The OpenAPI description of the API, written from the routes themselves.
@@ -74,6 +75,8 @@ async function describableDependencies(): Promise<AppDependencies> {
     ...(await pagelessStylesheets(hasher)),
     publicSiteCache: createPublicSiteCache({ clock, ttlMs: 0 }),
     contentStore,
+    // Nothing here syncs a source (ADR-061); the port is present because `AppDependencies` is one shape.
+    sourceSync: inertSourceSync(contentStore),
     settings: createSettingsStore(contentStore),
     secrets,
     blobStore: createInMemoryBlobStore(),

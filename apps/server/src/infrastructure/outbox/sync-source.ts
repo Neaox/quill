@@ -1,0 +1,58 @@
+import { SOURCE_SYNC_REQUESTED, handleSourceSyncRequested } from '@quill/application'
+
+import type { AppDependencies } from '../../dependencies.ts'
+import { DeferEvent } from './consumer.ts'
+import type { OutboxConsumer } from './consumer.ts'
+import type { LaneOptions } from './lane.ts'
+
+/**
+ * The one consumer of `SourceSyncRequested` (ADR-061, "Freshness"): runs the
+ * sync job of the workspace the event names, with the content store that
+ * writes. Every trigger — the manual one today, the webhook, the
+ * reconciliation and the check on read later — arrives here.
+ *
+ * A sync fetches from a remote and may replay a long history, so it runs on a
+ * lane of its own (`SOURCE_SYNC_LANE`): never inside the main poller's
+ * transaction, and never in the link previews' lane, whose cycles it would
+ * hold up for as long as it runs.
+ *
+ * **A busy source is deferred, not dropped.** Another sync of the same source
+ * may have read the remote's head before the change this request is about,
+ * so the request waits and runs once that sync has finished. Waiting is not
+ * failing, so it does not count against the event's attempts. Every other
+ * outcome the job records on the source's sync state itself; only what it did
+ * not foresee is thrown, for the outbox to retry.
+ */
+
+export const SOURCE_SYNC_LANE = 'sources'
+
+/** How long a request waits while another sync of its source runs. */
+export const SOURCE_BUSY_RETRY_MS = 30_000
+
+/**
+ * Longer than a whole fetch may take (`GitCliExternalSource`'s deadline is
+ * fifteen minutes) plus a long replay, and few at a time: each holds a
+ * connection for its lock and works a `git` process hard.
+ */
+export const SOURCE_SYNC_LANE_OPTIONS = {
+  concurrency: 2,
+  batchSize: 2,
+  handlerTimeoutMs: 30 * 60_000,
+  leaseMs: 35 * 60_000,
+} as const satisfies Partial<LaneOptions>
+
+export function createSyncSourceConsumer(
+  deps: Pick<AppDependencies, 'uow' | 'format' | 'clock' | 'ids' | 'sourceSync'>,
+): OutboxConsumer {
+  return {
+    eventType: SOURCE_SYNC_REQUESTED,
+    async handle(payload: unknown): Promise<void> {
+      const { uow, format, clock, ids, sourceSync } = deps
+      const job = { uow, format, clock, ids, ...sourceSync }
+      const result = await handleSourceSyncRequested(job, payload)
+      if (result?.kind === 'busy') {
+        throw new DeferEvent(SOURCE_BUSY_RETRY_MS, 'another sync of this source is running')
+      }
+    },
+  }
+}

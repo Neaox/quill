@@ -28,6 +28,7 @@ import { pagelessStylesheets } from '../theme/pageless.ts'
 import type { UserId } from '@quill/domain'
 import { createDrawioText } from '../extensions/drawio/drawing-text.ts'
 import { INERT_LINK_PREVIEW_PORTS } from '../infrastructure/link-preview/inert.ts'
+import { inertSourceSync } from '../infrastructure/sources/inert-source-sync.ts'
 
 /**
  * `pnpm --filter @quill/server secrets:rotate` — the rotation's composition
@@ -64,6 +65,8 @@ try {
       searchIndex,
       search: createSearchService(searchIndex),
       contentStore,
+      // Nothing here syncs a source (ADR-061); the port is present because `AppDependencies` is one shape.
+      sourceSync: inertSourceSync(contentStore),
       settings: createSettingsStore(contentStore),
       secrets,
       blobStore: createBlobStore(config.blobStore),

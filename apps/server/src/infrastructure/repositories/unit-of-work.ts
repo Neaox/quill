@@ -40,6 +40,7 @@ import {
 } from './source-sync-repositories.ts'
 import { createUnitRepository } from './unit-repository.ts'
 import { createUserRepository } from './user-repository.ts'
+import { createWorkspaceSourceRepository } from './workspace-source-repository.ts'
 import { createWorkspaceRepository } from './workspace-repository.ts'
 import { createWorkspaceSlugHistoryRepository } from './workspace-slug-history-repository.ts'
 
@@ -87,6 +88,7 @@ function buildBundle(
     reviews: createReviewRepository(db),
     documentViews: createDocumentViewRepository(db),
     notifications: createNotificationRepository(db),
+    workspaceSources: createWorkspaceSourceRepository(db),
     sourcePaths: createSourcePathMapRepository(db),
     sourceSyncState: createSourceSyncStateRepository(db),
     events: createEventRecorder({ outbox: createOutboxWriter(db), ids, sink }),

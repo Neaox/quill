@@ -4507,6 +4507,187 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/workspaces/{id}/source": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            branch: string;
+                            collections: {
+                                collectionId: string;
+                                name: string;
+                                path: string;
+                                slug: string;
+                            }[];
+                            commitMessages: string;
+                            credential: {
+                                secretName: string;
+                                username: string;
+                            } | null;
+                            history: string;
+                            remote: string;
+                            sync: {
+                                failure: {
+                                    message: string;
+                                    reason: string;
+                                    revision: string | null;
+                                } | null;
+                                /** Format: date-time */
+                                lastAttemptAt: string;
+                                lastSyncedAt: string | null;
+                                lastSyncedRevision: string | null;
+                                refused: {
+                                    path: string;
+                                    reason: string;
+                                    revision: string;
+                                }[];
+                            } | null;
+                            /** Format: date-time */
+                            updatedAt: string;
+                        };
+                    };
+                };
+            };
+        };
+        put: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        branch: string;
+                        collections: {
+                            name: string;
+                            path: string;
+                            slug: string;
+                        }[];
+                        commitMessages: "subject" | "none";
+                        credential: {
+                            secretName: string;
+                            username: string;
+                        } | null;
+                        history: "full" | "head";
+                        remote: string;
+                    };
+                };
+            };
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            branch: string;
+                            collections: {
+                                collectionId: string;
+                                name: string;
+                                path: string;
+                                slug: string;
+                            }[];
+                            commitMessages: string;
+                            credential: {
+                                secretName: string;
+                                username: string;
+                            } | null;
+                            history: string;
+                            remote: string;
+                            sync: {
+                                failure: {
+                                    message: string;
+                                    reason: string;
+                                    revision: string | null;
+                                } | null;
+                                /** Format: date-time */
+                                lastAttemptAt: string;
+                                lastSyncedAt: string | null;
+                                lastSyncedRevision: string | null;
+                                refused: {
+                                    path: string;
+                                    reason: string;
+                                    revision: string;
+                                }[];
+                            } | null;
+                            /** Format: date-time */
+                            updatedAt: string;
+                        };
+                    };
+                };
+            };
+        };
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/workspaces/{id}/source/sync": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Default Response */
+                202: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            requested: boolean;
+                        };
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/workspaces/{id}/tree": {
         parameters: {
             query?: never;

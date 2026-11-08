@@ -3,7 +3,12 @@ import { describe, expect, it } from 'vitest'
 import { ROLES } from '../roles.ts'
 import { NATIVE_ORIGIN } from '../tenancy/workspace-origin.ts'
 import type { WorkspaceOrigin } from '../tenancy/workspace-origin.ts'
-import { NO_CAPABILITIES, capabilitiesForRole, narrowByOrigin } from './capabilities.ts'
+import {
+  NO_CAPABILITIES,
+  capabilitiesForRole,
+  isTakenByOrigin,
+  narrowByOrigin,
+} from './capabilities.ts'
 
 const SOURCED: WorkspaceOrigin = { kind: 'sourced' }
 
@@ -94,5 +99,19 @@ describe('narrowByOrigin', () => {
   it('never grants what the role did not', () => {
     expect(narrowByOrigin(NO_CAPABILITIES, SOURCED)).toEqual(NO_CAPABILITIES)
     expect(narrowByOrigin(NO_CAPABILITIES, NATIVE_ORIGIN)).toEqual(NO_CAPABILITIES)
+  })
+})
+
+describe('isTakenByOrigin', () => {
+  it('names exactly what a sourced workspace turns off, and nothing in a native one', () => {
+    const capabilities = Object.keys(NO_CAPABILITIES) as (keyof typeof NO_CAPABILITIES)[]
+    expect(capabilities.filter((capability) => isTakenByOrigin(capability, SOURCED))).toEqual([
+      'edit',
+      'publish',
+      'arrange',
+    ])
+    expect(capabilities.filter((capability) => isTakenByOrigin(capability, NATIVE_ORIGIN))).toEqual(
+      [],
+    )
   })
 })
