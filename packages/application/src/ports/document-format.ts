@@ -232,6 +232,12 @@ export interface PublishedDocumentView {
   readonly title: string | undefined
 }
 
+/** What published Markdown says about itself, read from one parse: `read` and `links` together. */
+export interface DocumentInspection {
+  readonly view: PublishedDocumentView
+  readonly links: readonly ExtractedLink[]
+}
+
 /**
  * The version of a comparison's shape (ADR-033). A comparison is computed on
  * request and never stored, so this names the contract a reader of one can
@@ -403,6 +409,13 @@ export interface DocumentFormat {
    * (ADR-061). A link in a code block is not one.
    */
   links(markdown: string): readonly ExtractedLink[]
+  /**
+   * `read` and `links` from one parse. The sync job asks this once of every
+   * file it stores (ADR-062, "parse once on the server"), where it asked
+   * `read`, then `links` for the images, then `links` again for the link
+   * check, each a parse of the same text.
+   */
+  inspect(markdown: string): DocumentInspection
   /**
    * A file read from an external source, as the store keeps it (ADR-061):
    * `documentId` first in its front matter, replacing any id the file

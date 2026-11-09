@@ -1076,6 +1076,46 @@ describe('syncSource with a manifest', () => {
     ])
   })
 
+  it('reads each file it stores once, and checks its links from that reading (ADR-062)', async () => {
+    const format = createFakeDocumentFormat()
+    const calls = { inspect: 0, read: 0, links: 0 }
+    const counted = {
+      ...format,
+      inspect: (markdown: string) => {
+        calls.inspect += 1
+        return format.inspect(markdown)
+      },
+      read: (markdown: string) => {
+        calls.read += 1
+        return format.read(markdown)
+      },
+      links: (markdown: string) => {
+        calls.links += 1
+        return format.links(markdown)
+      },
+    }
+    const h = harness(
+      [
+        {
+          id: 'c1',
+          files: {
+            [MANIFEST]: manifest(GUIDES_AT_DOCS),
+            'docs/guides/a.md': '# A\n\n[b](b.md) [gone](gone.md)',
+            'docs/guides/b.md': '# B\n\n![Map](map.png)',
+          },
+        },
+      ],
+      {},
+      { format: counted },
+    )
+    await h.sync()
+    expect(calls).toEqual({ inspect: 2, read: 0, links: 0 })
+    expect((await state(h))?.brokenLinks?.map(({ path, url }) => `${path} ${url}`)).toEqual([
+      'docs/guides/a.md gone.md',
+      'docs/guides/b.md map.png',
+    ])
+  })
+
   it('breaks a tie between siblings by their paths, never by their random ids (ADR-062)', async () => {
     // The two titles and paths are equal to the collator, which ignores
     // accents; the document seen first gets the smaller id, and must not go

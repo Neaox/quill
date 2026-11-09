@@ -169,6 +169,11 @@ export function createFakeDocumentFormat(options: FakeDocumentFormatOptions = {}
       return [...linksOf(parse(markdown).body)]
     },
 
+    inspect(markdown) {
+      const { frontMatter, body } = parse(markdown)
+      return { view: { frontMatter, title: titleOf(frontMatter, body) }, links: [...linksOf(body)] }
+    },
+
     stampIdentity(markdown, documentId): string {
       const { frontMatter, body } = parse(markdown)
       const { id: _declared, ...rest } = frontMatter
