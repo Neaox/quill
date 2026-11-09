@@ -216,7 +216,8 @@ A cache that is warm does not excuse a slow cold run. A fresh clone, a new tool 
 | Quill's full parse (`parseDocument`) on one thread over L, with the JIT warm | at least 3 MB a second | 1.6 MB a second on the median file |
 | Linearity: any file's time per byte | at most 3 times L's median time per byte | about 2.5 times between the five slowest files alone |
 | Linearity: each construct grown 1×, 4× and 16× in a generated file | the 16× file at most 3 × 16 times the 1× file | not measured |
-| Server: `syncSource` of L's head (one revision, in-memory adapters, every document published and rendered) | at most 10 s | not measured |
+| Server: `syncSource` of L's head from a local `file://` bare repository (one revision, in-memory adapters, the fetch included, every document published and rendered) | at most 10 s | 76 s (11 November 2026) |
+| Server: fetching L alone from the same remote (clone, narrowing to the manifest's paths, every file read) | at most 4 s | 1.3 s (11 November 2026) |
 | Server: parses of one document per sync revision | one | four or more |
 
 The constructs grown for the linearity guard are:
@@ -264,7 +265,7 @@ At 3 MB a second, L's parsing is about 6 CPU-seconds, so about 2 seconds over th
 **How they are enforced:**
 
 - **Throughput and linearity, on every pull request.** `packages/format/src/throughput.budget.test.ts` runs in the existing `pnpm test:budgets`, inside `pnpm check`. It renders L on one thread and runs the linearity files. At the target rate, L takes about 4 seconds, and every file's time per byte is checked against the median. Like the merge budget, it is skipped under coverage, because instrumented code would measure the instrumentation. A change to `@quill/markdown`, `@quill/highlight` or `@quill/format` that slows the server's sync and publish therefore fails the gate, whether or not it touches the tool.
-- **The server's sync.** `apps/server/bench/sync-budget.ts` measures the `syncSource` row.
+- **The server's sync.** `pnpm --filter @quill/server bench:sync` (`apps/server/src/infrastructure/sources/sync.bench.ts`) measures the two sync rows on L, or on XL with `-- XL`, as the median of three runs, wall and CPU time; `-- --budget` exits non-zero when one is over. The remote is a bare repository repacked with a reachability bitmap, as a forge serves one (see "Amendment: the sync's budget"). It joins the `render-budgets` job once the sync row is met, at the end of step 3.
 - **The corpus benchmark.** `pnpm --filter @quill/cli bench:budgets` (`apps/cli/bench/budgets.ts`) runs every row of the tool's tables against the production bundle and exits non-zero when one is over. It takes the median of three runs for times, and the peak sampled `rss` and worker heap for memory. It prints a table like `check:bundle`'s.
 - **The CI job.** The L and XL corpora, cold and warm, take a few minutes, so they do not run inside `pnpm check`. A CI job of its own, `render-budgets` on `ubuntu-latest`, runs both benchmarks on every push to `main`, and on pull requests that touch:
   - `apps/cli`, `packages/format`, `packages/site`, `packages/markdown` or `packages/highlight`;
@@ -385,6 +386,21 @@ The first version set the shared pipeline a single-thread target of 5 MB a secon
 - **Replacing micromark is rejected for now.** The editor's round trip depends on it: `mdast` positions, the directive and GFM extensions, and `source-form.ts`, which records how each construct was written so the editor writes a document back byte for byte (ADR-002, ADR-060). A new parser would have to reproduce all of that, and would need an ADR of its own. It is reconsidered only if step 3 cannot reach 3 MB a second after tuning, and then step 3 stops again and reports its profile.
 - **A correction to section 4:** a page's title is part of the input of every page that links to it, so retitling a page re-renders those pages. A change to its text alone does not.
 - **The parity suite's time** is budgeted per platform (section 4): 60 seconds on the Linux runner, 120 on Windows and macOS, where starting `git` processes costs most of the time.
+
+## Amendment: the sync's budget (11 November 2026)
+
+The sync row of section 4 mixed two things: the work Quill does, and how fast a remote serves a partial clone, which no change to Quill can move. It is split so each is measured on its own, and both are measured from a remote on the same machine, so the network is out of the number.
+
+- **The sync row** is a first sync of L's head from a local `file://` bare repository, fetch included: at most 10 seconds.
+- **A fetch row** is the fetch alone from the same remote: opening the source, the partial clone, narrowing to the manifest's paths, and reading every file under them: at most 4 seconds.
+- **The remote is what a forge serves:** a bare repository repacked with a reachability bitmap (`git repack -ad --write-bitmap-index`). The evidence that this matters, measured on rookwood's own repository (5,183 commits, about 54,500 commits and trees):
+  - from its working repository, never repacked, the partial clone took 37.2 seconds, nearly all of the 34 to 38 seconds the first sync measurements spent fetching: the remote packed every commit and tree on the fly;
+  - from a bare mirror repacked with a bitmap, the same clone took 1.5 seconds, and the whole fetch (clone, two sparse-checkout and backfill rounds, the listing and every file read) about 4.5 seconds;
+  - on L, a single commit, the fetch alone is 1.3 seconds (median of three).
+
+  So the fetch is in budget, and what was slow was the remote. Quill runs one clone, one `ls-tree` and one `cat-file --batch` for every file together; it spawns no `git` process per file.
+- **Measured and left as it is:** `git backfill` fetches the contents of the source's paths for every revision of the history, which a source whose history setting is `head` does not need for its first sync. On rookwood that is 2.4 of the 4.5 seconds. It is kept: a source replays the commits after its first sync, and fetching their contents later costs the same. Revisit if a large history makes it dominate.
+- **Where the sync's time goes instead:** 76 seconds of the sync of L is Quill's work after the fetch (parsing each document several times, publishing, and rendering), which is what step 3's parse-once and tuning work is for.
 
 ## Decisions on acceptance
 
