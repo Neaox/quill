@@ -285,13 +285,15 @@ describe('the reading view', () => {
 
     await screen.findByRole('article', { name: 'Regional failover' })
     const header = screen.getByRole('banner')
-    expect(await within(header).findByRole('link', { name: 'Operations' })).toHaveAttribute(
-      'href',
-      '/w/engineering/d/operations-opsopsops1',
-    )
-    expect(within(header).getByRole('link', { name: 'Regions' })).toHaveAttribute(
+    // The parent shows; the step above it folds behind a button that unfolds in place.
+    expect(await within(header).findByRole('link', { name: 'Regions' })).toHaveAttribute(
       'href',
       '/w/engineering/d/regions-regions001',
+    )
+    await userEvent.click(within(header).getByRole('button', { name: 'Show 1 more step' }))
+    expect(within(header).getByRole('link', { name: 'Operations' })).toHaveAttribute(
+      'href',
+      '/w/engineering/d/operations-opsopsops1',
     )
   })
 
