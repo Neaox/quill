@@ -122,6 +122,20 @@ const history = () =>
     ],
   })
 
+/** A node of the workspace tree, with what it holds. */
+function leaf(id: string, title: string, shortId: string, children: unknown[] = []) {
+  return {
+    id,
+    shortId,
+    title,
+    slug: id,
+    status: 'published',
+    children,
+    childCount: children.length,
+    childrenOffset: 0,
+  }
+}
+
 function readingRoutes(overrides: FakeRoutes = {}): FakeRoutes {
   return {
     'GET /api/me': me,
@@ -245,16 +259,6 @@ describe('the reading view', () => {
   })
 
   it('leads the trail through the documents the page is nested under, each a link', async () => {
-    const leaf = (id: string, title: string, shortId: string, children: unknown[] = []) => ({
-      id,
-      shortId,
-      title,
-      slug: id,
-      status: 'published',
-      children,
-      childCount: children.length,
-      childrenOffset: 0,
-    })
     renderApp(
       READING_PATH,
       readingRoutes({
