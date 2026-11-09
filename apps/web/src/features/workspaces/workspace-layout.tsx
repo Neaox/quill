@@ -3,9 +3,19 @@ import { useMemo, useState } from 'react'
 
 import { DocumentShell, type DocumentStatus } from '@quill/ui'
 
-import { useDocument, useDocumentEnvelope, useLoadedWorkspace } from '../../lib/api/index.ts'
+import {
+  ancestorsOf,
+  useDocument,
+  useDocumentEnvelope,
+  useLoadedWorkspace,
+  useNavigationTree,
+} from '../../lib/api/index.ts'
 import { documentState } from '../../lib/documents/document-state.ts'
-import { workspaceLink } from '../../lib/routing/document-reference.ts'
+import {
+  documentLink,
+  documentReference,
+  workspaceLink,
+} from '../../lib/routing/document-reference.ts'
 import { RouterLink } from '../../lib/routing/router-link.tsx'
 import { SignedInHeader } from '../auth/signed-in-header.tsx'
 import { SearchField } from '../search/search-field.tsx'
@@ -26,7 +36,9 @@ const routeApi = getRouteApi('/_authenticated/w/$workspaceSlug')
  * it — see `shell-slots.tsx` for why that is a portal rather than a prop.
  *
  * The header's facts are derived here from the route rather than pushed up by
- * the page, so they change in the same commit the page does. Only what is
+ * the page, so they change in the same commit the page does. The trail runs
+ * from the workspace through every document the page is nested under (its
+ * folders, for a workspace read from a repository) to the page itself. Only what is
  * actually known is shown: a workspace home has a name and no revision, so it
  * has no revision fact, and no dash standing in for one.
  *
@@ -75,6 +87,13 @@ export function WorkspaceLayout() {
   // the current row is the document the reference resolved to, never the
   // spelling in the address bar.
   const currentDocumentId = currentDocument?.id
+  // The sidebar's own tree, opened down to this document, so the trail's
+  // folders and parents cost no request of their own (`useNavigationTree`).
+  const tree = useNavigationTree(workspaceId, documentId).data
+  const ancestors =
+    tree === undefined || currentDocumentId === undefined
+      ? []
+      : ancestorsOf(tree, currentDocumentId)
 
   const status: DocumentStatus = {
     path:
@@ -82,6 +101,10 @@ export function WorkspaceLayout() {
         ? [{ label: workspaceName }]
         : [
             { label: workspaceName, link: workspaceLink(workspaceSlug) },
+            ...ancestors.map((ancestor) => ({
+              label: ancestor.title,
+              link: documentLink(workspaceSlug, documentReference(ancestor)),
+            })),
             { label: currentDocument.title },
           ],
     ...(currentDocument === undefined

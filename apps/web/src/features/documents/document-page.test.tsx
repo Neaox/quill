@@ -244,6 +244,53 @@ describe('the reading view', () => {
     )
   })
 
+  it('leads the trail through the documents the page is nested under, each a link', async () => {
+    const leaf = (id: string, title: string, shortId: string, children: unknown[] = []) => ({
+      id,
+      shortId,
+      title,
+      slug: id,
+      status: 'published',
+      children,
+      childCount: children.length,
+      childrenOffset: 0,
+    })
+    renderApp(
+      READING_PATH,
+      readingRoutes({
+        'GET /api/workspaces/{id}/tree': () =>
+          jsonResponse(200, {
+            collections: [
+              {
+                id: 'col-1',
+                name: 'Runbooks',
+                slug: 'runbooks',
+                documentCount: 1,
+                documents: [
+                  leaf('ops', 'Operations', 'opsopsops1', [
+                    leaf('regions', 'Regions', 'regions001', [
+                      leaf('doc-1', 'Regional failover', KEY),
+                    ]),
+                  ]),
+                ],
+              },
+            ],
+          }),
+      }),
+    )
+
+    await screen.findByRole('article', { name: 'Regional failover' })
+    const header = screen.getByRole('banner')
+    expect(await within(header).findByRole('link', { name: 'Operations' })).toHaveAttribute(
+      'href',
+      '/w/engineering/d/operations-opsopsops1',
+    )
+    expect(within(header).getByRole('link', { name: 'Regions' })).toHaveAttribute(
+      'href',
+      '/w/engineering/d/regions-regions001',
+    )
+  })
+
   it('shows the revision list, the state, and the last publish in the readout', async () => {
     renderApp(READING_PATH, readingRoutes())
 
