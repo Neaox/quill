@@ -1,0 +1,107 @@
+{
+  "fixture": "shared-folder",
+  "result": {
+    "kind": "synced",
+    "published": 1
+  },
+  "state": {
+    "failure": null,
+    "refused": [],
+    "brokenLinks": [],
+    "layout": {
+      "origin": "manifest",
+      "unknownKeys": [],
+      "collections": [
+        "guides",
+        "notes"
+      ]
+    }
+  },
+  "collections": [
+    {
+      "slug": "guides",
+      "title": "Guides"
+    },
+    {
+      "slug": "notes",
+      "title": "Notes"
+    }
+  ],
+  "tree": [
+    {
+      "path": "docs/topic/.quill/folder.md",
+      "collection": "guides",
+      "parent": null,
+      "title": "Topic",
+      "sortKey": 1,
+      "archived": false
+    },
+    {
+      "path": "docs/topic/a.guide.md",
+      "collection": "guides",
+      "parent": "docs/topic/.quill/folder.md",
+      "title": "A guide",
+      "sortKey": 1,
+      "archived": false
+    },
+    {
+      "path": "docs/topic/b.note.md",
+      "collection": "notes",
+      "parent": null,
+      "title": "A note",
+      "sortKey": 1,
+      "archived": false
+    },
+    {
+      "path": "docs/topic/deeper/.quill/folder.md",
+      "collection": "notes",
+      "parent": null,
+      "title": "Deeper",
+      "sortKey": 2,
+      "archived": false
+    },
+    {
+      "path": "docs/topic/deeper/c.note.md",
+      "collection": "notes",
+      "parent": "docs/topic/deeper/.quill/folder.md",
+      "title": "A deeper note",
+      "sortKey": 1,
+      "archived": false
+    }
+  ],
+  "assets": [],
+  "stored": {
+    "docs/topic/.quill/folder.md": "---\nid: {doc:docs/topic/.quill/folder.md}\n---\n# Topic\n\n::children{excerpts}\n",
+    "docs/topic/a.guide.md": "---\nid: {doc:docs/topic/a.guide.md}\n---\n# A guide\n",
+    "docs/topic/b.note.md": "---\nid: {doc:docs/topic/b.note.md}\n---\n# A note\n",
+    "docs/topic/deeper/.quill/folder.md": "---\nid: {doc:docs/topic/deeper/.quill/folder.md}\n---\n# Deeper\n\n::children{excerpts}\n",
+    "docs/topic/deeper/c.note.md": "---\nid: {doc:docs/topic/deeper/c.note.md}\n---\n# A deeper note\n"
+  },
+  "bodies": {
+    "docs/topic/.quill/folder.md": {
+      "html": "<article><h1 id=\"user-content-topic\" aria-labelledby=\"user-content-title.topic\"><span id=\"user-content-title.topic\">Topic</span><a class=\"heading-anchor\" href=\"#user-content-topic\" aria-label=\"Link to this section: Topic\"><span aria-hidden=\"true\">#</span></a></h1>\n<section class=\"live-block child-pages\" data-live-block=\"children\" data-live-key=\"children?depth=1&#x26;sort=manual&#x26;excerpts\" aria-label=\"Child pages\"><p class=\"child-pages-fallback\">The pages under this one are listed here.</p></section></article>",
+      "blockIssues": [],
+      "incompleteRequiredSections": []
+    },
+    "docs/topic/a.guide.md": {
+      "html": "<article><h1 id=\"user-content-a-guide\" aria-labelledby=\"user-content-title.a-guide\"><span id=\"user-content-title.a-guide\">A guide</span><a class=\"heading-anchor\" href=\"#user-content-a-guide\" aria-label=\"Link to this section: A guide\"><span aria-hidden=\"true\">#</span></a></h1></article>",
+      "blockIssues": [],
+      "incompleteRequiredSections": []
+    },
+    "docs/topic/b.note.md": {
+      "html": "<article><h1 id=\"user-content-a-note\" aria-labelledby=\"user-content-title.a-note\"><span id=\"user-content-title.a-note\">A note</span><a class=\"heading-anchor\" href=\"#user-content-a-note\" aria-label=\"Link to this section: A note\"><span aria-hidden=\"true\">#</span></a></h1></article>",
+      "blockIssues": [],
+      "incompleteRequiredSections": []
+    },
+    "docs/topic/deeper/.quill/folder.md": {
+      "html": "<article><h1 id=\"user-content-deeper\" aria-labelledby=\"user-content-title.deeper\"><span id=\"user-content-title.deeper\">Deeper</span><a class=\"heading-anchor\" href=\"#user-content-deeper\" aria-label=\"Link to this section: Deeper\"><span aria-hidden=\"true\">#</span></a></h1>\n<section class=\"live-block child-pages\" data-live-block=\"children\" data-live-key=\"children?depth=1&#x26;sort=manual&#x26;excerpts\" aria-label=\"Child pages\"><p class=\"child-pages-fallback\">The pages under this one are listed here.</p></section></article>",
+      "blockIssues": [],
+      "incompleteRequiredSections": []
+    },
+    "docs/topic/deeper/c.note.md": {
+      "html": "<article><h1 id=\"user-content-a-deeper-note\" aria-labelledby=\"user-content-title.a-deeper-note\"><span id=\"user-content-title.a-deeper-note\">A deeper note</span><a class=\"heading-anchor\" href=\"#user-content-a-deeper-note\" aria-label=\"Link to this section: A deeper note\"><span aria-hidden=\"true\">#</span></a></h1></article>",
+      "blockIssues": [],
+      "incompleteRequiredSections": []
+    }
+  }
+}
