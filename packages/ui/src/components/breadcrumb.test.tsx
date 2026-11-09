@@ -1,6 +1,6 @@
 import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
 import { expectNoAccessibilityViolations } from '../../testing/axe.ts'
 import { Breadcrumb } from './breadcrumb.tsx'
@@ -96,5 +96,57 @@ describe('Breadcrumb', () => {
 
     expect(screen.getByText('Failover')).toHaveAttribute('aria-current', 'page')
     expect(screen.getByRole('navigation').querySelector('svg')).toBeNull()
+  })
+})
+
+describe('Breadcrumb, folded', () => {
+  const LONG = [
+    { label: 'Handbook', link: { to: '/handbook' } },
+    { label: 'Guides', link: { to: '/guides' } },
+    { label: 'Deploying', link: { to: '/deploying' } },
+    { label: 'Cloud', link: { to: '/cloud' } },
+    { label: 'On AWS' },
+  ]
+
+  it('keeps the root, the parent and the page, and folds the middle behind a button', async () => {
+    const { container } = render(<Breadcrumb items={LONG} collapse />)
+    const nav = screen.getByRole('navigation', { name: 'Breadcrumb' })
+    expect(
+      within(nav)
+        .getAllByRole('link')
+        .map((link) => link.textContent),
+    ).toEqual(['Handbook', 'Cloud'])
+    const more = within(nav).getByRole('button', { name: 'Show 2 more steps' })
+    expect(more).toHaveAttribute('aria-expanded', 'false')
+    expect(within(nav).getByText('On AWS')).toHaveAttribute('aria-current', 'page')
+    await expectNoAccessibilityViolations(container)
+  })
+
+  it('unfolds in place, every step a link, and moves focus to the first one it showed', async () => {
+    render(<Breadcrumb items={LONG} collapse />)
+    await userEvent.click(screen.getByRole('button', { name: 'Show 2 more steps' }))
+    expect(screen.queryByRole('button')).toBeNull()
+    expect(screen.getAllByRole('link').map((link) => link.textContent)).toEqual([
+      'Handbook',
+      'Guides',
+      'Deploying',
+      'Cloud',
+    ])
+    await vi.waitFor(() => {
+      expect(screen.getByRole('link', { name: 'Guides' })).toHaveFocus()
+    })
+  })
+
+  it('folds nothing in a short trail, or when not asked to', () => {
+    const { unmount } = render(<Breadcrumb items={TRAIL} collapse />)
+    expect(screen.queryByRole('button')).toBeNull()
+    unmount()
+    render(<Breadcrumb items={LONG} />)
+    expect(screen.getAllByRole('link')).toHaveLength(4)
+  })
+
+  it('names a single folded step in the singular', () => {
+    render(<Breadcrumb items={LONG.slice(1)} collapse />)
+    expect(screen.getByRole('button', { name: 'Show 1 more step' })).toBeVisible()
   })
 })

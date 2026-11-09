@@ -120,6 +120,7 @@ export {
 } from './documents.ts'
 export {
   NAVIGATION_PAGE_SIZE,
+  ancestorsOf,
   listKey,
   useNavigationTree,
   type NavigationCollection,

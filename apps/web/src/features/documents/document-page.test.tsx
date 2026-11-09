@@ -122,6 +122,20 @@ const history = () =>
     ],
   })
 
+/** A node of the workspace tree, with what it holds. */
+function leaf(id: string, title: string, shortId: string, children: unknown[] = []) {
+  return {
+    id,
+    shortId,
+    title,
+    slug: id,
+    status: 'published',
+    children,
+    childCount: children.length,
+    childrenOffset: 0,
+  }
+}
+
 function readingRoutes(overrides: FakeRoutes = {}): FakeRoutes {
   return {
     'GET /api/me': me,
@@ -241,6 +255,45 @@ describe('the reading view', () => {
     )
     expect(within(contents).getByRole('link', { name: 'Steps' })).not.toHaveAttribute(
       'aria-current',
+    )
+  })
+
+  it('leads the trail through the documents the page is nested under, each a link', async () => {
+    renderApp(
+      READING_PATH,
+      readingRoutes({
+        'GET /api/workspaces/{id}/tree': () =>
+          jsonResponse(200, {
+            collections: [
+              {
+                id: 'col-1',
+                name: 'Runbooks',
+                slug: 'runbooks',
+                documentCount: 1,
+                documents: [
+                  leaf('ops', 'Operations', 'opsopsops1', [
+                    leaf('regions', 'Regions', 'regions001', [
+                      leaf('doc-1', 'Regional failover', KEY),
+                    ]),
+                  ]),
+                ],
+              },
+            ],
+          }),
+      }),
+    )
+
+    await screen.findByRole('article', { name: 'Regional failover' })
+    const header = screen.getByRole('banner')
+    // The parent shows; the step above it folds behind a button that unfolds in place.
+    expect(await within(header).findByRole('link', { name: 'Regions' })).toHaveAttribute(
+      'href',
+      '/w/engineering/d/regions-regions001',
+    )
+    await userEvent.click(within(header).getByRole('button', { name: 'Show 1 more step' }))
+    expect(within(header).getByRole('link', { name: 'Operations' })).toHaveAttribute(
+      'href',
+      '/w/engineering/d/operations-opsopsops1',
     )
   })
 

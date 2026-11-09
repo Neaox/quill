@@ -126,6 +126,17 @@ function renderTree(
   return { ...view, router }
 }
 
+/** A workspace written here. */
+const nativeWorkspace = () =>
+  jsonResponse(200, {
+    id: 'workspace-1',
+    unitId: 'unit-1',
+    name: 'Acme docs',
+    slug: 'acme',
+    createdAt: '2026-01-01T00:00:00.000Z',
+    origin: { kind: 'native' },
+  })
+
 /** A workspace read from a repository, with what the caller may do in it. */
 const sourcedWorkspace = (manage: boolean) => () =>
   jsonResponse(200, {
@@ -250,25 +261,31 @@ describe('WorkspaceTree creation entry points', () => {
       expect(screen.queryByRole('menuitem', { name: 'Workspace settings' })).toBeNull()
     })
 
-    it('offers an instance admin of a workspace written here reading it from a repository', async () => {
+    it('offers an instance admin of an empty workspace written here reading it from a repository', async () => {
       renderTree(
         {},
         {
           'GET /api/me': me(true),
-          'GET /api/workspaces/{id}': () =>
+          'GET /api/workspaces/{id}': nativeWorkspace,
+          'GET /api/workspaces/{id}/tree': () =>
             jsonResponse(200, {
-              id: 'workspace-1',
-              unitId: 'unit-1',
-              name: 'Acme docs',
-              slug: 'acme',
-              createdAt: '2026-01-01T00:00:00.000Z',
-              origin: { kind: 'native' },
+              collections: [
+                { id: 'c-1', name: 'Guides', slug: 'guides', documentCount: 0, documents: [] },
+              ],
             }),
         },
       )
       await userEvent.click(await menuButton())
       expect(await screen.findByRole('menuitem', { name: 'Read from a repository…' })).toBeVisible()
       expect(screen.queryByRole('menuitem', { name: 'Repository' })).toBeNull()
+    })
+
+    it('does not offer it for a workspace that holds documents, which could not be connected', async () => {
+      renderTree({}, { 'GET /api/me': me(true), 'GET /api/workspaces/{id}': nativeWorkspace })
+      expect(await screen.findByRole('link', { name: 'Quarterly plan' })).toBeVisible()
+      await userEvent.click(await menuButton())
+      expect(await screen.findByRole('menuitem', { name: 'Workspace settings' })).toBeVisible()
+      expect(screen.queryByRole('menuitem', { name: 'Read from a repository…' })).toBeNull()
     })
 
     it('offers a reader no menu at all', async () => {

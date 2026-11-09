@@ -5,7 +5,7 @@ import type { ThemeVariants } from '@quill/theme'
 import { tv } from '../lib/class-names.ts'
 import { PlainLink, type LinkComponent } from '../lib/link.tsx'
 import { useThemeVariants } from '../theme/theme-variants.tsx'
-import { Breadcrumb, type BreadcrumbItem } from './breadcrumb.tsx'
+import { Breadcrumb, MoreSteps, useFoldedTrail, type BreadcrumbItem } from './breadcrumb.tsx'
 import { RelativeTime } from './relative-time.tsx'
 
 /**
@@ -36,7 +36,7 @@ export const documentHeaderStyles = tv({
     trail: 'px-4 max-sm:hidden',
     ancestor: 'hidden lg:contents',
     ancestorLink: [
-      'truncate rounded-sm underline decoration-transparent underline-offset-2',
+      'max-w-48 truncate rounded-sm underline decoration-transparent underline-offset-2',
       'transition-[color,text-decoration-color] hover:text-foreground hover:decoration-current',
       'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring',
     ],
@@ -157,25 +157,50 @@ function Readout({
   readonly linkComponent: LinkComponent
 }) {
   const styles = documentHeaderStyles()
-  const ancestors = status.path.slice(0, -1)
+  // A deep page folds its middle, so no step is cut to a few letters.
+  const { steps, unfold, firstHidden } = useFoldedTrail(status.path, true)
+  const last = status.path.length - 1
 
   return (
     <p className={styles.readout()}>
-      {ancestors.map((step) => (
-        <span key={step.label} className={styles.ancestor()}>
-          {step.link === undefined ? (
-            step.label
-          ) : (
-            <Link {...step.link} className={styles.ancestorLink()}>
-              {step.label}
-            </Link>
-          )}
-          <span aria-hidden="true" className={styles.separator()}>
-            /
+      {steps.map((step) => {
+        if (step.kind === 'more') {
+          return (
+            <span key="more" className={styles.ancestor()}>
+              <MoreSteps hidden={step.hidden} onUnfold={unfold} />
+              <span aria-hidden="true" className={styles.separator()}>
+                /
+              </span>
+            </span>
+          )
+        }
+        const { item, index } = step
+        if (index === last) {
+          return (
+            <span key="current" className={styles.current()}>
+              {item.label}
+            </span>
+          )
+        }
+        return (
+          <span
+            key={`${String(index)}:${item.label}`}
+            ref={index === 1 ? firstHidden : undefined}
+            className={styles.ancestor()}
+          >
+            {item.link === undefined ? (
+              item.label
+            ) : (
+              <Link {...item.link} className={styles.ancestorLink()}>
+                {item.label}
+              </Link>
+            )}
+            <span aria-hidden="true" className={styles.separator()}>
+              /
+            </span>
           </span>
-        </span>
-      ))}
-      <span className={styles.current()}>{status.path.at(-1)?.label}</span>
+        )
+      })}
     </p>
   )
 }
@@ -211,7 +236,12 @@ export function DocumentHeader({
       {header === 'readout' ? (
         <Readout status={status} linkComponent={linkComponent} />
       ) : (
-        <Breadcrumb items={status.path} linkComponent={linkComponent} className={styles.trail()} />
+        <Breadcrumb
+          items={status.path}
+          linkComponent={linkComponent}
+          collapse
+          className={styles.trail()}
+        />
       )}
 
       <div className={styles.spacer()} />
