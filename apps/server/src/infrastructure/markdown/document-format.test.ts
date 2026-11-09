@@ -435,11 +435,11 @@ describe('createDocumentFormat: render and read', () => {
   })
 
   it('inspects a document in one parse: what read and links say, together', () => {
-    const markdown =
+    const written =
       '---\norder: 3\n---\n\n# Inspected\n\n[a](./a.md) ![b](b.png)\n\n```\n[c](./c.md)\n```\n'
-    expect(format.inspect(markdown)).toEqual({
-      view: format.read(markdown),
-      links: format.links(markdown),
+    expect(format.inspect(written)).toEqual({
+      view: format.read(written),
+      links: format.links(written),
     })
     expect(format.inspect(markdown).view).toMatchObject({
       title: 'Inspected',
