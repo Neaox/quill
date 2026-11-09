@@ -143,6 +143,58 @@ The settings were first set only through the API. Connecting a workspace and cha
 - **The public site.** A removed page that was public answers `410` with its title. If its redirect leads to a page on the same site, it answers `301` to that page. It is no longer listed in the site's navigation, index or sitemap. A page that was never public answers as it always did.
 - **The tree** no longer lists a removed page.
 
+### Amendment (11 November 2026): disconnecting a source
+
+A team can stop reading a workspace from its repository and keep writing in Quill instead. Nothing above says how. This amendment decides it, before any of it is built.
+
+**What disconnecting does.** It turns a sourced workspace back into a native one, keeping everything it holds. It is offered on the repository's settings page, behind a confirmation that says what follows.
+- It is instance administration, as connecting is.
+- It is audited, and recorded as a `SourceDisconnected` outbox event.
+- There is no second mode that archives the workspace. A team that wants the pages gone deletes the workspace, which already exists and is already guarded.
+
+**The pages.**
+- Every live page becomes an ordinary native document, editable and publishable, with the same id, key and address (ADR-035).
+- Each page keeps its whole history: every revision the sync recorded, authored by the commit authors, with the `Quill-Source-Commit` trailers and change notes as they were.
+- Its comments, grants, sort keys and nesting are unchanged. Folder pages, generated ones included, stay where they are as ordinary documents; a generated folder page's `::children` block keeps listing its children.
+- No revision is published by disconnecting. The stored files already carry their ids, so the content store needs nothing.
+- The next edit is an ordinary draft and publish by a person, as for any native document.
+
+**Removed pages stay removed.** A page whose file had left the repository stays archived and keeps answering `410` with its title, date and commit to its readers, as above. Archived documents carry no source after disconnecting, so the 410 answer is keyed on the document being archived, not on the workspace being sourced.
+
+**The source's record is kept, marked disconnected rather than deleted.** `workspace_sources` gains a `disconnected_at`.
+- A workspace is sourced while it has a source row with no `disconnected_at`. Then:
+  - the read-only content store, the `arrange` narrowing and the Edit-on-the-forge link apply;
+  - the sync job, the webhook, the daily reconciliation and the check on read act on it.
+- A disconnected row is never synced. A push webhook for it answers as one for an unknown source, and "Sync now" answers `workspace_not_sourced`.
+- The row is kept because rendering still needs it:
+  - Relative links in the stored text (`../adr/0012-auth.md`) keep resolving through the path map to the same pages, so text written against the repository still links.
+  - Links to repository files outside the source keep going to the forge at the last synced commit, using the stored remote and view template. The repository page lists that commit as the one the workspace was disconnected at.
+  - Rewriting the links in the stored text at disconnection was rejected, for the reason Q2 gives: the text would differ from what was published, and a compare would show changes nobody made.
+- A link written in Quill after disconnecting is an ordinary canonical link (`/d/<id>`), as in any native workspace.
+
+**The path map is kept frozen.** It stops changing at disconnection, and is used only to resolve stored relative links and removed pages' addresses. A page moved or renamed in Quill afterwards keeps its old path in the path map, so a stored link written against the repository still finds it by id. A page created in Quill after disconnecting has no path map entry and needs none.
+
+**Redirects.**
+- The manifest's redirects, as last recorded with the layout, keep resolving for removed pages, in the app and on the public site, as above.
+- They stop changing with the repository, so a page redirected after disconnecting is redirected the native way: ADR-046's delete with a replacement, once that is built.
+
+**Attachments.**
+- The source-owned attachments, the asset map in the store, and the record of which pages showed which asset are all kept. Every revision keeps rendering with the pictures it had, and the same readers may see them.
+- An image a person adds afterwards is an ordinary document-owned attachment.
+- Source-owned attachments are never collected after disconnecting, because no sync runs to collect them. They go with the workspace when it is deleted.
+
+**Sync state.**
+- The last synced commit, and the time of the disconnection, stay on the repository's page. That page becomes a read-only record: "Disconnected from `<remote>` at `<commit>` on `<date>`".
+- The broken-link, refused-file and manifest-key lists stay as last recorded, and are labelled as from that commit.
+
+**Reconnecting** is connecting again, under the same rule: only an empty workspace can be connected. A disconnected workspace holds documents people may have edited, which a sync would strand, so it is refused with that reason. A team that wants the repository back connects a new workspace to it.
+
+**What it is not.**
+- Disconnecting never writes to the repository.
+- It never deletes a page or a revision.
+- It never changes an address.
+- It needs no data migration beyond the new nullable column.
+
 ### History
 
 - **One revision per first-parent commit.** Each commit on the branch's first-parent line that changes the source becomes one publish of all its changes to the cone.
