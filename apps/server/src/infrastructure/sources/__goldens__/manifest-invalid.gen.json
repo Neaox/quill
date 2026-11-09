@@ -1,0 +1,25 @@
+{
+  "fixture": "manifest-invalid",
+  "result": {
+    "kind": "failed",
+    "failure": {
+      "reason": "invalid-manifest",
+      "message": ".quill/workspace.yaml, line 4: it is not valid YAML (bad indent). (at bc28f935c19de6799b84326e077d7eae83cd8d15)",
+      "revision": "bc28f935c19de6799b84326e077d7eae83cd8d15"
+    }
+  },
+  "state": {
+    "failure": {
+      "reason": "invalid-manifest",
+      "message": ".quill/workspace.yaml, line 4: it is not valid YAML (bad indent). (at bc28f935c19de6799b84326e077d7eae83cd8d15)"
+    },
+    "refused": [],
+    "brokenLinks": [],
+    "layout": null
+  },
+  "collections": [],
+  "tree": [],
+  "assets": [],
+  "stored": {},
+  "bodies": {}
+}

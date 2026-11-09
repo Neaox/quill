@@ -1,0 +1,63 @@
+{
+  "fixture": "link-case",
+  "result": {
+    "kind": "synced",
+    "published": 1
+  },
+  "state": {
+    "failure": null,
+    "refused": [],
+    "brokenLinks": [
+      {
+        "path": "docs/setup.md",
+        "url": "./Deploy.md"
+      }
+    ],
+    "layout": {
+      "origin": "settings",
+      "unknownKeys": [],
+      "collections": []
+    }
+  },
+  "collections": [
+    {
+      "slug": "guides",
+      "title": "guides"
+    }
+  ],
+  "tree": [
+    {
+      "path": "docs/deploy.md",
+      "collection": "guides",
+      "parent": null,
+      "title": "Deploying",
+      "sortKey": 1,
+      "archived": false
+    },
+    {
+      "path": "docs/setup.md",
+      "collection": "guides",
+      "parent": null,
+      "title": "Setting up",
+      "sortKey": 2,
+      "archived": false
+    }
+  ],
+  "assets": [],
+  "stored": {
+    "docs/deploy.md": "---\nid: {doc:docs/deploy.md}\n---\n# Deploying\n",
+    "docs/setup.md": "---\nid: {doc:docs/setup.md}\n---\n# Setting up\n\nSee [deploying](./Deploy.md) and [this](./setup.md).\n"
+  },
+  "bodies": {
+    "docs/deploy.md": {
+      "html": "<article><h1 id=\"user-content-deploying\" aria-labelledby=\"user-content-title.deploying\"><span id=\"user-content-title.deploying\">Deploying</span><a class=\"heading-anchor\" href=\"#user-content-deploying\" aria-label=\"Link to this section: Deploying\"><span aria-hidden=\"true\">#</span></a></h1></article>",
+      "blockIssues": [],
+      "incompleteRequiredSections": []
+    },
+    "docs/setup.md": {
+      "html": "<article><h1 id=\"user-content-setting-up\" aria-labelledby=\"user-content-title.setting-up\"><span id=\"user-content-title.setting-up\">Setting up</span><a class=\"heading-anchor\" href=\"#user-content-setting-up\" aria-label=\"Link to this section: Setting up\"><span aria-hidden=\"true\">#</span></a></h1>\n<p>See <a href=\"https://github.com/acme/handbook/blob/c02a33a3f4f8fe2a6b38277b50e7b27a0c4cef74/docs/Deploy.md\" rel=\"noopener noreferrer\">deploying</a> and <a href=\"/d/{doc:docs/setup.md}\">this</a>.</p></article>",
+      "blockIssues": [],
+      "incompleteRequiredSections": []
+    }
+  }
+}
