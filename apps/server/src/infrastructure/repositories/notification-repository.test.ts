@@ -87,6 +87,7 @@ describe('NotificationRepository: a source that stopped syncing (ADR-061)', () =
   it('leaves out rows this release cannot read rather than failing the list', async () => {
     for (const [id, kind, detail] of [
       ['unknown-kind', 'future-kind', null],
+      ['no-detail', 'source-sync-failed', null],
       ['unreadable-detail', 'source-sync-failed', '{"version":99}'],
       ['old-detail', 'source-sync-failed', '{"version":1,"reason":7}'],
     ] as const) {
@@ -100,6 +101,7 @@ describe('NotificationRepository: a source that stopped syncing (ADR-061)', () =
       (row) => row.id,
     )
     expect(ids).not.toContain('unknown-kind')
+    expect(ids).not.toContain('no-detail')
     expect(ids).not.toContain('unreadable-detail')
     expect(ids).not.toContain('old-detail')
   })
