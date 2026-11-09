@@ -26,6 +26,8 @@ Facts of the code that shape the answer:
 - **Rendering is CPU-bound, and parsing is most of it.** Measured on 10 November 2026 on the development machine (Ryzen 9 5900X, Node 24.22, rendering from TypeScript source through `createDocumentFormat`) over lockstay's `docs/`: 486 Markdown files, 18.2 MB, median 14 KB, 95th percentile 150 KB, largest 870 KB.
   - One thread, cold: 30 to 56 seconds. With the JIT warm: 19 seconds. Parsing alone, with no rendering, also took 19 seconds, so nearly all of the cost is parsing. That is about 1 MB of Markdown a second.
   - Per file: median 44 ms, 95th percentile 454 ms, largest 2.0 seconds.
+  - The rate per byte depends on what a file holds, not only on its size. Among the five slowest files it ranges from 0.18 MB a second (281 KB in 1.5 seconds) to 0.46 MB a second (870 KB in 1.9 seconds). Some constructs are much slower than others, and some may be superlinear.
+  - About 1 MB a second is slow for a Markdown parser. The server pays the same cost on every sync and publish. These numbers are the **baseline**, not the budget: delivery step 3 profiles the shared pipeline and must bring it to the targets in section 4.
   - Importing the pipeline from TypeScript source: 2.7 seconds. Bundled with rolldown it is one 1.2 MB file, 368 KB gzipped.
   - A pool of 4 worker threads: 7.5 seconds wall, about 1.1 GB resident in total, up to 230 MB heap per worker. A pool of 8: 7.7 seconds and twice the memory, because the largest files and the import set the floor.
 
@@ -148,7 +150,12 @@ The existing rules hold as they are: the plan stays in `@quill/application`, whi
 
 ### 4. Performance, with numbers
 
-**Where the time goes.** Parsing is most of the cost (Context), so the design is: never parse a file twice, never parse an unchanged file at all, and parse in parallel.
+**Where the time goes.** Parsing is most of the cost (Context). The design attacks it in two ways:
+
+- **Make the shared pipeline fast**, so the server's sync and publish gain as much as the tool. Delivery step 3 does this, against the throughput targets below.
+- **Do less of it.** Never parse a file twice, never parse an unchanged file at all, and parse in parallel.
+
+A cache that is warm does not excuse a slow cold run. A fresh clone, a new tool version and a CI cache miss are all cold, and lockstay's own check takes 3.7 seconds cold today.
 
 **Incremental work.**
 
@@ -171,49 +178,88 @@ The existing rules hold as they are: the plan stays in `@quill/application`, whi
 
 - **Location.** `QUILL_CACHE_DIR`, or `--cache-dir`. Otherwise `$XDG_CACHE_HOME/quill`, `~/.cache/quill` on Linux, `~/Library/Caches/quill` on macOS, and `%LOCALAPPDATA%\quill\Cache` on Windows. The name comes from the brand module. It is never inside the repository, so the working tree is never written and needs no ignore rule. `--no-cache` turns it off.
 - **Keys.** The cache is split by `<tool version>/r<RENDER_VERSION>-<registry signature hash>/`, so a new tool, a new renderer or a different block registry never reads another's entries.
-  - Within that: `stat/<root digest>` (one file per repository), `facts/` and `bodies/` (content-addressed), and `assets/` (intake verdicts by the hash of the raw bytes).
-  - A warm `check` reads one stat file and one facts pack and opens no body. The preview opens bodies on demand.
+  - Within that, all content-addressed except the first:
+    - `stat/<root digest>`, one file per repository;
+    - `facts/`, the per-file facts;
+    - `results/`, by render key: a body's block issues, empty required sections and links, everything `check` needs from a render;
+    - `bodies/`, by render key: the HTML;
+    - `assets/`, intake verdicts by the hash of the raw bytes.
+  - `check` writes `results/` only, so its cache stays small. `preview` writes `results/` and `bodies/`.
+  - A warm `check` reads one stat file, one facts pack and one results pack, and opens no body. The preview opens bodies on demand.
 - **Invalidation and safety.**
   - Entries are immutable and written atomically (temporary file, then rename), so two runs can share a cache. A rename refused on Windows because a file is open is retried, then skipped.
   - An entry that does not read is a miss and is deleted.
   - A cache failure never fails a check: it prints one note and continues uncached.
   - Versions unused for 30 days, and the oldest versions once the cache passes 1 GB, are removed at the end of a run.
-- **In CI** the cache is restored with `actions/cache`, keyed by the tool version, so a pull request re-renders only what it changed.
+- **In CI**, a pull request starts from `main`'s cache, so a typical run is warm. The documented workflow uses `actions/cache`:
+  - Each run saves under `key: quill-<tool version>-<commit sha>` and restores with `restore-keys: quill-<tool version>-`.
+  - A push to `main` saves an entry. A pull request has no exact match, falls back to the newest entry with the prefix, and GitHub lets a pull request read its base branch's caches. So it gets `main`'s entry.
+  - Fresh checkout times do not match the stat index, so every file is hashed again. That is about 100 ms for L. Unchanged files then hit `facts/` and `results/` by blob id and render key, and only changed pages and the pages whose links they change are rendered.
+  - The cache holds no HTML, because `check` writes none. L's archive is therefore at most 10 MB, so restoring it takes a second or two.
+  - A new tool version misses, as it should, and runs cold within the cold budget.
 
 **Budgets.** The reference machine is GitHub's `ubuntu-latest` hosted runner (4 vCPU, 16 GB), the default pool, and a production bundle. Two generated corpora are committed as generators with fixed seeds, built from `packages/markdown/corpus` (headings, lists, tables, code in several languages, every built-in block, links, images):
 
 - **L**, shaped like lockstay's docs: 486 Markdown files with lockstay's size distribution (median 14 KB, 95th percentile 150 KB, largest 870 KB, 18 MB in all), 90 assets, 12 collections in nested folders, about 4,000 relative links, and planted problems of every kind.
 - **XL**: 5,000 Markdown files (median 6 KB, 95th percentile 30 KB, largest 400 KB, 40 MB in all), 500 assets and 40 collections, with the same planted problems.
 
+**Throughput of the shared pipeline.** These are targets that delivery step 3 must meet, not ceilings set from today's numbers. They guard the server as much as the tool, because the sync and publish call the same `DocumentFormat`.
+
+| Measure | Target | Baseline (Context) |
+| --- | --- | --- |
+| `DocumentFormat.render` on one thread over L, with the JIT warm | at least 5 MB a second | about 1 MB a second |
+| Linearity: any file's time per byte | at most 3 times L's median time per byte | about 2.5 times between the five slowest files alone |
+| Linearity: each construct grown 1×, 4× and 16× in a generated file | the 16× file at most 3 × 16 times the 1× file | not measured |
+| Server: `syncSource` of L's head (one revision, in-memory adapters, every document published and rendered) | at most 10 s | not measured |
+
+The constructs grown for the linearity guard are:
+- paragraphs and long lines;
+- nested lists and deep block quotes;
+- emphasis and link delimiters;
+- inline code;
+- large tables;
+- long code blocks in each highlighted language;
+- directives and component blocks, nested;
+- details;
+- many relative links and images;
+- front matter.
+
+**The tool, on the reference runner:**
+
 | Measure | L | XL |
 | --- | --- | --- |
 | `quill --version` | 150 ms | 150 ms |
-| `check`, cold (empty cache) | 25 s | 60 s |
+| `check`, cold (empty cache) | 8 s | 15 s |
 | `check`, warm, nothing changed | 1.0 s | 2.5 s |
 | `check`, warm, one page (under 50 KB, linked from 20 pages) changed | 2.0 s | 3.5 s |
 | `check`, warm, one page added that 20 pages link to | 3.0 s | 4.5 s |
+| `check` in a pull request, cache restored from `main` (restore step not counted), 5 pages changed | 3.0 s | 5.0 s |
 | `preview`, start to listening | 0.6 s | 1.5 s |
-| `preview`, first page under 50 KB served, cold cache | 2.5 s | 4.0 s |
+| `preview`, first page under 50 KB served, cold cache | 1.5 s | 2.5 s |
 | `preview`, first page served, warm cache | 0.8 s | 2.0 s |
 | `preview`, save to reload event, page under 50 KB | median 250 ms, 95th percentile 500 ms | same |
 | `preview`, save to reload event, any page | its render time plus 250 ms | same |
 | `preview`, an already rendered page, server time | 50 ms | 50 ms |
 
-The cold `check` figures come from today's parser throughput (about 1 MB a second per thread): L is about 30 to 60 CPU-seconds on the runner, spread over three workers. They are ceilings for the first delivery and only move down. The parser is the same code the server publishes through, so making it faster helps both.
+At 5 MB a second, L is about 4 CPU-seconds. Over three workers, that leaves the cold budget room for listing, hashing and starting workers.
+
+**If a target is unreachable.** If profiling in step 3 shows a target cannot be met without replacing the parser, the step stops. It amends this ADR with the profile and the options. It does not quietly relax a budget.
 
 **Memory ceilings:**
 
 | Measure | L | XL |
 | --- | --- | --- |
-| `check`, main thread resident | 350 MB | 600 MB |
+| `check`, main thread resident | 300 MB | 500 MB |
 | Each render worker's heap | 512 MB, a hard cap (`resourceLimits.maxOldGenerationSizeMb`) | same |
-| `check`, peak resident, all threads | 1.5 GB | 1.5 GB |
+| `check`, cold, peak resident, all threads | 800 MB | 1.0 GB |
 | `preview`, steady state, workers retired after 30 s idle | 400 MB | 800 MB |
 
 **How they are enforced:**
 
-- **The corpus benchmark.** `pnpm --filter @quill/cli bench:budgets` (`apps/cli/bench/budgets.ts`) runs every row above against the production bundle and exits non-zero when one is over. It takes the median of three runs for times, and the peak sampled `rss` and worker heap for memory. It prints a table like `check:bundle`'s.
-- **The CI job.** The L and XL corpora take about two minutes, so they do not run inside `pnpm check`. A CI job of its own, `cli-budgets` on `ubuntu-latest`, runs the benchmark on every push to `main`, and on pull requests that touch:
+- **Throughput and linearity, on every pull request.** `packages/format/src/throughput.budget.test.ts` runs in the existing `pnpm test:budgets`, inside `pnpm check`. It renders L on one thread and runs the linearity files. At the target rate, L takes about 4 seconds, and every file's time per byte is checked against the median. Like the merge budget, it is skipped under coverage, because instrumented code would measure the instrumentation. A change to `@quill/markdown`, `@quill/highlight` or `@quill/format` that slows the server's sync and publish therefore fails the gate, whether or not it touches the tool.
+- **The server's sync.** `apps/server/bench/sync-budget.ts` measures the `syncSource` row.
+- **The corpus benchmark.** `pnpm --filter @quill/cli bench:budgets` (`apps/cli/bench/budgets.ts`) runs every row of the tool's tables against the production bundle and exits non-zero when one is over. It takes the median of three runs for times, and the peak sampled `rss` and worker heap for memory. It prints a table like `check:bundle`'s.
+- **The CI job.** The L and XL corpora, cold and warm, take a few minutes, so they do not run inside `pnpm check`. A CI job of its own, `render-budgets` on `ubuntu-latest`, runs both benchmarks on every push to `main`, and on pull requests that touch:
   - `apps/cli`, `packages/format`, `packages/site`, `packages/markdown` or `packages/highlight`;
   - `packages/application/src/use-cases/source-*`, `sync-source.ts` or `render-document.ts`.
 
@@ -221,6 +267,10 @@ The cold `check` figures come from today's parser throughput (about 1 MB a secon
 - **The quick guard.** Inside `pnpm check`, `apps/cli/src/check.budget.test.ts` runs as part of the existing `pnpm test:budgets`, on a 40-file corpus. It holds the same paths to proportional budgets in seconds, and counts work that must not happen, as the editor's budget tests do: no worker started and no file read on a warm run with nothing changed, and exactly the expected bodies re-rendered after one edit.
 - **Phase timings.** `--timings` prints a breakdown to standard error (list, hash, plan, render, report) so a regression can be found without a profiler.
 - **Package size.** It is enforced by `check-cli-package.ts` in `pnpm check` (section 3).
+- **The parity suite's own time.**
+  - The suite must finish in at most 60 seconds on each of Linux, macOS and Windows.
+  - No single fixture may take more than 5 seconds.
+  - The CI job fails when either is exceeded, using the durations Vitest reports. A new fixture has to fit, or the budget is raised in a reviewed change that says why.
 
 ### 5. Stability
 
@@ -297,7 +347,7 @@ The cold `check` figures come from today's parser throughput (about 1 MB a secon
 
 ### 6. Configuration
 
-- **The manifest.** The tool reads the manifest the server reads: `.quill/workspace.yaml`, or `--manifest <path>` for a source configured with another path (lockstay keeps `docs/quill.yaml`).
+- **The manifest.** The tool reads the manifest the server reads: `.quill/workspace.yaml`, or `--manifest <path>` for a source configured with another path. Lockstay keeps its manifest at `docs/quill.yaml`, in ADR-061's shape (`version: 1`, `workspaces`, collections with `slug`, `path`, `title` and `order`), with keys of its own (`audience`, `per`) that a sync reports as unknown keys. So lockstay runs `quill check --manifest docs/quill.yaml --all`.
 - **Choosing an entry.** A manifest with one workspace needs no choice. For a manifest with several:
   - `--workspace <slug>` reads one;
   - `--all` checks every entry and reports by entry;
@@ -339,7 +389,7 @@ Lockstay's `docs:check` checks heading anchors, front matter fields and raw HTML
 ## Consequences
 
 - **Authors get the loop.** A page can be seen before it is pushed, and a pull request fails on what the sync would report, with a line to fix.
-- **The tool and the server cannot disagree without a test failing.** That costs the parity suite (about a minute of CI on three operating systems) and a rule: changes to the sync's reporting or to rendering keep it green.
+- **The tool and the server cannot disagree without a test failing.** That costs the parity suite, at most 60 seconds of CI on each of three operating systems, and a rule: changes to the sync's reporting or to rendering keep it green.
 - **Code moves, with no change in behaviour.**
   - `@quill/format` and `@quill/site` are new packages, taken out of `apps/server`.
   - The sync job is reorganised around `planSourceHead`.
@@ -347,25 +397,42 @@ Lockstay's `docs:check` checks heading anchors, front matter fields and raw HTML
 - **The tool ships with every release.** It is published from the same tag, so the release process gains an npm publish, and the tool's version is a compatibility promise (ADR-033).
 - **The manifest gains `requires`,** and the source's admin page gains a drift line.
 - **Offline limits stay listed.** The organisation's theme, custom emoji and labels, run-time blocks, an instance's own size caps and titles of native documents are not known offline. The report's `assumptions` say so.
-- **Cold runs are bound by the parser,** at about 1 MB a second per thread today, on the server too. The budgets are set from it and ratchet down as it improves.
-- **Revisit** if the parser's throughput changes the cold budgets by a factor of two, if run-time blocks land (step 7), or if a need for network checks appears beyond link previews.
+- **The shared pipeline gets faster first.** Delivery step 3 must take the pipeline from about 1 MB a second per thread to at least 5 MB a second, with no superlinear construct, before `quill check` ships. The server's sync and publish gain the same speed. From then on, the throughput budget in `pnpm check` holds every change to the pipeline to it.
+- **Revisit** in these cases:
+  - step 3 finds a throughput or linearity target unreachable without replacing the parser; the step stops and amends this ADR with its profile;
+  - the measured throughput passes 10 MB a second, so the cold budgets can be halved;
+  - run-time blocks land (ADR-060 step 7);
+  - a need for network checks appears beyond link previews.
 
 ## Delivery
 
 A milestone of its own, **M3b — Check and preview in the repository**, after M3a, whose sync it shares. Each step ships on its own:
 
 1. This ADR.
-2. **The plan.** `planSourceHead` and `SourceReport` in `@quill/application`. The sync job and the settings preview take the plan's decisions. The parity suite's server half lands with golden reports.
-3. **The packages.** `@quill/format` and `@quill/site` are moved out of `apps/server`, with the dependency rules.
-4. **The adapters.** `WorkingTreeSource` and `LocalRevisionSource` in `packages/content-store`.
-5. **`quill check`.** The three formats, exit codes, the cache, the pool, the budget tests and the `cli-budgets` CI job, and the parity suite's tool half on Linux, macOS and Windows.
-6. **`quill preview`.** The server, the watcher, reloading, and its budgets.
-7. **Packaging and release.** The bundle, `check-cli-package.ts`, publishing from the release tag, and an author's guide to the tool next to `docs/extending/`.
-8. **Drift.** `requires` in the manifest, and the drift line on the source's admin page.
+2. **The plan, as a pure refactor.** `planSourceHead` and `SourceReport` go in `@quill/application`, and the sync job and the settings preview take the plan's decisions. The sync is live and `sync-source.ts` is 1,850 lines, so this step changes no behaviour:
+   - Golden reports and stored trees for the parity fixtures are captured from the current sync **before** the refactor, in a commit of their own, and must match after it.
+   - The existing sync tests (`sync-source.test.ts`) and the server's sync integration tests stay unchanged and green.
+   - Any behaviour change found on the way goes in its own pull request.
+3. **Throughput of the shared pipeline.** Profile `DocumentFormat.render` over L: parsing against extensions and directives, highlighting, sanitising and serialising, and which constructs are superlinear. Then fix the cause in `@quill/markdown`, `@quill/highlight` or the format adapter, never in the tool.
+   - Done when the throughput and linearity targets in section 4 are met, and the server's sync row is within budget.
+   - **Output must not change.** Before the first change, the step records the hash of every L body and the golden parity reports. They must be identical afterwards, along with the markdown package's corpus and round-trip tests. A change that alters output is a separate, reviewed change with its own `RENDER_VERSION` bump.
+   - The throughput budget test lands in `pnpm check` with this step.
+   - If a target is unreachable without replacing the parser, the step stops and amends this ADR with the profile.
+4. **The packages.** `@quill/format` and `@quill/site` are moved out of `apps/server`, with the dependency rules.
+5. **The adapters.** `WorkingTreeSource` and `LocalRevisionSource` in `packages/content-store`.
+6. **`quill check`.** It covers:
+   - the three formats and the exit codes;
+   - the cache and the pool;
+   - the budget tests and the `render-budgets` CI job;
+   - the documented CI cache workflow;
+   - the parity suite's tool half on Linux, macOS and Windows, within its time budget.
+7. **`quill preview`.** The server, the watcher, reloading, and its budgets.
+8. **Packaging and release.** The bundle, `check-cli-package.ts`, publishing from the release tag, and an author's guide to the tool next to `docs/extending/`.
+9. **Drift.** `requires` in the manifest, and the drift line on the source's admin page.
 
 It is done when:
 
 - lockstay's CI runs `quill check` on every pull request;
 - for the same commit, its report equals what lockstay's instance lists on the source's admin page;
-- every budget above is green on the reference runner;
+- every budget above is green on the reference runner, including the cold `check` of L in 8 seconds and the pipeline at 5 MB a second;
 - the parity suite is green on all three operating systems.
