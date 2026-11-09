@@ -2,6 +2,7 @@ import type {
   DocumentId,
   SourceCommitMessageSetting,
   SourceHistorySetting,
+  SourceOutsideLinkSetting,
   UserId,
   WorkspaceId,
 } from '@quill/domain'
@@ -86,7 +87,7 @@ export interface WorkspaceSourceCredential {
  * The remote and branch are where the composition root opens the source; the
  * rest is what the sync job reads as `SourceSettings`.
  */
-export interface WorkspaceSourceRow extends SourceSettings {
+export interface WorkspaceSourceRow extends SourceSettings, SourceLinkSettings {
   readonly workspaceId: WorkspaceId
   /** An `https` address with no credentials in it. */
   readonly remote: string
@@ -95,6 +96,22 @@ export interface WorkspaceSourceRow extends SourceSettings {
   readonly configuredBy: UserId | null
   readonly createdAt: Date
   readonly updatedAt: Date
+}
+
+/**
+ * How a sourced document's links to repository files the source does not
+ * hold are drawn (ADR-061, "Relative links, resolved at render"): to the
+ * forge at the synced commit, or as their words alone.
+ */
+export interface SourceLinkSettings {
+  readonly outsideLinks: SourceOutsideLinkSetting
+  /**
+   * The forge's address for a file at a commit, with `{commit}` and `{path}`
+   * in it. Null to use the one known for the remote's host (GitHub, GitLab,
+   * Bitbucket); a remote on any other host without one shows such links as
+   * text.
+   */
+  readonly viewTemplate: string | null
 }
 
 export interface WorkspaceSourceRepository {
@@ -108,6 +125,8 @@ export interface WorkspaceSourceRepository {
     readonly history: SourceHistorySetting
     readonly commitMessages: SourceCommitMessageSetting
     readonly credential: WorkspaceSourceCredential | null
+    readonly outsideLinks: SourceOutsideLinkSetting
+    readonly viewTemplate: string | null
     readonly configuredBy: UserId
     readonly now: Date
   }): Promise<WorkspaceSourceRow>
@@ -189,6 +208,20 @@ export interface SourceLayoutRecord {
   readonly unknownKeys: readonly { readonly key: string; readonly line: number | null }[]
 }
 
+/**
+ * A relative link in a document of the source to a path that is not in the
+ * repository at the revision it was checked at (ADR-061): what the source's
+ * admin page lists as broken.
+ */
+export interface BrokenSourceLink {
+  /** The document's path in the source. */
+  readonly path: string
+  /** The link's destination as written. */
+  readonly url: string
+  /** The source revision at which the path was not there. */
+  readonly revision: SourceRevisionId
+}
+
 export interface SourceSyncStateRow {
   readonly workspaceId: WorkspaceId
   /** The last source revision the workspace holds in full; null before the first sync. */
@@ -201,6 +234,13 @@ export interface SourceSyncStateRow {
   readonly refused: readonly RefusedSourceFile[]
   /** What placed the tree last; null before this was recorded, which re-plans the tree once. */
   readonly layout: SourceLayoutRecord | null
+  /**
+   * The relative links that lead nowhere in the repository, as the last sync
+   * found them; null when no sync has checked them since the documents last
+   * changed (a sync stopped part-way, or a state from before they were
+   * recorded), which the next sync answers by checking every document.
+   */
+  readonly brokenLinks: readonly BrokenSourceLink[] | null
 }
 
 export interface SourceSyncStateRepository {
@@ -214,6 +254,7 @@ export interface SourceSyncStateRepository {
     readonly revision: SourceRevisionId
     readonly refused: readonly RefusedSourceFile[]
     readonly layout: SourceLayoutRecord
+    readonly brokenLinks: readonly BrokenSourceLink[] | null
     readonly now: Date
   }): Promise<void>
   /** The attempt stopped. What was synced before it stays as it was. */

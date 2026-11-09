@@ -131,6 +131,8 @@ describe('configureWorkspaceSource', () => {
           history: 'full',
           commitMessages: 'subject',
           credentialSecret: 'sources/handbook',
+          outsideLinks: 'forge',
+          viewTemplate: null,
         },
       }),
     ])
@@ -173,6 +175,7 @@ describe('configureWorkspaceSource', () => {
       revision: 'abc',
       refused: [],
       layout: LAYOUT,
+      brokenLinks: [],
       now: NOW,
     })
     const moved = command({
@@ -208,6 +211,20 @@ describe('configureWorkspaceSource', () => {
       command({ workspaceId: workspaceId('00000000-0000-4000-8000-000000000999') }),
     )
     expect(result).toEqual({ kind: 'not-found' })
+  })
+
+  it('stores where links outside the source go: the forge by default, or text', async () => {
+    await configureWorkspaceSource(deps, command())
+    expect(await uow.repos.workspaceSources.find(WORKSPACE)).toMatchObject({
+      outsideLinks: 'forge',
+      viewTemplate: null,
+    })
+    const viewTemplate = 'https://git.example.com/acme/handbook/src/{commit}/{path}'
+    await configureWorkspaceSource(deps, command({ outsideLinks: 'text', viewTemplate }))
+    expect(await uow.repos.workspaceSources.find(WORKSPACE)).toMatchObject({
+      outsideLinks: 'text',
+      viewTemplate,
+    })
   })
 
   it('accepts a file remote only when tests allow it', async () => {
@@ -259,6 +276,8 @@ describe('configureWorkspaceSource', () => {
       'not a secret name',
     ],
     ['credential', { credential: { username: 'x', secretName: 'sources/missing' } }, 'No secret'],
+    ['outsideLinks', { outsideLinks: 'hidden' as never }, 'links outside the source'],
+    ['viewTemplate', { viewTemplate: 'https://git.example.com/{commit}' }, '{path}'],
   ] satisfies [string, Partial<ConfigureWorkspaceSourceCommand>, string][])(
     'refuses an invalid %s (%#)',
     async (field, overrides, message) => {
@@ -285,6 +304,7 @@ describe('getWorkspaceSource', () => {
       revision: 'abc',
       refused: [],
       layout: LAYOUT,
+      brokenLinks: [],
       now: NOW,
     })
     const view = await getWorkspaceSource(deps, WORKSPACE)

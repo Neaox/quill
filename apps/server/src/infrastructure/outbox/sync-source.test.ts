@@ -26,6 +26,7 @@ const UNMOVED: ExternalSource = {
   readFiles: async function* () {},
   history: async function* () {},
   changes: async function* () {},
+  present: async () => new Set(),
 }
 
 function consumer(lock: SourceSyncLock) {
@@ -64,6 +65,7 @@ describe('the SourceSyncRequested consumer', () => {
       revision: 'r1',
       refused: [],
       layout: { origin: 'manifest', fingerprint: 'f', collectionIds: [], unknownKeys: [] },
+      brokenLinks: [],
       now: new Date(0),
     })
     await handler.handle(PAYLOAD)

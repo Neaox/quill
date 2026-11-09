@@ -140,8 +140,17 @@ describe('the source sync state', () => {
     expect(await states.find(WORKSPACE)).toBeNull()
   })
 
+  const brokenLinks = [{ path: 'docs/guide.md', url: './gone.md', revision: 'c1' }]
+
   it('records a sync, then a failure that keeps it, then a sync that clears the failure', async () => {
-    await states.recordSynced({ workspaceId: WORKSPACE, revision: 'c1', refused, layout, now: NOW })
+    await states.recordSynced({
+      workspaceId: WORKSPACE,
+      revision: 'c1',
+      refused,
+      layout,
+      brokenLinks,
+      now: NOW,
+    })
     expect(await states.find(WORKSPACE)).toEqual({
       workspaceId: WORKSPACE,
       lastSyncedRevision: 'c1',
@@ -150,6 +159,7 @@ describe('the source sync state', () => {
       failure: null,
       refused,
       layout,
+      brokenLinks,
     })
 
     const failure = { reason: 'timeout' as const, message: 'Too slow', revision: 'c2' }
@@ -162,6 +172,7 @@ describe('the source sync state', () => {
       failure,
       refused,
       layout,
+      brokenLinks,
     })
 
     await states.recordSynced({
@@ -169,6 +180,8 @@ describe('the source sync state', () => {
       revision: 'c2',
       refused: [],
       layout: { ...layout, origin: 'settings', collectionIds: [], unknownKeys: [] },
+      // Unchecked: a sync stopped part-way.
+      brokenLinks: null,
       now: LATER,
     })
     expect(await states.find(WORKSPACE)).toMatchObject({
@@ -176,6 +189,7 @@ describe('the source sync state', () => {
       failure: null,
       refused: [],
       layout: { origin: 'settings', collectionIds: [] },
+      brokenLinks: null,
     })
   })
 
@@ -193,7 +207,31 @@ describe('the source sync state', () => {
       failure: { reason: 'git-unavailable', message: 'No git', revision: null },
       refused: [],
       layout: null,
+      brokenLinks: null,
     })
+  })
+
+  it('reads broken links leniently, keeping the entries it can, and anything else as unchecked', async () => {
+    for (const [document, expected] of [
+      [
+        JSON.stringify({
+          version: 1,
+          links: [{ path: 'a.md', url: 'b.md', revision: 'c1' }, { path: 'a.md', url: 7 }, 'x'],
+        }),
+        [{ path: 'a.md', url: 'b.md', revision: 'c1' }],
+      ],
+      ['{"version":2,"links":[]}', null],
+      ['{"version":1,"links":{}}', null],
+      ['[]', null],
+    ] as const) {
+      await database.pool.query('DELETE FROM source_sync_state')
+      await database.pool.query(
+        `INSERT INTO source_sync_state (workspace_id, last_attempt_at, refused, broken_links)
+         VALUES ($1, $2, '[]'::jsonb, $3::jsonb)`,
+        [WORKSPACE, NOW, document],
+      )
+      expect((await states.find(WORKSPACE))?.brokenLinks).toEqual(expected)
+    }
   })
 
   it('reads documents this release cannot as no failure, nothing refused and no layout', async () => {

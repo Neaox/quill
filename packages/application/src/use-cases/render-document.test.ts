@@ -152,6 +152,18 @@ describe('renderDigest', () => {
     )
   })
 
+  it('covers the resolved links of a sourced body, and only when there are any (ADR-061)', () => {
+    const input = { markdown: '[a](./a.md)', linkTitles: new Map() }
+    const resolved = (href: string) =>
+      renderDigest({ ...input, resolvedLinks: new Map([['./a.md', { kind: 'href', href }]]) })
+    expect(renderDigest({ ...input, resolvedLinks: new Map() })).toBe(renderDigest(input))
+    expect(resolved('/d/one')).not.toBe(renderDigest(input))
+    expect(resolved('/d/one')).not.toBe(resolved('/d/two'))
+    expect(
+      renderDigest({ ...input, resolvedLinks: new Map([['./a.md', { kind: 'text' }]]) }),
+    ).not.toBe(resolved('/d/one'))
+  })
+
   it('covers the installed extensions, and only when there are any (ADR-039)', () => {
     const input = { markdown: '# One', linkTitles: new Map() }
     expect(renderDigest(input, '')).toBe(renderDigest(input))

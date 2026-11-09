@@ -163,7 +163,21 @@ export interface RenderInput {
   readonly emoji?: ReadonlyMap<string, RenderedEmoji> | undefined
   /** The emoji each label's pill leads with, by label name (ADR-038). */
   readonly labelEmoji?: ReadonlyMap<string, string> | undefined
+  /**
+   * Where the body's relative links go, by the destination exactly as
+   * written (ADR-061, "Relative links, resolved at render"). A file read
+   * from a repository links to its neighbours by path; each such link was
+   * resolved against the revision being rendered, to a document's canonical
+   * address, to the forge, or to nothing. A link not named here is drawn as
+   * written, and a body with none is rendered as before.
+   */
+  readonly resolvedLinks?: ReadonlyMap<string, ResolvedDestination> | undefined
 }
+
+/** What one destination resolved to: another address, or nothing, so its words are shown alone. */
+export type ResolvedDestination =
+  | { readonly kind: 'href'; readonly href: string }
+  | { readonly kind: 'text' }
 
 /** A drawing's bytes as text, and their address, which is what a cache key covers. */
 export interface DrawingSource {
@@ -354,6 +368,12 @@ export interface DocumentFormat {
   /** Published Markdown to the cached body, outline, text, links, and slots (ADR-031). */
   render(input: RenderInput): RenderedContent
   read(markdown: string): PublishedDocumentView
+  /**
+   * Every link and image in published Markdown, as written, without
+   * rendering it: what the sync job checks a source's relative links with
+   * (ADR-061). A link in a code block is not one.
+   */
+  links(markdown: string): readonly ExtractedLink[]
   /**
    * A file read from an external source, as the store keeps it (ADR-061):
    * `documentId` first in its front matter, replacing any id the file

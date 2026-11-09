@@ -1,6 +1,9 @@
 import { isUuid } from '@quill/domain'
+import { rewriteLinks } from '@quill/markdown'
 import {
   documentReference,
+  linkedDocumentIds,
+  readerLinkRewriter,
   resolveDocumentReference,
   resolveDocumentReferences,
   resolveWorkspaceReference,
@@ -83,4 +86,26 @@ export async function readableDocuments(
       return found === undefined ? [] : [[reference, found] as const]
     }),
   )
+}
+
+/**
+ * A sourced document's body as this reader may follow it (ADR-061, "A link
+ * to a page the reader may not see renders as plain text").
+ *
+ * The body's relative links were resolved to canonical addresses before the
+ * cache, the same for every reader; here, per request, a link to a document
+ * this reader may not view is reduced to its words, so the page names no
+ * address of a page hidden from them. Each target is asked once, through the
+ * request's authorizer, which shares its walk between documents in one place.
+ */
+export async function withReadableLinks(authorizer: Authorizer, html: string): Promise<string> {
+  const ids = [...linkedDocumentIds(html)]
+  if (ids.length === 0) return html
+  const verdicts = await Promise.all(
+    ids.map(async (id) => {
+      const access = await authorizer.document(id)
+      return access.ok && access.value.capabilities.view ? [id] : []
+    }),
+  )
+  return rewriteLinks(html, readerLinkRewriter(new Set(verdicts.flat())))
 }

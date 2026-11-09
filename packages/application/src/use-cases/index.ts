@@ -99,7 +99,7 @@ export {
 export { canonicaliseLinks, resolveDocumentReferences } from './canonical-links.ts'
 
 export type { Replacement, SurfaceDocument, SurfaceLink } from './surface-links.ts'
-export { surfaceLinkRewriter, surfaceReplacement } from './surface-links.ts'
+export { readerLinkRewriter, surfaceLinkRewriter, surfaceReplacement } from './surface-links.ts'
 
 export type { AllowedMediaType, ImageMediaType, SniffedMediaType } from './media-types.ts'
 export {

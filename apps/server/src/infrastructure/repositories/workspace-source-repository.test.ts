@@ -27,6 +27,8 @@ const settings = {
   history: 'full',
   commitMessages: 'subject',
   credential: null,
+  outsideLinks: 'forge',
+  viewTemplate: null,
   configuredBy: ADMIN,
   now: NOW,
 } as const
@@ -84,6 +86,8 @@ describe('the workspace source repository', () => {
       history: 'full',
       commitMessages: 'subject',
       credential: null,
+      outsideLinks: 'forge',
+      viewTemplate: null,
       configuredBy: ADMIN,
       createdAt: NOW,
       updatedAt: NOW,
@@ -102,6 +106,8 @@ describe('the workspace source repository', () => {
       history: 'head',
       commitMessages: 'none',
       credential,
+      outsideLinks: 'text',
+      viewTemplate: 'https://git.example.com/acme/handbook/src/{commit}/{path}',
       now: LATER,
     })
     expect(replaced).toMatchObject({
@@ -109,6 +115,8 @@ describe('the workspace source repository', () => {
       history: 'head',
       commitMessages: 'none',
       credential,
+      outsideLinks: 'text',
+      viewTemplate: 'https://git.example.com/acme/handbook/src/{commit}/{path}',
       createdAt: NOW,
       updatedAt: LATER,
     })

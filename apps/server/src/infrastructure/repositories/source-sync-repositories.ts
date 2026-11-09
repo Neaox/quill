@@ -1,6 +1,7 @@
 import { and, eq } from 'drizzle-orm'
 
 import type {
+  BrokenSourceLink,
   RefusedSourceFile,
   SourceLayoutRecord,
   SourcePathMapRepository,
@@ -80,10 +81,18 @@ export function createSourceSyncStateRepository(db: DrizzleClient): SourceSyncSt
         failure: readFailure(row.failure),
         refused: readRefused(row.refused),
         layout: readLayout(row.layout),
+        brokenLinks: readBrokenLinks(row.brokenLinks),
       }
     },
 
-    async recordSynced({ workspaceId, revision, refused, layout, now }): Promise<void> {
+    async recordSynced({
+      workspaceId,
+      revision,
+      refused,
+      layout,
+      brokenLinks,
+      now,
+    }): Promise<void> {
       const values = {
         lastSyncedRevision: revision,
         lastSyncedAt: now,
@@ -91,6 +100,7 @@ export function createSourceSyncStateRepository(db: DrizzleClient): SourceSyncSt
         failure: null,
         refused: { version: STATE_VERSION, files: refused },
         layout: { version: STATE_VERSION, ...layout },
+        brokenLinks: brokenLinks === null ? null : { version: STATE_VERSION, links: brokenLinks },
       }
       await db
         .insert(sourceSyncState)
@@ -157,6 +167,23 @@ function readLayout(value: unknown): SourceLayoutRecord | null {
       line: typeof line === 'number' ? line : null,
     })),
   }
+}
+
+/**
+ * The stored broken links; an absent or unreadable document reads as
+ * unchecked, so the next sync checks every document and records them again.
+ */
+function readBrokenLinks(value: unknown): readonly BrokenSourceLink[] | null {
+  if (!isRecord(value) || value['version'] !== STATE_VERSION || !Array.isArray(value['links'])) {
+    return null
+  }
+  return value['links'].filter(
+    (link): link is BrokenSourceLink =>
+      isRecord(link) &&
+      typeof link['path'] === 'string' &&
+      typeof link['url'] === 'string' &&
+      typeof link['revision'] === 'string',
+  )
 }
 
 /** The stored refusals; an unreadable document reads as none, and the next sync rewrites it. */

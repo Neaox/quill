@@ -7,7 +7,12 @@ import {
   requestManualSourceSync,
 } from '@quill/application'
 import type { WorkspaceSourceView } from '@quill/application'
-import { SOURCE_COMMIT_MESSAGE_SETTINGS, SOURCE_HISTORY_SETTINGS } from '@quill/domain'
+import {
+  MAX_FORGE_VIEW_TEMPLATE_LENGTH,
+  SOURCE_COMMIT_MESSAGE_SETTINGS,
+  SOURCE_HISTORY_SETTINGS,
+  SOURCE_OUTSIDE_LINK_SETTINGS,
+} from '@quill/domain'
 import type { FastifyPluginAsync } from 'fastify'
 
 import {
@@ -51,6 +56,15 @@ const CredentialSchema = Type.Object({
   secretName: Type.String({ minLength: 1, maxLength: 200 }),
 })
 
+const OutsideLinksSchema = Type.Union(
+  SOURCE_OUTSIDE_LINK_SETTINGS.map((setting) => Type.Literal(setting)),
+)
+
+const ViewTemplateSchema = Type.Union([
+  Type.String({ minLength: 1, maxLength: MAX_FORGE_VIEW_TEMPLATE_LENGTH }),
+  Type.Null(),
+])
+
 const ConfigureSourceBody = Type.Object(
   {
     remote: Type.String({ minLength: 1, maxLength: 2048 }),
@@ -61,6 +75,10 @@ const ConfigureSourceBody = Type.Object(
       SOURCE_COMMIT_MESSAGE_SETTINGS.map((setting) => Type.Literal(setting)),
     ),
     credential: Type.Union([CredentialSchema, Type.Null()]),
+    /** Where a link to a repository file the source does not hold goes; `forge` when absent. */
+    outsideLinks: Type.Optional(OutsideLinksSchema),
+    /** The forge's address for a file at a commit; absent or null for the remote's host's own. */
+    viewTemplate: Type.Optional(ViewTemplateSchema),
   },
   { additionalProperties: false },
 )
@@ -77,6 +95,15 @@ const RefusedFileSchema = Type.Object({
   reason: Type.String(),
 })
 
+const BrokenLinkSchema = Type.Object({
+  /** The document's path in the repository. */
+  path: Type.String(),
+  /** The link's destination as written. */
+  url: Type.String(),
+  /** The revision at which the path it names was not in the repository. */
+  revision: Type.String(),
+})
+
 const WorkspaceSourceSchema = Type.Object({
   remote: Type.String(),
   branch: Type.String(),
@@ -91,6 +118,8 @@ const WorkspaceSourceSchema = Type.Object({
   history: Type.String(),
   commitMessages: Type.String(),
   credential: Type.Union([CredentialSchema, Type.Null()]),
+  outsideLinks: Type.String(),
+  viewTemplate: Type.Union([Type.String(), Type.Null()]),
   updatedAt: Type.String({ format: 'date-time' }),
   /** How far it has synced; null before the first attempt. */
   sync: Type.Union([
@@ -100,6 +129,8 @@ const WorkspaceSourceSchema = Type.Object({
       lastAttemptAt: Type.String({ format: 'date-time' }),
       failure: Type.Union([SyncFailureSchema, Type.Null()]),
       refused: Type.Array(RefusedFileSchema),
+      /** Relative links to paths not in the repository; null until a sync has checked them. */
+      brokenLinks: Type.Union([Type.Array(BrokenLinkSchema), Type.Null()]),
     }),
     Type.Null(),
   ]),
@@ -126,6 +157,8 @@ function sourceResponse({
     history: source.history,
     commitMessages: source.commitMessages,
     credential: source.credential,
+    outsideLinks: source.outsideLinks,
+    viewTemplate: source.viewTemplate,
     updatedAt: source.updatedAt.toISOString(),
     sync:
       state === null
@@ -136,6 +169,7 @@ function sourceResponse({
             lastAttemptAt: state.lastAttemptAt.toISOString(),
             failure: state.failure,
             refused: [...state.refused],
+            brokenLinks: state.brokenLinks === null ? null : [...state.brokenLinks],
           },
   }
 }

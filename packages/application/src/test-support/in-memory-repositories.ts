@@ -985,7 +985,7 @@ export function createInMemoryUnitOfWork(
     async find(workspaceId) {
       return sourceSyncStates.get(workspaceId) ?? null
     },
-    async recordSynced({ workspaceId, revision, refused, layout, now }) {
+    async recordSynced({ workspaceId, revision, refused, layout, brokenLinks, now }) {
       sourceSyncStates.set(workspaceId, {
         workspaceId,
         lastSyncedRevision: revision,
@@ -994,6 +994,7 @@ export function createInMemoryUnitOfWork(
         failure: null,
         refused,
         layout,
+        brokenLinks,
       })
     },
     async recordFailure({ workspaceId, failure, now }) {
@@ -1006,6 +1007,7 @@ export function createInMemoryUnitOfWork(
         failure,
         refused: existing?.refused ?? [],
         layout: existing?.layout ?? null,
+        brokenLinks: existing === undefined ? [] : existing.brokenLinks,
       })
     },
   }

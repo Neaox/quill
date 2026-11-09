@@ -10145,6 +10145,8 @@
                     "history",
                     "commitMessages",
                     "credential",
+                    "outsideLinks",
+                    "viewTemplate",
                     "updatedAt",
                     "sync"
                   ],
@@ -10213,6 +10215,19 @@
                         }
                       ]
                     },
+                    "outsideLinks": {
+                      "type": "string"
+                    },
+                    "viewTemplate": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
                     "updatedAt": {
                       "format": "date-time",
                       "type": "string"
@@ -10226,7 +10241,8 @@
                             "lastSyncedAt",
                             "lastAttemptAt",
                             "failure",
-                            "refused"
+                            "refused",
+                            "brokenLinks"
                           ],
                           "properties": {
                             "lastSyncedRevision": {
@@ -10308,6 +10324,35 @@
                                   }
                                 }
                               }
+                            },
+                            "brokenLinks": {
+                              "anyOf": [
+                                {
+                                  "type": "array",
+                                  "items": {
+                                    "type": "object",
+                                    "required": [
+                                      "path",
+                                      "url",
+                                      "revision"
+                                    ],
+                                    "properties": {
+                                      "path": {
+                                        "type": "string"
+                                      },
+                                      "url": {
+                                        "type": "string"
+                                      },
+                                      "revision": {
+                                        "type": "string"
+                                      }
+                                    }
+                                  }
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
                             }
                           }
                         },
@@ -10437,6 +10482,34 @@
                         "type": "null"
                       }
                     ]
+                  },
+                  "outsideLinks": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "enum": [
+                          "forge"
+                        ]
+                      },
+                      {
+                        "type": "string",
+                        "enum": [
+                          "text"
+                        ]
+                      }
+                    ]
+                  },
+                  "viewTemplate": {
+                    "anyOf": [
+                      {
+                        "minLength": 1,
+                        "maxLength": 2048,
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
                   }
                 }
               }
@@ -10467,6 +10540,8 @@
                     "history",
                     "commitMessages",
                     "credential",
+                    "outsideLinks",
+                    "viewTemplate",
                     "updatedAt",
                     "sync"
                   ],
@@ -10535,6 +10610,19 @@
                         }
                       ]
                     },
+                    "outsideLinks": {
+                      "type": "string"
+                    },
+                    "viewTemplate": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
                     "updatedAt": {
                       "format": "date-time",
                       "type": "string"
@@ -10548,7 +10636,8 @@
                             "lastSyncedAt",
                             "lastAttemptAt",
                             "failure",
-                            "refused"
+                            "refused",
+                            "brokenLinks"
                           ],
                           "properties": {
                             "lastSyncedRevision": {
@@ -10630,6 +10719,35 @@
                                   }
                                 }
                               }
+                            },
+                            "brokenLinks": {
+                              "anyOf": [
+                                {
+                                  "type": "array",
+                                  "items": {
+                                    "type": "object",
+                                    "required": [
+                                      "path",
+                                      "url",
+                                      "revision"
+                                    ],
+                                    "properties": {
+                                      "path": {
+                                        "type": "string"
+                                      },
+                                      "url": {
+                                        "type": "string"
+                                      },
+                                      "revision": {
+                                        "type": "string"
+                                      }
+                                    }
+                                  }
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
                             }
                           }
                         },

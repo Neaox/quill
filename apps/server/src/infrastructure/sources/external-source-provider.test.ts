@@ -53,6 +53,8 @@ async function configure(credential: { username: string; secretName: string } | 
     history: 'head',
     commitMessages: 'none',
     credential,
+    outsideLinks: 'forge',
+    viewTemplate: null,
     configuredBy: ADMIN,
     now: NOW,
   })
@@ -86,6 +88,7 @@ function cannedSource(narrowed: (readonly string[])[] = []): ExternalSource {
     async *changes() {
       yield change
     },
+    present: async (_revision, paths) => new Set(paths.slice(0, 1)),
   }
 }
 
@@ -235,6 +238,7 @@ describe('openedOnFirstUse', () => {
     ])
     expect((await all(source.history(null, 'r1'))).map(({ id }) => id)).toEqual(['r1'])
     expect(await all(source.changes(null, 'r1'))).toEqual([{ kind: 'removed', path: 'docs/a.md' }])
+    expect([...(await source.present('r1', ['docs/a.md', 'docs/b.md']))]).toEqual(['docs/a.md'])
     expect(open).toHaveBeenCalledOnce()
   })
 
