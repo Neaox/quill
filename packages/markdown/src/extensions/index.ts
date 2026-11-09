@@ -16,3 +16,6 @@ export type {
 } from './contract.ts'
 export { BUILT_IN_EXTENSIONS, createMarkdownRegistry } from './registry.ts'
 export type { MarkdownRegistry } from './registry.ts'
+
+// Component blocks (ADR-060) are registered in the same registry.
+export * from '../blocks/index.ts'

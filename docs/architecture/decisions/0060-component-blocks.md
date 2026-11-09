@@ -1,6 +1,6 @@
 # ADR-060: Component blocks, and MDX as a dialect
 
-**Status:** Proposed
+**Status:** Accepted (2026-11-09; see "Decisions on acceptance")
 **Date:** 2026-10-17
 **Related:** ADR-002 (Markdown is canonical), ADR-011 (security baseline), ADR-021 (drafts and locking), ADR-023 (public publishing), ADR-054 (template library), ADR-031 (render caching), ADR-032 (live blocks), ADR-033 (compatibility), ADR-036 (diagrams), ADR-039 (Markdown extensions), ADR-041 (code groups), ADR-042 (link previews and embeds), ADR-048 (details), ADR-050 (presenting), ADR-058 (navigation blocks); `quill-plan.md` sections 16, 21, 24 and 31; decisions D9 and D16
 
@@ -408,6 +408,71 @@ Props marked `x-quill-searchable` are included in the search projection, so a pa
   - instance administrators install code at run time;
   - generated and kit-built editors replace "custom node view, operator only";
   - "no author code" and "no core syntax changed" stand.
+
+## Decisions on acceptance
+
+Accepted on 2026-11-09, with the open questions below decided and the first slice delivered: delivery step 2, and of step 3 the block contract, the prop vocabulary, the registry and the render path. The reason it was accepted now is a real caller: rookwood's documentation (`docs/design/quill-docs.md` in that repository) writes `::::timeline` with `:::step{icon tone}`, `:::cast{outside narrow}`, `:::checks` and `:route[…]`, and Quill must draw them at parity with rookwood's own renderer before it serves those pages. Those blocks are a follow-up built on this; nothing here is specific to them.
+
+### 1. Registering a block, and what it declares
+
+A block is one `defineBlock({…})` object, exported from `@quill/markdown/component-blocks` (and from `@quill/markdown/extension`). It declares:
+
+- `id` (dotted, stable), `version` (semver), `name` (the directive name), `title` and `description`;
+- `content`: `none` (a leaf, `::name`), `inline` (text, `:name[…]`), `blocks` (a container), or `{ items: '<child name>', body?: true }` (a container of child blocks, with or without Markdown before them);
+- `label`: `none` (the default), `optional` or `required`, for the `[label]` of a leaf or container, which is inline Markdown. An inline block's brackets are its content, so it cannot take a label;
+- `within`: the blocks it may sit directly inside, when it only means something there (a `step` within a `timeline`);
+- `props`: each a JSON Schema object built with `p.string`, `p.enum`, `p.number`, `p.integer`, `p.boolean` or `p.list`, each with a `title`. Options are `default`, `required`, `description`, `examples`, `pattern`, `minLength`, `maxLength`, `minimum` and `maximum`;
+- `data`: the `data-qb-*` attributes its render may emit;
+- `render(input)`: pure, returning hast.
+
+Blocks are registered in the same `MarkdownRegistry` as extensions, `createMarkdownRegistry(extensions, blocks)`, built once at the composition root; Quill's own blocks are the default. A separate `blockToExtension` adapter is unnecessary: the registry holds both, and both join its `signature`, so installing or upgrading a block re-renders the bodies through the cache key (ADR-031). The registry refuses at boot a block that breaks the contract, a name one of Quill's own directives already has (`details`, `callout`, `kbd` and the rest), a second block with the same name or id, and `items` that are not an installed container block.
+
+Two narrowings of section 1, both reversible:
+
+- **Props are written as attributes only, for now.** Scalars and comma-separated lists (`outside="Airbnb, Booking.com"`) cover every block in view. Structured props in a `yaml props` fence join with the first block that needs one.
+- **Validation is a small interpreter, not Ajv.** The editor checks a block's props in the browser, under a content security policy without `unsafe-eval`, and Ajv compiles its validators with `new Function`. The props stay plain JSON Schema, so Ajv still validates a manifest where code generation is allowed (at install, step 7). `defineBlock` and `p.*` live in `@quill/markdown` until packaging (step 7) needs `@quill/blocks` as a package of its own.
+
+### 2. Unknown blocks and props that do not fit
+
+Nothing is dropped without a word, on the page or in the document's health:
+
+- **An unknown container** (`:::timeline` with no block and no directive of that name) is drawn as a frame: a dashed group named "Unknown block: timeline", headed by the directive as written, with its content inside as plain Markdown. This replaces ADR-002's "drop the wrapper, render the children", which silently lost the fact that the author asked for a block. A document written for blocks an instance does not have stays legible.
+- **An unknown leaf** keeps its existing readable slot (`::name{…}` as text), and **an unknown inline directive** with a label or attributes is shown as typed, as before. A word that only holds a colon (`3:2`, `status:ok`) is prose and is never reported.
+- **A prop that does not fit** is drawn as its default, or left out when it has none, and the block carries a note above its content: "Check this block: tone: “purple” is not one of outside, net; left out." An attribute the block does not declare is reported the same way and ignored. An inline block's note follows it in the line.
+- **A block that cannot be drawn at all** (a required prop missing, a required label missing, written in the wrong form, outside the block it belongs in, a render that throws) is drawn as the unknown block's frame, with the reason in place of "Unknown block".
+- **Markdown an `items` block does not take** is drawn before the block, with a note, never inside markup that cannot hold it.
+
+Every one of these is a `BlockIssue` (block name, message, line), returned by `renderDocument` beside the HTML and stored with the cached body (`RenderedContent.blockIssues`, version 3). The document's health lists them as `block-issue` signals, one per problem with the lines it is on ("lines 23, 35: no block is called step"), beside its broken links, in the same quiet family (ADR-029).
+
+### 3. Nesting
+
+A container that holds another container is written with more colons, as every directive is: `::::timeline` around `:::step`. The parser counts the fence and the serialiser writes it back as it was. A block that declares `items` receives its child blocks already rendered, in order, separately from any other content; a block that declares `within` and is used elsewhere is drawn as a frame and reported. There is no depth limit beyond what Markdown allows.
+
+### 4. The round trip through the editor
+
+The editor holds a block as the container, leaf or text directive it is written as, with its attributes and their spelling recorded (`pipeline/source-form.ts`), so a block the editor cannot edit richly is still written back byte for byte, and an edit inside or beside it changes only the lines the edit touched. A component block's card in the editor is headed, outside the editable content, by the block's title (or "Unknown block") and the directive as written, with any prop problem under it; Quill's own directives keep their own chrome. The generated props form (section 5) is a later step; until then attributes are edited as Markdown.
+
+### 5. Sanitising
+
+A block's `render` returns hast, never a string, so a prop can only reach the page as text or as an attribute value, both of which the HTML serialiser escapes. The document sanitiser runs after every block, with a grant (`blocks/sanitize.ts`) that admits, on a fixed set of structural and phrasing elements, only classes in the `qb` namespace, an `aria-label`, and the `data-qb-*` attributes the installed blocks declare. No element, event handler, `style` or URL scheme is added. The root a block returns is stamped `qb qb-<name>`. An author still cannot write any of this: raw HTML stays text (ADR-011).
+
+### 6. Accessibility
+
+A block uses the element for the job and is named in words: `endpoint` is a `section` named by its method and path, with the method as a word, never a colour alone. The frame for an unknown or broken block is a `group` named "Unknown block: timeline" (or by the reason), with the name and the reason as visible text. A note about a prop is text in the reading order, before the content it is about. The editor's heading is outside the editable content and names the card.
+
+### `:::details` stays where it is
+
+ADR-048 reads one construct from three syntaxes (the directive, GitHub's `<details>` and Obsidian's foldable callouts) into one model drawn by one renderer, with a dedicated editor node whose summary is edited in place. Moving only the directive spelling onto the registry would give one construct two renderers, which is what ADR-048 avoided, and the generic container card would lose the in-place summary. `details` is instead one of the names the registry reserves, so no block can take it, and rookwood's `:::details[…]` keeps working as it does.
+
+### The first built-in block
+
+`:::endpoint{method path auth deprecated}` is the reference block from section 1, shipped as Quill's first built-in: an enum with a default, a required string with a pattern, an optional enum and a flag, with Markdown content. It proves the path end to end: registry, props, render, sanitiser, stylesheet, editor heading and health.
+
+### Delivered here, and not yet
+
+Delivered: the block contract, `p.*`, the registry, rendering with the fallback frame and notes, the sanitiser grant, `blockIssues` and the `block-issue` health signal, the editor's heading, and `endpoint`. `RENDER_VERSION` is 16.
+
+Not yet, in delivery order: structured props, the JSX runtime and manifests (step 3); the generated props form and slash entries (step 4); everything from step 5 on, including the MDX dialect.
 
 ## Delivery
 

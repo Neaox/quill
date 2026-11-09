@@ -124,8 +124,10 @@ export interface ExtractedLink {
  * (ADR-033). Version 2 is the first whose bodies carry the syntax-token
  * ranges the client applies and whose key covers the titles of the documents
  * a body links to; version 1 entries stay readable and are never served.
+ * Version 3 adds `blockIssues`, what the body's component blocks got wrong
+ * (ADR-060).
  */
-export const RENDERED_CONTENT_VERSION = 2
+export const RENDERED_CONTENT_VERSION = 3
 
 /**
  * Everything the rendered body is a function of (ADR-031).
@@ -208,6 +210,20 @@ export interface RenderedContent {
    */
   readonly slots: readonly string[]
   readonly incompleteRequiredSections: readonly string[]
+  /**
+   * What is wrong with the body's component blocks (ADR-060): an unknown
+   * block, a prop that does not fit, a block that could not be drawn. Each is
+   * drawn visibly in the body too; this is what the document's health lists.
+   */
+  readonly blockIssues: readonly BlockIssueView[]
+}
+
+/** One problem with a block, where it was written. */
+export interface BlockIssueView {
+  /** The directive name as written. */
+  readonly block: string
+  readonly message: string
+  readonly line?: number | undefined
 }
 
 /** Published Markdown read back for metadata, without rendering it. */

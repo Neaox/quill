@@ -47,6 +47,7 @@ export type HealthSignalKind =
   | 'review-overdue'
   | 'required-section-empty'
   | 'broken-link'
+  | 'block-issue'
 
 export interface HealthSignal {
   readonly kind: HealthSignalKind
@@ -261,12 +262,19 @@ function readDate(value: unknown): Date | null {
   return Number.isNaN(parsed.getTime()) ? null : parsed
 }
 
+/** Where a block's problem is, before what it is: "line 9: ", "lines 9, 21: ", or nothing. */
+function whereOf(lines: readonly number[]): string {
+  if (lines.length === 0) return ''
+  return `${lines.length === 1 ? 'line' : 'lines'} ${lines.join(', ')}: `
+}
+
 /**
  * The quiet quality indicators shown beside a document.
  *
  * Every one of them is a fact about the published document, never an error:
- * a required section left empty and a link to a document that no longer
- * exists are shown the same way as "no owner" (ADR-029).
+ * a required section left empty, a link to a document that no longer exists
+ * and a block the body could not draw as written are shown the same way as
+ * "no owner" (ADR-029, ADR-060).
  */
 async function healthOf(
   deps: EnvelopeDependencies,
@@ -293,6 +301,18 @@ async function healthOf(
     if (link.kind === 'document' && link.targetDocumentId === null) {
       signals.push({ kind: 'broken-link', detail: link.url })
     }
+  }
+
+  // A block the body could not draw as written (ADR-060): an unknown block,
+  // a prop that does not fit. The body shows each where it is; this lists them.
+  // The same problem in several places is one signal, with its lines.
+  const lines = new Map<string, number[]>()
+  for (const issue of rendered.content.blockIssues) {
+    const seen = lines.get(issue.message) ?? []
+    lines.set(issue.message, issue.line === undefined ? seen : [...seen, issue.line])
+  }
+  for (const [message, at] of lines) {
+    signals.push({ kind: 'block-issue', detail: `${whereOf(at)}${message}` })
   }
 
   return signals

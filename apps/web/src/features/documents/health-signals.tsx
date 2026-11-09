@@ -27,6 +27,7 @@ const SIGNAL_LABEL: Readonly<Record<HealthSignal['kind'], string>> = {
   'review-overdue': 'review overdue',
   'required-section-empty': 'section empty',
   'broken-link': 'broken link',
+  'block-issue': 'block issue',
 }
 
 export interface HealthSignalsProps {

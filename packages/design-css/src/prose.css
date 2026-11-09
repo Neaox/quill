@@ -2806,6 +2806,150 @@
   }
 }
 
+/* --- Component blocks (ADR-060) ------------------------------------------ */
+
+/*
+ * A block this instance has no definition for, or one that cannot be drawn:
+ * a quiet frame naming it, its content inside as plain Markdown. Dashed, as
+ * something not yet built is drawn, so it reads as unfinished rather than as
+ * an error, and the words in its heading say what it is either way.
+ */
+.prose .block-fallback {
+  padding: 0.7rem 0.95rem 0.8rem;
+  border: 1px dashed var(--color-border-strong);
+  border-radius: var(--radius-md);
+}
+
+.prose .block-fallback > :where(:not(:first-child)) {
+  margin-top: 0.6em;
+}
+
+.prose .block-fallback .block-fallback {
+  padding-block: 0.6rem 0.7rem;
+}
+
+.prose .block-fallback-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.25rem 0.6rem;
+  font-family: var(--font-sans);
+  font-size: 0.75rem;
+  line-height: 1.4;
+  color: var(--color-muted);
+}
+
+.prose .block-fallback-head > code {
+  padding: 0;
+  background: none;
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  color: var(--color-foreground);
+  overflow-wrap: anywhere;
+}
+
+.prose .block-fallback-reason {
+  font-weight: 600;
+}
+
+/*
+ * What a block got wrong, said where it is: the block is still drawn, with
+ * the prop at its default, and the note says which and why.
+ */
+.prose .block-issues {
+  font-family: var(--font-sans);
+  font-size: 0.75rem;
+  line-height: 1.45;
+  color: var(--color-warning);
+}
+
+.prose p.block-issues {
+  padding: 0.35rem 0.6rem;
+  background-color: var(--color-warning-subtle);
+  border-radius: var(--radius-sm);
+}
+
+.prose .block-issues-label {
+  font-weight: 600;
+}
+
+.prose .block-issues-label::after {
+  content: ':';
+}
+
+/*
+ * `:::endpoint` (ADR-060's reference block): a method and a path, then what
+ * the endpoint does. The method is a word in a pill, never a colour alone.
+ */
+.prose .qb-endpoint {
+  padding: 0.8rem 1rem 0.9rem;
+  background-color: var(--color-surface-raised);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  font-size: 0.95em;
+}
+
+.prose .qb-endpoint > :where(:not(:first-child)) {
+  margin-top: 0.6em;
+}
+
+.prose .qb-endpoint-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem 0.6rem;
+}
+
+.prose .qb-endpoint-method {
+  padding: 0.2em 0.55em;
+  border-radius: var(--radius-sm);
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  line-height: 1.3;
+  background-color: var(--color-accent-subtle);
+  color: var(--color-accent);
+}
+
+.prose
+  .qb-endpoint-method:is(
+    [data-qb-method='post'],
+    [data-qb-method='put'],
+    [data-qb-method='patch']
+  ) {
+  background-color: var(--color-success-subtle);
+  color: var(--color-success);
+}
+
+.prose .qb-endpoint-method[data-qb-method='delete'] {
+  background-color: var(--color-danger-subtle);
+  color: var(--color-danger);
+}
+
+.prose .qb-endpoint-path {
+  padding: 0;
+  background: none;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--color-foreground);
+  overflow-wrap: anywhere;
+}
+
+.prose .qb-endpoint-auth {
+  margin-inline-start: auto;
+  font-family: var(--font-sans);
+  font-size: 0.75rem;
+  color: var(--color-muted);
+}
+
+@media (forced-colors: active) {
+  .prose .qb-endpoint-method,
+  .prose p.block-issues {
+    border: 1px solid CanvasText;
+  }
+}
+
 /* --- Details and accordions (ADR-048) ----------------------------------- */
 
 /*

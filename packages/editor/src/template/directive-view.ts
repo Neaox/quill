@@ -1,3 +1,8 @@
+import {
+  BUILT_IN_BLOCK_REGISTRY,
+  isQuillDirective,
+  readProps,
+} from '@quill/markdown/component-blocks'
 import { buttonClassName } from '@quill/ui'
 import type { Extensions, NodeConfig } from '@tiptap/core'
 import type { Node as PMNode } from '@tiptap/pm/model'
@@ -33,6 +38,13 @@ const card = tv({
       'directive rounded-md border border-border-strong/50 bg-surface px-4 py-3 ' +
       'data-[dismissed=true]:opacity-70 data-[added=false]:border-dashed',
     content: 'directive-content',
+    // A component block's heading (ADR-060): what it is, as it is written.
+    head:
+      'directive-block-head mb-2 flex flex-wrap items-baseline gap-x-2 gap-y-1 ' +
+      'font-sans text-xs leading-snug text-muted select-none',
+    title: 'font-medium text-body',
+    source: 'font-mono text-xs break-all',
+    issue: 'basis-full text-warning',
   },
 })
 
@@ -82,6 +94,53 @@ const DEFAULT_CHROME: Chrome = {
   label: (node) => String(node.attrs['name'] ?? 'directive'),
 }
 
+/** How a directive's attributes read on its card: as they would be written. */
+function writtenAttributes(attributes: Readonly<Record<string, string>>): string {
+  const written = Object.entries(attributes).map(([key, value]) =>
+    value === '' ? key : `${key}="${value}"`,
+  )
+  return written.length === 0 ? '' : `{${written.join(' ')}}`
+}
+
+/** Where a prop comes in its block's declaration; one it does not declare comes last. */
+function rank(declared: readonly string[], name: string): number {
+  const index = declared.indexOf(name)
+  return index === -1 ? declared.length : index
+}
+
+interface BlockHeading {
+  readonly title: string
+  readonly source: string
+  readonly issues: readonly string[]
+}
+
+/**
+ * What a component block's card says above its content (ADR-060): the
+ * block's title, or that no block has the name, its directive as written,
+ * and what is wrong with its props. Quill's own directives have chrome of
+ * their own, or none, and get no heading.
+ */
+function blockHeading(node: PMNode): BlockHeading | undefined {
+  const name = node.attrs['name']
+  if (typeof name !== 'string' || isQuillDirective(name)) return undefined
+  const attributes = attributesOf(node)
+  const block = BUILT_IN_BLOCK_REGISTRY.find(name, 'container')
+  if (block === undefined) {
+    return { title: 'Unknown block', source: `${name}${writtenAttributes(attributes)}`, issues: [] }
+  }
+  // In the order the block declares its props, whatever order they were stored in.
+  const declared = Object.keys(block.props)
+  const ordered = Object.fromEntries(
+    Object.entries(attributes).toSorted(([a], [b]) => rank(declared, a) - rank(declared, b)),
+  )
+  const { issues } = readProps(block.props, attributes)
+  return {
+    title: block.title,
+    source: `${name}${writtenAttributes(ordered)}`,
+    issues: issues.map((each) => each.message),
+  }
+}
+
 function chromeFor(node: PMNode): Chrome {
   const name = node.attrs['name']
   return (typeof name === 'string' ? CHROME[name] : undefined) ?? DEFAULT_CHROME
@@ -98,6 +157,7 @@ export class DirectiveNodeView implements NodeView {
   private readonly view: ProseMirrorView
   private readonly getPos: () => number | undefined
   private readonly action: HTMLButtonElement
+  private readonly head: HTMLElement
   private dismissed: boolean
 
   constructor(
@@ -130,6 +190,10 @@ export class DirectiveNodeView implements NodeView {
       this.act()
     })
 
+    this.head = document.createElement('div')
+    this.head.className = styles.head()
+    this.head.setAttribute('contenteditable', 'false')
+
     this.contentDOM = document.createElement('div')
     this.contentDOM.className = styles.content()
     this.dom.append(this.contentDOM)
@@ -156,7 +220,12 @@ export class DirectiveNodeView implements NodeView {
   private render(): void {
     const chrome = chromeFor(this.node)
     const gatedShut = chrome.gated === true && !isAdded(this.node)
-    this.dom.setAttribute('aria-label', chrome.label(this.node))
+    const heading = blockHeading(this.node)
+    this.dom.setAttribute(
+      'aria-label',
+      heading === undefined ? chrome.label(this.node) : `${heading.title}: ${heading.source}`,
+    )
+    this.renderHeading(heading)
     this.dom.dataset['added'] = String(!gatedShut)
 
     // Taken out of the DOM rather than hidden in it: an affordance that is not
@@ -171,6 +240,29 @@ export class DirectiveNodeView implements NodeView {
       chrome.dismissible === true ? 'Dismiss guidance' : `Add section: ${titleOf(this.node)}`,
     )
     this.contentDOM.hidden = gatedShut || this.dismissed
+  }
+
+  /** The heading a component block's card carries, or none. */
+  private renderHeading(heading: BlockHeading | undefined): void {
+    if (heading === undefined) {
+      this.head.remove()
+      return
+    }
+    const title = document.createElement('span')
+    title.className = styles.title()
+    title.textContent = heading.title
+    const source = document.createElement('code')
+    source.className = styles.source()
+    source.textContent = heading.source
+    const issues = heading.issues.map((message) => {
+      const issue = document.createElement('span')
+      issue.className = styles.issue()
+      issue.textContent = message
+      return issue
+    })
+    this.head.replaceChildren(title, source, ...issues)
+    this.dom.dataset['issues'] = String(heading.issues.length > 0)
+    if (this.head.parentNode !== this.dom) this.dom.prepend(this.head)
   }
 
   update(node: PMNode, decorations: readonly Decoration[]): boolean {
