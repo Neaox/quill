@@ -598,14 +598,19 @@ export async function brokenSourceLinks(
   source: Pick<ExternalSource, 'present'>,
   revision: SourceRevisionId,
   found: readonly RelativeLinkTarget[],
+  /** The manifest's redirects: a link to a redirected path is not broken when its redirect leads somewhere. */
+  redirects: ReadonlyMap<string, string> = new Map(),
 ): Promise<readonly BrokenSourceLink[]> {
-  const targets = new Set(found.flatMap(({ target }) => (target === null ? [] : [target])))
+  const targets = new Set(
+    found.flatMap(({ target }) => (target === null ? [] : [target, redirects.get(target) ?? ''])),
+  )
   // The repository's root is always there, and is no path to ask about.
   targets.delete('')
   const present =
     targets.size === 0 ? new Set<string>() : await source.present(revision, [...targets])
+  const leads = (target: string) => present.has(target) || present.has(redirects.get(target) ?? '')
   return found
-    .filter(({ target }) => target === null || (target !== '' && !present.has(target)))
+    .filter(({ target }) => target === null || (target !== '' && !leads(target)))
     .map(({ path, url }): BrokenSourceLink => ({ path, url, revision }))
 }
 

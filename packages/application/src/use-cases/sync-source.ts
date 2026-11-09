@@ -1177,7 +1177,13 @@ class SourceReplay {
           ? await this.#toCheck(before, live)
           : new Set<DocumentId>()
     const found = await this.#relativeLinks(checked)
-    const broken = await brokenSourceLinks(this.#source.source, revision, found)
+    // A path the manifest redirects leads where the redirect does (ADR-061).
+    const broken = await brokenSourceLinks(
+      this.#source.source,
+      revision,
+      found,
+      this.#headLayout.redirects,
+    )
     const kept = [...live]
       .filter(([id]) => !checked.has(id))
       .flatMap(([, path]) => before?.get(path) ?? [])
@@ -1284,6 +1290,7 @@ function recordOf(layout: SourceLayout, resolution: Resolution): SourceLayoutRec
     fingerprint: layout.fingerprint,
     collectionIds: layout.origin === 'manifest' ? [...resolution.ids.values()] : [],
     unknownKeys: layout.unknownKeys,
+    redirects: [...layout.redirects],
   }
 }
 

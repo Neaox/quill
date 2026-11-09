@@ -1604,10 +1604,11 @@ describe('relative links', () => {
       expect(older.content.html).toContain(`[the decision](/d/${decision})`)
       expect(older.content.html).toContain('/blob/c1/src/app.ts')
 
+      // The decision's file is gone at the head: its link goes to its page,
+      // which says it was removed, not to a forge page that is not there.
       const head = await render(h, 'docs/guide.md')
-      expect(head.content.html).toContain(
-        '[the decision](https://github.com/acme/handbook/blob/c2/docs/adr/0001-auth.md)',
-      )
+      expect(head.content.html).toContain(`[the decision](/d/${decision})`)
+      expect(head.content.html).toContain('/blob/c2/src/app.ts')
       expect(head.key).not.toBe(older.key)
     })
 

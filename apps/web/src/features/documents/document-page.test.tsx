@@ -149,6 +149,64 @@ function readingRoutes(overrides: FakeRoutes = {}): FakeRoutes {
   }
 }
 
+/** The API's answer for a page whose file left its repository. */
+const removed = (replacement: Record<string, string> | null) =>
+  errorResponse(410, 'document_removed', 'This page was removed from its repository', {
+    title: 'Old setup',
+    removedAt: '2026-11-03T10:00:00.000Z',
+    revision: 'a1b2c3d4e5f6a7b8c9d0a1b2c3d4e5f6a7b8c9d0',
+    replacement,
+  })
+
+describe('a page whose file left its repository', () => {
+  it('says it was removed, when, and in which commit', async () => {
+    renderApp(READING_PATH, readingRoutes({ 'GET /api/documents/{id}': () => removed(null) }))
+    expect(await screen.findByText('This page was removed')).toBeVisible()
+    expect(screen.getByRole('heading', { level: 1, name: 'Old setup' })).toBeVisible()
+    expect(screen.getByText(/Its file was removed from the repository/u)).toBeVisible()
+    // The way on stays inside the workspace the reader was in.
+    expect(await screen.findByRole('link', { name: 'Go to Engineering' })).toHaveAttribute(
+      'href',
+      '/w/engineering',
+    )
+    expect(screen.getByText('a1b2c3d4e5f6')).toBeVisible()
+    await expectNoAccessibilityViolations(globalThis.document.body)
+  })
+
+  it('goes on to the page its old address leads to, saying where the reader came from', async () => {
+    renderApp(
+      READING_PATH,
+      readingRoutes({
+        'GET /api/documents/{id}': (_request, params) =>
+          String(params['id']).endsWith(KEY)
+            ? removed({ id: 'doc-2', shortId: 'n3wsetup01', title: 'New setup' })
+            : jsonResponse(200, {
+                id: 'doc-2',
+                shortId: 'n3wsetup01',
+                workspaceId: 'acme',
+                collectionId: 'col-1',
+                parentId: null,
+                slug: 'new-setup',
+                path: 'docs/new-setup.md',
+                title: 'New setup',
+                status: 'published',
+                templateId: null,
+                templateVersion: null,
+                headRevision: 'b'.repeat(40),
+                createdAt: '2026-01-01T00:00:00.000Z',
+                updatedAt: '2026-02-03T00:00:00.000Z',
+              }),
+      }),
+    )
+    expect(
+      await screen.findByText(
+        'Redirected from “Old setup”, which was removed from its repository.',
+      ),
+    ).toBeVisible()
+    expect(await screen.findByRole('article', { name: 'New setup' })).toBeVisible()
+  })
+})
+
 describe('the reading view records that it was opened', () => {
   it('tells the server once, for the person’s own history', async () => {
     const opened: string[] = []

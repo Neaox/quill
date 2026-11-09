@@ -466,6 +466,24 @@ export function renderNotFoundMain(view: { readonly siteSlug: string }): Html {
   </article>`
 }
 
+/**
+ * A page that was on the site and was removed on purpose (ADR-046): its file
+ * left the repository the site is read from (ADR-061). It was public, so its
+ * title is said; nothing else of it is.
+ */
+export function renderRemovedMain(view: {
+  readonly siteSlug: string
+  readonly title: string
+}): Html {
+  return html`<article class="layout-grid prose">
+    <h1>This page was removed</h1>
+    <p>
+      “${view.title}” is no longer published here.
+      <a href="${publicSiteLink(view.siteSlug)}">Start from the top of the site</a>.
+    </p>
+  </article>`
+}
+
 function publicSiteLink(siteSlug: string): string {
   return `/s/${siteSlug}`
 }
