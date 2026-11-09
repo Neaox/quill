@@ -1,0 +1,1 @@
+Changed: A document's trail runs through every document it is nested under — a sourced workspace's folders, and a native page's parents — each a link; a deep trail folds its middle behind a button, and on a phone the trail sits above the page.
