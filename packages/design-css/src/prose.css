@@ -2194,7 +2194,8 @@
 
 /*
  * `:badge[Built]{tone=success}`. The words are the meaning and the tone only
- * emphasis, so a badge reads the same in monochrome. Pills rather than the
+ * emphasis, so a badge reads the same in monochrome. A status's words are set
+ * in its ink, which reads on its own fill as body text does (ADR-028). Pills rather than the
  * interface badge's square tags: in running text and table cells a status is
  * read, not scanned as metadata.
  */
@@ -2220,17 +2221,17 @@
 
 .prose .badge[data-tone='success'] {
   background-color: var(--color-success-subtle);
-  color: var(--color-success);
+  color: var(--color-success-ink);
 }
 
 .prose .badge[data-tone='warning'] {
   background-color: var(--color-warning-subtle);
-  color: var(--color-warning);
+  color: var(--color-warning-ink);
 }
 
 .prose .badge[data-tone='danger'] {
   background-color: var(--color-danger-subtle);
-  color: var(--color-danger);
+  color: var(--color-danger-ink);
 }
 
 /*
@@ -3106,7 +3107,7 @@
 
 .prose :is(.qb-step-node, .qb-cast-node)[data-qb-tone='net'] {
   background-color: var(--color-success-subtle);
-  color: var(--color-success);
+  color: var(--color-success-ink);
 }
 
 .prose :is(.qb-step-node, .qb-cast-node) > :is(img, svg).emoji,
