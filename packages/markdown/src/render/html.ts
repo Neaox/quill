@@ -7,6 +7,9 @@ import type { Element, ElementContent, Root as HastRoot } from 'hast'
 import type { Schema } from 'hast-util-sanitize'
 import type { Root } from 'mdast'
 
+import type { BlockIssue } from '../blocks/render.ts'
+import { BUILT_IN_BLOCK_REGISTRY } from '../blocks/registry.ts'
+import { blockSanitizeSchema } from '../blocks/sanitize.ts'
 import { stripPresenterNotes } from '../directives/strip-presenter-notes.ts'
 import type { CustomEmoji, StandardLookup } from '../emoji/emoji.ts'
 import { emojiLookup, guardEmojiImages, withEmoji } from '../emoji/emoji.ts'
@@ -110,6 +113,12 @@ export function renderHtml(ast: Root, options: RenderOptions = {}): string {
   return renderHtmlWith(ast, options, {})
 }
 
+/** What a render found wrong with the body's blocks, alongside the HTML. */
+interface RenderedHtml {
+  readonly html: string
+  readonly blockIssues: readonly BlockIssue[]
+}
+
 /**
  * What a renderer built on this one may change, and nothing else: handlers
  * for nodes only it puts in a tree, and the allowlist widened by exactly the
@@ -127,7 +136,12 @@ export function renderHtmlWith(
   options: RenderOptions,
   overrides: RenderOverrides,
 ): string {
+  return renderBody(ast, options, overrides).html
+}
+
+function renderBody(ast: Root, options: RenderOptions, overrides: RenderOverrides): RenderedHtml {
   const placed: Element[] = []
+  const blockIssues: BlockIssue[] = []
   const lookup = emojiLookup(
     options.emoji ?? new Map<string, CustomEmoji>(),
     options.standardEmoji ?? (() => undefined),
@@ -144,6 +158,7 @@ export function renderHtmlWith(
           highlighter: options.highlighter,
           drawings: options.drawings,
           extensions: options.extensions,
+          blockIssues,
           placed,
           labels: options.labels,
           outline: outlineOf,
@@ -175,10 +190,17 @@ export function renderHtmlWith(
   const article = element('article', {}, body)
   const document: HastRoot = { type: 'root', children: [article] }
 
-  const safe = addExternalLinkRel(
-    guardEmojiImages(rehypeSanitize(overrides.schema ?? sanitizeSchema)(escapeRawHtml(document))),
+  // Whichever schema this render uses, with the grant the installed blocks'
+  // own markup needs and nothing wider (`blocks/sanitize.ts`).
+  const schema = blockSanitizeSchema(
+    overrides.schema ?? sanitizeSchema,
+    options.extensions?.blocks ?? BUILT_IN_BLOCK_REGISTRY,
   )
-  return stringify.stringify(placeDrawings(prefixFragmentLinks(safe), placed))
+  const safe = addExternalLinkRel(guardEmojiImages(rehypeSanitize(schema)(escapeRawHtml(document))))
+  return {
+    html: stringify.stringify(placeDrawings(prefixFragmentLinks(safe), placed)),
+    blockIssues,
+  }
 }
 
 function isDrawingSlot(node: Element): boolean {
@@ -210,6 +232,11 @@ export interface RenderedDocument {
   readonly html: string
   /** Heading ids that resolve against `html`, because both came from this tree. */
   readonly outline: readonly OutlineEntry[]
+  /**
+   * What is wrong with the body's component blocks (ADR-060), in document
+   * order: the document's health reports them as it reports broken links.
+   */
+  readonly blockIssues: readonly BlockIssue[]
 }
 
 /**
@@ -223,5 +250,6 @@ export interface RenderedDocument {
  * unstripped draft, so this is the entry point that makes it impossible.
  */
 export function renderDocument(ast: Root, options: RenderOptions = {}): RenderedDocument {
-  return { html: renderHtml(ast, options), outline: extractOutline(ast) }
+  const { html, blockIssues } = renderBody(ast, options, {})
+  return { html, outline: extractOutline(ast), blockIssues }
 }

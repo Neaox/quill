@@ -122,6 +122,7 @@ export type {
   RevertInput,
   StampAuthorshipInput,
   ComparedChange,
+  BlockIssueView,
   ComparedChangeKind,
   ComparedContent,
   ComparedLine,

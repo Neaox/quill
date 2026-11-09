@@ -200,6 +200,7 @@ export function createDocumentFormat(options: DocumentFormatOptions = {}): Docum
           markdown,
           readStrings(frontMatter[REQUIRED_SECTIONS]),
         ),
+        blockIssues: [...rendered.blockIssues],
       }
     },
 

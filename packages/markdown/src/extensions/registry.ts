@@ -1,3 +1,6 @@
+import type { AnyBlock } from '../blocks/define.ts'
+import type { BlockRegistry } from '../blocks/registry.ts'
+import { BUILT_IN_BLOCKS, createBlockRegistry } from '../blocks/registry.ts'
 import type { DrawingRendering, DrawingSource, MarkdownExtension } from './contract.ts'
 import { extensionProblems } from './contract.ts'
 import { drawioExtension } from './drawio/drawio-extension.ts'
@@ -13,9 +16,11 @@ import { drawioExtension } from './drawio/drawio-extension.ts'
  */
 export interface MarkdownRegistry {
   readonly extensions: readonly MarkdownExtension[]
+  /** The installed component blocks (ADR-060), by directive name. */
+  readonly blocks: BlockRegistry
   /**
-   * The installed extensions' ids and versions, which join the render cache
-   * key: upgrading one re-renders the bodies, and nothing else does.
+   * The installed extensions' and blocks' ids and versions, which join the
+   * render cache key: upgrading one re-renders the bodies, and nothing else does.
    */
   readonly signature: string
   /** How a drawing is drawn: by the first extension that claims it, or inline as it is. */
@@ -46,6 +51,7 @@ function granted(extension: MarkdownExtension, rendering: DrawingRendering): Dra
 
 export function createMarkdownRegistry(
   extensions: readonly MarkdownExtension[] = BUILT_IN_EXTENSIONS,
+  blocks: readonly AnyBlock[] = BUILT_IN_BLOCKS,
 ): MarkdownRegistry {
   const byId = new Map<string, MarkdownExtension>()
   for (const extension of extensions) {
@@ -68,8 +74,9 @@ export function createMarkdownRegistry(
 
   return {
     extensions,
-    signature: extensions
-      .map((extension) => `${extension.id}@${extension.version}`)
+    blocks: createBlockRegistry(blocks),
+    signature: [...extensions, ...blocks]
+      .map((installed) => `${installed.id}@${installed.version}`)
       .toSorted()
       .join(' '),
     drawing: (source) => {

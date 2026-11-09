@@ -29,11 +29,11 @@ describe('createMarkdownRegistry', () => {
     const registry = createMarkdownRegistry()
     expect(registry.extensions).toBe(BUILT_IN_EXTENSIONS)
     expect(registry.findExtension('quill.drawio')?.version).toBe('1.0.0')
-    expect(registry.signature).toBe('quill.drawio@1.0.0')
+    expect(registry.signature).toBe('quill.drawio@1.0.0 quill.endpoint@1.0.0')
   })
 
   it('signs the installed extensions in a stable order', () => {
-    const registry = createMarkdownRegistry([example(), ...BUILT_IN_EXTENSIONS])
+    const registry = createMarkdownRegistry([example(), ...BUILT_IN_EXTENSIONS], [])
     expect(registry.signature).toBe('acme.boxes@1.2.3 quill.drawio@1.0.0')
   })
 

@@ -51,6 +51,7 @@ const content = (html: string) => ({
   links: [],
   slots: [],
   incompleteRequiredSections: [],
+  blockIssues: [],
 })
 
 beforeAll(async () => {

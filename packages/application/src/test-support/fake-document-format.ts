@@ -1,4 +1,5 @@
 import type {
+  BlockIssueView,
   ComparedChange,
   ComparedContent,
   ComparedSource,
@@ -42,6 +43,12 @@ const IMAGE = /!\[(?<alt>[^\]]*)]\((?<url>[^)]*)\)/g
 const AUTO_TITLED = /\[]\(\/d\/(?<id>[0-9a-f-]{36})\)/g
 const SUBSTITUTION = /\{\{\s*answers\.(\w+)\s*}}/g
 const SCHEME = /^[a-z][a-z\d+.-]*:/i
+/**
+ * A block nothing draws, in the fake's one vocabulary: `:::unknown-name`,
+ * reported at its line, or `::unknown-name`, reported as a tree that has
+ * lost its positions reports one, with none.
+ */
+const UNKNOWN_BLOCK = /^(?<colons>:{2,})(?<name>unknown-[a-z-]+)/
 
 export interface FakeDocumentFormatOptions {
   /** Front matter every created document carries, over which the caller's own wins. */
@@ -149,6 +156,7 @@ export function createFakeDocumentFormat(options: FakeDocumentFormatOptions = {}
           body,
           readStrings(frontMatter['requiredSections']),
         ),
+        blockIssues: [...unknownBlocks(body)],
       }
     },
 
@@ -414,6 +422,19 @@ function* linksOf(body: string): Generator<ExtractedLink> {
 }
 
 /** A required heading with no content beneath it before the next heading. */
+/** Each `unknown-name` block, as the real renderer reports a block it has none for. */
+function* unknownBlocks(body: string): Generator<BlockIssueView> {
+  for (const [index, line] of body.split(NEWLINE).entries()) {
+    const match = UNKNOWN_BLOCK.exec(line)
+    if (match === null) continue
+    const name = group(match, 'name')
+    const message = `no block is called ${name}`
+    yield group(match, 'colons') === '::'
+      ? { block: name, message }
+      : { block: name, message, line: index + 1 }
+  }
+}
+
 function incompleteSections(body: string, required: readonly string[]): readonly string[] {
   if (required.length === 0) return []
   const lines = body.split('\n')
