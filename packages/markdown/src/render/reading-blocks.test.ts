@@ -99,6 +99,17 @@ describe('table cells that open with a status', () => {
     )
   })
 
+  it('keep a detail that opens with a link or emphasis', () => {
+    const html = render(
+      '| a | b |\n| - | - |\n| :badge[Designed] [ADR 4](adr/4.md), accepted | :badge[Open] **no queue** (see below) |\n',
+    )
+
+    expect(html).toContain(
+      '<span class="cell-detail"><a href="adr/4.md">ADR 4</a>, accepted</span>',
+    )
+    expect(html).toContain('<span class="cell-detail"><strong>no queue</strong> (see below)</span>')
+  })
+
   it('need no detail when the status is all there is', () => {
     expect(render('| a |\n| - |\n| :badge[Yes] |\n')).toContain(
       '<td><span class="cell-status"><span class="badge" data-tone="neutral">Yes</span></span></td>',
