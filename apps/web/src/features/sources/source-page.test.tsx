@@ -125,7 +125,7 @@ describe('a repository’s page', () => {
     expect(screen.getByText(/Readers still see/u)).toHaveTextContent('nothing was taken away')
     // The lists are the last good revision's, not the failing commit's, and say so.
     expect(screen.getByText(/nothing to fix\./u)).toHaveTextContent(
-      `As of ${shortRevision(HEAD)}, the last revision that synced (the sync after it stopped): nothing to fix.`,
+      `As of ${shortRevision(HEAD)}, the last revision that synced, before the sync that stopped: nothing to fix.`,
     )
   })
 

@@ -302,7 +302,7 @@ function ToFix({ sync, forgeLink }: { readonly sync: Sync | null; readonly forge
     ) : (
       <>
         As of <Revision value={sync.lastSyncedRevision} />, the last revision that synced
-        {sync.failure === null ? '' : ' (the sync after it stopped)'}
+        {sync.failure === null ? '' : ', before the sync that stopped'}
       </>
     )
 
