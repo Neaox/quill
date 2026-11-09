@@ -218,6 +218,13 @@
       "when": 1794198022932,
       "tag": "0030_source_asset_history",
       "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "7",
+      "when": 1794249162819,
+      "tag": "0031_source_manifest_entry",
+      "breakpoints": true
     }
   ]
 }

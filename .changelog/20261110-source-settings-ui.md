@@ -1,0 +1,4 @@
+Added: A workspace can be read from a Git repository from the moment it is created, or connected to one later while it is still empty, on a page that checks the repository and previews which collections there will be, which pages land in each (folders marked), what is left out and why, and any manifest mistake with its line, before anything is saved.
+Added: An instance administrator can change a connected repository's branch, credential, manifest workspace or collections on its settings page, with a preview of what the change adds, moves, archives or retires; saving syncs.
+Added: `POST /api/workspaces/:id/source/preview`, a dry run of a source's settings that uses the sync's own planning and writes nothing, and a stored `manifestEntry` on a source.
+Fixed: The repository page now shows a sync that saving its settings asked for as under way, and refreshes the workspace's tree when a sync lands.

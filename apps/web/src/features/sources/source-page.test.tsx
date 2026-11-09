@@ -6,7 +6,7 @@ import { expectNoAccessibilityViolations } from '@quill/ui/testing/axe'
 
 import { renderApp } from '../../lib/api/render-app.tsx'
 import { errorResponse, jsonResponse, type FakeRoutes } from '../../lib/api/testing.ts'
-import { admin } from '../settings/settings-fixtures.ts'
+import { admin, member } from '../settings/settings-fixtures.ts'
 import { describeRefusal, describeSourceFailure, shortRevision } from './source-words.ts'
 
 const PATH = '/w/handbook/source'
@@ -40,6 +40,7 @@ function source(overrides: Record<string, unknown> = {}) {
     collections: [{ collectionId: 'c-1', slug: 'guides', name: 'Guides', path: 'docs/guides' }],
     history: 'full',
     commitMessages: 'subject',
+    manifestEntry: null,
     credential: null,
     outsideLinks: 'forge',
     viewTemplate: null,
@@ -84,6 +85,30 @@ describe('a repository’s page', () => {
     )
     expect(screen.queryByRole('list', { name: 'Files not stored' })).toBeNull()
     await expectNoAccessibilityViolations(document.body)
+  })
+
+  it('offers an instance administrator a way to change the settings, and nobody else', async () => {
+    const { unmount } = renderApp(PATH, routes(source()))
+    await heading()
+    expect(screen.getByRole('link', { name: 'Change settings' })).toHaveAttribute(
+      'href',
+      '/w/handbook/source/settings',
+    )
+    unmount()
+
+    renderApp(PATH, routes(source(), { 'GET /api/me': member }))
+    await heading()
+    expect(screen.queryByRole('link', { name: 'Change settings' })).toBeNull()
+    expect(
+      screen.getByText(/Only an instance administrator can change these settings\./u),
+    ).toBeVisible()
+  })
+
+  it('names the manifest workspace it reads, and says the manifest decides the collections', async () => {
+    renderApp(PATH, routes(source({ manifestEntry: 'public', collections: [] })))
+    await heading()
+    expect(screen.getByText('public')).toBeVisible()
+    expect(screen.getByText('None: the repository’s manifest decides them')).toBeVisible()
   })
 
   it('has not synced yet, and says so', async () => {

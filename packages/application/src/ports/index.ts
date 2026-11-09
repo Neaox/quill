@@ -49,6 +49,7 @@ export type {
   SourceLinkSettings,
   SourcePathMapRepository,
   SourcePathRow,
+  SourceDraft,
   SourceSettings,
   SourceSyncFailure,
   SourceSyncFailureReason,

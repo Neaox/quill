@@ -1,15 +1,18 @@
-import { getRouteApi } from '@tanstack/react-router'
+import { getRouteApi, Link } from '@tanstack/react-router'
 import { useState, type ReactNode } from 'react'
 
 import { defaultForgeViewTemplate, forgeViewUrl } from '@quill/domain'
-import { Button, Callout, RelativeTime, textLinkClassName } from '@quill/ui'
+import { Button, buttonClassName, Callout, RelativeTime, textLinkClassName } from '@quill/ui'
 
 import {
+  awaitsSyncAfterSave,
   useLoadedWorkspace,
+  useMe,
   useSyncSourceNow,
   useWorkspaceSource,
   type WorkspaceSourceDto,
 } from '../../lib/api/index.ts'
+import { now as wallClock } from '../../lib/time/clock.ts'
 import { SettingsSection } from '../settings/settings-frame.tsx'
 import { CopyableAddress } from './copyable-address.tsx'
 import {
@@ -34,8 +37,9 @@ type ForgeLink = (revision: string, path: string) => string | null
  * A sourced workspace's repository (ADR-061, "A failed sync never empties a
  * workspace"). It answers one question first — is the workspace in step with
  * its branch? — with "Sync now" beside the answer, then lists what there is to
- * fix, folded to a line when there is nothing, then the settings, which are
- * read here and changed through the API by an instance administrator.
+ * fix, folded to a line when there is nothing, then the settings. An
+ * instance administrator changes them on the settings page, with a preview
+ * of what the change does; whoever else manages the workspace reads them.
  *
  * "Sync now" asks the same job every other trigger asks. The page asks again
  * every few seconds while a sync is under way, and from the press until an
@@ -53,13 +57,17 @@ export function SourcePage() {
   const [askedAfter, setAskedAfter] = useState<{ readonly attempt: string | null } | undefined>()
   const source = useWorkspaceSource(workspace.id, { awaiting: askedAfter !== undefined })
   const syncNow = useSyncSourceNow(workspace.id)
+  const canChange = useMe().data?.isInstanceAdmin === true
+  // When the page was opened: a save just before it is a sync on its way (`lib/time/clock.ts`).
+  const [openedAt] = useState(wallClock)
 
   /* v8 ignore next -- the loader awaited this entry, so it is here on the first render. */
   if (source.data === undefined) return undefined
   const data = source.data
   const sync = data.sync
   const awaiting = askedAfter !== undefined && (sync?.lastAttemptAt ?? null) === askedAfter.attempt
-  const syncing = data.syncing || awaiting
+  // Saving the settings asks for a sync; until it is attempted, it is on its way.
+  const syncing = data.syncing || awaiting || awaitsSyncAfterSave(data, openedAt)
   const template = data.viewTemplate ?? defaultForgeViewTemplate(data.remote)
   const forgeLink: ForgeLink = (revision, path) =>
     template === null ? null : forgeViewUrl(template, revision, path)
@@ -114,7 +122,12 @@ export function SourcePage() {
       </div>
 
       <ToFix sync={sync} forgeLink={forgeLink} />
-      <Settings source={data} workspaceId={workspace.id} />
+      <Settings
+        source={data}
+        workspaceId={workspace.id}
+        workspaceSlug={workspace.slug}
+        canChange={canChange}
+      />
     </div>
   )
 }
@@ -433,9 +446,14 @@ const OUTSIDE_LINKS: Readonly<Record<string, string>> = {
 function Settings({
   source,
   workspaceId,
+  workspaceSlug,
+  canChange,
 }: {
   readonly source: WorkspaceSourceDto
   readonly workspaceId: string
+  readonly workspaceSlug: string
+  /** Whether the reader may change them: instance administration, as the API is. */
+  readonly canChange: boolean
 }) {
   const hook = (forge: string) =>
     `${globalThis.location.origin}/api/workspaces/${workspaceId}/source/webhooks/${forge}`
@@ -443,22 +461,46 @@ function Settings({
     <SettingsSection
       level={2}
       title="Settings"
-      description="An instance administrator changes these through the API. Where the repository has a manifest, the manifest decides the collections."
+      description={
+        canChange
+          ? 'Where the repository has a manifest, the manifest decides the collections. Changing a setting shows what the change does before it is saved.'
+          : 'Where the repository has a manifest, the manifest decides the collections. Only an instance administrator can change these settings.'
+      }
     >
+      {canChange ? (
+        <div>
+          <Link
+            to="/w/$workspaceSlug/source/settings"
+            params={{ workspaceSlug }}
+            className={buttonClassName({ size: 'sm', variant: 'secondary' })}
+          >
+            Change settings
+          </Link>
+        </div>
+      ) : undefined}
       <CopyableAddress label="Repository" value={source.remote} />
       <Facts label="Settings">
         <Fact term="Branch">
           <code>{source.branch}</code>
         </Fact>
+        {source.manifestEntry === null ? undefined : (
+          <Fact term="Manifest workspace">
+            <code>{source.manifestEntry}</code>
+          </Fact>
+        )}
         <Fact term="Collections">
-          <ul className="flex flex-col gap-1">
-            {source.collections.map((collection) => (
-              <li key={collection.collectionId}>
-                {collection.name} <span className="text-muted">from</span>{' '}
-                <code className="break-all">{collection.path}</code>
-              </li>
-            ))}
-          </ul>
+          {source.collections.length === 0 ? (
+            <span className="text-muted">None: the repository’s manifest decides them</span>
+          ) : (
+            <ul className="flex flex-col gap-1">
+              {source.collections.map((collection) => (
+                <li key={collection.collectionId}>
+                  {collection.name} <span className="text-muted">from</span>{' '}
+                  <code className="break-all">{collection.path}</code>
+                </li>
+              ))}
+            </ul>
+          )}
         </Fact>
         <Fact term="History">{HISTORY[source.history] ?? source.history}</Fact>
         <Fact term="Commit messages">
