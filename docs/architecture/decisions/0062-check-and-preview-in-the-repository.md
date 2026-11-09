@@ -1,6 +1,6 @@
 # ADR-062: Check and preview in the repository
 
-**Status:** Proposed (amended 11 November 2026: the throughput target, from the profile; see "Amendment: the parser's throughput")
+**Status:** Accepted (11 November 2026; see "Decisions on acceptance"; amended the same day: the throughput target, from the profile, see "Amendment: the parser's throughput")
 **Date:** 2026-11-10
 **Related:** quill-plan.md sections 7, 9.5, 14, 31 and 33; ADR-011 (security baseline), ADR-014 (content store), ADR-023 (public site), ADR-028 (theming), ADR-030 (syntax highlighting), ADR-031 (render caching), ADR-033 (compatibility), ADR-036 (drawings), ADR-042 (link previews), ADR-047 (images), ADR-058 (navigation blocks), ADR-060 (component blocks), ADR-061 (read-only external Git sources); AGENTS.md rules 3, 9, 13 and 19
 
@@ -386,6 +386,38 @@ The first version set the shared pipeline a single-thread target of 5 MB a secon
 - **A correction to section 4:** a page's title is part of the input of every page that links to it, so retitling a page re-renders those pages. A change to its text alone does not.
 - **The parity suite's time** is budgeted per platform (section 4): 60 seconds on the Linux runner, 120 on Windows and macOS, where starting `git` processes costs most of the time.
 
+## Decisions on acceptance
+
+Accepted on 11 November 2026, with delivery step 2 built: the plan, as a pure refactor of the sync job.
+
+### What step 2 delivered
+
+- **The golden files came first, in a commit of their own.** `SOURCE_FIXTURES` (`packages/application/src/test-support/source-fixtures.ts`) holds eleven repositories:
+  - a source with no manifest, read by its settings;
+  - a full manifest, one that describes several workspaces, one that does not read, and one with no entry for the workspace;
+  - refused files and assets;
+  - component blocks and an empty required section;
+  - CRLF line endings, a link whose case differs from its file, a folder two collections share, and a repository shaped like rookwood's.
+
+  `apps/server/src/infrastructure/sources/source-goldens.test.ts` syncs each one through the real `git` adapter over a `file://` remote, the real Markdown pipeline and a Git content store in memory. It renders every document as a reader's request does, and keeps what the sync recorded, the tree it built, the stored copies and the bodies under `__goldens__/`, with ids replaced by paths.
+- **The sync's decisions moved out of the job.** `source-revision.ts` holds what one revision does: which files are written, placed again or archived and under which ids, each folder's document, what an asset's intake decides, which relative links are broken, and where each document goes among its siblings. The sync job (`sync-source.ts`, 478 lines shorter) asks it and writes the answer. `source-plan.ts`, from the source settings work, keeps the reading of a layout and of one file.
+- **`planSourceHead`** (`source-head-plan.ts`) asks the same questions of a workspace that holds nothing. It returns:
+  - the layout and the collections;
+  - every document, with its parent, title, sort key, stored copy and resolved links;
+  - the folder plan;
+  - refused files, the assets taken in, broken links, and the files the layout leaves out.
+
+  `plannedRenderInput` assembles a planned document's render input with the same `assembleRenderInput` and `drawingSources` a reader's render now uses.
+- **`reportSource`** (`source-report.ts`) turns a plan, and what its renders found, into the report of section 1, with the schema name `quill-check/1`, stable codes and code-point order.
+- **The settings preview takes the sync's ordering.** It now arranges siblings with the sync's `arrangeSiblings`, instead of its own copy of the grouping and the sort.
+- **The proof.** For all eleven fixtures, the head plan is held to the sync's golden files: what was refused, the broken links, the layout, the collections, the tree, the assets, the stored copies and the rendered HTML, byte for byte. The existing sync, preview and source tests pass unchanged.
+
+### Decided on the way
+
+- **A head plan's ids are the caller's.** The sync mints random ids. The plan takes a function for each kind of id, and orders siblings with the path as the last tie-break. Where two siblings tie on every rule, the sync breaks the tie by its random id and the plan by the path. No fixture has such a tie, and the report never shows an order.
+- **`folder-shared` waits for step 6.** The folder plan does not yet say which folder two collections share, so the report has no such note yet. It will be added to the folder plan, and so to the sync, before the tool reports it.
+- **The goldens are regenerated deliberately.** Run `pnpm --filter @quill/server exec vitest run source-goldens -u` after a change that is meant to change them, and review the diff like code. #53 is why the block fixture now names a block no instance has (`gallery`): `timeline` became a built-in block.
+
 ## Alternatives considered
 
 - **Running the full server locally in Docker.** It is exact, but rejected:
@@ -432,6 +464,8 @@ A milestone of its own, **M3b — Check and preview in the repository**, after M
    - Golden reports and stored trees for the parity fixtures are captured from the current sync **before** the refactor, in a commit of their own, and must match after it.
    - The existing sync tests (`sync-source.test.ts`) and the server's sync integration tests stay unchanged and green.
    - Any behaviour change found on the way goes in its own pull request.
+
+   **Delivered** (see "Decisions on acceptance").
 3. **Throughput of the shared pipeline.** Profile Quill's parse over L and fix the cause in `@quill/markdown`, `@quill/highlight` or the format adapter, never in the tool:
    - measure and tune each micromark extension Quill registers (directives, the GFM pieces, autolink literals, front matter and the rest), and its configuration;
    - merge or remove post-parse passes that walk the same tree again (`readLinkComments`, `markSourceForm`, autolink literals, code groups);
