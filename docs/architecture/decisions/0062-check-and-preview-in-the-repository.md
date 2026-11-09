@@ -1,6 +1,6 @@
 # ADR-062: Check and preview in the repository
 
-**Status:** Proposed
+**Status:** Proposed (amended 11 November 2026: the throughput target, from the profile; see "Amendment: the parser's throughput")
 **Date:** 2026-11-10
 **Related:** quill-plan.md sections 7, 9.5, 14, 31 and 33; ADR-011 (security baseline), ADR-014 (content store), ADR-023 (public site), ADR-028 (theming), ADR-030 (syntax highlighting), ADR-031 (render caching), ADR-033 (compatibility), ADR-036 (drawings), ADR-042 (link previews), ADR-047 (images), ADR-058 (navigation blocks), ADR-060 (component blocks), ADR-061 (read-only external Git sources); AGENTS.md rules 3, 9, 13 and 19
 
@@ -28,6 +28,12 @@ Facts of the code that shape the answer:
   - Per file: median 44 ms, 95th percentile 454 ms, largest 2.0 seconds.
   - The rate per byte depends on what a file holds, not only on its size. Among the five slowest files it ranges from 0.18 MB a second (281 KB in 1.5 seconds) to 0.46 MB a second (870 KB in 1.9 seconds). Some constructs are much slower than others, and some may be superlinear.
   - About 1 MB a second is slow for a Markdown parser. The server pays the same cost on every sync and publish. These numbers are the **baseline**, not the budget: delivery step 3 profiles the shared pipeline and must bring it to the targets in section 4.
+- **Where the time goes, profiled.** A CPU profile on 11 November 2026 (same machine and corpus, JIT warm) says:
+  - Parsing (`parseDocument`) is about 85% of a full render. Turning the tree into HTML, highlighting and sanitising are the other 15%.
+  - 87% of parsing (12.2 of 14.0 seconds) is inside micromark and `mdast-util-from-markdown`, with the extensions and configuration Quill registers. Quill's own passes after the parse (`readLinkComments`, `markSourceForm`, autolink literals, code groups) are the other 13%.
+  - Quill's full parse runs at 1.6 MB a second on the median file. micromark with no extensions, plain CommonMark, runs at 4.75 MB a second over the same corpus. So about two thirds of the parse time is Quill's extensions, its configuration and its own passes. That is the lever.
+  - Large files are linear once the JIT is warm: the 847 KB file parses in 631 ms and renders in 758 ms. The 2-second figures above were JIT warm-up. The slowest rates per byte belong to small files, which is fixed overhead per file.
+  - **The server parses each sourced document four or more times per sync revision:** `format.read` for its title and order, `format.links` for its images, `format.links` again in the link check, and the render. Each is a full parse of the same text.
   - Importing the pipeline from TypeScript source: 2.7 seconds. Bundled with rolldown it is one 1.2 MB file, 368 KB gzipped.
   - A pool of 4 worker threads: 7.5 seconds wall, about 1.1 GB resident in total, up to 230 MB heap per worker. A pool of 8: 7.7 seconds and twice the memory, because the largest files and the import set the floor.
 
@@ -168,7 +174,7 @@ A cache that is warm does not excuse a slow cold run. A fresh clone, a new tool 
    - its own bytes change; or
    - a link of its now leads somewhere else, because a target was added, removed, renamed or became a folder document.
 
-   Editing a page's text does not re-render the pages that link to it, because the resolved address (`/d/<id>#anchor`) did not change. Child-pages blocks are slots filled when the page is assembled (ADR-058), so they never re-render a body.
+   Editing a page's text does not re-render the pages that link to it, because the resolved address (`/d/<id>#anchor`) did not change. Changing its **title** does: the titles of the documents a body's links resolve to are part of its input (`linkTitles`, as `renderInputFor` builds it), so every page that links to a retitled page gets a new key and renders once. Child-pages blocks are slots filled when the page is assembled (ADR-058), so they never re-render a body.
 5. **Worker pool.** Renders run on `worker_threads`.
    - Size: `min(availableParallelism() − 1, 4)`, at least 1, or `--jobs <n>`. Four, because eight was no faster and twice the memory (Context).
    - Order: largest file first, so the 2-second file does not start last.
@@ -207,10 +213,11 @@ A cache that is warm does not excuse a slow cold run. A fresh clone, a new tool 
 
 | Measure | Target | Baseline (Context) |
 | --- | --- | --- |
-| `DocumentFormat.render` on one thread over L, with the JIT warm | at least 5 MB a second | about 1 MB a second |
+| Quill's full parse (`parseDocument`) on one thread over L, with the JIT warm | at least 3 MB a second | 1.6 MB a second on the median file |
 | Linearity: any file's time per byte | at most 3 times L's median time per byte | about 2.5 times between the five slowest files alone |
 | Linearity: each construct grown 1×, 4× and 16× in a generated file | the 16× file at most 3 × 16 times the 1× file | not measured |
 | Server: `syncSource` of L's head (one revision, in-memory adapters, every document published and rendered) | at most 10 s | not measured |
+| Server: parses of one document per sync revision | one | four or more |
 
 The constructs grown for the linearity guard are:
 - paragraphs and long lines;
@@ -241,7 +248,7 @@ The constructs grown for the linearity guard are:
 | `preview`, save to reload event, any page | its render time plus 250 ms | same |
 | `preview`, an already rendered page, server time | 50 ms | 50 ms |
 
-At 5 MB a second, L is about 4 CPU-seconds. Over three workers, that leaves the cold budget room for listing, hashing and starting workers.
+At 3 MB a second, L's parsing is about 6 CPU-seconds, so about 2 seconds over three workers, and the rest of the render adds about 15%. That leaves the cold budget of 8 seconds room for listing, hashing and starting workers.
 
 **If a target is unreachable.** If profiling in step 3 shows a target cannot be met without replacing the parser, the step stops. It amends this ADR with the profile and the options. It does not quietly relax a budget.
 
@@ -268,8 +275,9 @@ At 5 MB a second, L is about 4 CPU-seconds. Over three workers, that leaves the 
 - **Phase timings.** `--timings` prints a breakdown to standard error (list, hash, plan, render, report) so a regression can be found without a profiler.
 - **Package size.** It is enforced by `check-cli-package.ts` in `pnpm check` (section 3).
 - **The parity suite's own time.**
-  - The suite must finish in at most 60 seconds on each of Linux, macOS and Windows.
-  - No single fixture may take more than 5 seconds.
+  - The suite must finish in at most 60 seconds on the Linux runner, and at most 120 seconds on Windows and macOS.
+  - No single fixture may take more than 5 seconds on Linux, or 10 seconds on Windows and macOS.
+  - The difference is measured, not assumed: on Windows the server half took 50 to 65 seconds for 11 fixtures, 3 to 7 seconds each, and most of that is starting `git` processes (init, commit, push, a partial clone, sparse checkout and backfill per fixture). Process start-up costs several times more on Windows. The suite keeps the real `git` adapter rather than sharing clones between fixtures, because each fixture must be read exactly as a fresh source is.
   - The CI job fails when either is exceeded, using the durations Vitest reports. A new fixture has to fit, or the budget is raised in a reviewed change that says why.
 
 ### 5. Stability
@@ -367,6 +375,17 @@ At 5 MB a second, L is about 4 CPU-seconds. Over three workers, that leaves the 
 
 Lockstay's `docs:check` checks heading anchors, front matter fields and raw HTML, which Quill's sync does not report today. Lockstay keeps those checks until each is added to the shared code (section 1's rule). It can drop `apps/docs` and its block allowlist once `quill preview` and `quill check` pass on its docs.
 
+## Amendment: the parser's throughput (11 November 2026)
+
+The first version set the shared pipeline a single-thread target of 5 MB a second. Profiling for step 3 (Context, "Where the time goes, profiled") showed that micromark itself, with no extensions, runs at 4.75 MB a second on this corpus, so 5 MB a second could only be met by replacing the parser. The user-facing budgets were never the problem. What the owner wants is a fast `quill check` and a fast sync, and 5 MB a second was a means to that.
+
+- **The single-thread target becomes 3 MB a second** for Quill's full parse over L, with the JIT warm. Quill's parse runs at 1.6 MB a second, against 4.75 for plain micromark, so the gap is Quill's extensions, configuration and own passes, which step 3 tunes.
+- **The server parses each document once per sync revision.** That is part of step 3, with the server's sync of L held to 10 seconds.
+- **Unchanged:** the cold `check` of L in 8 seconds (at 3 MB a second, L's parsing is about 6 CPU-seconds over three workers), the warm, pull-request, preview and memory budgets, and the linearity guard with its generated stress files, which step 3 writes.
+- **Replacing micromark is rejected for now.** The editor's round trip depends on it: `mdast` positions, the directive and GFM extensions, and `source-form.ts`, which records how each construct was written so the editor writes a document back byte for byte (ADR-002, ADR-060). A new parser would have to reproduce all of that, and would need an ADR of its own. It is reconsidered only if step 3 cannot reach 3 MB a second after tuning, and then step 3 stops again and reports its profile.
+- **A correction to section 4:** a page's title is part of the input of every page that links to it, so retitling a page re-renders those pages. A change to its text alone does not.
+- **The parity suite's time** is budgeted per platform (section 4): 60 seconds on the Linux runner, 120 on Windows and macOS, where starting `git` processes costs most of the time.
+
 ## Alternatives considered
 
 - **Running the full server locally in Docker.** It is exact, but rejected:
@@ -397,10 +416,10 @@ Lockstay's `docs:check` checks heading anchors, front matter fields and raw HTML
 - **The tool ships with every release.** It is published from the same tag, so the release process gains an npm publish, and the tool's version is a compatibility promise (ADR-033).
 - **The manifest gains `requires`,** and the source's admin page gains a drift line.
 - **Offline limits stay listed.** The organisation's theme, custom emoji and labels, run-time blocks, an instance's own size caps and titles of native documents are not known offline. The report's `assumptions` say so.
-- **The shared pipeline gets faster first.** Delivery step 3 must take the pipeline from about 1 MB a second per thread to at least 5 MB a second, with no superlinear construct, before `quill check` ships. The server's sync and publish gain the same speed. From then on, the throughput budget in `pnpm check` holds every change to the pipeline to it.
+- **The shared pipeline gets faster first.** Delivery step 3 must take Quill's full parse from 1.6 MB a second per thread to at least 3 MB a second, with no superlinear construct, and make the server parse each document once per sync revision, before `quill check` ships. The server's sync and publish gain the same speed. From then on, the throughput budget in `pnpm check` holds every change to the pipeline to it.
 - **Revisit** in these cases:
-  - step 3 finds a throughput or linearity target unreachable without replacing the parser; the step stops and amends this ADR with its profile;
-  - the measured throughput passes 10 MB a second, so the cold budgets can be halved;
+  - step 3 finds 3 MB a second, or a linearity target, unreachable after tuning; the step stops and reports its profile, and only then is replacing micromark considered;
+  - the measured throughput passes 6 MB a second, so the cold budgets can be halved;
   - run-time blocks land (ADR-060 step 7);
   - a need for network checks appears beyond link previews.
 
@@ -413,11 +432,17 @@ A milestone of its own, **M3b — Check and preview in the repository**, after M
    - Golden reports and stored trees for the parity fixtures are captured from the current sync **before** the refactor, in a commit of their own, and must match after it.
    - The existing sync tests (`sync-source.test.ts`) and the server's sync integration tests stay unchanged and green.
    - Any behaviour change found on the way goes in its own pull request.
-3. **Throughput of the shared pipeline.** Profile `DocumentFormat.render` over L: parsing against extensions and directives, highlighting, sanitising and serialising, and which constructs are superlinear. Then fix the cause in `@quill/markdown`, `@quill/highlight` or the format adapter, never in the tool.
-   - Done when the throughput and linearity targets in section 4 are met, and the server's sync row is within budget.
+3. **Throughput of the shared pipeline.** Profile Quill's parse over L and fix the cause in `@quill/markdown`, `@quill/highlight` or the format adapter, never in the tool:
+   - measure and tune each micromark extension Quill registers (directives, the GFM pieces, autolink literals, front matter and the rest), and its configuration;
+   - merge or remove post-parse passes that walk the same tree again (`readLinkComments`, `markSourceForm`, autolink literals, code groups);
+   - never tokenise the same text twice;
+   - **parse once on the server:** the sync takes a document's title, order, links, images and render input from one parse per document per revision, where it takes four or more today;
+   - write the generated stress files for the linearity guard, one per construct.
+
+   - Done when the throughput and linearity targets in section 4 are met, and the server's sync row is within its 10 seconds.
    - **Output must not change.** Before the first change, the step records the hash of every L body and the golden parity reports. They must be identical afterwards, along with the markdown package's corpus and round-trip tests. A change that alters output is a separate, reviewed change with its own `RENDER_VERSION` bump.
    - The throughput budget test lands in `pnpm check` with this step.
-   - If a target is unreachable without replacing the parser, the step stops and amends this ADR with the profile.
+   - If 3 MB a second is unreachable after tuning, the step stops and reports the profile. Replacing micromark is not part of this step.
 4. **The packages.** `@quill/format` and `@quill/site` are moved out of `apps/server`, with the dependency rules.
 5. **The adapters.** `WorkingTreeSource` and `LocalRevisionSource` in `packages/content-store`.
 6. **`quill check`.** It covers:
@@ -434,5 +459,5 @@ It is done when:
 
 - lockstay's CI runs `quill check` on every pull request;
 - for the same commit, its report equals what lockstay's instance lists on the source's admin page;
-- every budget above is green on the reference runner, including the cold `check` of L in 8 seconds and the pipeline at 5 MB a second;
+- every budget above is green on the reference runner, including the cold `check` of L in 8 seconds, Quill's parse at 3 MB a second and one parse per document in the sync;
 - the parity suite is green on all three operating systems.
