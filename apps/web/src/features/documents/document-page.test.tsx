@@ -162,7 +162,13 @@ describe('a page whose file left its repository', () => {
   it('says it was removed, when, and in which commit', async () => {
     renderApp(READING_PATH, readingRoutes({ 'GET /api/documents/{id}': () => removed(null) }))
     expect(await screen.findByText('This page was removed')).toBeVisible()
-    expect(screen.getByText(/“Old setup” was removed from its repository/u)).toBeVisible()
+    expect(screen.getByRole('heading', { level: 1, name: 'Old setup' })).toBeVisible()
+    expect(screen.getByText(/Its file was removed from the repository/u)).toBeVisible()
+    // The way on stays inside the workspace the reader was in.
+    expect(await screen.findByRole('link', { name: 'Go to Engineering' })).toHaveAttribute(
+      'href',
+      '/w/engineering',
+    )
     expect(screen.getByText('a1b2c3d4e5f6')).toBeVisible()
     await expectNoAccessibilityViolations(globalThis.document.body)
   })

@@ -13,6 +13,7 @@ import { RouteNotice } from '../../../../../../features/workspaces/route-notice.
 import {
   ApiError,
   documentQueryOptions,
+  useWorkspace,
   workspaceQueryOptions,
 } from '../../../../../../lib/api/index.ts'
 import {
@@ -159,7 +160,7 @@ export const Route = createFileRoute('/_authenticated/w/$workspaceSlug/d/$docume
         body="It may have been deleted, or moved somewhere you cannot see. This workspace's documents are in the sidebar."
       />
     ) : (
-      <RemovedDocumentNotice removed={removed} />
+      <RemovedNotice removed={removed} />
     )
   },
   errorComponent: () => (
@@ -170,6 +171,13 @@ export const Route = createFileRoute('/_authenticated/w/$workspaceSlug/d/$docume
   ),
   component: DocumentRoute,
 })
+
+/** The removal notice, with the workspace it was in for the way back. */
+function RemovedNotice({ removed }: { readonly removed: RemovedDocument }) {
+  const { workspaceSlug } = Route.useParams()
+  const workspace = useWorkspace(workspaceSlug).data
+  return <RemovedDocumentNotice removed={removed} workspace={workspace} />
+}
 
 function isRemoved(data: unknown): data is RemovedDocument {
   return typeof data === 'object' && data !== null && 'title' in data && 'replacement' in data
