@@ -4622,6 +4622,7 @@ export interface paths {
                                 username: string;
                             } | null;
                             history: string;
+                            manifestEntry: string | null;
                             outsideLinks: string;
                             remote: string;
                             sync: {
@@ -4683,6 +4684,7 @@ export interface paths {
                             username: string;
                         } | null;
                         history: "full" | "head";
+                        manifestEntry?: string | null;
                         outsideLinks?: "forge" | "text";
                         remote: string;
                         viewTemplate?: string | null;
@@ -4711,6 +4713,7 @@ export interface paths {
                                 username: string;
                             } | null;
                             history: string;
+                            manifestEntry: string | null;
                             outsideLinks: string;
                             remote: string;
                             sync: {
@@ -4749,6 +4752,132 @@ export interface paths {
             };
         };
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/workspaces/{id}/source/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        branch: string;
+                        collections: {
+                            name: string;
+                            path: string;
+                            slug: string;
+                        }[];
+                        credential: {
+                            secretName: string;
+                            username: string;
+                        } | null;
+                        manifestEntry?: string | null;
+                        remote: string;
+                    };
+                };
+            };
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            /** @enum {string} */
+                            outcome: "preview";
+                            preview: {
+                                assets: number;
+                                changes: {
+                                    added: number;
+                                    archived: {
+                                        path: string;
+                                        title: string;
+                                    }[];
+                                    moved: number;
+                                    retired: {
+                                        slug: string;
+                                        title: string;
+                                    }[];
+                                    unchanged: number;
+                                } | null;
+                                collections: {
+                                    documents: number;
+                                    nodes: {
+                                        change: "added" | "moved" | "unchanged" | null;
+                                        depth: number;
+                                        kind: "document" | "folder" | "generated-folder";
+                                        path: string;
+                                        title: string;
+                                    }[];
+                                    order: string;
+                                    path: string;
+                                    previousTitle: string | null;
+                                    slug: string;
+                                    status: "new" | "kept" | "renamed";
+                                    title: string;
+                                }[];
+                                limits: {
+                                    files: number;
+                                    truncated: boolean;
+                                    unread: number;
+                                };
+                                manifest: {
+                                    entries: {
+                                        collections: number;
+                                        slug: string | null;
+                                    }[];
+                                    entry: string | null;
+                                    path: string;
+                                    problem: {
+                                        line: number | null;
+                                        message: string;
+                                    } | null;
+                                    state: "absent" | "read" | "problem";
+                                    unknownKeys: {
+                                        key: string;
+                                        line: number | null;
+                                    }[];
+                                };
+                                origin: "manifest" | "settings" | null;
+                                revision: string;
+                                skipped: {
+                                    count: number;
+                                    paths: string[];
+                                    patterns: {
+                                        [key: string]: string;
+                                    };
+                                    reason: "excluded" | "outside" | "too-large" | "not-utf8" | "symbolic-link" | "not-markdown";
+                                }[];
+                            };
+                        } | {
+                            message: string;
+                            /** @enum {string} */
+                            outcome: "unreadable";
+                            reason: string;
+                        };
+                    };
+                };
+            };
+        };
         delete?: never;
         options?: never;
         head?: never;

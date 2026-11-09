@@ -2,10 +2,12 @@ import { describe, expect, it } from 'vitest'
 
 import {
   MAX_SOURCE_BRANCH_LENGTH,
+  MAX_SOURCE_MANIFEST_ENTRY_LENGTH,
   MAX_SOURCE_PATH_LENGTH,
   MAX_SOURCE_REMOTE_LENGTH,
   MAX_SOURCE_USERNAME_LENGTH,
   checkSourceBranch,
+  checkSourceManifestEntry,
   checkSourcePath,
   checkSourcePattern,
   checkSourceRemote,
@@ -189,5 +191,23 @@ describe('checkSourceUsername', () => {
 
   it.each(['', 'a:b', 'a\nb', 'a'.repeat(MAX_SOURCE_USERNAME_LENGTH + 1)])('refuses %j', (name) => {
     expect(checkSourceUsername(name).ok).toBe(false)
+  })
+})
+
+describe('checkSourceManifestEntry', () => {
+  it('accepts a slug a manifest can hold', () => {
+    expect(checkSourceManifestEntry('handbook-2')).toEqual({ ok: true, value: 'handbook-2' })
+  })
+
+  it.each([
+    ['', '1 to'],
+    ['x'.repeat(MAX_SOURCE_MANIFEST_ENTRY_LENGTH + 1), '1 to'],
+    ['Handbook', 'not a workspace slug'],
+    ['hand book', 'not a workspace slug'],
+    ['-handbook', 'not a workspace slug'],
+  ])('refuses %j', (value, reason) => {
+    const checked = checkSourceManifestEntry(value)
+    expect(checked.ok).toBe(false)
+    expect(checked.ok ? '' : checked.error).toContain(reason)
   })
 })

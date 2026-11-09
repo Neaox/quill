@@ -35,11 +35,33 @@ export interface SourceSettings {
   readonly history: SourceHistorySetting
   /** `subject` shows each revision's subject as its change note; `none` shows no message. */
   readonly commitMessages: SourceCommitMessageSetting
+  /**
+   * Which workspace of a manifest that describes several this source reads,
+   * by its slug (ADR-061, "Workspace entry"); null to read the one whose slug
+   * is the workspace's own. A manifest of one workspace needs none.
+   */
+  readonly manifestEntry: string | null
 }
 
 export interface ConnectedSource {
   readonly source: ExternalSource
   readonly settings: SourceSettings
+  /**
+   * When the settings were last saved. A sync since then has read the
+   * layout they give; before one has, the tree is placed again even when
+   * the source has not moved, so a new manifest entry takes effect.
+   */
+  readonly configuredAt: Date
+}
+
+/**
+ * Where a source not yet stored reads from: what a preview opens (ADR-061).
+ * The credential names a secret, as a stored source's does.
+ */
+export interface SourceDraft {
+  readonly remote: string
+  readonly branch: string
+  readonly credential: WorkspaceSourceCredential | null
 }
 
 /**
@@ -50,6 +72,13 @@ export interface ConnectedSource {
  */
 export interface ExternalSourceProvider {
   forWorkspace(workspaceId: WorkspaceId): Promise<ConnectedSource | null>
+  /**
+   * Opens a source from settings not yet stored, for a preview: under the
+   * same outbound policy and hardening as a sync, in a directory of its own
+   * that is removed when `work` settles, and with a shorter deadline. Nothing
+   * it fetches outlives the call.
+   */
+  withDraft<T>(draft: SourceDraft, work: (source: ExternalSource) => Promise<T>): Promise<T>
 }
 
 /**
@@ -134,6 +163,7 @@ export interface WorkspaceSourceRepository {
     readonly collections: readonly SourceCollection[]
     readonly history: SourceHistorySetting
     readonly commitMessages: SourceCommitMessageSetting
+    readonly manifestEntry: string | null
     readonly credential: WorkspaceSourceCredential | null
     readonly outsideLinks: SourceOutsideLinkSetting
     readonly viewTemplate: string | null

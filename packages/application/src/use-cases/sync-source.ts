@@ -1,5 +1,5 @@
 import { BRAND } from '@quill/brand'
-import { sourcePatternPrefix, collectionId as toCollectionId } from '@quill/domain'
+import { collectionId as toCollectionId } from '@quill/domain'
 import type { DocumentId, RevisionId, ShortId, WorkspaceId } from '@quill/domain'
 
 import { AUTHORED_AT_MAX_SKEW_MS, checkSourceStamp } from '../ports/content-store.ts'
@@ -55,7 +55,7 @@ import {
   SOURCE_ASSET_MAP_PATH,
   writeAssetMap,
 } from './source-assets.ts'
-import { decodeUtf8, isDocumentPath, titleFromPath } from './source-files.ts'
+import { titleFromPath } from './source-files.ts'
 import {
   directoryOf,
   folderTitle,
@@ -64,25 +64,27 @@ import {
   generatedFolderPath,
   planFolders,
 } from './source-folders.ts'
-import type { FolderPlan, FolderPlanCollection } from './source-folders.ts'
+import type { FolderPlan } from './source-folders.ts'
 import { isRelativeDestination, repositoryTarget } from './source-links.ts'
 import {
-  layoutFromManifest,
+  acceptSourceDocument,
+  folderRoots,
+  isSourceDocument,
+  readLayoutAt,
+  readSourceContents,
+  readSourceDocument,
+} from './source-plan.ts'
+import {
+  LEADING_ORDER,
   layoutFromSettings,
   layoutPaths,
   layoutPlacer,
-  MAX_FRONT_MATTER_ORDER,
   placedAsTree,
   projectSortKeys,
   readOrder,
 } from './source-layout.ts'
 import type { LayoutCollection, LayoutPlacer, SourceLayout } from './source-layout.ts'
-import {
-  describeManifestProblem,
-  parseSourceManifest,
-  selectManifestEntry,
-  SOURCE_MANIFEST_PATH,
-} from './source-manifest.ts'
+import { describeManifestProblem, SOURCE_MANIFEST_PATH } from './source-manifest.ts'
 import type { ManifestProblem } from './source-manifest.ts'
 
 /**
@@ -327,7 +329,9 @@ class SourceReplay {
       const last = state?.lastSyncedRevision ?? null
 
       const head = await this.#source.source.head()
-      if (head === last && this.#layoutHolds()) return { kind: 'up-to-date', revision: head }
+      if (head === last && this.#layoutHolds(state?.lastSyncedAt ?? null)) {
+        return { kind: 'up-to-date', revision: head }
+      }
 
       const fetched = await this.#source.source.fetch()
       this.#current = fetched
@@ -367,11 +371,13 @@ class SourceReplay {
   /**
    * Whether the tree's layout is still the one it was placed by, when the
    * source has not moved. A manifest only changes with a revision, so only
-   * the stored settings can have moved under a tree the settings placed.
+   * the stored settings can have moved under it: settings saved since the
+   * last sync may name another manifest entry, so the layout is read again.
    */
-  #layoutHolds(): boolean {
+  #layoutHolds(lastSyncedAt: Date | null): boolean {
     const record = this.#record
-    if (record === null) return false
+    if (record === null || lastSyncedAt === null) return false
+    if (this.#source.configuredAt.getTime() > lastSyncedAt.getTime()) return false
     // A tree placed before folders were documents is placed again (ADR-061).
     if (record.origin === 'manifest') return placedAsTree(record.fingerprint)
     return record.fingerprint === layoutFromSettings(this.#source.settings.collections).fingerprint
@@ -447,24 +453,10 @@ class SourceReplay {
     | { readonly ok: true; readonly layout: SourceLayout }
     | { readonly ok: false; readonly problem: ManifestProblem }
   > {
-    const file = await this.#source.source.file(revision, SOURCE_MANIFEST_PATH)
-    if (file === null) {
-      return { ok: true, layout: layoutFromSettings(this.#source.settings.collections) }
-    }
-    if (file.kind === 'symbolic-link')
-      return unreadable('it is a symbolic link, which is never followed.')
-    const content = (await this.#read([file])).get(file.fileId)
-    if (content === undefined) {
-      throw new ExternalSourceError('file-missing', `The source did not return ${file.path}.`)
-    }
-    if (content.kind === 'too-large') return unreadable('it is larger than a source file may be.')
-    const text = decodeUtf8(content.bytes)
-    if (text === null) return unreadable('it is not UTF-8.')
-    const parsed = parseSourceManifest(text)
-    if (!parsed.ok) return parsed
-    const entry = selectManifestEntry(parsed.manifest, await this.#slug())
-    if (!entry.ok) return entry
-    return { ok: true, layout: layoutFromManifest(entry.entry, parsed.manifest.unknownKeys) }
+    return await readLayoutAt(this.#source.source, revision, {
+      collections: this.#source.settings.collections,
+      entry: this.#source.settings.manifestEntry ?? (await this.#slug()),
+    })
   }
 
   async #slug(): Promise<string> {
@@ -815,12 +807,7 @@ class SourceReplay {
   }): Folders {
     const { layout, ids, paths, placed, archived } = input
     const placer = this.#placerFor(layout)
-    const roots = layout.collections.flatMap((collection): FolderPlanCollection<CollectionId>[] => {
-      const id = ids.get(collection)
-      /* v8 ignore next -- every collection of a layout is resolved with it. */
-      if (id === undefined) return []
-      return [{ collection: id, root: sourcePatternPrefix(collection.path) }]
-    })
+    const roots = folderRoots(layout, (collection) => ids.get(collection))
     const collectionOf = (path: string): CollectionId | null => {
       const collection = placer.place(path)
       if (collection === null) return null
@@ -1001,16 +988,16 @@ class SourceReplay {
     layout: SourceLayout,
     ids: Resolution['ids'],
   ): { readonly collectionId: CollectionId } | 'unplaced' | 'refused' {
-    const collection = this.#placerFor(layout).place(file.path)
-    if (collection === null) return 'unplaced'
-    if (file.kind === 'symbolic-link') {
-      this.#refuse(file.path, revision, 'symbolic-link')
+    const verdict = acceptSourceDocument(file, this.#placerFor(layout))
+    if (verdict.kind === 'left-out') return 'unplaced'
+    if (verdict.kind === 'refused') {
+      this.#refuse(file.path, revision, verdict.reason)
       return 'refused'
     }
-    const collectionId = ids.get(collection)
+    const collectionId = ids.get(verdict.collection)
     /* v8 ignore next -- every collection of a layout is resolved with it. */
     if (collectionId === undefined)
-      throw new Error(`No collection resolved for ${collection.path}.`)
+      throw new Error(`No collection resolved for ${verdict.collection.path}.`)
     return { collectionId }
   }
 
@@ -1023,9 +1010,8 @@ class SourceReplay {
     if (content === undefined) {
       throw new ExternalSourceError('file-missing', `The source did not return ${file.path}.`)
     }
-    if (content.kind === 'too-large') return this.#refuse(file.path, revision, 'too-large')
-    const text = decodeUtf8(content.bytes)
-    return text ?? this.#refuse(file.path, revision, 'not-utf8')
+    const read = readSourceDocument(content)
+    return read.kind === 'text' ? read.text : this.#refuse(file.path, revision, read.reason)
   }
 
   #refuse(path: string, revision: SourceRevisionId, reason: RefusedSourceFile['reason']): null {
@@ -1034,12 +1020,7 @@ class SourceReplay {
   }
 
   async #read(files: readonly SourceFile[]): Promise<ReadonlyMap<string, SourceFileContent>> {
-    const contents = new Map<string, SourceFileContent>()
-    if (files.length === 0) return contents
-    for await (const content of this.#source.source.readFiles(files.map((file) => file.fileId))) {
-      contents.set(content.fileId, content)
-    }
-    return contents
+    return await readSourceContents(this.#source.source, files)
   }
 
   // -------------------------------------------------------------------------
@@ -1738,10 +1719,6 @@ interface RecordContext {
   readonly now: Date
 }
 
-function unreadable(message: string) {
-  return { ok: false, problem: { line: null, message } } as const
-}
-
 function recordOf(layout: SourceLayout, resolution: Resolution): SourceLayoutRecord {
   return {
     origin: layout.origin,
@@ -1761,14 +1738,6 @@ function sortOrders(
   )
   for (const edit of edits) if (edit.kind !== 'archive') orders.set(edit.documentId, edit.order)
   return orders
-}
-
-/** The sort key of a collection's own index file: before any `order` front matter can put a page. */
-const LEADING_ORDER = -(MAX_FRONT_MATTER_ORDER + 1)
-
-/** A document of the source: a Markdown file, never at a path a folder's generated document takes. */
-function isSourceDocument(path: string): boolean {
-  return isDocumentPath(path) && generatedFolderOf(path) === null
 }
 
 function touchesManifest(change: SourceChange): boolean {

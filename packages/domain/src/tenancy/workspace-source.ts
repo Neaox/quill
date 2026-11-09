@@ -1,4 +1,5 @@
 import { err, ok } from '../result.ts'
+import { slugify } from '../slug.ts'
 import type { Result } from '../result.ts'
 
 /**
@@ -223,4 +224,21 @@ export function checkSourceUsername(value: string): Result<string, string> {
     return err('The user name must not contain a colon or a control character.')
   }
   return ok(value)
+}
+
+export const MAX_SOURCE_MANIFEST_ENTRY_LENGTH = 80
+
+/**
+ * Which workspace of a manifest that describes several a source reads
+ * (ADR-061, "Workspace entry"): an entry's slug. A manifest of one workspace
+ * needs none.
+ */
+export function checkSourceManifestEntry(value: string): Result<string, string> {
+  if (value.length === 0 || value.length > MAX_SOURCE_MANIFEST_ENTRY_LENGTH) {
+    return err(`A manifest entry is 1 to ${MAX_SOURCE_MANIFEST_ENTRY_LENGTH} characters.`)
+  }
+  // The rule a manifest's own slugs are read by, so every slug it can hold is one this accepts.
+  return slugify(value) === value
+    ? ok(value)
+    : err(`"${value}" is not a workspace slug a manifest can hold.`)
 }

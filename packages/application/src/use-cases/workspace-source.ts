@@ -4,6 +4,7 @@ import {
   SOURCE_OUTSIDE_LINK_SETTINGS,
   checkForgeViewTemplate,
   checkSourceBranch,
+  checkSourceManifestEntry,
   checkSourcePath,
   checkSourceRemote,
   checkSourceUsername,
@@ -86,10 +87,20 @@ export interface ConfigureWorkspaceSourceCommand {
   readonly workspaceId: WorkspaceId
   readonly remote: string
   readonly branch: string
+  /**
+   * The collections that place the source's files where it has no manifest.
+   * None is allowed: a source whose repository has a manifest needs none,
+   * and one with neither places nothing until it has one.
+   */
   readonly collections: readonly SourceCollectionInput[]
   readonly history: SourceHistorySetting
   readonly commitMessages: SourceCommitMessageSetting
   readonly credential: WorkspaceSourceCredential | null
+  /**
+   * Which workspace of a manifest that describes several to read, by its
+   * slug; null or absent to read the one whose slug is the workspace's own.
+   */
+  readonly manifestEntry?: string | null | undefined
   /**
    * Where a link to a repository file the source does not hold goes
    * (ADR-061): `forge` (the default) or `text`.
@@ -115,6 +126,7 @@ export type WorkspaceSourceField =
   | 'collections'
   | 'history'
   | 'commitMessages'
+  | 'manifestEntry'
   | 'credential'
   | 'outsideLinks'
   | 'viewTemplate'
@@ -145,6 +157,7 @@ interface ValidSettings {
   readonly remote: string
   readonly branch: string
   readonly collections: readonly SourceCollectionInput[]
+  readonly manifestEntry: string | null
   readonly outsideLinks: SourceOutsideLinkSetting
   readonly viewTemplate: string | null
   /** Undefined keeps what the source has. */
@@ -190,6 +203,7 @@ export async function configureWorkspaceSource(
       collections: collections.map(({ collectionId: id, path }) => ({ collectionId: id, path })),
       history: command.history,
       commitMessages: command.commitMessages,
+      manifestEntry: valid.manifestEntry,
       credential: command.credential,
       outsideLinks: valid.outsideLinks,
       viewTemplate: valid.viewTemplate,
@@ -215,6 +229,7 @@ export async function configureWorkspaceSource(
         paths: source.collections.map(({ path }) => path),
         history: source.history,
         commitMessages: source.commitMessages,
+        manifestEntry: source.manifestEntry,
         credentialSecret: source.credential?.secretName ?? null,
         outsideLinks: source.outsideLinks,
         viewTemplate: source.viewTemplate,
@@ -227,16 +242,58 @@ export async function configureWorkspaceSource(
   return { kind: 'configured', view }
 }
 
+/** Where a source reads from, checked: what a preview needs before it opens anything. */
+export interface ValidSourceDraft {
+  readonly remote: string
+  readonly branch: string
+  readonly credential: WorkspaceSourceCredential | null
+  readonly collections: readonly SourceCollectionInput[]
+  readonly manifestEntry: string | null
+}
+
+/**
+ * The address, branch, credential, collections and manifest entry checked
+ * as `configureWorkspaceSource` checks them, so a preview refuses exactly
+ * what saving would.
+ */
+export async function validateSourceDraft(
+  deps: Pick<WorkspaceSourceDependencies, 'uow' | 'allowFileRemotes'>,
+  draft: {
+    readonly remote: string
+    readonly branch: string
+    readonly credential: WorkspaceSourceCredential | null
+    readonly collections: readonly SourceCollectionInput[]
+    readonly manifestEntry?: string | null | undefined
+  },
+): Promise<ValidSourceDraft | Invalid> {
+  const remote = checkSourceRemote(draft.remote, {
+    allowFileRemotes: deps.allowFileRemotes === true,
+  })
+  if (!remote.ok) return invalid('remote', remote.error)
+  const branch = checkSourceBranch(draft.branch)
+  if (!branch.ok) return invalid('branch', branch.error)
+  const entry = draft.manifestEntry ?? null
+  const manifestEntry = entry === null ? null : checkSourceManifestEntry(entry)
+  if (manifestEntry?.ok === false) return invalid('manifestEntry', manifestEntry.error)
+  const credential = await validateCredential(deps, draft.credential)
+  if (credential !== null) return credential
+  const collections = validateCollections(draft.collections)
+  if ('kind' in collections) return collections
+  return {
+    remote: remote.value,
+    branch: branch.value,
+    credential: draft.credential,
+    collections,
+    manifestEntry: manifestEntry?.value ?? null,
+  }
+}
+
 async function validate(
   deps: WorkspaceSourceDependencies,
   command: ConfigureWorkspaceSourceCommand,
 ): Promise<ValidSettings | Invalid> {
-  const remote = checkSourceRemote(command.remote, {
-    allowFileRemotes: deps.allowFileRemotes === true,
-  })
-  if (!remote.ok) return invalid('remote', remote.error)
-  const branch = checkSourceBranch(command.branch)
-  if (!branch.ok) return invalid('branch', branch.error)
+  const draft = await validateSourceDraft(deps, command)
+  if ('kind' in draft) return draft
   if (!SOURCE_HISTORY_SETTINGS.includes(command.history)) {
     return invalid('history', `The history setting must be one of ${SOURCE_HISTORY_SETTINGS}.`)
   }
@@ -256,19 +313,16 @@ async function validate(
   const template = command.viewTemplate ?? null
   const viewTemplate = template === null ? null : checkForgeViewTemplate(template)
   if (viewTemplate?.ok === false) return invalid('viewTemplate', viewTemplate.error)
-  const collections = validateCollections(command.collections)
-  if ('kind' in collections) return collections
-  const credential = await validateCredential(deps, command.credential)
-  if (credential !== null) return credential
   const webhookSecretName = command.webhookSecretName
   if (webhookSecretName !== undefined && webhookSecretName !== null) {
     const problem = await checkSecretName(deps, webhookSecretName)
     if (problem !== null) return invalid('webhookSecret', problem)
   }
   return {
-    remote: remote.value,
-    branch: branch.value,
-    collections,
+    remote: draft.remote,
+    branch: draft.branch,
+    collections: draft.collections,
+    manifestEntry: draft.manifestEntry,
     outsideLinks,
     viewTemplate: viewTemplate?.value ?? null,
     webhookSecretName,
@@ -278,7 +332,6 @@ async function validate(
 function validateCollections(
   inputs: readonly SourceCollectionInput[],
 ): readonly SourceCollectionInput[] | Invalid {
-  if (inputs.length === 0) return invalid('collections', 'A source needs at least one collection.')
   if (inputs.length > MAX_SOURCE_COLLECTIONS) {
     return invalid(
       'collections',
@@ -315,7 +368,7 @@ function validateCollections(
 }
 
 async function validateCredential(
-  deps: WorkspaceSourceDependencies,
+  deps: Pick<WorkspaceSourceDependencies, 'uow'>,
   credential: WorkspaceSourceCredential | null,
 ): Promise<Invalid | null> {
   if (credential === null) return null
@@ -327,7 +380,7 @@ async function validateCredential(
 
 /** Why a secret name cannot be used, or null when it names a stored secret. */
 async function checkSecretName(
-  deps: WorkspaceSourceDependencies,
+  deps: Pick<WorkspaceSourceDependencies, 'uow'>,
   name: string,
 ): Promise<string | null> {
   if (!isSecretName(name)) return `"${name}" is not a secret name.`
