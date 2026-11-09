@@ -1,0 +1,25 @@
+{
+  "fixture": "manifest-no-entry",
+  "result": {
+    "kind": "failed",
+    "failure": {
+      "reason": "invalid-manifest",
+      "message": ".quill/workspace.yaml: it describes 2 workspaces and none has the slug \"handbook\". (at 767a9327a2a42ea7f857f7df5e47690fb4a94cf6)",
+      "revision": "767a9327a2a42ea7f857f7df5e47690fb4a94cf6"
+    }
+  },
+  "state": {
+    "failure": {
+      "reason": "invalid-manifest",
+      "message": ".quill/workspace.yaml: it describes 2 workspaces and none has the slug \"handbook\". (at 767a9327a2a42ea7f857f7df5e47690fb4a94cf6)"
+    },
+    "refused": [],
+    "brokenLinks": [],
+    "layout": null
+  },
+  "collections": [],
+  "tree": [],
+  "assets": [],
+  "stored": {},
+  "bodies": {}
+}

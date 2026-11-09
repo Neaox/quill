@@ -1,0 +1,67 @@
+{
+  "fixture": "blocks",
+  "result": {
+    "kind": "synced",
+    "published": 1
+  },
+  "state": {
+    "failure": null,
+    "refused": [],
+    "brokenLinks": [],
+    "layout": {
+      "origin": "settings",
+      "unknownKeys": [],
+      "collections": []
+    }
+  },
+  "collections": [
+    {
+      "slug": "guides",
+      "title": "guides"
+    }
+  ],
+  "tree": [
+    {
+      "path": "docs/api.md",
+      "collection": "guides",
+      "parent": null,
+      "title": "API",
+      "sortKey": 1,
+      "archived": false
+    }
+  ],
+  "assets": [],
+  "stored": {
+    "docs/api.md": "---\nid: {doc:docs/api.md}\nrequiredSections: [Summary, Rollback]\n---\n\n# API\n\n## Summary\n\n## Rollback\n\nRoll back by redeploying.\n\n:::endpoint{method=GET path=/users}\nLists the users.\n:::\n\n:::endpoint{method=FETCH path=/users}\nA method that is not one.\n:::\n\n:::endpoint{method=POST}\nNo path.\n:::\n\n::::gallery\n:::frame\nNot a block this instance has.\n:::\n::::\n"
+  },
+  "bodies": {
+    "docs/api.md": {
+      "html": "<article><h1 id=\"user-content-api\" aria-labelledby=\"user-content-title.api\"><span id=\"user-content-title.api\">API</span><a class=\"heading-anchor\" href=\"#user-content-api\" aria-label=\"Link to this section: API\"><span aria-hidden=\"true\">#</span></a></h1>\n<h2 id=\"user-content-summary\" aria-labelledby=\"user-content-title.summary\"><span id=\"user-content-title.summary\">Summary</span><a class=\"heading-anchor\" href=\"#user-content-summary\" aria-label=\"Link to this section: Summary\"><span aria-hidden=\"true\">#</span></a></h2>\n<h2 id=\"user-content-rollback\" aria-labelledby=\"user-content-title.rollback\"><span id=\"user-content-title.rollback\">Rollback</span><a class=\"heading-anchor\" href=\"#user-content-rollback\" aria-label=\"Link to this section: Rollback\"><span aria-hidden=\"true\">#</span></a></h2>\n<p>Roll back by redeploying.</p>\n<section class=\"qb qb-endpoint\" aria-label=\"GET /users\"><header class=\"qb-endpoint-head\"><span class=\"qb-endpoint-method\" data-qb-method=\"get\">GET</span> <code class=\"qb-endpoint-path\">/users</code></header>\n<p>Lists the users.</p>\n</section>\n<section class=\"qb qb-endpoint\" aria-label=\"GET /users\"><p class=\"block-issues\"><span class=\"block-issues-label\">Check this block</span> method: “FETCH” is not one of GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS; drawn as GET.</p><header class=\"qb-endpoint-head\"><span class=\"qb-endpoint-method\" data-qb-method=\"get\">GET</span> <code class=\"qb-endpoint-path\">/users</code></header>\n<p>A method that is not one.</p>\n</section>\n<div class=\"block-fallback\" role=\"group\" aria-label=\"path is required: endpoint\">\n<p class=\"block-fallback-head\"><code>endpoint{method=\"POST\"}</code> <span class=\"block-fallback-reason\">path is required</span></p>\n<p>No path.</p>\n</div>\n<div class=\"block-fallback\" role=\"group\" aria-label=\"Unknown block: gallery\">\n<p class=\"block-fallback-head\"><code>gallery</code> <span class=\"block-fallback-reason\">Unknown block</span></p>\n<div class=\"block-fallback\" role=\"group\" aria-label=\"Unknown block: frame\">\n<p class=\"block-fallback-head\"><code>frame</code> <span class=\"block-fallback-reason\">Unknown block</span></p>\n<p>Not a block this instance has.</p>\n</div>\n</div></article>",
+      "blockIssues": [
+        {
+          "block": "endpoint",
+          "message": "method: “FETCH” is not one of GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS; drawn as GET",
+          "line": 18
+        },
+        {
+          "block": "endpoint",
+          "message": "path is required",
+          "line": 22
+        },
+        {
+          "block": "gallery",
+          "message": "no block is called gallery",
+          "line": 26
+        },
+        {
+          "block": "frame",
+          "message": "no block is called frame",
+          "line": 27
+        }
+      ],
+      "incompleteRequiredSections": [
+        "Summary"
+      ]
+    }
+  }
+}

@@ -1,0 +1,222 @@
+{
+  "fixture": "manifest-layout",
+  "result": {
+    "kind": "synced",
+    "published": 1
+  },
+  "state": {
+    "failure": null,
+    "refused": [],
+    "brokenLinks": [],
+    "layout": {
+      "origin": "manifest",
+      "unknownKeys": [
+        {
+          "key": "audience",
+          "line": 9
+        }
+      ],
+      "collections": [
+        "guides",
+        "decisions",
+        "packages",
+        "plan"
+      ]
+    }
+  },
+  "collections": [
+    {
+      "slug": "decisions",
+      "title": "Decisions"
+    },
+    {
+      "slug": "guides",
+      "title": "Guides"
+    },
+    {
+      "slug": "packages",
+      "title": "Packages"
+    },
+    {
+      "slug": "plan",
+      "title": "Plan"
+    }
+  ],
+  "tree": [
+    {
+      "path": "docs/adr/0001-first.md",
+      "collection": "decisions",
+      "parent": null,
+      "title": "First decision",
+      "sortKey": 1,
+      "archived": false
+    },
+    {
+      "path": "docs/adr/0002-second.md",
+      "collection": "decisions",
+      "parent": null,
+      "title": "Second decision",
+      "sortKey": 2,
+      "archived": false
+    },
+    {
+      "path": "docs/guides/README.md",
+      "collection": "guides",
+      "parent": null,
+      "title": "Read me",
+      "sortKey": 4,
+      "archived": false
+    },
+    {
+      "path": "docs/guides/first.md",
+      "collection": "guides",
+      "parent": null,
+      "title": "First",
+      "sortKey": 2,
+      "archived": false
+    },
+    {
+      "path": "docs/guides/index.md",
+      "collection": "guides",
+      "parent": null,
+      "title": "The guides",
+      "sortKey": -1000000001,
+      "archived": false
+    },
+    {
+      "path": "docs/guides/no-heading.md",
+      "collection": "guides",
+      "parent": null,
+      "title": "No heading",
+      "sortKey": 3,
+      "archived": false
+    },
+    {
+      "path": "docs/guides/second.md",
+      "collection": "guides",
+      "parent": null,
+      "title": "Second",
+      "sortKey": 1,
+      "archived": false
+    },
+    {
+      "path": "docs/guides/topics/README.md",
+      "collection": "guides",
+      "parent": "docs/guides/topics/index.md",
+      "title": "Topics read me",
+      "sortKey": 1,
+      "archived": false
+    },
+    {
+      "path": "docs/guides/topics/index.md",
+      "collection": "guides",
+      "parent": null,
+      "title": "Topics",
+      "sortKey": 5,
+      "archived": false
+    },
+    {
+      "path": "docs/plan.md",
+      "collection": "plan",
+      "parent": null,
+      "title": "Plan",
+      "sortKey": 1,
+      "archived": false
+    },
+    {
+      "path": "packages/api/README.md",
+      "collection": "packages",
+      "parent": null,
+      "title": "The API package",
+      "sortKey": 1,
+      "archived": false
+    },
+    {
+      "path": "packages/web/README.md",
+      "collection": "packages",
+      "parent": null,
+      "title": "The web package",
+      "sortKey": 2,
+      "archived": false
+    }
+  ],
+  "assets": [
+    "docs/diagrams/flow.png"
+  ],
+  "stored": {
+    "docs/adr/0001-first.md": "---\nid: {doc:docs/adr/0001-first.md}\n---\n# First decision\n\n![Flow](../diagrams/flow.png)\n",
+    "docs/adr/0002-second.md": "---\nid: {doc:docs/adr/0002-second.md}\n---\n# Second decision\n",
+    "docs/guides/README.md": "---\nid: {doc:docs/guides/README.md}\n---\n# Read me\n\nBeside an index file, an ordinary page.\n",
+    "docs/guides/first.md": "---\nid: {doc:docs/guides/first.md}\norder: 2\n---\n\n# First\n",
+    "docs/guides/index.md": "---\nid: {doc:docs/guides/index.md}\ntitle: The guides\n---\n\nWhere to start.\n",
+    "docs/guides/no-heading.md": "---\nid: {doc:docs/guides/no-heading.md}\n---\nJust words, so the file name titles it.\n",
+    "docs/guides/second.md": "---\nid: {doc:docs/guides/second.md}\norder: 1\n---\n\n# Second\n",
+    "docs/guides/topics/README.md": "---\nid: {doc:docs/guides/topics/README.md}\n---\n# Topics read me\n",
+    "docs/guides/topics/index.md": "---\nid: {doc:docs/guides/topics/index.md}\n---\n# Topics\n",
+    "docs/plan.md": "---\nid: {doc:docs/plan.md}\n---\n# Plan\n",
+    "packages/api/README.md": "---\nid: {doc:packages/api/README.md}\n---\n# The API package\n",
+    "packages/web/README.md": "---\nid: {doc:packages/web/README.md}\n---\n# The web package\n"
+  },
+  "bodies": {
+    "docs/adr/0001-first.md": {
+      "html": "<article><h1 id=\"user-content-first-decision\" aria-labelledby=\"user-content-title.first-decision\"><span id=\"user-content-title.first-decision\">First decision</span><a class=\"heading-anchor\" href=\"#user-content-first-decision\" aria-label=\"Link to this section: First decision\"><span aria-hidden=\"true\">#</span></a></h1>\n<p><img src=\"/api/attachments/{asset:docs/diagrams/flow.png}\" alt=\"Flow\"></p></article>",
+      "blockIssues": [],
+      "incompleteRequiredSections": []
+    },
+    "docs/adr/0002-second.md": {
+      "html": "<article><h1 id=\"user-content-second-decision\" aria-labelledby=\"user-content-title.second-decision\"><span id=\"user-content-title.second-decision\">Second decision</span><a class=\"heading-anchor\" href=\"#user-content-second-decision\" aria-label=\"Link to this section: Second decision\"><span aria-hidden=\"true\">#</span></a></h1></article>",
+      "blockIssues": [],
+      "incompleteRequiredSections": []
+    },
+    "docs/guides/README.md": {
+      "html": "<article><h1 id=\"user-content-read-me\" aria-labelledby=\"user-content-title.read-me\"><span id=\"user-content-title.read-me\">Read me</span><a class=\"heading-anchor\" href=\"#user-content-read-me\" aria-label=\"Link to this section: Read me\"><span aria-hidden=\"true\">#</span></a></h1>\n<p>Beside an index file, an ordinary page.</p></article>",
+      "blockIssues": [],
+      "incompleteRequiredSections": []
+    },
+    "docs/guides/first.md": {
+      "html": "<article><h1 id=\"user-content-first\" aria-labelledby=\"user-content-title.first\"><span id=\"user-content-title.first\">First</span><a class=\"heading-anchor\" href=\"#user-content-first\" aria-label=\"Link to this section: First\"><span aria-hidden=\"true\">#</span></a></h1></article>",
+      "blockIssues": [],
+      "incompleteRequiredSections": []
+    },
+    "docs/guides/index.md": {
+      "html": "<article><p>Where to start.</p></article>",
+      "blockIssues": [],
+      "incompleteRequiredSections": []
+    },
+    "docs/guides/no-heading.md": {
+      "html": "<article><p>Just words, so the file name titles it.</p></article>",
+      "blockIssues": [],
+      "incompleteRequiredSections": []
+    },
+    "docs/guides/second.md": {
+      "html": "<article><h1 id=\"user-content-second\" aria-labelledby=\"user-content-title.second\"><span id=\"user-content-title.second\">Second</span><a class=\"heading-anchor\" href=\"#user-content-second\" aria-label=\"Link to this section: Second\"><span aria-hidden=\"true\">#</span></a></h1></article>",
+      "blockIssues": [],
+      "incompleteRequiredSections": []
+    },
+    "docs/guides/topics/README.md": {
+      "html": "<article><h1 id=\"user-content-topics-read-me\" aria-labelledby=\"user-content-title.topics-read-me\"><span id=\"user-content-title.topics-read-me\">Topics read me</span><a class=\"heading-anchor\" href=\"#user-content-topics-read-me\" aria-label=\"Link to this section: Topics read me\"><span aria-hidden=\"true\">#</span></a></h1></article>",
+      "blockIssues": [],
+      "incompleteRequiredSections": []
+    },
+    "docs/guides/topics/index.md": {
+      "html": "<article><h1 id=\"user-content-topics\" aria-labelledby=\"user-content-title.topics\"><span id=\"user-content-title.topics\">Topics</span><a class=\"heading-anchor\" href=\"#user-content-topics\" aria-label=\"Link to this section: Topics\"><span aria-hidden=\"true\">#</span></a></h1></article>",
+      "blockIssues": [],
+      "incompleteRequiredSections": []
+    },
+    "docs/plan.md": {
+      "html": "<article><h1 id=\"user-content-plan\" aria-labelledby=\"user-content-title.plan\"><span id=\"user-content-title.plan\">Plan</span><a class=\"heading-anchor\" href=\"#user-content-plan\" aria-label=\"Link to this section: Plan\"><span aria-hidden=\"true\">#</span></a></h1></article>",
+      "blockIssues": [],
+      "incompleteRequiredSections": []
+    },
+    "packages/api/README.md": {
+      "html": "<article><h1 id=\"user-content-the-api-package\" aria-labelledby=\"user-content-title.the-api-package\"><span id=\"user-content-title.the-api-package\">The API package</span><a class=\"heading-anchor\" href=\"#user-content-the-api-package\" aria-label=\"Link to this section: The API package\"><span aria-hidden=\"true\">#</span></a></h1></article>",
+      "blockIssues": [],
+      "incompleteRequiredSections": []
+    },
+    "packages/web/README.md": {
+      "html": "<article><h1 id=\"user-content-the-web-package\" aria-labelledby=\"user-content-title.the-web-package\"><span id=\"user-content-title.the-web-package\">The web package</span><a class=\"heading-anchor\" href=\"#user-content-the-web-package\" aria-label=\"Link to this section: The web package\"><span aria-hidden=\"true\">#</span></a></h1></article>",
+      "blockIssues": [],
+      "incompleteRequiredSections": []
+    }
+  }
+}

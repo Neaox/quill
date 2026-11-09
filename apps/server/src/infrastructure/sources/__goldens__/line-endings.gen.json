@@ -1,0 +1,58 @@
+{
+  "fixture": "line-endings",
+  "result": {
+    "kind": "synced",
+    "published": 1
+  },
+  "state": {
+    "failure": null,
+    "refused": [],
+    "brokenLinks": [],
+    "layout": {
+      "origin": "settings",
+      "unknownKeys": [],
+      "collections": []
+    }
+  },
+  "collections": [
+    {
+      "slug": "guides",
+      "title": "guides"
+    }
+  ],
+  "tree": [
+    {
+      "path": "docs/deploy.md",
+      "collection": "guides",
+      "parent": null,
+      "title": "Deploying",
+      "sortKey": 1,
+      "archived": false
+    },
+    {
+      "path": "docs/setup.md",
+      "collection": "guides",
+      "parent": null,
+      "title": "Setting up",
+      "sortKey": 2,
+      "archived": false
+    }
+  ],
+  "assets": [],
+  "stored": {
+    "docs/deploy.md": "---\nid: {doc:docs/deploy.md}\n---\n# Deploying\r\n\r\n## Rolling back\r\n\r\nRedeploy.\r\n",
+    "docs/setup.md": "---\nid: {doc:docs/setup.md}\n---\n# Setting up\r\n\r\nSee [deploying](deploy.md#rolling-back).\r\n\r\n## Steps\r\n\r\n- one\r\n- two\r\n"
+  },
+  "bodies": {
+    "docs/deploy.md": {
+      "html": "<article><h1 id=\"user-content-deploying\" aria-labelledby=\"user-content-title.deploying\"><span id=\"user-content-title.deploying\">Deploying</span><a class=\"heading-anchor\" href=\"#user-content-deploying\" aria-label=\"Link to this section: Deploying\"><span aria-hidden=\"true\">#</span></a></h1>\n<h2 id=\"user-content-rolling-back\" aria-labelledby=\"user-content-title.rolling-back\"><span id=\"user-content-title.rolling-back\">Rolling back</span><a class=\"heading-anchor\" href=\"#user-content-rolling-back\" aria-label=\"Link to this section: Rolling back\"><span aria-hidden=\"true\">#</span></a></h2>\n<p>Redeploy.</p></article>",
+      "blockIssues": [],
+      "incompleteRequiredSections": []
+    },
+    "docs/setup.md": {
+      "html": "<article><h1 id=\"user-content-setting-up\" aria-labelledby=\"user-content-title.setting-up\"><span id=\"user-content-title.setting-up\">Setting up</span><a class=\"heading-anchor\" href=\"#user-content-setting-up\" aria-label=\"Link to this section: Setting up\"><span aria-hidden=\"true\">#</span></a></h1>\n<p>See <a href=\"/d/{doc:docs/deploy.md}#user-content-rolling-back\">deploying</a>.</p>\n<h2 id=\"user-content-steps\" aria-labelledby=\"user-content-title.steps\"><span id=\"user-content-title.steps\">Steps</span><a class=\"heading-anchor\" href=\"#user-content-steps\" aria-label=\"Link to this section: Steps\"><span aria-hidden=\"true\">#</span></a></h2>\n<ul>\n<li>one</li>\n<li>two</li>\n</ul></article>",
+      "blockIssues": [],
+      "incompleteRequiredSections": []
+    }
+  }
+}
