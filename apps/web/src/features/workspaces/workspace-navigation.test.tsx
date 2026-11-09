@@ -192,6 +192,73 @@ describe('WorkspaceTree creation entry points', () => {
     expect(screen.queryByRole('dialog')).toBeNull()
   })
 
+  it('never holds a writable workspace’s controls back while the workspace is still loading', async () => {
+    // The workspace's own answer never arrives: only "sourced" may take the controls away.
+    renderTree({}, { 'GET /api/workspaces/{id}': () => new Promise<Response>(() => undefined) })
+    expect(await screen.findByRole('link', { name: 'Quarterly plan' })).toBeVisible()
+    expect(screen.getByRole('button', { name: 'New' })).toBeVisible()
+    expect(screen.getByRole('button', { name: 'New collection' })).toBeVisible()
+    expect(screen.queryByText('Read from a repository: edit documents there.')).toBeNull()
+  })
+
+  describe('the workspace menu of a workspace read from a repository', () => {
+    const sourcedWorkspace = (manage: boolean) => () =>
+      jsonResponse(200, {
+        id: 'workspace-1',
+        unitId: 'unit-1',
+        name: 'Acme docs',
+        slug: 'acme',
+        createdAt: '2026-01-01T00:00:00.000Z',
+        origin: { kind: 'sourced' },
+        permissions: {
+          view: true,
+          comment: true,
+          edit: false,
+          publish: false,
+          arrange: false,
+          manage,
+        },
+      })
+    const me = (isInstanceAdmin: boolean) => () =>
+      jsonResponse(200, {
+        id: 'user-1',
+        email: 'ada@example.com',
+        displayName: 'Ada',
+        emailVerified: true,
+        isInstanceAdmin,
+      })
+    const menuButton = () => screen.findByRole('button', { name: /the Acme docs workspace/u })
+
+    it('offers an instance admin the settings and the repository', async () => {
+      renderTree(
+        {},
+        { 'GET /api/me': me(true), 'GET /api/workspaces/{id}': sourcedWorkspace(true) },
+      )
+      await userEvent.click(await menuButton())
+      expect(await screen.findByRole('menuitem', { name: 'Workspace settings' })).toBeVisible()
+      expect(screen.getByRole('menuitem', { name: 'Repository' })).toBeVisible()
+    })
+
+    it('offers a manager who is not an instance admin the repository alone', async () => {
+      renderTree(
+        {},
+        { 'GET /api/me': me(false), 'GET /api/workspaces/{id}': sourcedWorkspace(true) },
+      )
+      await userEvent.click(await menuButton())
+      expect(await screen.findByRole('menuitem', { name: 'Repository' })).toBeVisible()
+      expect(screen.queryByRole('menuitem', { name: 'Workspace settings' })).toBeNull()
+    })
+
+    it('offers a reader no menu at all', async () => {
+      renderTree(
+        {},
+        { 'GET /api/me': me(false), 'GET /api/workspaces/{id}': sourcedWorkspace(false) },
+      )
+      expect(await screen.findByText('Read from a repository: edit documents there.')).toBeVisible()
+      expect(screen.queryByRole('button', { name: /the Acme docs workspace/u })).toBeNull()
+    })
+  })
+
   it('opens New document from the sidebar control', async () => {
     renderTree()
 

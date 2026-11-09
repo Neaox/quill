@@ -4318,6 +4318,14 @@ export interface paths {
                             origin: {
                                 kind: "native" | "sourced";
                             };
+                            permissions: {
+                                arrange: boolean;
+                                comment: boolean;
+                                edit: boolean;
+                                manage: boolean;
+                                publish: boolean;
+                                view: boolean;
+                            };
                             slug: string;
                             unitId: string;
                         };

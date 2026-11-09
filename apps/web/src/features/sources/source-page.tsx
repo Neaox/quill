@@ -289,9 +289,26 @@ function ToFix({ sync, forgeLink }: { readonly sync: Sync | null; readonly forge
   const nothing = refused.length === 0 && (links?.length ?? 0) === 0 && keys.length === 0
   // Before anything has synced there is nothing to look at, and the status says why.
   if (nothing && (sync === null || sync.lastSyncedRevision === null)) return undefined
+  /*
+   * Which revision the lists describe. Only a sync that finishes writes them
+   * (`recordSynced`); a failed attempt leaves them as they were, so after a
+   * failure they still describe the last revision that synced, not the one
+   * the sync stopped at, and the page says so rather than letting "nothing to
+   * fix" read as a verdict on the failing commit.
+   */
+  const asOf =
+    sync?.lastSyncedRevision === null || sync?.lastSyncedRevision === undefined ? (
+      'From the last attempt'
+    ) : (
+      <>
+        As of <Revision value={sync.lastSyncedRevision} />, the last revision that synced
+        {sync.failure === null ? '' : ' (the sync after it stopped)'}
+      </>
+    )
 
   return (
     <SettingsSection level={2} title="Files, links and manifest keys">
+      {nothing ? undefined : <p className="text-sm text-muted">{asOf}:</p>}
       {refused.length === 0 ? undefined : (
         <ProblemList
           title="Files not stored"
@@ -352,14 +369,20 @@ function ToFix({ sync, forgeLink }: { readonly sync: Sync | null; readonly forge
       )}
       {empty.length === 0 && links !== null ? undefined : (
         <p className="text-sm text-muted">
+          {nothing ? <>{asOf}: nothing to fix. </> : undefined}
           {empty.length === 0
             ? undefined
-            : (nothing ? 'Nothing to fix: ' : 'Also: ') + sentence(empty)}
+            : `${nothing ? '' : 'Also: '}${capitalised(sentence(empty), nothing)}`}
           {links === null ? ' Broken links are checked at the next sync.' : undefined}
         </p>
       )}
     </SettingsSection>
   )
+}
+
+/** A sentence that starts one of its own, rather than continuing another. */
+function capitalised(text: string, start: boolean): string {
+  return start ? `${text.charAt(0).toUpperCase()}${text.slice(1)}` : text
 }
 
 /** Clauses joined into the rest of a sentence: "a, b and c." */

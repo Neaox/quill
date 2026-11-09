@@ -9507,7 +9507,8 @@
                     "name",
                     "slug",
                     "createdAt",
-                    "origin"
+                    "origin",
+                    "permissions"
                   ],
                   "properties": {
                     "id": {
@@ -9547,6 +9548,37 @@
                               ]
                             }
                           ]
+                        }
+                      }
+                    },
+                    "permissions": {
+                      "type": "object",
+                      "required": [
+                        "view",
+                        "comment",
+                        "edit",
+                        "publish",
+                        "arrange",
+                        "manage"
+                      ],
+                      "properties": {
+                        "view": {
+                          "type": "boolean"
+                        },
+                        "comment": {
+                          "type": "boolean"
+                        },
+                        "edit": {
+                          "type": "boolean"
+                        },
+                        "publish": {
+                          "type": "boolean"
+                        },
+                        "arrange": {
+                          "type": "boolean"
+                        },
+                        "manage": {
+                          "type": "boolean"
                         }
                       }
                     }

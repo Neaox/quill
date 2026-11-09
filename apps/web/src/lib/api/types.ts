@@ -68,6 +68,18 @@ export interface WorkspaceDto {
   readonly createdAt: string
   /** Written in Quill, or read from a repository (ADR-061). Absent from an older server. */
   readonly origin?: { readonly kind: 'native' | 'sourced' }
+  /**
+   * What the caller may do in it, as a document's envelope says it (ADR-012).
+   * Only `GET /api/workspaces/:id` carries it; absent from a list or a write.
+   */
+  readonly permissions?: {
+    readonly view: boolean
+    readonly comment: boolean
+    readonly edit: boolean
+    readonly publish: boolean
+    readonly arrange: boolean
+    readonly manage: boolean
+  }
 }
 
 /** One row of `GET /api/workspaces`: a workspace the caller can see, with its unit. */

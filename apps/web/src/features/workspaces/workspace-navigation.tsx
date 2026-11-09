@@ -514,17 +514,23 @@ interface WorkspaceOverflowProps {
  * the menu is absent rather than offering an entry that answers "not found" —
  * a menu with nothing in it is not a menu (`docs/design/feedback.md`).
  *
- * TODO(M3): the check is instance administration, which is narrower than the
- * rule. Changing a workspace's layout needs `manage` on it, and no route
- * answers what this person may do with a workspace yet — see the route's own
- * note in `routes/_authenticated/w/$workspaceSlug/settings.tsx`.
+ * The repository's page is offered to whoever manages the workspace, from
+ * the permissions `GET /api/workspaces/:id` now carries. The settings entry
+ * is still instance administration, as its route is — see the route's own
+ * note in `routes/_authenticated/w/$workspaceSlug/settings.tsx`; widening it
+ * to `manage` is that route's change to make.
  */
 function WorkspaceOverflow({ workspaceSlug, workspaceName }: WorkspaceOverflowProps) {
   const me = useMe()
   const navigate = useNavigate()
-  const sourced = useWorkspace(workspaceSlug).data?.origin?.kind === 'sourced'
+  const workspace = useWorkspace(workspaceSlug).data
+  const sourced = workspace?.origin?.kind === 'sourced'
+  const instanceAdmin = me.data?.isInstanceAdmin === true
+  // The repository's page is for whoever manages the workspace, which the
+  // workspace's own permissions say; its settings are still the instance's.
+  const repository = sourced && (instanceAdmin || workspace?.permissions?.manage === true)
 
-  if (me.data?.isInstanceAdmin !== true) return undefined
+  if (!instanceAdmin && !repository) return undefined
 
   return (
     <Menu
@@ -540,13 +546,17 @@ function WorkspaceOverflow({ workspaceSlug, workspaceName }: WorkspaceOverflowPr
       label={`the ${workspaceName} workspace`}
       align="end"
       items={[
-        {
-          label: 'Workspace settings',
-          onSelect: () => {
-            void navigate({ to: '/w/$workspaceSlug/settings', params: { workspaceSlug } })
-          },
-        },
-        ...(sourced
+        ...(instanceAdmin
+          ? [
+              {
+                label: 'Workspace settings',
+                onSelect: () => {
+                  void navigate({ to: '/w/$workspaceSlug/settings', params: { workspaceSlug } })
+                },
+              },
+            ]
+          : []),
+        ...(repository
           ? [
               {
                 label: 'Repository',

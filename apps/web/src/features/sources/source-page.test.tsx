@@ -78,10 +78,10 @@ describe('a repository’s page', () => {
     expect(screen.getByText(/None. Pushes arrive with the daily check/u)).toBeVisible()
     // Nothing to fix folds to one line.
     expect(
-      screen.getByText(
-        'Nothing to fix: no file was left out, every relative link goes somewhere and the manifest has no key this release ignores.',
-      ),
-    ).toBeVisible()
+      screen.getByText(/nothing to fix\. No file was left out, every relative link/u),
+    ).toHaveTextContent(
+      `As of ${shortRevision(HEAD)}, the last revision that synced: nothing to fix. No file was left out, every relative link goes somewhere and the manifest has no key this release ignores.`,
+    )
     expect(screen.queryByRole('list', { name: 'Files not stored' })).toBeNull()
     await expectNoAccessibilityViolations(document.body)
   })
@@ -123,6 +123,10 @@ describe('a repository’s page', () => {
     )
     expect(screen.getAllByText(shortRevision(FAILED_AT))).toHaveLength(1)
     expect(screen.getByText(/Readers still see/u)).toHaveTextContent('nothing was taken away')
+    // The lists are the last good revision's, not the failing commit's, and say so.
+    expect(screen.getByText(/nothing to fix\./u)).toHaveTextContent(
+      `As of ${shortRevision(HEAD)}, the last revision that synced (the sync after it stopped): nothing to fix.`,
+    )
   })
 
   it('says a first sync that failed left the workspace empty', async () => {
