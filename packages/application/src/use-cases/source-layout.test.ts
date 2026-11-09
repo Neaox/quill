@@ -6,6 +6,7 @@ import {
   layoutFromSettings,
   layoutPaths,
   layoutPlacer,
+  placedAsTree,
   projectSortKeys,
   readOrder,
 } from './source-layout.ts'
@@ -83,6 +84,16 @@ describe('layouts', () => {
       ]).fingerprint,
     )
     expect(layout.fingerprint).not.toBe(layoutFromManifest(entry).fingerprint)
+  })
+})
+
+describe('placedAsTree', () => {
+  it('knows a fingerprint placed with folders as documents from one placed before', () => {
+    expect(placedAsTree(layoutFromSettings([]).fingerprint)).toBe(true)
+    expect(placedAsTree('{"origin":"manifest"}')).toBe(false)
+    expect(placedAsTree('[]')).toBe(false)
+    expect(placedAsTree('null')).toBe(false)
+    expect(placedAsTree('not json')).toBe(false)
   })
 })
 
