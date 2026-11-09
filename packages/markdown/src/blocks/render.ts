@@ -58,7 +58,7 @@ export interface BlockRendererOptions {
   /** Where the issues found while rendering are collected, in document order. */
   readonly issues: BlockIssue[]
   /** The emoji this page draws (ADR-038), for a block whose prop names one. */
-  readonly emoji?: EmojiLookup | undefined
+  readonly emoji: EmojiLookup
 }
 
 /**
@@ -148,7 +148,7 @@ export interface BlockRenderer {
 }
 
 export function createBlockRenderer(options: BlockRendererOptions): BlockRenderer {
-  const { registry, issues, emoji = () => undefined } = options
+  const { registry, issues, emoji } = options
 
   const report = (node: Directive, message: string): void => {
     const line = node.position?.start.line
@@ -318,6 +318,8 @@ export function createBlockRenderer(options: BlockRendererOptions): BlockRendere
     const drawMarkdown = (nodes: readonly RootContent[]): ElementContent[] => {
       if (nodes.length === 0) return []
       if (nodes.every(isPhrasing)) return state.all({ type: 'paragraph', children: [...nodes] })
+      // Only a container holds blocks: an inline block's Markdown is all phrasing.
+      /* v8 ignore next */
       if (node.type !== 'containerDirective') return []
       return state.wrap(state.all({ ...node, children: nodes.filter(isFlow) }), true)
     }

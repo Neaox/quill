@@ -90,8 +90,7 @@ export function phrasingOf(line: Line, text: string): PhrasingContent[] {
   let from = 0
   for (const match of text.matchAll(TOKENS)) {
     if (match.index > from) pieces.push({ type: 'text', value: text.slice(from, match.index) })
-    const node = nodeAt(line, match[2])
-    if (node !== undefined) pieces.push(node)
+    pieces.push(...line.nodes.slice(Number(match[2]), Number(match[2]) + 1))
     from = match.index + match[0].length
   }
   if (from < text.length) pieces.push({ type: 'text', value: text.slice(from) })

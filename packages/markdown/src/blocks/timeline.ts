@@ -158,17 +158,7 @@ export const timelineBlock = defineBlock({
   description: 'Steps on a rail, in order: each with an icon, a when-line, a heading and its text.',
   content: { items: 'step' },
   props: {},
-  render: ({ items }) =>
-    h(
-      'ol',
-      {},
-      // A step that could not be drawn is shown in its frame, still in its place on the rail.
-      items.map((item) =>
-        item.type === 'element' && item.tagName !== 'li'
-          ? h('li', { className: ['qb-timeline-other'] }, item)
-          : item,
-      ),
-    ),
+  render: ({ items }) => h('ol', {}, items),
 })
 
 export const stepBlock = defineBlock({

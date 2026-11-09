@@ -70,7 +70,7 @@ export interface SourceForm {
    * the writer escapes every `_` and `*` in it (`MAIL\_SENDER`), which a
    * label of plain words never needed.
    */
-  readonly alt?: { readonly written: string; readonly read: string }
+  readonly alt?: { readonly written: string; readonly read: string | null | undefined }
   /**
    * How many colons a container directive's fences were written with, where
    * that is more than three. The writer gives a container as many as its
@@ -247,7 +247,7 @@ export function markSourceForm(
       case 'image': {
         const written = writtenLabel(source, node)
         if (written !== undefined && written !== '') {
-          withForm(node, { alt: { written, read: node.alt ?? '' } })
+          withForm(node, { alt: { written, read: node.alt } })
         }
         return
       }
@@ -269,6 +269,8 @@ export function markSourceForm(
         markPadding(node, span)
         markDirective(node, span)
         // Only a fence wider than the writer would give it is a form to keep.
+        // A container always opens with colons.
+        /* v8 ignore next */
         const fence = /^:+/u.exec(source.slice(span.start))?.[0].length ?? 0
         if (fence > neededFence(node)) withForm(node, { fence })
         return
@@ -327,11 +329,12 @@ function hardBreak(original: Handle): Handle {
 function image(original: Handle): Handle {
   return (node: Image, parent, state, info) => {
     const alt = node.data?.sourceForm?.alt
-    if (alt === undefined || alt.read !== (node.alt ?? '')) {
+    if (alt === undefined || alt.read !== node.alt) {
       return original(node, parent, state, info)
     }
+    // The library writes an image with no alternative text as `![](…)`.
     const written = original({ ...node, alt: '' }, parent, state, info)
-    return written.startsWith('![]') ? `![${alt.written}]${written.slice(3)}` : written
+    return `![${alt.written}]${written.slice(3)}`
   }
 }
 
@@ -433,6 +436,8 @@ function neededFence(node: ContainerDirective): number {
 
 /** A container directive as the writer wrote it, with its fences `width` colons wide. */
 function withFence(written: string, width: number): string {
+  // The library writes a container directive starting with its fence.
+  /* v8 ignore next */
   const drawn = /^:+/u.exec(written)?.[0].length ?? 0
   if (drawn >= width || !written.endsWith(`\n${':'.repeat(drawn)}`)) return written
   const fence = ':'.repeat(width)

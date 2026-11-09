@@ -26,6 +26,15 @@ describe('an image’s alternative text', () => {
     expect(imageOf('![MAIL_SENDER](a.svg)\n')?.alt).toBe('MAIL_SENDER')
   })
 
+  it('reads an image inside the label by its own words, and a line break as a space', () => {
+    expect(imageOf('![a ![b](c.png) d: e](x.svg)\n')?.alt).toBe('a b d: e')
+    expect(imageOf('![a\\\nb: c](x.svg)\n')?.alt).toBe('a b: c')
+  })
+
+  it('leaves a label that would read as another block on its own to the parser', () => {
+    expect(imageOf('![# Head:x](a.svg)\n')?.alt).toBe('# Head')
+  })
+
   it('leaves a reference image to the parser', () => {
     const [paragraph] = parseMarkdown('![JSON:API][logo]\n\n[logo]: a.svg\n').children
     const [image] = paragraph?.type === 'paragraph' ? paragraph.children : []

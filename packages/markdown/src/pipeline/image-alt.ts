@@ -20,6 +20,8 @@ import { visit } from 'unist-util-visit'
 /** The label an image was written with, between `![` and its `]`, or undefined. */
 export function writtenLabel(source: string, node: Nodes): string | undefined {
   const start = node.position?.start.offset
+  // A parsed image always has its place, and starts with its own `![`.
+  /* v8 ignore next */
   if (start === undefined || source.slice(start, start + 2) !== '![') return undefined
   let depth = 0
   for (let index = start + 1; index < source.length; index += 1) {
@@ -28,21 +30,28 @@ export function writtenLabel(source: string, node: Nodes): string | undefined {
     else if (character === '[') depth += 1
     else if (character === ']' && --depth === 0) return source.slice(start + 2, index)
   }
+  // An image the parser read always closes its label.
+  /* v8 ignore next */
   return undefined
 }
 
 /** Plain text, with a directive as the words it was written as in `label`. */
 function plainText(node: Nodes | RootContent, label: string): string {
   if (node.type === 'textDirective') {
-    const { start, end } = node.position ?? {}
-    return start?.offset === undefined || end?.offset === undefined
-      ? ''
-      : label.slice(start.offset, end.offset)
+    // A directive the parser read always has its place in the label.
+    /* v8 ignore start */
+    const start = node.position?.start.offset ?? 0
+    const end = node.position?.end.offset ?? 0
+    /* v8 ignore stop */
+    return label.slice(start, end)
   }
-  if (node.type === 'image' || node.type === 'imageReference') return node.alt ?? ''
-  if ('value' in node && typeof node.value === 'string') return node.value
+  // The parser gives every image its alternative text, if only an empty one.
+  /* v8 ignore next */
+  if (node.type === 'image') return node.alt ?? ''
+  if ('value' in node) return node.value
   if ('children' in node) return node.children.map((child) => plainText(child, label)).join('')
-  return ''
+  // A hard break, which reads as a space.
+  return ' '
 }
 
 /** The tree with each image's alternative text read as CommonMark reads it. */
@@ -51,6 +60,7 @@ export function readImageAlts(tree: Root, source: string, parse: (label: string)
     const label = writtenLabel(source, node)
     if (label === undefined || !label.includes(':')) return
     const [only, ...rest] = parse(label).children
+    // A label is phrasing, but read on its own `# a: b` would be a heading.
     if (only?.type !== 'paragraph' || rest.length > 0) return
     node.alt = plainText(only, label)
   })

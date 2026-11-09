@@ -75,13 +75,18 @@ function partyOf(line: Line, text: string): Party {
 
 /** The sides of `A, B → C ↔ D`: the parties before the first arrow, then each arrow's. */
 export function routeOf(line: Line, text: string = line.text): RouteSide[] {
+  // Split by an arrow it captures: parties, then an arrow and parties, and so on.
   const parts = text.trim().split(ARROW)
-  const sides: RouteSide[] = []
-  for (let index = 0; index < parts.length; index += 2) {
-    const parties = (parts[index] ?? '').split(PARTY_BREAK).map((each) => partyOf(line, each))
-    sides.push({ arrow: index === 0 ? undefined : parts[index - 1], parties })
-  }
-  return sides
+  return parts.flatMap((part, index): RouteSide[] =>
+    index % 2 === 1
+      ? []
+      : [
+          {
+            arrow: index === 0 ? undefined : parts[index - 1],
+            parties: part.split(PARTY_BREAK).map((each) => partyOf(line, each)),
+          },
+        ],
+  )
 }
 
 /** What drawing a route needs from the block drawing it. */
@@ -99,6 +104,8 @@ function arrowElement(arrow: string): Element {
     'span',
     { className: ['qb-route-to'] },
     h('span', { 'aria-hidden': 'true' }, arrow),
+    // Every arrow the pattern finds has its words.
+    /* v8 ignore next */
     h('span', { className: ['sr-only'] }, ` ${ARROW_WORDS[arrow] ?? arrow} `),
   )
 }

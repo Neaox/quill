@@ -65,6 +65,8 @@ function memberOf(children: readonly PhrasingContent[]): Member {
     icon: lead === undefined ? undefined : emojiNameOf(lead),
     name: toString(bold),
     nameNodes: bold.children,
+    // The words after the name always match, if only as nothing.
+    /* v8 ignore next */
     description: phrasingOf(line, match[3] ?? ''),
   }
 }

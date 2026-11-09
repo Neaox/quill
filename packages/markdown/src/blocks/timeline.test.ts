@@ -134,7 +134,7 @@ describe('::::timeline', () => {
     ])
   })
 
-  it('keeps a step that cannot be drawn in its place on the rail, in its frame', () => {
+  it('draws a step with a prop that does not fit in its place, with its note', () => {
     const drawn = html(timeline(step('{icon=clock}', 'Good.'), step('{tone=purple}', 'Bad tone.')))
     expect(drawn).toContain('<li class="qb qb-step"><span class="qb-step-node">')
     expect(drawn).toContain(

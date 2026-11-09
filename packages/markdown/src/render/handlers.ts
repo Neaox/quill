@@ -169,7 +169,7 @@ export interface HandlerOptions {
   /** The emoji a label's pill leads with, by label name (`RenderOptions.labelEmoji`). */
   readonly labelEmoji: (label: string) => ResolvedEmoji | undefined
   /** Every emoji the page draws, for a component block whose prop names one (ADR-060). */
-  readonly emoji?: EmojiLookup | undefined
+  readonly emoji: EmojiLookup
   /**
    * The document's headings, for a table of contents (ADR-058): taken from
    * the same tree the headings are rendered from, so every entry links to the

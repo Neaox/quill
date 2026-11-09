@@ -353,6 +353,58 @@ describe('what a render is given beside its props', () => {
       '<article><p><span class="qb qb-kinds">text strong: a <strong>b</strong></span></p></article>',
     )
   })
+
+  it('is nothing for a leaf, which holds no content', () => {
+    const leaf = defineBlock({
+      id: 'acme.empty',
+      version: '1.0.0',
+      name: 'empty',
+      title: 'Empty',
+      description: 'Holds nothing.',
+      content: 'none',
+      props: {},
+      render: ({ content, children }) =>
+        h('div', {}, `${String(content.length)} ${String(children.length)}`),
+    })
+    expect(
+      renderHtml(parseMarkdown('::empty\n'), { extensions: createMarkdownRegistry([], [leaf]) }),
+    ).toBe('<article><div class="qb qb-empty">0 0</div></article>')
+  })
+
+  it('is the Markdown before an items block’s items, when it takes a body', () => {
+    const entry = defineBlock({
+      id: 'acme.entry',
+      version: '1.0.0',
+      name: 'entry',
+      title: 'Entry',
+      description: 'One entry.',
+      content: 'blocks',
+      within: ['log'],
+      props: {},
+      render: ({ content }) => h('li', {}, content),
+    })
+    const log = defineBlock({
+      id: 'acme.log',
+      version: '1.0.0',
+      name: 'log',
+      title: 'Log',
+      description: 'An introduction, then entries.',
+      content: { items: 'entry', body: true },
+      props: {},
+      render: ({ content, children, items }) =>
+        h('section', {}, content, h('p', {}, String(children.length)), h('ol', {}, items)),
+    })
+    expect(
+      renderHtml(parseMarkdown('::::log\nFirst words.\n\n:::entry\nOne.\n:::\n::::\n'), {
+        extensions: createMarkdownRegistry([], [entry, log]),
+      }),
+    ).toBe(
+      [
+        '<article><section class="qb qb-log">\n<p>First words.</p>\n<p>1</p>',
+        '<ol><li class="qb qb-entry">\n<p>One.</p>\n</li></ol></section></article>',
+      ].join(''),
+    )
+  })
 })
 
 describe('an unknown block', () => {

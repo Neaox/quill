@@ -106,6 +106,7 @@ const KEPT = [
   ['a container written wider than it needs', '::::::callout\nBody.\n::::::'],
   ['an image label with words a directive would take', '![The JSON:API document](a.svg)'],
   ['an image label with underscores', '![Sent by MAIL_SENDER to OTA_ReadRQ](a.svg "Title")'],
+  ['an image with no label', '![](a.svg)'],
   ['an image label with an escape', '![a \\] b](a.svg)'],
 ]
 
