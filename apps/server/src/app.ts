@@ -36,6 +36,7 @@ import { unitRoutes } from './routes/units.ts'
 import { workspaceRoutes } from './routes/workspaces.ts'
 import { workspaceSourceRoutes } from './routes/workspace-source.ts'
 import { sourceWebhookRoutes } from './routes/source-webhook.ts'
+import { sourceFreshnessRoutes } from './routes/source-freshness.ts'
 import { registerCompression } from './plugins/compression.ts'
 import { registerCsrfProtection } from './plugins/csrf.ts'
 import { registerErrorHandler } from './plugins/error-handler.ts'
@@ -191,6 +192,7 @@ export function buildApp(options: AppOptions = {}): FastifyInstance {
     app.register(workspaceRoutes(deps))
     app.register(workspaceSourceRoutes(deps))
     app.register(sourceWebhookRoutes(deps))
+    app.register(sourceFreshnessRoutes(deps))
     app.register(collectionRoutes(deps))
     app.register(documentRoutes(deps))
     app.register(childPagesRoutes(deps))

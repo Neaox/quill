@@ -51,6 +51,10 @@ export const queryKeys = {
   /** Every secret's name and key id. Never a value: none is ever sent. */
   secrets: () => ['secrets'] as const,
   workspaceList: () => ['workspace-list'] as const,
+  /** A sourced workspace's source and its sync state (ADR-061), by workspace id. */
+  workspaceSource: (workspaceId: string) => ['workspace-source', workspaceId] as const,
+  /** Whether an open sourced document has moved on (ADR-061), by document id. */
+  sourceFreshness: (documentId: string) => ['source-freshness', documentId] as const,
   /** Every group, with its unit path and member count (instance admin). */
   groups: () => ['groups'] as const,
   /** Who is in one group. */

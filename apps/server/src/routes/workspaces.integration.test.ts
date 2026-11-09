@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { createGrant, MAX_PATH_ATTEMPTS } from '@quill/application'
 import { parseDocument } from '@quill/markdown'
-import type { CollectionId, DocumentId, WorkspaceId } from '@quill/domain'
+import type { CollectionId, DocumentId, UserId, WorkspaceId } from '@quill/domain'
 
 import { createServerHarness } from '../test-support/harness.ts'
 import type { ServerHarness } from '../test-support/harness.ts'
@@ -452,6 +452,53 @@ describe('workspace administration', () => {
   })
 })
 
+describe('what the caller may do in a workspace', () => {
+  async function permissionsOf(cookies: Record<string, string>) {
+    const response = await harness.app.inject({
+      method: 'GET',
+      url: `/api/workspaces/${tenancy.workspaceId}`,
+      cookies,
+    })
+    expect(response.statusCode).toBe(200)
+    return response.json<{ permissions: Record<string, boolean> }>().permissions
+  }
+
+  it('says it as a document envelope does, for an instance admin, a manager and a reader', async () => {
+    expect(await permissionsOf(admin)).toEqual({
+      view: true,
+      comment: true,
+      edit: true,
+      publish: true,
+      arrange: true,
+      manage: true,
+    })
+    expect(await permissionsOf(viewer)).toMatchObject({ view: true, edit: false, manage: false })
+
+    const manager = harness.deps.ids.uuid() as UserId
+    await harness.deps.uow.repos.users.create({
+      id: manager,
+      email: 'workspace-manager@example.com',
+      displayName: 'Workspace manager',
+      now: harness.clock.now(),
+    })
+    const granted = await createGrant(harness.deps, {
+      principalKind: 'user',
+      principalId: manager,
+      scopeKind: 'workspace',
+      scopeId: tenancy.workspaceId,
+      role: 'admin',
+      effect: 'allow',
+      createdBy: tenancy.admin,
+    })
+    expect(granted.kind).toBe('created')
+    expect(await permissionsOf(await harness.cookiesFor(manager))).toMatchObject({
+      view: true,
+      arrange: true,
+      manage: true,
+    })
+  })
+})
+
 describe('listing the workspaces a caller can see', () => {
   async function list(cookies: Record<string, string>) {
     const response = await harness.app.inject({
@@ -475,6 +522,7 @@ describe('listing the workspaces a caller can see', () => {
         name: 'Engineering',
         slug: 'engineering',
         createdAt: harness.clock.now().toISOString(),
+        origin: { kind: 'native' },
         unit: { id: tenancy.unitId, name: 'Acme', path: ['Acme'] },
       },
     ])

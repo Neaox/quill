@@ -34,7 +34,7 @@ const UNMOVED: ExternalSource = {
 const ADMIN = userId('00000000-0000-4000-8000-0000000000a1')
 const NOW = new Date('2026-01-01T00:00:00.000Z')
 
-function consumer(lock: SourceSyncLock, source: ExternalSource = UNMOVED) {
+function consumer(lock: Pick<SourceSyncLock, 'withLock'>, source: ExternalSource = UNMOVED) {
   const uow = createInMemoryUnitOfWork()
   const deps: Parameters<typeof createSyncSourceConsumer>[0] = {
     uow,
@@ -54,7 +54,7 @@ function consumer(lock: SourceSyncLock, source: ExternalSource = UNMOVED) {
           settings: { collections: [], history: 'full', commitMessages: 'subject' },
         }),
       },
-      lock,
+      lock: { ...lock, isHeld: async () => false },
       allowFileRemotesForTesting: false,
     },
   }
@@ -98,7 +98,7 @@ describe('the SourceSyncRequested consumer', () => {
     await expect(handler.handle({ version: 99 })).resolves.toBeUndefined()
   })
   describe('telling the administrators', () => {
-    const running: SourceSyncLock = {
+    const running: Pick<SourceSyncLock, 'withLock'> = {
       withLock: async (_, work) => ({ kind: 'ran', value: await work() }),
     }
 

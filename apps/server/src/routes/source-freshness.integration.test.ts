@@ -25,6 +25,12 @@ const WEBHOOK_SECRET = 'a-shared-webhook-secret'
 
 let harness: ServerHarness
 let tenancy: TenancyFixture
+/**
+ * A workspace of this file's own, not the fixture's: the sync lock is an
+ * advisory lock across the whole database, so two files syncing the fixture's
+ * workspace at once would each find the other's sync running.
+ */
+let workspaceId: string
 let admin: Record<string, string>
 let editor: Record<string, string>
 let root: string
@@ -77,7 +83,7 @@ function push(
     .digest('hex')
   return harness.app.inject({
     method: 'POST',
-    url: `/api/workspaces/${options.workspace ?? tenancy.workspaceId}/source/webhooks/github`,
+    url: `/api/workspaces/${options.workspace ?? workspaceId}/source/webhooks/github`,
     headers: {
       'content-type': 'application/json',
       'x-github-event': options.event ?? 'push',
@@ -91,7 +97,7 @@ function push(
 function source() {
   return harness.app.inject({
     method: 'GET',
-    url: `/api/workspaces/${tenancy.workspaceId}/source`,
+    url: `/api/workspaces/${workspaceId}/source`,
     cookies: admin,
   })
 }
@@ -99,7 +105,7 @@ function source() {
 async function documentTitles(): Promise<string[]> {
   const response = await harness.app.inject({
     method: 'GET',
-    url: `/api/workspaces/${tenancy.workspaceId}/documents`,
+    url: `/api/workspaces/${workspaceId}/documents`,
     cookies: admin,
   })
   return response
@@ -123,6 +129,13 @@ beforeAll(async () => {
   tenancy = await seedTenancy(harness)
   admin = await harness.cookiesFor(tenancy.admin)
   editor = await harness.cookiesFor(tenancy.editor)
+  const created = await harness.app.inject({
+    method: 'POST',
+    url: '/api/workspaces',
+    cookies: admin,
+    payload: { unitId: tenancy.unitId, name: 'Fresh handbook', slug: 'fresh-handbook' },
+  })
+  workspaceId = created.json<{ id: string }>().id
 
   root = await mkdtemp(join(tmpdir(), 'quill-source-freshness-'))
   work = join(root, 'work')
@@ -149,7 +162,7 @@ describe('the push webhook', () => {
   it('names its secret when the source is configured, and syncs the first time', async () => {
     const configured = await harness.app.inject({
       method: 'PUT',
-      url: `/api/workspaces/${tenancy.workspaceId}/source`,
+      url: `/api/workspaces/${workspaceId}/source`,
       cookies: admin,
       payload: {
         remote: pathToFileURL(bare).href,
@@ -170,7 +183,7 @@ describe('the push webhook', () => {
   it('refuses a secret that is not stored, naming the setting', async () => {
     const refused = await harness.app.inject({
       method: 'PUT',
-      url: `/api/workspaces/${tenancy.workspaceId}/source`,
+      url: `/api/workspaces/${workspaceId}/source`,
       cookies: admin,
       payload: {
         remote: pathToFileURL(bare).href,
@@ -231,7 +244,7 @@ describe('the push webhook', () => {
     const body = JSON.stringify({ zen: 'Keep it logically awesome.' })
     const signed = await harness.app.inject({
       method: 'POST',
-      url: `/api/workspaces/${tenancy.workspaceId}/source/webhooks/github`,
+      url: `/api/workspaces/${workspaceId}/source/webhooks/github`,
       headers: {
         'content-type': 'application/json',
         'x-github-event': 'push',
@@ -245,7 +258,7 @@ describe('the push webhook', () => {
 
     const bitbucket = await harness.app.inject({
       method: 'POST',
-      url: `/api/workspaces/${tenancy.workspaceId}/source/webhooks/bitbucket`,
+      url: `/api/workspaces/${workspaceId}/source/webhooks/bitbucket`,
       headers: { 'content-type': 'application/json' },
       payload: '{}',
     })
@@ -255,7 +268,7 @@ describe('the push webhook', () => {
   it('refuses a delivery with no body and repeated headers like any other', async () => {
     const response = await harness.app.inject({
       method: 'POST',
-      url: `/api/workspaces/${tenancy.workspaceId}/source/webhooks/github`,
+      url: `/api/workspaces/${workspaceId}/source/webhooks/github`,
       headers: { 'x-github-event': 'push', 'set-cookie': ['a=1', 'b=2'] },
     })
     expect(response.statusCode).toBe(401)
@@ -265,7 +278,7 @@ describe('the push webhook', () => {
   it('accepts a GitLab push carrying the secret', async () => {
     const response = await harness.app.inject({
       method: 'POST',
-      url: `/api/workspaces/${tenancy.workspaceId}/source/webhooks/gitlab`,
+      url: `/api/workspaces/${workspaceId}/source/webhooks/gitlab`,
       headers: {
         'content-type': 'application/json',
         'x-gitlab-event': 'Push Hook',
@@ -293,6 +306,100 @@ describe('the daily reconciliation', () => {
   })
 })
 
+describe('the check on read', () => {
+  function freshness(documentId: string) {
+    return harness.app.inject({
+      method: 'GET',
+      url: `/api/documents/${documentId}/source-freshness`,
+      cookies: admin,
+    })
+  }
+
+  async function setupId(): Promise<string> {
+    const response = await harness.app.inject({
+      method: 'GET',
+      url: `/api/workspaces/${workspaceId}/documents`,
+      cookies: admin,
+    })
+    const found = response
+      .json<{ id: string; title: string }[]>()
+      .find((row) => row.title === 'Setup')
+    if (found === undefined) throw new Error('no Setup document')
+    return found.id
+  }
+
+  it('brings in a push when a sourced document is opened, and reports the new revision', async () => {
+    const id = await setupId()
+    const before = await freshness(id)
+    expect(before.statusCode).toBe(200)
+    const { revision } = before.json<{ revision: string }>()
+    expect(before.json()).toMatchObject({ sourced: true, syncing: false })
+
+    const pushed = await commit('Explain the install', {
+      'docs/guides/setup.md': '# Setup\n\nInstall, then sign in.\n',
+    })
+    // A minute on, so this process asks the remote again.
+    harness.clock.advance(60_000)
+    expect((await freshness(id)).statusCode).toBe(200)
+    // The check runs off the request: wait for the sync it asks for to be recorded.
+    for (let attempt = 0; attempt < 100; attempt += 1) {
+      await harness.drainOutbox()
+      if (
+        (await source()).json<{ sync: { lastSyncedRevision: string } }>().sync
+          .lastSyncedRevision === pushed
+      )
+        break
+      await new Promise((resolve) => setTimeout(resolve, 50))
+    }
+    expect((await source()).json()).toMatchObject({
+      sync: { lastSyncedRevision: pushed },
+      syncing: false,
+    })
+    const after = (await freshness(id)).json<{ revision: string }>()
+    expect(after.revision).not.toBe(revision)
+  })
+
+  it('answers that a document written in Quill is not read from a repository', async () => {
+    const created = await harness.app.inject({
+      method: 'POST',
+      url: '/api/workspaces',
+      cookies: admin,
+      payload: { unitId: tenancy.unitId, name: 'Written here', slug: 'written-here-fresh' },
+    })
+    const workspace = created.json<{ id: string; origin: { kind: string } }>()
+    expect(workspace.origin).toEqual({ kind: 'native' })
+    const collection = await harness.app.inject({
+      method: 'POST',
+      url: `/api/workspaces/${workspace.id}/collections`,
+      cookies: admin,
+      payload: { name: 'Notes' },
+    })
+    const document = await harness.app.inject({
+      method: 'POST',
+      url: `/api/workspaces/${workspace.id}/documents`,
+      cookies: admin,
+      payload: { collectionId: collection.json<{ id: string }>().id, title: 'A note' },
+    })
+    const id = document.json<{ document: { id: string } }>().document.id
+    const response = await harness.app.inject({
+      method: 'GET',
+      url: `/api/documents/${id}/source-freshness`,
+      cookies: admin,
+    })
+    expect(response.json()).toEqual({ sourced: false, revision: null, syncing: false })
+  })
+
+  it('says the workspace is sourced, and shows the manifest keys it does not read', async () => {
+    const read = await harness.app.inject({
+      method: 'GET',
+      url: `/api/workspaces/${workspaceId}`,
+      cookies: admin,
+    })
+    expect(read.json()).toMatchObject({ origin: { kind: 'sourced' } })
+    expect((await source()).json()).toMatchObject({ sync: { unknownKeys: [] }, syncing: false })
+  })
+})
+
 describe('a sync that stops', () => {
   it('tells the administrators once, not once per attempt, and nobody else', async () => {
     await commit('Break the manifest', { '.quill/workspace.yaml': 'version: 1\ncollections: [\n' })
@@ -308,7 +415,7 @@ describe('a sync that stops', () => {
     expect(told.items).toEqual([
       expect.objectContaining({
         kind: 'source-sync-failed',
-        workspace: expect.objectContaining({ id: tenancy.workspaceId }),
+        workspace: expect.objectContaining({ id: workspaceId }),
         failure: expect.objectContaining({ reason: 'invalid-manifest' }),
       }),
     ])

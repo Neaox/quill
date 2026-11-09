@@ -11,7 +11,10 @@ export function inertSourceSync(contentStore: ContentStore): SourceSyncPorts {
   return {
     contentStore,
     sources: { forWorkspace: async () => null },
-    lock: { withLock: async (_workspaceId, work) => ({ kind: 'ran', value: await work() }) },
+    lock: {
+      withLock: async (_workspaceId, work) => ({ kind: 'ran', value: await work() }),
+      isHeld: async () => false,
+    },
     allowFileRemotesForTesting: false,
   }
 }

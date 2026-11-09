@@ -63,12 +63,42 @@ const RenameWorkspaceBody = Type.Object({
   slug: Type.Optional(Type.String({ minLength: 1, pattern: '^[a-z0-9]+(-[a-z0-9]+)*$' })),
 })
 
+/**
+ * Where a workspace's content comes from (ADR-061): written in Quill, or read
+ * from a repository, in which case its source has a page of its own.
+ */
+const WorkspaceOriginSchema = Type.Object({
+  kind: Type.Union([Type.Literal('native'), Type.Literal('sourced')]),
+})
+
 const WorkspaceSchema = Type.Object({
   id: Type.String(),
   unitId: Type.String(),
   name: Type.String(),
   slug: Type.String(),
   createdAt: Type.String({ format: 'date-time' }),
+  origin: WorkspaceOriginSchema,
+})
+
+/**
+ * What the caller may do in the workspace, as a document's envelope says it
+ * for a document: the capabilities its role grants here, narrowed by where the
+ * workspace's content comes from (ADR-012, ADR-061). It is what the interface
+ * decides its controls by; every write still asks the server.
+ */
+const WorkspacePermissionsSchema = Type.Object({
+  view: Type.Boolean(),
+  comment: Type.Boolean(),
+  edit: Type.Boolean(),
+  publish: Type.Boolean(),
+  arrange: Type.Boolean(),
+  manage: Type.Boolean(),
+})
+
+/** `GET /api/workspaces/:id`: the workspace, and what the caller may do in it. */
+const WorkspaceWithPermissionsSchema = Type.Object({
+  ...WorkspaceSchema.properties,
+  permissions: WorkspacePermissionsSchema,
 })
 
 /** The owning unit, named so a picker can group without a second request. */
@@ -86,6 +116,7 @@ const WorkspaceListItemSchema = Type.Object({
   name: Type.String(),
   slug: Type.String(),
   createdAt: Type.String({ format: 'date-time' }),
+  origin: WorkspaceOriginSchema,
   unit: UnitSummarySchema,
 })
 
@@ -132,6 +163,7 @@ export function workspaceRoutes(deps: AppDependencies): FastifyPluginAsync {
           name: workspace.name,
           slug: workspace.slug,
           createdAt: workspace.createdAt.toISOString(),
+          origin: workspace.origin,
           unit: { id: unit.id, name: unit.name, path: [...unitPath] },
         }))
       },
@@ -172,7 +204,7 @@ export function workspaceRoutes(deps: AppDependencies): FastifyPluginAsync {
       '/api/workspaces/:id',
       {
         preHandler: app.requireSession,
-        schema: { params: IdParamsSchema, response: { 200: WorkspaceSchema } },
+        schema: { params: IdParamsSchema, response: { 200: WorkspaceWithPermissionsSchema } },
       },
       async (request) => {
         const access = await requireWorkspaceAccess(
@@ -180,7 +212,12 @@ export function workspaceRoutes(deps: AppDependencies): FastifyPluginAsync {
           await resolveWorkspaceId(deps, request.params.id),
           'view',
         )
-        return { ...access.workspace, createdAt: access.workspace.createdAt.toISOString() }
+        const { view, comment, edit, publish, arrange, manage } = access.capabilities
+        return {
+          ...access.workspace,
+          createdAt: access.workspace.createdAt.toISOString(),
+          permissions: { view, comment, edit, publish, arrange, manage },
+        }
       },
     )
 

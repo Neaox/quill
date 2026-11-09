@@ -38,6 +38,8 @@ export function WorkspaceHomePage() {
   // Names and order only: the sidebar's tree, a level deep, already has them.
   const tree = useNavigationTree(workspaceId, undefined)
   const [creatingCollection, setCreatingCollection] = useState(false)
+  // Read from a repository (ADR-061): documents are written there, not here.
+  const readOnly = workspace.origin?.kind === 'sourced'
 
   const collections = tree.data?.collections ?? []
   const collectionOrder = collections.map((collection) => collection.id)
@@ -45,13 +47,15 @@ export function WorkspaceHomePage() {
 
   return (
     <div className="px-8 py-8">
-      <ShellActions>
-        <NewDocumentDialog
-          workspaceId={workspaceId}
-          workspaceSlug={workspace.slug}
-          trigger={<Button size="sm">New document</Button>}
-        />
-      </ShellActions>
+      {readOnly ? undefined : (
+        <ShellActions>
+          <NewDocumentDialog
+            workspaceId={workspaceId}
+            workspaceSlug={workspace.slug}
+            trigger={<Button size="sm">New document</Button>}
+          />
+        </ShellActions>
+      )}
 
       <h1 className="text-2xl font-semibold tracking-tight text-foreground">{workspace.name}</h1>
 
@@ -61,6 +65,10 @@ export function WorkspaceHomePage() {
         ) : documents.isError ? (
           <Callout tone="danger" title="Couldn't load documents">
             {documents.error instanceof ApiError ? documents.error.message : 'Please try again.'}
+          </Callout>
+        ) : collections.length === 0 && readOnly ? (
+          <Callout className="max-w-lg" tone="info" title="Nothing here yet">
+            This workspace is read from a repository. Its documents appear after the first sync.
           </Callout>
         ) : collections.length === 0 ? (
           <div className="flex max-w-lg flex-col items-start gap-3">
