@@ -62,6 +62,8 @@ export interface SourceSyncLock {
     workspaceId: WorkspaceId,
     work: () => Promise<T>,
   ): Promise<{ readonly kind: 'ran'; readonly value: T } | { readonly kind: 'busy' }>
+  /** Whether a sync of the source is running now, in any process: what an admin page shows as syncing. */
+  isHeld(workspaceId: WorkspaceId): Promise<boolean>
 }
 
 // ---------------------------------------------------------------------------
@@ -204,6 +206,26 @@ export interface SourceAssetRepository {
   ): Promise<readonly SourceAssetRow[]>
   put(row: SourceAssetRow, now: Date): Promise<void>
   remove(workspaceId: WorkspaceId, path: string): Promise<void>
+}
+
+/**
+ * Who may see a repository asset (ADR-061): the readers of the pages that
+ * showed it. Both halves are kept for good, because history is: every path
+ * an attachment was ever held at, and every asset path a document's text ever
+ * pointed at, so a reader of an older revision is shown the picture that
+ * revision had.
+ */
+export interface SourceAssetHistoryRepository {
+  /** This path held this attachment at some synced revision. Recording it again changes nothing. */
+  recordHeld(workspaceId: WorkspaceId, path: string, attachmentId: string): Promise<void>
+  /** This document's text pointed at these asset paths at some synced revision. */
+  recordShown(
+    workspaceId: WorkspaceId,
+    documentId: DocumentId,
+    paths: readonly string[],
+  ): Promise<void>
+  /** The documents whose text ever pointed at a path that ever held this attachment. */
+  listDocumentsShowing(attachmentId: string): Promise<readonly DocumentId[]>
 }
 
 /** Why a sync stopped. The source's own reasons, and the job's. */

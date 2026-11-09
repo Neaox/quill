@@ -140,20 +140,25 @@ const WorkspaceSourceSchema = Type.Object({
       refused: Type.Array(RefusedFileSchema),
       /** Relative links to paths not in the repository; null until a sync has checked them. */
       brokenLinks: Type.Union([Type.Array(BrokenLinkSchema), Type.Null()]),
+      /** Keys the manifest has that this release does not read, with their lines. */
+      unknownKeys: Type.Array(
+        Type.Object({ key: Type.String(), line: Type.Union([Type.Integer(), Type.Null()]) }),
+      ),
     }),
     Type.Null(),
   ]),
+  /** A sync of the source is running now, in any process. */
+  syncing: Type.Boolean(),
 })
 
 const SyncRequestedSchema = Type.Object({ requested: Type.Boolean() })
 
 type WorkspaceSourceResponse = Static<typeof WorkspaceSourceSchema>
 
-function sourceResponse({
-  source,
-  collections,
-  state,
-}: WorkspaceSourceView): WorkspaceSourceResponse {
+function sourceResponse(
+  { source, collections, state }: WorkspaceSourceView,
+  syncing: boolean,
+): WorkspaceSourceResponse {
   return {
     remote: source.remote,
     branch: source.branch,
@@ -180,7 +185,9 @@ function sourceResponse({
             failure: state.failure,
             refused: [...state.refused],
             brokenLinks: state.brokenLinks === null ? null : [...state.brokenLinks],
+            unknownKeys: [...(state.layout?.unknownKeys ?? [])],
           },
+    syncing,
   }
 }
 
@@ -202,7 +209,7 @@ export function workspaceSourceRoutes(deps: AppDependencies): FastifyPluginAsync
         await requireWorkspaceAccess(authorizerFor(deps, request), target, 'manage')
         const view = await getWorkspaceSource(deps, target)
         if (view === null) throw notSourced()
-        return sourceResponse(view)
+        return sourceResponse(view, await deps.sourceSync.lock.isHeld(target))
       },
     )
 
@@ -233,7 +240,7 @@ export function workspaceSourceRoutes(deps: AppDependencies): FastifyPluginAsync
         )
         switch (result.kind) {
           case 'configured':
-            return sourceResponse(result.view)
+            return sourceResponse(result.view, await deps.sourceSync.lock.isHeld(target))
           /* v8 ignore next 2 -- the workspace was resolved a moment ago. */
           case 'not-found':
             throw notFound('Workspace not found')

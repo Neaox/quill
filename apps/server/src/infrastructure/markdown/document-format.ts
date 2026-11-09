@@ -229,10 +229,29 @@ export function createDocumentFormat(options: DocumentFormatOptions = {}): Docum
      * same options a body is rendered with, so a comparison looks like the
      * document it compares (`@quill/markdown`'s `renderComparison`).
      */
-    compare({ before, after, context, patches, draft, authorship }: CompareInput): ComparedContent {
+    compare({
+      before,
+      after,
+      context,
+      beforeResolved,
+      patches,
+      draft,
+      authorship,
+    }: CompareInput): ComparedContent {
       const older = parseDocument(before)
       const newer = parseDocument(after)
-      const comparison = compareDocuments(older.ast, newer.ast)
+      // Each side's relative links and images as its own revision resolved
+      // them (ADR-061), so a picture that changed between them is a change.
+      const comparison = compareDocuments(
+        resolveDestinations(older.ast, {
+          links: beforeResolved?.resolvedLinks,
+          images: beforeResolved?.resolvedImages,
+        }),
+        resolveDestinations(newer.ast, {
+          links: context.resolvedLinks,
+          images: context.resolvedImages,
+        }),
+      )
       const compared =
         draft === undefined ? undefined : { draft: toTree(draft.ast), after: newer.ast, comparison }
       const revertible = compared === undefined ? undefined : revertibleChanges(compared)

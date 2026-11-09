@@ -13,6 +13,7 @@ describe('inertSourceSync', () => {
     expect(ports.contentStore).toBe(store)
     expect(await ports.sources.forWorkspace(HANDBOOK)).toBeNull()
     expect(await ports.lock.withLock(HANDBOOK, async () => 7)).toEqual({ kind: 'ran', value: 7 })
+    expect(await ports.lock.isHeld(HANDBOOK)).toBe(false)
     expect(ports.allowFileRemotesForTesting).toBe(false)
   })
 })

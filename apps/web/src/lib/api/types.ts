@@ -66,6 +66,20 @@ export interface WorkspaceDto {
   readonly name: string
   readonly slug: string
   readonly createdAt: string
+  /** Written in Quill, or read from a repository (ADR-061). Absent from an older server. */
+  readonly origin?: { readonly kind: 'native' | 'sourced' }
+  /**
+   * What the caller may do in it, as a document's envelope says it (ADR-012).
+   * Only `GET /api/workspaces/:id` carries it; absent from a list or a write.
+   */
+  readonly permissions?: {
+    readonly view: boolean
+    readonly comment: boolean
+    readonly edit: boolean
+    readonly publish: boolean
+    readonly arrange: boolean
+    readonly manage: boolean
+  }
 }
 
 /** One row of `GET /api/workspaces`: a workspace the caller can see, with its unit. */
@@ -417,3 +431,9 @@ export type GroupSummaryDto = GetBody<'/api/groups'>['groups'][number]
 
 /** `GET /api/people`: somebody an administrator can add to a group. */
 export type PersonDto = GetBody<'/api/people'>['people'][number]
+
+/** `GET /api/workspaces/:id/source`: where a sourced workspace reads from, and how far it has synced (ADR-061). */
+export type WorkspaceSourceDto = GetBody<'/api/workspaces/{id}/source'>
+
+/** `GET /api/documents/:id/source-freshness`: whether a sourced document has moved on, or is about to. */
+export type SourceFreshnessDto = GetBody<'/api/documents/{id}/source-freshness'>

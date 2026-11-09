@@ -3,6 +3,7 @@ import { and, eq, inArray, lt, sql } from 'drizzle-orm'
 import type {
   BrokenSourceLink,
   RefusedSourceFile,
+  SourceAssetHistoryRepository,
   SourceAssetRepository,
   SourceAssetRow,
   SourceLayoutRecord,
@@ -16,7 +17,9 @@ import type {
 import type { DocumentId, WorkspaceId } from '@quill/domain'
 
 import {
+  sourceAssetHolders,
   sourceAssets,
+  sourceImageReferences,
   sourcePathMap,
   sourceSyncState,
   sourceWebhookDeliveries,
@@ -64,6 +67,47 @@ export function createSourcePathMapRepository(db: DrizzleClient): SourcePathMapR
       await db
         .delete(sourcePathMap)
         .where(and(eq(sourcePathMap.workspaceId, workspaceId), eq(sourcePathMap.path, path)))
+    },
+  }
+}
+
+/** Who may see a repository asset: where it was held, and which pages pointed there (ADR-061). */
+export function createSourceAssetHistoryRepository(
+  db: DrizzleClient,
+): SourceAssetHistoryRepository {
+  return {
+    async recordHeld(workspaceId: WorkspaceId, path: string, attachmentId: string): Promise<void> {
+      await db
+        .insert(sourceAssetHolders)
+        .values({ workspaceId, path, attachmentId })
+        .onConflictDoNothing()
+    },
+
+    async recordShown(
+      workspaceId: WorkspaceId,
+      documentId: DocumentId,
+      paths: readonly string[],
+    ): Promise<void> {
+      if (paths.length === 0) return
+      await db
+        .insert(sourceImageReferences)
+        .values(paths.map((path) => ({ workspaceId, documentId, path })))
+        .onConflictDoNothing()
+    },
+
+    async listDocumentsShowing(attachmentId: string): Promise<readonly DocumentId[]> {
+      const rows = await db
+        .selectDistinct({ documentId: sourceImageReferences.documentId })
+        .from(sourceAssetHolders)
+        .innerJoin(
+          sourceImageReferences,
+          and(
+            eq(sourceImageReferences.workspaceId, sourceAssetHolders.workspaceId),
+            eq(sourceImageReferences.path, sourceAssetHolders.path),
+          ),
+        )
+        .where(eq(sourceAssetHolders.attachmentId, attachmentId))
+      return rows.map((row) => row.documentId as DocumentId)
     },
   }
 }

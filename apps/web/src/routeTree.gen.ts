@@ -36,6 +36,7 @@ import { Route as AuthenticatedAdminSettingsThemeRouteImport } from './routes/_a
 import { Route as AuthenticatedWWorkspaceSlugIndexRouteImport } from './routes/_authenticated/w/$workspaceSlug/index'
 import { Route as AuthenticatedWWorkspaceSlugSearchRouteImport } from './routes/_authenticated/w/$workspaceSlug/search'
 import { Route as AuthenticatedWWorkspaceSlugSettingsRouteImport } from './routes/_authenticated/w/$workspaceSlug/settings'
+import { Route as AuthenticatedWWorkspaceSlugSourceRouteImport } from './routes/_authenticated/w/$workspaceSlug/source'
 import { Route as ShareTokenDDocumentRefIndexRouteImport } from './routes/share/$token/d/$documentRef/index'
 import { Route as AuthenticatedWWorkspaceSlugDDocumentIdIndexRouteImport } from './routes/_authenticated/w/$workspaceSlug/d/$documentId/index'
 import { Route as AuthenticatedWWorkspaceSlugDDocumentIdEditRouteImport } from './routes/_authenticated/w/$workspaceSlug/d/$documentId/edit'
@@ -191,6 +192,12 @@ const AuthenticatedWWorkspaceSlugSettingsRoute =
     path: '/settings',
     getParentRoute: () => AuthenticatedWWorkspaceSlugRouteRoute,
   } as any)
+const AuthenticatedWWorkspaceSlugSourceRoute =
+  AuthenticatedWWorkspaceSlugSourceRouteImport.update({
+    id: '/source',
+    path: '/source',
+    getParentRoute: () => AuthenticatedWWorkspaceSlugRouteRoute,
+  } as any)
 const ShareTokenDDocumentRefIndexRoute =
   ShareTokenDDocumentRefIndexRouteImport.update({
     id: '/d/$documentRef/',
@@ -241,6 +248,7 @@ export interface FileRoutesByFullPath {
   '/admin/settings/theme': typeof AuthenticatedAdminSettingsThemeRoute
   '/w/$workspaceSlug/search': typeof AuthenticatedWWorkspaceSlugSearchRoute
   '/w/$workspaceSlug/settings': typeof AuthenticatedWWorkspaceSlugSettingsRoute
+  '/w/$workspaceSlug/source': typeof AuthenticatedWWorkspaceSlugSourceRoute
   '/admin/settings/': typeof AuthenticatedAdminSettingsIndexRoute
   '/w/$workspaceSlug/': typeof AuthenticatedWWorkspaceSlugIndexRoute
   '/share/$token/d/$documentRef/': typeof ShareTokenDDocumentRefIndexRoute
@@ -270,6 +278,7 @@ export interface FileRoutesByTo {
   '/admin/settings/theme': typeof AuthenticatedAdminSettingsThemeRoute
   '/w/$workspaceSlug/search': typeof AuthenticatedWWorkspaceSlugSearchRoute
   '/w/$workspaceSlug/settings': typeof AuthenticatedWWorkspaceSlugSettingsRoute
+  '/w/$workspaceSlug/source': typeof AuthenticatedWWorkspaceSlugSourceRoute
   '/admin/settings': typeof AuthenticatedAdminSettingsIndexRoute
   '/w/$workspaceSlug': typeof AuthenticatedWWorkspaceSlugIndexRoute
   '/share/$token/d/$documentRef': typeof ShareTokenDDocumentRefIndexRoute
@@ -304,6 +313,7 @@ export interface FileRoutesById {
   '/_authenticated/admin/settings/theme': typeof AuthenticatedAdminSettingsThemeRoute
   '/_authenticated/w/$workspaceSlug/search': typeof AuthenticatedWWorkspaceSlugSearchRoute
   '/_authenticated/w/$workspaceSlug/settings': typeof AuthenticatedWWorkspaceSlugSettingsRoute
+  '/_authenticated/w/$workspaceSlug/source': typeof AuthenticatedWWorkspaceSlugSourceRoute
   '/_authenticated/admin/settings/': typeof AuthenticatedAdminSettingsIndexRoute
   '/_authenticated/w/$workspaceSlug/': typeof AuthenticatedWWorkspaceSlugIndexRoute
   '/share/$token/d/$documentRef/': typeof ShareTokenDDocumentRefIndexRoute
@@ -338,6 +348,7 @@ export interface FileRouteTypes {
     | '/admin/settings/theme'
     | '/w/$workspaceSlug/search'
     | '/w/$workspaceSlug/settings'
+    | '/w/$workspaceSlug/source'
     | '/admin/settings/'
     | '/w/$workspaceSlug/'
     | '/share/$token/d/$documentRef/'
@@ -367,6 +378,7 @@ export interface FileRouteTypes {
     | '/admin/settings/theme'
     | '/w/$workspaceSlug/search'
     | '/w/$workspaceSlug/settings'
+    | '/w/$workspaceSlug/source'
     | '/admin/settings'
     | '/w/$workspaceSlug'
     | '/share/$token/d/$documentRef'
@@ -400,6 +412,7 @@ export interface FileRouteTypes {
     | '/_authenticated/admin/settings/theme'
     | '/_authenticated/w/$workspaceSlug/search'
     | '/_authenticated/w/$workspaceSlug/settings'
+    | '/_authenticated/w/$workspaceSlug/source'
     | '/_authenticated/admin/settings/'
     | '/_authenticated/w/$workspaceSlug/'
     | '/share/$token/d/$documentRef/'
@@ -611,6 +624,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedWWorkspaceSlugSettingsRouteImport
       parentRoute: typeof AuthenticatedWWorkspaceSlugRouteRoute
     }
+    '/_authenticated/w/$workspaceSlug/source': {
+      id: '/_authenticated/w/$workspaceSlug/source'
+      path: '/source'
+      fullPath: '/w/$workspaceSlug/source'
+      preLoaderRoute: typeof AuthenticatedWWorkspaceSlugSourceRouteImport
+      parentRoute: typeof AuthenticatedWWorkspaceSlugRouteRoute
+    }
     '/share/$token/d/$documentRef/': {
       id: '/share/$token/d/$documentRef/'
       path: '/d/$documentRef'
@@ -675,6 +695,7 @@ const AuthenticatedAdminSettingsRouteRouteWithChildren =
 interface AuthenticatedWWorkspaceSlugRouteRouteChildren {
   AuthenticatedWWorkspaceSlugSearchRoute: typeof AuthenticatedWWorkspaceSlugSearchRoute
   AuthenticatedWWorkspaceSlugSettingsRoute: typeof AuthenticatedWWorkspaceSlugSettingsRoute
+  AuthenticatedWWorkspaceSlugSourceRoute: typeof AuthenticatedWWorkspaceSlugSourceRoute
   AuthenticatedWWorkspaceSlugIndexRoute: typeof AuthenticatedWWorkspaceSlugIndexRoute
   AuthenticatedWWorkspaceSlugDDocumentIdEditRoute: typeof AuthenticatedWWorkspaceSlugDDocumentIdEditRoute
   AuthenticatedWWorkspaceSlugDDocumentIdIndexRoute: typeof AuthenticatedWWorkspaceSlugDDocumentIdIndexRoute
@@ -686,6 +707,8 @@ const AuthenticatedWWorkspaceSlugRouteRouteChildren: AuthenticatedWWorkspaceSlug
       AuthenticatedWWorkspaceSlugSearchRoute,
     AuthenticatedWWorkspaceSlugSettingsRoute:
       AuthenticatedWWorkspaceSlugSettingsRoute,
+    AuthenticatedWWorkspaceSlugSourceRoute:
+      AuthenticatedWWorkspaceSlugSourceRoute,
     AuthenticatedWWorkspaceSlugIndexRoute:
       AuthenticatedWWorkspaceSlugIndexRoute,
     AuthenticatedWWorkspaceSlugDDocumentIdEditRoute:
