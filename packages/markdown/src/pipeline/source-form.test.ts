@@ -99,6 +99,14 @@ const KEPT = [
   ['an ordered list out of order', '1. one\n3. two\n2. three'],
   ['an ordered list from ten', '10. ten\n12. eleven'],
   ['blank lines inside a container', ':::callout\nOne.\n\n\nTwo.\n:::'],
+  [
+    'sibling containers written with the same fence, one with nothing nested in it',
+    ':::::timeline\n\n::::step\n\n:::checks\n\n1. One\n\n:::\n\n::::\n\n::::step\n\nTwo.\n\n::::\n\n:::::',
+  ],
+  ['a container written wider than it needs', '::::::callout\nBody.\n::::::'],
+  ['an image label with words a directive would take', '![The JSON:API document](a.svg)'],
+  ['an image label with underscores', '![Sent by MAIL_SENDER to OTA_ReadRQ](a.svg "Title")'],
+  ['an image label with an escape', '![a \\] b](a.svg)'],
 ]
 
 describe('a node written as it was', () => {
@@ -110,6 +118,37 @@ describe('a node written as it was', () => {
 })
 
 describe('a node that has changed', () => {
+  it('widens a kept fence when what is nested in it has grown past it', () => {
+    const written = edited('::::step\nTwo.\n::::\n', (tree) => {
+      const step = first(tree, 'containerDirective')
+      step.children = [
+        {
+          type: 'containerDirective',
+          name: 'checks',
+          attributes: {},
+          children: [
+            {
+              type: 'containerDirective',
+              name: 'inner',
+              attributes: {},
+              children: [],
+              data: { sourceForm: { fence: 5 } },
+            },
+          ],
+        },
+      ]
+    })
+    expect(written).toBe(':::::::step\n::::::checks\n:::::inner\n:::::\n::::::\n:::::::\n')
+  })
+
+  it('writes an image’s label canonically once its alternative text changes', () => {
+    const written = edited('![MAIL_SENDER](a.svg)\n', (tree) => {
+      const [image] = first(tree, 'paragraph').children
+      if (image?.type === 'image') image.alt = 'NEW_SENDER'
+    })
+    expect(written).toBe('![NEW\\_SENDER](a.svg)\n')
+  })
+
   it('writes emphasis with `*` where a letter now touches an underscore', () => {
     const written = edited('A _held_ night.\n', (tree) => {
       const [text] = first(tree, 'paragraph').children
@@ -409,6 +448,7 @@ describe('a node that has changed', () => {
       'emphasis',
       'strong',
       'break',
+      'image',
       'listItem',
     ])
   })

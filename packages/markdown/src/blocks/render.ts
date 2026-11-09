@@ -1,14 +1,17 @@
 import { toString } from 'mdast-util-to-string'
 import type { Element, ElementContent, Properties } from 'hast'
-import type { Paragraph, Parents } from 'mdast'
+import type { Paragraph, Parents, RootContent } from 'mdast'
 import type { ContainerDirective, LeafDirective, TextDirective } from 'mdast-util-directive'
 
 import type { Directive } from '../directives/definition.ts'
 import { bodyOf } from '../directives/definition.ts'
+import type { EmojiLookup } from '../emoji/emoji.ts'
+import { emojiElement } from '../emoji/emoji.ts'
 import { attributeSource, directiveSource } from '../render/directive-source.ts'
 import type { State } from '../render/hast-state.ts'
 import type { AnyBlock } from './define.ts'
-import { blockKind, itemsOf, takesBody } from './define.ts'
+import { BlockRenderError, blockKind, itemsOf, takesBody } from './define.ts'
+import { isPhrasing } from './phrasing.ts'
 import type { PropIssue } from './props.ts'
 import { readProps } from './props.ts'
 import type { BlockRegistry } from './registry.ts'
@@ -54,6 +57,8 @@ export interface BlockRendererOptions {
   readonly registry: BlockRegistry
   /** Where the issues found while rendering are collected, in document order. */
   readonly issues: BlockIssue[]
+  /** The emoji this page draws (ADR-038), for a block whose prop names one. */
+  readonly emoji?: EmojiLookup | undefined
 }
 
 /**
@@ -83,8 +88,25 @@ function isLabelParagraph(node: ContainerDirective['children'][number]): node is
   return node.type === 'paragraph' && node.data?.directiveLabel === true
 }
 
+/** What a container holds: anything that is not phrasing. */
+function isFlow(node: RootContent): node is ContainerDirective['children'][number] {
+  return !isPhrasing(node)
+}
+
 function nameOfParent(parent: Parents | undefined): string | undefined {
   return parent?.type === 'containerDirective' ? parent.name : undefined
+}
+
+/** No content: what a leaf, or a container with nothing in it, is given. */
+const nothing = (): ElementContent[] => []
+
+/** A value worked out the first time it is asked for, and kept. */
+function once<Value>(compute: () => Value): () => Value {
+  let value: { readonly current: Value } | undefined
+  return () => {
+    value ??= { current: compute() }
+    return value.current
+  }
 }
 
 function sentence(messages: readonly string[]): string {
@@ -126,7 +148,7 @@ export interface BlockRenderer {
 }
 
 export function createBlockRenderer(options: BlockRendererOptions): BlockRenderer {
-  const { registry, issues } = options
+  const { registry, issues, emoji = () => undefined } = options
 
   const report = (node: Directive, message: string): void => {
     const line = node.position?.start.line
@@ -187,7 +209,10 @@ export function createBlockRenderer(options: BlockRendererOptions): BlockRendere
     const classes = Array.isArray(existing) ? existing.map(String) : []
     const stamped: Element = {
       ...root,
-      properties: { className: ['qb', `qb-${block.name}`, ...classes], ...properties },
+      properties: {
+        className: [...new Set(['qb', `qb-${block.name}`, ...classes])],
+        ...properties,
+      },
     }
     if (notes.length === 0) return stamped
     if (blockKind(block) === 'text') return [stamped, inlineNote(notes)]
@@ -243,12 +268,18 @@ export function createBlockRenderer(options: BlockRendererOptions): BlockRendere
     if (!takesLabel && words !== '') notes.push(`${block.name} takes no [label]; it is not shown`)
 
     let label: ElementContent[] = []
-    let content: ElementContent[] = []
+    // Drawn when the render first reads it, and only then: a block that
+    // draws its Markdown itself, through `draw`, must not draw it twice, or
+    // a heading inside it would take its anchor twice and the outline would
+    // point past it.
+    let content = nothing
     let items: ElementContent[] = []
+    let children: readonly RootContent[] = []
     // Markdown an `items` block does not take: drawn before it, never dropped.
     let before: ElementContent[] = []
     if (node.type === 'textDirective') {
-      content = state.all(node)
+      content = once(() => state.all(node))
+      children = node.children
     } else if (node.type === 'leafDirective') {
       label = takesLabel ? state.all(node) : []
     } else {
@@ -259,23 +290,59 @@ export function createBlockRenderer(options: BlockRendererOptions): BlockRendere
       const isItem = (child: (typeof body)[number]): boolean =>
         child.type === 'containerDirective' && child.name === itemName
       const rest = itemName === undefined ? body : body.filter((child) => !isItem(child))
-      const drawn = rest.length === 0 ? [] : state.all({ ...node, children: rest })
-      if (itemName !== undefined) {
-        items = state.all({ ...node, children: body.filter(isItem) })
-      }
-      if (itemName !== undefined && rest.length > 0 && !takesBody(block)) {
-        notes.push(`${block.name} holds only ${itemName} blocks; the rest is shown first`)
-        before = drawn
+      const drawRest = (): ElementContent[] =>
+        rest.length === 0 ? [] : state.all({ ...node, children: rest })
+      children = rest
+      if (itemName === undefined) {
+        content = once(() => {
+          const drawn = drawRest()
+          return drawn.length === 0 ? [] : state.wrap(drawn, true)
+        })
       } else {
-        content = drawn.length === 0 ? [] : state.wrap(drawn, true)
+        // In the order they are written: the Markdown before the items, then the items.
+        const drawn = drawRest()
+        items = state.all({ ...node, children: body.filter(isItem) })
+        if (rest.length > 0 && !takesBody(block)) {
+          notes.push(`${block.name} holds only ${itemName} blocks; the rest is shown first`)
+          before = drawn
+          children = []
+        } else {
+          const wrapped = drawn.length === 0 ? [] : state.wrap(drawn, true)
+          content = () => wrapped
+        }
       }
+    }
+
+    // Markdown the block took apart, drawn as the rest of the page is: as
+    // phrasing when it is phrasing, otherwise as blocks inside this one.
+    const drawMarkdown = (nodes: readonly RootContent[]): ElementContent[] => {
+      if (nodes.length === 0) return []
+      if (nodes.every(isPhrasing)) return state.all({ type: 'paragraph', children: [...nodes] })
+      if (node.type !== 'containerDirective') return []
+      return state.wrap(state.all({ ...node, children: nodes.filter(isFlow) }), true)
+    }
+    const drawEmoji = (name: string, use: 'text' | 'decoration'): Element | undefined => {
+      const found = emoji(name)
+      return found === undefined ? undefined : emojiElement(found, use)
     }
 
     let root: Element
     try {
-      root = block.render({ props: props.values, label, labelText: words, content, items })
-    } catch {
-      const failed = `${block.name} could not be drawn`
+      root = block.render({
+        props: props.values,
+        label,
+        labelText: words,
+        get content() {
+          return content()
+        },
+        items,
+        children,
+        draw: drawMarkdown,
+        emoji: drawEmoji,
+      })
+    } catch (error) {
+      const failed =
+        error instanceof BlockRenderError ? error.message : `${block.name} could not be drawn`
       report(node, failed)
       return notDrawn(state, node, failed)
     }

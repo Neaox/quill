@@ -1,4 +1,5 @@
 import type { Element, ElementContent, Properties } from 'hast'
+import type { RootContent } from 'mdast'
 
 import type { PropSchemas, PropValues } from './props.ts'
 
@@ -52,6 +53,39 @@ export interface BlockRenderInput<Props extends PropSchemas> {
   readonly content: readonly ElementContent[]
   /** An `items` container's rendered child blocks, in order. */
   readonly items: readonly ElementContent[]
+  /**
+   * The Markdown `content` was drawn from, as parsed (mdast): a container's
+   * blocks after its label (for an `items` block, the ones that are not its
+   * items), or an inline block's phrasing. Emoji are already read: a
+   * shortcode the page draws is a text node carrying its element, which
+   * `isEmojiText` recognises. For a block whose meaning is in the shape of
+   * what is written inside it, such as a step's first line or a cast's list,
+   * and drawn again through `draw`.
+   */
+  readonly children: readonly RootContent[]
+  /**
+   * Draws Markdown the block has taken apart, exactly as the rest of the page
+   * is drawn: phrasing as phrasing, blocks as blocks. Deterministic, like
+   * everything a render is given.
+   */
+  readonly draw: (nodes: readonly RootContent[]) => ElementContent[]
+  /**
+   * The emoji a name draws on this page (ADR-038), or undefined when there
+   * is none: for a prop that names one, such as a step's `icon`. A
+   * `decoration` beside words that already say what it is has no name of its
+   * own; a `text` one is named by what it shows.
+   */
+  readonly emoji: (name: string, use: 'text' | 'decoration') => Element | undefined
+}
+
+/**
+ * Thrown by a `render` that cannot draw what it was given: the block is drawn
+ * as the frame of a block that cannot be drawn, with this message as the
+ * reason, and the document's health reports it. A render that throws
+ * anything else is reported as one that "could not be drawn".
+ */
+export class BlockRenderError extends Error {
+  override readonly name = 'BlockRenderError'
 }
 
 export interface BlockDefinition<Props extends PropSchemas = PropSchemas> {

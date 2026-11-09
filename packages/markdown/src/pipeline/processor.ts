@@ -12,6 +12,7 @@ import { readLinkComments, writeLinkComments } from '../directives/link-comment.
 import { readDetails } from '../details/read.ts'
 import { linksOf, markAutolinkLiterals, withBareAutolinks } from './autolink-literal.ts'
 import { withAlertMarkers } from './github-alert.ts'
+import { readImageAlts } from './image-alt.ts'
 import { attributesRead, markSourceForm } from './source-form.ts'
 import { normaliseMarkdown } from './normalise.ts'
 import { GFM_OPTIONS, SERIALISE_OPTIONS } from './options.ts'
@@ -64,7 +65,8 @@ export function parseMarkdown(markdown: string): Root {
  * piece whose offsets are the whole document's.
  */
 export function parseNormalised(source: string): Root {
-  const tree = markSourceForm(processor.parse(source), source, readAttributes)
+  const parsed = readImageAlts(processor.parse(source), source, (label) => processor.parse(label))
+  const tree = markSourceForm(parsed, source, readAttributes)
   return readLinkComments(
     readDetails(groupCodeBlocks(markAutolinkLiterals(tree, source), source), readSummary),
   )

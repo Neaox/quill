@@ -130,9 +130,21 @@ describe('a component block’s card (ADR-060)', () => {
   })
 
   it('names a block nothing draws', () => {
-    const { nodeView, view } = mount(directive({}, 'timeline'))
+    const { nodeView, view } = mount(directive({}, 'roadmap'))
     expect(heading(nodeView)).toHaveTextContent('Unknown block')
-    expect(heading(nodeView)?.querySelector('code')).toHaveTextContent(/^timeline$/u)
+    expect(heading(nodeView)?.querySelector('code')).toHaveTextContent(/^roadmap$/u)
+    view.destroy()
+  })
+
+  it('heads the documentation kit’s blocks with their titles, props and problems', () => {
+    const { nodeView, view } = mount(directive({ icon: 'airbnb', tone: 'purple' }, 'step'))
+    expect(heading(nodeView)).toHaveTextContent('Step')
+    expect(heading(nodeView)?.querySelector('code')).toHaveTextContent(
+      'step{icon="airbnb" tone="purple"}',
+    )
+    expect(heading(nodeView)).toHaveTextContent(
+      'tone: “purple” is not one of outside, net; left out',
+    )
     view.destroy()
   })
 

@@ -1,7 +1,7 @@
 import type { Attribute, Attributes, Extensions, MarkConfig, NodeConfig } from '@tiptap/core'
 import type { DOMOutputSpec, Node as PMNode, TagParseRule } from '@tiptap/pm/model'
 
-import { badgeTone, isLabelDirective } from '@quill/markdown'
+import { badgeShorthand, badgeTone, isLabelDirective } from '@quill/markdown'
 
 import { parseAttribute, renderAttribute } from './attributes.ts'
 
@@ -121,8 +121,8 @@ const TEXT_DIRECTIVE = 'textDirective'
  * A text directive that is a badge (`:ok[Built]`, `:badge[Gap]{tone=warning}`)
  * or one of the organisation's labels (`:acme[Acme]`, ADR-037) is drawn
  * with the reader's own badge markup — the `badge` class and its tone or its
- * label — so it looks the same while it is being written as when it is read,
- * coloured by the same theme stylesheet. Its own class still leads, which is
+ * label, and the shorthand it is written with — so it looks the same while it
+ * is being written as when it is read, coloured by the same theme stylesheet. Its own class still leads, which is
  * what reads it back in.
  */
 function badgeAttributes(
@@ -135,7 +135,14 @@ function badgeAttributes(
   const attributes: unknown = node.attrs['attributes']
   const badge = `${nodeClassName(name)} badge`
   const tone = badgeTone(directive, isRecord(attributes) ? attributes : undefined)
-  if (tone !== undefined) return { class: badge, 'data-tone': tone }
+  const shorthand = badgeShorthand(directive)
+  if (tone !== undefined) {
+    return {
+      class: badge,
+      'data-tone': tone,
+      ...(shorthand === undefined ? {} : { 'data-badge': shorthand }),
+    }
+  }
   return isLabelDirective(directive, labels) ? { class: badge, 'data-label': directive } : {}
 }
 

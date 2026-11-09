@@ -31,6 +31,17 @@ const FIXTURE = readFileSync(
   'utf8',
 )
 
+/**
+ * Every construct of the documentation kit, written as lockstay's guide
+ * writes it (`corpus/30-docs-kit.md`). `prosemirror/real-docs.test.ts` runs
+ * the same first save over lockstay's own pages when `QUILL_REAL_DOCS` names
+ * them.
+ */
+const DOCS_KIT = readFileSync(
+  fileURLToPath(new URL('../../corpus/30-docs-kit.md', import.meta.url)),
+  'utf8',
+)
+
 /** Into the editor's document, through `edit`, and saved, as the editor saves. */
 function saved(markdown: string, edit: (doc: PMNode) => PMNode = (doc) => doc): string {
   const parsed = parseDocument(markdown)
@@ -154,7 +165,9 @@ describe('a document of component blocks, through the editor', () => {
 
 describe('the same document, read', () => {
   it('is legible before its blocks are installed, and says which are missing', () => {
-    const { html, blockIssues } = renderDocument(parseDocument(FIXTURE).ast)
+    const { html, blockIssues } = renderDocument(parseDocument(FIXTURE).ast, {
+      extensions: createMarkdownRegistry([], [endpointBlock]),
+    })
     expect(html).toContain('aria-label="Unknown block: timeline"')
     expect(html).toContain('aria-label="Unknown block: step"')
     expect(html).toContain('The API skips an address that bounced')
@@ -172,21 +185,21 @@ describe('the same document, read', () => {
     ])
   })
 
-  it('is drawn by its blocks once they are installed', () => {
-    const { html, blockIssues } = renderDocument(parseDocument(FIXTURE).ast, {
-      extensions: createMarkdownRegistry([], [endpointBlock, ...LOCKSTAY_SHAPED]),
-    })
-    expect(html).toContain('<ol class="qb qb-timeline">')
-    expect(html).toContain('<span class="qb-step-node" data-qb-icon="shield" data-qb-tone="net">')
+  it('is drawn by Quill’s own blocks, with no unknown block left', () => {
+    const { html, blockIssues } = renderDocument(parseDocument(FIXTURE).ast)
+    expect(html).not.toContain('block-fallback')
+    expect(html).toContain('<ul class="qb qb-cast">')
+    expect(html).toContain('<ol class="qb qb-timeline"><li class="qb qb-step">')
+    expect(html).toContain('<span class="qb-step-node" data-qb-tone="net">')
     expect(html).toContain(
-      '<section class="qb qb-cast" aria-label="Cast" data-qb-outside="Postmark or SES">',
+      '<p class="qb-step-when"><span class="badge qb-step-chip">Before sending</span>',
     )
+    expect(html).toContain('<ol class="qb qb-checks"><li>The address is confirmed.</li>')
+    expect(html).toContain(
+      '<span class="badge" data-tone="neutral" data-badge="plan">Designed</span>',
+    )
+    // Only the bad prop the fixture writes on purpose is reported.
     expect(blockIssues).toEqual([
-      {
-        block: 'checks',
-        message: 'no block is called checks',
-        line: 49,
-      },
       {
         block: 'endpoint',
         message:
@@ -194,5 +207,56 @@ describe('the same document, read', () => {
         line: 70,
       },
     ])
+  })
+
+  it('is drawn by blocks a test registers in their place', () => {
+    const { html } = renderDocument(parseDocument(FIXTURE).ast, {
+      extensions: createMarkdownRegistry([], [endpointBlock, ...LOCKSTAY_SHAPED]),
+    })
+    expect(html).toContain('<span class="qb-step-node" data-qb-icon="shield" data-qb-tone="net">')
+  })
+})
+
+describe('the documentation kit, through the editor', () => {
+  it('comes back byte for byte when nothing is edited', () => {
+    expect(saved(DOCS_KIT)).toBe(DOCS_KIT)
+  })
+
+  it('keeps every fence as written when a step with nothing nested in it is edited', () => {
+    expect(
+      changes(DOCS_KIT, saved(DOCS_KIT, retyped('Only nights that differ', 'Only changed nights'))),
+    ).toEqual({
+      removed: ['Only nights that differ are sent.'],
+      added: ['Only changed nights are sent.'],
+    })
+  })
+
+  it('changes only the edited line when a step’s when-line is edited', () => {
+    expect(changes(DOCS_KIT, saved(DOCS_KIT, retyped('Any time later', 'Later')))).toEqual({
+      removed: [':clock: **Any time later** · :globe: Harbour Stays → :inbox: Gateway'],
+      added: [':clock: **Later** · :globe: Harbour Stays → :inbox: Gateway'],
+    })
+  })
+
+  it('changes only the edited line when a cast member or a route is edited', () => {
+    expect(changes(DOCS_KIT, saved(DOCS_KIT, retyped('Owns a cottage', 'Owns a bach')))).toEqual({
+      removed: ['- :person: **Mere Tane** · Owns a cottage by the sea'],
+      added: ['- :person: **Mere Tane** · Owns a bach by the sea'],
+    })
+    const { removed, added } = changes(
+      DOCS_KIT,
+      saved(DOCS_KIT, retyped('Rates, both ways', 'Rates')),
+    )
+    expect(removed).toEqual([expect.stringContaining('Rates, both ways')])
+    expect(added).toEqual([
+      expect.stringContaining(':route[:building: Tidewater ⇄ :home: Quill Lodge]'),
+    ])
+  })
+
+  it('is drawn with no unknown block and no issue', () => {
+    const { html, blockIssues } = renderDocument(parseDocument(DOCS_KIT).ast)
+    expect(blockIssues).toEqual([])
+    expect(html).not.toContain('block-fallback')
+    expect(html.match(/class="qb qb-step"/gu)).toHaveLength(6)
   })
 })

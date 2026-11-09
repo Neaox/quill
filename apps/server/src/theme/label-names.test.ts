@@ -9,8 +9,10 @@ import {
   KNOWN_DIRECTIVES,
   LABEL_NAME,
 } from '@quill/markdown'
+import { BUILT_IN_BLOCKS } from '@quill/markdown/component-blocks'
 import { emojiUrl } from '@quill/application'
 import {
+  BUILT_IN_BLOCK_NAMES,
   BUILT_IN_DIRECTIVE_NAMES,
   DRAWING_CLASS_NAMES,
   EMOJI_NAME_PATTERN,
@@ -49,6 +51,10 @@ describe('the names a tenant label may not take', () => {
     expect(sorted(BUILT_IN_DIRECTIVE_NAMES)).toEqual(
       sorted([...KNOWN_DIRECTIVES.flatMap((definition) => definition.names), ...CALLOUT_TYPES]),
     )
+  })
+
+  it('are every block Quill ships (ADR-060)', () => {
+    expect(sorted(BUILT_IN_BLOCK_NAMES)).toEqual(sorted(BUILT_IN_BLOCKS.map((block) => block.name)))
   })
 
   it('are every class the drawing vocabulary styles', () => {

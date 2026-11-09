@@ -21,7 +21,7 @@ import { codeBlockCaption, codeCard, codeGroupElement } from '../code-group/rend
 import type { Details } from '../details/details.ts'
 import { accordionDirective, detailsDirective } from '../details/details.ts'
 import { createDetailsRenderer } from '../details/render.ts'
-import { badgeDirective } from '../directives/badge.ts'
+import { badgeDirective, badgeShorthand } from '../directives/badge.ts'
 import { linkDirective } from '../directives/link.ts'
 import type { CalloutType } from '../directives/callout.ts'
 import { calloutDirective } from '../directives/callout.ts'
@@ -40,7 +40,7 @@ import { repeatDirective } from '../directives/repeat.ts'
 import { smallDirective } from '../directives/small.ts'
 import type { TableOptions } from '../directives/table.ts'
 import { DEFAULT_TABLE_OPTIONS, tableDirective, tableOf } from '../directives/table.ts'
-import type { ResolvedEmoji } from '../emoji/emoji.ts'
+import type { EmojiLookup, ResolvedEmoji } from '../emoji/emoji.ts'
 import { emojiElement } from '../emoji/emoji.ts'
 import type { MarkdownRegistry } from '../extensions/registry.ts'
 import { markerName, splitAlert } from '../pipeline/github-alert.ts'
@@ -168,6 +168,8 @@ export interface HandlerOptions {
   readonly labels?: ReadonlySet<string> | undefined
   /** The emoji a label's pill leads with, by label name (`RenderOptions.labelEmoji`). */
   readonly labelEmoji: (label: string) => ResolvedEmoji | undefined
+  /** Every emoji the page draws, for a component block whose prop names one (ADR-060). */
+  readonly emoji?: EmojiLookup | undefined
   /**
    * The document's headings, for a table of contents (ADR-058): taken from
    * the same tree the headings are rendered from, so every entry links to the
@@ -252,6 +254,7 @@ export function createHandlers(options: HandlerOptions): Handlers {
     placed = [],
     labels = new Set<string>(),
     labelEmoji,
+    emoji,
     outline,
     blockIssues = [],
   } = options
@@ -260,6 +263,7 @@ export function createHandlers(options: HandlerOptions): Handlers {
   const blocks = createBlockRenderer({
     registry: extensions?.blocks ?? BUILT_IN_BLOCK_REGISTRY,
     issues: blockIssues,
+    emoji,
   })
 
   /**
@@ -597,10 +601,23 @@ export function createHandlers(options: HandlerOptions): Handlers {
     // A link with a stored choice (ADR-042): an ordinary anchor the page may later fill.
     if (claims(linkDirective, node)) return linkInlineSlot(linkDirective.parse(node))
     // A badge with no label is the author's own text — `status:ok` parses as
-    // a directive named `ok` — so it is written back as it was typed.
+    // a directive named `ok` — so it is written back as it was typed. Its
+    // label is drawn as the inline Markdown it is, so an emoji leads a time
+    // chip (`:accent[:clock: 5 s]`), and a shorthand names itself
+    // (`data-badge="plan"`), so a reading stylesheet can draw a planned
+    // thing apart from a neutral badge of the same tone.
     if (claims(badgeDirective, node) && toString(node).trim().length > 0) {
       const model = badgeDirective.parse(node)
-      return element('span', { className: ['badge'], 'data-tone': model.tone }, [text(model.label)])
+      const shorthand = badgeShorthand(node.name)
+      return element(
+        'span',
+        {
+          className: ['badge'],
+          'data-tone': model.tone,
+          ...(shorthand === undefined ? {} : { 'data-badge': shorthand }),
+        },
+        state.all(node),
+      )
     }
     if (isLabel(node, labels)) {
       // A label whose organisation gave it an emoji leads with it in place

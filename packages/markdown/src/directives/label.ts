@@ -1,6 +1,7 @@
 import { toString } from 'mdast-util-to-string'
 import type { TextDirective } from 'mdast-util-directive'
 
+import { BUILT_IN_BLOCK_REGISTRY } from '../blocks/registry.ts'
 import { nearestName } from './nearest-name.ts'
 import { KNOWN_DIRECTIVES } from './registry.ts'
 
@@ -25,9 +26,12 @@ export function isLabelDirective(name: string, labels: ReadonlySet<string>): boo
   return labels.has(name) && LABEL_NAME.test(name) && !isBuiltInText(name)
 }
 
+/** A text directive Quill draws itself: one of its own, or one of its inline blocks (`:route[…]`). */
 function isBuiltInText(name: string): boolean {
-  return KNOWN_DIRECTIVES.some(
-    (definition) => definition.names.includes(name) && definition.kinds.includes('text'),
+  return (
+    KNOWN_DIRECTIVES.some(
+      (definition) => definition.names.includes(name) && definition.kinds.includes('text'),
+    ) || BUILT_IN_BLOCK_REGISTRY.find(name, 'text') !== undefined
   )
 }
 
