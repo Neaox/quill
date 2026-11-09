@@ -71,7 +71,16 @@ export type UploadEmojiImageResult =
       /** The upload as it came, metadata stripped, when the stored copy had its play count changed. */
       readonly original?: string
       /** Stored as a glyph, drawn in the colour of the text around it, with its proportions. */
-      readonly monochrome?: { readonly width: number; readonly height: number }
+      readonly monochrome?: {
+        readonly width: number
+        readonly height: number
+        /**
+         * The glyph as stored, already read and rewritten on the server, so the
+         * settings screen can preview exactly what readers will see before the
+         * emoji is saved (and served).
+         */
+        readonly glyph: string
+      }
     }
   | { readonly kind: 'empty' }
   | { readonly kind: 'not-monochrome'; readonly reason: string }
@@ -147,7 +156,7 @@ export async function uploadEmojiImage(
       kind: 'uploaded',
       hash: stored.hash,
       mediaType: sniffed,
-      monochrome: { width: glyph.width, height: glyph.height },
+      monochrome: { width: glyph.width, height: glyph.height, glyph: glyph.svg },
     }
   }
 

@@ -91,6 +91,10 @@ function fourFrames() {
   return { frames, close, readFrames: () => Promise.resolve(frames) }
 }
 
+/** A clock as the server stores it: one symbol, painted in the colour around it. */
+const CLOCK_GLYPH =
+  '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" width="16" height="16"><symbol id="glyph" viewBox="0 0 16 16"><g fill="none" stroke="currentColor" stroke-width="1.4"><circle cx="8" cy="8" r="6.5"/><path d="M8,4.5 V8"/></g></symbol><use href="#glyph"/></svg>'
+
 describe('EmojiEditor (ADR-038)', () => {
   it('previews a saved emoji at text size, in light and dark, and removes it', async () => {
     const user = userEvent.setup()
@@ -320,7 +324,7 @@ describe('EmojiEditor (ADR-038)', () => {
           return jsonResponse(201, {
             hash: HASH,
             mediaType: 'image/svg+xml',
-            monochrome: { width: 16, height: 16 },
+            monochrome: { width: 16, height: 16, glyph: CLOCK_GLYPH },
           })
         },
       },
@@ -351,6 +355,17 @@ describe('EmojiEditor (ADR-038)', () => {
     expect(asked).toEqual(['?monochrome=true'])
     expect(screen.getByText('SVG, in the text’s colour · 16 × 16')).toBeInTheDocument()
     expect(toggle).not.toBeChecked()
+    // Previewed before it is saved, as readers will see it: the glyph the server
+    // stored, drawn in each sample's own ink, never the picture uploaded.
+    const preview = screen.getByRole('group', { name: 'Preview of :clock: at text size' })
+    const drawn = within(preview).getAllByRole('img', { name: 'Clock' })
+    expect(drawn).toHaveLength(2)
+    for (const glyph of drawn) {
+      expect(glyph.tagName.toLowerCase()).toBe('svg')
+      expect(glyph.querySelector('g')?.getAttribute('stroke')).toBe('currentColor')
+      expect(glyph.querySelector('circle')).not.toBeNull()
+      expect(glyph.querySelector('use')).toBeNull()
+    }
   })
 
   it('previews a saved monochrome emoji by its glyph, in each sample’s own ink', () => {

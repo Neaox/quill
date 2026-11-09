@@ -7,7 +7,7 @@ import { buildLabelColours, type LabelColours } from './labels.ts'
 import { NO_CEILING, type ChromaCeiling } from './derive.ts'
 import { buildNeutralRamp, type NeutralRole } from './neutral-ramp.ts'
 import { parseColour, withAlpha, type Colour } from './oklch.ts'
-import { buildStatusSet, type StatusRole } from './status.ts'
+import { buildStatusSet, statusInk, type StatusRole } from './status.ts'
 import { buildSyntaxColours } from './syntax.ts'
 
 export type EffectRole = 'overlay' | 'shadowAmbient' | 'shadowDirect'
@@ -47,11 +47,14 @@ export const PALETTE_ROLES: readonly PaletteRole[] = [
   'selection',
   'success',
   'successSubtle',
+  'successInk',
   'warning',
   'warningSubtle',
+  'warningInk',
   'danger',
   'dangerHover',
   'dangerSubtle',
+  'dangerInk',
   'info',
   'overlay',
   'shadowAmbient',
@@ -99,11 +102,14 @@ export const PALETTE_TOKEN_ROLES: Readonly<Record<PaletteToken, PaletteRole>> = 
   '--palette-accent-ink': 'accentInk',
   '--palette-success': 'success',
   '--palette-success-subtle': 'successSubtle',
+  '--palette-success-ink': 'successInk',
   '--palette-warning': 'warning',
   '--palette-warning-subtle': 'warningSubtle',
+  '--palette-warning-ink': 'warningInk',
   '--palette-danger': 'danger',
   '--palette-danger-hover': 'dangerHover',
   '--palette-danger-subtle': 'dangerSubtle',
+  '--palette-danger-ink': 'dangerInk',
   '--palette-code-background': 'codeBackground',
   '--palette-selection': 'selection',
   '--palette-overlay': 'overlay',
@@ -214,13 +220,45 @@ const overridesFor = (
  * ship rather than the ones the seeds would have produced.
  */
 export const buildPalettes = (document: ThemeDocument): ThemePalettes => {
-  const light = applyColourOverrides(
-    buildScheme(document, 'light'),
-    overridesFor(document, 'light'),
+  const lightOverrides = overridesFor(document, 'light')
+  const light = withSettledInks(
+    applyColourOverrides(buildScheme(document, 'light'), lightOverrides),
+    lightOverrides,
   )
-  const dark = applyColourOverrides(
-    buildScheme(document, 'dark', light),
-    overridesFor(document, 'dark'),
+  const darkOverrides = overridesFor(document, 'dark')
+  const dark = withSettledInks(
+    applyColourOverrides(buildScheme(document, 'dark', light), darkOverrides),
+    darkOverrides,
   )
   return { light, dark }
+}
+
+const STATUS_INKS = [
+  ['successInk', 'success', 'successSubtle', 'success'],
+  ['warningInk', 'warning', 'warningSubtle', 'warning'],
+  ['dangerInk', 'danger', 'dangerSubtle', 'danger'],
+] as const
+
+/**
+ * Each status ink settled again against the fill and the colour that will
+ * ship, when an override changed either: an ink is the status read on its
+ * fill, so a pinned fill (Grid's dark washes) takes an ink that reads on it.
+ * An ink the theme pins itself is left as pinned.
+ */
+const withSettledInks = (
+  palette: Palette,
+  overrides: Readonly<Record<string, string>>,
+): Palette => {
+  const colours = { ...palette.colours }
+  const adjustments = [...palette.adjustments]
+  for (const [ink, status, fill, name] of STATUS_INKS) {
+    const pinned = (suffix: string): boolean =>
+      Object.hasOwn(overrides, `--palette-${name}${suffix}`)
+    // Pinned by the theme itself, or nothing it is read against changed.
+    if (pinned('-ink') || !(pinned('') || pinned('-subtle'))) continue
+    const settled = statusInk(ink, colours[status], colours[fill], palette.scheme)
+    colours[ink] = settled.colour
+    adjustments.push(...settled.adjustments)
+  }
+  return { ...palette, colours, adjustments }
 }

@@ -47,11 +47,14 @@
 
   --color-success: var(--palette-success);
   --color-success-subtle: var(--palette-success-subtle);
+  --color-success-ink: var(--palette-success-ink);
   --color-warning: var(--palette-warning);
   --color-warning-subtle: var(--palette-warning-subtle);
+  --color-warning-ink: var(--palette-warning-ink);
   --color-danger: var(--palette-danger);
   --color-danger-hover: var(--palette-danger-hover);
   --color-danger-subtle: var(--palette-danger-subtle);
+  --color-danger-ink: var(--palette-danger-ink);
 
   --color-focus-ring: var(--palette-accent);
   --color-selection: var(--palette-selection);

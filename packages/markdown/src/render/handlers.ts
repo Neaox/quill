@@ -134,9 +134,16 @@ function splitStatus(
   const split = end === -1 ? children.length : end
   const status = children.slice(0, split)
   const lastSpoken = status.findLastIndex((child) => child.type !== 'text')
+  // The detail is everything after the status, whatever it opens with: a link
+  // or emphasis is as much the detail as text is. Only the space that set it
+  // apart from the status goes.
   const [opening, ...rest] = children.slice(split)
   const detail =
-    opening?.type === 'text' ? [{ ...opening, value: opening.value.trimStart() }, ...rest] : rest
+    opening === undefined
+      ? []
+      : opening.type === 'text'
+        ? [{ ...opening, value: opening.value.trimStart() }, ...rest]
+        : [opening, ...rest]
   return { status: status.slice(0, lastSpoken + 1), detail }
 }
 

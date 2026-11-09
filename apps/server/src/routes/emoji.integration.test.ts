@@ -137,6 +137,10 @@ describe('uploading an emoji image', () => {
   })
 })
 
+/** `SVG`, read as a glyph: its one colour is the colour around it. */
+const GLYPH =
+  '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" width="16" height="16"><symbol id="glyph" viewBox="0 0 16 16"><g fill="currentColor"><rect width="16" height="16" fill="currentColor"/></g></symbol><use href="#glyph"/></svg>'
+
 describe('a monochrome emoji (ADR-038, amended)', () => {
   const monochrome = (bytes: Buffer, contentType = 'image/svg+xml') =>
     harness.app.inject({
@@ -153,7 +157,8 @@ describe('a monochrome emoji (ADR-038, amended)', () => {
     expect(response.json()).toEqual({
       hash: expect.stringMatching(/^[0-9a-f]{64}$/u),
       mediaType: 'image/svg+xml',
-      monochrome: { width: 16, height: 16 },
+      // What is stored, for the settings screen to preview before saving.
+      monochrome: { width: 16, height: 16, glyph: GLYPH },
     })
 
     await save((settings) => ({
@@ -165,9 +170,7 @@ describe('a monochrome emoji (ADR-038, amended)', () => {
     const url = `/api/emoji/mark.${hash.slice(0, 16)}.svg`
     const served = await harness.app.inject({ method: 'GET', url })
     expect(served.statusCode).toBe(200)
-    expect(served.body).toBe(
-      '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" width="16" height="16"><symbol id="glyph" viewBox="0 0 16 16"><g fill="currentColor"><rect width="16" height="16" fill="currentColor"/></g></symbol><use href="#glyph"/></svg>',
-    )
+    expect(served.body).toBe(GLYPH)
     const summary = await harness.app.inject({
       method: 'GET',
       url: '/api/settings/organisation/theme',
