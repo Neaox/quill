@@ -90,6 +90,13 @@ export interface ExternalSource {
   history(since: SourceRevisionId | null, until: SourceRevisionId): AsyncIterable<SourceRevision>
   /** What changed under the source's paths from `from` to `to`; with `from` null, every file is added. */
   changes(from: SourceRevisionId | null, to: SourceRevisionId): AsyncIterable<SourceChange>
+  /**
+   * Which of these paths name a file or a directory anywhere in the
+   * repository at a fetched revision, inside the source's paths or not: how
+   * a relative link is known to be broken (ADR-061). Only names are read,
+   * never a file's contents, and nothing is fetched.
+   */
+  present(revision: SourceRevisionId, paths: readonly string[]): Promise<ReadonlySet<string>>
 }
 
 /** Why an external source could not answer. */

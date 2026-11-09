@@ -37,11 +37,13 @@ export type {
 } from './external-source.ts'
 export { ExternalSourceError } from './external-source.ts'
 export type {
+  BrokenSourceLink,
   ConnectedSource,
   ExternalSourceProvider,
   RefusedSourceFile,
   SourceCollection,
   SourceLayoutRecord,
+  SourceLinkSettings,
   SourcePathMapRepository,
   SourcePathRow,
   SourceSettings,
@@ -139,6 +141,7 @@ export type {
   PublishedDocumentView,
   RenderedContent,
   RenderInput,
+  ResolvedDestination,
   DrawingSource,
   RetitleInput,
   TemplateSource,

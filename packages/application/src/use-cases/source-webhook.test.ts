@@ -73,6 +73,8 @@ async function putSource(webhookSecretName: string | null) {
     commitMessages: 'subject',
     credential: null,
     webhookSecretName,
+    outsideLinks: 'forge',
+    viewTemplate: null,
     configuredBy: ACTOR,
     now: NOW,
   })

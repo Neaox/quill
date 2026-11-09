@@ -21,6 +21,7 @@ import type {
   UnitOfWork,
 } from '../ports/persistence.ts'
 import type {
+  BrokenSourceLink,
   ConnectedSource,
   ExternalSourceProvider,
   RefusedSourceFile,
@@ -43,6 +44,7 @@ import {
 } from './events.ts'
 import type { SourceSyncTrigger } from './events.ts'
 import { decodeUtf8, isDocumentPath, titleFromPath } from './source-files.ts'
+import { isRelativeDestination, repositoryTarget } from './source-links.ts'
 import {
   layoutFromManifest,
   layoutFromSettings,
@@ -255,6 +257,15 @@ class SourceReplay {
   #refused = new Map<string, RefusedSourceFile>()
   /** What the tree was last placed by; null when that was never recorded, which re-plans it. */
   #record: SourceLayoutRecord | null = null
+  /**
+   * The broken links the last sync found, by document path; null when no
+   * sync has checked every document's links since they last changed, which
+   * checks them all.
+   */
+  #broken: ReadonlyMap<string, readonly BrokenSourceLink[]> | null = null
+  /** The documents this sync wrote or archived, whose links, and links to which, are checked again. */
+  readonly #written = new Set<DocumentId>()
+  readonly #archived = new Set<DocumentId>()
   /** The head's layout, which every re-plan with no layout of its own revision uses. */
   #headLayout: SourceLayout
   /** The layout of the revision last replayed; null when it must be read again. */
@@ -277,6 +288,7 @@ class SourceReplay {
       const state = await repos.sourceSyncState.find(this.#workspaceId)
       for (const refused of state?.refused ?? []) this.#refused.set(refused.path, refused)
       this.#record = state?.layout ?? null
+      this.#broken = brokenByPath(state === null ? [] : state.brokenLinks)
       const last = state?.lastSyncedRevision ?? null
 
       const head = await this.#source.source.head()
@@ -300,7 +312,8 @@ class SourceReplay {
         previous = step.revision.id
       }
       this.#current = fetched
-      await this.#deps.uow.run((tx) => this.#recordSynced(tx, fetched))
+      const broken = await this.#checkLinks(fetched)
+      await this.#deps.uow.run((tx) => this.#recordSynced(tx, fetched, this.#record, broken))
       return { kind: 'synced', revision: fetched, published }
     } catch (error) {
       const failure = toFailure(error, this.#current)
@@ -865,6 +878,7 @@ class SourceReplay {
       )
       touched.add(row.collectionId)
       summary = row.title
+      this.#archived.add(edit.documentId)
       await tx.sourcePaths.put(
         {
           workspaceId: this.#workspaceId,
@@ -886,6 +900,7 @@ class SourceReplay {
           ? await this.#create(tx, edit, authoredAt)
           : await this.#update(tx, existing, edit, now)
       await tx.documents.update(row.id, { headRevision: revision }, now)
+      this.#written.add(edit.documentId)
       if (edit.fromPath !== null) await tx.sourcePaths.remove(this.#workspaceId, edit.fromPath)
       await tx.sourcePaths.put(
         {
@@ -1051,10 +1066,16 @@ class SourceReplay {
     }
   }
 
+  /**
+   * Records how far the sync got. Until it ends, the broken links are
+   * recorded as unchecked once anything was written or archived, so a sync
+   * that stops part-way leaves the next one to check every document.
+   */
   async #recordSynced(
     tx: RepositoryBundle,
     revision: SourceRevisionId,
     record: SourceLayoutRecord | null = this.#record,
+    broken: readonly BrokenSourceLink[] | null = this.#unchecked(),
   ): Promise<void> {
     const layout = record ?? this.#unplacedRecord()
     await tx.sourceSyncState.recordSynced({
@@ -1062,8 +1083,104 @@ class SourceReplay {
       revision,
       refused: [...this.#refused.values()],
       layout,
+      brokenLinks: broken,
       now: this.#deps.clock.now(),
     })
+  }
+
+  /** The broken links as they stand before this sync's check: unknown once it changed anything. */
+  #unchecked(): readonly BrokenSourceLink[] | null {
+    if (this.#broken === null || this.#written.size > 0 || this.#archived.size > 0) return null
+    return [...this.#broken.values()].flat()
+  }
+
+  // -------------------------------------------------------------------------
+  // Broken links
+  // -------------------------------------------------------------------------
+
+  /**
+   * The relative links that lead nowhere in the repository at the fetched
+   * revision (ADR-061, "Broken links are listed per commit"). The documents
+   * this sync wrote are checked, with those listed as broken before (a path
+   * they named may have appeared) and those linking to a document this sync
+   * archived (it may have been their target). Every other document keeps
+   * what was found before. When nothing says what was found before, every
+   * document is checked.
+   */
+  async #checkLinks(revision: SourceRevisionId): Promise<readonly BrokenSourceLink[]> {
+    const { repos } = this.#deps.uow
+    const live = new Map(
+      (await repos.sourcePaths.listByWorkspace(this.#workspaceId)).flatMap((row) =>
+        row.archivedAt === null ? [[row.documentId, row.path] as const] : [],
+      ),
+    )
+    const before = this.#broken
+    const changed = this.#written.size > 0 || this.#archived.size > 0
+    const checked =
+      before === null
+        ? new Set(live.keys())
+        : changed
+          ? await this.#toCheck(before, live)
+          : new Set<DocumentId>()
+    const found = await this.#relativeLinks(checked)
+    const targets = new Set(found.flatMap(({ target }) => (target === null ? [] : [target])))
+    // The repository's root is always there, and is no path to ask about.
+    targets.delete('')
+    const present =
+      targets.size === 0
+        ? new Set<string>()
+        : await this.#source.source.present(revision, [...targets])
+    const broken = found
+      .filter(({ target }) => target === null || (target !== '' && !present.has(target)))
+      .map(({ path, url }): BrokenSourceLink => ({ path, url, revision }))
+    const kept = [...live]
+      .filter(([id]) => !checked.has(id))
+      .flatMap(([, path]) => before?.get(path) ?? [])
+    return [...kept, ...broken].toSorted(
+      (left, right) => left.path.localeCompare(right.path) || left.url.localeCompare(right.url),
+    )
+  }
+
+  /** The live documents this sync wrote, those listed as broken before, and those that linked to one it archived. */
+  async #toCheck(
+    before: ReadonlyMap<string, readonly BrokenSourceLink[]>,
+    live: ReadonlyMap<DocumentId, string>,
+  ): Promise<ReadonlySet<DocumentId>> {
+    const { documentLinks } = this.#deps.uow.repos
+    const linking = await Promise.all(
+      [...this.#archived].map((id) => documentLinks.listSourcesTargeting(id)),
+    )
+    const listed = [...live].flatMap(([id, path]) => (before.has(path) ? [id] : []))
+    return new Set([...this.#written, ...listed, ...linking.flat()].filter((id) => live.has(id)))
+  }
+
+  /** Each relative link of these documents as stored at the head, and the repository path it names. */
+  async #relativeLinks(ids: ReadonlySet<DocumentId>): Promise<readonly CheckedLink[]> {
+    const found: CheckedLink[] = []
+    const pending = [...ids]
+    while (pending.length > 0) {
+      const batch = pending.splice(0, LINK_CHECK_READS)
+      // oxlint-disable-next-line quill/no-independent-await-in-loop -- a batch at a time, so a large source never reads every document at once
+      const sources = await Promise.all(
+        batch.map((id) => this.#deps.contentStore.read(this.#workspaceId, id)),
+      )
+      for (const source of sources) {
+        /* v8 ignore next -- a live document is stored at the head. */
+        if (source === null) continue
+        // The stored path is the source path (ADR-061).
+        const { path } = source
+        const urls = new Set(
+          this.#deps.format
+            .links(source.markdown)
+            .map(({ url }) => url)
+            .filter(isRelativeDestination),
+        )
+        for (const url of urls) {
+          found.push({ path, url, target: repositoryTarget(path, url)?.path ?? null })
+        }
+      }
+    }
+    return found
   }
 
   /** What is recorded when no revision ever placed the tree: the head's layout, with no collections made. */
@@ -1076,6 +1193,26 @@ class SourceReplay {
       unknownKeys: layout.unknownKeys,
     }
   }
+}
+
+/** Documents read at once when their links are checked. */
+const LINK_CHECK_READS = 16
+
+/** A relative link of a document, and the repository path it names; null when it names none. */
+interface CheckedLink {
+  readonly path: string
+  readonly url: string
+  readonly target: string | null
+}
+
+/** Broken links by the document path they are in; null stays null: nothing was checked. */
+function brokenByPath(
+  links: readonly BrokenSourceLink[] | null,
+): ReadonlyMap<string, readonly BrokenSourceLink[]> | null {
+  if (links === null) return null
+  const byPath = new Map<string, BrokenSourceLink[]>()
+  for (const link of links) byPath.set(link.path, [...(byPath.get(link.path) ?? []), link])
+  return byPath
 }
 
 interface RecordContext {

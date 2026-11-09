@@ -748,6 +748,18 @@ describe('listTree', () => {
     ])
   })
 
+  it('lists a tree once while it is held, and again once it was let go', async () => {
+    const small = new GitContentStore({ provider, now: NOW, random: JITTER, indexCapacity: 1 })
+    const first = await publishDocument(ONBOARDING, 'a.md', 'Onboarding', 'One.', null)
+    const second = await publishDocument(ARCHITECTURE, 'b.md', 'Architecture', 'Other.', first)
+    const listed = await small.listTree(workspace, first)
+    expect(await small.listTree(workspace, first)).toBe(listed)
+    expect(await small.listTree(workspace, second)).toHaveLength(2)
+    const again = await small.listTree(workspace, first)
+    expect(again).not.toBe(listed)
+    expect(again).toEqual(listed)
+  })
+
   it('lists the tree of an earlier revision', async () => {
     const first = await publishDocument(ONBOARDING, 'a.md', 'Onboarding', 'One.', null)
     await publishDocument(ARCHITECTURE, 'b.md', 'Architecture', 'Other.', first)

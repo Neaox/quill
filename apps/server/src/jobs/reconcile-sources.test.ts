@@ -27,6 +27,8 @@ describe('createReconcileSourcesJob', () => {
       commitMessages: 'subject',
       credential: null,
       webhookSecretName: null,
+      outsideLinks: 'forge',
+      viewTemplate: null,
       configuredBy: userId('00000000-0000-4000-8000-0000000000a1'),
       now: NOW,
     })

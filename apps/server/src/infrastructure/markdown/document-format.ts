@@ -16,6 +16,7 @@ import {
   revertibleChanges,
   stampEdit,
   renderDocument,
+  resolveDestinations,
   resolveTemplate,
   serializeDocument,
   stampDocumentId,
@@ -158,8 +159,18 @@ export function createDocumentFormat(options: DocumentFormatOptions = {}): Docum
      * titles when auto-titled links land, so they travel with the input from
      * now on rather than being bolted on later.
      */
-    render({ markdown, drawings, labels, emoji, labelEmoji }: RenderInput): RenderedContent {
-      const { frontMatter, ast } = parseDocument(markdown)
+    render({
+      markdown,
+      drawings,
+      labels,
+      emoji,
+      labelEmoji,
+      resolvedLinks,
+    }: RenderInput): RenderedContent {
+      const { frontMatter, ast: written } = parseDocument(markdown)
+      // A sourced document's relative links, where they resolved (ADR-061):
+      // in the tree the body and its links are drawn from, never in the text.
+      const ast = resolveDestinations(written, { links: resolvedLinks })
       const text = extractText(ast)
       // One call, one tree: the heading ids in the body and the ids the
       // outline points at are produced by the same slugger, so a table of
@@ -194,6 +205,11 @@ export function createDocumentFormat(options: DocumentFormatOptions = {}): Docum
     read(markdown: string): PublishedDocumentView {
       const { frontMatter, ast } = parseDocument(markdown)
       return { frontMatter, title: documentTitle(frontMatter, ast) }
+    },
+
+    /** Every link and image, as written: what the sync job checks a source's links with (ADR-061). */
+    links(markdown: string): readonly ExtractedLink[] {
+      return extractLinks(parseDocument(markdown).ast).map(toLink)
     },
 
     /** A source's file as the store keeps it: only its front matter's first line is Quill's (ADR-061). */

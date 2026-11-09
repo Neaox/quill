@@ -542,6 +542,10 @@ export const workspaceSources = pgTable(
     commitMessages: text('commit_messages').notNull(),
     credentialUsername: text('credential_username'),
     credentialSecret: text('credential_secret'),
+    /** `forge` or `text`: where a link to a repository file the source does not hold goes. */
+    outsideLinks: text('outside_links').notNull().default('forge'),
+    /** The forge's address for a file at a commit (`{commit}`, `{path}`); null for the remote's host's own. */
+    viewTemplate: text('view_template'),
     /** The name of the secret its push webhook is signed with; null for no webhook. */
     webhookSecret: text('webhook_secret'),
     configuredBy: text('configured_by').references(() => users.id, { onDelete: 'set null' }),
@@ -554,6 +558,7 @@ export const workspaceSources = pgTable(
       'workspace_sources_commit_messages_check',
       sql`${table.commitMessages} IN ('subject', 'none')`,
     ),
+    check('workspace_sources_outside_links_check', sql`${table.outsideLinks} IN ('forge', 'text')`),
     // A user name with no secret, or a secret with no user name, is no credential.
     check(
       'workspace_sources_credential_check',
@@ -613,6 +618,12 @@ export const sourceSyncState = pgTable('source_sync_state', {
    * the tree once.
    */
   layout: jsonb('layout'),
+  /**
+   * `{ version, links: [{ path, url, revision }] }`: the relative links that
+   * lead nowhere in the repository. Null when no sync has checked them since
+   * the documents last changed, which checks every document.
+   */
+  brokenLinks: jsonb('broken_links'),
   /** The key of the failure the workspace's administrators were last told about. */
   failureNotified: text('failure_notified'),
 })

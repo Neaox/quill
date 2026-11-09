@@ -403,6 +403,37 @@ describe('createDocumentFormat: render and read', () => {
     expect(rendered.incompleteRequiredSections).toEqual(['Decision'])
   })
 
+  it('draws relative links where they resolved, and lists them so (ADR-061)', () => {
+    const rendered = format.render({
+      markdown:
+        '[The ADR](../adr/0001.md#rotation), [the code](../src/a.ts) and [gone](./gone.md).\n',
+      linkTitles: new Map(),
+      resolvedLinks: new Map([
+        ['../adr/0001.md#rotation', { kind: 'href', href: '/d/abc#user-content-rotation' }],
+        ['../src/a.ts', { kind: 'href', href: 'https://github.com/acme/h/blob/c1/src/a.ts' }],
+        ['./gone.md', { kind: 'text' }],
+      ]),
+    })
+    expect(rendered.html).toContain('<a href="/d/abc#user-content-rotation">The ADR</a>')
+    expect(rendered.html).toContain('href="https://github.com/acme/h/blob/c1/src/a.ts"')
+    expect(rendered.html).toContain(' and gone.')
+    expect(rendered.links.map(({ url }) => url)).toEqual([
+      '/d/abc#user-content-rotation',
+      'https://github.com/acme/h/blob/c1/src/a.ts',
+    ])
+  })
+
+  it('lists the links and images as written, outside code, without rendering', () => {
+    expect(
+      format
+        .links('[a](./a.md) ![b](b.png)\n\n```\n[c](./c.md)\n```\n')
+        .map(({ kind, url }) => [kind, url]),
+    ).toEqual([
+      ['link', './a.md'],
+      ['image', 'b.png'],
+    ])
+  })
+
   it('draws a table of contents into the body and lists each child pages slot (ADR-058)', () => {
     const rendered = format.render({
       markdown: '# Title\n\n::toc\n\n## Install\n\n::children{depth=2}\n',

@@ -4561,8 +4561,14 @@ export interface paths {
                                 username: string;
                             } | null;
                             history: string;
+                            outsideLinks: string;
                             remote: string;
                             sync: {
+                                brokenLinks: {
+                                    path: string;
+                                    revision: string;
+                                    url: string;
+                                }[] | null;
                                 failure: {
                                     message: string;
                                     reason: string;
@@ -4580,6 +4586,7 @@ export interface paths {
                             } | null;
                             /** Format: date-time */
                             updatedAt: string;
+                            viewTemplate: string | null;
                             webhookSecret: string | null;
                         };
                     };
@@ -4610,7 +4617,9 @@ export interface paths {
                             username: string;
                         } | null;
                         history: "full" | "head";
+                        outsideLinks?: "forge" | "text";
                         remote: string;
+                        viewTemplate?: string | null;
                         webhookSecret?: string | null;
                     };
                 };
@@ -4636,8 +4645,14 @@ export interface paths {
                                 username: string;
                             } | null;
                             history: string;
+                            outsideLinks: string;
                             remote: string;
                             sync: {
+                                brokenLinks: {
+                                    path: string;
+                                    revision: string;
+                                    url: string;
+                                }[] | null;
                                 failure: {
                                     message: string;
                                     reason: string;
@@ -4655,6 +4670,7 @@ export interface paths {
                             } | null;
                             /** Format: date-time */
                             updatedAt: string;
+                            viewTemplate: string | null;
                             webhookSecret: string | null;
                         };
                     };

@@ -9,6 +9,7 @@ import type {
   ExtractedLink,
   RenderedContent,
   RenderInput,
+  ResolvedDestination,
 } from '../ports/document-format.ts'
 import { RENDERED_CONTENT_VERSION } from '../ports/document-format.ts'
 import type {
@@ -26,6 +27,8 @@ import { documentReferenceFromUrl, linkedDocumentReferences } from './document-p
 import { attachmentIdsIn, attachmentUrl } from './attachments.ts'
 import { DRAWING_MEDIA_TYPE } from './media-types.ts'
 import { readSource } from './read-published.ts'
+import type { SourcePlace } from './source-links.ts'
+import { sourceLinksAt } from './source-links.ts'
 import { createVersionedReader } from './versioned-reader.ts'
 
 /**
@@ -93,8 +96,12 @@ import { createVersionedReader } from './versioned-reader.ts'
  * directives) as the slot its preview is drawn into per reader, where it was
  * the directive's text or the live-block fallback before. Main brought this in
  * at its 10, below this line's 12, so it needs a version above both.
+ *
+ * Version 14 draws a sourced document's relative links where they resolved
+ * (ADR-061): to a document's canonical address and heading, to the forge at
+ * the synced commit, or as their words. The resolutions join the key.
  */
-export const RENDER_VERSION = 13
+export const RENDER_VERSION = 14
 
 export interface RenderDocumentDependencies {
   readonly uow: UnitOfWork
@@ -207,7 +214,14 @@ export function renderDigest(input: RenderInput, extensions = ''): string {
       : `${labelled}\u0005${emoji}\u0006${leading}`
   // The installed extensions (ADR-039), only when there are any, so a
   // renderer with none keeps every key it had.
-  return extensions === '' ? decorated : `${decorated}\u0007${extensions}`
+  const extended = extensions === '' ? decorated : `${decorated}\u0007${extensions}`
+  // A sourced body's resolved relative links (ADR-061), likewise only when
+  // there are any: each destination as written, and where it went.
+  const resolved = [...(input.resolvedLinks ?? new Map<string, ResolvedDestination>())]
+    .map(([url, to]) => `${url}\u0001${to.kind === 'href' ? to.href : ''}`)
+    .toSorted()
+    .join('\u0002')
+  return resolved.length === 0 ? extended : `${extended}\u0008${resolved}`
 }
 
 export async function renderDocument(
@@ -238,7 +252,11 @@ export async function renderSource(
   indexLinks = true,
 ): Promise<RenderedDocument> {
   const { repos } = deps.uow
-  const { input, linked } = await renderInputFor(deps, document, source.markdown)
+  const { input, linked } = await renderInputFor(deps, document, source.markdown, {
+    path: source.path,
+    revision: source.revision,
+    head: revision === undefined,
+  })
 
   const now = deps.clock.now()
   const hash = deps.hasher.contentHash(renderDigest(input, deps.format.extensions))
@@ -277,29 +295,56 @@ export type DrawnRenderInput = RenderInput & {
  * the documents it links to, the drawings it shows, and the organisation's
  * labels and emoji. A comparison is drawn from the same inputs as a body,
  * which is why this is shared rather than repeated (`compare-revisions.ts`).
+ *
+ * A published document's place — its path in the revision being rendered —
+ * is given when there is one, so a sourced document's relative links are
+ * resolved against that revision (ADR-061); a draft and a comparison have
+ * none and draw those links as written.
  */
 export async function renderInputFor(
-  deps: Pick<RenderDocumentDependencies, 'uow' | 'blobStore' | 'settings'>,
+  deps: Pick<RenderDocumentDependencies, 'uow' | 'blobStore' | 'settings' | 'contentStore'>,
   document: DocumentRow,
   markdown: string,
+  place?: SourcePlace,
 ): Promise<{
   readonly input: DrawnRenderInput
   readonly linked: ReadonlyMap<DocumentId, DocumentRow>
 }> {
-  const [linked, drawings, vocabulary] = await Promise.all([
+  const [named, drawings, vocabulary, sourced] = await Promise.all([
     linkedDocuments(deps.uow.repos.documents, markdown),
     drawingsShown(deps, document, markdown),
     organisationVocabulary(deps.settings),
+    place === undefined ? null : sourceLinksAt(deps, document, markdown, place),
   ])
+  const linked = await withTargets(deps.uow.repos.documents, named, sourced?.targets)
   return {
     input: {
       markdown,
       linkTitles: new Map([...linked].map(([id, row]) => [id, row.title])),
       drawings,
       ...vocabulary,
+      ...(sourced === null || sourced.resolved.size === 0
+        ? {}
+        : { resolvedLinks: sourced.resolved }),
     },
     linked,
   }
+}
+
+/**
+ * The documents a body names, with those its relative links resolved to
+ * (ADR-061): their titles are part of the input like any linked document's,
+ * and the link index classifies a resolved link by them.
+ */
+async function withTargets(
+  documents: DocumentRepository,
+  named: ReadonlyMap<DocumentId, DocumentRow>,
+  targets: ReadonlySet<DocumentId> | undefined,
+): Promise<ReadonlyMap<DocumentId, DocumentRow>> {
+  const missing = [...(targets ?? [])].filter((id) => !named.has(id))
+  if (missing.length === 0) return named
+  const rows = await documents.listByIds(missing)
+  return new Map([...named, ...rows.map((row) => [row.id, row] as const)])
 }
 
 /**

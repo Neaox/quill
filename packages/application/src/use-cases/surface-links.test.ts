@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest'
 import { shortId } from '@quill/domain'
 import type { DocumentId } from '@quill/domain'
 
-import { surfaceLinkRewriter, surfaceReplacement } from './surface-links.ts'
+import { readerLinkRewriter, surfaceLinkRewriter, surfaceReplacement } from './surface-links.ts'
 
 const PUBLISHED = {
   id: '11111111-2222-4333-8444-555555555555' as DocumentId,
@@ -126,5 +126,24 @@ describe('surfaceReplacement', () => {
     expect(replacement(PRIVATE_ID)).toBeUndefined()
     expect(replacement('not a reference')).toBeUndefined()
     expect(replacement(undefined)).toBeUndefined()
+  })
+})
+
+describe('readerLinkRewriter', () => {
+  const SEEN = '00000000-0000-4000-8000-000000000301' as DocumentId
+  const HIDDEN = '00000000-0000-4000-8000-000000000302' as DocumentId
+
+  it('keeps a link to a document the reader may view and reduces any other to its words', () => {
+    const forReader = readerLinkRewriter(new Set([SEEN]))
+    expect(forReader(`/d/${SEEN}#user-content-rotation`)).toEqual({ kind: 'keep' })
+    expect(forReader(`/d/${HIDDEN}`)).toEqual({ kind: 'text' })
+  })
+
+  it('leaves every other link as written', () => {
+    const forReader = readerLinkRewriter(new Set())
+    expect(forReader('https://github.com/acme/handbook/blob/c1/src/app.ts')).toEqual({
+      kind: 'keep',
+    })
+    expect(forReader('#user-content-top')).toEqual({ kind: 'keep' })
   })
 })
