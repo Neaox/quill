@@ -1,0 +1,1 @@
+Changed: The workspace menu offers "Read from a repository…" only for a workspace with no documents, the only kind that can be connected; a direct link to the page still explains why a workspace with documents cannot be.
