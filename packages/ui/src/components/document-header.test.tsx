@@ -1,4 +1,5 @@
 import { render, screen } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { describe, expect, it } from 'vitest'
 
 import { expectNoAccessibilityViolations } from '../../testing/axe.ts'
@@ -77,6 +78,31 @@ describe('DocumentHeader', () => {
     expect(screen.getByRole('banner')).toHaveAttribute('data-header', 'readout')
     expect(screen.getByRole('link', { name: 'acme' })).toHaveAttribute('href', '#acme')
     expect(screen.queryByRole('link', { name: 'authentication' })).not.toBeInTheDocument()
+    await expectNoAccessibilityViolations(container)
+  })
+
+  it('folds the middle of a deep page’s readout behind a button that unfolds it in place', async () => {
+    const deep: DocumentStatus = {
+      path: [
+        { label: 'Platform', link: { to: '/w/platform' } },
+        { label: 'Networking', link: { to: '/networking' } },
+        { label: 'Load balancers', link: { to: '/load-balancers' } },
+        { label: 'Probes', link: { to: '/probes' } },
+        { label: 'Health checks' },
+      ],
+    }
+    const { container } = render(<DocumentHeader status={deep} variant="readout" />)
+    expect(screen.getAllByRole('link').map((link) => link.textContent)).toEqual([
+      'Platform',
+      'Probes',
+    ])
+    await userEvent.click(screen.getByRole('button', { name: 'Show 2 more steps' }))
+    expect(screen.getAllByRole('link').map((link) => link.textContent)).toEqual([
+      'Platform',
+      'Networking',
+      'Load balancers',
+      'Probes',
+    ])
     await expectNoAccessibilityViolations(container)
   })
 

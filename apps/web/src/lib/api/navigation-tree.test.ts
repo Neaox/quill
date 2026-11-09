@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+  ancestorsOf,
   fromTreeResponse,
   listKey,
   mergeList,
@@ -123,5 +124,46 @@ describe('mergeTree and withPage', () => {
     })
     expect(merged.lists.get(listKey.collection('guides'))?.ids).toEqual(['a', 'b', 'c'])
     expect(merged.lists.get(listKey.document('b'))?.ids).toEqual(['b1', 'b2'])
+  })
+})
+
+describe('ancestorsOf', () => {
+  const tree = fromTreeResponse({
+    collections: [
+      {
+        id: 'guides',
+        name: 'Guides',
+        slug: 'guides',
+        documentCount: 1,
+        documents: [
+          node('deploy', {
+            childCount: 1,
+            children: [node('cloud', { childCount: 1, children: [node('aws')] })],
+          }),
+        ],
+      },
+    ],
+  })
+
+  it('climbs from a document to the top of its collection, the outermost first', () => {
+    expect(ancestorsOf(tree, 'aws').map(({ id }) => id)).toEqual(['deploy', 'cloud'])
+  })
+
+  it('has none for a document at the top, or one the tree has not loaded', () => {
+    expect(ancestorsOf(tree, 'deploy')).toEqual([])
+    expect(ancestorsOf(tree, 'elsewhere')).toEqual([])
+  })
+
+  it('stops at a parent it has no node for, and at a cycle', () => {
+    const broken = {
+      ...tree,
+      lists: new Map([
+        ...tree.lists,
+        [listKey.document('gone'), { offset: 0, total: 1, ids: ['orphan'] }],
+        [listKey.document('aws'), { offset: 0, total: 1, ids: ['deploy'] }],
+      ]),
+    }
+    expect(ancestorsOf(broken, 'orphan')).toEqual([])
+    expect(ancestorsOf(broken, 'aws').map(({ id }) => id)).toEqual(['deploy', 'cloud'])
   })
 })
