@@ -121,7 +121,7 @@ function canonicalColour(colour: string): string {
   const short = SHORT_HEX.exec(colour)
   return short === null
     ? colour
-    : `#${[...(short[1] ?? '')].map((digit) => digit + digit).join('')}`
+    : `#${[...short[0].slice(1)].map((digit) => digit + digit).join('')}`
 }
 
 const NAMED: Readonly<Record<string, string>> = { black: '#000000', white: '#ffffff' }
@@ -144,6 +144,8 @@ function paint(value: string, reading: Reading): string {
 function attributesOf(node: Element, kept: Readonly<Record<string, RegExp>>, reading: Reading) {
   const written: [string, string][] = []
   for (const [property, raw] of Object.entries(node.properties)) {
+    // hast leaves an attribute it read as absent out, or false for a bare flag.
+    /* v8 ignore next */
     if (raw === undefined || raw === null || raw === false) continue
     const name = attributeName(property)
     const value = valueOf(raw)
@@ -247,7 +249,9 @@ export function monochromeGlyph(source: string): MonochromeGlyph {
       height: Math.max(1, Math.round(height)),
     }
   } catch (error) {
+    /* v8 ignore else -- only a refusal is expected; anything else is a bug and must surface. */
     if (error instanceof Refusal) return { kind: 'refused', reason: error.message }
+    /* v8 ignore next */
     throw error
   }
 }

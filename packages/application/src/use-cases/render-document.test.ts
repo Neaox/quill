@@ -686,4 +686,13 @@ describe('emoji (ADR-038)', () => {
       renderDigest(input),
     )
   })
+
+  it('renders afresh when an emoji becomes monochrome, and only then (ADR-038, amended)', () => {
+    const input = { markdown: '# A', linkTitles: new Map() }
+    const image = { src: '/api/emoji/a.aaaaaaaaaaaaaaaa.svg', width: 1, height: 1 }
+    const glyph = { ...image, monochrome: true } as const
+    expect(renderDigest({ ...input, emoji: new Map([['a', glyph]]) })).not.toBe(
+      renderDigest({ ...input, emoji: new Map([['a', image]]) }),
+    )
+  })
 })
