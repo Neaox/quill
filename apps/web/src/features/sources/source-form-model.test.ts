@@ -6,10 +6,12 @@ import {
   describeUnreadable,
   draftBody,
   draftKey,
+  exampleOutsideLink,
   formFromSource,
   missingFields,
   nameFromPath,
   settingsBody,
+  viewTemplateProblem,
 } from './source-form-model.ts'
 
 const SAVED: WorkspaceSourceDto = {
@@ -50,16 +52,51 @@ describe('the repository form', () => {
     })
   })
 
-  it('saves what it previewed, sending back what it does not show and keeping the webhook', () => {
-    const body = settingsBody(formFromSource(SAVED), SAVED)
-    expect(body).toMatchObject({
+  it('saves what it previewed with every setting the form shows', () => {
+    expect(settingsBody(formFromSource(SAVED))).toMatchObject({
       history: 'head',
       commitMessages: 'none',
       outsideLinks: 'text',
       viewTemplate: 'https://git.example.com/{commit}/{path}',
+      webhookSecret: 'sources/hook',
     })
-    expect(body).not.toHaveProperty('webhookSecret')
-    expect(settingsBody(EMPTY_FORM, null)).not.toHaveProperty('outsideLinks')
+    expect(settingsBody({ ...EMPTY_FORM, viewTemplate: '  ' })).toMatchObject({
+      outsideLinks: 'forge',
+      viewTemplate: null,
+      webhookSecret: null,
+    })
+  })
+
+  it('checks the forge address as it is typed, empty meaning the host’s own', () => {
+    expect(viewTemplateProblem(EMPTY_FORM)).toBeNull()
+    expect(
+      viewTemplateProblem({
+        ...EMPTY_FORM,
+        viewTemplate: 'https://git.example.com/{commit}/{path}',
+      }),
+    ).toBeNull()
+    expect(
+      viewTemplateProblem({ ...EMPTY_FORM, viewTemplate: 'https://git.example.com/{path}' }),
+    ).toBe('The address must name {commit} and {path} once each.')
+  })
+
+  it('shows where a link outside the source would go', () => {
+    const github = { ...EMPTY_FORM, remote: 'https://github.com/acme/handbook.git' }
+    expect(exampleOutsideLink(github, 'abc', 'src/a b.ts')).toBe(
+      'https://github.com/acme/handbook/blob/abc/src/a%20b.ts',
+    )
+    expect(
+      exampleOutsideLink(
+        { ...github, viewTemplate: 'https://git.example.com/r/{commit}/{path}' },
+        'abc',
+        'a.ts',
+      ),
+    ).toBe('https://git.example.com/r/abc/a.ts')
+    expect(exampleOutsideLink({ ...github, viewTemplate: 'nope' }, 'abc', 'a.ts')).toBeNull()
+    expect(exampleOutsideLink({ ...github, outsideLinks: 'text' }, 'abc', 'a.ts')).toBeNull()
+    expect(
+      exampleOutsideLink({ ...EMPTY_FORM, remote: 'https://git.example.com/r.git' }, 'abc', 'a.ts'),
+    ).toBeNull()
   })
 
   it('tells two drafts apart by what they would read', () => {

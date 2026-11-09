@@ -1,3 +1,5 @@
+import { checkForgeViewTemplate, defaultForgeViewTemplate, forgeViewUrl } from '@quill/domain'
+
 import type {
   SourceDraftBody,
   SourceSettingsBody,
@@ -44,6 +46,12 @@ export interface SourceForm {
   readonly manifestEntry: string | null
   readonly history: 'full' | 'head'
   readonly commitMessages: 'subject' | 'none'
+  /** Where a link to a repository file the source does not hold goes. */
+  readonly outsideLinks: 'forge' | 'text'
+  /** The forge's address for a file at a commit; empty to use the one known for the remote's host. */
+  readonly viewTemplate: string
+  /** The name of the secret the push webhook is signed with; empty for no webhook. */
+  readonly webhookSecret: string
 }
 
 export const EMPTY_FORM: SourceForm = {
@@ -54,6 +62,9 @@ export const EMPTY_FORM: SourceForm = {
   manifestEntry: null,
   history: 'full',
   commitMessages: 'subject',
+  outsideLinks: 'forge',
+  viewTemplate: '',
+  webhookSecret: '',
 }
 
 /** The form as a saved source fills it. */
@@ -72,6 +83,9 @@ export function formFromSource(source: WorkspaceSourceDto): SourceForm {
     manifestEntry: source.manifestEntry,
     history: source.history === 'head' ? 'head' : 'full',
     commitMessages: source.commitMessages === 'none' ? 'none' : 'subject',
+    outsideLinks: source.outsideLinks === 'text' ? 'text' : 'forge',
+    viewTemplate: source.viewTemplate ?? '',
+    webhookSecret: source.webhookSecret ?? '',
   }
 }
 
@@ -98,25 +112,16 @@ export function draftBody(form: SourceForm): SourceDraftBody {
   }
 }
 
-/**
- * What saving sends. The settings this form does not show — links outside
- * the source, the forge's address template, the webhook — are left as they
- * are: absent `webhookSecret` keeps it, and the others are sent back as read.
- */
-export function settingsBody(
-  form: SourceForm,
-  saved: WorkspaceSourceDto | null,
-): SourceSettingsBody {
+/** What saving sends: every setting the form shows, the source's links and webhook included. */
+export function settingsBody(form: SourceForm): SourceSettingsBody {
+  const template = form.viewTemplate.trim()
   return {
     ...draftBody(form),
     history: form.history,
     commitMessages: form.commitMessages,
-    ...(saved === null
-      ? {}
-      : {
-          outsideLinks: saved.outsideLinks === 'text' ? 'text' : 'forge',
-          viewTemplate: saved.viewTemplate,
-        }),
+    outsideLinks: form.outsideLinks,
+    viewTemplate: template === '' ? null : template,
+    webhookSecret: form.webhookSecret === '' ? null : form.webhookSecret,
   }
 }
 
@@ -126,7 +131,14 @@ export function draftKey(body: SourceDraftBody): string {
 }
 
 /** A field the form can put a message beside. */
-export type FormField = 'remote' | 'branch' | 'credential' | 'collections' | 'manifestEntry'
+export type FormField =
+  | 'remote'
+  | 'branch'
+  | 'credential'
+  | 'collections'
+  | 'manifestEntry'
+  | 'viewTemplate'
+  | 'webhookSecret'
 
 export type FieldErrors = Partial<Record<FormField, string>>
 
@@ -149,6 +161,18 @@ export function missingFields(form: SourceForm): FieldErrors {
     errors.collections = 'Give every collection a name and a path, or remove it.'
   }
   return errors
+}
+
+/**
+ * What is wrong with the forge address typed, said as it is typed; null when
+ * it is empty (the host's own address is used) or sound. It does not stop a
+ * preview, which does not use it, only a save.
+ */
+export function viewTemplateProblem(form: SourceForm): string | null {
+  const template = form.viewTemplate.trim()
+  if (template === '') return null
+  const checked = checkForgeViewTemplate(template)
+  return checked.ok ? null : checked.error
 }
 
 /** Why a repository could not be read, said beside the field that would fix it. */
@@ -252,4 +276,19 @@ export function nameFromPath(path: string): string {
     .replaceAll(/[-_]+/gu, ' ')
     .trim()
   return words === '' ? '' : `${words.charAt(0).toUpperCase()}${words.slice(1)}`
+}
+
+/**
+ * Where a link to a repository file would go with these settings, for the
+ * form to show as a working example: the template given, or the one known
+ * for the remote's host; null when links go nowhere (text, or no template).
+ */
+export function exampleOutsideLink(form: SourceForm, commit: string, path: string): string | null {
+  if (form.outsideLinks === 'text') return null
+  const template = form.viewTemplate.trim()
+  if (template !== '') {
+    return checkForgeViewTemplate(template).ok ? forgeViewUrl(template, commit, path) : null
+  }
+  const known = defaultForgeViewTemplate(form.remote.trim())
+  return known === null ? null : forgeViewUrl(known, commit, path)
 }
