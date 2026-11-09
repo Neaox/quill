@@ -3096,7 +3096,7 @@ export interface paths {
                     };
                     content: {
                         "application/json": {
-                            items: {
+                            items: ({
                                 actor: {
                                     id: string;
                                     name: string;
@@ -3112,7 +3112,23 @@ export interface paths {
                                 id: string;
                                 kind: "review-requested" | "changes-requested" | "review-approved" | "review-withdrawn";
                                 readAt: string | null;
-                            }[];
+                            } | {
+                                /** Format: date-time */
+                                at: string;
+                                failure: {
+                                    reason: string;
+                                    revision: string | null;
+                                };
+                                id: string;
+                                /** @enum {string} */
+                                kind: "source-sync-failed";
+                                readAt: string | null;
+                                workspace: {
+                                    id: string;
+                                    name: string;
+                                    slug: string;
+                                };
+                            })[];
                             next?: string;
                             unread: number;
                         };
@@ -4571,6 +4587,7 @@ export interface paths {
                             /** Format: date-time */
                             updatedAt: string;
                             viewTemplate: string | null;
+                            webhookSecret: string | null;
                         };
                     };
                 };
@@ -4603,6 +4620,7 @@ export interface paths {
                         outsideLinks?: "forge" | "text";
                         remote: string;
                         viewTemplate?: string | null;
+                        webhookSecret?: string | null;
                     };
                 };
             };
@@ -4653,6 +4671,7 @@ export interface paths {
                             /** Format: date-time */
                             updatedAt: string;
                             viewTemplate: string | null;
+                            webhookSecret: string | null;
                         };
                     };
                 };
@@ -4693,6 +4712,46 @@ export interface paths {
                     content: {
                         "application/json": {
                             requested: boolean;
+                        };
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/workspaces/{id}/source/webhooks/{forge}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    forge: "github" | "gitlab";
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Default Response */
+                202: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            outcome: "requested" | "duplicate" | "ignored";
                         };
                     };
                 };

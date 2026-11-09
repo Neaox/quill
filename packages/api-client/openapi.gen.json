@@ -10147,6 +10147,7 @@
                     "credential",
                     "outsideLinks",
                     "viewTemplate",
+                    "webhookSecret",
                     "updatedAt",
                     "sync"
                   ],
@@ -10219,6 +10220,16 @@
                       "type": "string"
                     },
                     "viewTemplate": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "webhookSecret": {
                       "anyOf": [
                         {
                           "type": "string"
@@ -10510,6 +10521,18 @@
                         "type": "null"
                       }
                     ]
+                  },
+                  "webhookSecret": {
+                    "anyOf": [
+                      {
+                        "minLength": 1,
+                        "maxLength": 200,
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
                   }
                 }
               }
@@ -10542,6 +10565,7 @@
                     "credential",
                     "outsideLinks",
                     "viewTemplate",
+                    "webhookSecret",
                     "updatedAt",
                     "sync"
                   ],
@@ -10614,6 +10638,16 @@
                       "type": "string"
                     },
                     "viewTemplate": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "webhookSecret": {
                       "anyOf": [
                         {
                           "type": "string"
@@ -10789,6 +10823,82 @@
                   "properties": {
                     "requested": {
                       "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/workspaces/{id}/source/webhooks/{forge}": {
+      "post": {
+        "parameters": [
+          {
+            "schema": {
+              "minLength": 1,
+              "maxLength": 200,
+              "type": "string"
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          },
+          {
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "enum": [
+                    "github"
+                  ]
+                },
+                {
+                  "type": "string",
+                  "enum": [
+                    "gitlab"
+                  ]
+                }
+              ]
+            },
+            "in": "path",
+            "name": "forge",
+            "required": true
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "outcome"
+                  ],
+                  "properties": {
+                    "outcome": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "enum": [
+                            "requested"
+                          ]
+                        },
+                        {
+                          "type": "string",
+                          "enum": [
+                            "duplicate"
+                          ]
+                        },
+                        {
+                          "type": "string",
+                          "enum": [
+                            "ignored"
+                          ]
+                        }
+                      ]
                     }
                   }
                 }
@@ -14097,101 +14207,183 @@
                     "items": {
                       "type": "array",
                       "items": {
-                        "type": "object",
-                        "required": [
-                          "id",
-                          "kind",
-                          "document",
-                          "actor",
-                          "at",
-                          "readAt"
-                        ],
-                        "properties": {
-                          "id": {
-                            "type": "string"
-                          },
-                          "kind": {
-                            "anyOf": [
-                              {
-                                "type": "string",
-                                "enum": [
-                                  "review-requested"
-                                ]
-                              },
-                              {
-                                "type": "string",
-                                "enum": [
-                                  "changes-requested"
-                                ]
-                              },
-                              {
-                                "type": "string",
-                                "enum": [
-                                  "review-approved"
-                                ]
-                              },
-                              {
-                                "type": "string",
-                                "enum": [
-                                  "review-withdrawn"
-                                ]
-                              }
-                            ]
-                          },
-                          "document": {
+                        "anyOf": [
+                          {
                             "type": "object",
                             "required": [
                               "id",
-                              "shortId",
-                              "title",
-                              "workspaceId"
+                              "kind",
+                              "document",
+                              "actor",
+                              "at",
+                              "readAt"
                             ],
                             "properties": {
                               "id": {
                                 "type": "string"
                               },
-                              "shortId": {
-                                "type": "string"
+                              "kind": {
+                                "anyOf": [
+                                  {
+                                    "type": "string",
+                                    "enum": [
+                                      "review-requested"
+                                    ]
+                                  },
+                                  {
+                                    "type": "string",
+                                    "enum": [
+                                      "changes-requested"
+                                    ]
+                                  },
+                                  {
+                                    "type": "string",
+                                    "enum": [
+                                      "review-approved"
+                                    ]
+                                  },
+                                  {
+                                    "type": "string",
+                                    "enum": [
+                                      "review-withdrawn"
+                                    ]
+                                  }
+                                ]
                               },
-                              "title": {
-                                "type": "string"
+                              "document": {
+                                "type": "object",
+                                "required": [
+                                  "id",
+                                  "shortId",
+                                  "title",
+                                  "workspaceId"
+                                ],
+                                "properties": {
+                                  "id": {
+                                    "type": "string"
+                                  },
+                                  "shortId": {
+                                    "type": "string"
+                                  },
+                                  "title": {
+                                    "type": "string"
+                                  },
+                                  "workspaceId": {
+                                    "type": "string"
+                                  }
+                                }
                               },
-                              "workspaceId": {
-                                "type": "string"
-                              }
-                            }
-                          },
-                          "actor": {
-                            "type": "object",
-                            "required": [
-                              "id",
-                              "name"
-                            ],
-                            "properties": {
-                              "id": {
-                                "type": "string"
+                              "actor": {
+                                "type": "object",
+                                "required": [
+                                  "id",
+                                  "name"
+                                ],
+                                "properties": {
+                                  "id": {
+                                    "type": "string"
+                                  },
+                                  "name": {
+                                    "type": "string"
+                                  }
+                                }
                               },
-                              "name": {
-                                "type": "string"
-                              }
-                            }
-                          },
-                          "at": {
-                            "format": "date-time",
-                            "type": "string"
-                          },
-                          "readAt": {
-                            "anyOf": [
-                              {
+                              "at": {
                                 "format": "date-time",
                                 "type": "string"
                               },
-                              {
-                                "type": "null"
+                              "readAt": {
+                                "anyOf": [
+                                  {
+                                    "format": "date-time",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
                               }
-                            ]
+                            }
+                          },
+                          {
+                            "type": "object",
+                            "required": [
+                              "id",
+                              "kind",
+                              "workspace",
+                              "failure",
+                              "at",
+                              "readAt"
+                            ],
+                            "properties": {
+                              "id": {
+                                "type": "string"
+                              },
+                              "kind": {
+                                "type": "string",
+                                "enum": [
+                                  "source-sync-failed"
+                                ]
+                              },
+                              "workspace": {
+                                "type": "object",
+                                "required": [
+                                  "id",
+                                  "slug",
+                                  "name"
+                                ],
+                                "properties": {
+                                  "id": {
+                                    "type": "string"
+                                  },
+                                  "slug": {
+                                    "type": "string"
+                                  },
+                                  "name": {
+                                    "type": "string"
+                                  }
+                                }
+                              },
+                              "failure": {
+                                "type": "object",
+                                "required": [
+                                  "reason",
+                                  "revision"
+                                ],
+                                "properties": {
+                                  "reason": {
+                                    "type": "string"
+                                  },
+                                  "revision": {
+                                    "anyOf": [
+                                      {
+                                        "type": "string"
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ]
+                                  }
+                                }
+                              },
+                              "at": {
+                                "format": "date-time",
+                                "type": "string"
+                              },
+                              "readAt": {
+                                "anyOf": [
+                                  {
+                                    "format": "date-time",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              }
+                            }
                           }
-                        }
+                        ]
                       }
                     },
                     "unread": {

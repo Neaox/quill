@@ -1,6 +1,6 @@
 {
-  "id": "943764f1-c455-4f45-a496-7811af9f0628",
-  "prevId": "46858594-09b0-4fc9-868d-bc5e3e9ca59c",
+  "id": "7bf2d092-f09e-4353-afd0-74e91d8493bb",
+  "prevId": "2efc2add-8a60-4c29-9e36-b04c65fef1c7",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -2269,17 +2269,35 @@
           "name": "document_id",
           "type": "text",
           "primaryKey": false,
-          "notNull": true
+          "notNull": false
         },
         "request_id": {
           "name": "request_id",
           "type": "text",
           "primaryKey": false,
-          "notNull": true
+          "notNull": false
         },
         "actor_user_id": {
           "name": "actor_user_id",
           "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "workspace_id": {
+          "name": "workspace_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "occurrence": {
+          "name": "occurrence",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "detail": {
+          "name": "detail",
+          "type": "jsonb",
           "primaryKey": false,
           "notNull": false
         },
@@ -2386,6 +2404,19 @@
           ],
           "onDelete": "set null",
           "onUpdate": "no action"
+        },
+        "notifications_workspace_id_workspaces_id_fk": {
+          "name": "notifications_workspace_id_workspaces_id_fk",
+          "tableFrom": "notifications",
+          "tableTo": "workspaces",
+          "columnsFrom": [
+            "workspace_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -2397,12 +2428,18 @@
             "request_id",
             "recipient_user_id",
             "kind",
-            "actor_user_id"
+            "actor_user_id",
+            "occurrence"
           ]
         }
       },
       "policies": {},
-      "checkConstraints": {},
+      "checkConstraints": {
+        "notifications_subject_check": {
+          "name": "notifications_subject_check",
+          "value": "(\"notifications\".\"request_id\" IS NOT NULL AND \"notifications\".\"document_id\" IS NOT NULL) OR (\"notifications\".\"workspace_id\" IS NOT NULL AND \"notifications\".\"occurrence\" IS NOT NULL)"
+        }
+      },
       "isRLSEnabled": false
     },
     "public.organisational_units": {
@@ -3758,6 +3795,12 @@
           "type": "jsonb",
           "primaryKey": false,
           "notNull": false
+        },
+        "failure_notified": {
+          "name": "failure_notified",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
         }
       },
       "indexes": {},
@@ -3777,6 +3820,75 @@
         }
       },
       "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.source_webhook_deliveries": {
+      "name": "source_webhook_deliveries",
+      "schema": "",
+      "columns": {
+        "workspace_id": {
+          "name": "workspace_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "delivery_id": {
+          "name": "delivery_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "received_at": {
+          "name": "received_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {
+        "source_webhook_deliveries_received_idx": {
+          "name": "source_webhook_deliveries_received_idx",
+          "columns": [
+            {
+              "expression": "received_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "source_webhook_deliveries_workspace_id_workspaces_id_fk": {
+          "name": "source_webhook_deliveries_workspace_id_workspaces_id_fk",
+          "tableFrom": "source_webhook_deliveries",
+          "tableTo": "workspaces",
+          "columnsFrom": [
+            "workspace_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "source_webhook_deliveries_workspace_id_delivery_id_pk": {
+          "name": "source_webhook_deliveries_workspace_id_delivery_id_pk",
+          "columns": [
+            "workspace_id",
+            "delivery_id"
+          ]
+        }
+      },
       "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {},
@@ -3978,6 +4090,12 @@
         },
         "view_template": {
           "name": "view_template",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "webhook_secret": {
+          "name": "webhook_secret",
           "type": "text",
           "primaryKey": false,
           "notNull": false

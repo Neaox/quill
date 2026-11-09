@@ -55,6 +55,7 @@ async function configure(credential: { username: string; secretName: string } | 
     credential,
     outsideLinks: 'forge',
     viewTemplate: null,
+    webhookSecretName: null,
     configuredBy: ADMIN,
     now: NOW,
   })

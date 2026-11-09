@@ -1,4 +1,9 @@
-import { SOURCE_SYNC_REQUESTED, handleSourceSyncRequested } from '@quill/application'
+import {
+  SOURCE_SYNC_REQUESTED,
+  handleSourceSyncRequested,
+  notifySourceSyncFailure,
+  parseSourceSyncRequested,
+} from '@quill/application'
 
 import type { AppDependencies } from '../../dependencies.ts'
 import { DeferEvent } from './consumer.ts'
@@ -22,6 +27,12 @@ import type { LaneOptions } from './lane.ts'
  * failing, so it does not count against the event's attempts. Every other
  * outcome the job records on the source's sync state itself; only what it did
  * not foresee is thrown, for the outbox to retry.
+ *
+ * **A failure is told once.** After each attempt that ran, failed or not, the
+ * workspace's administrators are told about a failure they have not heard of
+ * (`notifySourceSyncFailure`): one notification per distinct failure, not
+ * per attempt (ADR-061). It runs after a thrown failure too, before the
+ * error goes back to the outbox, since that attempt's failure is recorded.
  */
 
 export const SOURCE_SYNC_LANE = 'sources'
@@ -42,17 +53,30 @@ export const SOURCE_SYNC_LANE_OPTIONS = {
 } as const satisfies Partial<LaneOptions>
 
 export function createSyncSourceConsumer(
-  deps: Pick<AppDependencies, 'uow' | 'format' | 'clock' | 'ids' | 'sourceSync'>,
+  deps: Pick<
+    AppDependencies,
+    'uow' | 'format' | 'clock' | 'ids' | 'sourceSync' | 'tokens' | 'shareLinkPolicy'
+  >,
 ): OutboxConsumer {
   return {
     eventType: SOURCE_SYNC_REQUESTED,
     async handle(payload: unknown): Promise<void> {
       const { uow, format, clock, ids, sourceSync } = deps
       const job = { uow, format, clock, ids, ...sourceSync }
-      const result = await handleSourceSyncRequested(job, payload)
+      const event = parseSourceSyncRequested(payload)
+      if (event === null) return
+      const tell = () => notifySourceSyncFailure(deps, event.workspaceId)
+      let result: Awaited<ReturnType<typeof handleSourceSyncRequested>>
+      try {
+        result = await handleSourceSyncRequested(job, payload)
+      } catch (error) {
+        await tell()
+        throw error
+      }
       if (result?.kind === 'busy') {
         throw new DeferEvent(SOURCE_BUSY_RETRY_MS, 'another sync of this source is running')
       }
+      await tell()
     },
   }
 }

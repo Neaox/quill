@@ -19,6 +19,7 @@ import { createIdentityProviderRegistry, outboundClientFactory } from '../auth/o
 import { createPasswordHasher } from '../auth/password.ts'
 import { createRateLimiter } from '../auth/rate-limit.ts'
 import { createTokenService } from '../auth/tokens.ts'
+import { createMessageAuthenticator } from '../infrastructure/message-authenticator.ts'
 import { createFakeBreachedPasswordChecker, createRecordingMailer } from '../test-support/fakes.ts'
 import { createContentStore } from '../infrastructure/content-store.ts'
 import { createDocumentFormat } from '../infrastructure/markdown/document-format.ts'
@@ -84,6 +85,7 @@ async function describableDependencies(): Promise<AppDependencies> {
     clock,
     hasher,
     tokens: createTokenService(),
+    messageAuthenticator: createMessageAuthenticator(),
     shareLinkPolicy: createShareLinkPolicy(config),
     linkPreviewPorts: INERT_LINK_PREVIEW_PORTS,
     ids,

@@ -419,6 +419,8 @@ export type {
   MarkNotificationsReadCommand,
   NotificationDependencies,
   NotificationItem,
+  ReviewNotificationItem,
+  SourceSyncFailedNotificationItem,
 } from './notifications.ts'
 export {
   listNotifications,
@@ -712,6 +714,27 @@ export {
   requestManualSourceSync,
   WORKSPACE_SOURCE_AUDIT_EVENTS,
 } from './workspace-source.ts'
+export type {
+  SourceWebhookDelivery,
+  SourceWebhookDependencies,
+  SourceWebhookForge,
+  SourceWebhookResult,
+} from './source-webhook.ts'
+export {
+  MAX_DELIVERY_ID_LENGTH,
+  receiveSourceWebhook,
+  SOURCE_WEBHOOK_DELIVERY_RETENTION_MS,
+  SOURCE_WEBHOOK_FORGES,
+  sweepSourceWebhookDeliveries,
+} from './source-webhook.ts'
+export type { SourceFailureNotificationDependencies } from './source-freshness.ts'
+export {
+  MAX_SOURCE_FAILURE_RECIPIENTS,
+  notifySourceSyncFailure,
+  reconcileSources,
+  SOURCE_RECONCILE_INTERVAL_MS,
+  sourceFailureKey,
+} from './source-freshness.ts'
 export {
   refuseWritesToSourcedWorkspaces,
   WorkspaceReadOnlyError,

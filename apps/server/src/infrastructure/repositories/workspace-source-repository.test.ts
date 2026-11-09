@@ -29,6 +29,7 @@ const settings = {
   credential: null,
   outsideLinks: 'forge',
   viewTemplate: null,
+  webhookSecretName: null,
   configuredBy: ADMIN,
   now: NOW,
 } as const
@@ -88,6 +89,7 @@ describe('the workspace source repository', () => {
       credential: null,
       outsideLinks: 'forge',
       viewTemplate: null,
+      webhookSecretName: null,
       configuredBy: ADMIN,
       createdAt: NOW,
       updatedAt: NOW,
@@ -95,6 +97,14 @@ describe('the workspace source repository', () => {
     expect(stored).toEqual(expected)
     expect(await sources.find(WORKSPACE)).toEqual(expected)
     expect(await sources.find(OTHER)).toBeNull()
+  })
+
+  it('lists every sourced workspace, for the reconciliation', async () => {
+    expect(await sources.listWorkspaceIds()).toEqual([])
+    await sources.put({ ...settings, webhookSecretName: 'sources/handbook-webhook' })
+    await sources.put({ ...settings, workspaceId: OTHER })
+    expect(await sources.listWorkspaceIds()).toEqual([WORKSPACE, OTHER].toSorted())
+    expect((await sources.find(WORKSPACE))?.webhookSecretName).toBe('sources/handbook-webhook')
   })
 
   it('replaces the settings whole and keeps when it was first configured', async () => {

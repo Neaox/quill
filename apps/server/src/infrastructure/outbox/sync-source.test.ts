@@ -3,13 +3,14 @@ import {
   createFakeContentStore,
   createFakeDocumentFormat,
   createFakeIdGenerator,
+  createFakeTokenService,
   createInMemoryUnitOfWork,
 } from '@quill/application/test-support'
+import { ExternalSourceError } from '@quill/application'
 import type { ExternalSource, SourceSyncLock } from '@quill/application'
-import { workspaceId } from '@quill/domain'
+import { userId, workspaceId } from '@quill/domain'
 import { describe, expect, it } from 'vitest'
 
-import type { AppDependencies } from '../../dependencies.ts'
 import { DeferEvent } from './consumer.ts'
 import { SOURCE_BUSY_RETRY_MS, createSyncSourceConsumer } from './sync-source.ts'
 
@@ -29,18 +30,23 @@ const UNMOVED: ExternalSource = {
   present: async () => new Set(),
 }
 
-function consumer(lock: SourceSyncLock) {
+const ADMIN = userId('00000000-0000-4000-8000-0000000000a1')
+const NOW = new Date('2026-01-01T00:00:00.000Z')
+
+function consumer(lock: SourceSyncLock, source: ExternalSource = UNMOVED) {
   const uow = createInMemoryUnitOfWork()
-  const deps: Pick<AppDependencies, 'uow' | 'format' | 'clock' | 'ids' | 'sourceSync'> = {
+  const deps: Parameters<typeof createSyncSourceConsumer>[0] = {
     uow,
     format: createFakeDocumentFormat(),
-    clock: createFakeClock(new Date('2026-01-01T00:00:00.000Z')),
+    clock: createFakeClock(NOW),
     ids: createFakeIdGenerator(),
+    tokens: createFakeTokenService(),
+    shareLinkPolicy: { allowed: () => true },
     sourceSync: {
       contentStore: createFakeContentStore(),
       sources: {
         forWorkspace: async () => ({
-          source: UNMOVED,
+          source,
           settings: { collections: [], history: 'full', commitMessages: 'subject' },
         }),
       },
@@ -86,5 +92,84 @@ describe('the SourceSyncRequested consumer', () => {
       },
     })
     await expect(handler.handle({ version: 99 })).resolves.toBeUndefined()
+  })
+  describe('telling the administrators', () => {
+    const running: SourceSyncLock = {
+      withLock: async (_, work) => ({ kind: 'ran', value: await work() }),
+    }
+
+    async function sourced(uow: ReturnType<typeof createInMemoryUnitOfWork>) {
+      await uow.repos.units.create({
+        id: 'acme',
+        parentId: null,
+        name: 'Acme',
+        slug: 'acme',
+        label: 'company',
+        now: NOW,
+      })
+      await uow.repos.workspaces.create({
+        id: HANDBOOK,
+        unitId: 'acme',
+        name: 'Handbook',
+        slug: 'handbook',
+        now: NOW,
+      })
+      await uow.repos.users.create({
+        id: ADMIN,
+        email: 'admin@example.com',
+        displayName: 'Admin',
+        now: NOW,
+      })
+      await uow.repos.users.setInstanceAdmin(ADMIN, true)
+      await uow.repos.workspaceSources.put({
+        workspaceId: HANDBOOK,
+        remote: 'https://github.com/acme/handbook.git',
+        branch: 'main',
+        collections: [],
+        history: 'full',
+        commitMessages: 'subject',
+        credential: null,
+        webhookSecretName: null,
+        outsideLinks: 'forge',
+        viewTemplate: null,
+        configuredBy: ADMIN,
+        now: NOW,
+      })
+    }
+
+    const told = (uow: ReturnType<typeof createInMemoryUnitOfWork>) =>
+      uow.repos.notifications.listForUser({ userId: ADMIN, after: null, limit: 10 })
+
+    it('tells them about a failure once, however many attempts it stops', async () => {
+      const failing: ExternalSource = {
+        ...UNMOVED,
+        head: async () => {
+          throw new ExternalSourceError('branch-not-found', 'no branch main')
+        },
+      }
+      const { uow, consumer: handler } = consumer(running, failing)
+      await sourced(uow)
+      await handler.handle(PAYLOAD)
+      await handler.handle(PAYLOAD)
+      expect(await told(uow)).toEqual([
+        expect.objectContaining({
+          kind: 'source-sync-failed',
+          failure: { reason: 'branch-not-found', revision: null },
+        }),
+      ])
+    })
+
+    it('tells them about a failure the job did not foresee, and hands it to the outbox', async () => {
+      const broken: ExternalSource = {
+        ...UNMOVED,
+        head: async () => {
+          throw new Error('connection reset')
+        },
+      }
+      const { uow, consumer: handler } = consumer(running, broken)
+      await sourced(uow)
+      await expect(handler.handle(PAYLOAD)).rejects.toThrow('connection reset')
+      expect(await told(uow)).toHaveLength(1)
+    })
   })
 })

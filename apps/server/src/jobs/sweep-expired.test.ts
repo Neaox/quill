@@ -49,6 +49,7 @@ describe('sweepExpired', () => {
       magicLinks: 0,
       documentViews: 0,
       notifications: 0,
+      webhookDeliveries: 0,
     })
     expect(await uow.repos.sessions.findById('stale')).toBeNull()
   })
@@ -85,6 +86,7 @@ describe('sweepExpired', () => {
       magicLinks: 0,
       documentViews: 0,
       notifications: 0,
+      webhookDeliveries: 0,
     })
     expect(await uow.repos.sessions.findById('live')).not.toBeNull()
   })
@@ -160,6 +162,35 @@ describe('sweepExpired: notifications', () => {
         (row) => row.id,
       ),
     ).toEqual(['recent'])
+  })
+})
+
+describe('sweepExpired: webhook deliveries', () => {
+  it('forgets a delivery id older than a week and keeps a recent one', async () => {
+    const { uow, deps } = await setUp()
+    const workspaceId = 'w' as never
+    await uow.repos.sourceWebhookDeliveries.record({
+      workspaceId,
+      deliveryId: 'old',
+      now: new Date(NOW.getTime() - days(8)),
+    })
+    await uow.repos.sourceWebhookDeliveries.record({
+      workspaceId,
+      deliveryId: 'recent',
+      now: new Date(NOW.getTime() - days(6)),
+    })
+
+    expect((await sweepExpired(deps, NOW)).webhookDeliveries).toBe(1)
+    expect(
+      await uow.repos.sourceWebhookDeliveries.record({ workspaceId, deliveryId: 'old', now: NOW }),
+    ).toBe(true)
+    expect(
+      await uow.repos.sourceWebhookDeliveries.record({
+        workspaceId,
+        deliveryId: 'recent',
+        now: NOW,
+      }),
+    ).toBe(false)
   })
 })
 

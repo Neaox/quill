@@ -37,6 +37,14 @@ export function createWorkspaceSourceRepository(db: DrizzleClient): WorkspaceSou
       return row === undefined ? null : toRow(row)
     },
 
+    async listWorkspaceIds(): Promise<readonly WorkspaceId[]> {
+      const rows = await db
+        .select({ workspaceId: workspaceSources.workspaceId })
+        .from(workspaceSources)
+        .orderBy(workspaceSources.workspaceId)
+      return rows.map(({ workspaceId }) => workspaceId as WorkspaceId)
+    },
+
     async put({ now, collections, credential, ...input }): Promise<WorkspaceSourceRow> {
       const values = {
         remote: input.remote,
@@ -48,6 +56,7 @@ export function createWorkspaceSourceRepository(db: DrizzleClient): WorkspaceSou
         credentialSecret: credential?.secretName ?? null,
         outsideLinks: input.outsideLinks,
         viewTemplate: input.viewTemplate,
+        webhookSecret: input.webhookSecretName,
         configuredBy: input.configuredBy,
         updatedAt: now,
       }
@@ -76,6 +85,7 @@ function toRow(row: typeof workspaceSources.$inferSelect): WorkspaceSourceRow {
         : { username: row.credentialUsername, secretName: row.credentialSecret },
     outsideLinks: member(SOURCE_OUTSIDE_LINK_SETTINGS, row.outsideLinks),
     viewTemplate: row.viewTemplate,
+    webhookSecretName: row.webhookSecret,
     configuredBy: row.configuredBy as UserId | null,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,

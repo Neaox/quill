@@ -546,6 +546,8 @@ export const workspaceSources = pgTable(
     outsideLinks: text('outside_links').notNull().default('forge'),
     /** The forge's address for a file at a commit (`{commit}`, `{path}`); null for the remote's host's own. */
     viewTemplate: text('view_template'),
+    /** The name of the secret its push webhook is signed with; null for no webhook. */
+    webhookSecret: text('webhook_secret'),
     configuredBy: text('configured_by').references(() => users.id, { onDelete: 'set null' }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull(),
@@ -622,7 +624,30 @@ export const sourceSyncState = pgTable('source_sync_state', {
    * the documents last changed, which checks every document.
    */
   brokenLinks: jsonb('broken_links'),
+  /** The key of the failure the workspace's administrators were last told about. */
+  failureNotified: text('failure_notified'),
 })
+
+/**
+ * The push webhook deliveries each sourced workspace has accepted (ADR-061,
+ * "Freshness"), by the forge's delivery id, so a retried delivery asks for
+ * one sync. Kept a week, then swept.
+ */
+export const sourceWebhookDeliveries = pgTable(
+  'source_webhook_deliveries',
+  {
+    workspaceId: text('workspace_id')
+      .notNull()
+      .references(() => workspaces.id, { onDelete: 'cascade' }),
+    deliveryId: text('delivery_id').notNull(),
+    receivedAt: timestamp('received_at', { withTimezone: true }).notNull(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.workspaceId, table.deliveryId] }),
+    // The week's sweep walks by age.
+    index('source_webhook_deliveries_received_idx').on(table.receivedAt),
+  ],
+)
 
 /**
  * One rendered body, addressed by what it was rendered from (ADR-031).
@@ -1181,12 +1206,14 @@ export const documentViews = pgTable(
 
 /**
  * In-app notifications (ADR-053): one person's own row about a review request
- * they were asked to look at, or asked someone to look at. Read only by the
+ * they were asked to look at, or asked someone to look at, or about a
+ * workspace whose source stopped syncing (ADR-061). Read only by the
  * recipient and kept 90 days. `kind` is plain text so it can grow without a
  * migration. The unique key is what makes an outbox event idempotent: a
- * redelivered event finds its rows and writes none. `actor_user_id` is null
- * once that person has gone; the row goes with its recipient, its document and
- * its request.
+ * redelivered event finds its rows and writes none. A review's row is keyed
+ * by its request, a workspace's by its `occurrence`. `actor_user_id` is null
+ * once that person has gone; the row goes with its recipient, its document,
+ * its request and its workspace.
  */
 export const notifications = pgTable(
   'notifications',
@@ -1196,20 +1223,26 @@ export const notifications = pgTable(
       .notNull()
       .references(() => users.id, { onDelete: 'cascade' }),
     kind: text('kind').notNull(),
-    documentId: text('document_id')
-      .notNull()
-      .references(() => documents.id, { onDelete: 'cascade' }),
-    requestId: text('request_id')
-      .notNull()
-      .references(() => reviewRequests.id, { onDelete: 'cascade' }),
+    documentId: text('document_id').references(() => documents.id, { onDelete: 'cascade' }),
+    requestId: text('request_id').references(() => reviewRequests.id, { onDelete: 'cascade' }),
     actorUserId: text('actor_user_id').references(() => users.id, { onDelete: 'set null' }),
+    workspaceId: text('workspace_id').references(() => workspaces.id, { onDelete: 'cascade' }),
+    /** A workspace's row: which failure it is about, so it is written once. */
+    occurrence: text('occurrence'),
+    /** A workspace's row: `{ version, reason, revision }`, the failure as it was told. */
+    detail: jsonb('detail'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull(),
     readAt: timestamp('read_at', { withTimezone: true }),
   },
   (table) => [
     unique('notifications_event_key')
-      .on(table.requestId, table.recipientUserId, table.kind, table.actorUserId)
+      .on(table.requestId, table.recipientUserId, table.kind, table.actorUserId, table.occurrence)
       .nullsNotDistinct(),
+    // A row is about a review request and its document, or about a workspace.
+    check(
+      'notifications_subject_check',
+      sql`(${table.requestId} IS NOT NULL AND ${table.documentId} IS NOT NULL) OR (${table.workspaceId} IS NOT NULL AND ${table.occurrence} IS NOT NULL)`,
+    ),
     // The list is "this person's, newest first".
     index('notifications_recipient_recent_idx').on(table.recipientUserId, table.createdAt.desc()),
     // The 90-day cleanup walks by age across everybody.

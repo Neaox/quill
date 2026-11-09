@@ -100,6 +100,11 @@ export interface ConfigureWorkspaceSourceCommand {
    * `{path}`; absent or null to use the one known for the remote's host.
    */
   readonly viewTemplate?: string | null | undefined
+  /**
+   * The name of the secret the source's push webhook is signed with, null
+   * for no webhook, or omitted to keep what the source has.
+   */
+  readonly webhookSecretName?: string | null | undefined
   readonly configuredBy: UserId
 }
 
@@ -113,6 +118,7 @@ export type WorkspaceSourceField =
   | 'credential'
   | 'outsideLinks'
   | 'viewTemplate'
+  | 'webhookSecret'
 
 export interface WorkspaceSourceView {
   readonly source: WorkspaceSourceRow
@@ -141,6 +147,8 @@ interface ValidSettings {
   readonly collections: readonly SourceCollectionInput[]
   readonly outsideLinks: SourceOutsideLinkSetting
   readonly viewTemplate: string | null
+  /** Undefined keeps what the source has. */
+  readonly webhookSecretName: string | null | undefined
 }
 
 type Invalid = Extract<ConfigureWorkspaceSourceResult, { kind: 'invalid' }>
@@ -167,6 +175,11 @@ export async function configureWorkspaceSource(
     if (documents.length > 0) return { kind: 'not-empty' }
   }
 
+  const webhookSecretName =
+    valid.webhookSecretName === undefined
+      ? ((await repos.workspaceSources.find(command.workspaceId))?.webhookSecretName ?? null)
+      : valid.webhookSecretName
+
   const now = deps.clock.now()
   const view = await deps.uow.run(async (tx) => {
     const collections = await placeCollections(deps, tx, command.workspaceId, valid.collections)
@@ -180,6 +193,7 @@ export async function configureWorkspaceSource(
       credential: command.credential,
       outsideLinks: valid.outsideLinks,
       viewTemplate: valid.viewTemplate,
+      webhookSecretName,
       configuredBy: command.configuredBy,
       now,
     })
@@ -204,6 +218,7 @@ export async function configureWorkspaceSource(
         credentialSecret: source.credential?.secretName ?? null,
         outsideLinks: source.outsideLinks,
         viewTemplate: source.viewTemplate,
+        webhookSecret: source.webhookSecretName,
       },
       now,
     })
@@ -245,12 +260,18 @@ async function validate(
   if ('kind' in collections) return collections
   const credential = await validateCredential(deps, command.credential)
   if (credential !== null) return credential
+  const webhookSecretName = command.webhookSecretName
+  if (webhookSecretName !== undefined && webhookSecretName !== null) {
+    const problem = await checkSecretName(deps, webhookSecretName)
+    if (problem !== null) return invalid('webhookSecret', problem)
+  }
   return {
     remote: remote.value,
     branch: branch.value,
     collections,
     outsideLinks,
     viewTemplate: viewTemplate?.value ?? null,
+    webhookSecretName,
   }
 }
 
@@ -300,12 +321,19 @@ async function validateCredential(
   if (credential === null) return null
   const username = checkSourceUsername(credential.username)
   if (!username.ok) return invalid('credential', username.error)
-  if (!isSecretName(credential.secretName)) {
-    return invalid('credential', `"${credential.secretName}" is not a secret name.`)
-  }
-  // Whether it is there, without opening it: the value is read at each fetch.
-  if ((await deps.uow.repos.secrets.find(credential.secretName)) === null) {
-    return invalid('credential', `No secret is stored as "${credential.secretName}".`)
+  const problem = await checkSecretName(deps, credential.secretName)
+  return problem === null ? null : invalid('credential', problem)
+}
+
+/** Why a secret name cannot be used, or null when it names a stored secret. */
+async function checkSecretName(
+  deps: WorkspaceSourceDependencies,
+  name: string,
+): Promise<string | null> {
+  if (!isSecretName(name)) return `"${name}" is not a secret name.`
+  // Whether it is there, without opening it: the value is read at each use.
+  if ((await deps.uow.repos.secrets.find(name)) === null) {
+    return `No secret is stored as "${name}".`
   }
   return null
 }

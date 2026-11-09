@@ -449,6 +449,7 @@ describe('createInMemoryUnitOfWork: workspace sources', () => {
         credential: null,
         outsideLinks: 'forge',
         viewTemplate: null,
+        webhookSecretName: null,
         configuredBy: userId('00000000-0000-4000-8000-000000000001'),
         now: new Date(0),
       }),

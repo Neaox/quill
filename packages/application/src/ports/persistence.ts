@@ -21,6 +21,7 @@ import type { SecretsRepository } from './secrets.ts'
 import type {
   SourcePathMapRepository,
   SourceSyncStateRepository,
+  SourceWebhookDeliveryRepository,
   WorkspaceSourceRepository,
 } from './source-sync.ts'
 
@@ -1464,6 +1465,8 @@ export interface RepositoryBundle {
   readonly sourcePaths: SourcePathMapRepository
   /** How far each sourced workspace has synced, and what stopped it (ADR-061). */
   readonly sourceSyncState: SourceSyncStateRepository
+  /** The push webhook deliveries each sourced workspace has accepted, for a week (ADR-061). */
+  readonly sourceWebhookDeliveries: SourceWebhookDeliveryRepository
   /**
    * The one way to emit an event (ADR-056): the outbox row in this transaction, and the
    * announcement to the bus once it commits. The bare `OutboxWriter` is not on the bundle.
