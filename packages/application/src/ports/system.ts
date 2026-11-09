@@ -55,3 +55,16 @@ export interface TokenService {
    */
   matches(left: string, right: string): boolean
 }
+
+/**
+ * Message authentication for signed push webhooks (ADR-061, "Freshness"): a
+ * forge signs the raw body of each delivery with the source's shared secret.
+ * A port for the reason the others are: the application layer imports no
+ * Node built-ins. The server's adapter is `crypto.createHmac`. Comparing what
+ * it answers with what the forge sent is `TokenService.matches`, which does
+ * not leak where they differ.
+ */
+export interface MessageAuthenticator {
+  /** Lower-case hex HMAC-SHA-256 of `message` under the UTF-8 bytes of `key`. */
+  hmacSha256(key: string, message: Uint8Array): string
+}

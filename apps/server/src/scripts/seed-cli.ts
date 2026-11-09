@@ -5,6 +5,7 @@ import { createIdentityProviderRegistry, outboundClientFactory } from '../auth/o
 import { createPasswordHasher } from '../auth/password.ts'
 import { createRateLimiter } from '../auth/rate-limit.ts'
 import { createTokenService } from '../auth/tokens.ts'
+import { createMessageAuthenticator } from '../infrastructure/message-authenticator.ts'
 import { loadConfig } from '../config.ts'
 import { createBlobStore } from '../infrastructure/blob/create-blob-store.ts'
 import { createContentStore } from '../infrastructure/content-store.ts'
@@ -93,6 +94,7 @@ try {
     ...(await pagelessStylesheets(hasher)),
     publicSiteCache: createPublicSiteCache({ clock, ttlMs: 0 }),
     tokens: createTokenService(),
+    messageAuthenticator: createMessageAuthenticator(),
     shareLinkPolicy: createShareLinkPolicy(config),
     linkPreviewPorts: INERT_LINK_PREVIEW_PORTS,
     mailer: createDevMailer((message) => process.stdout.write(`${message}\n`)),

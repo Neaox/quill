@@ -131,6 +131,7 @@ describe('configureWorkspaceSource', () => {
           history: 'full',
           commitMessages: 'subject',
           credentialSecret: 'sources/handbook',
+          webhookSecret: null,
         },
       }),
     ])
@@ -196,6 +197,38 @@ describe('configureWorkspaceSource', () => {
     expect(result.kind).toBe('configured')
   })
 
+  it('stores the webhook secret by name, keeps it when omitted and clears it on null', async () => {
+    await uow.repos.secrets.put({
+      name: 'sources/handbook-webhook',
+      ciphertext: 'sealed',
+      wrappedKey: 'wrapped',
+      keyId: 'k1',
+      now: NOW,
+    })
+    const named = await configureWorkspaceSource(
+      deps,
+      command({ webhookSecretName: 'sources/handbook-webhook' }),
+    )
+    if (named.kind !== 'configured') throw new Error(`unexpected result: ${named.kind}`)
+    expect(named.view.source.webhookSecretName).toBe('sources/handbook-webhook')
+    expect(uow.auditEvents.at(-1)?.metadata).toMatchObject({
+      webhookSecret: 'sources/handbook-webhook',
+    })
+
+    await configureWorkspaceSource(deps, command({ branch: 'release' }))
+    expect((await uow.repos.workspaceSources.find(WORKSPACE))?.webhookSecretName).toBe(
+      'sources/handbook-webhook',
+    )
+
+    await configureWorkspaceSource(deps, command({ webhookSecretName: null }))
+    expect((await uow.repos.workspaceSources.find(WORKSPACE))?.webhookSecretName).toBeNull()
+  })
+
+  it('takes no webhook when a new source names none', async () => {
+    await configureWorkspaceSource(deps, command())
+    expect((await uow.repos.workspaceSources.find(WORKSPACE))?.webhookSecretName).toBeNull()
+  })
+
   it('refuses to make a workspace that holds documents sourced', async () => {
     await addDocument()
     expect(await configureWorkspaceSource(deps, command())).toEqual({ kind: 'not-empty' })
@@ -259,6 +292,8 @@ describe('configureWorkspaceSource', () => {
       'not a secret name',
     ],
     ['credential', { credential: { username: 'x', secretName: 'sources/missing' } }, 'No secret'],
+    ['webhookSecret', { webhookSecretName: 'not a name' }, 'not a secret name'],
+    ['webhookSecret', { webhookSecretName: 'sources/missing' }, 'No secret'],
   ] satisfies [string, Partial<ConfigureWorkspaceSourceCommand>, string][])(
     'refuses an invalid %s (%#)',
     async (field, overrides, message) => {

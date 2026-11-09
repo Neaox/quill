@@ -37,6 +37,7 @@ import { createShareLinkRepository } from './share-link-repository.ts'
 import {
   createSourcePathMapRepository,
   createSourceSyncStateRepository,
+  createSourceWebhookDeliveryRepository,
 } from './source-sync-repositories.ts'
 import { createUnitRepository } from './unit-repository.ts'
 import { createUserRepository } from './user-repository.ts'
@@ -91,6 +92,7 @@ function buildBundle(
     workspaceSources: createWorkspaceSourceRepository(db),
     sourcePaths: createSourcePathMapRepository(db),
     sourceSyncState: createSourceSyncStateRepository(db),
+    sourceWebhookDeliveries: createSourceWebhookDeliveryRepository(db),
     events: createEventRecorder({ outbox: createOutboxWriter(db), ids, sink }),
     audit: createAuditWriter(db),
   }

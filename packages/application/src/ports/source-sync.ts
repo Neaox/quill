@@ -92,6 +92,12 @@ export interface WorkspaceSourceRow extends SourceSettings {
   readonly remote: string
   readonly branch: string
   readonly credential: WorkspaceSourceCredential | null
+  /**
+   * The name of the product secret its push webhook is signed with (ADR-061,
+   * ADR-034), or null when it takes no webhook and waits for the daily
+   * reconciliation and the check on read.
+   */
+  readonly webhookSecretName: string | null
   readonly configuredBy: UserId | null
   readonly createdAt: Date
   readonly updatedAt: Date
@@ -99,6 +105,8 @@ export interface WorkspaceSourceRow extends SourceSettings {
 
 export interface WorkspaceSourceRepository {
   find(workspaceId: WorkspaceId): Promise<WorkspaceSourceRow | null>
+  /** Every sourced workspace, for the daily reconciliation. */
+  listWorkspaceIds(): Promise<readonly WorkspaceId[]>
   /** Writes the workspace's source whole; the first write makes the workspace sourced. */
   put(input: {
     readonly workspaceId: WorkspaceId
@@ -108,6 +116,7 @@ export interface WorkspaceSourceRepository {
     readonly history: SourceHistorySetting
     readonly commitMessages: SourceCommitMessageSetting
     readonly credential: WorkspaceSourceCredential | null
+    readonly webhookSecretName: string | null
     readonly configuredBy: UserId
     readonly now: Date
   }): Promise<WorkspaceSourceRow>
@@ -201,13 +210,19 @@ export interface SourceSyncStateRow {
   readonly refused: readonly RefusedSourceFile[]
   /** What placed the tree last; null before this was recorded, which re-plans the tree once. */
   readonly layout: SourceLayoutRecord | null
+  /**
+   * The failure the workspace's administrators were last told about, by its
+   * key (`sourceFailureKey`), so a failure is told once however many
+   * attempts it stops. Cleared by a sync that finishes.
+   */
+  readonly failureNotified: string | null
 }
 
 export interface SourceSyncStateRepository {
   find(workspaceId: WorkspaceId): Promise<SourceSyncStateRow | null>
   /**
-   * The workspace now holds `revision` in full. Clears any failure, and keeps
-   * the files refused while getting there.
+   * The workspace now holds `revision` in full. Clears any failure, and which
+   * failure was told, and keeps the files refused while getting there.
    */
   recordSynced(input: {
     readonly workspaceId: WorkspaceId
@@ -222,4 +237,33 @@ export interface SourceSyncStateRepository {
     readonly failure: SourceSyncFailure
     readonly now: Date
   }): Promise<void>
+  /**
+   * Records that the administrators were told about the failure with this
+   * key. Answers false, changing nothing, when they already were or the
+   * workspace has no sync state, so two deliveries racing tell it once.
+   */
+  recordFailureNotified(input: {
+    readonly workspaceId: WorkspaceId
+    readonly key: string
+  }): Promise<boolean>
+}
+
+// ---------------------------------------------------------------------------
+// Persistence: push webhook deliveries
+// ---------------------------------------------------------------------------
+
+/**
+ * The delivery ids of the push webhooks a sourced workspace has accepted
+ * (ADR-061, "Freshness"), kept a week so a forge's retry of one delivery asks
+ * for one sync.
+ */
+export interface SourceWebhookDeliveryRepository {
+  /** Records a delivery; answers false when it was already recorded. */
+  record(input: {
+    readonly workspaceId: WorkspaceId
+    readonly deliveryId: string
+    readonly now: Date
+  }): Promise<boolean>
+  /** Forgets every delivery received before `cutoff`. Answers how many went. */
+  deleteReceivedBefore(cutoff: Date): Promise<number>
 }

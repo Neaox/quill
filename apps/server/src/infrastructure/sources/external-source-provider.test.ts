@@ -53,6 +53,7 @@ async function configure(credential: { username: string; secretName: string } | 
     history: 'head',
     commitMessages: 'none',
     credential,
+    webhookSecretName: null,
     configuredBy: ADMIN,
     now: NOW,
   })

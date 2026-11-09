@@ -5,6 +5,7 @@ import type {
   SourcePathMapRepository,
   SourcePathRow,
   SourceSyncStateRepository,
+  SourceWebhookDeliveryRepository,
   SourceSyncStateRow,
   WorkspaceSourceRepository,
   WorkspaceSourceRow,
@@ -951,6 +952,9 @@ export function createInMemoryUnitOfWork(
     async find(workspaceId) {
       return workspaceSources.get(workspaceId) ?? null
     },
+    async listWorkspaceIds() {
+      return [...workspaceSources.keys()]
+    },
     async put({ now, ...input }) {
       const workspace = workspaces.get(input.workspaceId)
       // The foreign key the table has.
@@ -994,6 +998,7 @@ export function createInMemoryUnitOfWork(
         failure: null,
         refused,
         layout,
+        failureNotified: null,
       })
     },
     async recordFailure({ workspaceId, failure, now }) {
@@ -1006,7 +1011,30 @@ export function createInMemoryUnitOfWork(
         failure,
         refused: existing?.refused ?? [],
         layout: existing?.layout ?? null,
+        failureNotified: existing?.failureNotified ?? null,
       })
+    },
+    async recordFailureNotified({ workspaceId, key }) {
+      const existing = sourceSyncStates.get(workspaceId)
+      if (existing === undefined || existing.failureNotified === key) return false
+      sourceSyncStates.set(workspaceId, { ...existing, failureNotified: key })
+      return true
+    },
+  }
+
+  /** Keyed by `(workspace, delivery)`, the table's primary key. */
+  const webhookDeliveries = new Map<string, Date>()
+  const sourceWebhookDeliveryRepository: SourceWebhookDeliveryRepository = {
+    async record({ workspaceId, deliveryId, now }) {
+      const key = rowId(workspaceId, deliveryId)
+      if (webhookDeliveries.has(key)) return false
+      webhookDeliveries.set(key, now)
+      return true
+    },
+    async deleteReceivedBefore(cutoff) {
+      const doomed = [...webhookDeliveries].filter(([, at]) => at.getTime() < cutoff.getTime())
+      for (const [key] of doomed) webhookDeliveries.delete(key)
+      return doomed.length
     },
   }
 
@@ -1482,13 +1510,13 @@ export function createInMemoryUnitOfWork(
     async insertMany(rows) {
       let written = 0
       for (const row of rows) {
-        const exists = notifications.some(
-          (held) =>
-            held.requestId === row.requestId &&
-            held.recipientUserId === row.recipientUserId &&
-            held.kind === row.kind &&
-            held.actorUserId === row.actorUserId,
-        )
+        const exists = notifications.some((held) => {
+          if (held.recipientUserId !== row.recipientUserId || held.kind !== row.kind) return false
+          if (held.kind === 'source-sync-failed' || row.kind === 'source-sync-failed') {
+            return 'occurrence' in held && 'occurrence' in row && held.occurrence === row.occurrence
+          }
+          return held.requestId === row.requestId && held.actorUserId === row.actorUserId
+        })
         if (exists) continue
         notifications.push({ ...row, readAt: null })
         written += 1
@@ -1497,7 +1525,11 @@ export function createInMemoryUnitOfWork(
     },
     async markRequestKindRead({ requestId, kind, now }) {
       const unread = notifications.filter(
-        (row) => row.requestId === requestId && row.kind === kind && row.readAt === null,
+        (row) =>
+          'requestId' in row &&
+          row.requestId === requestId &&
+          row.kind === kind &&
+          row.readAt === null,
       )
       for (const row of unread) notifications[notifications.indexOf(row)] = { ...row, readAt: now }
       return unread.length
@@ -1730,6 +1762,7 @@ export function createInMemoryUnitOfWork(
     workspaceSources: workspaceSourceRepository,
     sourcePaths: sourcePathRepository,
     sourceSyncState: sourceSyncStateRepository,
+    sourceWebhookDeliveries: sourceWebhookDeliveryRepository,
     events: createEventRecorder({ outbox: outboxWriter, ids: eventIds, sink }),
     audit: auditWriter,
   })

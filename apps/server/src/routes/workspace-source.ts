@@ -61,6 +61,13 @@ const ConfigureSourceBody = Type.Object(
       SOURCE_COMMIT_MESSAGE_SETTINGS.map((setting) => Type.Literal(setting)),
     ),
     credential: Type.Union([CredentialSchema, Type.Null()]),
+    /**
+     * The name of the secret the source's push webhook is signed with (ADR-034),
+     * never its value; null for no webhook, omitted to keep what the source has.
+     */
+    webhookSecret: Type.Optional(
+      Type.Union([Type.String({ minLength: 1, maxLength: 200 }), Type.Null()]),
+    ),
   },
   { additionalProperties: false },
 )
@@ -91,6 +98,8 @@ const WorkspaceSourceSchema = Type.Object({
   history: Type.String(),
   commitMessages: Type.String(),
   credential: Type.Union([CredentialSchema, Type.Null()]),
+  /** The name of the secret its push webhook is signed with; null when it takes no webhook. */
+  webhookSecret: Type.Union([Type.String(), Type.Null()]),
   updatedAt: Type.String({ format: 'date-time' }),
   /** How far it has synced; null before the first attempt. */
   sync: Type.Union([
@@ -126,6 +135,7 @@ function sourceResponse({
     history: source.history,
     commitMessages: source.commitMessages,
     credential: source.credential,
+    webhookSecret: source.webhookSecretName,
     updatedAt: source.updatedAt.toISOString(),
     sync:
       state === null
@@ -177,9 +187,15 @@ export function workspaceSourceRoutes(deps: AppDependencies): FastifyPluginAsync
         await requireInstanceAdmin(deps, request)
         const target = await resolveWorkspaceId(deps, request.params.id)
         const session = requireAuthenticatedSession(request)
+        const { webhookSecret, ...settings } = request.body
         const result = await configureWorkspaceSource(
           { ...deps, allowFileRemotes: deps.sourceSync.allowFileRemotesForTesting },
-          { ...request.body, workspaceId: target, configuredBy: session.userId },
+          {
+            ...settings,
+            webhookSecretName: webhookSecret,
+            workspaceId: target,
+            configuredBy: session.userId,
+          },
         )
         switch (result.kind) {
           case 'configured':

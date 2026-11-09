@@ -29,11 +29,28 @@ export const notificationsPanelStyles = tv({
   },
 })
 
-const VERB: Record<NotificationItem['kind'], string> = {
+type ReviewItem = Exclude<NotificationItem, { kind: 'source-sync-failed' }>
+type SourceItem = Extract<NotificationItem, { kind: 'source-sync-failed' }>
+
+const VERB: Record<ReviewItem['kind'], string> = {
   'review-requested': 'asked you to review',
   'changes-requested': 'asked for changes to',
   'review-approved': 'approved',
   'review-withdrawn': 'withdrew the review of',
+}
+
+/** Why a source stopped syncing, as the end of a sentence; the settings page has the detail. */
+const SOURCE_FAILURE: Readonly<Record<string, string>> = {
+  'branch-not-found': 'its branch was not found',
+  'credential-unavailable': 'its credential could not be read',
+  'blocked-by-outbound-policy': 'the instance may not reach its host',
+  'invalid-manifest': 'its manifest does not read',
+  timeout: 'the repository took too long to answer',
+  'history-rewritten': 'its history was rewritten',
+}
+
+function sourceFailure(reason: string): string {
+  return SOURCE_FAILURE[reason] ?? 'the repository could not be read'
 }
 
 export interface NotificationsPanelProps {
@@ -74,35 +91,20 @@ export function NotificationsPanel({ items, unread }: NotificationsPanelProps) {
       ) : (
         <ul className={styles.list()}>
           {items.map((item) => {
-            const workspaceSlug = slugOf(item.document.workspaceId)
             const isUnread = item.readAt === null
+            const onOpen = () => {
+              if (isUnread) markRead.mutate([item.id])
+            }
             return (
               <li key={item.id} data-unread={isUnread ? '' : undefined}>
-                {workspaceSlug === undefined ? undefined : (
-                  <Link
-                    to="/w/$workspaceSlug/d/$documentId"
-                    params={{
-                      workspaceSlug,
-                      documentId: documentReference(item.document),
-                    }}
-                    search={{}}
-                    className={styles.item()}
-                    onClick={() => {
-                      if (isUnread) markRead.mutate([item.id])
-                    }}
-                  >
-                    <span aria-hidden="true" className={styles.marker()} />
-                    <span className={styles.text()}>
-                      {isUnread ? <span className="sr-only">Unread. </span> : undefined}
-                      {item.actor.name} {VERB[item.kind]}{' '}
-                      <strong className="font-semibold text-foreground">
-                        {item.document.title}
-                      </strong>
-                      <span className={styles.when()}>
-                        <RelativeTime value={item.at} />
-                      </span>
-                    </span>
-                  </Link>
+                {item.kind === 'source-sync-failed' ? (
+                  <SourceNotification item={item} onOpen={onOpen} />
+                ) : (
+                  <ReviewNotification
+                    item={item}
+                    workspaceSlug={slugOf(item.document.workspaceId)}
+                    onOpen={onOpen}
+                  />
                 )}
               </li>
             )
@@ -110,5 +112,65 @@ export function NotificationsPanel({ items, unread }: NotificationsPanelProps) {
         </ul>
       )}
     </>
+  )
+}
+
+interface NotificationLinkProps<T> {
+  readonly item: T
+  readonly onOpen: () => void
+}
+
+/** Someone did something about a review: the sentence is the way in to the document. */
+function ReviewNotification({
+  item,
+  workspaceSlug,
+  onOpen,
+}: NotificationLinkProps<ReviewItem> & { readonly workspaceSlug: string | undefined }) {
+  const styles = notificationsPanelStyles()
+  if (workspaceSlug === undefined) return undefined
+  return (
+    <Link
+      to="/w/$workspaceSlug/d/$documentId"
+      params={{ workspaceSlug, documentId: documentReference(item.document) }}
+      search={{}}
+      className={styles.item()}
+      onClick={onOpen}
+    >
+      <span aria-hidden="true" className={styles.marker()} />
+      <span className={styles.text()}>
+        {item.readAt === null ? <span className="sr-only">Unread. </span> : undefined}
+        {item.actor.name} {VERB[item.kind]}{' '}
+        <strong className="font-semibold text-foreground">{item.document.title}</strong>
+        <span className={styles.when()}>
+          <RelativeTime value={item.at} />
+        </span>
+      </span>
+    </Link>
+  )
+}
+
+/**
+ * A workspace's repository stopped syncing (ADR-061), told once to its
+ * administrators: the way in is the workspace's settings, where the source is.
+ */
+function SourceNotification({ item, onOpen }: NotificationLinkProps<SourceItem>) {
+  const styles = notificationsPanelStyles()
+  return (
+    <Link
+      to="/w/$workspaceSlug/settings"
+      params={{ workspaceSlug: workspaceReference(item.workspace) }}
+      className={styles.item()}
+      onClick={onOpen}
+    >
+      <span aria-hidden="true" className={styles.marker()} />
+      <span className={styles.text()}>
+        {item.readAt === null ? <span className="sr-only">Unread. </span> : undefined}
+        <strong className="font-semibold text-foreground">{item.workspace.name}</strong> stopped
+        syncing from its repository: {sourceFailure(item.failure.reason)}.
+        <span className={styles.when()}>
+          <RelativeTime value={item.at} />
+        </span>
+      </span>
+    </Link>
   )
 }

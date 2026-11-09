@@ -336,6 +336,11 @@ export interface SourcesConfig {
   readonly privateHostsAllowed: readonly string[]
   /** `SOURCE_EGRESS_PROXY`: an http(s) proxy every fetch goes through. */
   readonly egressProxy?: string
+  /**
+   * `SOURCE_RECONCILE_INTERVAL_MS`: how often every source is asked to sync,
+   * the safety net for missed webhooks (ADR-061). A day by default.
+   */
+  readonly reconcileIntervalMs: number
 }
 
 const LOG_LEVELS = new Set(['fatal', 'error', 'warn', 'info', 'debug', 'trace'])
@@ -343,6 +348,7 @@ const LOG_LEVELS = new Set(['fatal', 'error', 'warn', 'info', 'debug', 'trace'])
 const DEFAULT_CONTENT_STORE_PATH = './data/content'
 const DEFAULT_BLOB_STORE_PATH = './data/blobs'
 const DEFAULT_SOURCE_CACHE_PATH = './data/sources'
+const DEFAULT_SOURCE_RECONCILE_INTERVAL_MS = 24 * 60 * 60 * 1000
 /** 25 MiB: enough for a page of screenshots, far short of anything a document needs. */
 const DEFAULT_ATTACHMENT_MAX_BYTES = 25 * 1024 * 1024
 
@@ -382,15 +388,20 @@ function loadSourcesConfig(env: NodeJS.ProcessEnv): SourcesConfig {
     .split(',')
     .map((host) => host.trim().toLowerCase())
     .filter((host) => host.length > 0)
+  const reconcileIntervalMs = parseDuration(
+    env['SOURCE_RECONCILE_INTERVAL_MS'],
+    'SOURCE_RECONCILE_INTERVAL_MS',
+    DEFAULT_SOURCE_RECONCILE_INTERVAL_MS,
+  )
   const egressProxy = env['SOURCE_EGRESS_PROXY'] ?? ''
-  if (egressProxy === '') return { cachePath, privateHostsAllowed }
+  if (egressProxy === '') return { cachePath, privateHostsAllowed, reconcileIntervalMs }
   const protocol = URL.canParse(egressProxy) ? new URL(egressProxy).protocol : ''
   if (protocol !== 'http:' && protocol !== 'https:') {
     throw new Error(
       `SOURCE_EGRESS_PROXY must be an http or https address, received "${egressProxy}"`,
     )
   }
-  return { cachePath, privateHostsAllowed, egressProxy }
+  return { cachePath, privateHostsAllowed, egressProxy, reconcileIntervalMs }
 }
 
 /**

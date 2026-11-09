@@ -25,12 +25,40 @@ import { strictValidator } from './strict-validator.ts'
 /** A page's worth of ids is plenty for "mark these read"; more is "mark all". */
 const MAX_IDS = 200
 
-const KindSchema = Type.Union([
+const ReviewKindSchema = Type.Union([
   Type.Literal('review-requested'),
   Type.Literal('changes-requested'),
   Type.Literal('review-approved'),
   Type.Literal('review-withdrawn'),
 ])
+
+const ReviewNotificationSchema = Type.Object({
+  id: Type.String(),
+  kind: ReviewKindSchema,
+  document: Type.Object({
+    id: Type.String(),
+    shortId: Type.String(),
+    title: Type.String(),
+    workspaceId: Type.String(),
+  }),
+  actor: Type.Object({ id: Type.String(), name: Type.String() }),
+  at: Type.String({ format: 'date-time' }),
+  readAt: Type.Union([Type.String({ format: 'date-time' }), Type.Null()]),
+})
+
+/** A workspace's source stopped syncing (ADR-061); only its administrators see it. */
+const SourceSyncFailedNotificationSchema = Type.Object({
+  id: Type.String(),
+  kind: Type.Literal('source-sync-failed'),
+  workspace: Type.Object({ id: Type.String(), slug: Type.String(), name: Type.String() }),
+  /** Why it stopped (`SourceSyncFailureReason`) and at which source revision, if replay had begun. */
+  failure: Type.Object({
+    reason: Type.String(),
+    revision: Type.Union([Type.String(), Type.Null()]),
+  }),
+  at: Type.String({ format: 'date-time' }),
+  readAt: Type.Union([Type.String({ format: 'date-time' }), Type.Null()]),
+})
 
 const NotificationsQuerySchema = Type.Object({
   limit: Type.Optional(
@@ -45,21 +73,7 @@ const NotificationsQuerySchema = Type.Object({
 })
 
 const NotificationsSchema = Type.Object({
-  items: Type.Array(
-    Type.Object({
-      id: Type.String(),
-      kind: KindSchema,
-      document: Type.Object({
-        id: Type.String(),
-        shortId: Type.String(),
-        title: Type.String(),
-        workspaceId: Type.String(),
-      }),
-      actor: Type.Object({ id: Type.String(), name: Type.String() }),
-      at: Type.String({ format: 'date-time' }),
-      readAt: Type.Union([Type.String({ format: 'date-time' }), Type.Null()]),
-    }),
-  ),
+  items: Type.Array(Type.Union([ReviewNotificationSchema, SourceSyncFailedNotificationSchema])),
   /** Every unread notification of the caller's, including any about documents they can no longer view. */
   unread: Type.Integer({ minimum: 0 }),
   /** Pass as `before` for the next page; absent on the last. */

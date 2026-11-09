@@ -1,4 +1,8 @@
-import { sweepDocumentViews, sweepNotifications } from '@quill/application'
+import {
+  sweepDocumentViews,
+  sweepNotifications,
+  sweepSourceWebhookDeliveries,
+} from '@quill/application'
 import type { Clock, UnitOfWork } from '@quill/application'
 
 import type { SessionConfig } from '../config.ts'
@@ -6,9 +10,10 @@ import type { ScheduledJob } from './job-runner.ts'
 
 /**
  * Housekeeping for credentials that have stopped being credentials
- * (ADR-011, review finding M15), and for per-person records that have outlived
+ * (ADR-011, review finding M15), for per-person records that have outlived
  * their window (ADR-053: what a person opened, and their notifications, are kept
- * 90 days).
+ * 90 days), and for the push webhook deliveries a source has accepted, which
+ * are remembered a week (ADR-061).
  *
  * Both clocks are already enforced on the way in: a session past its absolute
  * or idle deadline is deleted when somebody presents it, and a spent or
@@ -34,6 +39,7 @@ export interface SweepOutcome {
   readonly magicLinks: number
   readonly documentViews: number
   readonly notifications: number
+  readonly webhookDeliveries: number
 }
 
 /** Hourly: the rows are cheap to keep for an hour and there is no urgency. */
@@ -49,6 +55,7 @@ export async function sweepExpired(deps: SweepDependencies, now: Date): Promise<
     magicLinks: await repos.magicLinks.deleteSpent(now),
     documentViews: await sweepDocumentViews(deps, now),
     notifications: await sweepNotifications(deps, now),
+    webhookDeliveries: await sweepSourceWebhookDeliveries(deps, now),
   }
 }
 
