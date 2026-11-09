@@ -135,6 +135,7 @@ describe('the source sync state', () => {
     fingerprint: '{"origin":"manifest"}',
     collectionIds: ['collection-1'],
     unknownKeys: [{ key: 'owner', line: 2 }],
+    redirects: [['docs/old.md', 'docs/new.md']] as const,
   }
 
   it('has nothing for a workspace that never synced', async () => {
@@ -320,6 +321,7 @@ describe('the source sync state', () => {
           fingerprint: 'f',
           collectionIds: ['a', 7],
           unknownKeys: [{ key: 'x', line: 2 }, { key: 'y' }, 'z'],
+          redirects: [['a.md', 'b.md'], ['c.md'], ['d.md', 4], 'e.md'],
         }),
       ],
     )
@@ -331,7 +333,27 @@ describe('the source sync state', () => {
         { key: 'x', line: 2 },
         { key: 'y', line: null },
       ],
+      redirects: [['a.md', 'b.md']],
     })
+  })
+
+  it('reads a layout recorded before redirects were kept as having none', async () => {
+    await database.pool.query(
+      `INSERT INTO source_sync_state (workspace_id, last_attempt_at, refused, layout)
+       VALUES ($1, $2, '[]'::jsonb, $3::jsonb)`,
+      [
+        WORKSPACE,
+        NOW,
+        JSON.stringify({
+          version: 1,
+          origin: 'manifest',
+          fingerprint: 'f',
+          collectionIds: [],
+          unknownKeys: [],
+        }),
+      ],
+    )
+    expect((await states.find(WORKSPACE))?.layout?.redirects).toEqual([])
   })
 })
 

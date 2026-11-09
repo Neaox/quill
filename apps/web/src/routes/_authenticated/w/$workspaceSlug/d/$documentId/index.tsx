@@ -1,6 +1,14 @@
 import { createFileRoute, notFound, redirect } from '@tanstack/react-router'
 
 import { DocumentPage } from '../../../../../../features/documents/document-page.tsx'
+import {
+  removedDocument,
+  type RemovedDocument,
+} from '../../../../../../features/documents/removed-document.ts'
+import {
+  RemovedDocumentNotice,
+  ReplacedNote,
+} from '../../../../../../features/documents/removed-document-notice.tsx'
 import { RouteNotice } from '../../../../../../features/workspaces/route-notice.tsx'
 import {
   ApiError,
@@ -30,6 +38,11 @@ export interface DocumentSearch {
   view?: ComparisonView
   /** How the source view sets the two texts out. */
   layout?: ComparisonLayout
+  /**
+   * The title of a removed page whose old address led here (ADR-046): said
+   * once at the top, so the reader knows why they are not where they asked.
+   */
+  replaced?: string
 }
 
 function oneOf<T extends string>(
@@ -67,6 +80,7 @@ function validateDocumentSearch(search: Record<string, unknown>): DocumentSearch
     ...optionalStringSearch(search, 'to'),
     ...oneOf<ComparisonView>(search, 'view', ['changes', 'source']),
     ...oneOf<ComparisonLayout>(search, 'layout', ['split', 'unified']),
+    ...optionalStringSearch(search, 'replaced'),
   }
 }
 
@@ -89,6 +103,21 @@ export const Route = createFileRoute('/_authenticated/w/$workspaceSlug/d/$docume
       if (error instanceof ApiError && (error.status === 404 || error.status === 403)) {
         throw notFound()
       }
+      // A page whose file left its repository (ADR-061, ADR-046): to the page
+      // its old path now leads to, saying so, or the notice that it was removed.
+      const removed = removedDocument(error)
+      if (removed?.replacement !== null && removed?.replacement !== undefined) {
+        throw redirect({
+          to: '/w/$workspaceSlug/d/$documentId',
+          params: {
+            workspaceSlug: params.workspaceSlug,
+            documentId: documentReference(removed.replacement),
+          },
+          search: { replaced: removed.title },
+          replace: true,
+        })
+      }
+      if (removed !== null) throw notFound({ data: removed })
       throw error
     }
 
@@ -122,17 +151,37 @@ export const Route = createFileRoute('/_authenticated/w/$workspaceSlug/d/$docume
     return { title: document.title }
   },
   head: ({ loaderData }) => ({ meta: [{ title: loaderData?.title ?? 'Document' }] }),
-  notFoundComponent: () => (
-    <RouteNotice
-      title="We couldn't find that document"
-      body="It may have been deleted, or moved somewhere you cannot see. This workspace's documents are in the sidebar."
-    />
-  ),
+  notFoundComponent: ({ data }) => {
+    const removed = isRemoved(data) ? data : null
+    return removed === null ? (
+      <RouteNotice
+        title="We couldn't find that document"
+        body="It may have been deleted, or moved somewhere you cannot see. This workspace's documents are in the sidebar."
+      />
+    ) : (
+      <RemovedDocumentNotice removed={removed} />
+    )
+  },
   errorComponent: () => (
     <RouteNotice
       title="Couldn't load this document"
       body="Something went wrong on the way. Reload the page to try again."
     />
   ),
-  component: DocumentPage,
+  component: DocumentRoute,
 })
+
+function isRemoved(data: unknown): data is RemovedDocument {
+  return typeof data === 'object' && data !== null && 'title' in data && 'replacement' in data
+}
+
+/** The page, with a line saying which removed page's address led here, when one did. */
+function DocumentRoute() {
+  const { replaced } = Route.useSearch()
+  return (
+    <>
+      {replaced === undefined ? undefined : <ReplacedNote title={replaced} />}
+      <DocumentPage />
+    </>
+  )
+}

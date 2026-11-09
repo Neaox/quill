@@ -295,7 +295,7 @@ function readFailure(value: unknown): SourceSyncFailure | null {
  */
 function readLayout(value: unknown): SourceLayoutRecord | null {
   if (!isRecord(value) || value['version'] !== STATE_VERSION) return null
-  const { origin, fingerprint, collectionIds, unknownKeys } = value
+  const { origin, fingerprint, collectionIds, unknownKeys, redirects } = value
   if (
     (origin !== 'manifest' && origin !== 'settings') ||
     typeof fingerprint !== 'string' ||
@@ -312,7 +312,18 @@ function readLayout(value: unknown): SourceLayoutRecord | null {
       key: String(key),
       line: typeof line === 'number' ? line : null,
     })),
+    redirects: Array.isArray(redirects) ? redirects.filter(isPathPair) : [],
   }
+}
+
+/** An old path and a new one, as a stored redirect is written. */
+function isPathPair(value: unknown): value is readonly [string, string] {
+  return (
+    Array.isArray(value) &&
+    value.length === 2 &&
+    typeof value[0] === 'string' &&
+    typeof value[1] === 'string'
+  )
 }
 
 /**

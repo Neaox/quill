@@ -1,0 +1,1 @@
+Fixed: A page whose file left its repository now answers 410 with its title and the commit that removed it, to its readers and on the public site, and is no longer listed; a path the manifest redirects leads to its replacement, in the app (with a note), on the public site (301) and from other pages' links.
