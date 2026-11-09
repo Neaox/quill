@@ -44,8 +44,15 @@ export const EMOJI_MAX_SECONDS = 10
 export function useUploadEmojiImage() {
   const client = useApiClient()
   return useMutation({
-    mutationFn: async (file: File): Promise<EmojiImage> => {
-      const { data, error, response } = await uploadEmojiImage(client, file)
+    mutationFn: async ({
+      file,
+      monochrome = false,
+    }: {
+      readonly file: File
+      /** Draw it in the colour of the text around it: an SVG, stored as a glyph. */
+      readonly monochrome?: boolean
+    }): Promise<EmojiImage> => {
+      const { data, error, response } = await uploadEmojiImage(client, file, { monochrome })
       if (!response.ok || data === undefined) throw toApiError(response.status, error)
       return data
     },

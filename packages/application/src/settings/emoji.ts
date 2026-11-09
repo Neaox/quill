@@ -122,6 +122,13 @@ export const CustomEmojiSchema = Type.Object(
     /** The image's own size, for its proportions; it is drawn at the text's height. */
     width: Pixels,
     height: Pixels,
+    /**
+     * A line icon drawn in the colour of the text around it (ADR-038, amended
+     * 2026-11-10): an SVG uploaded as monochrome, which the upload rewrote as
+     * one glyph painted with `currentColor`. Absent, the emoji is a picture
+     * that keeps its own colours, as every emoji saved before it is.
+     */
+    monochrome: Type.Optional(Type.Literal(true)),
   },
   { additionalProperties: false },
 )
@@ -202,6 +209,8 @@ export interface RenderedEmoji {
   readonly description?: string
   readonly width: number
   readonly height: number
+  /** Drawn in the colour of the text around it, from its glyph. */
+  readonly monochrome?: true
 }
 
 /** The organisation's emoji by name, ready to draw. */
@@ -221,6 +230,7 @@ export function customEmojiByName(
           ...(entry.description === undefined ? {} : { description: entry.description }),
           width: entry.width,
           height: entry.height,
+          ...(entry.monochrome === true ? { monochrome: true } : {}),
         },
       ]
     }),
@@ -242,6 +252,15 @@ export function labelEmoji(
       const lead = label.emoji ?? (custom.has(label.name) ? label.name : undefined)
       return lead === undefined ? [] : [[label.name, lead] as const]
     }),
+  )
+}
+
+/** Monochrome emoji that are not SVGs: only an SVG upload can be a glyph. */
+export function monochromeNotSvg(
+  emoji: readonly CustomEmojiEntry[] | undefined,
+): readonly { readonly index: number; readonly name: string }[] {
+  return (emoji ?? []).flatMap(({ name, mediaType, monochrome }, index) =>
+    monochrome === true && mediaType !== 'image/svg+xml' ? [{ index, name }] : [],
   )
 }
 

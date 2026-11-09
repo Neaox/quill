@@ -9,6 +9,12 @@ const REDUCED_MOTION = '(prefers-reduced-motion: reduce)'
 export interface ServedEmoji {
   readonly src: string
   readonly still?: string | undefined
+  /**
+   * A monochrome emoji's served glyph (ADR-038, amended), drawn as the reader
+   * draws it: by reference, in the colour of the text around it. A file not
+   * yet saved is shown as the picture it was uploaded as.
+   */
+  readonly glyph?: { readonly width: number; readonly height: number } | undefined
 }
 
 export interface EmojiImageProps {
@@ -24,6 +30,18 @@ export interface EmojiImageProps {
  * document would.
  */
 export function EmojiImage({ image, alt, className }: EmojiImageProps) {
+  if (image.glyph !== undefined) {
+    const { width, height } = image.glyph
+    return (
+      <svg
+        className={className}
+        viewBox={`0 0 ${String(width)} ${String(height)}`}
+        {...(alt === '' ? { 'aria-hidden': true } : { role: 'img', 'aria-label': alt })}
+      >
+        <use href={`${image.src}#glyph`} width={width} height={height} />
+      </svg>
+    )
+  }
   const drawn = <img className={className} src={image.src} alt={alt} />
   if (image.still === undefined) return drawn
   return (

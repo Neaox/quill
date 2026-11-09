@@ -140,6 +140,29 @@ describe('emoji in the editor (ADR-038)', () => {
     unmount()
   })
 
+  it('draws a monochrome emoji as the reader does: its glyph, in SVG, in the text’s colour', () => {
+    const clock = {
+      src: '/api/emoji/clock.0123456789abcdef.svg',
+      width: 16,
+      height: 16,
+      monochrome: true,
+    }
+    const { container, unmount } = render(
+      <DocumentEditor
+        ast={parseDocument('Wait :clock: here\n').ast}
+        emoji={{ custom: new Map([['clock', clock]]), labelEmoji: new Map() }}
+      />,
+    )
+    const svg = container.querySelector('svg.emoji.emoji-glyph')
+    expect(svg?.namespaceURI).toBe('http://www.w3.org/2000/svg')
+    expect(svg?.getAttribute('role')).toBe('img')
+    expect(svg?.getAttribute('aria-label')).toBe('clock')
+    const use = svg?.querySelector('use')
+    expect(use?.namespaceURI).toBe('http://www.w3.org/2000/svg')
+    expect(use?.getAttribute('href')).toBe(`${clock.src}#glyph`)
+    unmount()
+  })
+
   it('draws an animated emoji with its still for a reader who asks for less motion', async () => {
     const party = {
       src: '/api/emoji/party.aaaaaaaaaaaaaaaa.gif',

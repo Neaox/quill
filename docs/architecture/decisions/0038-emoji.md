@@ -80,3 +80,46 @@ They are edited in **Settings → Labels and emoji** (`/admin/settings/labels`),
 An emoji with a still renders through `<picture class="emoji">` whose one `<source media="(prefers-reduced-motion: reduce)" srcset="…still…">` offers the still to readers who ask for less motion, with the animation as the `<img>` — the shape ADR-047's variants will fill in with more sources. The editor and the settings previews draw the same markup; the settings preview shows an animation moving and still, labelled. The sanitiser admits `picture.emoji` and a `source` whose `srcset` is an emoji address and whose `media` is that query, replacing the default schema's `source: ['srcSet']`, which admitted any address.
 
 **Left for ADR-047.** Modern-format variants, stills for animated WebP and AVIF, and collection of unused emoji images are the image pipeline's.
+
+## Amendment, 2026-11-10: monochrome emoji
+
+**Why.** An organisation's line icons (a clock, an inbox, a person) are emoji in its documents, and in its own interface they are drawn in the colour of their context: the accent in a timeline's node, grey in a party's chip, ink in a sentence, and light on dark in dark mode. A custom emoji is an image, so it keeps the colours it was drawn in. One fixed colour is wrong somewhere, and a dark stroke disappears in dark mode. lockstay's documentation (ADR-060's documentation kit) was the case: its icons were the main difference between its own renderer and Quill's.
+
+**A second kind of custom emoji: monochrome.** It is drawn in `currentColor`, so it takes the colour of wherever it is used. Colour emoji are unchanged: every saved emoji keeps its kind, its file and its output.
+
+**Declared at upload, by the administrator.** The settings screen offers "Draw in the text's colour" when the chosen file is an SVG, and sends the upload with `?monochrome=true`. It is never inferred from the file: a logo that happens to be one colour is still a logo, and should keep its colour. The settings entry records `monochrome: true`, which settings validation allows only on an SVG. An entry saved without it is a picture, as before.
+
+**Read once, at upload, into a glyph** (`@quill/markdown/emoji-glyph`, `monochromeGlyph`). The upload is not stored as it came. It is read and either refused with a reason the screen shows, or rewritten as a glyph:
+
+- **Shapes only.** `path`, `circle`, `ellipse`, `rect`, `line`, `polyline` and `polygon`, grouped by `g`. Anything else that draws (text, an image, a gradient, a pattern, a filter, a mask, a `use`, a `style`) is refused by name. Titles, descriptions and metadata are dropped.
+- **One colour.** Every fill and stroke is `none`, `currentColor`, or one and the same colour, which becomes `currentColor` (`#000`, `#000000` and `black` are one colour). Two colours are a picture, and are refused. A shape with no fill fills with the colour, as SVG's default black would have.
+- **Plain values.** Geometry, stroke widths, line caps, opacities and transforms are kept only when their values have their own plain form (numbers, path commands, transform functions). A `style` attribute is refused. Ids, classes, links, event handlers and every other attribute are dropped.
+- **Stored as** `<svg viewBox><symbol id="glyph" viewBox>…shapes…</symbol><use href="#glyph"/></svg>`, so the same file draws on its own as an `<img>` in black. The upload answers with the view box's proportions, which become the entry's width and height.
+
+**Drawn by reference, inline.** A page draws a monochrome emoji as `<svg class="emoji emoji-glyph" viewBox="0 0 w h" role="img" aria-label="…"><use href="/api/emoji/<name>.<hash>.svg#glyph"/></svg>`. As decoration, it carries `aria-hidden="true"` instead of the role and label. The alternatives:
+
+- **`mask-image` on a span.** Its address would have to be an inline `style`, which the content security policy forbids (`style-src 'self'`), or a stylesheet generated from the organisation's settings, which is another file to serve, invalidate and cache. Forced colours also drop backgrounds, which would make the icon vanish.
+- **Inline shapes in every body.** These would need the settings, or the render, to carry the image's bytes (ADR-034). They would also repeat them wherever the emoji appears.
+- **`<use>` of a same-origin file**, which is what was chosen:
+  - it needs no style and no script;
+  - the file is cached immutably like every emoji;
+  - the shapes inherit `color`, so light, dark and forced colours (`CanvasText`) follow;
+  - it was checked in Chromium, Firefox and WebKit under Quill's policy (`img-src 'self'`), with the emoji route's own sandboxing headers on the file.
+
+**What the sanitiser admits.** `svg` and `use` join the document schema through the emoji grant, and only in this form:
+
+- `svg`: the classes `emoji` and `emoji-glyph`, a view box of whole pixels from the origin, a whole-pixel width and height, and either `role="img"` with an `aria-label`, or `aria-hidden="true"`.
+- `use`: an `href` that is an emoji's SVG address with `#glyph` (`EMOJI_GLYPH_URL`), and a whole-pixel width and height.
+
+An author still cannot write either, because raw HTML stays text (ADR-011). Drawings keep their own allowlist, placed after the document sanitiser (ADR-036).
+
+**Everywhere a custom emoji is drawn.**
+
+- **Reader, public site, share links:** the same markup, from the renderer.
+- **Editor:** its decorations draw the same `svg` in SVG's namespace.
+- **Emoji menus:** the `:` suggestion and the `/emoji` picker draw the glyph in the menu's ink.
+- **Settings screen:** previews a saved monochrome emoji in its light and dark samples in their own text colours. A file chosen but not yet saved is previewed as the picture it was uploaded as, because the glyph is served only once the settings name it.
+
+The reading stylesheet sizes `svg.emoji` as it sizes `img.emoji`. A party's chip draws its glyph in the muted ink, as an interface draws an icon beside a name. A node, a time chip, a badge and running text use their own colour.
+
+**Cache key.** A monochrome emoji joins the render key (ADR-031) marked as a glyph, and only then, so no body rendered before this changes its key. `RENDER_VERSION` is unchanged: no existing document draws differently until an emoji is saved as monochrome, and saving one changes the key of exactly the bodies that use it.

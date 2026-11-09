@@ -2268,8 +2268,11 @@
  * image set at the height of the text around it and on its baseline, never the
  * block figure every other image in a document is. An animated one is that
  * image inside a `picture.emoji`, which offers its still under reduced motion.
+ * A monochrome one is an `svg.emoji-glyph` using its glyph, painted in the
+ * colour of the text around it (ADR-038, amended), so it follows the theme,
+ * dark mode and forced colours with nothing of its own.
  */
-.prose img.emoji {
+.prose :is(img, svg).emoji {
   display: inline-block;
   width: auto;
   height: 1.2em;
@@ -2291,7 +2294,7 @@
   margin-inline-end: 0.4em;
 }
 
-.prose .badge > img.emoji,
+.prose .badge > :is(img, svg).emoji,
 .prose .badge > picture.emoji > img.emoji {
   height: 1.3333em;
   margin-block: -0.125em;
@@ -2977,7 +2980,7 @@
   margin-inline-end: 0;
 }
 
-.prose .badge:is([data-badge], .qb-step-chip) > img.emoji,
+.prose .badge:is([data-badge], .qb-step-chip) > :is(img, svg).emoji,
 .prose .badge:is([data-badge], .qb-step-chip) > picture.emoji > img.emoji {
   height: 1.0833em;
   margin-block: 0;
@@ -3015,10 +3018,15 @@
   vertical-align: baseline;
 }
 
-.prose .qb-route-party > img.emoji,
+.prose .qb-route-party > :is(img, svg).emoji,
 .prose .qb-route-party > picture.emoji > img.emoji {
   height: 0.9375rem;
   vertical-align: 0;
+}
+
+/* A line icon names a party quietly: the party's words are the ink. */
+.prose .qb-route-party > svg.emoji-glyph {
+  color: var(--color-muted);
 }
 
 .prose .qb-route-party > span.emoji {
@@ -3090,7 +3098,9 @@
 
 .prose :is(.qb-step-node, .qb-cast-node)[data-qb-tone='outside'] {
   background-color: var(--color-surface-raised);
-  box-shadow: inset 0 0 0 1.5px var(--color-border-strong);
+  /* A quiet ring, a step stronger than a rule, in both schemes. */
+  box-shadow: inset 0 0 0 1.5px
+    color-mix(in oklch, var(--color-border) 88%, var(--color-border-strong));
   color: var(--color-body);
 }
 
@@ -3099,7 +3109,7 @@
   color: var(--color-success);
 }
 
-.prose :is(.qb-step-node, .qb-cast-node) > img.emoji,
+.prose :is(.qb-step-node, .qb-cast-node) > :is(img, svg).emoji,
 .prose :is(.qb-step-node, .qb-cast-node) > picture.emoji > img.emoji {
   height: 1.125rem;
   vertical-align: 0;
@@ -3140,6 +3150,8 @@
 
 .prose .qb-cast-text {
   min-width: 0;
+  /* A chip's words fill its width, as a label's do, rather than balancing their lines. */
+  text-wrap: wrap;
 }
 
 .prose .qb-cast-text > strong {

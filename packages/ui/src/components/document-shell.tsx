@@ -6,6 +6,7 @@ import type { ThemeVariants } from '@quill/theme'
 import { tv } from '../lib/class-names.ts'
 import { PlainLink, type LinkComponent } from '../lib/link.tsx'
 import { useThemeVariants } from '../theme/theme-variants.tsx'
+import { Breadcrumb } from './breadcrumb.tsx'
 import { DocumentHeader, type DocumentStatus } from './document-header.tsx'
 import { IconRail, type IconRailItem } from './icon-rail.tsx'
 import { useNarrowScreen } from '../lib/use-narrow-screen.ts'
@@ -73,6 +74,11 @@ export const documentShellStyles = tv({
       'focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-focus-ring',
     ],
     main: 'shell-main',
+    /*
+     * The bar has no room for the trail on a phone (`documentHeaderStyles`),
+     * so it sits at the top of the page there instead, its middle folded.
+     */
+    phoneTrail: 'px-4 pt-3 md:hidden',
     aside: [
       'shell-aside w-60 px-6 pt-8 pb-8',
       'max-lg:w-auto max-lg:border-t max-lg:border-border max-lg:pt-8',
@@ -313,6 +319,15 @@ export function DocumentShell({
       </section>
 
       <main id="document" className={styles.main()} inert={covered}>
+        {narrow && status.path.length > 1 ? (
+          <Breadcrumb
+            items={status.path}
+            label="Where this page is"
+            collapse
+            {...(linkComponent === undefined ? {} : { linkComponent })}
+            className={styles.phoneTrail()}
+          />
+        ) : undefined}
         {children}
       </main>
 

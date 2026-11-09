@@ -425,6 +425,11 @@ const attributes: Schema['attributes'] = {
     ...EMOJI_SANITIZE_GRANT.attributes.picture,
   ],
   source: EMOJI_SANITIZE_GRANT.attributes.source,
+
+  // A monochrome emoji (ADR-038, amended): an `svg` holding one `use` of an
+  // emoji's glyph, its address held to `EMOJI_GLYPH_URL`.
+  svg: EMOJI_SANITIZE_GRANT.attributes.svg,
+  use: EMOJI_SANITIZE_GRANT.attributes.use,
 }
 
 // `defaultSchema.tagNames` is always defined (see the note above
@@ -447,6 +452,7 @@ const tagNames = [
   'col',
   'caption', // handlers.ts: a table's caption, which names it (ADR-040)
   ...NAVIGATION_SANITIZE_GRANT.tagNames, // navigation/render.ts: a table of contents (ADR-058)
+  ...EMOJI_SANITIZE_GRANT.tagNames, // emoji/emoji.ts: a monochrome emoji (ADR-038)
 ]
 
 const protocols: Schema['protocols'] = {

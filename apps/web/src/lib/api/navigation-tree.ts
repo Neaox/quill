@@ -277,6 +277,32 @@ export function useNavigationTree(workspaceId: string | undefined, focus: string
   return { ...tree, load, loadFailed }
 }
 
+/**
+ * The documents a loaded document is nested under, the outermost first: its
+ * folder pages and parents, found by climbing the loaded lists, which always
+ * hold the way down to the document the tree was opened on. Empty for a
+ * document at the top of its collection, or one the tree has not loaded.
+ */
+export function ancestorsOf(tree: NavigationTree, documentId: string): readonly NavigationNode[] {
+  const parentOf = new Map<string, string>()
+  for (const [key, list] of tree.lists) {
+    if (!key.startsWith(DOCUMENT_LIST)) continue
+    for (const id of list.ids) parentOf.set(id, key.slice(DOCUMENT_LIST.length))
+  }
+  const ancestors: NavigationNode[] = []
+  const seen = new Set<string>([documentId])
+  for (let id = parentOf.get(documentId); id !== undefined; id = parentOf.get(id)) {
+    const node = tree.nodes.get(id)
+    // A cycle, or a parent not loaded, ends the climb rather than inventing a step.
+    if (node === undefined || seen.has(id)) break
+    seen.add(id)
+    ancestors.unshift(node)
+  }
+  return ancestors
+}
+
+const DOCUMENT_LIST = listKey.document('')
+
 /** Whether a document, by id or by reference, is among the loaded nodes. */
 function holds(tree: NavigationTree, focus: string): boolean {
   if (tree.nodes.has(focus)) return true
