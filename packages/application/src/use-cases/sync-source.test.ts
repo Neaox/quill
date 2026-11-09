@@ -42,6 +42,7 @@ import type { FakeContentStore, InMemoryUnitOfWork } from '../test-support/index
 import {
   COLLECTION_DELETED,
   DOCUMENT_MOVED,
+  DOCUMENT_NESTED,
   DOCUMENT_PUBLISHED,
   DOCUMENT_RENAMED,
   EVENT_PAYLOAD_VERSION,
@@ -60,6 +61,7 @@ import type { SyncSourceDependencies } from './sync-source.ts'
 import { compareRevisions } from './compare-revisions.ts'
 import { renderDocument } from './render-document.ts'
 import { readAssetMap, SOURCE_ASSET_MAP_PATH } from './source-assets.ts'
+import { generatedFolderPath } from './source-folders.ts'
 import type { RenderDocumentDependencies } from './render-document.ts'
 
 const LAYOUT_RECORD: SourceLayoutRecord = {
@@ -1141,8 +1143,16 @@ describe('syncSource with a manifest', () => {
     const collections = await collectionsOf(h)
     expect(collections.map(({ slug }) => slug)).toEqual(['guides'])
     expect(h.uow.events.map((event) => event.type)).toContain(COLLECTION_DELETED)
-    expect(h.store.requests[1]?.changes).toEqual([
-      expect.objectContaining({ kind: 'write', path: 'docs/extra/x.md' }),
+    // Each folder the guides now read is a document of its own (ADR-061).
+    expect(
+      h.store.requests[1]?.changes.map((change) =>
+        change.kind === 'write' ? change.path : change.kind,
+      ),
+    ).toEqual([
+      'docs/extra/x.md',
+      generatedFolderPath('docs/guides'),
+      generatedFolderPath('docs/notes'),
+      generatedFolderPath('docs/extra'),
     ])
     expect(await h.idAt('docs/guides/a.md')).toBe(a)
     // The notes' document is placed again among the guides: same file, same id.
@@ -1159,6 +1169,7 @@ describe('syncSource with a manifest', () => {
     })
     await h.sync()
     const b = await h.idAt('docs/drafts/b.md')
+    const drafts = await h.idAt(generatedFolderPath('docs/drafts'))
     h.source.push({
       id: 'c2',
       files: {
@@ -1169,8 +1180,10 @@ describe('syncSource with a manifest', () => {
     })
     await h.sync()
     expect((await h.uow.repos.documents.findById(b))?.status).toBe('archived')
+    // The folder holds nothing any more, so its generated document leaves with it.
     expect(h.store.requests[1]?.changes).toEqual([
       { kind: 'delete', documentId: b, path: 'docs/drafts/b.md' },
+      { kind: 'delete', documentId: drafts, path: generatedFolderPath('docs/drafts') },
     ])
     const docs = (await collectionsOf(h)).find(({ slug }) => slug === 'docs')
     expect((await documentAt(h, 'docs/a.md')).collectionId).toBe(docs?.id)
@@ -1183,6 +1196,8 @@ describe('syncSource with a manifest', () => {
     expect((await documentAt(h, 'docs/a.md')).collectionId).toBe(GUIDES)
     expect(await h.idAt('docs/drafts/b.md')).toBe(b)
     expect((await h.uow.repos.documents.findById(b))?.status).toBe('published')
+    expect(await h.idAt(generatedFolderPath('docs/drafts'))).toBe(drafts)
+    expect((await h.uow.repos.documents.findById(b))?.parentId).toBe(drafts)
     expect(await h.uow.repos.collections.findById(docs?.id ?? '')).toBeNull()
     expect((await state(h))?.layout).toMatchObject({ origin: 'settings', collectionIds: [] })
   })
@@ -2087,5 +2102,372 @@ describe('repository assets', () => {
     const h = harness([{ id: 'c1', files: { ...FILES } }])
     h.source.missing.add(toFile('docs/shot.png', bytes(SHOT)).fileId)
     expect(await h.sync()).toMatchObject({ kind: 'failed', failure: { reason: 'file-missing' } })
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Folders as documents (ADR-061, "Tree, titles and order")
+// ---------------------------------------------------------------------------
+
+describe('folders as documents', () => {
+  const CONCEPTS = generatedFolderPath('docs/guide/concepts')
+  /** rookwood's guide: folders with a README, and one without. */
+  const GUIDE_FILES = {
+    'docs/guide/README.md': [
+      '# Guide',
+      '[Tenancy](./concepts/tenancy/README.md)',
+      '[Requests](./concepts/requests/)',
+      '[Concepts](concepts)',
+      '[Isolation](concepts/tenancy/isolation.md)',
+      '[Nowhere](./concepts/nowhere/)',
+    ].join('\n\n'),
+    'docs/guide/concepts/tenancy/README.md': '# Tenancy',
+    'docs/guide/concepts/tenancy/isolation.md': '# Isolation',
+    'docs/guide/concepts/requests/README.md': '# Requests',
+    'docs/top.md': '# Top',
+  }
+
+  const parentOf = async (h: Harness, path: string) => (await documentAt(h, path)).parentId
+
+  it("nests a folder's documents under its README, and writes a titled document for a folder with none", async () => {
+    const h = harness([{ id: 'c1', files: GUIDE_FILES }])
+    expect(await h.sync()).toEqual({ kind: 'synced', revision: 'c1', published: 1 })
+
+    const guide = await h.idAt('docs/guide/README.md')
+    const concepts = await h.idAt(CONCEPTS)
+    const tenancy = await h.idAt('docs/guide/concepts/tenancy/README.md')
+    // The collection's own directory is the collection: its files are at the top.
+    expect(await parentOf(h, 'docs/top.md')).toBeNull()
+    expect(await parentOf(h, 'docs/guide/README.md')).toBeNull()
+    expect(await parentOf(h, CONCEPTS)).toBe(guide)
+    expect(await parentOf(h, 'docs/guide/concepts/tenancy/README.md')).toBe(concepts)
+    expect(await parentOf(h, 'docs/guide/concepts/requests/README.md')).toBe(concepts)
+    expect(await parentOf(h, 'docs/guide/concepts/tenancy/isolation.md')).toBe(tenancy)
+
+    expect(await documentAt(h, CONCEPTS)).toMatchObject({
+      title: 'Concepts',
+      collectionId: GUIDES,
+      status: 'published',
+    })
+    expect(await h.stored(CONCEPTS)).toBe(
+      serialise({ id: concepts }, '# Concepts\n\n::children{excerpts}\n'),
+    )
+    // It is published with the files that made it, in the one revision.
+    expect(h.store.requests[0]?.changes).toContainEqual(
+      expect.objectContaining({ kind: 'write', path: CONCEPTS, documentId: concepts }),
+    )
+    expect(
+      h.uow.events
+        .filter((event) => event.type === DOCUMENT_NESTED)
+        .map((event) => (event.payload as { documentId: string }).documentId),
+    ).toContain(concepts)
+  })
+
+  it("puts a collection's own README first, unless its front matter says where it goes", async () => {
+    const BETA = serialise({ order: 1 }, '# Beta')
+    const h = harness([
+      {
+        id: 'c1',
+        files: {
+          'docs/README.md': '# Zed overview',
+          'docs/alpha.md': '# Alpha',
+          'docs/beta.md': BETA,
+        },
+      },
+    ])
+    await h.sync()
+    const key = async (path: string) => (await documentAt(h, path)).sortKey ?? 0
+    expect(await key('docs/README.md')).toBeLessThan(await key('docs/beta.md'))
+    expect(await key('docs/beta.md')).toBeLessThan(await key('docs/alpha.md'))
+
+    h.source.push({
+      id: 'c2',
+      files: {
+        'docs/README.md': serialise({ order: 5 }, '# Zed overview'),
+        'docs/alpha.md': '# Alpha',
+        'docs/beta.md': BETA,
+      },
+    })
+    await h.sync()
+    expect(await key('docs/README.md')).toBe(5)
+  })
+
+  it("orders a folder's document among its siblings by the folder's name", async () => {
+    const h = harness([
+      {
+        id: 'c1',
+        files: {
+          [MANIFEST]: manifest('{ slug: docs, title: Docs, path: docs, order: filename }'),
+          'docs/b.md': '# Zed',
+          'docs/a/README.md': '# Yak',
+          'docs/c/x.md': '# Ant',
+        },
+      },
+    ])
+    await h.sync()
+    const keys = async (...paths: string[]) =>
+      await Promise.all(paths.map(async (path) => (await documentAt(h, path)).sortKey))
+    expect(await keys('docs/a/README.md', 'docs/b.md', generatedFolderPath('docs/c'))).toEqual([
+      1, 2, 3,
+    ])
+    // Siblings are ordered within their parent.
+    expect(await keys('docs/c/x.md')).toEqual([1])
+  })
+
+  it("resolves a link to a folder's README, to the folder, and to it with a slash, to the folder's document", async () => {
+    const h = harness([{ id: 'c1', files: GUIDE_FILES }])
+    await sourced(h)
+    await h.sync()
+    const { html } = (await render(h, 'docs/guide/README.md')).content
+    const tenancy = await h.idAt('docs/guide/concepts/tenancy/README.md')
+    const requests = await h.idAt('docs/guide/concepts/requests/README.md')
+    const concepts = await h.idAt(CONCEPTS)
+    const isolation = await h.idAt('docs/guide/concepts/tenancy/isolation.md')
+    expect(html).toContain(`[Tenancy](/d/${tenancy})`)
+    expect(html).toContain(`[Requests](/d/${requests})`)
+    expect(html).toContain(`[Concepts](/d/${concepts})`)
+    expect(html).toContain(`[Isolation](/d/${isolation})`)
+    expect(html).toContain(
+      '[Nowhere](https://github.com/acme/handbook/blob/c1/docs/guide/concepts/nowhere)',
+    )
+    // Only the folder that is not there is broken.
+    expect((await state(h))?.brokenLinks).toEqual([
+      { path: 'docs/guide/README.md', url: './concepts/nowhere/', revision: 'c1' },
+    ])
+    expect(await h.uow.repos.documentLinks.listSourcesTargeting(concepts)).toEqual([
+      await h.idAt('docs/guide/README.md'),
+    ])
+  })
+
+  it("gives a folder's generated document to the README it gains, and keeps it when the README goes", async () => {
+    const tenancyFiles = { 'docs/guide/concepts/tenancy/README.md': '# Tenancy' }
+    const h = harness([{ id: 'c1', files: tenancyFiles }])
+    await h.sync()
+    const concepts = await h.idAt(CONCEPTS)
+
+    h.source.push({
+      id: 'c2',
+      files: { ...tenancyFiles, 'docs/guide/concepts/README.md': '# Core concepts' },
+    })
+    await h.sync()
+    expect(await h.idAt('docs/guide/concepts/README.md')).toBe(concepts)
+    await expect(h.idAt(CONCEPTS)).rejects.toThrow('no path map entry')
+    expect(h.store.requests[1]?.changes).toEqual([
+      {
+        kind: 'move',
+        documentId: concepts,
+        fromPath: CONCEPTS,
+        toPath: 'docs/guide/concepts/README.md',
+        markdown: serialise({ id: concepts }, '# Core concepts'),
+      },
+    ])
+    expect(await documentAt(h, 'docs/guide/concepts/README.md')).toMatchObject({
+      title: 'Core concepts',
+      status: 'published',
+    })
+    expect(await parentOf(h, 'docs/guide/concepts/tenancy/README.md')).toBe(concepts)
+
+    h.source.push({ id: 'c3', files: tenancyFiles })
+    await h.sync()
+    expect(await h.idAt(CONCEPTS)).toBe(concepts)
+    expect(await documentAt(h, CONCEPTS)).toMatchObject({ title: 'Concepts', status: 'published' })
+    expect(h.store.requests[2]?.changes).toEqual([
+      expect.objectContaining({ kind: 'move', documentId: concepts, toPath: CONCEPTS }),
+    ])
+    expect(await parentOf(h, 'docs/guide/concepts/tenancy/README.md')).toBe(concepts)
+    // One page all along, with every revision in its history.
+    const recorded = await Promise.all(
+      ['c1', 'c2', 'c3'].map(async (commit) =>
+        h.uow.repos.revisions.findBySourceRevision(WORKSPACE, commit),
+      ),
+    )
+    for (const row of recorded) {
+      if (row === null) throw new Error('a revision was not recorded')
+      expect(await h.uow.repos.revisions.findForDocument(concepts, row.revision)).not.toBeNull()
+    }
+  })
+
+  it('archives a folder document when its folder empties, and brings it back with its id', async () => {
+    const h = harness([{ id: 'c1', files: { 'docs/a/b.md': '# B', 'docs/c.md': '# C' } }])
+    await h.sync()
+    const folder = await h.idAt(generatedFolderPath('docs/a'))
+
+    h.source.push({ id: 'c2', files: { 'docs/c.md': '# C' } })
+    await h.sync()
+    expect((await h.uow.repos.documents.findById(folder))?.status).toBe('archived')
+    expect(h.store.requests[1]?.changes).toContainEqual({
+      kind: 'delete',
+      documentId: folder,
+      path: generatedFolderPath('docs/a'),
+    })
+
+    h.source.push({ id: 'c3', files: { 'docs/a/b.md': '# B', 'docs/c.md': '# C' } })
+    await h.sync()
+    expect(await h.idAt(generatedFolderPath('docs/a'))).toBe(folder)
+    expect((await h.uow.repos.documents.findById(folder))?.status).toBe('published')
+    expect(await parentOf(h, 'docs/a/b.md')).toBe(folder)
+  })
+
+  it("moves a renamed folder's generated documents with it", async () => {
+    const h = harness([
+      { id: 'c1', files: { 'docs/a/x/one.md': '# One', 'docs/a/x/two.md': '# Two' } },
+    ])
+    await h.sync()
+    const a = await h.idAt(generatedFolderPath('docs/a'))
+    const x = await h.idAt(generatedFolderPath('docs/a/x'))
+
+    h.source.push({
+      id: 'c2',
+      files: { 'docs/b/x/one.md': '# One', 'docs/b/x/two.md': '# Two' },
+      renames: { 'docs/a/x/one.md': 'docs/b/x/one.md', 'docs/a/x/two.md': 'docs/b/x/two.md' },
+    })
+    await h.sync()
+    expect(await h.idAt(generatedFolderPath('docs/b'))).toBe(a)
+    expect(await h.idAt(generatedFolderPath('docs/b/x'))).toBe(x)
+    expect(await documentAt(h, generatedFolderPath('docs/b'))).toMatchObject({ title: 'B' })
+    expect(await parentOf(h, 'docs/b/x/one.md')).toBe(x)
+    expect(await parentOf(h, generatedFolderPath('docs/b/x'))).toBe(a)
+  })
+
+  it('keeps a README beside an index.md as its child, and makes it the folder document when the index goes', async () => {
+    const h = harness([
+      {
+        id: 'c1',
+        files: { 'docs/a/index.md': '# Index', 'docs/a/README.md': '# Readme', 'docs/a/b.md': 'B' },
+      },
+    ])
+    await h.sync()
+    const index = await h.idAt('docs/a/index.md')
+    expect(await parentOf(h, 'docs/a/README.md')).toBe(index)
+    expect(await parentOf(h, 'docs/a/b.md')).toBe(index)
+
+    h.source.push({ id: 'c2', files: { 'docs/a/README.md': '# Readme', 'docs/a/b.md': 'B' } })
+    await h.sync()
+    const readme = await h.idAt('docs/a/README.md')
+    expect((await h.uow.repos.documents.findById(index))?.status).toBe('archived')
+    expect(await parentOf(h, 'docs/a/README.md')).toBeNull()
+    expect(await parentOf(h, 'docs/a/b.md')).toBe(readme)
+  })
+
+  it('places a generated document again with its folder when the layout changes', async () => {
+    const h = harness([{ id: 'c1', files: { 'docs/a/b.md': '# B' } }], {
+      collections: [{ collectionId: GUIDES, path: 'docs' }],
+    })
+    await h.sync()
+    const folder = await h.idAt(generatedFolderPath('docs/a'))
+
+    h.configure({ collections: [{ collectionId: DECISIONS, path: 'docs' }] })
+    expect(await h.sync()).toMatchObject({ kind: 'synced', published: 0 })
+    expect(await h.idAt(generatedFolderPath('docs/a'))).toBe(folder)
+    expect(await documentAt(h, generatedFolderPath('docs/a'))).toMatchObject({
+      collectionId: DECISIONS,
+      status: 'published',
+    })
+    expect(await parentOf(h, 'docs/a/b.md')).toBe(folder)
+  })
+
+  it('reads a rename from the top of the repository into a folder of another collection', async () => {
+    const h = harness([{ id: 'c1', files: { 'a/one.md': '# One' } }], {
+      collections: [
+        { collectionId: GUIDES, path: 'a' },
+        { collectionId: DECISIONS, path: 'b' },
+      ],
+    })
+    await h.sync()
+    const one = await h.idAt('a/one.md')
+    h.source.push({
+      id: 'c2',
+      files: { 'b/a/one.md': '# One' },
+      renames: { 'a/one.md': 'b/a/one.md' },
+    })
+    expect(await h.sync()).toMatchObject({ kind: 'synced' })
+    expect(await h.idAt('b/a/one.md')).toBe(one)
+    expect(await parentOf(h, 'b/a/one.md')).toBe(await h.idAt(generatedFolderPath('b/a')))
+  })
+
+  it('ignores a repository file at the path a generated document takes', async () => {
+    const h = harness([
+      { id: 'c1', files: { 'docs/a/b.md': '# B', [generatedFolderPath('docs/a')]: '# Mine' } },
+    ])
+    await h.sync()
+    expect(await h.stored(generatedFolderPath('docs/a'))).toContain('# A')
+    h.source.push({ id: 'c2', files: { 'docs/a/b.md': '# B' } })
+    await h.sync()
+    expect((await documentAt(h, generatedFolderPath('docs/a'))).status).toBe('published')
+  })
+
+  /**
+   * The workspace as the release before folders were documents left it: no
+   * generated documents, every document at the top of its collection, and a
+   * layout fingerprint with no tree in it.
+   */
+  async function asBeforeFolders(h: Harness): Promise<void> {
+    const { repos } = h.uow
+    for (const row of await repos.sourcePaths.listByWorkspace(WORKSPACE)) {
+      if (!row.path.endsWith('/.quill/folder.md')) continue
+      await h.store.publish({
+        workspaceId: WORKSPACE,
+        changes: [{ kind: 'delete', documentId: row.documentId, path: row.path }],
+        author: ADA,
+        base: await h.store.head(WORKSPACE),
+      })
+      await repos.documents.delete(row.documentId)
+      await repos.sourcePaths.remove(WORKSPACE, row.path)
+    }
+    for (const document of await repos.documents.listByWorkspace(WORKSPACE)) {
+      await repos.documents.update(document.id, { parentId: null }, NOW)
+    }
+    const current = await state(h)
+    if (current?.layout == null || current.lastSyncedRevision === null) throw new Error('unsynced')
+    await repos.sourceSyncState.recordSynced({
+      workspaceId: WORKSPACE,
+      revision: current.lastSyncedRevision,
+      refused: current.refused,
+      layout: {
+        ...current.layout,
+        fingerprint: current.layout.fingerprint.replace(',"tree":"folders"', ''),
+      },
+      brokenLinks: current.brokenLinks,
+      now: NOW,
+    })
+  }
+
+  it('re-maps a workspace synced before folders were documents, keeping every id and adding none twice', async () => {
+    const h = harness([{ id: 'c1', files: GUIDE_FILES }])
+    await h.sync()
+    await asBeforeFolders(h)
+    const files = Object.keys(GUIDE_FILES)
+    const before = await Promise.all(files.map(async (path) => await h.idAt(path)))
+    expect((await h.uow.repos.documents.listByWorkspace(WORKSPACE)).length).toBe(files.length)
+
+    // No new revision of the source: the tree is placed again all the same.
+    expect(await h.sync()).toEqual({ kind: 'synced', revision: 'c1', published: 1 })
+    expect(await Promise.all(files.map(async (path) => await h.idAt(path)))).toEqual(before)
+    const documents = await h.uow.repos.documents.listByWorkspace(WORKSPACE)
+    expect(documents.length).toBe(files.length + 1)
+    expect(new Set(documents.map(({ path }) => path)).size).toBe(documents.length)
+    const concepts = await h.idAt(CONCEPTS)
+    expect(await parentOf(h, CONCEPTS)).toBe(await h.idAt('docs/guide/README.md'))
+    expect(await parentOf(h, 'docs/guide/concepts/tenancy/README.md')).toBe(concepts)
+    expect(h.store.requests.at(-1)).toMatchObject({
+      changeNote: LAYOUT_CHANGED_SUMMARY,
+      changes: [expect.objectContaining({ kind: 'write', path: CONCEPTS })],
+    })
+    expect((await state(h))?.layout?.fingerprint).toContain('"tree":"folders"')
+
+    // And once placed, it stays placed.
+    expect(await h.sync()).toEqual({ kind: 'up-to-date', revision: 'c1' })
+  })
+
+  it('re-maps a manifest workspace on its next sync too', async () => {
+    const files = {
+      [MANIFEST]: manifest('{ slug: guide, title: Guide, path: docs/guide }'),
+      'docs/guide/concepts/tenancy/README.md': '# Tenancy',
+    }
+    const h = harness([{ id: 'c1', files }])
+    await h.sync()
+    await asBeforeFolders(h)
+    expect(await h.sync()).toMatchObject({ kind: 'synced', published: 1 })
+    expect(await parentOf(h, 'docs/guide/concepts/tenancy/README.md')).toBe(await h.idAt(CONCEPTS))
   })
 })

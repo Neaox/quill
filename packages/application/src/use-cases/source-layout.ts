@@ -43,6 +43,25 @@ export interface SourceLayout {
   readonly unknownKeys: readonly UnknownManifestKey[]
 }
 
+/**
+ * How the tree nests a collection's documents, carried in every layout's
+ * fingerprint: a tree placed under an earlier way (flat, before folders were
+ * documents) is placed again on its next sync, so an existing workspace takes
+ * its folders without a new revision of its source (ADR-061).
+ */
+export const LAYOUT_TREE = 'folders'
+
+/** Whether a recorded fingerprint was placed the way this release nests a tree. */
+export function placedAsTree(fingerprint: string): boolean {
+  let read: unknown
+  try {
+    read = JSON.parse(fingerprint)
+  } catch {
+    return false
+  }
+  return typeof read === 'object' && read !== null && 'tree' in read && read.tree === LAYOUT_TREE
+}
+
 export function layoutFromManifest(
   entry: ManifestEntry,
   unknownKeys: readonly UnknownManifestKey[] = [],
@@ -59,6 +78,7 @@ export function layoutFromManifest(
     redirects: new Map(entry.redirects),
     fingerprint: JSON.stringify({
       origin: 'manifest',
+      tree: LAYOUT_TREE,
       collections: canonical(
         entry.collections.map(({ slug, title, path, order }) => [slug, title, path, order]),
       ),
@@ -92,6 +112,7 @@ export function layoutFromSettings(settings: readonly SourceCollection[]): Sourc
     redirects: new Map(),
     fingerprint: JSON.stringify({
       origin: 'settings',
+      tree: LAYOUT_TREE,
       collections: canonical(read.map(({ collectionId, path }) => [collectionId, path])),
     }),
     unknownKeys: [],
