@@ -1,0 +1,1 @@
+Added: A repository's settings page edits where links to files outside the source go (the forge or plain text), the forge address for such a file, checked as it is typed with a working example, and the push webhook's secret, chosen by name.

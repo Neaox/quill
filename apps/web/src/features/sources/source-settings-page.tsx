@@ -3,6 +3,7 @@ import { Link, useNavigate } from '@tanstack/react-router'
 import { useId, useState, type FormEvent, type ReactNode } from 'react'
 
 import { Button, Callout, Input, Spinner, textLinkClassName } from '@quill/ui'
+import { defaultForgeViewTemplate } from '@quill/domain'
 
 import {
   ApiError,
@@ -28,16 +29,19 @@ import {
   describeUnreadable,
   draftBody,
   draftKey,
+  exampleOutsideLink,
   formFromSource,
   missingFields,
   nameFromPath,
   newCollection,
   settingsBody,
+  viewTemplateProblem,
   type FieldErrors,
   type FormCollection,
   type FormField,
   type SourceForm,
 } from './source-form-model.ts'
+import { CopyableAddress } from './copyable-address.tsx'
 import { SourcePreviewPanel } from './source-preview-panel.tsx'
 
 /**
@@ -185,7 +189,7 @@ function SourceForm({
   const fresh = asked !== null && asked.key === currentKey
   const dirty = !done && draftKey(draftBody(form)) !== draftKey(draftBody(initial))
   const optionsDirty =
-    !done && (form.history !== initial.history || form.commitMessages !== initial.commitMessages)
+    !done && JSON.stringify(settingsBody(form)) !== JSON.stringify(settingsBody(initial))
 
   // What the server said about the fields, beside the ones it is about.
   const serverErrors: FieldErrors = {}
@@ -213,6 +217,8 @@ function SourceForm({
     const field = configure.error instanceof ApiError ? fieldOf(configure.error.details) : null
     if (field !== null) serverErrors[field] = configure.error.message
   }
+  const templateProblem = viewTemplateProblem(form)
+  if (templateProblem !== null) serverErrors.viewTemplate = templateProblem
   const errors: FieldErrors = { ...serverErrors, ...shown }
   const result = outcome?.outcome === 'preview' ? outcome.preview : null
   // What the repository was last seen to describe, fresh or not: the choices
@@ -250,10 +256,13 @@ function SourceForm({
     ask(next)
   }
 
-  const blocker = saveBlocker({ fresh, result, pending: preview.isFetching, form, editing })
+  const blocker =
+    templateProblem === null
+      ? saveBlocker({ fresh, result, pending: preview.isFetching, form, editing })
+      : 'Fix the forge address under Links and webhook.'
   function save() {
     if (blocker !== null) return
-    configure.mutate(settingsBody(form, saved), {
+    configure.mutate(settingsBody(form), {
       onSuccess: () => {
         setDone(true)
         // Saved: nothing is left to lose, though this render's guard still thinks so.
@@ -384,6 +393,14 @@ function SourceForm({
 
       <Options form={form} onChange={update} />
 
+      <LinksAndWebhook
+        form={form}
+        errors={errors}
+        workspaceId={workspace.id}
+        commit={saved?.sync?.lastSyncedRevision ?? null}
+        onChange={update}
+      />
+
       <section
         aria-label="Save"
         className="flex max-w-(--layout-content) flex-col gap-3 border-t border-border pt-6"
@@ -466,6 +483,8 @@ const FIELD_NAMES: Readonly<Record<FormField, string>> = {
   credential: 'the access',
   collections: 'the collections',
   manifestEntry: 'the manifest workspace',
+  viewTemplate: 'the forge address',
+  webhookSecret: 'the webhook secret',
 }
 
 const FIELDS: readonly FormField[] = [
@@ -474,6 +493,8 @@ const FIELDS: readonly FormField[] = [
   'credential',
   'collections',
   'manifestEntry',
+  'viewTemplate',
+  'webhookSecret',
 ]
 
 /** The form field a refusal names, from `{ field }` in its details. */
@@ -927,6 +948,137 @@ function Options({
           }}
         />
       </fieldset>
+    </SettingsSection>
+  )
+}
+
+/**
+ * The source's other settings (ADR-061): where a link to a repository file the
+ * source does not hold goes, the forge's address for such a file, and the push
+ * webhook. The forge address is checked as it is typed and shown as a working
+ * example; the webhook's secret is chosen by name, its value never shown.
+ */
+function LinksAndWebhook({
+  form,
+  errors,
+  workspaceId,
+  commit,
+  onChange,
+}: {
+  readonly form: SourceForm
+  readonly errors: FieldErrors
+  readonly workspaceId: string
+  /** The last synced commit, for the example; before the first sync, the branch is used. */
+  readonly commit: string | null
+  readonly onChange: (next: Partial<SourceForm>) => void
+}) {
+  const secrets = useSecrets()
+  const names = (secrets.data ?? []).map(({ name }) => name)
+  const chosen = form.webhookSecret
+  const options = chosen === '' || names.includes(chosen) ? names : [chosen, ...names]
+  const example = exampleOutsideLink(form, commit ?? (form.branch.trim() || 'main'), 'README.md')
+  const known = defaultForgeViewTemplate(form.remote.trim())
+  const hook = (forge: string) =>
+    `${globalThis.location.origin}/api/workspaces/${workspaceId}/source/webhooks/${forge}`
+  return (
+    <SettingsSection
+      level={2}
+      title="Links and webhook"
+      description="Where links to files the workspace does not hold go, and how pushes reach it."
+    >
+      <fieldset className="flex min-w-0 flex-col gap-2 border-0 p-0">
+        <legend className="mb-1 text-xs font-medium text-foreground">
+          Links to files outside the source
+        </legend>
+        <RadioChoice
+          name="outsideLinks"
+          checked={form.outsideLinks === 'forge'}
+          label="To the file on the forge, at the synced commit"
+          onChange={() => {
+            onChange({ outsideLinks: 'forge' })
+          }}
+        />
+        <RadioChoice
+          name="outsideLinks"
+          checked={form.outsideLinks === 'text'}
+          label="As plain text"
+          description="For readers who cannot open the repository."
+          onChange={() => {
+            onChange({ outsideLinks: 'text' })
+          }}
+        />
+      </fieldset>
+      {form.outsideLinks === 'forge' || errors.viewTemplate !== undefined ? (
+        <div className="flex min-w-0 flex-col gap-2">
+          <Input
+            label="Forge address for a file"
+            name="viewTemplate"
+            autoComplete="off"
+            spellCheck={false}
+            placeholder={known ?? 'https://git.example.com/acme/handbook/src/{commit}/{path}'}
+            description={
+              known === null
+                ? 'The address of a file at a commit, with {commit} and {path} in it. There is no known address for this host, so without one these links are plain text.'
+                : 'Leave empty to use the address this host uses. Otherwise, the address of a file at a commit, with {commit} and {path} in it.'
+            }
+            value={form.viewTemplate}
+            error={errors.viewTemplate}
+            onChange={(event) => {
+              onChange({ viewTemplate: event.target.value })
+            }}
+          />
+          {errors.viewTemplate === undefined ? (
+            <p className="min-w-0 text-xs text-muted wrap-anywhere">
+              {example === null ? (
+                'With these settings, such links are plain text.'
+              ) : (
+                <>
+                  For example, a link to README.md opens{' '}
+                  <a
+                    className={textLinkClassName()}
+                    href={example}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    {example}
+                  </a>
+                </>
+              )}
+            </p>
+          ) : undefined}
+        </div>
+      ) : undefined}
+      <SelectField
+        label="Push webhook"
+        name="webhookSecret"
+        value={form.webhookSecret}
+        description="The secret the forge signs each push with, chosen by name. Without one, pushes arrive with the daily check, or when someone opens a document."
+        aria-invalid={errors.webhookSecret !== undefined}
+        onChange={(event) => {
+          onChange({ webhookSecret: event.target.value })
+        }}
+      >
+        <option value="">No webhook</option>
+        {options.map((name) => (
+          <option key={name} value={name}>
+            {name}
+          </option>
+        ))}
+      </SelectField>
+      {errors.webhookSecret === undefined ? undefined : (
+        <p role="alert" className="text-2xs leading-normal text-danger">
+          {errors.webhookSecret}
+        </p>
+      )}
+      {form.webhookSecret === '' ? undefined : (
+        <div className="flex min-w-0 flex-col gap-2">
+          <p className="text-xs text-muted">
+            Give the forge one of these addresses, and the secret’s value as the webhook’s secret.
+          </p>
+          <CopyableAddress label="GitHub webhook" value={hook('github')} />
+          <CopyableAddress label="GitLab webhook" value={hook('gitlab')} />
+        </div>
+      )}
     </SettingsSection>
   )
 }
