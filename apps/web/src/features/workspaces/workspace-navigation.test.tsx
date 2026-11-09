@@ -166,6 +166,32 @@ describe('WorkspaceTree navigation', () => {
 })
 
 describe('WorkspaceTree creation entry points', () => {
+  it('leaves out every control that would write a workspace read from a repository', async () => {
+    renderTree(
+      {},
+      {
+        'GET /api/workspaces/{id}': () =>
+          jsonResponse(200, {
+            id: 'workspace-1',
+            unitId: 'unit-1',
+            name: 'Acme docs',
+            slug: 'acme',
+            createdAt: '2026-01-01T00:00:00.000Z',
+            origin: { kind: 'sourced' },
+          }),
+      },
+    )
+    expect(await screen.findByText('Read from a repository: edit documents there.')).toBeVisible()
+    expect(await screen.findByRole('link', { name: 'Quarterly plan' })).toBeVisible()
+    expect(screen.queryByRole('button', { name: 'New' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'New collection' })).toBeNull()
+    expect(screen.queryByRole('button', { name: /New document in/u })).toBeNull()
+    expect(screen.queryByRole('button', { name: /More actions for Guides/u })).toBeNull()
+    // The `c` shortcut opens nothing.
+    await userEvent.keyboard('c')
+    expect(screen.queryByRole('dialog')).toBeNull()
+  })
+
   it('opens New document from the sidebar control', async () => {
     renderTree()
 

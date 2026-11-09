@@ -163,11 +163,11 @@ describe('the notifications bell', () => {
 
     const links = await within(panel).findAllByRole('link')
     expect(links[0]).toHaveTextContent(
-      'Platform docs stopped syncing from its repository: its branch was not found.',
+      'Platform docs stopped syncing from its repository. The branch wasn’t found in the repository.',
     )
     expect(links[0]).toHaveAttribute('href', '/w/platform-docs/source')
     expect(links[0]).toHaveTextContent('Unread')
-    expect(links[1]).toHaveTextContent('the repository could not be read.')
+    expect(links[1]).toHaveTextContent('The repository couldn’t be read.')
     await expectNoAccessibilityViolations(panel)
   })
 

@@ -153,7 +153,7 @@ function SourceNotification({ item, onOpen }: NotificationLinkProps<SourceItem>)
       <span className={styles.text()}>
         {item.readAt === null ? <span className="sr-only">Unread. </span> : undefined}
         <strong className="font-semibold text-foreground">{item.workspace.name}</strong> stopped
-        syncing from its repository: {describeSourceFailure(item.failure.reason)}.
+        syncing from its repository. {describeSourceFailure(item.failure.reason)}
         <span className={styles.when()}>
           <RelativeTime value={item.at} />
         </span>

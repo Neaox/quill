@@ -1,6 +1,6 @@
 import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
 import { expectNoAccessibilityViolations } from '@quill/ui/testing/axe'
 
@@ -71,11 +71,18 @@ describe('a repository’s page', () => {
 
     expect(screen.getByText('Up to date')).toBeVisible()
     expect(screen.getAllByText(shortRevision(HEAD))[0]).toHaveAttribute('title', HEAD)
-    expect(screen.getByText('https://github.com/acme/handbook.git')).toBeVisible()
+    expect(screen.getByRole('textbox', { name: 'Repository' })).toHaveValue(
+      'https://github.com/acme/handbook.git',
+    )
     expect(screen.getByText(/To the file on the forge/u)).toBeVisible()
-    expect(screen.getByText(/None. Pushes arrive with the daily reconciliation/u)).toBeVisible()
-    expect(screen.getByText(/Every file under the source’s paths was stored/u)).toBeVisible()
-    expect(screen.getByText(/Every relative link goes somewhere/u)).toBeVisible()
+    expect(screen.getByText(/None. Pushes arrive with the daily check/u)).toBeVisible()
+    // Nothing to fix folds to one line.
+    expect(
+      screen.getByText(
+        'Nothing to fix: no file was left out, every relative link goes somewhere and the manifest has no key this release ignores.',
+      ),
+    ).toBeVisible()
+    expect(screen.queryByRole('list', { name: 'Files not stored' })).toBeNull()
     await expectNoAccessibilityViolations(document.body)
   })
 
@@ -83,8 +90,8 @@ describe('a repository’s page', () => {
     renderApp(PATH, routes(source({ sync: null })))
     await heading()
     expect(screen.getByText('Not synced yet')).toBeVisible()
-    expect(screen.getAllByText('None yet')).toHaveLength(2)
-    expect(screen.getByText(/Not checked yet/u)).toBeVisible()
+    // Before anything has synced there is no list to speak of.
+    expect(screen.queryByRole('heading', { name: 'Files, links and manifest keys' })).toBeNull()
   })
 
   it('names why the last sync stopped, where, and that nothing was taken away', async () => {
@@ -104,12 +111,18 @@ describe('a repository’s page', () => {
       ),
     )
     await heading()
-    const stopped = screen.getByText('The last sync stopped').closest('[class]')?.parentElement
-    expect(stopped).toHaveTextContent(
-      `It stopped at ${shortRevision(FAILED_AT)}: ${describeSourceFailure('invalid-manifest')}.`,
+    expect(screen.getByText(describeSourceFailure('invalid-manifest'))).toBeVisible()
+    // The file is linked to the forge at the commit that failed, and the revision is said once.
+    const file = screen.getByRole('link', { name: '.quill/workspace.yaml' })
+    expect(file).toHaveAttribute(
+      'href',
+      `https://github.com/acme/handbook/blob/${FAILED_AT}/.quill/workspace.yaml`,
     )
-    expect(stopped).toHaveTextContent('line 3: a collection needs a path')
-    expect(stopped).toHaveTextContent('Readers still see the last good revision')
+    expect(file.closest('p')).toHaveTextContent(
+      '.quill/workspace.yaml, line 3: A collection needs a path.',
+    )
+    expect(screen.getAllByText(shortRevision(FAILED_AT))).toHaveLength(1)
+    expect(screen.getByText(/Readers still see/u)).toHaveTextContent('nothing was taken away')
   })
 
   it('says a first sync that failed left the workspace empty', async () => {
@@ -127,7 +140,8 @@ describe('a repository’s page', () => {
       ),
     )
     await heading()
-    expect(screen.getByText(/It stopped: its branch was not found\./u)).toBeVisible()
+    expect(screen.getByText('The branch wasn’t found in the repository.')).toBeVisible()
+    expect(screen.getByText('no main')).toBeVisible()
     expect(screen.getByText(/the workspace is empty/u)).toBeVisible()
   })
 
@@ -151,16 +165,18 @@ describe('a repository’s page', () => {
       ),
     )
     await heading()
-    expect(screen.getByText('docs/guides/huge.md')).toBeVisible()
-    expect(screen.getByText(describeRefusal('too-large'))).toBeVisible()
+    const files = screen.getByRole('list', { name: 'Files not stored' })
+    expect(within(files).getByRole('link', { name: 'docs/guides/huge.md' })).toBeVisible()
+    expect(within(files).getByText(new RegExp(describeRefusal('too-large'), 'u'))).toBeVisible()
     expect(screen.getByText('../gone.md')).toBeVisible()
     const keys = screen.getByRole('list', { name: 'Manifest keys not read' })
     expect(within(keys).getByText('owners')).toBeVisible()
     expect(within(keys).getByText('Line 4')).toBeVisible()
+    expect(within(keys).getByText(/Its line wasn’t recorded/u)).toBeVisible()
     expect(screen.getByText('sources/handbook-webhook')).toBeVisible()
-    expect(
-      screen.getByText(`${globalThis.location.origin}/api/workspaces/ws-1/source/webhooks/github`),
-    ).toBeVisible()
+    expect(screen.getByRole('textbox', { name: 'GitHub webhook' })).toHaveValue(
+      `${globalThis.location.origin}/api/workspaces/ws-1/source/webhooks/github`,
+    )
     expect(screen.getByText('x-access-token')).toBeVisible()
     await expectNoAccessibilityViolations(document.body)
   })
@@ -184,7 +200,7 @@ describe('a repository’s page', () => {
       expect(asked).toBe(1)
     })
     expect(await screen.findByText('Syncing now')).toBeVisible()
-    expect(screen.getByRole('button', { name: 'Sync now' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Syncing…' })).toBeDisabled()
 
     body = source({
       sync: { ...SYNCED, lastAttemptAt: new Date(Date.now() + 60_000).toISOString() },
@@ -201,7 +217,7 @@ describe('a repository’s page', () => {
     renderApp(PATH, routes(source({ syncing: true })))
     await heading()
     expect(screen.getByText('Syncing now')).toBeVisible()
-    expect(screen.getByRole('button', { name: 'Sync now' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Syncing…' })).toBeDisabled()
   })
 
   it('says when a sync could not be asked for', async () => {
@@ -238,5 +254,58 @@ describe('a repository’s page', () => {
       }),
     )
     expect(await screen.findByText("Couldn't load the repository")).toBeVisible()
+  })
+
+  it('copies an address, and says when the browser refuses', async () => {
+    const writeText = vi.fn<(text: string) => Promise<void>>().mockResolvedValueOnce(undefined)
+    writeText.mockRejectedValueOnce(new Error('denied'))
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true })
+    renderApp(PATH, routes(source()))
+    await heading()
+    const copy = screen.getByRole('button', { name: 'Copy the repository' })
+    await userEvent.click(copy)
+    expect(writeText).toHaveBeenCalledWith('https://github.com/acme/handbook.git')
+    expect(await screen.findByText('Copied.')).toBeVisible()
+    await userEvent.click(copy)
+    expect(await screen.findByText(/Copying was refused/u)).toBeVisible()
+  })
+
+  it('names a failure that is not the manifest’s, and links nothing on a forge it does not know', async () => {
+    renderApp(
+      PATH,
+      routes(
+        source({
+          remote: 'https://git.example.com/acme/handbook.git',
+          sync: {
+            ...SYNCED,
+            refused: [{ path: 'docs/a.md', revision: HEAD, reason: 'something-new' }],
+            failure: {
+              reason: 'invalid-manifest',
+              message: 'not the usual shape',
+              revision: FAILED_AT,
+            },
+          },
+        }),
+      ),
+    )
+    await heading()
+    expect(screen.getByText('not the usual shape')).toBeVisible()
+    expect(screen.queryByRole('link', { name: 'docs/a.md' })).toBeNull()
+    expect(screen.getByText(/Not stored/u)).toBeVisible()
+  })
+
+  it('names the empty lists in one line beside the ones with something in them', async () => {
+    renderApp(
+      PATH,
+      routes(
+        source({
+          sync: { ...SYNCED, brokenLinks: null, unknownKeys: [{ key: 'owners', line: 2 }] },
+        }),
+      ),
+    )
+    await heading()
+    expect(
+      screen.getByText('Also: no file was left out. Broken links are checked at the next sync.'),
+    ).toBeVisible()
   })
 })

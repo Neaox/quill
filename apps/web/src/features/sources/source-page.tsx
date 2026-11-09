@@ -1,7 +1,8 @@
 import { getRouteApi } from '@tanstack/react-router'
 import { useState, type ReactNode } from 'react'
 
-import { Badge, Button, Callout, DataTable, RelativeTime, Spinner } from '@quill/ui'
+import { defaultForgeViewTemplate, forgeViewUrl } from '@quill/domain'
+import { Button, Callout, RelativeTime, textLinkClassName } from '@quill/ui'
 
 import {
   useLoadedWorkspace,
@@ -10,8 +11,14 @@ import {
   type WorkspaceSourceDto,
 } from '../../lib/api/index.ts'
 import { SettingsSection } from '../settings/settings-frame.tsx'
-import { ShellActions } from '../workspaces/shell-slots.tsx'
-import { describeRefusal, describeSourceFailure, shortRevision } from './source-words.ts'
+import { CopyableAddress } from './copyable-address.tsx'
+import {
+  describeRefusal,
+  describeSourceFailure,
+  manifestProblem,
+  shortRevision,
+  withoutRevision,
+} from './source-words.ts'
 
 const routeApi = getRouteApi('/_authenticated/w/$workspaceSlug/source')
 
@@ -20,17 +27,20 @@ const AWAIT_ATTEMPT_MS = 2 * 60_000
 
 type Sync = NonNullable<WorkspaceSourceDto['sync']>
 
+/** A file's address on the forge at a commit, or null when the forge's addresses are not known. */
+type ForgeLink = (revision: string, path: string) => string | null
+
 /**
  * A sourced workspace's repository (ADR-061, "A failed sync never empties a
- * workspace"): the answer first — up to date, syncing, never synced, or
- * stopped and why — then the facts behind it, then the lists an
- * administrator works through: files not stored, links that go nowhere,
- * manifest keys this release does not read. Then the settings, which are read
- * here and changed through the API by an instance administrator.
+ * workspace"). It answers one question first — is the workspace in step with
+ * its branch? — with "Sync now" beside the answer, then lists what there is to
+ * fix, folded to a line when there is nothing, then the settings, which are
+ * read here and changed through the API by an instance administrator.
  *
  * "Sync now" asks the same job every other trigger asks. The page asks again
- * every few seconds while a sync is under way, and from the press until the
- * attempt is recorded, so it moves to the outcome on its own.
+ * every few seconds while a sync is under way, and from the press until an
+ * attempt newer than the one seen at the press is recorded, so it moves to
+ * the outcome on its own.
  */
 export function SourcePage() {
   const { workspaceSlug } = routeApi.useParams()
@@ -50,6 +60,9 @@ export function SourcePage() {
   const sync = data.sync
   const awaiting = askedAfter !== undefined && (sync?.lastAttemptAt ?? null) === askedAfter.attempt
   const syncing = data.syncing || awaiting
+  const template = data.viewTemplate ?? defaultForgeViewTemplate(data.remote)
+  const forgeLink: ForgeLink = (revision, path) =>
+    template === null ? null : forgeViewUrl(template, revision, path)
 
   function requestSync() {
     const asked = { attempt: sync?.lastAttemptAt ?? null }
@@ -65,143 +78,136 @@ export function SourcePage() {
   }
 
   return (
-    <div className="flex flex-col gap-10 px-4 py-8 sm:px-8">
-      <ShellActions>
-        <Button
-          size="sm"
-          loading={syncNow.isPending}
-          disabled={syncing}
-          aria-describedby={syncing ? 'source-sync-reason' : undefined}
-          onClick={requestSync}
-        >
-          Sync now
-        </Button>
-      </ShellActions>
-
-      <div className="flex flex-col gap-4">
+    <div className="flex min-w-0 flex-col gap-10 px-4 py-8 sm:px-8">
+      <div className="flex max-w-(--layout-content) flex-col gap-4">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight text-foreground">
             {workspace.name} repository
           </h1>
-          <p className="mt-1 max-w-(--layout-content) text-sm text-muted">
-            This workspace is read from a repository. Nothing in it is written here: each push to{' '}
-            <code>{data.branch}</code> arrives as a new revision.
+          <p className="mt-1 text-sm text-muted">
+            This workspace is read from a repository. Its documents are edited there, and each push
+            to <code>{data.branch}</code> arrives here as a new revision.
           </p>
         </div>
-        <SyncStatus sync={sync} syncing={syncing} />
-        {syncNow.isError ? (
-          <Callout
-            className="max-w-(--layout-content)"
-            tone="danger"
-            title="Couldn't ask for a sync"
+        <SyncStatus sync={sync} syncing={syncing} branch={data.branch} forgeLink={forgeLink} />
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+          <Button
+            variant="secondary"
+            size="sm"
+            loading={syncNow.isPending || syncing}
+            disabled={syncing}
+            onClick={requestSync}
           >
+            {syncing ? 'Syncing…' : 'Sync now'}
+          </Button>
+          <p className="text-xs text-muted">
+            {syncing
+              ? 'This page updates when the sync is done.'
+              : 'Fetches the branch now, rather than waiting for the next push or the daily check.'}
+          </p>
+        </div>
+        {syncNow.isError ? (
+          <Callout tone="danger" title="Couldn't ask for a sync">
             {syncNow.error.message}
           </Callout>
         ) : undefined}
       </div>
 
-      <SettingsSection level={2} title="Sync" wide>
-        <Facts label="Sync">
-          <Fact term="Last good revision">
-            {sync === null || sync.lastSyncedRevision === null ? (
-              <span className="text-muted">None yet</span>
-            ) : (
-              <span className="flex flex-wrap items-baseline gap-x-2">
-                <Revision value={sync.lastSyncedRevision} />
-                {sync.lastSyncedAt === null ? undefined : (
-                  <span className="text-muted">
-                    synced <RelativeTime value={sync.lastSyncedAt} />
-                  </span>
-                )}
-              </span>
-            )}
-          </Fact>
-          <Fact term="Last attempt">
-            {sync === null ? (
-              <span className="text-muted">None yet</span>
-            ) : (
-              <RelativeTime value={sync.lastAttemptAt} />
-            )}
-          </Fact>
-        </Facts>
-      </SettingsSection>
-
-      <Refused sync={sync} />
-      <BrokenLinks sync={sync} />
-      <UnknownKeys sync={sync} />
+      <ToFix sync={sync} forgeLink={forgeLink} />
       <Settings source={data} workspaceId={workspace.id} />
     </div>
   )
 }
 
-function SyncStatus({ sync, syncing }: { readonly sync: Sync | null; readonly syncing: boolean }) {
-  const width = 'max-w-(--layout-content)'
+function SyncStatus({
+  sync,
+  syncing,
+  branch,
+  forgeLink,
+}: {
+  readonly sync: Sync | null
+  readonly syncing: boolean
+  readonly branch: string
+  readonly forgeLink: ForgeLink
+}) {
+  const synced =
+    sync === null || sync.lastSyncedRevision === null ? null : (
+      <>
+        <Revision value={sync.lastSyncedRevision} />
+        {sync.lastSyncedAt === null ? undefined : (
+          <>
+            , synced <RelativeTime value={sync.lastSyncedAt} />
+          </>
+        )}
+      </>
+    )
   if (syncing) {
     return (
-      <Callout className={width} tone="info" title="Syncing now">
-        <p id="source-sync-reason" aria-busy="true" className="flex items-center gap-2">
-          <Spinner /> Fetching from the repository. This page updates when it is done.
-        </p>
+      <Callout tone="info" title="Syncing now">
+        Fetching <code>{branch}</code> from the repository.{' '}
+        {sync === null || sync.lastSyncedRevision === null ? (
+          'Documents appear when it finishes.'
+        ) : (
+          <>
+            Readers see <Revision value={sync.lastSyncedRevision} /> until then.
+          </>
+        )}
       </Callout>
     )
   }
   if (sync === null) {
     return (
-      <Callout className={width} tone="info" title="Not synced yet">
-        The first sync starts when the source is configured, and has not been attempted yet.
+      <Callout tone="info" title="Not synced yet">
+        The first sync hasn’t run yet. Documents appear when it finishes.
       </Callout>
     )
   }
   if (sync.failure !== null) {
     const { failure } = sync
+    const located = failure.reason === 'invalid-manifest' ? manifestProblem(failure.message) : null
+    const fileLink =
+      located === null || failure.revision === null
+        ? null
+        : forgeLink(failure.revision, located.path)
     return (
-      <Callout className={width} tone="danger" title="The last sync stopped">
-        <p>
-          It stopped
-          {failure.revision === null ? undefined : (
+      <Callout tone="danger" title="The last sync stopped">
+        <p className="font-medium text-foreground">{describeSourceFailure(failure.reason)}</p>
+        {located === null ? (
+          <p className="text-sm break-words text-muted">{withoutRevision(failure.message)}</p>
+        ) : (
+          <p>
+            {fileLink === null ? (
+              <code>{located.path}</code>
+            ) : (
+              <a className={textLinkClassName()} href={fileLink} target="_blank" rel="noreferrer">
+                <code>{located.path}</code>
+              </a>
+            )}
+            {located.line === null ? undefined : <>, line {located.line}</>}: {located.problem}
+          </p>
+        )}
+        <p className="text-sm text-muted">
+          {failure.revision === null ? (
+            'Tried'
+          ) : (
             <>
-              {' '}
-              at <Revision value={failure.revision} />
+              Tried at <Revision value={failure.revision} />,
             </>
+          )}{' '}
+          <RelativeTime value={sync.lastAttemptAt} />.{' '}
+          {synced === null ? (
+            'Nothing has synced yet, so the workspace is empty.'
+          ) : (
+            <>Readers still see {synced}; nothing was taken away.</>
           )}
-          : {describeSourceFailure(failure.reason)}.
-        </p>
-        <p>
-          <code className="break-words">{failure.message}</code>
-        </p>
-        <p>
-          {sync.lastSyncedRevision === null
-            ? 'Nothing has been synced yet, so the workspace is empty.'
-            : 'Readers still see the last good revision: nothing was taken away.'}
         </p>
       </Callout>
     )
   }
   return (
-    <Callout className={width} tone="success" title="Up to date">
-      The workspace holds the branch as it was at the last good revision.
+    <Callout tone="success" title="Up to date">
+      The workspace matches <code>{branch}</code> at {synced}.
     </Callout>
-  )
-}
-
-/** Labels and values, as a description list that folds to one column on a phone. */
-function Facts({ label, children }: { readonly label: string; readonly children: ReactNode }) {
-  return (
-    <dl
-      aria-label={label}
-      className="grid grid-cols-1 gap-x-6 text-sm sm:grid-cols-[minmax(10rem,auto)_1fr] sm:gap-y-3"
-    >
-      {children}
-    </dl>
-  )
-}
-
-function Fact({ term, children }: { readonly term: string; readonly children: ReactNode }) {
-  return (
-    <div className="contents">
-      <dt className="text-muted">{term}</dt>
-      <dd className="mb-3 min-w-0 break-words text-foreground sm:mb-0">{children}</dd>
-    </div>
   )
 }
 
@@ -213,110 +219,176 @@ function Revision({ value }: { readonly value: string }) {
   )
 }
 
-function Refused({ sync }: { readonly sync: Sync | null }) {
-  const files = sync?.refused ?? []
-  return (
-    <SettingsSection
-      level={2}
-      title="Files not stored"
-      description="Files under the source’s paths that the sync could not store. Each keeps the version stored before, if there was one."
-      wide
-    >
-      {files.length === 0 ? (
-        <p className="text-sm text-muted">None. Every file under the source’s paths was stored.</p>
-      ) : (
-        <DataTable label="Files not stored">
-          <thead>
-            <tr>
-              <th scope="col">File</th>
-              <th scope="col">Why</th>
-              <th scope="col">Revision</th>
-            </tr>
-          </thead>
-          <tbody>
-            {files.map((file) => (
-              <tr key={file.path}>
-                <td>
-                  <code>{file.path}</code>
-                </td>
-                <td>{describeRefusal(file.reason)}</td>
-                <td>
-                  <Revision value={file.revision} />
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </DataTable>
-      )}
-    </SettingsSection>
+/** A repository path, linked to the file on the forge at a revision when the forge's addresses are known. */
+function RepositoryPath({
+  path,
+  revision,
+  forgeLink,
+}: {
+  readonly path: string
+  readonly revision: string
+  readonly forgeLink: ForgeLink
+}) {
+  const href = forgeLink(revision, path)
+  const code = <code className="break-all">{path}</code>
+  return href === null ? (
+    code
+  ) : (
+    <a className={textLinkClassName()} href={href} target="_blank" rel="noreferrer">
+      {code}
+    </a>
   )
 }
 
-function BrokenLinks({ sync }: { readonly sync: Sync | null }) {
+/** One problem: what it is about on the first line, and why beneath it. Never wider than the page. */
+function Problem({ title, detail }: { readonly title: ReactNode; readonly detail: ReactNode }) {
+  return (
+    <li className="flex min-w-0 flex-col gap-0.5 border-b border-border py-2.5 last:border-b-0">
+      <span className="min-w-0 text-sm text-foreground">{title}</span>
+      <span className="text-xs text-muted">{detail}</span>
+    </li>
+  )
+}
+
+function ProblemList({
+  title,
+  description,
+  children,
+}: {
+  readonly title: string
+  readonly description: string
+  readonly children: ReactNode
+}) {
+  return (
+    <section className="flex flex-col gap-2">
+      <div>
+        <h3 className="text-base font-semibold text-foreground">{title}</h3>
+        <p className="mt-0.5 text-sm text-muted">{description}</p>
+      </div>
+      <ul aria-label={title} className="flex flex-col">
+        {children}
+      </ul>
+    </section>
+  )
+}
+
+/**
+ * Files not stored, broken links and manifest keys not read: each list shown
+ * with its explanation when it has something in it, and otherwise named in
+ * one quiet line, so an empty page is short.
+ */
+function ToFix({ sync, forgeLink }: { readonly sync: Sync | null; readonly forgeLink: ForgeLink }) {
+  const refused = sync?.refused ?? []
   const links = sync?.brokenLinks ?? null
+  const keys = sync?.unknownKeys ?? []
+  const empty = [
+    ...(refused.length === 0 ? ['no file was left out'] : []),
+    ...(links !== null && links.length === 0 ? ['every relative link goes somewhere'] : []),
+    ...(keys.length === 0 ? ['the manifest has no key this release ignores'] : []),
+  ]
+  const nothing = refused.length === 0 && (links?.length ?? 0) === 0 && keys.length === 0
+  // Before anything has synced there is nothing to look at, and the status says why.
+  if (nothing && (sync === null || sync.lastSyncedRevision === null)) return undefined
+
   return (
-    <SettingsSection
-      level={2}
-      title="Broken links"
-      description="Relative links to a path that is not in the repository at the revision synced. They read as plain text until the path exists."
-      wide
-    >
-      {links === null ? (
-        <p className="text-sm text-muted">Not checked yet: the next sync checks them.</p>
-      ) : links.length === 0 ? (
-        <p className="text-sm text-muted">None. Every relative link goes somewhere.</p>
-      ) : (
-        <DataTable label="Broken links">
-          <thead>
-            <tr>
-              <th scope="col">In</th>
-              <th scope="col">Link</th>
-              <th scope="col">Revision</th>
-            </tr>
-          </thead>
-          <tbody>
-            {links.map((link) => (
-              <tr key={`${link.path} ${link.url}`}>
-                <td>
-                  <code>{link.path}</code>
-                </td>
-                <td>
-                  <code>{link.url}</code>
-                </td>
-                <td>
-                  <Revision value={link.revision} />
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </DataTable>
+    <SettingsSection level={2} title="Files, links and manifest keys">
+      {refused.length === 0 ? undefined : (
+        <ProblemList
+          title="Files not stored"
+          description="Files under the source’s paths the sync could not store. Each keeps the version stored before, if there was one."
+        >
+          {refused.map((file) => (
+            <Problem
+              key={file.path}
+              title={
+                <RepositoryPath path={file.path} revision={file.revision} forgeLink={forgeLink} />
+              }
+              detail={
+                <>
+                  {describeRefusal(file.reason)}, at <Revision value={file.revision} />
+                </>
+              }
+            />
+          ))}
+        </ProblemList>
+      )}
+      {links === null || links.length === 0 ? undefined : (
+        <ProblemList
+          title="Broken links"
+          description="Relative links to a path that is not in the repository. Readers see their words, with no link, until the path exists."
+        >
+          {links.map((link) => (
+            <Problem
+              key={`${link.path} ${link.url}`}
+              title={<code className="break-all">{link.url}</code>}
+              detail={
+                <>
+                  In{' '}
+                  <RepositoryPath path={link.path} revision={link.revision} forgeLink={forgeLink} />
+                  , at <Revision value={link.revision} />
+                </>
+              }
+            />
+          ))}
+        </ProblemList>
+      )}
+      {keys.length === 0 ? undefined : (
+        <ProblemList
+          title="Manifest keys not read"
+          description="Keys in the manifest this release gives no meaning to. They are kept, so a team can hold its own keys there."
+        >
+          {keys.map(({ key, line }) => (
+            <Problem
+              key={`${key}:${line ?? ''}`}
+              title={<code className="break-all">{key}</code>}
+              detail={
+                line === null
+                  ? 'Its line wasn’t recorded: the manifest names it inside a one-line list or map.'
+                  : `Line ${line}`
+              }
+            />
+          ))}
+        </ProblemList>
+      )}
+      {empty.length === 0 && links !== null ? undefined : (
+        <p className="text-sm text-muted">
+          {empty.length === 0
+            ? undefined
+            : (nothing ? 'Nothing to fix: ' : 'Also: ') + sentence(empty)}
+          {links === null ? ' Broken links are checked at the next sync.' : undefined}
+        </p>
       )}
     </SettingsSection>
   )
 }
 
-function UnknownKeys({ sync }: { readonly sync: Sync | null }) {
-  const keys = sync?.unknownKeys ?? []
+/** Clauses joined into the rest of a sentence: "a, b and c." */
+function sentence(clauses: readonly string[]): string {
+  const joined =
+    clauses.length === 1
+      ? clauses.join('')
+      : `${clauses.slice(0, -1).join(', ')} and ${clauses.at(-1) ?? ''}`
+  return `${joined}.`
+}
+
+/** Labels and values, as a description list that folds to one column on a phone. */
+function Facts({ label, children }: { readonly label: string; readonly children: ReactNode }) {
   return (
-    <SettingsSection
-      level={2}
-      title="Manifest keys not read"
-      description="Keys in the manifest this release gives no meaning to. They are kept, so a team can hold its own keys there."
-      wide
+    <dl
+      aria-label={label}
+      className="grid min-w-0 grid-cols-1 gap-x-6 text-sm sm:grid-cols-[minmax(10rem,auto)_minmax(0,1fr)] sm:gap-y-3"
     >
-      {keys.length === 0 ? (
-        <p className="text-sm text-muted">None.</p>
-      ) : (
-        <ul aria-label="Manifest keys not read" className="flex flex-wrap gap-x-4 gap-y-2">
-          {keys.map(({ key, line }) => (
-            <li key={`${key}:${line ?? ''}`} className="flex items-center gap-1.5 text-sm">
-              <code>{key}</code>
-              {line === null ? undefined : <Badge>Line {line}</Badge>}
-            </li>
-          ))}
-        </ul>
-      )}
-    </SettingsSection>
+      {children}
+    </dl>
+  )
+}
+
+function Fact({ term, children }: { readonly term: string; readonly children: ReactNode }) {
+  return (
+    <div className="contents">
+      <dt className="text-muted">{term}</dt>
+      <dd className="mb-3 min-w-0 text-foreground sm:mb-0">{children}</dd>
+    </div>
   )
 }
 
@@ -349,12 +421,9 @@ function Settings({
       level={2}
       title="Settings"
       description="An instance administrator changes these through the API. Where the repository has a manifest, the manifest decides the collections."
-      wide
     >
+      <CopyableAddress label="Repository" value={source.remote} />
       <Facts label="Settings">
-        <Fact term="Repository">
-          <code>{source.remote}</code>
-        </Fact>
         <Fact term="Branch">
           <code>{source.branch}</code>
         </Fact>
@@ -363,7 +432,7 @@ function Settings({
             {source.collections.map((collection) => (
               <li key={collection.collectionId}>
                 {collection.name} <span className="text-muted">from</span>{' '}
-                <code>{collection.path}</code>
+                <code className="break-all">{collection.path}</code>
               </li>
             ))}
           </ul>
@@ -382,26 +451,25 @@ function Settings({
             <span>
               <code>{source.credential.username}</code>{' '}
               <span className="text-muted">with the secret</span>{' '}
-              <code>{source.credential.secretName}</code>
+              <code className="break-all">{source.credential.secretName}</code>
             </span>
           )}
         </Fact>
         <Fact term="Push webhook">
           {source.webhookSecret === null ? (
             <span className="text-muted">
-              None. Pushes arrive with the daily reconciliation, or when a document is opened.
+              None. Pushes arrive with the daily check, or when someone opens a document.
             </span>
           ) : (
-            <span className="flex flex-col gap-1">
+            <div className="flex min-w-0 flex-col gap-3">
               <span>
                 <span className="text-muted">Signed with the secret</span>{' '}
-                <code>{source.webhookSecret}</code>
+                <code className="break-all">{source.webhookSecret}</code>. Give the forge one of
+                these addresses, and the secret’s value as the webhook’s secret.
               </span>
-              <span className="mt-1 text-muted">GitHub</span>
-              <code className="break-all">{hook('github')}</code>
-              <span className="mt-1 text-muted">GitLab</span>
-              <code className="break-all">{hook('gitlab')}</code>
-            </span>
+              <CopyableAddress label="GitHub webhook" value={hook('github')} />
+              <CopyableAddress label="GitLab webhook" value={hook('gitlab')} />
+            </div>
           )}
         </Fact>
       </Facts>

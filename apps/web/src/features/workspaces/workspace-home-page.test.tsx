@@ -23,6 +23,16 @@ const workspace = () =>
     createdAt: '2026-01-01T00:00:00.000Z',
   })
 
+const sourced = () =>
+  jsonResponse(200, {
+    id: 'acme',
+    unitId: 'unit-1',
+    name: 'Acme',
+    slug: 'acme',
+    createdAt: '2026-01-01T00:00:00.000Z',
+    origin: { kind: 'sourced' },
+  })
+
 const emptyTree = () => jsonResponse(200, { collections: [] })
 
 describe('WorkspaceHomePage', () => {
@@ -77,5 +87,21 @@ describe('WorkspaceHomePage', () => {
     await userEvent.click(within(dialog).getByRole('button', { name: 'Create' }))
 
     expect(created).toEqual(['Guides'])
+  })
+
+  it('offers nothing to write in a workspace read from a repository', async () => {
+    renderApp('/w/acme', {
+      'GET /api/me': me,
+      'GET /api/workspaces/{id}': sourced,
+      'GET /api/workspaces/{id}/tree': emptyTree,
+      'GET /api/workspaces/{workspaceId}/documents': () => jsonResponse(200, []),
+    })
+
+    expect(await screen.findByText('Nothing here yet')).toBeVisible()
+    expect(screen.getByText(/appear after the first sync/u)).toBeVisible()
+    expect(screen.queryByRole('button', { name: 'New document' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Create the first collection' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'New collection' })).toBeNull()
+    expect(screen.getByText('Read from a repository: edit documents there.')).toBeVisible()
   })
 })
