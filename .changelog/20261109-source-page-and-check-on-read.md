@@ -1,0 +1,3 @@
+Added: A workspace read from a repository has a page of its own (Repository, in the workspace's menu, and the link in a sync-failure notification): whether it is up to date, syncing, never synced or stopped and why, the last good revision and last attempt, files not stored, broken links, manifest keys not read, its settings and webhook addresses, and "Sync now".
+Added: Opening a document read from a repository checks the repository at most once a minute and brings a newer push in; the reader is told it is updating and offered a Reload when it lands, never reloaded underneath.
+Added: Workspaces in the API now say where their content comes from (`origin.kind`: `native` or `sourced`).

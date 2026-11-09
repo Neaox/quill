@@ -21,7 +21,13 @@ import {
   type TreeSection,
 } from '@quill/ui'
 
-import { listKey, useMe, useNavigationTree, type NavigationTree } from '../../lib/api/index.ts'
+import {
+  listKey,
+  useMe,
+  useNavigationTree,
+  useWorkspace,
+  type NavigationTree,
+} from '../../lib/api/index.ts'
 import {
   documentLink,
   documentReference,
@@ -477,8 +483,9 @@ interface WorkspaceOverflowProps {
  * collection: where something that is about *this workspace* rather than
  * about a document in it is reached.
  *
- * Today that is one entry, its settings (ADR-028's amendment: layout is the
- * workspace's). It is rendered only for somebody who can open that page, so
+ * Today that is its settings (ADR-028's amendment: layout is the
+ * workspace's) and, for a workspace read from a repository, the repository's
+ * own page (ADR-061). It is rendered only for somebody who can open that page, so
  * the menu is absent rather than offering an entry that answers "not found" —
  * a menu with nothing in it is not a menu (`docs/design/feedback.md`).
  *
@@ -490,6 +497,7 @@ interface WorkspaceOverflowProps {
 function WorkspaceOverflow({ workspaceSlug, workspaceName }: WorkspaceOverflowProps) {
   const me = useMe()
   const navigate = useNavigate()
+  const sourced = useWorkspace(workspaceSlug).data?.origin?.kind === 'sourced'
 
   if (me.data?.isInstanceAdmin !== true) return undefined
 
@@ -513,6 +521,16 @@ function WorkspaceOverflow({ workspaceSlug, workspaceName }: WorkspaceOverflowPr
             void navigate({ to: '/w/$workspaceSlug/settings', params: { workspaceSlug } })
           },
         },
+        ...(sourced
+          ? [
+              {
+                label: 'Repository',
+                onSelect: () => {
+                  void navigate({ to: '/w/$workspaceSlug/source', params: { workspaceSlug } })
+                },
+              },
+            ]
+          : []),
       ]}
     />
   )

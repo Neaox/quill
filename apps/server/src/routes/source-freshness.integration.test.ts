@@ -293,6 +293,100 @@ describe('the daily reconciliation', () => {
   })
 })
 
+describe('the check on read', () => {
+  function freshness(documentId: string) {
+    return harness.app.inject({
+      method: 'GET',
+      url: `/api/documents/${documentId}/source-freshness`,
+      cookies: editor,
+    })
+  }
+
+  async function setupId(): Promise<string> {
+    const response = await harness.app.inject({
+      method: 'GET',
+      url: `/api/workspaces/${tenancy.workspaceId}/documents`,
+      cookies: admin,
+    })
+    const found = response
+      .json<{ id: string; title: string }[]>()
+      .find((row) => row.title === 'Setup')
+    if (found === undefined) throw new Error('no Setup document')
+    return found.id
+  }
+
+  it('brings in a push when a sourced document is opened, and reports the new revision', async () => {
+    const id = await setupId()
+    const before = await freshness(id)
+    expect(before.statusCode).toBe(200)
+    const { revision } = before.json<{ revision: string }>()
+    expect(before.json()).toMatchObject({ sourced: true, syncing: false })
+
+    const pushed = await commit('Explain the install', {
+      'docs/guides/setup.md': '# Setup\n\nInstall, then sign in.\n',
+    })
+    // A minute on, so this process asks the remote again.
+    harness.clock.advance(60_000)
+    expect((await freshness(id)).statusCode).toBe(200)
+    // The check runs off the request: wait for the sync it asks for to be recorded.
+    for (let attempt = 0; attempt < 100; attempt += 1) {
+      await harness.drainOutbox()
+      if (
+        (await source()).json<{ sync: { lastSyncedRevision: string } }>().sync
+          .lastSyncedRevision === pushed
+      )
+        break
+      await new Promise((resolve) => setTimeout(resolve, 50))
+    }
+    expect((await source()).json()).toMatchObject({
+      sync: { lastSyncedRevision: pushed },
+      syncing: false,
+    })
+    const after = (await freshness(id)).json<{ revision: string }>()
+    expect(after.revision).not.toBe(revision)
+  })
+
+  it('answers that a document written in Quill is not read from a repository', async () => {
+    const created = await harness.app.inject({
+      method: 'POST',
+      url: '/api/workspaces',
+      cookies: admin,
+      payload: { unitId: tenancy.unitId, name: 'Written here', slug: 'written-here-fresh' },
+    })
+    const workspace = created.json<{ id: string; origin: { kind: string } }>()
+    expect(workspace.origin).toEqual({ kind: 'native' })
+    const collection = await harness.app.inject({
+      method: 'POST',
+      url: `/api/workspaces/${workspace.id}/collections`,
+      cookies: admin,
+      payload: { name: 'Notes' },
+    })
+    const document = await harness.app.inject({
+      method: 'POST',
+      url: `/api/workspaces/${workspace.id}/documents`,
+      cookies: admin,
+      payload: { collectionId: collection.json<{ id: string }>().id, title: 'A note' },
+    })
+    const id = document.json<{ document: { id: string } }>().document.id
+    const response = await harness.app.inject({
+      method: 'GET',
+      url: `/api/documents/${id}/source-freshness`,
+      cookies: admin,
+    })
+    expect(response.json()).toEqual({ sourced: false, revision: null, syncing: false })
+  })
+
+  it('says the workspace is sourced, and shows the manifest keys it does not read', async () => {
+    const read = await harness.app.inject({
+      method: 'GET',
+      url: `/api/workspaces/${tenancy.workspaceId}`,
+      cookies: editor,
+    })
+    expect(read.json()).toMatchObject({ origin: { kind: 'sourced' } })
+    expect((await source()).json()).toMatchObject({ sync: { unknownKeys: [] }, syncing: false })
+  })
+})
+
 describe('a sync that stops', () => {
   it('tells the administrators once, not once per attempt, and nobody else', async () => {
     await commit('Break the manifest', { '.quill/workspace.yaml': 'version: 1\ncollections: [\n' })

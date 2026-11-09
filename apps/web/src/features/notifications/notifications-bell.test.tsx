@@ -150,11 +150,11 @@ describe('the notifications bell', () => {
     })
   })
 
-  it('tells an administrator a repository stopped syncing, and leads to its settings', async () => {
+  it('tells an administrator a repository stopped syncing, and leads to its page', async () => {
     signedIn(
       unread(1, [
         sourceItem('1', 'branch-not-found', null),
-        sourceItem('2', 'command-failed', '2026-10-12T08:00:00.000Z'),
+        sourceItem('2', 'a-future-reason', '2026-10-12T08:00:00.000Z'),
       ]),
     )
 
@@ -165,7 +165,7 @@ describe('the notifications bell', () => {
     expect(links[0]).toHaveTextContent(
       'Platform docs stopped syncing from its repository: its branch was not found.',
     )
-    expect(links[0]).toHaveAttribute('href', '/w/platform-docs/settings')
+    expect(links[0]).toHaveAttribute('href', '/w/platform-docs/source')
     expect(links[0]).toHaveTextContent('Unread')
     expect(links[1]).toHaveTextContent('the repository could not be read.')
     await expectNoAccessibilityViolations(panel)

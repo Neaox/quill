@@ -735,6 +735,18 @@ export {
   SOURCE_RECONCILE_INTERVAL_MS,
   sourceFailureKey,
 } from './source-freshness.ts'
+export type {
+  SourceFreshness,
+  SourceReadCheck,
+  SourceReadCheckDependencies,
+  SourceReadCheckResult,
+} from './source-read-check.ts'
+export {
+  createSourceReadCheck,
+  readSourceFreshness,
+  SOURCE_READ_CHECK_INTERVAL_MS,
+  SOURCE_READ_SYNC_WAIT_MS,
+} from './source-read-check.ts'
 export {
   refuseWritesToSourcedWorkspaces,
   WorkspaceReadOnlyError,

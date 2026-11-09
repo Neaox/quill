@@ -19,10 +19,12 @@ import {
   useRenderedDocument,
   useNavigationTree,
   useReview,
+  useWorkspace,
   type ComparisonRange,
   type OutlineEntry,
 } from '../../lib/api/index.ts'
 import { useRecordViewOnOpen } from './use-record-view-on-open.ts'
+import { useSourceReloadOffer } from './use-source-reload-offer.ts'
 import { labelRevisions } from '../../lib/documents/revision-labels.ts'
 import { useDocumentActions } from '../workspaces/document-actions.tsx'
 import {
@@ -95,6 +97,15 @@ export function DocumentPage() {
   const narrow = useNarrowScreen()
   const navigate = useNavigate()
   useRecordViewOnOpen(documentId)
+  // A document read from a repository is offered the newer version when it
+  // lands, never swapped under the reader (ADR-061).
+  const workspace = useWorkspace(workspaceSlug)
+  useSourceReloadOffer({
+    documentId,
+    sourced: workspace.data?.origin?.kind === 'sourced',
+    readingHead: rev === undefined && to === undefined,
+    revision: document.data.headRevision,
+  })
 
   const revisions = labelRevisions(history.data?.revisions ?? [], {
     complete: history.data?.nextCursor === undefined,

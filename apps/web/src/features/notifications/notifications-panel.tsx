@@ -8,6 +8,7 @@ import {
   type NotificationItem,
 } from '../../lib/api/index.ts'
 import { documentReference, workspaceReference } from '../../lib/routing/document-reference.ts'
+import { describeSourceFailure } from '../sources/source-words.ts'
 
 export const notificationsPanelStyles = tv({
   slots: {
@@ -37,20 +38,6 @@ const VERB: Record<ReviewItem['kind'], string> = {
   'changes-requested': 'asked for changes to',
   'review-approved': 'approved',
   'review-withdrawn': 'withdrew the review of',
-}
-
-/** Why a source stopped syncing, as the end of a sentence; the settings page has the detail. */
-const SOURCE_FAILURE: Readonly<Record<string, string>> = {
-  'branch-not-found': 'its branch was not found',
-  'credential-unavailable': 'its credential could not be read',
-  'blocked-by-outbound-policy': 'the instance may not reach its host',
-  'invalid-manifest': 'its manifest does not read',
-  timeout: 'the repository took too long to answer',
-  'history-rewritten': 'its history was rewritten',
-}
-
-function sourceFailure(reason: string): string {
-  return SOURCE_FAILURE[reason] ?? 'the repository could not be read'
 }
 
 export interface NotificationsPanelProps {
@@ -151,13 +138,13 @@ function ReviewNotification({
 
 /**
  * A workspace's repository stopped syncing (ADR-061), told once to its
- * administrators: the way in is the workspace's settings, where the source is.
+ * administrators: the way in is the source's own page.
  */
 function SourceNotification({ item, onOpen }: NotificationLinkProps<SourceItem>) {
   const styles = notificationsPanelStyles()
   return (
     <Link
-      to="/w/$workspaceSlug/settings"
+      to="/w/$workspaceSlug/source"
       params={{ workspaceSlug: workspaceReference(item.workspace) }}
       className={styles.item()}
       onClick={onOpen}
@@ -166,7 +153,7 @@ function SourceNotification({ item, onOpen }: NotificationLinkProps<SourceItem>)
       <span className={styles.text()}>
         {item.readAt === null ? <span className="sr-only">Unread. </span> : undefined}
         <strong className="font-semibold text-foreground">{item.workspace.name}</strong> stopped
-        syncing from its repository: {sourceFailure(item.failure.reason)}.
+        syncing from its repository: {describeSourceFailure(item.failure.reason)}.
         <span className={styles.when()}>
           <RelativeTime value={item.at} />
         </span>

@@ -63,12 +63,21 @@ const RenameWorkspaceBody = Type.Object({
   slug: Type.Optional(Type.String({ minLength: 1, pattern: '^[a-z0-9]+(-[a-z0-9]+)*$' })),
 })
 
+/**
+ * Where a workspace's content comes from (ADR-061): written in Quill, or read
+ * from a repository, in which case its source has a page of its own.
+ */
+const WorkspaceOriginSchema = Type.Object({
+  kind: Type.Union([Type.Literal('native'), Type.Literal('sourced')]),
+})
+
 const WorkspaceSchema = Type.Object({
   id: Type.String(),
   unitId: Type.String(),
   name: Type.String(),
   slug: Type.String(),
   createdAt: Type.String({ format: 'date-time' }),
+  origin: WorkspaceOriginSchema,
 })
 
 /** The owning unit, named so a picker can group without a second request. */
@@ -86,6 +95,7 @@ const WorkspaceListItemSchema = Type.Object({
   name: Type.String(),
   slug: Type.String(),
   createdAt: Type.String({ format: 'date-time' }),
+  origin: WorkspaceOriginSchema,
   unit: UnitSummarySchema,
 })
 
@@ -132,6 +142,7 @@ export function workspaceRoutes(deps: AppDependencies): FastifyPluginAsync {
           name: workspace.name,
           slug: workspace.slug,
           createdAt: workspace.createdAt.toISOString(),
+          origin: workspace.origin,
           unit: { id: unit.id, name: unit.name, path: [...unitPath] },
         }))
       },
