@@ -44,6 +44,7 @@ import { createThemeStylesheets } from '../theme/theme-stylesheet.ts'
 import { createJobRunner } from '../jobs/job-runner.ts'
 import type { JobRunner } from '../jobs/job-runner.ts'
 import { createSweepJob } from '../jobs/sweep-expired.ts'
+import { createReconcileSourcesJob } from '../jobs/reconcile-sources.ts'
 import { createIdentityProviderRegistry, outboundClientFactory } from '../auth/oidc/registry.ts'
 import type { OutboundClientFactory } from '../auth/oidc/discovery.ts'
 import type { OidcProviderConfig } from '../auth/oidc/provider-config.ts'
@@ -51,6 +52,7 @@ import { createPasswordHasher } from '../auth/password.ts'
 import { createRateLimiter } from '../auth/rate-limit.ts'
 import { generateSessionToken, hashSessionToken } from '../auth/session-token.ts'
 import { createTokenService } from '../auth/tokens.ts'
+import { createMessageAuthenticator } from '../infrastructure/message-authenticator.ts'
 import { injectAsBrowser } from './browser-client.ts'
 import { createFakeBreachedPasswordChecker, createRecordingMailer } from './fakes.ts'
 import type { FakeBreachedPasswordChecker, RecordingMailer } from './fakes.ts'
@@ -278,6 +280,7 @@ export async function createServerHarness(options: HarnessOptions = {}): Promise
     ids,
     hasher,
     tokens: createTokenService(),
+    messageAuthenticator: createMessageAuthenticator(),
     shareLinkPolicy: { allowed: () => shareLinksAllowed },
     mailer,
     breachedPasswords,
@@ -314,6 +317,7 @@ export async function createServerHarness(options: HarnessOptions = {}): Promise
   subscribePublicSiteInvalidation(eventBus, publicSiteCache)
   subscribeChildPagesInvalidation(eventBus, childPagesCache, deps)
   jobRunner.schedule(createSweepJob({ uow, clock, session: config.session }))
+  jobRunner.schedule(createReconcileSourcesJob({ uow, clock }, config.sources.reconcileIntervalMs))
 
   let sessions = 0
   return {

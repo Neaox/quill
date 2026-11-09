@@ -1,0 +1,3 @@
+Added: A workspace read from a repository can now be kept fresh by a push webhook: configure the source with the name of a webhook secret and point GitHub or GitLab at `POST /api/workspaces/:id/source/webhooks/github` (or `gitlab`). Deliveries are verified by their signature, deduplicated for a week and rate-limited, and a push to another branch is ignored.
+Added: Every repository-backed workspace is asked to sync once a day (`SOURCE_RECONCILE_INTERVAL_MS`), so a missed webhook or a forge without one still catches up.
+Added: When a repository-backed workspace stops syncing, its administrators get one in-app notification per distinct failure, linking to the workspace's settings, rather than one per attempt.

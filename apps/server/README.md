@@ -473,6 +473,25 @@ re-plans the whole tree in the next sync. A manifest at the head that does not r
 with `invalid-manifest` and the line; the workspace stays as it was. Documents are ordered by their
 front matter `order`, then by the collection's rule, as sort keys the tree and the public site read.
 
+**Keeping it fresh.** Three things ask for a sync, and all write the same event:
+
+- **A push webhook.** Configure the source with `webhookSecret`, the *name* of a secret in the
+  secrets store, and point the forge at `POST /api/workspaces/:id/source/webhooks/github` (content
+  type `application/json`, the secret as the webhook's secret) or `…/webhooks/gitlab` (the secret
+  as its secret token). The signature is checked before anything else is read, and every delivery
+  that cannot be verified, for a workspace that exists or not, is answered the same `401
+  invalid_signature`. A push to another branch, or another event, is answered `202` and ignored. A
+  delivery id is remembered for a week, so a retried delivery asks for one sync. The route is
+  rate-limited by address and accepts at most 2 MiB.
+- **The reconciliation.** Every source is asked to sync every `SOURCE_RECONCILE_INTERVAL_MS` (a
+  day by default), for missed deliveries and forges with no webhook.
+- **"Sync now"**, as above.
+
+When a sync stops, the workspace's administrators (everyone `manage` reaches through a grant, and
+the instance administrator who configured the source) get one in-app notification per distinct
+failure: per reason and source revision, not per attempt. A sync that finishes clears it, so the
+next failure is told again.
+
 ## The content API (M2)
 
 `docs/architecture/api-contract-m2.md` is the contract; the TypeBox schemas in `routes/document-schemas.ts` are its implementation, and the OpenAPI description is generated from them.
@@ -495,6 +514,7 @@ One outbox consumer keeps the reading view honest: `DocumentPublished` renders t
 | `SOURCE_CACHE_PATH` | `./data/sources` | Where each sourced workspace keeps its disposable partial clone (ADR-061) |
 | `SOURCE_PRIVATE_HOSTS` | (none) | Comma-separated host names a source may be fetched from although they resolve to private addresses |
 | `SOURCE_EGRESS_PROXY` | (none) | An `http(s)` proxy every fetch goes through, for an instance that must rule out DNS rebinding |
+| `SOURCE_RECONCILE_INTERVAL_MS` | `86400000` | How often every source is asked to sync, the safety net for missed webhooks |
 
 A repository the platform writes is readable by the `git` command line: `git log` and `git show` work inside `data/content/<workspace-id>.git`.
 

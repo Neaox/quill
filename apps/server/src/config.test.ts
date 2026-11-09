@@ -62,7 +62,11 @@ describe('loadConfig', () => {
       oidcDevLoopback: false,
       contentStore: { driver: 'filesystem', path: './data/content' },
       shareLinks: { enabled: true },
-      sources: { cachePath: './data/sources', privateHostsAllowed: [] },
+      sources: {
+        cachePath: './data/sources',
+        privateHostsAllowed: [],
+        reconcileIntervalMs: 86_400_000,
+      },
       masterKey: { driver: 'environment', keys: [Buffer.alloc(32).toString('base64')] },
       blobStore: { driver: 'filesystem', path: './data/blobs' },
       attachments: {
@@ -556,7 +560,20 @@ describe('loadConfig: the content store', () => {
 
 describe('loadConfig: external sources', () => {
   it('keeps clones under ./data/sources and vouches for no private host by default', () => {
-    expect(loadConfig({}).sources).toEqual({ cachePath: './data/sources', privateHostsAllowed: [] })
+    expect(loadConfig({}).sources).toEqual({
+      cachePath: './data/sources',
+      privateHostsAllowed: [],
+      reconcileIntervalMs: 86_400_000,
+    })
+  })
+
+  it('reads how often every source is reconciled, and refuses what is not a duration', () => {
+    expect(
+      loadConfig({ SOURCE_RECONCILE_INTERVAL_MS: '3600000' }).sources.reconcileIntervalMs,
+    ).toBe(3_600_000)
+    expect(() => loadConfig({ SOURCE_RECONCILE_INTERVAL_MS: '0' })).toThrow(
+      /SOURCE_RECONCILE_INTERVAL_MS/,
+    )
   })
 
   it('reads the cache path, the private hosts and the egress proxy', () => {
@@ -570,6 +587,7 @@ describe('loadConfig: external sources', () => {
       cachePath: '/var/cache/quill',
       privateHostsAllowed: ['git.internal', 'gitea.lan'],
       egressProxy: 'http://proxy.internal:3128',
+      reconcileIntervalMs: 86_400_000,
     })
   })
 

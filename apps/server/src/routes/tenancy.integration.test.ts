@@ -6,6 +6,7 @@ import { buildApp } from '../app.ts'
 import { createHasher } from '../infrastructure/hasher.ts'
 import { createDocumentFormat } from '../infrastructure/markdown/document-format.ts'
 import { createTokenService } from '../auth/tokens.ts'
+import { createMessageAuthenticator } from '../infrastructure/message-authenticator.ts'
 import { loadConfig } from '../config.ts'
 import type { AppDependencies } from '../dependencies.ts'
 import { createTestDatabase, type TestDatabase } from '../infrastructure/db/test-database.ts'
@@ -72,6 +73,7 @@ beforeAll(async () => {
     ids: createFakeIdGenerator(),
     hasher: createHasher(),
     tokens: createTokenService(),
+    messageAuthenticator: createMessageAuthenticator(),
     shareLinkPolicy: { allowed: () => true },
     linkPreviewPorts: INERT_LINK_PREVIEW_PORTS,
     ...(await inMemorySettings(clock, config)),

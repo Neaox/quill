@@ -1,4 +1,4 @@
-import { and, eq } from 'drizzle-orm'
+import { and, eq, lt, sql } from 'drizzle-orm'
 
 import type {
   RefusedSourceFile,
@@ -8,10 +8,11 @@ import type {
   SourceSyncFailure,
   SourceSyncStateRepository,
   SourceSyncStateRow,
+  SourceWebhookDeliveryRepository,
 } from '@quill/application'
 import type { DocumentId, WorkspaceId } from '@quill/domain'
 
-import { sourcePathMap, sourceSyncState } from '../db/schema.ts'
+import { sourcePathMap, sourceSyncState, sourceWebhookDeliveries } from '../db/schema.ts'
 import type { DrizzleClient } from '../db/types.ts'
 
 /**
@@ -80,6 +81,7 @@ export function createSourceSyncStateRepository(db: DrizzleClient): SourceSyncSt
         failure: readFailure(row.failure),
         refused: readRefused(row.refused),
         layout: readLayout(row.layout),
+        failureNotified: row.failureNotified,
       }
     },
 
@@ -91,6 +93,8 @@ export function createSourceSyncStateRepository(db: DrizzleClient): SourceSyncSt
         failure: null,
         refused: { version: STATE_VERSION, files: refused },
         layout: { version: STATE_VERSION, ...layout },
+        // A sync that finished ends the failure; the next one is told again.
+        failureNotified: null,
       }
       await db
         .insert(sourceSyncState)
@@ -113,6 +117,44 @@ export function createSourceSyncStateRepository(db: DrizzleClient): SourceSyncSt
           target: sourceSyncState.workspaceId,
           set: { lastAttemptAt: now, failure: stored },
         })
+    },
+
+    /** One conditional update, so of two racing deliveries only one sees it change. */
+    async recordFailureNotified({ workspaceId, key }): Promise<boolean> {
+      const changed = await db
+        .update(sourceSyncState)
+        .set({ failureNotified: key })
+        .where(
+          and(
+            eq(sourceSyncState.workspaceId, workspaceId),
+            sql`${sourceSyncState.failureNotified} IS DISTINCT FROM ${key}`,
+          ),
+        )
+        .returning({ workspaceId: sourceSyncState.workspaceId })
+      return changed.length > 0
+    },
+  }
+}
+
+export function createSourceWebhookDeliveryRepository(
+  db: DrizzleClient,
+): SourceWebhookDeliveryRepository {
+  return {
+    async record({ workspaceId, deliveryId, now }): Promise<boolean> {
+      const written = await db
+        .insert(sourceWebhookDeliveries)
+        .values({ workspaceId, deliveryId, receivedAt: now })
+        .onConflictDoNothing()
+        .returning({ deliveryId: sourceWebhookDeliveries.deliveryId })
+      return written.length > 0
+    },
+
+    async deleteReceivedBefore(cutoff: Date): Promise<number> {
+      const gone = await db
+        .delete(sourceWebhookDeliveries)
+        .where(lt(sourceWebhookDeliveries.receivedAt, cutoff))
+        .returning({ deliveryId: sourceWebhookDeliveries.deliveryId })
+      return gone.length
     },
   }
 }

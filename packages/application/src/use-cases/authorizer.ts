@@ -437,7 +437,7 @@ export async function documentChain(
 }
 
 /** The workspace, its units, the instance: the chain for anything not yet a document. */
-async function workspaceChain(
+export async function workspaceChain(
   repos: AuthorizerRepositories,
   workspace: WorkspaceRow,
 ): Promise<Result<ScopeChain, AccessFailure>> {

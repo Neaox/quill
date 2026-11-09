@@ -8,6 +8,7 @@ import type {
   ExternalSourceProvider,
   Hasher,
   IdGenerator,
+  MessageAuthenticator,
   SearchIndex,
   ShareLinkPolicy,
   SourceSyncLock,
@@ -80,6 +81,8 @@ export interface AppDependencies {
   readonly hasher: Hasher
   /** Capability tokens (ADR-011): share links today. Random, stored hashed, compared safely. */
   readonly tokens: TokenService
+  /** HMAC-SHA-256, for the signatures forges put on push webhooks (ADR-061). */
+  readonly messageAuthenticator: MessageAuthenticator
   /**
    * Whether this organisation allows share links (plan section 14).
    *

@@ -16,6 +16,7 @@ import { createDevLoopbackOutboundClientFactory } from './auth/oidc/dev-loopback
 import { providerVariablePrefix } from './auth/oidc/provider-config.ts'
 import { createRateLimiter } from './auth/rate-limit.ts'
 import { createTokenService } from './auth/tokens.ts'
+import { createMessageAuthenticator } from './infrastructure/message-authenticator.ts'
 import { createSmtpMailer } from './auth/smtp-mailer.ts'
 import { loadConfig } from './config.ts'
 import { createBlobStore, FilesystemBlobStore } from './infrastructure/blob/create-blob-store.ts'
@@ -75,6 +76,7 @@ import {
   refuseWritesToSourcedWorkspaces,
 } from '@quill/application'
 import { createSweepLinkPreviewsJob } from './jobs/sweep-link-previews.ts'
+import { createReconcileSourcesJob } from './jobs/reconcile-sources.ts'
 import { createSearchService } from '@quill/search'
 import { createDrawioText } from './extensions/drawio/drawing-text.ts'
 
@@ -316,6 +318,7 @@ const deps = {
   ids,
   hasher,
   tokens,
+  messageAuthenticator: createMessageAuthenticator(),
   shareLinkPolicy: createShareLinkPolicy(config),
   mailer,
   breachedPasswords,
@@ -345,6 +348,8 @@ subscribePublicSiteInvalidation(eventBus, publicSiteCache)
 subscribeChildPagesInvalidation(eventBus, childPagesCache, deps)
 jobRunner.schedule(createSweepJob({ uow, clock, session: config.session }))
 jobRunner.schedule(createSweepLinkPreviewsJob({ uow, clock }))
+// The daily safety net for missed push webhooks (ADR-061).
+jobRunner.schedule(createReconcileSourcesJob({ uow, clock }, config.sources.reconcileIntervalMs))
 jobRunner.start()
 
 // The order matters and is pinned by `shutdown.test.ts`: the job runner
