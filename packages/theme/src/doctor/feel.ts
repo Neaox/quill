@@ -33,9 +33,12 @@ const MARKS: ReadonlySet<string> = new Set<PaletteRole>([
   'focusRing',
   'info',
   'success',
+  'successInk',
   'warning',
+  'warningInk',
   'danger',
   'dangerHover',
+  'dangerInk',
 ])
 
 const BRAND_ROLES: readonly PaletteRole[] = [
@@ -49,11 +52,14 @@ const BRAND_ROLES: readonly PaletteRole[] = [
   'info',
   'success',
   'successSubtle',
+  'successInk',
   'warning',
   'warningSubtle',
+  'warningInk',
   'danger',
   'dangerHover',
   'dangerSubtle',
+  'dangerInk',
 ]
 
 /** Degrees a brand colour's hue may move before it is a different colour. */
