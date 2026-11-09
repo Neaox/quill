@@ -133,11 +133,14 @@ const EXEMPT: ReadonlySet<PaletteRole> = new Set<PaletteRole>([
   'info',
   'success',
   'successSubtle',
+  'successInk',
   'warning',
   'warningSubtle',
+  'warningInk',
   'danger',
   'dangerHover',
   'dangerSubtle',
+  'dangerInk',
 ])
 
 const isSaturatedOutsideAccent = (palette: Palette, role: PaletteRole): boolean =>

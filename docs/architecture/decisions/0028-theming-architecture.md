@@ -160,3 +160,18 @@ There is no custom CSS in the first release. If public sites later need it, it i
 - Every signature variant is a real component variant with tests, so the bounded set stays bounded on purpose: adding a variant is a design decision, not a CSS tweak.
 - Font choices are limited to the curated, self-hosted, OFL-licensed set; a tenant may add a face only by uploading one under a compatible licence, recorded with the theme.
 - The design canvas's tone, accent, and reading-face tweaks are exactly layer 2 levers, so the canvas doubles as the specification for the theme editor.
+
+## Amendment, 2026-11-10: status inks
+
+A status colour was used two ways with one floor. It marks a state on the page (an icon, a rule, a word on the paper), and there the secondary floor is right. It is also the words of a badge, set on that status's own fill (`:ok[Built]`). There the words are text a reader has to read, and the secondary floor let them sit close to the fill. In dark mode, Grid's "Holds" read at 5.5:1 (APCA Lc 50) where lockstay's own portal sets it at 9.6:1 (Lc 79). Lifting the status colours by override passed the doctor on Grid itself but broke every accent swatch on a Grid fork, because a pinned status no longer follows the accent it must stay apart from.
+
+**The generator now derives a status ink for each status.** `--palette-success-ink`, `--palette-warning-ink` and `--palette-danger-ink` (and `--color-*-ink`) are the status read as words on its own fill:
+
+- **Same colour, moved only in lightness.** Each ink is its status's hue and chroma, moved away from the fill: up in dark, down in light.
+- **Held to the body floor.** It moves until it clears the body text floor against that fill: 4.5:1 and APCA Lc 75, settled 1 Lc past so it still clears once it is written to a stylesheet's precision.
+- **Follows the colours that ship.** An ink is settled against the fill and status the theme actually emits. When a theme pins a status or its fill (Grid's dark washes), the ink is settled again against the pinned colours. An ink the theme pins itself is left as pinned.
+- **Checked by the doctor.** Each ink on its fill is checked at the body floor, and an ink belongs to its status's family and brand roles exactly as the status does.
+
+The reading stylesheet sets a status badge's words, and the icon in a safety-net node, in the ink. The status colour keeps every other use. With this, Grid's dark "Holds" reads at 10.2:1 (lockstay's ink is 86% lightness against 88%), its light one at lockstay's own L 38. Every built-in theme and every accent swatch on a fork passes unchanged, because no theme states an ink: each is derived.
+
+The palette contract grows by three roles and three tokens. They are additive, so a theme document needs no change (rule 17).

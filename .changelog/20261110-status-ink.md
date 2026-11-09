@@ -1,0 +1,1 @@
+Changed: Status badges set their words in a status ink the theme generator derives against the badge's own fill, held to the body text floor, so `:ok[Holds]` and `:bad[Refused]` read in dark as lockstay's own portal sets them, in every theme and on every accent (ADR-028).

@@ -167,7 +167,7 @@ type Context = { readonly ground?: Colour; readonly ink?: Colour }
  * has no context of its own.
  */
 const contextOf = (palette: Palette, role: PaletteRole): Context => {
-  const { paper, surface, ink, accentInk, success, warning, danger } = palette.colours
+  const { paper, surface, ink, accentInk, successInk, warningInk, dangerInk } = palette.colours
   switch (role) {
     case 'paper':
       return { ink }
@@ -180,11 +180,11 @@ const contextOf = (palette: Palette, role: PaletteRole): Context => {
     case 'accentSubtle':
       return { ground: paper, ink: accentInk }
     case 'successSubtle':
-      return { ground: paper, ink: success }
+      return { ground: paper, ink: successInk }
     case 'warningSubtle':
-      return { ground: paper, ink: warning }
+      return { ground: paper, ink: warningInk }
     case 'dangerSubtle':
-      return { ground: paper, ink: danger }
+      return { ground: paper, ink: dangerInk }
     default:
       return {}
   }

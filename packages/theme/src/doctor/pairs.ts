@@ -147,6 +147,26 @@ export const textPairs = (palette: Palette): readonly Pair[] => {
       background: colours.dangerSubtle,
       floor: CONTRAST_FLOORS.body,
     },
+    // A status's words on its own fill, as a badge sets them (ADR-028, amended):
+    // body text, held to the body floor.
+    {
+      label: 'success-ink on success-subtle',
+      foreground: colours.successInk,
+      background: colours.successSubtle,
+      floor: CONTRAST_FLOORS.body,
+    },
+    {
+      label: 'warning-ink on warning-subtle',
+      foreground: colours.warningInk,
+      background: colours.warningSubtle,
+      floor: CONTRAST_FLOORS.body,
+    },
+    {
+      label: 'danger-ink on danger-subtle',
+      foreground: colours.dangerInk,
+      background: colours.dangerSubtle,
+      floor: CONTRAST_FLOORS.body,
+    },
     {
       label: 'success on paper',
       foreground: colours.success,

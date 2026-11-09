@@ -123,11 +123,14 @@ const ACCENT_FAMILY: ReadonlySet<string> = new Set([
 const STATUS_FAMILY: Readonly<Record<string, StatusName>> = {
   success: 'success',
   successSubtle: 'success',
+  successInk: 'success',
   warning: 'warning',
   warningSubtle: 'warning',
+  warningInk: 'warning',
   danger: 'danger',
   dangerHover: 'danger',
   dangerSubtle: 'danger',
+  dangerInk: 'danger',
 }
 
 export type SuggestOptions = {
