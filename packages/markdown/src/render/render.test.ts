@@ -266,10 +266,10 @@ describe('renderHtml', () => {
   })
 
   it('frames an unknown container directive, naming it, with its content inside (ADR-060)', () => {
-    expect(render(':::timeline{orientation=vertical}\nStill here.\n:::\n')).toBe(
+    expect(render(':::roadmap{orientation=vertical}\nStill here.\n:::\n')).toBe(
       [
-        '<article><div class="block-fallback" role="group" aria-label="Unknown block: timeline">\n',
-        '<p class="block-fallback-head"><code>timeline{orientation="vertical"}</code>',
+        '<article><div class="block-fallback" role="group" aria-label="Unknown block: roadmap">\n',
+        '<p class="block-fallback-head"><code>roadmap{orientation="vertical"}</code>',
         ' <span class="block-fallback-reason">Unknown block</span></p>\n',
         '<p>Still here.</p>\n</div></article>',
       ].join(''),

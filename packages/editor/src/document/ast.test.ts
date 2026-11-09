@@ -37,7 +37,7 @@ function roundTrip(markdown: string): string {
 
 describe('a document through the live editor schema', () => {
   it('finds the corpus the research measured', () => {
-    expect(FILES).toHaveLength(29)
+    expect(FILES).toHaveLength(30)
   })
 
   it('serialises to the canonical form for every corpus document', () => {

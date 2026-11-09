@@ -182,7 +182,8 @@ const Image = Node.create({
   inline: true,
   atom: true,
   draggable: true,
-  addAttributes: () => attributes('src', 'alt', 'title', 'referenceType', 'identifier', 'label'),
+  addAttributes: () =>
+    attributes('src', 'alt', 'title', 'referenceType', 'identifier', 'label', SOURCE_FORM),
 })
 
 const Table = Node.create({

@@ -468,6 +468,18 @@ ADR-048 reads one construct from three syntaxes (the directive, GitHub's `<detai
 
 `:::endpoint{method path auth deprecated}` is the reference block from section 1, shipped as Quill's first built-in: an enum with a default, a required string with a pattern, an optional enum and a flag, with Markdown content. It proves the path end to end: registry, props, render, sanitiser, stylesheet, editor heading and health.
 
+### The documentation kit (2026-11-10)
+
+`timeline`, `step`, `cast`, `checks` and `route`, the blocks rookwood's guides are written in, are built in, beside `endpoint`, and drawn as rookwood's own documentation site draws them (`packages/markdown/src/blocks/`, styles under `.qb-*` in `prose.css`). They are built in rather than an installable set enabled per workspace because:
+
+- install and enable are delivery step 7, which does not exist yet: the registry is one per process, built at the composition root, and the editor reads Quill's own blocks directly, so a per-workspace set would need a per-workspace registry, cache key, setting and editor wiring first;
+- decision 1 makes Quill's own blocks the default, and nothing in these is rookwood's: a timeline of steps, the parties a page is about, numbered checks and a route of arrows are general documentation shapes, and the icons are the organisation's own emoji (ADR-038);
+- a document that uses them keeps its bytes either way, so moving them into a set once step 7 lands rewrites nothing.
+
+Their names are reserved: no installed block, and no tenant label (ADR-037), may take them.
+
+A block's `render` is now also given `children` (the mdast its content was drawn from, after the emoji pass), `draw` (draws Markdown it has taken apart, as the page draws it) and `emoji` (an emoji by name, for a prop that names one), because a step's first line and a cast's members are read from the shape of what is written. `content` is drawn only when the render reads it, so a block that draws its Markdown itself never gives a heading its anchor twice. A render may throw `BlockRenderError`, whose message is the reason on the frame. `RENDER_VERSION` is 17.
+
 ### Delivered here, and not yet
 
 Delivered: the block contract, `p.*`, the registry, rendering with the fallback frame and notes, the sanitiser grant, `blockIssues` and the `block-issue` health signal, the editor's heading, and `endpoint`. `RENDER_VERSION` is 16.

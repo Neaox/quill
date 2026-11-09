@@ -218,6 +218,7 @@ export function proseMirrorToMdast(doc: PMNode): MdastDocument {
               url: node.attrs['src'],
               alt: node.attrs['alt'],
               title: node.attrs['title'],
+              ...dataOf(node),
             }
           : {
               type: 'imageReference',

@@ -37,6 +37,16 @@ function isShorthand(name: string): name is keyof typeof BADGE_SHORTHANDS {
   return Object.hasOwn(BADGE_SHORTHANDS, name)
 }
 
+/**
+ * The shorthand a badge is written with (`plan` for `:plan[Designed]`), or
+ * undefined for `:badge[…]` and anything that is not a badge. The reader and
+ * the editor put it on the badge as `data-badge`, so a stylesheet can tell
+ * `:plan` from a neutral `:badge`, which share a tone.
+ */
+export function badgeShorthand(name: string): keyof typeof BADGE_SHORTHANDS | undefined {
+  return isShorthand(name) ? name : undefined
+}
+
 export function isBadgeTone(value: unknown): value is BadgeTone {
   return typeof value === 'string' && (BADGE_TONES as readonly string[]).includes(value)
 }

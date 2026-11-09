@@ -111,6 +111,7 @@ export {
   BADGE_SHORTHANDS,
   BADGE_TONES,
   badgeDirective,
+  badgeShorthand,
   badgeTone,
   isBadgeTone,
 } from './directives/badge.ts'

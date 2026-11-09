@@ -107,7 +107,27 @@ export const DRAWING_CLASS_NAMES = [
   'zone',
 ] as const
 
-const RESERVED = new Set<string>([...BUILT_IN_DIRECTIVE_NAMES, ...DRAWING_CLASS_NAMES])
+/**
+ * The component blocks Quill ships (`@quill/markdown`'s `BUILT_IN_BLOCKS`,
+ * ADR-060). A label is a text directive, so it could only shadow an inline
+ * one (`:route[…]`), but every block's name is a directive name the renderer
+ * already gives a meaning to. Held to the Markdown package's list by the same
+ * test in the server.
+ */
+export const BUILT_IN_BLOCK_NAMES = [
+  'cast',
+  'checks',
+  'endpoint',
+  'route',
+  'step',
+  'timeline',
+] as const
+
+const RESERVED = new Set<string>([
+  ...BUILT_IN_DIRECTIVE_NAMES,
+  ...BUILT_IN_BLOCK_NAMES,
+  ...DRAWING_CLASS_NAMES,
+])
 
 /** Whether a name is already taken by a built-in directive or drawing class. */
 export const isReservedLabelName = (name: string): boolean => RESERVED.has(name)

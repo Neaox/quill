@@ -4,7 +4,11 @@ import type { DirectiveKind } from '../directives/definition.ts'
 import { KNOWN_DIRECTIVES } from '../directives/registry.ts'
 import type { AnyBlock } from './define.ts'
 import { blockKind, blockProblems, itemsOf } from './define.ts'
+import { castBlock } from './cast.ts'
+import { checksBlock } from './checks.ts'
 import { endpointBlock } from './endpoint.ts'
+import { routeBlock } from './route.ts'
+import { stepBlock, timelineBlock } from './timeline.ts'
 
 /**
  * The component blocks an instance draws (ADR-060), by name.
@@ -25,8 +29,19 @@ export interface BlockRegistry {
   readonly dataAttributes: readonly string[]
 }
 
-/** The blocks Quill ships. */
-export const BUILT_IN_BLOCKS: readonly AnyBlock[] = [endpointBlock]
+/**
+ * The blocks Quill ships: the reference `endpoint`, and the documentation
+ * kit rookwood's guides are written in (a timeline of steps, a cast, checks
+ * and routes), which any workspace may use.
+ */
+export const BUILT_IN_BLOCKS: readonly AnyBlock[] = [
+  endpointBlock,
+  timelineBlock,
+  stepBlock,
+  castBlock,
+  checksBlock,
+  routeBlock,
+]
 
 /** Names Quill's own directives already mean: no block may claim one. */
 const RESERVED: ReadonlySet<string> = new Set(KNOWN_DIRECTIVES.flatMap((known) => known.names))

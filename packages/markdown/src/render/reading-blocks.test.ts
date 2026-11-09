@@ -233,7 +233,7 @@ describe('GitHub alerts', () => {
 describe('label shorthands', () => {
   it('read :ok, :warn, :bad, :accent and :plan as badges of that tone', () => {
     expect(render(':ok[Built] :warn[Not read] :bad[Broken] :accent[New] :plan[Designed]\n')).toBe(
-      '<article><p><span class="badge" data-tone="success">Built</span> <span class="badge" data-tone="warning">Not read</span> <span class="badge" data-tone="danger">Broken</span> <span class="badge" data-tone="accent">New</span> <span class="badge" data-tone="neutral">Designed</span></p></article>',
+      '<article><p><span class="badge" data-tone="success" data-badge="ok">Built</span> <span class="badge" data-tone="warning" data-badge="warn">Not read</span> <span class="badge" data-tone="danger" data-badge="bad">Broken</span> <span class="badge" data-tone="accent" data-badge="accent">New</span> <span class="badge" data-tone="neutral" data-badge="plan">Designed</span></p></article>',
     )
   })
 

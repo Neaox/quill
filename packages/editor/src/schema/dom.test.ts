@@ -69,10 +69,16 @@ describe('the DOM the editor gives the schema', () => {
     html.append(serializer.serializeFragment(doc.content))
 
     const badges = [...html.querySelectorAll('span.badge')]
-    expect(badges.map((badge) => [badge.textContent, badge.getAttribute('data-tone')])).toEqual([
-      ['Built', 'success'],
-      ['Gap', 'warning'],
-      ['Designed', 'neutral'],
+    expect(
+      badges.map((badge) => [
+        badge.textContent,
+        badge.getAttribute('data-tone'),
+        badge.getAttribute('data-badge'),
+      ]),
+    ).toEqual([
+      ['Built', 'success', 'ok'],
+      ['Gap', 'warning', null],
+      ['Designed', 'neutral', 'plan'],
     ])
     expect(markdownAgain(markdown)).toBe(
       JSON.stringify(

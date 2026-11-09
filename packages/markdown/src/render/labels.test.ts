@@ -39,10 +39,13 @@ describe('tenant labels (ADR-037)', () => {
 
   it('never shadow a built-in, whatever the theme says', () => {
     expect(render(':ok[Built]\n', new Set(['ok']))).toContain(
-      '<span class="badge" data-tone="success">Built</span>',
+      '<span class="badge" data-tone="success" data-badge="ok">Built</span>',
     )
     expect(isLabelDirective('ok', new Set(['ok']))).toBe(false)
     expect(isLabelDirective('kbd', new Set(['kbd']))).toBe(false)
+    // An inline block of Quill's own (ADR-060) is a built-in too.
+    expect(isLabelDirective('route', new Set(['route']))).toBe(false)
+    expect(render(':route[A → B]\n', new Set(['route']))).toContain('class="qb qb-route"')
   })
 
   it('refuse a name of any other shape, even one somebody put in the set', () => {
@@ -57,7 +60,7 @@ describe('tenant labels (ADR-037)', () => {
 
   it('open a table cell’s status line, as a badge does', () => {
     expect(render('| a |\n| - |\n| :acme[Acme] :ok[Built] Prices. |\n')).toContain(
-      '<td><span class="cell-status"><span class="badge" data-label="acme">Acme</span> <span class="badge" data-tone="success">Built</span></span><span class="cell-detail">Prices.</span></td>',
+      '<td><span class="cell-status"><span class="badge" data-label="acme">Acme</span> <span class="badge" data-tone="success" data-badge="ok">Built</span></span><span class="cell-detail">Prices.</span></td>',
     )
   })
 

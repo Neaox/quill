@@ -283,6 +283,19 @@ function isAutolink(link: Link): boolean {
   return link.children.length === 1 && only?.type === 'text' && link.url.endsWith(only.value)
 }
 
+/** A drawn shortcode's text: exactly one name between colons. */
+const DRAWN_SHORTCODE = /^:([a-z0-9_+-]+):$/u
+
+/**
+ * The name of the emoji a text node is drawn as, after `withEmoji`, or
+ * undefined for any other text: a block that reads the shape of what is
+ * written (a step's first line, a route's parties) finds its emoji with this.
+ */
+export function emojiNameOf(node: PhrasingContent): string | undefined {
+  if (node.type !== 'text' || node.data?.hName === undefined) return undefined
+  return DRAWN_SHORTCODE.exec(node.value)?.[1]
+}
+
 /**
  * The tree with every known shortcode drawn as its emoji. Pure: the tree it
  * is given is not changed. A tree with no colon in its text is returned as
