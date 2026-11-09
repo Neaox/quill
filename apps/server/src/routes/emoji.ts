@@ -58,7 +58,16 @@ const EmojiImageSchema = Type.Object(
      */
     monochrome: Type.Optional(
       Type.Object(
-        { width: Type.Integer({ minimum: 1 }), height: Type.Integer({ minimum: 1 }) },
+        {
+          width: Type.Integer({ minimum: 1 }),
+          height: Type.Integer({ minimum: 1 }),
+          /**
+           * The glyph as stored: the upload already read and rewritten, shapes in
+           * one `currentColor` symbol. For a preview of exactly what readers get,
+           * before the emoji is saved and served.
+           */
+          glyph: Type.String({ maxLength: MAX_EMOJI_BYTES }),
+        },
         { additionalProperties: false },
       ),
     ),

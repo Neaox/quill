@@ -7104,7 +7104,8 @@
             "type": "object",
             "required": [
               "width",
-              "height"
+              "height",
+              "glyph"
             ],
             "properties": {
               "width": {
@@ -7114,6 +7115,10 @@
               "height": {
                 "minimum": 1,
                 "type": "integer"
+              },
+              "glyph": {
+                "maxLength": 262144,
+                "type": "string"
               }
             }
           }

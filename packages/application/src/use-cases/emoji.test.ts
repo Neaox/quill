@@ -205,7 +205,7 @@ describe('uploading a monochrome emoji (ADR-038, amended)', () => {
     const uploaded = await result
     if (uploaded.kind !== 'uploaded') throw new Error(uploaded.kind)
     expect(uploaded.mediaType).toBe('image/svg+xml')
-    expect(uploaded.monochrome).toEqual({ width: 24, height: 16 })
+    expect(uploaded.monochrome).toEqual({ width: 24, height: 16, glyph: '<svg id="glyph-form"/>' })
     expect(new TextDecoder().decode(await readBlob(blobStore, uploaded.hash))).toBe(
       '<svg id="glyph-form"/>',
     )

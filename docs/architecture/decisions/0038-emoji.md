@@ -118,7 +118,7 @@ An author still cannot write either, because raw HTML stays text (ADR-011). Draw
 - **Reader, public site, share links:** the same markup, from the renderer.
 - **Editor:** its decorations draw the same `svg` in SVG's namespace.
 - **Emoji menus:** the `:` suggestion and the `/emoji` picker draw the glyph in the menu's ink.
-- **Settings screen:** previews a saved monochrome emoji in its light and dark samples in their own text colours. A file chosen but not yet saved is previewed as the picture it was uploaded as, because the glyph is served only once the settings name it.
+- **Settings screen:** previews a monochrome emoji in its light and dark samples in their own text colours, before it is saved as well as after. The glyph is served only once the settings name it, so the upload answers with the glyph it stored, and the screen draws that: only a glyph's own elements and attributes are taken from it again, as React elements, so what is previewed is exactly what readers will get, and nothing else could be drawn.
 
 The reading stylesheet sizes `svg.emoji` as it sizes `img.emoji`. A party's chip draws its glyph in the muted ink, as an interface draws an icon beside a name. A node, a time chip, a badge and running text use their own colour.
 
