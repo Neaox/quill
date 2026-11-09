@@ -658,8 +658,15 @@ const CREDENTIAL_REFUSED =
 const UNREACHABLE =
   /could not resolve host|failed to connect|connection (?:refused|timed out|reset)|repository not found|not found|does not appear to be a git repository|unable to access|ssl|tls|returned error: 404/iu
 
+/** A host name that does not resolve, as the outbound policy reports it. */
+const UNRESOLVED = /enotfound|eai_again|eai_noname|getaddrinfo|could not resolve|no addresses/iu
+
 /** A git failure in the words a form acts on: a credential, an address, or something else. */
 function classify(error: ExternalSourceError): SourcePreviewFailure {
+  // The policy refuses a name it cannot resolve, which is no host at all, not a forbidden one.
+  if (error.reason === 'blocked-by-outbound-policy' && UNRESOLVED.test(error.message)) {
+    return 'unreachable'
+  }
   if (error.reason !== 'command-failed') return error.reason
   if (CREDENTIAL_REFUSED.test(error.message)) return 'credential-refused'
   if (UNREACHABLE.test(error.message)) return 'unreachable'

@@ -378,6 +378,13 @@ describe('previewWorkspaceSource, refusals and failures', () => {
       new ExternalSourceError('blocked-by-outbound-policy', 'Requests to 10.0.0.1 are refused'),
       'blocked-by-outbound-policy',
     ],
+    [
+      new ExternalSourceError(
+        'blocked-by-outbound-policy',
+        'Requests to nowhere.invalid are refused: Error: getaddrinfo ENOTFOUND nowhere.invalid',
+      ),
+      'unreachable',
+    ],
     [new ExternalSourceError('timeout', 'the fetch did not finish'), 'timeout'],
     [
       new ExternalSourceError('command-failed', 'git fetch failed (exit 1): something odd'),

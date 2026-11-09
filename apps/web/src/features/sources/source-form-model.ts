@@ -231,7 +231,7 @@ export const SKIP_REASONS: Readonly<
     detail: 'Links are never followed, so what they point to is never read.',
   },
   'not-markdown': {
-    title: 'Not pages',
+    title: 'Other files',
     detail: 'Only Markdown files become pages; images a page shows are imported with it.',
   },
 }

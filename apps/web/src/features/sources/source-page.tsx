@@ -5,12 +5,14 @@ import { defaultForgeViewTemplate, forgeViewUrl } from '@quill/domain'
 import { Button, buttonClassName, Callout, RelativeTime, textLinkClassName } from '@quill/ui'
 
 import {
+  awaitsSyncAfterSave,
   useLoadedWorkspace,
   useMe,
   useSyncSourceNow,
   useWorkspaceSource,
   type WorkspaceSourceDto,
 } from '../../lib/api/index.ts'
+import { now as wallClock } from '../../lib/time/clock.ts'
 import { SettingsSection } from '../settings/settings-frame.tsx'
 import { CopyableAddress } from './copyable-address.tsx'
 import {
@@ -56,13 +58,16 @@ export function SourcePage() {
   const source = useWorkspaceSource(workspace.id, { awaiting: askedAfter !== undefined })
   const syncNow = useSyncSourceNow(workspace.id)
   const canChange = useMe().data?.isInstanceAdmin === true
+  // When the page was opened: a save just before it is a sync on its way (`lib/time/clock.ts`).
+  const [openedAt] = useState(wallClock)
 
   /* v8 ignore next -- the loader awaited this entry, so it is here on the first render. */
   if (source.data === undefined) return undefined
   const data = source.data
   const sync = data.sync
   const awaiting = askedAfter !== undefined && (sync?.lastAttemptAt ?? null) === askedAfter.attempt
-  const syncing = data.syncing || awaiting
+  // Saving the settings asks for a sync; until it is attempted, it is on its way.
+  const syncing = data.syncing || awaiting || awaitsSyncAfterSave(data, openedAt)
   const template = data.viewTemplate ?? defaultForgeViewTemplate(data.remote)
   const forgeLink: ForgeLink = (revision, path) =>
     template === null ? null : forgeViewUrl(template, revision, path)
@@ -486,15 +491,16 @@ function Settings({
         <Fact term="Collections">
           {source.collections.length === 0 ? (
             <span className="text-muted">None: the repository’s manifest decides them</span>
-          ) : undefined}
-          <ul className="flex flex-col gap-1">
-            {source.collections.map((collection) => (
-              <li key={collection.collectionId}>
-                {collection.name} <span className="text-muted">from</span>{' '}
-                <code className="break-all">{collection.path}</code>
-              </li>
-            ))}
-          </ul>
+          ) : (
+            <ul className="flex flex-col gap-1">
+              {source.collections.map((collection) => (
+                <li key={collection.collectionId}>
+                  {collection.name} <span className="text-muted">from</span>{' '}
+                  <code className="break-all">{collection.path}</code>
+                </li>
+              ))}
+            </ul>
+          )}
         </Fact>
         <Fact term="History">{HISTORY[source.history] ?? source.history}</Fact>
         <Fact term="Commit messages">

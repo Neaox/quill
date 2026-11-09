@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query'
+import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import { Link, useNavigate } from '@tanstack/react-router'
 import { useId, useState, type FormEvent, type ReactNode } from 'react'
 
@@ -173,6 +173,9 @@ function SourceForm({
         }),
       ),
     enabled: asked !== null,
+    // The last answer stays while the next is fetched, so what the repository
+    // describes does not vanish from under the person choosing from it.
+    placeholderData: keepPreviousData,
     retry: false,
     staleTime: Number.POSITIVE_INFINITY,
     gcTime: 0,
@@ -193,14 +196,17 @@ function SourceForm({
     if (field === null) general = { message: describeFailure(error), detail: null }
     else serverErrors[field] = error.message
   }
-  const outcome = fresh ? preview.data : undefined
+  const outcome = fresh && !preview.isPlaceholderData ? preview.data : undefined
   if (outcome?.outcome === 'unreadable') {
     const unreadable = describeUnreadable(outcome.reason, asked?.body.branch ?? form.branch)
     if (unreadable.field === null)
       general = { message: unreadable.message, detail: outcome.message }
     else {
       serverErrors[unreadable.field] = unreadable.message
-      general = { message: unreadable.message, detail: outcome.message }
+      general = {
+        message: `Check ${FIELD_NAMES[unreadable.field]} above, where the reason is given, then preview again.`,
+        detail: outcome.message,
+      }
     }
   }
   if (configure.isError) {
@@ -209,10 +215,13 @@ function SourceForm({
   }
   const errors: FieldErrors = { ...serverErrors, ...shown }
   const result = outcome?.outcome === 'preview' ? outcome.preview : null
+  // What the repository was last seen to describe, fresh or not: the choices
+  // below are made from it, and changing one is what makes a preview stale.
+  const known = preview.data?.outcome === 'preview' ? preview.data.preview : null
   const choosing =
-    result !== null &&
-    result.manifest.state === 'problem' &&
-    result.manifest.entries.length > 1 &&
+    known !== null &&
+    known.manifest.state === 'problem' &&
+    known.manifest.entries.length > 1 &&
     form.manifestEntry === null
 
   function update(next: Partial<SourceForm>) {
@@ -247,9 +256,11 @@ function SourceForm({
     configure.mutate(settingsBody(form, saved), {
       onSuccess: () => {
         setDone(true)
+        // Saved: nothing is left to lose, though this render's guard still thinks so.
         void navigate({
           to: '/w/$workspaceSlug/source',
           params: { workspaceSlug: workspace.slug },
+          ignoreBlocker: true,
         })
       },
     })
@@ -327,9 +338,9 @@ function SourceForm({
         </div>
       </form>
 
-      {result === null ? undefined : (
+      {known === null ? undefined : (
         <WhatToRead
-          result={result}
+          result={known}
           form={form}
           choosing={choosing}
           error={errors.collections ?? errors.manifestEntry}
@@ -446,6 +457,15 @@ function saveBlocker(input: {
     return 'Add a collection: without one, nothing in the repository is read.'
   }
   return null
+}
+
+/** How the form names each field inside a sentence. */
+const FIELD_NAMES: Readonly<Record<FormField, string>> = {
+  remote: 'the address',
+  branch: 'the branch',
+  credential: 'the access',
+  collections: 'the collections',
+  manifestEntry: 'the manifest workspace',
 }
 
 const FIELDS: readonly FormField[] = [
@@ -599,6 +619,8 @@ function WhatToRead({
   const headingId = useId()
   const { manifest } = result
   const entries = manifest.entries
+  // A manifest with a mistake leaves nothing to choose; the preview says what is wrong.
+  if (entries.length <= 1 && manifest.state === 'problem') return undefined
   return (
     <section
       aria-labelledby={headingId}

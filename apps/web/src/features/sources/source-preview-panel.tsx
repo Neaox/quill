@@ -24,17 +24,23 @@ type Node = Collection['nodes'][number]
 /** Collections with more pages than this open folded, so the page stays short. */
 const OPEN_UP_TO = 40
 
+/** Reasons with this few files open with their paths shown; more fold to their count. */
+const OPEN_SKIPPED_UP_TO = 5
+
 const previewStyles = tv({
   slots: {
     tree: 'flex min-w-0 flex-col',
     // A level below the top: indented, with a rule down its side to say what it is under.
     branch: 'ms-4 flex min-w-0 flex-col border-s border-border ps-3',
-    row: 'flex min-w-0 items-start gap-2 border-b border-border py-1.5 last:border-b-0',
+    // On a phone the badges take a line of their own under the words, so a
+    // path is never squeezed into a column a few letters wide.
+    row: 'flex min-w-0 flex-wrap items-start gap-x-2 gap-y-1 border-b border-border py-1.5 last:border-b-0',
     icon: 'mt-0.5 size-3.5 shrink-0 text-muted',
-    words: 'flex min-w-0 grow flex-col',
+    words: 'flex min-w-0 grow basis-0 flex-col',
     title: 'min-w-0 text-sm break-words text-foreground',
     path: 'min-w-0 font-mono text-2xs break-all text-muted',
-    badges: 'flex shrink-0 flex-wrap justify-end gap-1',
+    badges:
+      'flex shrink-0 flex-wrap justify-end gap-1 max-sm:basis-full max-sm:justify-start max-sm:ps-5.5 empty:hidden',
     summary: [
       'focus-ring flex cursor-pointer list-none items-center gap-2 rounded-sm py-1 text-sm',
       'font-medium text-foreground marker:hidden [&::-webkit-details-marker]:hidden',
@@ -315,7 +321,7 @@ function LeftOut({ preview }: { readonly preview: SourcePreviewDto }) {
   return (
     <section aria-labelledby="preview-left-out" className="flex min-w-0 flex-col gap-3">
       <h3 id="preview-left-out" className="text-base font-semibold text-foreground">
-        Not pages
+        Left out
       </h3>
       {limits.truncated ? (
         <Callout tone="warning" title="The preview stopped early">
@@ -340,7 +346,11 @@ function LeftOut({ preview }: { readonly preview: SourcePreviewDto }) {
       {skipped.map(({ reason, count, paths, patterns }) => {
         const words = SKIP_REASONS[reason] ?? { title: 'Left out', detail: '' }
         return (
-          <Fold key={reason} summary={`${words.title}: ${count.toLocaleString('en')}`}>
+          <Fold
+            key={reason}
+            summary={`${words.title}: ${count.toLocaleString('en')}`}
+            open={count <= OPEN_SKIPPED_UP_TO}
+          >
             <p className="text-xs text-muted">{words.detail}</p>
             <ul aria-label={words.title} className="flex flex-col">
               {paths.map((path) => (
