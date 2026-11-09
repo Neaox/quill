@@ -1076,6 +1076,27 @@ describe('syncSource with a manifest', () => {
     ])
   })
 
+  it('breaks a tie between siblings by their paths, never by their random ids (ADR-062)', async () => {
+    // The two titles and paths are equal to the collator, which ignores
+    // accents; the document seen first gets the smaller id, and must not go
+    // first for that.
+    const h = harness([
+      {
+        id: 'c1',
+        files: {
+          [MANIFEST]: manifest(GUIDES_AT_DOCS),
+          'docs/guides/résumé.md': '# Résumé',
+          'docs/guides/resume.md': '# Resume',
+        },
+      },
+    ])
+    await h.sync()
+    const accented = await documentAt(h, 'docs/guides/résumé.md')
+    const plain = await documentAt(h, 'docs/guides/resume.md')
+    expect(accented.id < plain.id).toBe(true)
+    expect([plain.sortKey, accented.sortKey]).toEqual([1, 2])
+  })
+
   it('orders each collection: front matter order first, then the rule, as sort keys', async () => {
     const h = harness([
       {

@@ -1,0 +1,1 @@
+Fixed: In a workspace read from a repository, two pages that the collection's order cannot tell apart (the same title and the same path but for accents or case) are now ordered by their paths, the same on every sync and in every reading of the repository, rather than by the random ids they were given.
