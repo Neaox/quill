@@ -407,7 +407,9 @@ function* headingsOf(body: string): Generator<string> {
 function* linksOf(body: string): Generator<ExtractedLink> {
   for (const match of body.matchAll(LINK)) {
     const url = group(match, 'url')
-    yield { kind: 'link', url, text: group(match, 'text'), external: SCHEME.test(url) }
+    // `![alt](url)` is an image, as the real pipeline reads it.
+    const kind = body[match.index - 1] === '!' ? 'image' : 'link'
+    yield { kind, url, text: group(match, 'text'), external: SCHEME.test(url) }
   }
 }
 

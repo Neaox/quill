@@ -57,7 +57,9 @@ import {
   syncSource,
 } from './sync-source.ts'
 import type { SyncSourceDependencies } from './sync-source.ts'
+import { compareRevisions } from './compare-revisions.ts'
 import { renderDocument } from './render-document.ts'
+import { readAssetMap, SOURCE_ASSET_MAP_PATH } from './source-assets.ts'
 import type { RenderDocumentDependencies } from './render-document.ts'
 
 const LAYOUT_RECORD: SourceLayoutRecord = {
@@ -1891,7 +1893,7 @@ describe('repository assets', () => {
     )
   })
 
-  it('takes in a changed asset, reads no unchanged one again, and takes down what nothing shows', async () => {
+  it('takes in a changed asset, reads no unchanged one again, and keeps the old one for the revisions that had it', async () => {
     const h = harness([{ id: 'c1', files: FILES }])
     await h.sync()
     const before = await assetsOf(h)
@@ -1909,27 +1911,139 @@ describe('repository assets', () => {
     expect(after['docs/shot.png']).toBe(before['docs/shot.png'])
     const asked = read.mock.calls.flatMap(([ids]) => [...ids])
     expect(asked.some((id) => id.startsWith('docs/shot.png#'))).toBe(false)
-    // No path holds the first picture and no published page shows it.
+    // A stored revision still shows it, and history is never rewritten.
     const old = await h.uow.repos.attachments.findById(before['diagrams/flow.png'] ?? '')
-    expect(old?.deletedAt).toEqual(NOW)
+    expect(old?.deletedAt).toBeNull()
   })
 
-  it('keeps an attachment a published page still shows, though no path holds it', async () => {
+  it('keeps the asset map with each stored revision, written before the revision it changes with', async () => {
+    const h = harness([{ id: 'c1', files: FILES }])
+    await h.sync()
+    const first = await assetsOf(h)
+    const stored = async (revision?: RevisionId) => {
+      const file = await h.store.readFile(WORKSPACE, SOURCE_ASSET_MAP_PATH, revision)
+      return file === null ? null : Object.fromEntries(readAssetMap(file.text) ?? [])
+    }
+    expect(await stored()).toEqual(first)
+
+    // An asset-only revision is stored too; an unchanged map writes nothing.
+    h.source.push({
+      id: 'c2',
+      files: { ...FILES, 'diagrams/flow.png': bytes(pngFile({ width: 3 })) },
+    })
+    await h.sync()
+    expect((await stored())?.['diagrams/flow.png']).not.toBe(first['diagrams/flow.png'])
+    const writes = h.store.writtenFiles.length
+    h.source.push({
+      id: 'c3',
+      files: {
+        ...FILES,
+        'diagrams/flow.png': bytes(pngFile({ width: 3 })),
+        'docs/guide.md': `${GUIDE}\nMore.`,
+      },
+    })
+    await h.sync()
+    expect(h.store.writtenFiles).toHaveLength(writes)
+  })
+
+  it('renders each revision with the pictures it had, and remembers who may see them', async () => {
     const h = harness([{ id: 'c1', files: FILES }])
     await sourced(h)
     await h.sync()
-    const before = await assetsOf(h)
-    // The render after a publish records what the page shows (`render-on-publish`).
-    await render(h, 'docs/guide.md')
-    const { 'diagrams/copy.png': _copy, ...rest } = FILES
+    const first = await h.store.head(WORKSPACE)
+    if (first === null) throw new Error('nothing was published')
+    const old = await assetsOf(h)
+    const { 'docs/shot.png': _shot, ...rest } = FILES
     h.source.push({
       id: 'c2',
-      files: { ...rest, 'diagrams/flow.png': bytes(pngFile({ width: 3 })) },
+      files: {
+        ...rest,
+        'diagrams/flow.png': bytes(pngFile({ width: 3 })),
+        'docs/guide.md': `${GUIDE}\nChanged.`,
+      },
     })
     await h.sync()
+    const now = await assetsOf(h)
 
-    const kept = await h.uow.repos.attachments.findById(before['diagrams/flow.png'] ?? '')
-    expect(kept?.deletedAt).toBeNull()
+    const older = (await render(h, 'docs/guide.md', first)).content.html
+    expect(older).toContain(`![Flow](/api/attachments/${old['diagrams/flow.png']})`)
+    // Removed since, and still shown where it was.
+    expect(older).toContain(`![Shot](/api/attachments/${old['docs/shot.png']})`)
+    const head = (await render(h, 'docs/guide.md')).content.html
+    expect(head).toContain(`![Flow](/api/attachments/${now['diagrams/flow.png']})`)
+    expect(head).toContain('\nShot\n')
+
+    const guide = await h.idAt('docs/guide.md')
+    const history = h.uow.repos.sourceAssetHistory
+    expect(await history.listDocumentsShowing(old['diagrams/flow.png'] ?? '')).toEqual([guide])
+    expect(await history.listDocumentsShowing(old['docs/shot.png'] ?? '')).toEqual([guide])
+    expect(await history.listDocumentsShowing('nothing')).toEqual([])
+  })
+
+  it('compares two revisions each with the pictures it had', async () => {
+    const h = harness([{ id: 'c1', files: FILES }])
+    await sourced(h)
+    await h.sync()
+    const first = await h.store.head(WORKSPACE)
+    const old = await assetsOf(h)
+    h.source.push({
+      id: 'c2',
+      files: {
+        ...FILES,
+        'diagrams/flow.png': bytes(pngFile({ width: 3 })),
+        'docs/guide.md': `${GUIDE}\nChanged.`,
+      },
+    })
+    await h.sync()
+    const second = await h.store.head(WORKSPACE)
+    const now = await assetsOf(h)
+    if (first === null || second === null) throw new Error('nothing was published')
+    const compare = vi.spyOn(h.deps.format, 'compare')
+
+    const compared = await compareRevisions(
+      {
+        uow: h.uow,
+        contentStore: h.store,
+        format: h.deps.format,
+        hasher: createFakeHasher(),
+        blobStore: h.deps.blobStore,
+        settings: createFakeSettings(),
+      },
+      { documentId: await h.idAt('docs/guide.md'), from: first, to: second },
+    )
+
+    expect(compared.kind).toBe('compared')
+    const [input] = compare.mock.calls.at(-1) ?? []
+    const flow = '../diagrams/flow.png'
+    expect(input?.beforeResolved?.resolvedImages?.get(flow)).toEqual({
+      kind: 'href',
+      href: `/api/attachments/${old['diagrams/flow.png']}`,
+    })
+    expect(input?.context.resolvedImages?.get(flow)).toEqual({
+      kind: 'href',
+      href: `/api/attachments/${now['diagrams/flow.png']}`,
+    })
+  })
+
+  it('renders from the map as it is now for a revision stored before the map was kept', async () => {
+    const h = harness([{ id: 'c1', files: FILES }])
+    await sourced(h)
+    await h.sync()
+    const assets = await assetsOf(h)
+    vi.spyOn(h.store, 'readFile').mockResolvedValue({
+      path: SOURCE_ASSET_MAP_PATH,
+      text: '{',
+      revision: 'r' as RevisionId,
+    })
+    expect((await render(h, 'docs/guide.md')).content.html).toContain(
+      `![Flow](/api/attachments/${assets['diagrams/flow.png']})`,
+    )
+  })
+
+  it('stops when the store moved under the asset map', async () => {
+    const h = harness([{ id: 'c1', files: FILES }])
+    vi.spyOn(h.store, 'putFile').mockResolvedValue({ kind: 'stale', current: null })
+    expect(await h.sync()).toMatchObject({ kind: 'failed', failure: { reason: 'store-moved' } })
   })
 
   it('re-plans the assets with the layout: a path gone from the revision leaves the map', async () => {

@@ -5,6 +5,7 @@ import { dirname, join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 
 import { createGrant } from '@quill/application'
+import { pngFile } from '@quill/application/test-support'
 import type { DocumentId } from '@quill/domain'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
@@ -585,6 +586,10 @@ async function documentIn(workspace: string, title: string): Promise<string> {
   return found.id
 }
 
+/** The attachment the flow diagram is drawn from in a rendered body, if it is drawn. */
+const imageIn = (html: string): string | undefined =>
+  /<img src="\/api\/attachments\/([\da-f-]+)" alt="The flow">/u.exec(html)?.[1]
+
 /** A one-pixel PNG, as a repository's diagram might be. */
 const PIXEL_PNG = Buffer.from(
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
@@ -823,5 +828,103 @@ describe('a workspace whose repository links its files to each other', () => {
     expect(html).toContain(`<a href="/d/${missing}">missing page</a>`)
     expect(html).toContain(`<a href="${forge}/${head}/src/app.ts"`)
     expect(await brokenLinks()).toEqual([])
+  })
+
+  describe('a picture that changes, then goes', () => {
+    async function renderedAt(revision: string): Promise<string> {
+      const response = await harness.app.inject({
+        method: 'GET',
+        url: `/api/documents/${setupId}/rendered?revision=${revision}`,
+        cookies: viewer,
+      })
+      expect(response.statusCode).toBe(200)
+      return response.json<{ html: string }>().html
+    }
+
+    async function newestRevision(): Promise<string> {
+      const response = await harness.app.inject({
+        method: 'GET',
+        url: `/api/documents/${setupId}/history`,
+        cookies: viewer,
+      })
+      const [newest] = response.json<{ revisions: { revision: string }[] }>().revisions
+      if (newest === undefined) throw new Error('no revisions')
+      return newest.revision
+    }
+
+    async function push(
+      message: string,
+      files: Readonly<Record<string, string | null>>,
+      at: string,
+    ) {
+      await commitTo(repository, message, files, at)
+      expect((await syncNow(admin, workspace)).statusCode).toBe(202)
+      await harness.drainOutbox()
+    }
+
+    it('shows each revision the picture it had, compares them, and serves the old one to its readers', async () => {
+      await push(
+        'Say more about setup',
+        { 'docs/guides/setup.md': `${SETUP}\nMore.\n` },
+        '2026-01-01T00:00:00Z',
+      )
+      const withOld = await newestRevision()
+      const old = imageIn(await renderedAt(withOld))
+      expect(old).toBeDefined()
+
+      await writeFile(join(repository.work, 'docs/diagrams/flow.png'), pngFile({ width: 2 }))
+      await push(
+        'Redraw the flow',
+        { 'docs/guides/setup.md': `${SETUP}\nMore, redrawn.\n` },
+        '2026-01-02T00:00:00Z',
+      )
+      const withNew = await newestRevision()
+      const redrawn = imageIn(await renderedAt(withNew))
+      expect(redrawn).toBeDefined()
+      expect(redrawn).not.toBe(old)
+      // The older revision still has the picture it had.
+      expect(imageIn(await renderedAt(withOld))).toBe(old)
+
+      const compared = await harness.app.inject({
+        method: 'GET',
+        url: `/api/documents/${setupId}/compare?from=${withOld}&to=${withNew}`,
+        cookies: viewer,
+      })
+      expect(compared.statusCode).toBe(200)
+      const comparison = compared.json<{ html: string }>().html
+      expect(comparison).toContain(`/api/attachments/${old}`)
+      expect(comparison).toContain(`/api/attachments/${redrawn}`)
+
+      await push(
+        'Take the flow out',
+        {
+          'docs/diagrams/flow.png': null,
+          'docs/guides/setup.md': `${SETUP}\nMore, without the picture.\n`,
+        },
+        '2026-01-03T00:00:00Z',
+      )
+      const head = await rendered(setupId, viewer)
+      expect(imageIn(head)).toBeUndefined()
+      expect(head).toContain('The flow')
+      expect(imageIn(await renderedAt(withOld))).toBe(old)
+      expect(imageIn(await renderedAt(withNew))).toBe(redrawn)
+
+      // No published page shows the first picture now; its revision's readers still see it.
+      for (const attachment of [old, redrawn]) {
+        const served = await harness.app.inject({
+          method: 'GET',
+          url: `/api/attachments/${attachment}`,
+          cookies: viewer,
+        })
+        expect(served.statusCode).toBe(200)
+      }
+      const outsider = await harness.cookiesFor(tenancy.outsider)
+      const refused = await harness.app.inject({
+        method: 'GET',
+        url: `/api/attachments/${old}`,
+        cookies: outsider,
+      })
+      expect(refused.statusCode).toBe(404)
+    })
   })
 })

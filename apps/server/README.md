@@ -512,14 +512,20 @@ sniffed against the type the file name declares, held to `ATTACHMENT_MAX_BYTES`,
 metadata is removed before the hash that addresses it is taken. One attachment is made per distinct
 content in a workspace, owned by its source rather than by a document (`attachments.document_id` is
 null, `source_workspace_id` names the source), and `source_assets` records which attachment each
-path holds at the head, with the source's file id so an unchanged file is never read again. A
-relative image path resolves at render to its attachment, an SVG is drawn through the drawing
-allowlist (ADR-036), and an image that was not imported (refused, missing, or outside the
-repository) shows its alternative text; a refused file is listed on the sync state with its reason.
-`GET /api/attachments/:id` serves a source's attachment to a reader who may read a published page
-that shows it, and to nobody else; only the sync job changes or removes one (`403
-workspace_read_only`). After a sync, a source's attachment that no path holds and no published page
-shows is taken down (the row is marked removed; the bytes stay in the blob store).
+path holds at the head, with the source's file id so an unchanged file is never read again.
+
+Whenever the map changes, the job writes it into the workspace's store as
+`.quill/source-assets.json` before the revision it changes with is published, so every stored
+revision carries the map it was synced with. A relative image resolves at render against the map of
+the revision being rendered: history and compare show the picture each revision had, even one since
+changed or removed (a revision stored before the map was kept falls back to the current map). An SVG
+is drawn through the drawing allowlist (ADR-036), and an image that was not imported (refused,
+missing, or outside the repository) shows its alternative text; a refused file is listed on the sync
+state with its reason. Since a stored revision is never removed, neither is an imported asset while
+its source exists. `GET /api/attachments/:id` serves a source's attachment to a reader who may read
+a page that shows it now (the link index) or whose text ever pointed at a path that held it
+(`source_asset_holders`, `source_image_references`), and to nobody else; only the sync job changes or
+removes one (`403 workspace_read_only`).
 
 ## The content API (M2)
 
