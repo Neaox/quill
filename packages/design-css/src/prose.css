@@ -3150,6 +3150,8 @@
 
 .prose .qb-cast-text {
   min-width: 0;
+  /* A chip's words fill its width, as a label's do, rather than balancing their lines. */
+  text-wrap: wrap;
 }
 
 .prose .qb-cast-text > strong {
