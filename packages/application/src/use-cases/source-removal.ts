@@ -96,6 +96,6 @@ export async function readSourceRemoval(
     title: document.title,
     removedAt: row?.archivedAt ?? document.updatedAt,
     revision: latest?.sourceRevision ?? null,
-    replacement: replacement === document.id ? null : replacement,
+    replacement,
   }
 }
