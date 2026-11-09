@@ -18,13 +18,7 @@ import {
   generatedFolderPath,
   planFolders,
 } from './source-folders.ts'
-import {
-  LEADING_ORDER,
-  layoutPaths,
-  layoutPlacer,
-  projectSortKeys,
-  readOrder,
-} from './source-layout.ts'
+import { layoutPaths, layoutPlacer, readOrder } from './source-layout.ts'
 import type { LayoutCollection, SourceLayout, SourcePlacement } from './source-layout.ts'
 import { SOURCE_MANIFEST_PATH } from './source-manifest.ts'
 import type { ManifestProblem, UnknownManifestKey } from './source-manifest.ts'
@@ -36,6 +30,7 @@ import {
   readSourceDocument,
 } from './source-plan.ts'
 import type { LayoutReading } from './source-plan.ts'
+import { arrangeSiblings } from './source-revision.ts'
 import { validateSourceDraft } from './workspace-source.ts'
 import type { SourceCollectionInput, WorkspaceSourceField } from './workspace-source.ts'
 
@@ -502,7 +497,7 @@ function present(
         kind: folder === undefined ? 'document' : 'folder',
         collection: keyOf(collection),
         sortPath: folder ?? path,
-        order: order ?? (plan.leading.has(path) ? LEADING_ORDER : null),
+        order,
       }
     }),
     ...[...plan.generated].map(([folder, collection]): Entry => ({
@@ -519,19 +514,26 @@ function present(
 
   const trees = [...described].map(([collection, { key, slug, title, row }]) => {
     const own = entries.filter((entry) => entry.collection === key)
-    const children = Map.groupBy(own, (entry) => plan.parents.get(entry.key) ?? null)
+    // Placed as the sync places them (`arrangeSiblings`): nested by the
+    // folder plan, ordered by front matter and then the collection's rule.
+    const arranged = arrangeSiblings(
+      own.map((entry) => ({
+        id: entry.key,
+        path: entry.key,
+        title: entry.title,
+        entry,
+        // A preview knows no first appearance; `newest` and `oldest` fall back to the path.
+        createdAt: new Date(0),
+      })),
+      {
+        folders: plan,
+        orders: new Map(own.map((entry) => [entry.key, entry.order])),
+        rule: collection.order,
+      },
+    )
+    const children = Map.groupBy(arranged, ({ parentId }) => parentId)
     const build = (parent: string | null): SourcePreviewNode[] =>
-      projectSortKeys(
-        (children.get(parent) ?? []).map((entry) => ({
-          ...entry,
-          id: entry.key,
-          path: entry.sortPath,
-          entry,
-          // A preview knows no first appearance; `newest` and `oldest` fall back to the path.
-          createdAt: new Date(0),
-        })),
-        collection.order,
-      )
+      (children.get(parent) ?? [])
         .toSorted((left, right) => left.sortKey - right.sortKey)
         .map(({ item: { entry } }) => ({
           path: entry.path,
