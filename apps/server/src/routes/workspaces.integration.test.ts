@@ -475,6 +475,7 @@ describe('listing the workspaces a caller can see', () => {
         name: 'Engineering',
         slug: 'engineering',
         createdAt: harness.clock.now().toISOString(),
+        origin: { kind: 'native' },
         unit: { id: tenancy.unitId, name: 'Acme', path: ['Acme'] },
       },
     ])
