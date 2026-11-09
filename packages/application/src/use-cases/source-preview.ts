@@ -18,7 +18,6 @@ import {
   generatedFolderPath,
   planFolders,
 } from './source-folders.ts'
-import type { FolderPlan } from './source-folders.ts'
 import {
   LEADING_ORDER,
   layoutPaths,
@@ -26,9 +25,9 @@ import {
   projectSortKeys,
   readOrder,
 } from './source-layout.ts'
-import type { LayoutCollection, SourceLayout } from './source-layout.ts'
+import type { LayoutCollection, SourceLayout, SourcePlacement } from './source-layout.ts'
 import { SOURCE_MANIFEST_PATH } from './source-manifest.ts'
-import type { ManifestProblem, SourceManifest, UnknownManifestKey } from './source-manifest.ts'
+import type { ManifestProblem, UnknownManifestKey } from './source-manifest.ts'
 import {
   acceptSourceDocument,
   folderRoots,
@@ -36,6 +35,7 @@ import {
   readLayoutAt,
   readSourceDocument,
 } from './source-plan.ts'
+import type { LayoutReading } from './source-plan.ts'
 import { validateSourceDraft } from './workspace-source.ts'
 import type { SourceCollectionInput, WorkspaceSourceField } from './workspace-source.ts'
 
@@ -71,12 +71,16 @@ export const MAX_PREVIEW_READ_BYTES = 32 * 1024 * 1024
 /** Skipped files listed per reason; the count is always whole. */
 export const MAX_PREVIEW_SKIPPED = 200
 
+const PREVIEW_LIMITS = { files: MAX_PREVIEW_FILES, readBytes: MAX_PREVIEW_READ_BYTES }
+
 export interface SourcePreviewDependencies {
   readonly uow: UnitOfWork
   readonly sources: ExternalSourceProvider
   readonly format: DocumentFormat
   /** Accept `file://` remotes. Tests only, as for configuring. */
   readonly allowFileRemotes?: boolean
+  /** Lower limits than the defaults, for a test of what happens past them. */
+  readonly limits?: Partial<typeof PREVIEW_LIMITS>
 }
 
 export interface SourcePreviewCommand {
@@ -215,23 +219,23 @@ export async function previewWorkspaceSource(
   )
   // A settings collection is the workspace's by its slug, as saving makes it;
   // a new one has a key no collection id can be.
-  const settings: SourceCollection[] = draft.collections.map(({ slug, path }) => ({
-    collectionId: existing.get(slug)?.id ?? `new:${slug}`,
-    path,
+  const settings = draft.collections.map((collection) => ({
+    ...collection,
+    collectionId: existing.get(collection.slug)?.id ?? `new:${collection.slug}`,
   }))
-  const names = new Map(draft.collections.map(({ slug, name }) => [slug, name]))
+  const drafts = new Map(settings.map((collection) => [collection.collectionId, collection]))
 
   try {
     const opened = { remote: draft.remote, branch: draft.branch, credential: draft.credential }
     return await deps.sources.withDraft(opened, async (source) => {
-      const placement = await place(deps.format, source, {
+      const placement = await place(deps, source, {
         settings,
         entry: draft.manifestEntry ?? workspace.slug,
       })
       const current = sourced ? await currentState(deps.uow, command.workspaceId) : null
       return {
         kind: 'preview',
-        preview: present(placement, { existing, names, current }),
+        preview: present(placement, { existing, drafts, current }),
       }
     })
   } catch (error) {
@@ -263,18 +267,24 @@ interface Placement {
   readonly unread: number
 }
 
+/** What a document's contents said, by the file's id. */
+type ReadDocument =
+  | { readonly kind: 'read'; readonly title: string | null; readonly order: number | null }
+  | { readonly kind: 'refused'; readonly reason: 'too-large' | 'not-utf8' }
+
 async function place(
-  format: DocumentFormat,
+  deps: Pick<SourcePreviewDependencies, 'format' | 'limits'>,
   source: ExternalSource,
   options: { readonly settings: readonly SourceCollection[]; readonly entry: string },
 ): Promise<Placement> {
+  const limits = { ...PREVIEW_LIMITS, ...deps.limits }
   await source.head()
   const revision = await source.fetch()
   const reading = await readLayoutAt(source, revision, {
     collections: options.settings,
     entry: options.entry,
   })
-  const manifest = describeManifest(reading.manifest, reading)
+  const manifest = describeManifest(reading)
   const skipped = new Map<SourcePreviewSkipReason, Map<string, string | null>>()
   const skip = (reason: SourcePreviewSkipReason, path: string, pattern: string | null = null) => {
     const list = skipped.get(reason) ?? new Map<string, string | null>()
@@ -293,61 +303,36 @@ async function place(
   let assets = 0
   let truncated = false
   for await (const file of source.files(revision)) {
-    if (files >= MAX_PREVIEW_FILES) {
+    if (files >= limits.files) {
       truncated = true
       break
     }
     files += 1
-    if (file.path === SOURCE_MANIFEST_PATH) continue
-    if (!isSourceDocument(file.path)) {
-      if (isAsset(file.path)) assets += 1
-      else if (generatedFolderOf(file.path) === null) {
-        const where = placer.placement(file.path)
-        if (where.kind === 'excluded') skip('excluded', file.path, where.pattern)
-        else skip(where.kind === 'outside' ? 'outside' : 'not-markdown', file.path)
-      }
-      continue
-    }
-    const verdict = acceptSourceDocument(file, placer)
-    if (verdict.kind === 'placed') wanted.push({ file, collection: verdict.collection })
-    else if (verdict.kind === 'refused') skip(verdict.reason, file.path)
-    else {
+    // The manifest, and a file at a path only Quill's folder pages take, are no one's page.
+    if (file.path === SOURCE_MANIFEST_PATH || generatedFolderOf(file.path) !== null) continue
+    if (isSourceDocument(file.path)) {
+      const verdict = acceptSourceDocument(file, placer)
+      if (verdict.kind === 'placed') wanted.push({ file, collection: verdict.collection })
+      else if (verdict.kind === 'refused') skip(verdict.reason, file.path)
+      else skipLeftOut(skip, placer.placement(file.path), file.path)
+    } else if (isAsset(file.path)) {
+      assets += 1
+    } else {
       const where = placer.placement(file.path)
-      skip(verdict.reason, file.path, where.kind === 'excluded' ? where.pattern : null)
+      if (where.kind === 'placed') skip('not-markdown', file.path)
+      else skipLeftOut(skip, where, file.path)
     }
   }
 
-  // Each document's title and checks, from its contents, until the budget is spent.
-  const read = new Map<string, { readonly title: string; readonly order: number | null }>()
-  const refused = new Map<string, 'too-large' | 'not-utf8'>()
-  const byId = Map.groupBy(wanted, ({ file }) => file.fileId)
-  let budget = MAX_PREVIEW_READ_BYTES
-  if (wanted.length > 0) {
-    for await (const content of source.readFiles(byId.keys())) {
-      const contents = readSourceDocument(content)
-      for (const { file } of byId.get(content.fileId) ?? []) {
-        if (contents.kind === 'refused') refused.set(file.path, contents.reason)
-        else {
-          const view = format.read(contents.text)
-          read.set(file.path, {
-            title: view.title ?? titleFromPath(file.path),
-            order: readOrder(view.frontMatter['order']),
-          })
-        }
-      }
-      budget -= content.kind === 'content' ? content.bytes.byteLength : 0
-      if (budget <= 0) break
-    }
-  }
+  const read = await readDocuments(deps.format, source, wanted, limits.readBytes)
   const documents: PlacedDocument[] = []
   let unread = 0
   for (const { file, collection } of wanted) {
-    const reason = refused.get(file.path)
-    if (reason !== undefined) {
-      skip(reason, file.path)
+    const found = read.get(file.fileId)
+    if (found?.kind === 'refused') {
+      skip(found.reason, file.path)
       continue
     }
-    const found = read.get(file.path)
     if (found === undefined) unread += 1
     documents.push({
       path: file.path,
@@ -359,41 +344,64 @@ async function place(
   return { ...empty, layout, documents, assets, files, truncated, unread }
 }
 
-function describeManifest(
-  manifest: SourceManifest | null,
-  reading: Awaited<ReturnType<typeof readLayoutAt>>,
-): SourcePreviewManifest {
-  const entries = (manifest?.entries ?? []).map(({ slug, collections }) => ({
-    slug,
-    collections: collections.length,
-  }))
-  if (!reading.ok) {
-    return {
-      path: SOURCE_MANIFEST_PATH,
-      state: 'problem',
-      problem: reading.problem,
-      entries,
-      entry: null,
-      unknownKeys: manifest?.unknownKeys ?? [],
+/** Lists a file the layout leaves out, under why. */
+function skipLeftOut(
+  skip: (reason: SourcePreviewSkipReason, path: string, pattern?: string | null) => void,
+  where: SourcePlacement,
+  path: string,
+): void {
+  if (where.kind === 'excluded') skip('excluded', path, where.pattern)
+  else skip('outside', path)
+}
+
+/**
+ * Each document's title, `order` and checks, from its contents, until the
+ * byte budget is spent; what is not read by then is left out of the answer.
+ */
+async function readDocuments(
+  format: DocumentFormat,
+  source: ExternalSource,
+  wanted: readonly { readonly file: SourceFile }[],
+  budget: number,
+): Promise<ReadonlyMap<string, ReadDocument>> {
+  const read = new Map<string, ReadDocument>()
+  if (wanted.length === 0) return read
+  let left = budget
+  const ids = new Set(wanted.map(({ file }) => file.fileId))
+  for await (const content of source.readFiles(ids)) {
+    const contents = readSourceDocument(content)
+    if (contents.kind === 'refused') {
+      read.set(content.fileId, contents)
+      continue
     }
+    const view = format.read(contents.text)
+    read.set(content.fileId, {
+      kind: 'read',
+      title: view.title ?? null,
+      order: readOrder(view.frontMatter['order']),
+    })
+    left -= contents.text.length
+    if (left <= 0) break
   }
-  if (manifest === null) {
-    return {
-      path: SOURCE_MANIFEST_PATH,
-      state: 'absent',
-      problem: null,
-      entries: [],
-      entry: null,
-      unknownKeys: [],
-    }
-  }
-  return {
+  return read
+}
+
+function describeManifest(reading: LayoutReading): SourcePreviewManifest {
+  const { manifest } = reading
+  const common = {
     path: SOURCE_MANIFEST_PATH,
-    state: 'read',
+    entries: (manifest?.entries ?? []).map(({ slug, collections }) => ({
+      slug,
+      collections: collections.length,
+    })),
+    unknownKeys: manifest?.unknownKeys ?? [],
+  }
+  if (!reading.ok) return { ...common, state: 'problem', problem: reading.problem, entry: null }
+  return {
+    ...common,
+    state: manifest === null ? 'absent' : 'read',
     problem: null,
-    entries,
     entry: reading.entry?.slug ?? null,
-    unknownKeys: manifest.unknownKeys,
   }
 }
 
@@ -404,7 +412,7 @@ function describeManifest(
 interface CurrentState {
   /** The live entries of the path map, by path. */
   readonly live: ReadonlyMap<string, SourcePathRow>
-  /** Each live document's collection and title. */
+  /** Each document's collection and title. */
   readonly documents: ReadonlyMap<
     DocumentId,
     { readonly collectionId: string | null; readonly title: string }
@@ -426,7 +434,7 @@ async function currentState(uow: UnitOfWork, workspaceId: WorkspaceId): Promise<
   const indexes = new Map<string, string>()
   for (const path of live.keys()) {
     const folder = folderOfIndex(path)
-    if (folder !== null && !indexes.has(folder)) indexes.set(folder, path)
+    if (folder !== null) indexes.set(folder, path)
   }
   return {
     live,
@@ -438,98 +446,120 @@ async function currentState(uow: UnitOfWork, workspaceId: WorkspaceId): Promise<
   }
 }
 
+/** One page of the tree as the preview shows it, before it is nested. */
+interface Entry {
+  /** The path the plan knows it by: a generated folder page's stored path. */
+  readonly key: string
+  /** The path a person knows it by: a generated folder page's is the folder's. */
+  readonly path: string
+  readonly title: string
+  readonly kind: SourcePreviewNode['kind']
+  readonly collection: string
+  /** What it is ordered by among its siblings: a folder page by its folder's name. */
+  readonly sortPath: string
+  readonly order: number | null
+}
+
+/** A collection of the layout as the workspace will have it. */
+interface Described {
+  /** The collection's row id, or `new:<slug>` for one saving creates. */
+  readonly key: string
+  readonly slug: string
+  readonly title: string
+  readonly row: CollectionRow | undefined
+}
+
 function present(
   placement: Placement,
   context: {
     readonly existing: ReadonlyMap<string, CollectionRow>
-    readonly names: ReadonlyMap<string, string>
+    readonly drafts: ReadonlyMap<string, { readonly slug: string; readonly name: string }>
     readonly current: CurrentState | null
   },
 ): SourcePreview {
   const { layout, documents } = placement
-  const { existing, names, current } = context
-  const byId = new Map([...existing.values()].map((row) => [row.id, row]))
-  const describe = (collection: LayoutCollection) => {
-    if (collection.from === 'manifest') {
-      return { slug: collection.slug, title: collection.title, row: existing.get(collection.slug) }
-    }
-    const row = byId.get(collection.collectionId)
-    const slug = row?.slug ?? collection.collectionId.replace(/^new:/u, '')
-    return { slug, title: names.get(slug) ?? row?.name ?? slug, row }
+  const { existing, drafts, current } = context
+  const described = new Map<LayoutCollection, Described>()
+  for (const collection of layout?.collections ?? []) {
+    const { slug, title } =
+      collection.from === 'manifest' ? collection : describeDraft(drafts, collection.collectionId)
+    const row = existing.get(slug)
+    described.set(collection, { key: row?.id ?? `new:${slug}`, slug, title, row })
   }
-  // Each layout collection by a key that is its row's id when it has one.
-  const keyOf = (collection: LayoutCollection): string => {
-    const { slug, row } = describe(collection)
-    return row?.id ?? `new:${slug}`
-  }
+  const keyOf = (collection: LayoutCollection): string => describedOf(described, collection).key
 
-  const collections = layout?.collections ?? []
   const plan = planFolders(
     documents.map(({ path, collection }) => ({ path, collection: keyOf(collection) })),
     layout === null ? [] : folderRoots(layout, keyOf),
   )
-  const titles = new Map(documents.map(({ path, title }) => [path, title]))
-  const orders = new Map(documents.map(({ path, order }) => [path, order]))
-  const changeOf = changes(plan, documents, keyOf, current)
-
-  const trees = collections.map((collection): SourcePreviewCollection => {
-    const key = keyOf(collection)
-    const { slug, title, row } = describe(collection)
-    const inCollection = [
-      ...documents.filter((document) => keyOf(document.collection) === key).map(({ path }) => path),
-      ...[...plan.generated].flatMap(([folder, owner]) =>
-        owner === key ? [generatedFolderPath(folder)] : [],
-      ),
-    ]
-    const node = (path: string): Omit<SourcePreviewNode, 'children'> => {
+  const entries: Entry[] = [
+    ...documents.map(({ path, title, order, collection }): Entry => {
       const folder = plan.folderOf.get(path)
-      const generated = generatedFolderOf(path)
       return {
-        path: generated ?? path,
-        title:
-          generated === null
-            ? (titles.get(path) ?? titleFromPath(path))
-            : folderTitle(folder ?? generated),
-        kind:
-          generated !== null ? 'generated-folder' : folder === undefined ? 'document' : 'folder',
-        change: changeOf.get(path) ?? null,
+        key: path,
+        path,
+        title,
+        kind: folder === undefined ? 'document' : 'folder',
+        collection: keyOf(collection),
+        sortPath: folder ?? path,
+        order: order ?? (plan.leading.has(path) ? LEADING_ORDER : null),
       }
-    }
-    const children = Map.groupBy(inCollection, (path) => plan.parents.get(path) ?? null)
-    const build = (parent: string | null): SourcePreviewNode[] => {
-      const siblings = (children.get(parent) ?? []).map((path, index) => ({
-        id: String(index),
-        path: plan.folderOf.get(path) ?? path,
-        own: path,
-        title: titles.get(path) ?? folderTitle(plan.folderOf.get(path) ?? path),
-        order: orders.get(path) ?? (plan.leading.has(path) ? LEADING_ORDER : null),
-        // A preview knows no first appearance; `newest` and `oldest` fall back to the path.
-        createdAt: new Date(0),
-      }))
-      return projectSortKeys(siblings, collection.order)
+    }),
+    ...[...plan.generated].map(([folder, collection]): Entry => ({
+      key: generatedFolderPath(folder),
+      path: folder,
+      title: folderTitle(folder),
+      kind: 'generated-folder',
+      collection,
+      sortPath: folder,
+      order: null,
+    })),
+  ]
+  const changeOf = changes(entries, current)
+
+  const trees = [...described].map(([collection, { key, slug, title, row }]) => {
+    const own = entries.filter((entry) => entry.collection === key)
+    const children = Map.groupBy(own, (entry) => plan.parents.get(entry.key) ?? null)
+    const build = (parent: string | null): SourcePreviewNode[] =>
+      projectSortKeys(
+        (children.get(parent) ?? []).map((entry) => ({
+          ...entry,
+          id: entry.key,
+          path: entry.sortPath,
+          entry,
+          // A preview knows no first appearance; `newest` and `oldest` fall back to the path.
+          createdAt: new Date(0),
+        })),
+        collection.order,
+      )
         .toSorted((left, right) => left.sortKey - right.sortKey)
-        .map(({ item }) => ({ ...node(item.own), children: build(item.own) }))
-    }
+        .map(({ item: { entry } }) => ({
+          path: entry.path,
+          title: entry.title,
+          kind: entry.kind,
+          change: changeOf.get(entry.key) ?? null,
+          children: build(entry.key),
+        }))
+    const renamed = row !== undefined && row.name !== title
     return {
       slug,
       title,
       path: collection.path,
       order: collection.order,
-      status: row === undefined ? 'new' : row.name === title ? 'kept' : 'renamed',
-      previousTitle: row !== undefined && row.name !== title ? row.name : null,
-      documents: inCollection.length,
+      status: row === undefined ? 'new' : renamed ? 'renamed' : 'kept',
+      previousTitle: renamed ? row.name : null,
+      documents: own.length,
       tree: build(null),
-    }
+    } satisfies SourcePreviewCollection
   })
 
   const skipped = [...placement.skipped].map(([reason, paths]): SourcePreviewSkipped => {
-    const listed = [...paths.keys()].toSorted().slice(0, MAX_PREVIEW_SKIPPED)
-    const patterns: Record<string, string> = {}
-    for (const path of listed) {
-      const pattern = paths.get(path)
-      if (pattern !== undefined && pattern !== null) patterns[path] = pattern
-    }
-    return { reason, count: paths.size, paths: listed, patterns }
+    const listed = [...paths].toSorted(([left], [right]) => left.localeCompare(right))
+    const shown = listed.slice(0, MAX_PREVIEW_SKIPPED)
+    const patterns = Object.fromEntries(
+      shown.flatMap(([path, pattern]) => (pattern === null ? [] : [[path, pattern]])),
+    )
+    return { reason, count: paths.size, paths: shown.map(([path]) => path), patterns }
   })
 
   return {
@@ -547,99 +577,113 @@ function present(
     changes:
       current === null || layout === null
         ? null
-        : summarise(changeOf, plan, current, collections.map(keyOf), byId),
+        : summarise(changeOf, entries, current, [...described.values()], existing),
   }
 }
 
+function describeDraft(
+  drafts: ReadonlyMap<string, { readonly slug: string; readonly name: string }>,
+  key: string,
+): { readonly slug: string; readonly title: string } {
+  const draft = drafts.get(key)
+  /* v8 ignore next -- a settings collection of the layout is one of the draft's. */
+  if (draft === undefined) throw new Error(`No collection drafted as ${key}.`)
+  return { slug: draft.slug, title: draft.name }
+}
+
+function describedOf(
+  described: ReadonlyMap<LayoutCollection, Described>,
+  collection: LayoutCollection,
+): Described {
+  const found = described.get(collection)
+  /* v8 ignore next -- every collection of the layout is described with it. */
+  if (found === undefined) throw new Error(`No collection described for ${collection.path}.`)
+  return found
+}
+
 /**
- * What saving does to each planned document: added when the workspace does
- * not hold its path, moved when it does in another collection, unchanged
+ * What saving does to each planned page: added when the workspace does not
+ * hold its path, moved when it does in another collection, unchanged
  * otherwise. A folder whose page moves between its index file and a page
- * Quill writes keeps its document (ADR-061), so neither side counts.
+ * Quill writes keeps its document (ADR-061), so it counts as the page it was.
  */
 function changes(
-  plan: FolderPlan<string>,
-  documents: readonly PlacedDocument[],
-  keyOf: (collection: LayoutCollection) => string,
+  entries: readonly Entry[],
   current: CurrentState | null,
 ): ReadonlyMap<string, SourcePreviewChange> {
   const result = new Map<string, SourcePreviewChange>()
   if (current === null) return result
-  const planned = new Map<string, string>([
-    ...documents.map(({ path, collection }) => [path, keyOf(collection)] as const),
-    ...[...plan.generated].map(([folder, key]) => [generatedFolderPath(folder), key] as const),
-  ])
-  for (const [path, key] of planned) {
-    const row = current.live.get(path) ?? standIn(path, plan, current)
+  for (const entry of entries) {
+    const row = current.live.get(entry.key) ?? standIn(entry, current)
     if (row === undefined) {
-      result.set(path, 'added')
+      result.set(entry.key, 'added')
       continue
     }
-    const now = current.documents.get(row.documentId)?.collectionId ?? null
-    result.set(path, now === key ? 'unchanged' : 'moved')
+    const now = documentOf(current, row).collectionId
+    result.set(entry.key, now === entry.collection ? 'unchanged' : 'moved')
   }
   return result
 }
 
-/** The path map entry that stands for the same folder under its other kind of page. */
-function standIn(
-  path: string,
-  plan: FolderPlan<string>,
+/** The document a live path map entry names. */
+function documentOf(
   current: CurrentState,
-): SourcePathRow | undefined {
-  const generated = generatedFolderOf(path)
-  if (generated !== null) {
-    const index = current.indexes.get(generated)
-    return index === undefined ? undefined : current.live.get(index)
-  }
-  const folder = plan.folderOf.get(path)
-  return folder === undefined ? undefined : current.live.get(generatedFolderPath(folder))
+  row: SourcePathRow,
+): { readonly collectionId: string | null; readonly title: string } {
+  const document = current.documents.get(row.documentId)
+  /* v8 ignore next -- a path map entry names a document of the workspace. */
+  if (document === undefined) throw new Error(`No document ${row.documentId} for ${row.path}.`)
+  return document
+}
+
+/** The path map entry that stands for the same folder under its other kind of page. */
+function standIn(entry: Entry, current: CurrentState): SourcePathRow | undefined {
+  const path =
+    entry.kind === 'generated-folder'
+      ? current.indexes.get(entry.path)
+      : entry.kind === 'folder'
+        ? generatedFolderPath(entry.sortPath)
+        : undefined
+  return path === undefined ? undefined : current.live.get(path)
 }
 
 /** The folder an index file would stand for, by its name alone. */
 function folderOfIndex(path: string): string | null {
   const slash = path.lastIndexOf('/')
-  const name = path.slice(slash + 1)
-  return /^(?:index|readme)\.(?:md|markdown)$/iu.test(name) && slash > 0
-    ? path.slice(0, slash)
-    : null
+  return INDEX_FILE.test(path.slice(slash + 1)) ? path.slice(0, Math.max(slash, 0)) : null
 }
+
+const INDEX_FILE = /^(?:index|readme)\.(?:md|markdown)$/iu
 
 function summarise(
   changeOf: ReadonlyMap<string, SourcePreviewChange>,
-  plan: FolderPlan<string>,
+  entries: readonly Entry[],
   current: CurrentState,
-  kept: readonly string[],
-  byId: ReadonlyMap<string, CollectionRow>,
+  kept: readonly Described[],
+  existing: ReadonlyMap<string, CollectionRow>,
 ): SourcePreviewChanges {
   const count = (change: SourcePreviewChange) =>
     [...changeOf.values()].filter((value) => value === change).length
-  const taken = new Set<string>(changeOf.keys())
-  // A folder's page that changes kind keeps its document: the old path is not archived.
-  for (const path of changeOf.keys()) {
-    const generated = generatedFolderOf(path)
-    if (generated !== null) {
-      const index = current.indexes.get(generated)
-      if (index !== undefined) taken.add(index)
-    } else {
-      const folder = plan.folderOf.get(path)
-      if (folder !== undefined) taken.add(generatedFolderPath(folder))
-    }
+  // A page that stays, and the page a folder had under its other kind, are not archived.
+  const taken = new Set<string>()
+  for (const entry of entries) {
+    taken.add(entry.key)
+    const row = standIn(entry, current)
+    if (row !== undefined) taken.add(row.path)
   }
   const archived = [...current.live.values()]
     .filter((row) => !taken.has(row.path))
     .map((row) => ({
       path: generatedFolderOf(row.path) ?? row.path,
-      title: current.documents.get(row.documentId)?.title ?? titleFromPath(row.path),
+      title: documentOf(current, row).title,
     }))
     .toSorted((left, right) => left.path.localeCompare(right.path))
-  const keep = new Set(kept)
-  const retired = current.manifestCollections
-    .filter((id) => !keep.has(id))
-    .flatMap((id) => {
-      const row = byId.get(id)
-      return row === undefined ? [] : [{ slug: row.slug, title: row.name }]
-    })
+  const keep = new Set(kept.map(({ key }) => key))
+  const byId = new Map([...existing.values()].map((row) => [row.id, row]))
+  const retired = current.manifestCollections.flatMap((id) => {
+    const row = keep.has(id) ? undefined : byId.get(id)
+    return row === undefined ? [] : [{ slug: row.slug, title: row.name }]
+  })
   return {
     added: count('added'),
     moved: count('moved'),

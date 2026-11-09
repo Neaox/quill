@@ -525,3 +525,206 @@ describe('previewWorkspaceSource, for a workspace already read from a repository
     expect(narrower.changes?.archived).toEqual([{ path: 'docs/adr/0001.md', title: 'Decision' }])
   })
 })
+
+describe('previewWorkspaceSource, at its limits and edges', () => {
+  it('stops listing at its file limit and reading at its byte limit, and says so', async () => {
+    at([
+      {
+        id: 'c1',
+        files: {
+          'docs/a.md': `# A\n${'x'.repeat(40)}`,
+          'docs/b.md': 'No heading, so the title comes from the file name.',
+          'docs/c.md': '# C',
+          'docs/d.md': '# D',
+        },
+      },
+    ])
+    const result = await previewWorkspaceSource(
+      {
+        uow,
+        sources: provider(),
+        format: createFakeDocumentFormat(),
+        limits: { files: 3, readBytes: 10 },
+      },
+      command({ collections: [{ slug: 'docs', name: 'Docs', path: 'docs' }] }),
+    )
+    if (result.kind !== 'preview') throw new Error(result.kind)
+    expect(result.preview.limits).toEqual({ files: 3, truncated: true, unread: 2 })
+    expect(outline(result.preview.collections[0]?.tree ?? [])).toEqual([
+      'A [document] docs/a.md',
+      'B [document] docs/b.md',
+      'C [document] docs/c.md',
+    ])
+  })
+
+  it('lists other files a layout leaves out, and ignores a file at a folder page’s own path', async () => {
+    at([
+      {
+        id: 'c1',
+        files: {
+          [MANIFEST]: [
+            'version: 1',
+            'collections:',
+            '  - { slug: p, title: Packages, path: "packages/**/README.md" }',
+            'exclude: [packages/old]',
+          ].join('\n'),
+          'packages/ui/README.md': '# UI',
+          'packages/ui/build.log': 'log',
+          'packages/old/README.md': '# Old',
+          'packages/old/notes.txt': 'notes',
+          'packages/ui/.quill/folder.md': '# Claims the folder',
+        },
+      },
+    ])
+    const result = await previewed()
+    expect(Object.fromEntries(result.skipped.map(({ reason, paths }) => [reason, paths]))).toEqual({
+      outside: ['packages/ui/build.log'],
+      excluded: ['packages/old/notes.txt', 'packages/old/README.md'],
+    })
+    expect(outline(result.collections[0]?.tree ?? [])).toEqual([
+      'UI [folder] packages/ui/README.md',
+    ])
+  })
+
+  it('names a page with no title of its own after its file', async () => {
+    at([{ id: 'c1', files: { 'docs/release-notes.md': 'Just words, no heading.' } }])
+    const result = await previewed({ collections: [{ slug: 'docs', name: 'Docs', path: 'docs' }] })
+    expect(outline(result.collections[0]?.tree ?? [])).toEqual([
+      'Release notes [document] docs/release-notes.md',
+    ])
+  })
+
+  it('passes on a failure that is not the repository’s', async () => {
+    at([{ id: 'c1', files: {} }])
+    source.fetchFailure = new Error('The disk is full')
+    await expect(preview()).rejects.toThrow('The disk is full')
+    expect(closed).toBe(opened)
+  })
+})
+
+describe('previewWorkspaceSource, against what a sync left', () => {
+  const clock = () => createFakeClock(NOW)
+
+  async function connect(settings: {
+    collections?: { slug: string; name: string; path: string }[]
+    manifestEntry?: string | null
+  }) {
+    const time = clock()
+    const ids = createFakeIdGenerator('bbbb')
+    const configured = await configureWorkspaceSource(
+      { uow, clock: time, ids },
+      {
+        workspaceId: WORKSPACE,
+        remote: 'https://github.com/acme/handbook.git',
+        branch: 'main',
+        collections: settings.collections ?? [],
+        manifestEntry: settings.manifestEntry ?? null,
+        history: 'full',
+        commitMessages: 'subject',
+        credential: null,
+        configuredBy: userId('00000000-0000-4000-8000-000000000001'),
+      },
+    )
+    expect(configured.kind).toBe('configured')
+    return async () =>
+      await syncSource(
+        {
+          uow,
+          contentStore: createFakeContentStore({ now: () => time.now() }),
+          format: createFakeDocumentFormat(),
+          sources: provider(),
+          lock: {
+            withLock: async (_id, work) => ({ kind: 'ran', value: await work() }),
+            isHeld: async () => false,
+          },
+          clock: time,
+          ids,
+          blobStore: createInMemoryBlobStore(),
+          drawingText: { read: async () => null },
+          maxAssetBytes: 1024 * 1024,
+        },
+        { workspaceId: WORKSPACE },
+      )
+  }
+
+  it('says what a source never synced would add, and one whose sync failed', async () => {
+    at([{ id: 'c1', files: { 'docs/a.md': '# A' } }])
+    const sync = await connect({ collections: [{ slug: 'docs', name: 'Docs', path: 'docs' }] })
+    const before = await previewed({ collections: [{ slug: 'docs', name: 'Docs', path: 'docs' }] })
+    expect(before.changes).toEqual({ added: 1, moved: 0, unchanged: 0, archived: [], retired: [] })
+
+    source.fetchFailure = new ExternalSourceError('timeout', 'too slow')
+    expect((await sync()).kind).toBe('failed')
+    source.fetchFailure = null
+    const failed = await previewed({ collections: [{ slug: 'docs', name: 'Docs', path: 'docs' }] })
+    expect(failed.collections[0]?.status).toBe('kept')
+    expect(failed.changes?.added).toBe(1)
+  })
+
+  it('keeps a folder’s page when it changes kind, and names what leaves and what retires', async () => {
+    const manifest = [
+      'version: 1',
+      'workspaces:',
+      '  - slug: handbook',
+      '    collections:',
+      '      - { slug: guides, title: Guides, path: docs/guides }',
+      '      - { slug: notes, title: Notes, path: docs/notes }',
+      '  - slug: slim',
+      '    collections: [{ slug: guides, title: Guides, path: docs/guides }]',
+    ].join('\n')
+    at([
+      {
+        id: 'c1',
+        files: {
+          [MANIFEST]: manifest,
+          'docs/guides/old/b.md': '# B',
+          'docs/guides/deploy/README.md': '# Deploying',
+          'docs/guides/deploy/aws.md': '# AWS',
+          'docs/guides/gone.md': '# Gone',
+          'docs/notes/m.md': '# Memo',
+          'docs/notes/n.md': '# Note',
+        },
+      },
+    ])
+    const sync = await connect({})
+    expect((await sync()).kind).toBe('synced')
+    // The old folder gains a README; the deploy folder loses its own.
+    source.push({
+      id: 'c2',
+      files: {
+        [MANIFEST]: manifest,
+        'docs/guides/old/README.md': '# Old things',
+        'docs/guides/old/b.md': '# B',
+        'docs/guides/deploy/aws.md': '# AWS',
+        'docs/notes/m.md': '# Memo',
+        'docs/notes/n.md': '# Note',
+      },
+    })
+
+    const same = await previewed()
+    expect(outline(same.collections[0]?.tree ?? [])).toEqual([
+      'Deploy [generated-folder, unchanged] docs/guides/deploy',
+      '  AWS [document, unchanged] docs/guides/deploy/aws.md',
+      'Old things [folder, unchanged] docs/guides/old/README.md',
+      '  B [document, unchanged] docs/guides/old/b.md',
+    ])
+    expect(same.changes).toMatchObject({
+      added: 0,
+      moved: 0,
+      archived: [{ path: 'docs/guides/gone.md', title: 'Gone' }],
+      retired: [],
+    })
+    // Synced, the same settings change nothing, and what left stays left.
+    expect((await sync()).kind).toBe('synced')
+    expect((await previewed()).changes).toMatchObject({ added: 0, moved: 0, archived: [] })
+
+    const slim = await previewed({ manifestEntry: 'slim' })
+    expect(slim.changes).toMatchObject({
+      archived: [
+        { path: 'docs/notes/m.md', title: 'Memo' },
+        { path: 'docs/notes/n.md', title: 'Note' },
+      ],
+      retired: [{ slug: 'notes', title: 'Notes' }],
+    })
+  })
+})

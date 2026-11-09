@@ -327,9 +327,10 @@ class SourceReplay {
       this.#record = state?.layout ?? null
       this.#broken = brokenByPath(state === null ? [] : state.brokenLinks)
       const last = state?.lastSyncedRevision ?? null
+      const lastSyncedAt = state?.lastSyncedAt ?? null
 
       const head = await this.#source.source.head()
-      if (head === last && this.#layoutHolds(state?.lastSyncedAt ?? null)) {
+      if (head === last && this.#layoutHolds(lastSyncedAt)) {
         return { kind: 'up-to-date', revision: head }
       }
 

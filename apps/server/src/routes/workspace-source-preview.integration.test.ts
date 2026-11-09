@@ -264,6 +264,19 @@ describe('previewing a repository before connecting it', () => {
     expect(secret.json()).toMatchObject({ error: { details: { field: 'credential' } } })
   })
 
+  it('refuses a workspace written here that already holds documents', async () => {
+    const created = await harness.app.inject({
+      method: 'POST',
+      url: `/api/workspaces/${tenancy.workspaceId}/documents`,
+      cookies: admin,
+      payload: { collectionId: tenancy.collectionId, title: 'Written here' },
+    })
+    expect(created.statusCode).toBe(201)
+    const refused = await preview(tenancy.workspaceId, { remote: repository.remote })
+    expect(refused.statusCode).toBe(409)
+    expect(refused.json()).toMatchObject({ error: { code: 'workspace_not_empty' } })
+  })
+
   it('lists the workspaces the manifest describes when none is this one', async () => {
     const result = await previewed(workspace, { remote: repository.remote })
     expect(result.revision).toBe(head)
