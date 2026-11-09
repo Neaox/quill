@@ -61,6 +61,7 @@ export function sourceFreshnessRoutes(deps: AppDependencies): FastifyPluginAsync
             uow: deps.uow,
             lock: deps.sourceSync.lock,
             readCheck,
+            /* v8 ignore next 3 -- only a failure the check did not foresee (a database one) reaches here; `source-read-check.test.ts` covers the hand-off. */
             onCheckFailed: (error) => {
               request.log.warn({ err: error }, 'The check on read of a source failed')
             },
