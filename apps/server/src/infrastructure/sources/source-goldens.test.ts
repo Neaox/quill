@@ -1,10 +1,18 @@
 import { execFileSync } from 'node:child_process'
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 
-import { renderDocument, SOURCE_MANIFEST_PATH, syncSource } from '@quill/application'
+import {
+  describeManifestProblem,
+  organisationVocabulary,
+  plannedRenderInput,
+  planSourceHead,
+  renderDocument,
+  SOURCE_MANIFEST_PATH,
+  syncSource,
+} from '@quill/application'
 import type {
   RenderDocumentDependencies,
   SourceSettings,
@@ -25,7 +33,7 @@ import {
   GitContentStore,
   MemoryObjectStoreProvider,
 } from '@quill/content-store'
-import { collectionId, userId, workspaceId } from '@quill/domain'
+import { collectionId, documentId, userId, workspaceId } from '@quill/domain'
 import { afterAll, describe, expect, it } from 'vitest'
 
 import { createDrawioText } from '../../extensions/drawio/drawing-text.ts'
@@ -81,9 +89,13 @@ function git(cwd: string, args: readonly string[], input?: string): string {
 }
 
 /** The fixture as a repository with one commit, published to a bare remote. Returns the remote's URL. */
-async function publish(name: string, fixture: SourceFixture): Promise<string> {
-  const work = join(root, name, 'work')
-  const bare = join(root, name, 'remote.git')
+async function publish(
+  name: string,
+  fixture: SourceFixture,
+  directory: string = name,
+): Promise<string> {
+  const work = join(root, directory, 'work')
+  const bare = join(root, directory, 'remote.git')
   await mkdir(work, { recursive: true })
   git(work, ['init', '--quiet', '--initial-branch=main'])
   // The bytes as written, on every platform: no line-ending conversion.
@@ -311,6 +323,160 @@ describe('the sync of each source fixture, as golden files (ADR-062)', () => {
       await expect(`${JSON.stringify(golden, null, 2)}\n`).toMatchFileSnapshot(
         `./__goldens__/${name}.gen.json`,
       )
+    }, 60_000)
+  }
+})
+
+// ---------------------------------------------------------------------------
+// The head plan, held to the same golden files
+// ---------------------------------------------------------------------------
+
+/** What the head plan of a fixture says, in the golden file's shape, for the parts a plan answers. */
+async function planFixture(name: SourceFixtureName): Promise<Record<string, unknown>> {
+  const fixture: SourceFixture = SOURCE_FIXTURES[name]
+  const remote = await publish(name, fixture, `${name}-plan`)
+  const source = await GitCliExternalSource.open({
+    remote,
+    branch: 'main',
+    paths: [SOURCE_MANIFEST_PATH],
+    strictPrefixes: false,
+    cacheDirectory: join(root, `${name}-plan`, 'cache'),
+    outboundPolicy: { check: async () => ({ allowed: true }) },
+    allowFileRemotesForTesting: true,
+    ...(fixture.maxFileBytes === undefined ? {} : { maxFileBytes: fixture.maxFileBytes }),
+  })
+  const settings = (fixture.collections ?? []).map(({ slug, path }, index) => ({
+    id: collectionId(`00000000-0000-4000-8000-${String(index + 1).padStart(12, '0')}`),
+    slug,
+    path,
+  }))
+  const minted = createFakeIdGenerator('91a4')
+  const attachments = new Map<string, string>()
+  const blobStore = createInMemoryBlobStore()
+  const format = createDocumentFormat()
+  const revision = await source.fetch()
+  const plan = await planSourceHead(
+    {
+      format,
+      blobStore,
+      drawingText: createDrawioText(),
+      maxAssetBytes: 64 * 1024,
+      ids: {
+        document: () => documentId(minted.uuid()),
+        collection: () => collectionId(minted.uuid()),
+        attachment: (sha256) => {
+          const known = attachments.get(sha256) ?? minted.uuid()
+          attachments.set(sha256, known)
+          return known
+        },
+      },
+    },
+    source,
+    {
+      revision,
+      collections: settings.map(({ id, path }) => ({ collectionId: id, path })),
+      entry: FIXTURE_WORKSPACE_SLUG,
+      links: { remote: FORGE_REMOTE, outsideLinks: 'forge', viewTemplate: null },
+    },
+  )
+  if (plan.kind === 'unreadable') {
+    return {
+      failure: `${describeManifestProblem(SOURCE_MANIFEST_PATH, plan.problem)} (at ${revision})`,
+    }
+  }
+
+  const named = new Map<string, string>([
+    ...plan.documents.map((row): [string, string] => [row.documentId, `doc:${row.path}`]),
+    ...plan.assets.map((row): [string, string] => [row.attachmentId, `asset:${row.path}`]),
+  ])
+  const anonymise = (text: string): string =>
+    [...named].reduce((written, [id, label]) => written.replaceAll(id, `{${label}}`), text)
+  const slugs = new Map<string, { readonly slug: string; readonly title: string }>([
+    ...settings.map(({ id, slug }): [string, { slug: string; title: string }] => [
+      id,
+      { slug, title: slug },
+    ]),
+    ...plan.collections.flatMap(
+      ({ id, collection }): [string, { slug: string; title: string }][] =>
+        collection.from === 'manifest'
+          ? [[id, { slug: collection.slug, title: collection.title }]]
+          : [],
+    ),
+  ])
+  const vocabulary = await organisationVocabulary(createFakeSettings())
+  const bodies: Record<string, unknown> = {}
+  const stored: Record<string, string> = {}
+  for (const document of plan.documents) {
+    stored[document.path] = anonymise(document.markdown)
+    // oxlint-disable-next-line quill/no-independent-await-in-loop -- one document at a time, as the golden was written
+    const input = await plannedRenderInput(plan, document, { blobStore, vocabulary })
+    const rendered = format.render(input)
+    bodies[document.path] = {
+      html: anonymise(rendered.html),
+      blockIssues: rendered.blockIssues ?? [],
+      incompleteRequiredSections: rendered.incompleteRequiredSections ?? [],
+    }
+  }
+  return {
+    refused: plan.refused.map(({ path, reason }) => ({ path, reason })),
+    brokenLinks: plan.brokenLinks.map(({ path, url }) => ({ path, url })),
+    layout: {
+      origin: plan.layout.origin,
+      unknownKeys: plan.layout.unknownKeys,
+      collections: plan.collections.flatMap(({ collection }) =>
+        collection.from === 'manifest' ? [collection.slug] : [],
+      ),
+    },
+    collections: [...slugs.values()].toSorted((left, right) => (left.slug < right.slug ? -1 : 1)),
+    tree: plan.documents.map((document) => ({
+      path: document.path,
+      collection: slugs.get(document.collectionId)?.slug ?? null,
+      parent: document.parent,
+      title: document.title,
+      sortKey: document.sortKey,
+      archived: false,
+    })),
+    assets: plan.assets.map(({ path }) => path),
+    stored,
+    bodies,
+  }
+}
+
+/** The parts of a golden file a head plan answers. */
+async function goldenOf(name: SourceFixtureName): Promise<Record<string, unknown>> {
+  const golden = JSON.parse(
+    await readFile(join(import.meta.dirname, '__goldens__', `${name}.gen.json`), 'utf8'),
+  ) as {
+    readonly state: {
+      readonly failure: { readonly message: string } | null
+      readonly refused: unknown
+      readonly brokenLinks: unknown
+      readonly layout: unknown
+    }
+    readonly collections: unknown
+    readonly tree: unknown
+    readonly assets: unknown
+    readonly stored: unknown
+    readonly bodies: unknown
+  }
+  const { state } = golden
+  if (state.failure !== null) return { failure: state.failure.message }
+  return {
+    refused: state.refused,
+    brokenLinks: state.brokenLinks,
+    layout: state.layout,
+    collections: golden.collections,
+    tree: golden.tree,
+    assets: golden.assets,
+    stored: golden.stored,
+    bodies: golden.bodies,
+  }
+}
+
+describe('the head plan of each source fixture, against the sync golden files (ADR-062)', () => {
+  for (const name of Object.keys(SOURCE_FIXTURES) as SourceFixtureName[]) {
+    it(`${name}: the plan decides what the sync wrote`, async () => {
+      expect(await planFixture(name)).toEqual(await goldenOf(name))
     }, 60_000)
   }
 })

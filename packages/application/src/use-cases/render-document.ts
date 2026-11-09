@@ -13,6 +13,7 @@ import type {
 } from '../ports/document-format.ts'
 import { RENDERED_CONTENT_VERSION } from '../ports/document-format.ts'
 import type {
+  AttachmentId,
   DocumentLinkRow,
   DocumentRepository,
   DocumentRow,
@@ -27,7 +28,7 @@ import { documentReferenceFromUrl, linkedDocumentReferences } from './document-p
 import { attachmentIdsIn, attachmentUrl } from './attachments.ts'
 import { DRAWING_MEDIA_TYPE } from './media-types.ts'
 import { readSource } from './read-published.ts'
-import type { SourcePlace } from './source-links.ts'
+import type { SourceLinks, SourcePlace } from './source-links.ts'
 import { sourceLinksAt } from './source-links.ts'
 import { createVersionedReader } from './versioned-reader.ts'
 
@@ -340,17 +341,39 @@ export async function renderInputFor(
     drawingsShown(deps, document, markdown, sourced?.attachments),
   ])
   return {
-    input: {
+    input: assembleRenderInput({
       markdown,
       linkTitles: new Map([...linked].map(([id, row]) => [id, row.title])),
       drawings,
-      ...vocabulary,
-      ...(sourced === null || sourced.resolved.size === 0
-        ? {}
-        : { resolvedLinks: sourced.resolved }),
-      ...(sourced === null || sourced.images.size === 0 ? {} : { resolvedImages: sourced.images }),
-    },
+      vocabulary,
+      sourced,
+    }),
     linked,
+  }
+}
+
+/**
+ * A render input from its parts, in the one shape every body is keyed by
+ * (ADR-031). A sourced document's resolved links and images join it only
+ * when it has some, so a body without any keeps the key it always had. The
+ * reader's render and the head plan of a source (ADR-062) both assemble it
+ * here.
+ */
+export function assembleRenderInput(parts: {
+  readonly markdown: string
+  readonly linkTitles: ReadonlyMap<DocumentId, string>
+  readonly drawings: ReadonlyMap<string, DrawingSource>
+  readonly vocabulary: Pick<RenderInput, 'labels' | 'emoji' | 'labelEmoji'>
+  readonly sourced: Pick<SourceLinks, 'resolved' | 'images'> | null
+}): DrawnRenderInput {
+  const { markdown, linkTitles, drawings, vocabulary, sourced } = parts
+  return {
+    markdown,
+    linkTitles,
+    drawings,
+    ...vocabulary,
+    ...(sourced === null || sourced.resolved.size === 0 ? {} : { resolvedLinks: sourced.resolved }),
+    ...(sourced === null || sourced.images.size === 0 ? {} : { resolvedImages: sourced.images }),
   }
 }
 
@@ -409,7 +432,7 @@ async function linkedDocuments(
  * as the literal text they degrade to, rather than taking the document down
  * with it — the settings screens are where that file is reported and repaired.
  */
-async function organisationVocabulary(
+export async function organisationVocabulary(
   settings: Settings,
 ): Promise<Pick<RenderInput, 'labels' | 'emoji' | 'labelEmoji'>> {
   const read = await settings.readOrganisation()
@@ -444,12 +467,29 @@ async function drawingsShown(
   const ids = [...new Set([...attachmentIdsIn(markdown), ...imported])]
   if (ids.length === 0) return new Map()
   const rows = await deps.uow.repos.attachments.listLiveInWorkspace(document.workspaceId, ids)
-  const drawable = rows.filter(
+  return await drawingSources(deps.blobStore, rows)
+}
+
+/**
+ * The drawings among these attachments, by the address a body shows them
+ * at: each SVG drawing small enough to draw, read from the blob store. A
+ * file the store no longer holds is left out, and shown as an image.
+ */
+export async function drawingSources(
+  blobStore: BlobStore,
+  attachments: Iterable<{
+    readonly id: AttachmentId
+    readonly contentType: string
+    readonly size: number
+    readonly sha256: string
+  }>,
+): Promise<ReadonlyMap<string, DrawingSource>> {
+  const drawable = [...attachments].filter(
     (row) => row.contentType === DRAWING_MEDIA_TYPE && row.size <= MAX_DRAWING_BYTES,
   )
   const read = await Promise.all(
     drawable.map(async (row) => {
-      const bytes = await readBlob(deps.blobStore, row.sha256)
+      const bytes = await readBlob(blobStore, row.sha256)
       if (bytes === null) return []
       const markup = new TextDecoder('utf-8', { fatal: false }).decode(bytes)
       return [[attachmentUrl(row.id), { sha256: row.sha256, markup }] as const]
