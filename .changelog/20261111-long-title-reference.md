@@ -1,0 +1,1 @@
+Fixed: a document whose title is longer than about 90 characters could not be opened. The address the application built for it was longer than a request may carry, and was spelled differently from the links the server writes. Its address now uses the same words, cut at 80 characters, as everywhere else.
