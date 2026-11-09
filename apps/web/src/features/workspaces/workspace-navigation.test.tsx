@@ -126,6 +126,17 @@ function renderTree(
   return { ...view, router }
 }
 
+/** A workspace written here. */
+const nativeWorkspace = () =>
+  jsonResponse(200, {
+    id: 'workspace-1',
+    unitId: 'unit-1',
+    name: 'Acme docs',
+    slug: 'acme',
+    createdAt: '2026-01-01T00:00:00.000Z',
+    origin: { kind: 'native' },
+  })
+
 /** A workspace read from a repository, with what the caller may do in it. */
 const sourcedWorkspace = (manage: boolean) => () =>
   jsonResponse(200, {
@@ -249,16 +260,6 @@ describe('WorkspaceTree creation entry points', () => {
       expect(await screen.findByRole('menuitem', { name: 'Repository' })).toBeVisible()
       expect(screen.queryByRole('menuitem', { name: 'Workspace settings' })).toBeNull()
     })
-
-    const nativeWorkspace = () =>
-      jsonResponse(200, {
-        id: 'workspace-1',
-        unitId: 'unit-1',
-        name: 'Acme docs',
-        slug: 'acme',
-        createdAt: '2026-01-01T00:00:00.000Z',
-        origin: { kind: 'native' },
-      })
 
     it('offers an instance admin of an empty workspace written here reading it from a repository', async () => {
       renderTree(
