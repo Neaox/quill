@@ -24,13 +24,33 @@ import { normaliseMediaType, sniffMediaType } from './media-types.ts'
  * upload on its own publishes nothing.
  */
 
+/**
+ * Reads an SVG as a monochrome glyph (`@quill/markdown`'s `monochromeGlyph`,
+ * ADR-038 amended): the glyph to store in its place, or why it cannot be one.
+ * Injected, as the renderer is, so this layer owns no SVG parser.
+ */
+export type ReadMonochromeGlyph = (svg: string) =>
+  | {
+      readonly kind: 'glyph'
+      readonly svg: string
+      readonly width: number
+      readonly height: number
+    }
+  | { readonly kind: 'refused'; readonly reason: string }
+
 export interface EmojiImageDependencies {
   readonly blobStore: BlobStore
+}
+
+export interface UploadEmojiImageDependencies extends EmojiImageDependencies {
+  readonly monochromeGlyph: ReadMonochromeGlyph
 }
 
 export interface UploadEmojiImageCommand {
   readonly declaredContentType: string
   readonly body: AsyncIterable<Uint8Array>
+  /** Draw it in the colour of the text around it: an SVG, rewritten as a glyph. */
+  readonly monochrome?: boolean | undefined
 }
 
 export type UploadEmojiImageResult =
@@ -50,8 +70,11 @@ export type UploadEmojiImageResult =
       readonly plays?: number
       /** The upload as it came, metadata stripped, when the stored copy had its play count changed. */
       readonly original?: string
+      /** Stored as a glyph, drawn in the colour of the text around it, with its proportions. */
+      readonly monochrome?: { readonly width: number; readonly height: number }
     }
   | { readonly kind: 'empty' }
+  | { readonly kind: 'not-monochrome'; readonly reason: string }
   | { readonly kind: 'too-large'; readonly maxBytes: number }
   | { readonly kind: 'type-not-allowed'; readonly sniffed: string | null }
   | { readonly kind: 'type-mismatch'; readonly declared: string; readonly sniffed: string }
@@ -101,7 +124,7 @@ async function* once(bytes: Uint8Array): AsyncGenerator<Uint8Array> {
  * and its bound are ADR-047's image pipeline's to derive.
  */
 export async function uploadEmojiImage(
-  deps: EmojiImageDependencies,
+  deps: UploadEmojiImageDependencies,
   command: UploadEmojiImageCommand,
 ): Promise<UploadEmojiImageResult> {
   const bytes = await collect(command.body)
@@ -112,6 +135,21 @@ export async function uploadEmojiImage(
   if (!isEmojiMediaType(sniffed)) return { kind: 'type-not-allowed', sniffed }
   const declared = normaliseMediaType(command.declaredContentType)
   if (declared !== sniffed) return { kind: 'type-mismatch', declared, sniffed }
+
+  if (command.monochrome === true) {
+    if (sniffed !== 'image/svg+xml') {
+      return { kind: 'not-monochrome', reason: 'only an SVG can be drawn in the text’s colour' }
+    }
+    const glyph = deps.monochromeGlyph(new TextDecoder().decode(bytes))
+    if (glyph.kind === 'refused') return { kind: 'not-monochrome', reason: glyph.reason }
+    const stored = await deps.blobStore.put(once(new TextEncoder().encode(glyph.svg)), sniffed)
+    return {
+      kind: 'uploaded',
+      hash: stored.hash,
+      mediaType: sniffed,
+      monochrome: { width: glyph.width, height: glyph.height },
+    }
+  }
 
   if (sniffed === 'image/svg+xml') {
     const stored = await deps.blobStore.put(once(bytes), sniffed)

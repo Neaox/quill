@@ -9,6 +9,7 @@ import {
   uploadEmojiImage,
 } from '@quill/application'
 import type { FastifyPluginAsync } from 'fastify'
+import { monochromeGlyph } from '@quill/markdown/emoji-glyph'
 
 import { requireInstanceAdmin } from '../application/authorization.ts'
 import type { AppDependencies } from '../dependencies.ts'
@@ -50,11 +51,25 @@ const EmojiImageSchema = Type.Object(
     plays: Type.Optional(Type.Integer({ minimum: 1 })),
     /** The upload as it came, kept when the stored copy's play count was changed; never served. */
     original: Type.Optional(Type.String({ pattern: '^[0-9a-f]{64}$' })),
+    /**
+     * Stored as a glyph drawn in the colour of the text around it (ADR-038,
+     * amended), with the proportions of its view box. Save the emoji with
+     * `monochrome: true` and this width and height.
+     */
+    monochrome: Type.Optional(
+      Type.Object(
+        { width: Type.Integer({ minimum: 1 }), height: Type.Integer({ minimum: 1 }) },
+        { additionalProperties: false },
+      ),
+    ),
   },
   { $id: 'EmojiImage', additionalProperties: false },
 )
 
 const FileParams = Type.Object({ file: Type.String({ maxLength: 80 }) })
+
+/** `?monochrome=true` uploads an SVG to be drawn in the colour of the text around it. */
+const UploadQuerySchema = Type.Object({ monochrome: Type.Optional(Type.Literal('true')) })
 
 const KILOBYTE = 1024
 
@@ -78,6 +93,7 @@ export function emojiRoutes(deps: AppDependencies): FastifyPluginAsync {
         preHandler: app.requireVerifiedSession,
         schema: {
           consumes: ['multipart/form-data'],
+          querystring: UploadQuerySchema,
           body: UploadBodySchema,
           response: { 201: Type.Ref(EmojiImageSchema) },
         },
@@ -95,10 +111,14 @@ export function emojiRoutes(deps: AppDependencies): FastifyPluginAsync {
             `Send the image in a multipart field called "${UPLOAD_FIELD}"`,
           )
         }
-        const result = await uploadEmojiImage(deps, {
-          declaredContentType: part.mimetype,
-          body: part.file,
-        })
+        const result = await uploadEmojiImage(
+          { blobStore: deps.blobStore, monochromeGlyph },
+          {
+            declaredContentType: part.mimetype,
+            body: part.file,
+            monochrome: request.query.monochrome === 'true',
+          },
+        )
         if (result.kind !== 'uploaded') part.file.resume()
         switch (result.kind) {
           case 'uploaded': {
@@ -108,6 +128,12 @@ export function emojiRoutes(deps: AppDependencies): FastifyPluginAsync {
           }
           case 'empty':
             throw unprocessable('file_empty', 'That file has nothing in it')
+          case 'not-monochrome':
+            throw unprocessable(
+              'file_not_monochrome',
+              `That image cannot be drawn in the text’s colour: ${result.reason}. Upload it as a picture instead.`,
+              { reason: result.reason },
+            )
           case 'too-large':
             throw payloadTooLarge(
               `An emoji image may be at most ${result.maxBytes / KILOBYTE} KB`,

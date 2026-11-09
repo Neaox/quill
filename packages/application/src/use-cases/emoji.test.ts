@@ -13,7 +13,14 @@ import {
   uint32s,
 } from '../test-support/image-fixtures.ts'
 import { createInMemoryBlobStore } from '../test-support/in-memory-blob-store.ts'
+import type { ReadMonochromeGlyph } from './emoji.ts'
 import { readEmojiImage, uploadEmojiImage } from './emoji.ts'
+
+/** `@quill/markdown`'s glyph reader, as far as this layer sees it: a glyph, or a refusal. */
+const monochromeGlyph: ReadMonochromeGlyph = (svg) =>
+  svg.includes('<text')
+    ? { kind: 'refused', reason: 'it holds <text>, and a glyph holds shapes only' }
+    : { kind: 'glyph', svg: '<svg id="glyph-form"/>', width: 24, height: 16 }
 
 const SVG = new TextEncoder().encode(
   '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><rect width="16" height="16"/></svg>',
@@ -25,7 +32,10 @@ const upload = (bytes: Uint8Array, declaredContentType: string) => {
   const blobStore = createInMemoryBlobStore()
   return {
     blobStore,
-    result: uploadEmojiImage({ blobStore }, { declaredContentType, body: chunked(bytes) }),
+    result: uploadEmojiImage(
+      { blobStore, monochromeGlyph },
+      { declaredContentType, body: chunked(bytes) },
+    ),
   }
 }
 
@@ -171,10 +181,49 @@ describe('uploading an emoji image (ADR-038)', () => {
     }
     await expect(
       uploadEmojiImage(
-        { blobStore: failing },
+        { blobStore: failing, monochromeGlyph },
         { declaredContentType: 'image/svg+xml', body: chunked(SVG) },
       ),
     ).rejects.toThrow('disk full')
+  })
+})
+
+describe('uploading a monochrome emoji (ADR-038, amended)', () => {
+  const monochrome = (bytes: Uint8Array, declaredContentType: string) => {
+    const blobStore = createInMemoryBlobStore()
+    return {
+      blobStore,
+      result: uploadEmojiImage(
+        { blobStore, monochromeGlyph },
+        { declaredContentType, body: chunked(bytes), monochrome: true },
+      ),
+    }
+  }
+
+  it('stores the glyph the SVG was read as, in its place, with its proportions', async () => {
+    const { blobStore, result } = monochrome(SVG, 'image/svg+xml')
+    const uploaded = await result
+    if (uploaded.kind !== 'uploaded') throw new Error(uploaded.kind)
+    expect(uploaded.mediaType).toBe('image/svg+xml')
+    expect(uploaded.monochrome).toEqual({ width: 24, height: 16 })
+    expect(new TextDecoder().decode(await readBlob(blobStore, uploaded.hash))).toBe(
+      '<svg id="glyph-form"/>',
+    )
+  })
+
+  it('refuses an SVG that cannot be a glyph, with the reason', async () => {
+    const text = new TextEncoder().encode('<svg viewBox="0 0 8 8"><text>a</text></svg>')
+    expect(await monochrome(text, 'image/svg+xml').result).toEqual({
+      kind: 'not-monochrome',
+      reason: 'it holds <text>, and a glyph holds shapes only',
+    })
+  })
+
+  it('refuses a picture that is not an SVG', async () => {
+    expect(await monochrome(imageFixture('plain.png'), 'image/png').result).toEqual({
+      kind: 'not-monochrome',
+      reason: 'only an SVG can be drawn in the text’s colour',
+    })
   })
 })
 
@@ -182,7 +231,7 @@ describe('serving an emoji image', () => {
   it('serves only an image the organisation’s settings name', async () => {
     const blobStore = createInMemoryBlobStore()
     const settings = createFakeSettings()
-    const deps = { blobStore, settings }
+    const deps = { blobStore, settings, monochromeGlyph }
     const uploaded = await uploadEmojiImage(deps, {
       declaredContentType: 'image/svg+xml',
       body: chunked(SVG),

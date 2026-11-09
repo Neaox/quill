@@ -214,9 +214,13 @@ export function renderDigest(input: RenderInput, extensions = ''): string {
   const labels = [...(input.labels ?? [])].toSorted().join('\u0002')
   const labelled = labels.length === 0 ? body : `${body}\u0004${labels}`
   // Emoji likewise (ADR-038): each custom one by its name and its address,
-  // which carries its hash, and each label's leading emoji by name.
+  // which carries its hash, and each label's leading emoji by name. A
+  // monochrome one is marked, and only then, so every other key is unchanged.
   const emoji = [...(input.emoji ?? new Map<string, RenderedEmoji>())]
-    .map(([name, image]) => `${name}\u0001${image.src}\u0001${image.width}x${image.height}`)
+    .map(
+      ([name, image]) =>
+        `${name}\u0001${image.src}\u0001${image.width}x${image.height}${image.monochrome === true ? '\u0001glyph' : ''}`,
+    )
     .toSorted()
     .join('\u0002')
   const leading = [...(input.labelEmoji ?? new Map<string, string>())]

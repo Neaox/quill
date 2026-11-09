@@ -9,6 +9,7 @@ import { highlight } from './slash-rank.ts'
 import type { RankedMatch } from './slash-rank.ts'
 import { flatten } from './slash-sections.ts'
 import { useWindowedList } from './windowed-list.ts'
+import { EmojiPicture } from '../emoji/emoji-picture.tsx'
 import type { SlashMenuState, SlashStore } from './slash-store.ts'
 import {
   BLOCK_WORDING,
@@ -328,7 +329,7 @@ function SlashOption({
  */
 function ItemMark({ item }: { readonly item: SlashItem }) {
   if (item.glyph !== undefined) return <span aria-hidden="true">{item.glyph}</span>
-  if (item.image !== undefined) return <img src={item.image} alt="" className={classes.image} />
+  if (item.image !== undefined) return <EmojiPicture image={item.image} className={classes.image} />
   const Icon = item.icon
   return Icon === undefined ? null : <Icon />
 }

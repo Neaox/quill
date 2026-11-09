@@ -309,6 +309,63 @@ describe('EmojiEditor (ADR-038)', () => {
     expect(screen.queryByRole('group', { name: /Preview/u })).toBeNull()
   })
 
+  it('uploads an SVG to be drawn in the text’s colour, and keeps its glyph’s proportions', async () => {
+    const user = userEvent.setup()
+    const asked: string[] = []
+    renderEditor(
+      {},
+      {
+        [UPLOAD]: (request) => {
+          asked.push(new URL(request.url).search)
+          return jsonResponse(201, {
+            hash: HASH,
+            mediaType: 'image/svg+xml',
+            monochrome: { width: 16, height: 16 },
+          })
+        },
+      },
+    )
+
+    const toggle = screen.getByRole('switch', { name: 'Draw in the text’s colour' })
+    // Only an SVG can be a glyph, so the choice waits for one.
+    expect(toggle).toBeDisabled()
+    await user.upload(screen.getByLabelText('Image'), svgFile('clock.svg'))
+    expect(toggle).toBeEnabled()
+    await user.click(toggle)
+    await user.type(screen.getByLabelText('Alt text'), 'Clock')
+    await user.click(screen.getByRole('button', { name: 'Add emoji' }))
+
+    await vi.waitFor(() => {
+      expect(saved()).toEqual([
+        {
+          name: 'clock',
+          hash: HASH,
+          mediaType: 'image/svg+xml',
+          description: 'Clock',
+          width: 16,
+          height: 16,
+          monochrome: true,
+        },
+      ])
+    })
+    expect(asked).toEqual(['?monochrome=true'])
+    expect(screen.getByText('SVG, in the text’s colour · 16 × 16')).toBeInTheDocument()
+    expect(toggle).not.toBeChecked()
+  })
+
+  it('previews a saved monochrome emoji by its glyph, in each sample’s own ink', () => {
+    const { container } = renderEditor({
+      initial: [{ ...ACME, name: 'clock', width: 16, height: 16, monochrome: true }],
+      served: new Map([['clock', { src: `/api/emoji/clock.${HASH.slice(0, 16)}.svg` }]]),
+    })
+    const preview = screen.getByRole('group', { name: 'Preview of :clock: at text size' })
+    expect(within(preview).getAllByRole('img', { name: 'Acme logo' })).toHaveLength(2)
+    const uses = container.querySelectorAll('svg use')
+    expect([...uses].map((use) => use.getAttribute('href'))).toContain(
+      `/api/emoji/clock.${HASH.slice(0, 16)}.svg#glyph`,
+    )
+  })
+
   it('uploads an image, names it from the file, and adds it', async () => {
     const user = userEvent.setup()
     renderEditor(

@@ -128,6 +128,8 @@ export type {
 // so the editor can load it lazily (ADR-038).
 export {
   EMOJI_ASSET_URL,
+  EMOJI_GLYPH_URL,
+  GLYPH_ID,
   EMOJI_FRAMES_ATTRIBUTE,
   EMOJI_LOOP_ATTRIBUTE,
   EMOJI_NAME,

@@ -343,3 +343,60 @@ describe('the emoji image guard', () => {
     ])
   })
 })
+
+const withEmoji = (markdown: string, emoji: ReadonlyMap<string, CustomEmoji>): string =>
+  renderHtml(parseMarkdown(markdown), { emoji })
+
+describe('a monochrome emoji (ADR-038, amended)', () => {
+  const CLOCK: CustomEmoji = {
+    src: '/api/emoji/clock.0123456789abcdef.svg',
+    width: 16,
+    height: 16,
+    monochrome: true,
+  }
+  const html = withEmoji
+
+  it('is drawn by reference to its glyph, named in running text, in the colour around it', () => {
+    expect(html('Wait :clock: here\n', new Map([['clock', CLOCK]]))).toBe(
+      [
+        '<article><p>Wait <svg class="emoji emoji-glyph" viewBox="0 0 16 16" width="20" height="20" role="img" aria-label="clock">',
+        '<use href="/api/emoji/clock.0123456789abcdef.svg#glyph" width="16" height="16"></use></svg> here</p></article>',
+      ].join(''),
+    )
+  })
+
+  it('is hidden as decoration where words already say what it is', () => {
+    expect(
+      html(
+        ':acme[Acme]\n',
+        new Map([['acme', { ...CLOCK, src: '/api/emoji/acme.0123456789abcdef.svg' }]]),
+      ),
+    ).toBe('<article><p>:acme[Acme]</p></article>')
+    const rendered = renderHtml(parseMarkdown(':acme[Acme]\n'), {
+      emoji: new Map([['acme', { ...CLOCK, src: '/api/emoji/acme.0123456789abcdef.svg' }]]),
+      labels: new Set(['acme']),
+      labelEmoji: new Map([['acme', 'acme']]),
+    })
+    expect(rendered).toContain(
+      '<svg class="emoji emoji-glyph" viewBox="0 0 16 16" width="20" height="20" aria-hidden="true"><use href="/api/emoji/acme.0123456789abcdef.svg#glyph"',
+    )
+  })
+
+  it('keeps its proportions, and is a picture when its address is not an SVG', () => {
+    expect(html(':clock:\n', new Map([['clock', { ...CLOCK, width: 32, height: 16 }]]))).toContain(
+      'viewBox="0 0 32 16" width="40" height="20"',
+    )
+    expect(
+      html(
+        ':clock:\n',
+        new Map([['clock', { ...CLOCK, src: '/api/emoji/clock.0123456789abcdef.png' }]]),
+      ),
+    ).toContain('<img class="emoji" src="/api/emoji/clock.0123456789abcdef.png"')
+  })
+
+  it('leaves every colour emoji as it was', () => {
+    expect(html(':clock:\n', new Map([['clock', { ...CLOCK, monochrome: false }]]))).toBe(
+      '<article><p><img class="emoji" src="/api/emoji/clock.0123456789abcdef.svg" alt="clock" title=":clock:" width="20" height="20"></p></article>',
+    )
+  })
+})

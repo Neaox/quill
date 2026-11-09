@@ -137,6 +137,95 @@ describe('uploading an emoji image', () => {
   })
 })
 
+describe('a monochrome emoji (ADR-038, amended)', () => {
+  const monochrome = (bytes: Buffer, contentType = 'image/svg+xml') =>
+    harness.app.inject({
+      method: 'POST',
+      url: '/api/settings/organisation/emoji-images?monochrome=true',
+      cookies: admin,
+      ...multipart(bytes, contentType),
+    })
+
+  it('is stored as its glyph, served, and named for the renderer and the editor as one', async () => {
+    const response = await monochrome(SVG)
+    expect(response.statusCode).toBe(201)
+    const { hash } = response.json<{ hash: string }>()
+    expect(response.json()).toEqual({
+      hash: expect.stringMatching(/^[0-9a-f]{64}$/u),
+      mediaType: 'image/svg+xml',
+      monochrome: { width: 16, height: 16 },
+    })
+
+    await save((settings) => ({
+      ...settings,
+      emoji: [
+        { name: 'mark', hash, mediaType: 'image/svg+xml', width: 16, height: 16, monochrome: true },
+      ],
+    }))
+    const url = `/api/emoji/mark.${hash.slice(0, 16)}.svg`
+    const served = await harness.app.inject({ method: 'GET', url })
+    expect(served.statusCode).toBe(200)
+    expect(served.body).toBe(
+      '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" width="16" height="16"><symbol id="glyph" viewBox="0 0 16 16"><g fill="currentColor"><rect width="16" height="16" fill="currentColor"/></g></symbol><use href="#glyph"/></svg>',
+    )
+    const summary = await harness.app.inject({
+      method: 'GET',
+      url: '/api/settings/organisation/theme',
+    })
+    expect(summary.json<{ emoji: unknown }>().emoji).toEqual([
+      { name: 'mark', src: url, width: 16, height: 16, monochrome: true },
+    ])
+  })
+
+  it('refuses a picture, and an SVG that cannot be a glyph, saying why', async () => {
+    const two = Buffer.from(
+      '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 8 8"><path fill="#f00" d="M0 0"/><path fill="#00f" d="M1 1"/></svg>',
+    )
+    const refused = await monochrome(two)
+    expect(refused.statusCode).toBe(422)
+    expect(refused.json<{ error: { code: string; message: string } }>().error).toMatchObject({
+      code: 'file_not_monochrome',
+      message: expect.stringContaining('it is drawn in more than one colour'),
+    })
+    expect((await monochrome(ANIMATED_GIF, 'image/gif')).body).toContain('file_not_monochrome')
+  })
+
+  it('is refused in the settings when it is not an SVG', async () => {
+    const current = await harness.app.inject({
+      method: 'GET',
+      url: '/api/settings/organisation',
+      cookies: admin,
+    })
+    const { revision, settings } = current.json<{
+      revision: string | null
+      settings: OrganisationSettings
+    }>()
+    const response = await harness.app.inject({
+      method: 'PUT',
+      url: '/api/settings/organisation',
+      cookies: admin,
+      payload: {
+        settings: {
+          ...settings,
+          emoji: [
+            {
+              name: 'gif',
+              hash: 'a'.repeat(64),
+              mediaType: 'image/gif',
+              width: 16,
+              height: 16,
+              monochrome: true,
+            },
+          ],
+        },
+        expectedRevision: revision,
+      },
+    })
+    expect(response.statusCode).toBe(422)
+    expect(response.body).toContain('cannot be drawn in the text')
+  })
+})
+
 describe('serving an emoji image', () => {
   it('serves a saved emoji to anybody, immutable and sandboxed', async () => {
     const { hash } = (await upload(SVG)).json<{ hash: string }>()
