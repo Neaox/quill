@@ -192,6 +192,98 @@ An extension whose editor is someone else's application — draw.io now, Figma o
 - `EmbeddedEditorFrame` is the reading surface's lightbox shell (the native `<dialog class="lightbox">`) with a bar naming the editor, the frame with the adapter's sandbox, and a place for the session's questions (`EmbeddedEditorPrompt`). Its Escape is a request: the session decides whether closing would lose work.
 - The adapter supplies the address, the sandbox — each token documented where it is chosen — the schemas and the session, as a reducer with discriminated-union states (`drawio-session.ts`).
 
+## Component blocks
+
+A component block (ADR-060) is a directive with typed props and its own drawing, declared in one object. `:::endpoint` is the reference block (`packages/markdown/src/blocks/endpoint.ts`):
+
+```ts
+import { defineBlock, h, p } from '@quill/markdown/component-blocks'
+
+export const endpointBlock = defineBlock({
+  id: 'quill.endpoint',
+  version: '1.0.0',
+  name: 'endpoint', // :::endpoint{…}
+  title: 'API endpoint',
+  description: 'An HTTP endpoint: its method, path and authentication, then what it does.',
+  content: 'blocks', // a container; 'none' is a leaf, 'inline' is text, { items: 'step' } holds child blocks
+  props: {
+    method: p.enum(['GET', 'POST'], { title: 'Method', default: 'GET' }),
+    path: p.string({ title: 'Path', pattern: '^/\\S*
+To reuse a remark or rehype plugin from the ecosystem:
+
+```ts
+import { adaptRemarkPlugin } from '@quill/markdown/extension'
+import remarkSomething from 'remark-something'
+
+export default adaptRemarkPlugin(remarkSomething, {
+  id: 'community.something',
+  version: '2.3.1', // the plugin's version, pinned
+  owns: ['something'], // the node types it creates and may touch
+  sanitize: { span: { className: ['something'] } },
+  // The editor binding defaults to the source island.
+})
+```
+
+If the plugin turns out to be non-deterministic, or to change core syntax, the conformance kit fails it.
+
+## Networked extensions (live blocks)
+
+An extension that needs the network does not fetch while rendering. It declares a `live` binding, which is a live block type (ADR-032):
+
+```ts
+live: {
+  attributes: StatusAttributes,                  // validated at parse time
+  fetch: (params, { http, integration }) => ..., // on the server, via the SSRF-safe client, with an integration's credentials
+  cadence: { kind: 'on-view', ttl: '30s' },      // or 'scheduled' or 'push'
+  renderSnapshot: (snapshot, h) => ...,          // static HTML with an "as of" time, for export and crawlers
+  island: () => import('./status-island.tsx'),   // the live view in the app
+}
+```
+
+The document body renders a slot, which is cacheable and deterministic. The page fills it from the latest snapshot, and the app keeps it fresh at the declared cadence. A failing source shows its last good snapshot, never an error. The fetcher runs with the integration's credentials, never the reader's, and a live block only displays data: it never acts.
+
+## The conformance kit
+
+Every packaged or adapted extension must pass:
+
+```ts
+import { describeExtension } from '@quill/markdown/testing'
+import extension from './index.ts'
+import corpus from './corpus/index.ts'
+
+describeExtension(extension, corpus)
+```
+
+The kit checks that:
+- **It round trips:** Markdown → editor → Markdown, byte for byte, across the corpus.
+- **It degrades:** the source reads sensibly with the extension uninstalled.
+- **It is safe:** the sanitiser's attack corpus cannot get past the extension's grant.
+- **It is deterministic:** rendering twice gives the same output.
+- **It leaves core syntax alone:** the shared corpus parses identically with and without it.
+- **It is accessible:** axe passes on its rendered output and its editor view.
+- **It is fast enough:** its cost stays within the reading budgets.
+
+A production build refuses to register an extension that fails.
+
+## Versioning
+
+An extension's `id` and `version` are part of the render cache key, so upgrading it re-renders only the documents that use it. Treat the Markdown it accepts as a persisted format (AGENTS.md rule 17): new attributes are optional, old documents keep rendering, and a breaking change is a new directive name, not a new meaning for an old one.
+, required: true }),
+    deprecated: p.boolean({ title: 'Deprecated' }),
+  },
+  data: ['data-qb-method'],
+  render: ({ props, content }) =>
+    h('section', { 'aria-label': `${props.method} ${props.path}` }, h('code', {}, props.path), ...content),
+})
+```
+
+- **Register it** with the extensions: `createMarkdownRegistry(extensions, [...BUILT_IN_BLOCKS, endpointBlock])`. The registry refuses a block that breaks the contract, or takes a name one of Quill's own directives has, when the process starts.
+- **Props** are attributes: strings, enums, numbers, flags (`{deprecated}`) and comma-separated lists. Quote a value with spaces or braces: `path="/v1/documents/{id}"`. Each is plain JSON Schema with a `title`. A value that does not fit is drawn as the prop's default and the block says so; a missing required prop draws the block as a labelled frame instead.
+- **Nesting** is more colons for the outer block: `::::timeline` around `:::step`. A block with `content: { items: 'step' }` receives its steps already rendered as `items`; a block with `within: ['timeline']` is refused anywhere else, visibly.
+- **Rendering** returns hast through `h`, never a string. Its root is stamped `qb qb-<name>`. The sanitiser admits `qb-` classes, `aria-label` and the `data-qb-*` attributes the block lists in `data`, and nothing else beyond the base allowlist.
+- **Degrading:** without the block installed, `:::name` is drawn as a frame naming it with its content inside, and the document's health lists it. Outside Quill it reads as the directive line and the Markdown under it.
+- **In the editor** the block keeps its exact bytes; its card is headed by its title and the directive as written. Attributes are edited as Markdown until the generated props form lands (ADR-060, delivery step 4).
+
 ## Adapted plugins
 
 To reuse a remark or rehype plugin from the ecosystem:

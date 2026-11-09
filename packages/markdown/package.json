@@ -16,6 +16,7 @@
     "./emoji-shortcodes": "./src/emoji/shortcodes.ts",
     "./emoji-names": "./src/emoji/names.ts",
     "./extension": "./src/extensions/index.ts",
+    "./component-blocks": "./src/blocks/index.ts",
     "./drawio": "./src/extensions/drawio/index.ts",
     "./merge-worker": "./src/merge/merge-worker.ts"
   },

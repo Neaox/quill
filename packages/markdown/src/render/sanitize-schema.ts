@@ -8,6 +8,7 @@ import { CARDS_VARIANTS } from '../directives/cards.ts'
 import { LABEL_NAME } from '../directives/label.ts'
 import { LAYOUT_DIRECTIVE_NAMES, LAYOUT_WIDTHS } from '../directives/layout.ts'
 import { TABLE_FREEZE_VALUES, TABLE_PERCENTS } from '../directives/table.ts'
+import { BLOCK_FRAME_SANITIZE_GRANT } from '../blocks/render.ts'
 import { CODE_SANITIZE_GRANT } from '../code-group/render.ts'
 import { DETAILS_SANITIZE_GRANT } from '../details/render.ts'
 import { EMOJI_SANITIZE_GRANT } from '../emoji/emoji.ts'
@@ -238,6 +239,7 @@ const attributes: Schema['attributes'] = {
       'table-scroll',
       ...CODE_SANITIZE_GRANT.classes.div,
       ...DETAILS_SANITIZE_GRANT.classes.div,
+      ...BLOCK_FRAME_SANITIZE_GRANT.classes.div,
     ],
     ...TABLE_BLOCK_ATTRIBUTES,
     // A table's scroll container: focusable only ever with 0, and a group
@@ -246,6 +248,8 @@ const attributes: Schema['attributes'] = {
     ['role', 'group'],
     ['ariaLabel', 'Table'],
     ['ariaLabelledBy', CAPTION_ID],
+    // The frame an unknown block is shown in (`blocks/render.ts`), named in words.
+    ARIA_LABEL,
     ['data-variant', ...CARDS_VARIANTS],
     ['data-diagram', 'mermaid', 'svg'],
     // A code block's card and a code group (ADR-041), whose `data-sync` is
@@ -256,7 +260,16 @@ const attributes: Schema['attributes'] = {
   // `handlers.ts`'s `calloutAside`: the title paragraph rendered above a
   // callout's body. Its `id` is the default's `'*'` attribute, prefixed. A
   // link slot's paragraph of its own (`link-slots.ts`, ADR-042) is its block form.
-  p: [['className', 'callout-label', 'link-slot-block', ...NAVIGATION_SANITIZE_GRANT.classes.p]],
+  // An unknown block's frame heading, and a block's notes (`blocks/render.ts`).
+  p: [
+    [
+      'className',
+      'callout-label',
+      'link-slot-block',
+      ...NAVIGATION_SANITIZE_GRANT.classes.p,
+      ...BLOCK_FRAME_SANITIZE_GRANT.classes.p,
+    ],
+  ],
 
   // `navigation/render.ts` (ADR-058): a table of contents, a `nav` named by
   // its title or by its one fixed name, with its list's style.
@@ -336,6 +349,7 @@ const attributes: Schema['attributes'] = {
       'sr-only',
       ...EMOJI_SANITIZE_GRANT.classes.span,
       ...CODE_SANITIZE_GRANT.classes.span,
+      ...BLOCK_FRAME_SANITIZE_GRANT.classes.span,
     ],
     ['data-tone', ...BADGE_TONES],
     ['data-label', LABEL_NAME],

@@ -285,6 +285,22 @@ describe('getEnvelope', () => {
     ])
   })
 
+  it('reports each block the body could not draw as written, where it is', async () => {
+    const id = await draft(
+      'Guide',
+      '# Guide\n\n:::unknown-timeline\nStill read.\n:::\n\n::unknown-gadget\n\n:::unknown-timeline\n:::\n\n:::unknown-cast\n:::',
+      { owners: ['ada@example.com'] },
+    )
+    await publishDocument(deps, { documentId: id, base: null, author, sessionId: SESSION })
+
+    const result = await getEnvelope(deps, { documentId: id, capabilities: editor })
+    expect(result.kind === 'envelope' && result.envelope.health).toEqual([
+      { kind: 'block-issue', detail: 'lines 3, 9: no block is called unknown-timeline' },
+      { kind: 'block-issue', detail: 'no block is called unknown-gadget' },
+      { kind: 'block-issue', detail: 'line 12: no block is called unknown-cast' },
+    ])
+  })
+
   it('reports a published document that has no index row yet', async () => {
     const id = await draft('Overview', '# Overview')
     const document = await uow.repos.documents.findById(id)

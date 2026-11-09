@@ -1,9 +1,21 @@
 import { toString } from 'mdast-util-to-string'
 import { normalizeUri } from 'micromark-util-sanitize-uri'
 import type { Element, ElementContent, Properties } from 'hast'
-import type { Blockquote, Code, Heading, Image, Paragraph, PhrasingContent, Table } from 'mdast'
+import type {
+  Blockquote,
+  Code,
+  Heading,
+  Image,
+  Paragraph,
+  Parents,
+  PhrasingContent,
+  Table,
+} from 'mdast'
 import type { ContainerDirective, LeafDirective, TextDirective } from 'mdast-util-directive'
 
+import type { BlockIssue } from '../blocks/render.ts'
+import { createBlockRenderer } from '../blocks/render.ts'
+import { BUILT_IN_BLOCK_REGISTRY } from '../blocks/registry.ts'
 import type { CodeGroup } from '../code-group/code-group.ts'
 import { codeBlockCaption, codeCard, codeGroupElement } from '../code-group/render.ts'
 import type { Details } from '../details/details.ts'
@@ -14,8 +26,9 @@ import { linkDirective } from '../directives/link.ts'
 import type { CalloutType } from '../directives/callout.ts'
 import { calloutDirective } from '../directives/callout.ts'
 import { cardsDirective } from '../directives/cards.ts'
-import type { DirectiveAttributes, DirectiveContent } from '../directives/definition.ts'
+import type { DirectiveContent } from '../directives/definition.ts'
 import { claims } from '../directives/definition.ts'
+import { findDirective } from '../directives/registry.ts'
 import { figureDirective } from '../directives/figure.ts'
 import { guidanceDirective } from '../directives/guidance.ts'
 import { kbdDirective } from '../directives/kbd.ts'
@@ -31,6 +44,7 @@ import type { ResolvedEmoji } from '../emoji/emoji.ts'
 import { emojiElement } from '../emoji/emoji.ts'
 import type { MarkdownRegistry } from '../extensions/registry.ts'
 import { markerName, splitAlert } from '../pipeline/github-alert.ts'
+import { directiveSource } from './directive-source.ts'
 import { drawingElement } from './drawing-element.ts'
 import { linkBlockSlot, linkInlineSlot } from './link-slots.ts'
 import type { Slugger } from './slug.ts'
@@ -133,9 +147,17 @@ export interface HandlerOptions {
   readonly drawings?: ReadonlyMap<string, string> | undefined
   /**
    * The installed Markdown extensions (ADR-039), asked how each drawing is
-   * drawn; without them every drawing is drawn as ADR-036 draws it.
+   * drawn; without them every drawing is drawn as ADR-036 draws it. Their
+   * component blocks (ADR-060) draw the directives they name; without them,
+   * Quill's built-in blocks do.
    */
   readonly extensions?: MarkdownRegistry | undefined
+  /**
+   * Where the problems found with the body's blocks are collected, in
+   * document order: unknown blocks, props that do not fit, blocks that
+   * cannot be drawn (`blocks/render.ts`).
+   */
+  readonly blockIssues?: BlockIssue[] | undefined
   /**
    * Where each drawing placed in the body is collected, sanitised, in document
    * order: the slot is emitted here and filled after the document sanitiser
@@ -208,53 +230,6 @@ function frontMatter(): undefined {
 }
 
 /**
- * A directive's attributes, written back the way they were read.
- *
- * `mdast-util-directive` parses `#id` into `id` and `.a.b` into `class`, so they
- * are written back in that shorthand; a valueless attribute keeps its bare name.
- * The result is a text node, so the HTML serialiser escapes it: nothing here can
- * produce markup.
- */
-function attributeSource(attributes: DirectiveAttributes | null | undefined): string {
-  const written = Object.entries(attributes ?? {}).map(([name, value]) => {
-    if (value === null || value === undefined || value === '') return name
-    if (name === 'id') return `#${value}`
-    if (name === 'class') {
-      return value
-        .split(/\s+/)
-        .filter((each) => each.length > 0)
-        .map((each) => `.${each}`)
-        .join('')
-    }
-    return `${name}="${value}"`
-  })
-  return written.length === 0 ? '' : `{${written.join(' ')}}`
-}
-
-/**
- * A directive this renderer has no handler for, written back as the source the
- * author typed: `:name`, `::name`, its `[label]`, and its attributes.
- *
- * ADR-002's degradation rule is that an unknown directive reads as it would in a
- * renderer that never heard of directives at all — and such a renderer shows the
- * literal text, because it never saw a directive in the first place. Emitting
- * only the children instead silently deleted prose: `:` is a directive marker to
- * the parser, so `Ratio 3:2` is a text directive named `2`, and dropping the
- * marker turned it into `Ratio 3`. The label's children go through `state.all`
- * so `:unknown[**bold**]` keeps its formatting.
- */
-function directiveSource(
-  state: State,
-  node: LeafDirective | TextDirective,
-  marker: string,
-): ElementContent[] {
-  const label: ElementContent[] =
-    node.children.length === 0 ? [] : [text('['), ...state.all(node), text(']')]
-  const attributes = attributeSource(node.attributes)
-  return [text(`${marker}${node.name}`), ...label, ...(attributes === '' ? [] : [text(attributes)])]
-}
-
-/**
  * An image's source, percent-encoded as a link's is (mdast-util-to-hast's
  * own image handler does the same), so a character a browser would read
  * as something else, such as the backslash in `/\host`, which it reads as
@@ -278,7 +253,14 @@ export function createHandlers(options: HandlerOptions): Handlers {
     labels = new Set<string>(),
     labelEmoji,
     outline,
+    blockIssues = [],
   } = options
+
+  /** Component blocks (ADR-060), and the frame a block nothing draws is shown in. */
+  const blocks = createBlockRenderer({
+    registry: extensions?.blocks ?? BUILT_IN_BLOCK_REGISTRY,
+    issues: blockIssues,
+  })
 
   /**
    * A heading, and the permalink after its words. The heading is named by
@@ -562,7 +544,7 @@ export function createHandlers(options: HandlerOptions): Handlers {
   const containerDirective = (
     state: State,
     node: ContainerDirective,
-    parent: unknown,
+    parent: Parents | undefined,
   ): ElementContent | ElementContent[] => {
     if (claims(detailsDirective, node)) return detailsRenderer.details(state, node, parent)
     if (claims(accordionDirective, node)) return detailsRenderer.accordion(state, node)
@@ -598,12 +580,19 @@ export function createHandlers(options: HandlerOptions): Handlers {
       const model = repeatDirective.parse(node)
       return labelledSection(state, node, 'repeat', `Repeatable section: ${model.title ?? ''}`)
     }
-    // ADR-002's degradation rule: an unknown directive renders its children and
-    // drops the wrapper, exactly as a Markdown renderer that never heard of it would.
-    return state.all(node)
+    // A directive of Quill's own that is resolved or removed before a body is
+    // drawn (`:::when`, `:::notes`) renders its children if one remains.
+    if (findDirective(node) !== undefined) return state.all(node)
+    // A component block (ADR-060), or a container nothing claims: drawn in a
+    // frame that names it, its content inside, never dropped without a word.
+    return blocks.container(state, node, parent) ?? blocks.unknownContainer(state, node)
   }
 
-  const textDirective = (state: State, node: TextDirective): ElementContent | ElementContent[] => {
+  const textDirective = (
+    state: State,
+    node: TextDirective,
+    parent: Parents | undefined,
+  ): ElementContent | ElementContent[] => {
     if (claims(kbdDirective, node)) return element('kbd', {}, state.all(node))
     // A link with a stored choice (ADR-042): an ordinary anchor the page may later fill.
     if (claims(linkDirective, node)) return linkInlineSlot(linkDirective.parse(node))
@@ -625,6 +614,11 @@ export function createHandlers(options: HandlerOptions): Handlers {
     if (claims(smallDirective, node)) return element('small', {}, state.all(node))
     if (claims(placeholderDirective, node)) {
       return element('span', { className: ['placeholder'] }, state.all(node))
+    }
+    if (findDirective(node) === undefined) {
+      const block = blocks.text(state, node, parent)
+      if (block !== undefined) return block
+      blocks.unknown(node)
     }
     return directiveSource(state, node, ':')
   }
@@ -674,8 +668,7 @@ export function createHandlers(options: HandlerOptions): Handlers {
     return navigationBlock(node)
   }
 
-  const leafDirective = (state: State, node: LeafDirective): Element =>
-    claimedBlock(node) ??
+  const unclaimedLeaf = (state: State, node: LeafDirective): Element =>
     element(
       'section',
       {
@@ -685,6 +678,18 @@ export function createHandlers(options: HandlerOptions): Handlers {
       },
       state.wrap([element('p', {}, directiveSource(state, node, '::'))], true),
     )
+
+  const leafDirective = (
+    state: State,
+    node: LeafDirective,
+    parent: Parents | undefined,
+  ): ElementContent | ElementContent[] => {
+    // Every leaf directive of Quill's own is claimed above.
+    const drawn = claimedBlock(node) ?? blocks.leaf(state, node, parent)
+    if (drawn !== undefined) return drawn
+    blocks.unknown(node)
+    return unclaimedLeaf(state, node)
+  }
 
   return {
     yaml: frontMatter,

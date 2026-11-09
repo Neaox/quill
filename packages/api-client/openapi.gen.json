@@ -12621,6 +12621,12 @@
                                 "enum": [
                                   "broken-link"
                                 ]
+                              },
+                              {
+                                "type": "string",
+                                "enum": [
+                                  "block-issue"
+                                ]
                               }
                             ]
                           },

@@ -64,5 +64,6 @@ Status values: `Proposed` (awaiting a spike or review), `Accepted`, `Superseded 
 | [056](0056-events-outbox-and-bus.md)                  | Events: the outbox is the truth, the bus the signal | Accepted         |
 | [058](0058-navigation-blocks.md)                     | Navigation blocks: contents and child pages   | Accepted               |
 | [059](0059-document-properties-on-every-surface.md)  | Document properties on every surface          | Accepted               |
-| [060](0060-component-blocks.md)                       | Component blocks, and MDX as a dialect        | Proposed               |
+| [060](0060-component-blocks.md)                       | Component blocks, and MDX as a dialect        | Accepted               |
 | [061](0061-read-only-external-git-sources.md)         | Read-only external Git sources                | Accepted               |
+| [062](0062-check-and-preview-in-the-repository.md)    | Check and preview in the repository           | Proposed               |
