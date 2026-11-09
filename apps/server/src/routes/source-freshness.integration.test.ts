@@ -252,6 +252,16 @@ describe('the push webhook', () => {
     expect([400, 404]).toContain(bitbucket.statusCode)
   })
 
+  it('refuses a delivery with no body and repeated headers like any other', async () => {
+    const response = await harness.app.inject({
+      method: 'POST',
+      url: `/api/workspaces/${tenancy.workspaceId}/source/webhooks/github`,
+      headers: { 'x-github-event': 'push', 'set-cookie': ['a=1', 'b=2'] },
+    })
+    expect(response.statusCode).toBe(401)
+    expect(response.json()).toMatchObject({ error: { code: 'invalid_signature' } })
+  })
+
   it('accepts a GitLab push carrying the secret', async () => {
     const response = await harness.app.inject({
       method: 'POST',

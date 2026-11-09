@@ -60,10 +60,8 @@ const invalidDelivery = (): AppError =>
 /** The request's headers by lower-case name, as plain strings. */
 function headersOf(request: FastifyRequest): Record<string, string | undefined> {
   return Object.fromEntries(
-    Object.entries(request.headers).map(([name, value]) => [
-      name,
-      Array.isArray(value) ? value[0] : value,
-    ]),
+    // A header sent twice arrives as a list; its first value is the one read.
+    Object.entries(request.headers).map(([name, value]) => [name, [value].flat()[0]]),
   )
 }
 
