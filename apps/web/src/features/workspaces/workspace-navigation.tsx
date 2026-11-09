@@ -373,6 +373,11 @@ export function WorkspaceTree({
               <WorkspaceOverflow
                 workspaceSlug={workspaceSlug}
                 workspaceName={workspaceName ?? 'this workspace'}
+                empty={
+                  tree.data === undefined
+                    ? null
+                    : tree.data.collections.every((collection) => collection.total === 0)
+                }
               />
             </div>
           </div>
@@ -501,6 +506,12 @@ export function WorkspaceTree({
 interface WorkspaceOverflowProps {
   readonly workspaceSlug: string
   readonly workspaceName: string
+  /**
+   * Whether the workspace holds no documents, by the tree's own counts; null
+   * while the tree is loading. Only an empty workspace can be connected to a
+   * repository (ADR-061), so that is the only one offered it.
+   */
+  readonly empty: boolean | null
 }
 
 /**
@@ -510,9 +521,10 @@ interface WorkspaceOverflowProps {
  *
  * Today that is its settings (ADR-028's amendment: layout is the
  * workspace's) and, for a workspace read from a repository, the repository's
- * own page (ADR-061). An instance administrator is also offered connecting a
- * workspace written here to a repository; the page it opens says when the
- * workspace holds documents and so cannot be. It is rendered only for somebody who can open that page, so
+ * own page (ADR-061). An instance administrator is also offered connecting an
+ * empty workspace written here to a repository: one that holds documents
+ * cannot be, so it is not offered (a direct link to the page still says
+ * why). It is rendered only for somebody who can open that page, so
  * the menu is absent rather than offering an entry that answers "not found" —
  * a menu with nothing in it is not a menu (`docs/design/feedback.md`).
  *
@@ -522,7 +534,7 @@ interface WorkspaceOverflowProps {
  * note in `routes/_authenticated/w/$workspaceSlug/settings.tsx`; widening it
  * to `manage` is that route's change to make.
  */
-function WorkspaceOverflow({ workspaceSlug, workspaceName }: WorkspaceOverflowProps) {
+function WorkspaceOverflow({ workspaceSlug, workspaceName, empty }: WorkspaceOverflowProps) {
   const me = useMe()
   const navigate = useNavigate()
   const workspace = useWorkspace(workspaceSlug).data
@@ -568,7 +580,7 @@ function WorkspaceOverflow({ workspaceSlug, workspaceName }: WorkspaceOverflowPr
               },
             ]
           : []),
-        ...(instanceAdmin && workspace !== undefined && !sourced
+        ...(instanceAdmin && workspace !== undefined && !sourced && empty === true
           ? [
               {
                 label: 'Read from a repository…',
