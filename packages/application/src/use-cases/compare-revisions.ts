@@ -19,6 +19,7 @@ import { canonicaliseLinks } from './canonical-links.ts'
 import { readDraftContent } from './publish-document.ts'
 import { readSource } from './read-published.ts'
 import { RENDER_VERSION, renderDigest, renderInputFor } from './render-document.ts'
+import type { SourcePlace } from './source-links.ts'
 import type { DrawnRenderInput } from './render-document.ts'
 
 /**
@@ -84,6 +85,13 @@ export interface Sides {
   readonly document: DocumentRow
   readonly before: string
   readonly after: string
+  /**
+   * Where each published side sits in its own revision, so a sourced
+   * document's relative links and images resolve as that revision had them
+   * (ADR-061). Absent for nothing compared against, and for a draft.
+   */
+  readonly beforePlace?: SourcePlace | undefined
+  readonly afterPlace?: SourcePlace | undefined
   /** The draft, when it is the newer side: what it holds and the version it is at. */
   readonly draft?: {
     readonly content: DraftContent
@@ -109,8 +117,8 @@ export async function compareSides(
   command: Pick<CompareRevisionsCommand, 'known' | 'patches'>,
 ): Promise<CompareRevisionsResult> {
   const [before, after] = await Promise.all([
-    renderInputFor(deps, sides.document, sides.before),
-    renderInputFor(deps, sides.document, sides.after),
+    renderInputFor(deps, sides.document, sides.before, sides.beforePlace),
+    renderInputFor(deps, sides.document, sides.after, sides.afterPlace),
   ])
   const patches = command.patches === true
   const key = comparisonKey(deps, before.input, after.input, sides.draft, patches)
@@ -120,6 +128,10 @@ export async function compareSides(
     before: sides.before,
     after: sides.after,
     context: bothSides(before.input, after.input),
+    beforeResolved: {
+      resolvedLinks: before.input.resolvedLinks,
+      resolvedImages: before.input.resolvedImages,
+    },
     ...(patches ? { patches: true } : {}),
     ...(sides.draft === undefined
       ? {}
@@ -184,10 +196,14 @@ export async function readSides(
     })
     return source === null
       ? { kind: 'revision-not-found', revision }
-      : { kind: 'side', markdown: source.markdown }
+      : {
+          kind: 'side',
+          markdown: source.markdown,
+          place: { path: source.path, revision: source.revision, head: false },
+        }
   }
   const [before, after] = await Promise.all([
-    command.from === null ? { kind: 'side' as const, markdown: '' } : published(command.from),
+    command.from === null ? NOTHING : published(command.from),
     command.to === DRAFT ? draftSide(deps, document, command.appOrigins) : published(command.to),
   ])
   if (before.kind !== 'side') return before
@@ -197,13 +213,19 @@ export async function readSides(
     document,
     before: before.markdown,
     after: after.markdown,
+    ...(before.place === undefined ? {} : { beforePlace: before.place }),
+    ...(after.place === undefined ? {} : { afterPlace: after.place }),
     ...(after.draft === undefined ? {} : { draft: after.draft }),
   }
 }
 
+/** What a first revision is compared against. */
+const NOTHING: Side = { kind: 'side', markdown: '' }
+
 interface Side {
   readonly kind: 'side'
   readonly markdown: string
+  readonly place?: SourcePlace
   readonly draft?: Sides['draft']
 }
 
@@ -228,7 +250,11 @@ async function draftSide(
   }
 }
 
-/** What both sides are drawn with: every title either links to, every drawing either shows. */
+/**
+ * What both sides are drawn with: every title either links to, every drawing
+ * either shows. The newer side's resolved links and images; the older side's
+ * travel beside them (`beforeResolved`).
+ */
 function bothSides(before: DrawnRenderInput, after: DrawnRenderInput): CompareContext {
   return {
     linkTitles: new Map([...before.linkTitles, ...after.linkTitles]),
@@ -236,6 +262,8 @@ function bothSides(before: DrawnRenderInput, after: DrawnRenderInput): CompareCo
     labels: after.labels,
     emoji: after.emoji,
     labelEmoji: after.labelEmoji,
+    resolvedLinks: after.resolvedLinks,
+    resolvedImages: after.resolvedImages,
   }
 }
 

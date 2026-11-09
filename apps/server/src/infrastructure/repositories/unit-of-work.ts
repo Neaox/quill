@@ -35,6 +35,7 @@ import { createSecretRepository } from './secret-repository.ts'
 import { createSessionRepository } from './session-repository.ts'
 import { createShareLinkRepository } from './share-link-repository.ts'
 import {
+  createSourceAssetHistoryRepository,
   createSourceAssetRepository,
   createSourcePathMapRepository,
   createSourceSyncStateRepository,
@@ -93,6 +94,7 @@ function buildBundle(
     workspaceSources: createWorkspaceSourceRepository(db),
     sourcePaths: createSourcePathMapRepository(db),
     sourceAssets: createSourceAssetRepository(db),
+    sourceAssetHistory: createSourceAssetHistoryRepository(db),
     sourceSyncState: createSourceSyncStateRepository(db),
     sourceWebhookDeliveries: createSourceWebhookDeliveryRepository(db),
     events: createEventRecorder({ outbox: createOutboxWriter(db), ids, sink }),

@@ -231,7 +231,14 @@ export interface CompareInput {
   /** The older text; empty compares against nothing, as a first revision reads. */
   readonly before: string
   readonly after: string
+  /** What the newer text is drawn with; its resolved links and images are the newer revision's. */
   readonly context: CompareContext
+  /**
+   * The older text's own resolved links and images (ADR-061): a sourced
+   * document's revisions each resolve against their own tree, so a picture
+   * that changed between them is shown as it was on each side.
+   */
+  readonly beforeResolved?: Pick<RenderInput, 'resolvedLinks' | 'resolvedImages'> | undefined
   /** Draw each change on its own as well, for a view that shows one change at a time. */
   readonly patches?: boolean
   /** The record of who wrote what in the draft, when the newer text is it. */

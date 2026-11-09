@@ -19,6 +19,7 @@ import type { NotificationRepository } from './notifications.ts'
 import type { ReviewRepository } from './reviews.ts'
 import type { SecretsRepository } from './secrets.ts'
 import type {
+  SourceAssetHistoryRepository,
   SourceAssetRepository,
   SourcePathMapRepository,
   SourceSyncStateRepository,
@@ -1497,6 +1498,7 @@ export interface RepositoryBundle {
   /** Where each file of a sourced workspace's source is, and the id minted for it (ADR-061). */
   readonly sourcePaths: SourcePathMapRepository
   readonly sourceAssets: SourceAssetRepository
+  readonly sourceAssetHistory: SourceAssetHistoryRepository
   /** How far each sourced workspace has synced, and what stopped it (ADR-061). */
   readonly sourceSyncState: SourceSyncStateRepository
   /** The push webhook deliveries each sourced workspace has accepted, for a week (ADR-061). */

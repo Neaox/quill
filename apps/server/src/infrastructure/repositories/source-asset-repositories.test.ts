@@ -3,7 +3,13 @@ import { userId, workspaceId } from '@quill/domain'
 
 import { createTestDatabase, type TestDatabase } from '../db/test-database.ts'
 import { createAttachmentRepository } from './attachment-repository.ts'
-import { createSourceAssetRepository } from './source-sync-repositories.ts'
+import {
+  createSourceAssetHistoryRepository,
+  createSourceAssetRepository,
+} from './source-sync-repositories.ts'
+import { createDocumentRepository } from './document-repository.ts'
+import { aShortId } from '@quill/application/test-support'
+import { documentId } from '@quill/domain'
 import { createUnitRepository } from './unit-repository.ts'
 import { createUserRepository } from './user-repository.ts'
 import { createWorkspaceRepository } from './workspace-repository.ts'
@@ -81,6 +87,8 @@ afterAll(async () => {
 })
 
 beforeEach(async () => {
+  await database.pool.query('DELETE FROM source_asset_holders')
+  await database.pool.query('DELETE FROM source_image_references')
   await database.pool.query('DELETE FROM source_assets')
   await database.pool.query('DELETE FROM attachments')
 })
@@ -144,5 +152,45 @@ describe('the asset map', () => {
     expect((await assets.listByWorkspace(WORKSPACE)).map(({ path }) => path)).toEqual([
       'docs/flow.png',
     ])
+  })
+})
+
+describe('who may see an asset', () => {
+  it('is every page that pointed at a path that ever held it, each once', async () => {
+    const history = createSourceAssetHistoryRepository(database.db)
+    const guide = documentId('00000000-0000-4000-8000-000000000201')
+    const other = documentId('00000000-0000-4000-8000-000000000202')
+    const documents = createDocumentRepository(database.db)
+    for (const [index, id] of [guide, other].entries()) {
+      if ((await documents.findById(id)) !== null) continue
+      await documents.create({
+        id,
+        shortId: aShortId(index + 1),
+        workspaceId: WORKSPACE,
+        collectionId: null,
+        parentId: null,
+        slug: `doc-${index}`,
+        path: `docs/${index}.md`,
+        title: `Doc ${index}`,
+        status: 'published',
+        templateId: null,
+        templateVersion: null,
+        now: NOW,
+      })
+    }
+    await attachments.createForSource(asset(FIRST))
+    await attachments.createForSource(asset(SECOND, WORKSPACE, 'b'.repeat(64)))
+    await history.recordHeld(WORKSPACE, 'docs/flow.png', FIRST)
+    await history.recordHeld(WORKSPACE, 'docs/flow.png', FIRST)
+    await history.recordHeld(WORKSPACE, 'docs/moved.png', FIRST)
+    await history.recordHeld(WORKSPACE, 'docs/other.png', SECOND)
+    await history.recordShown(WORKSPACE, guide, ['docs/flow.png', 'docs/moved.png'])
+    await history.recordShown(WORKSPACE, guide, ['docs/flow.png'])
+    await history.recordShown(WORKSPACE, other, ['docs/other.png'])
+    await history.recordShown(WORKSPACE, other, [])
+
+    expect(await history.listDocumentsShowing(FIRST)).toEqual([guide])
+    expect(await history.listDocumentsShowing(SECOND)).toEqual([other])
+    expect(await history.listDocumentsShowing('none')).toEqual([])
   })
 })
