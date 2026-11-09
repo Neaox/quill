@@ -5305,6 +5305,7 @@ export interface components {
             mediaType: "image/png" | "image/jpeg" | "image/gif" | "image/webp" | "image/avif" | "image/svg+xml";
             milliseconds?: number;
             monochrome?: {
+                glyph: string;
                 height: number;
                 width: number;
             };
