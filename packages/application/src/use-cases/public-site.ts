@@ -112,6 +112,12 @@ export interface PublicSite {
   readonly organisation: OrganisationSettings
   /** Every page of the site, by its path under `/s/<siteSlug>/`. */
   readonly pages: ReadonlyMap<string, DocumentRow>
+  /**
+   * The pages that were on the site and were removed on purpose, by the path
+   * they had: a sourced page whose file left its repository (ADR-061). They
+   * answer 410, or follow the manifest's redirect (ADR-046).
+   */
+  readonly removed: ReadonlyMap<string, DocumentRow>
   readonly pathById: ReadonlyMap<DocumentId, string>
   readonly navigation: readonly PublicNavigationNode[]
   /**
@@ -169,16 +175,21 @@ export async function loadPublicSite(
   /* v8 ignore next -- the tree was just read from the database as one collection's rows. */
   if (!visible.ok) return { kind: 'not-found' }
 
-  const published = documents.filter(
+  const onSite = documents.filter(
     (document) => document.headRevision !== null && visible.ids.has(document.id),
   )
+  // An archived page was removed from its repository: no longer on the site,
+  // but known there, since it was public (ADR-046).
+  const published = onSite.filter((document) => document.status !== 'archived')
 
   const pages = new Map<string, DocumentRow>()
-  for (const document of published) {
+  const removed = new Map<string, DocumentRow>()
+  for (const document of onSite) {
     const path = pathById.get(document.id)
     /* v8 ignore next -- every document in the collection is in the path table. */
     if (path === undefined) continue
-    pages.set(path, document)
+    if (document.status === 'archived') removed.set(path, document)
+    else pages.set(path, document)
   }
 
   const home = collection.publicSite.homeDocumentId
@@ -189,6 +200,7 @@ export async function loadPublicSite(
       siteSlug,
       organisation: organisation.document,
       pages,
+      removed,
       pathById,
       navigation: publicNavigationOf(published, pathById),
       home: (home === null ? null : published.find((row) => row.id === home)) ?? null,

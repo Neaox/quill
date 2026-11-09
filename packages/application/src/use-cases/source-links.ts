@@ -9,6 +9,7 @@ import { attachmentUrl } from './attachments.ts'
 import { documentUrl } from './document-path.ts'
 import { isImagePath, readAssetMap, SOURCE_ASSET_MAP_PATH } from './source-assets.ts'
 import { withFolderAddresses } from './source-folders.ts'
+import { followRedirects, readSourceAddresses } from './source-removal.ts'
 
 /**
  * Relative links in a sourced document, resolved at render (ADR-061,
@@ -254,19 +255,46 @@ export async function sourceLinksAt(
     syncedCommit(deps.uow, document, place),
     assetsAt(deps, document, place, paths),
   ])
-  const documents = withFolderAddresses(
+  const held = withFolderAddresses(
     new Map(
       tree.flatMap((entry) =>
         entry.documentId === undefined ? [] : [[entry.path, entry.documentId] as const],
       ),
     ),
   )
+  const documents = paths.every((path) => held.has(path))
+    ? held
+    : await withRemovedPaths(deps.uow, document, paths, held)
   return resolveSourceLinks(urls, {
     path: place.path,
     documents,
     outside: outsideLinks(settings, commit),
     assets,
   })
+}
+
+/**
+ * The revision's documents with the paths it does not hold that the source
+ * once did (ADR-061, ADR-046): a path the manifest redirects leads to the
+ * page its redirect names, and a removed path to its archived page, which
+ * says it was removed rather than sending the reader to a forge page that is
+ * not there. Read only when a link names a path the revision lacks.
+ */
+async function withRemovedPaths(
+  uow: UnitOfWork,
+  document: DocumentRow,
+  paths: readonly string[],
+  held: ReadonlyMap<string, DocumentId>,
+): Promise<ReadonlyMap<string, DocumentId>> {
+  const addresses = await readSourceAddresses(uow, document)
+  const documents = new Map(held)
+  for (const path of paths) {
+    if (documents.has(path)) continue
+    const row = addresses.paths.get(path)
+    const target = followRedirects(path, addresses) ?? row?.documentId
+    if (target !== undefined) documents.set(path, target)
+  }
+  return documents
 }
 
 /**

@@ -246,7 +246,7 @@ export async function planSourceHead(
     .toSorted((left, right) => byCodePoint(left.path, right.path))
 
   const found = written.flatMap((edit) => edit.links)
-  const brokenLinks = (await brokenSourceLinks(source, revision, found)).toSorted(
+  const brokenLinks = (await brokenSourceLinks(source, revision, found, layout.redirects)).toSorted(
     compareBrokenLinks,
   )
 

@@ -20,8 +20,11 @@ export const breadcrumbStyles = tv({
       'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring',
     ],
     // The folded middle: a real button, as large as a thumb needs, reading as the trail does.
+    // Its target is wider than the "…" it shows; the negative margin lets that
+    // extra width sit in the gaps beside it, so the separators around it are
+    // spaced as they are between any two steps.
     more: [
-      'inline-flex min-h-6 min-w-6 shrink-0 items-center justify-center rounded-sm px-1 text-muted',
+      'inline-flex min-h-6 min-w-6 shrink-0 items-center justify-center rounded-sm -mx-1.5 text-muted',
       'cursor-pointer hover:bg-surface hover:text-foreground',
       'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus-ring',
     ],
