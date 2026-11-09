@@ -988,14 +988,20 @@ export const documentSearch = pgTable(
  *
  * `content_type` is what the server sniffed from the bytes, never what the
  * uploader declared, and is what `GET /api/attachments/:id` serves under.
+ *
+ * A repository asset (ADR-061) is owned by its workspace's source instead of
+ * a document: `document_id` is null and `source_workspace_id` names the
+ * source, exactly one of the two is set, and removing the source removes its
+ * assets' rows.
  */
 export const attachments = pgTable(
   'attachments',
   {
     id: text('id').primaryKey(),
-    documentId: text('document_id')
-      .notNull()
-      .references(() => documents.id, { onDelete: 'cascade' }),
+    documentId: text('document_id').references(() => documents.id, { onDelete: 'cascade' }),
+    sourceWorkspaceId: text('source_workspace_id').references(() => workspaceSources.workspaceId, {
+      onDelete: 'cascade',
+    }),
     workspaceId: text('workspace_id')
       .notNull()
       .references(() => workspaces.id, { onDelete: 'cascade' }),
@@ -1020,7 +1026,35 @@ export const attachments = pgTable(
     // Which rows still need an object, for the sweep that will one day collect
     // the objects nothing points at any more.
     index('attachments_sha256_idx').on(table.sha256),
+    // A source's asset by its bytes: how one is imported once (ADR-061).
+    index('attachments_source_sha256_idx').on(table.sourceWorkspaceId, table.sha256),
+    check(
+      'attachments_owner_check',
+      sql`(${table.documentId} IS NULL) <> (${table.sourceWorkspaceId} IS NULL)`,
+    ),
   ],
+)
+
+/**
+ * Which attachment each of a sourced workspace's repository assets holds at
+ * the head (ADR-061, "Repository assets"), by its path in the repository.
+ * `file_id` is the source's own id for the file's contents, so the sync job
+ * reads a file again only when it changed. Written only by the sync job.
+ */
+export const sourceAssets = pgTable(
+  'source_assets',
+  {
+    workspaceId: text('workspace_id')
+      .notNull()
+      .references(() => workspaceSources.workspaceId, { onDelete: 'cascade' }),
+    path: text('path').notNull(),
+    attachmentId: text('attachment_id')
+      .notNull()
+      .references(() => attachments.id, { onDelete: 'cascade' }),
+    fileId: text('file_id').notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull(),
+  },
+  (table) => [primaryKey({ columns: [table.workspaceId, table.path] })],
 )
 
 /**

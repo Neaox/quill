@@ -40,6 +40,7 @@ import {
   payloadTooLarge,
   rateLimited,
   unprocessable,
+  workspaceReadOnly,
 } from '../errors.ts'
 import { requireAuthenticatedSession } from '../plugins/session.ts'
 import { contentDisposition } from './content-disposition.ts'
@@ -87,7 +88,8 @@ const ATTACHMENT_REFUSAL = 'That attachment does not exist'
 export const AttachmentSchema = Type.Object(
   {
     id: Type.String(),
-    documentId: Type.String(),
+    /** The document that owns it; null for a repository asset, which its workspace's source owns (ADR-061). */
+    documentId: Type.Union([Type.String(), Type.Null()]),
     /** Where the document's Markdown points at it: a relative, same-origin URL. */
     url: Type.String(),
     filename: Type.String(),
@@ -127,7 +129,7 @@ export const AttachmentListSchema = Type.Object(
 
 export interface AttachmentResponse {
   readonly id: string
-  readonly documentId: string
+  readonly documentId: string | null
   readonly url: string
   readonly filename: string
   readonly contentType: string
@@ -229,20 +231,60 @@ export function attachmentRoutes(deps: AppDependencies): FastifyPluginAsync {
       return part
     }
 
+    /**
+     * The row, if it is live. A soft-deleted attachment is gone, and says so
+     * with the same answer an id that never existed gets: "deleted" must not
+     * be a way to learn that something was once here.
+     */
+    async function liveAttachment(
+      request: FastifyRequest<{ Params: { id: string } }>,
+    ): Promise<AttachmentRow> {
+      const row = await deps.uow.repos.attachments.findById(request.params.id)
+      if (row === null || row.deletedAt !== null) throw notFound(ATTACHMENT_REFUSAL)
+      return row
+    }
+
     /** The row, checked against the document that owns it — which is what governs it. */
     async function authorisedAttachment(
       request: FastifyRequest<{ Params: { id: string } }>,
-      capability: 'view' | 'edit',
     ): Promise<AttachmentRow> {
-      const row = await deps.uow.repos.attachments.findById(request.params.id)
-      // A soft-deleted attachment is gone, and says so with the same answer an
-      // id that never existed gets: "deleted" must not be a way to learn that
-      // something was once here.
-      if (row === null || row.deletedAt !== null) {
-        throw notFound(ATTACHMENT_REFUSAL)
-      }
-      await requireDocumentAccess(authorizerFor(deps, request), row.documentId, capability)
+      const row = await liveAttachment(request)
+      if (row.documentId === null) await requireShownToReader(request, row)
+      else await requireDocumentAccess(authorizerFor(deps, request), row.documentId, 'view')
       return row
+    }
+
+    /**
+     * The row, for a change to it: a document's attachment, which needs
+     * `edit` on that document. A repository asset is changed only by the sync
+     * job (ADR-061), whoever asks.
+     */
+    async function editableAttachment(
+      request: FastifyRequest<{ Params: { id: string } }>,
+    ): Promise<AttachmentRow & { readonly documentId: DocumentId }> {
+      const row = await liveAttachment(request)
+      const { documentId } = row
+      if (documentId === null) throw workspaceReadOnly()
+      await requireDocumentAccess(authorizerFor(deps, request), documentId, 'edit')
+      return { ...row, documentId }
+    }
+
+    /**
+     * A repository asset belongs to its workspace's source, not to a document
+     * (ADR-061), so what governs it is the pages that show it: it is served to
+     * a request that may read one of the published pages the link index says
+     * shows it, and answers as an unknown id does to anyone else, so it never
+     * tells a reader a hidden page exists.
+     */
+    async function requireShownToReader(
+      request: FastifyRequest,
+      row: AttachmentRow,
+    ): Promise<void> {
+      const authorizer = authorizerFor(deps, request)
+      const showing = await documentsShowingAttachment(deps, row)
+      const verdicts = await Promise.all(showing.map(async (id) => authorizer.document(id)))
+      if (verdicts.some((access) => access.ok && access.value.capabilities.view)) return
+      throw notFound(ATTACHMENT_REFUSAL)
     }
 
     /**
@@ -257,7 +299,7 @@ export function attachmentRoutes(deps: AppDependencies): FastifyPluginAsync {
      */
     async function requirePublishWhereShown(
       request: FastifyRequest,
-      row: AttachmentRow,
+      row: AttachmentRow & { readonly documentId: DocumentId },
     ): Promise<void> {
       const showing = await documentsShowingAttachment(deps, row)
       if (showing.length === 0) return
@@ -286,17 +328,19 @@ export function attachmentRoutes(deps: AppDependencies): FastifyPluginAsync {
     async function readableAttachment(
       request: FastifyRequest<{ Params: { id: string } }>,
     ): Promise<AttachmentRow> {
-      if (request.session !== undefined) return authorisedAttachment(request, 'view')
+      if (request.session !== undefined) return authorisedAttachment(request)
 
-      const row = await deps.uow.repos.attachments.findById(request.params.id)
-      if (row === null || row.deletedAt !== null) throw notFound(ATTACHMENT_REFUSAL)
-      await requireSharedDocument(
-        authorizerFor(deps, request),
-        row.documentId,
-        request.log,
-        'view',
-        ATTACHMENT_REFUSAL,
-      )
+      const row = await liveAttachment(request)
+      if (row.documentId === null) await requireShownToReader(request, row)
+      else {
+        await requireSharedDocument(
+          authorizerFor(deps, request),
+          row.documentId,
+          request.log,
+          'view',
+          ATTACHMENT_REFUSAL,
+        )
+      }
       return row
     }
 
@@ -381,7 +425,7 @@ export function attachmentRoutes(deps: AppDependencies): FastifyPluginAsync {
             'Say which version of the file this saves over, as ?expectedVersion=<n>.',
           )
         }
-        const row = await authorisedAttachment(request, 'edit')
+        const row = await editableAttachment(request)
         await requirePublishWhereShown(request, row)
         const budget = requireUploadBudget(request, session.userId)
         const part = await uploadedFile(request)
@@ -482,7 +526,7 @@ export function attachmentRoutes(deps: AppDependencies): FastifyPluginAsync {
       { preHandler: app.requireVerifiedSession, schema: { params: IdParamsSchema } },
       async (request, reply) => {
         const session = requireAuthenticatedSession(request)
-        const row = await authorisedAttachment(request, 'edit')
+        const row = await editableAttachment(request)
 
         const result = await deleteAttachment(deps, {
           attachmentId: row.id,

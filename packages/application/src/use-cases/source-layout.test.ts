@@ -40,6 +40,14 @@ describe('layouts', () => {
     ])
   })
 
+  it('fetch the asset paths too, and fingerprint them only when there are any', () => {
+    const plain = layoutFromManifest(entry)
+    const withAssets = layoutFromManifest({ ...entry, assets: ['docs/diagrams'] })
+    expect(layoutPaths(withAssets).at(-1)).toBe('docs/diagrams')
+    expect(withAssets.fingerprint).not.toBe(plain.fingerprint)
+    expect(plain.fingerprint).not.toContain('assets')
+  })
+
   it('fingerprint what places files, whatever order it is written in', () => {
     const reordered = layoutFromManifest({
       ...entry,

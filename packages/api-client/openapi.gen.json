@@ -331,7 +331,14 @@
             "type": "string"
           },
           "documentId": {
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "url": {
             "type": "string"

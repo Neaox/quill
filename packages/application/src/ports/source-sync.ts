@@ -177,6 +177,35 @@ export interface SourcePathMapRepository {
   remove(workspaceId: WorkspaceId, path: string): Promise<void>
 }
 
+// ---------------------------------------------------------------------------
+// Persistence: the source's assets
+// ---------------------------------------------------------------------------
+
+/**
+ * Which attachment a repository asset's path holds at the head (ADR-061,
+ * "Repository assets, as content-addressed attachments"): an image or other
+ * file under the manifest's `assets` paths, or an image in a collection.
+ */
+export interface SourceAssetRow {
+  readonly workspaceId: WorkspaceId
+  readonly path: string
+  readonly attachmentId: string
+  /** The source's own id for the file's contents, so an unchanged file is not imported again. */
+  readonly fileId: string
+}
+
+/** The asset map, keyed by `(workspace, path)`. Written only by the sync job. */
+export interface SourceAssetRepository {
+  listByWorkspace(workspaceId: WorkspaceId): Promise<readonly SourceAssetRow[]>
+  /** The rows for these paths, in one query. */
+  listByPaths(
+    workspaceId: WorkspaceId,
+    paths: readonly string[],
+  ): Promise<readonly SourceAssetRow[]>
+  put(row: SourceAssetRow, now: Date): Promise<void>
+  remove(workspaceId: WorkspaceId, path: string): Promise<void>
+}
+
 /** Why a sync stopped. The source's own reasons, and the job's. */
 export type SourceSyncFailureReason =
   | ExternalSourceFailure
@@ -200,7 +229,19 @@ export interface SourceSyncFailure {
 export interface RefusedSourceFile {
   readonly path: string
   readonly revision: SourceRevisionId
-  readonly reason: 'too-large' | 'not-utf8' | 'symbolic-link' | 'outside-collections'
+  readonly reason:
+    | 'too-large'
+    | 'not-utf8'
+    | 'symbolic-link'
+    | 'outside-collections'
+    /** An asset whose bytes are not a type an upload may be (ADR-011). */
+    | 'type-not-allowed'
+    /** An asset whose bytes are not what its file name says. */
+    | 'type-mismatch'
+    /** An asset with nothing in it. */
+    | 'empty'
+    /** An image whose container could not be read, so its metadata could not be removed. */
+    | 'malformed'
 }
 
 /**

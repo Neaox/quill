@@ -506,6 +506,21 @@ may not view is reduced to its words. After each sync the job checks the relativ
 wrote (and of what linked to what it removed) against the repository's tree and lists those that
 lead nowhere on the source's sync state (`brokenLinks`), each with the commit it was checked at.
 
+**Repository assets are attachments.** Files under the manifest's `assets` paths, and images inside
+a collection's paths, are imported by the sync job through the upload's own intake: the bytes are
+sniffed against the type the file name declares, held to `ATTACHMENT_MAX_BYTES`, and a picture's
+metadata is removed before the hash that addresses it is taken. One attachment is made per distinct
+content in a workspace, owned by its source rather than by a document (`attachments.document_id` is
+null, `source_workspace_id` names the source), and `source_assets` records which attachment each
+path holds at the head, with the source's file id so an unchanged file is never read again. A
+relative image path resolves at render to its attachment, an SVG is drawn through the drawing
+allowlist (ADR-036), and an image that was not imported (refused, missing, or outside the
+repository) shows its alternative text; a refused file is listed on the sync state with its reason.
+`GET /api/attachments/:id` serves a source's attachment to a reader who may read a published page
+that shows it, and to nobody else; only the sync job changes or removes one (`403
+workspace_read_only`). After a sync, a source's attachment that no path holds and no published page
+shows is taken down (the row is marked removed; the bytes stay in the blob store).
+
 ## The content API (M2)
 
 `docs/architecture/api-contract-m2.md` is the contract; the TypeBox schemas in `routes/document-schemas.ts` are its implementation, and the OpenAPI description is generated from them.

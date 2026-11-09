@@ -19,6 +19,7 @@ import type { NotificationRepository } from './notifications.ts'
 import type { ReviewRepository } from './reviews.ts'
 import type { SecretsRepository } from './secrets.ts'
 import type {
+  SourceAssetRepository,
   SourcePathMapRepository,
   SourceSyncStateRepository,
   SourceWebhookDeliveryRepository,
@@ -1162,7 +1163,18 @@ export type AttachmentId = string
  */
 export interface AttachmentRow {
   readonly id: AttachmentId
-  readonly documentId: DocumentId
+  /**
+   * The document that owns it; null for a repository asset, which belongs to
+   * its workspace's source rather than to any document (ADR-061).
+   */
+  readonly documentId: DocumentId | null
+  /**
+   * The sourced workspace whose source owns it: set exactly when
+   * `documentId` is null. Such an attachment is imported by the sync job,
+   * shared by every document that shows it, and is shown to a reader who may
+   * read one of them.
+   */
+  readonly sourceWorkspaceId: WorkspaceId | null
   readonly workspaceId: WorkspaceId
   /** Null once the uploader's account is gone; the attachment is the document's. */
   readonly uploadedBy: UserId | null
@@ -1214,8 +1226,29 @@ export interface ReviseAttachmentInput {
   readonly now: Date
 }
 
+/** A repository asset, imported by the sync job and owned by the workspace's source (ADR-061). */
+export interface CreateSourceAttachmentInput {
+  readonly id: AttachmentId
+  readonly workspaceId: WorkspaceId
+  readonly filename: string
+  readonly contentType: string
+  readonly size: number
+  readonly sha256: string
+  readonly searchText: string | null
+  readonly now: Date
+}
+
 export interface AttachmentRepository {
   create(input: CreateAttachmentInput): Promise<AttachmentRow>
+  createForSource(input: CreateSourceAttachmentInput): Promise<AttachmentRow>
+  /**
+   * The live attachment of this workspace's source holding exactly these
+   * bytes, or null: how an asset is imported once however many paths and
+   * revisions carry it (ADR-061, content-addressed).
+   */
+  findSourceOwned(workspaceId: WorkspaceId, sha256: string): Promise<AttachmentRow | null>
+  /** Every live attachment this workspace's source owns. */
+  listSourceOwned(workspaceId: WorkspaceId): Promise<readonly AttachmentRow[]>
   /** The row whatever its state; whether a deleted one may be served is the use case's decision. */
   findById(id: AttachmentId): Promise<AttachmentRow | null>
   /**
@@ -1463,6 +1496,7 @@ export interface RepositoryBundle {
   readonly workspaceSources: WorkspaceSourceRepository
   /** Where each file of a sourced workspace's source is, and the id minted for it (ADR-061). */
   readonly sourcePaths: SourcePathMapRepository
+  readonly sourceAssets: SourceAssetRepository
   /** How far each sourced workspace has synced, and what stopped it (ADR-061). */
   readonly sourceSyncState: SourceSyncStateRepository
   /** The push webhook deliveries each sourced workspace has accepted, for a week (ADR-061). */
