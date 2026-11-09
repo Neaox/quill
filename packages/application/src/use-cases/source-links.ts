@@ -7,7 +7,7 @@ import type { DocumentRow, UnitOfWork } from '../ports/persistence.ts'
 import type { SourceLinkSettings } from '../ports/source-sync.ts'
 import { attachmentUrl } from './attachments.ts'
 import { documentUrl } from './document-path.ts'
-import { isImagePath } from './source-assets.ts'
+import { isImagePath, readAssetMap, SOURCE_ASSET_MAP_PATH } from './source-assets.ts'
 
 /**
  * Relative links in a sourced document, resolved at render (ADR-061,
@@ -248,7 +248,7 @@ export async function sourceLinksAt(
   const [tree, commit, assets] = await Promise.all([
     deps.contentStore.listTree(document.workspaceId, place.revision),
     syncedCommit(deps.uow, document, place),
-    repos.sourceAssets.listByPaths(document.workspaceId, paths),
+    assetsAt(deps, document, place, paths),
   ])
   const documents = new Map(
     tree.flatMap((entry) =>
@@ -259,8 +259,31 @@ export async function sourceLinksAt(
     path: place.path,
     documents,
     outside: outsideLinks(settings, commit),
-    assets: new Map(assets.map((row) => [row.path, row.attachmentId])),
+    assets,
   })
+}
+
+/**
+ * The attachments these paths held at the revision being rendered (ADR-061):
+ * from the asset map the store keeps with each revision, so an older
+ * revision shows the pictures it had. A revision stored before the map was
+ * kept there falls back to the map as it is now.
+ */
+async function assetsAt(
+  deps: SourceLinksDependencies,
+  document: DocumentRow,
+  place: SourcePlace,
+  paths: readonly string[],
+): Promise<ReadonlyMap<string, string>> {
+  const file = await deps.contentStore.readFile(
+    document.workspaceId,
+    SOURCE_ASSET_MAP_PATH,
+    place.revision,
+  )
+  const stored = file === null ? null : readAssetMap(file.text)
+  if (stored !== null) return stored
+  const rows = await deps.uow.repos.sourceAssets.listByPaths(document.workspaceId, paths)
+  return new Map(rows.map((row) => [row.path, row.attachmentId]))
 }
 
 /** The source revision a place was synced from, or null when none is recorded. */

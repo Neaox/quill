@@ -45,9 +45,15 @@ import {
   sourceSyncRequested,
 } from './events.ts'
 import type { SourceSyncTrigger } from './events.ts'
-import { attachmentUrl, receiveFile, safeFilename } from './attachments.ts'
+import { receiveFile, safeFilename } from './attachments.ts'
 import type { Received } from './attachments.ts'
-import { assetFilename, assetMatcher, declaredAssetType } from './source-assets.ts'
+import {
+  assetFilename,
+  assetMatcher,
+  declaredAssetType,
+  SOURCE_ASSET_MAP_PATH,
+  writeAssetMap,
+} from './source-assets.ts'
 import { decodeUtf8, isDocumentPath, titleFromPath } from './source-files.ts'
 import { isRelativeDestination, repositoryTarget } from './source-links.ts'
 import {
@@ -224,6 +230,8 @@ type DocumentEdit =
       readonly markdown: string
       readonly title: string
       readonly order: number | null
+      /** The repository paths its relative images point at: who may see an asset (ADR-061). */
+      readonly images: readonly string[]
     }
   /** Unchanged in the store, placed again in the tree: a re-plan's. */
   | {
@@ -277,8 +285,6 @@ class SourceReplay {
   /** The documents this sync wrote or archived, whose links, and links to which, are checked again. */
   readonly #written = new Set<DocumentId>()
   readonly #archived = new Set<DocumentId>()
-  /** Whether this sync changed the asset map, so attachments nothing shows any more are collected. */
-  #assetsChanged = false
   /** Whether a revision was skipped as already recorded, whose assets are then reconciled at the head. */
   #resumed = false
   /** The head's layout, which every re-plan with no layout of its own revision uses. */
@@ -327,12 +333,9 @@ class SourceReplay {
         previous = step.revision.id
       }
       this.#current = fetched
-      if (this.#resumed) await this.#reconcileAssets(fetched)
+      if (this.#resumed) await this.#reconcileAtHead(fetched)
       const broken = await this.#checkLinks(fetched)
-      await this.#deps.uow.run(async (tx) => {
-        if (this.#assetsChanged) await this.#collectAssets(tx)
-        await this.#recordSynced(tx, fetched, this.#record, broken)
-      })
+      await this.#deps.uow.run((tx) => this.#recordSynced(tx, fetched, this.#record, broken))
       return { kind: 'synced', revision: fetched, published }
     } catch (error) {
       const failure = toFailure(error, this.#current)
@@ -546,6 +549,7 @@ class SourceReplay {
       revision.committedAt.getTime() > now.getTime() + AUTHORED_AT_MAX_SKEW_MS
         ? now
         : revision.committedAt
+    if (!isEmpty(assets)) await this.#storeAssetMap(revision, assets)
     const published = content.length === 0 ? null : await this.#publish(step, content, authoredAt)
 
     const record = recordOf(layout, resolution)
@@ -739,6 +743,7 @@ class SourceReplay {
               markdown: stamped,
               title,
               order,
+              images: this.#imagePaths(file.path, stamped),
             },
       )
       this.#refused.delete(file.path)
@@ -923,6 +928,9 @@ class SourceReplay {
           : await this.#update(tx, existing, edit, now)
       await tx.documents.update(row.id, { headRevision: revision }, now)
       this.#written.add(edit.documentId)
+      if (edit.images.length > 0) {
+        await tx.sourceAssetHistory.recordShown(this.#workspaceId, edit.documentId, edit.images)
+      }
       if (edit.fromPath !== null) await tx.sourcePaths.remove(this.#workspaceId, edit.fromPath)
       await tx.sourcePaths.put(
         {
@@ -1126,7 +1134,8 @@ class SourceReplay {
    * read and taken in through the upload's own intake, and each it removes,
    * or no longer calls an asset, leaves the asset map. A re-plan compares the
    * whole revision with the map. A file the map already holds with the same
-   * contents is not read again.
+   * contents is not read again. The answer carries the whole map as the
+   * revision leaves it, which the store keeps with the revision.
    */
   async #assets(
     revision: SourceRevisionId,
@@ -1171,10 +1180,26 @@ class SourceReplay {
     const taken = new Set(imported.map(({ path }) => path))
     // A file refused leaves the map: it is drawn as its alternative text.
     for (const { path } of fresh) if (!taken.has(path)) leave(path)
-    return { imported, removed: [...removed] }
+    const map = new Map([...mapped].map(([path, row]) => [path, row.attachmentId]))
+    for (const path of removed) map.delete(path)
+    for (const { path, attachmentId } of imported) map.set(path, attachmentId)
+    return { imported, removed: [...removed], map }
   }
 
-  /** Each file read and taken in as an upload is; a file refused is listed instead. */
+  /** The repository paths a document's relative images point at. */
+  #imagePaths(path: string, markdown: string): readonly string[] {
+    const targets = this.#deps.format
+      .links(markdown)
+      .filter((link) => link.kind === 'image' && isRelativeDestination(link.url))
+      .flatMap((link) => repositoryTarget(path, link.url)?.path ?? [])
+    return [...new Set(targets)]
+  }
+
+  /** Each file read and taken in as an upload is; a file refused is listed
+   * instead. Each is given the attachment that will hold its bytes now: the
+   * source's existing one with the same bytes, or a new one made with the
+   * revision, so the map the store keeps with the revision names it.
+   */
   async #import(
     files: readonly SourceFile[],
     revision: SourceRevisionId,
@@ -1186,6 +1211,7 @@ class SourceReplay {
     })
     const contents = await this.#read(readable)
     const imported: ImportedAsset[] = []
+    const made = new Map<string, string>()
     for (const file of readable) {
       const content = contents.get(file.fileId)
       if (content === undefined) {
@@ -1206,27 +1232,62 @@ class SourceReplay {
         continue
       }
       this.#refused.delete(file.path)
-      imported.push({ path: file.path, fileId: file.fileId, received })
+      // oxlint-disable-next-line quill/no-independent-await-in-loop -- a later file of the revision reuses an earlier one's attachment
+      const existing = await this.#deps.uow.repos.attachments.findSourceOwned(
+        this.#workspaceId,
+        received.sha256,
+      )
+      const attachmentId =
+        existing?.id ?? made.get(received.sha256) ?? (this.#deps.ids.uuid() as string)
+      const create = existing === null && !made.has(received.sha256)
+      made.set(received.sha256, attachmentId)
+      imported.push({ path: file.path, fileId: file.fileId, received, attachmentId, create })
     }
     return imported
   }
 
   /**
+   * Keeps the asset map with the store's next revision (ADR-061): a stored
+   * file the revision's publish carries forward, so every stored revision
+   * holds the map it was synced with, and is rendered with the pictures it
+   * had. Written before the revision's documents are published.
+   */
+  async #storeAssetMap(revision: SourceRevision, assets: AssetChanges): Promise<void> {
+    const { contentStore } = this.#deps
+    const current = await contentStore.readFile(this.#workspaceId, SOURCE_ASSET_MAP_PATH)
+    const text = writeAssetMap(assets.map)
+    if (current?.text === text) return
+    const written = await contentStore.putFile({
+      workspaceId: this.#workspaceId,
+      path: SOURCE_ASSET_MAP_PATH,
+      text,
+      expected: current?.text ?? null,
+      author: revision.author,
+      summary: 'Repository assets',
+    })
+    if (written.kind === 'stale') {
+      throw new SyncStopped(
+        'store-moved',
+        'The workspace changed while its source was being replayed, so its assets were not recorded.',
+      )
+    }
+  }
+
+  /**
    * The asset map as a revision left it: an imported file's bytes become the
    * source's attachment holding them, made once per distinct content however
-   * many paths and revisions carry it.
+   * many paths and revisions carry it, and every path an attachment is held
+   * at is remembered, for who may see it.
    */
   async #recordAssets(tx: RepositoryBundle, assets: AssetChanges, now: Date): Promise<void> {
     if (isEmpty(assets)) return
-    this.#assetsChanged = true
     // oxlint-disable-next-line quill/no-independent-await-in-loop -- one transaction's client runs one statement at a time
     for (const path of assets.removed) await tx.sourceAssets.remove(this.#workspaceId, path)
-    // oxlint-disable-next-line quill/no-independent-await-in-loop -- one transaction's writes, a later file reusing an earlier one's attachment
-    for (const { path, fileId, received } of assets.imported) {
-      const attachment =
-        (await tx.attachments.findSourceOwned(this.#workspaceId, received.sha256)) ??
-        (await tx.attachments.createForSource({
-          id: this.#deps.ids.uuid(),
+    // oxlint-disable-next-line quill/no-independent-await-in-loop -- one transaction's writes, in order
+    for (const { path, fileId, received, attachmentId, create } of assets.imported) {
+      if (create) {
+        await tx.attachments.createForSource({
+          id: attachmentId,
           workspaceId: this.#workspaceId,
           filename: safeFilename(assetFilename(path)),
           contentType: received.contentType,
@@ -1234,12 +1295,20 @@ class SourceReplay {
           sha256: received.sha256,
           searchText: received.searchText,
           now,
-        }))
-      await tx.sourceAssets.put(
-        { workspaceId: this.#workspaceId, path, attachmentId: attachment.id, fileId },
-        now,
-      )
+        })
+      }
+      await tx.sourceAssets.put({ workspaceId: this.#workspaceId, path, attachmentId, fileId }, now)
+      await tx.sourceAssetHistory.recordHeld(this.#workspaceId, path, attachmentId)
     }
+  }
+
+  /** The head's revision, whose author the reconciled map is written as. */
+  async #reconcileAtHead(head: SourceRevisionId): Promise<void> {
+    const revisions = await collect(this.#source.source.history(null, head))
+    const newest = revisions.at(-1)
+    /* v8 ignore next -- a resumed sync skipped a revision, so the source has one. */
+    if (newest === undefined) return
+    await this.#reconcileAssets(newest)
   }
 
   /**
@@ -1247,33 +1316,11 @@ class SourceReplay {
    * did not read: the head's assets against the map, so an interrupted sync
    * misses none.
    */
-  async #reconcileAssets(revision: SourceRevisionId): Promise<void> {
-    const assets = await this.#assets(revision, [], this.#headLayout, true)
+  async #reconcileAssets(revision: SourceRevision): Promise<void> {
+    const assets = await this.#assets(revision.id, [], this.#headLayout, true)
     if (isEmpty(assets)) return
+    await this.#storeAssetMap(revision, assets)
     await this.#deps.uow.run((tx) => this.#recordAssets(tx, assets, this.#deps.clock.now()))
-  }
-
-  /**
-   * Takes down the source's attachments that no path holds and no published
-   * document shows (the link index, `render-document.ts`). The row is marked
-   * removed and the bytes stay, as for any attachment (ADR-034).
-   */
-  async #collectAssets(tx: RepositoryBundle): Promise<void> {
-    const held = new Set(
-      (await tx.sourceAssets.listByWorkspace(this.#workspaceId)).map((row) => row.attachmentId),
-    )
-    const loose = (await tx.attachments.listSourceOwned(this.#workspaceId)).filter(
-      (row) => !held.has(row.id),
-    )
-    const now = this.#deps.clock.now()
-    // oxlint-disable-next-line quill/no-independent-await-in-loop -- one transaction's client runs one statement at a time
-    for (const row of loose) {
-      const showing = await tx.documentLinks.listSourcesReferencing(
-        attachmentUrl(row.id),
-        this.#workspaceId,
-      )
-      if (showing.length === 0) await tx.attachments.softDelete(row.id, now)
-    }
   }
 
   // -------------------------------------------------------------------------
@@ -1382,12 +1429,17 @@ interface ImportedAsset {
   readonly path: string
   readonly fileId: string
   readonly received: Received
+  /** The attachment that holds the bytes. */
+  readonly attachmentId: string
+  /** Whether that attachment is made with this revision, or already the source's. */
+  readonly create: boolean
 }
 
-/** What a revision does to the asset map. */
+/** What a revision does to the asset map, and the map as it leaves it. */
 interface AssetChanges {
   readonly imported: readonly ImportedAsset[]
   readonly removed: readonly string[]
+  readonly map: ReadonlyMap<string, string>
 }
 
 function isEmpty(assets: AssetChanges): boolean {
