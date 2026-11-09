@@ -2950,6 +2950,341 @@
   }
 }
 
+/* --- The documentation kit (ADR-060) -------------------------------------- */
+
+/*
+ * The blocks lockstay's guides are written in, drawn as its documentation
+ * site draws them: chips that name a party, routes of chips joined by
+ * arrows, a cast of chips, numbered checks, and timelines of steps on a rail.
+ * Chips are interface text, so they are set in the sans face at fixed sizes
+ * whatever the reading face and size, as badges are. Colour is emphasis
+ * only: an arrow is said in words, a ring is also a shape, and a check is
+ * still a numbered list item.
+ */
+
+/*
+ * A badge shorthand and a step's chip led by an emoji (`:accent[:clock: 5 s]`):
+ * the picture beside the words, sized to the chip's text.
+ */
+.prose .badge:is([data-badge], .qb-step-chip):has(> .emoji:first-child) {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4167em;
+  padding-inline-start: 0.5em;
+}
+
+.prose .badge:is([data-badge], .qb-step-chip) > .emoji {
+  margin-inline-end: 0;
+}
+
+.prose .badge:is([data-badge], .qb-step-chip) > img.emoji,
+.prose .badge:is([data-badge], .qb-step-chip) > picture.emoji > img.emoji {
+  height: 1.0833em;
+  margin-block: 0;
+  vertical-align: 0;
+}
+
+/*
+ * `:plan[Designed]`: designed or planned, not built. Dashed, as a planned box
+ * is in a drawing, and unfilled, so it reads apart from a neutral badge of the
+ * same tone; the word still says it.
+ */
+.prose .badge[data-badge='plan'] {
+  background-color: transparent;
+  outline: 1px dashed var(--color-muted);
+  outline-offset: -1px;
+  color: var(--color-body);
+}
+
+/* A party: a person, a part of the system or a platform, with its emoji. */
+.prose .qb-route-party {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  height: 1.625rem;
+  padding: 0 0.625rem 0 0.4375rem;
+  border-radius: var(--radius-md);
+  background-color: var(--color-surface-raised);
+  box-shadow: inset 0 0 0 1px var(--color-border);
+  font-family: var(--font-sans);
+  font-size: 0.8125rem;
+  line-height: 1;
+  font-weight: 600;
+  color: var(--color-foreground);
+  white-space: nowrap;
+  vertical-align: baseline;
+}
+
+.prose .qb-route-party > img.emoji,
+.prose .qb-route-party > picture.emoji > img.emoji {
+  height: 0.9375rem;
+  vertical-align: 0;
+}
+
+.prose .qb-route-party > span.emoji {
+  font-size: 0.875rem;
+}
+
+.prose .qb-route-party code {
+  font-size: 0.92em;
+}
+
+/* A route: who sends to whom, as chips joined by arrows. */
+.prose .qb-route {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.375rem;
+  max-width: 100%;
+  font-family: var(--font-sans);
+}
+
+/* An arrow and the chip it points to never wrap apart. */
+.prose .qb-route-leg {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  white-space: nowrap;
+}
+
+.prose .qb-route-to {
+  padding: 0 1px;
+  font-size: 0.875rem;
+  line-height: 1;
+  color: var(--color-muted);
+}
+
+/* In a table cell a route is its own line, with any words below it. */
+.prose td .qb-route {
+  display: flex;
+  width: fit-content;
+  margin: 1px 0 0.25rem;
+}
+
+/* With no arrow, a route in a cell is a list of parties that wrap as words do. */
+.prose td .qb-route:not(:has(.qb-route-leg)) {
+  display: inline;
+  margin: 0;
+}
+
+.prose td .qb-route:not(:has(.qb-route-leg)) > .qb-route-party {
+  margin-block: 1px;
+}
+
+/*
+ * A node: an emoji in a disc, on a timeline's rail or leading a cast member.
+ * Something outside the system is a ring rather than a fill, and a safety net
+ * is green.
+ */
+.prose :is(.qb-step-node, .qb-cast-node) {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  border-radius: 50%;
+  background-color: var(--color-accent-subtle);
+  color: var(--color-accent);
+  font-family: var(--font-sans);
+}
+
+.prose :is(.qb-step-node, .qb-cast-node)[data-qb-tone='outside'] {
+  background-color: var(--color-surface-raised);
+  box-shadow: inset 0 0 0 1.5px var(--color-border-strong);
+  color: var(--color-body);
+}
+
+.prose :is(.qb-step-node, .qb-cast-node)[data-qb-tone='net'] {
+  background-color: var(--color-success-subtle);
+  color: var(--color-success);
+}
+
+.prose :is(.qb-step-node, .qb-cast-node) > img.emoji,
+.prose :is(.qb-step-node, .qb-cast-node) > picture.emoji > img.emoji {
+  height: 1.125rem;
+  vertical-align: 0;
+}
+
+.prose :is(.qb-step-node, .qb-cast-node) > span.emoji {
+  font-size: 1.0625rem;
+  line-height: 1;
+}
+
+/* A cast: who and what a page is about, one chip each. */
+.prose ul.qb-cast {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(14rem, 100%), 1fr));
+  gap: 0.5rem;
+  padding: 0;
+  list-style: none;
+}
+
+.prose ul.qb-cast.qb-cast-narrow {
+  grid-template-columns: repeat(auto-fit, minmax(min(12rem, 100%), 1fr));
+}
+
+.prose ul.qb-cast > li {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  margin: 0;
+  padding: 0.5rem 0.875rem 0.5rem 0.5rem;
+  border-radius: var(--radius-lg);
+  background-color: var(--color-surface-raised);
+  box-shadow: inset 0 0 0 1px var(--color-border);
+  font-family: var(--font-sans);
+  font-size: 0.8125rem;
+  line-height: 1.0625rem;
+  color: var(--color-muted);
+}
+
+.prose .qb-cast-text {
+  min-width: 0;
+}
+
+.prose .qb-cast-text > strong {
+  display: block;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--color-foreground);
+}
+
+/* Checks made in order: numbered chips that wrap. */
+.prose ol.qb-checks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.375rem;
+  padding: 0;
+  list-style: none;
+  counter-reset: qb-check;
+}
+
+.prose ol.qb-checks > li {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4375rem;
+  margin: 0;
+  padding: 0.25rem 0.625rem 0.25rem 0.25rem;
+  border-radius: 999px;
+  background-color: var(--color-surface-raised);
+  box-shadow: inset 0 0 0 1px var(--color-border);
+  font-family: var(--font-sans);
+  font-size: 0.8125rem;
+  line-height: 1.125rem;
+  color: var(--color-foreground);
+  counter-increment: qb-check;
+}
+
+.prose ol.qb-checks > li::before {
+  content: counter(qb-check);
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 1.25rem;
+  height: 1.25rem;
+  border-radius: 50%;
+  background-color: var(--color-accent-subtle);
+  color: var(--color-accent);
+  font-size: 0.6875rem;
+  font-weight: 700;
+}
+
+/*
+ * A timeline: an ordered list of moments on a rail, each with its node. The
+ * rail runs from under one node to the next, so it is drawn by each step but
+ * the last.
+ */
+.prose ol.qb-timeline {
+  /* What follows a timeline stands a little apart from its last step. */
+  margin-bottom: 1.5rem;
+  padding: 0;
+  list-style: none;
+}
+
+.prose ol.qb-timeline > li {
+  position: relative;
+  margin: 0;
+  padding: 0 0 1.875rem 3.5rem;
+}
+
+.prose ol.qb-timeline > li:last-child {
+  padding-bottom: 0.375rem;
+}
+
+.prose ol.qb-timeline > li:not(:last-child)::before {
+  content: '';
+  position: absolute;
+  inset-block: 2.75rem 0.375rem;
+  inset-inline-start: calc(1.125rem - 1px);
+  width: 2px;
+  border-radius: 1px;
+  background-color: var(--color-border);
+}
+
+.prose .qb-step-node {
+  position: absolute;
+  inset-block-start: 0;
+  inset-inline-start: 0;
+}
+
+/* When it happens, and who sends to whom, level with the node. */
+.prose .qb-step-when {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.375rem 0.75rem;
+  min-height: 2.25rem;
+  margin: 0 0 0.25rem;
+  font-family: var(--font-sans);
+  font-size: 0.8125rem;
+  line-height: 1.125rem;
+  color: var(--color-muted);
+}
+
+.prose .qb-step > :where(:not(.qb-step-node, .qb-step-when)) {
+  margin-block: 0 0.625rem;
+}
+
+/* A step that opens with its heading sets it level with its node. */
+.prose .qb-step > :is(h2, h3, h4):nth-child(2) {
+  min-height: 2.25rem;
+  padding-top: 0.25rem;
+}
+
+.prose .qb-step > :is(h2, h3, h4) {
+  margin-block: 0 0.375rem;
+  /* A jump to a step lands with its chip and node in view, not just its heading. */
+  scroll-margin-top: 7.5rem;
+}
+
+/*
+ * A step's last paragraph is what holds, or what to read next: ruled off
+ * below the step, a little smaller, its badge apart from its words.
+ */
+.prose .qb-step > p:last-child:not(.qb-step-when) {
+  margin-block: 0.75rem 0;
+  padding-top: 0.625rem;
+  border-top: 1px solid var(--color-border);
+  font-size: 0.9em;
+  line-height: 1.5;
+}
+
+.prose .qb-step > p:last-child:not(.qb-step-when) > .badge:first-child {
+  margin-inline-end: 0.375rem;
+}
+
+@media (forced-colors: active) {
+  .prose :is(.qb-route-party, .qb-step-node, .qb-cast-node),
+  .prose ol.qb-checks > li,
+  .prose ul.qb-cast > li {
+    border: 1px solid CanvasText;
+  }
+
+  .prose ol.qb-timeline > li:not(:last-child)::before {
+    background-color: CanvasText;
+  }
+}
+
 /* --- Details and accordions (ADR-048) ----------------------------------- */
 
 /*

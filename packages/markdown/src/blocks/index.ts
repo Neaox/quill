@@ -10,8 +10,13 @@ export type {
   BlockLabel,
   BlockRenderInput,
 } from './define.ts'
-export { blockKind, blockProblems, defineBlock, h } from './define.ts'
+export { BlockRenderError, blockKind, blockProblems, defineBlock, h } from './define.ts'
+export { castBlock } from './cast.ts'
+export { checksBlock } from './checks.ts'
 export { ENDPOINT_METHODS, endpointBlock } from './endpoint.ts'
+export { isPhrasing } from './phrasing.ts'
+export { routeBlock } from './route.ts'
+export { STEP_TONES, stepBlock, timelineBlock } from './timeline.ts'
 export type {
   BooleanProp,
   EnumProp,

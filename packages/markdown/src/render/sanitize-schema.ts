@@ -2,7 +2,7 @@ import { LINK_DISPLAYS } from '@quill/domain'
 import { defaultSchema } from 'hast-util-sanitize'
 import type { Schema } from 'hast-util-sanitize'
 
-import { BADGE_TONES } from '../directives/badge.ts'
+import { BADGE_SHORTHANDS, BADGE_TONES } from '../directives/badge.ts'
 import { CALLOUT_TYPES } from '../directives/callout.ts'
 import { CARDS_VARIANTS } from '../directives/cards.ts'
 import { LABEL_NAME } from '../directives/label.ts'
@@ -352,6 +352,8 @@ const attributes: Schema['attributes'] = {
       ...BLOCK_FRAME_SANITIZE_GRANT.classes.span,
     ],
     ['data-tone', ...BADGE_TONES],
+    // The shorthand a badge was written with (`:plan[…]`), only one of them.
+    ['data-badge', ...Object.keys(BADGE_SHORTHANDS)],
     ['data-label', LABEL_NAME],
     ...EMOJI_SANITIZE_GRANT.attributes.span,
   ],

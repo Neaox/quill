@@ -137,10 +137,10 @@ describe('standard shortcodes (ADR-038)', () => {
 
   it('sit beside a badge without disturbing it', () => {
     expect(paragraph(':smile: next to :ok[Built]\n')).toBe(
-      `${SMILE} next to <span class="badge" data-tone="success">Built</span>`,
+      `${SMILE} next to <span class="badge" data-tone="success" data-badge="ok">Built</span>`,
     )
     expect(paragraph(':ok[Built]:smile:\n')).toBe(
-      `<span class="badge" data-tone="success">Built</span>${SMILE}`,
+      `<span class="badge" data-tone="success" data-badge="ok">Built</span>${SMILE}`,
     )
   })
 

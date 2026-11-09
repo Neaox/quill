@@ -4,7 +4,7 @@ import { createMarkdownRegistry } from '../extensions/registry.ts'
 import { parseMarkdown } from '../pipeline/processor.ts'
 import { renderDocument, renderHtml } from '../render/html.ts'
 import type { AnyBlock } from './define.ts'
-import { defineBlock, h } from './define.ts'
+import { BlockRenderError, defineBlock, h } from './define.ts'
 import { endpointBlock } from './endpoint.ts'
 import { p } from './props.ts'
 import { LOCKSTAY_SHAPED } from './test-support.ts'
@@ -240,6 +240,170 @@ describe('a block that cannot be drawn', () => {
     expect(result.blockIssues).toEqual([
       { block: 'broken', message: 'broken could not be drawn', line: 1 },
     ])
+  })
+
+  it('is a frame with the render’s own reason when it throws a BlockRenderError', () => {
+    const picky = defineBlock({
+      id: 'acme.picky',
+      version: '1.0.0',
+      name: 'picky',
+      title: 'Picky',
+      description: 'Holds a list.',
+      content: 'blocks',
+      props: {},
+      render: () => {
+        throw new BlockRenderError('picky holds a list')
+      },
+    })
+    const result = rendered(':::picky\nKept.\n:::\n', createMarkdownRegistry([], [picky]))
+    expect(result.html).toContain('aria-label="picky holds a list: picky"')
+    expect(result.blockIssues).toEqual([{ block: 'picky', message: 'picky holds a list', line: 1 }])
+  })
+})
+
+describe('what a render is given beside its props', () => {
+  /** A block that reads its Markdown itself: the first paragraph's words, then the rest. */
+  const reader = defineBlock({
+    id: 'acme.reader',
+    version: '1.0.0',
+    name: 'reader',
+    title: 'Reader',
+    description: 'Reads its own Markdown.',
+    content: 'blocks',
+    props: { icon: p.string({ title: 'Icon' }) },
+    render: ({ props, children, draw, emoji }) => {
+      const [first, ...rest] = children
+      return h(
+        'section',
+        {},
+        props.icon === undefined ? undefined : emoji(props.icon, 'decoration'),
+        h('p', { className: ['qb-reader-kinds'] }, children.map((child) => child.type).join(' ')),
+        first?.type === 'paragraph'
+          ? [h('p', { className: ['qb-reader-lead'] }, draw(first.children)), draw(rest)]
+          : draw(children),
+      )
+    },
+  })
+  const readerRegistry = createMarkdownRegistry([], [reader])
+  const emoji = new Map([
+    ['clock', { src: '/api/emoji/clock.0123456789abcdef.svg', width: 16, height: 16 }],
+  ])
+
+  it('is the Markdown its content is drawn from, already read for emoji, and a way to draw it', () => {
+    expect(
+      renderDocument(
+        parseMarkdown(':::reader{icon=clock}\nA :clock: lead.\n\n## Then\n\nMore.\n:::\n'),
+        {
+          extensions: readerRegistry,
+          emoji,
+        },
+      ).html,
+    ).toBe(
+      [
+        '<article><section class="qb qb-reader">',
+        '<img class="emoji" src="/api/emoji/clock.0123456789abcdef.svg" alt="" width="20" height="20">',
+        '<p class="qb-reader-kinds">paragraph heading paragraph</p>',
+        '<p class="qb-reader-lead">A <img class="emoji" src="/api/emoji/clock.0123456789abcdef.svg" alt="clock" title=":clock:" width="20" height="20"> lead.</p>\n',
+        '<h2 id="user-content-then" aria-labelledby="user-content-title.then"><span id="user-content-title.then">Then</span>',
+        '<a class="heading-anchor" href="#user-content-then" aria-label="Link to this section: Then"><span aria-hidden="true">#</span></a></h2>\n',
+        '<p>More.</p>\n',
+        '</section></article>',
+      ].join(''),
+    )
+  })
+
+  it('draws the content only when the render reads it, so a heading takes its anchor once', () => {
+    const result = renderDocument(parseMarkdown(':::reader\n## Once\n:::\n\n## Once\n'), {
+      extensions: readerRegistry,
+    })
+    expect(result.outline.map((entry) => entry.id)).toEqual([
+      'user-content-once',
+      'user-content-once-1',
+    ])
+    expect(result.html).toContain('id="user-content-once"')
+    expect(result.html).toContain('id="user-content-once-1"')
+    expect(result.html).not.toContain('once-2')
+  })
+
+  it('has no emoji for a name nothing answers to', () => {
+    expect(
+      renderDocument(parseMarkdown(':::reader{icon=nothing}\nx\n:::\n'), {
+        extensions: readerRegistry,
+      }).html,
+    ).toContain('<section class="qb qb-reader"><p class="qb-reader-kinds">paragraph</p>')
+  })
+
+  it('is an inline block’s phrasing', () => {
+    const inline = defineBlock({
+      id: 'acme.kinds',
+      version: '1.0.0',
+      name: 'kinds',
+      title: 'Kinds',
+      description: 'Names what it holds.',
+      content: 'inline',
+      props: {},
+      render: ({ children, draw }) =>
+        h('span', {}, children.map((child) => child.type).join(' '), ': ', draw(children)),
+    })
+    expect(
+      renderHtml(parseMarkdown(':kinds[a **b**]\n'), {
+        extensions: createMarkdownRegistry([], [inline]),
+      }),
+    ).toBe(
+      '<article><p><span class="qb qb-kinds">text strong: a <strong>b</strong></span></p></article>',
+    )
+  })
+
+  it('is nothing for a leaf, which holds no content', () => {
+    const leaf = defineBlock({
+      id: 'acme.empty',
+      version: '1.0.0',
+      name: 'empty',
+      title: 'Empty',
+      description: 'Holds nothing.',
+      content: 'none',
+      props: {},
+      render: ({ content, children }) =>
+        h('div', {}, `${String(content.length)} ${String(children.length)}`),
+    })
+    expect(
+      renderHtml(parseMarkdown('::empty\n'), { extensions: createMarkdownRegistry([], [leaf]) }),
+    ).toBe('<article><div class="qb qb-empty">0 0</div></article>')
+  })
+
+  it('is the Markdown before an items block’s items, when it takes a body', () => {
+    const entry = defineBlock({
+      id: 'acme.entry',
+      version: '1.0.0',
+      name: 'entry',
+      title: 'Entry',
+      description: 'One entry.',
+      content: 'blocks',
+      within: ['log'],
+      props: {},
+      render: ({ content }) => h('li', {}, content),
+    })
+    const log = defineBlock({
+      id: 'acme.log',
+      version: '1.0.0',
+      name: 'log',
+      title: 'Log',
+      description: 'An introduction, then entries.',
+      content: { items: 'entry', body: true },
+      props: {},
+      render: ({ content, children, items }) =>
+        h('section', {}, content, h('p', {}, String(children.length)), h('ol', {}, items)),
+    })
+    expect(
+      renderHtml(parseMarkdown('::::log\nFirst words.\n\n:::entry\nOne.\n:::\n::::\n'), {
+        extensions: createMarkdownRegistry([], [entry, log]),
+      }),
+    ).toBe(
+      [
+        '<article><section class="qb qb-log">\n<p>First words.</p>\n<p>1</p>',
+        '<ol><li class="qb qb-entry">\n<p>One.</p>\n</li></ol></section></article>',
+      ].join(''),
+    )
   })
 })
 

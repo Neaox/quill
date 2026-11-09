@@ -161,6 +161,7 @@ function renderBody(ast: Root, options: RenderOptions, overrides: RenderOverride
           blockIssues,
           placed,
           labels: options.labels,
+          emoji: lookup,
           outline: outlineOf,
           labelEmoji: (label) => {
             const name = options.labelEmoji?.get(label)

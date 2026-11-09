@@ -18,8 +18,18 @@ const FILES = readdirSync(CORPUS)
   .filter((file) => file.endsWith('.md'))
   .toSorted()
 
-/** The documents the serialiser does not write back byte for byte (`corpus.test.ts`). */
-const NOT_BYTE_IDENTICAL = new Set(['16-inline-edge-cases.md', '19-escaping-hazards.md'])
+/**
+ * The documents the serialiser does not write back byte for byte
+ * (`corpus.test.ts`), and one more the merge does not: it writes the merged
+ * tree without the source's spelling, and a step written with as many colons
+ * as its siblings (`::::step` in a `:::::timeline`) is written with as many
+ * as it needs.
+ */
+const NOT_BYTE_IDENTICAL = new Set([
+  '16-inline-edge-cases.md',
+  '19-escaping-hazards.md',
+  '30-docs-kit.md',
+])
 
 const read = (file: string): string => readFileSync(`${CORPUS}${file}`, 'utf8')
 

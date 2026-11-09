@@ -106,9 +106,18 @@ describe('blockProblems', () => {
 
 describe('createBlockRegistry', () => {
   it('installs Quill’s own blocks by default', () => {
-    expect(BUILT_IN_BLOCKS).toEqual([endpointBlock])
+    expect(BUILT_IN_BLOCKS.map((each) => each.id)).toEqual([
+      'quill.endpoint',
+      'quill.timeline',
+      'quill.step',
+      'quill.cast',
+      'quill.checks',
+      'quill.route',
+    ])
+    expect(BUILT_IN_BLOCKS.flatMap(blockProblems)).toEqual([])
     expect(BUILT_IN_BLOCK_REGISTRY.find('endpoint', 'container')).toBe(endpointBlock)
-    expect(BUILT_IN_BLOCK_REGISTRY.dataAttributes).toEqual(['data-qb-method'])
+    expect(BUILT_IN_BLOCK_REGISTRY.find('route', 'text')?.id).toBe('quill.route')
+    expect(BUILT_IN_BLOCK_REGISTRY.dataAttributes).toEqual(['data-qb-method', 'data-qb-tone'])
   })
 
   it('finds a block by its name and form', () => {

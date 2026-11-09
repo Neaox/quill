@@ -108,8 +108,14 @@ import { createVersionedReader } from './versioned-reader.ts'
  * and a container no block or directive claims as a labelled frame naming it,
  * where its wrapper was dropped before. A prop that does not fit is said in
  * the block, and the body reports its blocks' problems (`blockIssues`).
+ *
+ * Version 17 draws the documentation kit as built-in blocks (`timeline`,
+ * `step`, `cast`, `checks` and `route`), where each was a labelled frame or
+ * its words; a badge shorthand names itself (`data-badge`) and draws its
+ * label as inline Markdown, emoji and all; and an image whose label holds a
+ * colon is described by the words written, where a directive took some.
  */
-export const RENDER_VERSION = 16
+export const RENDER_VERSION = 17
 
 export interface RenderDocumentDependencies {
   readonly uow: UnitOfWork

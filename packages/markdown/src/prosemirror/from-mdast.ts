@@ -121,6 +121,7 @@ export function mdastToProseMirror(
             src: current.url,
             alt: current.alt,
             title: current.title,
+            ...formOf(current),
           }).mark(marks),
         ]
       case 'imageReference':

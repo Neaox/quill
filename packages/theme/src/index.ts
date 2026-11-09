@@ -135,6 +135,7 @@ export {
 } from './schema/theme-document.ts'
 export { validateThemeDocument, type ThemeIssue, type ValidationResult } from './schema/validate.ts'
 export {
+  BUILT_IN_BLOCK_NAMES,
   BUILT_IN_DIRECTIVE_NAMES,
   DEFAULT_LABEL_CHROMA,
   DRAWING_CLASS_NAMES,

@@ -2,6 +2,7 @@ import type {
   AlignType,
   Break,
   Emphasis,
+  Image,
   List,
   ListItem,
   Nodes,
@@ -15,6 +16,7 @@ import { defaultHandlers } from 'mdast-util-to-markdown'
 import type { Handle, Info, Join } from 'mdast-util-to-markdown'
 import { visit } from 'unist-util-visit'
 
+import { writtenLabel } from './image-alt.ts'
 import type { ToMarkdownExtension } from './raw-mdast.ts'
 
 /**
@@ -63,6 +65,19 @@ export interface SourceForm {
   readonly directiveForm?: true
   /** A container directive with a blank line after its opening fence and before its closing one. */
   readonly padded?: true
+  /**
+   * An image's label as written, and the alternative text it was read as:
+   * the writer escapes every `_` and `*` in it (`MAIL\_SENDER`), which a
+   * label of plain words never needed.
+   */
+  readonly alt?: { readonly written: string; readonly read: string | null | undefined }
+  /**
+   * How many colons a container directive's fences were written with, where
+   * that is more than three. The writer gives a container as many as its
+   * nesting needs, so a step with nothing nested in it, written `::::step`
+   * like its siblings in a `:::::timeline`, would lose one on every save.
+   */
+  readonly fence?: number
   /**
    * The form of the `:::wide` or `:::full` wrapper a block was lifted out of
    * in the editor (ADR-027), on the first block it held.
@@ -229,6 +244,13 @@ export function markSourceForm(
         if (spaces !== undefined) withForm(node, { spaces })
         return
       }
+      case 'image': {
+        const written = writtenLabel(source, node)
+        if (written !== undefined && written !== '') {
+          withForm(node, { alt: { written, read: node.alt } })
+        }
+        return
+      }
       case 'list':
         markBlankLines(node)
         markNumbers(node)
@@ -242,11 +264,17 @@ export function markSourceForm(
       case 'table':
         markTable(node, span)
         return
-      case 'containerDirective':
+      case 'containerDirective': {
         markBlankLines(node)
         markPadding(node, span)
         markDirective(node, span)
+        // Only a fence wider than the writer would give it is a form to keep.
+        // A container always opens with colons.
+        /* v8 ignore next */
+        const fence = /^:+/u.exec(source.slice(span.start))?.[0].length ?? 0
+        if (fence > neededFence(node)) withForm(node, { fence })
         return
+      }
       case 'leafDirective':
       case 'textDirective':
         markDirective(node, span)
@@ -294,6 +322,19 @@ function hardBreak(original: Handle): Handle {
     const written = original(node, parent, state, info)
     const spaces = node.data?.sourceForm?.spaces
     return written === '\\\n' && spaces !== undefined ? `${spaces}\n` : written
+  }
+}
+
+/** An image, with its label as written while it still reads as the image's alternative text. */
+function image(original: Handle): Handle {
+  return (node: Image, parent, state, info) => {
+    const alt = node.data?.sourceForm?.alt
+    if (alt === undefined || alt.read !== node.alt) {
+      return original(node, parent, state, info)
+    }
+    // The library writes an image with no alternative text as `![](…)`.
+    const written = original({ ...node, alt: '' }, parent, state, info)
+    return `![${alt.written}]${written.slice(3)}`
   }
 }
 
@@ -363,6 +404,46 @@ function table(original: Handle): Handle {
   }
 }
 
+/** The fewest colons a container directive is written with. */
+const MINIMUM_FENCE = 3
+
+/** The containers directly inside a node: the nearest ones down each branch. */
+function innerContainers(node: Node): ContainerDirective[] {
+  if (!('children' in node)) return []
+  return node.children.flatMap((child: Node) =>
+    child.type === 'containerDirective' ? [child] : innerContainers(child),
+  )
+}
+
+/**
+ * How many colons a container's fences are written with: as many as it was
+ * written with, while that is still more than every container inside it is
+ * written with, and otherwise one more than the widest of them, which is what
+ * the writer's own count (three, and one more for each level of nesting)
+ * comes to when nothing kept a wider fence. A fence closes the containers
+ * inside it only if it is at least as wide as theirs, so this is the only
+ * rule that matters.
+ */
+function fenceOf(node: ContainerDirective): number {
+  const inner = innerContainers(node).map((child) => fenceOf(child) + 1)
+  return Math.max(MINIMUM_FENCE, node.data?.sourceForm?.fence ?? 0, ...inner)
+}
+
+/** How many colons the writer gives a container on its own: three, and one for each level nested in it. */
+function neededFence(node: ContainerDirective): number {
+  return Math.max(MINIMUM_FENCE, ...innerContainers(node).map((child) => neededFence(child) + 1))
+}
+
+/** A container directive as the writer wrote it, with its fences `width` colons wide. */
+function withFence(written: string, width: number): string {
+  // The library writes a container directive starting with its fence.
+  /* v8 ignore next */
+  const drawn = /^:+/u.exec(written)?.[0].length ?? 0
+  if (drawn >= width || !written.endsWith(`\n${':'.repeat(drawn)}`)) return written
+  const fence = ':'.repeat(width)
+  return `${fence}${written.slice(drawn, written.length - drawn)}${fence}`
+}
+
 /**
  * A directive, with its attribute block as written while the attributes are
  * the ones it was read with, and a container's blank lines inside its fences.
@@ -376,12 +457,13 @@ function directive(original: Handle): Handle {
       form?.attributes !== undefined && form.attributes.read === attributesRead(node.attributes)
         ? form.attributes.written
         : undefined
-    const written = original(
+    const drawn = original(
       kept === undefined ? node : { ...node, attributes: {} },
       parent,
       state,
       info,
     )
+    const written = node.type === 'containerDirective' ? withFence(drawn, fenceOf(node)) : drawn
     const openingEnd = node.type === 'containerDirective' ? written.indexOf('\n') : -1
     const withAttributes =
       kept === undefined
@@ -499,6 +581,7 @@ export function sourceFormToMarkdown(handlers: WrappedHandlers): ToMarkdownExten
       emphasis: attention(defaultHandlers.emphasis, 'emphasis'),
       strong: attention(defaultHandlers.strong, 'strong'),
       break: hardBreak(defaultHandlers.break),
+      image: image(defaultHandlers.image),
       // GFM writes task list items with a handler of its own, which is the one wrapped.
       listItem: listItem(handlers.listItem ?? defaultHandlers.listItem),
       ...wrappedHandlers(handlers),

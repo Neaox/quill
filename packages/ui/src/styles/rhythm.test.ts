@@ -149,6 +149,11 @@ const HAS_ALLOWED: Readonly<Record<string, readonly string[]>> = {
     ".prose .diagram[data-expandable='true']:has(svg)",
     ".prose figure:has(> .diagram[data-diagram='mermaid']:not([data-state='drawn'])) > .diagram-expand, .prose .diagram[data-diagram='mermaid']:not([data-state='drawn']) > .diagram-expand",
     '.prose .child-page:has(> .child-page-link .child-page-icon) > .child-page-excerpt',
+    // The documentation kit (ADR-060): a badge led by its own emoji, and a
+    // route in a cell with no arrow among its own children.
+    '.prose .badge:is([data-badge], .qb-step-chip):has(> .emoji:first-child)',
+    '.prose td .qb-route:not(:has(.qb-route-leg))',
+    '.prose td .qb-route:not(:has(.qb-route-leg)) > .qb-route-party',
   ],
   'layout.css': [
     ".layout-grid > figure:has(> .diagram[data-diagram='svg']), .layout-grid > :is(.table-block, .table-scroll)",
