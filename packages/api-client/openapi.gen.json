@@ -10313,6 +10313,7 @@
                     "collections",
                     "history",
                     "commitMessages",
+                    "manifestEntry",
                     "credential",
                     "outsideLinks",
                     "viewTemplate",
@@ -10359,6 +10360,16 @@
                     },
                     "commitMessages": {
                       "type": "string"
+                    },
+                    "manifestEntry": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
                     },
                     "credential": {
                       "anyOf": [
@@ -10590,9 +10601,9 @@
                   "remote",
                   "branch",
                   "collections",
+                  "credential",
                   "history",
-                  "commitMessages",
-                  "credential"
+                  "commitMessages"
                 ],
                 "properties": {
                   "remote": {
@@ -10606,7 +10617,6 @@
                     "type": "string"
                   },
                   "collections": {
-                    "minItems": 1,
                     "maxItems": 100,
                     "type": "array",
                     "items": {
@@ -10634,6 +10644,44 @@
                         }
                       }
                     }
+                  },
+                  "credential": {
+                    "anyOf": [
+                      {
+                        "type": "object",
+                        "required": [
+                          "username",
+                          "secretName"
+                        ],
+                        "properties": {
+                          "username": {
+                            "minLength": 1,
+                            "maxLength": 256,
+                            "type": "string"
+                          },
+                          "secretName": {
+                            "minLength": 1,
+                            "maxLength": 200,
+                            "type": "string"
+                          }
+                        }
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "manifestEntry": {
+                    "anyOf": [
+                      {
+                        "minLength": 1,
+                        "maxLength": 80,
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
                   },
                   "history": {
                     "anyOf": [
@@ -10664,32 +10712,6 @@
                         "enum": [
                           "none"
                         ]
-                      }
-                    ]
-                  },
-                  "credential": {
-                    "anyOf": [
-                      {
-                        "type": "object",
-                        "required": [
-                          "username",
-                          "secretName"
-                        ],
-                        "properties": {
-                          "username": {
-                            "minLength": 1,
-                            "maxLength": 256,
-                            "type": "string"
-                          },
-                          "secretName": {
-                            "minLength": 1,
-                            "maxLength": 200,
-                            "type": "string"
-                          }
-                        }
-                      },
-                      {
-                        "type": "null"
                       }
                     ]
                   },
@@ -10761,6 +10783,7 @@
                     "collections",
                     "history",
                     "commitMessages",
+                    "manifestEntry",
                     "credential",
                     "outsideLinks",
                     "viewTemplate",
@@ -10807,6 +10830,16 @@
                     },
                     "commitMessages": {
                       "type": "string"
+                    },
+                    "manifestEntry": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
                     },
                     "credential": {
                       "anyOf": [
@@ -11020,6 +11053,622 @@
                       "type": "boolean"
                     }
                   }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/workspaces/{id}/source/preview": {
+      "post": {
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                  "remote",
+                  "branch",
+                  "collections",
+                  "credential"
+                ],
+                "properties": {
+                  "remote": {
+                    "minLength": 1,
+                    "maxLength": 2048,
+                    "type": "string"
+                  },
+                  "branch": {
+                    "minLength": 1,
+                    "maxLength": 255,
+                    "type": "string"
+                  },
+                  "collections": {
+                    "maxItems": 100,
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "required": [
+                        "slug",
+                        "name",
+                        "path"
+                      ],
+                      "properties": {
+                        "slug": {
+                          "minLength": 1,
+                          "maxLength": 80,
+                          "type": "string"
+                        },
+                        "name": {
+                          "minLength": 1,
+                          "maxLength": 200,
+                          "type": "string"
+                        },
+                        "path": {
+                          "minLength": 1,
+                          "maxLength": 1024,
+                          "type": "string"
+                        }
+                      }
+                    }
+                  },
+                  "credential": {
+                    "anyOf": [
+                      {
+                        "type": "object",
+                        "required": [
+                          "username",
+                          "secretName"
+                        ],
+                        "properties": {
+                          "username": {
+                            "minLength": 1,
+                            "maxLength": 256,
+                            "type": "string"
+                          },
+                          "secretName": {
+                            "minLength": 1,
+                            "maxLength": 200,
+                            "type": "string"
+                          }
+                        }
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "manifestEntry": {
+                    "anyOf": [
+                      {
+                        "minLength": 1,
+                        "maxLength": 80,
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "required": [
+                        "outcome",
+                        "preview"
+                      ],
+                      "properties": {
+                        "outcome": {
+                          "type": "string",
+                          "enum": [
+                            "preview"
+                          ]
+                        },
+                        "preview": {
+                          "type": "object",
+                          "required": [
+                            "revision",
+                            "manifest",
+                            "origin",
+                            "collections",
+                            "skipped",
+                            "assets",
+                            "limits",
+                            "changes"
+                          ],
+                          "properties": {
+                            "revision": {
+                              "type": "string"
+                            },
+                            "manifest": {
+                              "type": "object",
+                              "required": [
+                                "path",
+                                "state",
+                                "problem",
+                                "entries",
+                                "entry",
+                                "unknownKeys"
+                              ],
+                              "properties": {
+                                "path": {
+                                  "type": "string"
+                                },
+                                "state": {
+                                  "anyOf": [
+                                    {
+                                      "type": "string",
+                                      "enum": [
+                                        "absent"
+                                      ]
+                                    },
+                                    {
+                                      "type": "string",
+                                      "enum": [
+                                        "read"
+                                      ]
+                                    },
+                                    {
+                                      "type": "string",
+                                      "enum": [
+                                        "problem"
+                                      ]
+                                    }
+                                  ]
+                                },
+                                "problem": {
+                                  "anyOf": [
+                                    {
+                                      "type": "object",
+                                      "required": [
+                                        "line",
+                                        "message"
+                                      ],
+                                      "properties": {
+                                        "line": {
+                                          "anyOf": [
+                                            {
+                                              "type": "integer"
+                                            },
+                                            {
+                                              "type": "null"
+                                            }
+                                          ]
+                                        },
+                                        "message": {
+                                          "type": "string"
+                                        }
+                                      }
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "entries": {
+                                  "type": "array",
+                                  "items": {
+                                    "type": "object",
+                                    "required": [
+                                      "slug",
+                                      "collections"
+                                    ],
+                                    "properties": {
+                                      "slug": {
+                                        "anyOf": [
+                                          {
+                                            "type": "string"
+                                          },
+                                          {
+                                            "type": "null"
+                                          }
+                                        ]
+                                      },
+                                      "collections": {
+                                        "type": "integer"
+                                      }
+                                    }
+                                  }
+                                },
+                                "entry": {
+                                  "anyOf": [
+                                    {
+                                      "type": "string"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "unknownKeys": {
+                                  "type": "array",
+                                  "items": {
+                                    "type": "object",
+                                    "required": [
+                                      "key",
+                                      "line"
+                                    ],
+                                    "properties": {
+                                      "key": {
+                                        "type": "string"
+                                      },
+                                      "line": {
+                                        "anyOf": [
+                                          {
+                                            "type": "integer"
+                                          },
+                                          {
+                                            "type": "null"
+                                          }
+                                        ]
+                                      }
+                                    }
+                                  }
+                                }
+                              }
+                            },
+                            "origin": {
+                              "anyOf": [
+                                {
+                                  "type": "string",
+                                  "enum": [
+                                    "manifest"
+                                  ]
+                                },
+                                {
+                                  "type": "string",
+                                  "enum": [
+                                    "settings"
+                                  ]
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "collections": {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "required": [
+                                  "slug",
+                                  "title",
+                                  "path",
+                                  "order",
+                                  "status",
+                                  "previousTitle",
+                                  "documents",
+                                  "nodes"
+                                ],
+                                "properties": {
+                                  "slug": {
+                                    "type": "string"
+                                  },
+                                  "title": {
+                                    "type": "string"
+                                  },
+                                  "path": {
+                                    "type": "string"
+                                  },
+                                  "order": {
+                                    "type": "string"
+                                  },
+                                  "status": {
+                                    "anyOf": [
+                                      {
+                                        "type": "string",
+                                        "enum": [
+                                          "new"
+                                        ]
+                                      },
+                                      {
+                                        "type": "string",
+                                        "enum": [
+                                          "kept"
+                                        ]
+                                      },
+                                      {
+                                        "type": "string",
+                                        "enum": [
+                                          "renamed"
+                                        ]
+                                      }
+                                    ]
+                                  },
+                                  "previousTitle": {
+                                    "anyOf": [
+                                      {
+                                        "type": "string"
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ]
+                                  },
+                                  "documents": {
+                                    "type": "integer"
+                                  },
+                                  "nodes": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "object",
+                                      "required": [
+                                        "path",
+                                        "title",
+                                        "kind",
+                                        "change",
+                                        "depth"
+                                      ],
+                                      "properties": {
+                                        "path": {
+                                          "type": "string"
+                                        },
+                                        "title": {
+                                          "type": "string"
+                                        },
+                                        "kind": {
+                                          "anyOf": [
+                                            {
+                                              "type": "string",
+                                              "enum": [
+                                                "document"
+                                              ]
+                                            },
+                                            {
+                                              "type": "string",
+                                              "enum": [
+                                                "folder"
+                                              ]
+                                            },
+                                            {
+                                              "type": "string",
+                                              "enum": [
+                                                "generated-folder"
+                                              ]
+                                            }
+                                          ]
+                                        },
+                                        "change": {
+                                          "anyOf": [
+                                            {
+                                              "type": "string",
+                                              "enum": [
+                                                "added"
+                                              ]
+                                            },
+                                            {
+                                              "type": "string",
+                                              "enum": [
+                                                "moved"
+                                              ]
+                                            },
+                                            {
+                                              "type": "string",
+                                              "enum": [
+                                                "unchanged"
+                                              ]
+                                            },
+                                            {
+                                              "type": "null"
+                                            }
+                                          ]
+                                        },
+                                        "depth": {
+                                          "minimum": 0,
+                                          "type": "integer"
+                                        }
+                                      }
+                                    }
+                                  }
+                                }
+                              }
+                            },
+                            "skipped": {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "required": [
+                                  "reason",
+                                  "count",
+                                  "paths",
+                                  "patterns"
+                                ],
+                                "properties": {
+                                  "reason": {
+                                    "anyOf": [
+                                      {
+                                        "type": "string",
+                                        "enum": [
+                                          "excluded"
+                                        ]
+                                      },
+                                      {
+                                        "type": "string",
+                                        "enum": [
+                                          "outside"
+                                        ]
+                                      },
+                                      {
+                                        "type": "string",
+                                        "enum": [
+                                          "too-large"
+                                        ]
+                                      },
+                                      {
+                                        "type": "string",
+                                        "enum": [
+                                          "not-utf8"
+                                        ]
+                                      },
+                                      {
+                                        "type": "string",
+                                        "enum": [
+                                          "symbolic-link"
+                                        ]
+                                      },
+                                      {
+                                        "type": "string",
+                                        "enum": [
+                                          "not-markdown"
+                                        ]
+                                      }
+                                    ]
+                                  },
+                                  "count": {
+                                    "type": "integer"
+                                  },
+                                  "paths": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "string"
+                                    }
+                                  },
+                                  "patterns": {
+                                    "type": "object",
+                                    "additionalProperties": {
+                                      "type": "string"
+                                    }
+                                  }
+                                }
+                              }
+                            },
+                            "assets": {
+                              "type": "integer"
+                            },
+                            "limits": {
+                              "type": "object",
+                              "required": [
+                                "files",
+                                "truncated",
+                                "unread"
+                              ],
+                              "properties": {
+                                "files": {
+                                  "type": "integer"
+                                },
+                                "truncated": {
+                                  "type": "boolean"
+                                },
+                                "unread": {
+                                  "type": "integer"
+                                }
+                              }
+                            },
+                            "changes": {
+                              "anyOf": [
+                                {
+                                  "type": "object",
+                                  "required": [
+                                    "added",
+                                    "moved",
+                                    "unchanged",
+                                    "archived",
+                                    "retired"
+                                  ],
+                                  "properties": {
+                                    "added": {
+                                      "type": "integer"
+                                    },
+                                    "moved": {
+                                      "type": "integer"
+                                    },
+                                    "unchanged": {
+                                      "type": "integer"
+                                    },
+                                    "archived": {
+                                      "type": "array",
+                                      "items": {
+                                        "type": "object",
+                                        "required": [
+                                          "path",
+                                          "title"
+                                        ],
+                                        "properties": {
+                                          "path": {
+                                            "type": "string"
+                                          },
+                                          "title": {
+                                            "type": "string"
+                                          }
+                                        }
+                                      }
+                                    },
+                                    "retired": {
+                                      "type": "array",
+                                      "items": {
+                                        "type": "object",
+                                        "required": [
+                                          "slug",
+                                          "title"
+                                        ],
+                                        "properties": {
+                                          "slug": {
+                                            "type": "string"
+                                          },
+                                          "title": {
+                                            "type": "string"
+                                          }
+                                        }
+                                      }
+                                    }
+                                  }
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            }
+                          }
+                        }
+                      }
+                    },
+                    {
+                      "type": "object",
+                      "required": [
+                        "outcome",
+                        "reason",
+                        "message"
+                      ],
+                      "properties": {
+                        "outcome": {
+                          "type": "string",
+                          "enum": [
+                            "unreadable"
+                          ]
+                        },
+                        "reason": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      }
+                    }
+                  ]
                 }
               }
             }

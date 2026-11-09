@@ -708,6 +708,26 @@ export type {
   WorkspaceSourceField,
   WorkspaceSourceView,
 } from './workspace-source.ts'
+export type {
+  SourcePreview,
+  SourcePreviewChange,
+  SourcePreviewChanges,
+  SourcePreviewCollection,
+  SourcePreviewCommand,
+  SourcePreviewDependencies,
+  SourcePreviewFailure,
+  SourcePreviewManifest,
+  SourcePreviewNode,
+  SourcePreviewResult,
+  SourcePreviewSkipped,
+  SourcePreviewSkipReason,
+} from './source-preview.ts'
+export {
+  MAX_PREVIEW_FILES,
+  MAX_PREVIEW_READ_BYTES,
+  MAX_PREVIEW_SKIPPED,
+  previewWorkspaceSource,
+} from './source-preview.ts'
 export {
   configureWorkspaceSource,
   getWorkspaceSource,

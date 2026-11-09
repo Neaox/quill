@@ -435,5 +435,18 @@ export type PersonDto = GetBody<'/api/people'>['people'][number]
 /** `GET /api/workspaces/:id/source`: where a sourced workspace reads from, and how far it has synced (ADR-061). */
 export type WorkspaceSourceDto = GetBody<'/api/workspaces/{id}/source'>
 
+/** `POST /api/workspaces/:id/source/preview`: what saving these settings would place where, or why the repository could not be read. */
+export type SourcePreviewResponseDto = Json<
+  NonNullable<paths['/api/workspaces/{id}/source/preview']['post']>['responses'][200]
+>
+
+/** A preview that read the repository. */
+export type SourcePreviewDto = Extract<SourcePreviewResponseDto, { outcome: 'preview' }>['preview']
+
+/** The settings a preview reads and saving stores (ADR-061). */
+export type SourceSettingsBody = NonNullable<
+  paths['/api/workspaces/{id}/source']['put']
+>['requestBody']['content']['application/json']
+
 /** `GET /api/documents/:id/source-freshness`: whether a sourced document has moved on, or is about to. */
 export type SourceFreshnessDto = GetBody<'/api/documents/{id}/source-freshness'>

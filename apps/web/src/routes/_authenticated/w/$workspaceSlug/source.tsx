@@ -1,9 +1,10 @@
-import { createFileRoute, notFound } from '@tanstack/react-router'
+import { createFileRoute, notFound, redirect } from '@tanstack/react-router'
 
 import { SourcePage } from '../../../../features/sources/source-page.tsx'
 import { RouteNotice } from '../../../../features/workspaces/route-notice.tsx'
 import {
   ApiError,
+  meQueryOptions,
   workspaceQueryOptions,
   workspaceSourceQueryOptions,
 } from '../../../../lib/api/index.ts'
@@ -15,7 +16,8 @@ import {
  * It is for whoever manages the workspace, which the API decides: a person
  * it refuses, and a workspace that is written in Quill rather than read from a
  * repository, both get the not-found inside the shell, which says what the
- * page is for rather than which of the two it was.
+ * page is for rather than which of the two it was. An instance administrator
+ * who opens it for a workspace written here is taken to connecting one.
  */
 export const Route = createFileRoute('/_authenticated/w/$workspaceSlug/source')({
   head: () => ({ meta: [{ title: 'Repository' }] }),
@@ -23,6 +25,16 @@ export const Route = createFileRoute('/_authenticated/w/$workspaceSlug/source')(
     const workspace = await context.queryClient.ensureQueryData(
       workspaceQueryOptions(context.apiClient, params.workspaceSlug),
     )
+    if (workspace.origin?.kind !== 'sourced') {
+      const me = await context.queryClient.ensureQueryData(meQueryOptions(context.apiClient))
+      if (me.isInstanceAdmin) {
+        throw redirect({
+          to: '/w/$workspaceSlug/source/connect',
+          params: { workspaceSlug: params.workspaceSlug },
+          replace: true,
+        })
+      }
+    }
     try {
       await context.queryClient.ensureQueryData(
         workspaceSourceQueryOptions(context.apiClient, workspace.id),

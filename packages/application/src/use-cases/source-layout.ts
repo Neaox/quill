@@ -1,5 +1,5 @@
 import { isSourceGlob, sourcePatternMatcher, sourcePatternPrefix } from '@quill/domain'
-import type { DocumentId, SourceCollectionOrder } from '@quill/domain'
+import type { SourceCollectionOrder } from '@quill/domain'
 
 import type { CollectionId } from '../ports/persistence.ts'
 import type { SourceCollection } from '../ports/source-sync.ts'
@@ -135,6 +135,15 @@ export function layoutPaths(layout: SourceLayout): readonly string[] {
   return [SOURCE_MANIFEST_PATH, ...layout.collections.map(({ path }) => path), ...layout.assets]
 }
 
+/**
+ * Where a file goes under a layout: into a collection, or left out because a
+ * pattern of `exclude` covers it, or because no collection's path does.
+ */
+export type SourcePlacement =
+  | { readonly kind: 'placed'; readonly collection: LayoutCollection }
+  | { readonly kind: 'excluded'; readonly pattern: string }
+  | { readonly kind: 'outside' }
+
 /** Places files in a layout's collections, compiling each pattern once. */
 export interface LayoutPlacer {
   /**
@@ -145,6 +154,8 @@ export interface LayoutPlacer {
    * none covers it or it is excluded.
    */
   place(path: string): LayoutCollection | null
+  /** The same decision, saying why a file is left out: what a preview shows. */
+  placement(path: string): SourcePlacement
 }
 
 export function layoutPlacer(layout: SourceLayout): LayoutPlacer {
@@ -154,17 +165,26 @@ export function layoutPlacer(layout: SourceLayout): LayoutPlacer {
     weight:
       sourcePatternPrefix(collection.path).length * 2 + (isSourceGlob(collection.path) ? 1 : 0),
   }))
-  const excluded = layout.exclude.map(sourcePatternMatcher)
-  return {
-    place(path) {
-      if (excluded.some((covers) => covers(path))) return null
-      let best: (typeof collections)[number] | null = null
-      for (const candidate of collections) {
-        if (candidate.covers(path) && (best === null || candidate.weight > best.weight)) {
-          best = candidate
-        }
+  const excluded = layout.exclude.map((pattern) => ({
+    pattern,
+    covers: sourcePatternMatcher(pattern),
+  }))
+  const placement = (path: string): SourcePlacement => {
+    const exclusion = excluded.find(({ covers }) => covers(path))
+    if (exclusion !== undefined) return { kind: 'excluded', pattern: exclusion.pattern }
+    let best: (typeof collections)[number] | null = null
+    for (const candidate of collections) {
+      if (candidate.covers(path) && (best === null || candidate.weight > best.weight)) {
+        best = candidate
       }
-      return best?.collection ?? null
+    }
+    return best === null ? { kind: 'outside' } : { kind: 'placed', collection: best.collection }
+  }
+  return {
+    placement,
+    place(path) {
+      const placed = placement(path)
+      return placed.kind === 'placed' ? placed.collection : null
     },
   }
 }
@@ -175,7 +195,8 @@ export function layoutPlacer(layout: SourceLayout): LayoutPlacer {
 
 /** What ordering one document of a collection needs to know about it. */
 export interface Orderable {
-  readonly id: DocumentId
+  /** The last tie-break, so the order is total. */
+  readonly id: string
   /** Its front matter's `order`, when it has one. */
   readonly order: number | null
   readonly title: string
@@ -233,6 +254,9 @@ export function projectSortKeys<T extends Orderable>(
  * room for a collection of any size above it.
  */
 export const MAX_FRONT_MATTER_ORDER = 1_000_000_000
+
+/** The sort key of a collection's own index file: before any `order` front matter can put a page. */
+export const LEADING_ORDER = -(MAX_FRONT_MATTER_ORDER + 1)
 
 /** A front matter `order` the tree can sort by: a whole number within the bound, or nothing. */
 export function readOrder(value: unknown): number | null {

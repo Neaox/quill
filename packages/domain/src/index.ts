@@ -79,6 +79,7 @@ export type {
 } from './tenancy/workspace-source.ts'
 export {
   MAX_SOURCE_BRANCH_LENGTH,
+  MAX_SOURCE_MANIFEST_ENTRY_LENGTH,
   MAX_SOURCE_PATH_LENGTH,
   MAX_SOURCE_REMOTE_LENGTH,
   MAX_SOURCE_USERNAME_LENGTH,
@@ -86,6 +87,7 @@ export {
   SOURCE_COMMIT_MESSAGE_SETTINGS,
   SOURCE_HISTORY_SETTINGS,
   checkSourceBranch,
+  checkSourceManifestEntry,
   checkSourcePath,
   checkSourcePattern,
   checkSourceRemote,

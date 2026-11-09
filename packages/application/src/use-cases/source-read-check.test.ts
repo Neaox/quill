@@ -49,9 +49,18 @@ beforeEach(async () => {
       id === HANDBOOK
         ? {
             source: source(),
-            settings: { collections: [], history: 'full', commitMessages: 'subject' },
+            settings: {
+              collections: [],
+              history: 'full',
+              commitMessages: 'subject',
+              manifestEntry: null,
+            },
+            configuredAt: new Date(0),
           }
         : null,
+    withDraft: async () => {
+      throw new Error('A read check never opens a draft.')
+    },
   }
   await uow.repos.sourceSyncState.recordSynced({
     workspaceId: HANDBOOK,

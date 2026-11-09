@@ -16,4 +16,14 @@ describe('inertSourceSync', () => {
     expect(await ports.lock.isHeld(HANDBOOK)).toBe(false)
     expect(ports.allowFileRemotesForTesting).toBe(false)
   })
+
+  it('opens no draft either', async () => {
+    const ports = inertSourceSync(createFakeContentStore())
+    await expect(
+      ports.sources.withDraft(
+        { remote: 'https://github.com/acme/handbook.git', branch: 'main', credential: null },
+        async () => 'opened',
+      ),
+    ).rejects.toThrow('opens no source')
+  })
 })

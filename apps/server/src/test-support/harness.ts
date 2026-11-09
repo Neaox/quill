@@ -84,6 +84,8 @@ export interface ServerHarness {
   readonly database: TestDatabase
   /** Where the harness's attachments landed, so a test can look at the files. */
   readonly blobRoot: string
+  /** Where sources' clones live, so a test can see what a sync or a preview left there. */
+  readonly sourceCacheRoot: string
   readonly jobRunner: JobRunner
   /** What the server's in-process observers are told; a test may subscribe to what it provokes. */
   readonly eventBus: EventBus
@@ -329,6 +331,7 @@ export async function createServerHarness(options: HarnessOptions = {}): Promise
     mailer,
     database,
     blobRoot,
+    sourceCacheRoot,
     jobRunner,
     eventBus,
     listenerFailures,

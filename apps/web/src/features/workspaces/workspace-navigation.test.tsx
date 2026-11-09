@@ -250,6 +250,27 @@ describe('WorkspaceTree creation entry points', () => {
       expect(screen.queryByRole('menuitem', { name: 'Workspace settings' })).toBeNull()
     })
 
+    it('offers an instance admin of a workspace written here reading it from a repository', async () => {
+      renderTree(
+        {},
+        {
+          'GET /api/me': me(true),
+          'GET /api/workspaces/{id}': () =>
+            jsonResponse(200, {
+              id: 'workspace-1',
+              unitId: 'unit-1',
+              name: 'Acme docs',
+              slug: 'acme',
+              createdAt: '2026-01-01T00:00:00.000Z',
+              origin: { kind: 'native' },
+            }),
+        },
+      )
+      await userEvent.click(await menuButton())
+      expect(await screen.findByRole('menuitem', { name: 'Read from a repository…' })).toBeVisible()
+      expect(screen.queryByRole('menuitem', { name: 'Repository' })).toBeNull()
+    })
+
     it('offers a reader no menu at all', async () => {
       renderTree(
         {},

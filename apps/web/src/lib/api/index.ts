@@ -79,8 +79,13 @@ export {
   type HomeScope,
 } from './home.ts'
 export { useMarkNotificationsRead, useNotifications } from './notifications.ts'
+export type { SourceDraftBody } from './source.ts'
 export {
+  awaitsSyncAfterSave,
+  SAVED_SYNC_WAIT_MS,
   SOURCE_FRESHNESS_REFRESH_MS,
+  useConfigureSource,
+  usePreviewSource,
   useSourceFreshness,
   useSyncSourceNow,
   useWorkspaceSource,
@@ -255,6 +260,9 @@ export type {
   NotificationItem,
   SourceFreshnessDto,
   WorkspaceSourceDto,
+  SourcePreviewDto,
+  SourcePreviewResponseDto,
+  SourceSettingsBody,
   NotificationsDto,
   DocumentDto,
   DraftDto,

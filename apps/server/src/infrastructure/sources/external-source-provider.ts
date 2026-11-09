@@ -1,3 +1,4 @@
+import { mkdir, mkdtemp, rm } from 'node:fs/promises'
 import { join } from 'node:path'
 
 import { ExternalSourceError, getSecret, SOURCE_MANIFEST_PATH } from '@quill/application'
@@ -6,7 +7,7 @@ import type {
   ExternalSourceProvider,
   OutboundHostPolicy,
   SecretsDependencies,
-  WorkspaceSourceRow,
+  WorkspaceSourceCredential,
 } from '@quill/application'
 import { GitCliExternalSource } from '@quill/content-store'
 import type { GitCliExternalSourceOptions, SourceCredential } from '@quill/content-store'
@@ -36,7 +37,20 @@ import type { WorkspaceId } from '@quill/domain'
  * fetched first. Paths are not strict: a manifest's glob is fetched by the
  * directory in front of it, as the ADR's default has it, and a glob with no
  * such directory is refused.
+ *
+ * **A draft is opened for a preview** the same way, under the same policy,
+ * but in a fresh directory of its own beside the sources' caches, removed
+ * when the preview ends whatever happened, and with deadlines a person
+ * waiting at a form can bear (`PREVIEW_LIMITS`).
  */
+
+/** How long a preview may take to fetch, and how much any one command may write. */
+export const PREVIEW_LIMITS = {
+  fetchDeadlineMs: 60_000,
+  networkTimeoutMs: 60_000,
+  localTimeoutMs: 30_000,
+  maxOutputBytes: 16 * 1024 * 1024,
+} as const
 
 export interface ExternalSourceProviderOptions {
   /** The unit of work the source is read with, and the secrets store its credential is read from. */
@@ -61,17 +75,10 @@ export function createExternalSourceProvider(
       const source = await options.secrets.uow.repos.workspaceSources.find(workspaceId)
       if (source === null) return null
       const settings: GitCliExternalSourceOptions = {
+        ...common(source.credential),
         remote: source.remote,
         branch: source.branch,
-        paths: [SOURCE_MANIFEST_PATH],
-        strictPrefixes: false,
         cacheDirectory: join(options.cacheRoot, workspaceId),
-        outboundPolicy: options.outboundPolicy,
-        credential: credentialFor(options.secrets, source),
-        ...(options.egressProxy === undefined ? {} : { egressProxy: options.egressProxy }),
-        ...(options.allowFileRemotesForTesting === true
-          ? { allowFileRemotesForTesting: true }
-          : {}),
       }
       return {
         source: openedOnFirstUse(() => open(settings)),
@@ -79,17 +86,48 @@ export function createExternalSourceProvider(
           collections: source.collections,
           history: source.history,
           commitMessages: source.commitMessages,
+          manifestEntry: source.manifestEntry,
         },
+        configuredAt: source.updatedAt,
       }
     },
+
+    async withDraft(draft, work) {
+      await mkdir(options.cacheRoot, { recursive: true })
+      // `preview-` never names a workspace's cache, whose directories are UUIDs.
+      const directory = await mkdtemp(join(options.cacheRoot, 'preview-'))
+      try {
+        const source = await open({
+          ...common(draft.credential),
+          ...PREVIEW_LIMITS,
+          remote: draft.remote,
+          branch: draft.branch,
+          cacheDirectory: directory,
+        })
+        return await work(source)
+      } finally {
+        await rm(directory, { recursive: true, force: true, maxRetries: 5 })
+      }
+    },
+  }
+
+  /** What every source is opened with: the manifest alone, the policy, and its credential. */
+  function common(credential: WorkspaceSourceCredential | null) {
+    return {
+      paths: [SOURCE_MANIFEST_PATH],
+      strictPrefixes: false,
+      outboundPolicy: options.outboundPolicy,
+      credential: credentialFor(options.secrets, credential),
+      ...(options.egressProxy === undefined ? {} : { egressProxy: options.egressProxy }),
+      ...(options.allowFileRemotesForTesting === true ? { allowFileRemotesForTesting: true } : {}),
+    }
   }
 }
 
 function credentialFor(
   secrets: SecretsDependencies,
-  source: WorkspaceSourceRow,
+  credential: WorkspaceSourceCredential | null,
 ): () => Promise<SourceCredential | null> {
-  const { credential } = source
   if (credential === null) return () => Promise.resolve(null)
   return async () => {
     const found = await getSecret(secrets, credential.secretName)

@@ -1,3 +1,5 @@
+import { mkdtemp, readdir, rm } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 import { ExternalSourceError } from '@quill/application'
@@ -11,10 +13,14 @@ import {
 import type { InMemoryUnitOfWork } from '@quill/application/test-support'
 import type { GitCliExternalSourceOptions, SourceCredential } from '@quill/content-store'
 import { userId, workspaceId } from '@quill/domain'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { setSecret } from '@quill/application'
-import { createExternalSourceProvider, openedOnFirstUse } from './external-source-provider.ts'
+import {
+  createExternalSourceProvider,
+  openedOnFirstUse,
+  PREVIEW_LIMITS,
+} from './external-source-provider.ts'
 
 const NOW = new Date('2026-01-01T00:00:00.000Z')
 const HANDBOOK = workspaceId('00000000-0000-4000-8000-000000000101')
@@ -52,6 +58,7 @@ async function configure(credential: { username: string; secretName: string } | 
     ],
     history: 'head',
     commitMessages: 'none',
+    manifestEntry: null,
     credential,
     outsideLinks: 'forge',
     viewTemplate: null,
@@ -134,7 +141,9 @@ describe('the external source provider', () => {
       ],
       history: 'head',
       commitMessages: 'none',
+      manifestEntry: null,
     })
+    expect(connected?.configuredAt).toEqual(NOW)
     expect(open).not.toHaveBeenCalled()
   })
 
@@ -208,6 +217,74 @@ describe('the external source provider', () => {
       reason: 'credential-unavailable',
       message: expect.stringContaining('does not open'),
     })
+  })
+})
+
+describe('a draft opened for a preview', () => {
+  let root: string
+
+  beforeEach(async () => {
+    root = await mkdtemp(join(tmpdir(), 'quill-draft-'))
+  })
+
+  afterEach(async () => {
+    await rm(root, { recursive: true, force: true })
+  })
+
+  function draftProvider() {
+    const open = vi.fn<(options: GitCliExternalSourceOptions) => Promise<ExternalSource>>(
+      async () => cannedSource(),
+    )
+    return {
+      open,
+      sources: createExternalSourceProvider({
+        secrets,
+        outboundPolicy: POLICY,
+        cacheRoot: join(root, 'sources'),
+        open,
+      }),
+    }
+  }
+
+  it('opens it in a directory of its own, with the preview’s limits, and removes the directory', async () => {
+    await setSecret(secrets, { name: 'sources/handbook', value: 'token', actor: ADMIN })
+    const { sources, open } = draftProvider()
+    const credential = { username: 'x-access-token', secretName: 'sources/handbook' }
+    let during: string[] = []
+
+    const head = await sources.withDraft(
+      { remote: 'https://github.com/acme/handbook.git', branch: 'main', credential },
+      async (source) => {
+        during = await readdir(join(root, 'sources'))
+        return await source.head()
+      },
+    )
+
+    expect(head).toBe('h')
+    const options = open.mock.calls[0]?.[0]
+    expect(options).toMatchObject({
+      remote: 'https://github.com/acme/handbook.git',
+      branch: 'main',
+      paths: ['.quill/workspace.yaml'],
+      ...PREVIEW_LIMITS,
+    })
+    expect(during).toEqual([expect.stringMatching(/^preview-/u)])
+    expect(options?.cacheDirectory).toBe(join(root, 'sources', during[0] ?? ''))
+    expect(await credentialOf(options)).toEqual({ username: 'x-access-token', password: 'token' })
+    expect(await readdir(join(root, 'sources'))).toEqual([])
+  })
+
+  it('removes the directory when the preview fails', async () => {
+    const { sources } = draftProvider()
+    await expect(
+      sources.withDraft(
+        { remote: 'https://github.com/acme/handbook.git', branch: 'main', credential: null },
+        async () => {
+          throw new ExternalSourceError('timeout', 'too slow')
+        },
+      ),
+    ).rejects.toMatchObject({ reason: 'timeout' })
+    expect(await readdir(join(root, 'sources'))).toEqual([])
   })
 })
 
