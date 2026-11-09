@@ -177,9 +177,14 @@ describe('connecting a workspace to a repository', () => {
 
   it('previews the repository: its collections, its tree with folders marked, and what it leaves out', async () => {
     const user = userEvent.setup()
-    const { routes: table, recorded } = routes('native', ok())
+    const { routes: table, recorded } = routes('native', ok({ assets: 2 }))
     renderApp('/w/handbook/source/connect', table)
     await check(user, 'https://github.com/acme/handbook.git')
+    expect(
+      await screen.findByText(
+        'Images and other files a page shows are imported with that page: 2 here.',
+      ),
+    ).toBeVisible()
 
     const guides = await screen.findByRole('region', { name: /^Guides/u })
     expect(within(guides).getByText('New collection')).toBeVisible()
@@ -189,6 +194,9 @@ describe('connecting a workspace to a repository', () => {
     const concepts = within(tree).getByText('Concepts').closest('li')
     expect(concepts).not.toBeNull()
     expect(within(concepts as HTMLElement).getByText('Tenancy')).toBeVisible()
+    expect(
+      screen.getByText('These files under the collections’ paths won’t become pages.'),
+    ).toBeVisible()
     expect(screen.getByText('Excluded by the manifest: 1')).toBeVisible()
     expect(screen.getByText('docs/guides/drafts')).toBeVisible()
     expect(screen.getByText('Symbolic links: 1')).toBeVisible()

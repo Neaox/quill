@@ -313,21 +313,24 @@ function Fold({
 /** What is not a page, by why, and what the preview did not get to. */
 function LeftOut({ preview }: { readonly preview: SourcePreviewDto }) {
   const { skipped, assets, limits } = preview
-  if (skipped.length === 0 && assets === 0 && !limits.truncated && limits.unread === 0) {
-    return preview.collections.length === 0 ? undefined : (
-      <p className="text-sm text-muted">Every file under these paths becomes a page.</p>
-    )
-  }
   return (
-    <section aria-labelledby="preview-left-out" className="flex min-w-0 flex-col gap-3">
-      <h3 id="preview-left-out" className="text-base font-semibold text-foreground">
-        Left out
-      </h3>
+    <>
       {limits.truncated ? (
         <Callout tone="warning" title="The preview stopped early">
           There are more than {limits.files.toLocaleString('en')} files under these paths, so the
           preview shows the first {limits.files.toLocaleString('en')}. The sync reads them all.
         </Callout>
+      ) : undefined}
+      {skipped.length > 0 ? (
+        <LeftOutList skipped={skipped} />
+      ) : preview.collections.length > 0 ? (
+        <p className="text-sm text-muted">Every Markdown file under these paths becomes a page.</p>
+      ) : undefined}
+      {assets > 0 ? (
+        <p className="text-sm text-muted">
+          Images and other files a page shows are imported with that page:{' '}
+          {assets.toLocaleString('en')} here.
+        </p>
       ) : undefined}
       {limits.unread > 0 ? (
         <p className="text-sm text-muted">
@@ -336,13 +339,22 @@ function LeftOut({ preview }: { readonly preview: SourcePreviewDto }) {
           {limits.unread === 1 ? 'it wasn’t' : 'they weren’t'} checked for size or encoding.
         </p>
       ) : undefined}
-      {assets > 0 ? (
-        <p className="text-sm text-muted">
-          {capitalise(plural(assets, 'image or other file', 'images and other files'))}{' '}
-          {assets === 1 ? 'is' : 'are'} imported as {assets === 1 ? 'an attachment' : 'attachments'}{' '}
-          for the pages that show {assets === 1 ? 'it' : 'them'}.
+    </>
+  )
+}
+
+/** The files that won't become pages, by why, each reason folded to its count when long. */
+function LeftOutList({ skipped }: { readonly skipped: SourcePreviewDto['skipped'] }) {
+  return (
+    <section aria-labelledby="preview-left-out" className="flex min-w-0 flex-col gap-3">
+      <div>
+        <h3 id="preview-left-out" className="text-base font-semibold text-foreground">
+          Left out
+        </h3>
+        <p className="mt-0.5 text-sm text-muted">
+          These files under the collections’ paths won’t become pages.
         </p>
-      ) : undefined}
+      </div>
       {skipped.map(({ reason, count, paths, patterns }) => {
         const words = SKIP_REASONS[reason] ?? { title: 'Left out', detail: '' }
         return (
