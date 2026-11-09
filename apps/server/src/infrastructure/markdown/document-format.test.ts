@@ -441,7 +441,7 @@ describe('createDocumentFormat: render and read', () => {
       view: format.read(written),
       links: format.links(written),
     })
-    expect(format.inspect(markdown).view).toMatchObject({
+    expect(format.inspect(written).view).toMatchObject({
       title: 'Inspected',
       frontMatter: { order: 3 },
     })
