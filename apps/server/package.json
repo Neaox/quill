@@ -21,6 +21,7 @@
     "secrets:set": "node --env-file-if-exists=../../.env src/scripts/secrets-set-cli.ts",
     "e2e:fake-oidc": "node src/scripts/fake-oidc-server-cli.ts",
     "bench:link-preview": "node src/infrastructure/link-preview/link-preview.bench.ts",
+    "bench:sync": "node src/infrastructure/sources/sync.bench.ts",
     "bench:search": "node --env-file-if-exists=../../.env src/infrastructure/search/search.bench.ts"
   },
   "dependencies": {
