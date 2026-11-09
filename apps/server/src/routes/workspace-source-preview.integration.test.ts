@@ -152,6 +152,19 @@ function outline(nodes: readonly PreviewNode[]): string[] {
   )
 }
 
+interface TreeNode {
+  readonly title: string
+  readonly children: readonly TreeNode[]
+}
+
+/** A workspace's tree as indented titles. */
+function lines(nodes: readonly TreeNode[], depth = 0): string[] {
+  return nodes.flatMap((node) => [
+    `${'  '.repeat(depth)}${node.title}`,
+    ...lines(node.children, depth + 1),
+  ])
+}
+
 /** How many rows each table that a source could touch holds, and what the sources' cache holds. */
 async function footprint(): Promise<Record<string, unknown>> {
   const tables = [
@@ -346,17 +359,8 @@ describe('previewing a repository before connecting it', () => {
       url: `/api/workspaces/${workspace}/tree`,
       cookies: admin,
     })
-    interface Node {
-      readonly title: string
-      readonly children: readonly Node[]
-    }
-    const lines = (nodes: readonly Node[], depth = 0): string[] =>
-      nodes.flatMap((node) => [
-        `${'  '.repeat(depth)}${node.title}`,
-        ...lines(node.children, depth + 1),
-      ])
     const collections = tree.json<{
-      collections: readonly { slug: string; documents: readonly Node[] }[]
+      collections: readonly { slug: string; documents: readonly TreeNode[] }[]
     }>().collections
     expect(collections.map(({ slug }) => slug).toSorted()).toEqual(['decisions', 'guides'])
     const guides = collections.find(({ slug }) => slug === 'guides')
@@ -392,7 +396,7 @@ describe('previewing a change to a source already connected', () => {
         credential: null,
       },
     })
-    expect(saved.statusCode).toBe(200)
+    if (saved.statusCode !== 200) throw new Error(`could not connect: ${saved.body}`)
     await harness.drainOutbox()
   })
 
