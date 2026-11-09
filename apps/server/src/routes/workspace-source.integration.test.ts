@@ -406,6 +406,18 @@ const manifest = (lines: readonly string[]) => `${['version: 1', ...lines].join(
 const titlesIn = (collections: readonly TreeCollection[], slug: string) =>
   collections.find((collection) => collection.slug === slug)?.documents.map(({ title }) => title)
 
+/** Each document under these, depth first, as the titles above it and its own. */
+function outline(nodes: readonly TreeDocument[], above: string): string[] {
+  return nodes.flatMap(({ title, children }) => [
+    `${above}${title}`,
+    ...outline(children, `${above}${title} / `),
+  ])
+}
+
+/** Every document of a collection, nested as its folders are (ADR-061). */
+const outlineOf = (collections: readonly TreeCollection[], slug: string): readonly string[] =>
+  outline(collections.find((collection) => collection.slug === slug)?.documents ?? [], '')
+
 describe('a workspace whose repository has a manifest', () => {
   const manifestPath = '.quill/workspace.yaml'
   let repository: Repository
@@ -495,8 +507,14 @@ describe('a workspace whose repository has a manifest', () => {
       ['decisions', 'Decisions'],
       ['guides', 'Guides'],
     ])
-    // Front matter order first, then by title; the excluded draft is not read; an index is named by its folder.
-    expect(titlesIn(collections, 'guides')).toEqual(['Introduction', 'Advanced', 'Setup', 'Tuning'])
+    // Front matter order first, then by title; the excluded draft is not read; an index is
+    // named by its folder, and is the folder's document, with the folder's files under it.
+    expect(outlineOf(collections, 'guides')).toEqual([
+      'Introduction',
+      'Advanced',
+      'Advanced / Tuning',
+      'Setup',
+    ])
     // By file name, whatever the titles say.
     expect(titlesIn(collections, 'decisions')).toEqual(['Zeta decision', 'Alpha decision'])
     setupId = await documentIn(workspace, 'Setup')
@@ -537,20 +555,24 @@ describe('a workspace whose repository has a manifest', () => {
     expect((await sourceOf()).sync).toMatchObject({ lastSyncedRevision: head, failure: null })
     const collections = await tree()
     expect(collections.map(({ slug, name }) => [slug, name])).toEqual([['guides', 'The guides']])
-    // The introduction still says it goes first; the rest by file name now.
-    expect(titlesIn(collections, 'guides')).toEqual([
-      'Introduction',
-      'Zeta decision',
-      'Alpha decision',
-      'Getting started',
-      'Advanced',
-      'Tuning',
+    // The collection now starts at docs, so each folder under it is a document of its own; the
+    // introduction still says it goes first among its siblings, and the rest go by file name.
+    expect(outlineOf(collections, 'guides')).toEqual([
+      'Adr',
+      'Adr / Zeta decision',
+      'Adr / Alpha decision',
+      'Guides',
+      'Guides / Introduction',
+      'Guides / Advanced',
+      'Guides / Advanced / Tuning',
+      'Guides / Getting started',
     ])
     // The same document, moved: its file did not change.
     expect(await documentIn(workspace, 'Zeta decision')).toBe(decisions)
   })
 
   it('records a manifest that does not read, with its line, and keeps what was synced', async () => {
+    const synced = outlineOf(await tree(), 'guides')
     await commitTo(
       repository,
       'Break the manifest',
@@ -569,7 +591,8 @@ describe('a workspace whose repository has a manifest', () => {
         message: expect.stringContaining('.quill/workspace.yaml, line 3'),
       },
     })
-    expect(titlesIn(await tree(), 'guides')).toHaveLength(6)
+    expect(outlineOf(await tree(), 'guides')).toEqual(synced)
+    expect(synced).toHaveLength(8)
   })
 })
 

@@ -8,6 +8,7 @@ import type { SourceLinkSettings } from '../ports/source-sync.ts'
 import { attachmentUrl } from './attachments.ts'
 import { documentUrl } from './document-path.ts'
 import { isImagePath, readAssetMap, SOURCE_ASSET_MAP_PATH } from './source-assets.ts'
+import { withFolderAddresses } from './source-folders.ts'
 
 /**
  * Relative links in a sourced document, resolved at render (ADR-061,
@@ -114,7 +115,10 @@ export function repositoryTarget(from: string, url: string): RepositoryTarget | 
 export interface SourceLinkContext {
   /** The document's own path in the repository. */
   readonly path: string
-  /** The documents of the revision being rendered, by their paths. */
+  /**
+   * The documents of the revision being rendered, by their paths, and each
+   * folder's by the folder's path (`withFolderAddresses`).
+   */
   readonly documents: ReadonlyMap<string, DocumentId>
   /** The forge's address for a repository path at the synced commit; null to show such links as text. */
   readonly outside: ((path: string) => string) | null
@@ -250,9 +254,11 @@ export async function sourceLinksAt(
     syncedCommit(deps.uow, document, place),
     assetsAt(deps, document, place, paths),
   ])
-  const documents = new Map(
-    tree.flatMap((entry) =>
-      entry.documentId === undefined ? [] : [[entry.path, entry.documentId] as const],
+  const documents = withFolderAddresses(
+    new Map(
+      tree.flatMap((entry) =>
+        entry.documentId === undefined ? [] : [[entry.path, entry.documentId] as const],
+      ),
     ),
   )
   return resolveSourceLinks(urls, {
