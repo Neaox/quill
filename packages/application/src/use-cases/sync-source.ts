@@ -46,43 +46,35 @@ import {
   sourceSyncRequested,
 } from './events.ts'
 import type { SourceSyncTrigger } from './events.ts'
-import { receiveFile, safeFilename } from './attachments.ts'
+import { safeFilename } from './attachments.ts'
 import type { Received } from './attachments.ts'
 import {
   assetFilename,
   assetMatcher,
-  declaredAssetType,
   SOURCE_ASSET_MAP_PATH,
   writeAssetMap,
 } from './source-assets.ts'
-import { titleFromPath } from './source-files.ts'
+import { generatedFolderOf } from './source-folders.ts'
 import {
-  directoryOf,
-  folderTitle,
-  generatedFolderMarkdown,
-  generatedFolderOf,
-  generatedFolderPath,
-  planFolders,
-} from './source-folders.ts'
-import type { FolderPlan } from './source-folders.ts'
-import { isRelativeDestination, repositoryTarget } from './source-links.ts'
-import {
-  acceptSourceDocument,
-  folderRoots,
-  isSourceDocument,
-  readLayoutAt,
-  readSourceContents,
-  readSourceDocument,
-} from './source-plan.ts'
-import {
-  LEADING_ORDER,
-  layoutFromSettings,
-  layoutPaths,
-  layoutPlacer,
-  placedAsTree,
-  projectSortKeys,
-  readOrder,
-} from './source-layout.ts'
+  arrangeSiblings,
+  assetRefusedUnread,
+  brokenSourceLinks,
+  changedPaths,
+  compareBrokenLinks,
+  planRevisionEdits,
+  relativeLinkTargets,
+  takeInSourceAsset,
+} from './source-revision.ts'
+import type {
+  ContentEdit,
+  DocumentEdit,
+  Folders,
+  PlacedEdit,
+  RelativeLinkTarget,
+  WriteEdit,
+} from './source-revision.ts'
+import { readLayoutAt, readSourceContents } from './source-plan.ts'
+import { layoutFromSettings, layoutPaths, layoutPlacer, placedAsTree } from './source-layout.ts'
 import type { LayoutCollection, LayoutPlacer, SourceLayout } from './source-layout.ts'
 import { describeManifestProblem, SOURCE_MANIFEST_PATH } from './source-manifest.ts'
 import type { ManifestProblem } from './source-manifest.ts'
@@ -232,46 +224,6 @@ type Step =
   | { readonly kind: 'replay'; readonly revision: SourceRevision }
   | { readonly kind: 'snapshot'; readonly revision: SourceRevision; readonly note: string }
   | { readonly kind: 'replan'; readonly revision: SourceRevision; readonly note: string }
-
-/** What one document does in a revision, once the source's changes are read. */
-type DocumentEdit =
-  | {
-      readonly kind: 'write'
-      readonly documentId: DocumentId
-      readonly collectionId: CollectionId
-      readonly path: string
-      readonly fromPath: string | null
-      readonly markdown: string
-      readonly title: string
-      readonly order: number | null
-      /** The repository paths its relative images point at: who may see an asset (ADR-061). */
-      readonly images: readonly string[]
-    }
-  /** Unchanged in the store, placed again in the tree: a re-plan's. */
-  | {
-      readonly kind: 'place'
-      readonly documentId: DocumentId
-      readonly collectionId: CollectionId
-      readonly path: string
-      readonly title: string
-      readonly order: number | null
-    }
-  | { readonly kind: 'archive'; readonly documentId: DocumentId; readonly path: string }
-
-type WriteEdit = Extract<DocumentEdit, { kind: 'write' }>
-/** Where a revision leaves each folder's document, and what each document nests under. */
-type Folders = FolderPlan<CollectionId>
-/** An edit the store sees: a write, a move or a delete. */
-type ContentEdit = Extract<DocumentEdit, { kind: 'write' | 'archive' }>
-type PlacedEdit = Extract<DocumentEdit, { kind: 'write' | 'place' }>
-
-/** A file the revision stores or places, before its contents are read. */
-interface Wanted {
-  readonly file: SourceFile
-  readonly fromPath: string | null
-  /** Already stored as it is: only its place in the tree is decided again. */
-  readonly placeOnly: boolean
-}
 
 /** A layout's collections as rows of the workspace, and what must change for them. */
 interface Resolution {
@@ -669,12 +621,7 @@ class SourceReplay {
     return [...added, ...removed]
   }
 
-  /**
-   * The source's changes as document edits: ids minted at first sight,
-   * contents read and stamped, each file placed in its collection. A re-plan
-   * also places every other file of the revision again, adds those the
-   * layout now takes in, and archives those it leaves out.
-   */
+  /** The revision's document edits and folders, as `planRevisionEdits` decides them. */
   async #edits(input: {
     readonly changes: readonly SourceChange[]
     readonly revision: SourceRevisionId
@@ -682,337 +629,17 @@ class SourceReplay {
     readonly layout: SourceLayout
     readonly replan: boolean
   }): Promise<{ readonly edits: readonly DocumentEdit[]; readonly folders: Folders }> {
-    const { revision, paths, layout } = input
-    const changes = withRedirects(input.changes, layout.redirects, paths)
-    const live = (path: string): SourcePathRow | null => {
-      const row = paths.get(path)
-      return row === undefined || row.archivedAt !== null ? null : row
-    }
-    const wanted: Wanted[] = []
-    const archived: DocumentEdit[] = []
-    const archive = (path: string): void => {
-      this.#refused.delete(path)
-      // A folder's generated document leaves with its folder, never with a file.
-      if (generatedFolderOf(path) !== null) return
-      const row = live(path)
-      if (row !== null && !archived.some((edit) => edit.path === path)) {
-        archived.push({ kind: 'archive', documentId: row.documentId, path })
-      }
-    }
-
-    for (const change of changes) {
-      if (change.kind === 'removed') {
-        archive(change.path)
-      } else if (change.kind === 'renamed') {
-        this.#refused.delete(change.fromPath)
-        const from = isSourceDocument(change.fromPath) ? live(change.fromPath) : null
-        if (!isSourceDocument(change.file.path)) archive(change.fromPath)
-        else {
-          wanted.push({
-            file: change.file,
-            fromPath: from === null ? null : change.fromPath,
-            placeOnly: false,
-          })
-        }
-      } else if (isSourceDocument(change.file.path)) {
-        wanted.push({ file: change.file, fromPath: null, placeOnly: false })
-      }
-    }
-    if (input.replan) await this.#replanned(revision, changes, wanted, archive, paths)
-
-    const vacated = new Set(wanted.flatMap(({ fromPath }) => (fromPath === null ? [] : [fromPath])))
-    // A file that cannot be stored is listed, and a document renamed into
-    // one leaves its old path rather than staying where the source no longer
-    // has it. A file the layout leaves out is not stored, and leaves.
-    const { ids } = await this.#resolve(layout)
-    const accepted: (Wanted & { readonly collectionId: CollectionId })[] = []
-    for (const item of wanted) {
-      const verdict = this.#accept(item.file, revision, layout, ids)
-      if (verdict === 'unplaced') {
-        this.#refused.delete(item.file.path)
-        archive(item.fromPath ?? item.file.path)
-      } else if (verdict === 'refused') {
-        if (item.fromPath !== null) archive(item.fromPath)
-      } else {
-        accepted.push({ ...item, collectionId: verdict.collectionId })
-      }
-    }
-    const contents = await this.#read(accepted.map(({ file }) => file))
-    const placed: PlacedEdit[] = []
-    for (const { file, fromPath, collectionId, placeOnly } of accepted) {
-      const markdown = this.#decode(file, contents, revision)
-      if (markdown === null) {
-        if (fromPath !== null) archive(fromPath)
-        continue
-      }
-      // A path a rename leaves in this revision keeps no claim on its id: the
-      // id went with the renamed file.
-      const known = vacated.has(file.path) ? undefined : paths.get(file.path)
-      const documentId =
-        (fromPath === null ? null : live(fromPath))?.documentId ??
-        known?.documentId ??
-        (this.#deps.ids.uuid() as DocumentId)
-      const stamped = this.#deps.format.stampIdentity(markdown, documentId)
-      const view = this.#deps.format.read(stamped)
-      const title = view.title ?? titleFromPath(file.path)
-      const order = readOrder(view.frontMatter['order'])
-      placed.push(
-        placeOnly
-          ? { kind: 'place', documentId, collectionId, path: file.path, title, order }
-          : {
-              kind: 'write',
-              documentId,
-              collectionId,
-              path: file.path,
-              fromPath,
-              markdown: stamped,
-              title,
-              order,
-              images: this.#imagePaths(file.path, stamped),
-            },
-      )
-      this.#refused.delete(file.path)
-    }
-    const folders = this.#folders({ ...input, ids, placed, archived })
-    // Moves first, so a path a rename leaves is free for a file added there in
-    // the same revision.
-    const moves = placed.filter((edit) => edit.kind === 'write' && edit.fromPath !== null)
-    const rest = placed.filter((edit) => edit.kind !== 'write' || edit.fromPath === null)
-    return { edits: [...archived, ...moves, ...rest], folders }
-  }
-
-  /**
-   * Folders as documents (ADR-061, `source-folders.ts`): each folder's
-   * document as the revision leaves the tree, added to the revision's edits.
-   *
-   * A folder's document keeps its id while the folder has one, whichever
-   * file stands for it:
-   * - a folder whose generated document gains an index file gives the file
-   *   that document's id, so its address and history carry on;
-   * - a folder whose index file is removed while it still holds documents
-   *   keeps the index's document, now generated, in its place;
-   * - a renamed folder's generated document follows the files renamed out of
-   *   it, as a renamed index file follows its rename.
-   * A generated document whose folder holds nothing any more is archived like
-   * a removed file, and comes back with its id if the folder does.
-   */
-  #folders(input: {
-    readonly layout: SourceLayout
-    readonly ids: Resolution['ids']
-    readonly paths: ReadonlyMap<string, SourcePathRow>
-    readonly replan: boolean
-    /** The revision's documents written or placed; an index file may take its folder's id. */
-    readonly placed: PlacedEdit[]
-    /** The revision's archives; an index file that leaves may stay as its folder's document. */
-    readonly archived: DocumentEdit[]
-  }): Folders {
-    const { layout, ids, paths, placed, archived } = input
-    const placer = this.#placerFor(layout)
-    const roots = folderRoots(layout, (collection) => ids.get(collection))
-    const collectionOf = (path: string): CollectionId | null => {
-      const collection = placer.place(path)
-      if (collection === null) return null
-      const id = ids.get(collection)
-      /* v8 ignore next -- every collection of a layout is resolved with it. */
-      if (id === undefined) throw new Error(`No collection resolved for ${collection.path}.`)
-      return id
-    }
-
-    // The tree's documents before the revision, and after it.
-    const before = new Map<string, CollectionId>()
-    const standing = new Map<string, SourcePathRow>()
-    for (const row of paths.values()) {
-      if (row.archivedAt !== null) continue
-      const folder = generatedFolderOf(row.path)
-      if (folder !== null) {
-        standing.set(folder, row)
-        continue
-      }
-      const collection = collectionOf(row.path)
-      if (collection !== null) before.set(row.path, collection)
-    }
-    const after = new Map(before)
-    const leaving = new Set(archived.map(({ path }) => path))
-    for (const path of leaving) after.delete(path)
-    for (const edit of placed) {
-      if (edit.kind === 'write' && edit.fromPath !== null) after.delete(edit.fromPath)
-      after.set(edit.path, edit.collectionId)
-    }
-    const toPlan = (documents: ReadonlyMap<string, CollectionId>) =>
-      planFolders(
-        [...documents].map(([path, collection]) => ({ path, collection })),
-        roots,
-      )
-    const previous = toPlan(before)
-    const plan = toPlan(after)
-
-    // The documents that stood for a folder and no longer do, by the folder:
-    // each gives its id to its folder's next document, if the folder has one.
-    const vacant = new Map<string, { readonly documentId: DocumentId; readonly path: string }>()
-    for (const [folder, row] of standing) {
-      if (!plan.generated.has(folder)) vacant.set(folder, row)
-    }
-    for (const [folder, path] of previous.indexes) {
-      const row = paths.get(path)
-      if (row !== undefined && leaving.has(path) && !vacant.has(folder)) vacant.set(folder, row)
-    }
-    // Which folder each folder was, where the revision renamed files out of one into another.
-    const renamedFrom = new Map<string, string>()
-    for (const edit of placed) {
-      if (edit.kind !== 'write' || edit.fromPath === null) continue
-      let from = directoryOf(edit.fromPath)
-      let to = directoryOf(edit.path)
-      // A walk that reaches the root on one side stops at the next step: the
-      // root's name is no folder's.
-      while (from !== to) {
-        if (!renamedFrom.has(to)) renamedFrom.set(to, from)
-        if (from.slice(from.lastIndexOf('/') + 1) !== to.slice(to.lastIndexOf('/') + 1)) break
-        from = directoryOf(from)
-        to = directoryOf(to)
-      }
-    }
-    const take = (folder: string) => {
-      for (const candidate of [folder, renamedFrom.get(folder)]) {
-        if (candidate === undefined) continue
-        const found = vacant.get(candidate)
-        if (found === undefined) continue
-        vacant.delete(candidate)
-        // An index file that stays as its folder's document is not archived.
-        const archivedAt = archived.findIndex((edit) => edit.path === found.path)
-        if (archivedAt !== -1) archived.splice(archivedAt, 1)
-        return found
-      }
-      return null
-    }
-
-    // An index file new to the tree takes the id of the document its folder had.
-    const placedAt = new Map(placed.map((edit, index) => [edit.path, index]))
-    for (const [folder, path] of plan.indexes) {
-      const at = placedAt.get(path) ?? -1
-      const edit = placed[at]
-      if (
-        edit?.kind !== 'write' ||
-        edit.fromPath !== null ||
-        paths.get(path)?.archivedAt === null
-      ) {
-        continue
-      }
-      const found = take(folder)
-      if (found === null) continue
-      placed[at] = {
-        ...edit,
-        documentId: found.documentId,
-        fromPath: found.path,
-        markdown: this.#deps.format.stampIdentity(edit.markdown, found.documentId),
-      }
-    }
-
-    // A folder with no index file has a document Quill writes.
-    for (const [folder, collectionId] of plan.generated) {
-      const path = generatedFolderPath(folder)
-      const title = folderTitle(folder)
-      const row = standing.get(folder)
-      if (row !== undefined) {
-        if (input.replan) {
-          placed.push({
-            kind: 'place',
-            documentId: row.documentId,
-            collectionId,
-            path,
-            title,
-            order: null,
-          })
-        }
-        continue
-      }
-      const found = take(folder)
-      const documentId =
-        found?.documentId ?? paths.get(path)?.documentId ?? (this.#deps.ids.uuid() as DocumentId)
-      placed.push({
-        kind: 'write',
-        documentId,
-        collectionId,
-        path,
-        fromPath: found?.path ?? null,
-        markdown: this.#deps.format.stampIdentity(generatedFolderMarkdown(folder), documentId),
-        title,
-        order: null,
-        images: [],
-      })
-    }
-
-    // A generated document whose folder holds nothing any more leaves.
-    for (const row of vacant.values()) {
-      if (generatedFolderOf(row.path) !== null) {
-        archived.push({ kind: 'archive', documentId: row.documentId, path: row.path })
-      }
-    }
-    return plan
-  }
-
-  /**
-   * A re-plan reads the revision's whole tree: a file the changes did not
-   * name is added when the workspace does not hold it, and placed again when
-   * it does; a document whose file is gone from the tree leaves.
-   */
-  async #replanned(
-    revision: SourceRevisionId,
-    changes: readonly SourceChange[],
-    wanted: Wanted[],
-    archive: (path: string) => void,
-    paths: ReadonlyMap<string, SourcePathRow>,
-  ): Promise<void> {
-    const handled = new Set(changes.flatMap(changedPaths))
-    const present = new Set<string>()
-    for await (const file of this.#source.source.files(revision)) {
-      present.add(file.path)
-      if (handled.has(file.path) || !isSourceDocument(file.path)) continue
-      const held = paths.get(file.path)?.archivedAt === null
-      wanted.push({ file, fromPath: null, placeOnly: held })
-    }
-    for (const row of paths.values()) {
-      if (
-        row.archivedAt === null &&
-        !present.has(row.path) &&
-        !handled.has(row.path) &&
-        generatedFolderOf(row.path) === null
-      ) {
-        archive(row.path)
-      }
-    }
-  }
-
-  /** The collection a file is placed in; `unplaced` when the layout leaves it out; `refused` (and listed) when it cannot be stored. */
-  #accept(
-    file: SourceFile,
-    revision: SourceRevisionId,
-    layout: SourceLayout,
-    ids: Resolution['ids'],
-  ): { readonly collectionId: CollectionId } | 'unplaced' | 'refused' {
-    const verdict = acceptSourceDocument(file, this.#placerFor(layout))
-    if (verdict.kind === 'left-out') return 'unplaced'
-    if (verdict.kind === 'refused') {
-      this.#refuse(file.path, revision, verdict.reason)
-      return 'refused'
-    }
-    const collectionId = ids.get(verdict.collection)
-    /* v8 ignore next -- every collection of a layout is resolved with it. */
-    if (collectionId === undefined)
-      throw new Error(`No collection resolved for ${verdict.collection.path}.`)
-    return { collectionId }
-  }
-
-  #decode(
-    file: SourceFile,
-    contents: ReadonlyMap<string, SourceFileContent>,
-    revision: SourceRevisionId,
-  ): string | null {
-    const content = contents.get(file.fileId)
-    if (content === undefined) {
-      throw new ExternalSourceError('file-missing', `The source did not return ${file.path}.`)
-    }
-    const read = readSourceDocument(content)
-    return read.kind === 'text' ? read.text : this.#refuse(file.path, revision, read.reason)
+    const { ids } = await this.#resolve(input.layout)
+    return await planRevisionEdits(
+      {
+        source: this.#source.source,
+        format: this.#deps.format,
+        mintDocumentId: () => this.#deps.ids.uuid() as DocumentId,
+        placer: (layout) => this.#placerFor(layout),
+        refused: this.#refused,
+      },
+      { ...input, ids },
+    )
   }
 
   #refuse(path: string, revision: SourceRevisionId, reason: RefusedSourceFile['reason']): null {
@@ -1286,49 +913,25 @@ class SourceReplay {
       const documents = (await tx.documents.listByCollection(id)).filter(
         (document) => document.status !== 'archived',
       )
-      const byPath = new Map(documents.map((document) => [document.path, document.id]))
-      const idOf = (path: string | null): DocumentId | null => {
-        if (path === null) return null
-        // A folder's document is live in the same collection; were it not, the
-        // document waits at the top rather than stopping the sync.
-        /* v8 ignore next */
-        return byPath.get(path) ?? null
-      }
-      const siblings = Map.groupBy(
-        documents.map((document) => {
-          const parent = folders.parents.get(document.path) ?? null
-          return {
-            ...document,
-            path: folders.folderOf.get(document.path) ?? document.path,
-            // A collection's own README goes first, unless it says where it goes.
-            order:
-              orders.get(document.id) ??
-              (folders.leading.has(document.path) ? LEADING_ORDER : null),
-            nestUnder: idOf(parent),
-            was: document,
-          }
-        }),
-        (document) => document.nestUnder,
-      )
       // oxlint-disable-next-line quill/no-independent-await-in-loop -- one transaction's client runs one statement at a time
-      for (const [parentId, group] of siblings) {
-        // oxlint-disable-next-line quill/no-independent-await-in-loop -- one transaction's client runs one statement at a time
-        for (const { item, sortKey } of projectSortKeys(group, rule)) {
-          const { was } = item
-          if (was.sortKey === sortKey && was.parentId === parentId) continue
-          await tx.documents.update(was.id, { sortKey, parentId }, now)
-          if (was.parentId === parentId) continue
-          await tx.events.record(
-            documentNested,
-            {
-              documentId: was.id,
-              workspaceId: this.#workspaceId,
-              fromParentId: was.parentId,
-              toParentId: parentId,
-            },
-            now,
-          )
-        }
+      for (const { item: was, parentId, sortKey } of arrangeSiblings(documents, {
+        folders,
+        orders,
+        rule,
+      })) {
+        if (was.sortKey === sortKey && was.parentId === parentId) continue
+        await tx.documents.update(was.id, { sortKey, parentId }, now)
+        if (was.parentId === parentId) continue
+        await tx.events.record(
+          documentNested,
+          {
+            documentId: was.id,
+            workspaceId: this.#workspaceId,
+            fromParentId: was.parentId,
+            toParentId: parentId,
+          },
+          now,
+        )
       }
     }
   }
@@ -1423,15 +1026,6 @@ class SourceReplay {
     return { imported, removed: [...removed], map }
   }
 
-  /** The repository paths a document's relative images point at. */
-  #imagePaths(path: string, markdown: string): readonly string[] {
-    const targets = this.#deps.format
-      .links(markdown)
-      .filter((link) => link.kind === 'image' && isRelativeDestination(link.url))
-      .flatMap((link) => repositoryTarget(path, link.url)?.path ?? [])
-    return [...new Set(targets)]
-  }
-
   /** Each file read and taken in as an upload is; a file refused is listed
    * instead. Each is given the attachment that will hold its bytes now: the
    * source's existing one with the same bytes, or a new one made with the
@@ -1442,8 +1036,9 @@ class SourceReplay {
     revision: SourceRevisionId,
   ): Promise<readonly ImportedAsset[]> {
     const readable = files.filter((file) => {
-      if (file.kind !== 'symbolic-link') return true
-      this.#refuse(file.path, revision, 'symbolic-link')
+      const unread = assetRefusedUnread(file)
+      if (unread === null) return true
+      this.#refuse(file.path, revision, unread.reason)
       return false
     })
     const contents = await this.#read(readable)
@@ -1454,20 +1049,13 @@ class SourceReplay {
       if (content === undefined) {
         throw new ExternalSourceError('file-missing', `The source did not return ${file.path}.`)
       }
-      if (content.kind === 'too-large') {
-        this.#refuse(file.path, revision, 'too-large')
-        continue
-      }
       // oxlint-disable-next-line quill/no-independent-await-in-loop -- one file's bytes at a time, so a revision of many large assets never holds them all
-      const received = await receiveFile(this.#deps, {
-        declaredContentType: declaredAssetType(file.path),
-        body: once(content.bytes),
-        maxBytes: this.#deps.maxAssetBytes,
-      })
-      if (received.kind !== 'received') {
-        this.#refuse(file.path, revision, received.kind)
+      const intake = await takeInSourceAsset(this.#deps, file, content)
+      if (intake.kind === 'refused') {
+        this.#refuse(file.path, revision, intake.reason)
         continue
       }
+      const { received } = intake
       this.#refused.delete(file.path)
       // oxlint-disable-next-line quill/no-independent-await-in-loop -- a later file of the revision reuses an earlier one's attachment
       const existing = await this.#deps.uow.repos.attachments.findSourceOwned(
@@ -1589,22 +1177,11 @@ class SourceReplay {
           ? await this.#toCheck(before, live)
           : new Set<DocumentId>()
     const found = await this.#relativeLinks(checked)
-    const targets = new Set(found.flatMap(({ target }) => (target === null ? [] : [target])))
-    // The repository's root is always there, and is no path to ask about.
-    targets.delete('')
-    const present =
-      targets.size === 0
-        ? new Set<string>()
-        : await this.#source.source.present(revision, [...targets])
-    const broken = found
-      .filter(({ target }) => target === null || (target !== '' && !present.has(target)))
-      .map(({ path, url }): BrokenSourceLink => ({ path, url, revision }))
+    const broken = await brokenSourceLinks(this.#source.source, revision, found)
     const kept = [...live]
       .filter(([id]) => !checked.has(id))
       .flatMap(([, path]) => before?.get(path) ?? [])
-    return [...kept, ...broken].toSorted(
-      (left, right) => left.path.localeCompare(right.path) || left.url.localeCompare(right.url),
-    )
+    return [...kept, ...broken].toSorted(compareBrokenLinks)
   }
 
   /** The live documents this sync wrote, those listed as broken before, and those that linked to one it archived. */
@@ -1621,8 +1198,8 @@ class SourceReplay {
   }
 
   /** Each relative link of these documents as stored at the head, and the repository path it names. */
-  async #relativeLinks(ids: ReadonlySet<DocumentId>): Promise<readonly CheckedLink[]> {
-    const found: CheckedLink[] = []
+  async #relativeLinks(ids: ReadonlySet<DocumentId>): Promise<readonly RelativeLinkTarget[]> {
+    const found: RelativeLinkTarget[] = []
     const pending = [...ids]
     while (pending.length > 0) {
       const batch = pending.splice(0, LINK_CHECK_READS)
@@ -1634,16 +1211,7 @@ class SourceReplay {
         /* v8 ignore next -- a live document is stored at the head. */
         if (source === null) continue
         // The stored path is the source path (ADR-061).
-        const { path } = source
-        const urls = new Set(
-          this.#deps.format
-            .links(source.markdown)
-            .map(({ url }) => url)
-            .filter(isRelativeDestination),
-        )
-        for (const url of urls) {
-          found.push({ path, url, target: repositoryTarget(path, url)?.path ?? null })
-        }
+        found.push(...relativeLinkTargets(this.#deps.format, source.path, source.markdown))
       }
     }
     return found
@@ -1684,20 +1252,10 @@ function isEmpty(assets: AssetChanges): boolean {
 }
 
 /** A file's bytes as the one chunk of a body. */
-async function* once(bytes: Uint8Array): AsyncGenerator<Uint8Array> {
-  yield bytes
-}
-
 /** Documents read at once when their links are checked. */
 const LINK_CHECK_READS = 16
 
 /** A relative link of a document, and the repository path it names; null when it names none. */
-interface CheckedLink {
-  readonly path: string
-  readonly url: string
-  readonly target: string | null
-}
-
 /** Broken links by the document path they are in; null stays null: nothing was checked. */
 function brokenByPath(
   links: readonly BrokenSourceLink[] | null,
@@ -1743,42 +1301,6 @@ function sortOrders(
 
 function touchesManifest(change: SourceChange): boolean {
   return changedPaths(change).includes(SOURCE_MANIFEST_PATH)
-}
-
-function changedPaths(change: SourceChange): readonly string[] {
-  if (change.kind === 'removed') return [change.path]
-  if (change.kind === 'renamed') return [change.fromPath, change.file.path]
-  return [change.file.path]
-}
-
-/**
- * The manifest's `redirects` cover what rename detection missed (ADR-061): a
- * file added at a path that a file removed in the same revision redirects to
- * is that file renamed, and keeps its id. Of several removed files
- * redirected to one path, the first the manifest names does.
- */
-function withRedirects(
-  changes: readonly SourceChange[],
-  redirects: ReadonlyMap<string, string>,
-  paths: ReadonlyMap<string, SourcePathRow>,
-): readonly SourceChange[] {
-  if (redirects.size === 0) return changes
-  const removed = new Set(
-    changes.flatMap((change) =>
-      change.kind === 'removed' && paths.get(change.path)?.archivedAt === null ? [change.path] : [],
-    ),
-  )
-  const claimed = new Set<string>()
-  const paired = changes.map((change): SourceChange => {
-    if (change.kind !== 'added' || paths.get(change.file.path)?.archivedAt === null) return change
-    const from = [...redirects].find(
-      ([old, target]) => target === change.file.path && removed.has(old) && !claimed.has(old),
-    )?.[0]
-    if (from === undefined) return change
-    claimed.add(from)
-    return { kind: 'renamed', fromPath: from, file: change.file }
-  })
-  return paired.filter((change) => change.kind !== 'removed' || !claimed.has(change.path))
 }
 
 /** Where an archived document's row goes when a live one takes its path; never a store path. */

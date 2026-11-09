@@ -1,0 +1,1 @@
+Changed: A sourced workspace's sync job now takes every decision about a revision's files (what is stored, refused, placed, archived and where it nests) from one shared plan, which the settings preview and the coming `quill check` (ADR-062) use too; nothing it writes changes.
