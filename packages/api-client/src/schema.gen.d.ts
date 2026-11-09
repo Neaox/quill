@@ -5132,7 +5132,7 @@ export interface components {
             contentType: "image/png" | "image/jpeg" | "image/gif" | "image/webp" | "image/avif" | "image/svg+xml" | "application/vnd.jgraph.mxfile" | "application/pdf";
             /** Format: date-time */
             createdAt: string;
-            documentId: string;
+            documentId: string | null;
             filename: string;
             id: string;
             sha256: string;

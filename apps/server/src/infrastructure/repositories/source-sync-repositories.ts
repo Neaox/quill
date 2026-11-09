@@ -1,8 +1,10 @@
-import { and, eq, lt, sql } from 'drizzle-orm'
+import { and, eq, inArray, lt, sql } from 'drizzle-orm'
 
 import type {
   BrokenSourceLink,
   RefusedSourceFile,
+  SourceAssetRepository,
+  SourceAssetRow,
   SourceLayoutRecord,
   SourcePathMapRepository,
   SourcePathRow,
@@ -13,7 +15,12 @@ import type {
 } from '@quill/application'
 import type { DocumentId, WorkspaceId } from '@quill/domain'
 
-import { sourcePathMap, sourceSyncState, sourceWebhookDeliveries } from '../db/schema.ts'
+import {
+  sourceAssets,
+  sourcePathMap,
+  sourceSyncState,
+  sourceWebhookDeliveries,
+} from '../db/schema.ts'
 import type { DrizzleClient } from '../db/types.ts'
 
 /**
@@ -57,6 +64,59 @@ export function createSourcePathMapRepository(db: DrizzleClient): SourcePathMapR
       await db
         .delete(sourcePathMap)
         .where(and(eq(sourcePathMap.workspaceId, workspaceId), eq(sourcePathMap.path, path)))
+    },
+  }
+}
+
+function toAssetRow(row: typeof sourceAssets.$inferSelect): SourceAssetRow {
+  return {
+    workspaceId: row.workspaceId as WorkspaceId,
+    path: row.path,
+    attachmentId: row.attachmentId,
+    fileId: row.fileId,
+  }
+}
+
+/** Which attachment each of a sourced workspace's assets holds (ADR-061). */
+export function createSourceAssetRepository(db: DrizzleClient): SourceAssetRepository {
+  return {
+    async listByWorkspace(workspaceId: WorkspaceId): Promise<readonly SourceAssetRow[]> {
+      const rows = await db
+        .select()
+        .from(sourceAssets)
+        .where(eq(sourceAssets.workspaceId, workspaceId))
+      return rows.map(toAssetRow)
+    },
+
+    async listByPaths(
+      workspaceId: WorkspaceId,
+      paths: readonly string[],
+    ): Promise<readonly SourceAssetRow[]> {
+      if (paths.length === 0) return []
+      const rows = await db
+        .select()
+        .from(sourceAssets)
+        .where(
+          and(eq(sourceAssets.workspaceId, workspaceId), inArray(sourceAssets.path, [...paths])),
+        )
+      return rows.map(toAssetRow)
+    },
+
+    async put(row: SourceAssetRow, now: Date): Promise<void> {
+      const values = { attachmentId: row.attachmentId, fileId: row.fileId, updatedAt: now }
+      await db
+        .insert(sourceAssets)
+        .values({ workspaceId: row.workspaceId, path: row.path, ...values })
+        .onConflictDoUpdate({
+          target: [sourceAssets.workspaceId, sourceAssets.path],
+          set: values,
+        })
+    },
+
+    async remove(workspaceId: WorkspaceId, path: string): Promise<void> {
+      await db
+        .delete(sourceAssets)
+        .where(and(eq(sourceAssets.workspaceId, workspaceId), eq(sourceAssets.path, path)))
     },
   }
 }

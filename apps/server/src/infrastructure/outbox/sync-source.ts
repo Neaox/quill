@@ -55,14 +55,24 @@ export const SOURCE_SYNC_LANE_OPTIONS = {
 export function createSyncSourceConsumer(
   deps: Pick<
     AppDependencies,
-    'uow' | 'format' | 'clock' | 'ids' | 'sourceSync' | 'tokens' | 'shareLinkPolicy'
-  >,
+    | 'uow'
+    | 'format'
+    | 'clock'
+    | 'ids'
+    | 'sourceSync'
+    | 'tokens'
+    | 'shareLinkPolicy'
+    | 'blobStore'
+    | 'drawingText'
+  > & { readonly config: { readonly attachments: { readonly maxBytes: number } } },
 ): OutboxConsumer {
   return {
     eventType: SOURCE_SYNC_REQUESTED,
     async handle(payload: unknown): Promise<void> {
-      const { uow, format, clock, ids, sourceSync } = deps
-      const job = { uow, format, clock, ids, ...sourceSync }
+      const { uow, format, clock, ids, sourceSync, blobStore, drawingText, config } = deps
+      // A repository asset is held to what an upload is (ADR-061, ADR-011).
+      const maxAssetBytes = config.attachments.maxBytes
+      const job = { uow, format, clock, ids, ...sourceSync, blobStore, drawingText, maxAssetBytes }
       const event = parseSourceSyncRequested(payload)
       if (event === null) return
       const tell = () => notifySourceSyncFailure(deps, event.workspaceId)

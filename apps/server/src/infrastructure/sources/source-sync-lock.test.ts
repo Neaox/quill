@@ -52,6 +52,12 @@ describe('the Postgres source sync lock', () => {
       kind: 'ran',
       value: 'other',
     })
+    // Another schema's workspace of the same id is another source.
+    const scoped = createPostgresSourceSyncLock(database.pool, { scope: 'another_schema' })
+    expect(await scoped.withLock(HANDBOOK, async () => 'scoped')).toEqual({
+      kind: 'ran',
+      value: 'scoped',
+    })
 
     held.open()
     expect(await running).toEqual({ kind: 'ran', value: 'first' })

@@ -10,7 +10,8 @@ import { requireRow } from '../db/rows.ts'
 function toAttachmentRow(row: typeof attachments.$inferSelect): AttachmentRow {
   return {
     id: row.id,
-    documentId: row.documentId as DocumentId,
+    documentId: row.documentId as DocumentId | null,
+    sourceWorkspaceId: row.sourceWorkspaceId as WorkspaceId | null,
     workspaceId: row.workspaceId as WorkspaceId,
     uploadedBy: row.uploadedBy as UserId | null,
     filename: row.filename,
@@ -44,6 +45,52 @@ export function createAttachmentRepository(db: DrizzleClient): AttachmentReposit
         })
         .returning()
       return toAttachmentRow(requireRow(inserted[0], 'insert returned no attachment row'))
+    },
+
+    async createForSource(input): Promise<AttachmentRow> {
+      const inserted = await db
+        .insert(attachments)
+        .values({
+          id: input.id,
+          documentId: null,
+          sourceWorkspaceId: input.workspaceId,
+          workspaceId: input.workspaceId,
+          uploadedBy: null,
+          filename: input.filename,
+          contentType: input.contentType,
+          size: input.size,
+          sha256: input.sha256,
+          searchText: input.searchText,
+          createdAt: input.now,
+        })
+        .returning()
+      return toAttachmentRow(requireRow(inserted[0], 'insert returned no attachment row'))
+    },
+
+    async findSourceOwned(workspaceId, sha256): Promise<AttachmentRow | null> {
+      const rows = await db
+        .select()
+        .from(attachments)
+        .where(
+          and(
+            eq(attachments.sourceWorkspaceId, workspaceId),
+            eq(attachments.sha256, sha256),
+            isNull(attachments.deletedAt),
+          ),
+        )
+        .orderBy(asc(attachments.createdAt), asc(attachments.id))
+        .limit(1)
+      const row = rows[0]
+      return row === undefined ? null : toAttachmentRow(row)
+    },
+
+    async listSourceOwned(workspaceId): Promise<readonly AttachmentRow[]> {
+      const rows = await db
+        .select()
+        .from(attachments)
+        .where(and(eq(attachments.sourceWorkspaceId, workspaceId), isNull(attachments.deletedAt)))
+        .orderBy(asc(attachments.createdAt), asc(attachments.id))
+      return rows.map(toAttachmentRow)
     },
 
     async findById(id): Promise<AttachmentRow | null> {

@@ -38,6 +38,7 @@ const NEWLINE = '\n'
 const PLACEHOLDER = '::placeholder'
 const HEADING = /^#+\s+(?<text>.+)$/
 const LINK = /\[(?<text>[^\]]*)]\((?<url>[^)]*)\)/g
+const IMAGE = /!\[(?<alt>[^\]]*)]\((?<url>[^)]*)\)/g
 const AUTO_TITLED = /\[]\(\/d\/(?<id>[0-9a-f-]{36})\)/g
 const SUBSTITUTION = /\{\{\s*answers\.(\w+)\s*}}/g
 const SCHEME = /^[a-z][a-z\d+.-]*:/i
@@ -124,9 +125,10 @@ export function createFakeDocumentFormat(options: FakeDocumentFormatOptions = {}
       emoji,
       labelEmoji,
       resolvedLinks,
+      resolvedImages,
     }): RenderedContent {
       const { frontMatter, body: written } = parse(markdown)
-      const body = resolved(written, resolvedLinks)
+      const body = resolved(pictured(written, resolvedImages), resolvedLinks)
       const headings = [...headingsOf(body)]
       return {
         version: RENDERED_CONTENT_VERSION,
@@ -291,10 +293,21 @@ function titled(body: string, linkTitles: ReadonlyMap<DocumentId, string>): stri
 /** A body with its relative links where they resolved (ADR-061): readdressed, or their words alone. */
 function resolved(body: string, links: RenderInput['resolvedLinks']): string {
   if (links === undefined) return body
-  return body.replaceAll(LINK, (match: string, text: string, url: string) => {
+  return body.replaceAll(LINK, (match: string, text: string, url: string, offset: number) => {
     const resolution = links.get(url)
-    if (resolution === undefined) return match
+    // An image's destination is an image's, resolved by `pictured`.
+    if (resolution === undefined || body[offset - 1] === '!') return match
     return resolution.kind === 'text' ? text : `[${text}](${resolution.href})`
+  })
+}
+
+/** A body with its relative images where they resolved (ADR-061): an attachment, or the alternative text. */
+function pictured(body: string, images: RenderInput['resolvedImages']): string {
+  if (images === undefined) return body
+  return body.replaceAll(IMAGE, (match: string, alt: string, url: string) => {
+    const resolution = images.get(url)
+    if (resolution === undefined) return match
+    return resolution.kind === 'text' ? alt : `![${alt}](${resolution.href})`
   })
 }
 

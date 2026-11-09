@@ -34,6 +34,7 @@ import {
   createFakeIdGenerator,
   createFakeSettings,
   createInMemoryBlobStore,
+  pngFile,
   createInMemoryUnitOfWork,
   serialise,
 } from '../test-support/index.ts'
@@ -323,6 +324,9 @@ function harness(
     lock,
     clock,
     ids: createFakeIdGenerator('aaaa'),
+    blobStore: createInMemoryBlobStore(),
+    drawingText: { read: async () => null },
+    maxAssetBytes: 1024 * 1024,
     ...overrides,
   }
   const idAt = async (path: string): Promise<DocumentId> => {
@@ -1494,6 +1498,35 @@ describe('requestSourceSync and its consumer', () => {
 // Relative links (ADR-061, "Relative links, resolved at render")
 // ---------------------------------------------------------------------------
 
+/** A sourced workspace, as configuring one stores it, for the render to read its settings from. */
+async function sourced(
+  h: Harness,
+  settings: Partial<SourceLinkSettings & { readonly remote: string }> = {},
+): Promise<void> {
+  await h.uow.repos.workspaces.create({
+    id: WORKSPACE,
+    unitId: 'acme',
+    name: 'Handbook',
+    slug: 'handbook',
+    now: NOW,
+  })
+  await h.uow.repos.workspaceSources.put({
+    workspaceId: WORKSPACE,
+    remote: 'https://github.com/acme/handbook.git',
+    branch: 'main',
+    collections: [],
+    history: 'full',
+    commitMessages: 'subject',
+    credential: null,
+    outsideLinks: 'forge',
+    viewTemplate: null,
+    webhookSecretName: null,
+    configuredBy: userId('00000000-0000-4000-8000-000000000001'),
+    now: NOW,
+    ...settings,
+  })
+}
+
 /** A synced document rendered, as a reader's request renders it. */
 async function render(h: Harness, path: string, revision?: RevisionId) {
   const deps: RenderDocumentDependencies = {
@@ -1503,7 +1536,8 @@ async function render(h: Harness, path: string, revision?: RevisionId) {
     clock: h.clock,
     ids: createFakeIdGenerator('bbbb'),
     hasher: createFakeHasher(),
-    blobStore: createInMemoryBlobStore(),
+    // The store the sync job put the assets in.
+    blobStore: h.deps.blobStore,
     settings: createFakeSettings(),
   }
   const rendered = await renderDocument(deps, { documentId: await h.idAt(path), revision })
@@ -1514,35 +1548,6 @@ async function render(h: Harness, path: string, revision?: RevisionId) {
 describe('relative links', () => {
   const broken = async (h: Harness) =>
     (await state(h))?.brokenLinks?.map(({ path, url, revision }) => `${path} ${url} @${revision}`)
-
-  /** A sourced workspace, as configuring one stores it, for the render to read its settings from. */
-  async function sourced(
-    h: Harness,
-    settings: Partial<SourceLinkSettings & { readonly remote: string }> = {},
-  ): Promise<void> {
-    await h.uow.repos.workspaces.create({
-      id: WORKSPACE,
-      unitId: 'acme',
-      name: 'Handbook',
-      slug: 'handbook',
-      now: NOW,
-    })
-    await h.uow.repos.workspaceSources.put({
-      workspaceId: WORKSPACE,
-      remote: 'https://github.com/acme/handbook.git',
-      branch: 'main',
-      collections: [],
-      history: 'full',
-      commitMessages: 'subject',
-      credential: null,
-      outsideLinks: 'forge',
-      viewTemplate: null,
-      webhookSecretName: null,
-      configuredBy: userId('00000000-0000-4000-8000-000000000001'),
-      now: NOW,
-      ...settings,
-    })
-  }
 
   const GUIDE = [
     '# Guide',
@@ -1760,5 +1765,213 @@ describe('relative links', () => {
       vi.spyOn(h.uow.repos.sourceSyncState, 'find').mockResolvedValue(null)
       expect((await render(h, 'docs/guide.md')).content.html).toContain('<article>code')
     })
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Repository assets (ADR-061, "Repository assets, as content-addressed attachments")
+// ---------------------------------------------------------------------------
+
+/** A file's bytes, as a fake source holds them. */
+const bytes = (data: Uint8Array): FileSpec => ({ kind: 'bytes', bytes: data })
+
+describe('repository assets', () => {
+  const ASSET_MANIFEST = [
+    'version: 1',
+    'collections:',
+    '  - { slug: guides, title: Guides, path: docs }',
+    'assets: [diagrams]',
+    '',
+  ].join('\n')
+  const FLOW = pngFile({ width: 2, height: 1 })
+  const SHOT = pngFile({ width: 1, height: 2 })
+  const SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1 1"><rect/></svg>'
+  const GUIDE = [
+    '# Guide',
+    '![Flow](../diagrams/flow.png)',
+    '![Shot](shot.png)',
+    '![Arch](../diagrams/arch.svg)',
+    '![Gone](./gone.png)',
+    '![Fake](../diagrams/fake.png)',
+    '![Up](../../up.png)',
+    '[the diagram](../diagrams/flow.png)',
+    '![Elsewhere](https://example.test/a.png)',
+  ].join('\n')
+  const FILES: Readonly<Record<string, FileSpec>> = {
+    '.quill/workspace.yaml': ASSET_MANIFEST,
+    'docs/guide.md': GUIDE,
+    'docs/shot.png': bytes(SHOT),
+    'diagrams/flow.png': bytes(FLOW),
+    'diagrams/copy.png': bytes(FLOW),
+    'diagrams/arch.svg': SVG,
+    'diagrams/notes.txt': 'plain words',
+    'diagrams/fake.png': 'not a picture',
+    'diagrams/huge.png': { kind: 'too-large' },
+    'diagrams/link.png': { kind: 'symbolic-link', target: '../docs/shot.png' },
+    'diagrams/readme.md': '# Not an asset',
+  }
+
+  const assetsOf = async (h: Harness) =>
+    Object.fromEntries(
+      (await h.uow.repos.sourceAssets.listByWorkspace(WORKSPACE)).map((row) => [
+        row.path,
+        row.attachmentId,
+      ]),
+    )
+
+  it('imports the assets and a collection’s images once per distinct content, and lists what it refused', async () => {
+    const h = harness([{ id: 'c1', files: FILES }])
+    await h.sync()
+
+    const assets = await assetsOf(h)
+    expect(Object.keys(assets).toSorted()).toEqual([
+      'diagrams/arch.svg',
+      'diagrams/copy.png',
+      'diagrams/flow.png',
+      'docs/shot.png',
+    ])
+    // The same bytes are one attachment, whichever path holds them.
+    expect(assets['diagrams/copy.png']).toBe(assets['diagrams/flow.png'])
+    const owned = await h.uow.repos.attachments.listSourceOwned(WORKSPACE)
+    expect(
+      owned.map(({ filename, contentType, documentId: owner, sourceWorkspaceId }) => ({
+        filename,
+        contentType,
+        documentId: owner,
+        sourceWorkspaceId,
+      })),
+    ).toEqual(
+      expect.arrayContaining([
+        {
+          filename: 'flow.png',
+          contentType: 'image/png',
+          documentId: null,
+          sourceWorkspaceId: WORKSPACE,
+        },
+        {
+          filename: 'shot.png',
+          contentType: 'image/png',
+          documentId: null,
+          sourceWorkspaceId: WORKSPACE,
+        },
+        {
+          filename: 'arch.svg',
+          contentType: 'image/svg+xml',
+          documentId: null,
+          sourceWorkspaceId: WORKSPACE,
+        },
+      ]),
+    )
+    expect(owned).toHaveLength(3)
+    expect(
+      (await state(h))?.refused.map(({ path, reason }) => `${path} ${reason}`).toSorted(),
+    ).toEqual([
+      'diagrams/fake.png type-not-allowed',
+      'diagrams/huge.png too-large',
+      'diagrams/link.png symbolic-link',
+      'diagrams/notes.txt type-not-allowed',
+    ])
+  })
+
+  it('draws an image from its attachment, an SVG as a drawing, and any other as its words', async () => {
+    const h = harness([{ id: 'c1', files: FILES }])
+    await sourced(h)
+    await h.sync()
+    const assets = await assetsOf(h)
+
+    const { html } = (await render(h, 'docs/guide.md')).content
+
+    expect(html).toContain(`![Flow](/api/attachments/${assets['diagrams/flow.png']})`)
+    expect(html).toContain(`![Shot](/api/attachments/${assets['docs/shot.png']})`)
+    expect(html).toContain(`<drawing src="/api/attachments/${assets['diagrams/arch.svg']}">${SVG}`)
+    // Not in the repository, refused, and outside it: the alternative text.
+    expect(html).toContain('\nGone\nFake\nUp\n')
+    // A link to an asset is a link to a file outside the documents: the forge.
+    expect(html).toContain(
+      '[the diagram](https://github.com/acme/handbook/blob/c1/diagrams/flow.png)',
+    )
+  })
+
+  it('takes in a changed asset, reads no unchanged one again, and takes down what nothing shows', async () => {
+    const h = harness([{ id: 'c1', files: FILES }])
+    await h.sync()
+    const before = await assetsOf(h)
+    const read = vi.spyOn(h.source, 'readFiles')
+    const { 'diagrams/copy.png': _copy, ...rest } = FILES
+    h.source.push({
+      id: 'c2',
+      files: { ...rest, 'diagrams/flow.png': bytes(pngFile({ width: 3 })) },
+    })
+    await h.sync()
+
+    const after = await assetsOf(h)
+    expect(after['diagrams/copy.png']).toBeUndefined()
+    expect(after['diagrams/flow.png']).not.toBe(before['diagrams/flow.png'])
+    expect(after['docs/shot.png']).toBe(before['docs/shot.png'])
+    const asked = read.mock.calls.flatMap(([ids]) => [...ids])
+    expect(asked.some((id) => id.startsWith('docs/shot.png#'))).toBe(false)
+    // No path holds the first picture and no published page shows it.
+    const old = await h.uow.repos.attachments.findById(before['diagrams/flow.png'] ?? '')
+    expect(old?.deletedAt).toEqual(NOW)
+  })
+
+  it('keeps an attachment a published page still shows, though no path holds it', async () => {
+    const h = harness([{ id: 'c1', files: FILES }])
+    await sourced(h)
+    await h.sync()
+    const before = await assetsOf(h)
+    // The render after a publish records what the page shows (`render-on-publish`).
+    await render(h, 'docs/guide.md')
+    const { 'diagrams/copy.png': _copy, ...rest } = FILES
+    h.source.push({
+      id: 'c2',
+      files: { ...rest, 'diagrams/flow.png': bytes(pngFile({ width: 3 })) },
+    })
+    await h.sync()
+
+    const kept = await h.uow.repos.attachments.findById(before['diagrams/flow.png'] ?? '')
+    expect(kept?.deletedAt).toBeNull()
+  })
+
+  it('re-plans the assets with the layout: a path gone from the revision leaves the map', async () => {
+    const h = harness([{ id: 'c1', files: FILES }])
+    await h.sync()
+    const { 'diagrams/copy.png': _copy, ...rest } = FILES
+    h.source.push({
+      id: 'c2',
+      files: {
+        ...rest,
+        '.quill/workspace.yaml': ASSET_MANIFEST.replace('[diagrams]', '[diagrams, art]'),
+      },
+    })
+    await h.sync()
+    expect(Object.keys(await assetsOf(h))).not.toContain('diagrams/copy.png')
+  })
+
+  it('reconciles the assets at the head after skipping a revision already recorded', async () => {
+    const h = harness([{ id: 'c1', files: FILES }])
+    await h.sync()
+    h.source.push({ id: 'c2', files: { ...FILES, 'docs/guide.md': `${GUIDE}\nMore.` } })
+    await h.sync()
+    // As if the last sync had stopped after recording c2 but before saying so.
+    const recorded = await state(h)
+    await h.uow.repos.sourceSyncState.recordSynced({
+      workspaceId: WORKSPACE,
+      revision: 'c1',
+      refused: [],
+      layout: recorded?.layout ?? LAYOUT_RECORD,
+      brokenLinks: recorded?.brokenLinks ?? null,
+      now: NOW,
+    })
+    await h.uow.repos.sourceAssets.remove(WORKSPACE, 'docs/shot.png')
+
+    expect(await h.sync()).toMatchObject({ kind: 'synced', published: 0 })
+    expect(Object.keys(await assetsOf(h))).toContain('docs/shot.png')
+  })
+
+  it('fails the sync when the source does not return an asset’s contents', async () => {
+    const h = harness([{ id: 'c1', files: { ...FILES } }])
+    h.source.missing.add(toFile('docs/shot.png', bytes(SHOT)).fileId)
+    expect(await h.sync()).toMatchObject({ kind: 'failed', failure: { reason: 'file-missing' } })
   })
 })
