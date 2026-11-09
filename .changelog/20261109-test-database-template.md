@@ -1,0 +1,1 @@
+Fixed: The server's integration suites no longer time out while setting up on a busy machine: each suite now gets its own database cloned from one migrated once per run, rather than migrating a fresh schema of its own one suite after another.
