@@ -100,8 +100,11 @@ import { createVersionedReader } from './versioned-reader.ts'
  * Version 14 draws a sourced document's relative links where they resolved
  * (ADR-061): to a document's canonical address and heading, to the forge at
  * the synced commit, or as their words. The resolutions join the key.
+ *
+ * Version 15 draws a sourced document's relative images from the attachments
+ * its repository's assets became, or as their alternative text (ADR-061).
  */
-export const RENDER_VERSION = 14
+export const RENDER_VERSION = 15
 
 export interface RenderDocumentDependencies {
   readonly uow: UnitOfWork
@@ -221,7 +224,13 @@ export function renderDigest(input: RenderInput, extensions = ''): string {
     .map(([url, to]) => `${url}\u0001${to.kind === 'href' ? to.href : ''}`)
     .toSorted()
     .join('\u0002')
-  return resolved.length === 0 ? extended : `${extended}\u0008${resolved}`
+  const linked = resolved.length === 0 ? extended : `${extended}\u0008${resolved}`
+  // And its resolved images, likewise.
+  const pictured = [...(input.resolvedImages ?? new Map<string, ResolvedDestination>())]
+    .map(([url, to]) => `${url}\u0001${to.kind === 'href' ? to.href : ''}`)
+    .toSorted()
+    .join('\u0002')
+  return pictured.length === 0 ? linked : `${linked}\u000e${pictured}`
 }
 
 export async function renderDocument(
@@ -310,13 +319,15 @@ export async function renderInputFor(
   readonly input: DrawnRenderInput
   readonly linked: ReadonlyMap<DocumentId, DocumentRow>
 }> {
-  const [named, drawings, vocabulary, sourced] = await Promise.all([
+  const [named, vocabulary, sourced] = await Promise.all([
     linkedDocuments(deps.uow.repos.documents, markdown),
-    drawingsShown(deps, document, markdown),
     organisationVocabulary(deps.settings),
     place === undefined ? null : sourceLinksAt(deps, document, markdown, place),
   ])
-  const linked = await withTargets(deps.uow.repos.documents, named, sourced?.targets)
+  const [linked, drawings] = await Promise.all([
+    withTargets(deps.uow.repos.documents, named, sourced?.targets),
+    drawingsShown(deps, document, markdown, sourced?.attachments),
+  ])
   return {
     input: {
       markdown,
@@ -326,6 +337,7 @@ export async function renderInputFor(
       ...(sourced === null || sourced.resolved.size === 0
         ? {}
         : { resolvedLinks: sourced.resolved }),
+      ...(sourced === null || sourced.images.size === 0 ? {} : { resolvedImages: sourced.images }),
     },
     linked,
   }
@@ -415,8 +427,10 @@ async function drawingsShown(
   deps: Pick<RenderDocumentDependencies, 'uow' | 'blobStore'>,
   document: DocumentRow,
   markdown: string,
+  imported: ReadonlySet<string> = new Set(),
 ): Promise<ReadonlyMap<string, DrawingSource>> {
-  const ids = attachmentIdsIn(markdown)
+  // A sourced body's images name their attachments only once resolved (ADR-061).
+  const ids = [...new Set([...attachmentIdsIn(markdown), ...imported])]
   if (ids.length === 0) return new Map()
   const rows = await deps.uow.repos.attachments.listLiveInWorkspace(document.workspaceId, ids)
   const drawable = rows.filter(

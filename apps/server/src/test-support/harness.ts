@@ -249,7 +249,8 @@ export async function createServerHarness(options: HarnessOptions = {}): Promise
         cacheRoot: sourceCacheRoot,
         allowFileRemotesForTesting: true,
       }),
-      lock: createPostgresSourceSyncLock(database.pool),
+      // Scoped to this suite's schema: suites share one database, and their workspaces' ids.
+      lock: createPostgresSourceSyncLock(database.pool, { scope: database.schemaName }),
       allowFileRemotesForTesting: true,
     },
     uow,

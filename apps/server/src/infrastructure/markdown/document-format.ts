@@ -166,11 +166,12 @@ export function createDocumentFormat(options: DocumentFormatOptions = {}): Docum
       emoji,
       labelEmoji,
       resolvedLinks,
+      resolvedImages,
     }: RenderInput): RenderedContent {
       const { frontMatter, ast: written } = parseDocument(markdown)
       // A sourced document's relative links, where they resolved (ADR-061):
       // in the tree the body and its links are drawn from, never in the text.
-      const ast = resolveDestinations(written, { links: resolvedLinks })
+      const ast = resolveDestinations(written, { links: resolvedLinks, images: resolvedImages })
       const text = extractText(ast)
       // One call, one tree: the heading ids in the body and the ids the
       // outline points at are produced by the same slugger, so a table of

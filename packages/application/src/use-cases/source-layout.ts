@@ -33,6 +33,8 @@ export interface SourceLayout {
   readonly origin: 'manifest' | 'settings'
   readonly collections: readonly LayoutCollection[]
   readonly exclude: readonly string[]
+  /** Paths and globs of repository assets, imported as attachments (ADR-061). */
+  readonly assets: readonly string[]
   /** Old path to new path: an added file takes the id of the removed file redirected to it. */
   readonly redirects: ReadonlyMap<string, string>
   /** Equal for two layouts that place every file the same way. */
@@ -53,6 +55,7 @@ export function layoutFromManifest(
     origin: 'manifest',
     collections,
     exclude: entry.exclude,
+    assets: entry.assets,
     redirects: new Map(entry.redirects),
     fingerprint: JSON.stringify({
       origin: 'manifest',
@@ -61,6 +64,10 @@ export function layoutFromManifest(
       ),
       exclude: canonical(entry.exclude),
       redirects: canonical(entry.redirects),
+      // Only when there are any, so a layout recorded before assets were
+      // imported keeps its fingerprint; a change of them re-plans the tree,
+      // which imports what they newly name.
+      ...(entry.assets.length === 0 ? {} : { assets: canonical(entry.assets) }),
     }),
     unknownKeys,
   }
@@ -81,6 +88,7 @@ export function layoutFromSettings(settings: readonly SourceCollection[]): Sourc
       order: 'title',
     })),
     exclude: [],
+    assets: [],
     redirects: new Map(),
     fingerprint: JSON.stringify({
       origin: 'settings',
@@ -96,13 +104,14 @@ function canonical(entries: readonly unknown[]): readonly string[] {
 }
 
 /**
- * The paths the source is narrowed to for a layout: the manifest, and every
- * collection's path. A glob is fetched by the directory in front of it and
- * narrowed again when placed. Excluded paths are left out when placing, not
- * when fetching: the sparse patterns name what to take, never what to leave.
+ * The paths the source is narrowed to for a layout: the manifest, every
+ * collection's path, and every asset path. A glob is fetched by the
+ * directory in front of it and narrowed again when placed. Excluded paths are
+ * left out when placing, not when fetching: the sparse patterns name what to
+ * take, never what to leave.
  */
 export function layoutPaths(layout: SourceLayout): readonly string[] {
-  return [SOURCE_MANIFEST_PATH, ...layout.collections.map(({ path }) => path)]
+  return [SOURCE_MANIFEST_PATH, ...layout.collections.map(({ path }) => path), ...layout.assets]
 }
 
 /** Places files in a layout's collections, compiling each pattern once. */
