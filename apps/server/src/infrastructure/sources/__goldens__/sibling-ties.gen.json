@@ -1,0 +1,72 @@
+{
+  "fixture": "sibling-ties",
+  "result": {
+    "kind": "synced",
+    "published": 1
+  },
+  "state": {
+    "failure": null,
+    "refused": [],
+    "brokenLinks": [],
+    "layout": {
+      "origin": "settings",
+      "unknownKeys": [],
+      "collections": []
+    }
+  },
+  "collections": [
+    {
+      "slug": "guides",
+      "title": "guides"
+    }
+  ],
+  "tree": [
+    {
+      "path": "docs/resume.md",
+      "collection": "guides",
+      "parent": null,
+      "title": "Resume",
+      "sortKey": 1,
+      "archived": false
+    },
+    {
+      "path": "docs/rèsume.md",
+      "collection": "guides",
+      "parent": null,
+      "title": "Rèsume",
+      "sortKey": 2,
+      "archived": false
+    },
+    {
+      "path": "docs/résumé.md",
+      "collection": "guides",
+      "parent": null,
+      "title": "Résumé",
+      "sortKey": 3,
+      "archived": false
+    }
+  ],
+  "assets": [],
+  "stored": {
+    "docs/resume.md": "---\nid: {doc:docs/resume.md}\n---\n# Resume",
+    "docs/rèsume.md": "---\nid: {doc:docs/rèsume.md}\n---\n# Rèsume",
+    "docs/résumé.md": "---\nid: {doc:docs/résumé.md}\n---\n# Résumé"
+  },
+  "bodies": {
+    "docs/resume.md": {
+      "html": "<article><h1 id=\"user-content-resume\" aria-labelledby=\"user-content-title.resume\"><span id=\"user-content-title.resume\">Resume</span><a class=\"heading-anchor\" href=\"#user-content-resume\" aria-label=\"Link to this section: Resume\"><span aria-hidden=\"true\">#</span></a></h1></article>",
+      "blockIssues": [],
+      "incompleteRequiredSections": []
+    },
+    "docs/rèsume.md": {
+      "html": "<article><h1 id=\"user-content-rèsume\" aria-labelledby=\"user-content-title.rèsume\"><span id=\"user-content-title.rèsume\">Rèsume</span><a class=\"heading-anchor\" href=\"#user-content-rèsume\" aria-label=\"Link to this section: Rèsume\"><span aria-hidden=\"true\">#</span></a></h1></article>",
+      "blockIssues": [],
+      "incompleteRequiredSections": []
+    },
+    "docs/résumé.md": {
+      "html": "<article><h1 id=\"user-content-résumé\" aria-labelledby=\"user-content-title.résumé\"><span id=\"user-content-title.résumé\">Résumé</span><a class=\"heading-anchor\" href=\"#user-content-résumé\" aria-label=\"Link to this section: Résumé\"><span aria-hidden=\"true\">#</span></a></h1></article>",
+      "blockIssues": [],
+      "incompleteRequiredSections": []
+    }
+  }
+}
