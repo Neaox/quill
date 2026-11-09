@@ -24,7 +24,7 @@ import {
   planFolders,
 } from './source-folders.ts'
 import type { FolderPlan } from './source-folders.ts'
-import { LEADING_ORDER, projectSortKeys, readOrder } from './source-layout.ts'
+import { byCodePoint, LEADING_ORDER, projectSortKeys, readOrder } from './source-layout.ts'
 import type { LayoutCollection, LayoutPlacer, SourceLayout } from './source-layout.ts'
 import { isRelativeDestination, repositoryTarget } from './source-links.ts'
 import {
@@ -655,7 +655,10 @@ export function arrangeSiblings<I extends string, T extends Arrangeable<I>>(
     documents.map((document) => {
       const parent = folders.parents.get(document.path) ?? null
       return {
-        id: document.id,
+        // The last tie-break is the stored path, never the id: an id is
+        // minted at random by the sync and from the path by a head plan, and
+        // the two must order a collection the same way.
+        id: document.path,
         title: document.title,
         createdAt: document.createdAt,
         path: folders.folderOf.get(document.path) ?? document.path,
@@ -677,7 +680,4 @@ export function arrangeSiblings<I extends string, T extends Arrangeable<I>>(
   )
 }
 
-/** Strings in code-point order: the same on every system and in every locale. */
-export function byCodePoint(left: string, right: string): number {
-  return left < right ? -1 : left > right ? 1 : 0
-}
+export { byCodePoint }

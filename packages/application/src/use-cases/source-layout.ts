@@ -195,7 +195,10 @@ export function layoutPlacer(layout: SourceLayout): LayoutPlacer {
 
 /** What ordering one document of a collection needs to know about it. */
 export interface Orderable {
-  /** The last tie-break, so the order is total. */
+  /**
+   * The last tie-break, so the order is total: compared by code point, so
+   * the order is the same in every locale and on every system.
+   */
   readonly id: string
   /** Its front matter's `order`, when it has one. */
   readonly order: number | null
@@ -206,6 +209,11 @@ export interface Orderable {
 }
 
 const COLLATOR = new Intl.Collator('en', { numeric: true, sensitivity: 'base' })
+
+/** Strings in code-point order: the same on every system and in every locale. */
+export function byCodePoint(left: string, right: string): number {
+  return left < right ? -1 : left > right ? 1 : 0
+}
 
 function fileName(path: string): string {
   return path.slice(path.lastIndexOf('/') + 1)
@@ -242,7 +250,7 @@ export function projectSortKeys<T extends Orderable>(
       (left, right) =>
         compare(left, right) ||
         COLLATOR.compare(left.path, right.path) ||
-        left.id.localeCompare(right.id, 'en'),
+        byCodePoint(left.id, right.id),
     )
     .map((item, index) => ({ item, sortKey: highest + index + 1 }))
   return [...placed, ...rest]

@@ -262,6 +262,17 @@ export const SOURCE_FIXTURES = {
     },
   },
 
+  'sibling-ties': {
+    description:
+      'Siblings the order rules cannot tell apart (titles and paths equal but for accents): the stored path breaks the tie, whatever id each was given.',
+    collections: [{ slug: 'guides', path: 'docs' }],
+    files: {
+      'docs/résumé.md': '# Résumé',
+      'docs/resume.md': '# Resume',
+      'docs/rèsume.md': '# Rèsume',
+    },
+  },
+
   'shared-folder': {
     description:
       'Two collections in one folder: the first in the manifest writes the folder, the other nests under the nearest folder it has.',
