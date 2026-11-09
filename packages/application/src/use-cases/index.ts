@@ -331,6 +331,7 @@ export {
   renderDocument,
   renderSource,
   resolveLinks,
+  organisationVocabulary,
   RENDER_VERSION,
 } from './render-document.ts'
 
@@ -687,6 +688,23 @@ export {
   selectManifestEntry,
   SOURCE_MANIFEST_PATH,
 } from './source-manifest.ts'
+export type {
+  PlannedAsset,
+  PlannedCollection,
+  PlannedDocument,
+  SourceHeadPlan,
+  SourceHeadPlanCommand,
+  SourceHeadPlanDependencies,
+} from './source-head-plan.ts'
+export { plannedRenderInput, planSourceHead } from './source-head-plan.ts'
+export type {
+  RenderedFindings,
+  SourceProblem,
+  SourceProblemCode,
+  SourceProblemSeverity,
+  SourceReport,
+} from './source-report.ts'
+export { reportSource, SOURCE_REPORT_SCHEMA } from './source-report.ts'
 export type { SyncSourceCommand, SyncSourceDependencies, SyncSourceResult } from './sync-source.ts'
 export {
   archivedPath,

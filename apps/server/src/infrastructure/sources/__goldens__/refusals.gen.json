@@ -1,0 +1,76 @@
+{
+  "fixture": "refusals",
+  "result": {
+    "kind": "synced",
+    "published": 1
+  },
+  "state": {
+    "failure": null,
+    "refused": [
+      {
+        "path": "docs/assets/empty.png",
+        "reason": "empty"
+      },
+      {
+        "path": "docs/assets/lies.png",
+        "reason": "type-not-allowed"
+      },
+      {
+        "path": "docs/guides/huge.md",
+        "reason": "too-large"
+      },
+      {
+        "path": "docs/guides/latin1.md",
+        "reason": "not-utf8"
+      },
+      {
+        "path": "docs/guides/linked.md",
+        "reason": "symbolic-link"
+      }
+    ],
+    "brokenLinks": [
+      {
+        "path": "docs/guides/real.md",
+        "url": "../assets/gone.png"
+      }
+    ],
+    "layout": {
+      "origin": "manifest",
+      "unknownKeys": [],
+      "collections": [
+        "guides"
+      ]
+    }
+  },
+  "collections": [
+    {
+      "slug": "guides",
+      "title": "Guides"
+    }
+  ],
+  "tree": [
+    {
+      "path": "docs/guides/real.md",
+      "collection": "guides",
+      "parent": null,
+      "title": "Real",
+      "sortKey": 1,
+      "archived": false
+    }
+  ],
+  "assets": [
+    "docs/assets/drawing.svg",
+    "docs/assets/logo.png",
+    "docs/guides/inline.png"
+  ],
+  "stored": {
+    "docs/guides/real.md": "---\nid: {doc:docs/guides/real.md}\n---\n# Real\n\n![Inline](./inline.png) ![Logo](../assets/logo.png) ![Empty](../assets/empty.png)\n![Lies](../assets/lies.png) ![Drawing](../assets/drawing.svg) ![Gone](../assets/gone.png)\n"
+  },
+  "bodies": {
+    "docs/guides/real.md": {
+      "html": "<article><h1 id=\"user-content-real\" aria-labelledby=\"user-content-title.real\"><span id=\"user-content-title.real\">Real</span><a class=\"heading-anchor\" href=\"#user-content-real\" aria-label=\"Link to this section: Real\"><span aria-hidden=\"true\">#</span></a></h1>\n<p><img src=\"/api/attachments/{asset:docs/guides/inline.png}\" alt=\"Inline\"> <img src=\"/api/attachments/{asset:docs/guides/inline.png}\" alt=\"Logo\"> Empty\nLies <img src=\"/api/attachments/{asset:docs/assets/drawing.svg}\" alt=\"Drawing\"> Gone</p></article>",
+      "blockIssues": [],
+      "incompleteRequiredSections": []
+    }
+  }
+}

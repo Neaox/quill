@@ -1,0 +1,46 @@
+{
+  "fixture": "manifest-several-workspaces",
+  "result": {
+    "kind": "synced",
+    "published": 1
+  },
+  "state": {
+    "failure": null,
+    "refused": [],
+    "brokenLinks": [],
+    "layout": {
+      "origin": "manifest",
+      "unknownKeys": [],
+      "collections": [
+        "guides"
+      ]
+    }
+  },
+  "collections": [
+    {
+      "slug": "guides",
+      "title": "Guides"
+    }
+  ],
+  "tree": [
+    {
+      "path": "docs/guides/a.md",
+      "collection": "guides",
+      "parent": null,
+      "title": "A",
+      "sortKey": 1,
+      "archived": false
+    }
+  ],
+  "assets": [],
+  "stored": {
+    "docs/guides/a.md": "---\nid: {doc:docs/guides/a.md}\n---\n# A\n\nSee [the site](../site/b.md).\n"
+  },
+  "bodies": {
+    "docs/guides/a.md": {
+      "html": "<article><h1 id=\"user-content-a\" aria-labelledby=\"user-content-title.a\"><span id=\"user-content-title.a\">A</span><a class=\"heading-anchor\" href=\"#user-content-a\" aria-label=\"Link to this section: A\"><span aria-hidden=\"true\">#</span></a></h1>\n<p>See <a href=\"https://github.com/acme/handbook/blob/225d27b107e1e28629e7a64a0faa0d7d4f1a11d9/docs/site/b.md\" rel=\"noopener noreferrer\">the site</a>.</p></article>",
+      "blockIssues": [],
+      "incompleteRequiredSections": []
+    }
+  }
+}
