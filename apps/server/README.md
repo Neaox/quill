@@ -492,6 +492,20 @@ the instance administrator who configured the source) get one in-app notificatio
 failure: per reason and source revision, not per attempt. A sync that finishes clears it, so the
 next failure is told again.
 
+**Relative links resolve at render.** A link such as `../adr/0012-auth.md#token-rotation` is
+resolved against the document's path and the documents of the revision being rendered, never
+rewritten in the stored copy. A path that is a document goes to its canonical address and the
+heading its fragment names (`/d/<id>#user-content-token-rotation`); any other path in the
+repository (outside the source, excluded, or not a document) goes to the forge at the synced
+commit, or shows as its words when the source's `outsideLinks` is `text`. The forge's address for a
+file comes from the remote for GitHub, GitLab and Bitbucket, or from the source's `viewTemplate`
+(`https://…/{commit}/{path}`); a remote on any other host without one shows such links as words.
+The resolutions are part of the render input, so the cache key covers them, and the link index
+records the resolved addresses, so backlinks work. On `/rendered`, a link to a document the reader
+may not view is reduced to its words. After each sync the job checks the relative links of what it
+wrote (and of what linked to what it removed) against the repository's tree and lists those that
+lead nowhere on the source's sync state (`brokenLinks`), each with the commit it was checked at.
+
 ## The content API (M2)
 
 `docs/architecture/api-contract-m2.md` is the contract; the TypeBox schemas in `routes/document-schemas.ts` are its implementation, and the OpenAPI description is generated from them.

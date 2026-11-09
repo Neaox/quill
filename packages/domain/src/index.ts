@@ -94,6 +94,14 @@ export {
   sourcePatternMatcher,
   sourcePatternPrefix,
 } from './tenancy/workspace-source.ts'
+export type { SourceOutsideLinkSetting } from './tenancy/forge-links.ts'
+export {
+  MAX_FORGE_VIEW_TEMPLATE_LENGTH,
+  SOURCE_OUTSIDE_LINK_SETTINGS,
+  checkForgeViewTemplate,
+  defaultForgeViewTemplate,
+  forgeViewUrl,
+} from './tenancy/forge-links.ts'
 export type { Collection } from './tenancy/collection.ts'
 export type { Document } from './tenancy/document.ts'
 export type { Group } from './tenancy/group.ts'

@@ -1,6 +1,8 @@
 import {
   SOURCE_COMMIT_MESSAGE_SETTINGS,
   SOURCE_HISTORY_SETTINGS,
+  SOURCE_OUTSIDE_LINK_SETTINGS,
+  checkForgeViewTemplate,
   checkSourceBranch,
   checkSourcePath,
   checkSourceRemote,
@@ -11,6 +13,7 @@ import {
 import type {
   SourceCommitMessageSetting,
   SourceHistorySetting,
+  SourceOutsideLinkSetting,
   UserId,
   WorkspaceId,
 } from '@quill/domain'
@@ -88,6 +91,16 @@ export interface ConfigureWorkspaceSourceCommand {
   readonly commitMessages: SourceCommitMessageSetting
   readonly credential: WorkspaceSourceCredential | null
   /**
+   * Where a link to a repository file the source does not hold goes
+   * (ADR-061): `forge` (the default) or `text`.
+   */
+  readonly outsideLinks?: SourceOutsideLinkSetting | undefined
+  /**
+   * The forge's address for a file at a commit, with `{commit}` and
+   * `{path}`; absent or null to use the one known for the remote's host.
+   */
+  readonly viewTemplate?: string | null | undefined
+  /**
    * The name of the secret the source's push webhook is signed with, null
    * for no webhook, or omitted to keep what the source has.
    */
@@ -103,6 +116,8 @@ export type WorkspaceSourceField =
   | 'history'
   | 'commitMessages'
   | 'credential'
+  | 'outsideLinks'
+  | 'viewTemplate'
   | 'webhookSecret'
 
 export interface WorkspaceSourceView {
@@ -130,6 +145,8 @@ interface ValidSettings {
   readonly remote: string
   readonly branch: string
   readonly collections: readonly SourceCollectionInput[]
+  readonly outsideLinks: SourceOutsideLinkSetting
+  readonly viewTemplate: string | null
   /** Undefined keeps what the source has. */
   readonly webhookSecretName: string | null | undefined
 }
@@ -174,6 +191,8 @@ export async function configureWorkspaceSource(
       history: command.history,
       commitMessages: command.commitMessages,
       credential: command.credential,
+      outsideLinks: valid.outsideLinks,
+      viewTemplate: valid.viewTemplate,
       webhookSecretName,
       configuredBy: command.configuredBy,
       now,
@@ -197,6 +216,8 @@ export async function configureWorkspaceSource(
         history: source.history,
         commitMessages: source.commitMessages,
         credentialSecret: source.credential?.secretName ?? null,
+        outsideLinks: source.outsideLinks,
+        viewTemplate: source.viewTemplate,
         webhookSecret: source.webhookSecretName,
       },
       now,
@@ -225,6 +246,16 @@ async function validate(
       `The commit message setting must be one of ${SOURCE_COMMIT_MESSAGE_SETTINGS}.`,
     )
   }
+  const outsideLinks = command.outsideLinks ?? 'forge'
+  if (!SOURCE_OUTSIDE_LINK_SETTINGS.includes(outsideLinks)) {
+    return invalid(
+      'outsideLinks',
+      `The setting for links outside the source must be one of ${SOURCE_OUTSIDE_LINK_SETTINGS}.`,
+    )
+  }
+  const template = command.viewTemplate ?? null
+  const viewTemplate = template === null ? null : checkForgeViewTemplate(template)
+  if (viewTemplate?.ok === false) return invalid('viewTemplate', viewTemplate.error)
   const collections = validateCollections(command.collections)
   if ('kind' in collections) return collections
   const credential = await validateCredential(deps, command.credential)
@@ -234,7 +265,14 @@ async function validate(
     const problem = await checkSecretName(deps, webhookSecretName)
     if (problem !== null) return invalid('webhookSecret', problem)
   }
-  return { remote: remote.value, branch: branch.value, collections, webhookSecretName }
+  return {
+    remote: remote.value,
+    branch: branch.value,
+    collections,
+    outsideLinks,
+    viewTemplate: viewTemplate?.value ?? null,
+    webhookSecretName,
+  }
 }
 
 function validateCollections(

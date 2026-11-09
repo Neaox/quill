@@ -34,7 +34,11 @@ import {
   linkPreviewDependencies,
 } from '../application/fill-links.ts'
 import { linkEmbedRegistry } from '../infrastructure/link-preview/embed-config.ts'
-import { readableDocuments, resolveDocumentId } from '../application/references.ts'
+import {
+  readableDocuments,
+  resolveDocumentId,
+  withReadableLinks,
+} from '../application/references.ts'
 import type { AppDependencies } from '../dependencies.ts'
 import { conflict, forbidden, lockLost, notFound, unprocessable } from '../errors.ts'
 import { notModified } from '../errors.ts'
@@ -156,7 +160,7 @@ export function documentRoutes(deps: AppDependencies): FastifyPluginAsync {
       async (request, reply) => {
         const documentId = await resolveDocumentId(deps, request.params.id)
         const authorizer = authorizerFor(deps, request)
-        await requireDocumentAccess(authorizer, documentId, 'view')
+        const access = await requireDocumentAccess(authorizer, documentId, 'view')
         const rendered = await renderDocument(deps, {
           documentId,
           revision: request.query.revision as RevisionId | undefined,
@@ -175,10 +179,16 @@ export function documentRoutes(deps: AppDependencies): FastifyPluginAsync {
         // holds slots), so the tag also names what was drawn: the same body
         // with a preview that has since arrived must not answer 304.
         const { userId } = requireAuthenticatedSession(request)
+        // A sourced body's links to pages this reader may not see are their
+        // words alone (ADR-061); the tag below covers what was drawn.
+        const body =
+          access.workspace.origin.kind === 'sourced'
+            ? await withReadableLinks(authorizer, rendered.content.html)
+            : rendered.content.html
         const filled = await fillLinksForMember(
           linkPreviewDependencies(deps),
           userId,
-          rendered.content.html,
+          body,
           linkEmbedRegistry(deps.config.linkEmbeds),
           // The documents it links to are drawn for what this reader may see of them.
           internalLinks(deps, { kind: 'authorized', authorizer }),

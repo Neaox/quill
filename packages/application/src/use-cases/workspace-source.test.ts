@@ -131,6 +131,8 @@ describe('configureWorkspaceSource', () => {
           history: 'full',
           commitMessages: 'subject',
           credentialSecret: 'sources/handbook',
+          outsideLinks: 'forge',
+          viewTemplate: null,
           webhookSecret: null,
         },
       }),
@@ -174,6 +176,7 @@ describe('configureWorkspaceSource', () => {
       revision: 'abc',
       refused: [],
       layout: LAYOUT,
+      brokenLinks: [],
       now: NOW,
     })
     const moved = command({
@@ -243,6 +246,20 @@ describe('configureWorkspaceSource', () => {
     expect(result).toEqual({ kind: 'not-found' })
   })
 
+  it('stores where links outside the source go: the forge by default, or text', async () => {
+    await configureWorkspaceSource(deps, command())
+    expect(await uow.repos.workspaceSources.find(WORKSPACE)).toMatchObject({
+      outsideLinks: 'forge',
+      viewTemplate: null,
+    })
+    const viewTemplate = 'https://git.example.com/acme/handbook/src/{commit}/{path}'
+    await configureWorkspaceSource(deps, command({ outsideLinks: 'text', viewTemplate }))
+    expect(await uow.repos.workspaceSources.find(WORKSPACE)).toMatchObject({
+      outsideLinks: 'text',
+      viewTemplate,
+    })
+  })
+
   it('accepts a file remote only when tests allow it', async () => {
     const remote = 'file:///srv/handbook.git'
     expect(await configureWorkspaceSource(deps, command({ remote }))).toMatchObject({
@@ -292,6 +309,8 @@ describe('configureWorkspaceSource', () => {
       'not a secret name',
     ],
     ['credential', { credential: { username: 'x', secretName: 'sources/missing' } }, 'No secret'],
+    ['outsideLinks', { outsideLinks: 'hidden' as never }, 'links outside the source'],
+    ['viewTemplate', { viewTemplate: 'https://git.example.com/{commit}' }, '{path}'],
     ['webhookSecret', { webhookSecretName: 'not a name' }, 'not a secret name'],
     ['webhookSecret', { webhookSecretName: 'sources/missing' }, 'No secret'],
   ] satisfies [string, Partial<ConfigureWorkspaceSourceCommand>, string][])(
@@ -320,6 +339,7 @@ describe('getWorkspaceSource', () => {
       revision: 'abc',
       refused: [],
       layout: LAYOUT,
+      brokenLinks: [],
       now: NOW,
     })
     const view = await getWorkspaceSource(deps, WORKSPACE)

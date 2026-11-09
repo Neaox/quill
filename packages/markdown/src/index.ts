@@ -261,6 +261,8 @@ export type { DocumentText } from './render/text.ts'
 export { extractText } from './render/text.ts'
 export type { ExtractedLink } from './render/links.ts'
 export { extractLinks } from './render/links.ts'
+export type { DestinationResolution, ResolvedDestinations } from './render/resolve-destinations.ts'
+export { resolveDestinations } from './render/resolve-destinations.ts'
 export type { LinkRewrite } from './render/rewrite-links.ts'
 export { rewriteLinks } from './render/rewrite-links.ts'
 

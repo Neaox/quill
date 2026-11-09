@@ -126,5 +126,6 @@ export function openedOnFirstUse(open: () => Promise<ExternalSource>): ExternalS
     async *changes(from, to) {
       yield* (await source()).changes(from, to)
     },
+    present: async (revision, paths) => await (await source()).present(revision, paths),
   }
 }

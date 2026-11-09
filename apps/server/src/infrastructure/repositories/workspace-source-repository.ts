@@ -5,7 +5,11 @@ import type {
   WorkspaceSourceRepository,
   WorkspaceSourceRow,
 } from '@quill/application'
-import { SOURCE_COMMIT_MESSAGE_SETTINGS, SOURCE_HISTORY_SETTINGS } from '@quill/domain'
+import {
+  SOURCE_COMMIT_MESSAGE_SETTINGS,
+  SOURCE_HISTORY_SETTINGS,
+  SOURCE_OUTSIDE_LINK_SETTINGS,
+} from '@quill/domain'
 import type { UserId, WorkspaceId } from '@quill/domain'
 
 import { requireRow } from '../db/rows.ts'
@@ -50,6 +54,8 @@ export function createWorkspaceSourceRepository(db: DrizzleClient): WorkspaceSou
         commitMessages: input.commitMessages,
         credentialUsername: credential?.username ?? null,
         credentialSecret: credential?.secretName ?? null,
+        outsideLinks: input.outsideLinks,
+        viewTemplate: input.viewTemplate,
         webhookSecret: input.webhookSecretName,
         configuredBy: input.configuredBy,
         updatedAt: now,
@@ -77,6 +83,8 @@ function toRow(row: typeof workspaceSources.$inferSelect): WorkspaceSourceRow {
       row.credentialUsername === null || row.credentialSecret === null
         ? null
         : { username: row.credentialUsername, secretName: row.credentialSecret },
+    outsideLinks: member(SOURCE_OUTSIDE_LINK_SETTINGS, row.outsideLinks),
+    viewTemplate: row.viewTemplate,
     webhookSecretName: row.webhookSecret,
     configuredBy: row.configuredBy as UserId | null,
     createdAt: row.createdAt,

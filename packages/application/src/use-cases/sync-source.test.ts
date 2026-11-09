@@ -4,9 +4,10 @@ import {
   sourcePatternMatcher,
   sourcePatternPrefix,
   unitId,
+  userId,
   workspaceId,
 } from '@quill/domain'
-import type { DocumentId, WorkspaceId } from '@quill/domain'
+import type { DocumentId, RevisionId, WorkspaceId } from '@quill/domain'
 
 import { AUTHORED_AT_MAX_SKEW_MS } from '../ports/content-store.ts'
 import type { ContentAuthor } from '../ports/content-store.ts'
@@ -18,13 +19,21 @@ import type {
   SourceFileContent,
   SourceRevision,
 } from '../ports/external-source.ts'
-import type { SourceSettings, SourceSyncLock } from '../ports/source-sync.ts'
+import type {
+  SourceLayoutRecord,
+  SourceLinkSettings,
+  SourceSettings,
+  SourceSyncLock,
+} from '../ports/source-sync.ts'
 import {
   aShortId,
   createFakeClock,
   createFakeContentStore,
   createFakeDocumentFormat,
+  createFakeHasher,
   createFakeIdGenerator,
+  createFakeSettings,
+  createInMemoryBlobStore,
   createInMemoryUnitOfWork,
   serialise,
 } from '../test-support/index.ts'
@@ -47,6 +56,15 @@ import {
   syncSource,
 } from './sync-source.ts'
 import type { SyncSourceDependencies } from './sync-source.ts'
+import { renderDocument } from './render-document.ts'
+import type { RenderDocumentDependencies } from './render-document.ts'
+
+const LAYOUT_RECORD: SourceLayoutRecord = {
+  origin: 'settings',
+  fingerprint: '[]',
+  collectionIds: [],
+  unknownKeys: [],
+}
 
 const WORKSPACE = workspaceId('00000000-0000-4000-8000-000000000101')
 const NOW = new Date('2026-06-01T12:00:00.000Z')
@@ -151,6 +169,18 @@ class FakeSource implements ExternalSource {
       const before = index === 0 ? {} : (this.chain[index - 1] as Commit).files
       if (JSON.stringify(before) !== JSON.stringify(commit.files)) yield toRevision(commit)
     }
+  }
+
+  /** The paths `present` was asked about, each time. */
+  readonly asked: (readonly string[])[] = []
+
+  /** Anywhere in the repository, as names are: a file, or a directory some file is in. */
+  async present(revision: string, paths: readonly string[]): Promise<ReadonlySet<string>> {
+    this.asked.push(paths)
+    const files = Object.keys(this.#commit(revision).files)
+    return new Set(
+      paths.filter((path) => files.some((file) => file === path || file.startsWith(`${path}/`))),
+    )
   }
 
   async *changes(from: string | null, to: string): AsyncIterable<SourceChange> {
@@ -1456,5 +1486,278 @@ describe('requestSourceSync and its consumer', () => {
   it('leaves a payload it cannot read alone', async () => {
     const h = harness([])
     expect(await handleSourceSyncRequested(h.deps, { version: 99 })).toBeNull()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Relative links (ADR-061, "Relative links, resolved at render")
+// ---------------------------------------------------------------------------
+
+/** A synced document rendered, as a reader's request renders it. */
+async function render(h: Harness, path: string, revision?: RevisionId) {
+  const deps: RenderDocumentDependencies = {
+    uow: h.uow,
+    contentStore: h.store,
+    format: h.deps.format,
+    clock: h.clock,
+    ids: createFakeIdGenerator('bbbb'),
+    hasher: createFakeHasher(),
+    blobStore: createInMemoryBlobStore(),
+    settings: createFakeSettings(),
+  }
+  const rendered = await renderDocument(deps, { documentId: await h.idAt(path), revision })
+  if (rendered.kind !== 'rendered') throw new Error(rendered.kind)
+  return rendered
+}
+
+describe('relative links', () => {
+  const broken = async (h: Harness) =>
+    (await state(h))?.brokenLinks?.map(({ path, url, revision }) => `${path} ${url} @${revision}`)
+
+  /** A sourced workspace, as configuring one stores it, for the render to read its settings from. */
+  async function sourced(
+    h: Harness,
+    settings: Partial<SourceLinkSettings & { readonly remote: string }> = {},
+  ): Promise<void> {
+    await h.uow.repos.workspaces.create({
+      id: WORKSPACE,
+      unitId: 'acme',
+      name: 'Handbook',
+      slug: 'handbook',
+      now: NOW,
+    })
+    await h.uow.repos.workspaceSources.put({
+      workspaceId: WORKSPACE,
+      remote: 'https://github.com/acme/handbook.git',
+      branch: 'main',
+      collections: [],
+      history: 'full',
+      commitMessages: 'subject',
+      credential: null,
+      outsideLinks: 'forge',
+      viewTemplate: null,
+      webhookSecretName: null,
+      configuredBy: userId('00000000-0000-4000-8000-000000000001'),
+      now: NOW,
+      ...settings,
+    })
+  }
+
+  const GUIDE = [
+    '# Guide',
+    '[the decision](adr/0001-auth.md#rotation)',
+    '[the code](../src/app.ts#L3)',
+    '[missing](./missing.md)',
+    '[climbing](../../../etc/passwd)',
+    '[the root](../)',
+    '[elsewhere](https://example.test/a.md)',
+    '[this page](#guide)',
+  ].join('\n')
+
+  describe('found broken at sync', () => {
+    it('lists the links to paths not in the repository at the head, and those that leave it', async () => {
+      const h = harness([
+        {
+          id: 'c1',
+          files: {
+            'docs/guide.md': GUIDE,
+            'docs/adr/0001-auth.md': '# Auth',
+            'src/app.ts': 'export {}',
+          },
+        },
+      ])
+      await h.sync()
+
+      expect(await broken(h)).toEqual([
+        'docs/guide.md ../../../etc/passwd @c1',
+        'docs/guide.md ./missing.md @c1',
+      ])
+      // Outside the source's paths is still in the repository; the root is never asked about.
+      expect(h.source.asked.flat().toSorted()).toEqual([
+        'docs/adr/0001-auth.md',
+        'docs/missing.md',
+        'src/app.ts',
+      ])
+    })
+
+    it('checks a listed document again, so a path that appears takes its link off the list', async () => {
+      const files = { 'docs/guide.md': GUIDE, 'docs/adr/0001-auth.md': '# Auth' }
+      const h = harness([{ id: 'c1', files }])
+      await h.sync()
+      h.source.push({ id: 'c2', files: { ...files, 'docs/missing.md': '# Here now' } })
+      await h.sync()
+
+      expect(await broken(h)).toEqual([
+        'docs/guide.md ../../../etc/passwd @c2',
+        'docs/guide.md ../src/app.ts#L3 @c2',
+      ])
+    })
+
+    it('checks the documents that linked to one this sync removed, through the link index', async () => {
+      const files = {
+        'docs/guide.md': '[the decision](adr/0001-auth.md)',
+        'docs/adr/0001-auth.md': '# Auth',
+        'docs/other.md': '# Other',
+      }
+      const h = harness([{ id: 'c1', files }])
+      await sourced(h)
+      await h.sync()
+      // The render after a publish is what records the links (`render-on-publish`).
+      await render(h, 'docs/guide.md')
+      const { 'docs/adr/0001-auth.md': _removed, ...rest } = files
+      h.source.push({ id: 'c2', files: rest })
+      await h.sync()
+
+      expect(await broken(h)).toEqual(['docs/guide.md adr/0001-auth.md @c2'])
+    })
+
+    it('keeps what it found when a sync wrote nothing, and asks nothing', async () => {
+      const files = { 'docs/guide.md': '[gone](gone.md)', 'src/app.ts': 'export {}' }
+      const h = harness([{ id: 'c1', files }])
+      await h.sync()
+      const asked = h.source.asked.length
+      h.source.push({ id: 'c2', files: { ...files, 'src/app.ts': 'export const a = 1' } })
+      await h.sync()
+
+      expect(await broken(h)).toEqual(['docs/guide.md gone.md @c1'])
+      expect(h.source.asked).toHaveLength(asked)
+    })
+
+    it('checks every document when the last check is unknown, and forgets a removed one', async () => {
+      const files = {
+        'docs/guide.md': '[gone](gone.md)',
+        'docs/other.md': '[also gone](gone.md) [root](../)',
+      }
+      const h = harness([{ id: 'c1', files }])
+      await h.sync()
+      const recorded = await state(h)
+      await h.uow.repos.sourceSyncState.recordSynced({
+        workspaceId: WORKSPACE,
+        revision: 'c1',
+        refused: [],
+        layout: recorded?.layout ?? LAYOUT_RECORD,
+        // As a sync that stopped part-way leaves it.
+        brokenLinks: null,
+        now: NOW,
+      })
+      const { 'docs/guide.md': _removed, ...rest } = files
+      h.source.push({ id: 'c2', files: rest })
+      await h.sync()
+
+      expect(await broken(h)).toEqual(['docs/other.md gone.md @c2'])
+    })
+
+    it('records the links as unchecked while a sync is part-way', async () => {
+      const h = harness([
+        { id: 'c1', files: { 'docs/a.md': '[gone](gone.md)' } },
+        { id: 'c2', files: { 'docs/a.md': '[gone](gone.md) again' } },
+      ])
+      const seen: unknown[] = []
+      const repository = h.uow.repos.sourceSyncState
+      const record = repository.recordSynced.bind(repository)
+      vi.spyOn(repository, 'recordSynced').mockImplementation(async (input) => {
+        seen.push(input.brokenLinks)
+        await record(input)
+      })
+      await h.sync()
+
+      expect(seen).toEqual([null, null, [expect.objectContaining({ url: 'gone.md' })]])
+    })
+  })
+
+  describe('resolved at render', () => {
+    it('sends a link to a document of the revision, to the forge at the synced commit, or to its words', async () => {
+      const h = harness([
+        {
+          id: 'c1',
+          files: {
+            'docs/guide.md': GUIDE,
+            'docs/adr/0001-auth.md': '# Auth',
+            'src/app.ts': 'export {}',
+          },
+        },
+      ])
+      await sourced(h)
+      await h.sync()
+      const decision = await h.idAt('docs/adr/0001-auth.md')
+      const guide = await h.idAt('docs/guide.md')
+
+      const { html } = (await render(h, 'docs/guide.md')).content
+
+      const forge = 'https://github.com/acme/handbook/blob/c1'
+      expect(html).toContain(`[the decision](/d/${decision}#user-content-rotation)`)
+      expect(html).toContain(`[the code](${forge}/src/app.ts#L3)`)
+      expect(html).toContain(`[missing](${forge}/docs/missing.md)`)
+      expect(html).toContain('\nclimbing\n')
+      expect(html).toContain(`[the root](${forge}/)`)
+      expect(html).toContain('[elsewhere](https://example.test/a.md)')
+      expect(html).toContain('[this page](#guide)')
+      // The index records where the link went, so backlinks work.
+      expect(await h.uow.repos.documentLinks.listSourcesTargeting(decision)).toEqual([guide])
+    })
+
+    it('renders an older revision against its own documents and its own commit', async () => {
+      const files = {
+        'docs/guide.md': '[the decision](adr/0001-auth.md) [the code](../src/app.ts)',
+        'docs/adr/0001-auth.md': '# Auth',
+        'src/app.ts': 'export {}',
+      }
+      const h = harness([{ id: 'c1', files }])
+      await sourced(h)
+      await h.sync()
+      const first = await h.store.head(WORKSPACE)
+      if (first === null) throw new Error('nothing was published')
+      const decision = await h.idAt('docs/adr/0001-auth.md')
+      const { 'docs/adr/0001-auth.md': _removed, ...rest } = files
+      h.source.push({ id: 'c2', files: { ...rest, 'docs/guide.md': `${files['docs/guide.md']}.` } })
+      await h.sync()
+
+      const older = await render(h, 'docs/guide.md', first)
+      expect(older.content.html).toContain(`[the decision](/d/${decision})`)
+      expect(older.content.html).toContain('/blob/c1/src/app.ts')
+
+      const head = await render(h, 'docs/guide.md')
+      expect(head.content.html).toContain(
+        '[the decision](https://github.com/acme/handbook/blob/c2/docs/adr/0001-auth.md)',
+      )
+      expect(head.key).not.toBe(older.key)
+    })
+
+    it('shows a link outside the source as its words when the source asks, or knows no forge', async () => {
+      const files = { 'docs/guide.md': '[the code](../src/app.ts)', 'src/app.ts': 'export {}' }
+      const asked = harness([{ id: 'c1', files }])
+      await sourced(asked, { outsideLinks: 'text' })
+      await asked.sync()
+      expect((await render(asked, 'docs/guide.md')).content.html).toContain('<article>the code')
+
+      const unknown = harness([{ id: 'c1', files }])
+      await sourced(unknown, { remote: 'https://git.example.com/acme/handbook.git' })
+      await unknown.sync()
+      expect((await render(unknown, 'docs/guide.md')).content.html).toContain('<article>the code')
+
+      const named = harness([{ id: 'c1', files }])
+      await sourced(named, {
+        remote: 'https://git.example.com/acme/handbook.git',
+        viewTemplate: 'https://git.example.com/acme/handbook/src/{commit}/{path}',
+      })
+      await named.sync()
+      expect((await render(named, 'docs/guide.md')).content.html).toContain(
+        '[the code](https://git.example.com/acme/handbook/src/c1/src/app.ts)',
+      )
+    })
+
+    it('leaves the links of a workspace with no stored source as they were written', async () => {
+      const h = harness([{ id: 'c1', files: { 'docs/guide.md': '[a](./a.md)', 'docs/a.md': 'A' } }])
+      await h.sync()
+      expect((await render(h, 'docs/guide.md')).content.html).toContain('[a](./a.md)')
+    })
+
+    it('shows links to the forge as words when no synced commit is recorded', async () => {
+      const h = harness([{ id: 'c1', files: { 'docs/guide.md': '[code](../src/a.ts)' } }])
+      await sourced(h)
+      await h.sync()
+      vi.spyOn(h.uow.repos.sourceSyncState, 'find').mockResolvedValue(null)
+      expect((await render(h, 'docs/guide.md')).content.html).toContain('<article>code')
+    })
   })
 })

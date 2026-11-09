@@ -297,6 +297,40 @@ export class GitCliExternalSource implements ExternalSource {
     return found
   }
 
+  /**
+   * Which of these paths name a file or a directory anywhere in the tree of
+   * a fetched revision, inside the source's paths or not. Trees arrive with
+   * every fetch, so this reads names only and needs no blob. Paths are
+   * literal (`GIT_LITERAL_PATHSPECS`), asked in batches that keep each
+   * command line short, and a path no tree entry could have is simply not
+   * there.
+   */
+  async present(
+    revision: SourceRevisionId,
+    paths: readonly string[],
+  ): Promise<ReadonlySet<string>> {
+    const asked = [...new Set(paths)].filter(isTreePath)
+    if (asked.length === 0) return new Set()
+    const commit = await this.#revision(revision)
+    // A directory asked about is listed by what is in it, so each entry
+    // listed names its own path and every directory above it.
+    const named = new Set<string>()
+    for (const batch of pathBatches(asked)) {
+      const fields = this.#fields({
+        subcommand: 'ls-tree',
+        args: ['-z', '--full-tree', '--name-only', commit, '--', ...batch],
+      })
+      // oxlint-disable-next-line quill/no-independent-await-in-loop -- one command at a time on the source's cache directory
+      for await (const field of fields) {
+        const segments = field.split('/')
+        for (let length = 1; length <= segments.length; length += 1) {
+          named.add(segments.slice(0, length).join('/'))
+        }
+      }
+    }
+    return new Set(asked.filter((path) => named.has(path)))
+  }
+
   async *readFiles(fileIds: Iterable<SourceFileId>): AsyncGenerator<SourceFileContent> {
     const ids = [...fileIds]
     const malformed = ids.find((id) => !OBJECT_ID.test(id))
@@ -513,6 +547,35 @@ async function exists(path: string): Promise<boolean> {
 }
 
 /** `<mode> <type> <id>\t<path>`; null for anything but a file or a symbolic link (a submodule, say). */
+/** Characters that keep a command line short on every platform (Windows allows 32,767). */
+const PATH_BATCH_CHARACTERS = 8000
+
+/** A path a tree entry could have: plain segments, nothing empty, `.` or `..`, no control character. */
+function isTreePath(path: string): boolean {
+  return path
+    .split('/')
+    .every(
+      (segment) =>
+        segment !== '' && segment !== '.' && segment !== '..' && !/\p{Cc}/u.test(segment),
+    )
+}
+
+/** Paths in batches whose command lines stay under the limit. */
+function* pathBatches(paths: readonly string[]): Generator<readonly string[]> {
+  let batch: string[] = []
+  let length = 0
+  for (const path of paths) {
+    if (batch.length > 0 && length + path.length > PATH_BATCH_CHARACTERS) {
+      yield batch
+      batch = []
+      length = 0
+    }
+    batch.push(path)
+    length += path.length + 1
+  }
+  yield batch
+}
+
 function treeEntry(field: string): SourceFile | null {
   const tab = field.indexOf('\t')
   const [mode = '', , fileId = ''] = field.slice(0, tab).split(' ')

@@ -31,7 +31,7 @@ import { PRODUCT_EMAIL, PRODUCT_NAME } from './branding.ts'
 import { buildCommitMessage, buildFileCommitMessage } from './commit-message.ts'
 import { changedDocumentIds, toRevisionSummary, walkCommits } from './commit-walk.ts'
 import type { WalkedCommit } from './commit-walk.ts'
-import { DocumentIndex, type TreeDocuments } from './document-index.ts'
+import { DEFAULT_INDEX_CAPACITY, DocumentIndex, type TreeDocuments } from './document-index.ts'
 import { UTC, type GitIdentity } from './git/commit.ts'
 import { GitRepository } from './git/git-repository.ts'
 import { parseContentPath, resolvePath, setPath, walkTree } from './git/tree-path.ts'
@@ -97,7 +97,7 @@ export interface GitContentStoreOptions {
   readonly sleep?: (milliseconds: number) => Promise<void>
   /** Commits `history` examines when a page does not say. */
   readonly scanLimit?: number
-  /** Trees whose document ids are memoised at once. */
+  /** Trees whose document ids, and whose listings, are memoised at once. */
   readonly indexCapacity?: number
 }
 
@@ -112,6 +112,15 @@ export class GitContentStore implements ContentStore {
   readonly #random: () => number
   readonly #scanLimit: number
   readonly #documents: DocumentIndex
+  /**
+   * Each tree's listing, by its oid, least recently used first. A tree oid is
+   * its contents, so a listing is never stale, only evicted; a sourced
+   * document's relative links are resolved against its revision's listing at
+   * every read (ADR-061), and walking the tree each time would cost a read of
+   * every tree object in it.
+   */
+  readonly #listings = new Map<string, readonly TreeEntry[]>()
+  readonly #listingCapacity: number
   readonly #publishes = new KeyedMutex()
 
   constructor(options: GitContentStoreOptions) {
@@ -123,6 +132,7 @@ export class GitContentStore implements ContentStore {
     this.#random = options.random
     this.#scanLimit = options.scanLimit ?? DEFAULT_SCAN_LIMIT
     this.#documents = new DocumentIndex(options.indexCapacity)
+    this.#listingCapacity = options.indexCapacity ?? DEFAULT_INDEX_CAPACITY
   }
 
   async head(workspaceId: WorkspaceId): Promise<RevisionId | null> {
@@ -252,10 +262,21 @@ export class GitContentStore implements ContentStore {
     if (at === null) return []
     const tree = (await repository.findCommit(at))?.tree
     if (tree === undefined) return []
+    const listed = this.#listings.get(tree)
+    if (listed !== undefined) {
+      this.#listings.delete(tree)
+      this.#listings.set(tree, listed)
+      return listed
+    }
     const documents = await this.#documents.of(repository, tree)
     const entries: TreeEntry[] = []
     for await (const walked of walkTree(repository, tree)) {
       entries.push(describeEntry(walked.path, documents.idByPath.get(walked.path)))
+    }
+    this.#listings.set(tree, entries)
+    for (const oldest of this.#listings.keys()) {
+      if (this.#listings.size <= this.#listingCapacity) break
+      this.#listings.delete(oldest)
     }
     return entries
   }

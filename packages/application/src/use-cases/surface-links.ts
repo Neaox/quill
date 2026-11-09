@@ -1,6 +1,6 @@
 import type { DocumentId, ShortId } from '@quill/domain'
 
-import { parseDocumentReference } from './document-path.ts'
+import { documentIdFromUrl, parseDocumentReference } from './document-path.ts'
 
 /**
  * What becomes of one link in a body served outside the application: left as
@@ -160,4 +160,25 @@ export function surfaceReplacement<T extends SurfaceDocument & { readonly title:
     if (named) return { href: hrefOf(document), title: document.title }
   }
   return undefined
+}
+
+/**
+ * The links of a sourced document's body as one signed-in reader may follow
+ * them (ADR-061, "A link to a page the reader may not see renders as plain
+ * text").
+ *
+ * A sourced body links to its neighbours by their canonical addresses, which
+ * were resolved before the cache and are the same for every reader. A
+ * document this reader may view keeps its link; any other is reduced to the
+ * link's words, so the page names no address of a page hidden from them.
+ * Every other link is left as written.
+ */
+export function readerLinkRewriter(
+  visible: ReadonlySet<DocumentId>,
+): (href: string) => SurfaceLink {
+  return (href) => {
+    const id = documentIdFromUrl(href)
+    if (id === null) return KEEP
+    return visible.has(id) ? KEEP : TEXT
+  }
 }

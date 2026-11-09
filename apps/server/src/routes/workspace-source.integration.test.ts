@@ -4,6 +4,8 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 
+import { createGrant } from '@quill/application'
+import type { DocumentId } from '@quill/domain'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
 import { createServerHarness } from '../test-support/harness.ts'
@@ -582,3 +584,191 @@ async function documentIn(workspace: string, title: string): Promise<string> {
   if (found === undefined) throw new Error(`no document titled ${title}`)
   return found.id
 }
+
+/** A one-pixel PNG, as a repository's diagram might be. */
+const PIXEL_PNG = Buffer.from(
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
+  'base64',
+)
+
+describe('a workspace whose repository links its files to each other', () => {
+  const forge = 'https://git.example.com/acme/handbook/blob'
+  let repository: Repository
+  let workspace: string
+  let first: string
+  let setupId: string
+  let authId: string
+
+  const SETUP = [
+    '# Setup',
+    '',
+    'Read [token rotation](../adr/0012-auth.md#token-rotation) first, then',
+    'the [draft](drafts/wip.md), the [code](../../src/app.ts) and the [missing page](./missing.md).',
+    '',
+    '```md',
+    '[not a link](./in-code.md)',
+    '```',
+    '',
+    '![The flow](../diagrams/flow.png)',
+    '',
+  ].join('\n')
+
+  async function rendered(id: string, cookies: Record<string, string>): Promise<string> {
+    const response = await harness.app.inject({
+      method: 'GET',
+      url: `/api/documents/${id}/rendered`,
+      cookies,
+    })
+    expect(response.statusCode).toBe(200)
+    return response.json<{ html: string }>().html
+  }
+
+  async function brokenLinks(): Promise<unknown> {
+    const response = await harness.app.inject({
+      method: 'GET',
+      url: `/api/workspaces/${workspace}/source`,
+      cookies: admin,
+    })
+    return response.json<{ sync: { brokenLinks: unknown } }>().sync.brokenLinks
+  }
+
+  beforeAll(async () => {
+    repository = await createRepository('links')
+    const created = await harness.app.inject({
+      method: 'POST',
+      url: '/api/workspaces',
+      cookies: admin,
+      payload: { unitId: tenancy.unitId, name: 'Linked handbook', slug: 'linked-handbook' },
+    })
+    workspace = created.json<{ id: string }>().id
+    const granted = await createGrant(harness.deps, {
+      principalKind: 'user',
+      principalId: tenancy.viewer,
+      scopeKind: 'workspace',
+      scopeId: workspace,
+      role: 'viewer',
+      effect: 'allow',
+      createdBy: tenancy.admin,
+    })
+    if (granted.kind !== 'created') throw new Error(`the viewer was not granted: ${granted.kind}`)
+  })
+
+  it('syncs a repository whose files link to each other, with a forge address to link outside it', async () => {
+    first = await commitTo(
+      repository,
+      'Write the linked handbook',
+      {
+        '.quill/workspace.yaml': manifest([
+          'collections:',
+          '  - { slug: guides, title: Guides, path: docs/guides }',
+          '  - { slug: decisions, title: Decisions, path: docs/adr }',
+          'exclude: [docs/guides/drafts]',
+          'assets: [docs/diagrams]',
+        ]),
+        'docs/guides/setup.md': SETUP,
+        'docs/guides/drafts/wip.md': '# Not ready\n',
+        'docs/adr/0012-auth.md': '# Authentication\n\n## Token rotation\n\nRotate them.\n',
+        'src/app.ts': 'export {}\n',
+      },
+      '2025-12-30T00:00:00Z',
+    )
+    await mkdir(join(repository.work, 'docs/diagrams'), { recursive: true })
+    await writeFile(join(repository.work, 'docs/diagrams/flow.png'), PIXEL_PNG)
+    first = await commitTo(repository, 'Draw the flow', {}, '2025-12-30T01:00:00Z')
+
+    const configured = await harness.app.inject({
+      method: 'PUT',
+      url: `/api/workspaces/${workspace}/source`,
+      cookies: admin,
+      payload: {
+        remote: pathToFileURL(repository.bare).href,
+        branch: 'main',
+        collections: [{ slug: 'guides', name: 'Guides', path: 'docs/guides' }],
+        history: 'full',
+        commitMessages: 'subject',
+        credential: null,
+        viewTemplate: 'https://git.example.com/acme/handbook/blob/{commit}/{path}',
+      },
+    })
+    expect(configured.statusCode).toBe(200)
+    expect(configured.json()).toMatchObject({
+      outsideLinks: 'forge',
+      viewTemplate: 'https://git.example.com/acme/handbook/blob/{commit}/{path}',
+    })
+    await harness.drainOutbox()
+    setupId = await documentIn(workspace, 'Setup')
+    authId = await documentIn(workspace, 'Authentication')
+  })
+
+  it('resolves each relative link at render: across collections to a heading, else to the forge at the synced commit', async () => {
+    const html = await rendered(setupId, admin)
+
+    expect(html).toContain(`<a href="/d/${authId}#user-content-token-rotation">token rotation</a>`)
+    // Excluded, outside the source, and not in the repository: each to the file at the synced commit.
+    expect(html).toContain(`<a href="${forge}/${first}/docs/guides/drafts/wip.md"`)
+    expect(html).toContain(`<a href="${forge}/${first}/src/app.ts"`)
+    expect(html).toContain(`<a href="${forge}/${first}/docs/guides/missing.md"`)
+    // The heading the link names is there to land on.
+    expect(await rendered(authId, admin)).toContain('id="user-content-token-rotation"')
+
+    // The stored copy is the repository's text: nothing was rewritten at sync.
+    const content = await harness.app.inject({
+      method: 'GET',
+      url: `/api/documents/${setupId}/content`,
+      cookies: admin,
+    })
+    expect(content.json<{ markdown: string }>().markdown).toContain(
+      '(../adr/0012-auth.md#token-rotation)',
+    )
+  })
+
+  it('records the resolved links, so the decision knows the guide links to it', async () => {
+    const backlinks = await harness.deps.uow.repos.documentLinks.listSourcesTargeting(
+      authId as DocumentId,
+    )
+    expect(backlinks).toEqual([setupId])
+  })
+
+  it('shows a reader who may not see the decision the link’s words, with no address', async () => {
+    const denied = await createGrant(harness.deps, {
+      principalKind: 'user',
+      principalId: tenancy.viewer,
+      scopeKind: 'document',
+      scopeId: authId,
+      role: 'viewer',
+      effect: 'deny',
+      createdBy: tenancy.admin,
+    })
+    expect(denied.kind).toBe('created')
+
+    const html = await rendered(setupId, viewer)
+    expect(html).toContain('Read token rotation first')
+    expect(html).not.toContain(`/d/${authId}`)
+    // What the reader may follow is left as it was.
+    expect(html).toContain(`<a href="${forge}/${first}/src/app.ts"`)
+    expect(await rendered(setupId, admin)).toContain(`/d/${authId}#user-content-token-rotation`)
+  })
+
+  it('lists the link to a file that is not in the repository at the synced commit as broken', async () => {
+    expect(await brokenLinks()).toEqual([
+      { path: 'docs/guides/setup.md', url: './missing.md', revision: first },
+    ])
+  })
+
+  it('resolves against the newest revision once the missing file arrives, and lists nothing broken', async () => {
+    const head = await commitTo(
+      repository,
+      'Write the missing page',
+      { 'docs/guides/missing.md': '# Missing no more\n' },
+      '2025-12-31T00:00:00Z',
+    )
+    expect((await syncNow(admin, workspace)).statusCode).toBe(202)
+    await harness.drainOutbox()
+
+    const missing = await documentIn(workspace, 'Missing no more')
+    const html = await rendered(setupId, admin)
+    expect(html).toContain(`<a href="/d/${missing}">missing page</a>`)
+    expect(html).toContain(`<a href="${forge}/${head}/src/app.ts"`)
+    expect(await brokenLinks()).toEqual([])
+  })
+})

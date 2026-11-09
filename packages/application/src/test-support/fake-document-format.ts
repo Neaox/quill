@@ -116,8 +116,17 @@ export function createFakeDocumentFormat(options: FakeDocumentFormatOptions = {}
       }
     },
 
-    render({ markdown, linkTitles, drawings, labels, emoji, labelEmoji }): RenderedContent {
-      const { frontMatter, body } = parse(markdown)
+    render({
+      markdown,
+      linkTitles,
+      drawings,
+      labels,
+      emoji,
+      labelEmoji,
+      resolvedLinks,
+    }): RenderedContent {
+      const { frontMatter, body: written } = parse(markdown)
+      const body = resolved(written, resolvedLinks)
       const headings = [...headingsOf(body)]
       return {
         version: RENDERED_CONTENT_VERSION,
@@ -144,6 +153,10 @@ export function createFakeDocumentFormat(options: FakeDocumentFormatOptions = {}
     read(markdown): PublishedDocumentView {
       const { frontMatter, body } = parse(markdown)
       return { frontMatter, title: titleOf(frontMatter, body) }
+    },
+
+    links(markdown): readonly ExtractedLink[] {
+      return [...linksOf(parse(markdown).body)]
     },
 
     stampIdentity(markdown, documentId): string {
@@ -272,6 +285,16 @@ function titled(body: string, linkTitles: ReadonlyMap<DocumentId, string>): stri
   return body.replaceAll(AUTO_TITLED, (match: string, id: string) => {
     const title = linkTitles.get(id as DocumentId)
     return title === undefined ? match : `[${title}](/d/${id})`
+  })
+}
+
+/** A body with its relative links where they resolved (ADR-061): readdressed, or their words alone. */
+function resolved(body: string, links: RenderInput['resolvedLinks']): string {
+  if (links === undefined) return body
+  return body.replaceAll(LINK, (match: string, text: string, url: string) => {
+    const resolution = links.get(url)
+    if (resolution === undefined) return match
+    return resolution.kind === 'text' ? text : `[${text}](${resolution.href})`
   })
 }
 

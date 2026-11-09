@@ -84,6 +84,8 @@ async function putSource(id = WORKSPACE, configuredBy: UserId = CONFIGURER): Pro
     commitMessages: 'subject',
     credential: null,
     webhookSecretName: null,
+    outsideLinks: 'forge',
+    viewTemplate: null,
     configuredBy,
     now: NOW,
   })
@@ -235,6 +237,7 @@ describe('notifySourceSyncFailure', () => {
       revision: 'def',
       refused: [],
       layout: { origin: 'settings', fingerprint: '[]', collectionIds: [], unknownKeys: [] },
+      brokenLinks: [],
       now: clock.now(),
     })
     expect(await notifySourceSyncFailure(deps, WORKSPACE)).toBe(0)
@@ -295,6 +298,8 @@ describe('notifySourceSyncFailure', () => {
       commitMessages: 'subject',
       credential: null,
       webhookSecretName: null,
+      outsideLinks: 'forge',
+      viewTemplate: null,
       configuredBy: null as unknown as UserId,
       now: NOW,
     })

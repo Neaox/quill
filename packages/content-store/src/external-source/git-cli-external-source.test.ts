@@ -286,6 +286,44 @@ describe('GitCliExternalSource', () => {
       expect(held.has(repository.blobAt(revision('start'), 'packages/p1/src.ts'))).toBe(false)
     })
 
+    it('says which paths are in the repository at a revision, inside the source or not', async () => {
+      const held = heldBlobs(cache)
+      const asked = [
+        'README.md',
+        'docs/guides',
+        'docs/guides/a.md',
+        'docs/guides/with space.md',
+        'docs/other',
+        'docs/*.md',
+        'missing.md',
+        'docs/../README.md',
+        'docs//top.md',
+        '',
+        'README.md',
+      ]
+
+      expect([...(await source.present(head, asked))].toSorted()).toEqual([
+        'README.md',
+        'docs/guides',
+        'docs/guides/a.md',
+        'docs/guides/with space.md',
+      ])
+      expect([...(await source.present(revision('start'), ['docs/other/x.md']))]).toEqual([
+        'docs/other/x.md',
+      ])
+      // Names only: nothing was fetched to answer.
+      expect(heldBlobs(cache)).toEqual(held)
+    })
+
+    it('asks about many paths in batches, and nothing about none', async () => {
+      const many = Array.from(
+        { length: 400 },
+        (_, index) => `missing/${'x'.repeat(30)}-${index}.md`,
+      )
+      expect([...(await source.present(head, [...many, 'docs/top.md']))]).toEqual(['docs/top.md'])
+      expect((await source.present(head, [])).size).toBe(0)
+    })
+
     it('writes no working tree', async () => {
       await expect(readdir(join(cache, 'repository'))).resolves.toEqual(['.git'])
     })
