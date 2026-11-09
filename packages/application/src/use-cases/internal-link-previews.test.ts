@@ -274,6 +274,7 @@ describe('readInternalLinkPreviews: an anonymous reader of a public site', () =>
       siteSlug: 'runbooks',
       organisation: defaultOrganisationSettings(),
       pages: new Map(rows.map((row) => [`runbooks/${row.slug}`, row])),
+      removed: new Map(),
       pathById: new Map(rows.map((row) => [row.id, `runbooks/${row.slug}`])),
       navigation: [],
       home: null,

@@ -754,6 +754,13 @@ export {
   requestManualSourceSync,
   WORKSPACE_SOURCE_AUDIT_EVENTS,
 } from './workspace-source.ts'
+export type { SourceAddresses, SourceRemoval } from './source-removal.ts'
+export {
+  followRedirects,
+  MAX_REDIRECT_HOPS,
+  readSourceAddresses,
+  readSourceRemoval,
+} from './source-removal.ts'
 export type {
   SourceWebhookDelivery,
   SourceWebhookDependencies,

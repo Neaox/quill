@@ -89,7 +89,9 @@ export async function getWorkspaceTree(
       slug: collection.slug,
       documents: nest(
         (byCollection.get(collection.id) ?? []).filter(
-          (document) => visible === null || visible.ids.has(document.id),
+          (document) =>
+            // A page whose file left its repository is gone, not in the tree (ADR-061).
+            document.status !== 'archived' && (visible === null || visible.ids.has(document.id)),
         ),
       ),
     })),

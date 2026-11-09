@@ -39,6 +39,7 @@ import {
   resolveDocumentId,
   withReadableLinks,
 } from '../application/references.ts'
+import { refuseRemovedSourceDocument } from '../application/source-removal.ts'
 import type { AppDependencies } from '../dependencies.ts'
 import { conflict, forbidden, lockLost, notFound, unprocessable } from '../errors.ts'
 import { notModified } from '../errors.ts'
@@ -119,11 +120,14 @@ export function documentRoutes(deps: AppDependencies): FastifyPluginAsync {
         schema: { params: IdParamsSchema, response: { 200: DocumentSchema } },
       },
       async (request) => {
+        const authorizer = authorizerFor(deps, request)
         const access = await requireDocumentAccess(
-          authorizerFor(deps, request),
+          authorizer,
           await resolveDocumentId(deps, request.params.id),
           'view',
         )
+        // A page whose file left its repository is gone, not readable (ADR-061, ADR-046).
+        await refuseRemovedSourceDocument(deps, authorizer, access.document)
         return documentResponse(access.document)
       },
     )

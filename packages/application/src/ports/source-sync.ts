@@ -308,6 +308,13 @@ export interface SourceLayoutRecord {
   readonly fingerprint: string
   readonly collectionIds: readonly string[]
   readonly unknownKeys: readonly { readonly key: string; readonly line: number | null }[]
+  /**
+   * The manifest's `redirects`, old path to new, as the tree was last placed:
+   * where an archived page's old address and a link to its old path lead
+   * (ADR-061). Absent in a record from before they were kept, which reads as
+   * none until the next sync records them.
+   */
+  readonly redirects?: readonly (readonly [from: string, to: string])[] | undefined
 }
 
 /**

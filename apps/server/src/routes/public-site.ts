@@ -6,6 +6,7 @@ import {
   publicSiteHref,
   publishedAt,
   readPublicFacts,
+  readSourceRemoval,
   renderDocument,
   surfaceLinkRewriter,
   surfaceReplacement,
@@ -40,6 +41,7 @@ import {
   renderBotPage,
   renderNoSitePage,
   renderNotFoundMain,
+  renderRemovedMain,
   renderSearchMain,
 } from '../public-site/pages.ts'
 import type { SearchRefusalView, SearchResultView } from '../public-site/pages.ts'
@@ -246,6 +248,45 @@ export function publicSiteRoutes(deps: AppDependencies): FastifyPluginAsync {
       ),
       404,
     )
+
+  /**
+   * A page removed from the repository its site is read from (ADR-061): a
+   * `301` to the page the manifest's redirects name when that one is on the
+   * site, and otherwise `410 Gone`, which it is (ADR-046).
+   */
+  const removedPage = async (
+    request: FastifyRequest,
+    reply: FastifyReply,
+    site: PublicSite,
+    document: DocumentRow,
+  ) => {
+    const removal = await readSourceRemoval(deps, document)
+    const replacement = removal?.replacement ?? null
+    const to = replacement === null ? undefined : site.pathById.get(replacement)
+    if (to !== undefined && site.pages.has(to)) {
+      reply.header('cache-control', `public, max-age=0, s-maxage=${PAGE_SHARED_MAX_AGE_SECONDS}`)
+      return reply.redirect(publicPageHref(site.siteSlug, to), 301)
+    }
+    return sendPage(
+      request,
+      reply,
+      finished(
+        renderPage({
+          ...(await shellOf(site, null, null)),
+          title: 'Removed',
+          description: null,
+          canonical: null,
+          robots: NOT_A_PUBLISHED_DOCUMENT,
+          outline: [],
+          main: renderRemovedMain({ siteSlug: site.siteSlug, title: document.title }),
+          updatedAt: null,
+          structuredData: null,
+          query: null,
+        }),
+      ),
+      410,
+    )
+  }
 
   /**
    * A miss that is not *within* a site: an unknown slug, a site taken down, an
@@ -675,6 +716,8 @@ export function publicSiteRoutes(deps: AppDependencies): FastifyPluginAsync {
         const path = request.params['*'].replace(/\/+$/u, '')
         const document = site.pages.get(path)
         if (document !== undefined) return documentPage(request, reply, site, document, path)
+        const removed = site.removed.get(path)
+        if (removed !== undefined) return removedPage(request, reply, site, removed)
 
         const moved = await deps.uow.repos.publicRedirects.find(site.siteSlug, path)
         const to = moved === null ? undefined : site.pathById.get(moved.documentId)
