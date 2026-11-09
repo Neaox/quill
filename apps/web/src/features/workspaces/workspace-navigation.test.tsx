@@ -126,6 +126,34 @@ function renderTree(
   return { ...view, router }
 }
 
+/** A workspace read from a repository, with what the caller may do in it. */
+const sourcedWorkspace = (manage: boolean) => () =>
+  jsonResponse(200, {
+    id: 'workspace-1',
+    unitId: 'unit-1',
+    name: 'Acme docs',
+    slug: 'acme',
+    createdAt: '2026-01-01T00:00:00.000Z',
+    origin: { kind: 'sourced' },
+    permissions: {
+      view: true,
+      comment: true,
+      edit: false,
+      publish: false,
+      arrange: false,
+      manage,
+    },
+  })
+const me = (isInstanceAdmin: boolean) => () =>
+  jsonResponse(200, {
+    id: 'user-1',
+    email: 'ada@example.com',
+    displayName: 'Ada',
+    emailVerified: true,
+    isInstanceAdmin,
+  })
+const menuButton = () => screen.findByRole('button', { name: /the Acme docs workspace/u })
+
 describe('WorkspaceTree navigation', () => {
   it('navigates through the router on click, rather than a full page reload', async () => {
     const { router } = renderTree()
@@ -202,33 +230,6 @@ describe('WorkspaceTree creation entry points', () => {
   })
 
   describe('the workspace menu of a workspace read from a repository', () => {
-    const sourcedWorkspace = (manage: boolean) => () =>
-      jsonResponse(200, {
-        id: 'workspace-1',
-        unitId: 'unit-1',
-        name: 'Acme docs',
-        slug: 'acme',
-        createdAt: '2026-01-01T00:00:00.000Z',
-        origin: { kind: 'sourced' },
-        permissions: {
-          view: true,
-          comment: true,
-          edit: false,
-          publish: false,
-          arrange: false,
-          manage,
-        },
-      })
-    const me = (isInstanceAdmin: boolean) => () =>
-      jsonResponse(200, {
-        id: 'user-1',
-        email: 'ada@example.com',
-        displayName: 'Ada',
-        emailVerified: true,
-        isInstanceAdmin,
-      })
-    const menuButton = () => screen.findByRole('button', { name: /the Acme docs workspace/u })
-
     it('offers an instance admin the settings and the repository', async () => {
       renderTree(
         {},
