@@ -506,7 +506,7 @@ describe('listNotifications', () => {
     ])
     const result = await list()
     if (result.kind !== 'listed') throw new Error(result.kind)
-    expect(result.items[0]?.actor.name).toBe('Former member')
+    expect(result.items[0]).toMatchObject({ actor: { name: 'Former member' } })
   })
 })
 

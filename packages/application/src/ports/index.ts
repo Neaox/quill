@@ -52,6 +52,7 @@ export type {
   SourceSyncStateRow,
   WorkspaceSourceCredential,
   WorkspaceSourceRepository,
+  SourceWebhookDeliveryRepository,
   WorkspaceSourceRow,
 } from './source-sync.ts'
 export type {
@@ -85,7 +86,7 @@ export type {
   WorkspaceAffinity,
 } from './search-index.ts'
 export type { SearchSuggestion } from '@quill/domain'
-export type { Clock, Hasher, IdGenerator, TokenService } from './system.ts'
+export type { Clock, Hasher, IdGenerator, MessageAuthenticator, TokenService } from './system.ts'
 
 export type {
   CompleteSignInResult,
@@ -265,8 +266,11 @@ export type {
   NotificationKind,
   NotificationRepository,
   NotificationRow,
+  ReviewNotificationKind,
+  ReviewNotificationRow,
+  SourceSyncFailedNotificationRow,
 } from './notifications.ts'
-export { NOTIFICATION_KINDS } from './notifications.ts'
+export { NOTIFICATION_KINDS, REVIEW_NOTIFICATION_KINDS } from './notifications.ts'
 export type {
   NewReviewRequest,
   ReviewAssignmentId,

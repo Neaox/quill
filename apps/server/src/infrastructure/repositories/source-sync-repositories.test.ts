@@ -7,6 +7,7 @@ import { createDocumentRepository } from './document-repository.ts'
 import {
   createSourcePathMapRepository,
   createSourceSyncStateRepository,
+  createSourceWebhookDeliveryRepository,
 } from './source-sync-repositories.ts'
 import { createUnitRepository } from './unit-repository.ts'
 import { createWorkspaceRepository } from './workspace-repository.ts'
@@ -150,6 +151,7 @@ describe('the source sync state', () => {
       failure: null,
       refused,
       layout,
+      failureNotified: null,
     })
 
     const failure = { reason: 'timeout' as const, message: 'Too slow', revision: 'c2' }
@@ -162,6 +164,7 @@ describe('the source sync state', () => {
       failure,
       refused,
       layout,
+      failureNotified: null,
     })
 
     await states.recordSynced({
@@ -193,7 +196,41 @@ describe('the source sync state', () => {
       failure: { reason: 'git-unavailable', message: 'No git', revision: null },
       refused: [],
       layout: null,
+      failureNotified: null,
     })
+  })
+
+  it('records which failure was told once, and forgets it when a sync finishes', async () => {
+    expect(await states.recordFailureNotified({ workspaceId: WORKSPACE, key: 'timeout@' })).toBe(
+      false,
+    )
+    await states.recordFailure({
+      workspaceId: WORKSPACE,
+      failure: { reason: 'timeout', message: 'Too slow', revision: null },
+      now: NOW,
+    })
+    expect(await states.recordFailureNotified({ workspaceId: WORKSPACE, key: 'timeout@' })).toBe(
+      true,
+    )
+    expect(await states.recordFailureNotified({ workspaceId: WORKSPACE, key: 'timeout@' })).toBe(
+      false,
+    )
+    // A later attempt that fails the same way keeps what was told.
+    await states.recordFailure({
+      workspaceId: WORKSPACE,
+      failure: { reason: 'timeout', message: 'Still slow', revision: null },
+      now: LATER,
+    })
+    expect((await states.find(WORKSPACE))?.failureNotified).toBe('timeout@')
+
+    await states.recordSynced({
+      workspaceId: WORKSPACE,
+      revision: 'c1',
+      refused,
+      layout,
+      now: LATER,
+    })
+    expect((await states.find(WORKSPACE))?.failureNotified).toBeNull()
   })
 
   it('reads documents this release cannot as no failure, nothing refused and no layout', async () => {
@@ -256,5 +293,28 @@ describe('the source sync state', () => {
         { key: 'y', line: null },
       ],
     })
+  })
+})
+
+describe('the source webhook deliveries', () => {
+  const deliveries = () => createSourceWebhookDeliveryRepository(database.db)
+
+  it('records a delivery once per workspace and forgets those older than a cutoff', async () => {
+    const repository = deliveries()
+    expect(await repository.record({ workspaceId: WORKSPACE, deliveryId: 'd-1', now: NOW })).toBe(
+      true,
+    )
+    expect(await repository.record({ workspaceId: WORKSPACE, deliveryId: 'd-1', now: LATER })).toBe(
+      false,
+    )
+    expect(
+      await repository.record({ workspaceId: OTHER_WORKSPACE, deliveryId: 'd-1', now: LATER }),
+    ).toBe(true)
+
+    expect(await repository.deleteReceivedBefore(NOW)).toBe(0)
+    expect(await repository.deleteReceivedBefore(LATER)).toBe(1)
+    expect(await repository.record({ workspaceId: WORKSPACE, deliveryId: 'd-1', now: LATER })).toBe(
+      true,
+    )
   })
 })

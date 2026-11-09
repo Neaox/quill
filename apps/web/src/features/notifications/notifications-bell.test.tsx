@@ -25,6 +25,15 @@ const item = (id: string, kind: string, actor: string, title: string, readAt: st
   readAt,
 })
 
+const sourceItem = (id: string, reason: string, readAt: string | null) => ({
+  id,
+  kind: 'source-sync-failed',
+  workspace: { id: 'ws-1', slug: 'platform-docs', name: 'Platform docs' },
+  failure: { reason, revision: null },
+  at: '2026-10-13T08:00:00.000Z',
+  readAt,
+})
+
 function signedIn(extra: FakeRoutes = {}) {
   return renderApp('/', {
     'GET /api/me': () =>
@@ -139,5 +148,44 @@ describe('the notifications bell', () => {
     await waitFor(() => {
       expect(marked).toEqual([{ ids: ['1'] }])
     })
+  })
+
+  it('tells an administrator a repository stopped syncing, and leads to its settings', async () => {
+    signedIn(
+      unread(1, [
+        sourceItem('1', 'branch-not-found', null),
+        sourceItem('2', 'command-failed', '2026-10-12T08:00:00.000Z'),
+      ]),
+    )
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Notifications, 1 unread' }))
+    const panel = await screen.findByRole('dialog', { name: 'Notifications' })
+
+    const links = await within(panel).findAllByRole('link')
+    expect(links[0]).toHaveTextContent(
+      'Platform docs stopped syncing from its repository: its branch was not found.',
+    )
+    expect(links[0]).toHaveAttribute('href', '/w/platform-docs/settings')
+    expect(links[0]).toHaveTextContent('Unread')
+    expect(links[1]).toHaveTextContent('the repository could not be read.')
+    await expectNoAccessibilityViolations(panel)
+  })
+
+  it('leaves out a review of a document in a workspace the person cannot list', async () => {
+    signedIn(
+      unread(1, [
+        {
+          ...item('1', 'review-requested', 'Grace', 'Hidden', null),
+          document: { id: 'd', shortId: 'k7m3q9v2rt', title: 'Hidden', workspaceId: 'ws-gone' },
+        },
+        item('2', 'review-approved', 'Linus', 'Failover drill', null),
+      ]),
+    )
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Notifications, 1 unread' }))
+    const panel = await screen.findByRole('dialog', { name: 'Notifications' })
+    const links = await within(panel).findAllByRole('link')
+    expect(links).toHaveLength(1)
+    expect(links[0]).toHaveTextContent('Linus approved Failover drill')
   })
 })

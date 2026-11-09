@@ -7,6 +7,7 @@ import { createIdentityProviderRegistry, outboundClientFactory } from '../auth/o
 import type { SecretResolver } from '../infrastructure/secrets/resolve-secret.ts'
 import { createRateLimiter } from '../auth/rate-limit.ts'
 import { createTokenService } from '../auth/tokens.ts'
+import { createMessageAuthenticator } from '../infrastructure/message-authenticator.ts'
 import { MAIL_REQUESTED } from '@quill/application'
 
 import { hashSessionToken } from '../auth/session-token.ts'
@@ -67,6 +68,7 @@ beforeAll(async () => {
     ids: createFakeIdGenerator(),
     hasher: createHasher(),
     tokens: createTokenService(),
+    messageAuthenticator: createMessageAuthenticator(),
     shareLinkPolicy: { allowed: () => true },
     linkPreviewPorts: INERT_LINK_PREVIEW_PORTS,
     ...(await inMemorySettings(clock, config)),

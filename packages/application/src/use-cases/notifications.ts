@@ -3,8 +3,10 @@ import type { DocumentId, ReviewerKind, UserId } from '@quill/domain'
 import type {
   NewNotification,
   NotificationCursor,
-  NotificationKind,
   NotificationRow,
+  ReviewNotificationKind,
+  ReviewNotificationRow,
+  SourceSyncFailedNotificationRow,
 } from '../ports/notifications.ts'
 import type { GroupId, RepositoryBundle, UnitOfWork } from '../ports/persistence.ts'
 import type { Clock, IdGenerator } from '../ports/system.ts'
@@ -66,7 +68,7 @@ async function peopleBehind(
 }
 
 interface Announcement {
-  readonly kind: NotificationKind
+  readonly kind: ReviewNotificationKind
   readonly requestId: string
   readonly documentId: DocumentId
   readonly actor: UserId
@@ -155,7 +157,7 @@ export function notifyReviewDecided(
   })
 }
 
-function settledKind(status: ReviewDecidedPayload['status']): NotificationKind | null {
+function settledKind(status: ReviewDecidedPayload['status']): ReviewNotificationKind | null {
   if (status === 'approved') return 'review-approved'
   if (status === 'changes_requested') return 'changes-requested'
   return null
@@ -201,9 +203,9 @@ export function notifyReviewWithdrawn(
 // Reading and marking
 // ---------------------------------------------------------------------------
 
-export interface NotificationItem {
+export interface ReviewNotificationItem {
   readonly id: string
-  readonly kind: NotificationKind
+  readonly kind: ReviewNotificationKind
   readonly document: {
     readonly id: DocumentId
     readonly shortId: string
@@ -214,6 +216,18 @@ export interface NotificationItem {
   readonly at: Date
   readonly readAt: Date | null
 }
+
+/** A workspace's source stopped syncing (ADR-061); shown to whoever still manages the workspace. */
+export interface SourceSyncFailedNotificationItem {
+  readonly id: string
+  readonly kind: 'source-sync-failed'
+  readonly workspace: { readonly id: string; readonly slug: string; readonly name: string }
+  readonly failure: SourceSyncFailedNotificationRow['failure']
+  readonly at: Date
+  readonly readAt: Date | null
+}
+
+export type NotificationItem = ReviewNotificationItem | SourceSyncFailedNotificationItem
 
 export interface ListNotificationsCommand {
   readonly userId: UserId
@@ -255,16 +269,37 @@ export function decodeNotificationCursor(value: string): NotificationCursor | nu
     : { createdAt, id }
 }
 
-interface Visible {
-  readonly row: NotificationRow
-  readonly document: NotificationItem['document']
+type Visible =
+  | { readonly row: ReviewNotificationRow; readonly document: ReviewNotificationItem['document'] }
+  | {
+      readonly row: SourceSyncFailedNotificationRow
+      readonly workspace: SourceSyncFailedNotificationItem['workspace']
+    }
+
+/**
+ * Whether the person may still see what a row is about: the document, for a
+ * review's; managing the workspace, for a source's, since the failure is
+ * an administrator's to act on and its revision is not every reader's to see.
+ */
+async function visible(authorizer: Authorizer, row: NotificationRow): Promise<Visible | null> {
+  if (row.kind === 'source-sync-failed') {
+    const access = await authorizer.workspace(row.workspaceId)
+    if (!access.ok || !access.value.capabilities.manage) return null
+    const { id, slug, name } = access.value.workspace
+    return { row, workspace: { id, slug, name } }
+  }
+  const access = await authorizer.document(row.documentId)
+  if (!access.ok || !access.value.capabilities.view) return null
+  const { id, shortId, title, workspaceId } = access.value.document
+  return { row, document: { id, shortId, title, workspaceId } }
 }
 
 /**
  * The person's notifications, newest first, leaving out those about documents
- * they can no longer view. The documents are asked about together (the
- * authorizer memoises each), the actors' names come from one read, and a page
- * that loses rows to the filter is topped up from the rows after it.
+ * they can no longer view and workspaces they no longer manage. The documents
+ * are asked about together (the authorizer memoises each), the actors' names
+ * come from one read, and a page that loses rows to the filter is topped up
+ * from the rows after it.
  */
 export async function listNotifications(
   deps: Pick<NotificationDependencies, 'uow'>,
@@ -290,42 +325,55 @@ export async function listNotifications(
       after: cursor,
       limit: limit + 1,
     })
-    const verdicts = await Promise.all(
-      rows.map((row) => command.authorizer.document(row.documentId)),
-    )
+    const verdicts = await Promise.all(rows.map((row) => visible(command.authorizer, row)))
     more = rows.length > limit
     for (const [index, row] of rows.entries()) {
       if (kept.length === limit) {
         more = true
         break
       }
-      const access = verdicts[index]
-      if (access?.ok === true && access.value.capabilities.view) {
-        const { id, shortId, title, workspaceId } = access.value.document
-        kept.push({ row, document: { id, shortId, title, workspaceId } })
-      }
+      const verdict = verdicts[index]
+      if (verdict !== null && verdict !== undefined) kept.push(verdict)
       cursor = cursorOf(row)
     }
     if (!more) break
   }
 
   const actorIds = [
-    ...new Set(kept.flatMap(({ row }) => (row.actorUserId === null ? [] : [row.actorUserId]))),
+    ...new Set(
+      kept.flatMap(({ row }) =>
+        row.kind === 'source-sync-failed' || row.actorUserId === null ? [] : [row.actorUserId],
+      ),
+    ),
   ]
   const names = new Map(
     (await repos.users.listByIds(actorIds)).map((user) => [user.id, user.displayName]),
   )
-  const items = kept.map(({ row, document }): NotificationItem => ({
-    id: row.id,
-    kind: row.kind,
-    document,
-    actor: {
-      id: row.actorUserId ?? '',
-      name: (row.actorUserId === null ? undefined : names.get(row.actorUserId)) ?? FORMER_MEMBER,
-    },
-    at: row.createdAt,
-    readAt: row.readAt,
-  }))
+  const items = kept.map((entry): NotificationItem => {
+    const { row } = entry
+    if ('workspace' in entry) {
+      return {
+        id: row.id,
+        kind: 'source-sync-failed',
+        workspace: entry.workspace,
+        failure: entry.row.failure,
+        at: row.createdAt,
+        readAt: row.readAt,
+      }
+    }
+    const actorUserId = entry.row.actorUserId
+    return {
+      id: row.id,
+      kind: entry.row.kind,
+      document: entry.document,
+      actor: {
+        id: actorUserId ?? '',
+        name: (actorUserId === null ? undefined : names.get(actorUserId)) ?? FORMER_MEMBER,
+      },
+      at: row.createdAt,
+      readAt: row.readAt,
+    }
+  })
   const unread = await repos.notifications.countUnread(command.userId)
   return {
     kind: 'listed',
