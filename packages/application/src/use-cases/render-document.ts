@@ -103,8 +103,13 @@ import { createVersionedReader } from './versioned-reader.ts'
  *
  * Version 15 draws a sourced document's relative images from the attachments
  * its repository's assets became, or as their alternative text (ADR-061).
+ *
+ * Version 16 draws component blocks (ADR-060): the built-in `:::endpoint`,
+ * and a container no block or directive claims as a labelled frame naming it,
+ * where its wrapper was dropped before. A prop that does not fit is said in
+ * the block, and the body reports its blocks' problems (`blockIssues`).
  */
-export const RENDER_VERSION = 15
+export const RENDER_VERSION = 16
 
 export interface RenderDocumentDependencies {
   readonly uow: UnitOfWork

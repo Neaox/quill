@@ -98,3 +98,60 @@ describe('the DOM given to the schema', () => {
     expect(withDom([unknown])).toEqual([unknown])
   })
 })
+
+function heading(nodeView: DirectiveNodeView): Element | null {
+  return nodeView.dom.querySelector('.directive-block-head')
+}
+
+describe('a component block’s card (ADR-060)', () => {
+  it('heads a registered block with its title and its directive as written', () => {
+    const { nodeView, view } = mount(
+      directive({ method: 'POST', path: '/v1', deprecated: '' }, 'endpoint'),
+    )
+    expect(heading(nodeView)).toHaveTextContent('API endpoint')
+    expect(heading(nodeView)?.querySelector('code')).toHaveTextContent(
+      'endpoint{method="POST" path="/v1" deprecated}',
+    )
+    expect(heading(nodeView)).toHaveAttribute('contenteditable', 'false')
+    expect(nodeView.dom).toHaveAttribute(
+      'aria-label',
+      'API endpoint: endpoint{method="POST" path="/v1" deprecated}',
+    )
+    expect(nodeView.dom).toHaveAttribute('data-issues', 'false')
+    view.destroy()
+  })
+
+  it('says what is wrong with its props', () => {
+    const { nodeView, view } = mount(directive({ method: 'FETCH' }, 'endpoint'))
+    expect(heading(nodeView)).toHaveTextContent('path is required')
+    expect(heading(nodeView)).toHaveTextContent('method: “FETCH” is not one of')
+    expect(nodeView.dom).toHaveAttribute('data-issues', 'true')
+    view.destroy()
+  })
+
+  it('names a block nothing draws', () => {
+    const { nodeView, view } = mount(directive({}, 'timeline'))
+    expect(heading(nodeView)).toHaveTextContent('Unknown block')
+    expect(heading(nodeView)?.querySelector('code')).toHaveTextContent(/^timeline$/u)
+    view.destroy()
+  })
+
+  it('leaves Quill’s own directives without a heading', () => {
+    const { nodeView, view } = mount(directive({}, 'cards'))
+    expect(heading(nodeView)).toBeNull()
+    expect(nodeView.dom).toHaveAttribute('aria-label', 'cards')
+    view.destroy()
+  })
+
+  it('updates its heading when its attributes change, and drops it when the name is Quill’s', () => {
+    const { nodeView, view } = mount(
+      directive({ colour: 'red', path: '/a', method: 'GET' }, 'endpoint'),
+    )
+    expect(heading(nodeView)?.querySelector('code')).toHaveTextContent(
+      'endpoint{method="GET" path="/a" colour="red"}',
+    )
+    expect(nodeView.update(directive({ path: '/b' }, 'endpoint'), [])).toBe(true)
+    expect(heading(nodeView)?.querySelector('code')).toHaveTextContent('endpoint{path="/b"}')
+    view.destroy()
+  })
+})
