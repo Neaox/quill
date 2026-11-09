@@ -172,6 +172,6 @@ A status colour was used two ways with one floor. It marks a state on the page (
 - **Follows the colours that ship.** An ink is settled against the fill and status the theme actually emits. When a theme pins a status or its fill (Grid's dark washes), the ink is settled again against the pinned colours. An ink the theme pins itself is left as pinned.
 - **Checked by the doctor.** Each ink on its fill is checked at the body floor, and an ink belongs to its status's family and brand roles exactly as the status does.
 
-The reading stylesheet sets a status badge's words, and the icon in a safety-net node, in the ink. The status colour keeps every other use. With this, Grid's dark "Holds" reads at 10.2:1 (lockstay's ink is 86% lightness against 88%), its light one at lockstay's own L 38. Every built-in theme and every accent swatch on a fork passes unchanged, because no theme states an ink: each is derived.
+The reading stylesheet sets a status badge's words, and the icon in a safety-net node, in the ink. The status colour keeps every other use. With this, Grid's dark "Holds" reads at 9.2:1 (Lc 77, its ink at L 87 against lockstay's 88) and "Refused" at 9.7:1, past lockstay's 5.5:1. In light they read at 7.7:1, with the success ink at L 37.5 against lockstay's 38. Every built-in theme and every accent swatch on a fork passes unchanged, because no theme states an ink: each is derived.
 
 The palette contract grows by three roles and three tokens. They are additive, so a theme document needs no change (rule 17).
