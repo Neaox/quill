@@ -166,6 +166,7 @@ describe('sourceLinksAt', () => {
       collections: [],
       history: 'full',
       commitMessages: 'subject',
+      manifestEntry: null,
       credential: null,
       outsideLinks: 'forge',
       viewTemplate: null,

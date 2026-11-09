@@ -51,8 +51,17 @@ function consumer(lock: Pick<SourceSyncLock, 'withLock'>, source: ExternalSource
       sources: {
         forWorkspace: async () => ({
           source,
-          settings: { collections: [], history: 'full', commitMessages: 'subject' },
+          settings: {
+            collections: [],
+            history: 'full',
+            commitMessages: 'subject',
+            manifestEntry: null,
+          },
+          configuredAt: NOW,
         }),
+        withDraft: async () => {
+          throw new Error('The outbox never opens a draft.')
+        },
       },
       lock: { ...lock, isHeld: async () => false },
       allowFileRemotesForTesting: false,
@@ -132,6 +141,7 @@ describe('the SourceSyncRequested consumer', () => {
         collections: [],
         history: 'full',
         commitMessages: 'subject',
+        manifestEntry: null,
         credential: null,
         webhookSecretName: null,
         outsideLinks: 'forge',

@@ -1,6 +1,7 @@
 import { useNavigate } from '@tanstack/react-router'
 import { useState, type FormEvent } from 'react'
 
+import { BRAND } from '@quill/brand'
 import { Button, Dialog, Input } from '@quill/ui'
 
 import {
@@ -12,6 +13,7 @@ import {
 import { slugify } from '../../lib/documents/slugify.ts'
 import { workspaceReference } from '../../lib/routing/document-reference.ts'
 import { FormError } from '../../lib/forms/form-error.tsx'
+import { RadioChoice } from '../../lib/forms/radio-choice.tsx'
 import { ConfirmDeleteDialog } from '../dialogs/confirm-delete-dialog.tsx'
 import { RenameDialog } from '../dialogs/rename-dialog.tsx'
 
@@ -22,6 +24,11 @@ import { RenameDialog } from '../dialogs/rename-dialog.tsx'
  * the instance, so it is a field a person can see and change rather than
  * something derived silently: it is suggested from the name and left alone
  * once it has been typed in.
+ *
+ * Where its documents are written is the other choice made here (ADR-061):
+ * in Quill, or in a Git repository that the workspace reads. A workspace
+ * that reads a repository is created empty and opened on connecting it,
+ * where the repository is checked and previewed before anything is saved.
  */
 
 export interface CreateWorkspaceDialogProps {
@@ -43,6 +50,7 @@ export function CreateWorkspaceDialog({
   const [name, setName] = useState('')
   const [slug, setSlug] = useState('')
   const [slugEdited, setSlugEdited] = useState(false)
+  const [origin, setOrigin] = useState<'native' | 'sourced'>('native')
   const create = useCreateWorkspace()
   const navigate = useNavigate()
 
@@ -55,6 +63,7 @@ export function CreateWorkspaceDialog({
     setName('')
     setSlug('')
     setSlugEdited(false)
+    setOrigin('native')
     create.reset()
   }
 
@@ -66,8 +75,14 @@ export function CreateWorkspaceDialog({
       { unitId, name: trimmed, slug: effectiveSlug },
       {
         onSuccess: (workspace) => {
+          const reads = origin === 'sourced'
           close()
-          if (openOnCreate) {
+          if (reads) {
+            void navigate({
+              to: '/w/$workspaceSlug/source/connect',
+              params: { workspaceSlug: workspaceReference(workspace) },
+            })
+          } else if (openOnCreate) {
             void navigate({
               to: '/w/$workspaceSlug',
               params: { workspaceSlug: workspaceReference(workspace) },
@@ -81,7 +96,7 @@ export function CreateWorkspaceDialog({
   return (
     <Dialog
       title={`New workspace in ${unitName}`}
-      description="A workspace is where a team writes: collections, documents, and its own front page."
+      description="A workspace is where a team’s documents live: collections, documents, and its own front page."
       open={open}
       onOpenChange={(next) => {
         if (!next) close()
@@ -97,7 +112,7 @@ export function CreateWorkspaceDialog({
             loading={create.isPending}
             disabled={name.trim() === '' || effectiveSlug === ''}
           >
-            Create
+            {origin === 'sourced' ? 'Create and connect' : 'Create'}
           </Button>
         </>
       }
@@ -128,6 +143,29 @@ export function CreateWorkspaceDialog({
             setSlug(event.target.value)
           }}
         />
+        <fieldset className="flex flex-col gap-2 border-0 p-0">
+          <legend className="mb-1 text-xs font-medium text-foreground">
+            Where its documents are written
+          </legend>
+          <RadioChoice
+            name="workspace-origin"
+            checked={origin === 'native'}
+            label={`Here, in ${BRAND.name}`}
+            description="People write and publish documents in this workspace."
+            onChange={() => {
+              setOrigin('native')
+            }}
+          />
+          <RadioChoice
+            name="workspace-origin"
+            checked={origin === 'sourced'}
+            label="In a Git repository"
+            description="Documents are edited in the repository and read here, read-only. Next, you connect the repository and preview what it holds."
+            onChange={() => {
+              setOrigin('sourced')
+            }}
+          />
+        </fieldset>
         <FormError error={create.error} />
       </form>
     </Dialog>

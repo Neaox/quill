@@ -119,6 +119,51 @@ describe('the organisation page', () => {
     })
   })
 
+  it('creates a workspace that reads a repository, and opens connecting it', async () => {
+    const bodies: Array<Record<string, unknown>> = []
+    renderApp(
+      '/admin/organisation',
+      organisation({
+        'POST /api/workspaces': async (request) => {
+          bodies.push((await request.json()) as Record<string, unknown>)
+          return jsonResponse(201, {
+            id: 'ws-2',
+            unitId: 'unit-1',
+            name: 'Handbook',
+            slug: 'handbook',
+            createdAt: '2026-01-01T00:00:00.000Z',
+            origin: { kind: 'native' },
+          })
+        },
+        'GET /api/workspaces/{id}': () =>
+          jsonResponse(200, {
+            id: 'ws-2',
+            unitId: 'unit-1',
+            name: 'Handbook',
+            slug: 'handbook',
+            createdAt: '2026-01-01T00:00:00.000Z',
+            origin: { kind: 'native' },
+          }),
+        'GET /api/workspaces/{id}/tree': () => jsonResponse(200, { collections: [] }),
+        'GET /api/workspaces/{id}/documents': () => jsonResponse(200, []),
+        'GET /api/settings/secrets': () => jsonResponse(200, []),
+      }),
+    )
+
+    await userEvent.click(await screen.findByRole('button', { name: 'New workspace' }))
+    const dialog = await screen.findByRole('dialog', { name: 'New workspace in Acme' })
+    await userEvent.type(within(dialog).getByLabelText('Name', { exact: false }), 'Handbook')
+    expect(within(dialog).getByRole('radio', { name: 'Here, in Quill' })).toBeChecked()
+    await userEvent.click(within(dialog).getByRole('radio', { name: 'In a Git repository' }))
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Create and connect' }))
+
+    expect(
+      await screen.findByRole('heading', { level: 1, name: 'Connect Handbook to a repository' }),
+    ).toBeVisible()
+    // The workspace is created as any other; connecting it is the next page's.
+    expect(bodies).toEqual([{ unitId: 'unit-1', name: 'Handbook', slug: 'handbook' }])
+  })
+
   it('renames a unit', async () => {
     const names: string[] = []
     renderApp(

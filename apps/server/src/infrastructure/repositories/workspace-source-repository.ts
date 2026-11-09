@@ -52,6 +52,7 @@ export function createWorkspaceSourceRepository(db: DrizzleClient): WorkspaceSou
         collections: { version: COLLECTIONS_VERSION, collections },
         history: input.history,
         commitMessages: input.commitMessages,
+        manifestEntry: input.manifestEntry,
         credentialUsername: credential?.username ?? null,
         credentialSecret: credential?.secretName ?? null,
         outsideLinks: input.outsideLinks,
@@ -79,6 +80,7 @@ function toRow(row: typeof workspaceSources.$inferSelect): WorkspaceSourceRow {
     // The table's checks hold these to the settings this release knows.
     history: member(SOURCE_HISTORY_SETTINGS, row.history),
     commitMessages: member(SOURCE_COMMIT_MESSAGE_SETTINGS, row.commitMessages),
+    manifestEntry: row.manifestEntry,
     credential:
       row.credentialUsername === null || row.credentialSecret === null
         ? null

@@ -1,11 +1,18 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query'
 
 import type { ApiClient } from '@quill/api-client'
+
+import { now } from '../time/clock.ts'
 
 import { useApiClient } from './client-context.tsx'
 import { request } from './http.ts'
 import { queryKeys } from './query-keys.ts'
-import type { SourceFreshnessDto, WorkspaceSourceDto } from './types.ts'
+import type {
+  SourceFreshnessDto,
+  SourcePreviewResponseDto,
+  SourceSettingsBody,
+  WorkspaceSourceDto,
+} from './types.ts'
 
 /**
  * A sourced workspace's repository (ADR-061): its settings and sync state for
@@ -22,11 +29,39 @@ export const SOURCE_FRESHNESS_REFRESH_MS = 15_000
 export function workspaceSourceQueryOptions(client: ApiClient, workspaceId: string) {
   return {
     queryKey: queryKeys.workspaceSource(workspaceId),
-    queryFn: () =>
-      request<WorkspaceSourceDto>(
+    queryFn: async (context: { readonly client: QueryClient }) => {
+      const source = await request<WorkspaceSourceDto>(
         client.GET('/api/workspaces/{id}/source', { params: { path: { id: workspaceId } } }),
-      ),
+      )
+      // A sync that landed since the last answer changed the workspace's
+      // documents: the tree and the lists beside this page are asked again.
+      const before = context.client.getQueryData<WorkspaceSourceDto>(
+        queryKeys.workspaceSource(workspaceId),
+      )
+      const landed = source.sync?.lastSyncedRevision ?? null
+      if (before !== undefined && (before.sync?.lastSyncedRevision ?? null) !== landed) {
+        void context.client.invalidateQueries({ queryKey: queryKeys.workspaceTree(workspaceId) })
+        void context.client.invalidateQueries({
+          queryKey: queryKeys.workspaceDocuments(workspaceId),
+        })
+      }
+      return source
+    },
   }
+}
+
+/** How long after saving the settings a page waits for the sync that saving asked for. */
+export const SAVED_SYNC_WAIT_MS = 2 * 60_000
+
+/**
+ * Whether the settings were saved after the last attempt to sync, recently
+ * enough that the sync saving asked for is still on its way: the page says
+ * it is syncing, and asks again until it has been attempted.
+ */
+export function awaitsSyncAfterSave(source: WorkspaceSourceDto, at: number): boolean {
+  const saved = Date.parse(source.updatedAt)
+  const attempted = source.sync === null ? null : Date.parse(source.sync.lastAttemptAt)
+  return (attempted === null || saved > attempted) && at - saved < SAVED_SYNC_WAIT_MS
 }
 
 /**
@@ -38,8 +73,11 @@ export function useWorkspaceSource(workspaceId: string, options: { awaiting?: bo
   const client = useApiClient()
   return useQuery({
     ...workspaceSourceQueryOptions(client, workspaceId),
-    refetchInterval: (query) =>
-      query.state.data?.syncing === true || options.awaiting === true ? SYNCING_REFRESH_MS : false,
+    refetchInterval: (query) => {
+      const data = query.state.data
+      const busy = data !== undefined && (data.syncing || awaitsSyncAfterSave(data, now()))
+      return busy || options.awaiting === true ? SYNCING_REFRESH_MS : false
+    },
   })
 }
 
@@ -54,6 +92,59 @@ export function useSyncSourceNow(workspaceId: string) {
       ),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: queryKeys.workspaceSource(workspaceId) })
+    },
+  })
+}
+
+/** What a preview reads: where the source is, and how its files are placed. */
+export type SourceDraftBody = Pick<
+  SourceSettingsBody,
+  'remote' | 'branch' | 'credential' | 'collections' | 'manifestEntry'
+>
+
+/**
+ * A dry run of a source's settings: the server fetches the branch's head as a
+ * sync would and answers what saving would place where, writing nothing. A
+ * repository that does not answer is an answer (`outcome: 'unreadable'`);
+ * settings it refuses are an `ApiError` naming the field.
+ */
+export function usePreviewSource(workspaceId: string) {
+  const client = useApiClient()
+  return useMutation({
+    mutationFn: (body: SourceDraftBody) =>
+      request<SourcePreviewResponseDto>(
+        client.POST('/api/workspaces/{id}/source/preview', {
+          params: { path: { id: workspaceId } },
+          body,
+        }),
+      ),
+  })
+}
+
+/**
+ * Saves a source's settings, which asks for a sync in the same step. The
+ * first save makes a native workspace read from the repository.
+ */
+export function useConfigureSource(workspaceId: string) {
+  const client = useApiClient()
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (body: SourceSettingsBody) =>
+      request<WorkspaceSourceDto>(
+        client.PUT('/api/workspaces/{id}/source', {
+          params: { path: { id: workspaceId } },
+          body,
+        }),
+      ),
+    onSuccess: async (source) => {
+      queryClient.setQueryData(queryKeys.workspaceSource(workspaceId), source)
+      // The workspace's origin, and with it its menu, its read-only state and
+      // the routes it may open, may have changed. Awaited, so a navigation the
+      // caller makes next is decided by the workspace as it now is.
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: queryKeys.workspaces(), refetchType: 'all' }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.workspaceList() }),
+      ])
     },
   })
 }

@@ -130,6 +130,7 @@ describe('configureWorkspaceSource', () => {
           paths: ['docs/guides', 'docs/adr'],
           history: 'full',
           commitMessages: 'subject',
+          manifestEntry: null,
           credentialSecret: 'sources/handbook',
           outsideLinks: 'forge',
           viewTemplate: null,
@@ -138,6 +139,21 @@ describe('configureWorkspaceSource', () => {
       }),
     ])
     expect((await uow.repos.workspaceSources.find(WORKSPACE))?.credential).toEqual(credential)
+  })
+
+  it('stores the manifest entry it reads, and needs no collections of its own', async () => {
+    const result = await configureWorkspaceSource(
+      deps,
+      command({ collections: [], manifestEntry: 'handbook-public' }),
+    )
+    if (result.kind !== 'configured') throw new Error(`unexpected result: ${result.kind}`)
+
+    expect(result.view.source).toMatchObject({ manifestEntry: 'handbook-public', collections: [] })
+    expect(await uow.repos.collections.listByWorkspace(WORKSPACE)).toEqual([])
+    expect(uow.auditEvents.at(-1)?.metadata).toMatchObject({
+      manifestEntry: 'handbook-public',
+      paths: [],
+    })
   })
 
   it('keeps a collection by its slug: renames it, and creates only new slugs', async () => {
@@ -275,7 +291,7 @@ describe('configureWorkspaceSource', () => {
     ['branch', { branch: '--upload-pack=x' }, 'not a valid branch'],
     ['history', { history: 'since' as never }, 'history setting'],
     ['commitMessages', { commitMessages: 'body' as never }, 'commit message setting'],
-    ['collections', { collections: [] }, 'at least one'],
+    ['manifestEntry', { manifestEntry: 'Hand Book' }, 'not a workspace slug'],
     [
       'collections',
       {

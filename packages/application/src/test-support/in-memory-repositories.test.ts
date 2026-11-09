@@ -446,6 +446,7 @@ describe('createInMemoryUnitOfWork: workspace sources', () => {
         collections: [],
         history: 'full',
         commitMessages: 'subject',
+        manifestEntry: null,
         credential: null,
         outsideLinks: 'forge',
         viewTemplate: null,

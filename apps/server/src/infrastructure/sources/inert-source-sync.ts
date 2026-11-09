@@ -10,7 +10,12 @@ import type { SourceSyncPorts } from '../../dependencies.ts'
 export function inertSourceSync(contentStore: ContentStore): SourceSyncPorts {
   return {
     contentStore,
-    sources: { forWorkspace: async () => null },
+    sources: {
+      forWorkspace: async () => null,
+      withDraft: async () => {
+        throw new Error('A process that never syncs opens no source.')
+      },
+    },
     lock: {
       withLock: async (_workspaceId, work) => ({ kind: 'ran', value: await work() }),
       isHeld: async () => false,
