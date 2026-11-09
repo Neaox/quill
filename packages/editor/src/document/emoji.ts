@@ -132,7 +132,23 @@ function rescanChanged(
  * The renderer's markup, as DOM: an animation inside the same `picture` the
  * reader gets (`emojiElement`), so its still shows under reduced motion here too.
  */
-function toDom({ tagName, attributes, text, animation }: EmojiMarkup): HTMLElement {
+const SVG_NAMESPACE = 'http://www.w3.org/2000/svg'
+
+/** A monochrome emoji's `svg` and its `use` of the glyph, in SVG's namespace (ADR-038, amended). */
+function glyphDom(
+  attributes: Readonly<Record<string, string>>,
+  glyph: NonNullable<EmojiMarkup['glyph']>,
+): Element {
+  const svg = document.createElementNS(SVG_NAMESPACE, 'svg')
+  for (const [name, value] of Object.entries(attributes)) svg.setAttribute(name, value)
+  const use = document.createElementNS(SVG_NAMESPACE, 'use')
+  for (const [name, value] of Object.entries(glyph)) use.setAttribute(name, value)
+  svg.append(use)
+  return svg
+}
+
+function toDom({ tagName, attributes, text, animation, glyph }: EmojiMarkup): Element {
+  if (glyph !== undefined) return glyphDom(attributes, glyph)
   const dom = document.createElement(tagName)
   for (const [name, value] of Object.entries(attributes)) dom.setAttribute(name, value)
   dom.textContent = text

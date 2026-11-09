@@ -572,7 +572,9 @@ export { recordMoveRedirect, recordRenameRedirect } from './record-public-redire
 
 export type {
   EmojiImageDependencies,
+  ReadMonochromeGlyph,
   ServedEmojiImage,
+  UploadEmojiImageDependencies,
   UploadEmojiImageCommand,
   UploadEmojiImageResult,
 } from './emoji.ts'

@@ -2,6 +2,8 @@ import { describeEmoji, emojiLookup } from '@quill/markdown'
 import type { CustomEmoji } from '@quill/markdown'
 import type { NamedStandardEmoji } from '@quill/markdown/emoji-shortcodes'
 
+import { emojiPictureAddress } from './emoji-picture.tsx'
+
 /**
  * Every emoji an author can choose from while writing, as one list (ADR-038).
  *
@@ -32,7 +34,14 @@ function customEntries(custom: ReadonlyMap<string, CustomEmoji>): readonly Emoji
   return [...custom.keys()].flatMap((name) => {
     const emoji = lookup(name)
     return emoji?.kind === 'custom'
-      ? [{ name, names: [name], description: describeEmoji(emoji), image: emoji.image.src }]
+      ? [
+          {
+            name,
+            names: [name],
+            description: describeEmoji(emoji),
+            image: emojiPictureAddress(emoji.image.src, emoji.image.monochrome),
+          },
+        ]
       : []
   })
 }

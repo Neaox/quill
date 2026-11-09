@@ -2,6 +2,7 @@ import { useCallback, useEffect, useId, useRef, useState } from 'react'
 import { tv } from 'tailwind-variants'
 
 import { runAt, useMenuNavigation } from '../menu/use-menu-navigation.ts'
+import { EmojiPicture } from '../emoji/emoji-picture.tsx'
 import type { SlashPickerOption, SlashPickerSource } from './slash-item.ts'
 import type { MenuPlacement } from './slash-position.ts'
 import {
@@ -197,7 +198,7 @@ export function SlashPickerPanel({ state, placement, className }: SlashPickerPan
               )}
               {option.image === undefined ? null : (
                 <span className={parts.glyph}>
-                  <img src={option.image} alt="" className={parts.image} />
+                  <EmojiPicture image={option.image} className={parts.image} />
                 </span>
               )}
               <span className={classes.text}>

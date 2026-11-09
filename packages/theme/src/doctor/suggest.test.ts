@@ -9,6 +9,18 @@ import { brandDistance } from './feel.ts'
 import { runThemeDoctor } from './run.ts'
 import { applyThemeChange, suggestFixes, type Suggestion } from './suggest.ts'
 
+/**
+ * Grid as it stood before lockstay's dark status fills were pinned: its one
+ * dark wash a pinned teal, which is what these suggestions are measured on.
+ */
+const tealWash: ThemeDocument = {
+  ...grid,
+  overrides: {
+    ...grid.overrides,
+    dark: { '--palette-accent-subtle': 'oklch(30% 0.05 190)' },
+  },
+}
+
 /** A tenant who drags the ink almost onto the paper. */
 const unreadable: ThemeDocument = {
   ...instrument,
@@ -48,7 +60,7 @@ const expectVerified = (theme: ThemeDocument, ruleId: string, suggestion: Sugges
 
 describe('suggestFixes', () => {
   it('lifts the dark raised surface until it reads as raised', () => {
-    const [lift, ...rest] = suggestFixes(grid, 'bands/surface-separation')
+    const [lift, ...rest] = suggestFixes(tealWash, 'bands/surface-separation')
 
     expect(lift?.change).toEqual({
       kind: 'neutral-step',
@@ -58,11 +70,11 @@ describe('suggestFixes', () => {
       to: 24.5,
     })
     expect(rest).toEqual([])
-    if (lift !== undefined) expectVerified(grid, 'bands/surface-separation', lift)
+    if (lift !== undefined) expectVerified(tealWash, 'bands/surface-separation', lift)
   })
 
   it('quietens a dark teal wash only as far as the budget asks, and never to the generated grey', () => {
-    const suggestions = suggestFixes(grid, 'chroma/area-budget')
+    const suggestions = suggestFixes(tealWash, 'chroma/area-budget')
 
     expect(suggestions.map((suggestion) => suggestion.change)).toEqual([
       {
@@ -75,7 +87,7 @@ describe('suggestFixes', () => {
         to: 0.045,
       },
     ])
-    for (const suggestion of suggestions) expectVerified(grid, 'chroma/area-budget', suggestion)
+    for (const suggestion of suggestions) expectVerified(tealWash, 'chroma/area-budget', suggestion)
   })
 
   it('offers nothing when the only fixes would grey out the brand or turn its hue', () => {
@@ -140,8 +152,8 @@ describe('suggestFixes', () => {
   })
 
   it('moves only the dark greys for a problem that is only dark', () => {
-    const light = buildPalettes(grid).light.colours
-    for (const suggestion of suggestFixes(grid, 'chroma/area-budget')) {
+    const light = buildPalettes(tealWash).light.colours
+    for (const suggestion of suggestFixes(tealWash, 'chroma/area-budget')) {
       const after = buildPalettes(suggestion.document).light.colours
       expect([after.paper, after.surface, after.raised]).toEqual([
         light.paper,
@@ -220,8 +232,8 @@ describe('suggestFixes', () => {
   })
 
   it('stops at the limit, and settles for nothing once the search budget is spent', () => {
-    expect(suggestFixes(grid, 'chroma/area-budget', {}, { limit: 1 })).toHaveLength(1)
-    expect(suggestFixes(grid, 'bands/surface-separation', {}, { budget: 0 })).toEqual([])
+    expect(suggestFixes(tealWash, 'chroma/area-budget', {}, { limit: 1 })).toHaveLength(1)
+    expect(suggestFixes(tealWash, 'bands/surface-separation', {}, { budget: 0 })).toEqual([])
   })
 
   it('refuses a fix that would start another rule warning', () => {
@@ -278,7 +290,7 @@ describe('suggestFixes', () => {
 
   it('suggests nothing for a rule that holds, a rule it does not know, or one no lever reaches', () => {
     expect(suggestFixes(instrument, 'legibility/text-contrast')).toEqual([])
-    expect(suggestFixes(grid, 'no/such-rule')).toEqual([])
+    expect(suggestFixes(tealWash, 'no/such-rule')).toEqual([])
     expect(suggestFixes(instrument, 'proportion/accent-coverage', { accentCoverage: 0.5 })).toEqual(
       [],
     )
@@ -316,15 +328,18 @@ describe('applyThemeChange', () => {
   })
 
   it('sets a neutral step without disturbing the others', () => {
-    const changed = applyThemeChange(grid, {
+    const changed = applyThemeChange(tealWash, {
       kind: 'neutral-step',
       scheme: 'dark',
       role: 'raised',
       from: 23,
       to: 24.5,
     })
-    expect(changed.seeds.tone.steps?.dark).toEqual({ ...grid.seeds.tone.steps?.dark, raised: 24.5 })
-    expect(changed.seeds.tone.steps?.light).toEqual(grid.seeds.tone.steps?.light)
+    expect(changed.seeds.tone.steps?.dark).toEqual({
+      ...tealWash.seeds.tone.steps?.dark,
+      raised: 24.5,
+    })
+    expect(changed.seeds.tone.steps?.light).toEqual(tealWash.seeds.tone.steps?.light)
     expect(
       applyThemeChange(instrument, {
         kind: 'neutral-step',
@@ -337,13 +352,13 @@ describe('applyThemeChange', () => {
   })
 
   it('removes an override and tidies away scopes it empties', () => {
-    const removed = applyThemeChange(grid, {
+    const removed = applyThemeChange(tealWash, {
       kind: 'remove-override',
       token: '--palette-accent-subtle',
       role: 'accentSubtle',
       scopes: ['light', 'dark'],
     })
-    expect(removed.overrides).toEqual({ shared: grid.overrides?.shared })
+    expect(removed.overrides).toEqual({ shared: tealWash.overrides?.shared })
 
     const none = applyThemeChange(unreadable, {
       kind: 'remove-override',
@@ -355,7 +370,7 @@ describe('applyThemeChange', () => {
   })
 
   it('sets an override’s lightness, caps its chroma, and leaves what it cannot read', () => {
-    const lighter = applyThemeChange(grid, {
+    const lighter = applyThemeChange(tealWash, {
       kind: 'override-colour',
       token: '--palette-accent-subtle',
       role: 'accentSubtle',
@@ -366,7 +381,7 @@ describe('applyThemeChange', () => {
     })
     expect(lighter.overrides?.light).toEqual({ '--palette-accent-subtle': 'oklch(94% 0.03 190)' })
 
-    const capped = applyThemeChange(grid, {
+    const capped = applyThemeChange(tealWash, {
       kind: 'override-colour',
       token: '--palette-accent-subtle',
       role: 'accentSubtle',
@@ -377,7 +392,7 @@ describe('applyThemeChange', () => {
     })
     expect(capped.overrides?.light).toEqual({ '--palette-accent-subtle': 'oklch(96% 0.03 190)' })
     expect(capped.overrides?.dark).toEqual({ '--palette-accent-subtle': 'oklch(30% 0.04 190)' })
-    expect(capped.overrides?.shared).toEqual(grid.overrides?.shared)
+    expect(capped.overrides?.shared).toEqual(tealWash.overrides?.shared)
 
     const opaque: ThemeDocument = {
       ...instrument,
@@ -397,19 +412,19 @@ describe('applyThemeChange', () => {
   })
 
   it('moves one scheme’s ground together, inside its bands, and combines changes in order', () => {
-    const shifted = applyThemeChange(grid, {
+    const shifted = applyThemeChange(tealWash, {
       kind: 'ground-shift',
       scheme: 'dark',
       from: { paper: 19, surface: 21.5, raised: 23 },
       by: 1.5,
     })
     expect(shifted.seeds.tone.steps?.dark).toEqual({
-      ...grid.seeds.tone.steps?.dark,
+      ...tealWash.seeds.tone.steps?.dark,
       paper: 20.5,
       surface: 23,
       raised: 24.5,
     })
-    expect(shifted.seeds.tone.steps?.light).toEqual(grid.seeds.tone.steps?.light)
+    expect(shifted.seeds.tone.steps?.light).toEqual(tealWash.seeds.tone.steps?.light)
 
     const both = applyThemeChange(instrument, {
       kind: 'combined',

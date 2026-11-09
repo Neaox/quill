@@ -76,6 +76,8 @@ export const ThemeSummarySchema = Type.Object(
           description: Type.Optional(Type.String()),
           width: Type.Integer({ minimum: 1 }),
           height: Type.Integer({ minimum: 1 }),
+          /** A line icon drawn in the colour of the text around it (ADR-038, amended). */
+          monochrome: Type.Optional(Type.Literal(true)),
         },
         { additionalProperties: false },
       ),

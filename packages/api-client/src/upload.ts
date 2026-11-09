@@ -89,8 +89,11 @@ export type EmojiImage = components['schemas']['EmojiImage']
 export async function uploadEmojiImage(
   client: ApiClient,
   file: Blob,
+  options: { readonly monochrome?: boolean } = {},
 ): Promise<{ data?: EmojiImage; error?: unknown; response: Response }> {
   return client.POST('/api/settings/organisation/emoji-images', {
+    // A line icon, drawn in the colour of the text around it (ADR-038, amended).
+    ...(options.monochrome === true ? { params: { query: { monochrome: 'true' } } } : {}),
     body: { file: '' },
     bodySerializer: () => multipartFile(file),
   })
