@@ -24,7 +24,7 @@ Facts of the code that shape the answer:
 - **The reading page is plain functions.** The public site's templates (`apps/server/src/public-site/templates`), its stylesheet and the theme stylesheet (`apps/server/src/theme/theme-stylesheet.ts`) are plain TypeScript over `@quill/design-css`, with no React. The reader preview already renders through the same page template.
 - **The asset pipeline needs no native code.** Sniffing, the allowlist, the size cap and metadata stripping (`attachments.ts`, `image-metadata.ts`) are TypeScript. `sharp` is used only by the server's image variants and link-preview transcoding (ADR-047, ADR-042).
 - **Rendering is CPU-bound, and parsing is most of it.** Measured on 10 November 2026 on the development machine (Ryzen 9 5900X, Node 24.22, rendering from TypeScript source through `createDocumentFormat`) over lockstay's `docs/`: 486 Markdown files, 18.2 MB, median 14 KB, 95th percentile 150 KB, largest 870 KB.
-  - One thread, cold: 30 to 56 seconds. With the JIT warm: 19 seconds, of which parsing alone is 19 seconds. That is about 1 MB of Markdown a second.
+  - One thread, cold: 30 to 56 seconds. With the JIT warm: 19 seconds. Parsing alone, with no rendering, also took 19 seconds, so nearly all of the cost is parsing. That is about 1 MB of Markdown a second.
   - Per file: median 44 ms, 95th percentile 454 ms, largest 2.0 seconds.
   - Importing the pipeline from TypeScript source: 2.7 seconds. Bundled with rolldown it is one 1.2 MB file, 368 KB gzipped.
   - A pool of 4 worker threads: 7.5 seconds wall, about 1.1 GB resident in total, up to 230 MB heap per worker. A pool of 8: 7.7 seconds and twice the memory, because the largest files and the import set the floor.
