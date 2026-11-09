@@ -473,6 +473,18 @@ re-plans the whole tree in the next sync. A manifest at the head that does not r
 with `invalid-manifest` and the line; the workspace stays as it was. Documents are ordered by their
 front matter `order`, then by the collection's rule, as sort keys the tree and the public site read.
 
+**Folders are documents.** Inside a collection's directory, each folder that holds a document has a
+page of its own, the parent of the folder's files and folders: its `index.md`, or else its
+`README.md`. A folder with neither gets a page the job writes, titled after the folder, whose body
+is a child pages block; it is stored at `<folder>/.quill/folder.md`, a path no repository file can
+take. The collection's own directory is the collection, so its README is a page at the top, and
+goes first there unless its front matter's `order` says otherwise. The folder's page keeps its id while the folder has one: a README added to a folder takes the
+written page's id, a README removed from a folder that still holds pages leaves its id with the
+written page, and a renamed folder's written page follows the files renamed with it. A folder's page
+is ordered among its siblings by the folder's name. A link to `./concepts/tenancy/`,
+`./concepts/tenancy` or `./concepts/tenancy/README.md` opens the folder's page. A workspace synced
+before folders were documents is placed again on its next sync, keeping every document's id.
+
 **Keeping it fresh.** Three things ask for a sync, and all write the same event:
 
 - **A push webhook.** Configure the source with `webhookSecret`, the *name* of a secret in the
