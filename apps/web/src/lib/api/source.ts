@@ -5,7 +5,12 @@ import type { ApiClient } from '@quill/api-client'
 import { useApiClient } from './client-context.tsx'
 import { request } from './http.ts'
 import { queryKeys } from './query-keys.ts'
-import type { SourceFreshnessDto, WorkspaceSourceDto } from './types.ts'
+import type {
+  SourceFreshnessDto,
+  SourcePreviewResponseDto,
+  SourceSettingsBody,
+  WorkspaceSourceDto,
+} from './types.ts'
 
 /**
  * A sourced workspace's repository (ADR-061): its settings and sync state for
@@ -54,6 +59,55 @@ export function useSyncSourceNow(workspaceId: string) {
       ),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: queryKeys.workspaceSource(workspaceId) })
+    },
+  })
+}
+
+/** What a preview reads: where the source is, and how its files are placed. */
+export type SourceDraftBody = Pick<
+  SourceSettingsBody,
+  'remote' | 'branch' | 'credential' | 'collections' | 'manifestEntry'
+>
+
+/**
+ * A dry run of a source's settings: the server fetches the branch's head as a
+ * sync would and answers what saving would place where, writing nothing. A
+ * repository that does not answer is an answer (`outcome: 'unreadable'`);
+ * settings it refuses are an `ApiError` naming the field.
+ */
+export function usePreviewSource(workspaceId: string) {
+  const client = useApiClient()
+  return useMutation({
+    mutationFn: (body: SourceDraftBody) =>
+      request<SourcePreviewResponseDto>(
+        client.POST('/api/workspaces/{id}/source/preview', {
+          params: { path: { id: workspaceId } },
+          body,
+        }),
+      ),
+  })
+}
+
+/**
+ * Saves a source's settings, which asks for a sync in the same step. The
+ * first save makes a native workspace read from the repository.
+ */
+export function useConfigureSource(workspaceId: string) {
+  const client = useApiClient()
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (body: SourceSettingsBody) =>
+      request<WorkspaceSourceDto>(
+        client.PUT('/api/workspaces/{id}/source', {
+          params: { path: { id: workspaceId } },
+          body,
+        }),
+      ),
+    onSuccess: (source) => {
+      queryClient.setQueryData(queryKeys.workspaceSource(workspaceId), source)
+      // The workspace's origin, and with it its menu and its read-only state, may have changed.
+      void queryClient.invalidateQueries({ queryKey: queryKeys.workspaces() })
+      void queryClient.invalidateQueries({ queryKey: queryKeys.workspaceList() })
     },
   })
 }
