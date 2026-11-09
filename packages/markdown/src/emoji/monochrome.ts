@@ -121,7 +121,7 @@ function canonicalColour(colour: string): string {
   const short = SHORT_HEX.exec(colour)
   return short === null
     ? colour
-    : `#${[...short[0].slice(1)].map((digit) => digit + digit).join('')}`
+    : `#${short[0].slice(1).replaceAll(/./gu, (digit) => digit + digit)}`
 }
 
 const NAMED: Readonly<Record<string, string>> = { black: '#000000', white: '#ffffff' }
