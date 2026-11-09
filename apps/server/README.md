@@ -486,6 +486,14 @@ front matter `order`, then by the collection's rule, as sort keys the tree and t
 - **The reconciliation.** Every source is asked to sync every `SOURCE_RECONCILE_INTERVAL_MS` (a
   day by default), for missed deliveries and forges with no webhook.
 - **"Sync now"**, as above.
+- **The check on read.** Opening a sourced document (`GET /api/documents/:id/source-freshness`)
+  compares the remote's head with what was synced, at most once a minute per source in each
+  process and off the request, and asks for a sync when the remote is ahead. The answer says the
+  document's revision now and whether a sync is under way, which is what the reader's "Updating
+  from the source repository" toast and its Reload follow.
+
+`GET /api/workspaces/:id/source` also says whether a sync is running now (`syncing`, from the
+advisory lock) and lists the manifest keys this release does not read (`sync.unknownKeys`).
 
 When a sync stops, the workspace's administrators (everyone `manage` reaches through a grant, and
 the instance administrator who configured the source) get one in-app notification per distinct

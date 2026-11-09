@@ -9314,6 +9314,7 @@
                       "name",
                       "slug",
                       "createdAt",
+                      "origin",
                       "unit"
                     ],
                     "properties": {
@@ -9332,6 +9333,30 @@
                       "createdAt": {
                         "format": "date-time",
                         "type": "string"
+                      },
+                      "origin": {
+                        "type": "object",
+                        "required": [
+                          "kind"
+                        ],
+                        "properties": {
+                          "kind": {
+                            "anyOf": [
+                              {
+                                "type": "string",
+                                "enum": [
+                                  "native"
+                                ]
+                              },
+                              {
+                                "type": "string",
+                                "enum": [
+                                  "sourced"
+                                ]
+                              }
+                            ]
+                          }
+                        }
                       },
                       "unit": {
                         "type": "object",
@@ -9405,7 +9430,8 @@
                     "unitId",
                     "name",
                     "slug",
-                    "createdAt"
+                    "createdAt",
+                    "origin"
                   ],
                   "properties": {
                     "id": {
@@ -9423,6 +9449,30 @@
                     "createdAt": {
                       "format": "date-time",
                       "type": "string"
+                    },
+                    "origin": {
+                      "type": "object",
+                      "required": [
+                        "kind"
+                      ],
+                      "properties": {
+                        "kind": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "enum": [
+                                "native"
+                              ]
+                            },
+                            {
+                              "type": "string",
+                              "enum": [
+                                "sourced"
+                              ]
+                            }
+                          ]
+                        }
+                      }
                     }
                   }
                 }
@@ -9456,7 +9506,9 @@
                     "unitId",
                     "name",
                     "slug",
-                    "createdAt"
+                    "createdAt",
+                    "origin",
+                    "permissions"
                   ],
                   "properties": {
                     "id": {
@@ -9474,6 +9526,61 @@
                     "createdAt": {
                       "format": "date-time",
                       "type": "string"
+                    },
+                    "origin": {
+                      "type": "object",
+                      "required": [
+                        "kind"
+                      ],
+                      "properties": {
+                        "kind": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "enum": [
+                                "native"
+                              ]
+                            },
+                            {
+                              "type": "string",
+                              "enum": [
+                                "sourced"
+                              ]
+                            }
+                          ]
+                        }
+                      }
+                    },
+                    "permissions": {
+                      "type": "object",
+                      "required": [
+                        "view",
+                        "comment",
+                        "edit",
+                        "publish",
+                        "arrange",
+                        "manage"
+                      ],
+                      "properties": {
+                        "view": {
+                          "type": "boolean"
+                        },
+                        "comment": {
+                          "type": "boolean"
+                        },
+                        "edit": {
+                          "type": "boolean"
+                        },
+                        "publish": {
+                          "type": "boolean"
+                        },
+                        "arrange": {
+                          "type": "boolean"
+                        },
+                        "manage": {
+                          "type": "boolean"
+                        }
+                      }
                     }
                   }
                 }
@@ -9529,7 +9636,8 @@
                     "unitId",
                     "name",
                     "slug",
-                    "createdAt"
+                    "createdAt",
+                    "origin"
                   ],
                   "properties": {
                     "id": {
@@ -9547,6 +9655,30 @@
                     "createdAt": {
                       "format": "date-time",
                       "type": "string"
+                    },
+                    "origin": {
+                      "type": "object",
+                      "required": [
+                        "kind"
+                      ],
+                      "properties": {
+                        "kind": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "enum": [
+                                "native"
+                              ]
+                            },
+                            {
+                              "type": "string",
+                              "enum": [
+                                "sourced"
+                              ]
+                            }
+                          ]
+                        }
+                      }
                     }
                   }
                 }
@@ -10156,7 +10288,8 @@
                     "viewTemplate",
                     "webhookSecret",
                     "updatedAt",
-                    "sync"
+                    "sync",
+                    "syncing"
                   ],
                   "properties": {
                     "remote": {
@@ -10260,7 +10393,8 @@
                             "lastAttemptAt",
                             "failure",
                             "refused",
-                            "brokenLinks"
+                            "brokenLinks",
+                            "unknownKeys"
                           ],
                           "properties": {
                             "lastSyncedRevision": {
@@ -10371,6 +10505,31 @@
                                   "type": "null"
                                 }
                               ]
+                            },
+                            "unknownKeys": {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "required": [
+                                  "key",
+                                  "line"
+                                ],
+                                "properties": {
+                                  "key": {
+                                    "type": "string"
+                                  },
+                                  "line": {
+                                    "anyOf": [
+                                      {
+                                        "type": "integer"
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ]
+                                  }
+                                }
+                              }
                             }
                           }
                         },
@@ -10378,6 +10537,9 @@
                           "type": "null"
                         }
                       ]
+                    },
+                    "syncing": {
+                      "type": "boolean"
                     }
                   }
                 }
@@ -10574,7 +10736,8 @@
                     "viewTemplate",
                     "webhookSecret",
                     "updatedAt",
-                    "sync"
+                    "sync",
+                    "syncing"
                   ],
                   "properties": {
                     "remote": {
@@ -10678,7 +10841,8 @@
                             "lastAttemptAt",
                             "failure",
                             "refused",
-                            "brokenLinks"
+                            "brokenLinks",
+                            "unknownKeys"
                           ],
                           "properties": {
                             "lastSyncedRevision": {
@@ -10789,6 +10953,31 @@
                                   "type": "null"
                                 }
                               ]
+                            },
+                            "unknownKeys": {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "required": [
+                                  "key",
+                                  "line"
+                                ],
+                                "properties": {
+                                  "key": {
+                                    "type": "string"
+                                  },
+                                  "line": {
+                                    "anyOf": [
+                                      {
+                                        "type": "integer"
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ]
+                                  }
+                                }
+                              }
                             }
                           }
                         },
@@ -10796,6 +10985,9 @@
                           "type": "null"
                         }
                       ]
+                    },
+                    "syncing": {
+                      "type": "boolean"
                     }
                   }
                 }
@@ -10906,6 +11098,55 @@
                           ]
                         }
                       ]
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/documents/{id}/source-freshness": {
+      "get": {
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "sourced",
+                    "revision",
+                    "syncing"
+                  ],
+                  "properties": {
+                    "sourced": {
+                      "type": "boolean"
+                    },
+                    "revision": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "syncing": {
+                      "type": "boolean"
                     }
                   }
                 }

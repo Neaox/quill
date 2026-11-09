@@ -21,7 +21,13 @@ import {
   type TreeSection,
 } from '@quill/ui'
 
-import { listKey, useMe, useNavigationTree, type NavigationTree } from '../../lib/api/index.ts'
+import {
+  listKey,
+  useMe,
+  useNavigationTree,
+  useWorkspace,
+  type NavigationTree,
+} from '../../lib/api/index.ts'
 import {
   documentLink,
   documentReference,
@@ -62,6 +68,8 @@ export const workspaceNavigationStyles = tv({
       'focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-focus-ring',
     ],
     notice: 'px-2 py-2',
+    /** In place of "New" in a workspace read from a repository, where nothing is written here. */
+    readOnlyRow: 'flex min-h-8 items-center px-2 text-xs text-muted',
   },
 })
 
@@ -142,10 +150,22 @@ function toSections(
   tree: NavigationTree | undefined,
   openNewDocument: (preset: NewDocumentPreset) => void,
   openCollectionDialog: (dialog: CollectionDialog) => void,
+  readOnly: boolean,
 ): readonly TreeSection[] {
   if (tree === undefined) return []
   return tree.collections.map((collection) => {
     const top = tree.lists.get(listKey.collection(collection.id))
+    const section = {
+      id: collection.id,
+      label: collection.name,
+      count: collection.total,
+      nodes: toTreeNodes(workspaceSlug, tree, top?.ids ?? []),
+      nodeCount: top?.total ?? 0,
+      nodesOffset: top?.offset ?? 0,
+    }
+    // A workspace read from a repository is arranged by its manifest: nothing
+    // here adds, renames or deletes (ADR-061).
+    if (readOnly) return section
     return {
       id: collection.id,
       label: collection.name,
@@ -258,6 +278,10 @@ export function WorkspaceTree({
   const [preset, setPreset] = useState<NewDocumentPreset | undefined>(undefined)
   const [collectionDialog, setCollectionDialog] = useState<CollectionDialog | undefined>(undefined)
   const newDocument = useOnDemand(newDocumentDialog, preset !== undefined)
+  // Read from a repository (ADR-061): its documents are written there, so
+  // every control that would create, rename, move or delete here is left out
+  // rather than offered and refused.
+  const readOnly = useWorkspace(workspaceId).data?.origin?.kind === 'sourced'
   const collectionForms = useOnDemand(collectionDialogs, collectionDialog !== undefined)
   const styles = workspaceNavigationStyles()
   const headingId = useId()
@@ -266,7 +290,7 @@ export function WorkspaceTree({
   // `c` "new document" shortcut, so it fires from wherever focus is on the
   // page rather than only while the tree itself has it.
   useEffect(() => {
-    if (workspaceId === undefined) return
+    if (workspaceId === undefined || readOnly) return
     function onKeyDown(event: KeyboardEvent) {
       if (event.key !== 'c' || event.ctrlKey || event.metaKey || event.altKey) return
       if (isTypingTarget(event.target)) return
@@ -277,7 +301,7 @@ export function WorkspaceTree({
     return () => {
       window.removeEventListener('keydown', onKeyDown)
     }
-  }, [workspaceId])
+  }, [workspaceId, readOnly])
 
   // Stable across renders, so the tree's memoised rows are not redrawn every
   // time the page around the sidebar settles a query.
@@ -285,6 +309,7 @@ export function WorkspaceTree({
   const { canArrange, openMove, openDelete } = documentActions
   const nodeActions = useCallback(
     (node: TreeNode): readonly TreeNodeAction[] => {
+      if (readOnly) return []
       const actions: TreeNodeAction[] = [
         {
           label: 'New child document',
@@ -305,15 +330,15 @@ export function WorkspaceTree({
       }
       return actions
     },
-    [treeData, canArrange, openMove, openDelete, currentDocumentId],
+    [treeData, canArrange, openMove, openDelete, currentDocumentId, readOnly],
   )
 
   // Built once per tree response, not per render: the walk visits every
   // document in the workspace — tens of thousands in a large one — while the
   // tree itself draws only what is open (`@quill/ui`'s `Tree`).
   const sections: readonly TreeSection[] = useMemo(
-    () => toSections(workspaceSlug, tree.data, setPreset, setCollectionDialog),
-    [workspaceSlug, tree.data],
+    () => toSections(workspaceSlug, tree.data, setPreset, setCollectionDialog, readOnly),
+    [workspaceSlug, tree.data, readOnly],
   )
   return (
     // A region named by its own heading, so the column's chrome — the
@@ -332,17 +357,19 @@ export function WorkspaceTree({
               activeWorkspaceName={workspaceName ?? 'Workspace'}
             />
             <div className={styles.controls()}>
-              <button
-                type="button"
-                className={styles.add()}
-                aria-label="New collection"
-                title="New collection"
-                onClick={() => {
-                  setCollectionDialog({ kind: 'create' })
-                }}
-              >
-                <PlusIcon />
-              </button>
+              {readOnly ? undefined : (
+                <button
+                  type="button"
+                  className={styles.add()}
+                  aria-label="New collection"
+                  title="New collection"
+                  onClick={() => {
+                    setCollectionDialog({ kind: 'create' })
+                  }}
+                >
+                  <PlusIcon />
+                </button>
+              )}
               <WorkspaceOverflow
                 workspaceSlug={workspaceSlug}
                 workspaceName={workspaceName ?? 'this workspace'}
@@ -350,26 +377,30 @@ export function WorkspaceTree({
             </div>
           </div>
 
-          <TooltipProvider>
-            <Tooltip content="New document (press c)">
-              <button
-                type="button"
-                className={styles.newRow()}
-                onClick={() => {
-                  setPreset({})
-                }}
-              >
-                <PlusIcon className="text-muted" />
-                {/*
+          {readOnly ? (
+            <p className={styles.readOnlyRow()}>Read from a repository: edit documents there.</p>
+          ) : (
+            <TooltipProvider>
+              <Tooltip content="New document (press c)">
+                <button
+                  type="button"
+                  className={styles.newRow()}
+                  onClick={() => {
+                    setPreset({})
+                  }}
+                >
+                  <PlusIcon className="text-muted" />
+                  {/*
                   "New", not "New document": the workspace home's header
                   carries a "New document" button of its own, and two
                   controls with one name is a worse answer than a short one
                   with a tooltip that says the rest.
                 */}
-                New
-              </button>
-            </Tooltip>
-          </TooltipProvider>
+                  New
+                </button>
+              </Tooltip>
+            </TooltipProvider>
+          )}
 
           {/* Only while a dialog's chunk is still on its way: normally never. */}
           {(preset !== undefined && newDocument === undefined) ||
@@ -477,21 +508,29 @@ interface WorkspaceOverflowProps {
  * collection: where something that is about *this workspace* rather than
  * about a document in it is reached.
  *
- * Today that is one entry, its settings (ADR-028's amendment: layout is the
- * workspace's). It is rendered only for somebody who can open that page, so
+ * Today that is its settings (ADR-028's amendment: layout is the
+ * workspace's) and, for a workspace read from a repository, the repository's
+ * own page (ADR-061). It is rendered only for somebody who can open that page, so
  * the menu is absent rather than offering an entry that answers "not found" —
  * a menu with nothing in it is not a menu (`docs/design/feedback.md`).
  *
- * TODO(M3): the check is instance administration, which is narrower than the
- * rule. Changing a workspace's layout needs `manage` on it, and no route
- * answers what this person may do with a workspace yet — see the route's own
- * note in `routes/_authenticated/w/$workspaceSlug/settings.tsx`.
+ * The repository's page is offered to whoever manages the workspace, from
+ * the permissions `GET /api/workspaces/:id` now carries. The settings entry
+ * is still instance administration, as its route is — see the route's own
+ * note in `routes/_authenticated/w/$workspaceSlug/settings.tsx`; widening it
+ * to `manage` is that route's change to make.
  */
 function WorkspaceOverflow({ workspaceSlug, workspaceName }: WorkspaceOverflowProps) {
   const me = useMe()
   const navigate = useNavigate()
+  const workspace = useWorkspace(workspaceSlug).data
+  const sourced = workspace?.origin?.kind === 'sourced'
+  const instanceAdmin = me.data?.isInstanceAdmin === true
+  // The repository's page is for whoever manages the workspace, which the
+  // workspace's own permissions say; its settings are still the instance's.
+  const repository = sourced && (instanceAdmin || workspace?.permissions?.manage === true)
 
-  if (me.data?.isInstanceAdmin !== true) return undefined
+  if (!instanceAdmin && !repository) return undefined
 
   return (
     <Menu
@@ -507,12 +546,26 @@ function WorkspaceOverflow({ workspaceSlug, workspaceName }: WorkspaceOverflowPr
       label={`the ${workspaceName} workspace`}
       align="end"
       items={[
-        {
-          label: 'Workspace settings',
-          onSelect: () => {
-            void navigate({ to: '/w/$workspaceSlug/settings', params: { workspaceSlug } })
-          },
-        },
+        ...(instanceAdmin
+          ? [
+              {
+                label: 'Workspace settings',
+                onSelect: () => {
+                  void navigate({ to: '/w/$workspaceSlug/settings', params: { workspaceSlug } })
+                },
+              },
+            ]
+          : []),
+        ...(repository
+          ? [
+              {
+                label: 'Repository',
+                onSelect: () => {
+                  void navigate({ to: '/w/$workspaceSlug/source', params: { workspaceSlug } })
+                },
+              },
+            ]
+          : []),
       ]}
     />
   )

@@ -62,6 +62,8 @@ export interface SourceSyncLock {
     workspaceId: WorkspaceId,
     work: () => Promise<T>,
   ): Promise<{ readonly kind: 'ran'; readonly value: T } | { readonly kind: 'busy' }>
+  /** Whether a sync of the source is running now, in any process: what an admin page shows as syncing. */
+  isHeld(workspaceId: WorkspaceId): Promise<boolean>
 }
 
 // ---------------------------------------------------------------------------

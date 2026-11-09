@@ -80,6 +80,13 @@ export {
 } from './home.ts'
 export { useMarkNotificationsRead, useNotifications } from './notifications.ts'
 export {
+  SOURCE_FRESHNESS_REFRESH_MS,
+  useSourceFreshness,
+  useSyncSourceNow,
+  useWorkspaceSource,
+  workspaceSourceQueryOptions,
+} from './source.ts'
+export {
   useAttention,
   useDecideReview,
   useRequestReview,
@@ -246,6 +253,8 @@ export type {
   ReviewerCandidates,
   AttentionItem,
   NotificationItem,
+  SourceFreshnessDto,
+  WorkspaceSourceDto,
   NotificationsDto,
   DocumentDto,
   DraftDto,

@@ -57,5 +57,21 @@ export function createPostgresSourceSyncLock(
         client.release(broken)
       }
     },
+
+    /**
+     * Read from `pg_locks`, where a two-key advisory lock is `classid` and
+     * `objid` (each an int4 shown as an oid) with `objsubid` 2.
+     */
+    async isHeld(workspaceId: WorkspaceId) {
+      const { rows } = await pool.query<{ held: boolean }>(
+        `SELECT EXISTS (
+           SELECT 1 FROM pg_locks
+           WHERE locktype = 'advisory' AND granted AND objsubid = 2
+             AND classid = $1::int4::oid AND objid = hashtext($2)::oid
+         ) AS held`,
+        [SOURCE_SYNC_LOCK_SPACE, workspaceId],
+      )
+      return rows[0]?.held === true
+    },
   }
 }

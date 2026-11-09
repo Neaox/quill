@@ -45,6 +45,8 @@ describe('the Postgres source sync lock', () => {
     })
     await entered.opened
 
+    expect(await second.isHeld(HANDBOOK)).toBe(true)
+    expect(await second.isHeld(OTHER)).toBe(false)
     expect(await second.withLock(HANDBOOK, async () => 'second')).toEqual({ kind: 'busy' })
     expect(await second.withLock(OTHER, async () => 'other')).toEqual({
       kind: 'ran',
@@ -59,6 +61,7 @@ describe('the Postgres source sync lock', () => {
 
     held.open()
     expect(await running).toEqual({ kind: 'ran', value: 'first' })
+    expect(await first.isHeld(HANDBOOK)).toBe(false)
     expect(await second.withLock(HANDBOOK, async () => 'again')).toEqual({
       kind: 'ran',
       value: 'again',

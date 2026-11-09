@@ -266,6 +266,7 @@ function inMemoryLock(): SourceSyncLock & { readonly held: Set<WorkspaceId> } {
   const held = new Set<WorkspaceId>()
   return {
     held,
+    isHeld: async (id) => held.has(id),
     async withLock(id, work) {
       if (held.has(id)) return { kind: 'busy' }
       held.add(id)
