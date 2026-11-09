@@ -27,7 +27,12 @@ describe('the fake external source', () => {
     const source = new FakeSource([
       {
         id: 'c1',
-        files: { 'docs/in.md': '# In', 'notes/out.md': '# Out', 'notes/x.md': 'x' },
+        files: {
+          'docs/in.md': '# In',
+          'notes/out.md': '# Out',
+          'notes/x.md': 'x',
+          'notes/gone.md': 'g',
+        },
       },
       {
         id: 'c2',
