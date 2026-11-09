@@ -157,16 +157,14 @@ function SyncStatus({ sync, syncing }: { readonly sync: Sync | null; readonly sy
     return (
       <Callout className={width} tone="danger" title="The last sync stopped">
         <p>
-          It stopped because {describeSourceFailure(failure.reason)}
-          {failure.revision === null ? (
-            ''
-          ) : (
+          It stopped
+          {failure.revision === null ? undefined : (
             <>
               {' '}
               at <Revision value={failure.revision} />
             </>
           )}
-          .
+          : {describeSourceFailure(failure.reason)}.
         </p>
         <p>
           <code className="break-words">{failure.message}</code>
@@ -201,8 +199,8 @@ function Facts({ label, children }: { readonly label: string; readonly children:
 function Fact({ term, children }: { readonly term: string; readonly children: ReactNode }) {
   return (
     <div className="contents">
-      <dt className="pt-3 text-muted first:pt-0 sm:pt-0">{term}</dt>
-      <dd className="min-w-0 break-words text-foreground">{children}</dd>
+      <dt className="text-muted">{term}</dt>
+      <dd className="mb-3 min-w-0 break-words text-foreground sm:mb-0">{children}</dd>
     </div>
   )
 }

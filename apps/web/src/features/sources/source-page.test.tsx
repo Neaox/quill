@@ -106,7 +106,7 @@ describe('a repository’s page', () => {
     await heading()
     const stopped = screen.getByText('The last sync stopped').closest('[class]')?.parentElement
     expect(stopped).toHaveTextContent(
-      `It stopped because ${describeSourceFailure('invalid-manifest')} at ${shortRevision(FAILED_AT)}.`,
+      `It stopped at ${shortRevision(FAILED_AT)}: ${describeSourceFailure('invalid-manifest')}.`,
     )
     expect(stopped).toHaveTextContent('line 3: a collection needs a path')
     expect(stopped).toHaveTextContent('Readers still see the last good revision')
@@ -127,7 +127,7 @@ describe('a repository’s page', () => {
       ),
     )
     await heading()
-    expect(screen.getByText(/stopped because its branch was not found\./u)).toBeVisible()
+    expect(screen.getByText(/It stopped: its branch was not found\./u)).toBeVisible()
     expect(screen.getByText(/the workspace is empty/u)).toBeVisible()
   })
 
