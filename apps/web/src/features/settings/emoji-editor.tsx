@@ -17,6 +17,7 @@ import { useCustomProperty } from '../../lib/dom/use-custom-property.ts'
 import { readAnimationFrames, type AnimationFrames } from '../../lib/media/animation-frames.ts'
 import { EmojiImage, type ServedEmoji } from './emoji-image.tsx'
 import { PosterFrame } from './poster-frame.tsx'
+import { ToggleField } from './toggle-field.tsx'
 
 export type { ServedEmoji } from './emoji-image.tsx'
 
@@ -33,6 +34,14 @@ const EMOJI_NAME = new RegExp(EMOJI_NAME_PATTERN, 'u')
 
 /** As long as the settings file allows (`MAX_EMOJI_DESCRIPTION`). */
 const MAX_DESCRIPTION = 120
+
+const MONOCHROME_HELP =
+  'For a line icon in one colour, as an SVG: it takes the colour of the text around it, as the icons in an interface do, in light and dark.'
+
+/** Whether a chosen file is an SVG, the only kind that can be drawn in the text’s colour. */
+function isSvg(file: File): boolean {
+  return file.type === 'image/svg+xml'
+}
 
 const ALT_TEXT_HELP =
   'What the picture shows, in a few words. A screen reader says it in place of the picture.'
@@ -186,6 +195,7 @@ export interface EmojiEditorProps {
  */
 function emojiFacts(entry: CustomEmoji): string {
   const type = EMOJI_TYPE_NAMES[entry.mediaType]
+  if (entry.monochrome === true) return `${type}, in the text’s colour`
   if (entry.still === undefined) {
     return entry.frames === undefined ? type : `${type}, animated, plays as uploaded`
   }
@@ -233,7 +243,10 @@ export function EmojiEditor({
     const chosen = local.get(entry.hash)
     if (chosen !== undefined) return chosen
     const saved = served.get(entry.name)
-    return saved?.src.includes(entry.hash.slice(0, 16)) === true ? saved : undefined
+    if (saved?.src.includes(entry.hash.slice(0, 16)) !== true) return undefined
+    return entry.monochrome === true
+      ? { ...saved, glyph: { width: entry.width, height: entry.height } }
+      : saved
   }
 
   function replace(next: CustomEmojiList) {
@@ -355,6 +368,7 @@ function EmojiAdder({ existing, readFrames, onAdd }: EmojiAdderProps) {
   const [file, setFile] = useState<File | undefined>(undefined)
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
+  const [monochrome, setMonochrome] = useState(false)
   const [tooLarge, setTooLarge] = useState(false)
   const picker = useRef<HTMLInputElement>(null)
   const id = useId()
@@ -432,16 +446,24 @@ function EmojiAdder({ existing, readFrames, onAdd }: EmojiAdderProps) {
   async function uploadPoster(): Promise<Partial<CustomEmoji>> {
     if (frames === undefined || poster === 0) return {}
     const drawn = await frames.frame(poster)
-    const cut = await upload.mutateAsync(
-      new File([drawn], `${name}-poster.png`, { type: 'image/png' }),
-    )
+    const cut = await upload.mutateAsync({
+      file: new File([drawn], `${name}-poster.png`, { type: 'image/png' }),
+    })
     return { still: cut.hash, stillType: 'image/png', poster }
   }
 
   async function add(chosen: File) {
     let entry: CustomEmoji
     try {
-      const { hash, mediaType, ...animation } = await upload.mutateAsync(chosen)
+      const {
+        hash,
+        mediaType,
+        monochrome: glyph,
+        ...animation
+      } = await upload.mutateAsync({
+        file: chosen,
+        monochrome: monochrome && isSvg(chosen),
+      })
       entry = {
         name,
         hash,
@@ -449,15 +471,15 @@ function EmojiAdder({ existing, readFrames, onAdd }: EmojiAdderProps) {
         ...animation,
         ...(await uploadPoster()),
         description: description.trim(),
-        width: 0,
-        height: 0,
+        // A glyph's proportions are its view box's, as the server read it.
+        ...(glyph === undefined ? { width: 0, height: 0 } : { ...glyph, monochrome: true }),
       }
     } catch {
       // The upload's own error is shown below the form.
       return
     }
     const src = URL.createObjectURL(chosen)
-    const size = await measure(src)
+    const size = entry.monochrome === true ? {} : await measure(src)
     const still = entry.poster === undefined ? undefined : posterPreview
     onAdd({ ...entry, ...size }, { src, ...(still === undefined ? {} : { still }) })
     // The poster's preview now belongs to the saved emoji's.
@@ -467,6 +489,7 @@ function EmojiAdder({ existing, readFrames, onAdd }: EmojiAdderProps) {
     setFile(undefined)
     setName('')
     setDescription('')
+    setMonochrome(false)
     if (picker.current !== null) picker.current.value = ''
   }
 
@@ -528,6 +551,13 @@ function EmojiAdder({ existing, readFrames, onAdd }: EmojiAdderProps) {
         onChange={(event) => {
           setName(event.target.value.trim().toLowerCase())
         }}
+      />
+      <ToggleField
+        label="Draw in the text’s colour"
+        description={MONOCHROME_HELP}
+        checked={monochrome && file !== undefined && isSvg(file)}
+        disabled={file === undefined || !isSvg(file)}
+        onCheckedChange={setMonochrome}
       />
       <Input
         label="Alt text"

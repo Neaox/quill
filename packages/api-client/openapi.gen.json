@@ -3870,6 +3870,12 @@
                   "minimum": 1,
                   "maximum": 1024,
                   "type": "integer"
+                },
+                "monochrome": {
+                  "type": "boolean",
+                  "enum": [
+                    true
+                  ]
                 }
               }
             }
@@ -7002,6 +7008,12 @@
                 "height": {
                   "minimum": 1,
                   "type": "integer"
+                },
+                "monochrome": {
+                  "type": "boolean",
+                  "enum": [
+                    true
+                  ]
                 }
               }
             }
@@ -7086,6 +7098,24 @@
           "original": {
             "pattern": "^[0-9a-f]{64}$",
             "type": "string"
+          },
+          "monochrome": {
+            "additionalProperties": false,
+            "type": "object",
+            "required": [
+              "width",
+              "height"
+            ],
+            "properties": {
+              "width": {
+                "minimum": 1,
+                "type": "integer"
+              },
+              "height": {
+                "minimum": 1,
+                "type": "integer"
+              }
+            }
           }
         }
       }
@@ -17972,6 +18002,19 @@
             }
           }
         },
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "enum": [
+                "true"
+              ]
+            },
+            "in": "query",
+            "name": "monochrome",
+            "required": false
+          }
+        ],
         "responses": {
           "201": {
             "description": "Default Response",

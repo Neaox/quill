@@ -3598,7 +3598,9 @@ export interface paths {
         put?: never;
         post: {
             parameters: {
-                query?: never;
+                query?: {
+                    monochrome?: "true";
+                };
                 header?: never;
                 path?: never;
                 cookie?: never;
@@ -5302,6 +5304,10 @@ export interface components {
             hash: string;
             mediaType: "image/png" | "image/jpeg" | "image/gif" | "image/webp" | "image/avif" | "image/svg+xml";
             milliseconds?: number;
+            monochrome?: {
+                height: number;
+                width: number;
+            };
             original?: string;
             plays?: number;
             still?: string;
@@ -5318,6 +5324,8 @@ export interface components {
                 height: number;
                 mediaType: "image/png" | "image/jpeg" | "image/gif" | "image/webp" | "image/avif" | "image/svg+xml";
                 milliseconds?: number;
+                /** @enum {boolean} */
+                monochrome?: true;
                 name: string;
                 original?: string;
                 plays?: number;
@@ -5951,6 +5959,8 @@ export interface components {
                 frames?: number;
                 height: number;
                 milliseconds?: number;
+                /** @enum {boolean} */
+                monochrome?: true;
                 name: string;
                 src: string;
                 still?: string;

@@ -1,0 +1,2 @@
+Added: Monochrome custom emoji (ADR-038): an SVG uploaded with "Draw in the text's colour" is rewritten as a one-colour glyph and drawn by reference in the colour of its context (the accent in a timeline node, grey in a route's party, ink in prose), in light, dark and forced colours, in the reader, the editor, the emoji menus and the settings previews.
+Changed: The Grid theme's status fills in dark are rookwood's tinted ones, so a `:ok[…]` or `:bad[…]` badge reads as its tone on a dark page, and the ring of a party outside the system is quieter.

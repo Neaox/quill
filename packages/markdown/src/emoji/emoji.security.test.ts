@@ -87,3 +87,96 @@ describe('an animated emoji’s timing, past the sanitiser', () => {
     expect(toHtml(sanitize(tree, sanitizeSchema))).toBe('<span></span><img>')
   })
 })
+
+const sanitisedGlyph = (
+  svg: Element['properties'],
+  use: Element['properties'],
+  children: Element[] = [],
+) =>
+  toHtml(
+    sanitize(
+      {
+        type: 'root',
+        children: [
+          {
+            type: 'element',
+            tagName: 'svg',
+            properties: svg,
+            children: [
+              { type: 'element', tagName: 'use', properties: use, children: [] },
+              ...children,
+            ],
+          },
+        ],
+      },
+      sanitizeSchema,
+    ),
+  )
+
+/**
+ * ADR-038, amended: a monochrome emoji reaches the page as an `svg` holding
+ * one `use` of an emoji's glyph. The sanitiser admits that shape and its
+ * names, and nothing else an `svg` could carry.
+ */
+describe('a monochrome emoji, past the sanitiser', () => {
+  const glyph = sanitisedGlyph
+
+  it('is admitted as the renderer draws it', () => {
+    expect(
+      glyph(
+        {
+          className: ['emoji', 'emoji-glyph'],
+          viewBox: '0 0 16 16',
+          width: '20',
+          height: '20',
+          role: 'img',
+          'aria-label': 'clock',
+        },
+        { href: '/api/emoji/clock.0123456789abcdef.svg#glyph', width: '16', height: '16' },
+      ),
+    ).toBe(
+      '<svg class="emoji emoji-glyph" viewBox="0 0 16 16" width="20" height="20" role="img" aria-label="clock"><use href="/api/emoji/clock.0123456789abcdef.svg#glyph" width="16" height="16"></use></svg>',
+    )
+  })
+
+  it('uses only an emoji’s own glyph, from this origin', () => {
+    for (const href of [
+      'https://evil.example/x.svg#glyph',
+      '/api/attachments/x.svg#glyph',
+      '/api/emoji/clock.0123456789abcdef.png#glyph',
+      '/api/emoji/clock.0123456789abcdef.svg#other',
+      'data:image/svg+xml,<svg/>#glyph',
+      'javascript:alert(1)',
+    ]) {
+      expect(glyph({ className: ['emoji'] }, { href })).toBe('<svg class="emoji"><use></use></svg>')
+    }
+  })
+
+  it('carries no style, handler, other class, odd view box or other element', () => {
+    expect(
+      glyph(
+        {
+          className: ['emoji', 'evil'],
+          style: 'fill:red',
+          onload: 'alert(1)',
+          viewBox: '0 0 16 16;x',
+          width: '100%',
+          'aria-hidden': 'false',
+        },
+        { href: '/api/emoji/clock.0123456789abcdef.svg#glyph', x: '1', onclick: 'alert(1)' },
+        [
+          {
+            type: 'element',
+            tagName: 'script',
+            properties: {},
+            children: [{ type: 'text', value: 'alert(1)' }],
+          },
+        ],
+      ),
+    ).toBe(
+      // A width is the default schema's own, on every element, and the reading
+      // stylesheet sets an emoji's size whatever it says.
+      '<svg class="emoji" width="100%"><use href="/api/emoji/clock.0123456789abcdef.svg#glyph"></use></svg>',
+    )
+  })
+})

@@ -88,6 +88,13 @@ export const grid: ThemeDocument = {
   overrides: {
     shared: { '--radius-md': '0.625rem' },
     light: { '--palette-accent-subtle': 'oklch(96% 0.03 190)' },
-    dark: { '--palette-accent-subtle': 'oklch(30% 0.05 190)' },
+    // rookwood's status fills in dark: tinted enough that a badge reads as
+    // its tone, where the generated ones are all but grey on a dark page.
+    dark: {
+      '--palette-accent-subtle': 'oklch(30% 0.05 190)',
+      '--palette-success-subtle': 'oklch(30% 0.05 160)',
+      '--palette-warning-subtle': 'oklch(32% 0.06 60)',
+      '--palette-danger-subtle': 'oklch(31% 0.07 28)',
+    },
   },
 }

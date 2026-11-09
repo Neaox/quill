@@ -41,6 +41,18 @@ export const EMOJI_NAME = /^[a-z][a-z0-9_-]{0,31}$/u
 export const EMOJI_ASSET_URL =
   /^\/api\/emoji\/[a-z][a-z0-9_-]{0,31}\.[0-9a-f]{16}\.(?:png|jpg|gif|webp|avif|svg)$/u
 
+/** The id a monochrome emoji's symbol is served under (`monochrome.ts`): the fragment its `<use>` names. */
+export const GLYPH_ID = 'glyph'
+
+/** An emoji address a monochrome glyph can be served from: an SVG. */
+const EMOJI_GLYPH_FILE = /\.svg$/u
+
+/**
+ * Where a monochrome emoji's glyph is used from: an emoji's SVG address and
+ * its symbol. The sanitiser admits a `<use>` only with an address of this shape.
+ */
+export const EMOJI_GLYPH_URL = /^\/api\/emoji\/[a-z][a-z0-9_-]{0,31}\.[0-9a-f]{16}\.svg#glyph$/u
+
 /** An organisation's own emoji, as the renderer is given it. */
 export interface CustomEmoji {
   /** Matches `EMOJI_ASSET_URL`; anything else is drawn as the literal shortcode. */
@@ -67,6 +79,12 @@ export interface CustomEmoji {
   /** The image's own size, which gives its proportions; it is drawn at text size. */
   readonly width: number
   readonly height: number
+  /**
+   * A line icon drawn in the colour of the text around it (`monochrome.ts`):
+   * its file is a glyph, used by reference, rather than a picture. Only an
+   * SVG address can be one; any other is drawn as the picture it is.
+   */
+  readonly monochrome?: boolean | undefined
 }
 
 export type ResolvedEmoji =
@@ -173,7 +191,7 @@ function timingAttributes(image: CustomEmoji): Record<string, string> {
 
 /** An emoji's markup as plain attributes, which the renderer and the editor both build from. */
 export interface EmojiMarkup {
-  readonly tagName: 'span' | 'img'
+  readonly tagName: 'span' | 'img' | 'svg'
   readonly attributes: Readonly<Record<string, string>>
   /** The character a standard emoji is; empty for an image. */
   readonly text: string
@@ -188,6 +206,12 @@ export interface EmojiMarkup {
     readonly still: string
     readonly attributes: Readonly<Record<string, string>>
   }
+  /**
+   * A monochrome emoji's glyph, by address (`…svg#glyph`), and the size it
+   * is used at: the `svg` holds one `<use>` of it, so its shapes are painted
+   * in the colour of wherever the emoji is.
+   */
+  readonly glyph?: { readonly href: string; readonly width: string; readonly height: string }
 }
 
 /**
@@ -208,6 +232,27 @@ export function emojiMarkup(emoji: ResolvedEmoji, use: 'text' | 'decoration'): E
   const { image } = emoji
   const shortcode = `:${emoji.name}:`
   const width = Math.max(1, Math.round((DECLARED_SIZE * image.width) / image.height))
+  if (image.monochrome === true && EMOJI_GLYPH_FILE.test(image.src)) {
+    const named = meaning
+      ? { role: 'img', 'aria-label': describeEmoji(emoji) }
+      : { 'aria-hidden': 'true' }
+    return {
+      tagName: 'svg',
+      attributes: {
+        class: 'emoji emoji-glyph',
+        viewBox: `0 0 ${image.width} ${image.height}`,
+        width: String(width),
+        height: String(DECLARED_SIZE),
+        ...named,
+      },
+      text: '',
+      glyph: {
+        href: `${image.src}#${GLYPH_ID}`,
+        width: String(image.width),
+        height: String(image.height),
+      },
+    }
+  }
   return {
     tagName: 'img',
     attributes: {
@@ -227,13 +272,17 @@ export function emojiMarkup(emoji: ResolvedEmoji, use: 'text' | 'decoration'): E
 
 /** The same markup as a hast element, for the renderer. */
 export function emojiElement(emoji: ResolvedEmoji, use: 'text' | 'decoration'): Element {
-  const { tagName, attributes, text, animation } = emojiMarkup(emoji, use)
+  const { tagName, attributes, text, animation, glyph } = emojiMarkup(emoji, use)
   const { class: className, ...rest } = attributes
+  const used: Element[] =
+    glyph === undefined
+      ? []
+      : [{ type: 'element', tagName: 'use', properties: { ...glyph }, children: [] }]
   const drawn: Element = {
     type: 'element',
     tagName,
-    properties: { className: [String(className)], ...rest },
-    children: text === '' ? [] : [{ type: 'text', value: text }],
+    properties: { className: String(className).split(' '), ...rest },
+    children: text === '' ? used : [{ type: 'text', value: text }],
   }
   if (animation === undefined) return drawn
   return {
@@ -322,7 +371,13 @@ export function withEmoji(tree: Root, lookup: EmojiLookup): Root {
  * `source` is held to an emoji's address and the reduced-motion query, and
  * whose timing attributes are held to bounded integers.
  */
+/** A glyph's view box: its own size from the origin, in whole pixels. */
+const GLYPH_VIEW_BOX = /^0 0 [1-9]\d{0,3} [1-9]\d{0,3}$/u
+const WHOLE_PIXELS = /^[1-9]\d{0,3}$/u
+
 export const EMOJI_SANITIZE_GRANT: {
+  /** A monochrome emoji's `svg` and the `use` of its glyph inside it. */
+  readonly tagNames: readonly string[]
   readonly classes: {
     readonly span: readonly string[]
     readonly img: readonly string[]
@@ -332,10 +387,30 @@ export const EMOJI_SANITIZE_GRANT: {
     readonly span: NonNullable<Schema['attributes']>[string]
     readonly picture: NonNullable<Schema['attributes']>[string]
     readonly source: NonNullable<Schema['attributes']>[string]
+    readonly svg: NonNullable<Schema['attributes']>[string]
+    readonly use: NonNullable<Schema['attributes']>[string]
   }
 } = {
+  tagNames: ['svg', 'use'],
   classes: { span: ['emoji'], img: ['emoji'], picture: ['emoji'] },
   attributes: {
+    // A monochrome emoji (`monochrome.ts`): an `svg` named as an image or
+    // hidden as decoration, sized in whole pixels, holding one `use` of an
+    // emoji's glyph and nothing else. No other SVG reaches a body this way.
+    svg: [
+      ['className', 'emoji', 'emoji-glyph'],
+      ['viewBox', GLYPH_VIEW_BOX],
+      ['width', WHOLE_PIXELS],
+      ['height', WHOLE_PIXELS],
+      ['role', 'img'],
+      'aria-label',
+      ['aria-hidden', 'true'],
+    ],
+    use: [
+      ['href', EMOJI_GLYPH_URL],
+      ['width', WHOLE_PIXELS],
+      ['height', WHOLE_PIXELS],
+    ],
     span: [['role', 'img'], 'aria-label', ['aria-hidden', 'true']],
     // An animation's timing, only as integers within the upload limits.
     picture: [

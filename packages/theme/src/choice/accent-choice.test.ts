@@ -24,7 +24,15 @@ describe('withAccent', () => {
   it('drops the pins a built-in derived from its old accent and keeps every other', () => {
     const theme = withAccent(grid, teal)
     expect(theme.seeds.accent).toEqual(teal)
-    expect(theme.overrides).toEqual({ shared: { '--radius-md': '0.625rem' } })
+    expect(theme.overrides).toEqual({
+      shared: { '--radius-md': '0.625rem' },
+      // rookwood's dark status fills are not the accent's, so they stay.
+      dark: {
+        '--palette-success-subtle': 'oklch(30% 0.05 160)',
+        '--palette-warning-subtle': 'oklch(32% 0.06 60)',
+        '--palette-danger-subtle': 'oklch(31% 0.07 28)',
+      },
+    })
   })
 
   it('drops the overrides altogether when only accent pins were there', () => {

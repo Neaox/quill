@@ -12,7 +12,12 @@ import {
 import type { ThemeDocument } from '@quill/theme'
 
 import { createVersionedReader } from '../use-cases/versioned-reader.ts'
-import { CustomEmojiSchema, duplicateEmojiNames, MAX_CUSTOM_EMOJI } from './emoji.ts'
+import {
+  CustomEmojiSchema,
+  duplicateEmojiNames,
+  MAX_CUSTOM_EMOJI,
+  monochromeNotSvg,
+} from './emoji.ts'
 import { LayoutSchema } from './layout.ts'
 import { LinkPreviewSettingsSchema, linkPatternIssues } from './link-previews.ts'
 import { PublicMenuSchema, publicMenuFromNavigation } from './public-menu.ts'
@@ -330,17 +335,20 @@ function withUniqueEmoji(
   validation: SettingsValidation<OrganisationSettings>,
 ): SettingsValidation<OrganisationSettings> {
   if (!validation.valid) return validation
-  const duplicates = duplicateEmojiNames(validation.document.emoji)
-  return duplicates.length === 0
-    ? validation
-    : {
-        valid: false,
-        issues: duplicates.map(({ index, name }) => ({
-          path: `/emoji/${index}/name`,
-          message: `there is already an emoji called "${name}"`,
-          rule: 'emoji-unique',
-        })),
-      }
+  const issues = [
+    ...duplicateEmojiNames(validation.document.emoji).map(({ index, name }) => ({
+      path: `/emoji/${index}/name`,
+      message: `there is already an emoji called "${name}"`,
+      rule: 'emoji-unique',
+    })),
+    // Only an SVG upload is ever rewritten as a glyph (ADR-038, amended).
+    ...monochromeNotSvg(validation.document.emoji).map(({ index, name }) => ({
+      path: `/emoji/${index}/monochrome`,
+      message: `"${name}" is not an SVG, so it cannot be drawn in the text's colour`,
+      rule: 'emoji-monochrome-svg',
+    })),
+  ]
+  return issues.length === 0 ? validation : { valid: false, issues }
 }
 
 function withValidTheme<T extends { readonly theme: ThemeDocument }>(

@@ -15,6 +15,7 @@
     "./child-pages-slot": "./src/navigation/slot-key.ts",
     "./emoji-shortcodes": "./src/emoji/shortcodes.ts",
     "./emoji-names": "./src/emoji/names.ts",
+    "./emoji-glyph": "./src/emoji/monochrome.ts",
     "./extension": "./src/extensions/index.ts",
     "./component-blocks": "./src/blocks/index.ts",
     "./drawio": "./src/extensions/drawio/index.ts",

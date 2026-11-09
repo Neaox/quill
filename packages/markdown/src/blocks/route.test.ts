@@ -148,3 +148,28 @@ describe(':route[…]', () => {
     )
   })
 })
+
+const glyphOf = (name: string): string =>
+  `<svg class="emoji emoji-glyph" viewBox="0 0 16 16" width="20" height="20" aria-hidden="true"><use href="/api/emoji/${name}.0123456789abcdef.svg#glyph" width="16" height="16"></use></svg>`
+
+describe('the documentation kit with monochrome emoji (ADR-038, amended)', () => {
+  const MONO: ReadonlyMap<string, CustomEmoji> = new Map(
+    ['clock', 'inbox', 'rookwood'].map((name) => [
+      name,
+      { src: `/api/emoji/${name}.0123456789abcdef.svg`, width: 16, height: 16, monochrome: true },
+    ]),
+  )
+  const glyph = glyphOf
+
+  it('draws a party’s, a node’s and a time chip’s icon as a glyph, in the colour of each', () => {
+    const { html } = renderDocument(
+      parseMarkdown(
+        '::::timeline\n:::step{icon=inbox}\n:clock: **Later** · :rookwood: Worker → :inbox: Gateway\n:::\n::::\n',
+      ),
+      { emoji: MONO },
+    )
+    expect(html).toContain(`<span class="qb-step-node">${glyph('inbox')}</span>`)
+    expect(html).toContain(`data-tone="accent">${glyph('clock')}Later</span>`)
+    expect(html).toContain(`<span class="qb-route-party">${glyph('rookwood')}Worker</span>`)
+  })
+})
