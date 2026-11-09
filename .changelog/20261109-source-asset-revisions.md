@@ -1,0 +1,1 @@
+Changed: In a workspace read from a repository, an older revision now shows the pictures it had when it was synced, in its history view and in a comparison, even after an image was changed or removed in the repository (ADR-061). Imported images are kept for as long as the revisions that show them, and a reader of such a revision may open them.

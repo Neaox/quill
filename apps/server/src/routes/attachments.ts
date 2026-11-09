@@ -281,7 +281,14 @@ export function attachmentRoutes(deps: AppDependencies): FastifyPluginAsync {
       row: AttachmentRow,
     ): Promise<void> {
       const authorizer = authorizerFor(deps, request)
-      const showing = await documentsShowingAttachment(deps, row)
+      // The published pages that show it now, and every page whose text ever
+      // pointed at a path that held it: a reader of an older revision is shown
+      // the picture that revision had (ADR-061).
+      const [now, ever] = await Promise.all([
+        documentsShowingAttachment(deps, row),
+        deps.uow.repos.sourceAssetHistory.listDocumentsShowing(row.id),
+      ])
+      const showing = [...new Set([...now, ...ever])]
       const verdicts = await Promise.all(showing.map(async (id) => authorizer.document(id)))
       if (verdicts.some((access) => access.ok && access.value.capabilities.view)) return
       throw notFound(ATTACHMENT_REFUSAL)

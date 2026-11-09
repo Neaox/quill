@@ -1,3 +1,4 @@
+import { BRAND } from '@quill/brand'
 import { sourcePatternMatcher } from '@quill/domain'
 
 import { DIAGRAM_SOURCE_MEDIA_TYPE, DRAWING_MEDIA_TYPE } from './media-types.ts'
@@ -63,4 +64,40 @@ export function assetMatcher(
   return (path) =>
     !isDocumentPath(path) &&
     (assets.some((matches) => matches(path)) || (isImagePath(path) && placer.place(path) !== null))
+}
+
+/**
+ * Where a sourced workspace's store keeps its asset map (ADR-061): which
+ * attachment each asset path holds, as of each stored revision. The sync job
+ * writes it whenever the map changes, before the revision it changes with is
+ * published, so the tree of every stored revision carries the map it was
+ * synced with, and a revision is rendered with the pictures it had.
+ */
+export const SOURCE_ASSET_MAP_PATH = `.${BRAND.slug}/source-assets.json`
+
+/** The version of the asset map's document (ADR-033). */
+export const SOURCE_ASSET_MAP_VERSION = 1
+
+/** An asset map as its file holds it: paths sorted, so an unchanged map is the same bytes. */
+export function writeAssetMap(map: ReadonlyMap<string, string>): string {
+  const assets = Object.fromEntries([...map].toSorted(([left], [right]) => (left < right ? -1 : 1)))
+  return `${JSON.stringify({ version: SOURCE_ASSET_MAP_VERSION, assets }, null, 2)}\n`
+}
+
+/** An asset map read back; null for a file this release cannot read, which renders as if there were none. */
+export function readAssetMap(text: string): ReadonlyMap<string, string> | null {
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(text)
+  } catch {
+    return null
+  }
+  if (typeof parsed !== 'object' || parsed === null) return null
+  const { version, assets } = parsed as { version?: unknown; assets?: unknown }
+  if (version !== SOURCE_ASSET_MAP_VERSION || typeof assets !== 'object' || assets === null) {
+    return null
+  }
+  return new Map(
+    Object.entries(assets).flatMap(([path, id]) => (typeof id === 'string' ? [[path, id]] : [])),
+  )
 }

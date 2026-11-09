@@ -1058,6 +1058,44 @@ export const sourceAssets = pgTable(
 )
 
 /**
+ * Every attachment each asset path of a sourced workspace has held at a
+ * synced revision (ADR-061). Kept for good, as the store's history is: with
+ * `source_image_references` it says who may see an asset that only an older
+ * revision shows.
+ */
+export const sourceAssetHolders = pgTable(
+  'source_asset_holders',
+  {
+    workspaceId: text('workspace_id')
+      .notNull()
+      .references(() => workspaceSources.workspaceId, { onDelete: 'cascade' }),
+    path: text('path').notNull(),
+    attachmentId: text('attachment_id')
+      .notNull()
+      .references(() => attachments.id, { onDelete: 'cascade' }),
+  },
+  (table) => [
+    primaryKey({ columns: [table.workspaceId, table.path, table.attachmentId] }),
+    index('source_asset_holders_attachment_idx').on(table.attachmentId),
+  ],
+)
+
+/** Every repository path a sourced document's relative images have pointed at, at any synced revision. */
+export const sourceImageReferences = pgTable(
+  'source_image_references',
+  {
+    workspaceId: text('workspace_id')
+      .notNull()
+      .references(() => workspaceSources.workspaceId, { onDelete: 'cascade' }),
+    documentId: text('document_id')
+      .notNull()
+      .references(() => documents.id, { onDelete: 'cascade' }),
+    path: text('path').notNull(),
+  },
+  (table) => [primaryKey({ columns: [table.workspaceId, table.path, table.documentId] })],
+)
+
+/**
  * An attachment's history (ADR-043): each state a revision replaced, by the
  * version it was. The current state is the `attachments` row; the bytes of
  * every state stay in the blob store, which is a system of record (ADR-034),

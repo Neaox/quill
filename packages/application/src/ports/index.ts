@@ -41,6 +41,7 @@ export type {
   ConnectedSource,
   ExternalSourceProvider,
   RefusedSourceFile,
+  SourceAssetHistoryRepository,
   SourceAssetRepository,
   SourceAssetRow,
   SourceCollection,

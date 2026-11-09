@@ -2,6 +2,7 @@ import { NATIVE_ORIGIN, REQUEST_IN_FLIGHT_FOR_MS, SOURCED_ORIGIN, retryAfter } f
 import type { DocumentId, ShortId, UserId, WorkspaceId } from '@quill/domain'
 
 import type {
+  SourceAssetHistoryRepository,
   SourceAssetRepository,
   SourceAssetRow,
   SourcePathMapRepository,
@@ -995,6 +996,29 @@ export function createInMemoryUnitOfWork(
     },
   }
 
+  /** Every `(workspace, path, attachment)` ever held, and every `(workspace, document, path)` ever shown. */
+  const heldAssets = new Set<string>()
+  const shownAssets = new Set<string>()
+  const sourceAssetHistoryRepository: SourceAssetHistoryRepository = {
+    async recordHeld(workspaceId, path, attachmentId) {
+      heldAssets.add(JSON.stringify([workspaceId, path, attachmentId]))
+    },
+    async recordShown(workspaceId, documentId, paths) {
+      for (const path of paths) shownAssets.add(JSON.stringify([workspaceId, documentId, path]))
+    },
+    async listDocumentsShowing(attachmentId) {
+      const places = [...heldAssets]
+        .map((entry) => JSON.parse(entry) as [string, string, string])
+        .filter(([, , id]) => id === attachmentId)
+        .map(([workspace, path]) => JSON.stringify([workspace, path]))
+      const showing = [...shownAssets]
+        .map((entry) => JSON.parse(entry) as [string, DocumentId, string])
+        .filter(([workspace, , path]) => places.includes(JSON.stringify([workspace, path])))
+        .map(([, document]) => document)
+      return [...new Set(showing)]
+    },
+  }
+
   const sourcePathRepository: SourcePathMapRepository = {
     async listByWorkspace(workspaceId) {
       return [...sourcePaths.values()].filter((row) => row.workspaceId === workspaceId)
@@ -1815,6 +1839,7 @@ export function createInMemoryUnitOfWork(
     workspaceSources: workspaceSourceRepository,
     sourcePaths: sourcePathRepository,
     sourceAssets: sourceAssetRepository,
+    sourceAssetHistory: sourceAssetHistoryRepository,
     sourceSyncState: sourceSyncStateRepository,
     sourceWebhookDeliveries: sourceWebhookDeliveryRepository,
     events: createEventRecorder({ outbox: outboxWriter, ids: eventIds, sink }),
