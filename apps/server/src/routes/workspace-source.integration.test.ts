@@ -596,6 +596,8 @@ describe('a workspace whose repository links its files to each other', () => {
   let repository: Repository
   let workspace: string
   let first: string
+  /** The commit that wrote the handbook, before the one that drew the flow. */
+  let written: string
   let setupId: string
   let authId: string
 
@@ -610,6 +612,8 @@ describe('a workspace whose repository links its files to each other', () => {
     '```',
     '',
     '![The flow](../diagrams/flow.png)',
+    '',
+    '![The broken one](../diagrams/fake.png)',
     '',
   ].join('\n')
 
@@ -667,11 +671,13 @@ describe('a workspace whose repository links its files to each other', () => {
         ]),
         'docs/guides/setup.md': SETUP,
         'docs/guides/drafts/wip.md': '# Not ready\n',
+        'docs/diagrams/fake.png': 'Not a picture at all.\n',
         'docs/adr/0012-auth.md': '# Authentication\n\n## Token rotation\n\nRotate them.\n',
         'src/app.ts': 'export {}\n',
       },
       '2025-12-30T00:00:00Z',
     )
+    written = first
     await mkdir(join(repository.work, 'docs/diagrams'), { recursive: true })
     await writeFile(join(repository.work, 'docs/diagrams/flow.png'), PIXEL_PNG)
     first = await commitTo(repository, 'Draw the flow', {}, '2025-12-30T01:00:00Z')
@@ -720,6 +726,53 @@ describe('a workspace whose repository links its files to each other', () => {
     expect(content.json<{ markdown: string }>().markdown).toContain(
       '(../adr/0012-auth.md#token-rotation)',
     )
+  })
+
+  it('imports the image under the assets path as an attachment, and draws a refused one as its words', async () => {
+    const html = await rendered(setupId, viewer)
+    const [, attachment] =
+      /<img src="\/api\/attachments\/([\da-f-]+)" alt="The flow">/u.exec(html) ?? []
+    expect(attachment).toBeDefined()
+    expect(html).toContain('The broken one')
+    expect(html).not.toContain('fake.png')
+
+    // Served as a picture to a reader of a page that shows it, and to nobody else.
+    const served = await harness.app.inject({
+      method: 'GET',
+      url: `/api/attachments/${attachment}`,
+      cookies: viewer,
+    })
+    expect(served.statusCode).toBe(200)
+    expect(served.headers['content-type']).toBe('image/png')
+    expect(served.rawPayload.subarray(0, 8)).toEqual(PIXEL_PNG.subarray(0, 8))
+    const outsider = await harness.cookiesFor(tenancy.outsider)
+    for (const cookies of [outsider, {}]) {
+      const refused = await harness.app.inject({
+        method: 'GET',
+        url: `/api/attachments/${attachment}`,
+        cookies,
+      })
+      expect(refused.statusCode).toBe(404)
+    }
+    // Only the sync job changes it.
+    const removed = await harness.app.inject({
+      method: 'DELETE',
+      url: `/api/attachments/${attachment}`,
+      cookies: admin,
+    })
+    expect(removed.statusCode).toBe(403)
+    expect(removed.json()).toMatchObject({ error: { code: 'workspace_read_only' } })
+
+    const sync = (
+      await harness.app.inject({
+        method: 'GET',
+        url: `/api/workspaces/${workspace}/source`,
+        cookies: admin,
+      })
+    ).json<{ sync: { refused: unknown[] } }>().sync
+    expect(sync.refused).toEqual([
+      { path: 'docs/diagrams/fake.png', revision: written, reason: 'type-not-allowed' },
+    ])
   })
 
   it('records the resolved links, so the decision knows the guide links to it', async () => {

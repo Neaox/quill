@@ -2,6 +2,7 @@ import {
   createFakeClock,
   createFakeContentStore,
   createFakeDocumentFormat,
+  createInMemoryBlobStore,
   createFakeIdGenerator,
   createFakeTokenService,
   createInMemoryUnitOfWork,
@@ -42,6 +43,9 @@ function consumer(lock: SourceSyncLock, source: ExternalSource = UNMOVED) {
     ids: createFakeIdGenerator(),
     tokens: createFakeTokenService(),
     shareLinkPolicy: { allowed: () => true },
+    blobStore: createInMemoryBlobStore(),
+    drawingText: { read: async () => null },
+    config: { attachments: { maxBytes: 1024 } },
     sourceSync: {
       contentStore: createFakeContentStore(),
       sources: {

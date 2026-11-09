@@ -2,6 +2,8 @@ import { NATIVE_ORIGIN, REQUEST_IN_FLIGHT_FOR_MS, SOURCED_ORIGIN, retryAfter } f
 import type { DocumentId, ShortId, UserId, WorkspaceId } from '@quill/domain'
 
 import type {
+  SourceAssetRepository,
+  SourceAssetRow,
   SourcePathMapRepository,
   SourcePathRow,
   SourceSyncStateRepository,
@@ -973,6 +975,26 @@ export function createInMemoryUnitOfWork(
     },
   }
 
+  /** Keyed by `(workspace, path)`, as the primary key is. */
+  const sourceAssets = new Map<string, SourceAssetRow>()
+  const sourceAssetRepository: SourceAssetRepository = {
+    async listByWorkspace(workspaceId) {
+      return [...sourceAssets.values()].filter((row) => row.workspaceId === workspaceId)
+    },
+    async listByPaths(workspaceId, paths) {
+      return paths.flatMap((path) => {
+        const row = sourceAssets.get(rowId(workspaceId, path))
+        return row === undefined ? [] : [row]
+      })
+    },
+    async put(row) {
+      sourceAssets.set(rowId(row.workspaceId, row.path), row)
+    },
+    async remove(workspaceId, path) {
+      sourceAssets.delete(rowId(workspaceId, path))
+    },
+  }
+
   const sourcePathRepository: SourcePathMapRepository = {
     async listByWorkspace(workspaceId) {
       return [...sourcePaths.values()].filter((row) => row.workspaceId === workspaceId)
@@ -1169,6 +1191,7 @@ export function createInMemoryUnitOfWork(
       const row: AttachmentRow = {
         id: input.id,
         documentId: input.documentId,
+        sourceWorkspaceId: null,
         workspaceId: input.workspaceId,
         uploadedBy: input.uploadedBy,
         filename: input.filename,
@@ -1182,6 +1205,34 @@ export function createInMemoryUnitOfWork(
       }
       attachments.set(row.id, row)
       return row
+    },
+    async createForSource(input) {
+      const row: AttachmentRow = {
+        ...input,
+        documentId: null,
+        sourceWorkspaceId: input.workspaceId,
+        uploadedBy: null,
+        version: 1,
+        createdAt: input.now,
+        deletedAt: null,
+      }
+      attachments.set(row.id, row)
+      return row
+    },
+    async findSourceOwned(workspaceId, sha256) {
+      return (
+        [...attachments.values()].find(
+          (row) =>
+            row.sourceWorkspaceId === workspaceId &&
+            row.sha256 === sha256 &&
+            row.deletedAt === null,
+        ) ?? null
+      )
+    },
+    async listSourceOwned(workspaceId) {
+      return [...attachments.values()].filter(
+        (row) => row.sourceWorkspaceId === workspaceId && row.deletedAt === null,
+      )
     },
     async findById(id) {
       return attachments.get(id) ?? null
@@ -1763,6 +1814,7 @@ export function createInMemoryUnitOfWork(
     notifications: notificationRepository,
     workspaceSources: workspaceSourceRepository,
     sourcePaths: sourcePathRepository,
+    sourceAssets: sourceAssetRepository,
     sourceSyncState: sourceSyncStateRepository,
     sourceWebhookDeliveries: sourceWebhookDeliveryRepository,
     events: createEventRecorder({ outbox: outboxWriter, ids: eventIds, sink }),

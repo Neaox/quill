@@ -5,7 +5,9 @@ import type { ContentStore } from '../ports/content-store.ts'
 import type { ResolvedDestination } from '../ports/document-format.ts'
 import type { DocumentRow, UnitOfWork } from '../ports/persistence.ts'
 import type { SourceLinkSettings } from '../ports/source-sync.ts'
+import { attachmentUrl } from './attachments.ts'
 import { documentUrl } from './document-path.ts'
+import { isImagePath } from './source-assets.ts'
 
 /**
  * Relative links in a sourced document, resolved at render (ADR-061,
@@ -116,6 +118,8 @@ export interface SourceLinkContext {
   readonly documents: ReadonlyMap<string, DocumentId>
   /** The forge's address for a repository path at the synced commit; null to show such links as text. */
   readonly outside: ((path: string) => string) | null
+  /** The attachment each imported asset's path holds (ADR-061, "Repository assets"). */
+  readonly assets?: ReadonlyMap<string, string> | undefined
 }
 
 /** The section of a rendered document a fragment written against the forge names. */
@@ -125,21 +129,49 @@ function headingAnchor(fragment: string): string {
     : `${HEADING_ANCHOR_PREFIX}${fragment}`
 }
 
-/** Each destination's resolution, and the documents they name. */
+/** What a document's relative destinations resolved to. */
+export interface SourceLinks {
+  /** As links: to documents, the forge, or words. */
+  readonly resolved: ReadonlyMap<string, ResolvedDestination>
+  /**
+   * As images: to the attachment an imported asset became, or the image's
+   * alternative text for a picture that was not imported (refused, missing,
+   * or outside the repository). A destination that names no picture has none.
+   */
+  readonly images: ReadonlyMap<string, ResolvedDestination>
+  /** The documents the links name. */
+  readonly targets: ReadonlySet<DocumentId>
+  /** The attachments the images show, so a drawing among them is drawn (ADR-036). */
+  readonly attachments: ReadonlySet<string>
+}
+
+/** Whether a destination as written names a picture, by its path's extension. */
+function namesImage(url: string): boolean {
+  return isImagePath(url.split(/[?#]/u, 1).join(''))
+}
+
+/** Each destination's resolution, and the documents and attachments they name. */
 export function resolveSourceLinks(
   urls: Iterable<string>,
   context: SourceLinkContext,
-): {
-  readonly resolved: ReadonlyMap<string, ResolvedDestination>
-  readonly targets: ReadonlySet<DocumentId>
-} {
+): SourceLinks {
   const resolved = new Map<string, ResolvedDestination>()
+  const images = new Map<string, ResolvedDestination>()
   const targets = new Set<DocumentId>()
+  const attachments = new Set<string>()
   for (const url of urls) {
     const target = repositoryTarget(context.path, url)
     if (target === null) {
       resolved.set(url, TEXT)
+      if (namesImage(url)) images.set(url, TEXT)
       continue
+    }
+    const asset = context.assets?.get(target.path)
+    if (asset !== undefined) {
+      attachments.add(asset)
+      images.set(url, { kind: 'href', href: attachmentUrl(asset) })
+    } else if (isImagePath(target.path)) {
+      images.set(url, TEXT)
     }
     const section = target.fragment
     const id = context.documents.get(target.path)
@@ -154,7 +186,7 @@ export function resolveSourceLinks(
       resolved.set(url, TEXT)
     }
   }
-  return { resolved, targets }
+  return { resolved, images, targets, attachments }
 }
 
 /** The forge's address for a repository path at a commit, or null when links outside are text. */
@@ -184,7 +216,12 @@ export interface SourceLinksDependencies {
   readonly contentStore: ContentStore
 }
 
-const NONE = { resolved: new Map<string, ResolvedDestination>(), targets: new Set<DocumentId>() }
+const NONE: SourceLinks = {
+  resolved: new Map(),
+  images: new Map(),
+  targets: new Set(),
+  attachments: new Set(),
+}
 
 /**
  * The relative links of a document at a place, resolved; none for a
@@ -199,15 +236,19 @@ export async function sourceLinksAt(
   document: DocumentRow,
   markdown: string,
   place: SourcePlace,
-): Promise<ReturnType<typeof resolveSourceLinks>> {
+): Promise<SourceLinks> {
   const urls = relativeDestinations(markdown)
   if (urls.size === 0) return NONE
   const { repos } = deps.uow
   const settings = await repos.workspaceSources.find(document.workspaceId)
   if (settings === null) return NONE
-  const [tree, commit] = await Promise.all([
+  const paths = [
+    ...new Set([...urls].flatMap((url) => repositoryTarget(place.path, url)?.path ?? [])),
+  ]
+  const [tree, commit, assets] = await Promise.all([
     deps.contentStore.listTree(document.workspaceId, place.revision),
     syncedCommit(deps.uow, document, place),
+    repos.sourceAssets.listByPaths(document.workspaceId, paths),
   ])
   const documents = new Map(
     tree.flatMap((entry) =>
@@ -218,6 +259,7 @@ export async function sourceLinksAt(
     path: place.path,
     documents,
     outside: outsideLinks(settings, commit),
+    assets: new Map(assets.map((row) => [row.path, row.attachmentId])),
   })
 }
 

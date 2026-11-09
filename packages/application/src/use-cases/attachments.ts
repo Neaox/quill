@@ -129,7 +129,7 @@ export type AttachmentRefusal = Extract<
 >
 
 /** A file's bytes, accepted and in the blob store. */
-interface Received {
+export interface Received {
   readonly kind: 'received'
   readonly contentType: AllowedMediaType
   readonly sha256: string
@@ -158,13 +158,13 @@ export async function uploadAttachment(
   const document = await deps.uow.repos.documents.findById(command.documentId)
   if (document === null) return { kind: 'document-not-found', documentId: command.documentId }
 
-  const received = await receive(deps, command)
+  const received = await receiveFile(deps, command)
   if (received.kind !== 'received') return received
   return store(deps, command, document, received)
 }
 
 /** The parts of a command that carry a file's bytes. */
-interface IncomingFile {
+export interface IncomingFile {
   /** What the sender said it was. Checked against the bytes, never believed. */
   readonly declaredContentType: string
   readonly body: AsyncIterable<Uint8Array>
@@ -173,11 +173,12 @@ interface IncomingFile {
 }
 
 /**
- * A file's bytes, checked, stored, and read for words: the intake an upload
- * and a revision share, so a revision is held to exactly what an upload is.
+ * A file's bytes, checked, stored, and read for words: the intake an upload,
+ * a revision and a repository asset (ADR-061) share, so each is held to
+ * exactly what an upload is.
  */
-async function receive(
-  deps: AttachmentDependencies,
+export async function receiveFile(
+  deps: Pick<AttachmentDependencies, 'blobStore' | 'drawingText'>,
   file: IncomingFile,
 ): Promise<Received | AttachmentRefusal> {
   const rest = capped(file.body, file.maxBytes)
@@ -438,12 +439,14 @@ export async function reviseAttachment(
   command: ReviseAttachmentCommand,
 ): Promise<ReviseAttachmentResult> {
   const current = await deps.uow.repos.attachments.findById(command.attachmentId)
-  if (current === null || current.deletedAt !== null) {
+  // A repository asset is the source's, and only the sync job changes it (ADR-061).
+  const owner = current?.documentId ?? null
+  if (current === null || current.deletedAt !== null || owner === null) {
     return { kind: 'not-found', attachmentId: command.attachmentId }
   }
   if (current.version !== command.expectedVersion) return { kind: 'version-conflict', current }
 
-  const received = await receive(deps, command)
+  const received = await receiveFile(deps, command)
   if (received.kind !== 'received') return received
   if (received.contentType !== current.contentType) {
     return { kind: 'type-changed', current: current.contentType, sniffed: received.contentType }
@@ -480,7 +483,7 @@ export async function reviseAttachment(
       attachmentRevised,
       {
         attachmentId: row.id,
-        documentId: row.documentId,
+        documentId: owner,
         workspaceId: row.workspaceId,
         attachmentVersion: row.version,
       },

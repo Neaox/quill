@@ -172,6 +172,12 @@ export interface RenderInput {
    * written, and a body with none is rendered as before.
    */
   readonly resolvedLinks?: ReadonlyMap<string, ResolvedDestination> | undefined
+  /**
+   * Where the body's relative images go, by the destination as written
+   * (ADR-061, "Repository assets"): to the attachment an imported asset
+   * became, or to nothing, so the image shows its alternative text.
+   */
+  readonly resolvedImages?: ReadonlyMap<string, ResolvedDestination> | undefined
 }
 
 /** What one destination resolved to: another address, or nothing, so its words are shown alone. */
