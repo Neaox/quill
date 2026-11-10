@@ -13,6 +13,7 @@ import type { DocumentLinksLoader } from './body-links.ts'
 import { fillChildPageSlots } from './child-pages-slots.ts'
 import type { ChildPagesSlotsOptions } from './child-pages-slots.ts'
 import { LinkPeek } from './link-peek/link-peek.tsx'
+import { importOnDemand } from '../../lib/on-demand-imports.ts'
 
 export interface DocumentBodyProps {
   /** The cached body from `GET /documents/:id/rendered` (ADR-031). */
@@ -225,7 +226,9 @@ export function DocumentBody({
  * The body's enhancements that wait for it to be drawn
  * (`deferred-enhancements.ts`), fetched on demand.
  */
-const deferredEnhancements = onDemand(() => import('./deferred-enhancements.ts'))
+const deferredEnhancements = onDemand(() =>
+  importOnDemand(() => import('./deferred-enhancements.ts')),
+)
 
 /*
  * Asked for as soon as this module is evaluated, which is when the reading
