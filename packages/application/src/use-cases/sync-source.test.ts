@@ -185,6 +185,31 @@ describe('syncSource', () => {
     })
   })
 
+  it('records how many lines the stamp puts in front of each file, so a line can be mapped back', async () => {
+    const fronted = serialise({ title: 'Fronted' }, '# Fronted')
+    const h = harness([
+      { id: 'c1', files: { 'docs/plain.md': '# Plain\n\nText.', 'docs/fronted.md': fronted } },
+    ])
+    await h.sync()
+    const rows = new Map(
+      (await h.uow.repos.sourcePaths.listByWorkspace(WORKSPACE)).map((row) => [row.path, row]),
+    )
+    // Each heading's line in the stored copy, less its line in the file, is the offset.
+    for (const [path, heading, file] of [
+      ['docs/plain.md', '# Plain', '# Plain\n\nText.'],
+      ['docs/fronted.md', '# Fronted', fronted],
+    ] as const) {
+      const line = file.split('\n').indexOf(heading) + 1
+      const stored = String(await h.stored(path)).split('\n')
+      expect(rows.get(path)?.lineOffset).toBe(stored.indexOf(heading) + 1 - line)
+    }
+    expect(rows.get('docs/plain.md')?.lineOffset).toBeGreaterThan(0)
+    const id = await h.idAt('docs/plain.md')
+    expect(await h.uow.repos.sourcePaths.findByDocument(WORKSPACE, id)).toMatchObject({
+      path: 'docs/plain.md',
+    })
+  })
+
   it('leaves a source alone while another sync of it holds the lock', async () => {
     const h = harness([{ id: 'c1', files: { 'docs/a.md': '# A' } }])
     h.lock.held.add(WORKSPACE)
@@ -2467,6 +2492,37 @@ describe('folders as documents', () => {
     expect((await state(h))?.layout?.fingerprint).toContain('"tree":"folders"')
 
     // And once placed, it stays placed.
+    expect(await h.sync()).toEqual({ kind: 'up-to-date', revision: 'c1' })
+  })
+
+  it('places a tree again to record line offsets for a workspace synced before they were kept', async () => {
+    const h = harness([{ id: 'c1', files: GUIDE_FILES }])
+    await h.sync()
+    const { repos } = h.uow
+    // As the release before offsets were kept left it: no offsets, no placing in the fingerprint.
+    for (const { lineOffset: _offset, ...row } of await repos.sourcePaths.listByWorkspace(
+      WORKSPACE,
+    )) {
+      await repos.sourcePaths.put(row, NOW)
+    }
+    const current = await state(h)
+    if (current?.layout == null || current.lastSyncedRevision === null) throw new Error('unsynced')
+    await repos.sourceSyncState.recordSynced({
+      workspaceId: WORKSPACE,
+      revision: current.lastSyncedRevision,
+      refused: current.refused,
+      layout: {
+        ...current.layout,
+        fingerprint: current.layout.fingerprint.replace(',"placing":2', ''),
+      },
+      brokenLinks: current.brokenLinks,
+      now: NOW,
+    })
+
+    await h.sync()
+    const rows = await repos.sourcePaths.listByWorkspace(WORKSPACE)
+    expect(rows.every((row) => typeof row.lineOffset === 'number')).toBe(true)
+    expect((await state(h))?.layout?.fingerprint).toContain('"placing":2')
     expect(await h.sync()).toEqual({ kind: 'up-to-date', revision: 'c1' })
   })
 

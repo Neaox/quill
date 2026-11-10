@@ -1,5 +1,7 @@
 import { execFileSync } from 'node:child_process'
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { get } from 'node:http'
+import type { IncomingMessage } from 'node:http'
 import type { AddressInfo } from 'node:net'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -85,48 +87,51 @@ interface Stream {
   close(): void
 }
 
-/** Every stream a test opened, aborted before the server closes even if the test failed. */
-const opened: AbortController[] = []
+/** Every stream a test opened, ended before the server closes even if the test failed. */
+const opened: (() => void)[] = []
 
+/**
+ * Asks with `node:http` and no agent, so each request has a socket of its
+ * own that ends with its response: nothing is kept alive for reuse, and the
+ * server's close never waits on a socket the test's client still holds.
+ */
 async function open(who: keyof typeof cookies, workspace = workspaceId): Promise<Stream> {
-  const controller = new AbortController()
-  const response = await fetch(`${base}/api/workspaces/${workspace}/events`, {
-    headers: { cookie: cookies[who], accept: 'text/event-stream' },
-    signal: controller.signal,
-  })
   const events: LiveEvent[] = []
   let raw = ''
   let ended = false
-  if (response.ok && response.body !== null) {
-    const reader = response.body.getReader()
-    const decoder = new TextDecoder()
-    void (async () => {
-      try {
-        for (;;) {
-          const { done, value } = await reader.read()
-          if (done) break
-          raw += decoder.decode(value, { stream: true })
-          events.length = 0
-          for (const block of raw.split('\n\n')) {
-            const name = /^event: (.+)$/mu.exec(block)?.[1]
-            const data = /^data: (.+)$/mu.exec(block)?.[1]
-            if (name !== undefined && data !== undefined) {
-              events.push({ event: name, data: JSON.parse(data) as Record<string, unknown> })
-            }
-          }
-        }
-      } catch {
-        // Aborted by the test.
-      }
-      ended = true
-    })()
-  } else {
-    raw = await response.text()
-    ended = true
+  const request = get(`${base}/api/workspaces/${workspace}/events`, {
+    agent: false,
+    headers: { cookie: cookies[who], accept: 'text/event-stream' },
+  })
+  const close = () => {
+    request.destroy()
   }
-  opened.push(controller)
+  opened.push(close)
+  const response = await new Promise<IncomingMessage>((resolve, reject) => {
+    request.once('response', resolve)
+    request.once('error', reject)
+  })
+  const status = response.statusCode ?? 0
+  response.setEncoding('utf8')
+  response.on('data', (chunk: string) => {
+    raw += chunk
+    events.length = 0
+    for (const block of raw.split('\n\n')) {
+      const name = /^event: (.+)$/mu.exec(block)?.[1]
+      const data = /^data: (.+)$/mu.exec(block)?.[1]
+      if (name !== undefined && data !== undefined) {
+        events.push({ event: name, data: JSON.parse(data) as Record<string, unknown> })
+      }
+    }
+  })
+  // Ended by the server, or by `close` (an aborted response is an error here).
+  response.once('close', () => {
+    ended = true
+  })
+  response.on('error', () => undefined)
+  if (status !== 200) await new Promise((resolve) => response.once('end', resolve))
   return {
-    status: response.status,
+    status,
     events,
     text: () => raw,
     ended: () => ended,
@@ -137,9 +142,7 @@ async function open(who: keyof typeof cookies, workspace = workspaceId): Promise
         await new Promise((resolve) => setTimeout(resolve, 20))
       }
     },
-    close() {
-      controller.abort()
-    },
+    close,
   }
 }
 
@@ -253,9 +256,7 @@ beforeAll(async () => {
 }, 60_000)
 
 afterAll(async () => {
-  for (const controller of opened) controller.abort()
-  // The test's own client keeps idle sockets for reuse; the server is not waited on for them.
-  harness.app.server.closeAllConnections()
+  for (const close of opened) close()
   await harness.close()
   await rm(root, { recursive: true, force: true, maxRetries: 5 })
 })

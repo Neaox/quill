@@ -54,6 +54,7 @@ A command-line tool, `quill`, with two commands, `quill check` and `quill previe
 | `asset-type-not-allowed`, `asset-type-mismatch`, `asset-empty`, `asset-malformed`, `asset-too-large` | error | An asset the upload pipeline refuses (ADR-011, ADR-047) | `RefusedSourceFile` |
 | `link-broken` | warning | A relative link to a path that is not in the repository | `BrokenSourceLink` |
 | `block-issue` | warning | An unknown block, a prop that does not fit, a block that cannot be drawn (ADR-060) | `RenderedContent.blockIssues`, the `block-issue` health signal |
+| `table-shape` | warning | A table row with more or fewer cells than its header, with its line | `RenderedContent.tableShapes`, the `table-shape` health signal |
 | `required-section-empty` | warning | A required section left empty | The `required-section-empty` health signal |
 | `version-drift` | warning | The tool's version is outside the manifest's `requires` range (section 6) | The source's admin page (section 6) |
 | `left-out` | note | A file under a collection's path that `exclude` or the layout leaves out, with the pattern | The settings preview's skipped files |
@@ -401,6 +402,15 @@ The sync row of section 4 mixed two things: the work Quill does, and how fast a 
   So the fetch is in budget, and what was slow was the remote. Quill runs one clone, one `ls-tree` and one `cat-file --batch` for every file together; it spawns no `git` process per file.
 - **Measured and left as it is:** `git backfill` fetches the contents of the source's paths for every revision of the history, which a source whose history setting is `head` does not need for its first sync. On that repository that is about half of the fetch. It is kept: a source replays the commits after its first sync, and fetching their contents later costs the same. Revisit if a large history makes it dominate.
 - **Where the sync's time goes instead:** 76 seconds of the sync of L is Quill's work after the fetch (parsing each document several times, publishing, and rendering), which is what step 3's parse-once and tuning work is for.
+
+## Amendment: lines are the author's (11 November 2026)
+
+Every line a check or a health signal gives is a line of the file in the repository, never of the copy Quill stores. The stored copy has the document's `id` stamped into its front matter (ADR-061), and that adds lines in front of the text: three for a file with no front matter, one for a file with some. A `block-issue` or `table-shape` reported against the stored copy pointed that many lines below the line the author has to fix.
+
+- **What is kept.** The sync records, for each file, how many lines the stamp added: the stored copy's line count less the file's (`SourcePathRow.lineOffset`, `source_path_map.line_offset`). The stamp only changes the front matter, so every line after it moves by exactly that much. A generated folder document has no repository file, and its offset is 0.
+- **Where it is used.** The health signals beside a page and `quill check`'s report both take the offset off each line they give. A native page has none to take off. None of these lines falls inside the stamped front matter; one that did would be given as line 1.
+- **Existing workspaces.** The layout fingerprint now carries how a tree is placed (`"placing": 2`). A workspace placed before offsets were kept is placed again on its next sync, as one was when folders became documents. Every path map entry is written anew, with its offset, and no revision is published for it. Until then, its lines are given as before.
+- Manifest lines (`manifest-invalid`, `manifest-unknown-key`, `manifest-default`) were already the manifest file's own, and are unchanged.
 
 ## Amendment: the pool and the parser's rate (11 November 2026)
 

@@ -124,6 +124,7 @@ export type {
   StampAuthorshipInput,
   ComparedChange,
   BlockIssueView,
+  TableShapeView,
   ComparedChangeKind,
   ComparedContent,
   ComparedLine,

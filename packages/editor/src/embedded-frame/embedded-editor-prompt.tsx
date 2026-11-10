@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef } from 'react'
+import { useId, useLayoutEffect, useRef } from 'react'
 import type { ReactNode } from 'react'
 
 import { tv } from '@quill/ui'
@@ -37,8 +37,11 @@ export function EmbeddedEditorPrompt({ title, children, actions }: EmbeddedEdito
   const bodyId = useId()
   const styles = promptStyles()
 
-  // Focus is a DOM state outside React; the question takes it when it appears.
-  useEffect(() => {
+  // Focus is a DOM state outside React; the question takes it when it
+  // appears. In a layout effect, so it is taken in the same commit that shows
+  // the question: with a passive effect, the question was on screen, and
+  // could be found and acted on, a moment before its first button had focus.
+  useLayoutEffect(() => {
     ref.current?.querySelector<HTMLElement>('button')?.focus()
   }, [])
 

@@ -13,7 +13,7 @@ import { createInMemoryUnitOfWork } from '../test-support/in-memory-repositories
 import type { InMemoryUnitOfWork } from '../test-support/in-memory-repositories.ts'
 import { createFakeSettings } from '../test-support/fake-settings.ts'
 import { createDocument } from './create-document.ts'
-import { getEnvelope, reviewOf } from './get-envelope.ts'
+import { getEnvelope, reviewOf, tableShapeWords } from './get-envelope.ts'
 import type { EnvelopeDependencies } from './get-envelope.ts'
 import { publishDocument, readDraftContent } from './publish-document.ts'
 
@@ -301,6 +301,60 @@ describe('getEnvelope', () => {
     ])
   })
 
+  it('gives a page read from a repository its lines in the file there, not in the stamped copy', async () => {
+    const id = await draft(
+      'Guide',
+      '# Guide\n\n:::unknown-timeline\n:::\n\n| A | B |\n| - | - |\n| x |\n',
+      { owners: ['ada@example.com'] },
+    )
+    await publishDocument(deps, { documentId: id, base: null, author, sessionId: SESSION })
+    // The sync's stamp put two more lines in front of the file's text than the file has.
+    await deps.uow.repos.sourcePaths.put(
+      {
+        workspaceId: WORKSPACE,
+        path: 'docs/guide.md',
+        documentId: id,
+        archivedAt: null,
+        order: null,
+        lineOffset: 2,
+      },
+      new Date(),
+    )
+
+    const result = await getEnvelope(deps, { documentId: id, capabilities: editor })
+    expect(result.kind === 'envelope' && result.envelope.health).toEqual([
+      { kind: 'block-issue', detail: 'line 1: no block is called unknown-timeline' },
+      {
+        kind: 'table-shape',
+        detail:
+          'line 6: A table row has 1 cell but its header has 2 columns, so it is filled with empty cells.',
+      },
+    ])
+  })
+
+  it('reports each table row that does not match its header, with its line', async () => {
+    const id = await draft(
+      'Guide',
+      '# Guide\n\n| A | B |\n| - | - |\n| x |\n| x | y |\n| x | y | z | w |\n',
+      { owners: ['ada@example.com'] },
+    )
+    await publishDocument(deps, { documentId: id, base: null, author, sessionId: SESSION })
+
+    const result = await getEnvelope(deps, { documentId: id, capabilities: editor })
+    expect(result.kind === 'envelope' && result.envelope.health).toEqual([
+      {
+        kind: 'table-shape',
+        detail:
+          'line 5: A table row has 1 cell but its header has 2 columns, so it is filled with empty cells.',
+      },
+      {
+        kind: 'table-shape',
+        detail:
+          'line 7: A table row has 4 cells but its header has 2 columns, so the last 2 are not shown.',
+      },
+    ])
+  })
+
   it('reports a published document that has no index row yet', async () => {
     const id = await draft('Overview', '# Overview')
     const document = await uow.repos.documents.findById(id)
@@ -453,5 +507,16 @@ describe('the draft an editor has not published', () => {
     await edit(id, '# Overview\nChanged.')
 
     expect(await draftOf(id, viewer)).toBeNull()
+  })
+})
+
+describe('tableShapeWords', () => {
+  it('says which way a row is wrong, in the singular where it is one', () => {
+    expect(tableShapeWords({ cells: 2, columns: 1 })).toBe(
+      'A table row has 2 cells but its header has 1 column, so the last is not shown.',
+    )
+    expect(tableShapeWords({ cells: 0, columns: 3 })).toBe(
+      'A table row has 0 cells but its header has 3 columns, so it is filled with empty cells.',
+    )
   })
 })

@@ -24,6 +24,7 @@ function document(path: string, extra: Partial<PlannedDocument> = {}): PlannedDo
     title: path,
     sortKey: 1,
     markdown: '',
+    lineOffset: 0,
     links: NONE,
     ...extra,
   }
@@ -124,12 +125,16 @@ describe('reportSource', () => {
               { block: 'frame', message: 'no block is called frame' },
               { block: 'endpoint', message: 'path is required', line: 4 },
             ],
+            tableShapes: [
+              { line: 12, cells: 3, columns: 2 },
+              { cells: 1, columns: 2 },
+            ],
             incompleteRequiredSections: ['Summary'],
           },
         ],
       ]),
     })
-    expect(report.summary).toEqual({ errors: 9, warnings: 7, notes: 8, documents: 3, assets: 0 })
+    expect(report.summary).toEqual({ errors: 9, warnings: 9, notes: 8, documents: 3, assets: 0 })
     expect(
       report.problems.map(
         ({ path, line, code, severity }) => `${path}:${line ?? ''} ${severity} ${code}`,
@@ -143,8 +148,10 @@ describe('reportSource', () => {
       'docs/b.md: warning block-issue',
       'docs/b.md: warning link-broken',
       'docs/b.md: warning required-section-empty',
+      'docs/b.md: warning table-shape',
       'docs/b.md:4 warning block-issue',
       'docs/b.md:9 warning block-issue',
+      'docs/b.md:12 warning table-shape',
       'docs/broken.png: error asset-malformed',
       'docs/drafts/wip.md: note left-out',
       'docs/empty.png: error asset-empty',
@@ -178,6 +185,7 @@ describe('reportSource', () => {
       'link-broken',
       'manifest-unknown-key',
       'required-section-empty',
+      'table-shape',
     ])
     expect(report.problems.find(({ code }) => code === 'folder-generated')?.path).toBe('docs/topic')
     expect(report.problems.find(({ path }) => path === 'packages/CHANGES.md')?.message).toBe(
@@ -192,6 +200,26 @@ describe('reportSource', () => {
       [null, 'no block is called gallery'],
       [4, 'path is required'],
       [9, 'no block is called step'],
+    ])
+  })
+
+  it('gives each line as the line in the repository file, not in the stamped copy', () => {
+    const report = reportSource({
+      plan: planned({ documents: [document('docs/b.md', { lineOffset: 3 })] }),
+      rendered: new Map([
+        [
+          'docs/b.md',
+          {
+            blockIssues: [{ block: 'step', message: 'no block is called step', line: 9 }],
+            tableShapes: [{ line: 12, cells: 3, columns: 2 }],
+            incompleteRequiredSections: [],
+          },
+        ],
+      ]),
+    })
+    expect(report.problems.map(({ code, line }) => [code, line])).toEqual([
+      ['block-issue', 6],
+      ['table-shape', 9],
     ])
   })
 })

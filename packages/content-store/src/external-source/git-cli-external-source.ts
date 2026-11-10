@@ -17,8 +17,28 @@ import type {
 import { GitCli } from './git-cli.ts'
 import type { Deadline, GitCommand, SourceCredential } from './git-cli.ts'
 import { batchObjects, nulFields } from './git-output.ts'
+import { FILE_KINDS, isTreePath, OBJECT_ID, pathBatches, treeEntry } from './git-tree.ts'
 import { supportedGitVersion } from './git-version.ts'
 import { sourcePrefixes, sparsePatterns } from './source-paths.ts'
+
+/**
+ * What `git --version` said, by executable, asked once per process: every
+ * source opened checks it, and a sync opens one each time, so asking anew
+ * would be a process per sync for an answer that changes only when the
+ * server's `git` is replaced, which restarts the server anyway.
+ */
+const versions = new Map<string, Promise<string>>()
+
+function versionOf(git: GitCli, executable: string, cwd: string): Promise<string> {
+  let asked = versions.get(executable)
+  if (asked === undefined) {
+    asked = git.run({ subcommand: '--version', cwd }).then(({ stdout }) => stdout.toString('utf8'))
+    versions.set(executable, asked)
+    // A failure is not remembered: the next source asks again.
+    asked.catch(() => versions.delete(executable))
+  }
+  return asked
+}
 
 /**
  * The `ExternalSource` port over the `git` CLI: a partial clone limited to
@@ -88,15 +108,8 @@ const DEFAULT_FETCH_DEADLINE_MS = 15 * 60_000
 const DEFAULT_MAX_OUTPUT_BYTES = 64 * 1024 * 1024
 const DEFAULT_MAX_FILE_BYTES = 16 * 1024 * 1024
 
-/** A full SHA-1 or SHA-256 object id. Anything else could be read as an option or a revision expression. */
-const OBJECT_ID = /^[0-9a-f]{40}(?:[0-9a-f]{24})?$/u
 /** `git check-ref-format --branch`'s rules, closely enough to refuse anything that could be read as an option. */
 const BRANCH_NAME = /^(?![-/.])(?!.*(?:\.\.|\/\/|@\{|\.lock$|\/$|\.$))[^\p{Cc} ~^:?*[\\]+$/u
-const FILE_KINDS: ReadonlyMap<string, SourceFile['kind']> = new Map([
-  ['100644', 'file'],
-  ['100755', 'file'],
-  ['120000', 'symbolic-link'],
-])
 /** id, author name, author address, author time, committer time, subject. */
 const LOG_FORMAT = '--format=%H%x00%an%x00%ae%x00%at%x00%ct%x00%s'
 const LOG_FIELDS = 6
@@ -125,6 +138,12 @@ export class GitCliExternalSource implements ExternalSource {
   readonly #repository: string
   readonly #home: string
   readonly #trackingRef: string
+  /**
+   * Commit ids already found in the clone. An object id names one commit for
+   * ever and the clone only gains objects, so each is asked about once rather
+   * than on every read of it; a new clone starts the set again.
+   */
+  readonly #present = new Set<string>()
 
   /**
    * Checks the options and the installed `git`, and refuses clearly when
@@ -153,8 +172,7 @@ export class GitCliExternalSource implements ExternalSource {
       allowFileProtocol: remote.protocol === 'file:',
       ...(options.egressProxy === undefined ? {} : { egressProxy: options.egressProxy }),
     })
-    const { stdout } = await git.run({ subcommand: '--version', cwd: home })
-    supportedGitVersion(stdout.toString('utf8'))
+    supportedGitVersion(await versionOf(git, options.executable ?? 'git', home))
 
     return new GitCliExternalSource(prefixes.value, {
       git,
@@ -451,6 +469,7 @@ export class GitCliExternalSource implements ExternalSource {
    * interrupted clone is never mistaken for a finished one.
    */
   async #clone(network: Network, deadline: Deadline): Promise<void> {
+    this.#present.clear()
     const staging = `${this.#repository}.partial`
     await rm(staging, { recursive: true, force: true })
     try {
@@ -485,7 +504,10 @@ export class GitCliExternalSource implements ExternalSource {
     if (!OBJECT_ID.test(revision)) {
       throw new ExternalSourceError('unknown-revision', `"${revision}" is not a source revision.`)
     }
-    return this.#commit(revision)
+    if (this.#present.has(revision)) return revision
+    const commit = await this.#commit(revision)
+    this.#present.add(commit)
+    return commit
   }
 
   async #isAncestor(ancestor: string, descendant: string): Promise<boolean> {
@@ -544,43 +566,6 @@ async function exists(path: string): Promise<boolean> {
   } catch {
     return false
   }
-}
-
-/** `<mode> <type> <id>\t<path>`; null for anything but a file or a symbolic link (a submodule, say). */
-/** Characters that keep a command line short on every platform (Windows allows 32,767). */
-const PATH_BATCH_CHARACTERS = 8000
-
-/** A path a tree entry could have: plain segments, nothing empty, `.` or `..`, no control character. */
-function isTreePath(path: string): boolean {
-  return path
-    .split('/')
-    .every(
-      (segment) =>
-        segment !== '' && segment !== '.' && segment !== '..' && !/\p{Cc}/u.test(segment),
-    )
-}
-
-/** Paths in batches whose command lines stay under the limit. */
-function* pathBatches(paths: readonly string[]): Generator<readonly string[]> {
-  let batch: string[] = []
-  let length = 0
-  for (const path of paths) {
-    if (batch.length > 0 && length + path.length > PATH_BATCH_CHARACTERS) {
-      yield batch
-      batch = []
-      length = 0
-    }
-    batch.push(path)
-    length += path.length + 1
-  }
-  yield batch
-}
-
-function treeEntry(field: string): SourceFile | null {
-  const tab = field.indexOf('\t')
-  const [mode = '', , fileId = ''] = field.slice(0, tab).split(' ')
-  const kind = FILE_KINDS.get(mode)
-  return kind === undefined ? null : { path: field.slice(tab + 1), fileId, kind }
 }
 
 function sourceRevision([

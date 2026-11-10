@@ -204,6 +204,14 @@ export interface SourcePathRow {
    * written before it was recorded.
    */
   readonly order: number | null
+  /**
+   * How many lines the stored copy has before the repository's own text
+   * begins, beyond those the file itself has: the lines its stamped `id`
+   * added to the front matter (ADR-061). A line a check reports in the stored
+   * copy is this many lines below the line in the repository's file. Absent for
+   * a row written before it was recorded, which the next sync re-places.
+   */
+  readonly lineOffset?: number | undefined
 }
 
 /**
@@ -212,6 +220,8 @@ export interface SourcePathRow {
  */
 export interface SourcePathMapRepository {
   listByWorkspace(workspaceId: WorkspaceId): Promise<readonly SourcePathRow[]>
+  /** The live entry for a document, or null: where a page of the source is in its repository. */
+  findByDocument(workspaceId: WorkspaceId, documentId: DocumentId): Promise<SourcePathRow | null>
   /** Writes the entry for a path whole, replacing whatever entry the path had. */
   put(row: SourcePathRow, now: Date): Promise<void>
   /** Forgets a path: a rename moved its document elsewhere. */

@@ -34,10 +34,12 @@ describe('the public entry point', () => {
       'GitContentStore',
       'GitObjectError',
       'LeakedLockError',
+      'LocalRevisionSource',
       'MINIMUM_GIT_VERSION',
       'MemoryObjectStore',
       'MemoryObjectStoreProvider',
       'RefLockPackingHook',
+      'WorkingTreeSource',
     ])
   })
 

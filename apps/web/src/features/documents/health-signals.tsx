@@ -28,6 +28,7 @@ const SIGNAL_LABEL: Readonly<Record<HealthSignal['kind'], string>> = {
   'required-section-empty': 'section empty',
   'broken-link': 'broken link',
   'block-issue': 'block issue',
+  'table-shape': 'table shape',
 }
 
 export interface HealthSignalsProps {
