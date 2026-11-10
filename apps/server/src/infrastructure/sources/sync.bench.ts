@@ -62,8 +62,11 @@ import {
  */
 
 /**
- * ADR-062, section 4: wall time and CPU time in milliseconds, and the parser's
- * single-thread throughput in MB a second. XL has no server budget yet: it is
+ * ADR-062, section 4, as "Amendment: the pool and the parser's rate" sets them
+ * on the reference runner: wall time and CPU time in milliseconds, for the
+ * sync on the pool as production runs it, and a floor under the parser's
+ * single-thread throughput in MB a second, which catches a regression
+ * rather than restating a target. XL has no server budget yet: it is
  * measured and reported. A null is reported and not held to anything.
  */
 const BUDGETS: Readonly<
@@ -76,7 +79,7 @@ const BUDGETS: Readonly<
     }
   >
 > = {
-  L: { fetch: { wall: 4_000, cpu: null }, sync: { wall: 10_000, cpu: null }, parseMBps: null },
+  L: { fetch: { wall: 4_000, cpu: null }, sync: { wall: 15_000, cpu: 35_000 }, parseMBps: 0.8 },
   XL: { fetch: { wall: null, cpu: null }, sync: { wall: null, cpu: null }, parseMBps: null },
 }
 const RUNS = 3

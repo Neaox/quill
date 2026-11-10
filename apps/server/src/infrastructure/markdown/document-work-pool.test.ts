@@ -104,10 +104,11 @@ describe('the document work pool', () => {
     expect(await work.inspect(['# Again'])).toHaveLength(1)
   }, 60_000)
 
-  it('sizes itself to the machine, between one thread and four', () => {
+  it('sizes itself to half the machine’s logical cores, between one thread and four', () => {
     expect(pool({ size: 2 }).size).toBe(2)
     expect(defaultPoolSize()).toBeGreaterThanOrEqual(1)
     expect(defaultPoolSize()).toBeLessThanOrEqual(4)
+    expect([1, 2, 3, 4, 8, 16].map((cores) => defaultPoolSize(cores))).toEqual([1, 1, 1, 2, 4, 4])
   })
 })
 

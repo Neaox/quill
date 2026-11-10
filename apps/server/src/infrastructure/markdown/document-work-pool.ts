@@ -13,8 +13,8 @@ import { createKeptByText, KEPT_TEXT_MAX_CHARS } from './parsed-trees.ts'
  * sync's inspections and renders, many at once, so its wall time is not one
  * thread's CPU time.
  *
- * - **Bounded.** At most `size` threads (by default one fewer than the
- *   machine's cores, and no more than four), each with a hard heap cap.
+ * - **Bounded.** At most `size` threads (by default half the machine's
+ *   logical cores, between one and four), each with a hard heap cap.
  *   Threads start when there is work and stop after `idleMs` without any.
  * - **Deterministic.** Each batch's answers are in the order of its inputs,
  *   whichever thread answered and whenever. The largest items are handed out
@@ -93,9 +93,15 @@ export function documentWorkerModule(built: URL = BUILT_DOCUMENT_WORKER): URL {
   return DOCUMENT_WORKER_SOURCE
 }
 
-/** One fewer than the cores, between one and four: four was as fast as eight, with half the memory. */
-export function defaultPoolSize(): number {
-  return Math.max(1, Math.min(availableParallelism() - 1, 4))
+/**
+ * Half the logical cores, between one and four (ADR-062, "Amendment: the
+ * pool and the parser's rate"). A hosted runner's four vCPUs are two cores
+ * with two hardware threads each: there, two threads synced L faster than
+ * three or four, with 40% less CPU time, because the parse is bound by the
+ * core, not the thread. Four was as fast as eight, with half the memory.
+ */
+export function defaultPoolSize(cores = availableParallelism()): number {
+  return Math.min(4, Math.max(1, Math.floor(cores / 2)))
 }
 
 type Answer = { readonly value: unknown } | { readonly error: string }
