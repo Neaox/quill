@@ -236,8 +236,15 @@
     {
       "idx": 33,
       "version": "7",
-      "when": 1794285041192,
-      "tag": "0033_source_manifest_path",
+      "when": 1794285087373,
+      "tag": "0033_source_line_offset",
+      "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1794296026164,
+      "tag": "0034_source_manifest_path",
       "breakpoints": true
     }
   ]

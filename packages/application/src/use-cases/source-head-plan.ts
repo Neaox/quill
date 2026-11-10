@@ -103,6 +103,8 @@ export interface PlannedDocument {
   readonly sortKey: number
   /** The stored copy: the repository's text with its id stamped in. */
   readonly markdown: string
+  /** The lines the stamp added in front of the repository's text (`SourcePathRow.lineOffset`). */
+  readonly lineOffset: number
   /** Its relative links and images, resolved against the plan. */
   readonly links: SourceLinks
 }
@@ -241,6 +243,7 @@ export async function planSourceHead(
         title: edit.title,
         sortKey: place.sortKey,
         markdown: edit.markdown,
+        lineOffset: edit.lineOffset,
         links: resolveSourceLinks(relativeDestinations(edit.markdown), {
           path: edit.path,
           documents: documentsByPath,

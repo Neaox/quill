@@ -12343,6 +12343,33 @@
         }
       }
     },
+    "/api/workspaces/{id}/events": {
+      "get": {
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "A text/event-stream: `sync`, `document`, `tree` and `reset` events, and keep-alive comments.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "A text/event-stream: `sync`, `document`, `tree` and `reset` events, and keep-alive comments.",
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/workspaces/{id}/collections": {
       "get": {
         "parameters": [
@@ -13164,6 +13191,12 @@
                                 "type": "string",
                                 "enum": [
                                   "block-issue"
+                                ]
+                              },
+                              {
+                                "type": "string",
+                                "enum": [
+                                  "table-shape"
                                 ]
                               }
                             ]

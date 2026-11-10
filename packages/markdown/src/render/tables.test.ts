@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import { parseMarkdown } from '../pipeline/processor.ts'
-import { renderHtml } from './html.ts'
+import { renderDocument, renderHtml } from './html.ts'
 
 const render = (markdown: string): string => renderHtml(parseMarkdown(markdown))
 
@@ -155,10 +155,16 @@ describe('stacked tables', () => {
     expect(html).toContain(`data-label="${'A'.repeat(80)}"`)
   })
 
-  it('labels a cell beyond the header row with nothing, and a short row stays short', () => {
+  // A row is as wide as its header, as GitHub Flavored Markdown reads a table:
+  // a cell past the header is dropped and a short row is padded. Quill used to
+  // keep both as written, which drew a column with no name and a row that
+  // stopped short. The row is now reported instead ("a row that does not
+  // match its header", below), so the stray or missing `|` is still seen.
+  it('labels every stacked cell with its column, a long row cut to the header', () => {
     const html = wrapped('{responsive=stack}', '| A |\n| - |\n| 1 | 2 |\n| 3 |\n')
 
-    expect(html).toContain('<td class="align-numeric" data-label="" role="cell">2</td>')
+    expect(html).not.toContain('>2</td>')
+    expect(html).not.toContain('data-label=""')
   })
 
   it('does not label cells of a table that scrolls', () => {
@@ -264,5 +270,37 @@ describe('captions', () => {
     )
     expect(render(`::::figure\n:::cards\nA\n:::\n\nCaption.\n::::\n`)).toContain('<figcaption>')
     expect(render(`:::figure\n${TABLE}:::\n`)).not.toContain('<caption')
+  })
+})
+
+describe('a row that does not match its header', () => {
+  it('is padded with empty cells when it is short, as GFM does', () => {
+    const html = render('| A | B | C |\n| - | - | - |\n| x |\n')
+
+    expect(html).toContain('<tr>\n<td>x</td>\n<td></td>\n<td></td>\n</tr>')
+  })
+
+  it('loses the cells past the last column when it is long, as GFM does', () => {
+    const html = render('| A | B |\n| - | - |\n| x | y | stray |\n')
+
+    expect(html).toContain('<td>y</td>')
+    expect(html).not.toContain('stray')
+  })
+
+  it('is reported with its line, so the author sees the stray or missing pipe', () => {
+    const { tableShapes } = renderDocument(
+      parseMarkdown('# T\n\n| A | B |\n| - | - |\n| x |\n| x | y |\n| x | y | z |\n'),
+    )
+
+    expect(tableShapes).toEqual([
+      { line: 5, cells: 1, columns: 2 },
+      { line: 7, cells: 3, columns: 2 },
+    ])
+  })
+
+  it('takes the widest row when the table has row headers only', () => {
+    const html = wrapped('{headers=row}', '| A | 1 |\n| - | - |\n| B | 2 | 3 |\n')
+
+    expect(html).toContain('>3</td>')
   })
 })

@@ -6,6 +6,7 @@ import { now } from '../time/clock.ts'
 
 import { useApiClient } from './client-context.tsx'
 import { request } from './http.ts'
+import { LIVE_BACKSTOP_MS, useIsLive, whileLive } from './live.ts'
 import { queryKeys } from './query-keys.ts'
 import type {
   SourceFreshnessDto,
@@ -67,16 +68,24 @@ export function awaitsSyncAfterSave(source: WorkspaceSourceDto, at: number): boo
 /**
  * The source and how far it has synced. While a sync runs — or one was just
  * asked for and has not been attempted yet — it asks again every few seconds,
- * so the page moves from "syncing" to the outcome without a reload.
+ * so the page moves from "syncing" to the outcome without a reload. While the
+ * workspace's live stream is open, the stream says when to ask (ADR-063), and
+ * the few seconds become a backstop.
  */
 export function useWorkspaceSource(workspaceId: string, options: { awaiting?: boolean } = {}) {
   const client = useApiClient()
+  // Rendered again when the stream opens or drops, so the pace follows it.
+  useIsLive(workspaceId)
   return useQuery({
     ...workspaceSourceQueryOptions(client, workspaceId),
     refetchInterval: (query) => {
       const data = query.state.data
       const busy = data !== undefined && (data.syncing || awaitsSyncAfterSave(data, now()))
-      return busy || options.awaiting === true ? SYNCING_REFRESH_MS : false
+      return whileLive(
+        workspaceId,
+        busy || options.awaiting === true ? SYNCING_REFRESH_MS : false,
+        LIVE_BACKSTOP_MS,
+      )
     },
   })
 }
@@ -180,10 +189,14 @@ export function useDisconnectSource(workspaceId: string) {
 /**
  * Whether an open document read from a repository has moved on. Asking is
  * also what starts the check on read on the server. It asks again while the
- * tab is in front, and not at all for a document that is not sourced.
+ * tab is in front, and not at all for a document that is not sourced. While
+ * the workspace's live stream is open it asks once a minute, which is as
+ * often as the server compares the remote anyway; the stream says sooner when
+ * the page moves (ADR-063).
  */
-export function useSourceFreshness(documentId: string, enabled: boolean) {
+export function useSourceFreshness(documentId: string, enabled: boolean, workspaceId?: string) {
   const client = useApiClient()
+  useIsLive(workspaceId)
   return useQuery({
     queryKey: queryKeys.sourceFreshness(documentId),
     queryFn: () =>
@@ -194,6 +207,10 @@ export function useSourceFreshness(documentId: string, enabled: boolean) {
       ),
     enabled,
     refetchInterval: (query) =>
-      query.state.data?.sourced === false ? false : SOURCE_FRESHNESS_REFRESH_MS,
+      whileLive(
+        workspaceId,
+        query.state.data?.sourced === false ? false : SOURCE_FRESHNESS_REFRESH_MS,
+        LIVE_BACKSTOP_MS,
+      ),
   })
 }

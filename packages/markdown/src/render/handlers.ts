@@ -51,6 +51,7 @@ import type { Slugger } from './slug.ts'
 import { HEADING_ID_PREFIX, headingId } from './slug.ts'
 import type { Handlers, State } from './hast-state.ts'
 import { createTableRenderer } from './table-block.ts'
+import type { TableShape } from './table-block.ts'
 import { childrenDirective } from '../navigation/children.ts'
 import { childPagesSlotElement, tableOfContentsElement } from '../navigation/render.ts'
 import { tableOfContentsEntries, tocDirective } from '../navigation/toc.ts'
@@ -165,6 +166,8 @@ export interface HandlerOptions {
    * cannot be drawn (`blocks/render.ts`).
    */
   readonly blockIssues?: BlockIssue[] | undefined
+  /** Where each table row that does not match its header is collected (`table-block.ts`). */
+  readonly tableShapes?: TableShape[] | undefined
   /**
    * Where each drawing placed in the body is collected, sanitised, in document
    * order: the slot is emitted here and filled after the document sanitiser
@@ -264,6 +267,7 @@ export function createHandlers(options: HandlerOptions): Handlers {
     emoji,
     outline,
     blockIssues = [],
+    tableShapes = [],
   } = options
 
   /** Component blocks (ADR-060), and the frame a block nothing draws is shown in. */
@@ -425,7 +429,7 @@ export function createHandlers(options: HandlerOptions): Handlers {
     ]
   }
 
-  const tableBlock = createTableRenderer({ cellContent })
+  const tableBlock = createTableRenderer({ cellContent, shapes: tableShapes })
 
   const table = (state: State, node: Table): Element =>
     tableBlock(state, node, DEFAULT_TABLE_OPTIONS)

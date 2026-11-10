@@ -1,0 +1,1 @@
+Fixed: for a workspace read from a repository, the line a block problem or a table row signal names is now the line in the repository's file. Until now it counted the lines Quill adds to the stored copy.

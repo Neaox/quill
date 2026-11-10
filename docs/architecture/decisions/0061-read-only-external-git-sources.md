@@ -240,6 +240,13 @@ All three triggers write the same `SourceSyncRequested` outbox event (ADR-056). 
 - **Refused files are listed and render as alt text.** A file refused for its type or size is listed on the admin page with the reason, and the image renders as its alternative text.
 - **Assets belong to the source, not to a document.** An imported asset is kept while any stored revision references it, and collected after that. The `attachments` table therefore needs a source-owned row (no owning document) beside today's document-owned one.
 
+### Amendment (11 November 2026): a link to a collection's directory
+
+A relative link to a collection's own directory (`../decisions/`, `../decisions`) used to go to the forge whenever no file stood for the directory. The collection's directory is the collection rather than a folder, so it has no generated document (the amendment of 9 November), and the link left the workspace for a forge listing of files the workspace already holds. It now opens the collection's first page: the first document at the top of the collection in its order (ADR-049), which is the page the sidebar's list for the collection opens with. Where the directory has an `index.md` or a `README.md`, that file already stands for it, and it is the collection's first page as well unless its front matter's `order` says otherwise.
+
+- **Which directory.** A collection's directory is the literal one in front of its path (`docs/decisions` for `docs/decisions`, `docs` for `docs/*.md`). Of two collections that share a directory, the first in the manifest's order takes it. A collection at the repository's root has none, so a link to the root still goes to the forge.
+- **Where it is kept.** The sync records each collection's directory in the source's layout record (`collectionRoots`), beside the manifest's redirects. A workspace synced before this records them on its next sync. Until then, such links go to the forge as before.
+- **What is unchanged.** A file or folder the revision holds is resolved as before, and a redirect still comes first. The broken-link check is unchanged, because a directory the repository has is not broken. The resolution is part of the render input, so ADR-031's key covers it and `RENDER_VERSION` does not change.
 ### Amendment (11 November 2026): the manifest's place, braces, and the entry that is read
 
 A repository that already keeps a manifest of its own shape should not need a second copy, a rewritten glob, or titles it does not use. Three changes make a manifest written for another tool read as it is:

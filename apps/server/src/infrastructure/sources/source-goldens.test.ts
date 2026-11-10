@@ -270,6 +270,7 @@ async function syncFixture(name: SourceFixtureName): Promise<Synced> {
     bodies[path] = {
       html: anonymise(rendered.content.html),
       blockIssues: rendered.content.blockIssues ?? [],
+      tableShapes: rendered.content.tableShapes ?? [],
       incompleteRequiredSections: rendered.content.incompleteRequiredSections ?? [],
     }
   }
@@ -416,6 +417,7 @@ async function planFixture(name: SourceFixtureName): Promise<Record<string, unkn
     bodies[document.path] = {
       html: anonymise(rendered.html),
       blockIssues: rendered.blockIssues ?? [],
+      tableShapes: rendered.tableShapes ?? [],
       incompleteRequiredSections: rendered.incompleteRequiredSections ?? [],
     }
   }

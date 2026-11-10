@@ -48,6 +48,7 @@ export type HealthSignalKind =
   | 'required-section-empty'
   | 'broken-link'
   | 'block-issue'
+  | 'table-shape'
 
 export interface HealthSignal {
   readonly kind: HealthSignalKind
@@ -263,6 +264,27 @@ function readDate(value: unknown): Date | null {
 }
 
 /** Where a block's problem is, before what it is: "line 9: ", "lines 9, 21: ", or nothing. */
+/**
+ * A line of a stored copy as the line of the file it was read from: the
+ * lines Quill's stamp added before the text come off (`SourcePathRow.lineOffset`).
+ * A native page, or a row from before offsets were kept, has none to take off.
+ */
+export function authorLine(line: number, offset: number | undefined): number {
+  return offset === undefined ? line : Math.max(1, line - offset)
+}
+
+/** What is wrong with a table row, in words: the same in the health signal and the report. */
+export function tableShapeWords(shape: {
+  readonly cells: number
+  readonly columns: number
+}): string {
+  const cells = `${shape.cells} ${shape.cells === 1 ? 'cell' : 'cells'}`
+  const columns = `${shape.columns} ${shape.columns === 1 ? 'column' : 'columns'}`
+  return shape.cells > shape.columns
+    ? `A table row has ${cells} but its header has ${columns}, so the last ${shape.cells - shape.columns === 1 ? 'is' : `${shape.cells - shape.columns} are`} not shown.`
+    : `A table row has ${cells} but its header has ${columns}, so it is filled with empty cells.`
+}
+
 function whereOf(lines: readonly number[]): string {
   if (lines.length === 0) return ''
   return `${lines.length === 1 ? 'line' : 'lines'} ${lines.join(', ')}: `
@@ -303,16 +325,33 @@ async function healthOf(
     }
   }
 
+  // A line is the author's: for a page read from a repository, the line in
+  // its file there, not in the stored copy its id was stamped into (ADR-061).
+  const offset = (
+    await deps.uow.repos.sourcePaths.findByDocument(document.workspaceId, document.id)
+  )?.lineOffset
+  const authored = (line: number): number => authorLine(line, offset)
+
   // A block the body could not draw as written (ADR-060): an unknown block,
   // a prop that does not fit. The body shows each where it is; this lists them.
   // The same problem in several places is one signal, with its lines.
   const lines = new Map<string, number[]>()
   for (const issue of rendered.content.blockIssues) {
     const seen = lines.get(issue.message) ?? []
-    lines.set(issue.message, issue.line === undefined ? seen : [...seen, issue.line])
+    lines.set(issue.message, issue.line === undefined ? seen : [...seen, authored(issue.line)])
   }
   for (const [message, at] of lines) {
     signals.push({ kind: 'block-issue', detail: `${whereOf(at)}${message}` })
+  }
+
+  // A table row with more or fewer cells than its header: drawn as wide as
+  // the header (GFM), and listed so the stray or missing `|` is seen.
+  for (const shape of rendered.content.tableShapes) {
+    /* v8 ignore next -- a parsed body places every row; a tree built without positions has none. */
+    signals.push({
+      kind: 'table-shape',
+      detail: `${whereOf(shape.line === undefined ? [] : [authored(shape.line)])}${tableShapeWords(shape)}`,
+    })
   }
 
   return signals

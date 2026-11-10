@@ -6,12 +6,20 @@ import '@testing-library/jest-dom/vitest'
 import { preloadOverlays } from '@quill/ui'
 
 import { preloadDocumentEnhancements } from './src/features/documents/document-body.tsx'
+import { settleImportsOnDemand } from './src/lib/on-demand-imports.ts'
 import { installBrowserShims, resetObservers } from './testing/browser-shims.ts'
 
 // Registered explicitly rather than relying on Testing Library's automatic
 // cleanup, which only installs itself when the global `afterEach` happens to
 // exist at import time.
 afterEach(cleanup)
+
+// A chunk a test asked for and nobody waited on (a code sample's tokenizer,
+// a dialog) settles before the next test, and so before the environment is
+// torn down: an import still running after teardown fails the suite at random
+// (`EnvironmentTeardownError`) rather than the test that started it
+// (`src/lib/on-demand-imports.ts`).
+afterEach(settleImportsOnDemand)
 
 // Testing Library gives a `findBy*` one second to resolve, which is its own
 // budget and not Vitest's. That is plenty for a render and nowhere near

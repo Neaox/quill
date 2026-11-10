@@ -155,6 +155,7 @@ describe('followRedirects', () => {
         },
       ]),
     ),
+    roots: new Map(),
     redirects: new Map(pairs),
   })
 

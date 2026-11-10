@@ -1,5 +1,6 @@
 import type { Nodes, Root, RootContent } from 'mdast'
-import { visit } from 'unist-util-visit'
+
+import { walk } from '../walk.ts'
 
 /**
  * An image's alternative text, with the words a directive swallowed given
@@ -56,7 +57,8 @@ function plainText(node: Nodes | RootContent, label: string): string {
 
 /** The tree with each image's alternative text read as CommonMark reads it. */
 export function readImageAlts(tree: Root, source: string, parse: (label: string) => Root): Root {
-  visit(tree, 'image', (node) => {
+  walk<Nodes>(tree, (node) => {
+    if (node.type !== 'image') return
     const label = writtenLabel(source, node)
     if (label === undefined || !label.includes(':')) return
     const [only, ...rest] = parse(label).children

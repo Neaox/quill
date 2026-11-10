@@ -15,9 +15,11 @@ import type { LabelledRevision } from '../../lib/documents/revision-labels.ts'
 import { comparisonLink, documentLink } from '../../lib/routing/document-reference.ts'
 import { RouterLink } from '../../lib/routing/router-link.tsx'
 import { MountOnFirstOpen } from '../../lib/mount-on-first-open.tsx'
+import { importOnDemand } from '../../lib/on-demand-imports.ts'
 
 const RestoreRevisionDialog = lazy(async () => ({
-  default: (await import('./restore-revision-dialog.tsx')).RestoreRevisionDialog,
+  default: (await importOnDemand(() => import('./restore-revision-dialog.tsx')))
+    .RestoreRevisionDialog,
 }))
 
 export const revisionPanelStyles = tv({

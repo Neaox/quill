@@ -1,5 +1,5 @@
 {
-  "id": "aa30dbdf-8c2c-46b9-b7b7-d6d8d098e3cb",
+  "id": "f51977a6-15fb-4aab-86f7-0d3abfdd4c4a",
   "prevId": "551e4ad8-3d0c-49a4-ae5b-f89133cac1ee",
   "version": "7",
   "dialect": "postgresql",
@@ -3959,6 +3959,12 @@
           "primaryKey": false,
           "notNull": false
         },
+        "line_offset": {
+          "name": "line_offset",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
         "updated_at": {
           "name": "updated_at",
           "type": "timestamp with time zone",
@@ -4344,12 +4350,6 @@
         },
         "manifest_entry": {
           "name": "manifest_entry",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "manifest_path": {
-          "name": "manifest_path",
           "type": "text",
           "primaryKey": false,
           "notNull": false

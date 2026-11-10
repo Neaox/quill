@@ -7,6 +7,7 @@ import type { Schema } from 'hast-util-sanitize'
 import type { Root } from 'mdast'
 
 import type { BlockIssue } from '../blocks/render.ts'
+import type { TableShape } from './table-block.ts'
 import { BUILT_IN_BLOCK_REGISTRY } from '../blocks/registry.ts'
 import { blockSanitizeSchema } from '../blocks/sanitize.ts'
 import { stripPresenterNotes } from '../directives/strip-presenter-notes.ts'
@@ -117,6 +118,7 @@ export function renderHtml(ast: Root, options: RenderOptions = {}): string {
 interface RenderedHtml {
   readonly html: string
   readonly blockIssues: readonly BlockIssue[]
+  readonly tableShapes: readonly TableShape[]
 }
 
 /**
@@ -142,6 +144,7 @@ export function renderHtmlWith(
 function renderBody(ast: Root, options: RenderOptions, overrides: RenderOverrides): RenderedHtml {
   const placed: Element[] = []
   const blockIssues: BlockIssue[] = []
+  const tableShapes: TableShape[] = []
   const lookup = emojiLookup(
     options.emoji ?? new Map<string, CustomEmoji>(),
     options.standardEmoji ?? (() => undefined),
@@ -159,6 +162,7 @@ function renderBody(ast: Root, options: RenderOptions, overrides: RenderOverride
           drawings: options.drawings,
           extensions: options.extensions,
           blockIssues,
+          tableShapes,
           placed,
           labels: options.labels,
           emoji: lookup,
@@ -201,6 +205,7 @@ function renderBody(ast: Root, options: RenderOptions, overrides: RenderOverride
   return {
     html: stringify.stringify(placeDrawings(prefixFragmentLinks(safe), placed)),
     blockIssues,
+    tableShapes,
   }
 }
 
@@ -238,6 +243,8 @@ export interface RenderedDocument {
    * order: the document's health reports them as it reports broken links.
    */
   readonly blockIssues: readonly BlockIssue[]
+  /** Table rows that do not match their header, in document order (`table-block.ts`). */
+  readonly tableShapes: readonly TableShape[]
 }
 
 /**
@@ -251,6 +258,6 @@ export interface RenderedDocument {
  * unstripped draft, so this is the entry point that makes it impossible.
  */
 export function renderDocument(ast: Root, options: RenderOptions = {}): RenderedDocument {
-  const { html, blockIssues } = renderBody(ast, options, {})
-  return { html, outline: extractOutline(ast), blockIssues }
+  const { html, blockIssues, tableShapes } = renderBody(ast, options, {})
+  return { html, outline: extractOutline(ast), blockIssues, tableShapes }
 }

@@ -55,6 +55,15 @@ export interface SourceLayout {
  */
 export const LAYOUT_TREE = 'folders'
 
+/**
+ * What a placed tree records of each file beyond where it goes, also carried
+ * in every fingerprint: a tree placed before a release that records more is
+ * placed again on its next sync, so every path map entry is written anew.
+ * 2 records the lines the stamp adds in front of each file
+ * (`SourcePathRow.lineOffset`), which reported lines are mapped back by.
+ */
+export const LAYOUT_PLACING = 2
+
 /** Whether a recorded fingerprint was placed the way this release nests a tree. */
 export function placedAsTree(fingerprint: string): boolean {
   let read: unknown
@@ -63,7 +72,14 @@ export function placedAsTree(fingerprint: string): boolean {
   } catch {
     return false
   }
-  return typeof read === 'object' && read !== null && 'tree' in read && read.tree === LAYOUT_TREE
+  return (
+    typeof read === 'object' &&
+    read !== null &&
+    'tree' in read &&
+    read.tree === LAYOUT_TREE &&
+    'placing' in read &&
+    read.placing === LAYOUT_PLACING
+  )
 }
 
 export function layoutFromManifest(
@@ -85,6 +101,7 @@ export function layoutFromManifest(
     fingerprint: JSON.stringify({
       origin: 'manifest',
       tree: LAYOUT_TREE,
+      placing: LAYOUT_PLACING,
       collections: canonical(
         entry.collections.map(({ slug, title, path, order }) => [slug, title, path, order]),
       ),
@@ -124,6 +141,7 @@ export function layoutFromSettings(
     fingerprint: JSON.stringify({
       origin: 'settings',
       tree: LAYOUT_TREE,
+      placing: LAYOUT_PLACING,
       collections: canonical(read.map(({ collectionId, path }) => [collectionId, path])),
     }),
     unknownKeys: [],

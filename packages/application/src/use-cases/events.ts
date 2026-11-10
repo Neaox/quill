@@ -116,6 +116,14 @@ export const SOURCE_SYNC_REQUESTED = 'SourceSyncRequested'
  */
 export const SOURCE_DISCONNECTED = 'SourceDisconnected'
 
+/**
+ * A sync of a sourced workspace started, finished or failed (ADR-061,
+ * ADR-063). It is written so live readers are told at once; nothing durable
+ * acts on it. The payload names no reason for a failure: who may read the
+ * reason is the source's administrators, and they read it from the source.
+ */
+export const SOURCE_SYNC_STATE_CHANGED = 'SourceSyncStateChanged'
+
 export const EVENT_PAYLOAD_VERSION = 1
 
 export interface DocumentCreatedPayload {
@@ -267,6 +275,11 @@ function readField(payload: unknown, key: string): unknown {
 function readString(payload: unknown, key: string): string | null {
   const value = readField(payload, key)
   return typeof value === 'string' && value.length > 0 ? value : null
+}
+
+function readBoolean(payload: unknown, key: string): boolean | null {
+  const value = readField(payload, key)
+  return typeof value === 'boolean' ? value : null
 }
 
 /** One of a closed set of strings, found by comparison rather than asserted. */
@@ -591,6 +604,35 @@ export const sourceDisconnected = defineEvent<SourceDisconnectedPayload>(SOURCE_
     }
   },
 })
+
+export const SOURCE_SYNC_STATES = ['started', 'finished', 'failed'] as const
+export type SourceSyncState = (typeof SOURCE_SYNC_STATES)[number]
+
+export interface SourceSyncStateChangedPayload {
+  readonly version: number
+  readonly workspaceId: WorkspaceId
+  readonly state: SourceSyncState
+  /** Whether the sync published anything: a finished sync that found nothing new changed nothing. */
+  readonly changed: boolean
+}
+
+export const sourceSyncStateChanged = defineEvent<SourceSyncStateChangedPayload>(
+  SOURCE_SYNC_STATE_CHANGED,
+  {
+    [EVENT_PAYLOAD_VERSION]: (payload) => {
+      const workspaceId = readString(payload, 'workspaceId')
+      const state = readMember(payload, 'state', SOURCE_SYNC_STATES)
+      const changed = readBoolean(payload, 'changed')
+      if (workspaceId === null || state === null || changed === null) return null
+      return {
+        version: EVENT_PAYLOAD_VERSION,
+        workspaceId: workspaceId as WorkspaceId,
+        state,
+        changed,
+      }
+    },
+  },
+)
 
 /**
  * Each payload, or null when it is not one this release can read. An

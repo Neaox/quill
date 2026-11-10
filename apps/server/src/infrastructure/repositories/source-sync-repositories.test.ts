@@ -95,6 +95,35 @@ describe('the source path map', () => {
     expect(await paths.listByWorkspace(OTHER_WORKSPACE)).toEqual([])
   })
 
+  it('keeps the lines a stamp adds, and finds a live entry by its document', async () => {
+    await paths.put(
+      {
+        workspaceId: WORKSPACE,
+        path: 'docs/a.md',
+        documentId: A,
+        archivedAt: null,
+        order: null,
+        lineOffset: 3,
+      },
+      NOW,
+    )
+    await paths.put(
+      { workspaceId: WORKSPACE, path: 'docs/b.md', documentId: B, archivedAt: LATER, order: null },
+      NOW,
+    )
+    expect(await paths.findByDocument(WORKSPACE, A)).toEqual({
+      workspaceId: WORKSPACE,
+      path: 'docs/a.md',
+      documentId: A,
+      archivedAt: null,
+      order: null,
+      lineOffset: 3,
+    })
+    // An archived entry is where the page was, not where it is.
+    expect(await paths.findByDocument(WORKSPACE, B)).toBeNull()
+    expect(await paths.findByDocument(OTHER_WORKSPACE, A)).toBeNull()
+  })
+
   it('moves a document by forgetting its old path and writing its new one', async () => {
     await paths.put(
       { workspaceId: WORKSPACE, path: 'docs/a.md', documentId: A, archivedAt: null, order: null },
@@ -136,6 +165,7 @@ describe('the source sync state', () => {
     collectionIds: ['collection-1'],
     unknownKeys: [{ key: 'owner', line: 2 }],
     redirects: [['docs/old.md', 'docs/new.md']] as const,
+    collectionRoots: [['docs/recipes', 'collection-1']] as const,
   }
 
   it('has nothing for a workspace that never synced', async () => {
@@ -322,6 +352,7 @@ describe('the source sync state', () => {
           collectionIds: ['a', 7],
           unknownKeys: [{ key: 'x', line: 2 }, { key: 'y' }, 'z'],
           redirects: [['a.md', 'b.md'], ['c.md'], ['d.md', 4], 'e.md'],
+          collectionRoots: [['docs', 'a'], ['other'], 'x'],
         }),
       ],
     )
@@ -334,6 +365,7 @@ describe('the source sync state', () => {
         { key: 'y', line: null },
       ],
       redirects: [['a.md', 'b.md']],
+      collectionRoots: [['docs', 'a']],
     })
   })
 
@@ -354,6 +386,7 @@ describe('the source sync state', () => {
       ],
     )
     expect((await states.find(WORKSPACE))?.layout?.redirects).toEqual([])
+    expect((await states.find(WORKSPACE))?.layout?.collectionRoots).toEqual([])
   })
 })
 

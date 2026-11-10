@@ -102,6 +102,7 @@ export const HealthSignalSchema = Type.Object({
     Type.Literal('required-section-empty'),
     Type.Literal('broken-link'),
     Type.Literal('block-issue'),
+    Type.Literal('table-shape'),
   ]),
   detail: Type.Optional(Type.String()),
 })

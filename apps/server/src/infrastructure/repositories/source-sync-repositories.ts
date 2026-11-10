@@ -1,4 +1,4 @@
-import { and, eq, inArray, lt, sql } from 'drizzle-orm'
+import { and, eq, inArray, isNull, lt, sql } from 'drizzle-orm'
 
 import type {
   BrokenSourceLink,
@@ -38,13 +38,25 @@ export function createSourcePathMapRepository(db: DrizzleClient): SourcePathMapR
         .select()
         .from(sourcePathMap)
         .where(eq(sourcePathMap.workspaceId, workspaceId))
-      return rows.map((row) => ({
-        workspaceId: row.workspaceId as WorkspaceId,
-        path: row.path,
-        documentId: row.documentId as DocumentId,
-        archivedAt: row.archivedAt,
-        order: row.frontMatterOrder,
-      }))
+      return rows.map(toPathRow)
+    },
+
+    async findByDocument(
+      workspaceId: WorkspaceId,
+      documentId: DocumentId,
+    ): Promise<SourcePathRow | null> {
+      const rows = await db
+        .select()
+        .from(sourcePathMap)
+        .where(
+          and(
+            eq(sourcePathMap.workspaceId, workspaceId),
+            eq(sourcePathMap.documentId, documentId),
+            isNull(sourcePathMap.archivedAt),
+          ),
+        )
+        .limit(1)
+      return rows[0] === undefined ? null : toPathRow(rows[0])
     },
 
     async put(row: SourcePathRow, now: Date): Promise<void> {
@@ -52,6 +64,7 @@ export function createSourcePathMapRepository(db: DrizzleClient): SourcePathMapR
         documentId: row.documentId,
         archivedAt: row.archivedAt,
         frontMatterOrder: row.order,
+        lineOffset: row.lineOffset ?? null,
         updatedAt: now,
       }
       await db
@@ -68,6 +81,17 @@ export function createSourcePathMapRepository(db: DrizzleClient): SourcePathMapR
         .delete(sourcePathMap)
         .where(and(eq(sourcePathMap.workspaceId, workspaceId), eq(sourcePathMap.path, path)))
     },
+  }
+}
+
+function toPathRow(row: typeof sourcePathMap.$inferSelect): SourcePathRow {
+  return {
+    workspaceId: row.workspaceId as WorkspaceId,
+    path: row.path,
+    documentId: row.documentId as DocumentId,
+    archivedAt: row.archivedAt,
+    order: row.frontMatterOrder,
+    ...(row.lineOffset === null ? {} : { lineOffset: row.lineOffset }),
   }
 }
 
@@ -295,7 +319,7 @@ function readFailure(value: unknown): SourceSyncFailure | null {
  */
 function readLayout(value: unknown): SourceLayoutRecord | null {
   if (!isRecord(value) || value['version'] !== STATE_VERSION) return null
-  const { origin, fingerprint, collectionIds, unknownKeys, redirects } = value
+  const { origin, fingerprint, collectionIds, unknownKeys, redirects, collectionRoots } = value
   if (
     (origin !== 'manifest' && origin !== 'settings') ||
     typeof fingerprint !== 'string' ||
@@ -313,6 +337,7 @@ function readLayout(value: unknown): SourceLayoutRecord | null {
       line: typeof line === 'number' ? line : null,
     })),
     redirects: Array.isArray(redirects) ? redirects.filter(isPathPair) : [],
+    collectionRoots: Array.isArray(collectionRoots) ? collectionRoots.filter(isPathPair) : [],
   }
 }
 

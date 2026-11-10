@@ -1465,7 +1465,7 @@ export interface paths {
                             };
                             health: {
                                 detail?: string;
-                                kind: "no-owner" | "review-overdue" | "required-section-empty" | "broken-link" | "block-issue";
+                                kind: "no-owner" | "review-overdue" | "required-section-empty" | "broken-link" | "block-issue" | "table-shape";
                             }[];
                             lastPublished: {
                                 /** Format: date-time */
@@ -4462,6 +4462,43 @@ export interface paths {
                 };
             };
         };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/workspaces/{id}/events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description A text/event-stream: `sync`, `document`, `tree` and `reset` events, and keep-alive comments. */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": string;
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
