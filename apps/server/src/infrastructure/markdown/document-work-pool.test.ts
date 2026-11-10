@@ -102,6 +102,9 @@ describe('the document work pool', () => {
     expect(await work.inspect(['# Once'])).toHaveLength(1)
     await new Promise((resolve) => setTimeout(resolve, 200))
     expect(await work.inspect(['# Again'])).toHaveLength(1)
+    // A thread started for each, and each start was timed.
+    expect(work.startups()).toHaveLength(2)
+    expect(work.startups().every((ms) => ms > 0)).toBe(true)
   }, 60_000)
 
   it('sizes itself to half the machine’s logical cores, between one thread and four', () => {
