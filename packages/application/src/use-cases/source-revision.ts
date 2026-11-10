@@ -1,6 +1,6 @@
 import type { DocumentId, SourceCollectionOrder } from '@quill/domain'
 
-import type { DocumentFormat } from '../ports/document-format.ts'
+import type { DocumentFormat, ExtractedLink } from '../ports/document-format.ts'
 import { ExternalSourceError } from '../ports/external-source.ts'
 import type {
   ExternalSource,
@@ -60,6 +60,8 @@ export type DocumentEdit =
       readonly order: number | null
       /** The repository paths its relative images point at: who may see an asset (ADR-061). */
       readonly images: readonly string[]
+      /** Its relative links, and the repository path each names: what the link check reads. */
+      readonly links: readonly RelativeLinkTarget[]
     }
   /** Unchanged in the store, placed again in the tree: a re-plan's. */
   | {
@@ -82,7 +84,7 @@ export type PlacedEdit = Extract<DocumentEdit, { kind: 'write' | 'place' }>
 /** What deciding a revision reads, and the one thing it makes. */
 export interface RevisionPlanContext {
   readonly source: ExternalSource
-  readonly format: Pick<DocumentFormat, 'stampIdentity' | 'read' | 'links'>
+  readonly format: Pick<DocumentFormat, 'stampIdentity' | 'inspect'>
   /** The id of a document seen for the first time, at this path. */
   readonly mintDocumentId: (path: string) => DocumentId
   /** The layout's placer, compiled once per layout. */
@@ -194,7 +196,8 @@ export async function planRevisionEdits(
       known?.documentId ??
       context.mintDocumentId(file.path)
     const stamped = context.format.stampIdentity(markdown, documentId)
-    const view = context.format.read(stamped)
+    // One parse for everything the revision needs to know of the file.
+    const { view, links } = context.format.inspect(stamped)
     const title = view.title ?? titleFromPath(file.path)
     const order = readOrder(view.frontMatter['order'])
     placed.push(
@@ -209,7 +212,8 @@ export async function planRevisionEdits(
             markdown: stamped,
             title,
             order,
-            images: imagePaths(context, file.path, stamped),
+            images: imagePaths(file.path, links),
+            links: relativeLinkTargetsOf(file.path, links),
           },
     )
     context.refused.delete(file.path)
@@ -378,6 +382,7 @@ function planFolderEdits(
       title,
       order: null,
       images: [],
+      links: [],
     })
   }
 
@@ -459,13 +464,8 @@ function decode(
 }
 
 /** The repository paths a document's relative images point at. */
-function imagePaths(
-  context: RevisionPlanContext,
-  path: string,
-  markdown: string,
-): readonly string[] {
-  const targets = context.format
-    .links(markdown)
+function imagePaths(path: string, links: readonly ExtractedLink[]): readonly string[] {
+  const targets = links
     .filter((link) => link.kind === 'image' && isRelativeDestination(link.url))
     .flatMap((link) => repositoryTarget(path, link.url)?.path ?? [])
   return [...new Set(targets)]
@@ -579,12 +579,15 @@ export function relativeLinkTargets(
   path: string,
   markdown: string,
 ): readonly RelativeLinkTarget[] {
-  const urls = new Set(
-    format
-      .links(markdown)
-      .map(({ url }) => url)
-      .filter(isRelativeDestination),
-  )
+  return relativeLinkTargetsOf(path, format.links(markdown))
+}
+
+/** The same, from links already read. */
+export function relativeLinkTargetsOf(
+  path: string,
+  links: readonly ExtractedLink[],
+): readonly RelativeLinkTarget[] {
+  const urls = new Set(links.map(({ url }) => url).filter(isRelativeDestination))
   return [...urls].map((url) => ({ path, url, target: repositoryTarget(path, url)?.path ?? null }))
 }
 

@@ -434,6 +434,19 @@ describe('createDocumentFormat: render and read', () => {
     ])
   })
 
+  it('inspects a document in one parse: what read and links say, together', () => {
+    const written =
+      '---\norder: 3\n---\n\n# Inspected\n\n[a](./a.md) ![b](b.png)\n\n```\n[c](./c.md)\n```\n'
+    expect(format.inspect(written)).toEqual({
+      view: format.read(written),
+      links: format.links(written),
+    })
+    expect(format.inspect(written).view).toMatchObject({
+      title: 'Inspected',
+      frontMatter: { order: 3 },
+    })
+  })
+
   it('draws a table of contents into the body and lists each child pages slot (ADR-058)', () => {
     const rendered = format.render({
       markdown: '# Title\n\n::toc\n\n## Install\n\n::children{depth=2}\n',
