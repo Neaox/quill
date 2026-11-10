@@ -311,3 +311,9 @@ While dragging, the moving row or column is drawn as a translucent overlay, and 
 - Phase 2 adds `numbered` as a reading attribute. Until then, it is an unknown attribute and is preserved.
 - The diagram lightbox is now one caller of the shared viewer; the table viewer is the other.
 - `--sticky-chrome-top` and `--sticky-chrome-bottom` are the one source for how far the page's sticky chrome reaches, and `--anchor-offset` is derived from them.
+
+## Amendment (2026-11-10): rows as wide as the header
+
+A table has as many columns as its header row, as GitHub Flavored Markdown reads it. A body row with fewer cells is drawn padded with empty cells, and one with more is drawn without the cells past the last column. Quill used to draw each row as written. That gave a short row that stopped part-way across, and a column with no name for a stray `|`, while GitHub and every GFM renderer drew the table whole.
+
+Dropping a cell is not dropping silently: each row that does not match its header is reported with its line. It appears as the `table-shape` health signal beside the document, and as a `table-shape` warning in a repository's check (ADR-062), so the author sees the stray or missing `|` and fixes it at the source. The source is never changed: the editor keeps the row as written. A table read with row headers only (`headers=row`) has no header row, so its widest row still decides.

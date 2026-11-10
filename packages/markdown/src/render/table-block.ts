@@ -1,5 +1,5 @@
 import type { Element, ElementContent, Properties } from 'hast'
-import type { PhrasingContent, Table, TableRow } from 'mdast'
+import type { PhrasingContent, Table, TableCell, TableRow } from 'mdast'
 
 import type { TableOptions } from '../directives/table.ts'
 import { columnPercentages, renderedPercent, TABLE_FROZEN_PARTS } from '../directives/table.ts'
@@ -100,6 +100,34 @@ function columnGroup(options: TableOptions, count: number): Element[] {
 export interface TableRendererContext {
   /** A body cell's content, its status line set apart (`handlers.ts`). */
   readonly cellContent: (state: State, children: readonly PhrasingContent[]) => ElementContent[]
+  /** Where each row that does not match its header is reported, in document order. */
+  readonly shapes: TableShape[]
+}
+
+/**
+ * A row whose cells do not match its table's header row. GitHub Flavored
+ * Markdown makes the header decide how many columns a table has: a short row
+ * is padded with empty cells and a long one loses the cells past the last
+ * column. The table is drawn that way, and the document's health reports the
+ * row, so its author sees the stray or missing `|`.
+ */
+export interface TableShape {
+  /** The row's line, when the tree still knows. */
+  readonly line?: number | undefined
+  readonly cells: number
+  readonly columns: number
+}
+
+const EMPTY_CELL: TableCell = { type: 'tableCell', children: [] }
+
+/** The row's cells, as many as the header has columns (GFM, "Tables"). */
+function shaped(row: TableRow, columns: number, shapes: TableShape[]): TableCell[] {
+  const cells = row.children.length
+  if (cells === columns) return row.children
+  shapes.push({ line: row.position?.start.line, cells, columns })
+  return cells > columns
+    ? row.children.slice(0, columns)
+    : [...row.children, ...Array.from({ length: columns - cells }, () => EMPTY_CELL)]
 }
 
 /** Renders table blocks, numbering their captions' ids within one document. */
@@ -113,6 +141,7 @@ export function createTableRenderer(context: TableRendererContext) {
     head: boolean,
     rowHeaders: boolean,
     stack: boolean,
+    cells: readonly TableCell[],
   ): Element =>
     element(
       'tr',
@@ -121,7 +150,7 @@ export function createTableRenderer(context: TableRendererContext) {
       // (`diff/render.ts`), and a parsed document's rows carry none.
       { ...(stack ? { role: 'row' } : {}), ...node.data?.hProperties },
       state.wrap(
-        node.children.map((cell, index) => {
+        cells.map((cell, index) => {
           const kind: CellKind = head
             ? 'column-header'
             : rowHeaders && index === 0
@@ -159,9 +188,16 @@ export function createTableRenderer(context: TableRendererContext) {
     const body = rest.slice(0, rest.length - footer)
     const foot = rest.slice(rest.length - footer)
     const labels = columnLabels(head)
-    const count = Math.max(...node.children.map((each) => each.children.length))
+    // The header decides how many columns there are (GFM). A table read
+    // with row headers only has no header row, so its widest row does.
+    const count =
+      head === undefined
+        ? Math.max(...node.children.map((each) => each.children.length))
+        : head.children.length
     const columns: ColumnTreatment[] = Array.from({ length: count }, (_, index) => ({
       classes: columnClasses(align[index], columnShape(rest, index)),
+      // The header has a label for each of its own cells, which are all the columns.
+      /* v8 ignore next */
       label: head === undefined ? undefined : (labels[index] ?? ''),
     }))
     const group = stack ? { role: 'rowgroup' } : {}
@@ -173,7 +209,17 @@ export function createTableRenderer(context: TableRendererContext) {
               tagName,
               group,
               state.wrap(
-                rows.map((each) => row(state, each, columns, isHead, rowHeaders, stack)),
+                rows.map((each) =>
+                  row(
+                    state,
+                    each,
+                    columns,
+                    isHead,
+                    rowHeaders,
+                    stack,
+                    head === undefined ? each.children : shaped(each, count, context.shapes),
+                  ),
+                ),
                 true,
               ),
             ),

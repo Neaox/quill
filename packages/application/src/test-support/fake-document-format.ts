@@ -1,5 +1,6 @@
 import type {
   BlockIssueView,
+  TableShapeView,
   ComparedChange,
   ComparedContent,
   ComparedSource,
@@ -157,6 +158,7 @@ export function createFakeDocumentFormat(options: FakeDocumentFormatOptions = {}
           readStrings(frontMatter['requiredSections']),
         ),
         blockIssues: [...unknownBlocks(body)],
+        tableShapes: [...tableShapes(body)],
       }
     },
 
@@ -437,6 +439,26 @@ function* unknownBlocks(body: string): Generator<BlockIssueView> {
     yield group(match, 'colons') === '::'
       ? { block: name, message }
       : { block: name, message, line: index + 1 }
+  }
+}
+
+/**
+ * Each table row whose cells do not match its header, as the real renderer
+ * reports one. A table here is a run of lines that start with `|`; its first
+ * line is the header and its second the delimiter row.
+ */
+function* tableShapes(body: string): Generator<TableShapeView> {
+  let columns = 0
+  let row = 0
+  for (const [index, line] of body.split(NEWLINE).entries()) {
+    if (!line.startsWith('|')) {
+      row = 0
+      continue
+    }
+    const cells = line.split('|').length - 2
+    row += 1
+    if (row === 1) columns = cells
+    else if (row > 2 && cells !== columns) yield { line: index + 1, cells, columns }
   }
 }
 

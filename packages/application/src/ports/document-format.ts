@@ -125,9 +125,10 @@ export interface ExtractedLink {
  * ranges the client applies and whose key covers the titles of the documents
  * a body links to; version 1 entries stay readable and are never served.
  * Version 3 adds `blockIssues`, what the body's component blocks got wrong
- * (ADR-060).
+ * (ADR-060). Version 4 adds `tableShapes`, the table rows that do not match
+ * their header.
  */
-export const RENDERED_CONTENT_VERSION = 3
+export const RENDERED_CONTENT_VERSION = 4
 
 /**
  * Everything the rendered body is a function of (ADR-031).
@@ -216,6 +217,19 @@ export interface RenderedContent {
    * drawn visibly in the body too; this is what the document's health lists.
    */
   readonly blockIssues: readonly BlockIssueView[]
+  /**
+   * The table rows whose cells do not match their header row. Each is drawn
+   * as wide as the header, as GitHub Flavored Markdown draws it; this is
+   * what the document's health lists, so the stray or missing `|` is seen.
+   */
+  readonly tableShapes: readonly TableShapeView[]
+}
+
+/** A table row whose cells do not match its header, where it was written. */
+export interface TableShapeView {
+  readonly line?: number | undefined
+  readonly cells: number
+  readonly columns: number
 }
 
 /** One problem with a block, where it was written. */
