@@ -25,6 +25,8 @@ let harness: ServerHarness
 let tenancy: TenancyFixture
 let base: string
 let workspaceId: string
+/** A second workspace read from the same repository. */
+let otherId: string
 let cookies: Record<'admin' | 'viewer' | 'outsider', string>
 let root: string
 let work: string
@@ -205,12 +207,36 @@ beforeAll(async () => {
     },
   })
   if (configured.statusCode !== 200) throw new Error(`not configured: ${configured.body}`)
+  // A second workspace read from the same repository, which the viewer may read too.
+  otherId = (
+    await harness.app.inject({
+      method: 'POST',
+      url: '/api/workspaces',
+      cookies: admin,
+      payload: { unitId: tenancy.unitId, name: 'Other handbook', slug: 'other-handbook' },
+    })
+  ).json<{ id: string }>().id
+  const other = await harness.app.inject({
+    method: 'PUT',
+    url: `/api/workspaces/${otherId}/source`,
+    cookies: admin,
+    payload: {
+      remote: pathToFileURL(bare).href,
+      branch: 'main',
+      collections: [{ slug: 'docs', name: 'Docs', path: 'docs' }],
+      history: 'head',
+      commitMessages: 'subject',
+      credential: null,
+    },
+  })
+  if (other.statusCode !== 200) throw new Error(`not configured: ${other.body}`)
   await harness.drainOutbox()
   openId = await idAt('Open page')
   hiddenId = await idAt('Hidden page')
 
   // The viewer may read the workspace, but not the hidden page; the outsider nothing.
   for (const grant of [
+    { scopeKind: 'workspace', scopeId: otherId, effect: 'allow' },
     { scopeKind: 'workspace', scopeId: workspaceId, effect: 'allow' },
     { scopeKind: 'document', scopeId: hiddenId, effect: 'deny' },
   ] as const) {
@@ -222,7 +248,7 @@ beforeAll(async () => {
       ...grant,
     })
     if (granted.kind !== 'created') throw new Error(`grant refused: ${granted.kind}`)
-    if (grant.scopeKind === 'workspace') viewerGrant = granted.grant.id
+    if (grant.scopeId === workspaceId) viewerGrant = granted.grant.id
   }
 }, 60_000)
 
@@ -282,7 +308,7 @@ describe('a workspace’s live stream', () => {
   })
 
   it('tells a reader of another workspace nothing of this one', async () => {
-    const elsewhere = await open('viewer', tenancy.workspaceId)
+    const elsewhere = await open('viewer', otherId)
     expect(elsewhere.status).toBe(200)
     await commit('Revise the open page', { 'docs/open.md': '# Open page\n\nAgain.\n' })
     await harness.app.inject({
@@ -294,6 +320,13 @@ describe('a workspace’s live stream', () => {
     await settle()
     expect(elsewhere.events).toEqual([])
     elsewhere.close()
+  })
+
+  it('opens no stream for a workspace that reads from no repository', async () => {
+    const native = await open('viewer', tenancy.workspaceId)
+    expect(native.status).toBe(409)
+    expect(native.text()).not.toContain('retry:')
+    expect(harness.deps.live.size()).toBe(0)
   })
 
   it('keeps a quiet stream open with comments, and bounds how many one reader holds', async () => {
@@ -326,6 +359,24 @@ describe('a workspace’s live stream', () => {
     // The next heartbeat finds the workspace gone from what the viewer may read.
     await viewer.until(() => viewer.ended())
     expect(viewer.events).toEqual([])
+    expect(harness.deps.live.size()).toBe(0)
+  })
+  it('ends every stream when the source is disconnected, and opens no more', async () => {
+    const admin = await open('admin')
+    expect(admin.status).toBe(200)
+    await admin.until(() => admin.text().includes('retry: '))
+    const disconnected = await harness.app.inject({
+      method: 'POST',
+      url: `/api/workspaces/${workspaceId}/source/disconnect`,
+      cookies: await harness.cookiesFor(tenancy.admin),
+    })
+    expect(disconnected.statusCode).toBe(200)
+    await admin.until(() => admin.ended())
+    // Ended without a word: the disconnection is not itself told.
+    expect(admin.events).toEqual([])
+    expect(harness.deps.live.size()).toBe(0)
+    const again = await open('admin')
+    expect(again.status).toBe(409)
     expect(harness.deps.live.size()).toBe(0)
   })
 })
