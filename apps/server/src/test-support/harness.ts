@@ -170,7 +170,10 @@ export async function createServerHarness(options: HarnessOptions = {}): Promise
   // A listener that fails must fail the test that provoked it, not vanish into
   // a log nobody reads: the bus never rejects, so the harness reports it itself.
   const listenerFailures: unknown[] = []
-  const eventBus = createEventBus({ onError: (error) => listenerFailures.push(error) })
+  const reportFailure = (error: unknown) => {
+    listenerFailures.push(error)
+  }
+  const eventBus = createEventBus({ onError: reportFailure })
   const uow = createUnitOfWork(database.db, database.pool, ids, eventBus)
   // A year on both session clocks: several tests jump the fake clock months
   // ahead to exercise a review interval or a stale lock, and must not be
@@ -248,7 +251,8 @@ export async function createServerHarness(options: HarnessOptions = {}): Promise
     live: createLiveHub(eventBus, {
       ...DEFAULT_LIVE_OPTIONS,
       ...options.live,
-      onError: (error) => listenerFailures.push(error),
+      // A live stream's failed check fails the test that provoked it, as a listener's does.
+      onError: reportFailure,
     }),
     // The real adapter and the real lock. A test's source is a bare repository
     // on this disk, served over `file://`, which only a test may configure.

@@ -50,12 +50,11 @@ function accessFor(
   const authorizer = () =>
     createAuthorizer(deps.uow.repos, { userId: reader.userId, shareLinkToken: null }, deps)
   return {
+    // Signed out, or past its lifetime. Idleness is checked where it always
+    // is, on the next request, which a stream makes when it reopens.
     async sessionAlive() {
       const session = await deps.uow.repos.sessions.findById(reader.sessionId)
-      if (session === null) return false
-      const now = deps.clock.now().getTime()
-      const seen = (session.lastSeenAt ?? session.createdAt).getTime()
-      return session.expiresAt.getTime() > now && seen + deps.config.session.idleTtlMs > now
+      return session !== null && session.expiresAt.getTime() > deps.clock.now().getTime()
     },
     async canViewWorkspace(workspaceId) {
       const access = await authorizer().workspace(workspaceId)
@@ -123,8 +122,10 @@ export function workspaceLiveRoutes(deps: AppDependencies): FastifyPluginAsync {
         if (opened.kind === 'full') throw tooManyStreams()
 
         reply.hijack()
-        for (const [name, value] of Object.entries(reply.getHeaders())) {
-          if (value !== undefined) raw.setHeader(name, value)
+        for (const [name, value] of Object.entries(reply.getHeaders()).filter(
+          (header): header is [string, number | string | string[]] => header[1] !== undefined,
+        )) {
+          raw.setHeader(name, value)
         }
         raw.writeHead(200, {
           'content-type': 'text/event-stream; charset=utf-8',
