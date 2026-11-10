@@ -387,7 +387,7 @@ class SourceReplay {
     if (read.ok) return read.layout
     throw new SyncStopped(
       'invalid-manifest',
-      `${describeManifestProblem(SOURCE_MANIFEST_PATH, read.problem)} (at ${revision})`,
+      `${describeManifestProblem(read.manifestPath, read.problem)} (at ${revision})`,
     )
   }
 
@@ -402,7 +402,11 @@ class SourceReplay {
       this.#layout = head
       return head
     }
-    if (this.#layout === null || changes.some(touchesManifest)) {
+    const manifestPath = this.#source.settings.manifestPath ?? SOURCE_MANIFEST_PATH
+    if (
+      this.#layout === null ||
+      changes.some((change) => changedPaths(change).includes(manifestPath))
+    ) {
       const read = await this.#readLayout(step.revision.id)
       this.#layout = read.ok ? read.layout : (this.#layout ?? head)
     }
@@ -413,11 +417,12 @@ class SourceReplay {
     revision: SourceRevisionId,
   ): Promise<
     | { readonly ok: true; readonly layout: SourceLayout }
-    | { readonly ok: false; readonly problem: ManifestProblem }
+    | { readonly ok: false; readonly problem: ManifestProblem; readonly manifestPath: string }
   > {
     return await readLayoutAt(this.#source.source, revision, {
       collections: this.#source.settings.collections,
       entry: this.#source.settings.manifestEntry ?? (await this.#slug()),
+      manifestPath: this.#source.settings.manifestPath,
     })
   }
 
@@ -1342,10 +1347,6 @@ function sortOrders(
   )
   for (const edit of edits) if (edit.kind !== 'archive') orders.set(edit.documentId, edit.order)
   return orders
-}
-
-function touchesManifest(change: SourceChange): boolean {
-  return changedPaths(change).includes(SOURCE_MANIFEST_PATH)
 }
 
 /** Where an archived document's row goes when a live one takes its path; never a store path. */

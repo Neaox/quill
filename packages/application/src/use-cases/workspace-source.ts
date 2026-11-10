@@ -5,6 +5,7 @@ import {
   checkForgeViewTemplate,
   checkSourceBranch,
   checkSourceManifestEntry,
+  checkSourceManifestPath,
   checkSourcePath,
   checkSourceRemote,
   checkSourceUsername,
@@ -30,6 +31,7 @@ import type {
 import type { Clock, IdGenerator } from '../ports/system.ts'
 import { sourceDisconnected, sourceSyncRequested } from './events.ts'
 import { isSecretName } from './secrets.ts'
+import { SOURCE_MANIFEST_PATH } from './source-manifest.ts'
 
 /**
  * Configuring where a sourced workspace reads from, and asking it to sync
@@ -103,6 +105,8 @@ export interface ConfigureWorkspaceSourceCommand {
    * slug; null or absent to read the one whose slug is the workspace's own.
    */
   readonly manifestEntry?: string | null | undefined
+  /** Where the manifest is read from; null or absent for the default, `.quill/workspace.yaml`. */
+  readonly manifestPath?: string | null | undefined
   /**
    * Where a link to a repository file the source does not hold goes
    * (ADR-061): `forge` (the default) or `text`.
@@ -129,6 +133,7 @@ export type WorkspaceSourceField =
   | 'history'
   | 'commitMessages'
   | 'manifestEntry'
+  | 'manifestPath'
   | 'credential'
   | 'outsideLinks'
   | 'viewTemplate'
@@ -165,6 +170,7 @@ interface ValidSettings {
   readonly branch: string
   readonly collections: readonly SourceCollectionInput[]
   readonly manifestEntry: string | null
+  readonly manifestPath: string | null
   readonly outsideLinks: SourceOutsideLinkSetting
   readonly viewTemplate: string | null
   /** Undefined keeps what the source has. */
@@ -214,6 +220,7 @@ export async function configureWorkspaceSource(
       history: command.history,
       commitMessages: command.commitMessages,
       manifestEntry: valid.manifestEntry,
+      manifestPath: valid.manifestPath,
       credential: command.credential,
       outsideLinks: valid.outsideLinks,
       viewTemplate: valid.viewTemplate,
@@ -240,6 +247,7 @@ export async function configureWorkspaceSource(
         history: source.history,
         commitMessages: source.commitMessages,
         manifestEntry: source.manifestEntry,
+        manifestPath: source.manifestPath,
         credentialSecret: source.credential?.secretName ?? null,
         outsideLinks: source.outsideLinks,
         viewTemplate: source.viewTemplate,
@@ -259,6 +267,7 @@ export interface ValidSourceDraft {
   readonly credential: WorkspaceSourceCredential | null
   readonly collections: readonly SourceCollectionInput[]
   readonly manifestEntry: string | null
+  readonly manifestPath: string | null
 }
 
 /**
@@ -274,6 +283,7 @@ export async function validateSourceDraft(
     readonly credential: WorkspaceSourceCredential | null
     readonly collections: readonly SourceCollectionInput[]
     readonly manifestEntry?: string | null | undefined
+    readonly manifestPath?: string | null | undefined
   },
 ): Promise<ValidSourceDraft | Invalid> {
   const remote = checkSourceRemote(draft.remote, {
@@ -285,6 +295,10 @@ export async function validateSourceDraft(
   const entry = draft.manifestEntry ?? null
   const manifestEntry = entry === null ? null : checkSourceManifestEntry(entry)
   if (manifestEntry?.ok === false) return invalid('manifestEntry', manifestEntry.error)
+  const manifestPath = manifestPathSetting(draft.manifestPath ?? null)
+  if (manifestPath !== null && !manifestPath.ok) {
+    return invalid('manifestPath', manifestPath.error)
+  }
   const credential = await validateCredential(deps, draft.credential)
   if (credential !== null) return credential
   const collections = validateCollections(draft.collections)
@@ -295,7 +309,18 @@ export async function validateSourceDraft(
     credential: draft.credential,
     collections,
     manifestEntry: manifestEntry?.value ?? null,
+    manifestPath: manifestPath?.value ?? null,
   }
+}
+
+/**
+ * A manifest path as stored: checked, and null for the default, so a source
+ * that names `.quill/workspace.yaml` reads the same as one that names none.
+ */
+function manifestPathSetting(value: string | null) {
+  if (value === null || value.trim() === '') return null
+  const path = checkSourceManifestPath(value.trim())
+  return path.ok && path.value === SOURCE_MANIFEST_PATH ? null : path
 }
 
 async function validate(
@@ -333,6 +358,7 @@ async function validate(
     branch: draft.branch,
     collections: draft.collections,
     manifestEntry: draft.manifestEntry,
+    manifestPath: draft.manifestPath,
     outsideLinks,
     viewTemplate: viewTemplate?.value ?? null,
     webhookSecretName,

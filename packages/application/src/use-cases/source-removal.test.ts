@@ -88,6 +88,7 @@ beforeEach(async () => {
     history: 'full',
     commitMessages: 'subject',
     manifestEntry: null,
+    manifestPath: null,
     credential: null,
     outsideLinks: 'forge',
     viewTemplate: null,

@@ -55,6 +55,7 @@ describe('parseSourceManifest', () => {
         },
       ],
       unknownKeys: [],
+      notes: [],
     })
   })
 
@@ -123,7 +124,10 @@ describe('parseSourceManifest', () => {
     ['version: 1\ncollections: [{ path: d, title: G }]\n', '"collections[0].slug" must be text'],
     ['version: 1\ncollections: [{ slug: Not A Slug, path: d, title: G }]\n', 'is not a slug'],
     ['version: 1\ncollections: [{ slug: "", path: d, title: G }]\n', 'is not a slug'],
-    ['version: 1\ncollections: [{ slug: g, path: d }]\n', '"collections[0].title" must be text'],
+    [
+      'version: 1\ncollections: [{ slug: g, path: d, title: [G] }]\n',
+      '"collections[0].title" must be text',
+    ],
     ['version: 1\ncollections: [{ slug: g, path: d, title: "  " }]\n', 'must be 1 to'],
     ['version: 1\ncollections: [{ slug: g, path: [d], title: G }]\n', 'must be text'],
     ['version: 1\ncollections: [{ slug: g, path: "**/*.md", title: G }]\n', 'no directory'],
@@ -169,15 +173,103 @@ describe('parseSourceManifest', () => {
       'redirected twice',
     ],
     [
-      'version: 1\nworkspaces: [{ slug: a, collections: [{ slug: g, path: d, title: G }] }, { slug: a, collections: [{ slug: g, path: d, title: G }] }]\n',
-      'two workspaces have the slug "a"',
-    ],
-    [
       'version: 1\n? [a]\n: b\ncollections: [{ slug: g, path: d, title: G }]\n',
       'every key must be text',
     ],
   ])('refuses %j: %s', (text, message) => {
     expect(problem(text).message).toContain(message)
+  })
+
+  it('calls a collection with no title after its directory or file, and says so', () => {
+    const manifest = read(
+      lines(
+        'version: 1',
+        'collections:',
+        '  - { slug: field-notes, path: docs/field-notes }',
+        "  - { slug: kits, path: 'kits/**/README.md' }",
+        '  - { slug: plan, path: docs/plan.md }',
+      ),
+    )
+    expect(manifest.entries[0]?.collections.map(({ title }) => title)).toEqual([
+      'Field notes',
+      'Kits',
+      'Plan',
+    ])
+    expect(manifest.notes).toEqual([
+      {
+        line: 3,
+        message: '"collections[0]" has no title, so it is called "Field notes", after its path.',
+      },
+      {
+        line: 4,
+        message: '"collections[1]" has no title, so it is called "Kits", after its path.',
+      },
+      {
+        line: 5,
+        message: '"collections[2]" has no title, so it is called "Plan", after its path.',
+      },
+    ])
+  })
+
+  it('holds only the chosen entry to every rule, and reads the others for their slugs', () => {
+    const text = lines(
+      'version: 1',
+      'workspaces:',
+      '  - slug: handbook',
+      '    collections:',
+      '      - { slug: guides, path: docs/guides, title: Guides }',
+      '  - slug: almanac',
+      '    shelf: top',
+      '    collections:',
+      '      - { slug: tides, path: almanac/tides, kind: chart }',
+      '      - { slug: moons, path: "*.md", title: Moons }',
+      '  - slug: Not A Slug',
+      '    collections: nope',
+      '  - { slug: handbook-two, collections: [] }',
+      '  - { slug: handbook-two, collections: [] }',
+      '  - { slug: atlas, collections: [{ slug: maps, path: atlas/maps }] }',
+    )
+    const parsed = parseSourceManifest(text, { entry: 'handbook' })
+    if (!parsed.ok) throw new Error(parsed.problem.message)
+    expect(
+      parsed.manifest.entries.map(({ slug, collections }) => [slug, collections.length]),
+    ).toEqual([
+      ['handbook', 1],
+      ['almanac', 0],
+      ['handbook-two', 0],
+      // Untitled, another entry still lists its collections, named after their paths, with no note.
+      ['atlas', 1],
+    ])
+    // Another entry's keys are still noted; its missing title and its glob are not refused.
+    expect(parsed.manifest.unknownKeys).toEqual([
+      { key: 'workspaces[1].shelf', line: 7 },
+      { key: 'workspaces[1].collections[0].kind', line: 9 },
+    ])
+    expect(parsed.manifest.notes).toEqual([])
+
+    // Chosen, the same entry is refused for what is wrong with it.
+    expect(parseSourceManifest(text, { entry: 'almanac' })).toEqual({
+      ok: false,
+      problem: { line: 10, message: expect.stringContaining('no directory') },
+    })
+    // With none chosen, the manifest reads, and choosing is what is asked for.
+    expect(parseSourceManifest(text).ok).toBe(true)
+  })
+
+  it('refuses two entries with the chosen slug, or a single entry it cannot read', () => {
+    const twice = lines(
+      'version: 1',
+      'workspaces:',
+      '  - { slug: a, collections: [{ slug: g, path: d, title: G }] }',
+      '  - { slug: a, collections: [{ slug: g, path: d, title: G }] }',
+    )
+    expect(parseSourceManifest(twice, { entry: 'a' })).toEqual({
+      ok: false,
+      problem: { line: 4, message: 'two workspaces have the slug "a".' },
+    })
+    expect(
+      parseSourceManifest('version: 1\nworkspaces: [{ slug: A B, collections: [] }]\n').ok,
+    ).toBe(false)
   })
 
   it('names the line a problem is on', () => {

@@ -12,6 +12,7 @@ import type { SourcePreview, SourcePreviewNode, WorkspaceSourceView } from '@qui
 import {
   MAX_FORGE_VIEW_TEMPLATE_LENGTH,
   MAX_SOURCE_MANIFEST_ENTRY_LENGTH,
+  MAX_SOURCE_PATH_LENGTH,
   SOURCE_COMMIT_MESSAGE_SETTINGS,
   SOURCE_HISTORY_SETTINGS,
   SOURCE_OUTSIDE_LINK_SETTINGS,
@@ -96,6 +97,10 @@ const SourceDraftFields = {
    * slug; null or absent for the one whose slug is this workspace's.
    */
   manifestEntry: Type.Optional(ManifestEntrySchema),
+  /** Where the manifest is, a YAML file; null or absent for `.quill/workspace.yaml`. */
+  manifestPath: Type.Optional(
+    Type.Union([Type.String({ maxLength: MAX_SOURCE_PATH_LENGTH }), Type.Null()]),
+  ),
 }
 
 const PreviewSourceBody = Type.Object(SourceDraftFields, { additionalProperties: false })
@@ -158,6 +163,8 @@ const WorkspaceSourceSchema = Type.Object({
   commitMessages: Type.String(),
   /** The manifest entry it reads; null for the one whose slug is the workspace's. */
   manifestEntry: Type.Union([Type.String(), Type.Null()]),
+  /** Where the manifest is read from; null for `.quill/workspace.yaml`. */
+  manifestPath: Type.Union([Type.String(), Type.Null()]),
   credential: Type.Union([CredentialSchema, Type.Null()]),
   outsideLinks: Type.String(),
   viewTemplate: Type.Union([Type.String(), Type.Null()]),
@@ -230,6 +237,10 @@ const SourcePreviewSchema = Type.Object({
     entry: Type.Union([Type.String(), Type.Null()]),
     unknownKeys: Type.Array(
       Type.Object({ key: Type.String(), line: Type.Union([Type.Integer(), Type.Null()]) }),
+    ),
+    /** What the chosen entry left out and was read with a default, such as a collection's title. */
+    notes: Type.Array(
+      Type.Object({ message: Type.String(), line: Type.Union([Type.Integer(), Type.Null()]) }),
     ),
   }),
   origin: Type.Union([Type.Literal('manifest'), Type.Literal('settings'), Type.Null()]),
@@ -315,6 +326,7 @@ function previewResponse(preview: SourcePreview): PreviewResponse {
       ...preview.manifest,
       entries: [...preview.manifest.entries],
       unknownKeys: [...preview.manifest.unknownKeys],
+      notes: [...preview.manifest.notes],
     },
     collections: preview.collections.map(({ tree, ...collection }) => ({
       ...collection,
@@ -354,6 +366,7 @@ function sourceResponse(
     history: source.history,
     commitMessages: source.commitMessages,
     manifestEntry: source.manifestEntry,
+    manifestPath: source.manifestPath,
     credential: source.credential,
     outsideLinks: source.outsideLinks,
     viewTemplate: source.viewTemplate,

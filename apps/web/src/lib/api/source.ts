@@ -108,7 +108,7 @@ export function useSyncSourceNow(workspaceId: string) {
 /** What a preview reads: where the source is, and how its files are placed. */
 export type SourceDraftBody = Pick<
   SourceSettingsBody,
-  'remote' | 'branch' | 'credential' | 'collections' | 'manifestEntry'
+  'remote' | 'branch' | 'credential' | 'collections' | 'manifestEntry' | 'manifestPath'
 >
 
 /**

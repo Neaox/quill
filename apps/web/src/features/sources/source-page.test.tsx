@@ -41,6 +41,7 @@ function source(overrides: Record<string, unknown> = {}) {
     history: 'full',
     commitMessages: 'subject',
     manifestEntry: null,
+    manifestPath: null,
     credential: null,
     outsideLinks: 'forge',
     viewTemplate: null,

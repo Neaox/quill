@@ -6,9 +6,13 @@ import {
   SOURCE_COLLECTION_ORDERS,
   checkSourcePath,
   checkSourcePattern,
+  isSourceGlob,
   slugify,
+  sourcePatternPrefix,
 } from '@quill/domain'
 import type { SourceCollectionOrder } from '@quill/domain'
+
+import { isDocumentPath, titleFromPath } from './source-files.ts'
 
 /**
  * The workspace manifest a source carries (ADR-061, "A source is configured
@@ -70,9 +74,29 @@ export interface UnknownManifestKey {
   readonly line: number | null
 }
 
+/** Something the manifest left out that was read with a default, where it is. */
+export interface ManifestNote {
+  readonly line: number | null
+  readonly message: string
+}
+
 export interface SourceManifest {
   readonly entries: readonly ManifestEntry[]
   readonly unknownKeys: readonly UnknownManifestKey[]
+  /** The defaults the chosen entry was read with, such as a collection's title. */
+  readonly notes: readonly ManifestNote[]
+}
+
+export interface ManifestReadOptions {
+  /**
+   * The entry a workspace reads, by its slug (`selectManifestEntry`). Only
+   * that entry, or the only one, is held to every rule: another workspace's
+   * entry is read for its slug and its unknown keys, and anything else wrong
+   * with it is not this workspace's problem. Without one, a manifest of
+   * several workspaces is read leniently throughout, so the problem said is
+   * that none was chosen.
+   */
+  readonly entry?: string | null | undefined
 }
 
 /** Why a manifest cannot be read, and on which line; null when the problem is the whole file. */
@@ -105,7 +129,10 @@ class Refused extends Error {
 const ENTRY_KEYS = new Set(['collections', 'exclude', 'assets', 'redirects'])
 const COLLECTION_KEYS = new Set(['slug', 'title', 'path', 'order'])
 
-export function parseSourceManifest(text: string): ManifestReading {
+export function parseSourceManifest(
+  text: string,
+  options: ManifestReadOptions = {},
+): ManifestReading {
   const lines = new LineCounter()
   const document = parseDocument(text, { lineCounter: lines })
   const syntax = document.errors[0]
@@ -120,7 +147,10 @@ export function parseSourceManifest(text: string): ManifestReading {
     }
   }
   try {
-    return { ok: true, manifest: new ManifestReader(lines).read(document.contents) }
+    return {
+      ok: true,
+      manifest: new ManifestReader(lines, options.entry ?? null).read(document.contents),
+    }
   } catch (error) {
     /* v8 ignore next -- only a refusal is thrown while reading. */
     if (!(error instanceof Refused)) throw error
@@ -153,10 +183,13 @@ export function selectManifestEntry(
 
 class ManifestReader {
   readonly #lines: LineCounter
+  readonly #chosen: string | null
   readonly #unknown: UnknownManifestKey[] = []
+  readonly #notes: ManifestNote[] = []
 
-  constructor(lines: LineCounter) {
+  constructor(lines: LineCounter, chosen: string | null) {
     this.#lines = lines
+    this.#chosen = chosen
   }
 
   read(contents: Node | null): SourceManifest {
@@ -179,7 +212,7 @@ class ManifestReader {
       )
     }
     this.#noteUnknown(root, '', new Set(['version', 'workspaces', ...ENTRY_KEYS]))
-    if (workspaces === undefined) return this.#finish([this.#entry(root, null, '')])
+    if (workspaces === undefined) return this.#finish([this.#entry(root, null, '', true)])
 
     if (!isSeq(workspaces) || workspaces.items.length === 0) {
       throw new Refused(
@@ -187,26 +220,62 @@ class ManifestReader {
         '"workspaces" must be a list of at least one workspace.',
       )
     }
+    const only = workspaces.items.length === 1
     const entries: ManifestEntry[] = []
     const slugs = new Set<string>()
     for (const [index, item] of workspaces.items.entries()) {
-      const where = `workspaces[${index}]`
-      const map = this.#map(item, `Each of "workspaces"`, this.#line(workspaces))
-      const slug = this.#slug(map, where)
-      if (slugs.has(slug))
-        throw new Refused(this.#line(map), `two workspaces have the slug "${slug}".`)
+      const entry = this.#workspace(item, `workspaces[${index}]`, only, this.#line(workspaces))
+      if (entry === null) continue
+      /* v8 ignore next -- an entry of "workspaces" always has its slug. */
+      const slug = entry.slug ?? ''
+      if (slugs.has(slug)) {
+        // Two entries with the chosen slug leave nothing to choose between;
+        // another workspace's duplicate is that workspace's to sort out.
+        if (only || slug === this.#chosen)
+          throw new Refused(this.#line(item), `two workspaces have the slug "${slug}".`)
+        continue
+      }
       slugs.add(slug)
-      this.#noteUnknown(map, `${where}.`, new Set(['slug', ...ENTRY_KEYS]))
-      entries.push(this.#entry(map, slug, `${where}.`))
+      entries.push(entry)
     }
     return this.#finish(entries)
   }
 
-  #finish(entries: readonly ManifestEntry[]): SourceManifest {
-    return { entries, unknownKeys: this.#unknown }
+  /**
+   * One entry of `workspaces`. The entry this workspace reads, or the only
+   * one, is held to every rule. Any other is read for its slug and its
+   * unknown keys: whatever else is wrong with it is refused when a workspace
+   * reads it, and here it is an entry with no collections. One whose slug
+   * cannot be read is left out, since no workspace can choose it.
+   */
+  #workspace(
+    item: unknown,
+    where: string,
+    only: boolean,
+    listLine: number | null,
+  ): ManifestEntry | null {
+    const map = this.#map(item, `Each of "workspaces"`, listLine)
+    let slug: string
+    try {
+      slug = this.#slug(map, where)
+    } catch (error) {
+      if (only) throw error
+      return null
+    }
+    this.#noteUnknown(map, `${where}.`, new Set(['slug', ...ENTRY_KEYS]))
+    if (only || slug === this.#chosen) return this.#entry(map, slug, `${where}.`, true)
+    try {
+      return this.#entry(map, slug, `${where}.`, false)
+    } catch {
+      return { slug, collections: [], exclude: [], assets: [], redirects: [] }
+    }
   }
 
-  #entry(map: YAMLMap, slug: string | null, prefix: string): ManifestEntry {
+  #finish(entries: readonly ManifestEntry[]): SourceManifest {
+    return { entries, unknownKeys: this.#unknown, notes: this.#notes }
+  }
+
+  #entry(map: YAMLMap, slug: string | null, prefix: string, chosen: boolean): ManifestEntry {
     const collections = this.#value(map, 'collections')
     if (!isSeq(collections) || collections.items.length === 0) {
       throw new Refused(
@@ -223,7 +292,7 @@ class ManifestReader {
     const read: ManifestCollection[] = []
     for (const [index, item] of collections.items.entries()) {
       const where = `${prefix}collections[${index}]`
-      const collection = this.#collection(item, where)
+      const collection = this.#collection(item, where, chosen)
       const line = this.#line(item)
       if (read.some((other) => other.slug === collection.slug)) {
         throw new Refused(line, `two collections have the slug "${collection.slug}".`)
@@ -242,20 +311,34 @@ class ManifestReader {
     }
   }
 
-  #collection(node: unknown, where: string): ManifestCollection {
+  #collection(node: unknown, where: string, chosen: boolean): ManifestCollection {
     const map = this.#map(node, `"${where}"`, this.#line(node))
     this.#noteUnknown(map, `${where}.`, COLLECTION_KEYS)
     const slug = this.#slug(map, where)
-    const title = this.#string(map, 'title', where)
+    const pathNode = this.#value(map, 'path')
+    const path = checkSourcePattern(this.#string(map, 'path', where))
+    if (!path.ok) throw new Refused(this.#line(pathNode), path.error)
+    let title: string
+    if (this.#value(map, 'title') === undefined) {
+      // A collection with no title is called after its directory, or its
+      // file, as a folder with no README is. For the entry this workspace
+      // reads, a note says so; another entry is read only to be listed.
+      title = collectionTitleOf(path.value)
+      if (chosen) {
+        this.#notes.push({
+          line: this.#line(map),
+          message: `"${where}" has no title, so it is called "${title}", after its path.`,
+        })
+      }
+    } else {
+      title = this.#string(map, 'title', where)
+    }
     if (title.trim().length === 0 || title.length > MAX_MANIFEST_TITLE_LENGTH) {
       throw new Refused(
         this.#line(map),
         `"${where}.title" must be 1 to ${MAX_MANIFEST_TITLE_LENGTH} characters.`,
       )
     }
-    const pathNode = this.#value(map, 'path')
-    const path = checkSourcePattern(this.#string(map, 'path', where))
-    if (!path.ok) throw new Refused(this.#line(pathNode), path.error)
     const orderNode = this.#value(map, 'order')
     let order: SourceCollectionOrder = 'title'
     if (orderNode !== undefined) {
@@ -375,4 +458,14 @@ class ManifestReader {
     const offset = isNode(node) ? node.range?.[0] : undefined
     return offset === undefined ? null : this.#lines.linePos(offset).line
   }
+}
+
+/**
+ * What a collection the manifest gives no title is called: its file's name,
+ * humanised, for a collection of one file, and otherwise its directory's (the
+ * literal one in front of its path), as a folder with no README is named.
+ */
+export function collectionTitleOf(pattern: string): string {
+  if (!isSourceGlob(pattern) && isDocumentPath(pattern)) return titleFromPath(pattern)
+  return titleFromPath(`${sourcePatternPrefix(pattern)}/README.md`)
 }

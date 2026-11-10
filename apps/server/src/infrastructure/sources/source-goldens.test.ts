@@ -164,6 +164,7 @@ async function syncFixture(name: SourceFixtureName): Promise<Synced> {
     history: 'head',
     commitMessages: 'subject',
     manifestEntry: null,
+    manifestPath: null,
     credential: null,
     outsideLinks: 'forge',
     viewTemplate: null,
@@ -187,6 +188,7 @@ async function syncFixture(name: SourceFixtureName): Promise<Synced> {
     history: 'head',
     commitMessages: 'subject',
     manifestEntry: null,
+    manifestPath: null,
   }
   const contentStore = new GitContentStore({
     provider: new MemoryObjectStoreProvider(),

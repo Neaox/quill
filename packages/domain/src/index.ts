@@ -93,6 +93,7 @@ export {
   SOURCE_HISTORY_SETTINGS,
   checkSourceBranch,
   checkSourceManifestEntry,
+  checkSourceManifestPath,
   checkSourcePath,
   checkSourcePattern,
   checkSourceRemote,

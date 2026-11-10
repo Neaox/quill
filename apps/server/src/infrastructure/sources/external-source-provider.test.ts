@@ -59,6 +59,7 @@ async function configure(credential: { username: string; secretName: string } | 
     history: 'head',
     commitMessages: 'none',
     manifestEntry: null,
+    manifestPath: null,
     credential,
     outsideLinks: 'forge',
     viewTemplate: null,
@@ -142,6 +143,7 @@ describe('the external source provider', () => {
       history: 'head',
       commitMessages: 'none',
       manifestEntry: null,
+      manifestPath: null,
     })
     expect(connected?.configuredAt).toEqual(NOW)
     expect(open).not.toHaveBeenCalled()

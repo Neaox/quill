@@ -21,6 +21,7 @@ const SAVED: WorkspaceSourceDto = {
   history: 'head',
   commitMessages: 'none',
   manifestEntry: null,
+  manifestPath: null,
   credential: { username: 'x-access-token', secretName: 'sources/handbook' },
   outsideLinks: 'text',
   viewTemplate: 'https://git.example.com/{commit}/{path}',
@@ -50,7 +51,20 @@ describe('the repository form', () => {
         { slug: 'decision-records', name: 'Decision records', path: 'docs/adr' },
       ],
       manifestEntry: null,
+      manifestPath: null,
     })
+  })
+
+  it('sends a manifest path as typed, trimmed, and none when the field is empty', () => {
+    expect(
+      draftBody({ ...formFromSource(SAVED), manifestPath: ' site/manifest.yaml ' }),
+    ).toMatchObject({ manifestPath: 'site/manifest.yaml' })
+    expect(draftBody({ ...formFromSource(SAVED), manifestPath: '  ' })).toMatchObject({
+      manifestPath: null,
+    })
+    expect(formFromSource({ ...SAVED, manifestPath: 'site/manifest.yaml' }).manifestPath).toBe(
+      'site/manifest.yaml',
+    )
   })
 
   it('saves what it previewed with every setting the form shows', () => {

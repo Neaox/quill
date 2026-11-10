@@ -20,8 +20,7 @@ import {
 } from './source-folders.ts'
 import { layoutPaths, layoutPlacer, readOrder } from './source-layout.ts'
 import type { LayoutCollection, SourceLayout, SourcePlacement } from './source-layout.ts'
-import { SOURCE_MANIFEST_PATH } from './source-manifest.ts'
-import type { ManifestProblem, UnknownManifestKey } from './source-manifest.ts'
+import type { ManifestNote, ManifestProblem, UnknownManifestKey } from './source-manifest.ts'
 import {
   acceptSourceDocument,
   folderRoots,
@@ -85,6 +84,8 @@ export interface SourcePreviewCommand {
   readonly credential: WorkspaceSourceCredential | null
   readonly collections: readonly SourceCollectionInput[]
   readonly manifestEntry?: string | null | undefined
+  /** Where the manifest is; absent or null for `.quill/workspace.yaml`. */
+  readonly manifestPath?: string | null | undefined
 }
 
 /** Why the repository could not be read, in the words a form can act on. */
@@ -149,6 +150,8 @@ export interface SourcePreviewManifest {
   /** The entry the preview read, when it read one. */
   readonly entry: string | null
   readonly unknownKeys: readonly UnknownManifestKey[]
+  /** The defaults the entry it read was read with (`ManifestNote`). */
+  readonly notes: readonly ManifestNote[]
 }
 
 export interface SourcePreviewChanges {
@@ -226,11 +229,17 @@ export async function previewWorkspaceSource(
   const drafts = new Map(settings.map((collection) => [collection.collectionId, collection]))
 
   try {
-    const opened = { remote: draft.remote, branch: draft.branch, credential: draft.credential }
+    const opened = {
+      remote: draft.remote,
+      branch: draft.branch,
+      credential: draft.credential,
+      manifestPath: draft.manifestPath,
+    }
     return await deps.sources.withDraft(opened, async (source) => {
       const placement = await place(deps, source, {
         settings,
         entry: draft.manifestEntry ?? workspace.slug,
+        manifestPath: draft.manifestPath,
       })
       const current = sourced ? await currentState(deps.uow, command.workspaceId) : null
       return {
@@ -275,7 +284,11 @@ type ReadDocument =
 async function place(
   deps: Pick<SourcePreviewDependencies, 'format' | 'limits'>,
   source: ExternalSource,
-  options: { readonly settings: readonly SourceCollection[]; readonly entry: string },
+  options: {
+    readonly settings: readonly SourceCollection[]
+    readonly entry: string
+    readonly manifestPath: string | null
+  },
 ): Promise<Placement> {
   const limits = { ...PREVIEW_LIMITS, ...deps.limits }
   await source.head()
@@ -283,8 +296,10 @@ async function place(
   const reading = await readLayoutAt(source, revision, {
     collections: options.settings,
     entry: options.entry,
+    manifestPath: options.manifestPath,
   })
   const manifest = describeManifest(reading)
+  const manifestPath = reading.ok ? reading.layout.manifestPath : reading.manifestPath
   const skipped = new Map<SourcePreviewSkipReason, Map<string, string | null>>()
   const skip = (reason: SourcePreviewSkipReason, path: string, pattern: string | null = null) => {
     const list = skipped.get(reason) ?? new Map<string, string | null>()
@@ -309,7 +324,7 @@ async function place(
     }
     files += 1
     // The manifest, and a file at a path only Quill's folder pages take, are no one's page.
-    if (file.path === SOURCE_MANIFEST_PATH || generatedFolderOf(file.path) !== null) continue
+    if (file.path === manifestPath || generatedFolderOf(file.path) !== null) continue
     if (isSourceDocument(file.path)) {
       const verdict = acceptSourceDocument(file, placer)
       if (verdict.kind === 'placed') wanted.push({ file, collection: verdict.collection })
@@ -389,12 +404,13 @@ async function readDocuments(
 function describeManifest(reading: LayoutReading): SourcePreviewManifest {
   const { manifest } = reading
   const common = {
-    path: SOURCE_MANIFEST_PATH,
+    path: reading.ok ? reading.layout.manifestPath : reading.manifestPath,
     entries: (manifest?.entries ?? []).map(({ slug, collections }) => ({
       slug,
       collections: collections.length,
     })),
     unknownKeys: manifest?.unknownKeys ?? [],
+    notes: reading.ok ? reading.layout.notes : [],
   }
   if (!reading.ok) return { ...common, state: 'problem', problem: reading.problem, entry: null }
   return {

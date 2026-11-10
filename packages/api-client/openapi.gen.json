@@ -10403,6 +10403,7 @@
                     "history",
                     "commitMessages",
                     "manifestEntry",
+                    "manifestPath",
                     "credential",
                     "outsideLinks",
                     "viewTemplate",
@@ -10452,6 +10453,16 @@
                       "type": "string"
                     },
                     "manifestEntry": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "manifestPath": {
                       "anyOf": [
                         {
                           "type": "string"
@@ -10784,6 +10795,17 @@
                       }
                     ]
                   },
+                  "manifestPath": {
+                    "anyOf": [
+                      {
+                        "maxLength": 1024,
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
                   "history": {
                     "anyOf": [
                       {
@@ -10885,6 +10907,7 @@
                     "history",
                     "commitMessages",
                     "manifestEntry",
+                    "manifestPath",
                     "credential",
                     "outsideLinks",
                     "viewTemplate",
@@ -10934,6 +10957,16 @@
                       "type": "string"
                     },
                     "manifestEntry": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "manifestPath": {
                       "anyOf": [
                         {
                           "type": "string"
@@ -11265,6 +11298,17 @@
                         "type": "null"
                       }
                     ]
+                  },
+                  "manifestPath": {
+                    "anyOf": [
+                      {
+                        "maxLength": 1024,
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
                   }
                 }
               }
@@ -11325,7 +11369,8 @@
                                 "problem",
                                 "entries",
                                 "entry",
-                                "unknownKeys"
+                                "unknownKeys",
+                                "notes"
                               ],
                               "properties": {
                                 "path": {
@@ -11427,6 +11472,31 @@
                                     ],
                                     "properties": {
                                       "key": {
+                                        "type": "string"
+                                      },
+                                      "line": {
+                                        "anyOf": [
+                                          {
+                                            "type": "integer"
+                                          },
+                                          {
+                                            "type": "null"
+                                          }
+                                        ]
+                                      }
+                                    }
+                                  }
+                                },
+                                "notes": {
+                                  "type": "array",
+                                  "items": {
+                                    "type": "object",
+                                    "required": [
+                                      "message",
+                                      "line"
+                                    ],
+                                    "properties": {
+                                      "message": {
                                         "type": "string"
                                       },
                                       "line": {
@@ -11815,6 +11885,7 @@
                     "history",
                     "commitMessages",
                     "manifestEntry",
+                    "manifestPath",
                     "credential",
                     "outsideLinks",
                     "viewTemplate",
@@ -11864,6 +11935,16 @@
                       "type": "string"
                     },
                     "manifestEntry": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "manifestPath": {
                       "anyOf": [
                         {
                           "type": "string"

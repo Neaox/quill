@@ -1,3 +1,4 @@
+import { BRAND } from '@quill/brand'
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import { Link, useNavigate } from '@tanstack/react-router'
 import { useId, useState, type FormEvent, type ReactNode } from 'react'
@@ -332,6 +333,19 @@ function SourceForm({
             update({ branch: event.target.value })
           }}
         />
+        <Input
+          label="Manifest"
+          name="manifestPath"
+          autoComplete="off"
+          spellCheck={false}
+          placeholder={DEFAULT_MANIFEST}
+          description={`The file in the repository that names its collections. Leave it empty for ${DEFAULT_MANIFEST}.`}
+          value={form.manifestPath}
+          error={errors.manifestPath}
+          onChange={(event) => {
+            update({ manifestPath: event.target.value })
+          }}
+        />
         <CredentialFields form={form} error={errors.credential} onChange={update} />
         <div className="flex flex-wrap items-center gap-3">
           <Button
@@ -553,6 +567,9 @@ function saveBlocker(input: {
   return null
 }
 
+/** Where a source's manifest is when it names no other file (ADR-061). */
+const DEFAULT_MANIFEST = `.${BRAND.slug}/workspace.yaml`
+
 /** How the form names each field inside a sentence. */
 const FIELD_NAMES: Readonly<Record<FormField, string>> = {
   remote: 'the address',
@@ -562,6 +579,7 @@ const FIELD_NAMES: Readonly<Record<FormField, string>> = {
   manifestEntry: 'the manifest workspace',
   viewTemplate: 'the forge address',
   webhookSecret: 'the webhook secret',
+  manifestPath: 'the manifest',
 }
 
 const FIELDS: readonly FormField[] = [
@@ -572,6 +590,7 @@ const FIELDS: readonly FormField[] = [
   'manifestEntry',
   'viewTemplate',
   'webhookSecret',
+  'manifestPath',
 ]
 
 /** The form field a refusal names, from `{ field }` in its details. */

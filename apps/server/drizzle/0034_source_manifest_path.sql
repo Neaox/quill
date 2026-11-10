@@ -1,0 +1,1 @@
+ALTER TABLE "workspace_sources" ADD COLUMN "manifest_path" text;

@@ -49,6 +49,7 @@ A command-line tool, `quill`, with two commands, `quill check` and `quill previe
 | --- | --- | --- | --- |
 | `manifest-invalid` | error | The manifest does not read, with its line (`ManifestProblem`) | Sync failure `invalid-manifest` |
 | `manifest-entry` | error | The manifest describes several workspaces and none was chosen, or the chosen one is missing | Sync failure `invalid-manifest` |
+| `manifest-default` | note | A key the chosen entry leaves out, read with a default (a collection's title), with its line (ADR-061, amendment of 11 November) | `SourceLayout.notes`, the settings preview's "Read with defaults" |
 | `manifest-unknown-key` | warning | A key this version does not read, with its line | `SourceLayoutRecord.unknownKeys` |
 | `file-too-large`, `file-not-utf8`, `file-symbolic-link` | error | A document file the sync refuses | `RefusedSourceFile` |
 | `asset-type-not-allowed`, `asset-type-mismatch`, `asset-empty`, `asset-malformed`, `asset-too-large` | error | An asset the upload pipeline refuses (ADR-011, ADR-047) | `RefusedSourceFile` |

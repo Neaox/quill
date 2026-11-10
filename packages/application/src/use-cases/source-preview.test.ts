@@ -419,7 +419,12 @@ describe('previewWorkspaceSource, refusals and failures', () => {
     await previewed({ credential, collections: [{ slug: 'g', name: 'G', path: 'docs' }] })
 
     expect(drafts).toEqual([
-      { remote: 'https://github.com/acme/handbook.git', branch: 'main', credential },
+      {
+        remote: 'https://github.com/acme/handbook.git',
+        branch: 'main',
+        credential,
+        manifestPath: null,
+      },
     ])
     expect(
       JSON.stringify({
