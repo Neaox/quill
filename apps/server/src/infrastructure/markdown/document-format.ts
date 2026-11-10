@@ -45,6 +45,7 @@ import type {
   ComparedSource,
   CreateDocumentContentInput,
   DocumentFormat,
+  DocumentInspection,
   DraftContent,
   ExtractedLink,
   FormatWarning,
@@ -212,6 +213,14 @@ export function createDocumentFormat(options: DocumentFormatOptions = {}): Docum
     /** Every link and image, as written: what the sync job checks a source's links with (ADR-061). */
     links(markdown: string): readonly ExtractedLink[] {
       return extractLinks(parseDocument(markdown).ast).map(toLink)
+    },
+
+    inspect(markdown: string): DocumentInspection {
+      const { frontMatter, ast } = parseDocument(markdown)
+      return {
+        view: { frontMatter, title: documentTitle(frontMatter, ast) },
+        links: extractLinks(ast).map(toLink),
+      }
     },
 
     /** A source's file as the store keeps it: only its front matter's first line is Quill's (ADR-061). */

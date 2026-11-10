@@ -144,6 +144,7 @@ export type {
   PreparePublishInput,
   PublishableDocument,
   PublishedDocumentView,
+  DocumentInspection,
   RenderedContent,
   RenderInput,
   ResolvedDestination,
