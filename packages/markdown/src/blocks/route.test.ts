@@ -4,9 +4,9 @@ import type { CustomEmoji } from '../emoji/emoji.ts'
 import { parseMarkdown } from '../pipeline/processor.ts'
 import { renderDocument } from '../render/html.ts'
 
-/** The organisation's own emoji, as lockstay's documentation names them (ADR-038). */
+/** The organisation's own emoji, as its documentation names them (ADR-038). */
 const EMOJI: ReadonlyMap<string, CustomEmoji> = new Map(
-  ['airbnb', 'mail', 'inbox', 'lockstay', 'booking'].map((name) => [
+  ['northgate', 'mail', 'inbox', 'rookwood', 'eastfield'].map((name) => [
     name,
     { src: `/api/emoji/${name}.0123456789abcdef.svg`, width: 16, height: 16 },
   ]),
@@ -31,12 +31,12 @@ const leg = (arrow: string, said: string, to: string): string =>
 
 describe(':route[…]', () => {
   it('draws parties as chips, each led by its emoji as decoration, joined by arrows said in words', () => {
-    expect(paragraph(':route[:airbnb: Airbnb, :mail: Postmark → :inbox: Gateway]\n')).toBe(
+    expect(paragraph(':route[:northgate: Northgate, :mail: Relay → :inbox: Gateway]\n')).toBe(
       [
         '<span class="qb qb-route">',
-        party('airbnb', 'Airbnb'),
+        party('northgate', 'Northgate'),
         ' ',
-        party('mail', 'Postmark'),
+        party('mail', 'Relay'),
         leg('→', 'to', party('inbox', 'Gateway')),
         '</span>',
       ].join(''),
@@ -44,35 +44,35 @@ describe(':route[…]', () => {
   })
 
   it('reads every arrow, and says each one', () => {
-    const html = paragraph(':route[:lockstay: A ← :lockstay: B ↔ :lockstay: C ⇄ :lockstay: D]\n')
-    expect(html).toContain(leg('←', 'from', party('lockstay', 'B')))
-    expect(html).toContain(leg('↔', 'to and from', party('lockstay', 'C')))
-    expect(html).toContain(leg('⇄', 'exchanging with', party('lockstay', 'D')))
+    const html = paragraph(':route[:rookwood: A ← :rookwood: B ↔ :rookwood: C ⇄ :rookwood: D]\n')
+    expect(html).toContain(leg('←', 'from', party('rookwood', 'B')))
+    expect(html).toContain(leg('↔', 'to and from', party('rookwood', 'C')))
+    expect(html).toContain(leg('⇄', 'exchanging with', party('rookwood', 'D')))
   })
 
   it('keeps the parties after the first on a side outside its leg, so they wrap as words', () => {
     expect(
-      paragraph(':route[:lockstay: Transport → :airbnb: Airbnb, :booking: Booking.com]\n'),
+      paragraph(':route[:rookwood: Transport → :northgate: Northgate, :eastfield: Eastfield]\n'),
     ).toBe(
       [
         '<span class="qb qb-route">',
-        party('lockstay', 'Transport'),
-        leg('→', 'to', party('airbnb', 'Airbnb')),
-        party('booking', 'Booking.com'),
+        party('rookwood', 'Transport'),
+        leg('→', 'to', party('northgate', 'Northgate')),
+        party('eastfield', 'Eastfield'),
         '</span>',
       ].join(''),
     )
   })
 
   it('is a row of chips when it has no arrow', () => {
-    expect(paragraph(':route[:booking: Booking.com, :airbnb: Airbnb]\n')).toBe(
-      `<span class="qb qb-route">${party('booking', 'Booking.com')} ${party('airbnb', 'Airbnb')}</span>`,
+    expect(paragraph(':route[:eastfield: Eastfield, :northgate: Northgate]\n')).toBe(
+      `<span class="qb qb-route">${party('eastfield', 'Eastfield')} ${party('northgate', 'Northgate')}</span>`,
     )
   })
 
-  it('splits two parties only where an emoji leads the second, as lockstay does', () => {
-    expect(paragraph(':route[:mail: Postmark, SES and SMTP]\n')).toBe(
-      `<span class="qb qb-route">${party('mail', 'Postmark, SES and SMTP')}</span>`,
+  it('splits two parties only where an emoji leads the second', () => {
+    expect(paragraph(':route[:mail: Relay, SES and SMTP]\n')).toBe(
+      `<span class="qb qb-route">${party('mail', 'Relay, SES and SMTP')}</span>`,
     )
   })
 
@@ -83,10 +83,10 @@ describe(':route[…]', () => {
   })
 
   it('draws a party with no emoji, and one whose shortcode names none, as words', () => {
-    expect(paragraph(':route[:lockstay: API → Caller, :nobody: Them]\n')).toBe(
+    expect(paragraph(':route[:rookwood: API → Caller, :nobody: Them]\n')).toBe(
       [
         '<span class="qb qb-route">',
-        party('lockstay', 'API'),
+        party('rookwood', 'API'),
         leg('→', 'to', '<span class="qb-route-party">Caller</span>'),
         '<span class="qb-route-party">:nobody: Them</span>',
         '</span>',
@@ -96,22 +96,20 @@ describe(':route[…]', () => {
 
   it('draws a party’s name as the inline Markdown it is', () => {
     expect(
-      paragraph(':route[:lockstay: **The** `api` → :mail: [Postmark](https://postmarkapp.com)]\n'),
-    ).toContain(`${party('lockstay', '<strong>The</strong> <code>api</code>')}`)
-    expect(
-      paragraph(':route[:lockstay: API → :mail: [Postmark](https://postmarkapp.com)]\n'),
-    ).toContain(
-      `${icon('mail')}<a href="https://postmarkapp.com" rel="noopener noreferrer">Postmark</a>`,
+      paragraph(':route[:rookwood: **The** `api` → :mail: [Relay](https://relay.example)]\n'),
+    ).toContain(`${party('rookwood', '<strong>The</strong> <code>api</code>')}`)
+    expect(paragraph(':route[:rookwood: API → :mail: [Relay](https://relay.example)]\n')).toContain(
+      `${icon('mail')}<a href="https://relay.example" rel="noopener noreferrer">Relay</a>`,
     )
   })
 
   it('sits in a table cell and in a sentence', () => {
     const html = rendered(
-      '| Who | What |\n| - | - |\n| :route[:airbnb: Airbnb → :inbox: Gateway] | Sends |\n',
+      '| Who | What |\n| - | - |\n| :route[:northgate: Northgate → :inbox: Gateway] | Sends |\n',
     ).html
-    expect(html).toContain(`<td><span class="qb qb-route">${party('airbnb', 'Airbnb')}`)
-    expect(paragraph('From :route[:airbnb: Airbnb] to us.\n')).toBe(
-      `From <span class="qb qb-route">${party('airbnb', 'Airbnb')}</span> to us.`,
+    expect(html).toContain(`<td><span class="qb qb-route">${party('northgate', 'Northgate')}`)
+    expect(paragraph('From :route[:northgate: Northgate] to us.\n')).toBe(
+      `From <span class="qb qb-route">${party('northgate', 'Northgate')}</span> to us.`,
     )
   })
 
@@ -132,9 +130,11 @@ describe(':route[…]', () => {
   })
 
   it('without emoji, still draws its chips, the shortcodes as written', () => {
-    expect(renderDocument(parseMarkdown(':route[:airbnb: Airbnb → :inbox: Gateway]\n')).html).toBe(
+    expect(
+      renderDocument(parseMarkdown(':route[:northgate: Northgate → :inbox: Gateway]\n')).html,
+    ).toBe(
       [
-        '<article><p><span class="qb qb-route"><span class="qb-route-party">:airbnb: Airbnb</span>',
+        '<article><p><span class="qb qb-route"><span class="qb-route-party">:northgate: Northgate</span>',
         '<span class="qb-route-leg"><span class="qb-route-to"><span aria-hidden="true">→</span>',
         '<span class="sr-only"> to </span></span><span class="qb-route-party">:inbox: Gateway</span>',
         '</span></span></p></article>',
@@ -154,7 +154,7 @@ const glyphOf = (name: string): string =>
 
 describe('the documentation kit with monochrome emoji (ADR-038, amended)', () => {
   const MONO: ReadonlyMap<string, CustomEmoji> = new Map(
-    ['clock', 'inbox', 'lockstay'].map((name) => [
+    ['clock', 'inbox', 'rookwood'].map((name) => [
       name,
       { src: `/api/emoji/${name}.0123456789abcdef.svg`, width: 16, height: 16, monochrome: true },
     ]),
@@ -164,12 +164,12 @@ describe('the documentation kit with monochrome emoji (ADR-038, amended)', () =>
   it('draws a party’s, a node’s and a time chip’s icon as a glyph, in the colour of each', () => {
     const { html } = renderDocument(
       parseMarkdown(
-        '::::timeline\n:::step{icon=inbox}\n:clock: **Later** · :lockstay: Worker → :inbox: Gateway\n:::\n::::\n',
+        '::::timeline\n:::step{icon=inbox}\n:clock: **Later** · :rookwood: Worker → :inbox: Gateway\n:::\n::::\n',
       ),
       { emoji: MONO },
     )
     expect(html).toContain(`<span class="qb-step-node">${glyph('inbox')}</span>`)
     expect(html).toContain(`data-tone="accent">${glyph('clock')}Later</span>`)
-    expect(html).toContain(`<span class="qb-route-party">${glyph('lockstay')}Worker</span>`)
+    expect(html).toContain(`<span class="qb-route-party">${glyph('rookwood')}Worker</span>`)
   })
 })

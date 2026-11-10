@@ -223,7 +223,7 @@ describe('targets and labels', () => {
   it('tells an address from a search', () => {
     expect(looksLikeAddress('https://x')).toBe(true)
     expect(looksLikeAddress('/s/x')).toBe(true)
-    expect(looksLikeAddress('sync map')).toBe(false)
+    expect(looksLikeAddress('catalogue map')).toBe(false)
   })
 })
 

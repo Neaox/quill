@@ -36,7 +36,7 @@ import { proseMirrorToMdast } from './to-mdast.ts'
  *
  * The corpus always runs. Set `QUILL_REAL_DOCS` to one or more directories
  * (separated as `PATH` is) to run every Markdown file under them as well, the
- * way the research ran the lockstay `docs/`: each document that does not come
+ * way the research ran a real repository's `docs/`: each document that does not come
  * back is then named with its first differing line, and the invariants that
  * must hold for every document — the meaning kept, a second save changing
  * nothing, a one-word edit changing one line — are asserted for all of them.

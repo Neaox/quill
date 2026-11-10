@@ -1,6 +1,6 @@
 # Reading surfaces and editor: an accessibility and semantics audit
 
-<!-- cspell:words axe tablist tabpanel rowheader columnheader focusable aria WHCM roledescription keyshortcuts labelledby describedby lockstay oklch -->
+<!-- cspell:words axe tablist tabpanel rowheader columnheader focusable aria WHCM roledescription keyshortcuts labelledby describedby oklch -->
 
 **Question.** Does the HTML Quill renders for document content (the renderer, the reader enhancers, the public-site chrome around them, and the editor's node views) meet WCAG 2.2 AA and the WAI-ARIA Authoring Practices? What exactly fails, and where is each fix made?
 
@@ -252,7 +252,7 @@ Each finding has an id (F-n) used by the fix list at the end.
 - A badge is `span.badge[data-tone]` with text.
 - A tenant label is `span.badge[data-label]`, led by a decorative emoji (`aria-hidden` span, or `img alt=""`) or a colour dot.
 - A Unicode emoji is `span.emoji[role=img][aria-label="thumbs up"]`.
-- A custom emoji is `img.emoji[alt=":airbnb:"][title]`.
+- A custom emoji is `img.emoji[alt=":acme:"][title]`.
 - `:kbd[…]` renders as `kbd`.
 
 **Passes.**
@@ -263,7 +263,7 @@ Each finding has an id (F-n) used by the fix list at the end.
 
 | Id  | Severity | WCAG  | Finding and reproduction | Fix |
 | --- | -------- | ----- | ------------------------ | --- |
-| F26 | BP       | 1.1.1 | **A custom emoji's alt is its shortcode with colons.** `:airbnb:` is read as "colon airbnb colon", and `:booking_com:` as "booking underscore com". | `packages/markdown/src/emoji/emoji.ts` `emojiMarkup`: `alt` = the name with `_` and `-` turned into spaces ("booking com"), or a description the organisation sets with the emoji. Keep the shortcode in `title`. |
+| F26 | BP       | 1.1.1 | **A custom emoji's alt is its shortcode with colons.** `:acme:` is read as "colon acme colon", and `:acme_corp:` as "acme underscore corp". | `packages/markdown/src/emoji/emoji.ts` `emojiMarkup`: `alt` = the name with `_` and `-` turned into spaces ("acme corp"), or a description the organisation sets with the emoji. Keep the shortcode in `title`. |
 | —   | BP       | —     | Under forced colours, badge pills lose their outline, but the text stays. | Optional: `border: 1px solid transparent` on `.badge`, so forced colours draw it. |
 
 ### Footnotes

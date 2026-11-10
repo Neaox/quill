@@ -1,8 +1,8 @@
 import { toString } from 'mdast-util-to-string'
-import { visit } from 'unist-util-visit'
-import type { Definition, Root } from 'mdast'
+import type { Definition, Nodes, Root } from 'mdast'
 
 import { stripPresenterNotes } from '../directives/strip-presenter-notes.ts'
+import { walk } from '../walk.ts'
 
 export interface ExtractedLink {
   readonly kind: 'link' | 'image'
@@ -28,8 +28,8 @@ export function isExternal(url: string): boolean {
 
 function definitionsOf(ast: Root): Map<string, Definition> {
   const definitions = new Map<string, Definition>()
-  visit(ast, 'definition', (node) => {
-    definitions.set(node.identifier, node)
+  walk<Nodes>(ast, (node) => {
+    if (node.type === 'definition') definitions.set(node.identifier, node)
   })
   return definitions
 }
@@ -48,7 +48,7 @@ export function extractLinks(ast: Root): readonly ExtractedLink[] {
 
   const resolve = (identifier: string): Definition | undefined => definitions.get(identifier)
 
-  visit(published, (node) => {
+  walk<Nodes>(published, (node) => {
     switch (node.type) {
       case 'link':
         links.push(link('link', node.url, node.title, toString(node)))

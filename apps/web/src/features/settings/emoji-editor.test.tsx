@@ -91,9 +91,9 @@ function fourFrames() {
   return { frames, close, readFrames: () => Promise.resolve(frames) }
 }
 
-/** A clock as the server stores it: one symbol, painted in the colour around it. */
-const CLOCK_GLYPH =
-  '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" width="16" height="16"><symbol id="glyph" viewBox="0 0 16 16"><g fill="none" stroke="currentColor" stroke-width="1.4"><circle cx="8" cy="8" r="6.5"/><path d="M8,4.5 V8"/></g></symbol><use href="#glyph"/></svg>'
+/** A book as the server stores it: one symbol, painted in the colour around it. */
+const BOOK_GLYPH =
+  '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" width="16" height="16"><symbol id="glyph" viewBox="0 0 16 16"><g fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="2" width="10" height="12" rx="1.5"/><path d="M6 5.5h4"/></g></symbol><use href="#glyph"/></svg>'
 
 describe('EmojiEditor (ADR-038)', () => {
   it('previews a saved emoji at text size, in light and dark, and removes it', async () => {
@@ -324,7 +324,7 @@ describe('EmojiEditor (ADR-038)', () => {
           return jsonResponse(201, {
             hash: HASH,
             mediaType: 'image/svg+xml',
-            monochrome: { width: 16, height: 16, glyph: CLOCK_GLYPH },
+            monochrome: { width: 16, height: 16, glyph: BOOK_GLYPH },
           })
         },
       },
@@ -333,19 +333,19 @@ describe('EmojiEditor (ADR-038)', () => {
     const toggle = screen.getByRole('switch', { name: 'Draw in the text’s colour' })
     // Only an SVG can be a glyph, so the choice waits for one.
     expect(toggle).toBeDisabled()
-    await user.upload(screen.getByLabelText('Image'), svgFile('clock.svg'))
+    await user.upload(screen.getByLabelText('Image'), svgFile('book.svg'))
     expect(toggle).toBeEnabled()
     await user.click(toggle)
-    await user.type(screen.getByLabelText('Alt text'), 'Clock')
+    await user.type(screen.getByLabelText('Alt text'), 'Book')
     await user.click(screen.getByRole('button', { name: 'Add emoji' }))
 
     await vi.waitFor(() => {
       expect(saved()).toEqual([
         {
-          name: 'clock',
+          name: 'book',
           hash: HASH,
           mediaType: 'image/svg+xml',
-          description: 'Clock',
+          description: 'Book',
           width: 16,
           height: 16,
           monochrome: true,
@@ -357,27 +357,27 @@ describe('EmojiEditor (ADR-038)', () => {
     expect(toggle).not.toBeChecked()
     // Previewed before it is saved, as readers will see it: the glyph the server
     // stored, drawn in each sample's own ink, never the picture uploaded.
-    const preview = screen.getByRole('group', { name: 'Preview of :clock: at text size' })
-    const drawn = within(preview).getAllByRole('img', { name: 'Clock' })
+    const preview = screen.getByRole('group', { name: 'Preview of :book: at text size' })
+    const drawn = within(preview).getAllByRole('img', { name: 'Book' })
     expect(drawn).toHaveLength(2)
     for (const glyph of drawn) {
       expect(glyph.tagName.toLowerCase()).toBe('svg')
       expect(glyph.querySelector('g')?.getAttribute('stroke')).toBe('currentColor')
-      expect(glyph.querySelector('circle')).not.toBeNull()
+      expect(glyph.querySelector('rect')).not.toBeNull()
       expect(glyph.querySelector('use')).toBeNull()
     }
   })
 
   it('previews a saved monochrome emoji by its glyph, in each sample’s own ink', () => {
     const { container } = renderEditor({
-      initial: [{ ...ACME, name: 'clock', width: 16, height: 16, monochrome: true }],
-      served: new Map([['clock', { src: `/api/emoji/clock.${HASH.slice(0, 16)}.svg` }]]),
+      initial: [{ ...ACME, name: 'book', width: 16, height: 16, monochrome: true }],
+      served: new Map([['book', { src: `/api/emoji/book.${HASH.slice(0, 16)}.svg` }]]),
     })
-    const preview = screen.getByRole('group', { name: 'Preview of :clock: at text size' })
+    const preview = screen.getByRole('group', { name: 'Preview of :book: at text size' })
     expect(within(preview).getAllByRole('img', { name: 'Acme logo' })).toHaveLength(2)
     const uses = container.querySelectorAll('svg use')
     expect([...uses].map((use) => use.getAttribute('href'))).toContain(
-      `/api/emoji/clock.${HASH.slice(0, 16)}.svg#glyph`,
+      `/api/emoji/book.${HASH.slice(0, 16)}.svg#glyph`,
     )
   })
 

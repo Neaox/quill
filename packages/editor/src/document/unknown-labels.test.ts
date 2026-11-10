@@ -8,7 +8,7 @@ import { buildExtensions } from './extensions.ts'
 import { unknownLabelDecorations, unknownLabelsKey, UNKNOWN_LABELS } from './unknown-labels.ts'
 
 const harness = createEditorTestHarness()
-const LABELS: ReadonlySet<string> = new Set(['airbnb', 'booking'])
+const LABELS: ReadonlySet<string> = new Set(['alcove', 'almanac'])
 
 function warningsIn(markdown: string): readonly string[] {
   const { doc } = harness.state(markdown)
@@ -55,32 +55,32 @@ const named = (extensions: ReturnType<typeof buildExtensions>) =>
 
 describe('unknown labels in the editor (ADR-037)', () => {
   it('warns about a labelled directive that is neither built in nor a label', () => {
-    expect(warningsIn('Sold on :airbn[Airbnb] and :expedia[Expedia].\n')).toEqual([
-      'Unknown label “airbn”; it will show as written. Did you mean airbnb?',
-      'Unknown label “expedia”; it will show as written.',
+    expect(warningsIn('Shelved at :alcov[Alcove] and :chapter[Chapter].\n')).toEqual([
+      'Unknown label “alcov”; it will show as written. Did you mean alcove?',
+      'Unknown label “chapter”; it will show as written.',
     ])
   })
 
   it('says nothing about a label, a built-in, or a directive with no words', () => {
-    expect(warningsIn('On :airbnb[Airbnb], :ok[Built], :kbd[Esc] and status:ok.\n')).toEqual([])
+    expect(warningsIn('On :alcove[Alcove], :ok[Built], :kbd[Esc] and status:ok.\n')).toEqual([])
   })
 
   it('marks the directive and says why in words, not by underline alone', () => {
     const editor = new Editor({
       element: document.createElement('div'),
       extensions: buildExtensions({ labels: [...LABELS] }),
-      content: harness.state('On :airbn[Airbnb].\n').doc.toJSON(),
+      content: harness.state('On :alcov[Alcove].\n').doc.toJSON(),
     })
-    const warning = 'Unknown label “airbn”; it will show as written. Did you mean airbnb?'
+    const warning = 'Unknown label “alcov”; it will show as written. Did you mean alcove?'
     const marked = editor.view.dom.querySelector('[data-unknown-label="true"]')
     expect(marked?.getAttribute('title')).toBe(warning)
-    expect(marked?.textContent).toBe('Airbnb')
+    expect(marked?.textContent).toBe('Alcove')
     expect(editor.view.dom.querySelector('.sr-only')?.textContent).toBe(` (${warning})`)
     editor.destroy()
   })
 
   it('computes a document’s warnings once', () => {
-    const { doc } = harness.state('On :airbn[Airbnb].\n')
+    const { doc } = harness.state('On :alcov[Alcove].\n')
     expect(unknownLabelDecorations(doc, LABELS)).toBe(unknownLabelDecorations(doc, LABELS))
   })
 
@@ -89,7 +89,7 @@ describe('unknown labels in the editor (ADR-037)', () => {
       element: document.createElement('div'),
       extensions: buildExtensions({ labels: [...LABELS] }),
       content: harness
-        .state(['On :airbnb[Airbnb].', 'And :booking[Booking].', 'Plain.', ''].join('\n\n'))
+        .state(['On :alcove[Alcove].', 'And :almanac[Almanac].', 'Plain.', ''].join('\n\n'))
         .doc.toJSON(),
     })
     const shown = (state: EditorState) => widths(pluginSet(state))
@@ -97,11 +97,11 @@ describe('unknown labels in the editor (ADR-037)', () => {
     const edits: ((state: EditorState) => Transaction)[] = [
       // A typo in the first label's name, words typed into the second, then
       // a typo in its name too.
-      (state) => state.tr.setNodeAttribute(directive(state, 'airbnb'), 'name', 'airbn'),
-      (state) => state.tr.insertText('x', directive(state, 'booking') + 1),
-      (state) => state.tr.setNodeAttribute(directive(state, 'booking'), 'name', 'bookin'),
+      (state) => state.tr.setNodeAttribute(directive(state, 'alcove'), 'name', 'alcov'),
+      (state) => state.tr.insertText('x', directive(state, 'almanac') + 1),
+      (state) => state.tr.setNodeAttribute(directive(state, 'almanac'), 'name', 'almana'),
       // A new paragraph with an unknown label, and the old first one gone.
-      (state) => state.tr.insert(state.doc.content.size, paragraphWith(state, 'Also :vrbo[Vrbo].')),
+      (state) => state.tr.insert(state.doc.content.size, paragraphWith(state, 'Also :nook[Nook].')),
       (state) => state.tr.delete(0, state.doc.child(0).nodeSize),
     ]
     for (const edit of edits) {
@@ -118,7 +118,7 @@ describe('unknown labels in the editor (ADR-037)', () => {
     const editor = new Editor({
       element: document.createElement('div'),
       extensions: buildExtensions({ labels: [...LABELS] }),
-      content: harness.state('On :airbn[Airbnb] today.\n').doc.toJSON(),
+      content: harness.state('On :alcov[Alcove] today.\n').doc.toJSON(),
     })
     const words = editor.view.dom.querySelector('.sr-only')
     editor.view.dispatch(editor.state.tr.insertText('x', 2))
@@ -129,6 +129,6 @@ describe('unknown labels in the editor (ADR-037)', () => {
 
   it('runs only in an editor told the organisation’s labels', () => {
     expect(named(buildExtensions())).not.toContain(UNKNOWN_LABELS)
-    expect(named(buildExtensions({ labels: ['airbnb'] }))).toContain(UNKNOWN_LABELS)
+    expect(named(buildExtensions({ labels: ['alcove'] }))).toContain(UNKNOWN_LABELS)
   })
 })

@@ -101,13 +101,11 @@ describe('table cells that open with a status', () => {
 
   it('keep a detail that opens with a link or emphasis', () => {
     const html = render(
-      '| a | b |\n| - | - |\n| :badge[Designed] [ADR 4](adr/4.md), accepted | :badge[Open] **no queue** (see below) |\n',
+      '| a | b |\n| - | - |\n| :badge[Planned] [ADR 4](adr/4.md), agreed | :badge[Open] **no index** (see below) |\n',
     )
 
-    expect(html).toContain(
-      '<span class="cell-detail"><a href="adr/4.md">ADR 4</a>, accepted</span>',
-    )
-    expect(html).toContain('<span class="cell-detail"><strong>no queue</strong> (see below)</span>')
+    expect(html).toContain('<span class="cell-detail"><a href="adr/4.md">ADR 4</a>, agreed</span>')
+    expect(html).toContain('<span class="cell-detail"><strong>no index</strong> (see below)</span>')
   })
 
   it('need no detail when the status is all there is', () => {
@@ -126,7 +124,7 @@ describe('the architecture map', () => {
 
   it('opens with the eyebrow, the title, the lead and the small print', () => {
     expect(html).toMatch(
-      /^<article><p>Architecture<\/p>\n<h1 id="user-content-lockstay-sync-map"[^>]*><span[^>]*>lockstay Sync Map<\/span><a[^>]*><span aria-hidden="true">#<\/span><\/a><\/h1>\n<p>How properties/,
+      /^<article><p>Architecture<\/p>\n<h1 id="user-content-rookwood-catalogue-map"[^>]*><span[^>]*>Rookwood Catalogue Map<\/span><a[^>]*><span aria-hidden="true">#<\/span><\/a><\/h1>\n<p>How copies/,
     )
     expect(html).toContain('<p><small>Drawn from the code')
   })

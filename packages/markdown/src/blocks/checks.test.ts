@@ -14,14 +14,14 @@ describe(':::checks', () => {
   it('stays an ordered list, one item a check', () => {
     expect(
       rendered(
-        ':::checks\n\n1. The request’s format\n2. Ana belongs to the account\n3. Under the request limit\n\n:::\n',
+        ':::checks\n\n1. The request is well formed\n2. The reader belongs to the branch\n3. Within the rate limit\n\n:::\n',
       ).html,
     ).toBe(
       [
         '<article><ol class="qb qb-checks">',
-        '<li>The request’s format</li>',
-        '<li>Ana belongs to the account</li>',
-        '<li>Under the request limit</li>',
+        '<li>The request is well formed</li>',
+        '<li>The reader belongs to the branch</li>',
+        '<li>Within the rate limit</li>',
         '</ol></article>',
       ].join(''),
     )
@@ -33,7 +33,7 @@ describe(':::checks', () => {
     )
   })
 
-  it('counts from one, as lockstay does, whatever number the list starts at', () => {
+  it('counts from one, whatever number the list starts at', () => {
     expect(rendered(':::checks\n3. Third\n4. Fourth\n:::\n').html).toBe(
       '<article><ol class="qb qb-checks"><li>Third</li><li>Fourth</li></ol></article>',
     )

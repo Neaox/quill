@@ -26,7 +26,7 @@ describe('runThemeDoctor', () => {
 
   it('leaves out a rule with nothing to judge, rather than counting it a pass', () => {
     expect(ids(instrument)).not.toContain('legibility/labels')
-    const labelled = { ...instrument, labels: [{ name: 'airbnb', title: 'Airbnb', hue: 15 }] }
+    const labelled = { ...instrument, labels: [{ name: 'alcove', title: 'Alcove', hue: 15 }] }
     expect(ids(labelled)).toEqual(ALL_RULES.map((rule) => rule.id))
   })
 

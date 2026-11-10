@@ -12,7 +12,7 @@ import {
   isQuillDirective,
 } from './registry.ts'
 import {
-  LOCKSTAY_SHAPED,
+  KIT_BLOCKS,
   castBlock,
   routeBlock,
   stepBlock,
@@ -69,7 +69,7 @@ describe('blockKind', () => {
 describe('blockProblems', () => {
   it('accepts a block that keeps the contract', () => {
     expect(blockProblems(block())).toEqual([])
-    expect(LOCKSTAY_SHAPED.flatMap(blockProblems)).toEqual([])
+    expect(KIT_BLOCKS.flatMap(blockProblems)).toEqual([])
   })
 
   it('names everything wrong with one that does not', () => {
@@ -121,7 +121,7 @@ describe('createBlockRegistry', () => {
   })
 
   it('finds a block by its name and form', () => {
-    const registry = createBlockRegistry(LOCKSTAY_SHAPED)
+    const registry = createBlockRegistry(KIT_BLOCKS)
     expect(registry.find('step', 'container')).toBe(stepBlock)
     expect(registry.find('step', 'leaf')).toBeUndefined()
     expect(registry.find('nothing', 'container')).toBeUndefined()
@@ -168,7 +168,7 @@ describe('createBlockRegistry', () => {
 
 describe('createMarkdownRegistry', () => {
   it('holds the blocks beside the extensions, and signs both', () => {
-    const registry = createMarkdownRegistry([], LOCKSTAY_SHAPED)
+    const registry = createMarkdownRegistry([], KIT_BLOCKS)
     expect(registry.blocks.find('timeline', 'container')).toBe(timelineBlock)
     expect(registry.signature).toBe(
       'test.cast@1.0.0 test.divider@1.0.0 test.route@1.0.0 test.step@1.0.0 test.term@1.0.0 test.timeline@1.0.0',
