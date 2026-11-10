@@ -37,6 +37,8 @@ jobs:
           node-version-file: .node-version
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      # The pool's threads load the built module, as in production.
+      - run: pnpm --filter @quill/server build
       # The budgeted rows: L's fetch, its sync's wall and CPU time, and the
       # parser's single-thread throughput. Fails when one is over.
       - run: pnpm --filter @quill/server bench:sync -- --budget

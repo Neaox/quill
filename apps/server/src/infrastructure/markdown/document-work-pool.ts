@@ -1,3 +1,5 @@
+import { createHash } from 'node:crypto'
+import { existsSync, readFileSync } from 'node:fs'
 import { availableParallelism } from 'node:os'
 import { Worker } from 'node:worker_threads'
 
@@ -39,9 +41,51 @@ export interface DocumentWorkPoolOptions {
 export interface DocumentWorkPool extends DocumentWork {
   /** Stops every thread; work asked for afterwards starts them again. */
   close(): Promise<void>
+  /** How long each thread started so far took to be ready, in milliseconds, oldest first. */
+  startups(): readonly number[]
 }
 
-const WORKER = new URL('./document-work-worker.ts', import.meta.url)
+/** Where the build writes the module, and where the pool looks for it. */
+export const BUILT_DOCUMENT_WORKER = new URL(
+  '../../../dist/document-work-worker.mjs',
+  import.meta.url,
+)
+
+/** The thread's TypeScript source. */
+export const DOCUMENT_WORKER_SOURCE = new URL('./document-work-worker.ts', import.meta.url)
+
+/** Where the build lists what the built module was built from. */
+export function workerManifest(module: URL): URL {
+  return new URL(module.href.replace(/\.mjs$/u, '.json'))
+}
+
+/** A digest of these files' contents, in this order: what a build was made from. */
+export function sourcesDigest(files: readonly string[]): string {
+  const hash = createHash('sha256')
+  for (const file of files) hash.update(file).update('\0').update(readFileSync(file)).update('\0')
+  return hash.digest('hex')
+}
+
+/**
+ * The built module when the build has written one from the sources as they
+ * are now, else the source itself. A module built from older sources would
+ * render as the code once did, and its bodies would be cached under keys the
+ * current renderer computes, so a built module whose sources have changed
+ * since, or gone, is never used.
+ */
+export function documentWorkerModule(built: URL = BUILT_DOCUMENT_WORKER): URL {
+  try {
+    const manifest: { readonly sources?: unknown; readonly digest?: unknown } = JSON.parse(
+      readFileSync(workerManifest(built), 'utf8'),
+    )
+    const { sources, digest } = manifest
+    const listed = Array.isArray(sources) && sources.every((file) => typeof file === 'string')
+    if (listed && existsSync(built) && sourcesDigest(sources) === digest) return built
+  } catch {
+    // No manifest, or a source it lists is gone: the source it is.
+  }
+  return DOCUMENT_WORKER_SOURCE
+}
 
 /** One fewer than the cores, between one and four: four was as fast as eight, with half the memory. */
 export function defaultPoolSize(): number {
@@ -71,9 +115,11 @@ export function createDocumentWorkPool(options: DocumentWorkPoolOptions): Docume
   const queue: Job[] = []
   let nextId = 0
   let idle: ReturnType<typeof setTimeout> | undefined
+  const startups: number[] = []
 
   const start = (): Thread => {
-    const worker = new Worker(options.worker?.url ?? WORKER, {
+    const started = performance.now()
+    const worker = new Worker(options.worker?.url ?? documentWorkerModule(), {
       resourceLimits: { maxOldGenerationSizeMb: maxHeapMb },
       workerData: options.worker?.data,
     })
@@ -81,6 +127,7 @@ export function createDocumentWorkPool(options: DocumentWorkPoolOptions): Docume
     // A thread's first message names the extensions its renderer has.
     const ready = new Promise<void>((resolve, reject) => {
       worker.once('message', (message: { readonly ready?: string }) => {
+        startups.push(performance.now() - started)
         if (message.ready === options.extensions) resolve()
         else reject(new Error('A document worker renders with other extensions than the server.'))
       })
@@ -209,6 +256,7 @@ export function createDocumentWorkPool(options: DocumentWorkPoolOptions): Docume
         isRendered,
       ),
     close,
+    startups: () => [...startups],
   }
 }
 

@@ -28,7 +28,11 @@ import { userId, workspaceId } from '@quill/domain'
 import { createDrawioText } from '../../extensions/drawio/drawing-text.ts'
 import { createHasher } from '../hasher.ts'
 import { createDocumentFormat } from '../markdown/document-format.ts'
-import { createDocumentWorkPool } from '../markdown/document-work-pool.ts'
+import {
+  BUILT_DOCUMENT_WORKER,
+  createDocumentWorkPool,
+  documentWorkerModule,
+} from '../markdown/document-work-pool.ts'
 
 /**
  * ADR-062's server budgets for a sourced workspace, measured on a generated
@@ -81,6 +85,12 @@ const budget = process.argv.includes('--budget')
 const pool = process.argv.includes('--no-pool')
   ? undefined
   : createDocumentWorkPool({ extensions: createDocumentFormat().extensions ?? '' })
+// The production path: threads load the built module, so a thread starting is not a compile.
+if (pool !== undefined && documentWorkerModule().href !== BUILT_DOCUMENT_WORKER.href) {
+  throw new Error(
+    'Build the server first (pnpm --filter @quill/server build): the pool runs the built worker.',
+  )
+}
 const shape = SOURCE_CORPUS_SHAPES[name]
 const NOW = new Date('2026-11-11T12:00:00.000Z')
 const WORKSPACE = workspaceId('00000000-0000-4000-8000-000000000101')
@@ -329,5 +339,11 @@ if (slow) over = true
 lines.push(
   `parse, one thread: ${throughput.toFixed(2)} MB/s (budget ${floor === null ? '-' : `at least ${floor}`})${slow ? '  under' : ''}`,
 )
+if (pool !== undefined) {
+  const starts = pool.startups()
+  lines.push(
+    `worker start, built module: median ${Math.round(median(starts))} ms, longest ${Math.round(Math.max(0, ...starts))} ms, ${starts.length} starts`,
+  )
+}
 process.stdout.write(`${lines.join('\n')}\n`)
 if (budget && over) process.exitCode = 1

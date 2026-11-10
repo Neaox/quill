@@ -1,8 +1,20 @@
 import { generateSourceCorpus, SOURCE_CORPUS_SHAPES } from '@quill/application/test-support'
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { pathToFileURL } from 'node:url'
+
 import { afterEach, describe, expect, it } from 'vitest'
 
 import { createDocumentFormat } from './document-format.ts'
-import { createDocumentWorkPool, defaultPoolSize } from './document-work-pool.ts'
+import { buildDocumentWorker } from './document-work-bundle.ts'
+import {
+  createDocumentWorkPool,
+  defaultPoolSize,
+  DOCUMENT_WORKER_SOURCE,
+  documentWorkerModule,
+  workerManifest,
+} from './document-work-pool.ts'
 import type { DocumentWorkPool } from './document-work-pool.ts'
 
 const format = createDocumentFormat()
@@ -84,4 +96,29 @@ describe('the document work pool', () => {
     expect(defaultPoolSize()).toBeGreaterThanOrEqual(1)
     expect(defaultPoolSize()).toBeLessThanOrEqual(4)
   })
+})
+
+describe('the built document worker', () => {
+  it('renders exactly as the source does, and is used only while it matches the sources', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'document-worker-'))
+    try {
+      const built = pathToFileURL(join(directory, 'document-work-worker.mjs'))
+      await buildDocumentWorker(built)
+      expect(documentWorkerModule(built)).toEqual(built)
+
+      const work = pool({ worker: { url: built } })
+      const inputs = pages.map((markdown) => ({ markdown, linkTitles: new Map() }))
+      expect(await work.render(inputs)).toEqual(inputs.map((input) => format.render(input)))
+
+      // A build from other sources than these is left alone.
+      const manifest = workerManifest(built)
+      const listed = JSON.parse(await readFile(manifest, 'utf8')) as { readonly sources: string[] }
+      await writeFile(manifest, JSON.stringify({ sources: listed.sources, digest: 'stale' }))
+      expect(documentWorkerModule(built)).toEqual(DOCUMENT_WORKER_SOURCE)
+      await rm(manifest)
+      expect(documentWorkerModule(built)).toEqual(DOCUMENT_WORKER_SOURCE)
+    } finally {
+      await rm(directory, { recursive: true, force: true, maxRetries: 5 })
+    }
+  }, 180_000)
 })

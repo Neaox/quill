@@ -170,6 +170,9 @@ importers:
       drizzle-kit:
         specifier: ^0.31.10
         version: 0.31.10
+      rolldown:
+        specifier: ^1.2.8
+        version: 1.2.8
 
   apps/web:
     dependencies:
