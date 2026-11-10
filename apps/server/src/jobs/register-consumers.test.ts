@@ -15,6 +15,7 @@ import {
   REVIEW_REQUESTED,
   REVIEW_WITHDRAWN,
   SOURCE_SYNC_REQUESTED,
+  SOURCE_SYNC_STATE_CHANGED,
 } from '@quill/application'
 import { describe, expect, it } from 'vitest'
 
@@ -45,6 +46,7 @@ const EMITTED = [
   REVIEW_REQUESTED,
   REVIEW_WITHDRAWN,
   SOURCE_SYNC_REQUESTED,
+  SOURCE_SYNC_STATE_CHANGED,
 ]
 
 function registered(): readonly OutboxConsumer[] {
@@ -85,6 +87,7 @@ describe('registerOutboxConsumers', () => {
         DOCUMENT_NESTED,
         GRANT_CREATED,
         GRANT_REVOKED,
+        SOURCE_SYNC_STATE_CHANGED,
       ].toSorted(),
     )
   })
