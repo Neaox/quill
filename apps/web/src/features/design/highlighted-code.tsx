@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 
 import type { TokenRange } from '@quill/highlight'
+import { importOnDemand } from '../../lib/on-demand-imports.ts'
 
 export interface HighlightedCodeProps {
   readonly code: string
@@ -70,7 +71,7 @@ export function HighlightedCode({ code, language }: HighlightedCodeProps) {
   // render — and applies its result once it arrives (ADR-030).
   useEffect(() => {
     let current = true
-    void import('@quill/highlight').then(({ resolveLanguage, tokenize }) => {
+    void importOnDemand(() => import('@quill/highlight')).then(({ resolveLanguage, tokenize }) => {
       const resolved = resolveLanguage(language)
       if (!current || resolved === null) return
       setPieces(piecesOf(code, tokenize(code, resolved)))

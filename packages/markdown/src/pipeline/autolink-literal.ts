@@ -1,8 +1,8 @@
 import { toString } from 'mdast-util-to-string'
-import type { Link, Root } from 'mdast'
-import { visit } from 'unist-util-visit'
+import type { Link, Nodes, Root } from 'mdast'
 
 import { rewriteTree } from '../tree.ts'
+import { walk } from '../walk.ts'
 import { rawMdast } from './raw-mdast.ts'
 
 /**
@@ -30,7 +30,8 @@ declare module 'mdast' {
  * Mutates the tree it is given, which is the parser's own fresh one.
  */
 export function markAutolinkLiterals(tree: Root, source: string): Root {
-  visit(tree, 'link', (node: Link) => {
+  walk<Nodes>(tree, (node) => {
+    if (node.type !== 'link') return
     const start = node.position?.start.offset
     const end = node.position?.end.offset
     if (start === undefined || end === undefined) return
@@ -73,8 +74,8 @@ export function withBareAutolinks(tree: Root): { readonly tree: Root; readonly b
 /** Every link in a tree, address and words, in order: what reading back must reproduce. */
 export function linksOf(tree: Root): string {
   const links: string[] = []
-  visit(tree, 'link', (node: Link) => {
-    links.push(`${node.url}\u0000${toString(node)}`)
+  walk<Nodes>(tree, (node) => {
+    if (node.type === 'link') links.push(`${node.url}\u0000${toString(node)}`)
   })
   return links.join('\u0001')
 }

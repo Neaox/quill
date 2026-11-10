@@ -11,6 +11,8 @@ import { groupCodeBlocks } from '../code-group/code-group.ts'
 import { readLinkComments, writeLinkComments } from '../directives/link-comment.ts'
 import { readDetails } from '../details/read.ts'
 import { linksOf, markAutolinkLiterals, withBareAutolinks } from './autolink-literal.ts'
+import { gfmPartsNeeded, remarkGfmParts } from './gfm-parts.ts'
+import type { GfmParts } from './gfm-parts.ts'
 import { withAlertMarkers } from './github-alert.ts'
 import { readImageAlts } from './image-alt.ts'
 import { attributesRead, markSourceForm } from './source-form.ts'
@@ -36,6 +38,34 @@ function createProcessor(options: ToMarkdownExtensionOptions) {
 }
 
 const processor = createProcessor({ references: true })
+
+/**
+ * The parser without one or both of GFM's costly parts, for text that cannot
+ * hold them (`gfm-parts.ts`): the same plugins in the same order as
+ * `processor`, which reads text that might.
+ */
+function createReader(parts: GfmParts) {
+  return unified()
+    .use(remarkParse)
+    .use(remarkGfmParts, parts)
+    .use(remarkFrontmatter, ['yaml'])
+    .use(remarkDirective)
+    .freeze()
+}
+
+const readers = {
+  withoutTables: createReader({ table: false, autolinkLiteral: true }),
+  withoutAutolinks: createReader({ table: true, autolinkLiteral: false }),
+  withoutEither: createReader({ table: false, autolinkLiteral: false }),
+}
+
+/** The tree of a text, read by the cheapest parser that reads it exactly as `processor` does. */
+function readSource(source: string): Root {
+  const { table, autolinkLiteral } = gfmPartsNeeded(source)
+  if (table && autolinkLiteral) return processor.parse(source)
+  if (table) return readers.withoutAutolinks.parse(source)
+  return autolinkLiteral ? readers.withoutTables.parse(source) : readers.withoutEither.parse(source)
+}
 
 /**
  * The same processor for a document with no definitions, which writes a `[`
@@ -65,7 +95,7 @@ export function parseMarkdown(markdown: string): Root {
  * piece whose offsets are the whole document's.
  */
 export function parseNormalised(source: string): Root {
-  const parsed = readImageAlts(processor.parse(source), source, (label) => processor.parse(label))
+  const parsed = readImageAlts(readSource(source), source, (label) => processor.parse(label))
   const tree = markSourceForm(parsed, source, readAttributes)
   return readLinkComments(
     readDetails(groupCodeBlocks(markAutolinkLiterals(tree, source), source), readSummary),

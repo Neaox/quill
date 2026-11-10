@@ -1,0 +1,1 @@
+Fixed: The web app's test suite no longer fails at random with an EnvironmentTeardownError: every module the app imports on demand is followed until it arrives, and each test waits for the ones it started.

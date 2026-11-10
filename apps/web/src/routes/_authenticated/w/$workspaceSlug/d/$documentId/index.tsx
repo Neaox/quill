@@ -22,6 +22,7 @@ import {
   type ComparisonView,
 } from '../../../../../../lib/routing/document-reference.ts'
 import { optionalStringSearch } from '../../../../../-search.ts'
+import { importOnDemand } from '../../../../../../lib/on-demand-imports.ts'
 
 /**
  * Which revision is being read, and which two are being compared, are URL
@@ -92,9 +93,9 @@ export const Route = createFileRoute('/_authenticated/w/$workspaceSlug/d/$docume
     // are their own chunk (quill-plan.md section 31), asked for now so they
     // arrive alongside the body rather than after it. A dynamic import, so
     // the route's own chunk does not carry them.
-    void import('../../../../../../features/documents/deferred-enhancements.ts').catch(
-      () => undefined,
-    )
+    void importOnDemand(
+      () => import('../../../../../../features/documents/deferred-enhancements.ts'),
+    ).catch(() => undefined)
     let document
     try {
       document = await context.queryClient.ensureQueryData(
