@@ -1,9 +1,9 @@
 import { toString } from 'mdast-util-to-string'
-import { CONTINUE, SKIP, visit } from 'unist-util-visit'
-import type { Root } from 'mdast'
+import type { Nodes, Root } from 'mdast'
 
 import { stripAuthoringBlocks } from '../directives/strip-authoring-blocks.ts'
 import { stripPresenterNotes } from '../directives/strip-presenter-notes.ts'
+import { walk } from '../walk.ts'
 
 export interface DocumentText {
   /** The first level-one heading, or the first heading of any level. */
@@ -30,17 +30,17 @@ export function extractText(ast: Root): DocumentText {
   const headings: FoundHeading[] = []
   const body: string[] = []
 
-  visit(published, (node) => {
+  walk<Nodes>(published, (node) => {
     if (node.type === 'heading') {
       headings.push({ depth: node.depth, text: toString(node) })
-      return SKIP
+      return true
     }
-    if (node.type === 'yaml') return SKIP
+    if (node.type === 'yaml') return true
     if (PROSE.has(node.type)) {
       body.push(toString(node))
-      return SKIP
+      return true
     }
-    return CONTINUE
+    return false
   })
 
   const title = headings.find((heading) => heading.depth === 1) ?? headings[0]

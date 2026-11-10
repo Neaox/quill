@@ -1,9 +1,9 @@
-import type { Element, Root as HastRoot } from 'hast'
+import type { Element, Nodes as HastNodes, Root as HastRoot } from 'hast'
 import type { Schema } from 'hast-util-sanitize'
 import type { Link, PhrasingContent, Root, Text } from 'mdast'
-import { visit } from 'unist-util-visit'
 
 import { rewriteTree } from '../tree.ts'
+import { walk } from '../walk.ts'
 import { nameAsWords } from './names.ts'
 import type { StandardEmoji } from './shortcodes.ts'
 
@@ -438,8 +438,8 @@ function hasClass(node: Element, name: string): boolean {
  * ever stops being so.
  */
 export function guardEmojiImages(tree: HastRoot): HastRoot {
-  visit(tree, 'element', (node: Element) => {
-    if (node.tagName !== 'img' || !hasClass(node, 'emoji')) return
+  walk<HastNodes>(tree, (node) => {
+    if (node.type !== 'element' || node.tagName !== 'img' || !hasClass(node, 'emoji')) return
     if (EMOJI_ASSET_URL.test(String(node.properties['src']))) return
     delete node.properties['className']
   })

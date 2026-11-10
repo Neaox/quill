@@ -1,6 +1,5 @@
-import type { Root } from 'mdast'
+import type { Nodes, Root } from 'mdast'
 import type { LeafDirective } from 'mdast-util-directive'
-import { visit } from 'unist-util-visit'
 
 import type {
   Directive,
@@ -10,6 +9,7 @@ import type {
 } from '../directives/definition.ts'
 import { attribute, claims, flag, issue, label, textChildren } from '../directives/definition.ts'
 import { stripPresenterNotes } from '../directives/strip-presenter-notes.ts'
+import { walk } from '../walk.ts'
 import type { ChildPagesQuery } from './slot-key.ts'
 import {
   childPagesSlotKey,
@@ -145,8 +145,10 @@ export const childrenDirective: DirectiveDefinition<ChildPagesBlock, LeafDirecti
  */
 export function childPagesSlots(tree: Root): readonly string[] {
   const keys = new Set<string>()
-  visit(stripPresenterNotes(tree), 'leafDirective', (node: LeafDirective) => {
-    if (claims(childrenDirective, node)) keys.add(childPagesSlotKey(childrenDirective.parse(node)))
+  walk<Nodes>(stripPresenterNotes(tree), (node) => {
+    if (node.type === 'leafDirective' && claims(childrenDirective, node)) {
+      keys.add(childPagesSlotKey(childrenDirective.parse(node)))
+    }
   })
   return [...keys]
 }

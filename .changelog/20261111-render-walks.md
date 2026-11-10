@@ -1,0 +1,1 @@
+Changed: Rendering a page takes less work after the parse: the renderer no longer copies a document's whole tree on passes that change nothing, and walks it without building a closure per node; every rendered page is byte for byte what it was.
