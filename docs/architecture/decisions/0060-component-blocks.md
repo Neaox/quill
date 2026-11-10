@@ -411,7 +411,7 @@ Props marked `x-quill-searchable` are included in the search projection, so a pa
 
 ## Decisions on acceptance
 
-Accepted on 2026-11-09, with the open questions below decided and the first slice delivered: delivery step 2, and of step 3 the block contract, the prop vocabulary, the registry and the render path. The reason it was accepted now is a real caller: rookwood's documentation (`docs/design/quill-docs.md` in that repository) writes `::::timeline` with `:::step{icon tone}`, `:::cast{outside narrow}`, `:::checks` and `:route[…]`, and Quill must draw them at parity with rookwood's own renderer before it serves those pages. Those blocks are a follow-up built on this; nothing here is specific to them.
+Accepted on 2026-11-09, with the open questions below decided and the first slice delivered: delivery step 2, and of step 3 the block contract, the prop vocabulary, the registry and the render path. The reason it was accepted now is a real caller: a real documentation repository writes `::::timeline` with `:::step{icon tone}`, `:::cast{outside narrow}`, `:::checks` and `:route[…]`, and Quill must draw them at parity with that repository's own renderer before it serves those pages. Those blocks are a follow-up built on this; nothing here is specific to them.
 
 ### 1. Registering a block, and what it declares
 
@@ -429,7 +429,7 @@ Blocks are registered in the same `MarkdownRegistry` as extensions, `createMarkd
 
 Two narrowings of section 1, both reversible:
 
-- **Props are written as attributes only, for now.** Scalars and comma-separated lists (`outside="Airbnb, Booking.com"`) cover every block in view. Structured props in a `yaml props` fence join with the first block that needs one.
+- **Props are written as attributes only, for now.** Scalars and comma-separated lists (`outside="Northgate, Eastfield"`) cover every block in view. Structured props in a `yaml props` fence join with the first block that needs one.
 - **Validation is a small interpreter, not Ajv.** The editor checks a block's props in the browser, under a content security policy without `unsafe-eval`, and Ajv compiles its validators with `new Function`. The props stay plain JSON Schema, so Ajv still validates a manifest where code generation is allowed (at install, step 7). `defineBlock` and `p.*` live in `@quill/markdown` until packaging (step 7) needs `@quill/blocks` as a package of its own.
 
 ### 2. Unknown blocks and props that do not fit
@@ -462,7 +462,7 @@ A block uses the element for the job and is named in words: `endpoint` is a `sec
 
 ### `:::details` stays where it is
 
-ADR-048 reads one construct from three syntaxes (the directive, GitHub's `<details>` and Obsidian's foldable callouts) into one model drawn by one renderer, with a dedicated editor node whose summary is edited in place. Moving only the directive spelling onto the registry would give one construct two renderers, which is what ADR-048 avoided, and the generic container card would lose the in-place summary. `details` is instead one of the names the registry reserves, so no block can take it, and rookwood's `:::details[…]` keeps working as it does.
+ADR-048 reads one construct from three syntaxes (the directive, GitHub's `<details>` and Obsidian's foldable callouts) into one model drawn by one renderer, with a dedicated editor node whose summary is edited in place. Moving only the directive spelling onto the registry would give one construct two renderers, which is what ADR-048 avoided, and the generic container card would lose the in-place summary. `details` is instead one of the names the registry reserves, so no block can take it, and every existing `:::details[…]` keeps working as it does.
 
 ### The first built-in block
 
@@ -470,10 +470,10 @@ ADR-048 reads one construct from three syntaxes (the directive, GitHub's `<detai
 
 ### The documentation kit (2026-11-10)
 
-`timeline`, `step`, `cast`, `checks` and `route`, the blocks rookwood's guides are written in, are built in, beside `endpoint`, and drawn as rookwood's own documentation site draws them (`packages/markdown/src/blocks/`, styles under `.qb-*` in `prose.css`). They are built in rather than an installable set enabled per workspace because:
+`timeline`, `step`, `cast`, `checks` and `route`, the blocks that caller's guides are written in, are built in, beside `endpoint`, and drawn as one documentation kit (`packages/markdown/src/blocks/`, styles under `.qb-*` in `prose.css`). They are built in rather than an installable set enabled per workspace because:
 
 - install and enable are delivery step 7, which does not exist yet: the registry is one per process, built at the composition root, and the editor reads Quill's own blocks directly, so a per-workspace set would need a per-workspace registry, cache key, setting and editor wiring first;
-- decision 1 makes Quill's own blocks the default, and nothing in these is rookwood's: a timeline of steps, the parties a page is about, numbered checks and a route of arrows are general documentation shapes, and the icons are the organisation's own emoji (ADR-038);
+- decision 1 makes Quill's own blocks the default, and nothing in these is specific to one caller: a timeline of steps, the parties a page is about, numbered checks and a route of arrows are general documentation shapes, and the icons are the organisation's own emoji (ADR-038);
 - a document that uses them keeps its bytes either way, so moving them into a set once step 7 lands rewrites nothing.
 
 Their names are reserved: no installed block, and no tenant label (ADR-037), may take them.

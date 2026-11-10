@@ -56,15 +56,15 @@ describe('the built-in themes', () => {
   )
 
   /**
-   * Grid reproduces rookwood's portal, and in three places rookwood is
-   * further from the colour rules than a theme Quill designs itself would be:
+   * Grid keeps its register, and in three places that register is further
+   * from the colour rules than a theme Quill designs itself would be:
    * its dark card is 1.5 above the panel beneath it rather than 3, and its
    * current-item wash is more saturated than the area budget, more so in
    * dark. The doctor advises; the owner chose fidelity (11 October 2026), so
    * these are the accepted warnings and nothing else may join them. Text
    * contrast still holds everywhere.
    */
-  it('passes the doctor on Grid with only rookwood’s accepted departures', () => {
+  it('passes the doctor on Grid with only its accepted departures', () => {
     const report = runThemeDoctor(BUILTIN_THEMES.grid)
     expect(report.warnings.map((warning) => warning.id).toSorted()).toEqual([
       'bands/surface-separation',
@@ -147,7 +147,7 @@ describe('the seeds of each theme', () => {
     expect(atelier.type.display).toEqual({ source: 'curated', id: 'instrument-serif' })
   })
 
-  it('gives Grid rookwood’s cool page, quiet teal, Figtree throughout and plain space', () => {
+  it('gives Grid a cool page, quiet teal, Figtree throughout and plain space', () => {
     const { grid } = BUILTIN_THEMES
     expect(grid.seeds.tone.hue).toBe(215)
     expect(grid.seeds.accent).toEqual({ hue: 190, chroma: 0.085, lightness: 47, darkLightness: 78 })
@@ -162,7 +162,7 @@ describe('the seeds of each theme', () => {
     expect(grid.shape).toEqual({ radiusStep: 3, density: 'comfortable' })
   })
 
-  it('lands Grid on rookwood’s register, with a firmer hairline', () => {
+  it('lands Grid on its register, with a firmer hairline', () => {
     const { light, dark } = buildPalettes(BUILTIN_THEMES.grid)
     expect(light.colours.paper.lightness).toBe(97.2)
     expect(light.colours.raised.lightness).toBe(100)

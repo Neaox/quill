@@ -7,9 +7,9 @@ import type { AnyBlock } from './define.ts'
 import { BlockRenderError, defineBlock, h } from './define.ts'
 import { endpointBlock } from './endpoint.ts'
 import { p } from './props.ts'
-import { ROOKWOOD_SHAPED } from './test-support.ts'
+import { KIT_BLOCKS } from './test-support.ts'
 
-const registry = createMarkdownRegistry([], [endpointBlock, ...ROOKWOOD_SHAPED])
+const registry = createMarkdownRegistry([], [endpointBlock, ...KIT_BLOCKS])
 
 const rendered = (markdown: string, blocks = registry) =>
   renderDocument(parseMarkdown(markdown), { extensions: blocks })
@@ -57,11 +57,11 @@ describe('a registered block', () => {
 
   it('draws its label as inline Markdown', () => {
     expect(
-      html(':::cast[Who **sends**]{outside="Airbnb, Booking.com" columns=2}\n- A\n:::\n'),
+      html(':::cast[Who **sends**]{outside="Northgate, Eastfield" columns=2}\n- A\n:::\n'),
     ).toBe(
       [
         '<article><section class="qb qb-cast" aria-label="Who sends"',
-        ' data-qb-outside="Airbnb,Booking.com" data-qb-columns="2">',
+        ' data-qb-outside="Northgate,Eastfield" data-qb-columns="2">',
         '<p class="qb-cast-title">Who <strong>sends</strong></p>\n<ul>\n<li>A</li>\n</ul>\n</section></article>',
       ].join(''),
     )

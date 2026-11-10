@@ -6,7 +6,7 @@
 
 ## Context
 
-Architecture documents explain mechanisms, and the clearest of them are half pictures: a system map, a sequence of calls, a grid of options side by side, a table whose cells open with a status. The documentation Quill is meant to host — rookwood's 186-document portal is the first real one — is written that way: hand-drawn SVG diagrams styled by a small class vocabulary, `:ok[Built]` status labels in table cells, GitHub alerts (`> [!WARNING]`) as callouts, and figures with captions. Quill rendered none of it: SVG uploads were refused (ADR-011, amendment of 2026-09-13), a Mermaid fence was a code block, and there was no way to say "this paragraph captions that table" or "these four sections sit side by side".
+Architecture documents explain mechanisms, and the clearest of them are half pictures: a system map, a sequence of calls, a grid of options side by side, a table whose cells open with a status. The documentation Quill is meant to host — a real documentation portal of about 200 documents is the first — is written that way: hand-drawn SVG diagrams styled by a small class vocabulary, `:ok[Built]` status labels in table cells, GitHub alerts (`> [!WARNING]`) as callouts, and figures with captions. Quill rendered none of it: SVG uploads were refused (ADR-011, amendment of 2026-09-13), a Mermaid fence was a code block, and there was no way to say "this paragraph captions that table" or "these four sections sit side by side".
 
 Plan section 20 schedules Mermaid and Draw.io as source artifacts in M5. The owner asked for diagrams now, chose Mermaid for text-first diagrams, and chose inline SVG as well once it was clear that hand-drawn diagrams are what real documents carry.
 
@@ -42,8 +42,8 @@ A paragraph immediately before the title is its eyebrow, and the reading stylesh
 
 ## Consequences
 
-- Documents written for GitHub and for rookwood's portal render in Quill with their diagrams, labels and alerts, without rewriting.
+- Documents written for GitHub and for a documentation portal render in Quill with their diagrams, labels and alerts, without rewriting.
 - Mermaid's bundle is paid only by pages that draw a diagram; the reading route's budget is unchanged.
 - The SVG allowlist is security-relevant code with an adversarial test corpus (`drawing.test.ts`); widening it needs the same care as `sanitize-schema.ts`.
 - The public site and exports show Mermaid as source until server-side drawing lands (M5). Inline SVG drawings are already part of the server-rendered body, so they appear there.
-- Workspace-specific label colours (rookwood's `:airbnb` and `:booking` channel labels) are not expressible yet: a theme has no extra named colours. They render as written until one does.
+- Workspace-specific label colours (an organisation's own labels, such as `:acme` and `:globex` for its partners) are not expressible yet: a theme has no extra named colours. They render as written until one does.

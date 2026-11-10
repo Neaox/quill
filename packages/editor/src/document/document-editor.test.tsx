@@ -126,10 +126,10 @@ describe('the document editor', () => {
   })
 
   it('shows a paragraph wrapped in the source as one line, as a reader sees it', () => {
-    const { onChange } = open('How properties move between rookwood\nand an owner’s PMS.\n')
-    const paragraph = screen.getByText(/How properties move/u)
+    const { onChange } = open('How copies move between Rookwood\nand a branch’s catalogue.\n')
+    const paragraph = screen.getByText(/How copies move/u)
 
-    expect(paragraph.textContent).toBe('How properties move between rookwood and an owner’s PMS.')
+    expect(paragraph.textContent).toBe('How copies move between Rookwood and a branch’s catalogue.')
     // Opening is not editing: nothing is saved until the author changes something.
     expect(onChange).not.toHaveBeenCalled()
   })

@@ -137,10 +137,10 @@ describe('a component block’s card (ADR-060)', () => {
   })
 
   it('heads the documentation kit’s blocks with their titles, props and problems', () => {
-    const { nodeView, view } = mount(directive({ icon: 'airbnb', tone: 'purple' }, 'step'))
+    const { nodeView, view } = mount(directive({ icon: 'alcove', tone: 'purple' }, 'step'))
     expect(heading(nodeView)).toHaveTextContent('Step')
     expect(heading(nodeView)?.querySelector('code')).toHaveTextContent(
-      'step{icon="airbnb" tone="purple"}',
+      'step{icon="alcove" tone="purple"}',
     )
     expect(heading(nodeView)).toHaveTextContent(
       'tone: “purple” is not one of outside, net; left out',

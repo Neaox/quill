@@ -20,14 +20,14 @@ import type { RouteSide } from './route.ts'
 import { routeElement, routeOf } from './route.ts'
 
 /**
- * A timeline of steps on a rail (`docs/design/quill-docs.md` in rookwood):
+ * A timeline of steps on a rail:
  *
  * ```markdown
  * ::::timeline
- * :::step{icon=airbnb tone=outside}
- * :clock: **Seconds later** · :airbnb: Airbnb → :rookwood: Gateway
+ * :::step{icon=northgate tone=outside}
+ * :clock: **Seconds later** · :northgate: Northgate → :rookwood: Gateway
  *
- * ### rookwood saves the booking, then tells Airbnb
+ * ### Rookwood saves the hold, then tells Northgate
  *
  * The gateway saves it to the ingest log, then replies.
  * :::
@@ -38,8 +38,8 @@ import { routeElement, routeOf } from './route.ts'
  * icon in a node on the rail. A step's first line, when it is not a
  * heading, is its when-line: the bold words are a chip (a time when an emoji
  * leads them), and each part after a ` · ` is a route. A line with no bold
- * words first is routes alone. It is read exactly as rookwood's own site
- * reads it, so a page is drawn the same in both.
+ * words first is routes alone. It is read the same wherever the kit is
+ * drawn, so a page is drawn the same in every renderer of it.
  *
  * Outside Quill the directive lines read as text and the content as Markdown.
  */
@@ -94,7 +94,7 @@ function isStrong(node: PhrasingContent | undefined): node is Strong {
   return node?.type === 'strong'
 }
 
-/** Reads a step's first line, `:clock: **Up to 5 s later** · :rookwood: Worker → :calendar: Calendar`. */
+/** Reads a step's first line, `:clock: **Up to 5 s later** · :rookwood: Worker → :calendar: Catalogue`. */
 export function whenOf(children: readonly PhrasingContent[]): When {
   const line = lineOf(children)
   const text = line.text.trim()
@@ -174,7 +174,7 @@ export const stepBlock = defineBlock({
     icon: p.string({
       title: 'Icon',
       description: 'The emoji drawn in the step’s node on the rail, by name.',
-      examples: ['clock', 'airbnb'],
+      examples: ['clock', 'inbox'],
     }),
     tone: p.enum(STEP_TONES, {
       title: 'Tone',

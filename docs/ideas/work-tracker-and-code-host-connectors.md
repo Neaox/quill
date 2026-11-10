@@ -89,4 +89,4 @@ Outside Quill each form reads as its key or URL.
 - **Grant scope:** per workspace or per collection. The current proposal is per workspace, like other integrations.
 - **Public site:** do snapshots of private trackers ever appear there? The default should be no, with an explicit per-connector "public" flag.
 - **Rate limits:** how to stay within provider limits at scale. Shared snapshots keyed by parameters (ADR-032) cover most of it; measure.
-- **Rookwood first:** which provider? GitHub (PRs and issues) is the likely first, since the plan already has GitHub source references in M5.
+- **First provider:** which one? GitHub (PRs and issues) is the likely first, since the plan already has GitHub source references in M5.

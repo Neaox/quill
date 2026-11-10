@@ -6,7 +6,7 @@ import { parseMarkdown } from '../pipeline/processor.ts'
 import { renderDocument } from '../render/html.ts'
 
 const EMOJI: ReadonlyMap<string, CustomEmoji> = new Map(
-  ['clock', 'loop', 'airbnb', 'rookwood', 'inbox', 'calendar', 'person'].map((name) => [
+  ['clock', 'loop', 'northgate', 'rookwood', 'inbox', 'calendar', 'person'].map((name) => [
     name,
     { src: `/api/emoji/${name}.0123456789abcdef.svg`, width: 16, height: 16 },
   ]),
@@ -20,7 +20,7 @@ const rendered = (markdown: string) =>
 
 const html = (markdown: string): string => rendered(markdown).html
 
-/** A timeline around steps, as rookwood writes one. */
+/** A timeline around steps, as a guide writes one. */
 const timeline = (...steps: readonly string[]): string =>
   ['::::timeline', '', ...steps.flatMap((step) => [step, '']), '::::', ''].join('\n')
 
@@ -45,34 +45,34 @@ describe('::::timeline', () => {
       html(
         timeline(
           step(
-            '{icon=airbnb tone=outside}',
-            ':clock: **Any time later** · :airbnb: Airbnb → :rookwood: Gateway',
-            '### Airbnb asks whether the nights are free',
-            'Before the guest pays.',
-            ':ok[Holds] Airbnb gets an answer.',
+            '{icon=northgate tone=outside}',
+            ':clock: **Any time later** · :northgate: Northgate → :rookwood: Gateway',
+            '### Northgate asks whether the book is on the shelf',
+            'Before the reader leaves.',
+            ':ok[Holds] Northgate gets an answer.',
           ),
         ),
       ),
     ).toBe(
       [
         '<article><ol class="qb qb-timeline"><li class="qb qb-step">',
-        `<span class="qb-step-node" data-qb-tone="outside">${icon('airbnb')}</span>`,
+        `<span class="qb-step-node" data-qb-tone="outside">${icon('northgate')}</span>`,
         '<p class="qb-step-when">',
         `<span class="badge qb-step-chip qb-step-time" data-tone="accent">${icon('clock')}Any time later</span>`,
-        ` <span class="qb-route">${party('airbnb', 'Airbnb')}${to(party('rookwood', 'Gateway'))}</span>`,
+        ` <span class="qb-route">${party('northgate', 'Northgate')}${to(party('rookwood', 'Gateway'))}</span>`,
         '</p>\n',
-        '<h3 id="user-content-airbnb-asks-whether-the-nights-are-free" aria-labelledby="user-content-title.airbnb-asks-whether-the-nights-are-free">',
-        '<span id="user-content-title.airbnb-asks-whether-the-nights-are-free">Airbnb asks whether the nights are free</span>',
-        '<a class="heading-anchor" href="#user-content-airbnb-asks-whether-the-nights-are-free" aria-label="Link to this section: Airbnb asks whether the nights are free"><span aria-hidden="true">#</span></a></h3>\n',
-        '<p>Before the guest pays.</p>\n',
-        '<p><span class="badge" data-tone="success" data-badge="ok">Holds</span> Airbnb gets an answer.</p>\n',
+        '<h3 id="user-content-northgate-asks-whether-the-book-is-on-the-shelf" aria-labelledby="user-content-title.northgate-asks-whether-the-book-is-on-the-shelf">',
+        '<span id="user-content-title.northgate-asks-whether-the-book-is-on-the-shelf">Northgate asks whether the book is on the shelf</span>',
+        '<a class="heading-anchor" href="#user-content-northgate-asks-whether-the-book-is-on-the-shelf" aria-label="Link to this section: Northgate asks whether the book is on the shelf"><span aria-hidden="true">#</span></a></h3>\n',
+        '<p>Before the reader leaves.</p>\n',
+        '<p><span class="badge" data-tone="success" data-badge="ok">Holds</span> Northgate gets an answer.</p>\n',
         '</li></ol></article>',
       ].join(''),
     )
   })
 
   it('keeps its steps in order, with nested blocks inside them', () => {
-    // Written as rookwood writes it: the outer block with the most colons.
+    // Written as guides write it: the outer block with the most colons.
     const result = rendered(
       [
         ':::::timeline',
@@ -163,7 +163,7 @@ describe(':::step', () => {
     )
   })
 
-  it('leaves its node empty when no emoji has its icon’s name, as rookwood does', () => {
+  it('leaves its node empty when no emoji has its icon’s name', () => {
     expect(html(timeline(step('{icon=nothing}', 'x')))).toContain(
       '<span class="qb-step-node"></span>',
     )
@@ -192,7 +192,7 @@ describe(':::step', () => {
     ])
   })
 
-  describe('its when-line, read as rookwood reads it', () => {
+  describe('its when-line', () => {
     it('is a chip of the bold words, a time when an emoji leads them', () => {
       expect(whenLine(timeline(step('', ':clock: **Up to 5 s later**', 'x')))).toBe(
         `<span class="badge qb-step-chip qb-step-time" data-tone="accent">${icon('clock')}Up to 5 s later</span>`,
@@ -211,7 +211,7 @@ describe(':::step', () => {
           timeline(
             step(
               '',
-              ':clock: **Start** · :airbnb: Airbnb → :inbox: Gateway · :rookwood: Worker → :calendar: Calendar',
+              ':clock: **Start** · :northgate: Northgate → :inbox: Gateway · :rookwood: Worker → :calendar: Catalogue',
               'x',
             ),
           ),
@@ -219,15 +219,15 @@ describe(':::step', () => {
       ).toBe(
         [
           `<span class="badge qb-step-chip qb-step-time" data-tone="accent">${icon('clock')}Start</span>`,
-          ` <span class="qb-route">${party('airbnb', 'Airbnb')}${to(party('inbox', 'Gateway'))}</span>`,
-          ` <span class="qb-route">${party('rookwood', 'Worker')}${to(party('calendar', 'Calendar'))}</span>`,
+          ` <span class="qb-route">${party('northgate', 'Northgate')}${to(party('inbox', 'Gateway'))}</span>`,
+          ` <span class="qb-route">${party('rookwood', 'Worker')}${to(party('calendar', 'Catalogue'))}</span>`,
         ].join(''),
       )
     })
 
     it('is routes alone when it opens with no bold words', () => {
-      expect(whenLine(timeline(step('', ':rookwood: Engine → :rookwood: Channel', 'x')))).toBe(
-        `<span class="qb-route">${party('rookwood', 'Engine')}${to(party('rookwood', 'Channel'))}</span>`,
+      expect(whenLine(timeline(step('', ':rookwood: Engine → :rookwood: Ledger', 'x')))).toBe(
+        `<span class="qb-route">${party('rookwood', 'Engine')}${to(party('rookwood', 'Ledger'))}</span>`,
       )
     })
 
@@ -257,9 +257,11 @@ describe(':::step', () => {
 
     it('is read across a line break in the source', () => {
       expect(
-        whenLine(timeline(step('', ':clock: **Start** · :airbnb: Airbnb\n→ :inbox: Gateway', 'x'))),
+        whenLine(
+          timeline(step('', ':clock: **Start** · :northgate: Northgate\n→ :inbox: Gateway', 'x')),
+        ),
       ).toBe(
-        `<span class="badge qb-step-chip qb-step-time" data-tone="accent">${icon('clock')}Start</span> <span class="qb-route">${party('airbnb', 'Airbnb')}${to(party('inbox', 'Gateway'))}</span>`,
+        `<span class="badge qb-step-chip qb-step-time" data-tone="accent">${icon('clock')}Start</span> <span class="qb-route">${party('northgate', 'Northgate')}${to(party('inbox', 'Gateway'))}</span>`,
       )
     })
   })

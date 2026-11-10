@@ -26,7 +26,7 @@ describe('withAccent', () => {
     expect(theme.seeds.accent).toEqual(teal)
     expect(theme.overrides).toEqual({
       shared: { '--radius-md': '0.625rem' },
-      // rookwood's dark status fills are not the accent's, so they stay.
+      // Grid's dark status fills are not the accent's, so they stay.
       dark: {
         '--palette-success-subtle': 'oklch(30% 0.05 160)',
         '--palette-warning-subtle': 'oklch(32% 0.06 60)',

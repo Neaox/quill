@@ -10,7 +10,7 @@ import { runThemeDoctor } from './run.ts'
 import { applyThemeChange, suggestFixes, type Suggestion } from './suggest.ts'
 
 /**
- * Grid as it stood before rookwood's dark status fills were pinned: its one
+ * Grid as it stood before its dark status fills were pinned: its one
  * dark wash a pinned teal, which is what these suggestions are measured on.
  */
 const tealWash: ThemeDocument = {

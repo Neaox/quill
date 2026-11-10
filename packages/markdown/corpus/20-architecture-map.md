@@ -1,244 +1,244 @@
 Architecture
 
-# rookwood Sync Map
+# Rookwood Catalogue Map
 
-How properties, availability, bookings and prices move between rookwood and Airbnb, Booking.com, calendar links and an owner's PMS. It also shows how the flow changes with who holds each value.
+How copies, shelf status, holds and loan periods travel between the Rookwood library service, the Northgate and Eastfield lending networks, school reading lists and a branch's own catalogue. Which arrows exist depends on who is in charge of each value.
 
-:small[Drawn from the code and the ADRs on main, 11 October 2026. Thick lines are what we send, thin lines what comes in, and dashed lines read back to check; dotted grey lines are designed but not built.]
+:small[Drawn from the code on 11 October 2026. Heavy lines leave Rookwood, light lines arrive, dashed lines confirm a write, and grey dotted lines are planned rather than running.]
 
-## The loop
+## The cycle
 
-Facts come in on the bottom path and become rows in the tenant database. The engine works out what each channel should hold, compares that with what it last sent and saw, and sends the difference on the top path. Marks make it prompt; the sweep makes it correct.
+Every arrival is written to the library database first. A planner then decides what each network ought to show, sets that beside what it last wrote and last read, and writes only what differs. Flags speed it up; the nightly pass keeps it honest.
 
 ::::wide
 :::figure
 
 ```mermaid
 flowchart TB
-  accTitle: The loop
-  accDescr: Facts enter through the gateway and inbound jobs into the tenant database; the engine compares desired with sent and seen state and sends through the transport to Airbnb and Booking.com, reading back to check.
+  accTitle: The cycle
+  accDescr: Arrivals from the networks and the import jobs land in the library database; the planner works out each network's view and the courier writes it to Northgate and Eastfield, confirming afterwards.
 
-  subgraph yours [Your side]
+  subgraph branch [The branch]
     direction LR
-    owner["Owner and team<br>console and API"]
-    pricing["Pricing tool<br>through our API"]
-    pms["Owner's PMS<br>OpenTravel"]:::planned
+    staff["Librarians<br>desk and API"]
+    planner["Loan planner<br>via our API"]
+    ils["Branch catalogue<br>Z39.50"]:::planned
   end
 
-  subgraph rookwood [rookwood]
-    db[("Tenant database<br>listings, calendar, price rules,<br>who holds what, change marks")]
-    ingest["Ingest log<br>kept outside the database"]
-    engine["Engine<br>desired, compare, order, sweep"]
-    gateway["Gateway<br>no database"]
-    transport["Transport<br>paced, retried, audited"]
-    inbound["Inbound jobs<br>Booking.com queue, Airbnb walk,<br>calendar links"]
+  subgraph rookwood [Rookwood]
+    db[("Library database<br>titles, copies, loan rules,<br>owners of each value, flags")]
+    journal["Arrival journal<br>outside the database"]
+    planner2["Planner<br>want, diff, order, nightly pass"]
+    desk["Front desk<br>stateless"]
+    courier["Courier<br>throttled, retried, logged"]
+    imports["Import jobs<br>Eastfield feed, Northgate crawl,<br>reading lists"]
   end
 
-  subgraph platforms [Platforms]
+  subgraph outside [Lending networks]
     direction LR
-    airbnb["Airbnb<br>limit per host"]
-    booking["Booking.com<br>one allowance for our account"]
-    links["Calendar links<br>Vrbo and others"]
+    northgate["Northgate<br>quota per branch"]
+    eastfield["Eastfield<br>one quota for Rookwood"]
+    lists["Reading lists<br>schools and clubs"]
   end
 
-  owner --> db
-  pricing --> db
-  pms -.- db
-  airbnb -->|webhooks| gateway
-  gateway -->|kept, then 200| ingest
-  ingest -->|into ledger| db
-  db <-->|marks, state| engine
-  engine ==>|free nights every 5 s| gateway
-  gateway ==>|free? answers| airbnb
-  engine ==>|by lane| transport
-  transport ==>|calendar, prices| airbnb
-  transport ==>|month per call| booking
-  airbnb -.->|read daily| transport
-  booking -.->|read 12 to 24 h| transport
-  booking -->|every 20 s| inbound
-  links -->|read links| inbound
-  inbound -->|saved, then acknowledged| db
+  staff --> db
+  planner --> db
+  ils -.- db
+  northgate -->|callbacks| desk
+  desk -->|journalled, then 200| journal
+  journal -->|applied| db
+  db <-->|flags, state| planner2
+  planner2 ==>|shelf snapshot every 5 s| desk
+  desk ==>|on the shelf? replies| northgate
+  planner2 ==>|per queue| courier
+  courier ==>|copies, loan periods| northgate
+  courier ==>|a month at a time| eastfield
+  northgate -.->|confirmed daily| courier
+  eastfield -.->|confirmed twice a day| courier
+  eastfield -->|polled every 20 s| imports
+  lists -->|fetched| imports
+  imports -->|stored, then acknowledged| db
 
   classDef planned stroke-dasharray: 4 4
   linkStyle 2 stroke-dasharray: 2 4
 ```
 
-The gateway takes Airbnb's webhooks and answers Airbnb's "are these nights free?" from a snapshot the worker publishes every 5 seconds. It fails closed once the snapshot is 30 seconds old (ADR 0026). The inbound jobs also call out through the transport; they are drawn apart to keep the lines straight. Delete every mark and queue, and the sweep still finds every difference.
+Northgate's callbacks reach the front desk, which also answers its "is a copy on the shelf?" question from a snapshot refreshed every five seconds; once that snapshot is half a minute stale, the desk says no (ADR 0026). The import jobs make their own calls through the courier, drawn separately here only to keep the picture tidy. Throw away every flag and queue and the nightly pass would still find all the work.
 
 :::
 ::::
 
-## A booking closes its nights everywhere
+## One hold, followed through
 
-An Airbnb booking, step by step. Nothing here pushes on an event. The closure goes first because the slice's own record says Booking.com is offering a night that is no longer free (ADR 0042). A sweep after a lost mark finds the same thing.
+A hold placed through Northgate, in order. No step waits on a push. Eastfield is updated before anything else, since the planner's record shows it still lending a copy that has just gone (ADR 0042). Had the flag been lost, the nightly pass would reach the same conclusion.
 
 ::::wide
 :::figure
 
 ```mermaid
 sequenceDiagram
-  accTitle: A booking closes its nights everywhere
-  accDescr: An Airbnb booking arrives as a webhook, is logged, taken into the ledger and marked; the engine closes the nights on Booking.com first, reads the closure back, and publishes new free nights for the gateway.
+  accTitle: One hold, followed through
+  accDescr: Northgate reports a hold by callback; it is journalled, applied and flagged, and the planner pulls the copy from Eastfield first, confirms it, then refreshes the shelf snapshot for the front desk.
   autonumber
-  participant airbnb as Airbnb
-  participant gateway as Gateway
-  participant ingest as Ingest log
-  participant db as Tenant database
-  participant engine as Engine
-  participant booking as Booking.com
-  participant links as Calendar links
+  participant northgate as Northgate
+  participant desk as Front desk
+  participant journal as Arrival journal
+  participant db as Library database
+  participant planner as Planner
+  participant eastfield as Eastfield
+  participant lists as Reading lists
 
-  airbnb->>gateway: Are 12 to 15 March free?
-  gateway-->>airbnb: Free, from a snapshot under 30 s old
-  airbnb->>gateway: Booked: webhook
-  gateway->>ingest: Appended, then 200
-  ingest->>db: Taken into the ledger
-  Note over ingest,db: An overlap is refused: double-booking workflow
-  db->>engine: Mark, same transaction
-  Note over engine,booking: Booking.com still offers those nights,<br>so it goes first, at any date
-  engine->>booking: Closure, one month per call
-  booking-->>engine: Read back: closed, confirmed
-  engine->>gateway: New free nights for the gateway, within 5 s
-  links->>engine: Their next read of our feed shows the nights busy
+  northgate->>desk: Is copy 12 of 15 on the shelf?
+  desk-->>northgate: Yes, per a snapshot under 30 s old
+  northgate->>desk: Hold placed: callback
+  desk->>journal: Journalled, then 200
+  journal->>db: Applied
+  Note over journal,db: A clash goes to the waiting-list workflow
+  db->>planner: Flag, in the same transaction
+  Note over planner,eastfield: Eastfield still lends that copy,<br>so it is updated first, whatever the date
+  planner->>eastfield: Pull the copy, a month at a time
+  eastfield-->>planner: Confirmed: pulled
+  planner->>desk: Fresh shelf snapshot, within 5 s
+  lists->>planner: Next fetch of our feed lists the copy as out
 ```
 
-A Booking.com booking takes the other road in. It is pulled from Booking.com's queue every 20 seconds, saved to the ledger, and only then acknowledged (ADR 0040). After 30 minutes without an acknowledgement, Booking.com emails the property instead. Steps 5 to 9 are the same for every source. Calendar links are read on their own schedule, so they are the slowest channel to close.
+Eastfield's holds arrive another way: Rookwood polls its feed every twenty seconds, stores what it finds and only afterwards acknowledges it (ADR 0040). Left unacknowledged for half an hour, Eastfield falls back to emailing the branch. From step 5 onward the path is shared by every source. Reading lists fetch on a timetable of their own and so trail every other network.
 
 :::
 ::::
 
-## Prices are rules until a channel needs them
+## Loan periods stay rules until asked for
 
-No price matrix is stored. Rules are kept and evaluated on demand. A slice is fingerprinted by its inputs, so if no rule, booking or setting moved, nothing is computed and nothing is sent.
+Nothing stores a table of finished loan periods. The rules are stored and worked through when a network needs an answer. Each slice carries a fingerprint of its inputs, so an untouched rule, hold or setting means no work and no write.
 
 ::::wide
 :::figure
 
 ```mermaid
 flowchart LR
-  accTitle: Prices are rules until a channel needs them
-  accDescr: The owner and the pricing tool write price rules; the pricing pipeline evaluates them and, when rookwood holds the price, shapes it for Airbnb and Booking.com.
+  accTitle: Loan periods stay rules until asked for
+  accDescr: Librarians and the loan planner record loan rules; the period pipeline works them through and, where Rookwood is in charge, formats the result for Northgate and Eastfield.
 
-  owner["Owner<br>console"] --> rules
-  tool["Pricing tool<br>through our API"] --> rules
-  rules["Price rules<br>base price, seasons, stay length,<br>guests, fees, discounts"] --> pipeline
-  pipeline["Pricing pipeline<br>pure, steps in a set order,<br>every price explained"] --> held{"Held by<br>rookwood?"}
-  held ==>|yes| airbnb["Airbnb<br>one nightly price, whole units,<br>fees and discounts as settings"]
-  held ==>|yes| booking["Booking.com<br>a price per stay length and guest count,<br>one month per call"]
-  held -.->|no| none["Sent to no channel"]
+  staff["Librarian<br>desk"] --> rules
+  tool["Loan planner<br>via our API"] --> rules
+  rules["Loan rules<br>standard period, terms, item type,<br>reader group, fines, renewals"] --> pipeline
+  pipeline["Period pipeline<br>side-effect free, fixed order,<br>each answer traced"] --> held{"Rookwood<br>in charge?"}
+  held ==>|yes| northgate["Northgate<br>a period per copy in days,<br>fines and renewals as options"]
+  held ==>|yes| eastfield["Eastfield<br>a period per item type and reader group,<br>a month at a time"]
+  held -.->|no| none["Written nowhere"]
 ```
 
-A nightly price held by a platform or by nobody is sent to no channel today. Nothing imports a platform's prices yet, so sending ours would create a second source of truth (ADR 0075). Booking.com can expand derived rates itself; that is in the manifest but not yet used.
+Where a network or nobody is in charge of a loan period, Rookwood writes it nowhere for now: periods are not yet read back from the networks, and writing ours would leave two answers to one question (ADR 0075). Eastfield could derive periods on its side; the option is declared but switched off.
 
 :::
 ::::
 
-## Who holds the value changes the arrows
+## The owner of a value decides the arrows
 
-Each field has a holder: rookwood, a platform, both, or the owner's own system. It is set at the narrowest level that needs it and inherited from the account down. The four shapes below apply to availability, stay rules, prices and listing details alike. Bookings always come in from every channel, whoever holds what.
+Every field names who is in charge of it: Rookwood, a network, both, or the branch's own catalogue. The choice sits on the most specific level that needs one and flows down from the library. The four patterns below cover shelf status, lending rules, loan periods and catalogue records equally. Holds are always read from every network, whatever the owner.
 
 ::::wide
 :::cards
 
-### rookwood holds it
+### Rookwood is in charge
 
 ```mermaid
 flowchart LR
-  rookwood ==> airbnb[Airbnb]
-  rookwood ==> booking[Booking.com]
-  airbnb -.->|check| rookwood
+  rookwood ==> northgate[Northgate]
+  rookwood ==> eastfield[Eastfield]
+  northgate -.->|confirm| rookwood
 ```
 
-Sent to every channel. A change made on a platform is found by the next check and put back.
+Written to each network. An edit made inside a network is spotted on the next confirmation and reverted.
 
-### A platform holds it
+### A network is in charge
 
 ```mermaid
 flowchart LR
-  airbnb[Airbnb] -.->|pull in| rookwood
-  rookwood -.->|pass on| booking[Booking.com]
+  northgate[Northgate] -.->|read| rookwood
+  rookwood -.->|forward| eastfield[Eastfield]
 ```
 
-Today: sent to no channel, and each keeps what it has. Designed: pulled in from the holder and passed to the others.
+For now nothing is written and each network keeps its own. Planned: read from the owner and forwarded to the rest.
 
-### Both hold it
+### Both are in charge
 
 ```mermaid
 flowchart LR
-  rookwood ==>|on our change| airbnb[Airbnb]
-  rookwood ==>|on our change| booking[Booking.com]
+  rookwood ==>|when ours changes| northgate[Northgate]
+  rookwood ==>|when ours changes| eastfield[Eastfield]
 ```
 
-Sent only when our value changes. A host's own edit on the platform stands until then. Settling an edit made on both sides is designed (plan section 6).
+Written only after our own value moves, so a librarian's edit inside a network survives until then. Reconciling edits made on both sides is planned (plan section 6).
 
-### The owner's PMS holds it
+### The branch catalogue is in charge
 
 ```mermaid
 flowchart LR
-  pms[PMS] -.-> rookwood
-  rookwood ==> airbnb[Airbnb]
-  rookwood ==> booking[Booking.com]
-  rookwood -.->|bookings back| pms
+  ils[Catalogue] -.-> rookwood
+  rookwood ==> northgate[Northgate]
+  rookwood ==> eastfield[Eastfield]
+  rookwood -.->|holds returned| ils
 ```
 
-Designed (ADR 0035): the PMS sends availability and prices over OpenTravel, we send them on, and bookings go back to it.
+Planned (ADR 0035): the branch catalogue reports shelf status and loan periods over Z39.50, Rookwood forwards them, and holds flow back.
 
 :::
 ::::
 
-## One holder per class of data
+## An owner for each kind of record
 
-The control is one rule per class: `AuthorityRule` in `@rookwood/policy`. A field can narrow it, and it is inherited account → group → property, with where it was set kept for every answer. When nothing is set, rookwood holds it. The API refuses an edit to a value another system holds with `409` and the reason. Today the engine reads the holder for prices and stay rules only.
+One setting per kind of record decides it: `OwnerRule` in `@rookwood/policy`. Single fields may override it, and it flows library → region → branch, remembering at which level each answer was chosen. With nothing chosen, Rookwood is in charge. An edit to a value owned elsewhere is rejected by the API with `409` and an explanation. At present the planner consults the owner only for loan periods and lending rules.
 
 :::wide
 
-| Class of data | Holders it can have | Engine honours the holder |
+| Kind of record | Possible owners | Planner respects the owner |
 | --- | --- | --- |
-| Listing details | rookwood, a platform, both; per field ("Airbnb holds the description") | :badge[Not yet] Nothing is sent yet, so nothing is overwritten. |
-| Photos | rookwood, a platform, both | :badge[Not yet] Nothing is sent yet. |
-| Availability | rookwood; the owner's PMS (designed) | :badge[Not read]{tone=warning} Always treated as rookwood's. A night another site's calendar holds is kept closed on the others. |
-| Nightly prices | rookwood, a platform, both, nobody | :badge[Yes]{tone=success} Held elsewhere: sent to no channel (ADR 0075). |
-| Pricing settings | Guest fee and stay-length discounts, each on its own | :badge[Yes]{tone=success} Only the settings rookwood holds are written. |
-| Stay rules | rookwood, a platform, both, nobody | :badge[Yes]{tone=success} A rule held elsewhere is left out of the write (ADR 0041). |
-| Bookings | Not a setting: a fact from wherever it was made | :badge[Always in]{tone=success} Taken in from every channel, paused and disabled ones included (ADR 0040). |
+| Catalogue records | Rookwood, a network, both; field by field ("Northgate owns the summary") | :badge[Not yet] No writes yet, so nothing is replaced. |
+| Cover images | Rookwood, a network, both | :badge[Not yet] No writes yet. |
+| Shelf status | Rookwood; the branch catalogue (planned) | :badge[Not read]{tone=warning} Treated as Rookwood's in every case. A copy listed elsewhere stays off the other shelves. |
+| Loan periods | Rookwood, a network, both, nobody | :badge[Yes]{tone=success} Owned elsewhere: written nowhere (ADR 0075). |
+| Fine options | Late fees and renewal caps, each separately | :badge[Yes]{tone=success} Only the options Rookwood owns are written. |
+| Lending rules | Rookwood, a network, both, nobody | :badge[Yes]{tone=success} A rule owned elsewhere is skipped (ADR 0041). |
+| Holds | No owner: a hold is a fact, wherever it was placed | :badge[Always in]{tone=success} Read from every network, including paused and switched-off ones (ADR 0040). |
 
 :::
 
-## Platform by platform
+## Each network in turn
 
-What moves in each direction today, how often it is checked, and what is still to build.
+What travels each way at present, how often it is confirmed, and what remains to be built.
 
 :::wide
 
-| Platform | Listing details and photos | Availability | Bookings | Prices and stay rules |
+| Network | Records and covers | Shelf status | Holds | Loan periods and lending rules |
 | --- | --- | --- | --- | --- |
-| Airbnb | :badge[Designed] `out` Text, amenities and policies; one photo per call. Checked weekly. | :badge[Built]{tone=success} `out` Calendar operations, applied by Airbnb within about 15 minutes. Read back daily, the only way to find a host's own edit. | :badge[Built]{tone=success} `in` Webhooks to the gateway, a page walk of each listing, and a full reconciliation every 6 hours. | :badge[Built]{tone=success} `out` Nightly price in whole units; guest fee and stay-length discounts as listing settings; stay rules per night. Read back daily. |
-| Booking.com | :badge[Designed] `out` Modular JSON content. Photos upload in batches that go live later, so they are read before any replace. | :badge[Built]{tone=success} `out` One property and one month per call. Read back every 12 hours, 31 nights a read. | :badge[Built]{tone=success} :badge[No reconciliation]{tone=warning} `in` Queue pulled every 20 seconds, acknowledged after saving. No list of bookings to check against. | :badge[Built]{tone=success} `out` A grid by stay length and guest count; stay rules per night. Read back daily. |
-| Calendar links | Not carried. | :badge[Built]{tone=success} `out` Our feed, read on their schedule. Slowest to close. | :badge[Built]{tone=success} `in` Their links read as holds: nights taken, no guest details. | Not carried. |
-| Owner's PMS | :badge[Designed] `in` When it holds them. | :badge[Designed] `in` OpenTravel, changes as they happen plus a periodic full resend. | :badge[Designed] `out` Every booking from every channel, queued until the PMS confirms it. | :badge[Designed] `in` OpenTravel; then sent on to the channels. |
+| Northgate | :badge[Designed] `out` Summaries, subjects and notes; a cover per request. Confirmed weekly. | :badge[Built]{tone=success} `out` Shelf changes, which Northgate applies inside a quarter of an hour. Confirmed daily, which is how a librarian's own edit comes to light. | :badge[Built]{tone=success} `in` Callbacks to the front desk, a crawl of each title, and a full comparison four times a day. | :badge[Built]{tone=success} `out` Periods in whole days; late fees and renewal caps as title options; lending rules per copy. Confirmed daily. |
+| Eastfield | :badge[Designed] `out` Structured JSON records. Covers are uploaded in batches that publish later, so they are checked before replacement. | :badge[Built]{tone=success} `out` A branch and a month per request. Confirmed twice a day, 31 copies per read. | :badge[Built]{tone=success} :badge[No reconciliation]{tone=warning} `in` Feed polled every 20 seconds, acknowledged once stored. There is no list of holds to compare with. | :badge[Built]{tone=success} `out` A table by item type and reader group; lending rules per copy. Confirmed daily. |
+| Reading lists | Not exchanged. | :badge[Built]{tone=success} `out` Our feed, fetched on their timetable. The last to catch up. | :badge[Built]{tone=success} `in` Their lists count as holds: copies reserved, no reader details. | Not exchanged. |
+| Branch catalogue | :badge[Designed] `in` When it owns them. | :badge[Designed] `in` Z39.50, each change as it happens and a full resend now and then. | :badge[Designed] `out` Every hold from every network, queued until the catalogue confirms it. | :badge[Designed] `in` Z39.50, then forwarded to the networks. |
 
 :::
 
-## What holds it together
+## Why it stays correct
 
 ::::wide
 :::cards{variant=ruled}
 
-### Nothing acknowledged is lost
+### Acknowledged means kept
 
-A webhook is answered only once it is in the ingest log; a queued Booking.com booking is acknowledged only once it is in the ledger.
+A callback gets its 200 only after the arrival journal has it; a polled Eastfield hold is acknowledged only after the database has it.
 
-### Work is derived, never only queued
+### Work is recomputed, not just queued
 
-Outstanding work is every slice whose wanted state differs from what was sent or seen. Losing a queue costs time, not correctness.
+Pending work is any slice whose wanted state disagrees with what was last written or read. A lost queue delays the work but never drops it.
 
-### Nothing sent that changes nothing
+### No write without a change
 
-Fingerprints are taken of the inputs, so an unchanged slice costs one comparison and no call.
+Inputs are fingerprinted, so a slice nobody touched costs one comparison and no request.
 
-### A slice fits one call
+### One slice, one request
 
-Slices are cut to each platform's limits, so a send can never half-apply.
+Slices are sized to each network's limits, so no write can land halfway.
 
 :::
 ::::

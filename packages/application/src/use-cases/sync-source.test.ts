@@ -2017,19 +2017,19 @@ describe('repository assets', () => {
 
 describe('folders as documents', () => {
   const CONCEPTS = generatedFolderPath('docs/guide/concepts')
-  /** rookwood's guide: folders with a README, and one without. */
+  /** A guide: folders with a README, and one without. */
   const GUIDE_FILES = {
     'docs/guide/README.md': [
       '# Guide',
-      '[Tenancy](./concepts/tenancy/README.md)',
-      '[Requests](./concepts/requests/)',
+      '[Lending](./concepts/lending/README.md)',
+      '[Returns](./concepts/returns/)',
       '[Concepts](concepts)',
-      '[Isolation](concepts/tenancy/isolation.md)',
+      '[Reserves](concepts/lending/reserves.md)',
       '[Nowhere](./concepts/nowhere/)',
     ].join('\n\n'),
-    'docs/guide/concepts/tenancy/README.md': '# Tenancy',
-    'docs/guide/concepts/tenancy/isolation.md': '# Isolation',
-    'docs/guide/concepts/requests/README.md': '# Requests',
+    'docs/guide/concepts/lending/README.md': '# Lending',
+    'docs/guide/concepts/lending/reserves.md': '# Reserves',
+    'docs/guide/concepts/returns/README.md': '# Returns',
     'docs/top.md': '# Top',
   }
 
@@ -2041,14 +2041,14 @@ describe('folders as documents', () => {
 
     const guide = await h.idAt('docs/guide/README.md')
     const concepts = await h.idAt(CONCEPTS)
-    const tenancy = await h.idAt('docs/guide/concepts/tenancy/README.md')
+    const lending = await h.idAt('docs/guide/concepts/lending/README.md')
     // The collection's own directory is the collection: its files are at the top.
     expect(await parentOf(h, 'docs/top.md')).toBeNull()
     expect(await parentOf(h, 'docs/guide/README.md')).toBeNull()
     expect(await parentOf(h, CONCEPTS)).toBe(guide)
-    expect(await parentOf(h, 'docs/guide/concepts/tenancy/README.md')).toBe(concepts)
-    expect(await parentOf(h, 'docs/guide/concepts/requests/README.md')).toBe(concepts)
-    expect(await parentOf(h, 'docs/guide/concepts/tenancy/isolation.md')).toBe(tenancy)
+    expect(await parentOf(h, 'docs/guide/concepts/lending/README.md')).toBe(concepts)
+    expect(await parentOf(h, 'docs/guide/concepts/returns/README.md')).toBe(concepts)
+    expect(await parentOf(h, 'docs/guide/concepts/lending/reserves.md')).toBe(lending)
 
     expect(await documentAt(h, CONCEPTS)).toMatchObject({
       title: 'Concepts',
@@ -2125,14 +2125,14 @@ describe('folders as documents', () => {
     await sourced(h)
     await h.sync()
     const { html } = (await render(h, 'docs/guide/README.md')).content
-    const tenancy = await h.idAt('docs/guide/concepts/tenancy/README.md')
-    const requests = await h.idAt('docs/guide/concepts/requests/README.md')
+    const lending = await h.idAt('docs/guide/concepts/lending/README.md')
+    const returns = await h.idAt('docs/guide/concepts/returns/README.md')
     const concepts = await h.idAt(CONCEPTS)
-    const isolation = await h.idAt('docs/guide/concepts/tenancy/isolation.md')
-    expect(html).toContain(`[Tenancy](/d/${tenancy})`)
-    expect(html).toContain(`[Requests](/d/${requests})`)
+    const reserves = await h.idAt('docs/guide/concepts/lending/reserves.md')
+    expect(html).toContain(`[Lending](/d/${lending})`)
+    expect(html).toContain(`[Returns](/d/${returns})`)
     expect(html).toContain(`[Concepts](/d/${concepts})`)
-    expect(html).toContain(`[Isolation](/d/${isolation})`)
+    expect(html).toContain(`[Reserves](/d/${reserves})`)
     expect(html).toContain(
       '[Nowhere](https://github.com/acme/handbook/blob/c1/docs/guide/concepts/nowhere)',
     )
@@ -2146,14 +2146,14 @@ describe('folders as documents', () => {
   })
 
   it("gives a folder's generated document to the README it gains, and keeps it when the README goes", async () => {
-    const tenancyFiles = { 'docs/guide/concepts/tenancy/README.md': '# Tenancy' }
-    const h = harness([{ id: 'c1', files: tenancyFiles }])
+    const lendingFiles = { 'docs/guide/concepts/lending/README.md': '# Lending' }
+    const h = harness([{ id: 'c1', files: lendingFiles }])
     await h.sync()
     const concepts = await h.idAt(CONCEPTS)
 
     h.source.push({
       id: 'c2',
-      files: { ...tenancyFiles, 'docs/guide/concepts/README.md': '# Core concepts' },
+      files: { ...lendingFiles, 'docs/guide/concepts/README.md': '# Core concepts' },
     })
     await h.sync()
     expect(await h.idAt('docs/guide/concepts/README.md')).toBe(concepts)
@@ -2171,16 +2171,16 @@ describe('folders as documents', () => {
       title: 'Core concepts',
       status: 'published',
     })
-    expect(await parentOf(h, 'docs/guide/concepts/tenancy/README.md')).toBe(concepts)
+    expect(await parentOf(h, 'docs/guide/concepts/lending/README.md')).toBe(concepts)
 
-    h.source.push({ id: 'c3', files: tenancyFiles })
+    h.source.push({ id: 'c3', files: lendingFiles })
     await h.sync()
     expect(await h.idAt(CONCEPTS)).toBe(concepts)
     expect(await documentAt(h, CONCEPTS)).toMatchObject({ title: 'Concepts', status: 'published' })
     expect(h.store.requests[2]?.changes).toEqual([
       expect.objectContaining({ kind: 'move', documentId: concepts, toPath: CONCEPTS }),
     ])
-    expect(await parentOf(h, 'docs/guide/concepts/tenancy/README.md')).toBe(concepts)
+    expect(await parentOf(h, 'docs/guide/concepts/lending/README.md')).toBe(concepts)
     // One page all along, with every revision in its history.
     const recorded = await Promise.all(
       ['c1', 'c2', 'c3'].map(async (commit) =>
@@ -2354,7 +2354,7 @@ describe('folders as documents', () => {
     expect(new Set(documents.map(({ path }) => path)).size).toBe(documents.length)
     const concepts = await h.idAt(CONCEPTS)
     expect(await parentOf(h, CONCEPTS)).toBe(await h.idAt('docs/guide/README.md'))
-    expect(await parentOf(h, 'docs/guide/concepts/tenancy/README.md')).toBe(concepts)
+    expect(await parentOf(h, 'docs/guide/concepts/lending/README.md')).toBe(concepts)
     expect(h.store.requests.at(-1)).toMatchObject({
       changeNote: LAYOUT_CHANGED_SUMMARY,
       changes: [expect.objectContaining({ kind: 'write', path: CONCEPTS })],
@@ -2368,12 +2368,12 @@ describe('folders as documents', () => {
   it('re-maps a manifest workspace on its next sync too', async () => {
     const files = {
       [MANIFEST]: manifest('{ slug: guide, title: Guide, path: docs/guide }'),
-      'docs/guide/concepts/tenancy/README.md': '# Tenancy',
+      'docs/guide/concepts/lending/README.md': '# Lending',
     }
     const h = harness([{ id: 'c1', files }])
     await h.sync()
     await asBeforeFolders(h)
     expect(await h.sync()).toMatchObject({ kind: 'synced', published: 1 })
-    expect(await parentOf(h, 'docs/guide/concepts/tenancy/README.md')).toBe(await h.idAt(CONCEPTS))
+    expect(await parentOf(h, 'docs/guide/concepts/lending/README.md')).toBe(await h.idAt(CONCEPTS))
   })
 })

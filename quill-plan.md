@@ -637,10 +637,10 @@ Runs the research phase and the repository constitution at the same time.
 - One truth: the sync's planning becomes one `planSourceHead` the sync job, the settings preview and the tool all call; the `DocumentFormat` adapter and the reading page move out of the server into `@quill/format` and `@quill/site`; a parity suite runs the same fixtures through the sync and the tool and asserts identical reports and byte-identical bodies on Linux, macOS and Windows.
 - Footprint: Node only, no Postgres, Docker or native modules; `git` optional except for `--rev`; one bundled package with no dependencies, at most 4 MB packed.
 - The shared Markdown pipeline made fast first, for the server's sync and publish as much as the tool: Quill's parse at least 3 MB a second per thread (1.6 MB today; plain micromark is 4.75), one parse per document per sync revision on the server, no construct superlinear, output byte-identical, held by a throughput budget in `pnpm check`.
-- Budgets in CI on a rookwood-sized and a 5,000-file corpus: cold `check` of the rookwood-sized one in 8 s, warm and pull-request runs from `main`'s cache, preview's first page and reload after a save, and memory ceilings, with a file-hash cache keyed like the render cache and a worker pool.
+- Budgets in CI on a 500-file and a 5,000-file corpus: cold `check` of the 500-file one in 8 s, warm and pull-request runs from `main`'s cache, preview's first page and reload after a save, and memory ceilings, with a file-hash cache keyed like the render cache and a worker pool.
 - The manifest's `requires` range, so a repository names the Quill version it targets and both the tool and the source's admin page say when they drift.
 - Locks in: the plan as the only place a sourced file's fate is decided.
-- Exit: rookwood's pull requests run `quill check`, its report for a commit equals the source's admin page for that commit, and every budget (throughput targets included) and the parity suite are green.
+- Exit: a real sourced repository's pull requests run `quill check`, its report for a commit equals the source's admin page for that commit, and every budget (throughput targets included) and the parity suite are green.
 
 ### M4 — Comment and sync
 

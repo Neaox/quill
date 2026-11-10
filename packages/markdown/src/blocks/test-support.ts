@@ -2,8 +2,7 @@ import { defineBlock, h } from './define.ts'
 import { p } from './props.ts'
 
 /**
- * Blocks shaped like the ones rookwood's documentation writes
- * (`docs/design/quill-docs.md` in that repository), registered only by
+ * Blocks shaped like the ones a documentation kit writes, registered only by
  * tests: they prove the contract carries a timeline of steps, a list with
  * typed props and an inline block before the real ones are built on it.
  */
@@ -109,11 +108,4 @@ export const dividerBlock = defineBlock({
   render: () => h('div', { role: 'separator' }),
 })
 
-export const ROOKWOOD_SHAPED = [
-  timelineBlock,
-  stepBlock,
-  castBlock,
-  routeBlock,
-  termBlock,
-  dividerBlock,
-]
+export const KIT_BLOCKS = [timelineBlock, stepBlock, castBlock, routeBlock, termBlock, dividerBlock]

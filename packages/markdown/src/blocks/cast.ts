@@ -18,20 +18,19 @@ import { p } from './props.ts'
 import { nodeElement } from './timeline.ts'
 
 /**
- * A cast: who and what a page is about, one chip each (`docs/design/quill-docs.md`
- * in rookwood).
+ * A cast: who and what a page is about, one chip each.
  *
  * ```markdown
- * :::cast{outside="Airbnb, Booking.com" narrow}
- * - :person: **Ana Silva** · Owns Kowhai Bach, a holiday home
- * - :airbnb: **Airbnb** · Tells rookwood about each booking
+ * :::cast{outside="Northgate, Eastfield" narrow}
+ * - :person: **Iris Vale** · Runs the riverside branch
+ * - :northgate: **Northgate** · Tells Rookwood about each hold
  * :::
  * ```
  *
  * Each member is an emoji, a name in bold and what it does. `outside` names
  * the members drawn as rings, because they are outside the system the page
  * describes; a bare `narrow` sets narrower chips, three to a row. Members are
- * read exactly as rookwood's own site reads them. Outside Quill it is the
+ * read the same wherever the kit is drawn. Outside Quill it is the
  * list it is written as.
  */
 
@@ -53,7 +52,7 @@ interface Member {
 
 function memberOf(children: readonly PhrasingContent[]): Member {
   const line = lineOf(children)
-  // An item wrapped over several lines is one line, as rookwood joins it.
+  // An item wrapped over several lines is one line, as Markdown joins it.
   const text = line.text.replaceAll(LINE_BREAK, ' ').trim()
   const match = MEMBER.exec(text)
   const bold = nodeAt(line, match?.[2])

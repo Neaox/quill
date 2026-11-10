@@ -5,7 +5,7 @@ import { parseMarkdown } from '../pipeline/processor.ts'
 import { renderDocument } from '../render/html.ts'
 
 const EMOJI: ReadonlyMap<string, CustomEmoji> = new Map(
-  ['person', 'rookwood', 'airbnb', 'booking'].map((name) => [
+  ['person', 'rookwood', 'northgate', 'eastfield'].map((name) => [
     name,
     { src: `/api/emoji/${name}.0123456789abcdef.svg`, width: 16, height: 16 },
   ]),
@@ -26,12 +26,12 @@ describe(':::cast', () => {
     expect(
       html(
         [
-          ':::cast{outside="Airbnb, Booking.com"}',
+          ':::cast{outside="Northgate, Eastfield"}',
           '',
-          '- :person: **Ana Silva** · Owns Kowhai Bach, a holiday home',
-          '- :rookwood: **rookwood** · API, gateway, worker and engine',
-          '- :airbnb: **Airbnb** · Tells rookwood about each booking',
-          '- :booking: **Booking.com** · Waits for rookwood to ask',
+          '- :person: **Iris Vale** · Runs the riverside branch',
+          '- :rookwood: **Rookwood** · API, gateway, worker and engine',
+          '- :northgate: **Northgate** · Tells Rookwood about each hold',
+          '- :eastfield: **Eastfield** · Waits for Rookwood to ask',
           '',
           ':::',
           '',
@@ -42,23 +42,23 @@ describe(':::cast', () => {
         '<article><ul class="qb qb-cast">',
         member(
           `<span class="qb-cast-node">${icon('person')}</span>`,
-          'Ana Silva',
-          'Owns Kowhai Bach, a holiday home',
+          'Iris Vale',
+          'Runs the riverside branch',
         ),
         member(
           `<span class="qb-cast-node">${icon('rookwood')}</span>`,
-          'rookwood',
+          'Rookwood',
           'API, gateway, worker and engine',
         ),
         member(
-          `<span class="qb-cast-node" data-qb-tone="outside">${icon('airbnb')}</span>`,
-          'Airbnb',
-          'Tells rookwood about each booking',
+          `<span class="qb-cast-node" data-qb-tone="outside">${icon('northgate')}</span>`,
+          'Northgate',
+          'Tells Rookwood about each hold',
         ),
         member(
-          `<span class="qb-cast-node" data-qb-tone="outside">${icon('booking')}</span>`,
-          'Booking.com',
-          'Waits for rookwood to ask',
+          `<span class="qb-cast-node" data-qb-tone="outside">${icon('eastfield')}</span>`,
+          'Eastfield',
+          'Waits for Rookwood to ask',
         ),
         '</ul></article>',
       ].join(''),
@@ -74,11 +74,11 @@ describe(':::cast', () => {
     )
   })
 
-  it('reads a member the way rookwood does: the ` · ` is optional, the emoji too', () => {
-    expect(html(':::cast\n- **Ana** Owns a home\n- :person: Just words\n:::\n')).toBe(
+  it('reads a member loosely: the ` · ` is optional, the emoji too', () => {
+    expect(html(':::cast\n- **Iris** Runs a branch\n- :person: Just words\n:::\n')).toBe(
       [
         '<article><ul class="qb qb-cast">',
-        member('<span class="qb-cast-node"></span>', 'Ana', 'Owns a home'),
+        member('<span class="qb-cast-node"></span>', 'Iris', 'Runs a branch'),
         // The emoji is in the words, so it is named, as any emoji in prose is.
         '<li><span class="qb-cast-node"></span><span class="qb-cast-text"><img class="emoji" src="/api/emoji/person.0123456789abcdef.svg" alt="person" title=":person:" width="20" height="20"> Just words</span></li>',
         '</ul></article>',
@@ -89,12 +89,12 @@ describe(':::cast', () => {
   it('matches `outside` by the member’s name as words, and joins a wrapped item’s lines', () => {
     expect(
       html(
-        ':::cast{outside="The **guest**, Booking.com"}\n- :person: **The *guest***\n  who books\n:::\n',
+        ':::cast{outside="The **reader**, Eastfield"}\n- :person: **The *reader***\n  who borrows\n:::\n',
       ),
     ).toContain(
-      `<span class="qb-cast-node">${icon('person')}</span><span class="qb-cast-text"><strong>The <em>guest</em></strong>who books</span>`,
+      `<span class="qb-cast-node">${icon('person')}</span><span class="qb-cast-text"><strong>The <em>reader</em></strong>who borrows</span>`,
     )
-    expect(html(':::cast{outside="The guest"}\n- :person: **The *guest***\n:::\n')).toContain(
+    expect(html(':::cast{outside="The reader"}\n- :person: **The *reader***\n:::\n')).toContain(
       'data-qb-tone="outside"',
     )
   })
@@ -108,11 +108,11 @@ describe(':::cast', () => {
   })
 
   it('is a list and nothing else, and says so through its frame', () => {
-    const result = rendered(':::cast\nAna and Airbnb.\n:::\n')
+    const result = rendered(':::cast\nIris and Northgate.\n:::\n')
     expect(result.html).toContain(
       'role="group" aria-label="cast holds a bulleted list of members, and nothing else: cast"',
     )
-    expect(result.html).toContain('<p>Ana and Airbnb.</p>')
+    expect(result.html).toContain('<p>Iris and Northgate.</p>')
     expect(result.blockIssues).toEqual([
       {
         block: 'cast',

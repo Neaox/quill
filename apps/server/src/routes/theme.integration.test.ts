@@ -155,7 +155,7 @@ describe('the theme stylesheet', () => {
     const defaults = defaultOrganisationSettings()
     await save({
       ...defaults,
-      theme: { ...customised, labels: [{ name: 'airbnb', title: 'Airbnb', hue: 15 }] },
+      theme: { ...customised, labels: [{ name: 'alcove', title: 'Alcove', hue: 15 }] },
       layout: { ...defaults.layout, default: { ...defaults.layout.default, rules: 'cards' } },
     })
 
@@ -163,7 +163,7 @@ describe('the theme stylesheet', () => {
     expect(after.themeId).toBe('press')
     // The organisation's layout decides the rules, over what Press recommends.
     expect(after.attributes).toEqual({ 'data-rules': 'cards' })
-    expect(after.labels).toEqual(['airbnb'])
+    expect(after.labels).toEqual(['alcove'])
     expect(after.stylesheetHref).not.toBe(before.stylesheetHref)
 
     const response = await stylesheet(undefined, String(oldTag))

@@ -12,7 +12,7 @@ import { seedTenancy } from '../test-support/tenancy-fixture.ts'
 
 /**
  * Folders as documents, end to end (ADR-061, "Tree, titles and order"): a
- * repository laid out as rookwood's docs are, a folder with a `README.md`
+ * repository of nested folders, a folder with a `README.md`
  * for each page and links between them, read through the real `git` adapter,
  * lock, outbox lane and Postgres. A workspace synced before folders were
  * documents is placed again on its next sync, keeping every id.
@@ -135,7 +135,7 @@ async function syncState() {
 
 const GUIDE = [
   '# Guide',
-  'Start with [tenancy](./concepts/tenancy/README.md), then [requests](./concepts/requests/).',
+  'Start with [lending](./concepts/lending/README.md), then [returns](./concepts/returns/).',
   'Every idea is under [the concepts](concepts).',
   'This one is [nowhere](./concepts/nowhere/).',
 ].join('\n\n')
@@ -148,7 +148,7 @@ beforeAll(async () => {
     method: 'POST',
     url: '/api/workspaces',
     cookies: admin,
-    payload: { unitId: tenancy.unitId, name: 'Rookwood docs', slug: 'rookwood-docs' },
+    payload: { unitId: tenancy.unitId, name: 'Library manual', slug: 'library-manual' },
   })
   workspaceId = created.json<{ id: string }>().id
 
@@ -171,9 +171,9 @@ describe('a repository of folders, each with a README', () => {
     await commit('Write the guide', {
       'docs/guide/README.md': GUIDE,
       'docs/guide/concepts/README.md': '# Concepts\n\nThe ideas.\n',
-      'docs/guide/concepts/tenancy/README.md': '# Tenancy\n\nSee [isolation](isolation.md).\n',
-      'docs/guide/concepts/tenancy/isolation.md': '# Isolation\n',
-      'docs/guide/concepts/requests/README.md': '# Requests\n\nBack to [the guide](../../).\n',
+      'docs/guide/concepts/lending/README.md': '# Lending\n\nSee [reserves](reserves.md).\n',
+      'docs/guide/concepts/lending/reserves.md': '# Reserves\n',
+      'docs/guide/concepts/returns/README.md': '# Returns\n\nBack to [the guide](../../).\n',
       'docs/changelog.md': '# Changelog\n',
     })
     const configured = await harness.app.inject({
@@ -196,18 +196,18 @@ describe('a repository of folders, each with a README', () => {
       Changelog: null,
       Guide: null,
       Concepts: 'Guide',
-      Tenancy: 'Concepts',
-      Isolation: 'Tenancy',
-      Requests: 'Concepts',
+      Lending: 'Concepts',
+      Reserves: 'Lending',
+      Returns: 'Concepts',
     })
   })
 
   it("sends a link to a folder, to it with a slash, or to its README, to the folder's document", async () => {
     const html = await rendered(await idOf('Guide'))
-    expect(html).toContain(`href="/d/${await idOf('Tenancy')}"`)
-    expect(html).toContain(`href="/d/${await idOf('Requests')}"`)
+    expect(html).toContain(`href="/d/${await idOf('Lending')}"`)
+    expect(html).toContain(`href="/d/${await idOf('Returns')}"`)
     expect(html).toContain(`href="/d/${await idOf('Concepts')}"`)
-    expect(await rendered(await idOf('Requests'))).toContain(`href="/d/${await idOf('Guide')}"`)
+    expect(await rendered(await idOf('Returns'))).toContain(`href="/d/${await idOf('Guide')}"`)
     // The one folder the repository does not have is the one broken link.
     expect((await syncState()).brokenLinks).toEqual([
       expect.objectContaining({ path: 'docs/guide/README.md', url: './concepts/nowhere/' }),
@@ -244,7 +244,7 @@ describe('a repository of folders, each with a README', () => {
 describe('a later push that changes the folders', () => {
   it('keeps a folder whose README goes as the same page, and writes one for a new folder', async () => {
     const concepts = await idOf('Concepts')
-    const tenancy = await idOf('Tenancy')
+    const lending = await idOf('Lending')
     const head = await commit(
       'Move the concepts overview into the guide, add how-to guides',
       { 'docs/guide/how-to/deploy.md': '# Deploy\n' },
@@ -256,11 +256,11 @@ describe('a later push that changes the folders', () => {
     expect(await idOf('Concepts')).toBe(concepts)
     expect(await tree()).toMatchObject({
       Concepts: 'Guide',
-      Tenancy: 'Concepts',
+      Lending: 'Concepts',
       'How to': 'Guide',
       Deploy: 'How to',
     })
-    expect((await documents()).find(({ id }) => id === tenancy)?.parentId).toBe(concepts)
+    expect((await documents()).find(({ id }) => id === lending)?.parentId).toBe(concepts)
     // No folder, file or page twice.
     const paths = (await documents()).map(({ path }) => path)
     expect(new Set(paths).size).toBe(paths.length)
@@ -271,7 +271,7 @@ describe('a later push that changes the folders', () => {
       url: `/api/documents/${concepts}/children`,
       cookies: admin,
     })
-    expect(children.json<{ html: string }>().html).toContain('Tenancy')
+    expect(children.json<{ html: string }>().html).toContain('Lending')
     expect(await rendered(await idOf('Guide'))).toContain(`href="/d/${concepts}"`)
   })
 

@@ -1,6 +1,6 @@
 # The editor against Confluence: an audit, the reliability findings, and a roadmap
 
-<!-- cspell:words CONFCLOUD keymap indexeddb undos rookwood refetched refetches -->
+<!-- cspell:words CONFCLOUD keymap indexeddb undos refetched refetches -->
 
 **Question.** How does Quill's document editor compare with Confluence Cloud's editor? Confluence is the bar to reach or beat. Notion, Linear docs and GitBook are secondary references. Where is Quill broken, where does it fall short, and where can it do better?
 
@@ -8,7 +8,7 @@
 
 1. **Desk research.** We read Atlassian's own documentation, jira.atlassian.com CONFCLOUD issues (with their vote counts), and Atlassian Community threads. A Reddit search returned nothing usable, so community sentiment comes from Atlassian Community and comparison sites. The Notion, Linear and GitBook comparisons come from product knowledge and are marked as unverified where it matters.
 2. **Hands-on testing.** We used the built-in browser against the dev servers (`web` on :5173, `server` on :3000) at 1440 × 900 and at 375 × 812. All testing was on a new scratch document, *Editor audit scratch*, in Engineering → Architecture. Nothing else was edited or deleted.
-3. **Reliability probes.** We ran probes in the page and a read-only round-trip script over the corpus (`packages/markdown/corpus`, 23 files) plus the 189 Markdown files in the rookwood `docs/`, 212 documents in all.
+3. **Reliability probes.** We ran probes in the page and a read-only round-trip script over the corpus (`packages/markdown/corpus`, 23 files) plus the Markdown files in a real documentation repository's `docs/`, about 200 documents in all.
 
 No product code was changed.
 
@@ -28,7 +28,7 @@ Screenshots are in [`assets/2026-10-11-editor-audit/`](assets/2026-10-11-editor-
 
 What works:
 
-- The Markdown converter is excellent. After the first save, a one-word edit changes exactly one line in all 212 real documents, and every document is idempotent.
+- The Markdown converter is excellent. After the first save, a one-word edit changes exactly one line in every real document, and every document is idempotent.
 - Pasting Markdown works well: headings, nested lists, GFM tables, fences, tasks and directives all arrive as structure.
 - Undo across structural edits restores the document exactly.
 - The two-tab conflict is *detected*.
@@ -306,18 +306,18 @@ The 240 eagerly mounted CodeMirror views are the next cost. Mounting them lazily
 
 ### 2.9 Round trip: edit, save, view source
 
-**Probe.** A read-only script ran `parseDocument → mdastToProseMirror → liftLayout → wrapLayout → proseMirrorToMdast → serializeDocument` over 212 real documents: the corpus plus the rookwood `docs/`. Error count: zero.
+**Probe.** A read-only script ran `parseDocument → mdastToProseMirror → liftLayout → wrapLayout → proseMirrorToMdast → serializeDocument` over about 200 real documents: the corpus plus a real documentation repository's `docs/`. Error count: zero.
 
 | Check | Result |
 | --- | --- |
-| Byte-identical on first open, with `softBreaks: 'preserve'` | 72 / 212 (34%) |
-| Byte-identical on first open, with the editor's default `softBreaks: 'collapse'` | **6 / 212 (3%)** |
-| Idempotent (a second pass is unchanged) | 212 / 212 ✓ |
-| A one-word edit after normalisation changes exactly one line | 212 / 212 ✓ |
+| Byte-identical on first open, with `softBreaks: 'preserve'` | about a third (34%) |
+| Byte-identical on first open, with the editor's default `softBreaks: 'collapse'` | **3%** |
+| Idempotent (a second pass is unchanged) | all ✓ |
+| A one-word edit after normalisation changes exactly one line | all ✓ |
 
 **Verdict.** Untouched parts are byte-stable *after* the first save. The first save, though, rewrites almost every hand-written file. ADR-002 licenses one formatting-only normalisation and the diff labels it, but some of the rewrites are worse than formatting:
 
-- **GitHub alerts are broken.** `> [!IMPORTANT]` becomes `> \[!IMPORTANT]`. Quill still renders the escaped form as an alert, but GitHub, GitLab and Obsidian then render a plain quote. The seeded *The sync map* already carries `\[!IMPORTANT]`. The rookwood docs use alerts, and the project memory requires that they render unchanged. **P0-7, size S:** let `[!TYPE]` through unescaped in `to-markdown-extensions.ts` when it is the first text of a blockquote.
+- **GitHub alerts are broken.** `> [!IMPORTANT]` becomes `> \[!IMPORTANT]`. Quill still renders the escaped form as an alert, but GitHub, GitLab and Obsidian then render a plain quote. The seeded *The catalogue map* already carries `\[!IMPORTANT]`. The real repository's docs use alerts, and the project memory requires that they render unchanged. **P0-7, size S:** let `[!TYPE]` through unescaped in `to-markdown-extensions.ts` when it is the first text of a blockquote.
 - **`~` becomes `\~` everywhere.** 120 escapes were added, for example "\~3.5%". This is correct under GFM single-tilde strikethrough, but it is diff noise and reads badly in Git. Escape only a run that would actually pair (P1).
 - **Every table's delimiter row** is rewritten from `|---|---|` or `| --- |` to `| - | - |`. Alignment colons are kept. Preserve the source delimiter width where it is unchanged, or accept and document this (P2).
 - **Directive attributes** are quoted (`{type=warning}` becomes `{type="warning"}`). This is harmless but noisy (P2).
@@ -360,7 +360,7 @@ Sizes: **S** is up to a day, **M** is two to four days, **L** is a week or more.
 | P0-4 | Heartbeat backoff after the first immediate retry, paused while offline, with a fake-clock request-count test | S | `packages/editor/src/drafts/use-document-lock.ts`, `lock-machine.ts`, tests |
 | P0-5 | Two tabs: a reload that remounts with the server draft, a deliberate *Keep mine*, and a BroadcastChannel second-tab guard | M | `apps/web/src/features/documents/editor-route.tsx`, `packages/editor/src/drafts/use-autosave.ts`, new `packages/editor/src/drafts/tab-presence.ts` |
 | P0-6 | Convert to mdast lazily (on debounce, flush and `pagehide`), not per keystroke. Add a long-page latency benchmark | M | `packages/editor/src/document/document-editor.tsx`, `packages/editor/src/drafts/use-autosave.ts`, `apps/web/src/features/documents/editor-route.tsx`, new `packages/editor/src/document/long-document.bench.ts` |
-| P0-7 | Do not escape GitHub alert markers (`> [!NOTE]` and the rest) on save; corpus test with the rookwood alert documents | S | `packages/markdown/src/pipeline/to-markdown-extensions.ts`, `packages/markdown/corpus/` (new alert fixture), `corpus.test.ts` |
+| P0-7 | Do not escape GitHub alert markers (`> [!NOTE]` and the rest) on save; corpus test with real alert documents | S | `packages/markdown/src/pipeline/to-markdown-extensions.ts`, `packages/markdown/corpus/` (new alert fixture), `corpus.test.ts` |
 
 ### P1: gaps that make us feel below Confluence
 

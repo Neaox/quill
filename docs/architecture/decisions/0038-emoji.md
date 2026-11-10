@@ -83,7 +83,7 @@ An emoji with a still renders through `<picture class="emoji">` whose one `<sour
 
 ## Amendment, 2026-11-10: monochrome emoji
 
-**Why.** An organisation's line icons (a clock, an inbox, a person) are emoji in its documents, and in its own interface they are drawn in the colour of their context: the accent in a timeline's node, grey in a party's chip, ink in a sentence, and light on dark in dark mode. A custom emoji is an image, so it keeps the colours it was drawn in. One fixed colour is wrong somewhere, and a dark stroke disappears in dark mode. rookwood's documentation (ADR-060's documentation kit) was the case: its icons were the main difference between its own renderer and Quill's.
+**Why.** An organisation's line icons (a clock, an inbox, a person) are emoji in its documents, and in its own interface they are drawn in the colour of their context: the accent in a timeline's node, grey in a party's chip, ink in a sentence, and light on dark in dark mode. A custom emoji is an image, so it keeps the colours it was drawn in. One fixed colour is wrong somewhere, and a dark stroke disappears in dark mode. A real documentation repository written in ADR-060's documentation kit was the case: its icons were the main difference between its own renderer and Quill's.
 
 **A second kind of custom emoji: monochrome.** It is drawn in `currentColor`, so it takes the colour of wherever it is used. Colour emoji are unchanged: every saved emoji keeps its kind, its file and its output.
 

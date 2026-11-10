@@ -55,8 +55,8 @@ const DEFAULT_SEED_LIGHTNESS: Record<Scheme, number> = { light: 55, dark: 70 }
 /**
  * The accent as text on the page — an eyebrow, an active entry, a link that
  * is coloured — sits a step further from the paper than the accent a control
- * is filled with: darker in light, brighter in dark. rookwood's portal calls
- * it `accent-ink` and keeps it at L 40 against L 43, and L 84 against L 78.
+ * is filled with: darker in light, brighter in dark, as a documentation
+ * portal's `accent-ink` sits a few steps from its accent in each scheme.
  */
 const INK_STEP: Record<Scheme, number> = { light: -3, dark: 6 }
 const INK_CEILING = 92

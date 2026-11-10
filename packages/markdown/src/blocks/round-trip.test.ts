@@ -14,11 +14,11 @@ import { schema } from '../prosemirror/schema.ts'
 import { proseMirrorToMdast } from '../prosemirror/to-mdast.ts'
 import { renderDocument } from '../render/html.ts'
 import { endpointBlock } from './endpoint.ts'
-import { ROOKWOOD_SHAPED } from './test-support.ts'
+import { KIT_BLOCKS } from './test-support.ts'
 
 /**
  * Component blocks through the editor and onto the page, over a document
- * written the way rookwood's request guide is (`corpus/29-component-blocks.md`).
+ * written the way a developer guide is (`corpus/29-component-blocks.md`).
  *
  * The editor holds a block as the container, leaf or text directive it is
  * written as, with its attributes exactly as they were typed, so a block it
@@ -32,10 +32,10 @@ const FIXTURE = readFileSync(
 )
 
 /**
- * Every construct of the documentation kit, written as rookwood's guide
+ * Every construct of the documentation kit, written as a developer guide
  * writes it (`corpus/30-docs-kit.md`). `prosemirror/real-docs.test.ts` runs
- * the same first save over rookwood's own pages when `QUILL_REAL_DOCS` names
- * them.
+ * the same first save over a real repository's pages when `QUILL_REAL_DOCS`
+ * names them.
  */
 const DOCS_KIT = readFileSync(
   fileURLToPath(new URL('../../corpus/30-docs-kit.md', import.meta.url)),
@@ -128,8 +128,8 @@ describe('a document of component blocks, through the editor', () => {
 
   it('changes only the edited line when the edit is inside a nested block', () => {
     expect(changes(FIXTURE, saved(FIXTURE, retyped('stops sending', 'no longer sends')))).toEqual({
-      removed: ['After a hard bounce, rookwood stops sending to that address.'],
-      added: ['After a hard bounce, rookwood no longer sends to that address.'],
+      removed: ['After a reader opts out, Rookwood stops sending to that address.'],
+      added: ['After a reader opts out, Rookwood no longer sends to that address.'],
     })
   })
 
@@ -159,7 +159,7 @@ describe('a document of component blocks, through the editor', () => {
   it('writes an unknown block it was never able to draw back unchanged after an edit elsewhere', () => {
     const after = saved(FIXTURE, retyped('Saves the report', 'Stores the report'))
     expect(after).toContain(':::checks\n\n1. The address is confirmed.\n')
-    expect(after).toContain(':::endpoint{method=FETCH path=/webhooks/postmark}\n')
+    expect(after).toContain(':::endpoint{method=FETCH path=/webhooks/relay}\n')
   })
 })
 
@@ -170,7 +170,7 @@ describe('the same document, read', () => {
     })
     expect(html).toContain('aria-label="Unknown block: timeline"')
     expect(html).toContain('aria-label="Unknown block: step"')
-    expect(html).toContain('The API skips an address that bounced')
+    expect(html).toContain('The API skips a reader who opted out')
     expect(html).toContain('<summary>')
     expect(html).toContain('class="qb qb-endpoint"')
     expect(blockIssues.map((issue) => `${String(issue.line)}: ${issue.block}`)).toEqual([
@@ -211,7 +211,7 @@ describe('the same document, read', () => {
 
   it('is drawn by blocks a test registers in their place', () => {
     const { html } = renderDocument(parseDocument(FIXTURE).ast, {
-      extensions: createMarkdownRegistry([], [endpointBlock, ...ROOKWOOD_SHAPED]),
+      extensions: createMarkdownRegistry([], [endpointBlock, ...KIT_BLOCKS]),
     })
     expect(html).toContain('<span class="qb-step-node" data-qb-icon="shield" data-qb-tone="net">')
   })
@@ -224,24 +224,24 @@ describe('the documentation kit, through the editor', () => {
 
   it('keeps every fence as written when a step with nothing nested in it is edited', () => {
     expect(
-      changes(DOCS_KIT, saved(DOCS_KIT, retyped('Only nights that differ', 'Only changed nights'))),
+      changes(DOCS_KIT, saved(DOCS_KIT, retyped('Only copies that differ', 'Only changed copies'))),
     ).toEqual({
-      removed: ['Only nights that differ are sent.'],
-      added: ['Only changed nights are sent.'],
+      removed: ['Only copies that differ are sent.'],
+      added: ['Only changed copies are sent.'],
     })
   })
 
   it('changes only the edited line when a step’s when-line is edited', () => {
     expect(changes(DOCS_KIT, saved(DOCS_KIT, retyped('Any time later', 'Later')))).toEqual({
-      removed: [':clock: **Any time later** · :globe: Harbour Stays → :inbox: Gateway'],
-      added: [':clock: **Later** · :globe: Harbour Stays → :inbox: Gateway'],
+      removed: [':clock: **Any time later** · :globe: Northgate → :inbox: Gateway'],
+      added: [':clock: **Later** · :globe: Northgate → :inbox: Gateway'],
     })
   })
 
   it('changes only the edited line when a cast member or a route is edited', () => {
-    expect(changes(DOCS_KIT, saved(DOCS_KIT, retyped('Owns a cottage', 'Owns a bach')))).toEqual({
-      removed: ['- :person: **Mere Tane** · Owns a cottage by the sea'],
-      added: ['- :person: **Mere Tane** · Owns a bach by the sea'],
+    expect(changes(DOCS_KIT, saved(DOCS_KIT, retyped('Runs the hill', 'Runs the old')))).toEqual({
+      removed: ['- :person: **Tomas Reed** · Runs the hill branch'],
+      added: ['- :person: **Tomas Reed** · Runs the old branch'],
     })
     const { removed, added } = changes(
       DOCS_KIT,
@@ -249,7 +249,7 @@ describe('the documentation kit, through the editor', () => {
     )
     expect(removed).toEqual([expect.stringContaining('Rates, both ways')])
     expect(added).toEqual([
-      expect.stringContaining(':route[:building: Tidewater ⇄ :home: Quill Lodge]'),
+      expect.stringContaining(':route[:building: Eastfield ⇄ :home: Rookwood]'),
     ])
   })
 

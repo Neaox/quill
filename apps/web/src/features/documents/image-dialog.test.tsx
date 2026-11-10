@@ -30,9 +30,9 @@ describe('the image dialog asked for a drawing', () => {
       type: 'image/svg+xml',
     })
     await user.upload(file, svg)
-    await user.type(screen.getByLabelText(/Alternative text/), 'The sync map')
+    await user.type(screen.getByLabelText(/Alternative text/), 'The catalogue map')
     await user.click(screen.getByRole('button', { name: 'Insert' }))
-    expect(onSubmit).toHaveBeenCalledWith({ kind: 'upload', file: svg, alt: 'The sync map' })
+    expect(onSubmit).toHaveBeenCalledWith({ kind: 'upload', file: svg, alt: 'The catalogue map' })
   })
 
   it('offers an address as well when asked for a picture', () => {

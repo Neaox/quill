@@ -44,10 +44,10 @@ describe('a status’s ink (ADR-028, amended)', () => {
     }
   })
 
-  it('settles against the fill a theme pins, so Grid’s dark wash takes rookwood’s contrast', () => {
+  it('settles against the fill a theme pins, so Grid’s dark wash reaches the badge contrast', () => {
     const { ink, fill } = pairOf(grid, 'dark', 'success')
     expect(fill).toMatchObject({ lightness: 30, chroma: 0.05, hue: 160 })
-    // rookwood's ok-ink on ok-bg is 9.6:1; the generated status on its fill was 5.5:1.
+    // The ink must read well clear of the body text floor on its pinned fill.
     expect(contrastRatio(ink, fill)).toBeGreaterThan(9)
   })
 

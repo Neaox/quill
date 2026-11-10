@@ -13,19 +13,19 @@ const refusal = (source: string): string => {
   return read.kind === 'refused' ? read.reason : 'read as a glyph'
 }
 
-/** rookwood's clock, as its documentation site draws it. */
-const CLOCK =
-  '<svg xmlns="http://www.w3.org/2000/svg" class="icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="8" r="6.5"/><path d="M8,4.5 V8 L10.5,9.5"/></svg>'
+/** A book, drawn as a line icon: strokes in the colour it is used in. */
+const BOOK =
+  '<svg xmlns="http://www.w3.org/2000/svg" class="icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="2" width="10" height="12" rx="1.5"/><path d="M6 5.5h4M6 8.5h4"/></svg>'
 
 describe('a monochrome emoji’s glyph (ADR-038, amended)', () => {
   it('is the drawing’s shapes in one symbol, painted with the colour it is used in', () => {
-    expect(glyph(CLOCK)).toEqual({
+    expect(glyph(BOOK)).toEqual({
       kind: 'glyph',
       svg: [
         '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" width="16" height="16">',
         '<symbol id="glyph" viewBox="0 0 16 16">',
-        '<g fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">',
-        '<circle cx="8" cy="8" r="6.5"/><path d="M8,4.5 V8 L10.5,9.5"/>',
+        '<g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">',
+        '<rect x="3" y="2" width="10" height="12" rx="1.5"/><path d="M6 5.5h4M6 8.5h4"/>',
         '</g></symbol><use href="#glyph"/></svg>',
       ].join(''),
       width: 16,
