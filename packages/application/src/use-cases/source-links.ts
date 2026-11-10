@@ -9,6 +9,7 @@ import { attachmentUrl } from './attachments.ts'
 import { documentUrl } from './document-path.ts'
 import { isImagePath, readAssetMap, SOURCE_ASSET_MAP_PATH } from './source-assets.ts'
 import { withFolderAddresses } from './source-folders.ts'
+import { compareSiblings } from './sibling-order.ts'
 import { followRedirects, readSourceAddresses } from './source-removal.ts'
 
 /**
@@ -288,13 +289,43 @@ async function withRemovedPaths(
 ): Promise<ReadonlyMap<string, DocumentId>> {
   const addresses = await readSourceAddresses(uow, document)
   const documents = new Map(held)
+  let landings: Promise<ReadonlyMap<string, DocumentId>> | undefined
   for (const path of paths) {
     if (documents.has(path)) continue
     const row = addresses.paths.get(path)
     const target = followRedirects(path, addresses) ?? row?.documentId
-    if (target !== undefined) documents.set(path, target)
+    if (target !== undefined) {
+      documents.set(path, target)
+      continue
+    }
+    const collection = addresses.roots.get(path)
+    if (collection === undefined) continue
+    landings ??= collectionLandings(uow, document)
+    const landing = (await landings).get(collection)
+    if (landing !== undefined) documents.set(path, landing)
   }
   return documents
+}
+
+/**
+ * Where a link to a collection's own directory leads when no file stands for
+ * the directory (ADR-061, amendment "a link to a collection's directory"):
+ * the collection's first page, the one its sidebar list opens with. Its
+ * `README.md`, where it has one, is already that directory's document.
+ */
+async function collectionLandings(
+  uow: UnitOfWork,
+  document: DocumentRow,
+): Promise<ReadonlyMap<string, DocumentId>> {
+  const rows = await uow.repos.documents.listByWorkspace(document.workspaceId)
+  const landings = new Map<string, DocumentId>()
+  for (const row of rows
+    .filter((each) => each.parentId === null && each.status !== 'archived')
+    .toSorted(compareSiblings)) {
+    const { collectionId } = row
+    if (collectionId !== null && !landings.has(collectionId)) landings.set(collectionId, row.id)
+  }
+  return landings
 }
 
 /**
