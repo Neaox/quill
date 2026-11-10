@@ -59,6 +59,8 @@ import type { FakeBreachedPasswordChecker, RecordingMailer } from './fakes.ts'
 import { createDrawioText } from '../extensions/drawio/drawing-text.ts'
 import { pollOutboxLane } from '../infrastructure/outbox/lane.ts'
 import { INERT_LINK_PREVIEW_PORTS } from '../infrastructure/link-preview/inert.ts'
+import { createLiveHub, DEFAULT_LIVE_OPTIONS } from '../live/live-hub.ts'
+import type { LiveHubOptions } from '../live/live-hub.ts'
 
 /**
  * A whole server against a real database, a real content store, and the real
@@ -137,6 +139,8 @@ export interface HarnessOptions {
    * a test supplies them, so no test reaches a real site.
    */
   readonly linkPreviewPorts?: LinkPreviewPorts
+  /** The live streams' bounds and timings (ADR-063), shortened by a test about them. */
+  readonly live?: Partial<Omit<LiveHubOptions, 'onError'>>
   /** Zero disables the public site's page cache, for a test about what is behind it. */
   readonly publicSiteCacheTtlMs?: number
   /** Shrunk by a test that wants to see a sitemap index without a thousand documents. */
@@ -241,6 +245,11 @@ export async function createServerHarness(options: HarnessOptions = {}): Promise
   const themeStylesheets = createThemeStylesheets({ hasher, faceFiles })
   const deps: AppDependencies = {
     linkPreviewPorts: options.linkPreviewPorts ?? INERT_LINK_PREVIEW_PORTS,
+    live: createLiveHub(eventBus, {
+      ...DEFAULT_LIVE_OPTIONS,
+      ...options.live,
+      onError: (error) => listenerFailures.push(error),
+    }),
     // The real adapter and the real lock. A test's source is a bare repository
     // on this disk, served over `file://`, which only a test may configure.
     sourceSync: {

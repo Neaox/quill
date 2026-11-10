@@ -7,6 +7,7 @@ import {
   DOCUMENT_RENAMED,
   GRANT_CREATED,
   GRANT_REVOKED,
+  SOURCE_SYNC_STATE_CHANGED,
 } from '@quill/application'
 
 import type { Mailer } from '../auth/mailer.ts'
@@ -113,6 +114,13 @@ export function registerOutboxConsumers(
     createAcknowledgingConsumer(
       DOCUMENT_CREATED,
       'Nothing acts on a creation: a document with no published revision has nothing to index or render.',
+    ),
+  )
+  // A sync's start and end are for live readers, who are told by the bus (ADR-063).
+  jobRunner.register(
+    createAcknowledgingConsumer(
+      SOURCE_SYNC_STATE_CHANGED,
+      'Announced to the in-process bus for the live stream; the sync state itself is on the source.',
     ),
   )
   // The caches that depend on these are told by the bus. What is durable about

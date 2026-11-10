@@ -105,6 +105,7 @@ export function DocumentPage() {
     sourced: workspace.data?.origin?.kind === 'sourced',
     readingHead: rev === undefined && to === undefined,
     revision: document.data.headRevision,
+    workspaceId: workspace.data?.id,
   })
 
   const revisions = labelRevisions(history.data?.revisions ?? [], {

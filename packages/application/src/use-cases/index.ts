@@ -25,6 +25,8 @@ export type {
   ReviewRequestedPayload,
   ReviewWithdrawnPayload,
   SourceSyncRequestedPayload,
+  SourceSyncState,
+  SourceSyncStateChangedPayload,
   SourceSyncTrigger,
 } from './events.ts'
 export {
@@ -74,6 +76,9 @@ export {
   SOURCE_SYNC_TRIGGERS,
   parseSourceSyncRequested,
   sourceSyncRequested,
+  SOURCE_SYNC_STATE_CHANGED,
+  SOURCE_SYNC_STATES,
+  sourceSyncStateChanged,
 } from './events.ts'
 
 export type { DocumentPlacement, DocumentReference, PathCandidate } from './document-path.ts'

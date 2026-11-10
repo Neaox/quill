@@ -315,3 +315,12 @@ export type {
 
 export { useChildPagesLoader, useChildPagesOf, type ChildPagesLoader } from './child-pages.ts'
 export { useDocumentLinksLoader } from './document-links.ts'
+export {
+  applyLiveMessage,
+  isLive,
+  LIVE_BACKSTOP_MS,
+  useIsLive,
+  useWorkspaceLive,
+  whileLive,
+} from './live.ts'
+export type { LiveState } from './live.ts'
