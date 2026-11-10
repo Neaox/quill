@@ -3,7 +3,7 @@ import type { ThemeDocument } from '../schema/theme-document.ts'
 /**
  * Calm: the quiet modern sans the survey recommends as the candidate default
  * (`docs/research/2026-10-11-documentation-design-survey.md`, Theme A). It is
- * what lockstay, Linear, Fumadocs and PlanetScale share: one sans carrying the
+ * what Linear, Fumadocs and PlanetScale share: one sans carrying the
  * whole page, an interface a step smaller than the prose, three inks with a
  * job each, surfaces that differ by a percent or two of lightness, and an
  * indigo accent kept to the current item, the active entry, focus and the

@@ -15,15 +15,15 @@ import { emojiDecorations, emojiShortcodesKey, findEmoji, loadStandardEmoji } fr
 import { buildExtensions } from './extensions.ts'
 
 const harness = createEditorTestHarness()
-const AIRBNB = {
-  src: '/api/emoji/airbnb.0123456789abcdef.svg',
-  description: 'Airbnb logo',
+const ALCOVE = {
+  src: '/api/emoji/alcove.0123456789abcdef.svg',
+  description: 'Alcove logo',
   width: 32,
   height: 32,
 }
-const custom = new Map([['airbnb', AIRBNB]])
+const custom = new Map([['alcove', ALCOVE]])
 const lookup = emojiLookup(custom, standardEmoji)
-const leads = new Map([['airbnb', 'airbnb']])
+const leads = new Map([['alcove', 'alcove']])
 
 const found = (markdown: string) =>
   findEmoji(harness.state(markdown).doc, lookup, leads).map(({ emoji, from, to }) => ({
@@ -55,17 +55,17 @@ function expected(state: EditorState): readonly (readonly [number, number])[] {
 
 describe('emoji in the editor (ADR-038)', () => {
   it('finds standard and custom shortcodes, and a label’s leading emoji', () => {
-    expect(found(':+1: on :airbnb: and :airbnb[Airbnb]\n')).toEqual([
+    expect(found(':+1: on :alcove: and :alcove[Alcove]\n')).toEqual([
       { name: '+1', width: 4 },
-      { name: 'airbnb', width: 8 },
-      { name: 'airbnb', width: 0 },
+      { name: 'alcove', width: 8 },
+      { name: 'alcove', width: 0 },
     ])
   })
 
   it('leaves code, autolinks, unknown names and unlabelled directives alone', () => {
-    expect(found('`:+1:` and https://x.test/:+1: and :nope: and status:airbnb\n')).toEqual([])
+    expect(found('`:+1:` and https://x.test/:+1: and :nope: and status:alcove\n')).toEqual([])
     expect(found('```\n:+1:\n```\n')).toEqual([])
-    expect(found(':vrbo[Vrbo]\n')).toEqual([])
+    expect(found(':nook[Nook]\n')).toEqual([])
   })
 
   it('hides the shortcode behind its emoji, except where the selection touches it', () => {
@@ -93,12 +93,12 @@ describe('emoji in the editor (ADR-038)', () => {
   })
 
   it.each([
-    ':smile: :+1: :airbnb:',
+    ':smile: :+1: :alcove:',
     'a:b:c and 10:30:00 and status:ok',
     '<https://x.y/a:b>',
     'A sentence that ends in a colon:',
     ': a line that starts with a colon',
-    ':smile: next to :ok[Built] and :airbnb[Airbnb]',
+    ':smile: next to :ok[Built] and :alcove[Alcove]',
   ])('saves %s byte for byte', (line) => {
     const source = `${line}\n`
     const { doc } = documentFromMdast(parseDocument(source).ast)
@@ -113,14 +113,14 @@ describe('emoji in the editor (ADR-038)', () => {
     const ref = createRef<DocumentEditorHandle>()
     const { container, unmount } = render(
       <DocumentEditor
-        ast={parseDocument('Start :airbnb: :tada: :airbnb[Airbnb]\n').ast}
+        ast={parseDocument('Start :alcove: :tada: :alcove[Alcove]\n').ast}
         ref={ref}
-        labels={['airbnb']}
+        labels={['alcove']}
         emoji={{ custom, labelEmoji: leads }}
       />,
     )
     // Custom emoji at once, GitHub's once its table has loaded.
-    expect(container.querySelector('img.emoji[alt="Airbnb logo"]')).not.toBeNull()
+    expect(container.querySelector('img.emoji[alt="Alcove logo"]')).not.toBeNull()
     await waitFor(() => {
       expect(container.querySelector('span.emoji[aria-label="party popper"]')).not.toBeNull()
     })
@@ -133,7 +133,7 @@ describe('emoji in the editor (ADR-038)', () => {
     // The caret on a shortcode shows its text; typing, moving and an
     // unrelated transaction each redraw only when they must.
     editor.commands.setTextSelection(8)
-    expect(container.querySelector('img.emoji[alt="Airbnb logo"]')).toBeNull()
+    expect(container.querySelector('img.emoji[alt="Alcove logo"]')).toBeNull()
     editor.view.dispatch(editor.state.tr.setMeta('unrelated', true))
     editor.commands.insertContentAt(1, 'A ')
     expect(serializeDocument({ frontMatter: {}, ast: handle.toMdast() })).toContain(':tada:')
@@ -201,9 +201,9 @@ describe('emoji in the editor (ADR-038)', () => {
   it('keeps its emoji right while the document is edited, block by block', async () => {
     await loadStandardEmoji()
     const editor = new Editor({
-      extensions: buildExtensions({ emoji: { custom, labelEmoji: leads }, labels: ['airbnb'] }),
+      extensions: buildExtensions({ emoji: { custom, labelEmoji: leads }, labels: ['alcove'] }),
       content: harness
-        .state(['One :+1: and :airbnb[Airbnb].', 'Two :airbnb:.', 'Three.', ''].join('\n\n'))
+        .state(['One :+1: and :alcove[Alcove].', 'Two :alcove:.', 'Three.', ''].join('\n\n'))
         .doc.toJSON(),
     })
     // GitHub's table arrives on a later turn of the event loop than the editor.
@@ -217,7 +217,7 @@ describe('emoji in the editor (ADR-038)', () => {
       (state) => state.tr.insertText(' :tada', at(state, 'Three.') + 5),
       (state) => state.tr.insertText(':', at(state, ':tada') + 5),
       // A shortcode made code, which is not drawn, and the first block deleted.
-      (state) => state.tr.addMark(at(state, ':airbnb:'), at(state, ':airbnb:') + 8, code.create()),
+      (state) => state.tr.addMark(at(state, ':alcove:'), at(state, ':alcove:') + 8, code.create()),
       (state) => state.tr.delete(0, state.doc.child(0).nodeSize),
       // The caret moved onto a shortcode, which shows its text.
       (state) => state.tr.setSelection(TextSelection.create(state.doc, at(state, ':tada:') + 2)),

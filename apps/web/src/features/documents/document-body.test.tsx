@@ -16,17 +16,18 @@ function closeDialog(this: HTMLDialogElement): void {
   this.dispatchEvent(new Event('close'))
 }
 
-const TITLED = '<article><h1 id="the-sync-map">The sync map</h1><p>How things move.</p></article>'
+const TITLED =
+  '<article><h1 id="the-catalogue-map">The catalogue map</h1><p>How things move.</p></article>'
 
 async function mounted(html: string, eyebrow?: string) {
   const view = render(
     <DocumentBody
       html={html}
-      label="The sync map"
+      label="The catalogue map"
       {...(eyebrow === undefined ? {} : { eyebrow })}
     />,
   )
-  const article = screen.getByRole('article', { name: 'The sync map' })
+  const article = screen.getByRole('article', { name: 'The catalogue map' })
   await waitFor(() => {
     expect(article.childElementCount).toBeGreaterThan(0)
   })
@@ -36,7 +37,7 @@ async function mounted(html: string, eyebrow?: string) {
 describe('DocumentBody', () => {
   it('puts what it is given straight under the body’s own title, across a new revision', async () => {
     const { article, rerender } = await mounted(TITLED)
-    rerender(<DocumentBody html={TITLED} label="The sync map" afterTitle={<p>Facts</p>} />)
+    rerender(<DocumentBody html={TITLED} label="The catalogue map" afterTitle={<p>Facts</p>} />)
     const slot = article.querySelector('[data-byline-slot]')
     expect(slot?.previousElementSibling?.tagName).toBe('H1')
     expect(slot).toHaveTextContent('Facts')
@@ -44,7 +45,7 @@ describe('DocumentBody', () => {
     rerender(
       <DocumentBody
         html={TITLED.replace('How things move.', 'How things moved.')}
-        label="The sync map"
+        label="The catalogue map"
         afterTitle={<p>Facts</p>}
       />,
     )
@@ -63,7 +64,7 @@ describe('DocumentBody', () => {
     const { article } = await mounted(TITLED)
 
     expect(article.firstElementChild?.tagName).toBe('H1')
-    expect(screen.getByRole('heading', { level: 1, name: 'The sync map' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { level: 1, name: 'The catalogue map' })).toBeInTheDocument()
   })
 
   describe('the automatic eyebrow', () => {
@@ -80,13 +81,13 @@ describe('DocumentBody', () => {
       await mounted(TITLED, 'Architecture')
 
       expect(screen.getAllByRole('heading').map((heading) => heading.textContent)).toEqual([
-        'The sync map',
+        'The catalogue map',
       ])
     })
 
     it('gives way to an eyebrow the author wrote', async () => {
       const { article } = await mounted(
-        '<article><p>Overview</p><h1 id="t">The sync map</h1></article>',
+        '<article><p>Overview</p><h1 id="t">The catalogue map</h1></article>',
         'Architecture',
       )
 
@@ -103,7 +104,7 @@ describe('DocumentBody', () => {
     it('follows the collection when it changes, without a second eyebrow', async () => {
       const { article, rerender } = await mounted(TITLED, 'Architecture')
 
-      rerender(<DocumentBody html={TITLED} label="The sync map" eyebrow="Runbooks" />)
+      rerender(<DocumentBody html={TITLED} label="The catalogue map" eyebrow="Runbooks" />)
 
       await waitFor(() => {
         expect(article.firstElementChild).toHaveTextContent('Runbooks')

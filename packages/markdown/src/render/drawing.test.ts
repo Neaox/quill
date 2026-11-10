@@ -9,27 +9,27 @@ const draw = (markup: string, label = 'A diagram'): string => {
 }
 
 const LOOP = `<?xml version="1.0"?>
-<svg xmlns="http://www.w3.org/2000/svg" font-family="Figtree, sans-serif" viewBox="0 0 1220 560" width="1220">
+<svg xmlns="http://www.w3.org/2000/svg" font-family="Inter, sans-serif" viewBox="0 0 960 480" width="960">
   <style>.box { fill: #fff }</style>
   <defs>
-    <marker id="o1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="arrow-send"/></marker>
+    <marker id="tip" viewBox="0 0 12 12" refX="10" refY="6" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M1,1 L11,6 L1,11 z" class="arrow-send"/></marker>
   </defs>
-  <!-- Your side -->
-  <rect x="20" y="150" width="160" height="60" rx="8" class="box planned"/>
-  <text x="100" y="176" class="title" text-anchor="middle">Owner's PMS &amp; team</text>
-  <line x1="180" y1="180" x2="228" y2="180" class="send" marker-end="url(#o1)"/>
+  <!-- The branch -->
+  <rect x="32" y="120" width="176" height="56" rx="6" class="box planned"/>
+  <text x="120" y="152" class="title" text-anchor="middle">Branch's index &amp; team</text>
+  <line x1="208" y1="148" x2="264" y2="148" class="send" marker-end="url(#tip)"/>
 </svg>`
 
 describe('sanitizeDrawing', () => {
   it('keeps the drawing, its classes and its geometry', () => {
     const html = draw(LOOP)
 
-    expect(html).toContain('viewBox="0 0 1220 560"')
+    expect(html).toContain('viewBox="0 0 960 480"')
     expect(html).toContain(
-      '<rect x="20" y="150" width="160" height="60" rx="8" class="box planned"',
+      '<rect x="32" y="120" width="176" height="56" rx="6" class="box planned"',
     )
-    expect(html).toContain('text-anchor="middle">Owner\'s PMS &#x26; team</text>')
-    expect(html).toContain('refX="9"')
+    expect(html).toContain('text-anchor="middle">Branch\'s index &#x26; team</text>')
+    expect(html).toContain('refX="10"')
     expect(html).toContain('orient="auto-start-reverse"')
   })
 
@@ -38,21 +38,21 @@ describe('sanitizeDrawing', () => {
 
     expect(html).not.toContain('<style')
     expect(html).not.toContain('.box {')
-    expect(html).not.toContain('Your side')
+    expect(html).not.toContain('The branch')
     expect(html).not.toMatch(/<svg[^>]* width=/)
   })
 
   it('prefixes every id and every reference to one', () => {
     const html = draw(LOOP)
 
-    expect(html).toContain('id="user-content-d1-o1"')
-    expect(html).toContain('marker-end="url(#user-content-d1-o1)"')
-    expect(html).not.toContain('"o1"')
+    expect(html).toContain('id="user-content-d1-tip"')
+    expect(html).toContain('marker-end="url(#user-content-d1-tip)"')
+    expect(html).not.toContain('"tip"')
   })
 
   it('is an image named by the alternative text', () => {
-    expect(draw(LOOP, 'Facts enter through the gateway')).toMatch(
-      /^<svg [^>]*role="img" aria-label="Facts enter through the gateway"/,
+    expect(draw(LOOP, 'Holds enter through the gateway')).toMatch(
+      /^<svg [^>]*role="img" aria-label="Holds enter through the gateway"/,
     )
   })
 

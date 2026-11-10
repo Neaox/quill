@@ -6,7 +6,7 @@
 
 **The bar.** The owner ranked the references, best first:
 
-1. lockstay's portal
+1. Portal P, a private documentation portal
 2. Linear
 3. Fumadocs
 4. PlanetScale
@@ -21,13 +21,13 @@ Docusaurus, Starlight and Furo (Read the Docs) are **counter-examples**: popular
 
 **What the best share**
 
-1. **One sans family carries the whole interface, and type size does the work.** lockstay uses Figtree, Linear and Raycast use Inter, Fumadocs and Vercel use Geist, and PlanetScale uses Inter. None of the top five uses monospace or uppercase for chrome. Hierarchy comes from size, weight (510 to 650, rarely 700) and ink level, not from changing typeface.
+1. **One sans family carries the whole interface, and type size does the work.** Portal P uses Figtree, Linear and Raycast use Inter, Fumadocs and Vercel use Geist, and PlanetScale uses Inter. None of the top five uses monospace or uppercase for chrome. Hierarchy comes from size, weight (510 to 650, rarely 700) and ink level, not from changing typeface.
 2. **The interface is small and the prose is a step larger.** Navigation and the table of contents sit at 13 to 14 px. Body text is 15 to 16 px with line heights of 24 to 28 px. The lede is 17 to 18 px. Headings are modest: h1 is 28 to 36 px and h2 is 21 to 24 px, with negative tracking of about −0.02 em on h1 and −0.005 to −0.01 em on h2.
-3. **Three or four ink levels, each with a job.** Linear defines exactly four (`#f7f8f8`, `#d0d6e0`, `#8a8f98`, `#62666d`). lockstay defines three (`ink`, `ink-2`, `ink-3`). Body text is the second level, not the strongest: headings are the only text at full ink. This one decision makes a page feel calm.
+3. **Three or four ink levels, each with a job.** Linear defines exactly four (`#f7f8f8`, `#d0d6e0`, `#8a8f98`, `#62666d`). Portal P defines three (`ink`, `ink-2`, `ink-3`). Body text is the second level, not the strongest: headings are the only text at full ink. This one decision makes a page feel calm.
 4. **Surfaces barely differ, and hairlines draw the edges.** The page, sidebar and cards differ by 1 to 4 % of lightness. Borders are 1 px at very low contrast, about 1.2 to 1.5:1 against the page, often drawn as alpha (`#6663`, `rgba(255,255,255,.06)`, `oklab(... / .1)`). There are almost no shadows at rest. In dark mode, depth comes from a lighter surface plus a hairline, never from a shadow.
 5. **Accent is scarce, and you can tell it is deliberate.** It appears on the current item (tinted wash plus accent or ink text), the active table-of-contents entry, link underlines, focus rings, one eyebrow, and the callout bar. It never fills toolbar buttons, never colours headings, and never colours body links in bulk.
 6. **The current item is a soft wash, not a slab.** Examples:
-   - lockstay: `oklch(0.96 0.03 190)` in light and `oklch(0.30 0.05 190)` in dark, with weight 600 and a 6 px radius.
+   - Portal P: `oklch(0.96 0.03 190)` in light and `oklch(0.30 0.05 190)` in dark, with weight 600 and a 6 px radius.
    - Fumadocs: accent at 10 % alpha with accent text.
    - Vercel: `#1f1f1f`, with no accent at all.
 
@@ -35,24 +35,24 @@ Docusaurus, Starlight and Furo (Read the Docs) are **counter-examples**: popular
 7. **The table of contents is quiet: 13 px, third ink level, and a thin rail.** The active entry gets ink or accent colour. Fumadocs and PlanetScale draw the rail as a 1 px line, and Fumadocs bends it to show nesting. The "On this page" label is a normal-case 13 to 14 px label in ink-3 or ink. Nobody admired uses uppercase there except Tailwind.
 8. **Code and callouts are cards with large radii.** Code blocks use 12 to 16 px radii (Fumadocs 12, PlanetScale and Resend 16, Clerk figure 16, Apple 15) on a surface one step off the page, with a 1 px hairline and a 13 to 14 px mono.
 
-   Callouts are tinted or neutral cards. lockstay draws the tone as a 3 px *inset shadow bar* plus a 1 px inset ring. Fumadocs uses a 2 px rounded bar inside a neutral card. PlanetScale and Raycast use a 10 to 20 % tint with a matching 1 px border. Nobody admired uses a 4 to 5 px solid left border with a drop shadow, which is what Docusaurus does.
-9. **The header is short and translucent where it is sticky.** It is 52 to 64 px tall. lockstay uses `page / 0.88` with `blur(10px)` and a hairline bottom border. Linear and Vercel use an opaque page colour with a hairline.
-10. **Links carry the accent in the underline, not in the text.** Fumadocs, GitBook and Linear keep ink-coloured text with a coloured or low-contrast underline: Fumadocs uses a 1.5 px underline at a 3.5 px offset, and Linear uses `#62666d` at a 2.6 px offset. lockstay uses an ink-3 underline. On a page dense with links, this keeps the prose calm.
+   Callouts are tinted or neutral cards. Portal P draws the tone as a 3 px *inset shadow bar* plus a 1 px inset ring. Fumadocs uses a 2 px rounded bar inside a neutral card. PlanetScale and Raycast use a 10 to 20 % tint with a matching 1 px border. Nobody admired uses a 4 to 5 px solid left border with a drop shadow, which is what Docusaurus does.
+9. **The header is short and translucent where it is sticky.** It is 52 to 64 px tall. Portal P uses `page / 0.88` with `blur(10px)` and a hairline bottom border. Linear and Vercel use an opaque page colour with a hairline.
+10. **Links carry the accent in the underline, not in the text.** Fumadocs, GitBook and Linear keep ink-coloured text with a coloured or low-contrast underline: Fumadocs uses a 1.5 px underline at a 3.5 px offset, and Linear uses `#62666d` at a 2.6 px offset. Portal P uses an ink-3 underline. On a page dense with links, this keeps the prose calm.
 
 **Verdicts on Quill's current default theme**
 
 | Current choice | Survey says | Evidence |
 | --- | --- | --- |
-| Monospace uppercase labels throughout the chrome | **Argues against.** | Not one of lockstay, Linear, Fumadocs, PlanetScale or Vercel does it. Tailwind uses 12 px Plex Mono uppercase with +0.1 em tracking, but only for sidebar section heads, the table-of-contents title and the page eyebrow, and Tailwind's whole brand is code. lockstay uses *one* sans uppercase eyebrow per page (13 px, 600, +0.08 em, in the accent ink) and a sans uppercase callout title. If Quill keeps one, keep it to the page eyebrow in Theme A and use it as a system signature only in Theme C. |
+| Monospace uppercase labels throughout the chrome | **Argues against.** | Not one of Portal P, Linear, Fumadocs, PlanetScale or Vercel does it. Tailwind uses 12 px Plex Mono uppercase with +0.1 em tracking, but only for sidebar section heads, the table-of-contents title and the page eyebrow, and Tailwind's whole brand is code. Portal P uses *one* sans uppercase eyebrow per page (13 px, 600, +0.08 em, in the accent ink) and a sans uppercase callout title. If Quill keeps one, keep it to the page eyebrow in Theme A and use it as a system signature only in Theme C. |
 | Serif body face | **Argues against for the default; supports it for an editorial theme.** | Every top-tier documentation site sets body text in sans. Serif body text is where long-form reading lives: Increment sets Tiempos Text at 18 / 31.5. The Claude Platform docs go the other way, with serif headings over sans body. So serif belongs in Theme B, not in the default. |
 | Filled orange primary button in the toolbar | **Argues against.** | The top tier keeps chrome monochrome. Vercel's only filled button is ink-on-page (`#171717`, "Sign up"), and Linear's is a light neutral pill. Accent fill is reserved for the one primary action in a dialog or form, never for persistent toolbar chrome. Orange can survive as Quill's *signal* hue (see Theme C), used for indicators, not fills. |
-| "#" hashes before h2 | **Argues against.** | Linear, Fumadocs, Vercel, PlanetScale and lockstay all hide the anchor until hover or focus, or show a small icon after the heading. Furo's always-visible pilcrows and Docusaurus's hash anchors are among the things that make those sites read as generic. Reveal a link icon *after* the heading on `:hover` and `:focus-visible`, in ink-3. |
+| "#" hashes before h2 | **Argues against.** | Linear, Fumadocs, Vercel, PlanetScale and Portal P all hide the anchor until hover or focus, or show a small icon after the heading. Furo's always-visible pilcrows and Docusaurus's hash anchors are among the things that make those sites read as generic. Reveal a link icon *after* the heading on `:hover` and `:focus-visible`, in ink-3. |
 
 **Three base themes**
 
 | Theme | Faces | Feel | References |
 | --- | --- | --- | --- |
-| **A. Calm** (default) | Inter Variable + JetBrains Mono | Cool, tinted neutral; quiet chrome; wash-style current item | lockstay, Linear, Fumadocs, PlanetScale |
+| **A. Calm** (default) | Inter Variable + JetBrains Mono | Cool, tinted neutral; quiet chrome; wash-style current item | Portal P, Linear, Fumadocs, PlanetScale |
 | **B. Editorial** | Source Serif 4 (optical sizes) for prose and headings; Inter for chrome; JetBrains Mono | Warm paper, 18 px serif at a 66-character measure, accent in the underlines | Increment, Claude Platform docs, Apple's abstract |
 | **C. Grid** | Geist + Geist Mono | Pure neutral, true-black dark mode, hairline grid, 4 to 8 px radii, mono labels as the signature, orange as the signal hue | Vercel, Fumadocs on Better Auth, Tailwind's hairline grid |
 
@@ -64,9 +64,9 @@ Theme C fills the gap the survey exposes. A and B are both soft reading themes. 
 
 ### Top tier
 
-#### lockstay portal
+#### Portal P
 
-Studied: <http://localhost:4320/overview/sync-map.html>, desktop and mobile, light and dark.
+Studied: one long architecture page of a private documentation portal, served locally, desktop and mobile, light and dark.
 
 | Aspect | Observed |
 | --- | --- |
@@ -77,7 +77,7 @@ Studied: <http://localhost:4320/overview/sync-map.html>, desktop and mobile, lig
 | Ink, light | `ink oklch(0.22 0.02 220)` 15.9:1 · `ink-2 0.38` 9.2:1 · `ink-3 0.52` 5.1:1, all against `page oklch(0.972 0.005 200)`. |
 | Ink, dark | `ink oklch(0.97 0.005 200)` 16.9:1 · `ink-2 0.83` 11.0:1 · `ink-3 0.69` 6.7:1, all against `page oklch(0.19 0.01 220)`. |
 | Surfaces | Light: `page 0.972`, `surface #fff`, `surface-2 0.985`, `well 0.94`, `rule 0.94`, `edge 0.90`, and a separate `edge-control` for inputs. Dark: `page 0.19`, `surface 0.23`, `surface-2 0.215`, `well 0.20`, `rule 0.29`, `edge 0.34`, `edge-control 0.44`. |
-| Accent | A brand hue variable (`--brand-h: 190`). Chroma is automatically capped at 0.05 for hues 13–85, 145–175 and 315–345, so a garish brand colour cannot spoil the palette. The accent lightness is 0.43 in light and 0.78 in dark. |
+| Accent | A brand hue variable. Chroma is automatically capped at 0.05 for hues 13–85, 145–175 and 315–345, so a garish brand colour cannot spoil the palette. The accent lightness is 0.43 in light and 0.78 in dark. |
 | Navigation | 264 px wide. Sections are `<details>` with 13 px / 600 summaries and **counts** in `ink-3` ("Overview 5"). Items are 13 / 17.55 with 4 × 8 padding and a 6 px radius. The current item is an accent wash (`oklch(0.96 0.03 190)` light, `0.30 0.05 190` dark) with ink text at weight 600. No borders. |
 | Table of contents | 220 px wide. Title "On this page" at 13 px / 600 in `ink`. Links at 13 px in `ink-3` with 3 px vertical padding. |
 | Header | Sticky, 62 px, `page / 0.88` with `backdrop-filter: blur(10px)`, hairline `rule` bottom border. The theme switch is a segmented control (System, Light, Dark). |
@@ -145,7 +145,7 @@ Studied: <https://planetscale.com/docs/vitess/schema-changes/deploy-requests>, l
 | Accent | Two hues with clear roles. Orange (`#f15817`) is for *where you are*: eyebrow, active table-of-contents entry. Blue (`#0e73cc` / `#47b7f8`) is for *links*: text plus a 1 px bottom border. |
 | Navigation | 288 px wide, hairline right border at 10 % white. Items are 14 / 24 in `#9ea2a4`. The current item is a 10 % white wash with a 12 px radius. **Nested items hang from vertical tree guide lines.** |
 | Table of contents | "On this page" in 14 px `ink-3`. Links 14 / 24, weight 500, 1 px left rail; the active entry is orange. |
-| Header | Two rows, 96 px: logo and search, then product tabs. Heavier than lockstay or Linear, but justified by multiple products. |
+| Header | Two rows, 96 px: logo and search, then product tabs. Heavier than Portal P or Linear, but justified by multiple products. |
 | Steps | Numbered circles joined by a vertical line. |
 | Callouts | Blue 20 % tint, 1 px `#1e3a8a` border, 16 px radius (dark). `#eff6ff` with `#bfdbfe` (light). |
 | Exceptional | Two accents with distinct jobs, tree guides in the navigation, generous radii without softness, the step component. |
@@ -227,8 +227,8 @@ Not studied in depth: Notion's published pages, Arc's help centre and Nextra. Th
 
 ### Common traits of the best
 
-- **Small, flat type scale.** The ratio from h1 to body is 1.9 to 2.3× (Fumadocs 1.75×, Linear 2.1×, lockstay 2.3×). The counter-examples sit at 2.6 to 3×.
-- **Weights between 500 and 650 for headings.** Bold 700 is used only for an h1 when the face is light (lockstay, Raycast).
+- **Small, flat type scale.** The ratio from h1 to body is 1.9 to 2.3× (Fumadocs 1.75×, Linear 2.1×, Portal P 2.3×). The counter-examples sit at 2.6 to 3×.
+- **Weights between 500 and 650 for headings.** Bold 700 is used only for an h1 when the face is light (Portal P, Raycast).
 - **Body text at the second ink level, headings at the first.**
 - **Line height of 1.6 to 1.75 for prose and 1.4 to 1.5 for chrome.** Prose spacing is generous; interface spacing is tight.
 - **A measure of about 65 to 85 characters.** The best are at the narrow end: Resend 576 px, Linear 650 px, Linear changelog 624 px.
@@ -243,14 +243,14 @@ Not studied in depth: Notion's published pages, Arc's help centre and Nextra. Th
 
 | Decision | Options seen | Reads more polished | Why |
 | --- | --- | --- | --- |
-| Light-mode page | White (Vercel `#fafafa` is close; Stripe), tinted off-white (lockstay `0.972 / h200`, Claude `#fcfcfb`), grey (Fumadocs `#f5f5f5`) | **Tinted off-white page with white surfaces for cards.** | It gives cards somewhere to sit without shadows, and pure white glares at reading length. |
-| Dark-mode page | Pure black (Vercel, Apple, Better Auth), near-black neutral (Linear `#08090a`, Fumadocs `#121212`), tinted charcoal (lockstay `0.19 / h220`) | **Tinted charcoal for reading themes; true black only for a deliberately stark theme.** | Pure black with `#ededed` text haloes at length. A charcoal page lets the surface step *up* to show depth. |
-| Current navigation item | Accent wash with accent text (Fumadocs), accent wash with ink text at weight 600 (lockstay), neutral wash (Vercel, PlanetScale, Resend), rail plus weight (Tailwind) | **Accent wash with ink text (lockstay).** | It shows the accent's identity while keeping the text at full contrast. Accent-coloured text at 14 px is often near the contrast limit. |
-| Link styling | Accent text (Stripe, Apple, PlanetScale), ink text with an accent underline (Fumadocs, GitBook, Tailwind), ink text with a grey underline (Linear, lockstay) | **Ink text with a coloured underline, 1 to 1.5 px thick, 3 to 3.5 px offset.** | The prose stays calm and links stay unmistakable. |
-| Eyebrow | None (Linear, Fumadocs), sentence-case accent (PlanetScale), uppercase sans accent (lockstay), mono uppercase (Tailwind), large grey (Apple) | **One eyebrow per page, small, in the accent ink.** Case is a theme decision. | It is the one place accent identity sits in the reading column. |
+| Light-mode page | White (Vercel `#fafafa` is close; Stripe), tinted off-white (Portal P `0.972 / h200`, Claude `#fcfcfb`), grey (Fumadocs `#f5f5f5`) | **Tinted off-white page with white surfaces for cards.** | It gives cards somewhere to sit without shadows, and pure white glares at reading length. |
+| Dark-mode page | Pure black (Vercel, Apple, Better Auth), near-black neutral (Linear `#08090a`, Fumadocs `#121212`), tinted charcoal (Portal P `0.19 / h220`) | **Tinted charcoal for reading themes; true black only for a deliberately stark theme.** | Pure black with `#ededed` text haloes at length. A charcoal page lets the surface step *up* to show depth. |
+| Current navigation item | Accent wash with accent text (Fumadocs), accent wash with ink text at weight 600 (Portal P), neutral wash (Vercel, PlanetScale, Resend), rail plus weight (Tailwind) | **Accent wash with ink text (Portal P).** | It shows the accent's identity while keeping the text at full contrast. Accent-coloured text at 14 px is often near the contrast limit. |
+| Link styling | Accent text (Stripe, Apple, PlanetScale), ink text with an accent underline (Fumadocs, GitBook, Tailwind), ink text with a grey underline (Linear, Portal P) | **Ink text with a coloured underline, 1 to 1.5 px thick, 3 to 3.5 px offset.** | The prose stays calm and links stay unmistakable. |
+| Eyebrow | None (Linear, Fumadocs), sentence-case accent (PlanetScale), uppercase sans accent (Portal P), mono uppercase (Tailwind), large grey (Apple) | **One eyebrow per page, small, in the accent ink.** Case is a theme decision. | It is the one place accent identity sits in the reading column. |
 | Code-block surface in light mode | Dark panel on a light page (Stripe, Tailwind), light card (Fumadocs, Vercel light, PlanetScale) | **A light card that matches the theme.** | Dark panels on a light page read as embedded marketing. Matching cards read as one system. |
 | Heading anchors | Visible "#" or ¶ (Docusaurus, Furo), revealed on hover (most), "Copy anchor" icon after the heading (Fumadocs) | **Revealed on hover and focus, after the heading text.** | It is invisible until wanted and does not disturb the heading's left edge. |
-| Header | Opaque with a hairline (Linear, Vercel), translucent with blur (lockstay), none on desktop with the brand in the sidebar (Fumadocs) | **Translucent, about 88 % page colour, 10 to 12 px blur, hairline.** | Content scrolling under it gives a sense of place without weight. |
+| Header | Opaque with a hairline (Linear, Vercel), translucent with blur (Portal P), none on desktop with the brand in the sidebar (Fumadocs) | **Translucent, about 88 % page colour, 10 to 12 px blur, hairline.** | Content scrolling under it gives a sense of place without weight. |
 
 ### Anti-patterns to avoid
 
@@ -269,7 +269,7 @@ Not studied in depth: Notion's published pages, Arc's help centre and Nextra. Th
 
 ## Recommendations: three Quill base themes
 
-**Shared contract for all three themes.** Tokens are named by role, as in lockstay:
+**Shared contract for all three themes.** Tokens are named by role, as in Portal P:
 
 - surfaces: `page`, `surface`, `surface-2`, `well`
 - lines: `rule`, `edge`, `edge-control`
@@ -297,7 +297,7 @@ Every theme defines light and dark under `:root` and `.dark` (or `[data-theme]`)
 
 ### Theme A: Calm (the default)
 
-*lockstay, Linear, Fumadocs and PlanetScale. Cool tinted neutral, quiet chrome, one sans.*
+*Portal P, Linear, Fumadocs and PlanetScale. Cool tinted neutral, quiet chrome, one sans.*
 
 **Faces.** All are already dependencies per R13.
 
@@ -306,7 +306,7 @@ Every theme defines light and dark under `:root` and `.dark` (or `[data-theme]`)
 | Interface and prose | Inter Variable | OFL-1.1, `@fontsource-variable/inter` | `ui-sans-serif, system-ui, sans-serif` | `font-feature-settings: "cv11", "ss01"`; `tnum` in tables. Use `opsz` where available. |
 | Code | JetBrains Mono Variable | OFL-1.1 | `ui-monospace, "SF Mono", Consolas, monospace` | |
 
-Alternative: Figtree (OFL-1.1) if the owner wants lockstay's slightly softer geometry.
+Alternative: Figtree (OFL-1.1) if the owner wants Portal P's slightly softer geometry.
 
 **Type scale** (px; line height; weight; tracking)
 
@@ -366,7 +366,7 @@ Alternative: Figtree (OFL-1.1) if the owner wants lockstay's slightly softer geo
 | `accent-wash` | `0.27 0.05 262` | |
 | `on-accent` | `0.17 0.006 255` | 7.6:1 |
 
-**Accent.** Hue 262 (Linear-like indigo blue) is the default. The organisation's theme supplies the hue, and the lockstay chroma guard applies: cap chroma at 0.05 for hues 13–85, 145–175 and 315–345.
+**Accent.** Hue 262 (Linear-like indigo blue) is the default. The organisation's theme supplies the hue, and Portal P's chroma guard applies: cap chroma at 0.05 for hues 13–85, 145–175 and 315–345.
 
 | Accent appears on | Accent never appears on |
 | --- | --- |
@@ -391,7 +391,7 @@ Alternative: Figtree (OFL-1.1) if the owner wants lockstay's slightly softer geo
 - **Code block:** a `surface` card with a 1 px `rule` border and a 12 px radius. An optional title bar on `surface-2` with a bottom border. The copy button is ghost style, shown on hover or focus.
 - **Inline code:** `well` background, 1 px `rule` border, 5 px radius, 0.15 em × 0.35 em padding.
 - **Tables:** a `surface` card wrapper with a 12 px radius. `th` at 13 px / 550 in `ink-3` on `surface-2`. Rows have 1 px `rule` borders, 10 × 12 padding, `tnum`.
-- **Callouts:** lockstay's pattern. A `surface` card with a 12 px radius, `inset 3px 0 0 var(--tone), inset 0 0 0 1px var(--rule)`. The title is 13 px / 600 in the tone ink, sentence case. An icon is optional.
+- **Callouts:** Portal P's pattern. A `surface` card with a 12 px radius, `inset 3px 0 0 var(--tone), inset 0 0 0 1px var(--rule)`. The title is 13 px / 600 in the tone ink, sentence case. An icon is optional.
 - **Badges:** pills, 12 / 16, weight 550, 2 × 8 padding, on a tone wash.
 - **Figures:** a `surface` card with a 12 px radius and a 1 px `rule` border. Captions are 13 / 20 in `ink-3`.
 
@@ -624,13 +624,13 @@ The current navigation item uses `well` with `ink` at weight 600. The accent sta
 ## Consequences
 
 - Themes A and B use only faces already in R13. Theme C adds Geist and Geist Mono (OFL-1.1), one new runtime dependency to justify in its pull request.
-- The token names follow lockstay's role names. Quill's current token set should map onto `page`, `surface`, `surface-2`, `well`, `rule`, `edge`, `edge-control`, `ink`, `ink-2`, `ink-3` and the accent family before any theme work, so a theme is only values.
+- The token names follow Portal P's role names. Quill's current token set should map onto `page`, `surface`, `surface-2`, `well`, `rule`, `edge`, `edge-control`, `ink`, `ink-2`, `ink-3` and the accent family before any theme work, so a theme is only values.
 - Removing the visible "#" anchors, the monospace chrome labels and the filled toolbar button from the default theme is a component change (anchor reveal, label variant, button variant), not just a token change.
 - What would change these recommendations: if the owner wants serif body text in the *default* theme, swap A and B's roles and keep B's numbers. If the organisation's brand hue falls in the guarded ranges, A's accent chroma is capped, which is intended.
 
 ## Sources
 
-- lockstay portal: <http://localhost:4320/overview/sync-map.html>
+- Portal P: a private documentation portal, studied locally; not public.
 - Linear: <https://linear.app/docs/conceptual-model>, <https://linear.app/changelog>
 - Fumadocs: <https://www.fumadocs.dev/docs>, <https://www.fumadocs.dev/docs/markdown>
 - Better Auth (Fumadocs): <https://better-auth.com/docs/concepts/session-management>

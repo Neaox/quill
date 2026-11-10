@@ -23,7 +23,7 @@ import { nodeType } from '../schema/node-type.ts'
 
 const registry = createSlashRegistry({
   environment: {
-    labels: ['airbnb'],
+    labels: ['alcove'],
     customEmoji: new Map(),
     searchDocuments: async () => [{ id: 'doc-1', title: 'Runbook' }],
   },
@@ -286,9 +286,9 @@ describe('data and references', () => {
   })
 
   it('label: one of the organisation’s, named for itself', async () => {
-    const result = await choose(run('label'), 'air')
-    expect(result.markdown).toBe(':airbnb[Airbnb]\n')
-    expect(result.caret.selected).toBe('Airbnb')
+    const result = await choose(run('label'), 'alc')
+    expect(result.markdown).toBe(':alcove[Alcove]\n')
+    expect(result.caret.selected).toBe('Alcove')
     expectStable(result.markdown)
   })
 

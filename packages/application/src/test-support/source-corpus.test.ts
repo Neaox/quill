@@ -18,19 +18,19 @@ function markdownSizes(files: ReadonlyMap<string, string | Uint8Array>): number[
 }
 
 describe('generateSourceCorpus', () => {
-  it('builds L in the shape of lockstay’s documentation', () => {
+  it('builds L in the shape of a real documentation repository', () => {
     const corpus = generateSourceCorpus(SOURCE_CORPUS_SHAPES.L)
     const sizes = markdownSizes(corpus.files)
-    expect(sizes).toHaveLength(486)
+    expect(sizes).toHaveLength(500)
     expect(corpus.markdownBytes / 1e6).toBeGreaterThan(16)
     expect(corpus.markdownBytes / 1e6).toBeLessThan(20)
     const median = sizes[Math.floor(sizes.length / 2)] ?? 0
     expect(median).toBeGreaterThan(12 * 1024)
     expect(median).toBeLessThan(16 * 1024)
-    expect(sizes.at(-1)).toBeLessThanOrEqual(870 * 1024)
+    expect(sizes.at(-1)).toBeLessThanOrEqual(900 * 1024)
     expect([...corpus.files.keys()].filter((path) => path.endsWith('.png'))).toHaveLength(90)
     expect(corpus.files.get(corpus.manifestPath)).toContain(
-      '{ slug: c11, path: docs/research/part-11',
+      '{ slug: c11, path: docs/holdings/part-11',
     )
   })
 

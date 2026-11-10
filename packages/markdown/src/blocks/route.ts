@@ -21,14 +21,14 @@ import type { PropSchemas } from './props.ts'
  * A route: who sends to whom, as party chips joined by arrows.
  *
  * ```markdown
- * :route[:airbnb: Airbnb, :mail: Postmark → :inbox: Gateway]
+ * :route[:northgate: Northgate, :mail: Relay → :inbox: Gateway]
  * ```
  *
  * Each party is an emoji and a name; `, ` separates two parties on one side
  * where an emoji leads the second, and `→`, `←`, `↔` or `⇄`, with spaces
  * around it, goes from one side to the next. With no arrow it is a row of
- * chips. Read exactly as lockstay's documentation site reads it
- * (`apps/docs/src/markdown.ts` there), so a page draws the same in both.
+ * chips. It is read the same wherever the kit is drawn, so a page draws
+ * the same in every renderer of it.
  *
  * A step's first line is made of routes too (`timeline.ts`), so the reading
  * and the drawing are shared from here. Outside Quill a route reads as the
@@ -98,7 +98,7 @@ function partyElement(party: Party, { draw, emoji }: Drawing): Element {
   return h('span', { className: ['qb-route-party'] }, icon, draw(party.name))
 }
 
-/** An arrow, said in words to a screen reader: "Airbnb to Gateway". */
+/** An arrow, said in words to a screen reader: "Northgate to Gateway". */
 function arrowElement(arrow: string): Element {
   return h(
     'span',

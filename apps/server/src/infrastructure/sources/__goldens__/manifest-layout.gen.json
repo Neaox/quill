@@ -12,7 +12,7 @@
       "origin": "manifest",
       "unknownKeys": [
         {
-          "key": "audience",
+          "key": "team-note",
           "line": 9
         }
       ],

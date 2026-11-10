@@ -98,10 +98,10 @@ describe('the DOM the editor gives the schema', () => {
 
   it('draws the organisation’s labels as the reader does, and only those (ADR-037)', () => {
     const labelled = DOMSerializer.fromSchema(
-      getSchema(withLabels(baseExtensions, ['airbnb', 'ok'])),
+      getSchema(withLabels(baseExtensions, ['alcove', 'ok'])),
     )
     const { doc } = documentFromMdast(
-      parseDocument('On :airbnb[Airbnb], :vrbo[Vrbo] and :ok[Built].\n').ast,
+      parseDocument('On :alcove[Alcove], :nook[Nook] and :ok[Built].\n').ast,
     )
     const html = document.createElement('div')
     html.append(labelled.serializeFragment(doc.content))
@@ -112,7 +112,7 @@ describe('the DOM the editor gives the schema', () => {
         badge.getAttribute('data-label') ?? badge.getAttribute('data-tone'),
       ]),
     ).toEqual([
-      ['Airbnb', 'airbnb'],
+      ['Alcove', 'alcove'],
       // A built-in name stays the built-in, whatever the theme says.
       ['Built', 'success'],
     ])

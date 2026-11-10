@@ -10,12 +10,12 @@ ADR-061 lets a workspace read its documents from a repository. Its manifest (`.q
 
 So the people who write those documents have no inner loop. They cannot see a page before they push it, and a pull request cannot be checked for Quill problems until it has merged and synced. The owner wants that inner loop without making Quill a dependency of the repository: the documents stay plain Markdown, and removing the tool changes nothing about them.
 
-Lockstay, the first repository Quill reads, shows what authors rely on today:
+The first real documentation repository Quill reads shows what authors rely on today:
 
-- **`pnpm docs:check`** (`scripts/docs/`, about 1,300 lines with its tests). It checks links and their anchors, front matter, raw HTML, the block directives it allows (`scripts/docs/blocks.ts` lists `timeline`, `step`, `cast`, `checks` and `details`) and manifest coverage. It prints `path:line: message` and exits 1 on any problem. It reads the files Git tracks or would track, so a link that resolves only on a case-insensitive disk still fails. On lockstay's 486 pages it takes 3.7 seconds.
-- **`apps/docs`**, a static build with `marked` and the kit's tokens, served by `vite preview` on port 4320. It does not watch: an author rebuilds to see a change.
+- **A docs check script** of its own, with its tests. It checks links and their anchors, front matter, raw HTML, the block directives it allows (an allowlist of `timeline`, `step`, `cast`, `checks` and `details`) and manifest coverage. It prints `path:line: message` and exits 1 on any problem. It reads the files Git tracks or would track, so a link that resolves only on a case-insensitive disk still fails. On its pages it takes a few seconds.
+- **A preview site of its own**, a static build with a lighter Markdown library and the kit's tokens, served locally. It does not watch: an author rebuilds to see a change.
 
-Both are a second renderer and a second checker. Neither can say what Quill will do, which is why ADR-060 had to bring Quill's blocks to parity with lockstay's renderer before Quill could serve those pages.
+Both are a second renderer and a second checker. Neither can say what Quill will do, which is why ADR-060 had to bring Quill's blocks to parity with that repository's renderer before Quill could serve those pages.
 
 Facts of the code that shape the answer:
 
@@ -23,16 +23,16 @@ Facts of the code that shape the answer:
 - **Rendering is a pure function behind a port.** `DocumentFormat.render(input)` is implemented in `apps/server/src/infrastructure/markdown/document-format.ts` over `@quill/markdown`. The cache key is `renderCacheKey(hash(renderDigest(input, registry.signature)))` with `RENDER_VERSION` (16 today) (ADR-031).
 - **The reading page is plain functions.** The public site's templates (`apps/server/src/public-site/templates`), its stylesheet and the theme stylesheet (`apps/server/src/theme/theme-stylesheet.ts`) are plain TypeScript over `@quill/design-css`, with no React. The reader preview already renders through the same page template.
 - **The asset pipeline needs no native code.** Sniffing, the allowlist, the size cap and metadata stripping (`attachments.ts`, `image-metadata.ts`) are TypeScript. `sharp` is used only by the server's image variants and link-preview transcoding (ADR-047, ADR-042).
-- **Rendering is CPU-bound, and parsing is most of it.** Measured on 10 November 2026 on the development machine (Ryzen 9 5900X, Node 24.22, rendering from TypeScript source through `createDocumentFormat`) over lockstay's `docs/`: 486 Markdown files, 18.2 MB, median 14 KB, 95th percentile 150 KB, largest 870 KB.
+- **Rendering is CPU-bound, and parsing is most of it.** Measured on 10 November 2026 on the development machine (Ryzen 9 5900X, Node 24.22, rendering from TypeScript source through `createDocumentFormat`) over a real documentation repository's `docs/`: about 500 Markdown files, about 18 MB, median about 14 KB, 95th percentile about 150 KB, largest under 1 MB.
   - One thread, cold: 30 to 56 seconds. With the JIT warm: 19 seconds. Parsing alone, with no rendering, also took 19 seconds, so nearly all of the cost is parsing. That is about 1 MB of Markdown a second.
   - Per file: median 44 ms, 95th percentile 454 ms, largest 2.0 seconds.
-  - The rate per byte depends on what a file holds, not only on its size. Among the five slowest files it ranges from 0.18 MB a second (281 KB in 1.5 seconds) to 0.46 MB a second (870 KB in 1.9 seconds). Some constructs are much slower than others, and some may be superlinear.
+  - The rate per byte depends on what a file holds, not only on its size. Among the five slowest files it ranges from 0.18 MB a second (a file under 300 KB in 1.5 seconds) to 0.46 MB a second (the largest file in 1.9 seconds). Some constructs are much slower than others, and some may be superlinear.
   - About 1 MB a second is slow for a Markdown parser. The server pays the same cost on every sync and publish. These numbers are the **baseline**, not the budget: delivery step 3 profiles the shared pipeline and must bring it to the targets in section 4.
 - **Where the time goes, profiled.** A CPU profile on 11 November 2026 (same machine and corpus, JIT warm) says:
   - Parsing (`parseDocument`) is about 85% of a full render. Turning the tree into HTML, highlighting and sanitising are the other 15%.
   - 87% of parsing (12.2 of 14.0 seconds) is inside micromark and `mdast-util-from-markdown`, with the extensions and configuration Quill registers. Quill's own passes after the parse (`readLinkComments`, `markSourceForm`, autolink literals, code groups) are the other 13%.
   - Quill's full parse runs at 1.6 MB a second on the median file. micromark with no extensions, plain CommonMark, runs at 4.75 MB a second over the same corpus. So about two thirds of the parse time is Quill's extensions, its configuration and its own passes. That is the lever.
-  - Large files are linear once the JIT is warm: the 847 KB file parses in 631 ms and renders in 758 ms. The 2-second figures above were JIT warm-up. The slowest rates per byte belong to small files, which is fixed overhead per file.
+  - Large files are linear once the JIT is warm: a file of about 850 KB parses in 631 ms and renders in 758 ms. The 2-second figures above were JIT warm-up. The slowest rates per byte belong to small files, which is fixed overhead per file.
   - **The server parses each sourced document four or more times per sync revision:** `format.read` for its title and order, `format.links` for its images, `format.links` again in the link check, and the render. Each is a full parse of the same text.
   - Importing the pipeline from TypeScript source: 2.7 seconds. Bundled with rolldown it is one 1.2 MB file, 368 KB gzipped.
   - A pool of 4 worker threads: 7.5 seconds wall, about 1.1 GB resident in total, up to 230 MB heap per worker. A pool of 8: 7.7 seconds and twice the memory, because the largest files and the import set the floor.
@@ -125,8 +125,8 @@ The existing rules hold as they are: the plan stays in `@quill/application`, whi
   - links to files, to folders with and without a slash, with fragments, outside the cone (as forge and as text), broken, and climbing out of the repository;
   - every built-in block, an unknown block, a bad prop and a `within` violation;
   - symbolic links, non-UTF-8 files, a file over a lowered size cap, CRLF line endings, and a link whose case differs from its file;
-  - a lockstay-shaped sample.
-- **Where it runs.** It runs in `pnpm test` on Linux, and in the tool's CI job on Windows and macOS. One integration test in `apps/server` runs the lockstay-shaped fixture through the real composition (Postgres, the filesystem store, the source's admin API) and compares it with the tool's JSON, which catches drift in the persistence adapters.
+  - a sample shaped like a real documentation repository, with a README in every folder.
+- **Where it runs.** It runs in `pnpm test` on Linux, and in the tool's CI job on Windows and macOS. One integration test in `apps/server` runs the nested-readmes fixture through the real composition (Postgres, the filesystem store, the source's admin API) and compares it with the tool's JSON, which catches drift in the persistence adapters.
 - **A change to the sync's reporting, to `@quill/format` or to `@quill/markdown` that the suite does not cover is incomplete.**
 
 **What cannot be known offline** is listed in the report's `assumptions` and never guessed. That is the organisation's theme (the preview uses the built-in default, or `--theme <built-in id>`), custom emoji and label names (ADR-037, ADR-038), blocks an administrator installed at run time (ADR-060 step 7), an instance's own overrides of the file and asset size caps, and the titles of native documents a sourced page links to by id. The parity suite therefore compares against an instance with default settings.
@@ -142,7 +142,7 @@ The existing rules hold as they are: the plan stays in `@quill/application`, whi
 - **No Postgres, no Docker, no native modules.** The only runtime is Node. `sharp` is not needed, because the tool never makes image variants: the preview serves an asset's stored bytes after the same metadata stripping. A native module needs an amendment to this ADR.
 - **`git` is optional.**
   - Without it the working tree is read from the disk, and the report says `fileSet: disk`: an ignored file then counts as present.
-  - With it, the file set is what Git tracks or would track (`ls-files --cached --others --exclude-standard`), matching lockstay's check. Symbolic links are known by Git's mode `120000`, so a Windows checkout with `core.symlinks=false` (which writes a link as a text file) agrees with the server. The origin URL and `HEAD` give forge links.
+  - With it, the file set is what Git tracks or would track (`ls-files --cached --others --exclude-standard`), matching the repository's own check. Symbolic links are known by Git's mode `120000`, so a Windows checkout with `core.symlinks=false` (which writes a link as a text file) agrees with the server. The origin URL and `HEAD` give forge links.
   - `--rev <revision>` requires `git`, version 2.30 or later. Only `rev-parse`, `ls-tree` and `cat-file --batch` are used. `git backfill` is not needed.
 - **Bundled, with nothing to install.** rolldown (already the repo's bundler for the reader script) builds `dist/`:
   - `quill.js`: argument parsing and help only;
@@ -161,7 +161,7 @@ The existing rules hold as they are: the plan stays in `@quill/application`, whi
 - **Make the shared pipeline fast**, so the server's sync and publish gain as much as the tool. Delivery step 3 does this, against the throughput targets below.
 - **Do less of it.** Never parse a file twice, never parse an unchanged file at all, and parse in parallel.
 
-A cache that is warm does not excuse a slow cold run. A fresh clone, a new tool version and a CI cache miss are all cold, and lockstay's own check takes 3.7 seconds cold today.
+A cache that is warm does not excuse a slow cold run. A fresh clone, a new tool version and a CI cache miss are all cold, and a repository's own check takes a few seconds cold today.
 
 **Incremental work.**
 
@@ -206,7 +206,7 @@ A cache that is warm does not excuse a slow cold run. A fresh clone, a new tool 
 
 **Budgets.** The reference machine is GitHub's `ubuntu-latest` hosted runner (4 vCPU, 16 GB), the default pool, and a production bundle. Two generated corpora are committed as generators with fixed seeds, built from `packages/markdown/corpus` (headings, lists, tables, code in several languages, every built-in block, links, images):
 
-- **L**, shaped like lockstay's docs: 486 Markdown files with lockstay's size distribution (median 14 KB, 95th percentile 150 KB, largest 870 KB, 18 MB in all), 90 assets, 12 collections in nested folders, about 4,000 relative links, and planted problems of every kind.
+- **L**, shaped like a real documentation repository: about 500 Markdown files with its size distribution (median about 14 KB, 95th percentile about 150 KB, largest under 1 MB, about 18 MB in all), 90 assets, 12 collections in nested folders, about 4,000 relative links, and planted problems of every kind.
 - **XL**: 5,000 Markdown files (median 6 KB, 95th percentile 30 KB, largest 400 KB, 40 MB in all), 500 assets and 40 collections, with the same planted problems.
 
 **Throughput of the shared pipeline.** These are targets that delivery step 3 must meet, not ceilings set from today's numbers. They guard the server as much as the tool, because the sync and publish call the same `DocumentFormat`.
@@ -301,7 +301,7 @@ At 3 MB a second, L's parsing is about 6 CPU-seconds, so about 2 seconds over th
   - `3`: the tool failed: a crash, a worker that failed twice on one file, an I/O error.
 
   A bad manifest is a content problem, so it exits `1`.
-- **`--format text`** (the default) prints `path:line:column: severity code: message`, which editors' problem matchers and lockstay's `path:line: message` habit read, and a summary line.
+- **`--format text`** (the default) prints `path:line:column: severity code: message`, which editors' problem matchers and the common `path:line: message` habit read, and a summary line.
 - **`--format json`** prints one document, versioned as `quill-check/1`. Its JSON Schema ships in the package and is tested against every fixture. It holds:
   - `schema`;
   - `tool` (version, `RENDER_VERSION`, the registry signature's hash);
@@ -356,7 +356,7 @@ At 3 MB a second, L's parsing is about 6 CPU-seconds, so about 2 seconds over th
 
 ### 6. Configuration
 
-- **The manifest.** The tool reads the manifest the server reads: `.quill/workspace.yaml`, or `--manifest <path>` for a source configured with another path. Lockstay keeps its manifest at `docs/quill.yaml`, in ADR-061's shape (`version: 1`, `workspaces`, collections with `slug`, `path`, `title` and `order`), with keys of its own (`audience`, `per`) that a sync reports as unknown keys. So lockstay runs `quill check --manifest docs/quill.yaml --all`.
+- **The manifest.** The tool reads the manifest the server reads: `.quill/workspace.yaml`, or `--manifest <path>` for a source configured with another path. A repository may keep its manifest elsewhere, say at `docs/handbook.yaml`, in ADR-061's shape (`version: 1`, `workspaces`, collections with `slug`, `path`, `title` and `order`), with keys of its own (`team-note`) that a sync reports as unknown keys. Such a repository runs `quill check --manifest docs/handbook.yaml --all`.
 - **Choosing an entry.** A manifest with one workspace needs no choice. For a manifest with several:
   - `--workspace <slug>` reads one;
   - `--all` checks every entry and reports by entry;
@@ -372,9 +372,9 @@ At 3 MB a second, L's parsing is about 6 CPU-seconds, so about 2 seconds over th
 - **The server's source admin page** says when its own version is outside the range. Drift is then visible from both sides, with no network.
 - **The registry.** The report prints the tool's registry signature. When run-time block installation lands (ADR-060 step 7), the admin page shows the instance's signature beside it, and the tool gains `--blocks <dir>` to load the same `.qblock` archives. Until then both registries are Quill's built-in blocks for the version, so they are equal by construction.
 
-### 7. What lockstay keeps
+### 7. What a repository's own checks keep
 
-Lockstay's `docs:check` checks heading anchors, front matter fields and raw HTML, which Quill's sync does not report today. Lockstay keeps those checks until each is added to the shared code (section 1's rule). It can drop `apps/docs` and its block allowlist once `quill preview` and `quill check` pass on its docs.
+A repository's own docs check may check heading anchors, front matter fields and raw HTML, which Quill's sync does not report today. The repository keeps those checks until each is added to the shared code (section 1's rule). It can drop its own preview site and its block allowlist once `quill preview` and `quill check` pass on its docs.
 
 ## Amendment: the parser's throughput (11 November 2026)
 
@@ -393,13 +393,13 @@ The sync row of section 4 mixed two things: the work Quill does, and how fast a 
 
 - **The sync row** is a first sync of L's head from a local `file://` bare repository, fetch included: at most 10 seconds.
 - **A fetch row** is the fetch alone from the same remote: opening the source, the partial clone, narrowing to the manifest's paths, and reading every file under them: at most 4 seconds.
-- **The remote is what a forge serves:** a bare repository repacked with a reachability bitmap (`git repack -ad --write-bitmap-index`). The evidence that this matters, measured on lockstay's own repository (5,183 commits, about 54,500 commits and trees):
-  - from its working repository, never repacked, the partial clone took 37.2 seconds, nearly all of the 34 to 38 seconds the first sync measurements spent fetching: the remote packed every commit and tree on the fly;
+- **The remote is what a forge serves:** a bare repository repacked with a reachability bitmap (`git repack -ad --write-bitmap-index`). The evidence that this matters, measured on a real documentation repository with a long history (thousands of commits, tens of thousands of commits and trees):
+  - from its working repository, never repacked, the partial clone took over half a minute, nearly all of the time the first sync measurements spent fetching: the remote packed every commit and tree on the fly;
   - from a bare mirror repacked with a bitmap, the same clone took 1.5 seconds, and the whole fetch (clone, two sparse-checkout and backfill rounds, the listing and every file read) about 4.5 seconds;
   - on L, a single commit, the fetch alone is 1.3 seconds (median of three).
 
   So the fetch is in budget, and what was slow was the remote. Quill runs one clone, one `ls-tree` and one `cat-file --batch` for every file together; it spawns no `git` process per file.
-- **Measured and left as it is:** `git backfill` fetches the contents of the source's paths for every revision of the history, which a source whose history setting is `head` does not need for its first sync. On lockstay that is 2.4 of the 4.5 seconds. It is kept: a source replays the commits after its first sync, and fetching their contents later costs the same. Revisit if a large history makes it dominate.
+- **Measured and left as it is:** `git backfill` fetches the contents of the source's paths for every revision of the history, which a source whose history setting is `head` does not need for its first sync. On that repository that is about half of the fetch. It is kept: a source replays the commits after its first sync, and fetching their contents later costs the same. Revisit if a large history makes it dominate.
 - **Where the sync's time goes instead:** 76 seconds of the sync of L is Quill's work after the fetch (parsing each document several times, publishing, and rendering), which is what step 3's parse-once and tuning work is for.
 
 ## Decisions on acceptance
@@ -413,7 +413,7 @@ Accepted on 11 November 2026, with delivery step 2 built: the plan, as a pure re
   - a full manifest, one that describes several workspaces, one that does not read, and one with no entry for the workspace;
   - refused files and assets;
   - component blocks and an empty required section;
-  - CRLF line endings, a link whose case differs from its file, a folder two collections share, and a repository shaped like lockstay's.
+  - CRLF line endings, a link whose case differs from its file, a folder two collections share, and a repository with a README in every folder.
 
   `apps/server/src/infrastructure/sources/source-goldens.test.ts` syncs each one through the real `git` adapter over a `file://` remote, the real Markdown pipeline and a Git content store in memory. It renders every document as a reader's request does, and keeps what the sync recorded, the tree it built, the stored copies and the bodies under `__goldens__/`, with ids replaced by paths.
 - **The sync's decisions moved out of the job.** `source-revision.ts` holds what one revision does: which files are written, placed again or archived and under which ids, each folder's document, what an asset's intake decides, which relative links are broken, and where each document goes among its siblings. The sync job (`sync-source.ts`, 478 lines shorter) asks it and writes the answer. `source-plan.ts`, from the source settings work, keeps the reading of a layout and of one file.
@@ -441,7 +441,7 @@ Accepted on 11 November 2026, with delivery step 2 built: the plan, as a pure re
   - It reads a repository only through a sync of committed history, so the working tree is never what is shown.
   - It brings accounts and setup into an author's loop.
   - A per-PR CI check would stand up a database to report what one function computes.
-- **A separate lightweight renderer** (`marked` or `markdown-it`, which are faster). Rejected because it would drift. Lockstay has one (`apps/docs`), and drift from it is why ADR-060 had to reach parity before Quill could serve those pages. The parser's cost is better paid once, in code both sides share, and cut with a cache and a pool.
+- **A separate lightweight renderer** (`marked` or `markdown-it`, which are faster). Rejected because it would drift. The first sourced repository has one, and drift from it is why ADR-060 had to reach parity before Quill could serve those pages. The parser's cost is better paid once, in code both sides share, and cut with a cache and a pool.
 - **A browser-only preview** (the pipeline bundled for the browser, reading files through the File System Access API). Rejected:
   - That API exists only in Chromium, and watching a folder is not dependable there.
   - It gives nothing to run in CI, so `check` would need a second runtime anyway.
@@ -507,7 +507,7 @@ A milestone of its own, **M3b — Check and preview in the repository**, after M
 
 It is done when:
 
-- lockstay's CI runs `quill check` on every pull request;
-- for the same commit, its report equals what lockstay's instance lists on the source's admin page;
+- a real sourced repository's CI runs `quill check` on every pull request;
+- for the same commit, its report equals what its Quill instance lists on the source's admin page;
 - every budget above is green on the reference runner, including the cold `check` of L in 8 seconds, Quill's parse at 3 MB a second and one parse per document in the sync;
 - the parity suite is green on all three operating systems.

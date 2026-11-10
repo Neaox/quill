@@ -1,0 +1,1 @@
+Changed: Sample content in the documentation corpus, test fixtures and theme notes now uses an invented example domain, and `pnpm check` fails on names of private projects anywhere in the repository; nothing a reader sees changes.

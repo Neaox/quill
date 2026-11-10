@@ -32,7 +32,7 @@ describe('readProps', () => {
         name: 'abc',
         narrow: '',
         columns: '3',
-        outside: 'Airbnb, Booking.com,, ',
+        outside: 'Northgate, Eastfield,, ',
       }),
     ).toEqual({
       values: {
@@ -44,7 +44,7 @@ describe('readProps', () => {
         open: true,
         columns: 3,
         ratio: 1.5,
-        outside: ['Airbnb', 'Booking.com'],
+        outside: ['Northgate', 'Eastfield'],
       },
       issues: [],
     })
