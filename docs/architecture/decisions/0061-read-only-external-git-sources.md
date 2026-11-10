@@ -106,7 +106,7 @@ Before each fetch, the remote's host is checked against the outbound policy of A
 
 ### Amendment (9 November 2026): folders as documents, in detail
 
-The bullet above says what a folder becomes. Serving lockstay's docs, which are built from folders with a `README.md` in each (`docs/guide/README.md` linking `./concepts/tenancy/README.md`), settled the rest:
+The bullet above says what a folder becomes. Serving a real documentation repository, built from folders with a `README.md` in each (`docs/manual/README.md` linking `./concepts/lending/README.md`), settled the rest:
 
 - **Where folders start.** Inside a collection, every folder under the collection's own directory that holds a document of the collection, at any depth, has a document. The collection's own directory is the collection, so its `README.md` is a document at the top of it, not a parent of everything else in it. As the collection's overview it goes first there, unless its front matter's `order` says otherwise. For a glob the directory is its literal prefix (`packages` for `packages/**/README.md`); a collection that is one file has no folders.
 - **Which file.** `index.md`, else `README.md`, matched without regard to case, `.markdown` too. A `README.md` beside an `index.md` is an ordinary child of it.

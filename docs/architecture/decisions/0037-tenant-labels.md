@@ -33,7 +33,7 @@ Labels are Markdown's own `:name[text]` text directives, so outside Quill they r
 ## Alternatives considered
 
 - **Render every unknown labelled text directive as a pill and colour it from the stylesheet.** No renderer input and no cache key change, but it erases the difference between a label and a typo, and turns every unrecognised directive into styled markup instead of the source an author can see is wrong.
-- **Labels as workspace settings.** A channel means the same thing across an organisation, and the public site and exports are rendered per organisation theme; per-workspace names would make one document render differently by where it is moved.
+- **Labels as workspace settings.** A label means the same thing across an organisation, and the public site and exports are rendered per organisation theme; per-workspace names would make one document render differently by where it is moved.
 - **Arbitrary CSS colours.** Breaks the theme's guarantee that every pair it ships passes the contrast floors in both schemes (ADR-028). Seeds keep that guarantee.
 - **A generic `:label[Acme]{name=acme}` syntax only.** Longer to write in a table cell, and not what existing documents use. The short form is the point; nothing stops a generic form being added later.
 

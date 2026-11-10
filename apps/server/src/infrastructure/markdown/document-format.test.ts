@@ -472,29 +472,29 @@ describe('createDocumentFormat: render and read', () => {
 
   it('draws the organisation’s labels it was handed, and nothing it was not (ADR-037)', () => {
     const rendered = format.render({
-      markdown: 'On :airbnb[Airbnb] and :vrbo[Vrbo].\n',
+      markdown: 'On :alcove[Alcove] and :nook[Nook].\n',
       linkTitles: new Map(),
-      labels: new Set(['airbnb']),
+      labels: new Set(['alcove']),
     })
-    expect(rendered.html).toContain('<span class="badge" data-label="airbnb">Airbnb</span>')
-    expect(rendered.html).toContain(':vrbo[Vrbo]')
+    expect(rendered.html).toContain('<span class="badge" data-label="alcove">Alcove</span>')
+    expect(rendered.html).toContain(':nook[Nook]')
   })
 
   it('draws emoji, the organisation’s own and GitHub’s, and leads a label with its emoji (ADR-038)', () => {
-    const src = '/api/emoji/airbnb.0123456789abcdef.svg'
+    const src = '/api/emoji/alcove.0123456789abcdef.svg'
     const rendered = format.render({
-      markdown: ':+1: :airbnb: :airbnb[Airbnb]\n',
+      markdown: ':+1: :alcove: :alcove[Alcove]\n',
       linkTitles: new Map(),
-      labels: new Set(['airbnb']),
-      emoji: new Map([['airbnb', { src, width: 32, height: 32 }]]),
-      labelEmoji: new Map([['airbnb', 'airbnb']]),
+      labels: new Set(['alcove']),
+      emoji: new Map([['alcove', { src, width: 32, height: 32 }]]),
+      labelEmoji: new Map([['alcove', 'alcove']]),
     })
     expect(rendered.html).toContain(
       '<span class="emoji" role="img" aria-label="thumbs up">👍</span>',
     )
-    expect(rendered.html).toContain(`<img class="emoji" src="${src}" alt="airbnb" title=":airbnb:"`)
+    expect(rendered.html).toContain(`<img class="emoji" src="${src}" alt="alcove" title=":alcove:"`)
     expect(rendered.html).toContain(
-      `<span class="badge" data-label="airbnb"><img class="emoji" src="${src}" alt=""`,
+      `<span class="badge" data-label="alcove"><img class="emoji" src="${src}" alt=""`,
     )
   })
 

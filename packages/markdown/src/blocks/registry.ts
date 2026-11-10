@@ -31,7 +31,7 @@ export interface BlockRegistry {
 
 /**
  * The blocks Quill ships: the reference `endpoint`, and the documentation
- * kit lockstay's guides are written in (a timeline of steps, a cast, checks
+ * kit developer guides are written in (a timeline of steps, a cast, checks
  * and routes), which any workspace may use.
  */
 export const BUILT_IN_BLOCKS: readonly AnyBlock[] = [

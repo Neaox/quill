@@ -2519,7 +2519,7 @@
  *   heading, key          a column's name; an accented term
  *   label, label-zone     a word on a line, haloed against its background
  *   label-warn            a word that warns
- *   send, receive, check  what we send, what comes in, reading back
+ *   send, receive, check  an outgoing line, an incoming one, a read-back
  *   planned               a line designed but not built
  *   arrow-*               each line's arrowhead
  *   lifeline, step(-text) a sequence's lifelines and numbered steps
@@ -2957,7 +2957,7 @@
 /* --- The documentation kit (ADR-060) -------------------------------------- */
 
 /*
- * The blocks lockstay's guides are written in, drawn as its documentation
+ * The blocks developer guides are written in, drawn as a documentation
  * site draws them: chips that name a party, routes of chips joined by
  * arrows, a cast of chips, numbered checks, and timelines of steps on a rail.
  * Chips are interface text, so they are set in the sans face at fixed sizes

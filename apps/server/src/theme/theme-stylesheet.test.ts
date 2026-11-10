@@ -88,18 +88,18 @@ describe('the delivered stylesheet', () => {
   it('colours the organisation’s labels, in both schemes, under the same scope (ADR-037)', () => {
     const labelled: ThemeDocument = {
       ...custom,
-      labels: [{ name: 'airbnb', title: 'Airbnb', hue: 15 }],
+      labels: [{ name: 'alcove', title: 'Alcove', hue: 15 }],
     }
     const sheet = stylesheets().forTheme(labelled)
     const scope = deliveryScope('press')
-    const [airbnb] = generateTheme(labelled).labels
+    const [alcove] = generateTheme(labelled).labels
 
-    expect(block(sheet.css, `${scope} {`)).toContain(`--label-airbnb-ink: ${airbnb?.light.ink};`)
+    expect(block(sheet.css, `${scope} {`)).toContain(`--label-alcove-ink: ${alcove?.light.ink};`)
     expect(block(sheet.css, `${scope}[data-theme='dark'] {`)).toContain(
-      `--label-airbnb-ink: ${airbnb?.dark.ink};`,
+      `--label-alcove-ink: ${alcove?.dark.ink};`,
     )
-    expect(sheet.css).toContain(`${scope} .badge[data-label='airbnb'] {`)
-    expect(sheet.css).toContain(`${scope} .diagram[data-diagram='svg'] :is(.airbnb, .airbnb *)`)
+    expect(sheet.css).toContain(`${scope} .badge[data-label='alcove'] {`)
+    expect(sheet.css).toContain(`${scope} .diagram[data-diagram='svg'] :is(.alcove, .alcove *)`)
     expect(sheet.hash).not.toBe(stylesheets().forTheme(custom).hash)
   })
 

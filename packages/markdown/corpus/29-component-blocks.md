@@ -1,44 +1,44 @@
 ---
-title: Email in and out
+title: Overdue notices
 ---
 
-# Email in and out
+# Overdue notices
 
-A page written the way lockstay's request guide is: component blocks in the directives dialect (ADR-060), Quill's own details (ADR-048) and badges, and blocks this instance may not have installed yet.
+A page written the way a developer guide is: component blocks in the directives dialect (ADR-060), Quill's own details (ADR-048) and badges, and blocks this instance may not have installed yet.
 
-:::cast{outside="Postmark or SES"}
+:::cast{outside="The mail relay"}
 
-- :lockstay: **lockstay** · API, gateway and worker
-- :mail: **Postmark or SES** · Delivers lockstay's email
-- :person: **A person** · Receives the email
+- :rookwood: **Rookwood** · API, gateway and worker
+- :mail: **The mail relay** · Delivers Rookwood's notices
+- :person: **A person** · Receives the notice
 
 :::
 
-## Email out
+## Notices out
 
 :ok[Built] :plan[Designed] :accent[:clock: 5 s]
 
 ::::timeline
 
-:::step{icon=lockstay}
+:::step{icon=rookwood}
 
-**Before sending** · :route[:lockstay: API]
+**Before sending** · :route[:rookwood: API]
 
-### The API skips an address that bounced
+### The API skips a reader who opted out
 
-After a hard bounce, lockstay stops sending to that address.
+After a reader opts out, Rookwood stops sending to that address.
 
-:ok[Holds] The address receives email again only after the person confirms it.
+:ok[Holds] The address receives notices again only after the reader opts back in.
 
 :::
 
 :::step{icon=shield tone=net}
 
-:loop: **Every 5 min** · :route[:lockstay: Worker → :mail: Postmark]
+:loop: **Every 5 min** · :route[:rookwood: Worker → :mail: Relay]
 
-### The worker asks again, without any report
+### The worker checks back on a timer
 
-Another job asks Postmark about new bounces.
+A second job polls the relay for opt-outs it missed.
 
 :::
 
@@ -61,13 +61,13 @@ The details keep their summary's emoji and code.
 
 ## The endpoint
 
-:::endpoint{method=POST path=/webhooks/postmark auth=token}
+:::endpoint{method=POST path=/webhooks/relay auth=token}
 
 Saves the report, then replies `200`.
 
 :::
 
-:::endpoint{method=FETCH path=/webhooks/postmark}
+:::endpoint{method=FETCH path=/webhooks/relay}
 
 A method the block does not know is drawn as `GET`, and said.
 

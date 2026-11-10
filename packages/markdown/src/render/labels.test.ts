@@ -87,7 +87,7 @@ describe('a labelled directive the organisation does not define', () => {
   })
 })
 
-describe('the channel coverage corpus document', () => {
+describe('the partner coverage corpus document', () => {
   const url = '/api/attachments/6f1d2b0e-5c3a-4b7e-9d21-0a8c4f3e7b19'
   const html = renderHtml(parseMarkdown(corpus('21-tenant-labels.md')), {
     labels: LABELS,
@@ -104,6 +104,6 @@ describe('the channel coverage corpus document', () => {
     expect(html).toContain('class="box acme"')
     expect(html).toContain('class="send acme"')
     expect(html).toContain('<g class="globex">')
-    expect(html).not.toContain('#ff5a5f')
+    expect(html).not.toContain('#e4572e')
   })
 })

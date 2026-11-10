@@ -22,10 +22,10 @@ const verdict = (theme: ThemeDocument) =>
 const channels: ThemeDocument = {
   ...instrument,
   labels: [
-    { name: 'airbnb', title: 'Airbnb', hue: 15 },
-    { name: 'booking', title: 'Booking.com', hue: 255, chroma: 0.16 },
+    { name: 'alcove', title: 'Alcove', hue: 15 },
+    { name: 'almanac', title: 'Almanac.org', hue: 255, chroma: 0.16 },
     // A pale seed the generator has to darken in light and lighten in dark.
-    { name: 'vrbo', title: 'Vrbo', hue: 95, chroma: 0.3 },
+    { name: 'nook', title: 'Nook', hue: 95, chroma: 0.3 },
   ],
 }
 
@@ -36,9 +36,9 @@ describe('a label in the theme document (ADR-037)', () => {
   })
 
   it('has a name that is a directive name and a class name', () => {
-    expect(isLabelName('airbnb')).toBe(true)
-    expect(isLabelName('booking-com2')).toBe(true)
-    const malformed = ['Airbnb', '2nd', 'a_b', 'a b', "a'b", 'x'.repeat(33), '']
+    expect(isLabelName('alcove')).toBe(true)
+    expect(isLabelName('almanac-com2')).toBe(true)
+    const malformed = ['Alcove', '2nd', 'a_b', 'a b', "a'b", 'x'.repeat(33), '']
     expect(malformed.filter(isLabelName)).toEqual([])
     expect(
       malformed.filter(
@@ -50,10 +50,10 @@ describe('a label in the theme document (ADR-037)', () => {
   it('may name the emoji its pill leads with, in an emoji name’s shape (ADR-038)', () => {
     const leading = (emoji: string) =>
       validateThemeDocument(
-        withLabels([{ name: 'booking', title: 'Booking.com', hue: 255, emoji }]),
+        withLabels([{ name: 'almanac', title: 'Almanac.org', hue: 255, emoji }]),
       ).valid
-    expect(leading('booking_com')).toBe(true)
-    expect(['Booking', '_x', 'a b', 'x'.repeat(33)].filter(leading)).toEqual([])
+    expect(leading('almanac_hub')).toBe(true)
+    expect(['Almanac', '_x', 'a b', 'x'.repeat(33)].filter(leading)).toEqual([])
   })
 
   it('refuses a name a built-in directive or drawing class already has', () => {
@@ -69,8 +69,8 @@ describe('a label in the theme document (ADR-037)', () => {
   it('refuses two labels of one name', () => {
     const result = validateThemeDocument(
       withLabels([
-        { name: 'airbnb', title: 'Airbnb', hue: 1 },
-        { name: 'airbnb', title: 'Again', hue: 2 },
+        { name: 'alcove', title: 'Alcove', hue: 1 },
+        { name: 'alcove', title: 'Again', hue: 2 },
       ]),
     )
     expect(result.valid).toBe(false)
@@ -92,10 +92,10 @@ describe('a label in the theme document (ADR-037)', () => {
   })
 
   it('says what is wrong with a name in words a form can show', () => {
-    expect(labelNameProblem('airbnb')).toBeUndefined()
-    expect(labelNameProblem('Airbnb')).toMatch(/lower-case letter/u)
+    expect(labelNameProblem('alcove')).toBeUndefined()
+    expect(labelNameProblem('Alcove')).toMatch(/lower-case letter/u)
     expect(labelNameProblem('badge')).toMatch(/built-in/u)
-    expect(labelNameProblem('airbnb', ['airbnb'])).toMatch(/already a label/u)
+    expect(labelNameProblem('alcove', ['alcove'])).toMatch(/already a label/u)
   })
 })
 
@@ -104,7 +104,7 @@ describe('a label’s colours', () => {
 
   it('are settled against the status floors in both schemes', () => {
     for (const palette of [palettes.light, palettes.dark]) {
-      expect(palette.labels.map((label) => label.name)).toEqual(['airbnb', 'booking', 'vrbo'])
+      expect(palette.labels.map((label) => label.name)).toEqual(['alcove', 'almanac', 'nook'])
       const { paper, surface, raised } = palette.colours
       for (const label of palette.labels) {
         for (const background of [paper, surface, raised, label.fill]) {
@@ -147,30 +147,30 @@ describe('a label in the stylesheet', () => {
 
   it('is generated with its title and its tokens in both schemes', () => {
     expect(generated.labels.map(({ name, title }) => ({ name, title }))).toEqual([
-      { name: 'airbnb', title: 'Airbnb' },
-      { name: 'booking', title: 'Booking.com' },
-      { name: 'vrbo', title: 'Vrbo' },
+      { name: 'alcove', title: 'Alcove' },
+      { name: 'almanac', title: 'Almanac.org' },
+      { name: 'nook', title: 'Nook' },
     ])
     expect(generated.labels[0]?.light.ink).toMatch(/^oklch\(/u)
   })
 
   it('declares ink, fill and stroke in every scheme block', () => {
-    const [airbnb] = generated.labels
-    expect(css.split(`--label-airbnb-ink: ${airbnb?.light.ink};`)).toHaveLength(2)
-    expect(css.split(`--label-airbnb-ink: ${airbnb?.dark.ink};`)).toHaveLength(3)
-    expect(css.match(/--label-booking-stroke: /gu)).toHaveLength(3)
-    expect(css.match(/--label-vrbo-fill: /gu)).toHaveLength(3)
+    const [alcove] = generated.labels
+    expect(css.split(`--label-alcove-ink: ${alcove?.light.ink};`)).toHaveLength(2)
+    expect(css.split(`--label-alcove-ink: ${alcove?.dark.ink};`)).toHaveLength(3)
+    expect(css.match(/--label-almanac-stroke: /gu)).toHaveLength(3)
+    expect(css.match(/--label-nook-fill: /gu)).toHaveLength(3)
   })
 
   it('dots a pill and colours a drawing from the same name, under the theme’s selector', () => {
     expect(css).toContain(
-      ".org[data-id='x'] .badge[data-label='airbnb'] {\n  --label-dot: var(--label-airbnb-stroke);\n}",
+      ".org[data-id='x'] .badge[data-label='alcove'] {\n  --label-dot: var(--label-alcove-stroke);\n}",
     )
     expect(css).toContain(
-      ".org[data-id='x'] .diagram[data-diagram='svg'] :is(.airbnb, .airbnb *):is(path, line, polyline) {\n  stroke: var(--label-airbnb-stroke);\n}",
+      ".org[data-id='x'] .diagram[data-diagram='svg'] :is(.alcove, .alcove *):is(path, line, polyline) {\n  stroke: var(--label-alcove-stroke);\n}",
     )
     expect(css).toContain(
-      ':is(.booking, .booking *):is(text, tspan) {\n  fill: var(--label-booking-ink);',
+      ':is(.almanac, .almanac *):is(text, tspan) {\n  fill: var(--label-almanac-ink);',
     )
   })
 

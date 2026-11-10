@@ -53,23 +53,23 @@ deployment notes](deploy.md).
 3. See [a page that is not there](./missing.md).
 `
 
-const LOCKSTAY_GUIDE = `---
+const MANUAL = `---
 order: 1
 ---
 
-# Guide
+# Manual
 
-The guide's pages, in reading order: [concepts](./concepts/), [tenancy](./concepts/tenancy/README.md#who-owns-what)
+The manual's pages, in reading order: [concepts](./concepts/), [lending](./concepts/lending/README.md#who-borrows-what)
 and the [decisions](../adr/0001-record-decisions.md).
 
-:::details[What this guide is not]
+:::details[What this manual is not]
 It is not the API reference. See [the code](../../packages/api/README.md).
 :::
 
 | Page | What it covers |
 | --- | --- |
 | [Concepts](./concepts/README.md) | The words used everywhere |
-| [Tenancy](./concepts/tenancy/README.md) | Who owns what |
+| [Lending](./concepts/lending/README.md) | Who borrows what |
 
 \`\`\`ts
 export const answer: number = 42
@@ -106,7 +106,7 @@ export const SOURCE_FIXTURES = {
         '  - { slug: plan, path: docs/plan.md, title: Plan }',
         'exclude: [docs/guides/drafts/**]',
         'assets: [docs/diagrams/**]',
-        'audience: internal',
+        'team-note: internal',
         '',
       ].join('\n'),
       'docs/guides/index.md': '---\ntitle: The guides\n---\n\nWhere to start.\n',
@@ -290,31 +290,32 @@ export const SOURCE_FIXTURES = {
     },
   },
 
-  'lockstay-shaped': {
+  'nested-readmes': {
     description:
-      "A small repository shaped like lockstay's docs: a README in every folder, nested concepts, decisions by file name, details, tables, code, and links across collections.",
+      'A small repository of nested folders: a README in every folder, nested concepts, decisions by file name, details, tables, code, and links across collections.',
     files: {
       [MANIFEST]: [
         'version: 1',
         'workspaces:',
         '  - slug: handbook',
         '    collections:',
-        '      - { slug: guide, path: docs/guide, title: Guide }',
+        '      - { slug: manual, path: docs/manual, title: Manual }',
         '      - { slug: decisions, path: docs/adr, title: Decisions, order: filename }',
         '',
       ].join('\n'),
-      'docs/guide/README.md': LOCKSTAY_GUIDE,
-      'docs/guide/concepts/README.md':
-        '# Concepts\n\nThe words: [tenancy](tenancy/README.md), [bookings](bookings.md).\n',
-      'docs/guide/concepts/bookings.md': '---\ntitle: Bookings and stays\n---\n\nA stay.\n',
-      'docs/guide/concepts/tenancy/README.md':
-        '# Tenancy\n\n## Who owns what\n\nAn organisation owns its properties.\n',
-      'docs/guide/concepts/tenancy/units.md': '# Units\n\nBack to [the guide](../../README.md).\n',
-      'docs/guide/howto/connect.md':
-        '# Connect a channel\n\nSee [ADR 2](../../adr/0002-channels.md).\n',
+      'docs/manual/README.md': MANUAL,
+      'docs/manual/concepts/README.md':
+        '# Concepts\n\nThe words: [lending](lending/README.md), [holds](holds.md).\n',
+      'docs/manual/concepts/holds.md': '---\ntitle: Holds and returns\n---\n\nA hold.\n',
+      'docs/manual/concepts/lending/README.md':
+        '# Lending\n\n## Who borrows what\n\nA branch lends its books.\n',
+      'docs/manual/concepts/lending/shelves.md':
+        '# Shelves\n\nBack to [the manual](../../README.md).\n',
+      'docs/manual/howto/join.md':
+        '# Join a catalogue\n\nSee [ADR 2](../../adr/0002-catalogues.md).\n',
       'docs/adr/README.md': '# Decisions\n\nEvery decision, by number.\n',
       'docs/adr/0001-record-decisions.md': '# 1. Record decisions\n',
-      'docs/adr/0002-channels.md': '# 2. Channels\n\nSee [the guide](../guide/README.md).\n',
+      'docs/adr/0002-catalogues.md': '# 2. Catalogues\n\nSee [the manual](../manual/README.md).\n',
       'packages/api/README.md': '# API\n',
     },
   },

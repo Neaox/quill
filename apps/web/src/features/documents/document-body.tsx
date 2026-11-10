@@ -268,7 +268,7 @@ function blocksOf(html: string, ownerDocument: Document): readonly Node[] {
 /**
  * The automatic eyebrow: the part of the documentation a page belongs to, in
  * the accent's small capitals directly above its title, as the reference
- * documentation sites do ("Overview" over "The sync map").
+ * documentation sites do ("Overview" over "The catalogue map").
  *
  * An author's eyebrow is a short paragraph written immediately before the
  * title, which the reading surface styles as one (`.prose > p:has(+ h1)` in

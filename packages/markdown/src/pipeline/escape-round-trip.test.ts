@@ -41,7 +41,7 @@ const BYTE_FOR_BYTE = [
   String.raw`An entity written out, \&amp;, stays escaped.`,
   'FINGERPRINT_VERSION, per_tenant and renderd/mod_tile.',
   'A rule numbered [R] and [S], "[Trustee] as trustee for the [name]".',
-  'On to booking.com […] or the opposite […].',
+  'On to almanac.org […] or the opposite […].',
   'An issue ([help/3625]) in parentheses.',
   '- [A1] The first source.\n- [A2] The second.',
   'Arithmetic: 2 * 3 * 4.',

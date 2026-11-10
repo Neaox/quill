@@ -91,7 +91,7 @@ describe('the slash registry', () => {
       createSlashRegistry({ environment: { labels: [] } }).findSlashItem('label'),
     ).toBeUndefined()
     expect(
-      createSlashRegistry({ environment: { labels: ['airbnb'] } }).findSlashItem('label'),
+      createSlashRegistry({ environment: { labels: ['alcove'] } }).findSlashItem('label'),
     ).toBeDefined()
     expect(createSlashRegistry().findSlashItem('document-link')).toBeUndefined()
     expect(
