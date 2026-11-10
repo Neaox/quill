@@ -11885,6 +11885,7 @@
                     "history",
                     "commitMessages",
                     "manifestEntry",
+                    "manifestPath",
                     "credential",
                     "outsideLinks",
                     "viewTemplate",
@@ -11934,6 +11935,16 @@
                       "type": "string"
                     },
                     "manifestEntry": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "manifestPath": {
                       "anyOf": [
                         {
                           "type": "string"

@@ -4811,6 +4811,7 @@ export interface paths {
                             disconnectedAt: string | null;
                             history: string;
                             manifestEntry: string | null;
+                            manifestPath: string | null;
                             outsideLinks: string;
                             remote: string;
                             sync: {
