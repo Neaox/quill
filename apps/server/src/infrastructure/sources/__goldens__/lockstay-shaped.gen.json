@@ -126,51 +126,61 @@
     "docs/adr/0001-record-decisions.md": {
       "html": "<article><h1 id=\"user-content-1-record-decisions\" aria-labelledby=\"user-content-title.1-record-decisions\"><span id=\"user-content-title.1-record-decisions\">1. Record decisions</span><a class=\"heading-anchor\" href=\"#user-content-1-record-decisions\" aria-label=\"Link to this section: 1. Record decisions\"><span aria-hidden=\"true\">#</span></a></h1></article>",
       "blockIssues": [],
+      "tableShapes": [],
       "incompleteRequiredSections": []
     },
     "docs/adr/0002-channels.md": {
       "html": "<article><h1 id=\"user-content-2-channels\" aria-labelledby=\"user-content-title.2-channels\"><span id=\"user-content-title.2-channels\">2. Channels</span><a class=\"heading-anchor\" href=\"#user-content-2-channels\" aria-label=\"Link to this section: 2. Channels\"><span aria-hidden=\"true\">#</span></a></h1>\n<p>See <a href=\"/d/{doc:docs/guide/README.md}\">the guide</a>.</p></article>",
       "blockIssues": [],
+      "tableShapes": [],
       "incompleteRequiredSections": []
     },
     "docs/adr/README.md": {
       "html": "<article><h1 id=\"user-content-decisions\" aria-labelledby=\"user-content-title.decisions\"><span id=\"user-content-title.decisions\">Decisions</span><a class=\"heading-anchor\" href=\"#user-content-decisions\" aria-label=\"Link to this section: Decisions\"><span aria-hidden=\"true\">#</span></a></h1>\n<p>Every decision, by number.</p></article>",
       "blockIssues": [],
+      "tableShapes": [],
       "incompleteRequiredSections": []
     },
     "docs/guide/README.md": {
       "html": "<article><h1 id=\"user-content-guide\" aria-labelledby=\"user-content-title.guide\"><span id=\"user-content-title.guide\">Guide</span><a class=\"heading-anchor\" href=\"#user-content-guide\" aria-label=\"Link to this section: Guide\"><span aria-hidden=\"true\">#</span></a></h1>\n<p>The guide's pages, in reading order: <a href=\"/d/{doc:docs/guide/concepts/README.md}\">concepts</a>, <a href=\"/d/{doc:docs/guide/concepts/tenancy/README.md}#user-content-who-owns-what\">tenancy</a>\nand the <a href=\"/d/{doc:docs/adr/0001-record-decisions.md}\">decisions</a>.</p>\n<details class=\"details\">\n<summary>What this guide is not</summary>\n<div class=\"details-body\">\n<p>It is not the API reference. See <a href=\"https://github.com/acme/handbook/blob/ab0d95e84d662fe00d038e86c72682e449ac094e/packages/api/README.md\" rel=\"noopener noreferrer\">the code</a>.</p>\n</div>\n</details>\n<div class=\"table-block\"><div class=\"table-scroll\" tabindex=\"0\" role=\"group\" aria-label=\"Table\"><table>\n<thead>\n<tr>\n<th scope=\"col\">Page</th>\n<th scope=\"col\">What it covers</th>\n</tr>\n</thead>\n<tbody>\n<tr>\n<td><a href=\"/d/{doc:docs/guide/concepts/README.md}\">Concepts</a></td>\n<td>The words used everywhere</td>\n</tr>\n<tr>\n<td><a href=\"/d/{doc:docs/guide/concepts/tenancy/README.md}\">Tenancy</a></td>\n<td>Who owns what</td>\n</tr>\n</tbody>\n</table></div></div>\n<div class=\"code-block\"><pre><code data-lang=\"typescript\" data-tokens=\"1:0,6,2;7,5,2;j,1,3;l,6,m;s,1,3;u,2,6\">export const answer: number = 42</code></pre></div></article>",
       "blockIssues": [],
+      "tableShapes": [],
       "incompleteRequiredSections": []
     },
     "docs/guide/concepts/README.md": {
       "html": "<article><h1 id=\"user-content-concepts\" aria-labelledby=\"user-content-title.concepts\"><span id=\"user-content-title.concepts\">Concepts</span><a class=\"heading-anchor\" href=\"#user-content-concepts\" aria-label=\"Link to this section: Concepts\"><span aria-hidden=\"true\">#</span></a></h1>\n<p>The words: <a href=\"/d/{doc:docs/guide/concepts/tenancy/README.md}\">tenancy</a>, <a href=\"/d/{doc:docs/guide/concepts/bookings.md}\">bookings</a>.</p></article>",
       "blockIssues": [],
+      "tableShapes": [],
       "incompleteRequiredSections": []
     },
     "docs/guide/concepts/bookings.md": {
       "html": "<article><p>A stay.</p></article>",
       "blockIssues": [],
+      "tableShapes": [],
       "incompleteRequiredSections": []
     },
     "docs/guide/concepts/tenancy/README.md": {
       "html": "<article><h1 id=\"user-content-tenancy\" aria-labelledby=\"user-content-title.tenancy\"><span id=\"user-content-title.tenancy\">Tenancy</span><a class=\"heading-anchor\" href=\"#user-content-tenancy\" aria-label=\"Link to this section: Tenancy\"><span aria-hidden=\"true\">#</span></a></h1>\n<h2 id=\"user-content-who-owns-what\" aria-labelledby=\"user-content-title.who-owns-what\"><span id=\"user-content-title.who-owns-what\">Who owns what</span><a class=\"heading-anchor\" href=\"#user-content-who-owns-what\" aria-label=\"Link to this section: Who owns what\"><span aria-hidden=\"true\">#</span></a></h2>\n<p>An organisation owns its properties.</p></article>",
       "blockIssues": [],
+      "tableShapes": [],
       "incompleteRequiredSections": []
     },
     "docs/guide/concepts/tenancy/units.md": {
       "html": "<article><h1 id=\"user-content-units\" aria-labelledby=\"user-content-title.units\"><span id=\"user-content-title.units\">Units</span><a class=\"heading-anchor\" href=\"#user-content-units\" aria-label=\"Link to this section: Units\"><span aria-hidden=\"true\">#</span></a></h1>\n<p>Back to <a href=\"/d/{doc:docs/guide/README.md}\">the guide</a>.</p></article>",
       "blockIssues": [],
+      "tableShapes": [],
       "incompleteRequiredSections": []
     },
     "docs/guide/howto/.quill/folder.md": {
       "html": "<article><h1 id=\"user-content-howto\" aria-labelledby=\"user-content-title.howto\"><span id=\"user-content-title.howto\">Howto</span><a class=\"heading-anchor\" href=\"#user-content-howto\" aria-label=\"Link to this section: Howto\"><span aria-hidden=\"true\">#</span></a></h1>\n<section class=\"live-block child-pages\" data-live-block=\"children\" data-live-key=\"children?depth=1&#x26;sort=manual&#x26;excerpts\" aria-label=\"Child pages\"><p class=\"child-pages-fallback\">The pages under this one are listed here.</p></section></article>",
       "blockIssues": [],
+      "tableShapes": [],
       "incompleteRequiredSections": []
     },
     "docs/guide/howto/connect.md": {
       "html": "<article><h1 id=\"user-content-connect-a-channel\" aria-labelledby=\"user-content-title.connect-a-channel\"><span id=\"user-content-title.connect-a-channel\">Connect a channel</span><a class=\"heading-anchor\" href=\"#user-content-connect-a-channel\" aria-label=\"Link to this section: Connect a channel\"><span aria-hidden=\"true\">#</span></a></h1>\n<p>See <a href=\"/d/{doc:docs/adr/0002-channels.md}\">ADR 2</a>.</p></article>",
       "blockIssues": [],
+      "tableShapes": [],
       "incompleteRequiredSections": []
     }
   }

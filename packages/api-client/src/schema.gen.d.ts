@@ -1465,7 +1465,7 @@ export interface paths {
                             };
                             health: {
                                 detail?: string;
-                                kind: "no-owner" | "review-overdue" | "required-section-empty" | "broken-link" | "block-issue";
+                                kind: "no-owner" | "review-overdue" | "required-section-empty" | "broken-link" | "block-issue" | "table-shape";
                             }[];
                             lastPublished: {
                                 /** Format: date-time */
@@ -5455,6 +5455,7 @@ export interface components {
                         "--palette-code-background"?: string;
                         "--palette-danger"?: string;
                         "--palette-danger-hover"?: string;
+                        "--palette-danger-ink"?: string;
                         "--palette-danger-subtle"?: string;
                         "--palette-foreground"?: string;
                         "--palette-muted"?: string;
@@ -5463,10 +5464,12 @@ export interface components {
                         "--palette-shadow-ambient"?: string;
                         "--palette-shadow-direct"?: string;
                         "--palette-success"?: string;
+                        "--palette-success-ink"?: string;
                         "--palette-success-subtle"?: string;
                         "--palette-surface"?: string;
                         "--palette-surface-raised"?: string;
                         "--palette-warning"?: string;
+                        "--palette-warning-ink"?: string;
                         "--palette-warning-subtle"?: string;
                         "--prose-code-size"?: string;
                         "--prose-eyebrow-size"?: string;
@@ -5564,6 +5567,7 @@ export interface components {
                         "--palette-code-background"?: string;
                         "--palette-danger"?: string;
                         "--palette-danger-hover"?: string;
+                        "--palette-danger-ink"?: string;
                         "--palette-danger-subtle"?: string;
                         "--palette-foreground"?: string;
                         "--palette-muted"?: string;
@@ -5572,10 +5576,12 @@ export interface components {
                         "--palette-shadow-ambient"?: string;
                         "--palette-shadow-direct"?: string;
                         "--palette-success"?: string;
+                        "--palette-success-ink"?: string;
                         "--palette-success-subtle"?: string;
                         "--palette-surface"?: string;
                         "--palette-surface-raised"?: string;
                         "--palette-warning"?: string;
+                        "--palette-warning-ink"?: string;
                         "--palette-warning-subtle"?: string;
                         "--prose-code-size"?: string;
                         "--prose-eyebrow-size"?: string;
@@ -5673,6 +5679,7 @@ export interface components {
                         "--palette-code-background"?: string;
                         "--palette-danger"?: string;
                         "--palette-danger-hover"?: string;
+                        "--palette-danger-ink"?: string;
                         "--palette-danger-subtle"?: string;
                         "--palette-foreground"?: string;
                         "--palette-muted"?: string;
@@ -5681,10 +5688,12 @@ export interface components {
                         "--palette-shadow-ambient"?: string;
                         "--palette-shadow-direct"?: string;
                         "--palette-success"?: string;
+                        "--palette-success-ink"?: string;
                         "--palette-success-subtle"?: string;
                         "--palette-surface"?: string;
                         "--palette-surface-raised"?: string;
                         "--palette-warning"?: string;
+                        "--palette-warning-ink"?: string;
                         "--palette-warning-subtle"?: string;
                         "--prose-code-size"?: string;
                         "--prose-eyebrow-size"?: string;
@@ -6093,6 +6102,7 @@ export interface components {
                     "--palette-code-background"?: string;
                     "--palette-danger"?: string;
                     "--palette-danger-hover"?: string;
+                    "--palette-danger-ink"?: string;
                     "--palette-danger-subtle"?: string;
                     "--palette-foreground"?: string;
                     "--palette-muted"?: string;
@@ -6101,10 +6111,12 @@ export interface components {
                     "--palette-shadow-ambient"?: string;
                     "--palette-shadow-direct"?: string;
                     "--palette-success"?: string;
+                    "--palette-success-ink"?: string;
                     "--palette-success-subtle"?: string;
                     "--palette-surface"?: string;
                     "--palette-surface-raised"?: string;
                     "--palette-warning"?: string;
+                    "--palette-warning-ink"?: string;
                     "--palette-warning-subtle"?: string;
                     "--prose-code-size"?: string;
                     "--prose-eyebrow-size"?: string;
@@ -6202,6 +6214,7 @@ export interface components {
                     "--palette-code-background"?: string;
                     "--palette-danger"?: string;
                     "--palette-danger-hover"?: string;
+                    "--palette-danger-ink"?: string;
                     "--palette-danger-subtle"?: string;
                     "--palette-foreground"?: string;
                     "--palette-muted"?: string;
@@ -6210,10 +6223,12 @@ export interface components {
                     "--palette-shadow-ambient"?: string;
                     "--palette-shadow-direct"?: string;
                     "--palette-success"?: string;
+                    "--palette-success-ink"?: string;
                     "--palette-success-subtle"?: string;
                     "--palette-surface"?: string;
                     "--palette-surface-raised"?: string;
                     "--palette-warning"?: string;
+                    "--palette-warning-ink"?: string;
                     "--palette-warning-subtle"?: string;
                     "--prose-code-size"?: string;
                     "--prose-eyebrow-size"?: string;
@@ -6311,6 +6326,7 @@ export interface components {
                     "--palette-code-background"?: string;
                     "--palette-danger"?: string;
                     "--palette-danger-hover"?: string;
+                    "--palette-danger-ink"?: string;
                     "--palette-danger-subtle"?: string;
                     "--palette-foreground"?: string;
                     "--palette-muted"?: string;
@@ -6319,10 +6335,12 @@ export interface components {
                     "--palette-shadow-ambient"?: string;
                     "--palette-shadow-direct"?: string;
                     "--palette-success"?: string;
+                    "--palette-success-ink"?: string;
                     "--palette-success-subtle"?: string;
                     "--palette-surface"?: string;
                     "--palette-surface-raised"?: string;
                     "--palette-warning"?: string;
+                    "--palette-warning-ink"?: string;
                     "--palette-warning-subtle"?: string;
                     "--prose-code-size"?: string;
                     "--prose-eyebrow-size"?: string;

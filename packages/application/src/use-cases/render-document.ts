@@ -118,8 +118,15 @@ import { createVersionedReader } from './versioned-reader.ts'
  *
  * Version 18 keeps the detail of a table cell that opens with a status when
  * the detail starts with a link or emphasis, where that first part was dropped.
+ *
+ * Version 19 is taken by hiding HTML comments (ADR-011, amendment "HTML
+ * comments"), opened beside this change.
+ *
+ * Version 20 draws a table row as wide as its header, as GitHub Flavored
+ * Markdown does: a short row padded with empty cells, a long one cut to the
+ * header (ADR-040, amendment "rows as wide as the header").
  */
-export const RENDER_VERSION = 18
+export const RENDER_VERSION = 20
 
 export interface RenderDocumentDependencies {
   readonly uow: UnitOfWork
@@ -174,6 +181,7 @@ const renderedReader = createVersionedReader<RenderedContent>({
   1: readBody,
   2: readBody,
   3: readBody,
+  4: readBody,
 })
 
 /**

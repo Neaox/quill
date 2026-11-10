@@ -201,6 +201,7 @@ export function createDocumentFormat(options: DocumentFormatOptions = {}): Docum
           readStrings(frontMatter[REQUIRED_SECTIONS]),
         ),
         blockIssues: [...rendered.blockIssues],
+        tableShapes: [...rendered.tableShapes],
       }
     },
 

@@ -2051,11 +2051,19 @@
                         "minLength": 1,
                         "type": "string"
                       },
+                      "--palette-success-ink": {
+                        "minLength": 1,
+                        "type": "string"
+                      },
                       "--palette-warning": {
                         "minLength": 1,
                         "type": "string"
                       },
                       "--palette-warning-subtle": {
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "--palette-warning-ink": {
                         "minLength": 1,
                         "type": "string"
                       },
@@ -2068,6 +2076,10 @@
                         "type": "string"
                       },
                       "--palette-danger-subtle": {
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "--palette-danger-ink": {
                         "minLength": 1,
                         "type": "string"
                       },
@@ -2484,11 +2496,19 @@
                         "minLength": 1,
                         "type": "string"
                       },
+                      "--palette-success-ink": {
+                        "minLength": 1,
+                        "type": "string"
+                      },
                       "--palette-warning": {
                         "minLength": 1,
                         "type": "string"
                       },
                       "--palette-warning-subtle": {
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "--palette-warning-ink": {
                         "minLength": 1,
                         "type": "string"
                       },
@@ -2501,6 +2521,10 @@
                         "type": "string"
                       },
                       "--palette-danger-subtle": {
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "--palette-danger-ink": {
                         "minLength": 1,
                         "type": "string"
                       },
@@ -2917,11 +2941,19 @@
                         "minLength": 1,
                         "type": "string"
                       },
+                      "--palette-success-ink": {
+                        "minLength": 1,
+                        "type": "string"
+                      },
                       "--palette-warning": {
                         "minLength": 1,
                         "type": "string"
                       },
                       "--palette-warning-subtle": {
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "--palette-warning-ink": {
                         "minLength": 1,
                         "type": "string"
                       },
@@ -2934,6 +2966,10 @@
                         "type": "string"
                       },
                       "--palette-danger-subtle": {
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "--palette-danger-ink": {
                         "minLength": 1,
                         "type": "string"
                       },
@@ -5526,11 +5562,19 @@
                     "minLength": 1,
                     "type": "string"
                   },
+                  "--palette-success-ink": {
+                    "minLength": 1,
+                    "type": "string"
+                  },
                   "--palette-warning": {
                     "minLength": 1,
                     "type": "string"
                   },
                   "--palette-warning-subtle": {
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "--palette-warning-ink": {
                     "minLength": 1,
                     "type": "string"
                   },
@@ -5543,6 +5587,10 @@
                     "type": "string"
                   },
                   "--palette-danger-subtle": {
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "--palette-danger-ink": {
                     "minLength": 1,
                     "type": "string"
                   },
@@ -5959,11 +6007,19 @@
                     "minLength": 1,
                     "type": "string"
                   },
+                  "--palette-success-ink": {
+                    "minLength": 1,
+                    "type": "string"
+                  },
                   "--palette-warning": {
                     "minLength": 1,
                     "type": "string"
                   },
                   "--palette-warning-subtle": {
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "--palette-warning-ink": {
                     "minLength": 1,
                     "type": "string"
                   },
@@ -5976,6 +6032,10 @@
                     "type": "string"
                   },
                   "--palette-danger-subtle": {
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "--palette-danger-ink": {
                     "minLength": 1,
                     "type": "string"
                   },
@@ -6392,11 +6452,19 @@
                     "minLength": 1,
                     "type": "string"
                   },
+                  "--palette-success-ink": {
+                    "minLength": 1,
+                    "type": "string"
+                  },
                   "--palette-warning": {
                     "minLength": 1,
                     "type": "string"
                   },
                   "--palette-warning-subtle": {
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "--palette-warning-ink": {
                     "minLength": 1,
                     "type": "string"
                   },
@@ -6409,6 +6477,10 @@
                     "type": "string"
                   },
                   "--palette-danger-subtle": {
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "--palette-danger-ink": {
                     "minLength": 1,
                     "type": "string"
                   },
@@ -12661,6 +12733,12 @@
                                 "type": "string",
                                 "enum": [
                                   "block-issue"
+                                ]
+                              },
+                              {
+                                "type": "string",
+                                "enum": [
+                                  "table-shape"
                                 ]
                               }
                             ]
