@@ -55,6 +55,8 @@ export const queryKeys = {
   workspaceSource: (workspaceId: string) => ['workspace-source', workspaceId] as const,
   /** Whether an open sourced document has moved on (ADR-061), by document id. */
   sourceFreshness: (documentId: string) => ['source-freshness', documentId] as const,
+  /** Every open document's freshness, for a live message that names a page by id alone. */
+  sourceFreshnessAll: () => ['source-freshness'] as const,
   /** Every group, with its unit path and member count (instance admin). */
   groups: () => ['groups'] as const,
   /** Who is in one group. */

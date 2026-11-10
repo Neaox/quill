@@ -67,3 +67,4 @@ Status values: `Proposed` (awaiting a spike or review), `Accepted`, `Superseded 
 | [060](0060-component-blocks.md)                       | Component blocks, and MDX as a dialect        | Accepted               |
 | [061](0061-read-only-external-git-sources.md)         | Read-only external Git sources                | Accepted               |
 | [062](0062-check-and-preview-in-the-repository.md)    | Check and preview in the repository           | Accepted               |
+| [063](0063-live-updates-over-server-sent-events.md)   | Live updates over server-sent events          | Accepted               |

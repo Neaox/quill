@@ -35,10 +35,12 @@ export function useSourceReloadOffer(options: {
   readonly readingHead: boolean
   /** The revision on screen. */
   readonly revision: string | null
+  /** The document's workspace, whose live stream says sooner when it moves (ADR-063). */
+  readonly workspaceId?: string | undefined
 }): void {
-  const { documentId, sourced, readingHead, revision } = options
+  const { documentId, sourced, readingHead, revision, workspaceId } = options
   const queryClient = useQueryClient()
-  const freshness = useSourceFreshness(documentId, sourced && readingHead)
+  const freshness = useSourceFreshness(documentId, sourced && readingHead, workspaceId)
   const pending = useRef<{
     readonly id: ToastId
     readonly settle: (outcome: 'updated' | 'current') => void
