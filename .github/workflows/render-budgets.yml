@@ -49,4 +49,8 @@ jobs:
       - if: ${{ !cancelled() }}
         run: pnpm --filter @quill/server bench:sync -- --no-pool
       - if: ${{ !cancelled() }}
+        run: pnpm --filter @quill/server bench:sync -- --jobs 4
+      - if: ${{ !cancelled() }}
+        run: pnpm --filter @quill/server bench:sync -- --jobs 2
+      - if: ${{ !cancelled() }}
         run: pnpm --filter @quill/server bench:sync -- XL
