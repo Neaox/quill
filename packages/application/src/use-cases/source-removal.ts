@@ -37,6 +37,8 @@ export interface SourceAddresses {
   /** Every path the source has had, live or archived, by path. */
   readonly paths: ReadonlyMap<string, SourcePathRow>
   readonly redirects: ReadonlyMap<string, string>
+  /** Each collection's own directory, and the collection (`SourceLayoutRecord.collectionRoots`). */
+  readonly roots: ReadonlyMap<string, string>
 }
 
 export async function readSourceAddresses(
@@ -50,6 +52,7 @@ export async function readSourceAddresses(
   return {
     paths: new Map(rows.map((row) => [row.path, row])),
     redirects: new Map(state?.layout?.redirects ?? []),
+    roots: new Map(state?.layout?.collectionRoots ?? []),
   }
 }
 
