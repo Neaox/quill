@@ -254,6 +254,8 @@ beforeAll(async () => {
 
 afterAll(async () => {
   for (const controller of opened) controller.abort()
+  // The test's own client keeps idle sockets for reuse; the server is not waited on for them.
+  harness.app.server.closeAllConnections()
   await harness.close()
   await rm(root, { recursive: true, force: true, maxRetries: 5 })
 })
