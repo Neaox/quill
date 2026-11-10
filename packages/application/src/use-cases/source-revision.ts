@@ -1,6 +1,6 @@
 import type { DocumentId, SourceCollectionOrder } from '@quill/domain'
 
-import type { DocumentFormat, ExtractedLink } from '../ports/document-format.ts'
+import type { DocumentFormat, DocumentInspection, ExtractedLink } from '../ports/document-format.ts'
 import { ExternalSourceError } from '../ports/external-source.ts'
 import type {
   ExternalSource,
@@ -94,6 +94,12 @@ export interface RevisionPlanContext {
    * and clears those it stores or removes; earlier entries are kept.
    */
   readonly refused: Map<string, RefusedSourceFile>
+  /**
+   * Inspects many documents at once, in the order given (`DocumentWork`):
+   * on a pool of threads on the server. One at a time with `format` when
+   * absent.
+   */
+  readonly inspectAll?: (markdowns: readonly string[]) => Promise<readonly DocumentInspection[]>
 }
 
 /** A file the revision stores or places, before its contents are read. */
@@ -181,8 +187,15 @@ export async function planRevisionEdits(
     context.source,
     accepted.map(({ file }) => file),
   )
-  const placed: PlacedEdit[] = []
-  for (const { file, fromPath, collectionId, placeOnly } of accepted) {
+  // Each file's text and id first, then every text inspected together, so a
+  // pool can read them at once; the edits are built in the files' order.
+  const stamped: (Wanted & {
+    readonly collectionId: CollectionId
+    readonly documentId: DocumentId
+    readonly markdown: string
+  })[] = []
+  for (const item of accepted) {
+    const { file, fromPath } = item
     const markdown = decode(context, file, contents, revision)
     if (markdown === null) {
       if (fromPath !== null) archive(fromPath)
@@ -195,9 +208,27 @@ export async function planRevisionEdits(
       (fromPath === null ? null : live(fromPath))?.documentId ??
       known?.documentId ??
       context.mintDocumentId(file.path)
-    const stamped = context.format.stampIdentity(markdown, documentId)
-    // One parse for everything the revision needs to know of the file.
-    const { view, links } = context.format.inspect(stamped)
+    stamped.push({
+      ...item,
+      documentId,
+      markdown: context.format.stampIdentity(markdown, documentId),
+    })
+  }
+  const texts = stamped.map(({ markdown }) => markdown)
+  // One parse for everything the revision needs to know of each file.
+  const inspections =
+    context.inspectAll === undefined
+      ? texts.map((text) => context.format.inspect(text))
+      : await context.inspectAll(texts)
+  const placed: PlacedEdit[] = []
+  for (const [
+    index,
+    { file, fromPath, collectionId, placeOnly, documentId, markdown },
+  ] of stamped.entries()) {
+    const inspection = inspections[index]
+    /* v8 ignore next -- an inspection answers every text it is given. */
+    if (inspection === undefined) throw new Error(`No inspection for ${file.path}.`)
+    const { view, links } = inspection
     const title = view.title ?? titleFromPath(file.path)
     const order = readOrder(view.frontMatter['order'])
     placed.push(
@@ -209,7 +240,7 @@ export async function planRevisionEdits(
             collectionId,
             path: file.path,
             fromPath,
-            markdown: stamped,
+            markdown,
             title,
             order,
             images: imagePaths(file.path, links),

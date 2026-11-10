@@ -1,0 +1,1 @@
+Changed: A workspace read from a repository syncs faster on a machine with more than one core: the server reads and renders the documents a sync writes on a small pool of threads, and renders their pages ahead of their first reader.

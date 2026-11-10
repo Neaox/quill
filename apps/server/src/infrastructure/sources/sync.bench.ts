@@ -17,6 +17,7 @@ import {
   generateSourceCorpus,
   SOURCE_CORPUS_SHAPES,
 } from '@quill/application/test-support'
+import { parseDocument } from '@quill/markdown'
 import {
   GitCliExternalSource,
   GitContentStore,
@@ -27,6 +28,7 @@ import { userId, workspaceId } from '@quill/domain'
 import { createDrawioText } from '../../extensions/drawio/drawing-text.ts'
 import { createHasher } from '../hasher.ts'
 import { createDocumentFormat } from '../markdown/document-format.ts'
+import { createDocumentWorkPool } from '../markdown/document-work-pool.ts'
 
 /**
  * ADR-062's server budgets for a sourced workspace, measured on a generated
@@ -53,12 +55,32 @@ import { createDocumentFormat } from '../markdown/document-format.ts'
  * and kept, so runs compare the same bytes.
  */
 
-/** ADR-062, section 4. XL has no server budget yet: it is measured and reported. */
-const BUDGET_MS = { L: { fetch: 4_000, sync: 10_000 }, XL: { fetch: null, sync: null } } as const
+/**
+ * ADR-062, section 4: wall time and CPU time in milliseconds, and the parser's
+ * single-thread throughput in MB a second. XL has no server budget yet: it is
+ * measured and reported. A null is reported and not held to anything.
+ */
+const BUDGETS: Readonly<
+  Record<
+    'L' | 'XL',
+    {
+      readonly fetch: { readonly wall: number | null; readonly cpu: number | null }
+      readonly sync: { readonly wall: number | null; readonly cpu: number | null }
+      readonly parseMBps: number | null
+    }
+  >
+> = {
+  L: { fetch: { wall: 4_000, cpu: null }, sync: { wall: 10_000, cpu: null }, parseMBps: null },
+  XL: { fetch: { wall: null, cpu: null }, sync: { wall: null, cpu: null }, parseMBps: null },
+}
 const RUNS = 3
 
 const name = process.argv.includes('XL') ? 'XL' : 'L'
 const budget = process.argv.includes('--budget')
+/** `--no-pool` measures the sync on one thread, as a process without the pool runs it. */
+const pool = process.argv.includes('--no-pool')
+  ? undefined
+  : createDocumentWorkPool({ extensions: createDocumentFormat().extensions ?? '' })
 const shape = SOURCE_CORPUS_SHAPES[name]
 const NOW = new Date('2026-11-11T12:00:00.000Z')
 const WORKSPACE = workspaceId('00000000-0000-4000-8000-000000000101')
@@ -220,6 +242,9 @@ async function syncOnce(url: string, cache: string): Promise<{ readonly document
     blobStore,
     drawingText: createDrawioText(),
     maxAssetBytes: 10 * 1024 * 1024,
+    ...(pool === undefined
+      ? {}
+      : { work: { pool, hasher: createHasher(), settings: createFakeSettings() } }),
   }
   const result = await syncSource(deps, { workspaceId: WORKSPACE })
   if (result.kind !== 'synced') throw new Error(`The sync ended ${result.kind}.`)
@@ -260,24 +285,49 @@ try {
     )
   }
 } finally {
+  await pool?.close()
   await rm(scratch, { recursive: true, force: true, maxRetries: 5 })
 }
 
+/** The parser's single-thread throughput over the corpus, the JIT warm: CPU time, median of three. */
+function parseThroughput(): number {
+  const corpus = generateSourceCorpus(shape)
+  const texts = [...corpus.files.values()].filter((value) => typeof value === 'string')
+  const pass = (): number => {
+    const before = process.cpuUsage()
+    for (const text of texts) parseDocument(text)
+    const used = process.cpuUsage(before)
+    return (used.user + used.system) / 1000
+  }
+  pass()
+  const ms = median([pass(), pass(), pass()])
+  return corpus.markdownBytes / 1e6 / (ms / 1000)
+}
+
 let over = false
-process.stdout.write(
-  `Sourced workspace budgets, ${name} (${documents} documents), median of ${RUNS} runs\n` +
-    'step   wall ms   cpu ms   budget ms\n',
-)
+const lines = [
+  `Sourced workspace budgets, ${name} (${documents} documents, ${pool === undefined ? 'one thread' : 'the document pool'}), median of ${RUNS} runs`,
+  'step       wall ms    cpu ms   wall budget   cpu budget',
+]
 for (const step of ['fetch', 'sync'] as const) {
   const runs = results[step]
   const wall = median(runs.map(({ wall: value }) => value))
   const cpu = median(runs.map(({ cpu: value }) => value))
-  const limit: number | null = BUDGET_MS[name][step]
-  const exceeded = limit !== null && wall > limit
+  const limits = BUDGETS[name][step]
+  const exceeded =
+    (limits.wall !== null && wall > limits.wall) || (limits.cpu !== null && cpu > limits.cpu)
   if (exceeded) over = true
-  const cells = [step.padEnd(6), Math.round(wall), Math.round(cpu), limit ?? '-'].map((cell) =>
-    String(cell).padStart(8),
+  const cells = [Math.round(wall), Math.round(cpu), limits.wall ?? '-', limits.cpu ?? '-']
+  lines.push(
+    `${step.padEnd(8)}${cells.map((cell) => String(cell).padStart(10)).join('  ')}${exceeded ? '  over' : ''}`,
   )
-  process.stdout.write(`${cells.join(' ')}${exceeded ? '  over' : ''}\n`)
 }
+const throughput = parseThroughput()
+const floor = BUDGETS[name].parseMBps
+const slow = floor !== null && throughput < floor
+if (slow) over = true
+lines.push(
+  `parse, one thread: ${throughput.toFixed(2)} MB/s (budget ${floor === null ? '-' : `at least ${floor}`})${slow ? '  under' : ''}`,
+)
+process.stdout.write(`${lines.join('\n')}\n`)
 if (budget && over) process.exitCode = 1

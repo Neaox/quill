@@ -29,6 +29,7 @@ import { createExternalSourceProvider } from './infrastructure/sources/external-
 import { createPostgresSourceSyncLock } from './infrastructure/sources/source-sync-lock.ts'
 import { runMigrations } from './infrastructure/db/migrator.ts'
 import { createDocumentFormat } from './infrastructure/markdown/document-format.ts'
+import { createDocumentWorkPool } from './infrastructure/markdown/document-work-pool.ts'
 import { CHILD_PAGES_CACHE_TTL_MS, createChildPagesCache } from './child-pages/cache.ts'
 import { subscribeChildPagesInvalidation } from './child-pages/invalidation.ts'
 import { createOpenWebClient } from './infrastructure/http/open-web-client.ts'
@@ -214,6 +215,8 @@ if (blobStore instanceof FilesystemBlobStore) {
   if (swept > 0) process.stdout.write(`Swept ${swept} abandoned upload(s) from the blob store\n`)
 }
 const format = createDocumentFormat()
+// The sync's inspections and renders, on threads of their own (ADR-062, step 3).
+const documentWork = createDocumentWorkPool({ extensions: format.extensions ?? '' })
 const rateLimiter = createRateLimiter({ clock, config: config.rateLimit })
 const oidcRateLimiter = createRateLimiter({ clock, config: config.oidcRateLimit })
 // Its own budget, flat rather than backing off: see `config.attachments`.
@@ -314,6 +317,7 @@ const deps = {
   secrets,
   blobStore,
   format,
+  documentWork,
   clock,
   ids,
   hasher,

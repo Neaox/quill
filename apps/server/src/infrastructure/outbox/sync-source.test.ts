@@ -2,12 +2,14 @@ import {
   createFakeClock,
   createFakeContentStore,
   createFakeDocumentFormat,
+  createFakeHasher,
+  createFakeSettings,
   createInMemoryBlobStore,
   createFakeIdGenerator,
   createFakeTokenService,
   createInMemoryUnitOfWork,
 } from '@quill/application/test-support'
-import { ExternalSourceError } from '@quill/application'
+import { ExternalSourceError, inlineDocumentWork } from '@quill/application'
 import type { ExternalSource, SourceSyncLock } from '@quill/application'
 import { userId, workspaceId } from '@quill/domain'
 import { describe, expect, it } from 'vitest'
@@ -89,6 +91,45 @@ describe('the SourceSyncRequested consumer', () => {
     })
     await handler.handle(PAYLOAD)
     expect(workspaces).toEqual([HANDBOOK])
+  })
+
+  it('hands the sync the process’s document pool when it has one', async () => {
+    const { uow } = consumer({ withLock: async () => ({ kind: 'busy' }) })
+    const asked: string[] = []
+    const format = createFakeDocumentFormat()
+    const handler = createSyncSourceConsumer({
+      uow,
+      format,
+      clock: createFakeClock(NOW),
+      ids: createFakeIdGenerator(),
+      tokens: createFakeTokenService(),
+      shareLinkPolicy: { allowed: () => true },
+      blobStore: createInMemoryBlobStore(),
+      drawingText: { read: async () => null },
+      config: { attachments: { maxBytes: 1024 } },
+      documentWork: inlineDocumentWork(format),
+      hasher: createFakeHasher(),
+      settings: createFakeSettings(),
+      sourceSync: {
+        contentStore: createFakeContentStore(),
+        sources: {
+          forWorkspace: async () => {
+            asked.push('source')
+            return null
+          },
+          withDraft: async () => {
+            throw new Error('Not asked for in a sync.')
+          },
+        },
+        lock: {
+          withLock: async (_, work) => ({ kind: 'ran', value: await work() }),
+          isHeld: async () => false,
+        },
+        allowFileRemotesForTesting: false,
+      },
+    })
+    await handler.handle(PAYLOAD)
+    expect(asked).toEqual(['source'])
   })
 
   it('defers, without counting an attempt, while another sync of the source runs', async () => {

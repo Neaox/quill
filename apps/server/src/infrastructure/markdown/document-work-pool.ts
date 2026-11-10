@@ -1,0 +1,227 @@
+import { availableParallelism } from 'node:os'
+import { Worker } from 'node:worker_threads'
+
+import type { DocumentInspection, DocumentWork, RenderedContent } from '@quill/application'
+
+import type { DocumentTask } from './document-work-worker.ts'
+
+/**
+ * The document work of ADR-062, step 3, on a pool of worker threads: a
+ * sync's inspections and renders, many at once, so its wall time is not one
+ * thread's CPU time.
+ *
+ * - **Bounded.** At most `size` threads (by default one fewer than the
+ *   machine's cores, and no more than four), each with a hard heap cap.
+ *   Threads start when there is work and stop after `idleMs` without any.
+ * - **Deterministic.** Each batch's answers are in the order of its inputs,
+ *   whichever thread answered and whenever. The largest items are handed out
+ *   first, so one long document does not start last.
+ * - **One renderer.** Each thread builds the format as the server does, and
+ *   its extension signature must equal the server's, or the pool refuses it:
+ *   a body rendered by another renderer would be cached under the wrong key.
+ * - **A crash is retried once.** A thread that dies (out of memory, say)
+ *   is replaced, and the item it held is tried once more on a fresh thread.
+ *   An item that kills a second thread fails its batch; an item whose render
+ *   throws fails its batch at once, as it would on the calling thread.
+ */
+
+export interface DocumentWorkPoolOptions {
+  /** The extension signature of the format the server renders with (`DocumentFormat.extensions`). */
+  readonly extensions: string
+  readonly size?: number
+  /** A thread's old-generation heap cap, in megabytes. */
+  readonly maxHeapMb?: number
+  readonly idleMs?: number
+  /** Another thread's module, and what it is started with. Tests only. */
+  readonly worker?: { readonly url: URL; readonly data?: unknown }
+}
+
+export interface DocumentWorkPool extends DocumentWork {
+  /** Stops every thread; work asked for afterwards starts them again. */
+  close(): Promise<void>
+}
+
+const WORKER = new URL('./document-work-worker.ts', import.meta.url)
+
+/** One fewer than the cores, between one and four: four was as fast as eight, with half the memory. */
+export function defaultPoolSize(): number {
+  return Math.max(1, Math.min(availableParallelism() - 1, 4))
+}
+
+type Answer = { readonly value: unknown } | { readonly error: string }
+
+interface Job {
+  readonly task: DocumentTask
+  readonly weight: number
+  readonly settle: (answer: Answer | 'crashed') => void
+  attempts: number
+}
+
+interface Thread {
+  readonly worker: Worker
+  readonly ready: Promise<void>
+  job: Job | null
+}
+
+export function createDocumentWorkPool(options: DocumentWorkPoolOptions): DocumentWorkPool {
+  const size = options.size ?? defaultPoolSize()
+  const maxHeapMb = options.maxHeapMb ?? 512
+  const idleMs = options.idleMs ?? 30_000
+  const threads = new Set<Thread>()
+  const queue: Job[] = []
+  let nextId = 0
+  let idle: ReturnType<typeof setTimeout> | undefined
+
+  const start = (): Thread => {
+    const worker = new Worker(options.worker?.url ?? WORKER, {
+      resourceLimits: { maxOldGenerationSizeMb: maxHeapMb },
+      workerData: options.worker?.data,
+    })
+    let thread: Thread
+    // A thread's first message names the extensions its renderer has.
+    const ready = new Promise<void>((resolve, reject) => {
+      worker.once('message', (message: { readonly ready?: string }) => {
+        if (message.ready === options.extensions) resolve()
+        else reject(new Error('A document worker renders with other extensions than the server.'))
+      })
+    })
+    thread = { worker, ready, job: null }
+    worker.on(
+      'message',
+      (message: { readonly id?: number; readonly value?: unknown; readonly error?: string }) => {
+        const { job } = thread
+        if (job === null || message.id !== job.task.id) return
+        thread.job = null
+        job.settle(
+          message.error === undefined ? { value: message.value } : { error: message.error },
+        )
+        dispatch()
+      },
+    )
+    const lost = () => {
+      threads.delete(thread)
+      const { job } = thread
+      thread.job = null
+      if (job !== null) job.settle('crashed')
+      dispatch()
+    }
+    worker.on('error', lost)
+    worker.on('exit', lost)
+    threads.add(thread)
+    return thread
+  }
+
+  const dispatch = (): void => {
+    if (idle !== undefined) clearTimeout(idle)
+    while (queue.length > 0) {
+      let free = [...threads].find((thread) => thread.job === null)
+      if (free === undefined && threads.size < size) free = start()
+      if (free === undefined) return
+      const job = queue.shift()
+      /* v8 ignore next -- the loop runs only while the queue holds a job. */
+      if (job === undefined) return
+      const thread = free
+      thread.job = job
+      thread.ready.then(
+        // A worker thread's port, not a window: there is no origin to name.
+        // oxlint-disable-next-line unicorn/require-post-message-target-origin
+        () => thread.worker.postMessage(job.task),
+        () => {
+          thread.job = null
+          job.settle({ error: 'A document worker renders with other extensions than the server.' })
+          void thread.worker.terminate()
+        },
+      )
+    }
+    if ([...threads].every((thread) => thread.job === null)) {
+      idle = setTimeout(() => void close(), idleMs)
+      idle.unref()
+    }
+  }
+
+  /** Runs tasks across the threads; answers in the tasks' order, each checked to be what it claims. */
+  const run = <T>(
+    tasks: readonly DocumentTask[],
+    accept: (value: unknown) => value is T,
+  ): Promise<readonly T[]> =>
+    new Promise((resolve, reject) => {
+      const answers: T[] = []
+      let remaining = tasks.length
+      let failed = false
+      // Called once at most: every answer after a failure is ignored first.
+      const fail = (error: Error): void => {
+        failed = true
+        reject(error)
+      }
+      if (remaining === 0) {
+        resolve([])
+        return
+      }
+      const jobs = tasks.map((task, index): Job => {
+        const job: Job = {
+          task,
+          weight: task.kind === 'inspect' ? task.item.length : task.item.markdown.length,
+          attempts: 0,
+          settle: (answer) => {
+            if (failed) return
+            if (answer === 'crashed') {
+              job.attempts += 1
+              if (job.attempts < 2) queue.unshift(job)
+              else fail(new Error(`A document worker stopped twice on item ${index} of a batch.`))
+              return
+            }
+            if ('error' in answer) {
+              fail(new Error(answer.error))
+              return
+            }
+            if (!accept(answer.value)) {
+              fail(new Error(`A document worker answered item ${index} with something else.`))
+              return
+            }
+            answers[index] = answer.value
+            remaining -= 1
+            if (remaining === 0) resolve(answers)
+          },
+        }
+        return job
+      })
+      // The largest first, so the batch is not left waiting on one long item at the end.
+      queue.push(...jobs.toSorted((left, right) => right.weight - left.weight))
+      dispatch()
+    })
+
+  const close = async (): Promise<void> => {
+    if (idle !== undefined) clearTimeout(idle)
+    const stopping = [...threads].map((thread) => thread.worker.terminate())
+    threads.clear()
+    await Promise.all(stopping)
+  }
+
+  return {
+    inspect: (markdowns) =>
+      run(
+        markdowns.map((item): DocumentTask => ({ id: nextId++, kind: 'inspect', item })),
+        isInspection,
+      ),
+    render: (inputs) =>
+      run(
+        inputs.map((item): DocumentTask => ({ id: nextId++, kind: 'render', item })),
+        isRendered,
+      ),
+    close,
+  }
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null
+}
+
+/** An inspection, as far as the pool relies on its shape. */
+function isInspection(value: unknown): value is DocumentInspection {
+  return isRecord(value) && isRecord(value['view']) && Array.isArray(value['links'])
+}
+
+/** A rendered body, as far as the pool relies on its shape. */
+function isRendered(value: unknown): value is RenderedContent {
+  return isRecord(value) && typeof value['html'] === 'string'
+}

@@ -8,6 +8,7 @@ import type { ContentStore } from '../ports/content-store.ts'
 import type { BlobStore } from '../ports/blob-store.ts'
 import type { DrawingText } from '../ports/drawing-text.ts'
 import type { DocumentFormat } from '../ports/document-format.ts'
+import type { DocumentWork } from '../ports/document-work.ts'
 import { ExternalSourceError } from '../ports/external-source.ts'
 import type {
   SourceChange,
@@ -33,9 +34,11 @@ import type {
   SourceSyncFailureReason,
   SourceSyncLock,
 } from '../ports/source-sync.ts'
-import type { Clock, IdGenerator } from '../ports/system.ts'
+import type { Settings } from '../ports/settings.ts'
+import type { Clock, Hasher, IdGenerator } from '../ports/system.ts'
 import { MAX_SHORT_ID_ATTEMPTS } from './create-document.ts'
 import { namedSlug } from './document-path.ts'
+import { warmRenderedBodies } from './render-document.ts'
 import {
   collectionDeleted,
   documentMoved,
@@ -131,6 +134,19 @@ export interface SyncSourceDependencies {
   readonly drawingText: DrawingText
   /** The upload cap (`ATTACHMENT_MAX_BYTES`), which an asset is held to as well. */
   readonly maxAssetBytes: number
+  /**
+   * Where reading and rendering the documents a sync writes is done, many at
+   * once (ADR-062, step 3): a pool of threads on the server. With it, the
+   * sync inspects a revision's documents together, and renders the bodies it
+   * wrote into the render cache before it ends, so no reader waits for them.
+   * Without it, documents are inspected one at a time and rendered by their
+   * first reader, as before.
+   */
+  readonly work?: {
+    readonly pool: DocumentWork
+    readonly hasher: Hasher
+    readonly settings: Settings
+  }
 }
 
 export interface SyncSourceCommand {
@@ -313,6 +329,7 @@ class SourceReplay {
       if (this.#resumed) await this.#reconcileAtHead(fetched)
       const broken = await this.#checkLinks(fetched)
       await this.#deps.uow.run((tx) => this.#recordSynced(tx, fetched, this.#record, broken))
+      await this.#warm()
       return { kind: 'synced', revision: fetched, published }
     } catch (error) {
       const failure = toFailure(error, this.#current)
@@ -627,6 +644,25 @@ class SourceReplay {
     return [...added, ...removed]
   }
 
+  /**
+   * The bodies of the documents this sync wrote, rendered into the cache
+   * together (`warmRenderedBodies`). The sync has already finished: a body
+   * left unrendered here is rendered by its first reader, as without a pool,
+   * so a failure here is not the sync's.
+   */
+  async #warm(): Promise<void> {
+    const { work } = this.#deps
+    if (work === undefined || this.#written.size === 0) return
+    try {
+      await warmRenderedBodies(
+        { ...this.#deps, hasher: work.hasher, settings: work.settings, work: work.pool },
+        [...this.#written],
+      )
+    } catch {
+      // Rendered on first read instead.
+    }
+  }
+
   /** The revision's document edits and folders, as `planRevisionEdits` decides them. */
   async #edits(input: {
     readonly changes: readonly SourceChange[]
@@ -643,6 +679,7 @@ class SourceReplay {
         mintDocumentId: () => this.#deps.ids.uuid() as DocumentId,
         placer: (layout) => this.#placerFor(layout),
         refused: this.#refused,
+        ...(this.#deps.work === undefined ? {} : { inspectAll: this.#deps.work.pool.inspect }),
       },
       { ...input, ids },
     )

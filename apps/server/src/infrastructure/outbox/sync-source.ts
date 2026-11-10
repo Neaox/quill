@@ -64,7 +64,10 @@ export function createSyncSourceConsumer(
     | 'shareLinkPolicy'
     | 'blobStore'
     | 'drawingText'
-  > & { readonly config: { readonly attachments: { readonly maxBytes: number } } },
+  > &
+    Partial<Pick<AppDependencies, 'documentWork' | 'hasher' | 'settings'>> & {
+      readonly config: { readonly attachments: { readonly maxBytes: number } }
+    },
 ): OutboxConsumer {
   return {
     eventType: SOURCE_SYNC_REQUESTED,
@@ -72,7 +75,21 @@ export function createSyncSourceConsumer(
       const { uow, format, clock, ids, sourceSync, blobStore, drawingText, config } = deps
       // A repository asset is held to what an upload is (ADR-061, ADR-011).
       const maxAssetBytes = config.attachments.maxBytes
-      const job = { uow, format, clock, ids, ...sourceSync, blobStore, drawingText, maxAssetBytes }
+      const { documentWork, hasher, settings } = deps
+      const job = {
+        uow,
+        format,
+        clock,
+        ids,
+        ...sourceSync,
+        blobStore,
+        drawingText,
+        maxAssetBytes,
+        // Inspected and rendered on the pool when the process has one (ADR-062, step 3).
+        ...(documentWork === undefined || hasher === undefined || settings === undefined
+          ? {}
+          : { work: { pool: documentWork, hasher, settings } }),
+      }
       const event = parseSourceSyncRequested(payload)
       if (event === null) return
       const tell = () => notifySourceSyncFailure(deps, event.workspaceId)

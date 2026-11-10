@@ -21,6 +21,7 @@ import type {
   UnitOfWork,
 } from '../ports/persistence.ts'
 import type { Settings } from '../ports/settings.ts'
+import type { DocumentWork } from '../ports/document-work.ts'
 import type { RenderedEmoji } from '../settings/emoji.ts'
 import { customEmojiByName, labelEmoji } from '../settings/emoji.ts'
 import type { Clock, Hasher, IdGenerator } from '../ports/system.ts'
@@ -280,28 +281,16 @@ export async function renderSource(
   indexLinks = true,
 ): Promise<RenderedDocument> {
   const { repos } = deps.uow
-  const { input, linked } = await renderInputFor(deps, document, source.markdown, {
-    path: source.path,
-    revision: source.revision,
-    head: revision === undefined,
-  })
-
-  const now = deps.clock.now()
-  const hash = deps.hasher.contentHash(renderDigest(input, deps.format.extensions))
-  const key = renderCacheKey(hash)
-  const entry = await repos.renderCache.find(key, now)
-  const stored = entry === null ? null : renderedReader.read(entry.content)
-  const usable = stored !== null && stored.version === RENDERED_CONTENT_VERSION
-
-  const content = usable ? stored : deps.format.render(input)
-  if (!usable) {
+  const { input, linked, hash, key, stored } = await cachedBody(deps, document, source, revision)
+  const content = stored ?? deps.format.render(input)
+  if (stored === null) {
     await repos.renderCache.save({
       key,
       documentId: document.id,
       contentHash: hash,
       renderVersion: RENDER_VERSION,
       content,
-      now,
+      now: deps.clock.now(),
     })
   }
 
@@ -310,7 +299,77 @@ export async function renderSource(
   // would otherwise be left describing the revision that was undone.
   if (indexLinks) await recordLinks(deps, document, content.links, linked, revision)
 
-  return { kind: 'rendered', revision: source.revision, key, content, cached: usable }
+  return { kind: 'rendered', revision: source.revision, key, content, cached: stored !== null }
+}
+
+/** A body's render input, its cache key, and the cached body when the cache holds a current one. */
+async function cachedBody(
+  deps: RenderDocumentDependencies,
+  document: DocumentRow,
+  source: DocumentSource,
+  revision: RevisionId | undefined,
+) {
+  const { input, linked } = await renderInputFor(deps, document, source.markdown, {
+    path: source.path,
+    revision: source.revision,
+    head: revision === undefined,
+  })
+  const hash = deps.hasher.contentHash(renderDigest(input, deps.format.extensions))
+  const key = renderCacheKey(hash)
+  const entry = await deps.uow.repos.renderCache.find(key, deps.clock.now())
+  const read = entry === null ? null : renderedReader.read(entry.content)
+  const stored = read !== null && read.version === RENDERED_CONTENT_VERSION ? read : null
+  return { input, linked, hash, key, stored }
+}
+
+/**
+ * Renders the published heads of these documents ahead of their first
+ * reader, many at once (ADR-062, step 3), and keeps each body in the render
+ * cache under exactly the key `renderSource` would compute for it, so the
+ * reader's render, and the outbox's, find it there. A body already cached
+ * is not rendered again. What the render reads (the store, titles,
+ * drawings, settings) is read here as `renderSource` reads it; only the
+ * rendering itself is handed to `work`, which may spread it over threads.
+ * Nothing about a document changes but its cached body.
+ */
+export async function warmRenderedBodies(
+  deps: RenderDocumentDependencies & { readonly work: DocumentWork },
+  documentIds: readonly DocumentId[],
+): Promise<number> {
+  const rows = await deps.uow.repos.documents.listByIds([...documentIds])
+  const misses: {
+    readonly document: DocumentRow
+    readonly input: RenderInput
+    readonly hash: string
+    readonly key: string
+  }[] = []
+  // oxlint-disable-next-line quill/no-independent-await-in-loop -- one document's reads at a time, as a reader's render reads them
+  for (const document of rows) {
+    if (document.headRevision === null) continue
+    const source = await readSource(deps, document.workspaceId, { documentId: document.id })
+    /* v8 ignore next -- a document with a head revision is stored at it. */
+    if (source === null) continue
+    const { input, hash, key, stored } = await cachedBody(deps, document, source, undefined)
+    if (stored === null) misses.push({ document, input, hash, key })
+  }
+  if (misses.length === 0) return 0
+  const contents = await deps.work.render(misses.map(({ input }) => input))
+  const now = deps.clock.now()
+  // oxlint-disable-next-line quill/no-independent-await-in-loop -- one transaction's client writes one row at a time
+  for (const [index, { document, hash, key }] of misses.entries()) {
+    const content = contents[index]
+    /* v8 ignore next -- a render answers every input it is given. */
+    if (content === undefined) throw new Error(`No body rendered for ${document.id}.`)
+    await deps.uow.repos.renderCache.save({
+      key,
+      documentId: document.id,
+      contentHash: hash,
+      renderVersion: RENDER_VERSION,
+      content,
+      now,
+    })
+  }
+  return misses.length
 }
 
 /** A render input whose drawings are known, though there may be none: what `renderInputFor` always answers. */
