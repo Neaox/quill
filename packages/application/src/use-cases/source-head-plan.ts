@@ -30,7 +30,6 @@ import {
   byCodePoint,
   compareBrokenLinks,
   planRevisionEdits,
-  relativeLinkTargets,
   takeInSourceAsset,
 } from './source-revision.ts'
 import type { PlacedEdit, WriteEdit } from './source-revision.ts'
@@ -54,7 +53,7 @@ import type { PlacedEdit, WriteEdit } from './source-revision.ts'
  */
 
 export interface SourceHeadPlanDependencies {
-  readonly format: Pick<DocumentFormat, 'stampIdentity' | 'read' | 'links'>
+  readonly format: Pick<DocumentFormat, 'stampIdentity' | 'inspect'>
   /** Where an asset's bytes go once taken in, as an upload's do. */
   readonly blobStore: BlobStore
   readonly drawingText: DrawingText
@@ -246,9 +245,7 @@ export async function planSourceHead(
     })
     .toSorted((left, right) => byCodePoint(left.path, right.path))
 
-  const found = written.flatMap((edit) =>
-    relativeLinkTargets(deps.format, edit.path, edit.markdown),
-  )
+  const found = written.flatMap((edit) => edit.links)
   const brokenLinks = (await brokenSourceLinks(source, revision, found, layout.redirects)).toSorted(
     compareBrokenLinks,
   )

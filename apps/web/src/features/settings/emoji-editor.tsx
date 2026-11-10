@@ -454,6 +454,8 @@ function EmojiAdder({ existing, readFrames, onAdd }: EmojiAdderProps) {
 
   async function add(chosen: File) {
     let entry: CustomEmoji
+    // A monochrome emoji's glyph as the server stored it, to preview before it is saved and served.
+    let markup: string | undefined
     try {
       const {
         hash,
@@ -472,8 +474,11 @@ function EmojiAdder({ existing, readFrames, onAdd }: EmojiAdderProps) {
         ...(await uploadPoster()),
         description: description.trim(),
         // A glyph's proportions are its view box's, as the server read it.
-        ...(glyph === undefined ? { width: 0, height: 0 } : { ...glyph, monochrome: true }),
+        ...(glyph === undefined
+          ? { width: 0, height: 0 }
+          : { width: glyph.width, height: glyph.height, monochrome: true }),
       }
+      markup = glyph?.glyph
     } catch {
       // The upload's own error is shown below the form.
       return
@@ -481,7 +486,16 @@ function EmojiAdder({ existing, readFrames, onAdd }: EmojiAdderProps) {
     const src = URL.createObjectURL(chosen)
     const size = entry.monochrome === true ? {} : await measure(src)
     const still = entry.poster === undefined ? undefined : posterPreview
-    onAdd({ ...entry, ...size }, { src, ...(still === undefined ? {} : { still }) })
+    onAdd(
+      { ...entry, ...size },
+      {
+        src,
+        ...(still === undefined ? {} : { still }),
+        ...(markup === undefined
+          ? {}
+          : { glyph: { width: entry.width, height: entry.height, markup } }),
+      },
+    )
     // The poster's preview now belongs to the saved emoji's.
     if (still !== undefined) current.current.preview = undefined
     letGoOfFrames()

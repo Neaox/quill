@@ -115,8 +115,11 @@ import { createVersionedReader } from './versioned-reader.ts'
  * its words; a badge shorthand names itself (`data-badge`) and draws its
  * label as inline Markdown, emoji and all; and an image whose label holds a
  * colon is described by the words written, where a directive took some.
+ *
+ * Version 18 keeps the detail of a table cell that opens with a status when
+ * the detail starts with a link or emphasis, where that first part was dropped.
  */
-export const RENDER_VERSION = 17
+export const RENDER_VERSION = 18
 
 export interface RenderDocumentDependencies {
   readonly uow: UnitOfWork

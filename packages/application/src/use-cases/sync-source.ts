@@ -255,6 +255,12 @@ class SourceReplay {
   #broken: ReadonlyMap<string, readonly BrokenSourceLink[]> | null = null
   /** The documents this sync wrote or archived, whose links, and links to which, are checked again. */
   readonly #written = new Set<DocumentId>()
+  /**
+   * The relative links of each document this sync wrote, as the revision's
+   * one inspection of it read them, so the link check need not read and
+   * parse it again (ADR-062, "parse once on the server").
+   */
+  readonly #writtenLinks = new Map<DocumentId, readonly RelativeLinkTarget[]>()
   readonly #archived = new Set<DocumentId>()
   /** Whether a revision was skipped as already recorded, whose assets are then reconciled at the head. */
   #resumed = false
@@ -752,6 +758,7 @@ class SourceReplay {
           : await this.#update(tx, existing, edit, now)
       await tx.documents.update(row.id, { headRevision: revision }, now)
       this.#written.add(edit.documentId)
+      this.#writtenLinks.set(edit.documentId, edit.links)
       if (edit.images.length > 0) {
         await tx.sourceAssetHistory.recordShown(this.#workspaceId, edit.documentId, edit.images)
       }
@@ -1209,7 +1216,13 @@ class SourceReplay {
   /** Each relative link of these documents as stored at the head, and the repository path it names. */
   async #relativeLinks(ids: ReadonlySet<DocumentId>): Promise<readonly RelativeLinkTarget[]> {
     const found: RelativeLinkTarget[] = []
-    const pending = [...ids]
+    // A document this sync wrote was inspected as it was written; only the
+    // others (listed as broken before, or linking to one it archived) are read.
+    const pending = [...ids].filter((id) => {
+      const known = this.#writtenLinks.get(id)
+      if (known !== undefined) found.push(...known)
+      return known === undefined
+    })
     while (pending.length > 0) {
       const batch = pending.splice(0, LINK_CHECK_READS)
       // oxlint-disable-next-line quill/no-independent-await-in-loop -- a batch at a time, so a large source never reads every document at once

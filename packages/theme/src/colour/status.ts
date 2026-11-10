@@ -29,11 +29,14 @@ export const STATUS_NAMES: readonly StatusName[] = ['success', 'warning', 'dange
 export type StatusRole =
   | 'success'
   | 'successSubtle'
+  | 'successInk'
   | 'warning'
   | 'warningSubtle'
+  | 'warningInk'
   | 'danger'
   | 'dangerHover'
   | 'dangerSubtle'
+  | 'dangerInk'
   | 'info'
 
 export type StatusSet = {
@@ -47,6 +50,34 @@ const BASE_CHROMA = 0.14
 const STATUS_LIGHTNESS: Record<Scheme, number> = { light: 48, dark: 72 }
 
 type StatusOverrides = NonNullable<ThemeDocument['seeds']['statusOverrides']>
+
+/**
+ * A status's ink: its colour, read as text on its own fill (`:ok[Built]`'s
+ * words on their pill), so it is held to the floor body text is held to,
+ * not the secondary floor a status mark on the page meets. Same hue and
+ * chroma as the status; only its lightness moves, away from the fill: up in
+ * dark, down in light (ADR-028, amended 2026-11-10).
+ */
+/**
+ * A little past the floor, so the colour still clears it once it is written
+ * out to the precision a stylesheet carries.
+ */
+const INK_MARGIN_LC = 1
+
+export const statusInk = (
+  role: 'successInk' | 'warningInk' | 'dangerInk',
+  status: Colour,
+  fill: Colour,
+  scheme: Scheme,
+): Derived =>
+  settleContrast(
+    role,
+    status,
+    (candidate) =>
+      contrastRatio(candidate, fill) >= CONTRAST_FLOORS.body.ratio &&
+      Math.abs(apcaLc(candidate, fill)) >= CONTRAST_FLOORS.body.lc + INK_MARGIN_LC,
+    { direction: scheme === 'dark' ? 'lighter' : 'darker' },
+  )
 
 /**
  * Keep a status hue distinguishable from the accent, moving it away as far as
@@ -142,15 +173,21 @@ export const buildStatusSet = (
   const subtle = (colour: Colour, role: StatusRole): Colour =>
     take(buildTint(role, colour, scheme, neutral, cap(role)))
 
+  const successSubtle = subtle(success, 'successSubtle')
+  const warningSubtle = subtle(warning, 'warningSubtle')
+  const dangerSubtle = subtle(danger, 'dangerSubtle')
   return {
     colours: {
       success,
-      successSubtle: subtle(success, 'successSubtle'),
+      successSubtle,
+      successInk: take(statusInk('successInk', success, successSubtle, scheme)),
       warning,
-      warningSubtle: subtle(warning, 'warningSubtle'),
+      warningSubtle,
+      warningInk: take(statusInk('warningInk', warning, warningSubtle, scheme)),
       danger,
       dangerHover: take(settleGamut('dangerHover', hoverOf(danger, scheme, cap('dangerHover')))),
-      dangerSubtle: subtle(danger, 'dangerSubtle'),
+      dangerSubtle,
+      dangerInk: take(statusInk('dangerInk', danger, dangerSubtle, scheme)),
       info: accent,
     },
     adjustments,
