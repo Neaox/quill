@@ -1279,6 +1279,7 @@ describe('createInMemoryUnitOfWork: drafts, grants, revisions, renders, and link
         slots: [],
         incompleteRequiredSections: [],
         blockIssues: [],
+        tableShapes: [],
       },
       now: NOW,
     })

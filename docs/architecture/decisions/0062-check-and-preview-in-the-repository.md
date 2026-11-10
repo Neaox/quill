@@ -54,6 +54,7 @@ A command-line tool, `quill`, with two commands, `quill check` and `quill previe
 | `asset-type-not-allowed`, `asset-type-mismatch`, `asset-empty`, `asset-malformed`, `asset-too-large` | error | An asset the upload pipeline refuses (ADR-011, ADR-047) | `RefusedSourceFile` |
 | `link-broken` | warning | A relative link to a path that is not in the repository | `BrokenSourceLink` |
 | `block-issue` | warning | An unknown block, a prop that does not fit, a block that cannot be drawn (ADR-060) | `RenderedContent.blockIssues`, the `block-issue` health signal |
+| `table-shape` | warning | A table row with more or fewer cells than its header, with its line | `RenderedContent.tableShapes`, the `table-shape` health signal |
 | `required-section-empty` | warning | A required section left empty | The `required-section-empty` health signal |
 | `version-drift` | warning | The tool's version is outside the manifest's `requires` range (section 6) | The source's admin page (section 6) |
 | `left-out` | note | A file under a collection's path that `exclude` or the layout leaves out, with the pattern | The settings preview's skipped files |

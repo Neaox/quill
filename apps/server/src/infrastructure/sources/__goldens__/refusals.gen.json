@@ -70,6 +70,7 @@
     "docs/guides/real.md": {
       "html": "<article><h1 id=\"user-content-real\" aria-labelledby=\"user-content-title.real\"><span id=\"user-content-title.real\">Real</span><a class=\"heading-anchor\" href=\"#user-content-real\" aria-label=\"Link to this section: Real\"><span aria-hidden=\"true\">#</span></a></h1>\n<p><img src=\"/api/attachments/{asset:docs/guides/inline.png}\" alt=\"Inline\"> <img src=\"/api/attachments/{asset:docs/guides/inline.png}\" alt=\"Logo\"> Empty\nLies <img src=\"/api/attachments/{asset:docs/assets/drawing.svg}\" alt=\"Drawing\"> Gone</p></article>",
       "blockIssues": [],
+      "tableShapes": [],
       "incompleteRequiredSections": []
     }
   }

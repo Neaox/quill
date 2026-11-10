@@ -13084,6 +13084,12 @@
                                 "enum": [
                                   "block-issue"
                                 ]
+                              },
+                              {
+                                "type": "string",
+                                "enum": [
+                                  "table-shape"
+                                ]
                               }
                             ]
                           },

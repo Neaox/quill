@@ -1,6 +1,7 @@
 import { BRAND } from '@quill/brand'
 
-import type { BlockIssueView } from '../ports/document-format.ts'
+import type { BlockIssueView, TableShapeView } from '../ports/document-format.ts'
+import { tableShapeWords } from './get-envelope.ts'
 import type { RefusedSourceFile } from '../ports/source-sync.ts'
 import { isSourceDocument } from './source-plan.ts'
 import { byCodePoint } from './source-revision.ts'
@@ -36,6 +37,7 @@ export type SourceProblemCode =
   | 'asset-too-large'
   | 'link-broken'
   | 'block-issue'
+  | 'table-shape'
   | 'required-section-empty'
   | 'left-out'
   | 'folder-generated'
@@ -65,6 +67,7 @@ export interface SourceReport {
 /** What a document's render reported, by its stored path. */
 export interface RenderedFindings {
   readonly blockIssues: readonly BlockIssueView[]
+  readonly tableShapes: readonly TableShapeView[]
   readonly incompleteRequiredSections: readonly string[]
 }
 
@@ -122,6 +125,7 @@ const SEVERITY: Readonly<Record<SourceProblemCode, SourceProblemSeverity>> = {
   'asset-too-large': 'error',
   'link-broken': 'warning',
   'block-issue': 'warning',
+  'table-shape': 'warning',
   'required-section-empty': 'warning',
   'left-out': 'note',
   'folder-generated': 'note',
@@ -188,6 +192,9 @@ export function reportSource(input: {
     if (findings === undefined) continue
     for (const issue of findings.blockIssues) {
       add('block-issue', document.path, issue.line ?? null, issue.message)
+    }
+    for (const shape of findings.tableShapes) {
+      add('table-shape', document.path, shape.line ?? null, tableShapeWords(shape))
     }
     for (const heading of findings.incompleteRequiredSections) {
       add('required-section-empty', document.path, null, `The section "${heading}" is empty.`)
