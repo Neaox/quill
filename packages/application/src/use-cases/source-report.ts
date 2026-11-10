@@ -1,7 +1,7 @@
 import { BRAND } from '@quill/brand'
 
 import type { BlockIssueView, TableShapeView } from '../ports/document-format.ts'
-import { tableShapeWords } from './get-envelope.ts'
+import { authorLine, tableShapeWords } from './get-envelope.ts'
 import type { RefusedSourceFile } from '../ports/source-sync.ts'
 import { isSourceDocument } from './source-plan.ts'
 import { byCodePoint } from './source-revision.ts'
@@ -191,10 +191,13 @@ export function reportSource(input: {
     const findings = input.rendered?.get(document.path)
     if (findings === undefined) continue
     for (const issue of findings.blockIssues) {
-      add('block-issue', document.path, issue.line ?? null, issue.message)
+      // A line is the one in the repository's file, which the check reads (ADR-062).
+      const line = issue.line === undefined ? null : authorLine(issue.line, document.lineOffset)
+      add('block-issue', document.path, line, issue.message)
     }
     for (const shape of findings.tableShapes) {
-      add('table-shape', document.path, shape.line ?? null, tableShapeWords(shape))
+      const line = shape.line === undefined ? null : authorLine(shape.line, document.lineOffset)
+      add('table-shape', document.path, line, tableShapeWords(shape))
     }
     for (const heading of findings.incompleteRequiredSections) {
       add('required-section-empty', document.path, null, `The section "${heading}" is empty.`)

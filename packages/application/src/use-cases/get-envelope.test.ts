@@ -301,6 +301,37 @@ describe('getEnvelope', () => {
     ])
   })
 
+  it('gives a page read from a repository its lines in the file there, not in the stamped copy', async () => {
+    const id = await draft(
+      'Guide',
+      '# Guide\n\n:::unknown-timeline\n:::\n\n| A | B |\n| - | - |\n| x |\n',
+      { owners: ['ada@example.com'] },
+    )
+    await publishDocument(deps, { documentId: id, base: null, author, sessionId: SESSION })
+    // The sync's stamp put two more lines in front of the file's text than the file has.
+    await deps.uow.repos.sourcePaths.put(
+      {
+        workspaceId: WORKSPACE,
+        path: 'docs/guide.md',
+        documentId: id,
+        archivedAt: null,
+        order: null,
+        lineOffset: 2,
+      },
+      new Date(),
+    )
+
+    const result = await getEnvelope(deps, { documentId: id, capabilities: editor })
+    expect(result.kind === 'envelope' && result.envelope.health).toEqual([
+      { kind: 'block-issue', detail: 'line 1: no block is called unknown-timeline' },
+      {
+        kind: 'table-shape',
+        detail:
+          'line 6: A table row has 1 cell but its header has 2 columns, so it is filled with empty cells.',
+      },
+    ])
+  })
+
   it('reports each table row that does not match its header, with its line', async () => {
     const id = await draft(
       'Guide',

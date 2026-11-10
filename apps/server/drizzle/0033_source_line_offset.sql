@@ -1,0 +1,1 @@
+ALTER TABLE "source_path_map" ADD COLUMN "line_offset" integer;

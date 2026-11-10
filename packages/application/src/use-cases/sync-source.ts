@@ -715,6 +715,7 @@ class SourceReplay {
           documentId: edit.documentId,
           archivedAt: null,
           order: edit.order,
+          lineOffset: edit.lineOffset,
         },
         now,
       )
@@ -740,6 +741,7 @@ class SourceReplay {
           documentId: edit.documentId,
           archivedAt: now,
           order: paths.get(edit.path)?.order ?? null,
+          lineOffset: paths.get(edit.path)?.lineOffset,
         },
         now,
       )
@@ -767,6 +769,7 @@ class SourceReplay {
           documentId: edit.documentId,
           archivedAt: null,
           order: edit.order,
+          lineOffset: edit.lineOffset,
         },
         now,
       )
