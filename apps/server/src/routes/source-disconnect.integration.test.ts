@@ -195,6 +195,15 @@ describe('disconnecting a source', () => {
     })
   })
 
+  it('waits for a running sync rather than racing it', async () => {
+    const held = await harness.deps.sourceSync.lock.withLock(toWorkspaceId(workspace), () =>
+      disconnect(),
+    )
+    if (held.kind !== 'ran') throw new Error('the lock was not free')
+    expect(held.value.statusCode).toBe(409)
+    expect(held.value.json()).toMatchObject({ error: { code: 'source_sync_running' } })
+  })
+
   it('makes the workspace native, and keeps the source as a record of where it came from', async () => {
     // A sync asked for before the disconnection, still waiting in the outbox when it lands.
     expect((await inject('POST', `/api/workspaces/${workspace}/source/sync`)).statusCode).toBe(202)
