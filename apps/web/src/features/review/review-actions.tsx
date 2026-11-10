@@ -8,12 +8,13 @@ import { useReview } from '../../lib/api/index.ts'
 import { MountOnFirstOpen } from '../../lib/mount-on-first-open.tsx'
 import { comparisonLink } from '../../lib/routing/document-reference.ts'
 import { summariseReview } from './review-summary.ts'
+import { importOnDemand } from '../../lib/on-demand-imports.ts'
 
 const RequestReviewDialog = lazy(async () => ({
-  default: (await import('./request-review-dialog.tsx')).RequestReviewDialog,
+  default: (await importOnDemand(() => import('./request-review-dialog.tsx'))).RequestReviewDialog,
 }))
 const ReviewPanel = lazy(async () => ({
-  default: (await import('./review-panel.tsx')).ReviewPanel,
+  default: (await importOnDemand(() => import('./review-panel.tsx'))).ReviewPanel,
 }))
 
 export interface ReviewActionsProps {

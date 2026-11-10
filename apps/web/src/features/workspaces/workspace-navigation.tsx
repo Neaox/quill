@@ -36,6 +36,7 @@ import {
 import { RouterLink } from '../../lib/routing/router-link.tsx'
 import { useDocumentActions } from './document-actions.tsx'
 import { WorkspaceSwitcher } from './workspace-switcher.tsx'
+import { importOnDemand } from '../../lib/on-demand-imports.ts'
 
 /**
  * The column's dialogs are their own chunks (quill-plan.md section 31): a
@@ -44,8 +45,8 @@ import { WorkspaceSwitcher } from './workspace-switcher.tsx'
  * there first (`onDemand` in `@quill/ui`); once here they stay mounted, so they
  * open and close exactly as they always have.
  */
-const newDocumentDialog = onDemand(() => import('./new-document-dialog.tsx'))
-const collectionDialogs = onDemand(() => import('./collection-dialogs.tsx'))
+const newDocumentDialog = onDemand(() => importOnDemand(() => import('./new-document-dialog.tsx')))
+const collectionDialogs = onDemand(() => importOnDemand(() => import('./collection-dialogs.tsx')))
 
 export const workspaceNavigationStyles = tv({
   slots: {

@@ -3,13 +3,14 @@ import { lazy, Suspense } from 'react'
 import { BellIcon, Popover, tv } from '@quill/ui'
 
 import { useNotifications } from '../../lib/api/index.ts'
+import { importOnDemand } from '../../lib/on-demand-imports.ts'
 
 /**
  * What the panel lists is read only by somebody who opens it, so it is a chunk of its own
  * rather than part of every signed-in page (quill-plan.md section 31).
  */
 const NotificationsPanel = lazy(async () => ({
-  default: (await import('./notifications-panel.tsx')).NotificationsPanel,
+  default: (await importOnDemand(() => import('./notifications-panel.tsx'))).NotificationsPanel,
 }))
 
 export const notificationsStyles = tv({

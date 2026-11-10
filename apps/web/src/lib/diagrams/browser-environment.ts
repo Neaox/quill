@@ -1,4 +1,5 @@
 import type { DiagramEnvironment, MermaidApi } from './draw-diagrams.ts'
+import { importOnDemand } from '../on-demand-imports.ts'
 
 /**
  * The browser half of `drawDiagrams`: where Mermaid comes from, how the page's
@@ -90,7 +91,7 @@ export function createBrowserDiagrams(window: DiagramWindow, scope: Element): Di
     window.getComputedStyle(scope).getPropertyValue(name).trim()
 
   return {
-    load: async (): Promise<MermaidApi> => (await import('mermaid')).default,
+    load: async (): Promise<MermaidApi> => (await importOnDemand(() => import('mermaid'))).default,
 
     palette: () =>
       Object.fromEntries(

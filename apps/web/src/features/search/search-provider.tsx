@@ -11,6 +11,7 @@ import {
 } from 'react'
 
 import { ProgressBar } from '@quill/ui'
+import { importOnDemand } from '../../lib/on-demand-imports.ts'
 
 /**
  * Who owns the search dialog, and why it is here rather than in the workspace
@@ -29,7 +30,7 @@ import { ProgressBar } from '@quill/ui'
  * Ctrl+K lands the wait is usually already over.
  */
 
-const load = () => import('./search-dialog.tsx')
+const load = () => importOnDemand(() => import('./search-dialog.tsx'))
 
 const SearchDialog = lazy(async () => ({ default: (await load()).SearchDialog }))
 
