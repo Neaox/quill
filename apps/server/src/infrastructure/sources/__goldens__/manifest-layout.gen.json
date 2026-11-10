@@ -161,61 +161,73 @@
     "docs/adr/0001-first.md": {
       "html": "<article><h1 id=\"user-content-first-decision\" aria-labelledby=\"user-content-title.first-decision\"><span id=\"user-content-title.first-decision\">First decision</span><a class=\"heading-anchor\" href=\"#user-content-first-decision\" aria-label=\"Link to this section: First decision\"><span aria-hidden=\"true\">#</span></a></h1>\n<p><img src=\"/api/attachments/{asset:docs/diagrams/flow.png}\" alt=\"Flow\"></p></article>",
       "blockIssues": [],
+      "tableShapes": [],
       "incompleteRequiredSections": []
     },
     "docs/adr/0002-second.md": {
       "html": "<article><h1 id=\"user-content-second-decision\" aria-labelledby=\"user-content-title.second-decision\"><span id=\"user-content-title.second-decision\">Second decision</span><a class=\"heading-anchor\" href=\"#user-content-second-decision\" aria-label=\"Link to this section: Second decision\"><span aria-hidden=\"true\">#</span></a></h1></article>",
       "blockIssues": [],
+      "tableShapes": [],
       "incompleteRequiredSections": []
     },
     "docs/guides/README.md": {
       "html": "<article><h1 id=\"user-content-read-me\" aria-labelledby=\"user-content-title.read-me\"><span id=\"user-content-title.read-me\">Read me</span><a class=\"heading-anchor\" href=\"#user-content-read-me\" aria-label=\"Link to this section: Read me\"><span aria-hidden=\"true\">#</span></a></h1>\n<p>Beside an index file, an ordinary page.</p></article>",
       "blockIssues": [],
+      "tableShapes": [],
       "incompleteRequiredSections": []
     },
     "docs/guides/first.md": {
       "html": "<article><h1 id=\"user-content-first\" aria-labelledby=\"user-content-title.first\"><span id=\"user-content-title.first\">First</span><a class=\"heading-anchor\" href=\"#user-content-first\" aria-label=\"Link to this section: First\"><span aria-hidden=\"true\">#</span></a></h1></article>",
       "blockIssues": [],
+      "tableShapes": [],
       "incompleteRequiredSections": []
     },
     "docs/guides/index.md": {
       "html": "<article><p>Where to start.</p></article>",
       "blockIssues": [],
+      "tableShapes": [],
       "incompleteRequiredSections": []
     },
     "docs/guides/no-heading.md": {
       "html": "<article><p>Just words, so the file name titles it.</p></article>",
       "blockIssues": [],
+      "tableShapes": [],
       "incompleteRequiredSections": []
     },
     "docs/guides/second.md": {
       "html": "<article><h1 id=\"user-content-second\" aria-labelledby=\"user-content-title.second\"><span id=\"user-content-title.second\">Second</span><a class=\"heading-anchor\" href=\"#user-content-second\" aria-label=\"Link to this section: Second\"><span aria-hidden=\"true\">#</span></a></h1></article>",
       "blockIssues": [],
+      "tableShapes": [],
       "incompleteRequiredSections": []
     },
     "docs/guides/topics/README.md": {
       "html": "<article><h1 id=\"user-content-topics-read-me\" aria-labelledby=\"user-content-title.topics-read-me\"><span id=\"user-content-title.topics-read-me\">Topics read me</span><a class=\"heading-anchor\" href=\"#user-content-topics-read-me\" aria-label=\"Link to this section: Topics read me\"><span aria-hidden=\"true\">#</span></a></h1></article>",
       "blockIssues": [],
+      "tableShapes": [],
       "incompleteRequiredSections": []
     },
     "docs/guides/topics/index.md": {
       "html": "<article><h1 id=\"user-content-topics\" aria-labelledby=\"user-content-title.topics\"><span id=\"user-content-title.topics\">Topics</span><a class=\"heading-anchor\" href=\"#user-content-topics\" aria-label=\"Link to this section: Topics\"><span aria-hidden=\"true\">#</span></a></h1></article>",
       "blockIssues": [],
+      "tableShapes": [],
       "incompleteRequiredSections": []
     },
     "docs/plan.md": {
       "html": "<article><h1 id=\"user-content-plan\" aria-labelledby=\"user-content-title.plan\"><span id=\"user-content-title.plan\">Plan</span><a class=\"heading-anchor\" href=\"#user-content-plan\" aria-label=\"Link to this section: Plan\"><span aria-hidden=\"true\">#</span></a></h1></article>",
       "blockIssues": [],
+      "tableShapes": [],
       "incompleteRequiredSections": []
     },
     "packages/api/README.md": {
       "html": "<article><h1 id=\"user-content-the-api-package\" aria-labelledby=\"user-content-title.the-api-package\"><span id=\"user-content-title.the-api-package\">The API package</span><a class=\"heading-anchor\" href=\"#user-content-the-api-package\" aria-label=\"Link to this section: The API package\"><span aria-hidden=\"true\">#</span></a></h1></article>",
       "blockIssues": [],
+      "tableShapes": [],
       "incompleteRequiredSections": []
     },
     "packages/web/README.md": {
       "html": "<article><h1 id=\"user-content-the-web-package\" aria-labelledby=\"user-content-title.the-web-package\"><span id=\"user-content-title.the-web-package\">The web package</span><a class=\"heading-anchor\" href=\"#user-content-the-web-package\" aria-label=\"Link to this section: The web package\"><span aria-hidden=\"true\">#</span></a></h1></article>",
       "blockIssues": [],
+      "tableShapes": [],
       "incompleteRequiredSections": []
     }
   }

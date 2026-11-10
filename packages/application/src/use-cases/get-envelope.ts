@@ -48,6 +48,7 @@ export type HealthSignalKind =
   | 'required-section-empty'
   | 'broken-link'
   | 'block-issue'
+  | 'table-shape'
 
 export interface HealthSignal {
   readonly kind: HealthSignalKind
@@ -263,6 +264,18 @@ function readDate(value: unknown): Date | null {
 }
 
 /** Where a block's problem is, before what it is: "line 9: ", "lines 9, 21: ", or nothing. */
+/** What is wrong with a table row, in words: the same in the health signal and the report. */
+export function tableShapeWords(shape: {
+  readonly cells: number
+  readonly columns: number
+}): string {
+  const cells = `${shape.cells} ${shape.cells === 1 ? 'cell' : 'cells'}`
+  const columns = `${shape.columns} ${shape.columns === 1 ? 'column' : 'columns'}`
+  return shape.cells > shape.columns
+    ? `A table row has ${cells} but its header has ${columns}, so the last ${shape.cells - shape.columns === 1 ? 'is' : `${shape.cells - shape.columns} are`} not shown.`
+    : `A table row has ${cells} but its header has ${columns}, so it is filled with empty cells.`
+}
+
 function whereOf(lines: readonly number[]): string {
   if (lines.length === 0) return ''
   return `${lines.length === 1 ? 'line' : 'lines'} ${lines.join(', ')}: `
@@ -313,6 +326,16 @@ async function healthOf(
   }
   for (const [message, at] of lines) {
     signals.push({ kind: 'block-issue', detail: `${whereOf(at)}${message}` })
+  }
+
+  // A table row with more or fewer cells than its header: drawn as wide as
+  // the header (GFM), and listed so the stray or missing `|` is seen.
+  for (const shape of rendered.content.tableShapes) {
+    /* v8 ignore next -- a parsed body places every row; a tree built without positions has none. */
+    signals.push({
+      kind: 'table-shape',
+      detail: `${whereOf(shape.line === undefined ? [] : [shape.line])}${tableShapeWords(shape)}`,
+    })
   }
 
   return signals

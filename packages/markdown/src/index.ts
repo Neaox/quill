@@ -255,6 +255,7 @@ export {
 export type { RenderedDocument, RenderOptions } from './render/html.ts'
 export { renderDocument, renderHtml } from './render/html.ts'
 export type { BlockIssue } from './blocks/render.ts'
+export type { TableShape } from './render/table-block.ts'
 export type { HandlerOptions, Handlers, HighlightedCode, Highlighter } from './render/handlers.ts'
 export { createHandlers } from './render/handlers.ts'
 export type { Slugger } from './render/slug.ts'

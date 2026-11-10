@@ -1465,7 +1465,7 @@ export interface paths {
                             };
                             health: {
                                 detail?: string;
-                                kind: "no-owner" | "review-overdue" | "required-section-empty" | "broken-link" | "block-issue";
+                                kind: "no-owner" | "review-overdue" | "required-section-empty" | "broken-link" | "block-issue" | "table-shape";
                             }[];
                             lastPublished: {
                                 /** Format: date-time */

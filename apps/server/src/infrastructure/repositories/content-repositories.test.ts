@@ -52,6 +52,7 @@ const content = (html: string) => ({
   slots: [],
   incompleteRequiredSections: [],
   blockIssues: [],
+  tableShapes: [],
 })
 
 beforeAll(async () => {

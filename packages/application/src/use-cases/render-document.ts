@@ -121,8 +121,12 @@ import { createVersionedReader } from './versioned-reader.ts'
  *
  * Version 19 hides raw HTML that is only comments, as a block and inline,
  * where it was escaped to text (ADR-011, amendment "HTML comments").
+ *
+ * Version 20 draws a table row as wide as its header, as GitHub Flavored
+ * Markdown does: a short row padded with empty cells, a long one cut to the
+ * header (ADR-040, amendment "rows as wide as the header").
  */
-export const RENDER_VERSION = 19
+export const RENDER_VERSION = 20
 
 export interface RenderDocumentDependencies {
   readonly uow: UnitOfWork
@@ -177,6 +181,7 @@ const renderedReader = createVersionedReader<RenderedContent>({
   1: readBody,
   2: readBody,
   3: readBody,
+  4: readBody,
 })
 
 /**

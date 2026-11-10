@@ -1,0 +1,1 @@
+Changed: a table row with fewer cells than its header is drawn with empty cells, and one with more is drawn without the extra cells, as GitHub draws them. Each such row is listed as a "table shape" signal beside the document, with its line, so the stray or missing `|` can be fixed.
