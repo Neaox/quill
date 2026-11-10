@@ -594,6 +594,8 @@ export const sourcePathMap = pgTable(
     archivedAt: timestamp('archived_at', { withTimezone: true }),
     /** The `order` its front matter gave when last read, which its sort key is projected from. */
     frontMatterOrder: integer('front_matter_order'),
+    /** The lines its stamped id adds in front of the file's text; null until a sync records it. */
+    lineOffset: integer('line_offset'),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull(),
   },
   (table) => [

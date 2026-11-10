@@ -95,6 +95,35 @@ describe('the source path map', () => {
     expect(await paths.listByWorkspace(OTHER_WORKSPACE)).toEqual([])
   })
 
+  it('keeps the lines a stamp adds, and finds a live entry by its document', async () => {
+    await paths.put(
+      {
+        workspaceId: WORKSPACE,
+        path: 'docs/a.md',
+        documentId: A,
+        archivedAt: null,
+        order: null,
+        lineOffset: 3,
+      },
+      NOW,
+    )
+    await paths.put(
+      { workspaceId: WORKSPACE, path: 'docs/b.md', documentId: B, archivedAt: LATER, order: null },
+      NOW,
+    )
+    expect(await paths.findByDocument(WORKSPACE, A)).toEqual({
+      workspaceId: WORKSPACE,
+      path: 'docs/a.md',
+      documentId: A,
+      archivedAt: null,
+      order: null,
+      lineOffset: 3,
+    })
+    // An archived entry is where the page was, not where it is.
+    expect(await paths.findByDocument(WORKSPACE, B)).toBeNull()
+    expect(await paths.findByDocument(OTHER_WORKSPACE, A)).toBeNull()
+  })
+
   it('moves a document by forgetting its old path and writing its new one', async () => {
     await paths.put(
       { workspaceId: WORKSPACE, path: 'docs/a.md', documentId: A, archivedAt: null, order: null },

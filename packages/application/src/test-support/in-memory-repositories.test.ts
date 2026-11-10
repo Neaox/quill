@@ -1706,3 +1706,26 @@ describe('createInMemoryUnitOfWork: the order review requests are found in', () 
     expect((await uow.repos.reviews.findLatestForDocument(DOC_1))?.id).toBe('c')
   })
 })
+
+describe('createInMemoryUnitOfWork: source path map', () => {
+  it('finds the live entry of a document in its own workspace only', async () => {
+    const uow = createInMemoryUnitOfWork()
+    const at = new Date('2026-01-01T00:00:00.000Z')
+    const entry = (path: string, archivedAt: Date | null, document = DOC_1) => ({
+      workspaceId: WORKSPACE_1,
+      path,
+      documentId: document,
+      archivedAt,
+      order: null,
+    })
+    await uow.repos.sourcePaths.put(entry('docs/old.md', at), at)
+    await uow.repos.sourcePaths.put(entry('docs/other.md', null, NO_LOCK_DOC), at)
+    expect(await uow.repos.sourcePaths.findByDocument(WORKSPACE_1, DOC_1)).toBeNull()
+    await uow.repos.sourcePaths.put({ ...entry('docs/new.md', null), lineOffset: 3 }, at)
+    expect(await uow.repos.sourcePaths.findByDocument(WORKSPACE_1, DOC_1)).toMatchObject({
+      path: 'docs/new.md',
+      lineOffset: 3,
+    })
+    expect(await uow.repos.sourcePaths.findByDocument(NOPE_WORKSPACE, DOC_1)).toBeNull()
+  })
+})

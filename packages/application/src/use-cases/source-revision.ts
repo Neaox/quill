@@ -58,6 +58,8 @@ export type DocumentEdit =
       readonly markdown: string
       readonly title: string
       readonly order: number | null
+      /** The lines its stamped id adds in front of the repository's text (`SourcePathRow.lineOffset`). */
+      readonly lineOffset: number
       /** The repository paths its relative images point at: who may see an asset (ADR-061). */
       readonly images: readonly string[]
       /** Its relative links, and the repository path each names: what the link check reads. */
@@ -71,6 +73,7 @@ export type DocumentEdit =
       readonly path: string
       readonly title: string
       readonly order: number | null
+      readonly lineOffset: number
     }
   | { readonly kind: 'archive'; readonly documentId: DocumentId; readonly path: string }
 
@@ -196,13 +199,16 @@ export async function planRevisionEdits(
       known?.documentId ??
       context.mintDocumentId(file.path)
     const stamped = context.format.stampIdentity(markdown, documentId)
+    // The stamp only changes the front matter, so every line after it moves
+    // down by the lines the stamp added: what a reported line is mapped back by.
+    const lineOffset = lineCount(stamped) - lineCount(markdown)
     // One parse for everything the revision needs to know of the file.
     const { view, links } = context.format.inspect(stamped)
     const title = view.title ?? titleFromPath(file.path)
     const order = readOrder(view.frontMatter['order'])
     placed.push(
       placeOnly
-        ? { kind: 'place', documentId, collectionId, path: file.path, title, order }
+        ? { kind: 'place', documentId, collectionId, path: file.path, title, order, lineOffset }
         : {
             kind: 'write',
             documentId,
@@ -212,6 +218,7 @@ export async function planRevisionEdits(
             markdown: stamped,
             title,
             order,
+            lineOffset,
             images: imagePaths(file.path, links),
             links: relativeLinkTargetsOf(file.path, links),
           },
@@ -365,6 +372,7 @@ function planFolderEdits(
           path,
           title,
           order: null,
+          lineOffset: 0,
         })
       }
       continue
@@ -381,6 +389,8 @@ function planFolderEdits(
       markdown: context.format.stampIdentity(generatedFolderMarkdown(folder), documentId),
       title,
       order: null,
+      // Quill writes the whole file: there is no repository text to map back to.
+      lineOffset: 0,
       images: [],
       links: [],
     })
@@ -689,3 +699,8 @@ export function arrangeSiblings<I extends string, T extends Arrangeable<I>>(
 }
 
 export { byCodePoint }
+
+/** How many lines a text has, the last one counted whether or not it ends in a newline. */
+function lineCount(text: string): number {
+  return text.split('\n').length
+}
