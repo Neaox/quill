@@ -43,6 +43,8 @@ export interface DocumentWorkPoolOptions {
 }
 
 export interface DocumentWorkPool extends DocumentWork {
+  /** The most threads it runs at once. */
+  readonly size: number
   /** Stops every thread; work asked for afterwards starts them again. */
   close(): Promise<void>
   /** How long each thread started so far took to be ready, in milliseconds, oldest first. */
@@ -261,6 +263,7 @@ export function createDocumentWorkPool(options: DocumentWorkPoolOptions): Docume
   }
 
   return {
+    size,
     inspect: (markdowns) =>
       run(
         markdowns.map((item): DocumentTask => ({ id: nextId++, kind: 'inspect', item })),

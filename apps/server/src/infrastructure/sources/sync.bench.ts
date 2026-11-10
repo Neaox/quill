@@ -7,7 +7,7 @@ import { pathToFileURL } from 'node:url'
 
 import { BRAND } from '@quill/brand'
 import { renderDocument, SOURCE_MANIFEST_PATH, syncSource } from '@quill/application'
-import type { SyncSourceDependencies } from '@quill/application'
+import type { DocumentWork, SyncSourceDependencies } from '@quill/application'
 import {
   createFakeClock,
   createFakeIdGenerator,
@@ -49,6 +49,8 @@ import {
  * pnpm --filter @quill/server bench:sync              # L, three runs, medians
  * pnpm --filter @quill/server bench:sync -- XL        # the 5,000-file corpus
  * pnpm --filter @quill/server bench:sync -- --budget  # exit 1 when a median is over
+ * pnpm --filter @quill/server bench:sync -- --no-pool # the sync on one thread
+ * pnpm --filter @quill/server bench:sync -- --jobs 4  # a pool of four threads
  * ```
  *
  * The remote is what a forge serves: a bare repository, repacked with a
@@ -81,12 +83,34 @@ const RUNS = 3
 
 const name = process.argv.includes('XL') ? 'XL' : 'L'
 const budget = process.argv.includes('--budget')
+const jobs = process.argv.indexOf('--jobs')
 /** `--no-pool` measures the sync on one thread, as a process without the pool runs it. */
-const pool = process.argv.includes('--no-pool')
+const threads = process.argv.includes('--no-pool')
   ? undefined
-  : createDocumentWorkPool({ extensions: createDocumentFormat().extensions ?? '' })
+  : createDocumentWorkPool({
+      extensions: createDocumentFormat().extensions ?? '',
+      ...(jobs === -1 ? {} : { size: Number(process.argv[jobs + 1]) }),
+    })
+
+/** How long each run spent waiting on the pool's batches, by kind: the rest is the calling thread's. */
+const batches = { inspect: 0, render: 0 }
+async function spent<T>(kind: keyof typeof batches, work: () => Promise<T>): Promise<T> {
+  const started = performance.now()
+  try {
+    return await work()
+  } finally {
+    batches[kind] += performance.now() - started
+  }
+}
+const pool: DocumentWork | undefined =
+  threads === undefined
+    ? undefined
+    : {
+        inspect: (markdowns) => spent('inspect', () => threads.inspect(markdowns)),
+        render: (inputs) => spent('render', () => threads.render(inputs)),
+      }
 // The production path: threads load the built module, so a thread starting is not a compile.
-if (pool !== undefined && documentWorkerModule().href !== BUILT_DOCUMENT_WORKER.href) {
+if (threads !== undefined && documentWorkerModule().href !== BUILT_DOCUMENT_WORKER.href) {
   throw new Error(
     'Build the server first (pnpm --filter @quill/server build): the pool runs the built worker.',
   )
@@ -282,20 +306,24 @@ const median = (values: readonly number[]): number =>
 const url = await remote()
 const scratch = await mkdtemp(join(tmpdir(), `${BRAND.slug}-bench-run-`))
 const results: Record<'fetch' | 'sync', Timing[]> = { fetch: [], sync: [] }
+const spans: (typeof batches)[] = []
 let documents = 0
 try {
   for (let run = 0; run < RUNS; run += 1) {
     // oxlint-disable-next-line quill/no-independent-await-in-loop -- runs are measured one at a time
     results.fetch.push(await timed(() => fetchOnce(url, join(scratch, `fetch-${run}`))))
+    batches.inspect = 0
+    batches.render = 0
     // oxlint-disable-next-line quill/no-independent-await-in-loop -- as above
     results.sync.push(
       await timed(async () => {
         documents = (await syncOnce(url, join(scratch, `sync-${run}`))).documents
       }),
     )
+    spans.push({ ...batches })
   }
 } finally {
-  await pool?.close()
+  await threads?.close()
   await rm(scratch, { recursive: true, force: true, maxRetries: 5 })
 }
 
@@ -316,7 +344,7 @@ function parseThroughput(): number {
 
 let over = false
 const lines = [
-  `Sourced workspace budgets, ${name} (${documents} documents, ${pool === undefined ? 'one thread' : 'the document pool'}), median of ${RUNS} runs`,
+  `Sourced workspace budgets, ${name} (${documents} documents, ${threads === undefined ? 'one thread' : `a pool of ${threads.size} threads`}), median of ${RUNS} runs`,
   'step       wall ms    cpu ms   wall budget   cpu budget',
 ]
 for (const step of ['fetch', 'sync'] as const) {
@@ -339,9 +367,13 @@ if (slow) over = true
 lines.push(
   `parse, one thread: ${throughput.toFixed(2)} MB/s (budget ${floor === null ? '-' : `at least ${floor}`})${slow ? '  under' : ''}`,
 )
-if (pool !== undefined) {
-  const starts = pool.startups()
+if (threads !== undefined) {
+  const starts = threads.startups()
+  const inspect = median(spans.map((span) => span.inspect))
+  const render = median(spans.map((span) => span.render))
+  const wall = median(results.sync.map((run) => run.wall))
   lines.push(
+    `sync on the pool: inspect ${Math.round(inspect)} ms, render ${Math.round(render)} ms; the rest, on the calling thread: ${Math.round(wall - inspect - render)} ms`,
     `worker start, built module: median ${Math.round(median(starts))} ms, longest ${Math.round(Math.max(0, ...starts))} ms, ${starts.length} starts`,
   )
 }

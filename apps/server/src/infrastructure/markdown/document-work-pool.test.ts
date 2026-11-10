@@ -105,6 +105,7 @@ describe('the document work pool', () => {
   }, 60_000)
 
   it('sizes itself to the machine, between one thread and four', () => {
+    expect(pool({ size: 2 }).size).toBe(2)
     expect(defaultPoolSize()).toBeGreaterThanOrEqual(1)
     expect(defaultPoolSize()).toBeLessThanOrEqual(4)
   })
