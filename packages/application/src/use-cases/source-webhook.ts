@@ -114,7 +114,9 @@ export async function receiveSourceWebhook(
   delivery: SourceWebhookDelivery,
 ): Promise<SourceWebhookResult> {
   const workspaceId = delivery.workspaceId as WorkspaceId
-  const source = await deps.uow.repos.workspaceSources.find(workspaceId)
+  const found = await deps.uow.repos.workspaceSources.find(workspaceId)
+  // A disconnected source is answered as one that does not exist.
+  const source = found?.disconnectedAt === null ? found : null
   const secretName = source?.webhookSecretName ?? null
   const secret = secretName === null ? null : await getSecret(deps, secretName)
   const key = secret?.kind === 'secret' ? secret.value : null

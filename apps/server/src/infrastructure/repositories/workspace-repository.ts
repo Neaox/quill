@@ -1,7 +1,7 @@
 import { eq } from 'drizzle-orm'
 
 import type { UnitId, WorkspaceRepository, WorkspaceRow } from '@quill/application'
-import { NATIVE_ORIGIN, SOURCED_ORIGIN } from '@quill/domain'
+import { DISCONNECTED_ORIGIN, NATIVE_ORIGIN, SOURCED_ORIGIN } from '@quill/domain'
 import type { SQL } from 'drizzle-orm'
 import type { WorkspaceId } from '@quill/domain'
 
@@ -10,11 +10,19 @@ import type { DrizzleClient } from '../db/types.ts'
 import { requireRow } from '../db/rows.ts'
 
 /**
- * A workspace is sourced exactly when it has a stored source (ADR-061), so its
- * origin is read in the same query as the row: the authorizer and the
- * refusing content store ask for it on every request.
+ * A workspace is sourced exactly when it has a stored source that was not
+ * disconnected (ADR-061), so its origin is read in the same query as the row:
+ * the authorizer and the refusing content store ask for it on every request.
  */
-type StoredWorkspace = typeof workspaces.$inferSelect & { readonly sourced: boolean }
+type StoredWorkspace = typeof workspaces.$inferSelect & {
+  readonly source: 'none' | 'connected' | 'disconnected'
+}
+
+const ORIGINS = {
+  none: NATIVE_ORIGIN,
+  connected: SOURCED_ORIGIN,
+  disconnected: DISCONNECTED_ORIGIN,
+} as const
 
 function toWorkspaceRow(row: StoredWorkspace): WorkspaceRow {
   return {
@@ -23,7 +31,7 @@ function toWorkspaceRow(row: StoredWorkspace): WorkspaceRow {
     name: row.name,
     slug: row.slug,
     createdAt: row.createdAt,
-    origin: row.sourced ? SOURCED_ORIGIN : NATIVE_ORIGIN,
+    origin: ORIGINS[row.source],
   }
 }
 
@@ -37,12 +45,16 @@ export function createWorkspaceRepository(db: DrizzleClient): WorkspaceRepositor
         slug: workspaces.slug,
         createdAt: workspaces.createdAt,
         sourceOf: workspaceSources.workspaceId,
+        disconnectedAt: workspaceSources.disconnectedAt,
       })
       .from(workspaces)
       .leftJoin(workspaceSources, eq(workspaceSources.workspaceId, workspaces.id))
       .where(where)
-    return rows.map(({ sourceOf, ...row }) =>
-      toWorkspaceRow({ ...row, sourced: sourceOf !== null }),
+    return rows.map(({ sourceOf, disconnectedAt, ...row }) =>
+      toWorkspaceRow({
+        ...row,
+        source: sourceOf === null ? 'none' : disconnectedAt === null ? 'connected' : 'disconnected',
+      }),
     )
   }
 
@@ -59,7 +71,7 @@ export function createWorkspaceRepository(db: DrizzleClient): WorkspaceRepositor
         .returning()
       // A new workspace has no source yet.
       const row = requireRow(rows[0], 'create: expected the inserted workspace row back')
-      return toWorkspaceRow({ ...row, sourced: false })
+      return toWorkspaceRow({ ...row, source: 'none' })
     },
 
     async findById(id: WorkspaceId): Promise<WorkspaceRow | null> {

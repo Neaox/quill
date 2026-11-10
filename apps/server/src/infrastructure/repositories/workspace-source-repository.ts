@@ -1,4 +1,4 @@
-import { eq } from 'drizzle-orm'
+import { and, eq, isNull } from 'drizzle-orm'
 
 import type {
   SourceCollection,
@@ -41,8 +41,21 @@ export function createWorkspaceSourceRepository(db: DrizzleClient): WorkspaceSou
       const rows = await db
         .select({ workspaceId: workspaceSources.workspaceId })
         .from(workspaceSources)
+        .where(isNull(workspaceSources.disconnectedAt))
         .orderBy(workspaceSources.workspaceId)
       return rows.map(({ workspaceId }) => workspaceId as WorkspaceId)
+    },
+
+    async disconnect(workspaceId: WorkspaceId, now: Date): Promise<void> {
+      await db
+        .update(workspaceSources)
+        .set({ disconnectedAt: now })
+        .where(
+          and(
+            eq(workspaceSources.workspaceId, workspaceId),
+            isNull(workspaceSources.disconnectedAt),
+          ),
+        )
     },
 
     async put({ now, collections, credential, ...input }): Promise<WorkspaceSourceRow> {
@@ -91,6 +104,7 @@ function toRow(row: typeof workspaceSources.$inferSelect): WorkspaceSourceRow {
     configuredBy: row.configuredBy as UserId | null,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
+    disconnectedAt: row.disconnectedAt,
   }
 }
 

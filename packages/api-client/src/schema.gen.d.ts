@@ -4229,6 +4229,7 @@ export interface paths {
                             id: string;
                             name: string;
                             origin: {
+                                disconnected?: boolean;
                                 kind: "native" | "sourced";
                             };
                             slug: string;
@@ -4273,6 +4274,7 @@ export interface paths {
                             id: string;
                             name: string;
                             origin: {
+                                disconnected?: boolean;
                                 kind: "native" | "sourced";
                             };
                             slug: string;
@@ -4318,6 +4320,7 @@ export interface paths {
                             id: string;
                             name: string;
                             origin: {
+                                disconnected?: boolean;
                                 kind: "native" | "sourced";
                             };
                             permissions: {
@@ -4389,6 +4392,7 @@ export interface paths {
                             id: string;
                             name: string;
                             origin: {
+                                disconnected?: boolean;
                                 kind: "native" | "sourced";
                             };
                             slug: string;
@@ -4623,6 +4627,7 @@ export interface paths {
                                 secretName: string;
                                 username: string;
                             } | null;
+                            disconnectedAt: string | null;
                             history: string;
                             manifestEntry: string | null;
                             outsideLinks: string;
@@ -4714,6 +4719,7 @@ export interface paths {
                                 secretName: string;
                                 username: string;
                             } | null;
+                            disconnectedAt: string | null;
                             history: string;
                             manifestEntry: string | null;
                             outsideLinks: string;
@@ -4754,6 +4760,91 @@ export interface paths {
             };
         };
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/workspaces/{id}/source/disconnect": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            branch: string;
+                            collections: {
+                                collectionId: string;
+                                name: string;
+                                path: string;
+                                slug: string;
+                            }[];
+                            commitMessages: string;
+                            credential: {
+                                secretName: string;
+                                username: string;
+                            } | null;
+                            disconnectedAt: string | null;
+                            history: string;
+                            manifestEntry: string | null;
+                            outsideLinks: string;
+                            remote: string;
+                            sync: {
+                                brokenLinks: {
+                                    path: string;
+                                    revision: string;
+                                    url: string;
+                                }[] | null;
+                                failure: {
+                                    message: string;
+                                    reason: string;
+                                    revision: string | null;
+                                } | null;
+                                /** Format: date-time */
+                                lastAttemptAt: string;
+                                lastSyncedAt: string | null;
+                                lastSyncedRevision: string | null;
+                                refused: {
+                                    path: string;
+                                    reason: string;
+                                    revision: string;
+                                }[];
+                                unknownKeys: {
+                                    key: string;
+                                    line: number | null;
+                                }[];
+                            } | null;
+                            syncing: boolean;
+                            /** Format: date-time */
+                            updatedAt: string;
+                            viewTemplate: string | null;
+                            webhookSecret: string | null;
+                        };
+                    };
+                };
+            };
+        };
         delete?: never;
         options?: never;
         head?: never;
@@ -5455,6 +5546,7 @@ export interface components {
                         "--palette-code-background"?: string;
                         "--palette-danger"?: string;
                         "--palette-danger-hover"?: string;
+                        "--palette-danger-ink"?: string;
                         "--palette-danger-subtle"?: string;
                         "--palette-foreground"?: string;
                         "--palette-muted"?: string;
@@ -5463,10 +5555,12 @@ export interface components {
                         "--palette-shadow-ambient"?: string;
                         "--palette-shadow-direct"?: string;
                         "--palette-success"?: string;
+                        "--palette-success-ink"?: string;
                         "--palette-success-subtle"?: string;
                         "--palette-surface"?: string;
                         "--palette-surface-raised"?: string;
                         "--palette-warning"?: string;
+                        "--palette-warning-ink"?: string;
                         "--palette-warning-subtle"?: string;
                         "--prose-code-size"?: string;
                         "--prose-eyebrow-size"?: string;
@@ -5564,6 +5658,7 @@ export interface components {
                         "--palette-code-background"?: string;
                         "--palette-danger"?: string;
                         "--palette-danger-hover"?: string;
+                        "--palette-danger-ink"?: string;
                         "--palette-danger-subtle"?: string;
                         "--palette-foreground"?: string;
                         "--palette-muted"?: string;
@@ -5572,10 +5667,12 @@ export interface components {
                         "--palette-shadow-ambient"?: string;
                         "--palette-shadow-direct"?: string;
                         "--palette-success"?: string;
+                        "--palette-success-ink"?: string;
                         "--palette-success-subtle"?: string;
                         "--palette-surface"?: string;
                         "--palette-surface-raised"?: string;
                         "--palette-warning"?: string;
+                        "--palette-warning-ink"?: string;
                         "--palette-warning-subtle"?: string;
                         "--prose-code-size"?: string;
                         "--prose-eyebrow-size"?: string;
@@ -5673,6 +5770,7 @@ export interface components {
                         "--palette-code-background"?: string;
                         "--palette-danger"?: string;
                         "--palette-danger-hover"?: string;
+                        "--palette-danger-ink"?: string;
                         "--palette-danger-subtle"?: string;
                         "--palette-foreground"?: string;
                         "--palette-muted"?: string;
@@ -5681,10 +5779,12 @@ export interface components {
                         "--palette-shadow-ambient"?: string;
                         "--palette-shadow-direct"?: string;
                         "--palette-success"?: string;
+                        "--palette-success-ink"?: string;
                         "--palette-success-subtle"?: string;
                         "--palette-surface"?: string;
                         "--palette-surface-raised"?: string;
                         "--palette-warning"?: string;
+                        "--palette-warning-ink"?: string;
                         "--palette-warning-subtle"?: string;
                         "--prose-code-size"?: string;
                         "--prose-eyebrow-size"?: string;
@@ -6093,6 +6193,7 @@ export interface components {
                     "--palette-code-background"?: string;
                     "--palette-danger"?: string;
                     "--palette-danger-hover"?: string;
+                    "--palette-danger-ink"?: string;
                     "--palette-danger-subtle"?: string;
                     "--palette-foreground"?: string;
                     "--palette-muted"?: string;
@@ -6101,10 +6202,12 @@ export interface components {
                     "--palette-shadow-ambient"?: string;
                     "--palette-shadow-direct"?: string;
                     "--palette-success"?: string;
+                    "--palette-success-ink"?: string;
                     "--palette-success-subtle"?: string;
                     "--palette-surface"?: string;
                     "--palette-surface-raised"?: string;
                     "--palette-warning"?: string;
+                    "--palette-warning-ink"?: string;
                     "--palette-warning-subtle"?: string;
                     "--prose-code-size"?: string;
                     "--prose-eyebrow-size"?: string;
@@ -6202,6 +6305,7 @@ export interface components {
                     "--palette-code-background"?: string;
                     "--palette-danger"?: string;
                     "--palette-danger-hover"?: string;
+                    "--palette-danger-ink"?: string;
                     "--palette-danger-subtle"?: string;
                     "--palette-foreground"?: string;
                     "--palette-muted"?: string;
@@ -6210,10 +6314,12 @@ export interface components {
                     "--palette-shadow-ambient"?: string;
                     "--palette-shadow-direct"?: string;
                     "--palette-success"?: string;
+                    "--palette-success-ink"?: string;
                     "--palette-success-subtle"?: string;
                     "--palette-surface"?: string;
                     "--palette-surface-raised"?: string;
                     "--palette-warning"?: string;
+                    "--palette-warning-ink"?: string;
                     "--palette-warning-subtle"?: string;
                     "--prose-code-size"?: string;
                     "--prose-eyebrow-size"?: string;
@@ -6311,6 +6417,7 @@ export interface components {
                     "--palette-code-background"?: string;
                     "--palette-danger"?: string;
                     "--palette-danger-hover"?: string;
+                    "--palette-danger-ink"?: string;
                     "--palette-danger-subtle"?: string;
                     "--palette-foreground"?: string;
                     "--palette-muted"?: string;
@@ -6319,10 +6426,12 @@ export interface components {
                     "--palette-shadow-ambient"?: string;
                     "--palette-shadow-direct"?: string;
                     "--palette-success"?: string;
+                    "--palette-success-ink"?: string;
                     "--palette-success-subtle"?: string;
                     "--palette-surface"?: string;
                     "--palette-surface-raised"?: string;
                     "--palette-warning"?: string;
+                    "--palette-warning-ink"?: string;
                     "--palette-warning-subtle"?: string;
                     "--prose-code-size"?: string;
                     "--prose-eyebrow-size"?: string;

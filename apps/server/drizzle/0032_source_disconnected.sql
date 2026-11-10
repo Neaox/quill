@@ -1,0 +1,1 @@
+ALTER TABLE "workspace_sources" ADD COLUMN "disconnected_at" timestamp with time zone;

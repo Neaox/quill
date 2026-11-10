@@ -29,7 +29,11 @@ export const Route = createFileRoute('/_authenticated/w/$workspaceSlug/source_/s
     )
     if (workspace.origin?.kind !== 'sourced') {
       throw redirect({
-        to: '/w/$workspaceSlug/source/connect',
+        // A disconnected workspace's settings are a record, on the repository's page.
+        to:
+          workspace.origin?.disconnected === true
+            ? '/w/$workspaceSlug/source'
+            : '/w/$workspaceSlug/source/connect',
         params: { workspaceSlug: params.workspaceSlug },
         replace: true,
       })

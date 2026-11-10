@@ -150,6 +150,34 @@ export function useConfigureSource(workspaceId: string) {
 }
 
 /**
+ * Disconnects the workspace from its repository (ADR-061, amendment of 11
+ * November 2026): it becomes native and keeps everything; the source is kept
+ * as a record. Instance administration, as connecting is.
+ */
+export function useDisconnectSource(workspaceId: string) {
+  const client = useApiClient()
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: () =>
+      request<WorkspaceSourceDto>(
+        client.POST('/api/workspaces/{id}/source/disconnect', {
+          params: { path: { id: workspaceId } },
+        }),
+      ),
+    onSuccess: async (source) => {
+      queryClient.setQueryData(queryKeys.workspaceSource(workspaceId), source)
+      // The workspace is native now: its menu, its read-only state and what it
+      // may be asked change with it, so a navigation next sees it as it is.
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: queryKeys.workspaces(), refetchType: 'all' }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.workspaceList() }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.documents() }),
+      ])
+    },
+  })
+}
+
+/**
  * Whether an open document read from a repository has moved on. Asking is
  * also what starts the check on read on the server. It asks again while the
  * tab is in front, and not at all for a document that is not sourced.

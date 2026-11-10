@@ -25,9 +25,10 @@ import type {
   SourceSyncStateRow,
   WorkspaceSourceCredential,
   WorkspaceSourceRow,
+  SourceSyncLock,
 } from '../ports/source-sync.ts'
 import type { Clock, IdGenerator } from '../ports/system.ts'
-import { sourceSyncRequested } from './events.ts'
+import { sourceDisconnected, sourceSyncRequested } from './events.ts'
 import { isSecretName } from './secrets.ts'
 
 /**
@@ -62,6 +63,7 @@ import { isSecretName } from './secrets.ts'
 export const WORKSPACE_SOURCE_AUDIT_EVENTS = {
   configured: 'workspace.source_configured',
   syncRequested: 'workspace.source_sync_requested',
+  disconnected: 'workspace.source_disconnected',
 } as const
 
 /** More collections than this is a manifest's job, not a settings form's. */
@@ -147,6 +149,11 @@ export type ConfigureWorkspaceSourceResult =
   | { readonly kind: 'configured'; readonly view: WorkspaceSourceView }
   | { readonly kind: 'not-found' }
   | { readonly kind: 'not-empty' }
+  /**
+   * Its source was disconnected: it holds documents people may have edited,
+   * which a sync would strand, so it is never connected again.
+   */
+  | { readonly kind: 'disconnected' }
   | {
       readonly kind: 'invalid'
       readonly field: WorkspaceSourceField
@@ -183,6 +190,9 @@ export async function configureWorkspaceSource(
   const valid = await validate(deps, command)
   if ('kind' in valid) return valid
 
+  if (workspace.origin.kind === 'native' && workspace.origin.disconnected === true) {
+    return { kind: 'disconnected' }
+  }
   if (workspace.origin.kind === 'native') {
     const documents = await repos.documents.listByWorkspace(command.workspaceId)
     if (documents.length > 0) return { kind: 'not-empty' }
@@ -469,7 +479,7 @@ export async function requestManualSourceSync(
   command: { readonly workspaceId: WorkspaceId; readonly requestedBy: UserId },
 ): Promise<RequestManualSourceSyncResult> {
   const source = await deps.uow.repos.workspaceSources.find(command.workspaceId)
-  if (source === null) return { kind: 'not-sourced' }
+  if (source === null || source.disconnectedAt !== null) return { kind: 'not-sourced' }
   const now = deps.clock.now()
   await deps.uow.run(async (tx) => {
     await tx.events.record(
@@ -488,4 +498,61 @@ export async function requestManualSourceSync(
     })
   })
   return { kind: 'requested' }
+}
+
+export type DisconnectWorkspaceSourceResult =
+  | { readonly kind: 'disconnected'; readonly view: WorkspaceSourceView }
+  | { readonly kind: 'not-found' }
+  /** The workspace reads from no source, or its source was already disconnected. */
+  | { readonly kind: 'not-sourced' }
+  /** A sync is running; disconnecting waits for it rather than racing its writes. */
+  | { readonly kind: 'busy' }
+
+/**
+ * Disconnecting a source (ADR-061, amendment of 11 November 2026): the
+ * workspace becomes native and keeps everything it holds.
+ *
+ * Only the source's row changes: it is marked disconnected and kept, so the
+ * stored text's relative links, removed pages' answers and links outside the
+ * source keep resolving through it. No page, revision, address, attachment or
+ * path is touched, and the repository is never written to. It is done
+ * holding the source's sync lock, so no sync is half-way through writing
+ * when the workspace becomes one people write; a sync asked for afterwards
+ * finds no source and does nothing.
+ */
+export async function disconnectWorkspaceSource(
+  deps: Pick<WorkspaceSourceDependencies, 'uow' | 'clock' | 'ids'> & {
+    readonly lock: SourceSyncLock
+  },
+  command: { readonly workspaceId: WorkspaceId; readonly disconnectedBy: UserId },
+): Promise<DisconnectWorkspaceSourceResult> {
+  const { repos } = deps.uow
+  if ((await repos.workspaces.findById(command.workspaceId)) === null) return { kind: 'not-found' }
+  const outcome = await deps.lock.withLock(command.workspaceId, async () => {
+    const source = await repos.workspaceSources.find(command.workspaceId)
+    if (source === null || source.disconnectedAt !== null) return null
+    const now = deps.clock.now()
+    await deps.uow.run(async (tx) => {
+      await tx.workspaceSources.disconnect(command.workspaceId, now)
+      await tx.events.record(
+        sourceDisconnected,
+        { workspaceId: command.workspaceId, disconnectedBy: command.disconnectedBy },
+        now,
+      )
+      await tx.audit.write({
+        id: deps.ids.uuid(),
+        type: WORKSPACE_SOURCE_AUDIT_EVENTS.disconnected,
+        actorUserId: command.disconnectedBy,
+        targetType: 'workspace',
+        targetId: command.workspaceId,
+        metadata: { remote: source.remote, branch: source.branch },
+        now,
+      })
+    })
+    return await getWorkspaceSource(deps, command.workspaceId)
+  })
+  if (outcome.kind === 'busy') return { kind: 'busy' }
+  return outcome.value === null
+    ? { kind: 'not-sourced' }
+    : { kind: 'disconnected', view: outcome.value }
 }

@@ -7,6 +7,7 @@ import {
   DOCUMENT_RENAMED,
   GRANT_CREATED,
   GRANT_REVOKED,
+  SOURCE_DISCONNECTED,
 } from '@quill/application'
 
 import type { Mailer } from '../auth/mailer.ts'
@@ -113,6 +114,13 @@ export function registerOutboxConsumers(
     createAcknowledgingConsumer(
       DOCUMENT_CREATED,
       'Nothing acts on a creation: a document with no published revision has nothing to index or render.',
+    ),
+  )
+  // A disconnection is recorded beside its audit entry; nothing acts on it yet (ADR-061).
+  jobRunner.register(
+    createAcknowledgingConsumer(
+      SOURCE_DISCONNECTED,
+      'The record that a source was disconnected; the workspace and its source row already say so.',
     ),
   )
   // The caches that depend on these are told by the bus. What is durable about

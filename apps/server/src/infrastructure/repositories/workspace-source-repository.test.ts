@@ -95,6 +95,7 @@ describe('the workspace source repository', () => {
       configuredBy: ADMIN,
       createdAt: NOW,
       updatedAt: NOW,
+      disconnectedAt: null,
     }
     expect(stored).toEqual(expected)
     expect(await sources.find(WORKSPACE)).toEqual(expected)
@@ -107,6 +108,17 @@ describe('the workspace source repository', () => {
     await sources.put({ ...settings, workspaceId: OTHER })
     expect(await sources.listWorkspaceIds()).toEqual([WORKSPACE, OTHER].toSorted())
     expect((await sources.find(WORKSPACE))?.webhookSecretName).toBe('sources/handbook-webhook')
+  })
+
+  it('keeps a disconnected source as a record, and lists it no more', async () => {
+    await sources.put(settings)
+    await sources.put({ ...settings, workspaceId: OTHER })
+    const later = new Date(NOW.getTime() + 60_000)
+    await sources.disconnect(WORKSPACE, later)
+    // Disconnecting again leaves the time it was first disconnected.
+    await sources.disconnect(WORKSPACE, new Date(later.getTime() + 60_000))
+    expect((await sources.find(WORKSPACE))?.disconnectedAt).toEqual(later)
+    expect(await sources.listWorkspaceIds()).toEqual([OTHER])
   })
 
   it('replaces the settings whole and keeps when it was first configured', async () => {

@@ -2051,11 +2051,19 @@
                         "minLength": 1,
                         "type": "string"
                       },
+                      "--palette-success-ink": {
+                        "minLength": 1,
+                        "type": "string"
+                      },
                       "--palette-warning": {
                         "minLength": 1,
                         "type": "string"
                       },
                       "--palette-warning-subtle": {
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "--palette-warning-ink": {
                         "minLength": 1,
                         "type": "string"
                       },
@@ -2068,6 +2076,10 @@
                         "type": "string"
                       },
                       "--palette-danger-subtle": {
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "--palette-danger-ink": {
                         "minLength": 1,
                         "type": "string"
                       },
@@ -2484,11 +2496,19 @@
                         "minLength": 1,
                         "type": "string"
                       },
+                      "--palette-success-ink": {
+                        "minLength": 1,
+                        "type": "string"
+                      },
                       "--palette-warning": {
                         "minLength": 1,
                         "type": "string"
                       },
                       "--palette-warning-subtle": {
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "--palette-warning-ink": {
                         "minLength": 1,
                         "type": "string"
                       },
@@ -2501,6 +2521,10 @@
                         "type": "string"
                       },
                       "--palette-danger-subtle": {
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "--palette-danger-ink": {
                         "minLength": 1,
                         "type": "string"
                       },
@@ -2917,11 +2941,19 @@
                         "minLength": 1,
                         "type": "string"
                       },
+                      "--palette-success-ink": {
+                        "minLength": 1,
+                        "type": "string"
+                      },
                       "--palette-warning": {
                         "minLength": 1,
                         "type": "string"
                       },
                       "--palette-warning-subtle": {
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "--palette-warning-ink": {
                         "minLength": 1,
                         "type": "string"
                       },
@@ -2934,6 +2966,10 @@
                         "type": "string"
                       },
                       "--palette-danger-subtle": {
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "--palette-danger-ink": {
                         "minLength": 1,
                         "type": "string"
                       },
@@ -5526,11 +5562,19 @@
                     "minLength": 1,
                     "type": "string"
                   },
+                  "--palette-success-ink": {
+                    "minLength": 1,
+                    "type": "string"
+                  },
                   "--palette-warning": {
                     "minLength": 1,
                     "type": "string"
                   },
                   "--palette-warning-subtle": {
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "--palette-warning-ink": {
                     "minLength": 1,
                     "type": "string"
                   },
@@ -5543,6 +5587,10 @@
                     "type": "string"
                   },
                   "--palette-danger-subtle": {
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "--palette-danger-ink": {
                     "minLength": 1,
                     "type": "string"
                   },
@@ -5959,11 +6007,19 @@
                     "minLength": 1,
                     "type": "string"
                   },
+                  "--palette-success-ink": {
+                    "minLength": 1,
+                    "type": "string"
+                  },
                   "--palette-warning": {
                     "minLength": 1,
                     "type": "string"
                   },
                   "--palette-warning-subtle": {
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "--palette-warning-ink": {
                     "minLength": 1,
                     "type": "string"
                   },
@@ -5976,6 +6032,10 @@
                     "type": "string"
                   },
                   "--palette-danger-subtle": {
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "--palette-danger-ink": {
                     "minLength": 1,
                     "type": "string"
                   },
@@ -6392,11 +6452,19 @@
                     "minLength": 1,
                     "type": "string"
                   },
+                  "--palette-success-ink": {
+                    "minLength": 1,
+                    "type": "string"
+                  },
                   "--palette-warning": {
                     "minLength": 1,
                     "type": "string"
                   },
                   "--palette-warning-subtle": {
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "--palette-warning-ink": {
                     "minLength": 1,
                     "type": "string"
                   },
@@ -6409,6 +6477,10 @@
                     "type": "string"
                   },
                   "--palette-danger-subtle": {
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "--palette-danger-ink": {
                     "minLength": 1,
                     "type": "string"
                   },
@@ -9390,6 +9462,9 @@
                                 ]
                               }
                             ]
+                          },
+                          "disconnected": {
+                            "type": "boolean"
                           }
                         }
                       },
@@ -9506,6 +9581,9 @@
                               ]
                             }
                           ]
+                        },
+                        "disconnected": {
+                          "type": "boolean"
                         }
                       }
                     }
@@ -9583,6 +9661,9 @@
                               ]
                             }
                           ]
+                        },
+                        "disconnected": {
+                          "type": "boolean"
                         }
                       }
                     },
@@ -9712,6 +9793,9 @@
                               ]
                             }
                           ]
+                        },
+                        "disconnected": {
+                          "type": "boolean"
                         }
                       }
                     }
@@ -10324,6 +10408,7 @@
                     "viewTemplate",
                     "webhookSecret",
                     "updatedAt",
+                    "disconnectedAt",
                     "sync",
                     "syncing"
                   ],
@@ -10428,6 +10513,17 @@
                     "updatedAt": {
                       "format": "date-time",
                       "type": "string"
+                    },
+                    "disconnectedAt": {
+                      "anyOf": [
+                        {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
                     },
                     "sync": {
                       "anyOf": [
@@ -10794,6 +10890,7 @@
                     "viewTemplate",
                     "webhookSecret",
                     "updatedAt",
+                    "disconnectedAt",
                     "sync",
                     "syncing"
                   ],
@@ -10898,6 +10995,17 @@
                     "updatedAt": {
                       "format": "date-time",
                       "type": "string"
+                    },
+                    "disconnectedAt": {
+                      "anyOf": [
+                        {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
                     },
                     "sync": {
                       "anyOf": [
@@ -11674,6 +11782,320 @@
                       }
                     }
                   ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/workspaces/{id}/source/disconnect": {
+      "post": {
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "remote",
+                    "branch",
+                    "collections",
+                    "history",
+                    "commitMessages",
+                    "manifestEntry",
+                    "credential",
+                    "outsideLinks",
+                    "viewTemplate",
+                    "webhookSecret",
+                    "updatedAt",
+                    "disconnectedAt",
+                    "sync",
+                    "syncing"
+                  ],
+                  "properties": {
+                    "remote": {
+                      "type": "string"
+                    },
+                    "branch": {
+                      "type": "string"
+                    },
+                    "collections": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "collectionId",
+                          "slug",
+                          "name",
+                          "path"
+                        ],
+                        "properties": {
+                          "collectionId": {
+                            "type": "string"
+                          },
+                          "slug": {
+                            "type": "string"
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "path": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    },
+                    "history": {
+                      "type": "string"
+                    },
+                    "commitMessages": {
+                      "type": "string"
+                    },
+                    "manifestEntry": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "credential": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "required": [
+                            "username",
+                            "secretName"
+                          ],
+                          "properties": {
+                            "username": {
+                              "minLength": 1,
+                              "maxLength": 256,
+                              "type": "string"
+                            },
+                            "secretName": {
+                              "minLength": 1,
+                              "maxLength": 200,
+                              "type": "string"
+                            }
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "outsideLinks": {
+                      "type": "string"
+                    },
+                    "viewTemplate": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "webhookSecret": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "updatedAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    },
+                    "disconnectedAt": {
+                      "anyOf": [
+                        {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "sync": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "required": [
+                            "lastSyncedRevision",
+                            "lastSyncedAt",
+                            "lastAttemptAt",
+                            "failure",
+                            "refused",
+                            "brokenLinks",
+                            "unknownKeys"
+                          ],
+                          "properties": {
+                            "lastSyncedRevision": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "lastSyncedAt": {
+                              "anyOf": [
+                                {
+                                  "format": "date-time",
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "lastAttemptAt": {
+                              "format": "date-time",
+                              "type": "string"
+                            },
+                            "failure": {
+                              "anyOf": [
+                                {
+                                  "type": "object",
+                                  "required": [
+                                    "reason",
+                                    "message",
+                                    "revision"
+                                  ],
+                                  "properties": {
+                                    "reason": {
+                                      "type": "string"
+                                    },
+                                    "message": {
+                                      "type": "string"
+                                    },
+                                    "revision": {
+                                      "anyOf": [
+                                        {
+                                          "type": "string"
+                                        },
+                                        {
+                                          "type": "null"
+                                        }
+                                      ]
+                                    }
+                                  }
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "refused": {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "required": [
+                                  "path",
+                                  "revision",
+                                  "reason"
+                                ],
+                                "properties": {
+                                  "path": {
+                                    "type": "string"
+                                  },
+                                  "revision": {
+                                    "type": "string"
+                                  },
+                                  "reason": {
+                                    "type": "string"
+                                  }
+                                }
+                              }
+                            },
+                            "brokenLinks": {
+                              "anyOf": [
+                                {
+                                  "type": "array",
+                                  "items": {
+                                    "type": "object",
+                                    "required": [
+                                      "path",
+                                      "url",
+                                      "revision"
+                                    ],
+                                    "properties": {
+                                      "path": {
+                                        "type": "string"
+                                      },
+                                      "url": {
+                                        "type": "string"
+                                      },
+                                      "revision": {
+                                        "type": "string"
+                                      }
+                                    }
+                                  }
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "unknownKeys": {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "required": [
+                                  "key",
+                                  "line"
+                                ],
+                                "properties": {
+                                  "key": {
+                                    "type": "string"
+                                  },
+                                  "line": {
+                                    "anyOf": [
+                                      {
+                                        "type": "integer"
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ]
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "syncing": {
+                      "type": "boolean"
+                    }
+                  }
                 }
               }
             }

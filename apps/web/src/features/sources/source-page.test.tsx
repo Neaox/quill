@@ -46,6 +46,7 @@ function source(overrides: Record<string, unknown> = {}) {
     viewTemplate: null,
     webhookSecret: null,
     updatedAt: '2026-11-09T08:00:00.000Z',
+    disconnectedAt: null,
     sync: SYNCED,
     syncing: false,
     ...overrides,
@@ -336,5 +337,41 @@ describe('a repository’s page', () => {
     expect(
       screen.getByText('Also: no file was left out. Broken links are checked at the next sync.'),
     ).toBeVisible()
+  })
+})
+
+describe('a disconnected repository’s page', () => {
+  it('is a read-only record of where the pages came from', async () => {
+    renderApp(
+      PATH,
+      routes(
+        source({
+          disconnectedAt: '2026-11-11T10:00:00.000Z',
+          webhookSecret: 'sources/hook',
+          sync: { ...SYNCED, brokenLinks: null },
+        }),
+      ),
+    )
+    await heading()
+    const record = screen.getByText('Disconnected').closest('div')
+    expect(record).not.toBeNull()
+    expect(screen.getByText(/Disconnected from/u)).toHaveTextContent(
+      `Disconnected from https://github.com/acme/handbook.git at ${shortRevision(HEAD)} on`,
+    )
+    expect(screen.getByText(/the commit it was disconnected at/u)).toBeVisible()
+    expect(screen.queryByText(/Broken links are checked at the next sync/u)).toBeNull()
+    expect(screen.getByRole('heading', { name: 'Settings it was read with' })).toBeVisible()
+    expect(screen.getByText('None since it was disconnected.')).toBeVisible()
+    // Nothing to do: no sync, no settings to change, no webhook to give a forge.
+    expect(screen.queryByRole('button', { name: 'Sync now' })).toBeNull()
+    expect(screen.queryByRole('link', { name: 'Change settings' })).toBeNull()
+    expect(screen.queryByRole('textbox', { name: 'GitHub webhook' })).toBeNull()
+    await expectNoAccessibilityViolations(document.body)
+  })
+
+  it('says so without a commit when nothing had synced', async () => {
+    renderApp(PATH, routes(source({ disconnectedAt: '2026-11-11T10:00:00.000Z', sync: null })))
+    await heading()
+    expect(screen.getByText(/Disconnected from/u).textContent).not.toMatch(/ at /u)
   })
 })
