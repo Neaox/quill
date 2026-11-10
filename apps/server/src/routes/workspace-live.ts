@@ -19,7 +19,8 @@ import { IdParamsSchema } from './document-schemas.ts'
  * started or ended, a page's head moved, the tree changed.
  *
  * It is opened like any other read: a session, and `view` on the workspace,
- * or the same `404` a reader without access gets everywhere (ADR-012). Each
+ * or the refusal a reader without access gets everywhere (ADR-012); and only
+ * for a workspace that reads from a repository (`409` otherwise). Each
  * message is then checked again, as the reader and at the moment it is sent
  * (`live-hub.ts`), so access lost while the stream is open stops it.
  *
@@ -36,6 +37,13 @@ const tooManyStreams = () =>
     429,
     'too_many_streams',
     'Too many live streams are open. Close another tab and reload.',
+  )
+
+const notStreaming = () =>
+  new AppError(
+    409,
+    'workspace_not_sourced',
+    'Only a workspace that reads from a repository has a live stream',
   )
 
 function encode(message: LiveMessage): string {
@@ -97,7 +105,10 @@ export function workspaceLiveRoutes(deps: AppDependencies): FastifyPluginAsync {
           { userId: session.userId, shareLinkToken: null },
           deps,
         )
-        await requireWorkspaceAccess(authorizer, workspaceId, 'view')
+        const access = await requireWorkspaceAccess(authorizer, workspaceId, 'view')
+        // Only a workspace that reads from a repository streams; a native one,
+        // a disconnected one included, has nothing the stream would say.
+        if (access.workspace.origin.kind !== 'sourced') throw notStreaming()
 
         const live = deps.live
         const raw = reply.raw

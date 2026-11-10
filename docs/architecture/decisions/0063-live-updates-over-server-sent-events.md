@@ -14,7 +14,8 @@ Several ADRs already name server-sent events as the way the app will hear about 
 
 **One stream per open workspace.** `GET /api/workspaces/:id/events` is a `text/event-stream` response.
 - The workspace layout opens it for a workspace read from a repository. One stream serves the sidebar, the repository page and an open document.
-- Native workspaces don't open one yet; the stream works the same for them when they need it.
+- Only a workspace that reads from a repository has a stream. The route refuses a native workspace with `409`, a disconnected one included (ADR-061, amendment of 11 November 2026).
+- Disconnecting the source closes every stream open on the workspace without a message, and the browser falls back to its usual polling.
 
 **The stream says when to ask, never what the answer is.** It has four events:
 

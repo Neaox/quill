@@ -4,6 +4,7 @@ import {
   documentNested,
   documentPublished,
   documentRenamed,
+  sourceDisconnected,
   sourceSyncStateChanged,
 } from '@quill/application'
 import { createEventBus } from '@quill/application'
@@ -33,6 +34,10 @@ import type { DocumentId, WorkspaceId } from '@quill/domain'
  * workspace (closing the stream when either is gone), and a lifetime after
  * which the server closes it and the browser opens it again, through the
  * route's own checks.
+ *
+ * **Only while the workspace reads from a repository.** Disconnecting the
+ * source (ADR-061) closes every stream open on the workspace, and the route
+ * refuses a new one, so a disconnected workspace streams nothing.
  */
 
 /** What the stream sends: an event name and its data, as JSON. */
@@ -294,6 +299,12 @@ export function createLiveHub(bus: EventBus, options: LiveHubOptions): LiveHub {
       each(event.workspaceId, (subscriber) => {
         subscriber.syncChanged(event.state, event.changed)
       })
+    }),
+    // The workspace is native now: its streams end, and the route opens no more.
+    bus.subscribe(sourceDisconnected, (event) => {
+      for (const subscriber of Array.from(byWorkspace.get(event.workspaceId) ?? [])) {
+        subscriber.close()
+      }
     }),
     bus.subscribe(documentPublished, (event) => {
       each(event.workspaceId, (subscriber) => {

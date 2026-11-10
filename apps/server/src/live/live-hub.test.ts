@@ -5,6 +5,7 @@ import {
   documentNested,
   documentPublished,
   documentRenamed,
+  sourceDisconnected,
   sourceSyncStateChanged,
 } from '@quill/application'
 import type { EventBus, EventDefinition } from '@quill/application'
@@ -353,6 +354,23 @@ describe('the live hub', () => {
     release()
     await vi.advanceTimersByTimeAsync(0)
     expect(connection.beats).toBe(0)
+  })
+
+  it('closes the streams of a workspace whose source is disconnected, and tells them nothing', async () => {
+    const here = recorder()
+    const there = recorder()
+    const allowed = { session: true, workspace: true, hidden: [] }
+    hub.open(reader('ada', allowed), HERE, here)
+    hub.open(reader('cy', allowed), THERE, there)
+    await published(OPEN)
+    await publish(sourceDisconnected, { workspaceId: HERE, disconnectedBy: 'u-1' } as never)
+    expect(here.closed).toBe(true)
+    expect(there.closed).toBe(false)
+    expect(hub.size()).toBe(1)
+    // What was waiting for the moment is dropped with the stream.
+    await published(OPEN)
+    await vi.advanceTimersByTimeAsync(OPTIONS.flushMs)
+    expect(here.messages).toEqual([])
   })
 
   it('bounds the streams, in all and for each reader', () => {
