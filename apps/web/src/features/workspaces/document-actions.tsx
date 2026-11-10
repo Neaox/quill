@@ -12,6 +12,7 @@ import {
 import { onDemand, ProgressBar, useOnDemand } from '@quill/ui'
 
 import { useDocument, useDocumentEnvelope, useNavigationTree } from '../../lib/api/index.ts'
+import { importOnDemand } from '../../lib/on-demand-imports.ts'
 
 /**
  * Moving and deleting are their own chunks too, for the same reason as
@@ -20,8 +21,8 @@ import { useDocument, useDocumentEnvelope, useNavigationTree } from '../../lib/a
  * menu gets there first (`onDemand` in `@quill/ui`). Once here they stay
  * mounted, so their dialogs open and close exactly as they always have.
  */
-const moveDialog = onDemand(() => import('./move-document-dialog.tsx'))
-const deleteDialog = onDemand(() => import('./delete-document-dialog.tsx'))
+const moveDialog = onDemand(() => importOnDemand(() => import('./move-document-dialog.tsx')))
+const deleteDialog = onDemand(() => importOnDemand(() => import('./delete-document-dialog.tsx')))
 
 /**
  * Sharing is its own chunk, and its own module graph — the link list, the
@@ -31,7 +32,7 @@ const deleteDialog = onDemand(() => import('./delete-document-dialog.tsx'))
  * dialog's own open and close behaviour is unaffected.
  */
 const ShareDialog = lazy(async () => ({
-  default: (await import('../share/share-dialog.tsx')).ShareDialog,
+  default: (await importOnDemand(() => import('../share/share-dialog.tsx'))).ShareDialog,
 }))
 
 /**
@@ -148,7 +149,7 @@ export function DocumentActionsProvider({
           // window is a fact this component holds: the flag is true until the
           // chunk is in the module registry, from which `lazy` then resolves
           // without a frame of nothing.
-          await import('../share/share-dialog.tsx')
+          await importOnDemand(() => import('../share/share-dialog.tsx'))
           setShareOpenings((opened) => opened + 1)
           setShareOpen(true)
         })

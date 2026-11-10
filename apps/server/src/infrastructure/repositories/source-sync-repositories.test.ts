@@ -165,6 +165,7 @@ describe('the source sync state', () => {
     collectionIds: ['collection-1'],
     unknownKeys: [{ key: 'owner', line: 2 }],
     redirects: [['docs/old.md', 'docs/new.md']] as const,
+    collectionRoots: [['docs/recipes', 'collection-1']] as const,
   }
 
   it('has nothing for a workspace that never synced', async () => {
@@ -351,6 +352,7 @@ describe('the source sync state', () => {
           collectionIds: ['a', 7],
           unknownKeys: [{ key: 'x', line: 2 }, { key: 'y' }, 'z'],
           redirects: [['a.md', 'b.md'], ['c.md'], ['d.md', 4], 'e.md'],
+          collectionRoots: [['docs', 'a'], ['other'], 'x'],
         }),
       ],
     )
@@ -363,6 +365,7 @@ describe('the source sync state', () => {
         { key: 'y', line: null },
       ],
       redirects: [['a.md', 'b.md']],
+      collectionRoots: [['docs', 'a']],
     })
   })
 
@@ -383,6 +386,7 @@ describe('the source sync state', () => {
       ],
     )
     expect((await states.find(WORKSPACE))?.layout?.redirects).toEqual([])
+    expect((await states.find(WORKSPACE))?.layout?.collectionRoots).toEqual([])
   })
 })
 

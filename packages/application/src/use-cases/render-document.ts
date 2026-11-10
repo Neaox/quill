@@ -119,8 +119,8 @@ import { createVersionedReader } from './versioned-reader.ts'
  * Version 18 keeps the detail of a table cell that opens with a status when
  * the detail starts with a link or emphasis, where that first part was dropped.
  *
- * Version 19 is taken by hiding HTML comments (ADR-011, amendment "HTML
- * comments"), opened beside this change.
+ * Version 19 hides raw HTML that is only comments, as a block and inline,
+ * where it was escaped to text (ADR-011, amendment "HTML comments").
  *
  * Version 20 draws a table row as wide as its header, as GitHub Flavored
  * Markdown does: a short row padded with empty cells, a long one cut to the

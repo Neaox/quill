@@ -1,6 +1,7 @@
 import { onDemand, ProgressBar, useOnDemand } from '@quill/ui'
 
 import type { AttachmentsPanelProps } from './attachments-dialog.tsx'
+import { importOnDemand } from '../../lib/on-demand-imports.ts'
 
 export type { AttachmentsPanelProps } from './attachments-dialog.tsx'
 
@@ -11,7 +12,7 @@ export type { AttachmentsPanelProps } from './attachments-dialog.tsx'
  * `@quill/ui`); once here it stays mounted, so it opens and closes exactly as
  * it always has.
  */
-const attachmentsDialog = onDemand(() => import('./attachments-dialog.tsx'))
+const attachmentsDialog = onDemand(() => importOnDemand(() => import('./attachments-dialog.tsx')))
 
 /** What a document carries, and the way to take one down. See `AttachmentsDialog`. */
 export function AttachmentsPanel(props: AttachmentsPanelProps) {

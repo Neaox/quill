@@ -192,3 +192,11 @@ ADR-042 (link previews) admits a second, separate instance of the outbound clien
 ## Amendment (2026-10-11): app link schemes
 
 ADR-044 (deep links) lets an organisation allow link schemes beyond `http`, `https` and `mailto`, from a catalogue (`tel` and `sms` on by default) or a validated custom entry. The sanitiser keeps a deny list that no setting can override (`javascript`, `data`, `vbscript`, `file`, `blob`, `filesystem`, `about`, browser-internal schemes, and OS protocol handlers with known exploits). A link with a scheme that is not allowed is rendered as text, not dropped silently.
+
+## Amendment (2026-11-10): HTML comments are hidden
+
+Raw HTML is still escaped to text, never parsed (`escape-raw-html.ts`), with one exception: raw HTML that is nothing but comments (`<!-- … -->`, including the empty `<!-->` and `<!--->`, and a block comment left open, which CommonMark runs to the end of the document) is hidden. That holds as a block and inline, in the reader, the public site, every rendered surface and the search index (`html-comment.ts`).
+
+A comment is a note to whoever edits the source, such as a marker a generator writes around the part it owns. It is not content, and GitHub and every CommonMark renderer hide it. Showing it as text put markup in front of readers that its author never meant them to see. So "visible to the reader, never silently dropped" does not apply to it: nothing written for a reader is dropped.
+
+The source keeps every comment byte for byte, and so does the editor's round trip. Raw HTML that holds anything besides comments, such as `<div><!-- x --></div>`, is not a comment, and is escaped whole as before. Hiding a comment emits nothing, so the sanitiser is unchanged.
