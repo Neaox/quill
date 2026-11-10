@@ -5,7 +5,7 @@ import type { RefusedSourceFile } from '../ports/source-sync.ts'
 import { isSourceDocument } from './source-plan.ts'
 import { byCodePoint } from './source-revision.ts'
 import type { SourceHeadPlan } from './source-head-plan.ts'
-import { describeManifestProblem, SOURCE_MANIFEST_PATH } from './source-manifest.ts'
+import { describeManifestProblem } from './source-manifest.ts'
 
 /**
  * What a sync of one revision would report about a source (ADR-062,
@@ -26,6 +26,7 @@ export type SourceProblemCode =
   | 'manifest-invalid'
   | 'manifest-entry'
   | 'manifest-unknown-key'
+  | 'manifest-default'
   | 'file-too-large'
   | 'file-not-utf8'
   | 'file-symbolic-link'
@@ -112,6 +113,7 @@ const SEVERITY: Readonly<Record<SourceProblemCode, SourceProblemSeverity>> = {
   'manifest-invalid': 'error',
   'manifest-entry': 'error',
   'manifest-unknown-key': 'warning',
+  'manifest-default': 'note',
   'file-too-large': 'error',
   'file-not-utf8': 'error',
   'file-symbolic-link': 'error',
@@ -142,9 +144,9 @@ export function reportSource(input: {
   if (plan.kind === 'unreadable') {
     add(
       plan.entryMissing ? 'manifest-entry' : 'manifest-invalid',
-      SOURCE_MANIFEST_PATH,
+      plan.manifestPath,
       plan.problem.line,
-      describeManifestProblem(SOURCE_MANIFEST_PATH, plan.problem),
+      describeManifestProblem(plan.manifestPath, plan.problem),
     )
     return report(problems, 0, 0)
   }
@@ -152,10 +154,13 @@ export function reportSource(input: {
   for (const { key, line } of plan.layout.unknownKeys) {
     add(
       'manifest-unknown-key',
-      SOURCE_MANIFEST_PATH,
+      plan.layout.manifestPath,
       line,
       `${key} is not a key this version reads.`,
     )
+  }
+  for (const { line, message } of plan.layout.notes) {
+    add('manifest-default', plan.layout.manifestPath, line, message)
   }
   for (const { path, reason } of plan.refused) {
     const refusal = REFUSED[reason]

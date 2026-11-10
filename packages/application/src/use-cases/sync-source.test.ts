@@ -118,6 +118,7 @@ function harness(
     history: 'full',
     commitMessages: 'subject',
     manifestEntry: null,
+    manifestPath: null,
     ...settings,
   }
   let configuredAt = new Date(NOW.getTime() - 60_000)
@@ -889,6 +890,46 @@ describe('syncSource with a manifest', () => {
     await expect(h.idAt('docs/private/b.md')).rejects.toThrow('no path map entry')
   })
 
+  it('reads the manifest where its settings say, braces, untitled collections and all', async () => {
+    const h = harness(
+      [
+        {
+          id: 'c1',
+          files: {
+            [MANIFEST]: manifest('{ slug: wrong, title: Wrong, path: docs }'),
+            'site/manifest.yaml': [
+              'version: 1',
+              'workspaces:',
+              '  - slug: handbook',
+              '    collections:',
+              '      - { slug: field-notes, path: "docs/{field-notes,sketches}/*.md" }',
+              '  - slug: almanac',
+              '    collections: [{ slug: tides, path: almanac }]',
+            ].join('\n'),
+            'docs/field-notes/a.md': '# A',
+            'docs/sketches/b.md': '# B',
+            'docs/drafts/c.md': '# C',
+          },
+        },
+      ],
+      { manifestPath: 'site/manifest.yaml' },
+    )
+    await h.uow.repos.workspaces.create({
+      id: WORKSPACE,
+      unitId: unitId('00000000-0000-4000-8000-000000000001'),
+      name: 'Handbook',
+      slug: 'handbook',
+      now: NOW,
+    })
+    await h.sync()
+    expect(await collectionsOf(h)).toEqual([
+      // Untitled, it is called after the directory in front of its path.
+      expect.objectContaining({ slug: 'field-notes', name: 'Docs' }),
+    ])
+    expect((await documentAt(h, 'docs/sketches/b.md')).status).toBe('published')
+    await expect(h.idAt('docs/drafts/c.md')).rejects.toThrow('no path map entry')
+  })
+
   it('reads the entry its settings name, and places the tree again when they name another', async () => {
     const h = harness(
       [
@@ -1439,6 +1480,7 @@ async function sourced(
     history: 'full',
     commitMessages: 'subject',
     manifestEntry: null,
+    manifestPath: null,
     credential: null,
     outsideLinks: 'forge',
     viewTemplate: null,

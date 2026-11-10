@@ -45,6 +45,7 @@ function preview(overrides: Record<string, unknown> = {}) {
       entries: [{ slug: null, collections: 1 }],
       entry: null,
       unknownKeys: [],
+      notes: [],
     },
     origin: 'manifest',
     collections: [
@@ -208,6 +209,7 @@ describe('connecting a workspace to a repository', () => {
         credential: null,
         collections: [],
         manifestEntry: null,
+        manifestPath: null,
       },
     ])
     expect(screen.getByRole('button', { name: 'Connect and sync' })).toBeEnabled()
@@ -229,6 +231,7 @@ describe('connecting a workspace to a repository', () => {
       ],
       entry: null,
       unknownKeys: [],
+      notes: [],
     }
     const { routes: table, recorded } = routes('native', (body) =>
       body['manifestEntry'] === 'public'
@@ -265,6 +268,7 @@ describe('connecting a workspace to a repository', () => {
       entries: [],
       entry: null,
       unknownKeys: [],
+      notes: [],
     }
     const { routes: table, recorded } = routes('native', (body) =>
       jsonResponse(200, {
@@ -343,6 +347,7 @@ describe('connecting a workspace to a repository', () => {
           entries: [],
           entry: null,
           unknownKeys: [],
+          notes: [],
         },
         origin: null,
         collections: [],
@@ -379,6 +384,7 @@ describe('connecting a workspace to a repository', () => {
         credential: { username: 'x-access-token', secretName: 'sources/handbook' },
         collections: [],
         manifestEntry: null,
+        manifestPath: null,
         history: 'head',
         commitMessages: 'subject',
         outsideLinks: 'forge',
@@ -424,6 +430,7 @@ describe('changing a connected source', () => {
             ],
             entry: body['manifestEntry'],
             unknownKeys: [],
+            notes: [],
           },
           changes:
             body['manifestEntry'] === 'internal'

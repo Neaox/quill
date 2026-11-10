@@ -44,6 +44,8 @@ export interface SourceForm {
   readonly collections: readonly FormCollection[]
   /** The manifest entry chosen; null for the one named after the workspace, or the only one. */
   readonly manifestEntry: string | null
+  /** Where the manifest is, as typed; empty for `.quill/workspace.yaml`. */
+  readonly manifestPath: string
   readonly history: 'full' | 'head'
   readonly commitMessages: 'subject' | 'none'
   /** Where a link to a repository file the source does not hold goes. */
@@ -60,6 +62,7 @@ export const EMPTY_FORM: SourceForm = {
   credential: { kind: 'none' },
   collections: [],
   manifestEntry: null,
+  manifestPath: '',
   history: 'full',
   commitMessages: 'subject',
   outsideLinks: 'forge',
@@ -81,6 +84,7 @@ export function formFromSource(source: WorkspaceSourceDto): SourceForm {
       path,
     })),
     manifestEntry: source.manifestEntry,
+    manifestPath: source.manifestPath ?? '',
     history: source.history === 'head' ? 'head' : 'full',
     commitMessages: source.commitMessages === 'none' ? 'none' : 'subject',
     outsideLinks: source.outsideLinks === 'text' ? 'text' : 'forge',
@@ -109,6 +113,7 @@ export function draftBody(form: SourceForm): SourceDraftBody {
       path: collection.path.trim(),
     })),
     manifestEntry: form.manifestEntry,
+    manifestPath: form.manifestPath.trim() === '' ? null : form.manifestPath.trim(),
   }
 }
 
@@ -139,6 +144,7 @@ export type FormField =
   | 'manifestEntry'
   | 'viewTemplate'
   | 'webhookSecret'
+  | 'manifestPath'
 
 export type FieldErrors = Partial<Record<FormField, string>>
 

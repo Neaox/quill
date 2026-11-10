@@ -73,6 +73,7 @@ beforeAll(async () => {
       history: 'full',
       commitMessages: 'subject',
       manifestEntry: null,
+      manifestPath: null,
       credential: null,
       webhookSecretName: null,
       outsideLinks: 'forge',

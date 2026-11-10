@@ -72,6 +72,7 @@ async function putSource(webhookSecretName: string | null) {
     history: 'full',
     commitMessages: 'subject',
     manifestEntry: null,
+    manifestPath: null,
     credential: null,
     webhookSecretName,
     outsideLinks: 'forge',

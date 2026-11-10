@@ -117,24 +117,37 @@ export function checkSourcePath(value: string): Result<string, string> {
   return ok(path)
 }
 
-/** Wildcards a manifest's paths may not use: character classes and braces. */
-const UNREAD_WILDCARDS = /[[\]{}]/u
+/** Wildcards a manifest's paths may not use: character classes. */
+const UNREAD_WILDCARDS = /[[\]]/u
 
-/** `*` within a segment, `**` as a whole segment, `?` for one character. */
+/** One brace group, `{a,b}`: two or more alternatives, none holding a brace. */
+const BRACE_GROUP = /\{([^{}]*,[^{}]*)\}/gu
+
+/**
+ * `*` within a segment, `**` as a whole segment, `?` for one character, and
+ * brace groups of alternatives within a segment (`{README,status}.md`): not
+ * nested, and no alternative empty.
+ */
 function isReadableSegment(segment: string): boolean {
   if (UNREAD_WILDCARDS.test(segment)) return false
-  return segment === '**' || !segment.includes('**')
+  if (segment === '**') return true
+  if (segment.includes('**')) return false
+  const groups = [...segment.matchAll(BRACE_GROUP)]
+  if (groups.some(([, alternatives = '']) => alternatives.split(',').includes(''))) return false
+  // Every brace belongs to a group: an unpaired or a nested one is refused.
+  return !/[{}]/u.test(segment.replaceAll(BRACE_GROUP, ''))
 }
 
 /**
  * A path a manifest names (ADR-061): a directory, a file, or a glob such as
- * `packages/**\/README.md`. A trailing `/` is dropped.
+ * `packages/**\/README.md` or `docs/{README,status}.md`. A trailing `/` is
+ * dropped.
  *
  * A glob needs a literal directory in front of its first wildcard, because
  * the fetch is widened to that directory, and a glob with none would widen
- * to the whole repository. `**` stands alone as a segment, and character
- * classes and braces are refused, so a pattern means the same here as in
- * `sourcePatternMatcher`.
+ * to the whole repository. `**` stands alone as a segment, a brace group
+ * stays within its segment, and character classes are refused, so a
+ * pattern means the same here as in `sourcePatternMatcher`.
  */
 export function checkSourcePattern(value: string): Result<string, string> {
   if (value.length > MAX_SOURCE_PATH_LENGTH) {
@@ -147,7 +160,7 @@ export function checkSourcePattern(value: string): Result<string, string> {
   const segments = path.split('/')
   if (!segments.every(isReadableSegment)) {
     return err(
-      `"${value}" uses a wildcard this version does not read: use "*", "**" as a whole segment, or "?".`,
+      `"${value}" uses a wildcard this version does not read: use "*", "**" as a whole segment, "?", or "{a,b}".`,
     )
   }
   if (isSourceGlob(path.split('/', 1).join(''))) {
@@ -172,6 +185,25 @@ export function sourcePatternPrefix(pattern: string): string {
 
 const REGEX_SPECIAL = /[.+^$()|\\{}[\]]/gu
 
+/** Text with `*` and `?` read as the wildcards they are within a segment, and nothing else. */
+function wildcardExpression(text: string): string {
+  return text.replaceAll(REGEX_SPECIAL, '\\$&').replaceAll('*', '[^/]*').replaceAll('?', '[^/]')
+}
+
+/** One segment of a pattern, each brace group any one of its alternatives. */
+function segmentExpression(segment: string): string {
+  let expression = ''
+  let from = 0
+  for (const group of segment.matchAll(BRACE_GROUP)) {
+    expression += wildcardExpression(segment.slice(from, group.index))
+    /* v8 ignore next -- the group always captures its alternatives. */
+    const alternatives = (group[1] ?? '').split(',').map(wildcardExpression)
+    expression += `(?:${alternatives.join('|')})`
+    from = group.index + group[0].length
+  }
+  return expression + wildcardExpression(segment.slice(from))
+}
+
 /** A pattern from `checkSourcePattern` as an expression over a whole path. */
 function patternExpression(pattern: string): RegExp {
   const segments = pattern.split('/')
@@ -180,10 +212,7 @@ function patternExpression(pattern: string): RegExp {
       const last = index === segments.length - 1
       // `a/**/b` matches `a/b` too: `**` takes the slash after it with it.
       if (segment === '**') return last ? '.*' : '(?:[^/]+/)*'
-      const literal = segment
-        .replaceAll(REGEX_SPECIAL, '\\$&')
-        .replaceAll('*', '[^/]*')
-        .replaceAll('?', '[^/]')
+      const literal = segmentExpression(segment)
       return last ? literal : `${literal}/`
     })
     .join('')
@@ -241,4 +270,17 @@ export function checkSourceManifestEntry(value: string): Result<string, string> 
   return slugify(value) === value
     ? ok(value)
     : err(`"${value}" is not a workspace slug a manifest can hold.`)
+}
+
+/**
+ * Where a source's manifest is read from, when not the default
+ * (`.quill/workspace.yaml`): a YAML file at a plain path in the repository.
+ */
+export function checkSourceManifestPath(value: string): Result<string, string> {
+  const path = checkSourcePath(value)
+  if (!path.ok) return path
+  if (!/\.ya?ml$/u.test(path.value)) {
+    return err(`"${value}" is not a YAML file; a manifest's name ends in .yaml or .yml.`)
+  }
+  return path
 }

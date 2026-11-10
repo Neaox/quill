@@ -5,6 +5,7 @@ import { layoutFromSettings } from './source-layout.ts'
 import type { SourceLinks } from './source-links.ts'
 import type { PlannedDocument, SourceHeadPlan } from './source-head-plan.ts'
 import { reportSource, SOURCE_REPORT_SCHEMA } from './source-report.ts'
+import { SOURCE_MANIFEST_PATH } from './source-manifest.ts'
 
 const NONE: SourceLinks = {
   resolved: new Map(),
@@ -55,7 +56,15 @@ describe('reportSource', () => {
   it('reports a manifest that does not read, or that names no workspace for this one', () => {
     const problem = { line: 3, message: 'it is not valid YAML.' }
     expect(
-      reportSource({ plan: { kind: 'unreadable', revision: 'r1', problem, entryMissing: false } }),
+      reportSource({
+        plan: {
+          kind: 'unreadable',
+          revision: 'r1',
+          manifestPath: SOURCE_MANIFEST_PATH,
+          problem,
+          entryMissing: false,
+        },
+      }),
     ).toEqual({
       schema: SOURCE_REPORT_SCHEMA,
       summary: { errors: 1, warnings: 0, notes: 0, documents: 0, assets: 0 },
@@ -70,7 +79,13 @@ describe('reportSource', () => {
       ],
     })
     const missing = reportSource({
-      plan: { kind: 'unreadable', revision: 'r1', problem, entryMissing: true },
+      plan: {
+        kind: 'unreadable',
+        revision: 'r1',
+        manifestPath: SOURCE_MANIFEST_PATH,
+        problem,
+        entryMissing: true,
+      },
     })
     expect(missing.problems.map(({ code }) => code)).toEqual(['manifest-entry'])
   })
@@ -78,7 +93,11 @@ describe('reportSource', () => {
   it('reports every problem a sync records, in code-point order, with its severity', () => {
     const report = reportSource({
       plan: planned({
-        layout: { ...layoutFromSettings([]), unknownKeys: [{ key: 'audience', line: 7 }] },
+        layout: {
+          ...layoutFromSettings([]),
+          unknownKeys: [{ key: 'audience', line: 7 }],
+          notes: [{ line: 4, message: '"collections[0]" has no title, so it is called "Notes".' }],
+        },
         documents: [
           document('docs/b.md'),
           document('docs/topic/.quill/folder.md', { generated: true, folder: 'docs/topic' }),
@@ -129,12 +148,13 @@ describe('reportSource', () => {
         ],
       ]),
     })
-    expect(report.summary).toEqual({ errors: 9, warnings: 7, notes: 8, documents: 3, assets: 0 })
+    expect(report.summary).toEqual({ errors: 9, warnings: 7, notes: 9, documents: 3, assets: 0 })
     expect(
       report.problems.map(
         ({ path, line, code, severity }) => `${path}:${line ?? ''} ${severity} ${code}`,
       ),
     ).toEqual([
+      '.quill/workspace.yaml:4 note manifest-default',
       '.quill/workspace.yaml:7 warning manifest-unknown-key',
       'README.md: note folder-index',
       // A capital letter sorts before a small one, whatever the locale.
@@ -176,6 +196,7 @@ describe('reportSource', () => {
       'folder-index',
       'left-out',
       'link-broken',
+      'manifest-default',
       'manifest-unknown-key',
       'required-section-empty',
     ])

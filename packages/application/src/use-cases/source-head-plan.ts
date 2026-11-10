@@ -76,6 +76,8 @@ export interface SourceHeadPlanCommand {
   readonly collections: readonly SourceCollection[]
   /** Which of the manifest's workspaces to read when it describes several: the workspace's slug. */
   readonly entry: string
+  /** Where the manifest is; absent or null for `.quill/workspace.yaml`. */
+  readonly manifestPath?: string | null | undefined
   /** Where links outside the source go. */
   readonly links: SourceLinkSettings & { readonly remote: string }
 }
@@ -118,6 +120,8 @@ export type SourceHeadPlan =
       readonly revision: SourceRevisionId
       /** The manifest problem that stops a sync, with its line. */
       readonly problem: ManifestProblem
+      /** Where the manifest was read from. */
+      readonly manifestPath: string
       /** The manifest read, but names no workspace by the entry asked for. */
       readonly entryMissing: boolean
     }
@@ -148,11 +152,13 @@ export async function planSourceHead(
   const read = await readLayoutAt(source, revision, {
     collections: command.collections,
     entry: command.entry,
+    manifestPath: command.manifestPath,
   })
   if (!read.ok) {
     return {
       kind: 'unreadable',
       revision,
+      manifestPath: read.manifestPath,
       problem: read.problem,
       entryMissing: read.manifest !== null,
     }

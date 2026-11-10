@@ -41,6 +41,11 @@ export interface SourceSettings {
    * is the workspace's own. A manifest of one workspace needs none.
    */
   readonly manifestEntry: string | null
+  /**
+   * Where the manifest is read from, a YAML file at a plain path; null for
+   * the default, `.quill/workspace.yaml` (ADR-061, amendment of 11 November).
+   */
+  readonly manifestPath: string | null
 }
 
 export interface ConnectedSource {
@@ -62,6 +67,8 @@ export interface SourceDraft {
   readonly remote: string
   readonly branch: string
   readonly credential: WorkspaceSourceCredential | null
+  /** Where the manifest is, the first file fetched; null for `.quill/workspace.yaml`. */
+  readonly manifestPath?: string | null | undefined
 }
 
 /**
@@ -173,6 +180,7 @@ export interface WorkspaceSourceRepository {
     readonly history: SourceHistorySetting
     readonly commitMessages: SourceCommitMessageSetting
     readonly manifestEntry: string | null
+    readonly manifestPath: string | null
     readonly credential: WorkspaceSourceCredential | null
     readonly outsideLinks: SourceOutsideLinkSetting
     readonly viewTemplate: string | null

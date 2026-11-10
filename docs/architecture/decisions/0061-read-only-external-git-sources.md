@@ -240,6 +240,15 @@ All three triggers write the same `SourceSyncRequested` outbox event (ADR-056). 
 - **Refused files are listed and render as alt text.** A file refused for its type or size is listed on the admin page with the reason, and the image renders as its alternative text.
 - **Assets belong to the source, not to a document.** An imported asset is kept while any stored revision references it, and collected after that. The `attachments` table therefore needs a source-owned row (no owning document) beside today's document-owned one.
 
+### Amendment (11 November 2026): the manifest's place, braces, and the entry that is read
+
+A repository that already keeps a manifest of its own shape should not need a second copy, a rewritten glob, or titles it does not use. Three changes make a manifest written for another tool read as it is:
+
+- **The manifest's path is a setting.** A source names where its manifest is (`manifestPath`), a YAML file at a plain path, in the source settings form beside the branch. Empty means `.quill/workspace.yaml`, and naming that path is stored as empty, so the two read alike. The first fetch takes that file alone, as before. A replayed revision reads its layout again when it changes that file, and every problem names the file by that path.
+- **Brace groups are read in paths and excludes.** `docs/{README,status}.md` matches either name. A group stays within one segment, has two or more alternatives, none empty, and does not nest. Character classes are still refused. A group is a wildcard like any other: the fetch is widened to the literal directory in front of it, a pattern with no literal directory in front of its first wildcard is still refused, and a source with strict prefixes still refuses it.
+- **Only the chosen entry is held to every rule.** A manifest that describes several workspaces is read whole for its slugs and unknown keys. The entry a workspace reads (or the only one) is checked as before. Any other entry's problems are that workspace's to see when it reads it, so here it never refuses. Its unknown keys are still warnings. An entry whose slug cannot be read is left out. Two entries with the chosen slug are still refused, because there is nothing to choose between. With no entry chosen, a manifest of several workspaces reads, and the problem said is that none was chosen.
+- **A collection with no title is named after its path.** In the chosen entry, a missing `title` is the directory in front of the collection's path, humanised as a folder with no README is (`docs/field-notes` is "Field notes"), or the file's name for a collection of one file. A note says so, with its line: the settings preview lists it under "Read with defaults", and `quill check` reports it as `manifest-default` (a note, ADR-062). A title that is there but empty or not text is still refused.
+
 ## Alternatives considered
 
 - **`isomorphic-git` with a full clone.** No new binary, and it matches ADR-014's wire choice. Rejected:

@@ -232,6 +232,13 @@
       "when": 1794272775647,
       "tag": "0032_source_disconnected",
       "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1794285041192,
+      "tag": "0033_source_manifest_path",
+      "breakpoints": true
     }
   ]
 }

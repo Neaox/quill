@@ -542,6 +542,8 @@ export const workspaceSources = pgTable(
     commitMessages: text('commit_messages').notNull(),
     /** Which workspace of a manifest that describes several it reads; null for the workspace's own slug. */
     manifestEntry: text('manifest_entry'),
+    /** Where the manifest is read from; null for `.quill/workspace.yaml`. */
+    manifestPath: text('manifest_path'),
     credentialUsername: text('credential_username'),
     credentialSecret: text('credential_secret'),
     /** `forge` or `text`: where a link to a repository file the source does not hold goes. */

@@ -4630,6 +4630,7 @@ export interface paths {
                             disconnectedAt: string | null;
                             history: string;
                             manifestEntry: string | null;
+                            manifestPath: string | null;
                             outsideLinks: string;
                             remote: string;
                             sync: {
@@ -4692,6 +4693,7 @@ export interface paths {
                         } | null;
                         history: "full" | "head";
                         manifestEntry?: string | null;
+                        manifestPath?: string | null;
                         outsideLinks?: "forge" | "text";
                         remote: string;
                         viewTemplate?: string | null;
@@ -4722,6 +4724,7 @@ export interface paths {
                             disconnectedAt: string | null;
                             history: string;
                             manifestEntry: string | null;
+                            manifestPath: string | null;
                             outsideLinks: string;
                             remote: string;
                             sync: {
@@ -4883,6 +4886,7 @@ export interface paths {
                             username: string;
                         } | null;
                         manifestEntry?: string | null;
+                        manifestPath?: string | null;
                         remote: string;
                     };
                 };
@@ -4939,6 +4943,10 @@ export interface paths {
                                         slug: string | null;
                                     }[];
                                     entry: string | null;
+                                    notes: {
+                                        line: number | null;
+                                        message: string;
+                                    }[];
                                     path: string;
                                     problem: {
                                         line: number | null;
