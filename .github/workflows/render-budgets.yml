@@ -6,7 +6,7 @@ name: Render budgets
 # the budgets measure.
 on:
   push:
-    branches: [main]
+    branches: [main, claude/m3b-pool-v2]
   pull_request:
     paths:
       - '.github/workflows/render-budgets.yml'
