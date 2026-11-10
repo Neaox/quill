@@ -108,6 +108,13 @@
   color: var(--color-body);
   font-variant-numeric: lining-nums tabular-nums;
   hanging-punctuation: first last;
+  /*
+   * A word longer than the line, such as an address written without a scheme
+   * and so not a link, breaks rather than pushing the page wider than a
+   * phone. `break-word` only breaks what would overflow, so ordinary text
+   * wraps exactly as before.
+   */
+  overflow-wrap: break-word;
 }
 
 .prose > :where(:not(:first-child)) {
