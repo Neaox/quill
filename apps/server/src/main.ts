@@ -2,6 +2,7 @@ import { resolve } from 'node:path'
 
 import { createShareLinkPolicy } from './application/share-link-policy.ts'
 import { buildApp } from './app.ts'
+import { createLiveHub, DEFAULT_LIVE_OPTIONS } from './live/live-hub.ts'
 import {
   createDisabledBreachedPasswordChecker,
   createHibpBreachedPasswordChecker,
@@ -114,6 +115,13 @@ const eventBus = createEventBus({
   },
 })
 const uow = createUnitOfWork(database.db, database.pool, ids, eventBus)
+// The live streams (ADR-063) hear what this process commits, through the bus.
+const live = createLiveHub(eventBus, {
+  ...DEFAULT_LIVE_OPTIONS,
+  onError: (error) => {
+    app.log.error({ err: error }, 'a live stream check failed')
+  },
+})
 // The store that writes is for the sync job of a sourced workspace, its
 // only writer (ADR-061). Everything a person asks for is composed with the
 // one that refuses to write a sourced workspace, so a route that forgot its
@@ -297,6 +305,7 @@ const sourceSync = {
 
 const deps = {
   linkPreviewPorts,
+  live,
   sourceSync,
   uow,
   searchIndex,

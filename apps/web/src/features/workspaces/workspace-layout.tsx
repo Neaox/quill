@@ -9,6 +9,7 @@ import {
   useDocumentEnvelope,
   useLoadedWorkspace,
   useNavigationTree,
+  useWorkspaceLive,
 } from '../../lib/api/index.ts'
 import { documentState } from '../../lib/documents/document-state.ts'
 import {
@@ -65,6 +66,8 @@ export function WorkspaceLayout() {
   const workspaceId = workspace.id
   const workspaceSlug = workspace.slug
   const workspaceName = workspace.name
+  // One live stream for everything inside a workspace read from a repository (ADR-063).
+  useWorkspaceLive(workspaceId, workspace.origin?.kind === 'sourced')
   const { documentId } = useParams({ strict: false })
   const document = useDocument(documentId)
   // The same query the page reads, so the frame's pill costs no request of

@@ -29,6 +29,7 @@ import { pagelessStylesheets } from '../theme/pageless.ts'
 import type { UserId } from '@quill/domain'
 import { createDrawioText } from '../extensions/drawio/drawing-text.ts'
 import { INERT_LINK_PREVIEW_PORTS } from '../infrastructure/link-preview/inert.ts'
+import { createIdleLiveHub } from '../live/live-hub.ts'
 import { inertSourceSync } from '../infrastructure/sources/inert-source-sync.ts'
 
 /**
@@ -107,6 +108,7 @@ try {
       messageAuthenticator: createMessageAuthenticator(),
       shareLinkPolicy: createShareLinkPolicy(config),
       linkPreviewPorts: INERT_LINK_PREVIEW_PORTS,
+      live: createIdleLiveHub(),
       mailer: createDevMailer(() => undefined),
       // No secret set here reaches mail, an identity provider or an
       // attachment; the ports are present only because `AppDependencies` is

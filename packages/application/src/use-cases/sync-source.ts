@@ -58,6 +58,7 @@ import {
   writeAssetMap,
 } from './source-assets.ts'
 import { generatedFolderOf } from './source-folders.ts'
+import { announceSourceSync } from './source-sync-announcement.ts'
 import {
   arrangeSiblings,
   assetRefusedUnread,
@@ -184,7 +185,9 @@ export async function syncSource(
   const connected = await deps.sources.forWorkspace(command.workspaceId)
   if (connected === null) return { kind: 'not-sourced' }
   const outcome = await deps.lock.withLock(command.workspaceId, () =>
-    new SourceReplay(deps, command.workspaceId, connected).run(),
+    announceSourceSync(deps, command.workspaceId, () =>
+      new SourceReplay(deps, command.workspaceId, connected).run(),
+    ),
   )
   return outcome.kind === 'busy' ? { kind: 'busy' } : outcome.value
 }

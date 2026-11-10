@@ -23,6 +23,7 @@ import type { SearchService } from '@quill/search'
 import type { ServerChildPagesCache } from './child-pages/cache.ts'
 import type { BreachedPasswordChecker } from './auth/breached-password.ts'
 import type { IdentityProviderRegistry } from './auth/oidc/registry.ts'
+import type { LiveHub } from './live/live-hub.ts'
 import type { Mailer } from './auth/mailer.ts'
 import type { PasswordHasher } from './auth/password.ts'
 import type { RateLimiter } from './auth/rate-limit.ts'
@@ -143,6 +144,12 @@ export interface AppDependencies {
    * the outbox. Omitted, every list reads its subtree afresh.
    */
   readonly childPagesCache?: ServerChildPagesCache | undefined
+  /**
+   * The live streams open in this process (ADR-063), told by the in-process
+   * bus, so it is built where the bus is. A process that serves no streams
+   * has an idle one (`createIdleLiveHub`).
+   */
+  readonly live: LiveHub
   readonly mailer: Mailer
   /** The breached-password corpus (ADR-011). Fails open, and says so in the audit log. */
   readonly breachedPasswords: BreachedPasswordChecker

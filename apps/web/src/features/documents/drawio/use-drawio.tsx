@@ -18,6 +18,7 @@ import { queryKeys } from '../../../lib/api/query-keys.ts'
 import { createDiagramStore } from './diagram-store.ts'
 import { createDrawioFiles } from './drawio-files.ts'
 import { DescribeDiagramDialog } from './describe-diagram-dialog.tsx'
+import { importOnDemand } from '../../../lib/on-demand-imports.ts'
 
 /**
  * draw.io in the document editor (ADR-043): the application's half of the
@@ -36,7 +37,7 @@ import { DescribeDiagramDialog } from './describe-diagram-dialog.tsx'
  */
 
 const DrawioEditor = lazy(async () => {
-  const module = await import('@quill/editor/drawio')
+  const module = await importOnDemand(() => import('@quill/editor/drawio'))
   return { default: module.DrawioEditor }
 })
 

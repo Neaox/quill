@@ -34,6 +34,7 @@ import {
 import type { FakeBreachedPasswordChecker, FakeClock } from '../test-support/fakes.ts'
 import { createDrawioText } from '../extensions/drawio/drawing-text.ts'
 import { INERT_LINK_PREVIEW_PORTS } from '../infrastructure/link-preview/inert.ts'
+import { createIdleLiveHub } from '../live/live-hub.ts'
 
 /** Nothing in these tests searches; the engine is present because `AppDependencies` is one shape. */
 const SEARCH_INDEX = createInMemorySearchIndex()
@@ -71,6 +72,7 @@ beforeAll(async () => {
     messageAuthenticator: createMessageAuthenticator(),
     shareLinkPolicy: { allowed: () => true },
     linkPreviewPorts: INERT_LINK_PREVIEW_PORTS,
+    live: createIdleLiveHub(),
     ...(await inMemorySettings(clock, config)),
     blobStore: createInMemoryBlobStore(),
     format: createDocumentFormat(),
