@@ -206,11 +206,25 @@ describe('Inline code typed between backticks', () => {
   })
 })
 
+/**
+ * How long ProseMirror waits after the editor gains focus before it puts its
+ * own selection back into the DOM when the two differ (prosemirror-view's
+ * `focus` handler, a 20 ms timer). An arrow key that user-event moves the
+ * caret with inside that window can be undone by it before ProseMirror reads
+ * the move: on a busy machine the keys below land inside it, the second
+ * ArrowRight is lost, and "X" is typed where the first left the caret.
+ */
+const PROSEMIRROR_FOCUS_SYNC_MS = 20
+
 async function typeAfterArrow(presses: number, typed: string) {
   const ref = createRef<DocumentEditorHandle>()
   render(<DocumentEditor ast={parseDocument('See `code` now\n').ast} ref={ref} />)
   const user = userEvent.setup()
   await user.click(screen.getByRole('textbox', { name: 'Document' }))
+  // Let the focus sync run before any key is pressed, so it cannot undo one.
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, PROSEMIRROR_FOCUS_SYNC_MS + 5))
+  })
   const editor = ref.current?.editor
   if (editor === null || editor === undefined) throw new Error('No editor.')
   // The caret at the end of the code, where code would go on.

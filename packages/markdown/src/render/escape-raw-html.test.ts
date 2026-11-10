@@ -22,6 +22,15 @@ describe('escapeRawHtml', () => {
     })
   })
 
+  it('drops a root-level raw node that is only a comment', () => {
+    const root = {
+      type: 'root',
+      children: [{ type: 'raw', value: '<!-- a note -->' }],
+    } as unknown as HastRoot
+
+    expect(escapeRawHtml(root)).toEqual({ type: 'root', children: [] })
+  })
+
   it('leaves a root-level non-element node untouched', () => {
     const root: HastRoot = {
       type: 'root',

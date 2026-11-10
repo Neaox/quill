@@ -295,7 +295,7 @@ function readFailure(value: unknown): SourceSyncFailure | null {
  */
 function readLayout(value: unknown): SourceLayoutRecord | null {
   if (!isRecord(value) || value['version'] !== STATE_VERSION) return null
-  const { origin, fingerprint, collectionIds, unknownKeys, redirects } = value
+  const { origin, fingerprint, collectionIds, unknownKeys, redirects, collectionRoots } = value
   if (
     (origin !== 'manifest' && origin !== 'settings') ||
     typeof fingerprint !== 'string' ||
@@ -313,6 +313,7 @@ function readLayout(value: unknown): SourceLayoutRecord | null {
       line: typeof line === 'number' ? line : null,
     })),
     redirects: Array.isArray(redirects) ? redirects.filter(isPathPair) : [],
+    collectionRoots: Array.isArray(collectionRoots) ? collectionRoots.filter(isPathPair) : [],
   }
 }
 
