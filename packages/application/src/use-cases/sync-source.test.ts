@@ -2154,6 +2154,7 @@ describe('folders as documents', () => {
             '{ slug: guides, title: Guides, path: docs/guides }',
             '{ slug: recipes, title: Recipes, path: docs/recipes, order: filename }',
             '{ slug: tips, title: Tips, path: "docs/tips/*.md" }',
+            '{ slug: blank, title: Blank, path: docs/blank }',
           ),
           'docs/guides/README.md': [
             '# Guides',
@@ -2161,11 +2162,13 @@ describe('folders as documents', () => {
             '[Recipes again](../recipes)',
             '[Tips](../tips/)',
             '[Missing](../missing/)',
+            '[Blank](../blank/)',
           ].join('\n\n'),
           'docs/recipes/b-bread.md': '# Bread',
           'docs/recipes/a-apples.md': '# Apples',
           'docs/tips/README.md': '# Tips',
           'docs/tips/knives.md': '# Knives',
+          'docs/blank/notes.txt': 'No pages here.',
         },
       },
     ])
@@ -2180,6 +2183,8 @@ describe('folders as documents', () => {
     // A README stands for its directory, as it does for any folder.
     expect(html).toContain(`[Tips](/d/${tips})`)
     expect(html).toContain('[Missing](https://github.com/acme/handbook/blob/c1/docs/missing)')
+    // A collection with no pages has no first page: its directory is on the forge.
+    expect(html).toContain('[Blank](https://github.com/acme/handbook/blob/c1/docs/blank)')
     expect((await state(h))?.brokenLinks).toEqual([
       { path: 'docs/guides/README.md', url: '../missing/', revision: 'c1' },
     ])
