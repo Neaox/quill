@@ -58,6 +58,18 @@ describe('the document work pool', () => {
     expect(await work.inspect([])).toEqual([])
   }, 120_000)
 
+  it('renders a text it inspected from the tree the inspection kept, exactly as the format renders it', async () => {
+    // One thread: the texts it inspected are its own work, taken before the rest.
+    const one = pool({ size: 1 })
+    const inputs = pages.map((markdown) => ({ markdown, linkTitles: new Map() }))
+    await one.inspect(pages.slice(0, 4))
+    expect(await one.render(inputs)).toEqual(inputs.map((input) => format.render(input)))
+    // Three threads, each rendering what it inspected, and then the others' work.
+    const three = pool()
+    await three.inspect(pages)
+    expect(await three.render(inputs)).toEqual(inputs.map((input) => format.render(input)))
+  }, 120_000)
+
   it('refuses a thread whose renderer is not the server’s', async () => {
     const work = pool({ extensions: 'another-renderer@1' })
     await expect(work.inspect(['# A'])).rejects.toThrow(/other extensions/u)
@@ -108,6 +120,9 @@ describe('the built document worker', () => {
 
       const work = pool({ worker: { url: built } })
       const inputs = pages.map((markdown) => ({ markdown, linkTitles: new Map() }))
+      expect(await work.render(inputs)).toEqual(inputs.map((input) => format.render(input)))
+      // And from the trees its inspections kept.
+      await work.inspect(pages)
       expect(await work.render(inputs)).toEqual(inputs.map((input) => format.render(input)))
 
       // A build from other sources than these is left alone.

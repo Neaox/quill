@@ -3,6 +3,7 @@ import { parentPort } from 'node:worker_threads'
 import type { RenderInput } from '@quill/application'
 
 import { createDocumentFormat } from './document-format.ts'
+import { createParsedTrees } from './parsed-trees.ts'
 
 /**
  * One thread of the document work pool (`document-work-pool.ts`): its own
@@ -10,6 +11,10 @@ import { createDocumentFormat } from './document-format.ts'
  * it, answering one item at a time. It announces the format's extension
  * signature first, so the pool can refuse a thread whose renderer is not the
  * one the server keys its cache by.
+ *
+ * The trees it parses to inspect documents are kept for their renders
+ * (`parsed-trees.ts`), and the pool sends a render to the thread that
+ * inspected its text when it can, so a synced document is parsed once.
  */
 
 /** What the pool asks a thread to do. */
@@ -21,7 +26,7 @@ export type DocumentTask =
 const port = parentPort
 if (port === null) throw new Error('The document work worker runs only in a worker thread.')
 
-const format = createDocumentFormat()
+const format = createDocumentFormat({ trees: createParsedTrees() })
 
 port.on('message', (task: DocumentTask) => {
   try {

@@ -5,6 +5,7 @@ import { documentId } from '@quill/domain'
 import type { DocumentId } from '@quill/domain'
 
 import { createDocumentFormat } from './document-format.ts'
+import { createParsedTrees } from './parsed-trees.ts'
 
 /**
  * The adapter between the use cases and `packages/markdown`: what a document
@@ -445,6 +446,24 @@ describe('createDocumentFormat: render and read', () => {
       title: 'Inspected',
       frontMatter: { order: 3 },
     })
+  })
+
+  it('renders an inspected text from the tree the inspection kept, once, as it renders the text', () => {
+    const trees = createParsedTrees()
+    const kept = createDocumentFormat({ trees })
+    const text = '---\norder: 3\n---\n\n# Kept\n\n[a](./a.md) and a | b\n'
+    const input = {
+      markdown: text,
+      linkTitles: new Map(),
+      resolvedLinks: new Map([['./a.md', { kind: 'href' as const, href: '/d/a' }]]),
+    }
+    expect(kept.inspect(text)).toEqual(format.inspect(text))
+    expect(trees.take(text)).toBeDefined()
+    kept.inspect(text)
+    expect(kept.render(input)).toEqual(format.render(input))
+    // Taken by the render, so the next render parses the text again.
+    expect(trees.take(text)).toBeUndefined()
+    expect(kept.render(input)).toEqual(format.render(input))
   })
 
   it('draws a table of contents into the body and lists each child pages slot (ADR-058)', () => {

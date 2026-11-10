@@ -6,6 +6,7 @@ import { Worker } from 'node:worker_threads'
 import type { DocumentInspection, DocumentWork, RenderedContent } from '@quill/application'
 
 import type { DocumentTask } from './document-work-worker.ts'
+import { createKeptByText, KEPT_TEXT_MAX_CHARS } from './parsed-trees.ts'
 
 /**
  * The document work of ADR-062, step 3, on a pool of worker threads: a
@@ -18,6 +19,9 @@ import type { DocumentTask } from './document-work-worker.ts'
  * - **Deterministic.** Each batch's answers are in the order of its inputs,
  *   whichever thread answered and whenever. The largest items are handed out
  *   first, so one long document does not start last.
+ * - **Parsed once.** A render goes to the thread that inspected its text,
+ *   which kept the tree (`parsed-trees.ts`), unless another thread has
+ *   nothing of its own left to do. Where it goes never changes the answer.
  * - **One renderer.** Each thread builds the format as the server does, and
  *   its extension signature must equal the server's, or the pool refuses it:
  *   a body rendered by another renderer would be cached under the wrong key.
@@ -97,6 +101,8 @@ type Answer = { readonly value: unknown } | { readonly error: string }
 interface Job {
   readonly task: DocumentTask
   readonly weight: number
+  /** The thread that inspected a render's text, and so holds its tree. */
+  readonly home: Thread | undefined
   readonly settle: (answer: Answer | 'crashed') => void
   attempts: number
 }
@@ -116,6 +122,8 @@ export function createDocumentWorkPool(options: DocumentWorkPoolOptions): Docume
   let nextId = 0
   let idle: ReturnType<typeof setTimeout> | undefined
   const startups: number[] = []
+  // Which thread inspected a text: as many texts as the threads keep trees for.
+  const homes = createKeptByText<Thread>(size * KEPT_TEXT_MAX_CHARS)
 
   const start = (): Thread => {
     const started = performance.now()
@@ -139,6 +147,10 @@ export function createDocumentWorkPool(options: DocumentWorkPoolOptions): Docume
         const { job } = thread
         if (job === null || message.id !== job.task.id) return
         thread.job = null
+        // The thread keeps the tree of a text it inspected, for the text's render.
+        if (job.task.kind === 'inspect' && message.error === undefined) {
+          homes.keep(job.task.item, thread)
+        }
         job.settle(
           message.error === undefined ? { value: message.value } : { error: message.error },
         )
@@ -164,10 +176,12 @@ export function createDocumentWorkPool(options: DocumentWorkPoolOptions): Docume
       let free = [...threads].find((thread) => thread.job === null)
       if (free === undefined && threads.size < size) free = start()
       if (free === undefined) return
-      const job = queue.shift()
+      const thread = free
+      // Its own work first: the renders of the texts it inspected.
+      const own = queue.findIndex((queued) => queued.home === thread)
+      const [job] = queue.splice(own === -1 ? 0 : own, 1)
       /* v8 ignore next -- the loop runs only while the queue holds a job. */
       if (job === undefined) return
-      const thread = free
       thread.job = job
       thread.ready.then(
         // A worker thread's port, not a window: there is no origin to name.
@@ -208,6 +222,7 @@ export function createDocumentWorkPool(options: DocumentWorkPoolOptions): Docume
         const job: Job = {
           task,
           weight: task.kind === 'inspect' ? task.item.length : task.item.markdown.length,
+          home: task.kind === 'render' ? homes.take(task.item.markdown) : undefined,
           attempts: 0,
           settle: (answer) => {
             if (failed) return
@@ -239,6 +254,7 @@ export function createDocumentWorkPool(options: DocumentWorkPoolOptions): Docume
 
   const close = async (): Promise<void> => {
     if (idle !== undefined) clearTimeout(idle)
+    homes.clear()
     const stopping = [...threads].map((thread) => thread.worker.terminate())
     threads.clear()
     await Promise.all(stopping)
