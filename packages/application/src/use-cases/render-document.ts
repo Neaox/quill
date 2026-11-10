@@ -118,8 +118,11 @@ import { createVersionedReader } from './versioned-reader.ts'
  *
  * Version 18 keeps the detail of a table cell that opens with a status when
  * the detail starts with a link or emphasis, where that first part was dropped.
+ *
+ * Version 19 hides raw HTML that is only comments, as a block and inline,
+ * where it was escaped to text (ADR-011, amendment "HTML comments").
  */
-export const RENDER_VERSION = 18
+export const RENDER_VERSION = 19
 
 export interface RenderDocumentDependencies {
   readonly uow: UnitOfWork
