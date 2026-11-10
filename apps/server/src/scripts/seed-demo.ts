@@ -88,16 +88,21 @@ async function inLanes(
   lanes: number,
   write: (entry: Placed) => Promise<readonly string[]>,
 ): Promise<string[]> {
-  const queue = [...Map.groupBy(placed, ({ workspaceId }) => workspaceId).values()]
-  const found = new Map<Placed, readonly string[]>()
+  const found: (readonly string[])[] = placed.map(() => [])
+  const queue = [
+    ...Map.groupBy(
+      placed.map((entry, index) => ({ entry, index })),
+      ({ entry }) => entry.workspaceId,
+    ).values(),
+  ]
   const lane = async (): Promise<void> => {
     for (let entries = queue.shift(); entries !== undefined; entries = queue.shift()) {
       // oxlint-disable-next-line quill/no-independent-await-in-loop -- one workspace's revisions publish in order, each at the head the last one left
-      for (const entry of entries) found.set(entry, await write(entry))
+      for (const { entry, index } of entries) found[index] = await write(entry)
     }
   }
   await Promise.all(Array.from({ length: lanes }, lane))
-  return placed.flatMap((entry) => found.get(entry) ?? [])
+  return found.flat()
 }
 
 export async function seedDemoData(deps: AppDependencies): Promise<DemoSeedResult> {
