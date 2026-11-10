@@ -19,6 +19,7 @@ import {
   parseReviewRequested,
   parseReviewWithdrawn,
   parseSourceSyncRequested,
+  sourceDisconnected,
 } from './events.ts'
 
 const DOC = documentId('00000000-0000-4000-8000-000000000201')
@@ -66,6 +67,19 @@ describe('parseSourceSyncRequested', () => {
   it('refuses a payload without a workspace or with a trigger it does not know', () => {
     expect(parseSourceSyncRequested({ ...requested, workspaceId: '' })).toBeNull()
     expect(parseSourceSyncRequested({ ...requested, trigger: 'cron' })).toBeNull()
+  })
+})
+
+describe('sourceDisconnected', () => {
+  const disconnected = {
+    version: EVENT_PAYLOAD_VERSION,
+    workspaceId: WORKSPACE,
+    disconnectedBy: '00000000-0000-4000-8000-0000000000aa',
+  }
+
+  it('reads a payload of the version it knows, and refuses one without a person', () => {
+    expect(sourceDisconnected.parse(disconnected)).toEqual(disconnected)
+    expect(sourceDisconnected.parse({ ...disconnected, disconnectedBy: '' })).toBeNull()
   })
 })
 
