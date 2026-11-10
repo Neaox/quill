@@ -30,7 +30,7 @@ const TARGETS: readonly PublicMenuTarget[] = [
     kind: 'document',
     id: SYNC,
     status: 'not-public',
-    title: 'The sync map',
+    title: 'The catalogue map',
     workspaceName: 'Engineering',
     collectionName: 'Architecture',
     href: null,
@@ -78,7 +78,7 @@ function routes(extra: FakeRoutes = {}): FakeRoutes {
     'GET /api/settings/organisation/public-menu/targets': targets,
     'GET /api/search': (request) => {
       const q = new URL(request.url).searchParams.get('q') ?? ''
-      const hits = q.startsWith('sync') ? [searchHit(SYNC, 'The sync map')] : []
+      const hits = q.startsWith('sync') ? [searchHit(SYNC, 'The catalogue map')] : []
       return jsonResponse(200, { query: q, current: hits, elsewhere: [] })
     },
     'GET /api/settings/organisation/public-menu/collections': (request) => {
@@ -155,7 +155,7 @@ describe('the public menu editor', () => {
     renderEditor()
     await ready()
     expect(row('Overview')).toHaveAccessibleDescription('Guides')
-    expect(row('Sync')).toHaveAccessibleDescription(/^The sync map · Architecture/u)
+    expect(row('Sync')).toHaveAccessibleDescription(/^The catalogue map · Architecture/u)
     expect(row('Reference')).toHaveAccessibleDescription('2 links')
     expect(row('Status')).toHaveAccessibleDescription('status.example.com')
     // Only the link that the header will leave out says anything.
@@ -227,7 +227,7 @@ describe('the public menu editor', () => {
     const field = screen.getByRole('combobox', { name: 'Links to' })
     expect(field).toHaveFocus()
     await user.type(field, 'sync')
-    const option = await screen.findByRole('option', { name: 'The sync map' })
+    const option = await screen.findByRole('option', { name: 'The catalogue map' })
     expect(option).toHaveAccessibleDescription(/Engineering.*Architecture/u)
     await user.keyboard('{Enter}')
 
@@ -407,7 +407,7 @@ describe('the public menu editor', () => {
     await expectNoAccessibilityViolations(container)
     await user.click(screen.getByRole('button', { name: 'Add a link' }))
     await user.type(screen.getByRole('combobox', { name: 'Add a link' }), 'sync')
-    await screen.findByRole('option', { name: 'The sync map' })
+    await screen.findByRole('option', { name: 'The catalogue map' })
     await expectNoAccessibilityViolations(container)
   })
 })

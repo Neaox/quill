@@ -1,0 +1,177 @@
+{
+  "fixture": "nested-readmes",
+  "result": {
+    "kind": "synced",
+    "published": 1
+  },
+  "state": {
+    "failure": null,
+    "refused": [],
+    "brokenLinks": [],
+    "layout": {
+      "origin": "manifest",
+      "unknownKeys": [],
+      "collections": [
+        "manual",
+        "decisions"
+      ]
+    }
+  },
+  "collections": [
+    {
+      "slug": "decisions",
+      "title": "Decisions"
+    },
+    {
+      "slug": "manual",
+      "title": "Manual"
+    }
+  ],
+  "tree": [
+    {
+      "path": "docs/adr/0001-record-decisions.md",
+      "collection": "decisions",
+      "parent": null,
+      "title": "1. Record decisions",
+      "sortKey": 1,
+      "archived": false
+    },
+    {
+      "path": "docs/adr/0002-catalogues.md",
+      "collection": "decisions",
+      "parent": null,
+      "title": "2. Catalogues",
+      "sortKey": 2,
+      "archived": false
+    },
+    {
+      "path": "docs/adr/README.md",
+      "collection": "decisions",
+      "parent": null,
+      "title": "Decisions",
+      "sortKey": -1000000001,
+      "archived": false
+    },
+    {
+      "path": "docs/manual/README.md",
+      "collection": "manual",
+      "parent": null,
+      "title": "Manual",
+      "sortKey": 1,
+      "archived": false
+    },
+    {
+      "path": "docs/manual/concepts/README.md",
+      "collection": "manual",
+      "parent": null,
+      "title": "Concepts",
+      "sortKey": 2,
+      "archived": false
+    },
+    {
+      "path": "docs/manual/concepts/holds.md",
+      "collection": "manual",
+      "parent": "docs/manual/concepts/README.md",
+      "title": "Holds and returns",
+      "sortKey": 1,
+      "archived": false
+    },
+    {
+      "path": "docs/manual/concepts/lending/README.md",
+      "collection": "manual",
+      "parent": "docs/manual/concepts/README.md",
+      "title": "Lending",
+      "sortKey": 2,
+      "archived": false
+    },
+    {
+      "path": "docs/manual/concepts/lending/shelves.md",
+      "collection": "manual",
+      "parent": "docs/manual/concepts/lending/README.md",
+      "title": "Shelves",
+      "sortKey": 1,
+      "archived": false
+    },
+    {
+      "path": "docs/manual/howto/.quill/folder.md",
+      "collection": "manual",
+      "parent": null,
+      "title": "Howto",
+      "sortKey": 3,
+      "archived": false
+    },
+    {
+      "path": "docs/manual/howto/join.md",
+      "collection": "manual",
+      "parent": "docs/manual/howto/.quill/folder.md",
+      "title": "Join a catalogue",
+      "sortKey": 1,
+      "archived": false
+    }
+  ],
+  "assets": [],
+  "stored": {
+    "docs/adr/0001-record-decisions.md": "---\nid: {doc:docs/adr/0001-record-decisions.md}\n---\n# 1. Record decisions\n",
+    "docs/adr/0002-catalogues.md": "---\nid: {doc:docs/adr/0002-catalogues.md}\n---\n# 2. Catalogues\n\nSee [the manual](../manual/README.md).\n",
+    "docs/adr/README.md": "---\nid: {doc:docs/adr/README.md}\n---\n# Decisions\n\nEvery decision, by number.\n",
+    "docs/manual/README.md": "---\nid: {doc:docs/manual/README.md}\norder: 1\n---\n\n# Manual\n\nThe manual's pages, in reading order: [concepts](./concepts/), [lending](./concepts/lending/README.md#who-borrows-what)\nand the [decisions](../adr/0001-record-decisions.md).\n\n:::details[What this manual is not]\nIt is not the API reference. See [the code](../../packages/api/README.md).\n:::\n\n| Page | What it covers |\n| --- | --- |\n| [Concepts](./concepts/README.md) | The words used everywhere |\n| [Lending](./concepts/lending/README.md) | Who borrows what |\n\n```ts\nexport const answer: number = 42\n```\n",
+    "docs/manual/concepts/README.md": "---\nid: {doc:docs/manual/concepts/README.md}\n---\n# Concepts\n\nThe words: [lending](lending/README.md), [holds](holds.md).\n",
+    "docs/manual/concepts/holds.md": "---\nid: {doc:docs/manual/concepts/holds.md}\ntitle: Holds and returns\n---\n\nA hold.\n",
+    "docs/manual/concepts/lending/README.md": "---\nid: {doc:docs/manual/concepts/lending/README.md}\n---\n# Lending\n\n## Who borrows what\n\nA branch lends its books.\n",
+    "docs/manual/concepts/lending/shelves.md": "---\nid: {doc:docs/manual/concepts/lending/shelves.md}\n---\n# Shelves\n\nBack to [the manual](../../README.md).\n",
+    "docs/manual/howto/.quill/folder.md": "---\nid: {doc:docs/manual/howto/.quill/folder.md}\n---\n# Howto\n\n::children{excerpts}\n",
+    "docs/manual/howto/join.md": "---\nid: {doc:docs/manual/howto/join.md}\n---\n# Join a catalogue\n\nSee [ADR 2](../../adr/0002-catalogues.md).\n"
+  },
+  "bodies": {
+    "docs/adr/0001-record-decisions.md": {
+      "html": "<article><h1 id=\"user-content-1-record-decisions\" aria-labelledby=\"user-content-title.1-record-decisions\"><span id=\"user-content-title.1-record-decisions\">1. Record decisions</span><a class=\"heading-anchor\" href=\"#user-content-1-record-decisions\" aria-label=\"Link to this section: 1. Record decisions\"><span aria-hidden=\"true\">#</span></a></h1></article>",
+      "blockIssues": [],
+      "incompleteRequiredSections": []
+    },
+    "docs/adr/0002-catalogues.md": {
+      "html": "<article><h1 id=\"user-content-2-catalogues\" aria-labelledby=\"user-content-title.2-catalogues\"><span id=\"user-content-title.2-catalogues\">2. Catalogues</span><a class=\"heading-anchor\" href=\"#user-content-2-catalogues\" aria-label=\"Link to this section: 2. Catalogues\"><span aria-hidden=\"true\">#</span></a></h1>\n<p>See <a href=\"/d/{doc:docs/manual/README.md}\">the manual</a>.</p></article>",
+      "blockIssues": [],
+      "incompleteRequiredSections": []
+    },
+    "docs/adr/README.md": {
+      "html": "<article><h1 id=\"user-content-decisions\" aria-labelledby=\"user-content-title.decisions\"><span id=\"user-content-title.decisions\">Decisions</span><a class=\"heading-anchor\" href=\"#user-content-decisions\" aria-label=\"Link to this section: Decisions\"><span aria-hidden=\"true\">#</span></a></h1>\n<p>Every decision, by number.</p></article>",
+      "blockIssues": [],
+      "incompleteRequiredSections": []
+    },
+    "docs/manual/README.md": {
+      "html": "<article><h1 id=\"user-content-manual\" aria-labelledby=\"user-content-title.manual\"><span id=\"user-content-title.manual\">Manual</span><a class=\"heading-anchor\" href=\"#user-content-manual\" aria-label=\"Link to this section: Manual\"><span aria-hidden=\"true\">#</span></a></h1>\n<p>The manual's pages, in reading order: <a href=\"/d/{doc:docs/manual/concepts/README.md}\">concepts</a>, <a href=\"/d/{doc:docs/manual/concepts/lending/README.md}#user-content-who-borrows-what\">lending</a>\nand the <a href=\"/d/{doc:docs/adr/0001-record-decisions.md}\">decisions</a>.</p>\n<details class=\"details\">\n<summary>What this manual is not</summary>\n<div class=\"details-body\">\n<p>It is not the API reference. See <a href=\"https://github.com/acme/handbook/blob/17a3ffe7256572feb20b01359d76726e8733acf4/packages/api/README.md\" rel=\"noopener noreferrer\">the code</a>.</p>\n</div>\n</details>\n<div class=\"table-block\"><div class=\"table-scroll\" tabindex=\"0\" role=\"group\" aria-label=\"Table\"><table>\n<thead>\n<tr>\n<th scope=\"col\">Page</th>\n<th scope=\"col\">What it covers</th>\n</tr>\n</thead>\n<tbody>\n<tr>\n<td><a href=\"/d/{doc:docs/manual/concepts/README.md}\">Concepts</a></td>\n<td>The words used everywhere</td>\n</tr>\n<tr>\n<td><a href=\"/d/{doc:docs/manual/concepts/lending/README.md}\">Lending</a></td>\n<td>Who borrows what</td>\n</tr>\n</tbody>\n</table></div></div>\n<div class=\"code-block\"><pre><code data-lang=\"typescript\" data-tokens=\"1:0,6,2;7,5,2;j,1,3;l,6,m;s,1,3;u,2,6\">export const answer: number = 42</code></pre></div></article>",
+      "blockIssues": [],
+      "incompleteRequiredSections": []
+    },
+    "docs/manual/concepts/README.md": {
+      "html": "<article><h1 id=\"user-content-concepts\" aria-labelledby=\"user-content-title.concepts\"><span id=\"user-content-title.concepts\">Concepts</span><a class=\"heading-anchor\" href=\"#user-content-concepts\" aria-label=\"Link to this section: Concepts\"><span aria-hidden=\"true\">#</span></a></h1>\n<p>The words: <a href=\"/d/{doc:docs/manual/concepts/lending/README.md}\">lending</a>, <a href=\"/d/{doc:docs/manual/concepts/holds.md}\">holds</a>.</p></article>",
+      "blockIssues": [],
+      "incompleteRequiredSections": []
+    },
+    "docs/manual/concepts/holds.md": {
+      "html": "<article><p>A hold.</p></article>",
+      "blockIssues": [],
+      "incompleteRequiredSections": []
+    },
+    "docs/manual/concepts/lending/README.md": {
+      "html": "<article><h1 id=\"user-content-lending\" aria-labelledby=\"user-content-title.lending\"><span id=\"user-content-title.lending\">Lending</span><a class=\"heading-anchor\" href=\"#user-content-lending\" aria-label=\"Link to this section: Lending\"><span aria-hidden=\"true\">#</span></a></h1>\n<h2 id=\"user-content-who-borrows-what\" aria-labelledby=\"user-content-title.who-borrows-what\"><span id=\"user-content-title.who-borrows-what\">Who borrows what</span><a class=\"heading-anchor\" href=\"#user-content-who-borrows-what\" aria-label=\"Link to this section: Who borrows what\"><span aria-hidden=\"true\">#</span></a></h2>\n<p>A branch lends its books.</p></article>",
+      "blockIssues": [],
+      "incompleteRequiredSections": []
+    },
+    "docs/manual/concepts/lending/shelves.md": {
+      "html": "<article><h1 id=\"user-content-shelves\" aria-labelledby=\"user-content-title.shelves\"><span id=\"user-content-title.shelves\">Shelves</span><a class=\"heading-anchor\" href=\"#user-content-shelves\" aria-label=\"Link to this section: Shelves\"><span aria-hidden=\"true\">#</span></a></h1>\n<p>Back to <a href=\"/d/{doc:docs/manual/README.md}\">the manual</a>.</p></article>",
+      "blockIssues": [],
+      "incompleteRequiredSections": []
+    },
+    "docs/manual/howto/.quill/folder.md": {
+      "html": "<article><h1 id=\"user-content-howto\" aria-labelledby=\"user-content-title.howto\"><span id=\"user-content-title.howto\">Howto</span><a class=\"heading-anchor\" href=\"#user-content-howto\" aria-label=\"Link to this section: Howto\"><span aria-hidden=\"true\">#</span></a></h1>\n<section class=\"live-block child-pages\" data-live-block=\"children\" data-live-key=\"children?depth=1&#x26;sort=manual&#x26;excerpts\" aria-label=\"Child pages\"><p class=\"child-pages-fallback\">The pages under this one are listed here.</p></section></article>",
+      "blockIssues": [],
+      "incompleteRequiredSections": []
+    },
+    "docs/manual/howto/join.md": {
+      "html": "<article><h1 id=\"user-content-join-a-catalogue\" aria-labelledby=\"user-content-title.join-a-catalogue\"><span id=\"user-content-title.join-a-catalogue\">Join a catalogue</span><a class=\"heading-anchor\" href=\"#user-content-join-a-catalogue\" aria-label=\"Link to this section: Join a catalogue\"><span aria-hidden=\"true\">#</span></a></h1>\n<p>See <a href=\"/d/{doc:docs/adr/0002-catalogues.md}\">ADR 2</a>.</p></article>",
+      "blockIssues": [],
+      "incompleteRequiredSections": []
+    }
+  }
+}

@@ -12,7 +12,7 @@ const GROUPS: readonly ListboxGroup[] = [
     id: 'documents',
     label: 'Documents',
     options: [
-      { id: 'sync', label: 'The sync map', detail: 'Engineering · Architecture' },
+      { id: 'sync', label: 'The catalogue map', detail: 'Engineering · Architecture' },
       { id: 'limits', label: 'Rate limits', detail: 'Engineering · Reference' },
     ],
   },
@@ -62,7 +62,7 @@ describe('Combobox', () => {
     const listbox = screen.getByRole('listbox', { name: 'Links to' })
     expect(field()).toHaveAttribute('aria-controls', listbox.id)
 
-    const first = screen.getByRole('option', { name: 'The sync map' })
+    const first = screen.getByRole('option', { name: 'The catalogue map' })
     expect(field()).toHaveAttribute('aria-activedescendant', first.id)
     expect(first).toHaveAccessibleDescription('Engineering · Architecture')
 
@@ -93,7 +93,7 @@ describe('Combobox', () => {
     render(<Harness onSelect={onSelect} keepsOpen={(id) => id === 'sync'} />)
     await user.type(field(), 'x')
 
-    await user.click(screen.getByRole('option', { name: 'The sync map' }))
+    await user.click(screen.getByRole('option', { name: 'The catalogue map' }))
     expect(onSelect).toHaveBeenCalledWith('sync')
     expect(field()).toHaveAttribute('aria-expanded', 'true')
 

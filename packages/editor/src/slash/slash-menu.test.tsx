@@ -522,10 +522,10 @@ describe('pickers', () => {
     expect(optionNames()).not.toContain('Label')
     without.unmount()
 
-    const { user, ref } = open('\n', { labels: ['airbnb', 'booking'] })
+    const { user, ref } = open('\n', { labels: ['alcove', 'almanac'] })
     await slash(user, ref, 'label')
-    await user.keyboard('{Enter}book{Enter}')
-    expect(markdown(ref)).toBe(':booking[Booking]\n')
+    await user.keyboard('{Enter}alma{Enter}')
+    expect(markdown(ref)).toBe(':almanac[Almanac]\n')
   })
 
   it('finds an emoji by name, the organisation’s own among them', async () => {

@@ -90,8 +90,8 @@ describe('the document page', () => {
   it('leaves the eyebrow to the author when the body already has one', () => {
     const main = renderDocumentMain({
       collectionName: 'Guides',
-      title: 'The sync map',
-      bodyHtml: '<article><p>Overview</p>\n<h1 id="x">The sync map</h1><p>Lede</p></article>',
+      title: 'The catalogue map',
+      bodyHtml: '<article><p>Overview</p>\n<h1 id="x">The catalogue map</h1><p>Lede</p></article>',
       rules: 'hairline',
     }).value
     expect(main).not.toContain('site-eyebrow')

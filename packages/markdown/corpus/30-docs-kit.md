@@ -1,18 +1,18 @@
 ---
-title: A booking, start to finish
+title: A hold, start to finish
 order: 5
 ---
 
-# A booking, start to finish
+# A hold, start to finish
 
 Every construct a developer guide built on Quill's documentation kit writes (ADR-060): a cast, timelines of steps with when-lines, checks, routes in prose and tables, badges with emoji in them, and details.
 
-:::cast{outside="Harbour Stays, Tidewater"}
+:::cast{outside="Northgate, Eastfield"}
 
-- :person: **Mere Tane** · Owns a cottage by the sea
-- :home: **Quill Lodge** · API, gateway, worker and engine
-- :globe: **Harbour Stays** · Tells Quill Lodge about each booking
-- :building: **Tidewater** · Waits to be asked
+- :person: **Tomas Reed** · Runs the hill branch
+- :home: **Rookwood** · API, gateway, worker and engine
+- :globe: **Northgate** · Tells Rookwood about each hold
+- :building: **Eastfield** · Waits to be asked
 
 :::
 
@@ -28,60 +28,60 @@ Every construct a developer guide built on Quill's documentation kit writes (ADR
 
 | Who                                                     | What                     | State              |
 | ------------------------------------------------------- | ------------------------ | ------------------ |
-| :route[:person: Owner, :key: API key → :home: API]      | Reads and writes         | :ok[Built]         |
-| :route[:globe: Harbour Stays → :inbox: Gateway]         | Sends each booking       | :plan[Designed]    |
-| :route[:building: Tidewater ⇄ :home: Quill Lodge]       | Rates, both ways         | :warn[Partial]     |
-| :route[:building: Tidewater, :globe: Harbour Stays]     | Asked every so often     | :accent[:clock: 25 s] |
+| :route[:person: Librarian, :key: API key → :home: API]  | Reads and writes         | :ok[Built]         |
+| :route[:globe: Northgate → :inbox: Gateway]             | Sends each hold          | :plan[Designed]    |
+| :route[:building: Eastfield ⇄ :home: Rookwood]          | Rates, both ways         | :warn[Partial]     |
+| :route[:building: Eastfield, :globe: Northgate]         | Asked every so often     | :accent[:clock: 25 s] |
 
-The gateway sends nothing back until it has saved what arrived :route[:globe: Harbour Stays → :inbox: Gateway ← :home: Worker].
+The gateway sends nothing back until it has saved what arrived :route[:globe: Northgate → :inbox: Gateway ← :home: Worker].
 
-## The owner changes a price
+## The librarian changes a loan period
 
 :::::timeline
 
 ::::step{icon=person}
 
-:clock: **Start** · :person: Owner's browser → :home: API
+:clock: **Start** · :person: Librarian's browser → :home: API
 
-### The owner raises Saturday's price
+### The librarian extends Saturday's loans
 
-The API checks five things, in order:
+The API runs five checks, in order:
 
 :::checks
 
-1. The request's format
-2. The owner belongs to the account
-3. Under the request limit
-4. The owner's role may change prices
+1. The request is well formed
+2. The librarian belongs to the branch
+3. Within the rate limit
+4. The librarian's role may change loan periods
 5. The API version exists
 
 :::
 
-:ok[Holds] The account comes from the sign-in, never from the request.
+:ok[Holds] The branch comes from the sign-in, never from the request.
 
 ::::
 
 ::::step{icon=loop}
 
-:clock: **Up to 2 s later** · :home: Engine → :globe: Harbour Stays, :building: Tidewater
+:clock: **Within 2 s** · :home: Engine → :globe: Northgate, :building: Eastfield
 
-### The new price goes to both sites
+### The new period goes to both networks
 
-Only nights that differ are sent.
+Only copies that differ are sent.
 
 ::::
 
 :::::
 
-## A guest books
+## A reader places a hold
 
 ::::timeline
 
 :::step{icon=globe tone=outside}
 
-:clock: **Any time later** · :globe: Harbour Stays → :inbox: Gateway
+:clock: **Any time later** · :globe: Northgate → :inbox: Gateway
 
-### Harbour Stays asks whether the nights are free
+### Northgate asks whether the book is on the shelf
 
 :ok[Holds] An answer comes even when the database is down.
 
@@ -89,17 +89,17 @@ Only nights that differ are sent.
 
 :::step{icon=shield tone=net}
 
-:loop: **Every 5 s** · :home: Worker → :database: Ledger · :home: Engine → :building: Tidewater
+:loop: **Every 5 s** · :home: Worker → :database: Ledger · :home: Engine → :building: Eastfield
 
 ### A net catches what was missed
 
-:bad[Refused] A booking with no owner is kept aside, never applied.
+:bad[Refused] A hold with no reader is kept aside, never applied.
 
 :::
 
 :::step{icon=inbox}
 
-:home: Engine → :home: Channel
+:home: Engine → :home: Ledger
 
 ### No chip, routes alone
 
@@ -117,7 +117,7 @@ The first line holds only a route.
 
 ::::
 
-:::details[:send: See the requests and responses]
+:::details[:send: Request and reply examples]
 
 The details keep their summary's emoji and code: `200`.
 

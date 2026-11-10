@@ -174,9 +174,9 @@ describe('the editor route', () => {
             { type: 'text', value: 'Sold on ' },
             {
               type: 'textDirective',
-              name: 'airbnb',
+              name: 'alcove',
               attributes: {},
-              children: [{ type: 'text', value: 'Airbnb' }],
+              children: [{ type: 'text', value: 'Alcove' }],
             },
           ],
         },
@@ -193,15 +193,15 @@ describe('the editor route', () => {
             themeId: 'instrument',
             stylesheetHref: '/api/settings/organisation/theme.css?v=1',
             attributes: {},
-            labels: ['airbnb'],
+            labels: ['alcove'],
           })
         },
       }),
     )
 
     const surface = screen.getByRole('textbox', { name: 'Regional failover' })
-    const label = within(surface).getByText('Airbnb')
-    expect(label.closest('.badge')).toHaveAttribute('data-label', 'airbnb')
+    const label = within(surface).getByText('Alcove')
+    expect(label.closest('.badge')).toHaveAttribute('data-label', 'alcove')
   })
 
   it('autosaves what is typed, in the envelope the draft arrived in', async () => {

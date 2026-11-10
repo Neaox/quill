@@ -6,16 +6,16 @@ import { pngFile } from './image-fixtures.ts'
  * The generated repositories ADR-062's budgets are measured on, built from a
  * seed so every run, on every machine, measures the same bytes.
  *
- * - **L** is shaped like lockstay's documentation, the first repository
- *   Quill reads: 486 Markdown files whose sizes follow lockstay's (median
- *   14 KB, 95th percentile 150 KB, largest 870 KB, about 18 MB in all), in
+ * - **L** is shaped like a real documentation repository: about 500
+ *   Markdown files whose sizes follow a log-normal (median about 14 KB,
+ *   95th percentile about 150 KB, none over 900 KB, about 18 MB in all), in
  *   12 collections of nested folders with a README in most, about 4,000
  *   relative links between them, and 90 pictures.
  * - **XL** is a large handbook: 5,000 smaller files (median 6 KB, about
  *   40 MB), 40 collections and 500 pictures.
  *
  * The pages mix what real documentation holds, in about the proportions
- * lockstay's do: headings, paragraphs with emphasis, links and inline code,
+ * a real repository's do: headings, paragraphs with emphasis, links and inline code,
  * nested lists, task lists, tables, code in several languages, block quotes,
  * callouts, details, component blocks, pictures, and front matter. What a
  * corpus is *for* is the parser's cost, so it holds every construct the
@@ -38,13 +38,13 @@ export interface SourceCorpusShape {
 export const SOURCE_CORPUS_SHAPES = {
   L: {
     name: 'L',
-    documents: 486,
+    documents: 500,
     collections: 12,
     assets: 90,
     median: 14 * 1024,
-    // ln(150 KB / 14 KB) / 1.645: lockstay's 95th percentile over its median.
+    // ln(150 KB / 14 KB) / 1.645: a 95th percentile of 150 KB over the median.
     spread: 1.44,
-    largest: 870 * 1024,
+    largest: 900 * 1024,
   },
   XL: {
     name: 'XL',
@@ -81,25 +81,25 @@ function random(seed: number): () => number {
 }
 
 const WORDS = [
-  'tenancy',
-  'booking',
-  'channel',
-  'property',
-  'owner',
-  'guest',
-  'invoice',
-  'payout',
-  'calendar',
-  'availability',
-  'rate',
+  'archive',
+  'lending',
+  'catalog',
+  'shelving',
+  'atlas',
+  'donor',
+  'journal',
+  'volume',
+  'register',
+  'conservation',
+  'loan',
   'policy',
   'sync',
   'webhook',
   'request',
   'response',
   'record',
-  'unit',
-  'organisation',
+  'wing',
+  'illustration',
   'staff',
   'review',
   'decision',
@@ -133,9 +133,9 @@ const WORDS = [
 ]
 const LANGUAGES = ['ts', 'bash', 'json', 'yaml', 'sql', 'tsx', 'diff'] as const
 
-/** The collections' directories: nested, as lockstay's are. */
+/** The collections' directories: nested, as a real repository's are. */
 function collectionPaths(count: number): readonly string[] {
-  const roots = ['guide', 'design', 'adr', 'research', 'security', 'stories', 'operations', 'api']
+  const roots = ['rules', 'floors', 'log', 'holdings', 'exhibits', 'letters', 'facilities', 'api']
   return Array.from({ length: count }, (_, index) => {
     /* v8 ignore next -- an index modulo the length is always in range. */
     const root = roots[index % roots.length] ?? 'docs'

@@ -65,6 +65,7 @@ development database is never touched, and can keep running throughout.
 | `pnpm --filter @quill/api-client generate`             | Regenerate the typed client from that description     |
 | `pnpm changelog:check` / `pnpm changelog:release <version>` | Validate changelog fragments in [`.changelog/`](.changelog/README.md), or assemble them into `CHANGELOG.md` |
 | `pnpm check:bundle` | Gzip/brotli-measure each route's initial bundle against its budget; see [`docs/operations/bundle-budget.md`](docs/operations/bundle-budget.md) |
+| `pnpm check:words` | Fail on a word the repository must never hold (names of private projects), in any file or path; the first step of `pnpm check` (`scripts/check-words.ts`) |
 
 ## Repository layout
 

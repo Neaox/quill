@@ -554,10 +554,10 @@ describe('labels (ADR-037)', () => {
 
   it('hands the renderer the organisation theme’s label names', async () => {
     const id = await publish('Channels', '# Channels')
-    await defineLabels('booking', 'airbnb')
+    await defineLabels('almanac', 'alcove')
 
     expect((await rendered(id)).content.html).toContain(
-      '<label name="booking"/><label name="airbnb"/>',
+      '<label name="almanac"/><label name="alcove"/>',
     )
   })
 
@@ -567,12 +567,12 @@ describe('labels (ADR-037)', () => {
     await defineLabels()
     expect((await rendered(id)).key).toBe(before.key)
 
-    await defineLabels('airbnb')
+    await defineLabels('alcove')
     const labelled = await rendered(id)
     expect(labelled.key).not.toBe(before.key)
     expect(labelled.cached).toBe(false)
 
-    await defineLabels('airbnb')
+    await defineLabels('alcove')
     expect((await rendered(id)).cached).toBe(true)
   })
 
@@ -586,7 +586,7 @@ describe('labels (ADR-037)', () => {
 
   it('renders without labels when the settings file cannot be read', async () => {
     const id = await publish('Channels', '# Channels')
-    await defineLabels('airbnb')
+    await defineLabels('alcove')
     const settings = createFakeSettings()
     settings.place('organisation', 'not: [valid\n')
     deps = { ...deps, settings }
@@ -596,8 +596,8 @@ describe('labels (ADR-037)', () => {
 })
 
 describe('emoji (ADR-038)', () => {
-  const AIRBNB: CustomEmojiEntry = {
-    name: 'airbnb',
+  const ALCOVE: CustomEmojiEntry = {
+    name: 'alcove',
     hash: 'a'.repeat(64),
     mediaType: 'image/svg+xml',
     width: 64,
@@ -634,14 +634,14 @@ describe('emoji (ADR-038)', () => {
   it('hands the renderer the organisation’s emoji, and each label’s leading one', async () => {
     const id = await publish('Channels', '# Channels')
     await defineEmoji(
-      [AIRBNB, { ...AIRBNB, name: 'booking_com', hash: 'b'.repeat(64) }],
-      [{ name: 'airbnb' }, { name: 'booking', emoji: 'booking_com' }, { name: 'vrbo' }],
+      [ALCOVE, { ...ALCOVE, name: 'almanac_hub', hash: 'b'.repeat(64) }],
+      [{ name: 'alcove' }, { name: 'almanac', emoji: 'almanac_hub' }, { name: 'nook' }],
     )
 
     expect((await rendered(id)).content.html).toContain(
-      '<emoji name="airbnb" src="/api/emoji/airbnb.aaaaaaaaaaaaaaaa.svg"/>' +
-        '<emoji name="booking_com" src="/api/emoji/booking_com.bbbbbbbbbbbbbbbb.svg"/>' +
-        '<lead label="airbnb" emoji="airbnb"/><lead label="booking" emoji="booking_com"/>',
+      '<emoji name="alcove" src="/api/emoji/alcove.aaaaaaaaaaaaaaaa.svg"/>' +
+        '<emoji name="almanac_hub" src="/api/emoji/almanac_hub.bbbbbbbbbbbbbbbb.svg"/>' +
+        '<lead label="alcove" emoji="alcove"/><lead label="almanac" emoji="almanac_hub"/>',
     )
   })
 
@@ -651,11 +651,11 @@ describe('emoji (ADR-038)', () => {
     await defineEmoji([])
     expect((await rendered(id)).key).toBe(before.key)
 
-    await defineEmoji([AIRBNB])
+    await defineEmoji([ALCOVE])
     const drawn = await rendered(id)
     expect(drawn.key).not.toBe(before.key)
 
-    await defineEmoji([{ ...AIRBNB, hash: 'c'.repeat(64) }])
+    await defineEmoji([{ ...ALCOVE, hash: 'c'.repeat(64) }])
     expect((await rendered(id)).key).not.toBe(drawn.key)
   })
 
@@ -679,7 +679,7 @@ describe('emoji (ADR-038)', () => {
         ]),
       }),
     )
-    expect(renderDigest({ ...input, labelEmoji: new Map([['airbnb', 'airbnb']]) })).not.toBe(
+    expect(renderDigest({ ...input, labelEmoji: new Map([['alcove', 'alcove']]) })).not.toBe(
       renderDigest(input),
     )
     expect(renderDigest({ ...input, emoji: new Map(), labelEmoji: new Map() })).toBe(

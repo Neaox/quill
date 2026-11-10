@@ -55,7 +55,7 @@ export interface BooleanProp extends PropBase<boolean> {
   readonly type: 'boolean'
 }
 
-/** Strings separated by commas in one attribute: `outside="Airbnb, Booking.com"`. */
+/** Strings separated by commas in one attribute: `outside="Northgate, Eastfield"`. */
 export interface ListProp extends PropBase<readonly string[]> {
   readonly type: 'array'
   readonly items: { readonly type: 'string' }
