@@ -21,6 +21,25 @@ import { supportedGitVersion } from './git-version.ts'
 import { sourcePrefixes, sparsePatterns } from './source-paths.ts'
 
 /**
+ * What `git --version` said, by executable, asked once per process: every
+ * source opened checks it, and a sync opens one each time, so asking anew
+ * would be a process per sync for an answer that changes only when the
+ * server's `git` is replaced, which restarts the server anyway.
+ */
+const versions = new Map<string, Promise<string>>()
+
+function versionOf(git: GitCli, executable: string, cwd: string): Promise<string> {
+  let asked = versions.get(executable)
+  if (asked === undefined) {
+    asked = git.run({ subcommand: '--version', cwd }).then(({ stdout }) => stdout.toString('utf8'))
+    versions.set(executable, asked)
+    // A failure is not remembered: the next source asks again.
+    asked.catch(() => versions.delete(executable))
+  }
+  return asked
+}
+
+/**
  * The `ExternalSource` port over the `git` CLI: a partial clone limited to
  * the source's paths (ADR-061, "Fetching").
  *
@@ -125,6 +144,12 @@ export class GitCliExternalSource implements ExternalSource {
   readonly #repository: string
   readonly #home: string
   readonly #trackingRef: string
+  /**
+   * Commit ids already found in the clone. An object id names one commit for
+   * ever and the clone only gains objects, so each is asked about once rather
+   * than on every read of it; a new clone starts the set again.
+   */
+  readonly #present = new Set<string>()
 
   /**
    * Checks the options and the installed `git`, and refuses clearly when
@@ -153,8 +178,7 @@ export class GitCliExternalSource implements ExternalSource {
       allowFileProtocol: remote.protocol === 'file:',
       ...(options.egressProxy === undefined ? {} : { egressProxy: options.egressProxy }),
     })
-    const { stdout } = await git.run({ subcommand: '--version', cwd: home })
-    supportedGitVersion(stdout.toString('utf8'))
+    supportedGitVersion(await versionOf(git, options.executable ?? 'git', home))
 
     return new GitCliExternalSource(prefixes.value, {
       git,
@@ -451,6 +475,7 @@ export class GitCliExternalSource implements ExternalSource {
    * interrupted clone is never mistaken for a finished one.
    */
   async #clone(network: Network, deadline: Deadline): Promise<void> {
+    this.#present.clear()
     const staging = `${this.#repository}.partial`
     await rm(staging, { recursive: true, force: true })
     try {
@@ -485,7 +510,10 @@ export class GitCliExternalSource implements ExternalSource {
     if (!OBJECT_ID.test(revision)) {
       throw new ExternalSourceError('unknown-revision', `"${revision}" is not a source revision.`)
     }
-    return this.#commit(revision)
+    if (this.#present.has(revision)) return revision
+    const commit = await this.#commit(revision)
+    this.#present.add(commit)
+    return commit
   }
 
   async #isAncestor(ancestor: string, descendant: string): Promise<boolean> {

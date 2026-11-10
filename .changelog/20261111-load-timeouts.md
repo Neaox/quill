@@ -1,0 +1,1 @@
+Fixed: Three tests that timed out when the machine was busy no longer depend on how busy it is: the live stream's test closes its own connections, the demo seed writes three workspaces at a time, and a repository source starts fewer git processes per sync.
