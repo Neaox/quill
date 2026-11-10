@@ -4,6 +4,7 @@ import type { Root } from 'mdast'
 
 import { stripAuthoringBlocks } from '../directives/strip-authoring-blocks.ts'
 import { stripPresenterNotes } from '../directives/strip-presenter-notes.ts'
+import { stripHtmlComments } from './html-comment.ts'
 
 export interface DocumentText {
   /** The first level-one heading, or the first heading of any level. */
@@ -26,7 +27,7 @@ interface FoundHeading {
  * the presenter says aloud are not what the document says.
  */
 export function extractText(ast: Root): DocumentText {
-  const { ast: published } = stripAuthoringBlocks(stripPresenterNotes(ast))
+  const { ast: published } = stripAuthoringBlocks(stripPresenterNotes(stripHtmlComments(ast)))
   const headings: FoundHeading[] = []
   const body: string[] = []
 
