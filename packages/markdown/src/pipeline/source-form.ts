@@ -14,7 +14,8 @@ import type {
 import type { ContainerDirective, LeafDirective, TextDirective } from 'mdast-util-directive'
 import { defaultHandlers } from 'mdast-util-to-markdown'
 import type { Handle, Info, Join } from 'mdast-util-to-markdown'
-import { visit } from 'unist-util-visit'
+
+import { walk } from '../walk.ts'
 
 import { writtenLabel } from './image-alt.ts'
 import type { ToMarkdownExtension } from './raw-mdast.ts'
@@ -231,7 +232,7 @@ export function markSourceForm(
     if (headerSpan !== undefined) withForm(node, { delimiterRow: written(headerSpan.endLine + 1) })
   }
 
-  visit(tree, (node) => {
+  walk<Nodes>(tree, (node) => {
     const span = spanOf(node)
     if (span === undefined) return
     switch (node.type) {

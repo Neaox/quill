@@ -2,6 +2,7 @@ import type { Root, Yaml } from 'mdast'
 
 import { readFrontMatter } from '../front-matter/yaml-document.ts'
 import type { Warning } from '../warnings.ts'
+import { parseMarkdownInChunks } from './parse-chunk.ts'
 import { parseMarkdown } from './processor.ts'
 
 /** The working representation of a document (ADR-004): metadata, tree, and what went wrong. */
@@ -21,6 +22,22 @@ export function frontMatterNode(ast: Root): Yaml | undefined {
 }
 
 /**
+ * How long a piece of a document is read on its own (ADR-062, step 3). A
+ * document is cut where every piece parses exactly as it does inside the
+ * whole (`chunk-plan.ts`, held to that by its property tests), because
+ * the parser reads several short texts faster than one long one, and each
+ * piece is read without the GFM parts it cannot hold (`gfm-parts.ts`).
+ */
+const PIECE = { first: 4_096, rest: 4_096 }
+
+/** The document's tree: read whole when it is one piece long, and in pieces when longer. */
+function parseTree(markdown: string): Root {
+  return markdown.length <= PIECE.first
+    ? parseMarkdown(markdown)
+    : parseMarkdownInChunks(markdown, PIECE)
+}
+
+/**
  * Parses a document into front matter and an mdast tree. The tree keeps the front
  * matter node with its YAML verbatim, so a serialise that changes nothing writes
  * the original bytes back (ADR-002).
@@ -31,7 +48,7 @@ export function frontMatterNode(ast: Root): Yaml | undefined {
  * token offsets match the text node a browser builds from it.
  */
 export function parseDocument(markdown: string): ParsedDocument {
-  const ast = parseMarkdown(markdown)
+  const ast = parseTree(markdown)
   const node = frontMatterNode(ast)
   if (node === undefined) return { frontMatter: {}, ast, warnings: [] }
   const { value, warnings } = readFrontMatter(node.value)

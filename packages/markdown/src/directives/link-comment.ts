@@ -1,9 +1,10 @@
 import { BRAND } from '@quill/brand'
-import type { Html, Link, Paragraph, Parent, PhrasingContent, Root } from 'mdast'
+import type { Html, Link, Nodes, Paragraph, Parent, PhrasingContent, Root } from 'mdast'
 import type { LeafDirective, TextDirective } from 'mdast-util-directive'
 import { toString } from 'mdast-util-to-string'
 import { SKIP, visit } from 'unist-util-visit'
 
+import { walk } from '../walk.ts'
 import { linkDirective, writeAttributes } from './link.ts'
 
 /**
@@ -228,7 +229,7 @@ function inlineLinks(children: readonly PhrasingContent[]): PhrasingContent[] | 
  */
 export function readLinkComments(tree: Root): Root {
   // Links written as the directive keep that form until an author changes them.
-  visit(tree, (node) => {
+  walk<Nodes>(tree, (node) => {
     if (isLinkDirective(node)) {
       node.data = { ...node.data, sourceForm: { ...node.data?.sourceForm, directiveForm: true } }
     }
