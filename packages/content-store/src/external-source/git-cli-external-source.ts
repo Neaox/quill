@@ -17,6 +17,7 @@ import type {
 import { GitCli } from './git-cli.ts'
 import type { Deadline, GitCommand, SourceCredential } from './git-cli.ts'
 import { batchObjects, nulFields } from './git-output.ts'
+import { FILE_KINDS, isTreePath, OBJECT_ID, pathBatches, treeEntry } from './git-tree.ts'
 import { supportedGitVersion } from './git-version.ts'
 import { sourcePrefixes, sparsePatterns } from './source-paths.ts'
 
@@ -88,15 +89,8 @@ const DEFAULT_FETCH_DEADLINE_MS = 15 * 60_000
 const DEFAULT_MAX_OUTPUT_BYTES = 64 * 1024 * 1024
 const DEFAULT_MAX_FILE_BYTES = 16 * 1024 * 1024
 
-/** A full SHA-1 or SHA-256 object id. Anything else could be read as an option or a revision expression. */
-const OBJECT_ID = /^[0-9a-f]{40}(?:[0-9a-f]{24})?$/u
 /** `git check-ref-format --branch`'s rules, closely enough to refuse anything that could be read as an option. */
 const BRANCH_NAME = /^(?![-/.])(?!.*(?:\.\.|\/\/|@\{|\.lock$|\/$|\.$))[^\p{Cc} ~^:?*[\\]+$/u
-const FILE_KINDS: ReadonlyMap<string, SourceFile['kind']> = new Map([
-  ['100644', 'file'],
-  ['100755', 'file'],
-  ['120000', 'symbolic-link'],
-])
 /** id, author name, author address, author time, committer time, subject. */
 const LOG_FORMAT = '--format=%H%x00%an%x00%ae%x00%at%x00%ct%x00%s'
 const LOG_FIELDS = 6
@@ -544,43 +538,6 @@ async function exists(path: string): Promise<boolean> {
   } catch {
     return false
   }
-}
-
-/** `<mode> <type> <id>\t<path>`; null for anything but a file or a symbolic link (a submodule, say). */
-/** Characters that keep a command line short on every platform (Windows allows 32,767). */
-const PATH_BATCH_CHARACTERS = 8000
-
-/** A path a tree entry could have: plain segments, nothing empty, `.` or `..`, no control character. */
-function isTreePath(path: string): boolean {
-  return path
-    .split('/')
-    .every(
-      (segment) =>
-        segment !== '' && segment !== '.' && segment !== '..' && !/\p{Cc}/u.test(segment),
-    )
-}
-
-/** Paths in batches whose command lines stay under the limit. */
-function* pathBatches(paths: readonly string[]): Generator<readonly string[]> {
-  let batch: string[] = []
-  let length = 0
-  for (const path of paths) {
-    if (batch.length > 0 && length + path.length > PATH_BATCH_CHARACTERS) {
-      yield batch
-      batch = []
-      length = 0
-    }
-    batch.push(path)
-    length += path.length + 1
-  }
-  yield batch
-}
-
-function treeEntry(field: string): SourceFile | null {
-  const tab = field.indexOf('\t')
-  const [mode = '', , fileId = ''] = field.slice(0, tab).split(' ')
-  const kind = FILE_KINDS.get(mode)
-  return kind === undefined ? null : { path: field.slice(tab + 1), fileId, kind }
 }
 
 function sourceRevision([

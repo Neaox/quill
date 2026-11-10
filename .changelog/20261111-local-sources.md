@@ -1,0 +1,1 @@
+Added: Two local sources for reading a repository on this disk: the working tree as it is now, and one revision of the local repository. Both plan exactly as the server's own reading of the same repository does.
