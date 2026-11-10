@@ -38,5 +38,13 @@ export {
   GitCliExternalSource,
   type GitCliExternalSourceOptions,
 } from './external-source/git-cli-external-source.ts'
+export {
+  LocalRevisionSource,
+  type LocalRevisionSourceOptions,
+} from './external-source/local-revision-source.ts'
+export {
+  WorkingTreeSource,
+  type WorkingTreeSourceOptions,
+} from './external-source/working-tree-source.ts'
 export type { SourceCredential } from './external-source/git-cli.ts'
 export { MINIMUM_GIT_VERSION } from './external-source/git-version.ts'
