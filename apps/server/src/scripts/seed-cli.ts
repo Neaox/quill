@@ -30,6 +30,7 @@ import { pagelessStylesheets } from '../theme/pageless.ts'
 import { createSearchService } from '@quill/search'
 import { createDrawioText } from '../extensions/drawio/drawing-text.ts'
 import { INERT_LINK_PREVIEW_PORTS } from '../infrastructure/link-preview/inert.ts'
+import { createIdleLiveHub } from '../live/live-hub.ts'
 import { inertSourceSync } from '../infrastructure/sources/inert-source-sync.ts'
 
 /**
@@ -97,6 +98,7 @@ try {
     messageAuthenticator: createMessageAuthenticator(),
     shareLinkPolicy: createShareLinkPolicy(config),
     linkPreviewPorts: INERT_LINK_PREVIEW_PORTS,
+    live: createIdleLiveHub(),
     mailer: createDevMailer((message) => process.stdout.write(`${message}\n`)),
     // Seeding runs no HTTP and asks nothing of a corpus; both ports exist
     // because `AppDependencies` is one shape, not because seeding uses them.

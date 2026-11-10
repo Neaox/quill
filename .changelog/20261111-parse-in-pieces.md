@@ -1,0 +1,1 @@
+Changed: Reading a page takes less work: a long page is read in pieces, which the parser reads faster than one long text, and each piece without the table and literal-autolink readers when it cannot hold either; every page reads and renders byte for byte as before.

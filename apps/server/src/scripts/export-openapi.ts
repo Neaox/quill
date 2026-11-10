@@ -31,6 +31,7 @@ import { createPublicSiteCache } from '../public-site/cache.ts'
 import { pagelessStylesheets } from '../theme/pageless.ts'
 import { createDrawioText } from '../extensions/drawio/drawing-text.ts'
 import { INERT_LINK_PREVIEW_PORTS } from '../infrastructure/link-preview/inert.ts'
+import { createIdleLiveHub } from '../live/live-hub.ts'
 import { inertSourceSync } from '../infrastructure/sources/inert-source-sync.ts'
 
 /**
@@ -88,6 +89,7 @@ async function describableDependencies(): Promise<AppDependencies> {
     messageAuthenticator: createMessageAuthenticator(),
     shareLinkPolicy: createShareLinkPolicy(config),
     linkPreviewPorts: INERT_LINK_PREVIEW_PORTS,
+    live: createIdleLiveHub(),
     ids,
     // Describing the API sends no mail, so the recording mailer is the
     // honest choice rather than one configured to reach a server.

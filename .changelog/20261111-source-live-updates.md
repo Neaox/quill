@@ -1,0 +1,1 @@
+Added: A workspace read from a repository updates its repository page, sidebar and open documents as a sync starts and ends, over a live stream that tells each reader only what they may see, with polling as the fallback.

@@ -108,6 +108,13 @@
   color: var(--color-body);
   font-variant-numeric: lining-nums tabular-nums;
   hanging-punctuation: first last;
+  /*
+   * A word longer than the line, such as an address written without a scheme
+   * and so not a link, breaks rather than pushing the page wider than a
+   * phone. `break-word` only breaks what would overflow, so ordinary text
+   * wraps exactly as before.
+   */
+  overflow-wrap: break-word;
 }
 
 .prose > :where(:not(:first-child)) {
@@ -394,6 +401,12 @@
   text-decoration-color: var(--prose-link-decoration, var(--color-border-strong));
   text-decoration-thickness: var(--prose-link-thickness, from-font);
   text-underline-offset: var(--prose-link-offset, 0.16em);
+  /*
+   * A long bare address breaks where it must rather than pushing the page wider
+   * than a phone. `anywhere`, not `break-word`: only `anywhere` counts when a
+   * table or a flex row works out how narrow the link can be.
+   */
+  overflow-wrap: anywhere;
   transition:
     color var(--duration-fast) var(--ease-standard),
     text-decoration-color var(--duration-fast) var(--ease-standard);
@@ -622,8 +635,12 @@
   color: var(--color-foreground);
   box-decoration-break: clone;
   -webkit-box-decoration-break: clone;
-  /* A long identifier wraps rather than pushing the measure out on a phone. */
-  overflow-wrap: break-word;
+  /*
+   * A long identifier wraps rather than pushing the measure out on a phone, in a
+   * table cell too: `anywhere` is counted in a cell's narrowest width, where
+   * `break-word` is not. A code block keeps its lines and scrolls.
+   */
+  overflow-wrap: anywhere;
 }
 
 .prose a :not(pre) > code,

@@ -41,13 +41,14 @@ import { HealthSignals } from './health-signals.tsx'
 import { PreviewLink, readerPreviewHref } from './preview-link.tsx'
 import { RevisionPanel } from './revision-panel.tsx'
 import { TableOfContents } from './table-of-contents.tsx'
+import { importOnDemand } from '../../lib/on-demand-imports.ts'
 
 const ComparisonPage = lazy(async () => ({
-  default: (await import('./compare/comparison-page.tsx')).ComparisonPage,
+  default: (await importOnDemand(() => import('./compare/comparison-page.tsx'))).ComparisonPage,
 }))
 
 const AttachmentsPanel = lazy(async () => ({
-  default: (await import('./attachments-panel.tsx')).AttachmentsPanel,
+  default: (await importOnDemand(() => import('./attachments-panel.tsx'))).AttachmentsPanel,
 }))
 
 const routeApi = getRouteApi('/_authenticated/w/$workspaceSlug/d/$documentId/')
@@ -105,6 +106,7 @@ export function DocumentPage() {
     sourced: workspace.data?.origin?.kind === 'sourced',
     readingHead: rev === undefined && to === undefined,
     revision: document.data.headRevision,
+    workspaceId: workspace.data?.id,
   })
 
   const revisions = labelRevisions(history.data?.revisions ?? [], {

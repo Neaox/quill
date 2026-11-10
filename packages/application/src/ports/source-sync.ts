@@ -324,6 +324,14 @@ export interface SourceLayoutRecord {
    * none until the next sync records them.
    */
   readonly redirects?: readonly (readonly [from: string, to: string])[] | undefined
+  /**
+   * Each collection's own directory (the literal one in front of its path)
+   * and the collection, in the manifest's order: where a link to that
+   * directory leads when no file stands for it (ADR-061, amendment "a link
+   * to a collection's directory"). Absent in a record from before they were
+   * kept, which reads as none until the next sync records them.
+   */
+  readonly collectionRoots?: readonly (readonly [root: string, collection: string])[] | undefined
 }
 
 /**

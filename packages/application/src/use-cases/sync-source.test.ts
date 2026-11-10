@@ -2145,6 +2145,54 @@ describe('folders as documents', () => {
     ])
   })
 
+  it("resolves a link to a collection's own directory to the collection's first page", async () => {
+    const h = harness([
+      {
+        id: 'c1',
+        files: {
+          [MANIFEST]: manifest(
+            '{ slug: guides, title: Guides, path: docs/guides }',
+            '{ slug: recipes, title: Recipes, path: docs/recipes, order: filename }',
+            '{ slug: tips, title: Tips, path: "docs/tips/*.md" }',
+            '{ slug: blank, title: Blank, path: docs/blank }',
+          ),
+          'docs/guides/README.md': [
+            '# Guides',
+            '[Recipes](../recipes/)',
+            '[Recipes again](../recipes)',
+            '[Tips](../tips/)',
+            '[Missing](../missing/)',
+            '[Blank](../blank/)',
+          ].join('\n\n'),
+          'docs/recipes/b-bread.md': '# Bread',
+          'docs/recipes/a-apples.md': '# Apples',
+          'docs/tips/README.md': '# Tips',
+          'docs/tips/knives.md': '# Knives',
+          'docs/blank/notes.txt': 'No pages here.',
+        },
+      },
+    ])
+    await sourced(h)
+    await h.sync()
+    const { html } = (await render(h, 'docs/guides/README.md')).content
+    const apples = await h.idAt('docs/recipes/a-apples.md')
+    const tips = await h.idAt('docs/tips/README.md')
+    // No file stands for the recipes directory: its first page in its order does.
+    expect(html).toContain(`[Recipes](/d/${apples})`)
+    expect(html).toContain(`[Recipes again](/d/${apples})`)
+    // A README stands for its directory, as it does for any folder.
+    expect(html).toContain(`[Tips](/d/${tips})`)
+    expect(html).toContain('[Missing](https://github.com/acme/handbook/blob/c1/docs/missing)')
+    // A collection with no pages has no first page: its directory is on the forge.
+    expect(html).toContain('[Blank](https://github.com/acme/handbook/blob/c1/docs/blank)')
+    expect((await state(h))?.brokenLinks).toEqual([
+      { path: 'docs/guides/README.md', url: '../missing/', revision: 'c1' },
+    ])
+    expect(await h.uow.repos.documentLinks.listSourcesTargeting(apples)).toEqual([
+      await h.idAt('docs/guides/README.md'),
+    ])
+  })
+
   it("gives a folder's generated document to the README it gains, and keeps it when the README goes", async () => {
     const lendingFiles = { 'docs/guide/concepts/lending/README.md': '# Lending' }
     const h = harness([{ id: 'c1', files: lendingFiles }])
