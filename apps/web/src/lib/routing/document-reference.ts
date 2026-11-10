@@ -1,6 +1,5 @@
+import { slugify } from '@quill/domain'
 import type { LinkTarget } from '@quill/ui'
-
-import { slugify } from '../documents/slugify.ts'
 
 /**
  * How a document is addressed in the application's URLs (ADR-035).
