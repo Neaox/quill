@@ -18,25 +18,43 @@ interface NodeLike {
   readonly children?: readonly NodeLike[]
 }
 
+/**
+ * A node's subtree rewritten. A node whose children all came back as
+ * themselves is returned as it is rather than copied: most rewrites change
+ * nothing in most of a document, and copying every node on every pass was a
+ * large part of a render's cost (ADR-062, step 3).
+ */
 function rewriteNode(
   node: NodeLike,
   parentType: string,
   rewrite: NodeRewrite,
 ): readonly NodeLike[] {
-  const next =
-    node.children === undefined
-      ? node
-      : {
-          ...node,
-          children: node.children.flatMap((child) => rewriteNode(child, node.type, rewrite)),
-        }
+  const children = node.children === undefined ? undefined : rewriteChildren(node, rewrite)
+  const next = children === undefined ? node : { ...node, children }
   // The walk is structural so that unmodelled nodes survive it; `RootContent` is
   // the type every caller works in, and the two conversions are confined to here.
   return rewrite(next as RootContent, parentType) ?? [next]
 }
 
-/** Rewrites a whole document depth-first. Pure: the input tree is never mutated. */
+/** A node's children rewritten, or `undefined` when every one came back as itself. */
+function rewriteChildren(node: NodeLike, rewrite: NodeRewrite): NodeLike[] | undefined {
+  const { children = [] } = node
+  let changed = false
+  const rewritten: NodeLike[] = []
+  for (const child of children) {
+    const replaced = rewriteNode(child, node.type, rewrite)
+    if (replaced.length !== 1 || replaced[0] !== child) changed = true
+    rewritten.push(...replaced)
+  }
+  return changed ? rewritten : undefined
+}
+
+/**
+ * Rewrites a whole document depth-first. Pure: the input tree is never
+ * mutated. The result shares every subtree the rewrite left alone with the
+ * input, and is the input itself when nothing changed.
+ */
 export function rewriteTree(tree: Root, rewrite: NodeRewrite): Root {
-  const children = tree.children.flatMap((child) => rewriteNode(child, tree.type, rewrite))
-  return { ...tree, children: children as RootContent[] }
+  const children = rewriteChildren(tree, rewrite)
+  return children === undefined ? tree : { ...tree, children: children as RootContent[] }
 }

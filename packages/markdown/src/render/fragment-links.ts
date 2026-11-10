@@ -1,6 +1,6 @@
-import type { Element, Root as HastRoot } from 'hast'
-import { visit } from 'unist-util-visit'
+import type { Nodes as HastNodes, Root as HastRoot } from 'hast'
 
+import { walk } from '../walk.ts'
 import { HEADING_ID_PREFIX } from './slug.ts'
 
 /**
@@ -16,8 +16,8 @@ import { HEADING_ID_PREFIX } from './slug.ts'
  * go to.
  */
 export function prefixFragmentLinks(tree: HastRoot): HastRoot {
-  visit(tree, 'element', (node: Element) => {
-    if (node.tagName !== 'a') return
+  walk<HastNodes>(tree, (node) => {
+    if (node.type !== 'element' || node.tagName !== 'a') return
     const href = node.properties['href']
     if (typeof href !== 'string' || !href.startsWith('#') || href.length === 1) return
     if (href.startsWith(`#${HEADING_ID_PREFIX}`)) return

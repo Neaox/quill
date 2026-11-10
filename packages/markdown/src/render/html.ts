@@ -2,8 +2,7 @@ import rehypeSanitize from 'rehype-sanitize'
 import rehypeStringify from 'rehype-stringify'
 import remarkRehype from 'remark-rehype'
 import { unified } from 'unified'
-import { visit } from 'unist-util-visit'
-import type { Element, ElementContent, Root as HastRoot } from 'hast'
+import type { Element, ElementContent, Nodes as HastNodes, Root as HastRoot } from 'hast'
 import type { Schema } from 'hast-util-sanitize'
 import type { Root } from 'mdast'
 
@@ -14,6 +13,7 @@ import { stripPresenterNotes } from '../directives/strip-presenter-notes.ts'
 import type { CustomEmoji, StandardLookup } from '../emoji/emoji.ts'
 import { emojiLookup, guardEmojiImages, withEmoji } from '../emoji/emoji.ts'
 import type { MarkdownRegistry } from '../extensions/registry.ts'
+import { walk } from '../walk.ts'
 import { escapeRawHtml } from './escape-raw-html.ts'
 import { addExternalLinkRel } from './external-link-rel.ts'
 import { prefixFragmentLinks } from './fragment-links.ts'
@@ -223,8 +223,8 @@ function isDrawingSlot(node: Element): boolean {
 function placeDrawings(tree: HastRoot, placed: readonly Element[]): HastRoot {
   if (placed.length === 0) return tree
   const queue = [...placed]
-  visit(tree, 'element', (node: Element) => {
-    if (isDrawingSlot(node)) node.children = queue.splice(0, 1)
+  walk<HastNodes>(tree, (node) => {
+    if (node.type === 'element' && isDrawingSlot(node)) node.children = queue.splice(0, 1)
   })
   return tree
 }
