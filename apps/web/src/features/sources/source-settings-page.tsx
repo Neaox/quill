@@ -9,6 +9,7 @@ import {
   ApiError,
   useApiClient,
   useConfigureSource,
+  useDisconnectSource,
   useDocuments,
   useLoadedWorkspace,
   useSecrets,
@@ -22,6 +23,7 @@ import { RadioChoice } from '../../lib/forms/radio-choice.tsx'
 import { SelectField } from '../../lib/forms/select-field.tsx'
 import { SettingsSection } from '../settings/settings-frame.tsx'
 import { UnsavedChangesGuard } from '../settings/unsaved-changes-guard.tsx'
+import { ConfirmDeleteDialog } from '../dialogs/confirm-delete-dialog.tsx'
 import {
   EMPTY_FORM,
   TOKEN_USERNAME,
@@ -448,7 +450,82 @@ function SourceForm({
               : 'Connecting stores these settings and syncs now. Documents appear as the sync finishes.')}
         </p>
       </section>
+      {editing ? <Disconnect workspace={workspace} remote={saved.remote} /> : undefined}
     </PageFrame>
+  )
+}
+
+/**
+ * Disconnecting the workspace from its repository (ADR-061, amendment of 11
+ * November 2026), behind a confirmation that says what follows: the
+ * workspace becomes one people write in, keeping every page, its history and
+ * its address, and the repository is never read from again. It can't be
+ * undone, so the confirmation says that too.
+ */
+function Disconnect({
+  workspace,
+  remote,
+}: {
+  readonly workspace: Workspace
+  readonly remote: string
+}) {
+  const [open, setOpen] = useState(false)
+  const disconnect = useDisconnectSource(workspace.id)
+  const navigate = useNavigate()
+  return (
+    <SettingsSection
+      level={2}
+      title="Disconnect from the repository"
+      description="Stop reading this workspace from the repository and write its documents here instead."
+    >
+      <div>
+        <Button
+          variant="secondary"
+          onClick={() => {
+            disconnect.reset()
+            setOpen(true)
+          }}
+        >
+          Disconnect…
+        </Button>
+      </div>
+      <ConfirmDeleteDialog
+        open={open}
+        onOpenChange={setOpen}
+        title="Disconnect from the repository?"
+        confirmLabel="Disconnect"
+        description="It can’t be undone: a disconnected workspace isn’t connected to a repository again."
+        isPending={disconnect.isPending}
+        error={disconnect.error}
+        onConfirm={() => {
+          disconnect.mutate(undefined, {
+            onSuccess: () => {
+              setOpen(false)
+              void navigate({
+                to: '/w/$workspaceSlug/source',
+                params: { workspaceSlug: workspace.slug },
+              })
+            },
+          })
+        }}
+      >
+        <ul className="flex list-disc flex-col gap-1.5 pl-5 text-sm text-foreground">
+          <li>
+            Every page stays, with its history, comments and address, and can be edited and
+            published here like any other.
+          </li>
+          <li>
+            Pushes to <code className="break-all">{remote}</code> no longer arrive, and nothing is
+            ever written to the repository.
+          </li>
+          <li>
+            Links in the pages’ text keep leading where they did, and pages already removed from the
+            repository stay removed.
+          </li>
+          <li>The repository’s page becomes a read-only record of where the pages came from.</li>
+        </ul>
+      </ConfirmDeleteDialog>
+    </SettingsSection>
   )
 }
 

@@ -69,6 +69,8 @@ const RenameWorkspaceBody = Type.Object({
  */
 const WorkspaceOriginSchema = Type.Object({
   kind: Type.Union([Type.Literal('native'), Type.Literal('sourced')]),
+  /** A native workspace that read from a repository until it was disconnected (ADR-061). */
+  disconnected: Type.Optional(Type.Boolean()),
 })
 
 const WorkspaceSchema = Type.Object({

@@ -24,6 +24,7 @@ export type {
   ReviewDecidedPayload,
   ReviewRequestedPayload,
   ReviewWithdrawnPayload,
+  SourceDisconnectedPayload,
   SourceSyncRequestedPayload,
   SourceSyncTrigger,
 } from './events.ts'
@@ -70,6 +71,8 @@ export {
   reviewDecided,
   reviewRequested,
   reviewWithdrawn,
+  SOURCE_DISCONNECTED,
+  sourceDisconnected,
   SOURCE_SYNC_REQUESTED,
   SOURCE_SYNC_TRIGGERS,
   parseSourceSyncRequested,
@@ -746,8 +749,10 @@ export {
   MAX_PREVIEW_SKIPPED,
   previewWorkspaceSource,
 } from './source-preview.ts'
+export type { DisconnectWorkspaceSourceResult } from './workspace-source.ts'
 export {
   configureWorkspaceSource,
+  disconnectWorkspaceSource,
   getWorkspaceSource,
   MAX_SOURCE_COLLECTION_NAME_LENGTH,
   MAX_SOURCE_COLLECTIONS,

@@ -22,6 +22,14 @@ export const Route = createFileRoute('/_authenticated/w/$workspaceSlug/source_/c
     const workspace = await context.queryClient.ensureQueryData(
       workspaceQueryOptions(context.apiClient, params.workspaceSlug),
     )
+    // A disconnected workspace is never connected again; its record is on the repository's page.
+    if (workspace.origin?.disconnected === true) {
+      throw redirect({
+        to: '/w/$workspaceSlug/source',
+        params: { workspaceSlug: params.workspaceSlug },
+        replace: true,
+      })
+    }
     if (workspace.origin?.kind === 'sourced') {
       throw redirect({
         to: '/w/$workspaceSlug/source/settings',

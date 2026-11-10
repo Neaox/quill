@@ -3,6 +3,7 @@ import type { Static } from '@sinclair/typebox'
 import type { TypeBoxTypeProvider } from '@fastify/type-provider-typebox'
 import {
   configureWorkspaceSource,
+  disconnectWorkspaceSource,
   getWorkspaceSource,
   previewWorkspaceSource,
   requestManualSourceSync,
@@ -163,6 +164,11 @@ const WorkspaceSourceSchema = Type.Object({
   /** The name of the secret its push webhook is signed with; null when it takes no webhook. */
   webhookSecret: Type.Union([Type.String(), Type.Null()]),
   updatedAt: Type.String({ format: 'date-time' }),
+  /**
+   * When the workspace stopped reading from this repository; null while it
+   * reads. A disconnected source is a read-only record of where it came from.
+   */
+  disconnectedAt: Type.Union([Type.String({ format: 'date-time' }), Type.Null()]),
   /** How far it has synced; null before the first attempt. */
   sync: Type.Union([
     Type.Object({
@@ -353,6 +359,7 @@ function sourceResponse(
     viewTemplate: source.viewTemplate,
     webhookSecret: source.webhookSecretName,
     updatedAt: source.updatedAt.toISOString(),
+    disconnectedAt: source.disconnectedAt?.toISOString() ?? null,
     sync:
       state === null
         ? null
@@ -371,6 +378,12 @@ function sourceResponse(
 
 const notSourced = (): AppError =>
   conflict('workspace_not_sourced', 'This workspace does not read from a repository')
+
+const wasDisconnected = (): AppError =>
+  conflict(
+    'workspace_source_disconnected',
+    'This workspace was disconnected from its repository, and holds documents people may have edited, which a sync would strand. Connect a new workspace to the repository instead.',
+  )
 
 const notEmpty = (): AppError =>
   conflict(
@@ -430,6 +443,8 @@ export function workspaceSourceRoutes(deps: AppDependencies): FastifyPluginAsync
             throw notFound('Workspace not found')
           case 'not-empty':
             throw notEmpty()
+          case 'disconnected':
+            throw wasDisconnected()
           case 'invalid':
             throw unprocessable('invalid_source', result.message, { field: result.field })
         }
@@ -474,8 +489,42 @@ export function workspaceSourceRoutes(deps: AppDependencies): FastifyPluginAsync
             throw notFound('Workspace not found')
           case 'not-empty':
             throw notEmpty()
+          case 'disconnected':
+            throw wasDisconnected()
           case 'invalid':
             throw unprocessable('invalid_source', result.message, { field: result.field })
+        }
+      },
+    )
+
+    app.post(
+      '/api/workspaces/:id/source/disconnect',
+      {
+        preHandler: app.requireVerifiedSession,
+        schema: { params: IdParamsSchema, response: { 200: WorkspaceSourceSchema } },
+      },
+      async (request) => {
+        // Instance administration, as connecting is; checked before the workspace is resolved.
+        await requireInstanceAdmin(deps, request)
+        const target = await resolveWorkspaceId(deps, request.params.id)
+        const session = requireAuthenticatedSession(request)
+        const result = await disconnectWorkspaceSource(
+          { ...deps, lock: deps.sourceSync.lock },
+          { workspaceId: target, disconnectedBy: session.userId },
+        )
+        switch (result.kind) {
+          case 'disconnected':
+            return sourceResponse(result.view, false)
+          /* v8 ignore next 2 -- the workspace was resolved a moment ago. */
+          case 'not-found':
+            throw notFound('Workspace not found')
+          case 'not-sourced':
+            throw notSourced()
+          case 'busy':
+            throw conflict(
+              'source_sync_running',
+              'A sync of this repository is running. Disconnect once it has finished.',
+            )
         }
       },
     )

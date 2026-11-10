@@ -85,6 +85,7 @@ export {
   SAVED_SYNC_WAIT_MS,
   SOURCE_FRESHNESS_REFRESH_MS,
   useConfigureSource,
+  useDisconnectSource,
   usePreviewSource,
   useSourceFreshness,
   useSyncSourceNow,

@@ -26,6 +26,7 @@ const SAVED: WorkspaceSourceDto = {
   viewTemplate: 'https://git.example.com/{commit}/{path}',
   webhookSecret: 'sources/hook',
   updatedAt: '2026-11-09T08:00:00.000Z',
+  disconnectedAt: null,
   sync: null,
   syncing: false,
 }

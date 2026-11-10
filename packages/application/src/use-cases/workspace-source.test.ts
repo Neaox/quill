@@ -4,11 +4,12 @@ import { collectionId, documentId, userId, workspaceId } from '@quill/domain'
 import { aShortId, createFakeClock, createFakeIdGenerator } from '../test-support/fakes.ts'
 import { createInMemoryUnitOfWork } from '../test-support/in-memory-repositories.ts'
 import type { InMemoryUnitOfWork } from '../test-support/in-memory-repositories.ts'
-import { SOURCE_SYNC_REQUESTED } from './events.ts'
+import { SOURCE_DISCONNECTED, SOURCE_SYNC_REQUESTED } from './events.ts'
 import {
   MAX_SOURCE_COLLECTIONS,
   WORKSPACE_SOURCE_AUDIT_EVENTS,
   configureWorkspaceSource,
+  disconnectWorkspaceSource,
   getWorkspaceSource,
   requestManualSourceSync,
 } from './workspace-source.ts'
@@ -419,3 +420,70 @@ async function addDocument(): Promise<void> {
     now: NOW,
   })
 }
+
+/** A lock that runs the work, or says a sync holds it. */
+const lock = (busy = false) => ({
+  withLock: async <T>(_: unknown, work: () => Promise<T>) =>
+    busy ? ({ kind: 'busy' } as const) : ({ kind: 'ran', value: await work() } as const),
+  isHeld: async () => busy,
+})
+
+describe('disconnectWorkspaceSource', () => {
+  it('makes the workspace native, keeps the source as a record, and records why', async () => {
+    await configureWorkspaceSource(deps, command())
+    deps.clock.advance(60_000)
+    const result = await disconnectWorkspaceSource(
+      { ...deps, lock: lock() },
+      { workspaceId: WORKSPACE, disconnectedBy: ACTOR },
+    )
+    if (result.kind !== 'disconnected') throw new Error(`unexpected result: ${result.kind}`)
+    expect(result.view.source.disconnectedAt).toEqual(deps.clock.now())
+    expect((await uow.repos.workspaces.findById(WORKSPACE))?.origin).toEqual({
+      kind: 'native',
+      disconnected: true,
+    })
+    expect(await uow.repos.workspaceSources.listWorkspaceIds()).toEqual([])
+    expect(uow.events.map(({ type }) => type)).toContain(SOURCE_DISCONNECTED)
+    expect(uow.auditEvents.map(({ type }) => type)).toContain(
+      WORKSPACE_SOURCE_AUDIT_EVENTS.disconnected,
+    )
+
+    // A disconnected source is never synced, nor connected again.
+    expect(
+      await requestManualSourceSync(deps, { workspaceId: WORKSPACE, requestedBy: ACTOR }),
+    ).toEqual({ kind: 'not-sourced' })
+    expect(await configureWorkspaceSource(deps, command())).toEqual({ kind: 'disconnected' })
+    expect(
+      await disconnectWorkspaceSource(
+        { ...deps, lock: lock() },
+        { workspaceId: WORKSPACE, disconnectedBy: ACTOR },
+      ),
+    ).toEqual({ kind: 'not-sourced' })
+  })
+
+  it('waits for a running sync rather than racing it', async () => {
+    await configureWorkspaceSource(deps, command())
+    expect(
+      await disconnectWorkspaceSource(
+        { ...deps, lock: lock(true) },
+        { workspaceId: WORKSPACE, disconnectedBy: ACTOR },
+      ),
+    ).toEqual({ kind: 'busy' })
+    expect((await uow.repos.workspaceSources.find(WORKSPACE))?.disconnectedAt).toBeNull()
+  })
+
+  it('answers not-sourced for a native workspace, and not-found for none', async () => {
+    const run = (id: typeof WORKSPACE) =>
+      disconnectWorkspaceSource(
+        { ...deps, lock: lock() },
+        { workspaceId: id, disconnectedBy: ACTOR },
+      )
+    expect(await run(WORKSPACE)).toEqual({ kind: 'not-sourced' })
+    expect(await run(workspaceId('00000000-0000-4000-8000-000000000999'))).toEqual({
+      kind: 'not-found',
+    })
+    // The in-memory store, as the table's update does, changes nothing it does not hold.
+    await uow.repos.workspaceSources.disconnect(WORKSPACE, NOW)
+    expect(await uow.repos.workspaceSources.find(WORKSPACE)).toBeNull()
+  })
+})

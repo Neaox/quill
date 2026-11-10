@@ -187,6 +187,8 @@ export type SourcePreviewResult =
   | { readonly kind: 'preview'; readonly preview: SourcePreview }
   | { readonly kind: 'not-found' }
   | { readonly kind: 'not-empty' }
+  /** Its source was disconnected, and it is never connected again (ADR-061). */
+  | { readonly kind: 'disconnected' }
   | { readonly kind: 'invalid'; readonly field: WorkspaceSourceField; readonly message: string }
   | {
       readonly kind: 'unreadable'
@@ -204,6 +206,9 @@ export async function previewWorkspaceSource(
   if (workspace === null) return { kind: 'not-found' }
   const draft = await validateSourceDraft(deps, command)
   if ('kind' in draft) return draft
+  if (workspace.origin.kind === 'native' && workspace.origin.disconnected === true) {
+    return { kind: 'disconnected' }
+  }
   const sourced = workspace.origin.kind === 'sourced'
   if (!sourced && (await repos.documents.listByWorkspace(command.workspaceId)).length > 0) {
     return { kind: 'not-empty' }

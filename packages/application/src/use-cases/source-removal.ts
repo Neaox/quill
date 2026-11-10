@@ -74,8 +74,12 @@ export function followRedirects(path: string, addresses: SourceAddresses): Docum
 }
 
 /**
- * Why a document of a sourced workspace is not there to read, or null when
- * it is: a document that is not archived, or not in a sourced workspace.
+ * Why a document of a workspace read from a repository is not there to read,
+ * or null when it is: a document that is not archived, or in a workspace no
+ * repository was ever read into. It asks for the source's record, which is
+ * kept when the source is disconnected, not whether the workspace reads from
+ * it now, so a removed page keeps its answer afterwards (ADR-061, amendment
+ * of 11 November 2026).
  */
 export async function readSourceRemoval(
   deps: { readonly uow: UnitOfWork },

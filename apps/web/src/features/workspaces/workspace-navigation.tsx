@@ -539,10 +539,14 @@ function WorkspaceOverflow({ workspaceSlug, workspaceName, empty }: WorkspaceOve
   const navigate = useNavigate()
   const workspace = useWorkspace(workspaceSlug).data
   const sourced = workspace?.origin?.kind === 'sourced'
+  // A disconnected workspace keeps its repository's page, as a record (ADR-061).
+  const disconnected =
+    workspace?.origin?.kind === 'native' && workspace.origin.disconnected === true
   const instanceAdmin = me.data?.isInstanceAdmin === true
   // The repository's page is for whoever manages the workspace, which the
   // workspace's own permissions say; its settings are still the instance's.
-  const repository = sourced && (instanceAdmin || workspace?.permissions?.manage === true)
+  const repository =
+    (sourced || disconnected) && (instanceAdmin || workspace?.permissions?.manage === true)
 
   if (!instanceAdmin && !repository) return undefined
 
@@ -580,7 +584,7 @@ function WorkspaceOverflow({ workspaceSlug, workspaceName, empty }: WorkspaceOve
               },
             ]
           : []),
-        ...(instanceAdmin && workspace !== undefined && !sourced && empty === true
+        ...(instanceAdmin && workspace !== undefined && !sourced && !disconnected && empty === true
           ? [
               {
                 label: 'Read from a repository…',

@@ -2,7 +2,14 @@ import { getRouteApi, Link } from '@tanstack/react-router'
 import { useState, type ReactNode } from 'react'
 
 import { defaultForgeViewTemplate, forgeViewUrl } from '@quill/domain'
-import { Button, buttonClassName, Callout, RelativeTime, textLinkClassName } from '@quill/ui'
+import {
+  Button,
+  buttonClassName,
+  Callout,
+  LocalTime,
+  RelativeTime,
+  textLinkClassName,
+} from '@quill/ui'
 
 import {
   awaitsSyncAfterSave,
@@ -64,6 +71,15 @@ export function SourcePage() {
   /* v8 ignore next -- the loader awaited this entry, so it is here on the first render. */
   if (source.data === undefined) return undefined
   const data = source.data
+  if (data.disconnectedAt !== null) {
+    return (
+      <DisconnectedRecord
+        source={data}
+        name={workspace.name}
+        disconnectedAt={data.disconnectedAt}
+      />
+    )
+  }
   const sync = data.sync
   const awaiting = askedAfter !== undefined && (sync?.lastAttemptAt ?? null) === askedAfter.attempt
   // Saving the settings asks for a sync; until it is attempted, it is on its way.
@@ -128,6 +144,60 @@ export function SourcePage() {
         workspaceSlug={workspace.slug}
         canChange={canChange}
       />
+    </div>
+  )
+}
+
+/**
+ * The repository a disconnected workspace was read from (ADR-061, amendment
+ * of 11 November 2026): a read-only record. It says where the pages came
+ * from and at which commit, keeps the lists as that commit left them, and
+ * offers nothing to do, because nothing is read from the repository again.
+ */
+function DisconnectedRecord({
+  source,
+  name,
+  disconnectedAt,
+}: {
+  readonly source: WorkspaceSourceDto
+  readonly name: string
+  readonly disconnectedAt: string
+}) {
+  const template = source.viewTemplate ?? defaultForgeViewTemplate(source.remote)
+  const forgeLink: ForgeLink = (revision, path) =>
+    template === null ? null : forgeViewUrl(template, revision, path)
+  const revision = source.sync?.lastSyncedRevision ?? null
+  return (
+    <div className="flex min-w-0 flex-col gap-10 px-4 py-8 sm:px-8">
+      <div className="flex max-w-(--layout-content) flex-col gap-4">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight text-foreground">
+            {name} repository
+          </h1>
+          <p className="mt-1 text-sm text-muted">
+            This workspace was read from a repository until it was disconnected. Its documents are
+            written here now; this is the record of where they came from.
+          </p>
+        </div>
+        <Callout tone="info" title="Disconnected">
+          <p className="min-w-0 break-words">
+            Disconnected from <code className="break-all">{source.remote}</code>
+            {revision === null ? undefined : (
+              <>
+                {' '}
+                at <Revision value={revision} />
+              </>
+            )}{' '}
+            on <LocalTime value={disconnectedAt} />.
+          </p>
+          <p className="text-sm text-muted">
+            Links in the pages’ text still lead where they did, and links to the repository’s other
+            files go to that commit.
+          </p>
+        </Callout>
+      </div>
+      <ToFix sync={source.sync} forgeLink={forgeLink} disconnected />
+      <Settings source={source} workspaceId="" workspaceSlug="" canChange={false} disconnected />
     </div>
   )
 }
@@ -290,7 +360,16 @@ function ProblemList({
  * with its explanation when it has something in it, and otherwise named in
  * one quiet line, so an empty page is short.
  */
-function ToFix({ sync, forgeLink }: { readonly sync: Sync | null; readonly forgeLink: ForgeLink }) {
+function ToFix({
+  sync,
+  forgeLink,
+  disconnected = false,
+}: {
+  readonly sync: Sync | null
+  readonly forgeLink: ForgeLink
+  /** The lists are a record: as the last sync before the disconnection left them. */
+  readonly disconnected?: boolean
+}) {
   const refused = sync?.refused ?? []
   const links = sync?.brokenLinks ?? null
   const keys = sync?.unknownKeys ?? []
@@ -314,8 +393,10 @@ function ToFix({ sync, forgeLink }: { readonly sync: Sync | null; readonly forge
       'From the last attempt'
     ) : (
       <>
-        As of <Revision value={sync.lastSyncedRevision} />, the last revision that synced
-        {sync.failure === null ? '' : ', before the sync that stopped'}
+        As of <Revision value={sync.lastSyncedRevision} />,{' '}
+        {disconnected
+          ? 'the commit it was disconnected at'
+          : `the last revision that synced${sync.failure === null ? '' : ', before the sync that stopped'}`}
       </>
     )
 
@@ -386,7 +467,9 @@ function ToFix({ sync, forgeLink }: { readonly sync: Sync | null; readonly forge
           {empty.length === 0
             ? undefined
             : `${nothing ? '' : 'Also: '}${capitalised(sentence(empty), nothing)}`}
-          {links === null ? ' Broken links are checked at the next sync.' : undefined}
+          {links === null && !disconnected
+            ? ' Broken links are checked at the next sync.'
+            : undefined}
         </p>
       )}
     </SettingsSection>
@@ -448,23 +531,28 @@ function Settings({
   workspaceId,
   workspaceSlug,
   canChange,
+  disconnected = false,
 }: {
   readonly source: WorkspaceSourceDto
   readonly workspaceId: string
   readonly workspaceSlug: string
   /** Whether the reader may change them: instance administration, as the API is. */
   readonly canChange: boolean
+  /** The settings it was read with, kept as a record once it was disconnected. */
+  readonly disconnected?: boolean
 }) {
   const hook = (forge: string) =>
     `${globalThis.location.origin}/api/workspaces/${workspaceId}/source/webhooks/${forge}`
   return (
     <SettingsSection
       level={2}
-      title="Settings"
+      title={disconnected ? 'Settings it was read with' : 'Settings'}
       description={
-        canChange
-          ? 'Where the repository has a manifest, the manifest decides the collections. Changing a setting shows what the change does before it is saved.'
-          : 'Where the repository has a manifest, the manifest decides the collections. Only an instance administrator can change these settings.'
+        disconnected
+          ? 'As they were when it was disconnected. They no longer change anything.'
+          : canChange
+            ? 'Where the repository has a manifest, the manifest decides the collections. Changing a setting shows what the change does before it is saved.'
+            : 'Where the repository has a manifest, the manifest decides the collections. Only an instance administrator can change these settings.'
       }
     >
       {canChange ? (
@@ -521,7 +609,9 @@ function Settings({
           )}
         </Fact>
         <Fact term="Push webhook">
-          {source.webhookSecret === null ? (
+          {disconnected ? (
+            <span className="text-muted">None since it was disconnected.</span>
+          ) : source.webhookSecret === null ? (
             <span className="text-muted">
               None. Pushes arrive with the daily check, or when someone opens a document.
             </span>

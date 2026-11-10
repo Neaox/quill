@@ -18,7 +18,7 @@ import {
   updateDocument,
 } from '@quill/application'
 import type { CollectionId, CompareRevisionsCommand, PublishAuthor } from '@quill/application'
-import { revisionId } from '@quill/domain'
+import { hasSourceRecord, revisionId } from '@quill/domain'
 import type { DocumentId, DocumentStatus, RevisionId } from '@quill/domain'
 import type { FastifyPluginAsync, FastifyRequest } from 'fastify'
 
@@ -183,12 +183,12 @@ export function documentRoutes(deps: AppDependencies): FastifyPluginAsync {
         // holds slots), so the tag also names what was drawn: the same body
         // with a preview that has since arrived must not answer 304.
         const { userId } = requireAuthenticatedSession(request)
-        // A sourced body's links to pages this reader may not see are their
-        // words alone (ADR-061); the tag below covers what was drawn.
-        const body =
-          access.workspace.origin.kind === 'sourced'
-            ? await withReadableLinks(authorizer, rendered.content.html)
-            : rendered.content.html
+        // A body written against a repository has its links to pages this
+        // reader may not see drawn as their words alone (ADR-061), after the
+        // source is disconnected too; the tag below covers what was drawn.
+        const body = hasSourceRecord(access.workspace.origin)
+          ? await withReadableLinks(authorizer, rendered.content.html)
+          : rendered.content.html
         const filled = await fillLinksForMember(
           linkPreviewDependencies(deps),
           userId,

@@ -91,6 +91,7 @@ const SAVED = {
   viewTemplate: null,
   webhookSecret: null,
   updatedAt: '2026-11-09T08:00:00.000Z',
+  disconnectedAt: null,
   sync: null,
   syncing: false,
 }
@@ -535,5 +536,80 @@ describe('changing a connected source', () => {
     await waitFor(() => {
       expect(screen.queryByText(/Saving changes no page/u)).toBeNull()
     })
+  })
+})
+
+/** A workspace whose source was disconnected. */
+const disconnectedWorkspace = () =>
+  jsonResponse(200, {
+    id: 'ws-1',
+    unitId: 'unit-1',
+    name: 'Handbook',
+    slug: 'handbook',
+    createdAt: '2026-01-01T00:00:00.000Z',
+    origin: { kind: 'native', disconnected: true },
+    permissions: { view: true, comment: true, edit: true, arrange: true, manage: true },
+  })
+
+describe('disconnecting a source', () => {
+  it('says what follows before it disconnects, then shows the record', async () => {
+    const user = userEvent.setup()
+    let disconnected = false
+    const { routes: table } = routes('sourced', ok(), {
+      'GET /api/workspaces/{id}/source': () =>
+        jsonResponse(200, {
+          ...SAVED,
+          disconnectedAt: disconnected ? '2026-11-11T10:00:00.000Z' : null,
+        }),
+      'POST /api/workspaces/{id}/source/disconnect': () => {
+        disconnected = true
+        return jsonResponse(200, { ...SAVED, disconnectedAt: '2026-11-11T10:00:00.000Z' })
+      },
+    })
+    renderApp('/w/handbook/source/settings', table)
+    await screen.findByRole('heading', { level: 1, name: 'Handbook repository settings' })
+
+    await user.click(screen.getByRole('button', { name: 'Disconnect…' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Disconnect from the repository?' })
+    expect(within(dialog).getByText(/Every page stays, with its history/u)).toBeVisible()
+    expect(within(dialog).getByText(/It can’t be undone/u)).toBeVisible()
+    await user.click(within(dialog).getByRole('button', { name: 'Cancel' }))
+    expect(disconnected).toBe(false)
+
+    await user.click(screen.getByRole('button', { name: 'Disconnect…' }))
+    await user.click(
+      within(await screen.findByRole('dialog')).getByRole('button', { name: 'Disconnect' }),
+    )
+    await screen.findByRole('heading', { level: 1, name: 'Handbook repository' })
+    expect(disconnected).toBe(true)
+    expect(await screen.findByText('Disconnected')).toBeVisible()
+  })
+
+  it('says why it could not disconnect, and stays', async () => {
+    const user = userEvent.setup()
+    const { routes: table } = routes('sourced', ok(), {
+      'POST /api/workspaces/{id}/source/disconnect': () =>
+        errorResponse(409, 'source_sync_running', 'A sync of this repository is running.'),
+    })
+    renderApp('/w/handbook/source/settings', table)
+    await screen.findByRole('heading', { level: 1, name: 'Handbook repository settings' })
+    await user.click(screen.getByRole('button', { name: 'Disconnect…' }))
+    const dialog = await screen.findByRole('dialog')
+    await user.click(within(dialog).getByRole('button', { name: 'Disconnect' }))
+    expect(await within(dialog).findByText(/A sync of this repository is running/u)).toBeVisible()
+  })
+
+  it('sends a disconnected workspace’s settings, and connecting it again, to the record', async () => {
+    for (const path of ['/w/handbook/source/settings', '/w/handbook/source/connect']) {
+      const { routes: table } = routes('native', ok(), {
+        'GET /api/workspaces/{id}': disconnectedWorkspace,
+        'GET /api/workspaces/{id}/source': () =>
+          jsonResponse(200, { ...SAVED, disconnectedAt: '2026-11-11T10:00:00.000Z' }),
+      })
+      const { unmount } = renderApp(path, table)
+      expect(await screen.findByText('Disconnected')).toBeVisible()
+      expect(screen.queryByRole('button', { name: 'Save and sync' })).toBeNull()
+      unmount()
+    }
   })
 })

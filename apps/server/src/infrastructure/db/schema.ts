@@ -553,6 +553,11 @@ export const workspaceSources = pgTable(
     configuredBy: text('configured_by').references(() => users.id, { onDelete: 'set null' }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull(),
+    /**
+     * When the workspace stopped reading from this source; null while it reads.
+     * The row is kept, so its stored links still resolve (ADR-061, amendment of 11 November 2026).
+     */
+    disconnectedAt: timestamp('disconnected_at', { withTimezone: true }),
   },
   (table) => [
     check('workspace_sources_history_check', sql`${table.history} IN ('full', 'head')`),

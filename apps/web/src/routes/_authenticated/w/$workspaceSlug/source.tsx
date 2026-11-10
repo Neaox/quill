@@ -25,7 +25,8 @@ export const Route = createFileRoute('/_authenticated/w/$workspaceSlug/source')(
     const workspace = await context.queryClient.ensureQueryData(
       workspaceQueryOptions(context.apiClient, params.workspaceSlug),
     )
-    if (workspace.origin?.kind !== 'sourced') {
+    // A disconnected workspace keeps this page as the record of its repository (ADR-061).
+    if (workspace.origin?.kind !== 'sourced' && workspace.origin?.disconnected !== true) {
       const me = await context.queryClient.ensureQueryData(meQueryOptions(context.apiClient))
       if (me.isInstanceAdmin) {
         throw redirect({

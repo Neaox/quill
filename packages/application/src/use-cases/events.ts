@@ -109,6 +109,13 @@ export const REVIEW_WITHDRAWN = 'ReviewWithdrawn'
  */
 export const SOURCE_SYNC_REQUESTED = 'SourceSyncRequested'
 
+/**
+ * A workspace stopped reading from its repository and became native
+ * (ADR-061, amendment of 11 November 2026). Nothing durable acts on it yet; it
+ * is the record that it happened, beside the audit entry.
+ */
+export const SOURCE_DISCONNECTED = 'SourceDisconnected'
+
 export const EVENT_PAYLOAD_VERSION = 1
 
 export interface DocumentCreatedPayload {
@@ -563,6 +570,25 @@ export const sourceSyncRequested = defineEvent<SourceSyncRequestedPayload>(SOURC
     const trigger = readMember(payload, 'trigger', SOURCE_SYNC_TRIGGERS)
     if (workspaceId === null || trigger === null) return null
     return { version: EVENT_PAYLOAD_VERSION, workspaceId: workspaceId as WorkspaceId, trigger }
+  },
+})
+
+export interface SourceDisconnectedPayload {
+  readonly version: number
+  readonly workspaceId: WorkspaceId
+  readonly disconnectedBy: UserId
+}
+
+export const sourceDisconnected = defineEvent<SourceDisconnectedPayload>(SOURCE_DISCONNECTED, {
+  [EVENT_PAYLOAD_VERSION]: (payload) => {
+    const workspaceId = readString(payload, 'workspaceId')
+    const disconnectedBy = readString(payload, 'disconnectedBy')
+    if (workspaceId === null || disconnectedBy === null) return null
+    return {
+      version: EVENT_PAYLOAD_VERSION,
+      workspaceId: workspaceId as WorkspaceId,
+      disconnectedBy: disconnectedBy as UserId,
+    }
   },
 })
 

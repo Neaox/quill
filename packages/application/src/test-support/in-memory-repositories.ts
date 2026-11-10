@@ -1,4 +1,10 @@
-import { NATIVE_ORIGIN, REQUEST_IN_FLIGHT_FOR_MS, SOURCED_ORIGIN, retryAfter } from '@quill/domain'
+import {
+  DISCONNECTED_ORIGIN,
+  NATIVE_ORIGIN,
+  REQUEST_IN_FLIGHT_FOR_MS,
+  SOURCED_ORIGIN,
+  retryAfter,
+} from '@quill/domain'
 import type { DocumentId, ShortId, UserId, WorkspaceId } from '@quill/domain'
 
 import type {
@@ -956,7 +962,16 @@ export function createInMemoryUnitOfWork(
       return workspaceSources.get(workspaceId) ?? null
     },
     async listWorkspaceIds() {
-      return [...workspaceSources.keys()]
+      return [...workspaceSources.values()]
+        .filter((row) => row.disconnectedAt === null)
+        .map((row) => row.workspaceId)
+    },
+    async disconnect(workspaceId, now) {
+      const row = workspaceSources.get(workspaceId)
+      const workspace = workspaces.get(workspaceId)
+      if (row === undefined || workspace === undefined) return
+      workspaceSources.set(workspaceId, { ...row, disconnectedAt: now })
+      workspaces.set(workspaceId, { ...workspace, origin: DISCONNECTED_ORIGIN })
     },
     async put({ now, ...input }) {
       const workspace = workspaces.get(input.workspaceId)
@@ -968,6 +983,7 @@ export function createInMemoryUnitOfWork(
         ...input,
         createdAt: workspaceSources.get(input.workspaceId)?.createdAt ?? now,
         updatedAt: now,
+        disconnectedAt: null,
       }
       workspaceSources.set(input.workspaceId, row)
       // A stored source is what makes a workspace sourced.

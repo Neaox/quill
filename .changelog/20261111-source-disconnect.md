@@ -1,0 +1,1 @@
+Added: An instance administrator can disconnect a workspace from its repository. It becomes a native workspace that keeps every page, its history, its links and its removed pages' answers, and its repository page becomes a read-only record.

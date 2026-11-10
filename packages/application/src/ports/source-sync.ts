@@ -133,6 +133,12 @@ export interface WorkspaceSourceRow extends SourceSettings, SourceLinkSettings {
   readonly configuredBy: UserId | null
   readonly createdAt: Date
   readonly updatedAt: Date
+  /**
+   * When the workspace stopped reading from it; null while it reads. A
+   * disconnected source is a record, never synced, kept so the stored text's
+   * links still resolve (ADR-061, amendment of 11 November 2026).
+   */
+  readonly disconnectedAt: Date | null
 }
 
 /**
@@ -152,9 +158,12 @@ export interface SourceLinkSettings {
 }
 
 export interface WorkspaceSourceRepository {
+  /** The workspace's source, connected or a disconnected record; `disconnectedAt` tells which. */
   find(workspaceId: WorkspaceId): Promise<WorkspaceSourceRow | null>
-  /** Every sourced workspace, for the daily reconciliation. */
+  /** Every workspace that reads from its source now, for the daily reconciliation. */
   listWorkspaceIds(): Promise<readonly WorkspaceId[]>
+  /** Marks the source disconnected, keeping its row; the workspace is native from then on. */
+  disconnect(workspaceId: WorkspaceId, now: Date): Promise<void>
   /** Writes the workspace's source whole; the first write makes the workspace sourced. */
   put(input: {
     readonly workspaceId: WorkspaceId

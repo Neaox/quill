@@ -70,7 +70,12 @@ export type { Instance } from './tenancy/instance.ts'
 export type { OrganisationalUnit } from './tenancy/organisational-unit.ts'
 export type { Workspace } from './tenancy/workspace.ts'
 export type { WorkspaceOrigin } from './tenancy/workspace-origin.ts'
-export { NATIVE_ORIGIN, SOURCED_ORIGIN } from './tenancy/workspace-origin.ts'
+export {
+  DISCONNECTED_ORIGIN,
+  hasSourceRecord,
+  NATIVE_ORIGIN,
+  SOURCED_ORIGIN,
+} from './tenancy/workspace-origin.ts'
 export type {
   SourceCollectionOrder,
   SourceCommitMessageSetting,

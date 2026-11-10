@@ -73,7 +73,8 @@ export function createExternalSourceProvider(
   return {
     async forWorkspace(workspaceId: WorkspaceId) {
       const source = await options.secrets.uow.repos.workspaceSources.find(workspaceId)
-      if (source === null) return null
+      // A disconnected source is a record, never synced again.
+      if (source === null || source.disconnectedAt !== null) return null
       const settings: GitCliExternalSourceOptions = {
         ...common(source.credential),
         remote: source.remote,
