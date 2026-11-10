@@ -43,6 +43,16 @@ describe('rewriteTree', () => {
     expect(parents.get('text')).toBe('strong')
   })
 
+  it('returns the tree itself when the rewrite changes nothing, and shares what it left alone', () => {
+    const tree = parseMarkdown('# Heading\n\nText.\n\n- one\n- two\n')
+    expect(rewriteTree(tree, () => undefined)).toBe(tree)
+
+    const result = rewriteTree(tree, (node) => (node.type === 'heading' ? [] : undefined))
+    expect(result).not.toBe(tree)
+    expect(result.children[0]).toBe(tree.children[1])
+    expect(result.children[1]).toBe(tree.children[2])
+  })
+
   it('does not mutate the tree it was given', () => {
     const tree = parseMarkdown('Text.\n')
     const before = structuredClone(tree)

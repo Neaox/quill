@@ -380,6 +380,9 @@ describe('connecting a workspace to a repository', () => {
         manifestEntry: null,
         history: 'head',
         commitMessages: 'subject',
+        outsideLinks: 'forge',
+        viewTemplate: null,
+        webhookSecret: null,
       },
     ])
   })
@@ -458,7 +461,62 @@ describe('changing a connected source', () => {
         viewTemplate: null,
       }),
     ])
-    expect(recorded.saves[0]).not.toHaveProperty('webhookSecret')
+    expect(recorded.saves[0]).toMatchObject({ webhookSecret: null })
+  })
+
+  it('edits where outside links go and the push webhook, checking the forge address as it is typed', async () => {
+    const user = userEvent.setup()
+    const { routes: table, recorded } = routes('sourced', ok())
+    renderApp('/w/handbook/source/settings', table)
+    await screen.findByRole('heading', { level: 1, name: 'Handbook repository settings' })
+    const section = within(
+      screen.getByRole('heading', { level: 2, name: 'Links and webhook' }).closest('section')!,
+    )
+    expect(section.getByRole('radio', { name: 'As plain text' })).toBeChecked()
+    expect(section.queryByRole('textbox', { name: /Forge address/u })).toBeNull()
+
+    await user.click(section.getByRole('radio', { name: /To the file on the forge/u }))
+    // Before the first sync the example opens the file on the branch.
+    expect(
+      await section.findByRole('link', {
+        name: 'https://github.com/acme/handbook/blob/main/README.md',
+      }),
+    ).toHaveAttribute('href', 'https://github.com/acme/handbook/blob/main/README.md')
+
+    const template = section.getByRole('textbox', { name: /Forge address/u })
+    await user.type(template, 'https://git.example.com/acme/{{path}')
+    expect(section.getByText('The address must name {commit} and {path} once each.')).toBeVisible()
+    expect(screen.getByRole('button', { name: 'Save and sync' })).toBeDisabled()
+    expect(screen.getByText('Fix the forge address under Links and webhook.')).toBeVisible()
+    // No example while the address is wrong: it would not be what saving does.
+    expect(section.queryByRole('link')).toBeNull()
+
+    await user.clear(template)
+    await user.type(template, 'https://git.example.com/acme/{{commit}/{{path}')
+    expect(
+      section.getByRole('link', {
+        name: 'https://git.example.com/acme/main/README.md',
+      }),
+    ).toBeVisible()
+
+    // The webhook's secret is chosen by name; its value is never asked for.
+    await user.selectOptions(
+      section.getByRole('combobox', { name: /Push webhook/u }),
+      'sources/handbook',
+    )
+    expect(section.getByRole('textbox', { name: 'GitHub webhook' })).toHaveValue(
+      `${globalThis.location.origin}/api/workspaces/ws-1/source/webhooks/github`,
+    )
+
+    await user.click(screen.getByRole('button', { name: 'Save and sync' }))
+    await screen.findByRole('heading', { level: 1, name: 'Handbook repository' })
+    expect(recorded.saves).toEqual([
+      expect.objectContaining({
+        outsideLinks: 'forge',
+        viewTemplate: 'https://git.example.com/acme/{commit}/{path}',
+        webhookSecret: 'sources/handbook',
+      }),
+    ])
   })
 
   it('says the preview is out of date when a field changes, until it is asked again', async () => {

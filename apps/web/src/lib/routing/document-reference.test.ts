@@ -7,6 +7,7 @@ import {
   parseDocumentReference,
   workspaceLink,
 } from './document-reference.ts'
+import { MAX_SLUG_LENGTH } from '@quill/domain'
 
 const KEY = 'k7m3q9v2rt'
 const UUID = '0d1c2b3a-4e5f-6a7b-8c9d-0e1f2a3b4c5d'
@@ -55,6 +56,23 @@ describe('documentReference', () => {
     expect(
       documentReference({ id: UUID, title: 'Authentication architecture', shortId: KEY }),
     ).toBe(`authentication-architecture-${KEY}`)
+  })
+
+  it('spells the words as the server does in the links it writes (ADR-035)', () => {
+    expect(documentReference({ id: UUID, title: 'Café hours: it’s open', shortId: KEY })).toBe(
+      `cafe-hours-its-open-${KEY}`,
+    )
+  })
+
+  it('keeps a long title’s reference within the length a request path may carry', () => {
+    const title =
+      '12. The quarterly planning meeting is held in the large room, and its notes are shared with every team'
+    const reference = documentReference({ id: UUID, title, shortId: KEY })
+
+    expect(reference).toBe(
+      `12-the-quarterly-planning-meeting-is-held-in-the-large-room-and-its-notes-are-${KEY}`,
+    )
+    expect(reference.length).toBeLessThanOrEqual(MAX_SLUG_LENGTH + 1 + KEY.length)
   })
 
   it('is the bare key for a title that slugifies to nothing', () => {

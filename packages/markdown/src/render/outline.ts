@@ -1,8 +1,8 @@
 import { toString } from 'mdast-util-to-string'
-import { visit } from 'unist-util-visit'
-import type { Root } from 'mdast'
+import type { Nodes, Root } from 'mdast'
 
 import { stripPresenterNotes } from '../directives/strip-presenter-notes.ts'
+import { walk } from '../walk.ts'
 import { createSlugger, headingId } from './slug.ts'
 
 export interface OutlineEntry {
@@ -55,7 +55,8 @@ export function nestOutline(headings: Iterable<OutlineHeading>): readonly Outlin
 export function extractOutline(ast: Root): readonly OutlineEntry[] {
   const slug = createSlugger()
   const headings: OutlineHeading[] = []
-  visit(stripPresenterNotes(ast), 'heading', (node) => {
+  walk<Nodes>(stripPresenterNotes(ast), (node) => {
+    if (node.type !== 'heading') return
     const text = toString(node)
     headings.push({ id: headingId(slug(text)), depth: node.depth, text })
   })
