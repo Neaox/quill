@@ -4,7 +4,7 @@ import type { FastifyInstance } from 'fastify'
 
 import { buildApp } from '../app.ts'
 import { createHasher } from '../infrastructure/hasher.ts'
-import { createDocumentFormat } from '../infrastructure/markdown/document-format.ts'
+import { createDocumentFormat, createDrawioText } from '@quill/format'
 import { createTokenService } from '../auth/tokens.ts'
 import { createMessageAuthenticator } from '../infrastructure/message-authenticator.ts'
 import { loadConfig } from '../config.ts'
@@ -28,7 +28,6 @@ import {
   createRecordingMailer,
   inMemorySettings,
 } from '../test-support/fakes.ts'
-import { createDrawioText } from '../extensions/drawio/drawing-text.ts'
 import { INERT_LINK_PREVIEW_PORTS } from '../infrastructure/link-preview/inert.ts'
 import { createIdleLiveHub } from '../live/live-hub.ts'
 

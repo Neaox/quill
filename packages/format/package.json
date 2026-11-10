@@ -1,0 +1,23 @@
+{
+  "name": "@quill/format",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Quill's DocumentFormat adapter: parsing, rendering and inspecting a document with @quill/markdown, as the server and the command-line tool both run it (ADR-062).",
+  "license": "MIT",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@quill/application": "workspace:*",
+    "@quill/domain": "workspace:*",
+    "@quill/highlight": "workspace:*",
+    "@quill/markdown": "workspace:*"
+  },
+  "devDependencies": {
+    "@quill/config": "workspace:*"
+  }
+}

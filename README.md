@@ -75,7 +75,7 @@ apps/web           React application
 packages/domain    Entities, value objects, rules. Pure TypeScript.
 packages/ui        Design tokens, the reading grid, and accessible React primitives
 packages/config    Shared TypeScript, lint, and format configuration
-packages/*         domain, application, content-store, markdown, search, highlight, theme, ui, editor, api-client, brand, config
+packages/*         domain, application, content-store, markdown, format, search, highlight, theme, ui, editor, api-client, brand, config
 docs/product       Personas, use cases with acceptance criteria, and the surface map
 docs/architecture  Architecture decision records
 docs/research      Investigation write-ups

@@ -24,9 +24,8 @@ import {
 } from '@quill/content-store'
 import { userId, workspaceId } from '@quill/domain'
 
-import { createDrawioText } from '../../extensions/drawio/drawing-text.ts'
+import { createDocumentFormat, createDrawioText } from '@quill/format'
 import { createHasher } from '../hasher.ts'
-import { createDocumentFormat } from '../markdown/document-format.ts'
 
 /**
  * ADR-062's server budgets for a sourced workspace, measured on a generated

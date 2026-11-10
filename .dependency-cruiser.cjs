@@ -44,6 +44,23 @@ module.exports = {
       to: { path: '^packages/application', dependencyTypesNot: ['type-only'] },
     },
     {
+      name: 'format-is-portable',
+      comment:
+        'ADR-062: the DocumentFormat adapter runs in the server and in the command-line tool, so it ' +
+        'imports nothing from an app, the content store, search, the UI or the editor, and none of ' +
+        "the server's runtime. (`format-and-site-are-portable` in the ADR; the site joins it when " +
+        'it is moved out of the server.)',
+      severity: 'error',
+      from: { path: '^packages/format/src' },
+      to: {
+        path: [
+          '^apps/',
+          '^packages/(content-store|search|ui|editor)/',
+          'node_modules/(pg|drizzle-orm|fastify|@fastify|sharp|@node-rs|nodemailer|aws4fetch|react)/',
+        ],
+      },
+    },
+    {
       name: 'web-does-not-import-server',
       severity: 'error',
       from: { path: '^apps/web' },

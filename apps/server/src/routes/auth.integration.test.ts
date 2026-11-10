@@ -14,7 +14,7 @@ import { hashSessionToken } from '../auth/session-token.ts'
 import { createSendMailConsumer } from '../infrastructure/outbox/send-mail.ts'
 import { pollOutboxOnce } from '../infrastructure/outbox/poller.ts'
 import { createHasher } from '../infrastructure/hasher.ts'
-import { createDocumentFormat } from '../infrastructure/markdown/document-format.ts'
+import { createDocumentFormat, createDrawioText } from '@quill/format'
 import { loadConfig } from '../config.ts'
 import type { AppDependencies } from '../dependencies.ts'
 import { createTestDatabase, type TestDatabase } from '../infrastructure/db/test-database.ts'
@@ -32,7 +32,6 @@ import {
   inMemorySettings,
 } from '../test-support/fakes.ts'
 import type { FakeBreachedPasswordChecker, FakeClock } from '../test-support/fakes.ts'
-import { createDrawioText } from '../extensions/drawio/drawing-text.ts'
 import { INERT_LINK_PREVIEW_PORTS } from '../infrastructure/link-preview/inert.ts'
 import { createIdleLiveHub } from '../live/live-hub.ts'
 

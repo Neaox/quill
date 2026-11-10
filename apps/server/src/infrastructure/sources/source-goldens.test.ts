@@ -36,9 +36,8 @@ import {
 import { collectionId, documentId, userId, workspaceId } from '@quill/domain'
 import { afterAll, describe, expect, it } from 'vitest'
 
-import { createDrawioText } from '../../extensions/drawio/drawing-text.ts'
+import { createDocumentFormat, createDrawioText } from '@quill/format'
 import { createHasher } from '../hasher.ts'
-import { createDocumentFormat } from '../markdown/document-format.ts'
 
 /**
  * The server half of ADR-062's parity suite: each repository in
