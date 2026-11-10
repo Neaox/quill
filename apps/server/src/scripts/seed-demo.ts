@@ -70,6 +70,36 @@ interface Placed {
   readonly revisionTimes: readonly Date[]
 }
 
+/**
+ * How many workspaces' histories are written at once. A publish waits on the
+ * database and the content store far more than it computes, and one
+ * workspace's revisions never touch another's, so a few side by side divide
+ * the seed's length; few, because each holds a connection from a pool other
+ * work shares.
+ */
+const HISTORY_LANES = 3
+
+/**
+ * Each workspace's entries in order, a few workspaces at a time; what each
+ * returned, in the entries' own order.
+ */
+async function inLanes(
+  placed: readonly Placed[],
+  lanes: number,
+  write: (entry: Placed) => Promise<readonly string[]>,
+): Promise<string[]> {
+  const queue = [...Map.groupBy(placed, ({ workspaceId }) => workspaceId).values()]
+  const found = new Map<Placed, readonly string[]>()
+  const lane = async (): Promise<void> => {
+    for (let entries = queue.shift(); entries !== undefined; entries = queue.shift()) {
+      // oxlint-disable-next-line quill/no-independent-await-in-loop -- one workspace's revisions publish in order, each at the head the last one left
+      for (const entry of entries) found.set(entry, await write(entry))
+    }
+  }
+  await Promise.all(Array.from({ length: lanes }, lane))
+  return placed.flatMap((entry) => found.get(entry) ?? [])
+}
+
 export async function seedDemoData(deps: AppDependencies): Promise<DemoSeedResult> {
   const admin = await requireUser(deps, ADMIN_EMAIL)
   const writer = await requireUser(deps, WRITER_EMAIL)
@@ -81,10 +111,9 @@ export async function seedDemoData(deps: AppDependencies): Promise<DemoSeedResul
 
   const placed = await createDocuments(deps, { admin, workspaces, content })
   const idsByTitle = new Map(placed.map(({ document, id }) => [document.title, id]))
-  const problems: string[] = []
-  for (const entry of placed) {
-    problems.push(...(await writeHistory(deps, { entry, authors, idsByTitle })))
-  }
+  const problems = await inLanes(placed, HISTORY_LANES, (entry) =>
+    writeHistory(deps, { entry, authors, idsByTitle }),
+  )
 
   const publicSites = await publishPublicSites(deps, { admin, placed, workspaces })
   return {
