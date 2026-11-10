@@ -319,14 +319,17 @@ class ManifestReader {
     const path = checkSourcePattern(this.#string(map, 'path', where))
     if (!path.ok) throw new Refused(this.#line(pathNode), path.error)
     let title: string
-    if (this.#value(map, 'title') === undefined && chosen) {
+    if (this.#value(map, 'title') === undefined) {
       // A collection with no title is called after its directory, or its
-      // file, as a folder with no README is; the note says so.
+      // file, as a folder with no README is. For the entry this workspace
+      // reads, a note says so; another entry is read only to be listed.
       title = collectionTitleOf(path.value)
-      this.#notes.push({
-        line: this.#line(map),
-        message: `"${where}" has no title, so it is called "${title}", after its path.`,
-      })
+      if (chosen) {
+        this.#notes.push({
+          line: this.#line(map),
+          message: `"${where}" has no title, so it is called "${title}", after its path.`,
+        })
+      }
     } else {
       title = this.#string(map, 'title', where)
     }

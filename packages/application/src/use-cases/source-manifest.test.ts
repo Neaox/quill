@@ -227,6 +227,7 @@ describe('parseSourceManifest', () => {
       '    collections: nope',
       '  - { slug: handbook-two, collections: [] }',
       '  - { slug: handbook-two, collections: [] }',
+      '  - { slug: atlas, collections: [{ slug: maps, path: atlas/maps }] }',
     )
     const parsed = parseSourceManifest(text, { entry: 'handbook' })
     if (!parsed.ok) throw new Error(parsed.problem.message)
@@ -236,6 +237,8 @@ describe('parseSourceManifest', () => {
       ['handbook', 1],
       ['almanac', 0],
       ['handbook-two', 0],
+      // Untitled, another entry still lists its collections, named after their paths, with no note.
+      ['atlas', 1],
     ])
     // Another entry's keys are still noted; its missing title and its glob are not refused.
     expect(parsed.manifest.unknownKeys).toEqual([
