@@ -1,5 +1,5 @@
 import { BRAND } from '@quill/brand'
-import { collectionId as toCollectionId } from '@quill/domain'
+import { sourcePatternPrefix, collectionId as toCollectionId } from '@quill/domain'
 import type { DocumentId, RevisionId, ShortId, WorkspaceId } from '@quill/domain'
 
 import { AUTHORED_AT_MAX_SKEW_MS, checkSourceStamp } from '../ports/content-store.ts'
@@ -1307,7 +1307,26 @@ function recordOf(layout: SourceLayout, resolution: Resolution): SourceLayoutRec
     collectionIds: layout.origin === 'manifest' ? [...resolution.ids.values()] : [],
     unknownKeys: layout.unknownKeys,
     redirects: [...layout.redirects],
+    collectionRoots: collectionRootsOf(layout, resolution),
   }
+}
+
+/**
+ * Each collection's own directory, the first collection in the manifest's
+ * order taking a directory two share. A collection at the repository's root
+ * has none: a link to the root is not a link to it.
+ */
+function collectionRootsOf(
+  layout: SourceLayout,
+  resolution: Resolution,
+): readonly (readonly [string, string])[] {
+  const roots = new Map<string, string>()
+  for (const collection of layout.collections) {
+    const id = resolution.ids.get(collection)
+    const root = sourcePatternPrefix(collection.path).replace(/\/+$/u, '')
+    if (id !== undefined && root !== '' && !roots.has(root)) roots.set(root, id)
+  }
+  return [...roots]
 }
 
 /** Each document's front matter `order`: as the path map held it, and as this step read it. */
