@@ -1039,6 +1039,17 @@ export function createInMemoryUnitOfWork(
     async listByWorkspace(workspaceId) {
       return [...sourcePaths.values()].filter((row) => row.workspaceId === workspaceId)
     },
+    async findByDocument(workspaceId, documentId) {
+      for (const row of sourcePaths.values()) {
+        if (
+          row.workspaceId === workspaceId &&
+          row.documentId === documentId &&
+          row.archivedAt === null
+        )
+          return row
+      }
+      return null
+    },
     async put(row) {
       sourcePaths.set(rowId(row.workspaceId, row.path), row)
     },

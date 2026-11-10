@@ -24,6 +24,7 @@ function document(path: string, extra: Partial<PlannedDocument> = {}): PlannedDo
     title: path,
     sortKey: 1,
     markdown: '',
+    lineOffset: 0,
     links: NONE,
     ...extra,
   }
@@ -199,6 +200,26 @@ describe('reportSource', () => {
       [null, 'no block is called gallery'],
       [4, 'path is required'],
       [9, 'no block is called step'],
+    ])
+  })
+
+  it('gives each line as the line in the repository file, not in the stamped copy', () => {
+    const report = reportSource({
+      plan: planned({ documents: [document('docs/b.md', { lineOffset: 3 })] }),
+      rendered: new Map([
+        [
+          'docs/b.md',
+          {
+            blockIssues: [{ block: 'step', message: 'no block is called step', line: 9 }],
+            tableShapes: [{ line: 12, cells: 3, columns: 2 }],
+            incompleteRequiredSections: [],
+          },
+        ],
+      ]),
+    })
+    expect(report.problems.map(({ code, line }) => [code, line])).toEqual([
+      ['block-issue', 6],
+      ['table-shape', 9],
     ])
   })
 })

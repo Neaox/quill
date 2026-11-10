@@ -403,6 +403,15 @@ The sync row of section 4 mixed two things: the work Quill does, and how fast a 
 - **Measured and left as it is:** `git backfill` fetches the contents of the source's paths for every revision of the history, which a source whose history setting is `head` does not need for its first sync. On that repository that is about half of the fetch. It is kept: a source replays the commits after its first sync, and fetching their contents later costs the same. Revisit if a large history makes it dominate.
 - **Where the sync's time goes instead:** 76 seconds of the sync of L is Quill's work after the fetch (parsing each document several times, publishing, and rendering), which is what step 3's parse-once and tuning work is for.
 
+## Amendment: lines are the author's (11 November 2026)
+
+Every line a check or a health signal gives is a line of the file in the repository, never of the copy Quill stores. The stored copy has the document's `id` stamped into its front matter (ADR-061), and that adds lines in front of the text: three for a file with no front matter, one for a file with some. A `block-issue` or `table-shape` reported against the stored copy pointed that many lines below the line the author has to fix.
+
+- **What is kept.** The sync records, for each file, how many lines the stamp added: the stored copy's line count less the file's (`SourcePathRow.lineOffset`, `source_path_map.line_offset`). The stamp only changes the front matter, so every line after it moves by exactly that much. A generated folder document has no repository file, and its offset is 0.
+- **Where it is used.** The health signals beside a page and `quill check`'s report both take the offset off each line they give. A native page has none to take off. None of these lines falls inside the stamped front matter; one that did would be given as line 1.
+- **Existing workspaces.** The layout fingerprint now carries how a tree is placed (`"placing": 2`). A workspace placed before offsets were kept is placed again on its next sync, as one was when folders became documents. Every path map entry is written anew, with its offset, and no revision is published for it. Until then, its lines are given as before.
+- Manifest lines (`manifest-invalid`, `manifest-unknown-key`, `manifest-default`) were already the manifest file's own, and are unchanged.
+
 ## Decisions on acceptance
 
 Accepted on 11 November 2026, with delivery step 2 built: the plan, as a pure refactor of the sync job.
