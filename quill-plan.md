@@ -32,6 +32,7 @@ Kept current at every milestone boundary and at every review round. The dates ar
 | M3b — Check and preview in the repository | **Step 2 of 9 built (11 November 2026).** ADR-062 accepted. The sync's decisions are one module the sync job, the settings preview and the head plan share, and the head plan reproduces the sync's golden files for every fixture. Next: the parser's throughput (step 3). |
 | M4 — Comment and sync | **Not started.** Comments have a data model and a panel primitive only. |
 | M5–M8 | Not started. Templates are designed (ADR-054, 17 October 2026, with ADR-055 on ownership); its first layer, making the built template flow visible, may land before M5. |
+| M6a — Code and schema reference | **Designed, not started.** ADR-065 accepts the derived reference index, the map and the flows. The PMS is the prototype; its local `pnpm code:index` (9,103 symbols, 17 s cold) is the seed, and its 197 tenant tables are the first schema index. |
 
 **Distance to Release 1 (the MVP in §34):** the M2 remainder, the rest of M3 (search is done, server and surface both), and all of M4, then the Release 1 journeys on all four browser profiles. By volume that is roughly what has been built so far, again: search and share links are moderate; public server-side rendering, comments with re-anchoring, and remote Git sync are each substantial; operations (container image, backup and restore, upgrade path) is small but must be exercised for real.
 
@@ -667,6 +668,17 @@ Runs the research phase and the repository constitution at the same time.
 - Confluence and Notion importers.
 - Exit: **Release 3.**
 
+### M6a — Code and schema reference
+
+Sits after M6 and before M7; it must not delay Release 1. ADR-065 is the decision, and `docs/ideas/code-and-schema-index.md` is the detailed design.
+
+- A **derived reference index** of code symbols and database entities: external source or CI artifact, snapshots, monikers, aliases, fidelity, search, permissions and provenance.
+- **Pages and references:** module and package pages, promoted symbol pages, table and column pages, inline and block references, backlinks, coverage, staleness and acknowledgement.
+- **The map and flows:** a reviewed `map/v1` manifest, module pages, and `:::flow` documents with every step linked to code and tables.
+- **The PMS first:** lift the existing `scripts/code-index` extractor and cache, index every package and the 197 tenant tables, write `docs/quill.reference.yaml`, and prove the twelve questions for a novice and a senior.
+- **Public:** a later, separate source and surface for OSS projects; the PMS's reference is internal-only and Scalar stays its public API reference.
+- Exit: **the PMS prototype acceptance**, and a second public OSS source proves the same pages without a rewrite.
+
 ### M7 — Operate
 
 - Interactive documents: decisions, checklists, guided procedures, conditional content, with static export.
@@ -783,6 +795,7 @@ ADR-054  Template library and authoring (amends ADR-029)
 ADR-055  Authorship and ownership
 ADR-061  Read-only external Git sources
 ADR-062  Check and preview in the repository
+ADR-065  Code and schema reference index
 ```
 
 Each ADR records context, decision, alternatives considered, consequences, and status.

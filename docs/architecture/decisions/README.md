@@ -69,3 +69,4 @@ Status values: `Proposed` (awaiting a spike or review), `Accepted`, `Superseded 
 | [062](0062-check-and-preview-in-the-repository.md)    | Check and preview in the repository           | Accepted               |
 | [063](0063-live-updates-over-server-sent-events.md)   | Live updates over server-sent events          | Accepted               |
 | [064](0064-math.md)                                   | Math                                          | Accepted               |
+| [065](0065-code-and-schema-reference-index.md)        | Code and schema reference index               | Accepted               |

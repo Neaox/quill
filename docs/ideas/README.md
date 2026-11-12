@@ -12,6 +12,7 @@ lost and the idea is not raised again from scratch.
 | Idea | Status | Pick up when |
 | --- | --- | --- |
 | [External Git repositories as read-only document sources](external-git-sources.md) | promoted: ADR-061, milestone M3a | Picked up 2026-11-07 |
+| [Code and schema index](code-and-schema-index.md) | promoted: ADR-065, milestone M6a | Picked up 2026-11-12; the PMS's local `pnpm code:index` is the seed |
 | [Connectors for work trackers and code hosts](work-tracker-and-code-host-connectors.md) | proposed | Live blocks land (ADR-032, M5), or a team asks for ticket and PR status in documents |
 | [Microsoft 365 connector: Excel ranges as live tables](microsoft-365-connector.md) | proposed | Live blocks and connectors land, or an organisation's documents quote figures kept in Excel |
 
