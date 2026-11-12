@@ -312,6 +312,19 @@ importers:
         specifier: workspace:*
         version: link:../config
 
+  packages/code-index:
+    dependencies:
+      '@quill/domain':
+        specifier: workspace:*
+        version: link:../domain
+      typescript:
+        specifier: ^7.0.2
+        version: 7.0.2
+    devDependencies:
+      '@quill/config':
+        specifier: workspace:*
+        version: link:../config
+
   packages/config: {}
 
   packages/content-store:
