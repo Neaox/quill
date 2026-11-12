@@ -382,6 +382,19 @@ function icon(kind) { const span = el("span", { className: "kind " + kind }); sp
 function label(kind) { return kind === "function" ? "Function" : kind === "method" ? "Method" : kind === "class" ? "Class" : kind === "interface" ? "Interface" : kind === "type" ? "Type" : kind === "const" ? "Constant" : kind === "property" ? "Property" : kind === "table" ? "Table" : kind === "view" ? "View" : kind; }
 function copyButton(text) { const button = el("button", { className: "copy", type: "button", "aria-label": "Copy " + text, "data-copy": text }); button.innerHTML = ICONS.copy + "<span>Copy</span>"; return button; }
 function sourceLink(symbol) { if (!data.repo || !symbol.file) return el("span", { className: "name", textContent: symbol.name }); return el("a", { className: "name", href: "https://github.com/" + data.repo + "/blob/" + data.commit + "/" + symbol.file + "#L" + symbol.startLine + "-L" + symbol.endLine, target: "_blank", rel: "noreferrer", textContent: symbol.name }); }
+function prettyType(value) {
+  if (!value.startsWith("{") || !value.endsWith("}")) return value;
+  let out = "", depth = 0, skipSpace = false;
+  for (const character of value) {
+    if (skipSpace && character === " ") { skipSpace = false; continue; }
+    skipSpace = false;
+    if (character === "{") { depth += 1; out += "{\\n" + "  ".repeat(depth); skipSpace = true; }
+    else if (character === "}") { depth -= 1; out += "\\n" + "  ".repeat(depth) + "}"; }
+    else if (character === ";") { out += ";\\n" + "  ".repeat(depth); skipSpace = true; }
+    else out += character;
+  }
+  return out;
+}
 function codePanel(text) {
   const panel = el("div", { className: "schema-panel" });
   const pre = el("pre", { className: "signature" }); pre.innerHTML = highlight(compact(text)); panel.append(pre);
@@ -394,7 +407,7 @@ function codePanel(text) {
 function schemaView(symbol) {
   const view = el("div", { className: "schema-view" });
   const inferredName = symbol.schemaRef ? symbol.name : symbol.inferredTypeRef?.name || symbol.name;
-  const inferred = "type " + inferredName + " = " + symbol.readableType + ";";
+  const inferred = "type " + inferredName + " = " + prettyType(symbol.readableType) + ";";
   const source = symbol.definition || symbol.signature;
   const alias = Boolean(symbol.schemaRef);
   const sourcePanel = codePanel(source);
