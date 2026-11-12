@@ -211,6 +211,8 @@ export function proseMirrorToMdast(doc: PMNode): MdastDocument {
         return { type: 'break', ...dataOf(node) }
       case 'htmlInline':
         return { type: 'html', value: node.attrs['value'] }
+      case 'mathInline':
+        return { type: 'inlineMath', value: node.attrs['value'] }
       case 'image':
         return node.attrs['referenceType'] === null
           ? {
@@ -432,6 +434,8 @@ export function proseMirrorToMdast(doc: PMNode): MdastDocument {
         return [{ type: 'thematicBreak', ...dataOf(node) }]
       case 'htmlBlock':
         return [{ type: 'html', value: node.textContent, ...dataOf(node) }]
+      case 'mathBlock':
+        return [{ type: 'math', value: node.attrs['value'], ...dataOf(node) }]
       case 'table':
         return [
           {

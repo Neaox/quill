@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import { createMarkdownRegistry } from '../extensions/registry.ts'
+import { MATH_ENGINE_VERSION } from '../math/tree.ts'
 import type { AnyBlock } from './define.ts'
 import { blockKind, blockProblems, defineBlock, h } from './define.ts'
 import { endpointBlock } from './endpoint.ts'
@@ -171,7 +172,7 @@ describe('createMarkdownRegistry', () => {
     const registry = createMarkdownRegistry([], KIT_BLOCKS)
     expect(registry.blocks.find('timeline', 'container')).toBe(timelineBlock)
     expect(registry.signature).toBe(
-      'test.cast@1.0.0 test.divider@1.0.0 test.route@1.0.0 test.step@1.0.0 test.term@1.0.0 test.timeline@1.0.0',
+      `temml@${MATH_ENGINE_VERSION} test.cast@1.0.0 test.divider@1.0.0 test.route@1.0.0 test.step@1.0.0 test.term@1.0.0 test.timeline@1.0.0`,
     )
   })
 })

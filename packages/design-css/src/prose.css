@@ -4814,3 +4814,96 @@ html.lightbox-open {
     break-inside: avoid;
   }
 }
+
+/* --- Math (ADR-064) ------------------------------------------------------- */
+
+/*
+ * MathML draws itself. The wrapper only places it: a formula in a sentence sits in the line it
+ * belongs to, and a block may be wider than the measure without making the page scroll. The
+ * classes below stand in for the inline styles Temml writes, which the content security policy
+ * cannot carry (`math/grant.ts`, `STYLE_CLASSES`). The rest is the browser's MathML layout, so a
+ * theme's colours, faces and sizes reach the formula without a second set of rules.
+ */
+.prose .math {
+  font-size: 1.05em;
+}
+
+.prose .math[data-math='display'] {
+  display: block;
+  max-inline-size: 100%;
+  margin-block: var(--prose-space-block);
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+.prose .math math {
+  font-size: inherit;
+}
+
+.prose .math-error {
+  color: var(--color-body);
+  font-family: var(--font-mono);
+  font-size: 0.9em;
+}
+
+.prose .math-error pre {
+  margin: 0;
+  padding: 0.5em 0.75em;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background-color: var(--color-surface-raised);
+}
+
+.prose .math-error-message {
+  display: block;
+  color: var(--color-muted);
+}
+
+.tml-w-100 {
+  width: 100%;
+}
+.tml-w-50 {
+  width: 50%;
+}
+.tml-w-8 {
+  width: 7.5%;
+}
+.tml-p-0 {
+  padding: 0;
+}
+.tml-pl-0 {
+  padding-left: 0;
+}
+.tml-pr-0 {
+  padding-right: 0;
+}
+.tml-pt-0 {
+  padding-top: 0;
+}
+.tml-pb-0 {
+  padding-bottom: 0;
+}
+.tml-left {
+  text-align: left;
+}
+.tml-depth-0 {
+  math-depth: 0;
+}
+.tml-bt-solid {
+  border-top: 0.06em solid currentColor;
+}
+.tml-bt-dashed {
+  border-top: 0.06em dashed currentColor;
+}
+.tml-bt-double {
+  border-top: 0.15em double currentColor;
+}
+.tml-bb-solid {
+  border-bottom: 0.06em solid currentColor;
+}
+.tml-bb-dashed {
+  border-bottom: 0.06em dashed currentColor;
+}
+.tml-bb-double {
+  border-bottom: 0.15em double currentColor;
+}

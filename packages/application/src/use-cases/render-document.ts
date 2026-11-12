@@ -126,8 +126,12 @@ import { createVersionedReader } from './versioned-reader.ts'
  * Version 20 draws a table row as wide as its header, as GitHub Flavored
  * Markdown does: a short row padded with empty cells, a long one cut to the
  * header (ADR-040, amendment "rows as wide as the header").
+ *
+ * Version 21 draws math (ADR-064): `$…$`, `$$…$$` and a `math` fence as MathML,
+ * where each was text. The drawing library's version joins the key from here
+ * on, as the extensions' do, so upgrading it needs no bump.
  */
-export const RENDER_VERSION = 20
+export const RENDER_VERSION = 21
 
 export interface RenderDocumentDependencies {
   readonly uow: UnitOfWork

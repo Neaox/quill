@@ -12,6 +12,7 @@ import { BLOCK_FRAME_SANITIZE_GRANT } from '../blocks/render.ts'
 import { CODE_SANITIZE_GRANT } from '../code-group/render.ts'
 import { DETAILS_SANITIZE_GRANT } from '../details/render.ts'
 import { EMOJI_SANITIZE_GRANT } from '../emoji/emoji.ts'
+import { MATH_SANITIZE_GRANT } from '../math/render.ts'
 import { NAVIGATION_SANITIZE_GRANT } from '../navigation/render.ts'
 import { HEADING_ID_PREFIX } from './slug.ts'
 import { CELL_LABEL_LIMIT } from './table-columns.ts'
@@ -239,6 +240,7 @@ const attributes: Schema['attributes'] = {
       'table-scroll',
       ...CODE_SANITIZE_GRANT.classes.div,
       ...DETAILS_SANITIZE_GRANT.classes.div,
+      ...MATH_SANITIZE_GRANT.classes.div,
       ...BLOCK_FRAME_SANITIZE_GRANT.classes.div,
     ],
     ...TABLE_BLOCK_ATTRIBUTES,
@@ -255,6 +257,8 @@ const attributes: Schema['attributes'] = {
     // A code block's card and a code group (ADR-041), whose `data-sync` is
     // only ever a sync key's own shape.
     ...CODE_SANITIZE_GRANT.attributes.div,
+    // A block of math (ADR-064), whose `data-math` is always `display`.
+    ...MATH_SANITIZE_GRANT.attributes.div,
   ],
 
   // `handlers.ts`'s `calloutAside`: the title paragraph rendered above a
@@ -349,6 +353,7 @@ const attributes: Schema['attributes'] = {
       'sr-only',
       ...EMOJI_SANITIZE_GRANT.classes.span,
       ...CODE_SANITIZE_GRANT.classes.span,
+      ...MATH_SANITIZE_GRANT.classes.span,
       ...BLOCK_FRAME_SANITIZE_GRANT.classes.span,
     ],
     ['data-tone', ...BADGE_TONES],
@@ -356,6 +361,7 @@ const attributes: Schema['attributes'] = {
     ['data-badge', ...Object.keys(BADGE_SHORTHANDS)],
     ['data-label', LABEL_NAME],
     ...EMOJI_SANITIZE_GRANT.attributes.span,
+    ...MATH_SANITIZE_GRANT.attributes.span,
   ],
 
   // `handlers.ts`'s `row`/`cellProperties`: column-alignment classes, a
@@ -430,6 +436,13 @@ const attributes: Schema['attributes'] = {
   // emoji's glyph, its address held to `EMOJI_GLYPH_URL`.
   svg: EMOJI_SANITIZE_GRANT.attributes.svg,
   use: EMOJI_SANITIZE_GRANT.attributes.use,
+
+  // Math (ADR-064): each MathML element a formula is drawn from, with the attributes
+  // `math/grant.ts` lists and no others. The same list shaped `math/tree.ts`'s output, so this
+  // is the second check of it, not the first.
+  ...Object.fromEntries(
+    MATH_SANITIZE_GRANT.tagNames.map((tag) => [tag, MATH_SANITIZE_GRANT.attributes.mathml]),
+  ),
 }
 
 // `defaultSchema.tagNames` is always defined (see the note above
@@ -453,6 +466,7 @@ const tagNames = [
   'caption', // handlers.ts: a table's caption, which names it (ADR-040)
   ...NAVIGATION_SANITIZE_GRANT.tagNames, // navigation/render.ts: a table of contents (ADR-058)
   ...EMOJI_SANITIZE_GRANT.tagNames, // emoji/emoji.ts: a monochrome emoji (ADR-038)
+  ...MATH_SANITIZE_GRANT.tagNames, // math/render.ts: a formula's MathML (ADR-064)
 ]
 
 const protocols: Schema['protocols'] = {

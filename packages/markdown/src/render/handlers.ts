@@ -43,6 +43,8 @@ import { DEFAULT_TABLE_OPTIONS, tableDirective, tableOf } from '../directives/ta
 import type { EmojiLookup, ResolvedEmoji } from '../emoji/emoji.ts'
 import { emojiElement } from '../emoji/emoji.ts'
 import type { MarkdownRegistry } from '../extensions/registry.ts'
+import type { BlockMath, InlineMath } from '../math/mdast.ts'
+import { mathElement } from '../math/render.ts'
 import { markerName, splitAlert } from '../pipeline/github-alert.ts'
 import { directiveSource } from './directive-source.ts'
 import { drawingElement } from './drawing-element.ts'
@@ -102,6 +104,9 @@ const FENCE_LANGUAGE = /^[A-Za-z0-9][\w+#.-]{0,31}$/
  * readable as.
  */
 export const DIAGRAM_LANGUAGES: ReadonlySet<string> = new Set(['mermaid'])
+
+/** The fence tag GitHub reads as display math, and so does a document here (ADR-064). */
+const MATH_FENCE = 'math'
 
 /** Whether inline content is drawn as a pill: a badge, or one of the organisation's labels. */
 function isPill(child: PhrasingContent | undefined, labels: ReadonlySet<string>): boolean {
@@ -327,6 +332,8 @@ export function createHandlers(options: HandlerOptions): Handlers {
   /** A fenced block in its card (ADR-041), or a diagram slot holding its source. */
   const code = (_state: State, node: Code): Element => {
     const fence = node.lang ?? ''
+    // GitHub's spelling of display math, which a document reads as such here too (ADR-064).
+    if (fence === MATH_FENCE) return mathElement(node.value, true)
     return DIAGRAM_LANGUAGES.has(fence)
       ? element('div', { className: ['diagram'], 'data-diagram': fence }, [pre(node)])
       : codeCard(pre(node), codeBlockCaption(node))
@@ -726,6 +733,8 @@ export function createHandlers(options: HandlerOptions): Handlers {
     listItem,
     code,
     codeGroup,
+    inlineMath: (_state: State, node: InlineMath) => mathElement(node.value, false),
+    math: (_state: State, node: BlockMath) => mathElement(node.value, true),
     details: (state: State, node: Details, parent: unknown) =>
       detailsRenderer.details(state, node, parent),
     image,

@@ -62,6 +62,7 @@ export type ChangedBlock =
   | 'code'
   | 'image'
   | 'diagram'
+  | 'math'
   | 'quote'
   | 'callout'
   | 'divider'
@@ -293,6 +294,7 @@ const NOT_FLOW = new Set([
   'image',
   'imageReference',
   'inlineCode',
+  'inlineMath',
   'break',
   'footnoteReference',
   'textDirective',
@@ -642,6 +644,8 @@ function blockKind(node: Flow): ChangedBlock {
     case 'diffCode':
     case 'codeGroup':
       return 'code'
+    case 'math':
+      return 'math'
     case 'blockquote':
       return 'quote'
     case 'thematicBreak':

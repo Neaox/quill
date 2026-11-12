@@ -14,7 +14,7 @@ export interface DocumentText {
 }
 
 /** Blocks whose text is worth indexing as prose; everything else is structure. */
-const PROSE = new Set(['paragraph', 'code', 'tableCell'])
+const PROSE = new Set(['paragraph', 'code', 'math', 'tableCell'])
 
 interface FoundHeading {
   readonly depth: number

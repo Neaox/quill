@@ -17,6 +17,7 @@ import { withImageActions } from '../image/image-actions.ts'
 import { HeldSelection } from '../link/held-selection.ts'
 import type { ImageAction } from '../image/image-actions.ts'
 import { withLeafDirectiveViews } from '../blocks/leaf-directive-views.ts'
+import { withMathView } from '../math/math-view.ts'
 import { NavigationBlocks } from '../navigation/navigation-extension.ts'
 import type { NavigationViewOptions } from '../navigation/navigation-view.ts'
 import { withFrontMatterView } from '../properties/front-matter-view.ts'
@@ -144,7 +145,9 @@ export function buildExtensions(options: EditorExtensionOptions = {}): Extension
                 withFootnoteView(
                   withTaskItemView(
                     withLeafDirectiveViews(
-                      withTableViews(withLabels(baseExtensions, options.labels ?? [])),
+                      withMathView(
+                        withTableViews(withLabels(baseExtensions, options.labels ?? [])),
+                      ),
                       options.navigation,
                     ),
                   ),
