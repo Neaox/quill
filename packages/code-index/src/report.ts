@@ -306,6 +306,7 @@ article.card:target{box-shadow:0 0 0 3px var(--accent-soft),var(--shadow);border
 article:hover .copy,.copy:focus-visible{opacity:1}
 .copy:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .signature{margin:8px 0 0;padding:9px 11px;background:var(--code-bg);border:1px solid var(--border);border-radius:7px;font-size:12.5px;line-height:1.5;white-space:pre-wrap;overflow-wrap:anywhere;color:var(--fg)}
+.type-full,.definition{margin:6px 0 0}.type-full summary,.definition summary{cursor:pointer;color:var(--muted);font-size:12px;width:fit-content}.type-full summary:focus-visible,.definition summary:focus-visible{outline:2px solid var(--accent);outline-offset:2px}.definition pre{max-height:420px;overflow:auto}
 .description{margin:8px 0 0;color:var(--fg);max-width:78ch}
 .empty-desc{margin:8px 0 0;color:var(--faint);font-style:italic}
 .meta-row{margin:7px 0 0;color:var(--muted);font-size:12.5px}
@@ -366,6 +367,12 @@ function highlight(text) {
   }
   return out + escapeHtml(text.slice(last));
 }
+function compact(value, max = 220) {
+  if (value.length <= max) return value;
+  const cut = value.slice(0, max);
+  const boundary = Math.max(cut.lastIndexOf(";"), cut.lastIndexOf(","), cut.lastIndexOf(" "));
+  return (boundary > 40 ? cut.slice(0, boundary) : cut).trimEnd() + " …";
+}
 function el(tag, props, ...kids) { const e = document.createElement(tag); Object.assign(e, props || {}); for (const k of kids) e.append(k); return e; }
 function idFor(...parts) { return parts.join("-").replace(/[^A-Za-z0-9_-]+/g, "-").replace(/-+/g, "-"); }
 function icon(kind) { const span = el("span", { className: "kind " + kind }); span.innerHTML = ICONS[kind] || ICONS.package; return span; }
@@ -378,10 +385,26 @@ function symbolCard(symbol) {
   const body = el("div");
   const head = el("div", { className: "card-head" }, sourceLink(symbol), el("span", { className: "kind-label", textContent: label(symbol.kind) }), el("span", { className: "path" }, el("code", { textContent: symbol.package + "/" + symbol.module })), copyButton(symbol.name));
   body.append(head);
-  const signature = el("pre", { className: "signature" }); signature.innerHTML = highlight(symbol.signature); body.append(signature);
+  const declarationFirst = symbol.definition && (symbol.kind === "const" || symbol.kind === "type" || symbol.kind === "interface" || symbol.kind === "class");
+  const primary = declarationFirst ? symbol.definition : symbol.signature;
+  const displayed = compact(primary);
+  const primaryBlock = el("pre", { className: "signature" }); primaryBlock.innerHTML = highlight(displayed); body.append(primaryBlock);
+  if (displayed !== primary) {
+    const full = el("details", { className: "type-full" });
+    full.append(el("summary", { textContent: symbol.kind === "const" ? "Show full declaration" : "Show full signature" }));
+    const pre = el("pre", { className: "signature" }); pre.innerHTML = highlight(primary); full.append(pre);
+    body.append(full);
+  }
+  if (symbol.kind === "const" && symbol.signature !== symbol.definition) {
+    const inferred = el("details", { className: "type-full" });
+    inferred.append(el("summary", { textContent: "Inferred type" }));
+    const pre = el("pre", { className: "signature" }); pre.innerHTML = highlight(symbol.signature); inferred.append(pre);
+    body.append(inferred);
+  }
   body.append(symbol.description ? el("p", { className: "description", textContent: symbol.description }) : el("p", { className: "empty-desc", textContent: "No description in the code." }));
-  if (symbol.params.length) body.append(el("p", { className: "meta-row", textContent: "Parameters: " + symbol.params.map((p) => p.name + ": " + p.type + (p.optional ? "?" : "")).join(" · ") }));
-  if (symbol.returnType && symbol.kind !== "type" && symbol.kind !== "interface") body.append(el("p", { className: "meta-row", textContent: "Returns: " + symbol.returnType }));
+  if (symbol.value) body.append(el("p", { className: "meta-row", textContent: "Value: " + symbol.value }));
+  if (symbol.params.length) body.append(el("p", { className: "meta-row", textContent: "Parameters: " + symbol.params.map((p) => p.name + ": " + compact(p.type, 90) + (p.optional ? "?" : "")).join(" · ") }));
+  if (symbol.returnType && symbol.kind !== "type" && symbol.kind !== "interface") body.append(el("p", { className: "meta-row", textContent: "Returns: " + compact(symbol.returnType, 90) }));
   const tags = [...symbol.concepts.map((c) => ({ text: c, className: "key" })), ...symbol.keywords.map((c) => ({ text: c, className: "" })), ...symbol.tags.filter((t) => t.name !== "keywords" && t.name !== "concept").map((t) => ({ text: "@" + t.name + (t.text ? " " + t.text : ""), className: t.name === "deprecated" ? "deprecated" : "" }))];
   if (tags.length) { const row = el("div", { className: "tags" }); for (const tag of tags) row.append(el("span", { className: "tag " + tag.className, textContent: tag.text })); body.append(row); }
   if (symbol.usedBy.length) body.append(el("p", { className: "meta-row", textContent: "Used " + symbol.usedBy.length + " time" + (symbol.usedBy.length === 1 ? "" : "s") + " in " + new Set(symbol.usedBy.map((u) => u.file)).size + " file" + (new Set(symbol.usedBy.map((u) => u.file)).size === 1 ? "" : "s") }));
@@ -444,8 +467,17 @@ function functionCard(fn) {
 function textOf(value) { return (value || "").toLowerCase(); }
 function symbolMatches(symbol, query) {
   if (!query) return true;
-  const text = textOf(symbol.name) + " " + textOf(symbol.package) + " " + textOf(symbol.module) + " " + textOf(symbol.signature) + " " + textOf(symbol.description) + " " + symbol.tags.map((t) => textOf(t.name) + " " + textOf(t.text)).join(" ") + " " + symbol.keywords.join(" ") + " " + symbol.concepts.join(" ");
+  const text = textOf(symbol.name) + " " + textOf(symbol.package) + " " + textOf(symbol.module) + " " + textOf(symbol.signature) + " " + textOf(symbol.definition) + " " + textOf(symbol.description) + " " + symbol.tags.map((t) => textOf(t.name) + " " + textOf(t.text)).join(" ") + " " + symbol.keywords.join(" ") + " " + symbol.concepts.join(" ");
   return text.includes(query);
+}
+function symbolScore(symbol, query) {
+  if (!query) return 0;
+  const name = textOf(symbol.name);
+  if (name === query) return 0;
+  if (name.startsWith(query)) return 1;
+  if (textOf(symbol.package + "/" + symbol.module).includes(query)) return 2;
+  if (textOf(symbol.signature).includes(query)) return 3;
+  return 4;
 }
 function tableMatches(table, query) {
   if (!query) return true;
@@ -520,7 +552,9 @@ function setMode(next) { mode = next; for (const button of document.querySelecto
 function render() {
   const query = q.value.trim().toLowerCase();
   const allSymbols = data.symbols.filter((symbol) => local.checked || symbol.visibility !== "local");
-  const found = allSymbols.filter((symbol) => symbolMatches(symbol, query));
+  const found = allSymbols
+    .filter((symbol) => symbolMatches(symbol, query))
+    .toSorted((left, right) => symbolScore(left, query) - symbolScore(right, query) || left.moniker.localeCompare(right.moniker));
   const showCode = mode !== "schema", showSchema = mode !== "code";
   codeSection.hidden = !showCode; schemaSection.hidden = !showSchema;
   count.textContent = found.length.toLocaleString() + " symbols · " + data.tables.length.toLocaleString() + " tables · " + data.functions.length.toLocaleString() + " functions";

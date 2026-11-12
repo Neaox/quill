@@ -51,6 +51,10 @@ export interface CodeSymbolV1 {
   /** Whether the file is an entry file, or is re-exported from one. */
   readonly entryFile: boolean
   readonly signature: string
+  /** The declaration's own text, for a type, interface or class. Not a rendered type. */
+  readonly definition?: string
+  /** A literal constant's value, when the initializer is a string, number or boolean. */
+  readonly value?: string
   readonly params: readonly SourceParameter[]
   readonly returnType: string
   readonly description: string

@@ -346,8 +346,13 @@ function extractSymbols(
       entryFile: pkg.entryFiles.has(file),
       signature:
         declared.kind === 'type' || declared.kind === 'interface' || declared.kind === 'class'
-          ? `${declared.kind} ${declared.name}`
+          ? `${declared.kind} ${declared.name}${typeParametersOf(declared.node)}`
           : `${declared.name}: ${type}`,
+      ...(declared.kind === 'type' || declared.kind === 'interface' || declared.kind === 'class'
+        ? { definition: declared.node.getText() }
+        : {}),
+      ...(declared.kind === 'const' ? constantDefinition(declared.node) : {}),
+      ...(declared.kind === 'const' ? literalValue(declared.node, declared.nameNode) : {}),
       params: declared.fn ? paramsOf(checker, declared.fn) : [],
       returnType: declared.fn
         ? returnTypeOf(checker, declared.fn, type)
@@ -363,6 +368,42 @@ function extractSymbols(
       complexity: body ? complexity(body) : null,
     }
   })
+}
+
+/** ` <T, U>` when a type, interface or class declares type parameters. */
+function typeParametersOf(node: Node): string {
+  const parameters = (node as Node & { typeParameters?: readonly Node[] }).typeParameters
+  return parameters === undefined || parameters.length === 0
+    ? ''
+    : `<${parameters.map((parameter) => parameter.getText()).join(', ')}>`
+}
+
+/** A const's declaration text, capped so one enormous schema value cannot bloat every snapshot. */
+function constantDefinition(node: Node): { definition?: string } {
+  const text = node.getText()
+  return text.length <= 8_000 ? { definition: text } : {}
+}
+
+/** A literal constant's value, so the report can show `= "value"` rather than only a type. */
+function literalValue(node: Node, nameNode: Node): { value?: string } {
+  const statement = node as Node & {
+    declarationList?: { declarations?: readonly (Node & { initializer?: Node })[] }
+  }
+  const declaration = statement.declarationList?.declarations?.find(
+    (candidate) => (candidate as Node & { name?: Node }).name === nameNode,
+  )
+  const initializer = declaration?.initializer
+  if (!initializer) return {}
+  if (
+    initializer.kind === SyntaxKind.StringLiteral ||
+    initializer.kind === SyntaxKind.NumericLiteral ||
+    initializer.kind === SyntaxKind.TrueKeyword ||
+    initializer.kind === SyntaxKind.FalseKeyword ||
+    initializer.kind === SyntaxKind.NullKeyword
+  ) {
+    return { value: initializer.getText() }
+  }
+  return {}
 }
 
 function typeText(checker: Checker, symbol: CompilerSymbol, declared: Declared): string {

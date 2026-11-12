@@ -24,6 +24,8 @@ describe('TypeScript extractor', () => {
     expect(
       file?.symbols.every((symbol) => symbol.moniker.startsWith('typescript:@quill/domain:')),
     ).toBe(true)
+    const result = file?.symbols.find((symbol) => symbol.name === 'Result')
+    expect(result?.definition).toContain('type Result')
 
     const decoded = decodeCodeIndexArtifact(encodeCodeIndexArtifact(artifact))
     expect(decoded.ok).toBe(true)
