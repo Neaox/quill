@@ -103,6 +103,45 @@ describe('SQL schema parser', () => {
     expect(snapshot.tables.map((table) => table.name)).toEqual(['alpha', 'zebra', 'zebra'])
   })
 
+  it('attaches schema, table, column and function comments', () => {
+    const snapshot = parseSqlSchema(
+      `
+      COMMENT ON SCHEMA payments IS 'Money movement: intents, captures and refunds.';
+      COMMENT ON TABLE payments.intents IS 'One row per payment attempt.';
+      COMMENT ON COLUMN payments.intents.status IS 'Lifecycle: created, authorised, captured.';
+      COMMENT ON FUNCTION lockstay_tenant() IS 'The tenant id set for the current transaction.';
+      CREATE FUNCTION lockstay_tenant() RETURNS uuid LANGUAGE sql STABLE SECURITY DEFINER AS $$ SELECT 1 $$;
+      CREATE TABLE payments.intents (id uuid PRIMARY KEY, status text NOT NULL);
+      `,
+      options,
+    )
+
+    expect(snapshot.namespaces).toEqual([
+      { name: 'payments', comment: 'Money movement: intents, captures and refunds.' },
+      { name: 'public' },
+    ])
+    expect(snapshot.tables[0]?.comment).toBe('One row per payment attempt.')
+    expect(snapshot.tables[0]?.columns[1]?.comment).toBe(
+      'Lifecycle: created, authorised, captured.',
+    )
+    expect(snapshot.functions).toEqual([
+      {
+        schema: 'public',
+        name: 'lockstay_tenant',
+        signature: 'lockstay_tenant()',
+        returns: 'uuid',
+        language: 'sql',
+        volatility: 'stable',
+        securityDefiner: true,
+        comment: 'The tenant id set for the current transaction.',
+        source: {
+          file: 'packages/persistence/src/migrations/0001-foundation.sql',
+          line: 6,
+        },
+      },
+    ])
+  })
+
   it('keeps a view as a table entry without columns', () => {
     const snapshot = parseSqlSchema('CREATE VIEW payments.open_intents AS SELECT 1;', options)
 

@@ -28,9 +28,10 @@ new dependency?
   repository.
 - **`typescript/build.ts`** — the first build function. The caller chooses the
   corpus, so a test can index one module and the CLI can index the repository.
-- **`schema/`** — `parseSqlSchema`, a metadata-only reader for the `CREATE TABLE`
-  and `CREATE VIEW` shapes a migration folder uses: columns, types,
-  nullability, defaults, primary and unique keys, foreign keys and source line.
+- **`schema/`** — `parseSqlSchema`, a metadata-only reader for the shapes a
+  migration folder uses: schemas, tables, views, columns, types, nullability,
+  defaults, primary and unique keys, foreign keys, `COMMENT ON` annotations,
+  functions and source lines.
 
 ## What it deliberately does not own
 

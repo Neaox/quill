@@ -615,6 +615,75 @@ The PMS's schema is the ideal test of the "generic database" claim because it is
 
 The first schema index should cover **all 197 tenant tables and the control plane**, with the support, telemetry, diagnostics and finance schemas next. It reads the migrations for history and the live catalog for the deployed truth, then reports drift between them.
 
+#### 4.3.4a Annotating the schema, idiomatically
+
+The short explanation belongs in SQL, the long explanation in a guide, and structured facts in a reviewed sidecar. That is the clean split; none of the three pretends to be another.
+
+**Short annotation: `COMMENT ON`.** PostgreSQL's own comments are the source of truth for a table, column, schema, view or function:
+
+```sql
+COMMENT ON SCHEMA payments IS 'Money movement: intents, captures, refunds and folios.';
+COMMENT ON TABLE payments.intents IS 'One row per payment attempt.';
+COMMENT ON COLUMN payments.intents.status
+  IS 'Lifecycle: created, authorised, captured. A declined authorisation leaves it created.';
+COMMENT ON FUNCTION lockstay_tenant()
+  IS 'The tenant id set by withTenant() for the current transaction. Every row-level policy reads it.';
+```
+
+Why this and not a custom format: it travels with a dump, appears in `psql \d+`, is reviewed in the same migration as the schema change, and needs no Quill-specific tooling. The page shows the comment and names its source. A table with no comment says "No comment on the table", never an invented one.
+
+**Long explanation: a guide.** A normal Markdown page claims the entity in `covers:`:
+
+```yaml
+covers:
+  - postgres:lockstay.payments.intents
+  - postgres:lockstay.public.lockstay_tenant
+```
+
+The schema page shows "Read the guide" with the owner and revision; the guide shows the entities it covers. This is the same claim/mention split as code. The guide carries purpose, invariants, examples, retention, failure modes and links to the migration and the code.
+
+**Structured facts: an optional sidecar.** A reviewed `docs/quill.schema.yaml` (`schema/v1`) carries what a SQL comment cannot: owner, tags, enum values, sensitivity, examples, see-also, and the owning guide. It is data, validated, versioned with the repository. It does not duplicate a summary that the database already has; when there is no comment (a managed database, a read-only role), it may supply the summary and is labelled `schema annotation` rather than `database comment`.
+
+```yaml
+version: 1
+entities:
+  payments.intents:
+    owner: payments
+    tags: [money]
+    guide: docs/design/bookings-list.md
+  payments.intents.status:
+    enum: [created, authorised, captured]
+```
+
+Precedence is by fact, not by page: the database comment is the short description; the sidecar is the structured metadata; the guide is the long form. Every fact says which source it came from, so a reader can tell a DBA's note from a writer's explanation. Nothing is silently merged.
+
+**Functions are entities.** `CREATE FUNCTION`/`CREATE OR REPLACE FUNCTION` and `COMMENT ON FUNCTION` enter the same snapshot as tables. A function page carries its signature, return type, language, volatility, `SECURITY DEFINER`, comment, source line and guide.
+
+`lockstay_tenant()` is the worked example:
+
+- It reads the `lockstay.tenant_id` setting that `withTenant` sets for the current transaction.
+- Every row-level policy compares `tenant_id` against it.
+- The function page links the function, `packages/persistence/src/db.ts`, the migration that defines it, and `docs/guide/concepts/tenancy/data-isolation.md`.
+- A reader sees the mechanism, not just the name. A new developer can answer "why does every table compare against this function?" from one page.
+
+**Foreign keys are edges, both ways.** A column's FK links to the target table's page; the target table lists what references it, with the source columns. A target outside the indexed source is shown as unresolved with its schema-qualified name, never as a dead link.
+
+**Grouping and the tree.** The schema surface is grouped by namespace: namespace → tables/views → columns, and namespace → functions. A schema has its own comment, owner, coverage and guide. The sidebar is a native `<details>` tree: schemas open by default, tables open on demand, columns are links. It is keyboard-operable without a custom tree widget, and it filters with the same search as the content.
+
+**The PMS migrations have zero `COMMENT ON` statements today.** That is not a failure of the parser; it is the first content task. The highest-value set is the five schemas (`payments`, `catalogue`, `finance`, `desk`, `public`), the twenty tables a new developer meets first, and the functions that look cryptic: `lockstay_tenant()`, the RLS helpers, and the pricing/availability helpers. The report shows the coverage (`0 of 206 tables, 0 of N columns`) so the gap is visible rather than implied.
+
+**QOL, not later polish:**
+
+- Copy a table, column or function name from its card.
+- Copy `schema.table` and `schema.table.column` links.
+- Both-direction FK navigation and a visible "Referenced by".
+- Schema-level commentary, function commentary and column commentary in one tree.
+- `All / Code / Schema` modes, local-helper toggle, comment-inclusive search.
+- `:target` highlight when a tree link lands on a card or column.
+- Function signatures with language, volatility and `SECURITY DEFINER` badges.
+- Comment coverage in the header and schema section.
+- Light/dark, responsive, print, visible focus and a skip link.
+
 #### 4.3.5 The map manifest
 
 `docs/quill.yaml` already maps the repository's Markdown to Quill collections. The reference map is a sibling, `docs/quill.reference.yaml`, reviewed in the same pull request as the code it names. It is data, never code; a path or table that no longer exists is reported, never silently ignored.

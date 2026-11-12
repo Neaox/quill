@@ -1,5 +1,10 @@
 import type { CodeIndexArtifactV1 } from './artifact.ts'
-import type { SchemaSnapshotV1 } from './schema/types.ts'
+import type {
+  SchemaFunctionV1,
+  SchemaNamespaceV1,
+  SchemaSnapshotV1,
+  SchemaTableV1,
+} from './schema/types.ts'
 
 export interface CodeIndexReport {
   readonly artifact: CodeIndexArtifactV1
@@ -21,7 +26,15 @@ interface ReportPayload {
   readonly repo: string
   readonly generatedAt: string
   readonly symbols: readonly ReportSymbol[]
-  readonly tables: readonly SchemaSnapshotV1['tables'][number][]
+  readonly tables: readonly SchemaTableV1[]
+  readonly namespaces: readonly SchemaNamespaceV1[]
+  readonly functions: readonly SchemaFunctionV1[]
+  readonly comments: {
+    readonly tables: number
+    readonly columns: number
+    readonly columnTotal: number
+    readonly functions: number
+  }
   readonly source: string
 }
 
@@ -44,16 +57,45 @@ export function buildCodeIndexReport(report: CodeIndexReport): string {
     }
   }
 
+  const tables = (report.schema?.tables ?? []).toSorted(
+    (left, right) => left.schema.localeCompare(right.schema) || left.name.localeCompare(right.name),
+  )
+  const functions = (report.schema?.functions ?? []).toSorted(
+    (left, right) => left.schema.localeCompare(right.schema) || left.name.localeCompare(right.name),
+  )
+  const namespaceNames = new Set([
+    ...tables.map((table) => table.schema),
+    ...functions.map((fn) => fn.schema),
+    ...(report.schema?.namespaces ?? []).map((namespace) => namespace.name),
+  ])
+  const namespaces = [...namespaceNames].toSorted().map((name) => {
+    const known = report.schema?.namespaces?.find((namespace) => namespace.name === name)
+    return known ?? { name }
+  })
+
+  const columnTotal = tables.reduce((sum, table) => sum + table.columns.length, 0)
+  const comments = {
+    tables: tables.filter((table) => table.comment !== undefined && table.comment !== '').length,
+    columns: tables.reduce(
+      (sum, table) =>
+        sum +
+        table.columns.filter((column) => column.comment !== undefined && column.comment !== '')
+          .length,
+      0,
+    ),
+    columnTotal,
+    functions: functions.filter((fn) => fn.comment !== undefined && fn.comment !== '').length,
+  }
   const payload: ReportPayload = {
     title: report.title ?? 'Code and schema index',
     commit: report.artifact.commit,
     repo: report.artifact.repo,
     generatedAt: report.artifact.generatedAt,
     symbols: symbols.toSorted((left, right) => left.moniker.localeCompare(right.moniker)),
-    tables: (report.schema?.tables ?? []).toSorted(
-      (left, right) =>
-        left.schema.localeCompare(right.schema) || left.name.localeCompare(right.name),
-    ),
+    tables,
+    namespaces,
+    functions,
+    comments,
     source: report.schema?.source ?? 'none',
   }
 
@@ -72,14 +114,14 @@ export function buildCodeIndexReport(report: CodeIndexReport): string {
     <span class="brand-mark" aria-hidden="true">${ICONS.brand}</span>
     <div class="brand-copy">
       <h1>${escapeHtml(payload.title)}</h1>
-      <p class="meta">${payload.symbols.length.toLocaleString()} symbols · ${payload.tables.length.toLocaleString()} tables · ${escapeHtml(payload.repo || 'unknown repository')} at <code>${escapeHtml(payload.commit.slice(0, 9))}</code> · generated ${escapeHtml(payload.generatedAt)}</p>
+      <p class="meta">${payload.symbols.length.toLocaleString()} symbols · ${payload.tables.length.toLocaleString()} tables · ${payload.functions.length.toLocaleString()} functions · ${payload.comments.tables.toLocaleString()}/${payload.tables.length.toLocaleString()} tables annotated · ${escapeHtml(payload.repo || 'unknown repository')} at <code>${escapeHtml(payload.commit.slice(0, 9))}</code> · generated ${escapeHtml(payload.generatedAt)}</p>
     </div>
   </div>
   <div class="tools">
     <label class="search" for="q">
-      <span class="sr-only">Search code, tables and columns</span>
+      <span class="sr-only">Search code, tables, columns and functions</span>
       <span class="search-icon" aria-hidden="true">${ICONS.search}</span>
-      <input id="q" type="search" placeholder="Search symbols, packages, types, tables, columns…" autocomplete="off">
+      <input id="q" type="search" placeholder="Search symbols, tables, columns, functions…" autocomplete="off">
     </label>
     <div class="mode" role="group" aria-label="Show">
       <button type="button" data-mode="all" aria-pressed="true">All</button>
@@ -90,23 +132,32 @@ export function buildCodeIndexReport(report: CodeIndexReport): string {
     <span id="count" class="count" role="status"></span>
   </div>
 </header>
-<main id="main">
-  <section id="code-section" aria-labelledby="code-heading">
-    <div class="section-head">
-      <h2 id="code-heading">Code</h2>
-      <p class="hint">Signatures, doc comments and usages. Select a name to open it at the indexed commit.</p>
+<div class="layout">
+  <aside class="sidebar">
+    <div class="sidebar-head">
+      <h2>Schemas</h2>
+      <span id="tree-count" class="count"></span>
     </div>
-    <div id="code" class="results"></div>
-    <p id="code-more" class="more" hidden></p>
-  </section>
-  <section id="schema-section" aria-labelledby="schema-heading">
-    <div class="section-head">
-      <h2 id="schema-heading">Schema</h2>
-      <p class="hint">${payload.tables.length === 0 ? 'No schema was supplied to this report.' : 'Structure only. No row values are read, stored or shown.'}</p>
-    </div>
-    <div id="schema" class="results"></div>
-  </section>
-</main>
+    <nav id="tree" class="tree" aria-label="Schema tree"></nav>
+  </aside>
+  <main id="main">
+    <section id="code-section" aria-labelledby="code-heading">
+      <div class="section-head">
+        <h2 id="code-heading">Code</h2>
+        <p class="hint">Signatures, doc comments and usages. Select a name to open it at the indexed commit.</p>
+      </div>
+      <div id="code" class="results"></div>
+      <p id="code-more" class="more" hidden></p>
+    </section>
+    <section id="schema-section" aria-labelledby="schema-heading">
+      <div class="section-head">
+        <h2 id="schema-heading">Schema</h2>
+        <p class="hint">${payload.tables.length === 0 ? 'No schema was supplied to this report.' : 'Structure only. No row values are read, stored or shown. ' + payload.comments.tables + ' of ' + payload.tables.length + ' tables, ' + payload.comments.columns + ' of ' + payload.comments.columnTotal + ' columns and ' + payload.comments.functions + ' of ' + payload.functions.length + ' functions carry a comment.'}</p>
+      </div>
+      <div id="schema" class="schema-list"></div>
+    </section>
+  </main>
+</div>
 <footer>
   <p>Generated by <strong>@quill/code-index</strong> from Markdown, source and migrations. This page reads nothing at open time.</p>
 </footer>
@@ -138,6 +189,8 @@ const ICONS = {
   ),
   search:
     '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><circle cx="9" cy="9" r="5.5"/><path d="m13.2 13.2 3.3 3.3"/></svg>',
+  chevron:
+    '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="m7.5 5 5 5-5 5"/></svg>',
   function: svg(
     '<path d="M7 3.5c-1.8 0-2.8 1-2.8 2.8v1.4c0 1.4-.8 2.3-2.2 2.3 1.4 0 2.2.9 2.2 2.3v1.4c0 1.8 1 2.8 2.8 2.8" /><path d="M13 3.5c1.8 0 2.8 1 2.8 2.8v1.4c0 1.4.8 2.3 2.2 2.3-1.4 0-2.2.9-2.2 2.3v1.4c0 1.8-1 2.8-2.8 2.8" />',
   ),
@@ -154,7 +207,9 @@ const ICONS = {
   ),
   column: svg('<path d="M6 3.5v13M14 3.5v13M3.5 3.5h13v13h-13z" />'),
   package: svg('<path d="m10 2.8 6.3 3.6v7.2L10 17.2l-6.3-3.6V6.4L10 2.8Z" />'),
-  arrow: svg('<path d="M4 10h12M11.5 5.5 16 10l-4.5 4.5" />'),
+  copy: svg(
+    '<rect x="7" y="7" width="9" height="9" rx="1.5" /><path d="M13 7V5.5A1.5 1.5 0 0 0 11.5 4h-6A1.5 1.5 0 0 0 4 5.5v6A1.5 1.5 0 0 0 5.5 13H7" />',
+  ),
 } as const
 
 function svg(paths: string): string {
@@ -172,7 +227,7 @@ a{color:var(--accent);text-underline-offset:2px}
 .skip{position:absolute;left:-9999px;top:8px;background:var(--surface);padding:8px 12px;border:1px solid var(--border);border-radius:8px;z-index:10}
 .skip:focus{left:16px}
 .topbar{position:sticky;top:0;z-index:5;background:color-mix(in srgb,var(--bg) 88%,transparent);backdrop-filter:blur(14px);border-bottom:1px solid var(--border)}
-.topbar,.section-head,.results,footer,.more{max-width:1180px;margin-inline:auto;padding-inline:24px}
+.topbar,.section-head,.results,footer,.more,.layout{padding-inline:24px}
 .topbar{padding-block:14px;display:flex;flex-wrap:wrap;gap:14px 24px;align-items:center;justify-content:space-between}
 .brand{display:flex;gap:12px;align-items:center;min-width:280px;flex:1 1 380px}
 .brand-mark{display:grid;place-items:center;width:36px;height:36px;border-radius:10px;background:var(--accent-soft);color:var(--accent);flex:0 0 auto}
@@ -194,12 +249,43 @@ h1{font-size:17px;line-height:1.25;margin:0;letter-spacing:-.01em}
 .mode button:focus-visible,.toggle input:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .toggle{font-size:12.5px;color:var(--muted);display:inline-flex;gap:6px;align-items:center;cursor:pointer}
 .count{font-size:12.5px;color:var(--muted);white-space:nowrap}
-main{padding-bottom:56px}
+.layout{max-width:1320px;margin-inline:auto;display:grid;grid-template-columns:280px minmax(0,1fr);gap:30px;align-items:start}
+.sidebar{position:sticky;top:72px;max-height:calc(100vh - 90px);overflow:auto;padding:18px 0 24px;border-right:1px solid var(--border)}
+.sidebar-head{display:flex;align-items:baseline;justify-content:space-between;padding-right:18px;margin-bottom:8px}
+.sidebar-head h2{font-size:11.5px;text-transform:uppercase;letter-spacing:.08em;color:var(--faint);margin:0}
+.tree{font-size:13px;padding-right:18px}
+.tree details{margin:1px 0}
+.tree summary{display:flex;align-items:center;gap:5px;padding:4px 5px;border-radius:5px;cursor:pointer;list-style:none;color:var(--fg)}
+.tree summary::-webkit-details-marker{display:none}
+.tree summary:hover{background:var(--surface-2)}
+.tree summary:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+.chevron{display:grid;place-items:center;width:14px;height:14px;color:var(--faint);flex:0 0 auto;transition:transform .15s ease}
+.chevron svg{width:12px;height:12px}
+details[open] > summary > .chevron{transform:rotate(90deg)}
+.tree-name{font-weight:600;overflow-wrap:anywhere}
+.tree-count{margin-left:auto;font-size:11px;color:var(--faint);background:var(--surface-2);border-radius:999px;padding:0 6px}
+.tree-children{padding-left:16px}
+.tree-link{display:block;padding:3px 5px;border-radius:5px;color:var(--muted);text-decoration:none;overflow-wrap:anywhere}
+.tree-link:hover{background:var(--surface-2);color:var(--fg)}
+.tree-link:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+.tree-columns{padding-left:14px}
+.tree-columns a{display:block;padding:2px 5px;font-size:12px;color:var(--faint);text-decoration:none;border-radius:4px;overflow-wrap:anywhere}
+.tree-columns a:hover{background:var(--surface-2);color:var(--fg)}
+.schema-list{max-width:980px}
+.schema-block{padding:24px 0 8px;border-top:1px solid var(--border)}
+.schema-block:first-child{border-top:0;padding-top:14px}
+.schema-head{display:flex;flex-wrap:wrap;align-items:baseline;gap:8px 12px;margin-bottom:4px}
+.schema-head h3{font-size:18px;letter-spacing:-.01em;margin:0;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+.schema-head .kind-label{font-size:11px}
+.schema-comment{margin:5px 0 12px;color:var(--muted);max-width:74ch}
+.subhead{display:flex;align-items:baseline;gap:8px;margin:18px 0 6px;font-size:11.5px;text-transform:uppercase;letter-spacing:.07em;color:var(--faint)}
+.subhead span{background:var(--surface-2);border-radius:999px;padding:0 6px;font-size:11px}
 .section-head{padding-top:30px;padding-bottom:10px}
 .section-head h2{font-size:15px;letter-spacing:.02em;text-transform:uppercase;color:var(--muted);margin:0 0 3px}
 .hint{margin:0;color:var(--faint);font-size:12.5px}
 .results{display:grid;gap:10px}
-article.card{border:1px solid var(--border);border-radius:var(--radius);background:var(--surface);box-shadow:var(--shadow);padding:14px 16px;display:grid;grid-template-columns:26px minmax(0,1fr);gap:12px}
+article.card{border:1px solid var(--border);border-radius:var(--radius);background:var(--surface);box-shadow:var(--shadow);padding:14px 16px;display:grid;grid-template-columns:26px minmax(0,1fr);gap:12px;scroll-margin-top:90px}
+article.card:target{box-shadow:0 0 0 3px var(--accent-soft),var(--shadow);border-color:var(--accent)}
 .kind{width:26px;height:26px;border-radius:7px;display:grid;place-items:center;background:var(--surface-2);color:var(--muted)}
 .kind svg{width:16px;height:16px}
 .kind.function,.kind.method{color:#7c3aed;background:#f3eefe}
@@ -215,6 +301,10 @@ article.card{border:1px solid var(--border);border-radius:var(--radius);backgrou
 .kind-label{font-size:11.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--faint)}
 .path{font-size:12px;color:var(--muted);overflow-wrap:anywhere}
 .path code{background:none;padding:0;color:inherit}
+.copy{margin-left:auto;display:inline-flex;align-items:center;gap:4px;border:1px solid var(--border);border-radius:6px;background:var(--surface-2);color:var(--muted);font:inherit;font-size:11.5px;padding:2px 7px;cursor:pointer;opacity:0;transition:opacity .15s ease}
+.copy svg{width:12px;height:12px}
+article:hover .copy,.copy:focus-visible{opacity:1}
+.copy:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .signature{margin:8px 0 0;padding:9px 11px;background:var(--code-bg);border:1px solid var(--border);border-radius:7px;font-size:12.5px;line-height:1.5;white-space:pre-wrap;overflow-wrap:anywhere;color:var(--fg)}
 .description{margin:8px 0 0;color:var(--fg);max-width:78ch}
 .empty-desc{margin:8px 0 0;color:var(--faint);font-style:italic}
@@ -230,26 +320,31 @@ table.data{border-collapse:collapse;width:100%;font-size:12.5px;margin-top:10px}
 table.data th,table.data td{text-align:left;vertical-align:top;padding:6px 8px;border-bottom:1px solid var(--border)}
 table.data th{font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--faint);font-weight:600}
 table.data td:first-child{font-weight:600;white-space:nowrap}
+table.data tr:target{background:var(--accent-soft)}
 table.data code{background:none;padding:0;color:var(--muted);font-size:12px}
-.key-badge{display:inline-block;border-radius:5px;padding:1px 6px;font-size:10.5px;font-weight:700;letter-spacing:.04em;text-transform:uppercase}
+.key-badge{display:inline-block;border-radius:5px;padding:1px 6px;font-size:10.5px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;margin-right:3px}
 .key-badge.pk{background:var(--accent-soft);color:var(--accent)}
 .key-badge.uq{background:var(--good-soft);color:var(--good)}
 .key-badge.fk{background:var(--warn-soft);color:var(--warn)}
-footer{border-top:1px solid var(--border);margin-top:40px;padding-block:18px;color:var(--faint);font-size:12px}
+.fk-link{color:var(--accent)}
+.fn-meta{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+footer{border-top:1px solid var(--border);margin-top:40px;padding-block:18px;color:var(--faint);font-size:12px;max-width:1320px;margin-inline:auto}
 footer p{margin:0}
 .sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
 .tok-keyword{color:#7c3aed;font-weight:600}.tok-type{color:#0f766e}.tok-string{color:#b45309}.tok-number{color:#1f5fbf}.tok-comment{color:var(--faint);font-style:italic}.tok-punctuation{color:var(--muted)}
 @media (prefers-color-scheme:dark){.tok-keyword{color:#c4a7ff}.tok-type{color:#7ed9c6}.tok-string{color:#f2c27a}.tok-number{color:#9cc2ff}}
-@media (max-width:720px){.topbar{padding-block:10px}.brand{min-width:0;flex-basis:100%}.tools{width:100%}.search{flex-basis:100%}.count{width:100%}.brand-copy .meta{white-space:normal}.results,.section-head,.topbar,footer,.more{padding-inline:14px}article.card{grid-template-columns:22px minmax(0,1fr);padding:12px}.kind{width:22px;height:22px}.signature{font-size:12px}}
-@media print{.topbar{position:static;backdrop-filter:none}.tools{display:none}article.card{break-inside:avoid;box-shadow:none}footer{display:none}}
+@media (max-width:900px){.layout{display:block;padding-inline:14px}.sidebar{position:static;max-height:280px;border-right:0;border-bottom:1px solid var(--border);padding-bottom:12px}.sidebar-head{padding-right:0}.tree{padding-right:0}.topbar,.section-head,.results,footer,.more{padding-inline:14px}.brand{min-width:0;flex-basis:100%}.tools{width:100%}.search{flex-basis:100%}.count{width:100%}.brand-copy .meta{white-space:normal}}
+@media (max-width:620px){.brand-copy .meta{font-size:11.5px}.results,.schema-list{max-width:none}article.card{grid-template-columns:22px minmax(0,1fr);padding:12px}.kind{width:22px;height:22px}.signature{font-size:12px}.schema-head h3{font-size:16px}.copy{opacity:1}}
+@media print{.topbar{position:static;backdrop-filter:none}.tools,.sidebar,.copy{display:none}.layout{display:block}article.card{break-inside:avoid;box-shadow:none}footer{display:none}}
 `
 
 const SCRIPT = `
 const data = JSON.parse(document.getElementById("data").textContent);
 const q = document.getElementById("q"), local = document.getElementById("local");
-const count = document.getElementById("count"), code = document.getElementById("code"), schema = document.getElementById("schema");
+const count = document.getElementById("count"), treeCount = document.getElementById("tree-count");
+const code = document.getElementById("code"), schemaList = document.getElementById("schema");
 const codeSection = document.getElementById("code-section"), schemaSection = document.getElementById("schema-section");
-const codeMore = document.getElementById("code-more");
+const codeMore = document.getElementById("code-more"), tree = document.getElementById("tree");
 let mode = "all";
 const KEYWORDS = new Set(["abstract","as","async","await","break","case","catch","class","const","constructor","continue","declare","default","delete","do","else","enum","export","extends","false","finally","for","from","function","get","if","implements","import","in","infer","instanceof","interface","keyof","let","new","null","of","private","protected","public","readonly","return","set","static","super","switch","this","throw","true","try","type","typeof","undefined","unique","unknown","var","void","while","yield"]);
 const TYPES = new Set(["any","bigint","boolean","never","number","object","string","symbol","unknown","void","Array","Date","Error","Map","Promise","Readonly","Record","Set","Temporal"]);
@@ -267,14 +362,16 @@ function highlight(text) {
   return out + escapeHtml(text.slice(last));
 }
 function el(tag, props, ...kids) { const e = document.createElement(tag); Object.assign(e, props || {}); for (const k of kids) e.append(k); return e; }
+function idFor(...parts) { return parts.join("-").replace(/[^A-Za-z0-9_-]+/g, "-").replace(/-+/g, "-"); }
 function icon(kind) { const span = el("span", { className: "kind " + kind }); span.innerHTML = ICONS[kind] || ICONS.package; return span; }
 function label(kind) { return kind === "function" ? "Function" : kind === "method" ? "Method" : kind === "class" ? "Class" : kind === "interface" ? "Interface" : kind === "type" ? "Type" : kind === "const" ? "Constant" : kind === "property" ? "Property" : kind === "table" ? "Table" : kind === "view" ? "View" : kind; }
+function copyButton(text) { const button = el("button", { className: "copy", type: "button", "aria-label": "Copy " + text, "data-copy": text }); button.innerHTML = ICONS.copy + "<span>Copy</span>"; return button; }
 function sourceLink(symbol) { if (!data.repo || !symbol.file) return el("span", { className: "name", textContent: symbol.name }); return el("a", { className: "name", href: "https://github.com/" + data.repo + "/blob/" + data.commit + "/" + symbol.file + "#L" + symbol.startLine + "-L" + symbol.endLine, target: "_blank", rel: "noreferrer", textContent: symbol.name }); }
 function symbolCard(symbol) {
-  const card = el("article", { className: "card" });
+  const card = el("article", { className: "card", id: "symbol-" + idFor(symbol.moniker) });
   card.append(icon(symbol.kind));
   const body = el("div");
-  const head = el("div", { className: "card-head" }, sourceLink(symbol), el("span", { className: "kind-label", textContent: label(symbol.kind) }), el("span", { className: "path" }, el("code", { textContent: symbol.package + "/" + symbol.module })));
+  const head = el("div", { className: "card-head" }, sourceLink(symbol), el("span", { className: "kind-label", textContent: label(symbol.kind) }), el("span", { className: "path" }, el("code", { textContent: symbol.package + "/" + symbol.module })), copyButton(symbol.name));
   body.append(head);
   const signature = el("pre", { className: "signature" }); signature.innerHTML = highlight(symbol.signature); body.append(signature);
   body.append(symbol.description ? el("p", { className: "description", textContent: symbol.description }) : el("p", { className: "empty-desc", textContent: "No description in the code." }));
@@ -286,25 +383,56 @@ function symbolCard(symbol) {
   card.append(body);
   return card;
 }
-function tableCard(table) {
-  const card = el("article", { className: "card" });
+function tableId(table) { return "table-" + idFor(table.schema, table.name); }
+function columnId(table, column) { return "column-" + idFor(table.schema, table.name, column.name); }
+function tableCard(table, incoming) {
+  const card = el("article", { className: "card", id: tableId(table) });
   card.append(icon(table.kind));
   const body = el("div");
-  body.append(el("div", { className: "card-head" }, el("span", { className: "name", textContent: table.schema + "." + table.name }), el("span", { className: "kind-label", textContent: label(table.kind) })));
+  const head = el("div", { className: "card-head" }, el("span", { className: "name", textContent: table.schema + "." + table.name }), el("span", { className: "kind-label", textContent: label(table.kind) }), copyButton(table.schema + "." + table.name));
+  body.append(head);
   if (table.comment) body.append(el("p", { className: "description", textContent: table.comment }));
+  else body.append(el("p", { className: "empty-desc", textContent: "No comment on the table." }));
   const dataTable = el("table", { className: "data" });
-  const head = el("tr", {}, el("th", { scope: "col", textContent: "Column" }), el("th", { scope: "col", textContent: "Type" }), el("th", { scope: "col", textContent: "Nullable" }), el("th", { scope: "col", textContent: "Default" }), el("th", { scope: "col", textContent: "Key" }));
-  dataTable.append(el("thead", {}, head));
+  const headRow = el("tr", {}, el("th", { scope: "col", textContent: "Column" }), el("th", { scope: "col", textContent: "Type" }), el("th", { scope: "col", textContent: "Nullable" }), el("th", { scope: "col", textContent: "Default" }), el("th", { scope: "col", textContent: "Key" }), el("th", { scope: "col", textContent: "Comment" }));
+  dataTable.append(el("thead", {}, headRow));
   const tbody = el("tbody");
   for (const column of table.columns) {
     const key = el("td");
     if (column.primaryKey) key.append(el("span", { className: "key-badge pk", textContent: "PK" }));
     if (column.unique) key.append(el("span", { className: "key-badge uq", textContent: "Unique" }));
-    if (column.references) key.append(el("span", { className: "key-badge fk", textContent: "FK → " + column.references.table }));
-    tbody.append(el("tr", {}, el("td", { textContent: column.name }), el("td", {}, el("code", { textContent: column.type })), el("td", { textContent: column.nullable ? "yes" : "no" }), el("td", { textContent: column.default || "—" }), key));
+    if (column.references) {
+      const targetSchema = column.references.schema || table.schema;
+      const target = document.createElement("a");
+      target.className = "key-badge fk fk-link";
+      target.href = "#" + tableId({ schema: targetSchema, name: column.references.table });
+      target.textContent = "FK → " + targetSchema + "." + column.references.table;
+      key.append(target);
+    }
+    const comment = el("td", { textContent: column.comment || "—" });
+    tbody.append(el("tr", { id: columnId(table, column) }, el("td", { textContent: column.name }), el("td", {}, el("code", { textContent: column.type })), el("td", { textContent: column.nullable ? "yes" : "no" }), el("td", { textContent: column.default || "—" }), key, comment));
   }
   dataTable.append(tbody);
   body.append(dataTable);
+  if (incoming.length) {
+    body.append(el("p", { className: "meta-row", textContent: "Referenced by: " + incoming.map((ref) => ref.from.schema + "." + ref.from.name + " (" + ref.columns.join(", ") + ")").join(" · ") }));
+  }
+  card.append(body);
+  return card;
+}
+function functionCard(fn) {
+  const card = el("article", { className: "card", id: "function-" + idFor(fn.schema, fn.name) });
+  card.append(icon("function"));
+  const body = el("div");
+  body.append(el("div", { className: "card-head" }, el("span", { className: "name", textContent: fn.schema + "." + fn.name }), el("span", { className: "kind-label", textContent: "Function" }), copyButton(fn.signature)));
+  const signature = el("pre", { className: "signature" }); signature.innerHTML = highlight(fn.signature); body.append(signature);
+  body.append(fn.comment ? el("p", { className: "description", textContent: fn.comment }) : el("p", { className: "empty-desc", textContent: "No comment on the function." }));
+  const meta = el("div", { className: "fn-meta" });
+  if (fn.returns) meta.append(el("span", { className: "tag", textContent: "returns " + fn.returns }));
+  if (fn.language) meta.append(el("span", { className: "tag", textContent: fn.language }));
+  if (fn.volatility) meta.append(el("span", { className: "tag", textContent: fn.volatility }));
+  if (fn.securityDefiner) meta.append(el("span", { className: "tag deprecated", textContent: "security definer" }));
+  if (meta.childElementCount) body.append(meta);
   card.append(body);
   return card;
 }
@@ -316,22 +444,92 @@ function symbolMatches(symbol, query) {
 }
 function tableMatches(table, query) {
   if (!query) return true;
-  const text = textOf(table.schema) + " " + textOf(table.name) + " " + table.columns.map((c) => textOf(c.name) + " " + textOf(c.type)).join(" ");
+  const text = textOf(table.schema) + " " + textOf(table.name) + " " + textOf(table.comment) + " " + table.columns.map((c) => textOf(c.name) + " " + textOf(c.type) + " " + textOf(c.comment)).join(" ");
   return text.includes(query);
+}
+function functionMatches(fn, query) {
+  if (!query) return true;
+  return (textOf(fn.schema) + " " + textOf(fn.name) + " " + textOf(fn.signature) + " " + textOf(fn.comment)).includes(query);
+}
+function incomingFor(table) {
+  const result = [];
+  for (const source of data.tables) for (const fk of source.foreignKeys) {
+    const target = fk.references.schema || source.schema;
+    if (target === table.schema && fk.references.table === table.name) result.push({ from: source, columns: fk.columns });
+  }
+  return result;
+}
+function buildTree(query) {
+  const groups = [];
+  let shown = 0;
+  for (const namespace of data.namespaces) {
+    const tables = data.tables.filter((table) => table.schema === namespace.name && tableMatches(table, query));
+    const functions = data.functions.filter((fn) => fn.schema === namespace.name && functionMatches(fn, query));
+    if (!tables.length && !functions.length && query) continue;
+    const details = el("details", { className: "tree-schema", open: true });
+    details.append(el("summary", {}, el("span", { className: "chevron", innerHTML: ICONS.chevron }), el("span", { className: "tree-name", textContent: namespace.name }), el("span", { className: "tree-count", textContent: String(tables.length + functions.length) })));
+    const children = el("div", { className: "tree-children" });
+    for (const table of tables) {
+      const item = el("details", { className: "tree-table" });
+      item.append(el("summary", {}, el("span", { className: "chevron", innerHTML: ICONS.chevron }), el("a", { className: "tree-link", href: "#" + tableId(table), textContent: table.name })));
+      const columns = el("div", { className: "tree-columns" });
+      for (const column of table.columns) columns.append(el("a", { href: "#" + columnId(table, column), textContent: column.name }));
+      if (table.columns.length) item.append(columns);
+      children.append(item);
+    }
+    for (const fn of functions) children.append(el("a", { className: "tree-link", href: "#function-" + idFor(fn.schema, fn.name), textContent: fn.name + "()" }));
+    details.append(children);
+    groups.push(details);
+    shown += tables.length + functions.length;
+  }
+  tree.replaceChildren(...groups);
+  treeCount.textContent = shown.toLocaleString();
+}
+function renderSchema(query) {
+  const groups = [];
+  for (const namespace of data.namespaces) {
+    const tables = data.tables.filter((table) => table.schema === namespace.name && tableMatches(table, query));
+    const functions = data.functions.filter((fn) => fn.schema === namespace.name && functionMatches(fn, query));
+    if (!tables.length && !functions.length && query) continue;
+    const block = el("section", { className: "schema-block", id: "schema-" + idFor(namespace.name) });
+    const head = el("div", { className: "schema-head" }, el("h3", { textContent: namespace.name }), el("span", { className: "kind-label", textContent: "Schema" }));
+    block.append(head);
+    if (namespace.comment) block.append(el("p", { className: "schema-comment", textContent: namespace.comment }));
+    if (tables.length) {
+      block.append(el("div", { className: "subhead" }, "Tables ", el("span", { textContent: String(tables.length) })));
+      const list = el("div", { className: "results" });
+      for (const table of tables) list.append(tableCard(table, incomingFor(table)));
+      block.append(list);
+    }
+    if (functions.length) {
+      block.append(el("div", { className: "subhead" }, "Functions ", el("span", { textContent: String(functions.length) })));
+      const list = el("div", { className: "results" });
+      for (const fn of functions) list.append(functionCard(fn));
+      block.append(list);
+    }
+    groups.push(block);
+  }
+  schemaList.replaceChildren(...(groups.length ? groups : [el("p", { className: "none", textContent: "No schema matched." })]));
 }
 function setMode(next) { mode = next; for (const button of document.querySelectorAll(".mode button")) button.setAttribute("aria-pressed", String(button.dataset.mode === mode)); render(); }
 function render() {
   const query = q.value.trim().toLowerCase();
   const allSymbols = data.symbols.filter((symbol) => local.checked || symbol.visibility !== "local");
   const found = allSymbols.filter((symbol) => symbolMatches(symbol, query));
-  const tables = data.tables.filter((table) => tableMatches(table, query));
   const showCode = mode !== "schema", showSchema = mode !== "code";
   codeSection.hidden = !showCode; schemaSection.hidden = !showSchema;
-  count.textContent = found.length.toLocaleString() + " symbols · " + tables.length.toLocaleString() + " tables";
+  count.textContent = found.length.toLocaleString() + " symbols · " + data.tables.length.toLocaleString() + " tables · " + data.functions.length.toLocaleString() + " functions";
   code.replaceChildren(...(found.length ? found.slice(0, 300).map(symbolCard) : [el("p", { className: "none", textContent: "No code matched. Try a name, a package, a type, or a word from a doc comment." })]));
   codeMore.hidden = found.length <= 300; codeMore.textContent = found.length > 300 ? "Showing the first 300 of " + found.length.toLocaleString() + " matches. Narrow the search." : "";
-  schema.replaceChildren(...(tables.length ? tables.map(tableCard) : [el("p", { className: "none", textContent: "No table matched." })]));
+  buildTree(query);
+  renderSchema(query);
 }
+document.addEventListener("click", async (event) => {
+  const button = event.target.closest("[data-copy]");
+  if (!button) return;
+  event.preventDefault();
+  try { await navigator.clipboard.writeText(button.dataset.copy); button.querySelector("span").textContent = "Copied"; setTimeout(() => { button.querySelector("span").textContent = "Copy"; }, 1500); } catch { button.querySelector("span").textContent = "Press Ctrl+C"; }
+});
 q.addEventListener("input", render);
 local.addEventListener("change", render);
 for (const button of document.querySelectorAll(".mode button")) button.addEventListener("click", () => setMode(button.dataset.mode));

@@ -38,6 +38,24 @@ export interface SchemaTableV1 {
   readonly source?: { readonly file: string; readonly line: number }
 }
 
+export interface SchemaNamespaceV1 {
+  readonly name: string
+  readonly comment?: string
+}
+
+export interface SchemaFunctionV1 {
+  readonly schema: string
+  readonly name: string
+  /** `lockstay_tenant()` or `payments.capture(uuid, text)`. */
+  readonly signature: string
+  readonly returns?: string
+  readonly language?: string
+  readonly volatility?: 'immutable' | 'stable' | 'volatile'
+  readonly securityDefiner: boolean
+  readonly comment?: string
+  readonly source?: { readonly file: string; readonly line: number }
+}
+
 export interface SchemaSnapshotV1 {
   readonly formatVersion: 1
   readonly dialect: SchemaDialect
@@ -46,4 +64,7 @@ export interface SchemaSnapshotV1 {
   /** Supplied by the caller, so parsing and assembly stay pure. */
   readonly capturedAt: string
   readonly tables: readonly SchemaTableV1[]
+  /** Additive: a reader that predates namespaces ignores them. */
+  readonly namespaces?: readonly SchemaNamespaceV1[]
+  readonly functions?: readonly SchemaFunctionV1[]
 }

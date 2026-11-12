@@ -2,6 +2,8 @@ import type {
   SchemaColumnV1,
   SchemaDialect,
   SchemaForeignKeyV1,
+  SchemaFunctionV1,
+  SchemaNamespaceV1,
   SchemaReference,
   SchemaSnapshotV1,
   SchemaTableV1,
@@ -23,12 +25,23 @@ interface Identifier {
   readonly name: string
 }
 
+interface Annotations {
+  readonly schemas: ReadonlyMap<string, string>
+  readonly tables: ReadonlyMap<string, string>
+  readonly columns: ReadonlyMap<string, string>
+  readonly functions: ReadonlyMap<string, string>
+}
+
 const CONSTRAINT_START = /^(?:CONSTRAINT|PRIMARY\s+KEY|UNIQUE|FOREIGN\s+KEY|CHECK)\b/i
+const ANNOTATION =
+  /COMMENT\s+ON\s+(SCHEMA|TABLE|VIEW|COLUMN|FUNCTION)\s+((?:"[^"]+"|[^\s(]+)(?:\s*\([^)]*\))?)\s+IS\s+'((?:[^']|'')*)'\s*;/gi
 
 /** A DDL reader for the shapes a migration folder actually uses. It is metadata-only and never runs SQL. */
 export function parseSqlSchema(sql: string, options: ParseSqlOptions): SchemaSnapshotV1 {
   const text = stripComments(sql)
+  const annotations = readAnnotations(text)
   const tables: SchemaTableV1[] = []
+  const functions = readFunctions(text, annotations, options)
   const pattern = /CREATE\s+(TABLE|VIEW)\s+(?:IF\s+NOT\s+EXISTS\s+)?([^\s(]+)\s*\(/gi
 
   for (const match of text.matchAll(pattern)) {
@@ -41,22 +54,22 @@ export function parseSqlSchema(sql: string, options: ParseSqlOptions): SchemaSna
     const identifier = parseIdentifier(rawName)
     const body = text.slice(open + 1, close)
     const sourceLine = lineAt(sql, match.index ?? 0)
-    tables.push(
-      kind === 'view'
-        ? {
-            schema: identifier.schema ?? options.defaultSchema ?? 'public',
-            name: identifier.name,
-            kind,
-            columns: [],
-            primaryKey: [],
-            unique: [],
-            foreignKeys: [],
-            ...(options.file === undefined
-              ? {}
-              : { source: { file: options.file, line: sourceLine } }),
-          }
-        : parseTable(body, identifier, options, sourceLine),
-    )
+    if (kind === 'view') {
+      const comment = annotations.tables.get(fullName(identifier, options))
+      tables.push({
+        schema: identifier.schema ?? options.defaultSchema ?? 'public',
+        name: identifier.name,
+        kind,
+        columns: [],
+        primaryKey: [],
+        unique: [],
+        foreignKeys: [],
+        ...(comment === undefined ? {} : { comment }),
+        ...(options.file === undefined ? {} : { source: { file: options.file, line: sourceLine } }),
+      })
+    } else {
+      tables.push(parseTable(body, identifier, options, sourceLine, annotations))
+    }
   }
 
   const viewPattern = /CREATE\s+VIEW\s+(?:IF\s+NOT\s+EXISTS\s+)?([^\s]+)\s+AS/gi
@@ -64,6 +77,8 @@ export function parseSqlSchema(sql: string, options: ParseSqlOptions): SchemaSna
     const rawName = match[1]
     if (rawName === undefined) continue
     const identifier = parseIdentifier(rawName)
+    const name = fullName(identifier, options)
+    const comment = annotations.tables.get(name)
     tables.push({
       schema: identifier.schema ?? options.defaultSchema ?? 'public',
       name: identifier.name,
@@ -72,11 +87,14 @@ export function parseSqlSchema(sql: string, options: ParseSqlOptions): SchemaSna
       primaryKey: [],
       unique: [],
       foreignKeys: [],
+      ...(comment === undefined ? {} : { comment }),
       ...(options.file === undefined
         ? {}
         : { source: { file: options.file, line: lineAt(sql, match.index ?? 0) } }),
     })
   }
+
+  const namespaces = readNamespaces(tables, functions, annotations)
 
   return {
     formatVersion: 1,
@@ -90,6 +108,8 @@ export function parseSqlSchema(sql: string, options: ParseSqlOptions): SchemaSna
         left.name.localeCompare(right.name) ||
         left.kind.localeCompare(right.kind),
     ),
+    namespaces,
+    functions,
   }
 }
 
@@ -98,6 +118,7 @@ function parseTable(
   identifier: Identifier,
   options: ParseSqlOptions,
   line: number,
+  annotations: Annotations,
 ): SchemaTableV1 {
   const columns: SchemaColumnV1[] = []
   const primaryKey: string[] = []
@@ -115,22 +136,33 @@ function parseTable(
     if (column !== undefined) columns.push(column)
   }
 
-  const inlinePrimary = columns.filter((column) => column.primaryKey).map((column) => column.name)
-  const inlineUnique = columns.filter((column) => column.unique).map((column) => [column.name])
-  const inlineForeign = columns.flatMap((column) =>
+  const tableName = fullName(identifier, options)
+  const annotatedColumns = columns.map((column) => {
+    const comment = annotations.columns.get(`${tableName}.${column.name}`)
+    return comment === undefined ? column : { ...column, comment }
+  })
+  const inlinePrimary = annotatedColumns
+    .filter((column) => column.primaryKey)
+    .map((column) => column.name)
+  const inlineUnique = annotatedColumns
+    .filter((column) => column.unique)
+    .map((column) => [column.name])
+  const inlineForeign = annotatedColumns.flatMap((column) =>
     column.references === undefined
       ? []
       : [{ columns: [column.name], references: column.references }],
   )
+  const comment = annotations.tables.get(tableName)
 
   return {
     schema: identifier.schema ?? options.defaultSchema ?? 'public',
     name: identifier.name,
     kind: 'table',
-    columns,
+    columns: annotatedColumns,
     primaryKey: primaryKey.length > 0 ? primaryKey : inlinePrimary,
     unique: [...unique, ...inlineUnique],
     foreignKeys: [...foreignKeys, ...inlineForeign],
+    ...(comment === undefined ? {} : { comment }),
     ...(options.file === undefined ? {} : { source: { file: options.file, line } }),
   }
 }
@@ -194,6 +226,102 @@ function readTableConstraint(
       references: parseReference(foreign[2] ?? '', foreign[3]),
     })
   }
+}
+
+function readFunctions(
+  text: string,
+  annotations: Annotations,
+  options: ParseSqlOptions,
+): SchemaFunctionV1[] {
+  const functions: SchemaFunctionV1[] = []
+  const pattern = /CREATE\s+(?:OR\s+REPLACE\s+)?FUNCTION\s+([^\s(]+)\s*\(([^)]*)\)/gi
+  for (const match of text.matchAll(pattern)) {
+    const rawName = match[1]
+    if (rawName === undefined) continue
+    const identifier = parseIdentifier(rawName)
+    const name = fullName(identifier, options)
+    const header = text.slice(
+      match.index ?? 0,
+      boundaryAfter(text, (match.index ?? 0) + match[0].length),
+    )
+    const returns =
+      /\bRETURNS\s+([^;]+?)(?=\s+(?:LANGUAGE|AS|IMMUTABLE|STABLE|VOLATILE|SECURITY|RETURN|BEGIN)\b|$)/i.exec(
+        header,
+      )?.[1]
+    const language = /\bLANGUAGE\s+([A-Za-z0-9_]+)/i.exec(header)?.[1]
+    const volatility = /\b(IMMUTABLE|STABLE|VOLATILE)\b/i.exec(header)?.[1]?.toLowerCase()
+    const comment = annotations.functions.get(name) ?? annotations.functions.get(identifier.name)
+    functions.push({
+      schema: identifier.schema ?? options.defaultSchema ?? 'public',
+      name: identifier.name,
+      signature: `${identifier.name}(${(match[2] ?? '').trim().replaceAll(/\s+/g, ' ')})`,
+      ...(returns === undefined ? {} : { returns: returns.trim().replaceAll(/\s+/g, ' ') }),
+      ...(language === undefined ? {} : { language }),
+      ...(volatility === 'immutable' || volatility === 'stable' || volatility === 'volatile'
+        ? { volatility }
+        : {}),
+      securityDefiner: /\bSECURITY\s+DEFINER\b/i.test(header),
+      ...(comment === undefined ? {} : { comment }),
+      ...(options.file === undefined
+        ? {}
+        : { source: { file: options.file, line: lineAt(text, match.index ?? 0) } }),
+    })
+  }
+  return functions.toSorted(
+    (left, right) => left.schema.localeCompare(right.schema) || left.name.localeCompare(right.name),
+  )
+}
+
+function readNamespaces(
+  tables: readonly SchemaTableV1[],
+  functions: readonly SchemaFunctionV1[],
+  annotations: Annotations,
+): SchemaNamespaceV1[] {
+  const names = new Set<string>([
+    ...tables.map((table) => table.schema),
+    ...functions.map((fn) => fn.schema),
+    ...annotations.schemas.keys(),
+  ])
+  return [...names].toSorted().map((name) => {
+    const comment = annotations.schemas.get(name)
+    return comment === undefined ? { name } : { name, comment }
+  })
+}
+
+function readAnnotations(text: string): Annotations {
+  const schemas = new Map<string, string>()
+  const tables = new Map<string, string>()
+  const columns = new Map<string, string>()
+  const functions = new Map<string, string>()
+  for (const match of text.matchAll(ANNOTATION)) {
+    const kind = (match[1] ?? '').toUpperCase()
+    const target = (match[2] ?? '').replaceAll(/\s+/g, '')
+    const comment = unquoteLiteral(match[3] ?? '')
+    if (kind === 'SCHEMA') schemas.set(stripQuotes(target), comment)
+    else if (kind === 'COLUMN') columns.set(target.replaceAll('"', ''), comment)
+    else if (kind === 'FUNCTION')
+      functions.set(target.replace(/\(.*$/, '').replaceAll('"', ''), comment)
+    else tables.set(target.replaceAll('"', ''), comment)
+  }
+  return { schemas, tables, columns, functions }
+}
+
+function boundaryAfter(text: string, from: number): number {
+  const rest = text.slice(from)
+  const match = /\b(?:AS|BEGIN|RETURN)\b/i.exec(rest)
+  return match === null ? text.length : from + match.index
+}
+
+function fullName(identifier: Identifier, options: ParseSqlOptions): string {
+  return `${identifier.schema ?? options.defaultSchema ?? 'public'}.${identifier.name}`
+}
+
+function unquoteLiteral(value: string): string {
+  return value.replaceAll("''", "'")
+}
+
+function stripQuotes(value: string): string {
+  return value.replace(/^["'`]|["'`]$/g, '')
 }
 
 function parseReference(table: string, columns: string | undefined): SchemaReference {
