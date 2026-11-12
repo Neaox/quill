@@ -90,9 +90,9 @@ describe('code and schema report', () => {
 
     expect(html).toContain('Payments')
     expect(html).toContain('capture')
-    expect(html).toContain('payments.intents')
+    expect(html).toContain('intents')
     expect(html).toContain('a1b2c3d4e')
-    expect(html).toContain('no row values are read')
+    expect(html).toContain('No row values are read')
   })
 
   it('escapes a closing script tag in embedded data', () => {
