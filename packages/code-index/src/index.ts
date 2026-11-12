@@ -58,3 +58,9 @@ export {
   type ScopePackage,
   type Session,
 } from './typescript/index.ts'
+
+export {
+  schemaDisplay,
+  schemaOutputAlias,
+  type SchemaDisplay,
+} from './typescript/schema-display.ts'

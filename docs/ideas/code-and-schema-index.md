@@ -657,6 +657,26 @@ entities:
 
 Precedence is by fact, not by page: the database comment is the short description; the sidecar is the structured metadata; the guide is the long form. Every fact says which source it came from, so a reader can tell a DBA's note from a writer's explanation. Nothing is silently merged.
 
+**Schema builders have display transforms.** Zod's `z.object({...})` has a builder type the compiler prints as `ZodMiniObject<...>`, which is not the data a reader wants. The reference recognises the schema declaration and offers two views:
+
+- **Inferred type:** what a person would write:
+  ```ts
+  type AccountOpening = {
+    open: boolean
+    changedAt: string | null
+    changedBy: string | null
+    reason: string | null
+    history: { open: boolean; changedAt: string; changedBy: string; reason: string }[]
+  }
+  ```
+- **Source:** what the file says:
+  ```ts
+  const ACCOUNT_OPENING = z.object({ ... })
+  export type AccountOpening = z.output<typeof ACCOUNT_OPENING>
+  ```
+
+The named alias wins: `ACCOUNT_OPENING` links to `AccountOpening`, and the alias links back. If no alias exists, the inferred view names the type after the constant and labels it inferred. The shape comes from the schema's syntax, not from a compiler type; that provenance is stated. Zod is first; Valibot (`v.object` / `InferOutput`), TypeBox (`Type.Object` / `Static`) and ArkType register through the same display-transform contract, so no renderer code names a library.
+
 **Functions are entities.** `CREATE FUNCTION`/`CREATE OR REPLACE FUNCTION` and `COMMENT ON FUNCTION` enter the same snapshot as tables. A function page carries its signature, return type, language, volatility, `SECURITY DEFINER`, comment, source line and guide.
 
 `lockstay_tenant()` is the worked example:

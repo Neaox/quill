@@ -306,7 +306,7 @@ article.card:target{box-shadow:0 0 0 3px var(--accent-soft),var(--shadow);border
 article:hover .copy,.copy:focus-visible{opacity:1}
 .copy:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .signature{margin:8px 0 0;padding:9px 11px;background:var(--code-bg);border:1px solid var(--border);border-radius:7px;font-size:12.5px;line-height:1.5;white-space:pre-wrap;overflow-wrap:anywhere;color:var(--fg)}
-.type-full,.definition{margin:6px 0 0}.type-full summary,.definition summary{cursor:pointer;color:var(--muted);font-size:12px;width:fit-content}.type-full summary:focus-visible,.definition summary:focus-visible{outline:2px solid var(--accent);outline-offset:2px}.definition pre{max-height:420px;overflow:auto}
+.type-full,.definition{margin:6px 0 0}.type-full summary,.definition summary{cursor:pointer;color:var(--muted);font-size:12px;width:fit-content}.type-full summary:focus-visible,.definition summary:focus-visible{outline:2px solid var(--accent);outline-offset:2px}.definition pre{max-height:420px;overflow:auto}.schema-view{margin-top:8px}.schema-toggle{display:inline-flex;border:1px solid var(--border);border-radius:7px;background:var(--surface-2);padding:2px;margin-bottom:6px}.schema-toggle button{font:inherit;font-size:11.5px;padding:3px 8px;border:0;border-radius:5px;background:transparent;color:var(--muted);cursor:pointer}.schema-toggle button[aria-pressed="true"]{background:var(--surface);color:var(--accent);font-weight:600;box-shadow:0 1px 2px rgba(0,0,0,.08)}.schema-toggle button:focus-visible{outline:2px solid var(--accent);outline-offset:1px}.schema-panel[hidden]{display:none}
 .description{margin:8px 0 0;color:var(--fg);max-width:78ch}
 .empty-desc{margin:8px 0 0;color:var(--faint);font-style:italic}
 .meta-row{margin:7px 0 0;color:var(--muted);font-size:12.5px}
@@ -382,39 +382,63 @@ function icon(kind) { const span = el("span", { className: "kind " + kind }); sp
 function label(kind) { return kind === "function" ? "Function" : kind === "method" ? "Method" : kind === "class" ? "Class" : kind === "interface" ? "Interface" : kind === "type" ? "Type" : kind === "const" ? "Constant" : kind === "property" ? "Property" : kind === "table" ? "Table" : kind === "view" ? "View" : kind; }
 function copyButton(text) { const button = el("button", { className: "copy", type: "button", "aria-label": "Copy " + text, "data-copy": text }); button.innerHTML = ICONS.copy + "<span>Copy</span>"; return button; }
 function sourceLink(symbol) { if (!data.repo || !symbol.file) return el("span", { className: "name", textContent: symbol.name }); return el("a", { className: "name", href: "https://github.com/" + data.repo + "/blob/" + data.commit + "/" + symbol.file + "#L" + symbol.startLine + "-L" + symbol.endLine, target: "_blank", rel: "noreferrer", textContent: symbol.name }); }
+function codePanel(text) {
+  const panel = el("div", { className: "schema-panel" });
+  const pre = el("pre", { className: "signature" }); pre.innerHTML = highlight(compact(text)); panel.append(pre);
+  if (compact(text) !== text) {
+    const full = el("details", { className: "type-full" }); full.append(el("summary", { textContent: "Show full" }));
+    const raw = el("pre", { className: "signature" }); raw.innerHTML = highlight(text); full.append(raw); panel.append(full);
+  }
+  return panel;
+}
+function schemaView(symbol) {
+  const view = el("div", { className: "schema-view" });
+  const inferredName = symbol.schemaRef ? symbol.name : symbol.inferredTypeRef?.name || symbol.name;
+  const inferred = "type " + inferredName + " = " + symbol.readableType + ";";
+  const source = symbol.definition || symbol.signature;
+  const alias = Boolean(symbol.schemaRef);
+  const sourcePanel = codePanel(source);
+  const inferredPanel = codePanel(inferred);
+  const sourceButton = el("button", { type: "button", "aria-pressed": String(!alias), textContent: alias ? "Source" : "Schema" });
+  const inferredButton = el("button", { type: "button", "aria-pressed": String(alias), textContent: "Inferred" });
+  const controls = el("div", { className: "schema-toggle", role: "group", "aria-label": "Type view" }, sourceButton, inferredButton);
+  const show = (value) => {
+    sourcePanel.hidden = value;
+    inferredPanel.hidden = !value;
+    sourceButton.setAttribute("aria-pressed", String(!value));
+    inferredButton.setAttribute("aria-pressed", String(value));
+  };
+  sourceButton.addEventListener("click", () => show(false));
+  inferredButton.addEventListener("click", () => show(true));
+  view.append(controls, sourcePanel, inferredPanel);
+  show(alias);
+  return view;
+}
 function symbolCard(symbol) {
   const card = el("article", { className: "card", id: "symbol-" + idFor(symbol.moniker) });
   card.append(icon(symbol.kind));
   const body = el("div");
   const head = el("div", { className: "card-head" }, sourceLink(symbol), el("span", { className: "kind-label", textContent: label(symbol.kind) }), el("span", { className: "path" }, el("code", { textContent: symbol.package + "/" + symbol.module })), copyButton(symbol.name));
   body.append(head);
-  const declarationFirst = symbol.definition && (symbol.kind === "const" || symbol.kind === "type" || symbol.kind === "interface" || symbol.kind === "class");
-  const primary = declarationFirst ? symbol.definition : symbol.signature;
-  const displayed = compact(primary);
-  const primaryBlock = el("pre", { className: "signature" }); primaryBlock.innerHTML = highlight(displayed); body.append(primaryBlock);
-  if (displayed !== primary) {
-    const full = el("details", { className: "type-full" });
-    full.append(el("summary", { textContent: symbol.kind === "const" ? "Show full declaration" : "Show full signature" }));
-    const pre = el("pre", { className: "signature" }); pre.innerHTML = highlight(primary); full.append(pre);
-    body.append(full);
-  }
-  if (symbol.kind === "const" && symbol.signature !== symbol.definition) {
-    const inferred = el("details", { className: "type-full" });
-    inferred.append(el("summary", { textContent: "Inferred type" }));
-    const pre = el("pre", { className: "signature" }); pre.innerHTML = highlight(symbol.signature); inferred.append(pre);
-    body.append(inferred);
+  if (symbol.readableType) {
+    body.append(schemaView(symbol));
+  } else {
+    const declarationFirst = symbol.definition && (symbol.kind === "const" || symbol.kind === "type" || symbol.kind === "interface" || symbol.kind === "class");
+    const primary = declarationFirst ? symbol.definition : symbol.signature;
+    const displayed = compact(primary);
+    const primaryBlock = el("pre", { className: "signature" }); primaryBlock.innerHTML = highlight(displayed); body.append(primaryBlock);
+    if (displayed !== primary) {
+      const full = el("details", { className: "type-full" });
+      full.append(el("summary", { textContent: symbol.kind === "const" ? "Show full declaration" : "Show full signature" }));
+      const pre = el("pre", { className: "signature" }); pre.innerHTML = highlight(primary); full.append(pre);
+      body.append(full);
+    }
   }
   if (symbol.inferredTypeRef) {
     body.append(el("p", { className: "meta-row" }, "Named type: ", el("a", { className: "type-ref", href: "#symbol-" + idFor(symbol.inferredTypeRef.moniker || symbol.inferredTypeRef.name), textContent: symbol.inferredTypeRef.name })));
   }
   if (symbol.schemaRef) {
     body.append(el("p", { className: "meta-row" }, "Defined from: ", el("a", { className: "type-ref", href: "#symbol-" + idFor(symbol.schemaRef.moniker || symbol.schemaRef.name), textContent: symbol.schemaRef.name })));
-  }
-  if (symbol.readableType) {
-    const shape = el("div", { className: "readable-type" });
-    shape.append(el("div", { className: "kind-label", textContent: "Data shape" }));
-    const pre = el("pre", { className: "signature" }); pre.innerHTML = highlight(symbol.readableType); shape.append(pre);
-    body.append(shape);
   }
   body.append(symbol.description ? el("p", { className: "description", textContent: symbol.description }) : el("p", { className: "empty-desc", textContent: "No description in the code." }));
   if (symbol.value) body.append(el("p", { className: "meta-row", textContent: "Value: " + symbol.value }));

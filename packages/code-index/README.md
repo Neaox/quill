@@ -28,6 +28,9 @@ new dependency?
   repository.
 - **`typescript/build.ts`** — the first build function. The caller chooses the
   corpus, so a test can index one module and the CLI can index the repository.
+- **`typescript/schema-display.ts`** — the first schema-builder display
+  transform (Zod): it reads `z.object({...})` into a readable data shape and
+  links a named `z.output<typeof X>` alias back to its schema constant.
 - **`schema/`** — `parseSqlSchema`, a metadata-only reader for the shapes a
   migration folder uses: schemas, tables, views, columns, types, nullability,
   defaults, primary and unique keys, foreign keys, `COMMENT ON` annotations,

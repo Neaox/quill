@@ -184,6 +184,13 @@ The sidecar is data, versioned with the repository and validated against a schem
 
 **Foreign keys are edges, in both directions.** A column's FK links to the target table's page; the target table lists what references it, with the source columns. A reference to a table outside the source is shown as unresolved with the schema-qualified name, never as a dead link. The schema tree groups by namespace and exposes tables, columns and functions, so the structure is navigable before the reader knows a name.
 
+**Schema builders have display transforms.** The compiler type of `z.object({...})` is a builder, not the data it describes. A display transform reads the declaration and offers two views:
+
+- **Inferred type** — the data as TypeScript: `type AccountOpening = { open: boolean; changedAt: string | null; ... }`.
+- **Source** — the declaration as written: `export type AccountOpening = z.output<typeof ACCOUNT_OPENING>;` or `const ACCOUNT_OPENING = z.object({...})`.
+
+The transform prefers a named output alias. `AccountOpening` and `ACCOUNT_OPENING` link to each other; the schema constant says "Named type: AccountOpening" and the alias says "Defined from: ACCOUNT_OPENING". If no alias exists, the inferred view names the type after the constant and says it is inferred from the schema. The shape is derived from the schema's own syntax, not from a compiler type, so it carries that provenance and may be less precise than a compiler-resolved type for exotic builders. Zod is the first adapter; Valibot, TypeBox and ArkType register through the same `SchemaDisplay` contract, so the renderer never checks a library name.
+
 **The schema surface is grouped by namespace.** A schema has its own commentary, owner, tables, views, functions and coverage. The tree is `namespace → table → column` and `namespace → function`; tables with many columns open on demand. Copy actions, anchors, a search that includes comments, and both-direction FK links are part of the page, not later polish.
 
 ## Alternatives considered
