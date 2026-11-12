@@ -364,8 +364,8 @@ jobRunner.schedule(createReconcileSourcesJob({ uow, clock }, config.sources.reco
 jobRunner.start()
 
 // The order matters and is pinned by `shutdown.test.ts`: the job runner
-// before the app, the app before the pool.
-const shutdown = createShutdown({ jobRunner, app, database })
+// before the app, the app before the document work pool and the database.
+const shutdown = createShutdown({ jobRunner, app, documentWork, database })
 
 for (const signal of ['SIGTERM', 'SIGINT'] as const) {
   process.on(signal, () => {

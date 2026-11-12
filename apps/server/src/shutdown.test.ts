@@ -20,6 +20,7 @@ function parts(record: string[]) {
   return {
     jobRunner: { stop: vi.fn<Close>(closing(record, 'jobRunner')) },
     app: { close: vi.fn<Close>(closing(record, 'app')) },
+    documentWork: { close: vi.fn<Close>(closing(record, 'documentWork')) },
     database: { close: vi.fn<Close>(closing(record, 'database')) },
   }
 }
@@ -34,7 +35,7 @@ describe('createShutdown', () => {
   it('stops the job runner, then the app, then the database', async () => {
     const record: string[] = []
     await createShutdown(parts(record))()
-    expect(record).toEqual(['jobRunner', 'app', 'database'])
+    expect(record).toEqual(['jobRunner', 'app', 'documentWork', 'database'])
   })
 
   it('waits for work in flight before moving on', async () => {
@@ -55,7 +56,7 @@ describe('createShutdown', () => {
 
     poll.release()
     await shutting
-    expect(record).toEqual(['jobRunner', 'app', 'database'])
+    expect(record).toEqual(['jobRunner', 'app', 'documentWork', 'database'])
   })
 
   it('closes once however many signals arrive', async () => {
@@ -67,7 +68,7 @@ describe('createShutdown', () => {
     await Promise.all([shutdown(), shutdown()])
     await shutdown()
 
-    expect(record).toEqual(['jobRunner', 'app', 'database'])
+    expect(record).toEqual(['jobRunner', 'app', 'documentWork', 'database'])
     expect(pieces.database.close).toHaveBeenCalledTimes(1)
   })
 })
