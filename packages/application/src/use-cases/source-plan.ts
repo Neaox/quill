@@ -59,6 +59,8 @@ export type LayoutReading =
   | {
       readonly ok: false
       readonly problem: ManifestProblem
+      /** Where the manifest was read from. */
+      readonly manifestPath: string
       /** The manifest when it parsed but names no entry for this workspace. */
       readonly manifest: SourceManifest | null
     }
@@ -77,13 +79,22 @@ export async function readLayoutAt(
     readonly collections: readonly SourceCollection[]
     /** The manifest entry to read when the manifest describes several workspaces. */
     readonly entry: string
+    /** Where the manifest is; absent or null for `.quill/workspace.yaml`. */
+    readonly manifestPath?: string | null | undefined
   },
 ): Promise<LayoutReading> {
-  const file = await source.file(revision, SOURCE_MANIFEST_PATH)
+  const manifestPath = options.manifestPath ?? SOURCE_MANIFEST_PATH
+  const unreadable = (message: string): LayoutReading => ({
+    ok: false,
+    problem: { line: null, message },
+    manifest: null,
+    manifestPath,
+  })
+  const file = await source.file(revision, manifestPath)
   if (file === null) {
     return {
       ok: true,
-      layout: layoutFromSettings(options.collections),
+      layout: layoutFromSettings(options.collections, manifestPath),
       manifest: null,
       entry: null,
     }
@@ -98,20 +109,23 @@ export async function readLayoutAt(
   if (content.kind === 'too-large') return unreadable('it is larger than a source file may be.')
   const text = decodeUtf8(content.bytes)
   if (text === null) return unreadable('it is not UTF-8.')
-  const parsed = parseSourceManifest(text)
-  if (!parsed.ok) return { ok: false, problem: parsed.problem, manifest: null }
+  const parsed = parseSourceManifest(text, { entry: options.entry })
+  if (!parsed.ok) return { ok: false, problem: parsed.problem, manifest: null, manifestPath }
   const entry = selectManifestEntry(parsed.manifest, options.entry)
-  if (!entry.ok) return { ok: false, problem: entry.problem, manifest: parsed.manifest }
+  if (!entry.ok) {
+    return { ok: false, problem: entry.problem, manifest: parsed.manifest, manifestPath }
+  }
   return {
     ok: true,
-    layout: layoutFromManifest(entry.entry, parsed.manifest.unknownKeys),
+    layout: layoutFromManifest(
+      entry.entry,
+      parsed.manifest.unknownKeys,
+      parsed.manifest.notes,
+      manifestPath,
+    ),
     manifest: parsed.manifest,
     entry: entry.entry,
   }
-}
-
-function unreadable(message: string): LayoutReading {
-  return { ok: false, problem: { line: null, message }, manifest: null }
 }
 
 /** What becomes of a document file under a layout, before its contents are read. */

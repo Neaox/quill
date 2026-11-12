@@ -54,6 +54,7 @@ beforeEach(async () => {
               history: 'full',
               commitMessages: 'subject',
               manifestEntry: null,
+              manifestPath: null,
             },
             configuredAt: new Date(0),
           }

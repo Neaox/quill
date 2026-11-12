@@ -175,7 +175,7 @@ draw.io diagrams (ADR-043) are the first feature built to this contract, and eve
 | The declaration | `packages/markdown/src/extensions/drawio/drawio-extension.ts` | The `MarkdownExtension`: id, version, the drawing it claims, how it renders, its grant (two data attributes), and its editor binding (an insert entry and an "Edit diagram" action) |
 | Reading | `packages/markdown/src/extensions/drawio/drawio-svg.ts` | Recognises a `.drawio.svg`, strips its embedded source, and chooses one of the platform's renderings: the SVG allowlist at its own size, or an `<img>` of the file when its labels are HTML |
 | The file format | `packages/markdown/src/extensions/drawio/drawio-file.ts` | Reads the embedded diagram and its labels within fixed limits; inflating is injected (`Inflate`) |
-| Search | `packages/application/src/ports/drawing-text.ts`, `apps/server/src/extensions/drawio/drawing-text.ts` | A port the attachment intake asks on upload and revision; the server's adapter inflates with zlib's own cap |
+| Search | `packages/application/src/ports/drawing-text.ts`, `packages/format/src/drawing-text.ts` | A port the attachment intake asks on upload and revision; the server's adapter inflates with zlib's own cap |
 | The editor binding | `packages/editor/src/extensions/drawio/drawio-binding.ts` | The slash item and the image action, named by the declaration; small, in the editor's main chunk |
 | The editing session | `packages/editor/src/extensions/drawio/` (`@quill/editor/drawio`) | The draw.io protocol adapter, the session state machine and the overlay; a lazy chunk |
 | The application | `apps/web/src/features/documents/drawio/` | Opens the session, implements the attachments port it needs, puts what was saved into the document |

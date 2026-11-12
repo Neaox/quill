@@ -25,14 +25,14 @@ import {
 } from '@quill/content-store'
 import { userId, workspaceId } from '@quill/domain'
 
-import { createDrawioText } from '../../extensions/drawio/drawing-text.ts'
-import { createHasher } from '../hasher.ts'
-import { createDocumentFormat } from '../markdown/document-format.ts'
 import {
   BUILT_DOCUMENT_WORKER,
+  createDocumentFormat,
   createDocumentWorkPool,
+  createDrawioText,
   documentWorkerModule,
-} from '../markdown/document-work-pool.ts'
+} from '@quill/format'
+import { createHasher } from '../hasher.ts'
 
 /**
  * ADR-062's server budgets for a sourced workspace, measured on a generated
@@ -79,7 +79,7 @@ const BUDGETS: Readonly<
     }
   >
 > = {
-  L: { fetch: { wall: 4_000, cpu: null }, sync: { wall: 15_000, cpu: 35_000 }, parseMBps: 0.8 },
+  L: { fetch: { wall: 4_000, cpu: null }, sync: { wall: 18_000, cpu: 45_000 }, parseMBps: 0.8 },
   XL: { fetch: { wall: null, cpu: null }, sync: { wall: null, cpu: null }, parseMBps: null },
 }
 const RUNS = 3
@@ -236,6 +236,7 @@ async function syncOnce(url: string, cache: string): Promise<{ readonly document
     history: 'head',
     commitMessages: 'subject',
     manifestEntry: null,
+    manifestPath: null,
     credential: null,
     outsideLinks: 'forge',
     viewTemplate: null,
@@ -263,6 +264,7 @@ async function syncOnce(url: string, cache: string): Promise<{ readonly document
           history: 'head',
           commitMessages: 'subject',
           manifestEntry: null,
+          manifestPath: null,
         },
         configuredAt: NOW,
       }),

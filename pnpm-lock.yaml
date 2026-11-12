@@ -115,6 +115,9 @@ importers:
       '@quill/domain':
         specifier: workspace:*
         version: link:../../packages/domain
+      '@quill/format':
+        specifier: workspace:*
+        version: link:../../packages/format
       '@quill/highlight':
         specifier: workspace:*
         version: link:../../packages/highlight
@@ -170,9 +173,6 @@ importers:
       drizzle-kit:
         specifier: ^0.31.10
         version: 0.31.10
-      rolldown:
-        specifier: ^1.2.8
-        version: 1.2.8
 
   apps/web:
     dependencies:
@@ -468,6 +468,28 @@ importers:
       vite:
         specifier: ^8.3.0
         version: 8.3.0(@types/node@24.13.4)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.13)(yaml@2.9.0)
+
+  packages/format:
+    dependencies:
+      '@quill/application':
+        specifier: workspace:*
+        version: link:../application
+      '@quill/domain':
+        specifier: workspace:*
+        version: link:../domain
+      '@quill/highlight':
+        specifier: workspace:*
+        version: link:../highlight
+      '@quill/markdown':
+        specifier: workspace:*
+        version: link:../markdown
+    devDependencies:
+      '@quill/config':
+        specifier: workspace:*
+        version: link:../config
+      rolldown:
+        specifier: ^1.2.8
+        version: 1.2.8
 
   packages/highlight:
     dependencies:

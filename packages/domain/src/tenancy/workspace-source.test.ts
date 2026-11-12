@@ -111,6 +111,8 @@ describe('checkSourcePattern', () => {
     ['docs/*.md', 'docs/*.md'],
     ['docs/adr/00??-*.md', 'docs/adr/00??-*.md'],
     ['docs/**', 'docs/**'],
+    ['docs/{guide,notes}.md', 'docs/{guide,notes}.md'],
+    ['docs/{a,b}/*-{x,y?}.md', 'docs/{a,b}/*-{x,y?}.md'],
   ])('accepts %s', (pattern, value) => {
     expect(checkSourcePattern(pattern)).toEqual({ ok: true, value })
   })
@@ -125,17 +127,24 @@ describe('checkSourcePattern', () => {
     },
   )
 
-  it.each(['docs/[ab].md', 'docs/{a,b}', 'docs/a**', 'docs/**b/c'])(
-    'refuses %s, whose wildcard this version does not read',
-    (pattern) => {
-      expect(checkSourcePattern(pattern)).toEqual({
-        ok: false,
-        error: expect.stringContaining('wildcard'),
-      })
-    },
-  )
+  it.each([
+    'docs/[ab].md',
+    'docs/a**',
+    'docs/**b/c',
+    'docs/{a}.md',
+    'docs/{a,}.md',
+    'docs/{a,{b,c}}.md',
+    'docs/{a,b.md',
+    'docs/a,b}.md',
+    'docs/{**,a}',
+  ])('refuses %s, whose wildcard this version does not read', (pattern) => {
+    expect(checkSourcePattern(pattern)).toEqual({
+      ok: false,
+      error: expect.stringContaining('wildcard'),
+    })
+  })
 
-  it.each(['**/*.md', '*.md', 'doc?/a.md'])(
+  it.each(['**/*.md', '*.md', 'doc?/a.md', '{docs,notes}/a.md'])(
     'refuses %s, which has no directory to widen to',
     (pattern) => {
       expect(checkSourcePattern(pattern)).toEqual({
@@ -157,6 +166,8 @@ describe('isSourceGlob and sourcePatternPrefix', () => {
     expect(sourcePatternPrefix('packages/**/README.md')).toBe('packages')
     expect(sourcePatternPrefix('docs/adr/*.md')).toBe('docs/adr')
     expect(sourcePatternPrefix('docs/guides')).toBe('docs/guides')
+    expect(isSourceGlob('docs/{a,b}.md')).toBe(true)
+    expect(sourcePatternPrefix('docs/{a,b}.md')).toBe('docs')
   })
 })
 
@@ -170,6 +181,13 @@ describe('sourcePatternMatcher', () => {
     ['docs/*.md', 'docs/a.md', true],
     ['docs/*.md', 'docs/a.txt', false],
     ['docs/*.md', 'docs/guides/b.md', false],
+    ['docs/{README,status}.md', 'docs/README.md', true],
+    ['docs/{README,status}.md', 'docs/status.md', true],
+    ['docs/{README,status}.md', 'docs/plan.md', false],
+    ['docs/{README,status}.md', 'docs/README.mdx', false],
+    ['docs/{a.b,c}/*.md', 'docs/a.b/x.md', true],
+    ['docs/{a.b,c}/*.md', 'docs/axb/x.md', false],
+    ['docs/v{1,2}-*.md', 'docs/v2-notes.md', true],
     ['packages/**/README.md', 'packages/README.md', true],
     ['packages/**/README.md', 'packages/ui/README.md', true],
     ['packages/**/README.md', 'packages/ui/src/README.md', true],

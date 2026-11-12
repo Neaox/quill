@@ -16,10 +16,6 @@ src/
 
   infrastructure/
     content-store.ts        the ADR-014 store, filesystem or in-memory, chosen by configuration
-    markdown/
-      document-format.ts     the DocumentFormat port over packages/markdown
-      highlighter.ts         the ADR-030 highlighter the renderer takes as an option
-      required-sections.ts   which required sections are still empty (ADR-029)
     db/
       schema.ts           Drizzle schema for every table (plan §11)
       connection.ts       pg Pool + Drizzle handle factory

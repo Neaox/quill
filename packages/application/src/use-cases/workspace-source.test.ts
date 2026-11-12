@@ -132,6 +132,7 @@ describe('configureWorkspaceSource', () => {
           history: 'full',
           commitMessages: 'subject',
           manifestEntry: null,
+          manifestPath: null,
           credentialSecret: 'sources/handbook',
           outsideLinks: 'forge',
           viewTemplate: null,
@@ -154,6 +155,33 @@ describe('configureWorkspaceSource', () => {
     expect(uow.auditEvents.at(-1)?.metadata).toMatchObject({
       manifestEntry: 'handbook-public',
       paths: [],
+    })
+  })
+
+  it('stores where the manifest is, and the default as none', async () => {
+    const result = await configureWorkspaceSource(
+      deps,
+      command({ collections: [], manifestPath: ' site/manifest.yaml ' }),
+    )
+    if (result.kind !== 'configured') throw new Error(`unexpected result: ${result.kind}`)
+    expect(result.view.source.manifestPath).toBe('site/manifest.yaml')
+    expect(uow.auditEvents.at(-1)?.metadata).toMatchObject({ manifestPath: 'site/manifest.yaml' })
+
+    for (const manifestPath of ['.quill/workspace.yaml', '', null]) {
+      const again = await configureWorkspaceSource(deps, command({ collections: [], manifestPath }))
+      expect(again.kind === 'configured' && again.view.source.manifestPath).toBeNull()
+    }
+  })
+
+  it.each([
+    ['site/manifest.md', 'not a YAML file'],
+    ['/site/manifest.yaml', 'plain segments'],
+    ['site/*.yaml', 'glob'],
+  ])('refuses the manifest path %s', async (manifestPath, message) => {
+    expect(await configureWorkspaceSource(deps, command({ manifestPath }))).toEqual({
+      kind: 'invalid',
+      field: 'manifestPath',
+      message: expect.stringContaining(message),
     })
   })
 

@@ -36,9 +36,8 @@ import {
 import { collectionId, documentId, userId, workspaceId } from '@quill/domain'
 import { afterAll, describe, expect, it } from 'vitest'
 
-import { createDrawioText } from '../../extensions/drawio/drawing-text.ts'
+import { createDocumentFormat, createDrawioText } from '@quill/format'
 import { createHasher } from '../hasher.ts'
-import { createDocumentFormat } from '../markdown/document-format.ts'
 
 /**
  * The server half of ADR-062's parity suite: each repository in
@@ -164,6 +163,7 @@ async function syncFixture(name: SourceFixtureName): Promise<Synced> {
     history: 'head',
     commitMessages: 'subject',
     manifestEntry: null,
+    manifestPath: null,
     credential: null,
     outsideLinks: 'forge',
     viewTemplate: null,
@@ -187,6 +187,7 @@ async function syncFixture(name: SourceFixtureName): Promise<Synced> {
     history: 'head',
     commitMessages: 'subject',
     manifestEntry: null,
+    manifestPath: null,
   }
   const contentStore = new GitContentStore({
     provider: new MemoryObjectStoreProvider(),

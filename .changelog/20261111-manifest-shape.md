@@ -1,0 +1,1 @@
+Added: a workspace read from a repository can name where its manifest is, in the source settings. Collection paths and excludes in a manifest can use brace groups such as `docs/{guide,notes}.md`. Only the manifest entry a workspace reads is checked strictly, and a collection there with no title is named after its path, with a note in the preview.

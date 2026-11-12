@@ -31,6 +31,15 @@ describe('sourcePrefixes', () => {
     )
   })
 
+  it('widens a brace group to the directory in front of it, and refuses it when strict', () => {
+    expect(sourcePrefixes(['docs/{guide,notes}.md', 'packages/{a,b}/README.md'], loose)).toEqual(
+      ok(['docs', 'packages']),
+    )
+    expect(sourcePrefixes(['docs/{guide,notes}.md'], strict)).toEqual(
+      err('"docs/{guide,notes}.md" is a glob, and this source accepts only literal paths.'),
+    )
+  })
+
   it('refuses a glob with no directory to widen to, which would be the whole repository', () => {
     expect(sourcePrefixes(['docs', '{a,b}/x.md'], loose).ok).toBe(false)
   })

@@ -76,7 +76,7 @@ export function createExternalSourceProvider(
       // A disconnected source is a record, never synced again.
       if (source === null || source.disconnectedAt !== null) return null
       const settings: GitCliExternalSourceOptions = {
-        ...common(source.credential),
+        ...common(source.credential, source.manifestPath),
         remote: source.remote,
         branch: source.branch,
         cacheDirectory: join(options.cacheRoot, workspaceId),
@@ -88,6 +88,7 @@ export function createExternalSourceProvider(
           history: source.history,
           commitMessages: source.commitMessages,
           manifestEntry: source.manifestEntry,
+          manifestPath: source.manifestPath,
         },
         configuredAt: source.updatedAt,
       }
@@ -99,7 +100,7 @@ export function createExternalSourceProvider(
       const directory = await mkdtemp(join(options.cacheRoot, 'preview-'))
       try {
         const source = await open({
-          ...common(draft.credential),
+          ...common(draft.credential, draft.manifestPath ?? null),
           ...PREVIEW_LIMITS,
           remote: draft.remote,
           branch: draft.branch,
@@ -113,9 +114,9 @@ export function createExternalSourceProvider(
   }
 
   /** What every source is opened with: the manifest alone, the policy, and its credential. */
-  function common(credential: WorkspaceSourceCredential | null) {
+  function common(credential: WorkspaceSourceCredential | null, manifestPath: string | null) {
     return {
-      paths: [SOURCE_MANIFEST_PATH],
+      paths: [manifestPath ?? SOURCE_MANIFEST_PATH],
       strictPrefixes: false,
       outboundPolicy: options.outboundPolicy,
       credential: credentialFor(options.secrets, credential),

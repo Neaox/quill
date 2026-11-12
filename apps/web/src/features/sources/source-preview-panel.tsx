@@ -57,6 +57,7 @@ export function SourcePreviewPanel({
   readonly branch: string
 }) {
   const unknown = preview.manifest.unknownKeys
+  const notes = preview.manifest.notes
   return (
     <div className="flex min-w-0 flex-col gap-6">
       <p className="text-sm text-muted">
@@ -99,6 +100,20 @@ export function SourcePreviewPanel({
       )}
 
       <LeftOut preview={preview} />
+
+      {notes.length === 0 ? undefined : (
+        <Callout tone="info" title="Read with defaults">
+          <p>The manifest leaves these out, so they are read as below.</p>
+          <ul className="flex flex-col gap-0.5">
+            {notes.map(({ message, line }) => (
+              <li key={`${message}:${String(line)}`}>
+                {message}
+                {line === null ? '' : ` (line ${String(line)})`}
+              </li>
+            ))}
+          </ul>
+        </Callout>
+      )}
 
       {unknown.length === 0 ? undefined : (
         <Callout tone="info" title="Manifest keys this release doesn’t read">

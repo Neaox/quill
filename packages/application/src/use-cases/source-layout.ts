@@ -3,7 +3,7 @@ import type { SourceCollectionOrder } from '@quill/domain'
 
 import type { CollectionId } from '../ports/persistence.ts'
 import type { SourceCollection } from '../ports/source-sync.ts'
-import type { ManifestEntry, UnknownManifestKey } from './source-manifest.ts'
+import type { ManifestEntry, ManifestNote, UnknownManifestKey } from './source-manifest.ts'
 import { SOURCE_MANIFEST_PATH } from './source-manifest.ts'
 
 /**
@@ -41,6 +41,10 @@ export interface SourceLayout {
   readonly fingerprint: string
   /** The manifest's keys this release does not read, for the source's admin page. */
   readonly unknownKeys: readonly UnknownManifestKey[]
+  /** The defaults the manifest's entry was read with (`ManifestNote`). */
+  readonly notes: readonly ManifestNote[]
+  /** Where the manifest is read from, whether or not the revision has one. */
+  readonly manifestPath: string
 }
 
 /**
@@ -81,6 +85,8 @@ export function placedAsTree(fingerprint: string): boolean {
 export function layoutFromManifest(
   entry: ManifestEntry,
   unknownKeys: readonly UnknownManifestKey[] = [],
+  notes: readonly ManifestNote[] = [],
+  manifestPath: string = SOURCE_MANIFEST_PATH,
 ): SourceLayout {
   const collections = entry.collections.map((collection): LayoutCollection => ({
     from: 'manifest',
@@ -107,10 +113,15 @@ export function layoutFromManifest(
       ...(entry.assets.length === 0 ? {} : { assets: canonical(entry.assets) }),
     }),
     unknownKeys,
+    notes,
+    manifestPath,
   }
 }
 
-export function layoutFromSettings(settings: readonly SourceCollection[]): SourceLayout {
+export function layoutFromSettings(
+  settings: readonly SourceCollection[],
+  manifestPath: string = SOURCE_MANIFEST_PATH,
+): SourceLayout {
   // Stored settings are checked plain paths; a trailing slash is read as the
   // directory it names.
   const read = settings.map(({ collectionId, path }) => ({
@@ -134,6 +145,8 @@ export function layoutFromSettings(settings: readonly SourceCollection[]): Sourc
       collections: canonical(read.map(({ collectionId, path }) => [collectionId, path])),
     }),
     unknownKeys: [],
+    notes: [],
+    manifestPath,
   }
 }
 
@@ -150,7 +163,7 @@ function canonical(entries: readonly unknown[]): readonly string[] {
  * take, never what to leave.
  */
 export function layoutPaths(layout: SourceLayout): readonly string[] {
-  return [SOURCE_MANIFEST_PATH, ...layout.collections.map(({ path }) => path), ...layout.assets]
+  return [layout.manifestPath, ...layout.collections.map(({ path }) => path), ...layout.assets]
 }
 
 /**

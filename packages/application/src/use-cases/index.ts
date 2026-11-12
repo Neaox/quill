@@ -688,7 +688,9 @@ export {
 export type {
   ManifestCollection,
   ManifestEntry,
+  ManifestNote,
   ManifestProblem,
+  ManifestReadOptions,
   SourceManifest,
   UnknownManifestKey,
 } from './source-manifest.ts'

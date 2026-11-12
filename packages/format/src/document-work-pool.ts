@@ -52,10 +52,7 @@ export interface DocumentWorkPool extends DocumentWork {
 }
 
 /** Where the build writes the module, and where the pool looks for it. */
-export const BUILT_DOCUMENT_WORKER = new URL(
-  '../../../dist/document-work-worker.mjs',
-  import.meta.url,
-)
+export const BUILT_DOCUMENT_WORKER = new URL('../dist/document-work-worker.mjs', import.meta.url)
 
 /** The thread's TypeScript source. */
 export const DOCUMENT_WORKER_SOURCE = new URL('./document-work-worker.ts', import.meta.url)

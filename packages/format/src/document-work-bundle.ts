@@ -17,9 +17,10 @@ import {
  * machine); the built module is one file, so a thread is ready in a
  * fraction of that, and its CPU time is spent on documents.
  *
- * `pnpm --filter @quill/server build` writes it to `dist/`; the pool loads it
- * from there when it exists, and the source otherwise (development, tests).
- * Only the build imports this module: it is the one that needs the bundler.
+ * `pnpm --filter @quill/server build` writes it to `@quill/format`'s `dist/`;
+ * the pool loads it from there when it exists, and the source otherwise
+ * (development, tests). Only the build entry (`@quill/format/build`) imports
+ * this module: it is the one that needs the bundler.
  */
 
 const ENTRY = '\0document-work-entry'
@@ -50,7 +51,7 @@ export async function buildDocumentWorker(file: URL = BUILT_DOCUMENT_WORKER): Pr
     input: ENTRY,
     platform: 'node',
     // Resolved from the highlighter's package, where `prismjs` is a dependency.
-    cwd: fileURLToPath(new URL('../../../../../packages/highlight/', import.meta.url)),
+    cwd: fileURLToPath(new URL('../../highlight/', import.meta.url)),
     plugins: [entry],
   })
   try {
