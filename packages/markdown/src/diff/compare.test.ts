@@ -157,6 +157,12 @@ describe('compareDocuments', () => {
     ])
   })
 
+  it('names a changed block of math as math', () => {
+    const result = compare('$$\nx = 1\n$$\n', '$$\nx = 2\n$$\n')
+
+    expect(result.changes.map((change) => change.block)).toEqual(['math'])
+  })
+
   it('shows an image and a diagram before and after', () => {
     const result = compare(
       '![Plan](/a.png)\n\n```mermaid\ngraph TD; A-->B\n```\n',

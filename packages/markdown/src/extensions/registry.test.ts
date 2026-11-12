@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
+import { MATH_ENGINE_VERSION } from '../math/tree.ts'
 import type { MarkdownExtension } from './contract.ts'
 import { defineExtension } from './contract.ts'
 import { BUILT_IN_EXTENSIONS, createMarkdownRegistry } from './registry.ts'
@@ -30,13 +31,15 @@ describe('createMarkdownRegistry', () => {
     expect(registry.extensions).toBe(BUILT_IN_EXTENSIONS)
     expect(registry.findExtension('quill.drawio')?.version).toBe('1.0.0')
     expect(registry.signature).toBe(
-      'quill.cast@1.0.0 quill.checks@1.0.0 quill.drawio@1.0.0 quill.endpoint@1.0.0 quill.route@1.0.0 quill.step@1.0.0 quill.timeline@1.0.0',
+      `quill.cast@1.0.0 quill.checks@1.0.0 quill.drawio@1.0.0 quill.endpoint@1.0.0 quill.route@1.0.0 quill.step@1.0.0 quill.timeline@1.0.0 temml@${MATH_ENGINE_VERSION}`,
     )
   })
 
   it('signs the installed extensions in a stable order', () => {
     const registry = createMarkdownRegistry([example(), ...BUILT_IN_EXTENSIONS], [])
-    expect(registry.signature).toBe('acme.boxes@1.2.3 quill.drawio@1.0.0')
+    expect(registry.signature).toBe(
+      `acme.boxes@1.2.3 quill.drawio@1.0.0 temml@${MATH_ENGINE_VERSION}`,
+    )
   })
 
   it('asks the extension that claims a drawing, and keeps only what its grant names', () => {

@@ -135,6 +135,8 @@ export function mdastToProseMirror(
         ]
       case 'html':
         return [node('htmlInline', { value: current.value }).mark(marks)]
+      case 'inlineMath':
+        return [node('mathInline', { value: current.value }).mark(marks)]
       case 'footnoteReference':
         return [
           node('footnoteReference', {
@@ -291,6 +293,8 @@ export function mdastToProseMirror(
         ]
       case 'thematicBreak':
         return [node('horizontalRule', formOf(current))]
+      case 'math':
+        return [node('mathBlock', { value: current.value, ...formOf(current) })]
       case 'html':
         return [node('htmlBlock', formOf(current), text(current.value, []))]
       case 'table':

@@ -10,6 +10,8 @@ import { EXIT, visit } from 'unist-util-visit'
 import { groupCodeBlocks } from '../code-group/code-group.ts'
 import { readLinkComments, writeLinkComments } from '../directives/link-comment.ts'
 import { readDetails } from '../details/read.ts'
+import { withDollarEscapes } from '../math/escape.ts'
+import { remarkMath } from '../math/index.ts'
 import { linksOf, markAutolinkLiterals, withBareAutolinks } from './autolink-literal.ts'
 import { gfmPartsNeeded, remarkGfmParts } from './gfm-parts.ts'
 import type { GfmParts } from './gfm-parts.ts'
@@ -32,6 +34,7 @@ function createProcessor(options: ToMarkdownExtensionOptions) {
     .use(remarkGfm, GFM_OPTIONS)
     .use(remarkFrontmatter, ['yaml'])
     .use(remarkDirective)
+    .use(remarkMath)
     .use(remarkToMarkdownExtensions, options)
     .use(remarkStringify, SERIALISE_OPTIONS)
     .freeze()
@@ -50,6 +53,7 @@ function createReader(parts: GfmParts) {
     .use(remarkGfmParts, parts)
     .use(remarkFrontmatter, ['yaml'])
     .use(remarkDirective)
+    .use(remarkMath)
     .freeze()
 }
 
@@ -130,7 +134,8 @@ function readAttributes(block: string): string | undefined {
 }
 
 /**
- * Markdown for a tree. A GitHub alert's marker is written unescaped
+ * Markdown for a tree. A dollar that would be read as math is escaped, and one that would not
+ * is not (`math/escape.ts`). A GitHub alert's marker is written unescaped
  * (`github-alert.ts`), and prose is escaped only where the escape changes how
  * it reads (`to-markdown-extensions.ts`). A bare autolink is written back bare
  * (`autolink-literal.ts`) only when reading the result gives the same links;
@@ -140,7 +145,7 @@ function readAttributes(block: string): string | undefined {
 export function stringifyMdast(document: Root): string {
   const tree = writeLinkComments(document)
   const writer = hasReferenceTargets(tree) ? processor : writerWithoutReferences
-  const alerts = withAlertMarkers(tree)
+  const alerts = withAlertMarkers(withDollarEscapes(tree))
   const { tree: bare, bare: count } = withBareAutolinks(alerts)
   if (count === 0) return writer.stringify(alerts)
   const written = writer.stringify(bare)

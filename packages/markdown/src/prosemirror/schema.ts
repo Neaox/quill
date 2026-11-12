@@ -277,6 +277,28 @@ const HtmlInline = Node.create({
   addAttributes: () => ({ value: { default: '' } }),
 })
 
+/**
+ * Math (ADR-064): a formula in a sentence, and a block of its own. Both are atoms holding the
+ * author's TeX as it was written; what they look like is the editor's view of them, and what they
+ * are in a document is the renderer's.
+ */
+const MathInline = Node.create({
+  name: 'mathInline',
+  group: 'inline',
+  inline: true,
+  atom: true,
+  addAttributes: () => ({ value: { default: '' } }),
+})
+
+const MathBlock = Node.create({
+  name: 'mathBlock',
+  group: 'block',
+  atom: true,
+  isolating: true,
+  defining: true,
+  addAttributes: () => ({ value: { default: '' }, ...attributes(...BLOCK) }),
+})
+
 /** A link reference definition has no rendered form but must survive the round trip. */
 const Definition = Node.create({
   name: 'definition',
@@ -365,6 +387,8 @@ export const extensions: Extensions = [
   TextDirective,
   HtmlBlock,
   HtmlInline,
+  MathInline,
+  MathBlock,
   Definition,
   FootnoteDefinition,
   FootnoteReference,

@@ -57,6 +57,11 @@ export interface SourceForm {
   readonly delimiterRow?: string
   /** A table row as written, and the content it was read as. */
   readonly row?: { readonly written: string; readonly content: string }
+  /**
+   * A block of math written on one line, `$$ x $$`, as it was written, and the formula it
+   * read as. Kept for as long as the formula is the same (ADR-064).
+   */
+  readonly line?: { readonly written: string; readonly content: string }
   /** A directive's attributes as written, and the attributes they read as. */
   readonly attributes?: { readonly written: string; readonly read: string }
   /**
@@ -486,6 +491,7 @@ const SELF_CLOSING: ReadonlySet<string> = new Set([
   'containerDirective',
   'heading',
   'leafDirective',
+  'math',
   'thematicBreak',
   'yaml',
 ])
@@ -500,6 +506,8 @@ function interrupts(left: Node, right: Node): boolean {
   switch (right.type) {
     case 'heading':
     case 'code':
+    // A fenced block of math; the one-line form cannot interrupt, so is never read after one.
+    case 'math':
       return true
     case 'blockquote':
       return left.type !== 'blockquote'

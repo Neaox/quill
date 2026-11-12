@@ -21,7 +21,7 @@ function toDoc(markdown: string): PMNode {
 describe('the editor schema', () => {
   it('builds headlessly, with no DOM anywhere', () => {
     expect('document' in globalThis).toBe(false)
-    expect(Object.keys(schema.nodes)).toHaveLength(31)
+    expect(Object.keys(schema.nodes)).toHaveLength(33)
     expect(Object.keys(schema.marks)).toHaveLength(5)
   })
 
@@ -281,5 +281,43 @@ describe('layout widths', () => {
     expect(lifted.type.schema).toBe(target)
     expect(lowered.type.schema).toBe(target)
     expect(stringifyMdast(proseMirrorToMdast(lowered).tree)).toBe(':::wide\nBody.\n:::\n')
+  })
+})
+
+describe('math in the editor’s document', () => {
+  it('holds a formula in a sentence as an atom with the TeX in it, which is written back as it was', () => {
+    const doc = toDoc('The area is $\\pi r^2$, as before.')
+
+    const found: string[] = []
+    doc.descendants((node) => {
+      if (node.type.name === 'mathInline') found.push(String(node.attrs['value']))
+    })
+    expect(found).toEqual(['\\pi r^2'])
+    expect(roundTrip('The area is $\\pi r^2$, as before.')).toBe(
+      'The area is $\\pi r^2$, as before.\n',
+    )
+  })
+
+  it('keeps a formula inside strong text inside it', () => {
+    expect(roundTrip('**the $x_1$ term**')).toBe('**the $x_1$ term**\n')
+  })
+
+  it('holds a block as an atom with its TeX, and writes the one-line form back as it was', () => {
+    const [block] = toDoc('$$ x^2 $$').content.content
+    expect(block?.type.name).toBe('mathBlock')
+    expect(block?.attrs['value']).toBe('x^2')
+
+    expect(roundTrip('$$ x^2 $$')).toBe('$$ x^2 $$\n')
+    expect(roundTrip('$$\nx^2\n$$')).toBe('$$\nx^2\n$$\n')
+  })
+
+  it('writes the fenced form once the formula of a one-line block has been edited', () => {
+    const { doc } = mdastToProseMirror(parseMarkdown('$$ x^2 $$'))
+    const [block] = doc.content.content
+    const edited = doc.copy(
+      doc.content.replaceChild(0, block?.type.create({ ...block.attrs, value: 'y^2' }) ?? doc),
+    )
+
+    expect(stringifyMdast(proseMirrorToMdast(edited).tree)).toBe('$$\ny^2\n$$\n')
   })
 })

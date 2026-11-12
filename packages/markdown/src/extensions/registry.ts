@@ -1,6 +1,7 @@
 import type { AnyBlock } from '../blocks/define.ts'
 import type { BlockRegistry } from '../blocks/registry.ts'
 import { BUILT_IN_BLOCKS, createBlockRegistry } from '../blocks/registry.ts'
+import { MATH_ENGINE_VERSION } from '../math/tree.ts'
 import type { DrawingRendering, DrawingSource, MarkdownExtension } from './contract.ts'
 import { extensionProblems } from './contract.ts'
 import { drawioExtension } from './drawio/drawio-extension.ts'
@@ -19,8 +20,9 @@ export interface MarkdownRegistry {
   /** The installed component blocks (ADR-060), by directive name. */
   readonly blocks: BlockRegistry
   /**
-   * The installed extensions' and blocks' ids and versions, which join the
-   * render cache key: upgrading one re-renders the bodies, and nothing else does.
+   * The installed extensions' and blocks' ids and versions, and the versions of
+   * the engines this package renders with, which join the render cache key:
+   * upgrading one re-renders the bodies, and nothing else does.
    */
   readonly signature: string
   /** How a drawing is drawn: by the first extension that claims it, or inline as it is. */
@@ -30,6 +32,13 @@ export interface MarkdownRegistry {
 
 /** The extensions Quill ships. Each is also the reference for one kind of claim. */
 export const BUILT_IN_EXTENSIONS: readonly MarkdownExtension[] = [drawioExtension]
+
+/**
+ * The engines the package renders with whose version changes what they write, so is part of what a
+ * cached body was made from (ADR-031): upgrading one re-renders exactly the bodies that use it, with
+ * no bump. Math is drawn by Temml (ADR-064).
+ */
+const ENGINES: readonly string[] = [`temml@${MATH_ENGINE_VERSION}`]
 
 /** A drawing no extension claims: inline, through the allowlist, as ADR-036 draws it. */
 function unclaimed(source: DrawingSource): DrawingRendering {
@@ -75,8 +84,10 @@ export function createMarkdownRegistry(
   return {
     extensions,
     blocks: createBlockRegistry(blocks),
-    signature: [...extensions, ...blocks]
-      .map((installed) => `${installed.id}@${installed.version}`)
+    signature: [
+      ...[...extensions, ...blocks].map((installed) => `${installed.id}@${installed.version}`),
+      ...ENGINES,
+    ]
       .toSorted()
       .join(' '),
     drawing: (source) => {
