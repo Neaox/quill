@@ -3,7 +3,7 @@
  *
  * The server half of the draw.io extension is this module: the editor's
  * address, the CSP `frame-src` it implies, the route that tells the web app,
- * and the label reader for search (`drawing-text.ts`).
+ * and, in `@quill/format`, the label reader for search (`drawing-text.ts`).
  *
  * The default is a **self-hosted** draw.io — the `jgraph/drawio` image,
  * Apache 2.0 — on its own origin, so a diagram never leaves the instance.

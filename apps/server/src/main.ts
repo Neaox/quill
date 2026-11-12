@@ -29,7 +29,7 @@ import { createOutboundHostPolicy } from './infrastructure/http/outbound-host-po
 import { createExternalSourceProvider } from './infrastructure/sources/external-source-provider.ts'
 import { createPostgresSourceSyncLock } from './infrastructure/sources/source-sync-lock.ts'
 import { runMigrations } from './infrastructure/db/migrator.ts'
-import { createDocumentFormat } from './infrastructure/markdown/document-format.ts'
+import { createDocumentFormat, createDrawioText } from '@quill/format'
 import { CHILD_PAGES_CACHE_TTL_MS, createChildPagesCache } from './child-pages/cache.ts'
 import { subscribeChildPagesInvalidation } from './child-pages/invalidation.ts'
 import { createOpenWebClient } from './infrastructure/http/open-web-client.ts'
@@ -79,7 +79,6 @@ import {
 import { createSweepLinkPreviewsJob } from './jobs/sweep-link-previews.ts'
 import { createReconcileSourcesJob } from './jobs/reconcile-sources.ts'
 import { createSearchService } from '@quill/search'
-import { createDrawioText } from './extensions/drawio/drawing-text.ts'
 
 /**
  * Startup warnings are collected and replayed through the app's own logger

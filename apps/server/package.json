@@ -48,6 +48,7 @@
     "@quill/content-store": "workspace:*",
     "@quill/design-css": "workspace:*",
     "@quill/domain": "workspace:*",
+    "@quill/format": "workspace:*",
     "@quill/highlight": "workspace:*",
     "@quill/markdown": "workspace:*",
     "@quill/search": "workspace:*",

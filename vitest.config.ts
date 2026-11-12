@@ -172,7 +172,7 @@ export default defineConfig({
       ],
       thresholds: {
         // Everything that is not a UI surface (ADR-017): full coverage.
-        'packages/{api-client,application,brand,config,content-store,domain,highlight,markdown,search,theme}/src/**/*.{ts,tsx}':
+        'packages/{api-client,application,brand,config,content-store,domain,format,highlight,markdown,search,theme}/src/**/*.{ts,tsx}':
           { statements: 100, branches: 100, functions: 100, lines: 100 },
         'apps/server/src/**/*.ts': { statements: 100, branches: 100, functions: 100, lines: 100 },
         // The UI surfaces (ADR-017, amended 2026-10-17): the gate is behavioural

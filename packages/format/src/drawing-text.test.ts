@@ -7,12 +7,7 @@ import { describe, expect, it } from 'vitest'
 import { createDrawioText, zlibInflate } from './drawing-text.ts'
 
 const corpus = readFileSync(
-  fileURLToPath(
-    new URL(
-      '../../../../../packages/markdown/corpus/25-drawio-diagram.drawio.svg',
-      import.meta.url,
-    ),
-  ),
+  fileURLToPath(new URL('../../markdown/corpus/25-drawio-diagram.drawio.svg', import.meta.url)),
   'utf8',
 )
 
