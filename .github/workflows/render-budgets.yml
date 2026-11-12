@@ -10,12 +10,12 @@ on:
   pull_request:
     paths:
       - '.github/workflows/render-budgets.yml'
-      - 'apps/server/src/infrastructure/markdown/**'
       - 'apps/server/src/infrastructure/sources/**'
       - 'packages/application/src/test-support/source-corpus.ts'
       - 'packages/application/src/use-cases/render-document.ts'
       - 'packages/application/src/use-cases/source-*'
       - 'packages/application/src/use-cases/sync-source.ts'
+      - 'packages/format/**'
       - 'packages/highlight/**'
       - 'packages/markdown/**'
   workflow_dispatch:
