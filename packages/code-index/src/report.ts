@@ -86,7 +86,7 @@ export function buildCodeIndexReport(report: CodeIndexReport): string {
       <button type="button" data-mode="code" aria-pressed="false">Code</button>
       <button type="button" data-mode="schema" aria-pressed="false">Schema</button>
     </div>
-    <label class="toggle"><input id="local" type="checkbox"> Local helpers</label>
+    <label class="toggle"><input id="local" type="checkbox" checked> Local helpers</label>
     <span id="count" class="count" role="status"></span>
   </div>
 </header>
