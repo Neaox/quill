@@ -29,7 +29,7 @@ import { createOutboundHostPolicy } from './infrastructure/http/outbound-host-po
 import { createExternalSourceProvider } from './infrastructure/sources/external-source-provider.ts'
 import { createPostgresSourceSyncLock } from './infrastructure/sources/source-sync-lock.ts'
 import { runMigrations } from './infrastructure/db/migrator.ts'
-import { createDocumentFormat, createDrawioText } from '@quill/format'
+import { createDocumentFormat, createDocumentWorkPool, createDrawioText } from '@quill/format'
 import { CHILD_PAGES_CACHE_TTL_MS, createChildPagesCache } from './child-pages/cache.ts'
 import { subscribeChildPagesInvalidation } from './child-pages/invalidation.ts'
 import { createOpenWebClient } from './infrastructure/http/open-web-client.ts'
@@ -221,6 +221,8 @@ if (blobStore instanceof FilesystemBlobStore) {
   if (swept > 0) process.stdout.write(`Swept ${swept} abandoned upload(s) from the blob store\n`)
 }
 const format = createDocumentFormat()
+// The sync's inspections and renders, on threads of their own (ADR-062, step 3).
+const documentWork = createDocumentWorkPool({ extensions: format.extensions ?? '' })
 const rateLimiter = createRateLimiter({ clock, config: config.rateLimit })
 const oidcRateLimiter = createRateLimiter({ clock, config: config.oidcRateLimit })
 // Its own budget, flat rather than backing off: see `config.attachments`.
@@ -322,6 +324,7 @@ const deps = {
   secrets,
   blobStore,
   format,
+  documentWork,
   clock,
   ids,
   hasher,
@@ -361,8 +364,8 @@ jobRunner.schedule(createReconcileSourcesJob({ uow, clock }, config.sources.reco
 jobRunner.start()
 
 // The order matters and is pinned by `shutdown.test.ts`: the job runner
-// before the app, the app before the pool.
-const shutdown = createShutdown({ jobRunner, app, database })
+// before the app, the app before the document work pool and the database.
+const shutdown = createShutdown({ jobRunner, app, documentWork, database })
 
 for (const signal of ['SIGTERM', 'SIGINT'] as const) {
   process.on(signal, () => {

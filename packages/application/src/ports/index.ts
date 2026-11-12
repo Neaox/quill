@@ -159,6 +159,8 @@ export {
   RENDERED_CONTENT_VERSION,
 } from './document-format.ts'
 export type { DrawingText } from './drawing-text.ts'
+export type { DocumentWork } from './document-work.ts'
+export { inlineDocumentWork } from './document-work.ts'
 
 export type {
   AcquireLockResult,

@@ -9,7 +9,10 @@
  *    already done its side effect.
  * 2. **Then the HTTP server.** `close()` stops accepting connections and lets
  *    the requests already in a handler finish.
- * 3. **Then the database.** By now nothing holds a connection, so the pool
+ * 3. **Then the document work pool.** No sync runs now, and a worker thread
+ *    would otherwise keep the process alive until it had been idle long
+ *    enough to retire.
+ * 4. **Then the database.** By now nothing holds a connection, so the pool
  *    drains rather than tearing live queries out from under callers.
  *
  * Reversing any pair loses work, which is why this is a named function with a
@@ -25,6 +28,8 @@ export interface ShutdownParts {
   readonly jobRunner: { stop(): Promise<void> }
   /** Stops accepting connections and drains the handlers already running. */
   readonly app: { close(): Promise<void> }
+  /** Stops the sync's worker threads, so none holds the process open. */
+  readonly documentWork: { close(): Promise<void> }
   readonly database: { close(): Promise<void> }
 }
 
@@ -38,6 +43,7 @@ export function createShutdown(parts: ShutdownParts): Shutdown {
   async function closeEverything(): Promise<void> {
     await parts.jobRunner.stop()
     await parts.app.close()
+    await parts.documentWork.close()
     await parts.database.close()
   }
 

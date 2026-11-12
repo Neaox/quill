@@ -1,0 +1,52 @@
+name: Render budgets
+
+# ADR-062, section 4: the sourced workspace's server budgets, measured on
+# GitHub's hosted runner, where nothing else is running, against the generated
+# corpora. On every push to main, and on a pull request that touches the code
+# the budgets measure.
+on:
+  push:
+    branches: [main]
+  pull_request:
+    paths:
+      - '.github/workflows/render-budgets.yml'
+      - 'apps/server/src/infrastructure/sources/**'
+      - 'packages/application/src/test-support/source-corpus.ts'
+      - 'packages/application/src/use-cases/render-document.ts'
+      - 'packages/application/src/use-cases/source-*'
+      - 'packages/application/src/use-cases/sync-source.ts'
+      - 'packages/format/**'
+      - 'packages/highlight/**'
+      - 'packages/markdown/**'
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  render-budgets:
+    name: Render budgets
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      # Hosted runners differ in CPU, so every number below is read against this one.
+      - run: lscpu | grep -E '^(Model name|CPU\(s\)):'
+      # The pool's threads load the built module, as in production.
+      - run: pnpm --filter @quill/server build
+      # The budgeted rows: L's fetch, its sync's wall and CPU time, and the
+      # parser's single-thread throughput. Fails when one is over.
+      - run: pnpm --filter @quill/server bench:sync -- --budget
+      # Reported, not budgeted: the same sync on one thread, and XL.
+      # Run even when a budget is over, so the numbers are there to read.
+      - if: ${{ !cancelled() }}
+        run: pnpm --filter @quill/server bench:sync -- --no-pool
+      - if: ${{ !cancelled() }}
+        run: pnpm --filter @quill/server bench:sync -- XL

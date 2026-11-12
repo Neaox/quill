@@ -4,6 +4,7 @@ import type {
   Clock,
   ContentStore,
   DocumentFormat,
+  DocumentWork,
   DrawingText,
   ExternalSourceProvider,
   Hasher,
@@ -76,6 +77,12 @@ export interface AppDependencies {
   readonly blobStore: BlobStore
   /** The Markdown pipeline, with the syntax highlighter already bound in (ADR-030). */
   readonly format: DocumentFormat
+  /**
+   * The format's CPU-bound work on a pool of threads (ADR-062, step 3): what
+   * a sync inspects and renders its documents with. Absent, a sync works on
+   * its own thread as before.
+   */
+  readonly documentWork?: DocumentWork
   readonly clock: Clock
   readonly ids: IdGenerator
   /** Content addressing for the render cache (ADR-031): SHA-256 in this process. */

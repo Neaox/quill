@@ -7,7 +7,7 @@ import { pathToFileURL } from 'node:url'
 
 import { BRAND } from '@quill/brand'
 import { renderDocument, SOURCE_MANIFEST_PATH, syncSource } from '@quill/application'
-import type { SyncSourceDependencies } from '@quill/application'
+import type { DocumentWork, SyncSourceDependencies } from '@quill/application'
 import {
   createFakeClock,
   createFakeIdGenerator,
@@ -17,6 +17,7 @@ import {
   generateSourceCorpus,
   SOURCE_CORPUS_SHAPES,
 } from '@quill/application/test-support'
+import { parseDocument } from '@quill/markdown'
 import {
   GitCliExternalSource,
   GitContentStore,
@@ -24,7 +25,13 @@ import {
 } from '@quill/content-store'
 import { userId, workspaceId } from '@quill/domain'
 
-import { createDocumentFormat, createDrawioText } from '@quill/format'
+import {
+  BUILT_DOCUMENT_WORKER,
+  createDocumentFormat,
+  createDocumentWorkPool,
+  createDrawioText,
+  documentWorkerModule,
+} from '@quill/format'
 import { createHasher } from '../hasher.ts'
 
 /**
@@ -42,6 +49,8 @@ import { createHasher } from '../hasher.ts'
  * pnpm --filter @quill/server bench:sync              # L, three runs, medians
  * pnpm --filter @quill/server bench:sync -- XL        # the 5,000-file corpus
  * pnpm --filter @quill/server bench:sync -- --budget  # exit 1 when a median is over
+ * pnpm --filter @quill/server bench:sync -- --no-pool # the sync on one thread
+ * pnpm --filter @quill/server bench:sync -- --jobs 4  # a pool of four threads
  * ```
  *
  * The remote is what a forge serves: a bare repository, repacked with a
@@ -52,12 +61,63 @@ import { createHasher } from '../hasher.ts'
  * and kept, so runs compare the same bytes.
  */
 
-/** ADR-062, section 4. XL has no server budget yet: it is measured and reported. */
-const BUDGET_MS = { L: { fetch: 4_000, sync: 10_000 }, XL: { fetch: null, sync: null } } as const
+/**
+ * ADR-062, section 4, as "Amendment: the pool and the parser's rate" sets them
+ * on the reference runner: wall time and CPU time in milliseconds, for the
+ * sync on the pool as production runs it, and a floor under the parser's
+ * single-thread throughput in MB a second, which catches a regression
+ * rather than restating a target. XL has no server budget yet: it is
+ * measured and reported. A null is reported and not held to anything.
+ */
+const BUDGETS: Readonly<
+  Record<
+    'L' | 'XL',
+    {
+      readonly fetch: { readonly wall: number | null; readonly cpu: number | null }
+      readonly sync: { readonly wall: number | null; readonly cpu: number | null }
+      readonly parseMBps: number | null
+    }
+  >
+> = {
+  L: { fetch: { wall: 4_000, cpu: null }, sync: { wall: 18_000, cpu: 45_000 }, parseMBps: 0.8 },
+  XL: { fetch: { wall: null, cpu: null }, sync: { wall: null, cpu: null }, parseMBps: null },
+}
 const RUNS = 3
 
 const name = process.argv.includes('XL') ? 'XL' : 'L'
 const budget = process.argv.includes('--budget')
+const jobs = process.argv.indexOf('--jobs')
+/** `--no-pool` measures the sync on one thread, as a process without the pool runs it. */
+const threads = process.argv.includes('--no-pool')
+  ? undefined
+  : createDocumentWorkPool({
+      extensions: createDocumentFormat().extensions ?? '',
+      ...(jobs === -1 ? {} : { size: Number(process.argv[jobs + 1]) }),
+    })
+
+/** How long each run spent waiting on the pool's batches, by kind: the rest is the calling thread's. */
+const batches = { inspect: 0, render: 0 }
+async function spent<T>(kind: keyof typeof batches, work: () => Promise<T>): Promise<T> {
+  const started = performance.now()
+  try {
+    return await work()
+  } finally {
+    batches[kind] += performance.now() - started
+  }
+}
+const pool: DocumentWork | undefined =
+  threads === undefined
+    ? undefined
+    : {
+        inspect: (markdowns) => spent('inspect', () => threads.inspect(markdowns)),
+        render: (inputs) => spent('render', () => threads.render(inputs)),
+      }
+// The production path: threads load the built module, so a thread starting is not a compile.
+if (threads !== undefined && documentWorkerModule().href !== BUILT_DOCUMENT_WORKER.href) {
+  throw new Error(
+    'Build the server first (pnpm --filter @quill/server build): the pool runs the built worker.',
+  )
+}
 const shape = SOURCE_CORPUS_SHAPES[name]
 const NOW = new Date('2026-11-11T12:00:00.000Z')
 const WORKSPACE = workspaceId('00000000-0000-4000-8000-000000000101')
@@ -221,6 +281,9 @@ async function syncOnce(url: string, cache: string): Promise<{ readonly document
     blobStore,
     drawingText: createDrawioText(),
     maxAssetBytes: 10 * 1024 * 1024,
+    ...(pool === undefined
+      ? {}
+      : { work: { pool, hasher: createHasher(), settings: createFakeSettings() } }),
   }
   const result = await syncSource(deps, { workspaceId: WORKSPACE })
   if (result.kind !== 'synced') throw new Error(`The sync ended ${result.kind}.`)
@@ -248,37 +311,76 @@ const median = (values: readonly number[]): number =>
 const url = await remote()
 const scratch = await mkdtemp(join(tmpdir(), `${BRAND.slug}-bench-run-`))
 const results: Record<'fetch' | 'sync', Timing[]> = { fetch: [], sync: [] }
+const spans: (typeof batches)[] = []
 let documents = 0
 try {
   for (let run = 0; run < RUNS; run += 1) {
     // oxlint-disable-next-line quill/no-independent-await-in-loop -- runs are measured one at a time
     results.fetch.push(await timed(() => fetchOnce(url, join(scratch, `fetch-${run}`))))
+    batches.inspect = 0
+    batches.render = 0
     // oxlint-disable-next-line quill/no-independent-await-in-loop -- as above
     results.sync.push(
       await timed(async () => {
         documents = (await syncOnce(url, join(scratch, `sync-${run}`))).documents
       }),
     )
+    spans.push({ ...batches })
   }
 } finally {
+  await threads?.close()
   await rm(scratch, { recursive: true, force: true, maxRetries: 5 })
 }
 
+/** The parser's single-thread throughput over the corpus, the JIT warm: CPU time, median of three. */
+function parseThroughput(): number {
+  const corpus = generateSourceCorpus(shape)
+  const texts = [...corpus.files.values()].filter((value) => typeof value === 'string')
+  const pass = (): number => {
+    const before = process.cpuUsage()
+    for (const text of texts) parseDocument(text)
+    const used = process.cpuUsage(before)
+    return (used.user + used.system) / 1000
+  }
+  pass()
+  const ms = median([pass(), pass(), pass()])
+  return corpus.markdownBytes / 1e6 / (ms / 1000)
+}
+
 let over = false
-process.stdout.write(
-  `Sourced workspace budgets, ${name} (${documents} documents), median of ${RUNS} runs\n` +
-    'step   wall ms   cpu ms   budget ms\n',
-)
+const lines = [
+  `Sourced workspace budgets, ${name} (${documents} documents, ${threads === undefined ? 'one thread' : `a pool of ${threads.size} threads`}), median of ${RUNS} runs`,
+  'step       wall ms    cpu ms   wall budget   cpu budget',
+]
 for (const step of ['fetch', 'sync'] as const) {
   const runs = results[step]
   const wall = median(runs.map(({ wall: value }) => value))
   const cpu = median(runs.map(({ cpu: value }) => value))
-  const limit: number | null = BUDGET_MS[name][step]
-  const exceeded = limit !== null && wall > limit
+  const limits = BUDGETS[name][step]
+  const exceeded =
+    (limits.wall !== null && wall > limits.wall) || (limits.cpu !== null && cpu > limits.cpu)
   if (exceeded) over = true
-  const cells = [step.padEnd(6), Math.round(wall), Math.round(cpu), limit ?? '-'].map((cell) =>
-    String(cell).padStart(8),
+  const cells = [Math.round(wall), Math.round(cpu), limits.wall ?? '-', limits.cpu ?? '-']
+  lines.push(
+    `${step.padEnd(8)}${cells.map((cell) => String(cell).padStart(10)).join('  ')}${exceeded ? '  over' : ''}`,
   )
-  process.stdout.write(`${cells.join(' ')}${exceeded ? '  over' : ''}\n`)
 }
+const throughput = parseThroughput()
+const floor = BUDGETS[name].parseMBps
+const slow = floor !== null && throughput < floor
+if (slow) over = true
+lines.push(
+  `parse, one thread: ${throughput.toFixed(2)} MB/s (budget ${floor === null ? '-' : `at least ${floor}`})${slow ? '  under' : ''}`,
+)
+if (threads !== undefined) {
+  const starts = threads.startups()
+  const inspect = median(spans.map((span) => span.inspect))
+  const render = median(spans.map((span) => span.render))
+  const wall = median(results.sync.map((run) => run.wall))
+  lines.push(
+    `sync on the pool: inspect ${Math.round(inspect)} ms, render ${Math.round(render)} ms; the rest, on the calling thread: ${Math.round(wall - inspect - render)} ms`,
+    `worker start, built module: median ${Math.round(median(starts))} ms, longest ${Math.round(Math.max(0, ...starts))} ms, ${starts.length} starts`,
+  )
+}
+process.stdout.write(`${lines.join('\n')}\n`)
 if (budget && over) process.exitCode = 1

@@ -48,6 +48,7 @@ import { FakeSource, toFile } from '../test-support/fake-external-source.ts'
 import type { Commit, FileSpec } from '../test-support/fake-external-source.ts'
 import { compareRevisions } from './compare-revisions.ts'
 import { renderDocument } from './render-document.ts'
+import { inlineDocumentWork } from '../ports/document-work.ts'
 import { readAssetMap, SOURCE_ASSET_MAP_PATH } from './source-assets.ts'
 import { generatedFolderPath } from './source-folders.ts'
 import type { RenderDocumentDependencies } from './render-document.ts'
@@ -1180,6 +1181,62 @@ describe('syncSource with a manifest', () => {
       'docs/guides/a.md gone.md',
       'docs/guides/b.md map.png',
     ])
+  })
+
+  it('inspects a revision in one batch and renders what it wrote into the cache, on the pool it is given (ADR-062)', async () => {
+    const format = createFakeDocumentFormat()
+    const pool = inlineDocumentWork(format)
+    const batches: number[] = []
+    const work = {
+      pool: {
+        inspect: async (markdowns: readonly string[]) => {
+          batches.push(markdowns.length)
+          return await pool.inspect(markdowns)
+        },
+        render: pool.render,
+      },
+      hasher: createFakeHasher(),
+      settings: createFakeSettings(),
+    }
+    const h = harness(
+      [
+        {
+          id: 'c1',
+          files: {
+            [MANIFEST]: manifest(GUIDES_AT_DOCS),
+            'docs/guides/a.md': '# A',
+            'docs/guides/b.md': '# B',
+          },
+        },
+      ],
+      {},
+      { format, work },
+    )
+    await h.sync()
+    expect(batches).toEqual([2])
+    const deps = { ...h.deps, hasher: work.hasher, settings: work.settings }
+    const read = await renderDocument(deps, { documentId: await h.idAt('docs/guides/a.md') })
+    expect(read).toMatchObject({ kind: 'rendered', cached: true })
+  })
+
+  it('finishes a sync whose bodies could not be rendered ahead, leaving them to their first reader', async () => {
+    const format = createFakeDocumentFormat()
+    const h = harness(
+      [{ id: 'c1', files: { [MANIFEST]: manifest(GUIDES_AT_DOCS), 'docs/guides/a.md': '# A' } }],
+      {},
+      {
+        format,
+        work: {
+          pool: {
+            inspect: inlineDocumentWork(format).inspect,
+            render: () => Promise.reject(new Error('The pool is gone.')),
+          },
+          hasher: createFakeHasher(),
+          settings: createFakeSettings(),
+        },
+      },
+    )
+    expect(await h.sync()).toMatchObject({ kind: 'synced' })
   })
 
   it('breaks a tie between siblings by their paths, never by their random ids (ADR-062)', async () => {

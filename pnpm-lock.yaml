@@ -487,6 +487,9 @@ importers:
       '@quill/config':
         specifier: workspace:*
         version: link:../config
+      rolldown:
+        specifier: ^1.2.8
+        version: 1.2.8
 
   packages/highlight:
     dependencies:

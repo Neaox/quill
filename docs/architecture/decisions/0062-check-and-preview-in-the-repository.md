@@ -20,7 +20,7 @@ Both are a second renderer and a second checker. Neither can say what Quill will
 Facts of the code that shape the answer:
 
 - **The planning is pure and already shared once.** `source-manifest.ts`, `source-layout.ts`, `source-folders.ts`, `source-links.ts`, `source-assets.ts` and `source-files.ts` in `@quill/application` are pure. The source settings preview is extracting `source-plan.ts` (reading a revision's layout, accepting a document, reading its contents) so the preview and the sync place files the same way. `sync-source.ts` (1,850 lines) still interleaves the remaining decisions with its writes.
-- **Rendering is a pure function behind a port.** `DocumentFormat.render(input)` is implemented in `apps/server/src/infrastructure/markdown/document-format.ts` over `@quill/markdown`. The cache key is `renderCacheKey(hash(renderDigest(input, registry.signature)))` with `RENDER_VERSION` (16 today) (ADR-031).
+- **Rendering is a pure function behind a port.** `DocumentFormat.render(input)` is implemented in `@quill/format`'s `document-format.ts` over `@quill/markdown`. The cache key is `renderCacheKey(hash(renderDigest(input, registry.signature)))` with `RENDER_VERSION` (16 today) (ADR-031).
 - **The reading page is plain functions.** The public site's templates (`apps/server/src/public-site/templates`), its stylesheet and the theme stylesheet (`apps/server/src/theme/theme-stylesheet.ts`) are plain TypeScript over `@quill/design-css`, with no React. The reader preview already renders through the same page template.
 - **The asset pipeline needs no native code.** Sniffing, the allowlist, the size cap and metadata stripping (`attachments.ts`, `image-metadata.ts`) are TypeScript. `sharp` is used only by the server's image variants and link-preview transcoding (ADR-047, ADR-042).
 - **Rendering is CPU-bound, and parsing is most of it.** Measured on 10 November 2026 on the development machine (Ryzen 9 5900X, Node 24.22, rendering from TypeScript source through `createDocumentFormat`) over a real documentation repository's `docs/`: about 500 Markdown files, about 18 MB, median about 14 KB, 95th percentile about 150 KB, largest under 1 MB.
@@ -412,6 +412,44 @@ Every line a check or a health signal gives is a line of the file in the reposit
 - **Where it is used.** The health signals beside a page and `quill check`'s report both take the offset off each line they give. A native page has none to take off. None of these lines falls inside the stamped front matter; one that did would be given as line 1.
 - **Existing workspaces.** The layout fingerprint now carries how a tree is placed (`"placing": 2`). A workspace placed before offsets were kept is placed again on its next sync, as one was when folders became documents. Every path map entry is written anew, with its offset, and no revision is published for it. Until then, its lines are given as before.
 - Manifest lines (`manifest-invalid`, `manifest-unknown-key`, `manifest-default`) were already the manifest file's own, and are unchanged.
+
+## Amendment: the pool and the parser's rate (11 November 2026)
+
+Step 3 tuned the parser and moved the sync's document work onto a pool of threads. The single-thread target of 3 MB a second, and with it the sync's 10 seconds, cannot be met on the reference runner with micromark. This amendment sets the budgets from what the runner measures. They are revisited when the parser work (a separate ADR) lands, with 10 seconds as the aim.
+
+**What step 3 did, and what it gained:**
+
+- **Parse once.** The sync parses each document once to read its title, order and links, and the render takes that tree instead of parsing again. On the pool, a render goes to the thread that inspected its text, which kept the tree (`parsed-trees.ts`). Rendered bodies are byte for byte the same; the render phase of L's sync went from 8.0 to 1.3 seconds on a development machine.
+- **The GFM parts a text cannot hold are left out**, and a long document is read in 4 KB pieces. Parse throughput rose by about 40% at the same load, with identical output over every L and XL document.
+- **The pool.** L's sync on the runner takes 14.5 seconds on two threads, against 34.1 seconds on one.
+
+**The profile after tuning.** micromark's core tokenizer is about 52% of the parse. `unist-util-visit` is 13% (what remains of `readLinkComments` and find-and-replace). GFM tables and literal autolinks are 3.6% each, and Quill's own passes 2.8%. What is left to tune outside the tokenizer cannot bring 3 MB a second. The tokenizer is the parser work's to change.
+
+**The runner.** GitHub's `ubuntu-latest` hosted runner has 4 vCPUs, which are two cores with two hardware threads each, and its CPU model varies from run to run (an AMD EPYC 7763 and an Intel Xeon Platinum 8573C among them). Quill's full parse over L runs at 1.2 to 1.35 MB a second on one thread on a typical run. Single runs have measured as low as 0.87 and as high as 2.27.
+
+**L on the runner, median of three runs** (EPYC 7763; the fetch is 0.8 seconds in every row):
+
+| Sync of L | Wall | CPU | Inspecting | Rendering | The rest, on the calling thread | A thread's start |
+| --- | --- | --- | --- | --- | --- | --- |
+| One thread | 34.1 s | 37.8 s | | | | |
+| Pool of 2 | 14.5 s | 33.1 s | 8.5 s | 4.5 s | 1.5 s | 0.67 s |
+| Pool of 3 | 16.3 s | 54.1 s | 11.5 s | 3.2 s | 1.5 s | 0.94 s |
+| Pool of 4 | 15.3 s | 54.7 s | 10.7 s | 3.0 s | 1.6 s | 1.49 s |
+
+A thread loads the built worker module (`@quill/format`'s `dist/document-work-worker.mjs`), as production does. From TypeScript source it took about 2 seconds to start.
+
+**What the pull request's own runs measured.** The first `render-budgets` run of this amendment was on an AMD EPYC 9V45: 11.5 s wall and 32.9 s CPU on the pool of two, against 19.3 s and 21.6 s on one thread. The run after merging `main` was on an AMD EPYC 9V74: 14.2 s and 36.9 s, against 27.5 s and 30.4 s. The pool's CPU is therefore 21% to 50% above one thread's on the same runner, while its wall is a third to a half. The extra CPU is each thread's own isolate — compile, JIT and garbage collection in its heap — and it grows when the runner's cores are fast relative to the work. The budgets below take the slowest of those runs as the reference and leave about a fifth of headroom.
+
+**Decided:**
+
+- **The pool's size is half the logical cores, between one and four**: `min(4, max(1, floor(availableParallelism() / 2)))`, or `--jobs <n>`. This replaces `availableParallelism() − 1` in section 4, item 5. The parse is bound by the core, not the hardware thread. On the runner, two threads were faster than three or four, and used 40% less CPU time. On a machine with more cores the cap of four still holds, because four was as fast as eight with half the memory (Context). Half the machine is also left to whatever else the server is doing.
+- **The sync's budgets for L on the reference runner, binding:** at most **18 seconds wall**, and at most **45 seconds of CPU time** across every thread, measured by the process's own CPU time (`process.cpuUsage`) on the production path: the pool's default size and the built worker module. The first two runs of this amendment measured 11.5–14.2 s wall and 32.9–36.9 s CPU; a 15 s / 35 s budget had 3–5% margin and failed the slower of them. 18 s and 45 s leave about a fifth, and the wall row still holds the pool below the 19.3 s a single thread took on the faster runner. The CPU row holds the total work, so more threads cannot buy the wall time with waste.
+- **The fetch row is unchanged:** 4 seconds.
+- **The single-thread parse target becomes a floor:** at least **0.8 MB a second** for Quill's full parse over L on one thread, with the JIT warm. It catches a regression of about a third against a typical run, and stays under the runner's slowest single run so far. It is not a target. The target comes back with the parser work.
+- **The cold `check`, restated from the same numbers:** a cold `check` does the pool's work of a sync (one parse and one render of every document, at the same size of pool) without publishing. That is about 13 seconds of L on the runner, plus listing, hashing and a thread's start. The budget is **15 seconds for L**, and **45 seconds for XL**, which is about 40 megabytes of the same work. The arithmetic under the tool's table (3 MB a second, three workers, 8 seconds) is replaced by this.
+- **Unchanged:** the warm, pull-request and preview budgets, which parse a handful of documents; the memory ceilings, with each thread now keeping at most ten million characters of parsed trees (about 130 MB of its heap) for the renders that follow; and the linearity guard.
+- **Revisit** when the parser ADR's work lands: the aim is 10 seconds for the sync and 8 for the cold `check` of L, and the throughput target with them.
+- **XL's sync is reported, not budgeted:** 89.5 seconds wall on a pool of three, 48 of them on the calling thread. That share grows faster than the corpus, and is found and fixed separately.
 
 ## Decisions on acceptance
 

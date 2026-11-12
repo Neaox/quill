@@ -63,6 +63,7 @@ import type {
 
 import { documentTitle, retitleDocument } from './document-title.ts'
 import { createHighlighter } from './highlighter.ts'
+import type { ParsedTrees } from './parsed-trees.ts'
 import { incompleteRequiredSections } from './required-sections.ts'
 
 /**
@@ -92,6 +93,12 @@ export interface DocumentFormatOptions {
    * (ADR-043) — when not given; built once, here, as the format is.
    */
   readonly extensions?: MarkdownRegistry
+  /**
+   * Where `inspect` keeps the trees it parses and `render` takes them from,
+   * so a text inspected and then rendered is parsed once (`parsed-trees.ts`).
+   * A document work thread has one; the server's own format does not.
+   */
+  readonly trees?: ParsedTrees
 }
 
 export function createDocumentFormat(options: DocumentFormatOptions = {}): DocumentFormat {
@@ -169,7 +176,7 @@ export function createDocumentFormat(options: DocumentFormatOptions = {}): Docum
       resolvedLinks,
       resolvedImages,
     }: RenderInput): RenderedContent {
-      const { frontMatter, ast: written } = parseDocument(markdown)
+      const { frontMatter, ast: written } = options.trees?.take(markdown) ?? parseDocument(markdown)
       // A sourced document's relative links, where they resolved (ADR-061):
       // in the tree the body and its links are drawn from, never in the text.
       const ast = resolveDestinations(written, { links: resolvedLinks, images: resolvedImages })
@@ -217,7 +224,9 @@ export function createDocumentFormat(options: DocumentFormatOptions = {}): Docum
     },
 
     inspect(markdown: string): DocumentInspection {
-      const { frontMatter, ast } = parseDocument(markdown)
+      const parsed = parseDocument(markdown)
+      options.trees?.keep(markdown, parsed)
+      const { frontMatter, ast } = parsed
       return {
         view: { frontMatter, title: documentTitle(frontMatter, ast) },
         links: extractLinks(ast).map(toLink),

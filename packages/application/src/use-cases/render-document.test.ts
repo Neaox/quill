@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it } from 'vitest'
 import { documentId, userId, workspaceId } from '@quill/domain'
 import type { DocumentId } from '@quill/domain'
 import { RENDERED_CONTENT_VERSION } from '../ports/document-format.ts'
+import { inlineDocumentWork } from '../ports/document-work.ts'
 import type { RenderedContent } from '../ports/document-format.ts'
 
 import { createFakeContentStore } from '../test-support/fake-content-store.ts'
@@ -25,6 +26,7 @@ import {
   renderDigest,
   renderDocument,
   resolveLinks,
+  warmRenderedBodies,
 } from './render-document.ts'
 import { restoreRevision } from './restore-revision.ts'
 import { defaultOrganisationSettings } from '../settings/documents.ts'
@@ -694,5 +696,44 @@ describe('emoji (ADR-038)', () => {
     expect(renderDigest({ ...input, emoji: new Map([['a', glyph]]) })).not.toBe(
       renderDigest({ ...input, emoji: new Map([['a', image]]) }),
     )
+  })
+})
+
+describe('warmRenderedBodies (ADR-062)', () => {
+  it('renders each published head into the cache under the key a reader’s render looks for, once', async () => {
+    const first = await publish('First', 'One.')
+    const second = await publish('Second', 'Two.')
+    const unpublished = await createDocument(deps, {
+      workspaceId: WORKSPACE,
+      collectionId: 'architecture',
+      parentId: null,
+      title: 'Draft only',
+      createdBy: AUTHOR,
+    })
+    if (unpublished.kind !== 'created') throw new Error(unpublished.kind)
+    const rendered: string[] = []
+    const work = inlineDocumentWork(deps.format)
+    const counted = {
+      ...work,
+      render: async (inputs: Parameters<typeof work.render>[0]) => {
+        rendered.push(...inputs.map(({ markdown }) => markdown))
+        return await work.render(inputs)
+      },
+    }
+
+    expect(
+      await warmRenderedBodies({ ...deps, work: counted }, [
+        first,
+        second,
+        unpublished.document.id,
+      ]),
+    ).toBe(2)
+    expect(rendered).toHaveLength(2)
+    const read = await renderDocument(deps, { documentId: first })
+    expect(read).toMatchObject({ kind: 'rendered', cached: true })
+
+    // Already in the cache: nothing is rendered again.
+    expect(await warmRenderedBodies({ ...deps, work: counted }, [first, second])).toBe(0)
+    expect(rendered).toHaveLength(2)
   })
 })
