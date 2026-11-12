@@ -32,6 +32,7 @@ export {
   worktreeFiles,
 } from './git.ts'
 
+export { buildCodeIndexReport, type CodeIndexReport } from './report.ts'
 export {
   parseSqlSchema,
   type ParseSqlOptions,
@@ -42,3 +43,17 @@ export {
   type SchemaSnapshotV1,
   type SchemaTableV1,
 } from './schema/index.ts'
+
+export {
+  buildCodeIndex,
+  closeSession,
+  discoverSourceFiles,
+  extractFile,
+  loadScope,
+  openSession,
+  packageOf,
+  type BuildCodeIndexOptions,
+  type ExtractedFile,
+  type ScopePackage,
+  type Session,
+} from './typescript/index.ts'

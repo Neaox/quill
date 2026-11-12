@@ -1,3 +1,5 @@
+import { existsSync } from 'node:fs'
+
 import {
   CODE_INDEX_ARTIFACT_VERSION,
   type CodeFileV1,
@@ -27,15 +29,23 @@ export function buildCodeIndex(options: BuildCodeIndexOptions): CodeIndexArtifac
   const scope = loadScope(options.root, options.scopes)
   const blobs = worktreeBlobShas(options.root, options.files)
   const files: Record<string, CodeFileV1> = {}
+  const groups = new Map<string, string[]>()
   for (const scopeDir of options.scopes) {
     const scoped = options.files.filter((file) => file.startsWith(`${scopeDir}/src/`))
     if (scoped.length === 0) continue
-    const session = openSession(
-      options.root,
-      scope,
-      scoped,
-      `${options.root}/${scopeDir}/tsconfig.json`,
-    )
+    // A repository may give each package its own tsconfig (Quill) or one root
+    // config that includes every package (the PMS prototype). Use whichever
+    // exists, and share one session per config.
+    const project = existsSync(`${options.root}/${scopeDir}/tsconfig.json`)
+      ? `${options.root}/${scopeDir}/tsconfig.json`
+      : `${options.root}/tsconfig.json`
+    const queued = groups.get(project) ?? []
+    queued.push(...scoped)
+    groups.set(project, queued)
+  }
+
+  for (const [project, scoped] of groups) {
+    const session = openSession(options.root, scope, scoped, project)
     try {
       for (const file of scoped) {
         const blob = blobs.get(file)
