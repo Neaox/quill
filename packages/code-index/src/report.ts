@@ -217,10 +217,10 @@ function svg(paths: string): string {
 }
 
 const STYLE = `
-:root{color-scheme:light dark;--bg:#fbfbfa;--surface:#fff;--surface-2:#f4f4f1;--fg:#1b1b19;--muted:#6d6d67;--faint:#8f8f88;--border:#e4e4df;--accent:#1f5fbf;--accent-soft:#eef4ff;--code-bg:#f3f3ef;--good:#1f7a4d;--good-soft:#e9f6ee;--bad:#a33a3a;--bad-soft:#fbeeee;--warn:#7a5a00;--warn-soft:#fff6d8;--radius:10px;--shadow:0 1px 2px rgba(20,20,18,.04),0 10px 30px rgba(20,20,18,.035)}
+:root{color-scheme:light dark;--header-h:72px;--bg:#fbfbfa;--surface:#fff;--surface-2:#f4f4f1;--fg:#1b1b19;--muted:#6d6d67;--faint:#8f8f88;--border:#e4e4df;--accent:#1f5fbf;--accent-soft:#eef4ff;--code-bg:#f3f3ef;--good:#1f7a4d;--good-soft:#e9f6ee;--bad:#a33a3a;--bad-soft:#fbeeee;--warn:#7a5a00;--warn-soft:#fff6d8;--radius:10px;--shadow:0 1px 2px rgba(20,20,18,.04),0 10px 30px rgba(20,20,18,.035)}
 @media (prefers-color-scheme:dark){:root{--bg:#151514;--surface:#1d1d1b;--surface-2:#242421;--fg:#efefea;--muted:#a7a7a0;--faint:#7e7e77;--border:#32322e;--accent:#8ab8ff;--accent-soft:#1c2b43;--code-bg:#252522;--good:#75d3a3;--good-soft:#173226;--bad:#f0a3a3;--bad-soft:#3a1d1d;--warn:#f0d27a;--warn-soft:#352c12;--shadow:0 1px 2px rgba(0,0,0,.25),0 12px 30px rgba(0,0,0,.22)}}
 *{box-sizing:border-box}
-html{scroll-behavior:smooth}
+html{scroll-behavior:smooth;scroll-padding-top:calc(var(--header-h,72px) + 16px)}
 body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.55 ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;-webkit-font-smoothing:antialiased}
 code,pre,kbd{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace}
 a{color:var(--accent);text-underline-offset:2px}
@@ -250,7 +250,7 @@ h1{font-size:17px;line-height:1.25;margin:0;letter-spacing:-.01em}
 .toggle{font-size:12.5px;color:var(--muted);display:inline-flex;gap:6px;align-items:center;cursor:pointer}
 .count{font-size:12.5px;color:var(--muted);white-space:nowrap}
 .layout{max-width:1320px;margin-inline:auto;display:grid;grid-template-columns:280px minmax(0,1fr);gap:30px;align-items:start}
-.sidebar{position:sticky;top:72px;max-height:calc(100vh - 90px);overflow:auto;padding:18px 0 24px;border-right:1px solid var(--border)}
+.sidebar{position:sticky;top:calc(var(--header-h,72px) + 16px);max-height:calc(100vh - var(--header-h,72px) - 32px);overflow:auto;padding:18px 0 24px;border-right:1px solid var(--border);z-index:1}
 .sidebar-head{display:flex;align-items:baseline;justify-content:space-between;padding-right:18px;margin-bottom:8px}
 .sidebar-head h2{font-size:11.5px;text-transform:uppercase;letter-spacing:.08em;color:var(--faint);margin:0}
 .tree{font-size:13px;padding-right:18px}
@@ -284,7 +284,7 @@ details[open] > summary > .chevron{transform:rotate(90deg)}
 .section-head h2{font-size:15px;letter-spacing:.02em;text-transform:uppercase;color:var(--muted);margin:0 0 3px}
 .hint{margin:0;color:var(--faint);font-size:12.5px}
 .results{display:grid;gap:10px}
-article.card{border:1px solid var(--border);border-radius:var(--radius);background:var(--surface);box-shadow:var(--shadow);padding:14px 16px;display:grid;grid-template-columns:26px minmax(0,1fr);gap:12px;scroll-margin-top:90px}
+article.card{border:1px solid var(--border);border-radius:var(--radius);background:var(--surface);box-shadow:var(--shadow);padding:14px 16px;display:grid;grid-template-columns:26px minmax(0,1fr);gap:12px;scroll-margin-top:calc(var(--header-h,72px) + 18px)}
 article.card:target{box-shadow:0 0 0 3px var(--accent-soft),var(--shadow);border-color:var(--accent)}
 .kind{width:26px;height:26px;border-radius:7px;display:grid;place-items:center;background:var(--surface-2);color:var(--muted)}
 .kind svg{width:16px;height:16px}
@@ -340,6 +340,11 @@ footer p{margin:0}
 
 const SCRIPT = `
 const data = JSON.parse(document.getElementById("data").textContent);
+const header = document.querySelector(".topbar");
+function syncHeaderHeight() { document.documentElement.style.setProperty("--header-h", header.getBoundingClientRect().height + "px"); }
+syncHeaderHeight();
+if (typeof ResizeObserver !== "undefined") new ResizeObserver(syncHeaderHeight).observe(header);
+window.addEventListener("resize", syncHeaderHeight);
 const q = document.getElementById("q"), local = document.getElementById("local");
 const count = document.getElementById("count"), treeCount = document.getElementById("tree-count");
 const code = document.getElementById("code"), schemaList = document.getElementById("schema");
