@@ -284,7 +284,7 @@ details[open] > summary > .chevron{transform:rotate(90deg)}
 .section-head h2{font-size:15px;letter-spacing:.02em;text-transform:uppercase;color:var(--muted);margin:0 0 3px}
 .hint{margin:0;color:var(--faint);font-size:12.5px}
 .results{display:grid;gap:10px}
-article.card{border:1px solid var(--border);border-radius:var(--radius);background:var(--surface);box-shadow:var(--shadow);padding:14px 16px;display:grid;grid-template-columns:26px minmax(0,1fr);gap:12px;scroll-margin-top:calc(var(--header-h,72px) + 18px)}
+article.card{border:1px solid var(--border);border-radius:var(--radius);background:var(--surface);box-shadow:var(--shadow);padding:14px 16px;display:grid;grid-template-columns:26px minmax(0,1fr);gap:12px}
 article.card:target{box-shadow:0 0 0 3px var(--accent-soft),var(--shadow);border-color:var(--accent)}
 .kind{width:26px;height:26px;border-radius:7px;display:grid;place-items:center;background:var(--surface-2);color:var(--muted)}
 .kind svg{width:16px;height:16px}
@@ -537,6 +537,11 @@ document.addEventListener("click", async (event) => {
 });
 q.addEventListener("input", render);
 local.addEventListener("change", render);
+tree.addEventListener("click", (event) => {
+  const link = event.target.closest("a[href^='#']");
+  if (!link) return;
+  if (mode === "code") setMode("all");
+});
 for (const button of document.querySelectorAll(".mode button")) button.addEventListener("click", () => setMode(button.dataset.mode));
 const ICONS = ${jsonForScript(ICONS)};
 render();
