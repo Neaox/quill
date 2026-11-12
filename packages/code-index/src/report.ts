@@ -327,7 +327,7 @@ table.data code{background:none;padding:0;color:var(--muted);font-size:12px}
 .key-badge.pk{background:var(--accent-soft);color:var(--accent)}
 .key-badge.uq{background:var(--good-soft);color:var(--good)}
 .key-badge.fk{background:var(--warn-soft);color:var(--warn)}
-.fk-link{color:var(--accent)}
+.fk-link,.type-ref{color:var(--accent)}.readable-type{margin-top:9px}.readable-type .kind-label{display:block;margin-bottom:3px}
 .fn-meta{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
 footer{border-top:1px solid var(--border);margin-top:40px;padding-block:18px;color:var(--faint);font-size:12px;max-width:1320px;margin-inline:auto}
 footer p{margin:0}
@@ -346,6 +346,9 @@ function syncHeaderHeight() { document.documentElement.style.setProperty("--head
 syncHeaderHeight();
 if (typeof ResizeObserver !== "undefined") new ResizeObserver(syncHeaderHeight).observe(header);
 window.addEventListener("resize", syncHeaderHeight);
+const SYMBOL_TYPE_KINDS = new Set(["type", "interface", "class", "enum"]);
+const typeUsage = new Map();
+for (const symbol of data.symbols) for (const ref of symbol.typeRefs || []) if (ref.moniker) { const list = typeUsage.get(ref.moniker) || []; list.push(symbol); typeUsage.set(ref.moniker, list); }
 const q = document.getElementById("q"), local = document.getElementById("local");
 const count = document.getElementById("count"), treeCount = document.getElementById("tree-count");
 const code = document.getElementById("code"), schemaList = document.getElementById("schema");
@@ -401,10 +404,44 @@ function symbolCard(symbol) {
     const pre = el("pre", { className: "signature" }); pre.innerHTML = highlight(symbol.signature); inferred.append(pre);
     body.append(inferred);
   }
+  if (symbol.inferredTypeRef) {
+    body.append(el("p", { className: "meta-row" }, "Named type: ", el("a", { className: "type-ref", href: "#symbol-" + idFor(symbol.inferredTypeRef.moniker || symbol.inferredTypeRef.name), textContent: symbol.inferredTypeRef.name })));
+  }
+  if (symbol.schemaRef) {
+    body.append(el("p", { className: "meta-row" }, "Defined from: ", el("a", { className: "type-ref", href: "#symbol-" + idFor(symbol.schemaRef.moniker || symbol.schemaRef.name), textContent: symbol.schemaRef.name })));
+  }
+  if (symbol.readableType) {
+    const shape = el("div", { className: "readable-type" });
+    shape.append(el("div", { className: "kind-label", textContent: "Data shape" }));
+    const pre = el("pre", { className: "signature" }); pre.innerHTML = highlight(symbol.readableType); shape.append(pre);
+    body.append(shape);
+  }
   body.append(symbol.description ? el("p", { className: "description", textContent: symbol.description }) : el("p", { className: "empty-desc", textContent: "No description in the code." }));
   if (symbol.value) body.append(el("p", { className: "meta-row", textContent: "Value: " + symbol.value }));
   if (symbol.params.length) body.append(el("p", { className: "meta-row", textContent: "Parameters: " + symbol.params.map((p) => p.name + ": " + compact(p.type, 90) + (p.optional ? "?" : "")).join(" · ") }));
-  if (symbol.returnType && symbol.kind !== "type" && symbol.kind !== "interface") body.append(el("p", { className: "meta-row", textContent: "Returns: " + compact(symbol.returnType, 90) }));
+  if (symbol.returnType && (symbol.kind === "function" || symbol.kind === "method" || symbol.kind === "constructor")) {
+    body.append(el("p", { className: "meta-row", textContent: "Returns: " + compact(symbol.returnType, 90) }));
+    if (compact(symbol.returnType, 90) !== symbol.returnType) {
+      const full = el("details", { className: "type-full" }); full.append(el("summary", { textContent: "Full return type" }));
+      const pre = el("pre", { className: "signature" }); pre.innerHTML = highlight(symbol.returnType); full.append(pre); body.append(full);
+    }
+  }
+  if (symbol.typeRefs && symbol.typeRefs.length) {
+    const row = el("p", { className: "meta-row" }); row.append("Types: ");
+    symbol.typeRefs.forEach((ref, index) => {
+      if (index) row.append(" · ");
+      if (ref.moniker) row.append(el("a", { className: "type-ref", href: "#symbol-" + idFor(ref.moniker), textContent: ref.name }));
+      else row.append(el("span", { textContent: ref.name }));
+    });
+    body.append(row);
+  }
+  if ((symbol.kind === "type" || symbol.kind === "interface" || symbol.kind === "class" || symbol.kind === "enum") && typeUsage.has(symbol.moniker)) {
+    const users = typeUsage.get(symbol.moniker);
+    const row = el("p", { className: "meta-row" }); row.append("Used by " + users.length + " symbol" + (users.length === 1 ? "" : "s") + ": ");
+    users.slice(0, 8).forEach((user, index) => { if (index) row.append(" · "); row.append(el("a", { className: "type-ref", href: "#symbol-" + idFor(user.moniker), textContent: user.name })); });
+    if (users.length > 8) row.append(" · …");
+    body.append(row);
+  }
   const tags = [...symbol.concepts.map((c) => ({ text: c, className: "key" })), ...symbol.keywords.map((c) => ({ text: c, className: "" })), ...symbol.tags.filter((t) => t.name !== "keywords" && t.name !== "concept").map((t) => ({ text: "@" + t.name + (t.text ? " " + t.text : ""), className: t.name === "deprecated" ? "deprecated" : "" }))];
   if (tags.length) { const row = el("div", { className: "tags" }); for (const tag of tags) row.append(el("span", { className: "tag " + tag.className, textContent: tag.text })); body.append(row); }
   if (symbol.usedBy.length) body.append(el("p", { className: "meta-row", textContent: "Used " + symbol.usedBy.length + " time" + (symbol.usedBy.length === 1 ? "" : "s") + " in " + new Set(symbol.usedBy.map((u) => u.file)).size + " file" + (new Set(symbol.usedBy.map((u) => u.file)).size === 1 ? "" : "s") }));
@@ -467,17 +504,18 @@ function functionCard(fn) {
 function textOf(value) { return (value || "").toLowerCase(); }
 function symbolMatches(symbol, query) {
   if (!query) return true;
-  const text = textOf(symbol.name) + " " + textOf(symbol.package) + " " + textOf(symbol.module) + " " + textOf(symbol.signature) + " " + textOf(symbol.definition) + " " + textOf(symbol.description) + " " + symbol.tags.map((t) => textOf(t.name) + " " + textOf(t.text)).join(" ") + " " + symbol.keywords.join(" ") + " " + symbol.concepts.join(" ");
+  const text = textOf(symbol.name) + " " + textOf(symbol.package) + " " + textOf(symbol.module) + " " + textOf(symbol.signature) + " " + textOf(symbol.definition) + " " + textOf(symbol.readableType) + " " + textOf((symbol.typeRefs || []).map((ref) => ref.name).join(" ")) + " " + textOf(symbol.description) + " " + symbol.tags.map((t) => textOf(t.name) + " " + textOf(t.text)).join(" ") + " " + symbol.keywords.join(" ") + " " + symbol.concepts.join(" ");
   return text.includes(query);
 }
-function symbolScore(symbol, query) {
+function symbolScore(symbol, rawQuery, query) {
   if (!query) return 0;
+  if (symbol.name === rawQuery) return 0;
   const name = textOf(symbol.name);
-  if (name === query) return 0;
-  if (name.startsWith(query)) return 1;
-  if (textOf(symbol.package + "/" + symbol.module).includes(query)) return 2;
-  if (textOf(symbol.signature).includes(query)) return 3;
-  return 4;
+  if (name === query) return SYMBOL_TYPE_KINDS.has(symbol.kind) ? 1 : 2;
+  if (name.startsWith(query)) return 3;
+  if (textOf(symbol.package + "/" + symbol.module).includes(query)) return 4;
+  if (textOf(symbol.signature).includes(query)) return 5;
+  return 6;
 }
 function tableMatches(table, query) {
   if (!query) return true;
@@ -550,11 +588,12 @@ function renderSchema(query) {
 }
 function setMode(next) { mode = next; for (const button of document.querySelectorAll(".mode button")) button.setAttribute("aria-pressed", String(button.dataset.mode === mode)); render(); }
 function render() {
-  const query = q.value.trim().toLowerCase();
+  const rawQuery = q.value.trim();
+  const query = rawQuery.toLowerCase();
   const allSymbols = data.symbols.filter((symbol) => local.checked || symbol.visibility !== "local");
   const found = allSymbols
     .filter((symbol) => symbolMatches(symbol, query))
-    .toSorted((left, right) => symbolScore(left, query) - symbolScore(right, query) || left.moniker.localeCompare(right.moniker));
+    .toSorted((left, right) => symbolScore(left, rawQuery, query) - symbolScore(right, rawQuery, query) || left.moniker.localeCompare(right.moniker));
   const showCode = mode !== "schema", showSchema = mode !== "code";
   codeSection.hidden = !showCode; schemaSection.hidden = !showSchema;
   count.textContent = found.length.toLocaleString() + " symbols · " + data.tables.length.toLocaleString() + " tables · " + data.functions.length.toLocaleString() + " functions";

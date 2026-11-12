@@ -37,6 +37,12 @@ export interface DocTag {
   readonly text: string
 }
 
+export interface TypeReference {
+  readonly name: string
+  /** Present when the target declaration was in the scanned set. */
+  readonly moniker?: string
+}
+
 export interface CodeSymbolV1 {
   /** Stable across snapshots within a source: `typescript:packages/domain:packages/domain/src/result.ts#ok`. */
   readonly moniker: string
@@ -61,6 +67,14 @@ export interface CodeSymbolV1 {
   readonly tags: readonly DocTag[]
   readonly keywords: readonly string[]
   readonly concepts: readonly string[]
+  /** Named types mentioned by the declaration: parameters, return type, heritage or a type alias's right side. */
+  readonly typeRefs?: readonly TypeReference[]
+  /** A readable data shape for a schema-builder value, such as `z.object({...})`. */
+  readonly readableType?: string
+  /** The named output alias for a schema value: `AccountOpening` for `ACCOUNT_OPENING`. */
+  readonly inferredTypeRef?: TypeReference
+  /** The schema value a named output alias is defined from. */
+  readonly schemaRef?: TypeReference
   readonly startLine: number
   readonly endLine: number
   /** Cyclomatic complexity; functions only. */

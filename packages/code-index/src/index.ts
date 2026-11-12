@@ -12,6 +12,7 @@ export {
   type SourceParameter,
   type SymbolKind,
   type SymbolUsage,
+  type TypeReference,
   type SymbolVisibility,
 } from './artifact.ts'
 export {

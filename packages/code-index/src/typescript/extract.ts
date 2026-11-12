@@ -36,6 +36,7 @@ import type {
   SymbolVisibility,
 } from '../artifact.ts'
 import type { ScopePackage } from './scope.ts'
+import { schemaDisplay, schemaOutputAlias } from './schema-display.ts'
 import type { ExtractedFile } from './types.ts'
 
 export interface Session {
@@ -327,7 +328,27 @@ function extractSymbols(
   pkg: ScopePackage,
 ): CodeSymbolV1[] {
   const { checker } = session
-  return declarations(source).map((declared) => {
+  const declaredList = declarations(source)
+  const aliasByTarget = new Map<string, string>()
+  const aliasTarget = new Map<string, string>()
+  const readableByConst = new Map<string, string>()
+  for (const entry of declaredList) {
+    if (entry.kind === 'type') {
+      const target = schemaOutputAlias(entry.node)
+      if (target !== undefined) {
+        aliasByTarget.set(target, entry.name)
+        aliasTarget.set(entry.name, target)
+      }
+    }
+    if (entry.kind === 'const') {
+      const display = schemaDisplay(initializerOf(entry.node, entry.nameNode))
+      if (display !== undefined) readableByConst.set(entry.name, display.readableType)
+    }
+  }
+  return declaredList.map((declared) => {
+    const inferredAlias = aliasByTarget.get(declared.name)
+    const schemaTarget = aliasTarget.get(declared.name)
+    const readableType = readableTypeOf(declared, aliasTarget, readableByConst)
     const symbol = checker.getSymbolAtLocation(declared.nameNode)
     const tags = symbol ? toTags(checker.getJsDocTagsOfSymbol(symbol)) : []
     const description = symbol ? checker.getDocumentationCommentOfSymbol(symbol).trim() : ''
@@ -366,6 +387,23 @@ function extractSymbols(
       startLine: source.getLineAndCharacterOfPosition(start).line + 1,
       endLine: source.getLineAndCharacterOfPosition(end.getEnd()).line + 1,
       complexity: body ? complexity(body) : null,
+      ...(readableType === undefined ? {} : { readableType }),
+      ...(inferredAlias === undefined
+        ? {}
+        : {
+            inferredTypeRef: {
+              name: inferredAlias,
+              moniker: monikerOf(pkg.name, file, inferredAlias),
+            },
+          }),
+      ...(schemaTarget === undefined
+        ? {}
+        : {
+            schemaRef: {
+              name: schemaTarget,
+              moniker: monikerOf(pkg.name, file, schemaTarget),
+            },
+          }),
     }
   })
 }
@@ -384,15 +422,27 @@ function constantDefinition(node: Node): { definition?: string } {
   return text.length <= 8_000 ? { definition: text } : {}
 }
 
+function readableTypeOf(
+  declared: Declared,
+  aliasTarget: ReadonlyMap<string, string>,
+  readableByConst: ReadonlyMap<string, string>,
+): string | undefined {
+  if (declared.kind === 'const') return readableByConst.get(declared.name)
+  const target = aliasTarget.get(declared.name)
+  return target === undefined ? undefined : readableByConst.get(target)
+}
+
+function initializerOf(node: Node, nameNode: Node): Node | undefined {
+  const statement = node as Node & {
+    declarationList?: { declarations?: readonly (Node & { name?: Node; initializer?: Node })[] }
+  }
+  return statement.declarationList?.declarations?.find((candidate) => candidate.name === nameNode)
+    ?.initializer
+}
+
 /** A literal constant's value, so the report can show `= "value"` rather than only a type. */
 function literalValue(node: Node, nameNode: Node): { value?: string } {
-  const statement = node as Node & {
-    declarationList?: { declarations?: readonly (Node & { initializer?: Node })[] }
-  }
-  const declaration = statement.declarationList?.declarations?.find(
-    (candidate) => (candidate as Node & { name?: Node }).name === nameNode,
-  )
-  const initializer = declaration?.initializer
+  const initializer = initializerOf(node, nameNode)
   if (!initializer) return {}
   if (
     initializer.kind === SyntaxKind.StringLiteral ||

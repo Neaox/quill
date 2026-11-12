@@ -26,6 +26,8 @@ describe('TypeScript extractor', () => {
     ).toBe(true)
     const result = file?.symbols.find((symbol) => symbol.name === 'Result')
     expect(result?.definition).toContain('type Result')
+    const ok = file?.symbols.find((symbol) => symbol.name === 'ok')
+    expect(ok?.typeRefs?.map((reference) => reference.name)).toContain('Result')
 
     const decoded = decodeCodeIndexArtifact(encodeCodeIndexArtifact(artifact))
     expect(decoded.ok).toBe(true)

@@ -57,6 +57,8 @@ export function buildCodeIndex(options: BuildCodeIndexOptions): CodeIndexArtifac
     }
   }
 
+  linkTypeReferences(files)
+
   return {
     formatVersion: CODE_INDEX_ARTIFACT_VERSION,
     tool: options.tool,
@@ -64,6 +66,55 @@ export function buildCodeIndex(options: BuildCodeIndexOptions): CodeIndexArtifac
     repo: remoteSlug(options.root) ?? '',
     generatedAt: options.generatedAt,
     files,
+  }
+}
+
+const TYPE_KINDS = new Set(['type', 'interface', 'class', 'enum'])
+const TYPE_TOKEN = /\b[A-Za-z_$][\w$]*\b/g
+
+/**
+ * Link a symbol to the named types its own declaration mentions. This is a
+ * post-build text pass, not a compiler walk: the declaration and signature
+ * already contain the names, and resolving every identifier in every symbol
+ * made the index five times slower for little extra precision.
+ */
+function linkTypeReferences(files: Record<string, CodeFileV1>): void {
+  const types = new Map<string, string[]>()
+  for (const file of Object.values(files)) {
+    for (const symbol of file.symbols) {
+      if (!TYPE_KINDS.has(symbol.kind)) continue
+      const list = types.get(symbol.name) ?? []
+      list.push(symbol.moniker)
+      types.set(symbol.name, list)
+    }
+  }
+
+  for (const [path, file] of Object.entries(files)) {
+    files[path] = {
+      ...file,
+      symbols: file.symbols.map((symbol) => {
+        const text = [symbol.signature, symbol.definition, symbol.readableType]
+          .filter((part) => part !== undefined)
+          .join('\n')
+        const refs = new Map<string, { name: string; moniker?: string }>()
+        for (const match of text.matchAll(TYPE_TOKEN)) {
+          const name = match[0]
+          if (name === symbol.name) continue
+          const monikers = types.get(name)
+          if (monikers === undefined) continue
+          const moniker = monikers.length === 1 ? monikers[0] : undefined
+          refs.set(name, moniker === undefined ? { name } : { name, moniker })
+        }
+        return refs.size === 0
+          ? symbol
+          : {
+              ...symbol,
+              typeRefs: [...refs.values()].toSorted((left, right) =>
+                left.name.localeCompare(right.name),
+              ),
+            }
+      }),
+    }
   }
 }
 
