@@ -28,11 +28,14 @@ new dependency?
   repository.
 - **`typescript/build.ts`** — the first build function. The caller chooses the
   corpus, so a test can index one module and the CLI can index the repository.
+- **`schema/`** — `parseSqlSchema`, a metadata-only reader for the `CREATE TABLE`
+  and `CREATE VIEW` shapes a migration folder uses: columns, types,
+  nullability, defaults, primary and unique keys, foreign keys and source line.
 
 ## What it deliberately does not own
 
-- The schema extractor. It is the next slice; the artifact has the shape for
-  it, but no database reading happens here.
+- The live-catalog introspector. The SQL migration parser is here; connecting
+  to a database and reading its catalogs is the next slice.
 - The server, the pages, search, permissions and references. They belong to
   the application and web layers.
 - A watch mode, a hosted index or a language other than TypeScript.

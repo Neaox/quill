@@ -31,3 +31,14 @@ export {
   worktreeBlobShas,
   worktreeFiles,
 } from './git.ts'
+
+export {
+  parseSqlSchema,
+  type ParseSqlOptions,
+  type SchemaColumnV1,
+  type SchemaDialect,
+  type SchemaForeignKeyV1,
+  type SchemaReference,
+  type SchemaSnapshotV1,
+  type SchemaTableV1,
+} from './schema/index.ts'
