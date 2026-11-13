@@ -306,7 +306,7 @@ article.card:target{box-shadow:0 0 0 3px var(--accent-soft),var(--shadow);border
 article:hover .copy,.copy:focus-visible{opacity:1}
 .copy:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .signature{margin:8px 0 0;padding:9px 11px;background:var(--code-bg);border:1px solid var(--border);border-radius:7px;font-size:12.5px;line-height:1.5;white-space:pre-wrap;overflow-wrap:anywhere;color:var(--fg)}
-.type-full,.definition{margin:6px 0 0}.type-full summary,.definition summary{cursor:pointer;color:var(--muted);font-size:12px;width:fit-content}.type-full summary:focus-visible,.definition summary:focus-visible{outline:2px solid var(--accent);outline-offset:2px}.definition pre{max-height:420px;overflow:auto}.schema-view{margin-top:8px}.schema-toggle{display:inline-flex;border:1px solid var(--border);border-radius:7px;background:var(--surface-2);padding:2px;margin-bottom:6px}.schema-toggle button{font:inherit;font-size:11.5px;padding:3px 8px;border:0;border-radius:5px;background:transparent;color:var(--muted);cursor:pointer}.schema-toggle button[aria-pressed="true"]{background:var(--surface);color:var(--accent);font-weight:600;box-shadow:0 1px 2px rgba(0,0,0,.08)}.schema-toggle button:focus-visible{outline:2px solid var(--accent);outline-offset:1px}.schema-panel[hidden]{display:none}
+.type-full,.definition{margin:6px 0 0}.type-full summary,.definition summary{cursor:pointer;color:var(--muted);font-size:12px;width:fit-content}.type-full summary:focus-visible,.definition summary:focus-visible{outline:2px solid var(--accent);outline-offset:2px}.definition pre{max-height:420px;overflow:auto}.code-shell{margin-top:8px}.signature.clamped{max-height:10.5em;overflow:hidden;mask-image:linear-gradient(to bottom,#000 62%,transparent 100%)}.signature.expanded{max-height:70vh;overflow:auto;mask-image:none}.expand{font:inherit;font-size:11.5px;border:0;background:none;color:var(--accent);padding:3px 0;cursor:pointer}.expand:focus-visible{outline:2px solid var(--accent);outline-offset:2px}.schema-view{margin-top:8px}.schema-toggle{display:inline-flex;border:1px solid var(--border);border-radius:7px;background:var(--surface-2);padding:2px;margin-bottom:6px}.schema-toggle button{font:inherit;font-size:11.5px;padding:3px 8px;border:0;border-radius:5px;background:transparent;color:var(--muted);cursor:pointer}.schema-toggle button[aria-pressed="true"]{background:var(--surface);color:var(--accent);font-weight:600;box-shadow:0 1px 2px rgba(0,0,0,.08)}.schema-toggle button:focus-visible{outline:2px solid var(--accent);outline-offset:1px}.schema-panel[hidden]{display:none}
 .description{margin:8px 0 0;color:var(--fg);max-width:78ch}
 .empty-desc{margin:8px 0 0;color:var(--faint);font-style:italic}
 .meta-row{margin:7px 0 0;color:var(--muted);font-size:12.5px}
@@ -395,14 +395,22 @@ function prettyType(value) {
   }
   return out;
 }
-function codePanel(text) {
-  const panel = el("div", { className: "schema-panel" });
-  const pre = el("pre", { className: "signature" }); pre.innerHTML = highlight(compact(text)); panel.append(pre);
-  if (compact(text) !== text) {
-    const full = el("details", { className: "type-full" }); full.append(el("summary", { textContent: "Show full" }));
-    const raw = el("pre", { className: "signature" }); raw.innerHTML = highlight(text); full.append(raw); panel.append(full);
-  }
-  return panel;
+function codeBlock(text, label = "Show full") {
+  const pre = el("pre", { className: "signature" });
+  pre.innerHTML = highlight(text);
+  const lineFeed = String.fromCharCode(10);
+  const long = text.length > 260 || text.split(lineFeed).length > 9;
+  if (!long) return pre;
+  pre.classList.add("clamped");
+  const shell = el("div", { className: "code-shell" });
+  const button = el("button", { type: "button", className: "expand", "aria-expanded": "false", textContent: label });
+  button.addEventListener("click", () => {
+    const expanded = pre.classList.toggle("expanded");
+    button.textContent = expanded ? "Show less" : label;
+    button.setAttribute("aria-expanded", String(expanded));
+  });
+  shell.append(pre, button);
+  return shell;
 }
 function schemaView(symbol) {
   const view = el("div", { className: "schema-view" });
@@ -410,8 +418,8 @@ function schemaView(symbol) {
   const inferred = "type " + inferredName + " = " + prettyType(symbol.readableType) + ";";
   const source = symbol.definition || symbol.signature;
   const alias = Boolean(symbol.schemaRef);
-  const sourcePanel = codePanel(source);
-  const inferredPanel = codePanel(inferred);
+  const sourcePanel = codeBlock(source);
+  const inferredPanel = codeBlock(inferred);
   const sourceButton = el("button", { type: "button", "aria-pressed": String(!alias), textContent: alias ? "Source" : "Schema" });
   const inferredButton = el("button", { type: "button", "aria-pressed": String(alias), textContent: "Inferred" });
   const controls = el("div", { className: "schema-toggle", role: "group", "aria-label": "Type view" }, sourceButton, inferredButton);
@@ -438,14 +446,7 @@ function symbolCard(symbol) {
   } else {
     const declarationFirst = symbol.definition && (symbol.kind === "const" || symbol.kind === "type" || symbol.kind === "interface" || symbol.kind === "class");
     const primary = declarationFirst ? symbol.definition : symbol.signature;
-    const displayed = compact(primary);
-    const primaryBlock = el("pre", { className: "signature" }); primaryBlock.innerHTML = highlight(displayed); body.append(primaryBlock);
-    if (displayed !== primary) {
-      const full = el("details", { className: "type-full" });
-      full.append(el("summary", { textContent: symbol.kind === "const" ? "Show full declaration" : "Show full signature" }));
-      const pre = el("pre", { className: "signature" }); pre.innerHTML = highlight(primary); full.append(pre);
-      body.append(full);
-    }
+    body.append(codeBlock(primary, symbol.kind === "const" ? "Show full declaration" : "Show full signature"));
   }
   if (symbol.inferredTypeRef) {
     body.append(el("p", { className: "meta-row" }, "Named type: ", el("a", { className: "type-ref", href: "#symbol-" + idFor(symbol.inferredTypeRef.moniker || symbol.inferredTypeRef.name), textContent: symbol.inferredTypeRef.name })));
@@ -459,8 +460,8 @@ function symbolCard(symbol) {
   if (symbol.returnType && (symbol.kind === "function" || symbol.kind === "method" || symbol.kind === "constructor")) {
     body.append(el("p", { className: "meta-row", textContent: "Returns: " + compact(symbol.returnType, 90) }));
     if (compact(symbol.returnType, 90) !== symbol.returnType) {
-      const full = el("details", { className: "type-full" }); full.append(el("summary", { textContent: "Full return type" }));
-      const pre = el("pre", { className: "signature" }); pre.innerHTML = highlight(symbol.returnType); full.append(pre); body.append(full);
+      body.append(el("div", { className: "kind-label", textContent: "Full return type" }));
+      body.append(codeBlock(symbol.returnType));
     }
   }
   if (symbol.typeRefs && symbol.typeRefs.length) {
