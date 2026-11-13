@@ -46,7 +46,7 @@ export interface SchemaNamespaceV1 {
 export interface SchemaFunctionV1 {
   readonly schema: string
   readonly name: string
-  /** `lockstay_tenant()` or `payments.capture(uuid, text)`. */
+  /** `current_tenant()` or `payments.capture(uuid, text)`. */
   readonly signature: string
   readonly returns?: string
   readonly language?: string

@@ -35,11 +35,18 @@ export {
 
 export { buildCodeIndexReport, type CodeIndexReport } from './report.ts'
 export {
+  assemblePostgresSchema,
   parseSqlSchema,
+  readPostgresSchema,
   type ParseSqlOptions,
+  type PostgresCatalogRows,
+  type PostgresQueryClient,
+  type ReadPostgresSchemaOptions,
   type SchemaColumnV1,
   type SchemaDialect,
   type SchemaForeignKeyV1,
+  type SchemaFunctionV1,
+  type SchemaNamespaceV1,
   type SchemaReference,
   type SchemaSnapshotV1,
   type SchemaTableV1,

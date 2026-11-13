@@ -109,8 +109,8 @@ describe('SQL schema parser', () => {
       COMMENT ON SCHEMA payments IS 'Money movement: intents, captures and refunds.';
       COMMENT ON TABLE payments.intents IS 'One row per payment attempt.';
       COMMENT ON COLUMN payments.intents.status IS 'Lifecycle: created, authorised, captured.';
-      COMMENT ON FUNCTION lockstay_tenant() IS 'The tenant id set for the current transaction.';
-      CREATE FUNCTION lockstay_tenant() RETURNS uuid LANGUAGE sql STABLE SECURITY DEFINER AS $$ SELECT 1 $$;
+      COMMENT ON FUNCTION current_tenant() IS 'The tenant id set for the current transaction.';
+      CREATE FUNCTION current_tenant() RETURNS uuid LANGUAGE sql STABLE SECURITY DEFINER AS $$ SELECT 1 $$;
       CREATE TABLE payments.intents (id uuid PRIMARY KEY, status text NOT NULL);
       `,
       options,
@@ -127,8 +127,8 @@ describe('SQL schema parser', () => {
     expect(snapshot.functions).toEqual([
       {
         schema: 'public',
-        name: 'lockstay_tenant',
-        signature: 'lockstay_tenant()',
+        name: 'current_tenant',
+        signature: 'current_tenant()',
         returns: 'uuid',
         language: 'sql',
         volatility: 'stable',

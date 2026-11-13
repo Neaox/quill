@@ -148,7 +148,7 @@ The first implementation does not start from a blank page:
 
 ### Amendment (12 November 2026): schema annotations, namespaces and functions
 
-The first schema pass is a migration reader, not a live catalog, and the question it exposed is where a table's or column's explanation lives. The answer keeps the database and the documentation each owning what they are good at.
+The schema source is the live catalog: migration text is a history, so a table renamed in a later file, a column added by `ALTER TABLE`, and a `COMMENT ON` in a file of its own are invisible to a reader that parses each migration alone. The reader takes a query port: `readPostgresSchema(client, { database, capturedAt, schemas })` runs six catalog queries and assembles the snapshot, so `@quill/code-index` depends on no database driver and the server passes its pool, client or transaction. The question the first pass exposed is where a table's or column's explanation lives. The answer keeps the database and the documentation each owning what they are good at.
 
 **The short annotation is in SQL, with `COMMENT ON`.**
 
@@ -157,7 +157,7 @@ COMMENT ON SCHEMA payments IS 'Money movement: intents, captures, refunds and fo
 COMMENT ON TABLE payments.intents IS 'One row per payment attempt.';
 COMMENT ON COLUMN payments.intents.status
   IS 'Lifecycle: created, authorised, captured. A declined authorisation leaves it created.';
-COMMENT ON FUNCTION lockstay_tenant()
+COMMENT ON FUNCTION current_tenant()
   IS 'The tenant id set by withTenant() for the current transaction. Every row-level policy reads it.';
 ```
 
@@ -180,7 +180,7 @@ entities:
 
 The sidecar is data, versioned with the repository and validated against a schema. It never duplicates the prose summary when a database comment exists: the DB comment is the summary, the sidecar supplies the structured facts, and the guide supplies the long form. Every page names which source each fact came from (`database comment`, `schema annotation`, `guide`), so a reader can tell a DBA's note from a writer's explanation. For a source with no comments at all, the sidecar may supply the summary and is labelled as such.
 
-**Functions are first-class schema entities.** `CREATE FUNCTION`/`CREATE OR REPLACE FUNCTION` and `COMMENT ON FUNCTION` are read into the same snapshot as tables and columns. A function page carries its signature, return type, language, volatility, `SECURITY DEFINER`, comment, source line and guide. `lockstay_tenant()` is the worked example: it reads the `lockstay.tenant_id` setting that `withTenant` sets for the transaction, and every row-level policy compares against it. The page links the function, the `withTenant` code and the tenancy guide, so a reader can see the whole mechanism rather than a cryptic name.
+**Functions are first-class schema entities.** `CREATE FUNCTION`/`CREATE OR REPLACE FUNCTION` and `COMMENT ON FUNCTION` are read into the same snapshot as tables and columns. A function page carries its signature, return type, language, volatility, `SECURITY DEFINER`, comment, source line and guide. `current_tenant()` is the worked example: it reads the `app.tenant_id` setting that the request's transaction sets, and every row-level policy compares against it. The page links the function, the `withTenant` code and the tenancy guide, so a reader can see the whole mechanism rather than a cryptic name.
 
 **Foreign keys are edges, in both directions.** A column's FK links to the target table's page; the target table lists what references it, with the source columns. A reference to a table outside the source is shown as unresolved with the schema-qualified name, never as a dead link. The schema tree groups by namespace and exposes tables, columns and functions, so the structure is navigable before the reader knows a name.
 

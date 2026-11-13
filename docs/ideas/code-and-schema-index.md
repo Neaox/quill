@@ -626,7 +626,7 @@ COMMENT ON SCHEMA payments IS 'Money movement: intents, captures, refunds and fo
 COMMENT ON TABLE payments.intents IS 'One row per payment attempt.';
 COMMENT ON COLUMN payments.intents.status
   IS 'Lifecycle: created, authorised, captured. A declined authorisation leaves it created.';
-COMMENT ON FUNCTION lockstay_tenant()
+COMMENT ON FUNCTION current_tenant()
   IS 'The tenant id set by withTenant() for the current transaction. Every row-level policy reads it.';
 ```
 
@@ -636,8 +636,8 @@ Why this and not a custom format: it travels with a dump, appears in `psql \d+`,
 
 ```yaml
 covers:
-  - postgres:lockstay.payments.intents
-  - postgres:lockstay.public.lockstay_tenant
+  - postgres:payments.intents
+  - postgres:public.current_tenant
 ```
 
 The schema page shows "Read the guide" with the owner and revision; the guide shows the entities it covers. This is the same claim/mention split as code. The guide carries purpose, invariants, examples, retention, failure modes and links to the migration and the code.
@@ -679,9 +679,9 @@ The named alias wins: `ACCOUNT_OPENING` links to `AccountOpening`, and the alias
 
 **Functions are entities.** `CREATE FUNCTION`/`CREATE OR REPLACE FUNCTION` and `COMMENT ON FUNCTION` enter the same snapshot as tables. A function page carries its signature, return type, language, volatility, `SECURITY DEFINER`, comment, source line and guide.
 
-`lockstay_tenant()` is the worked example:
+`current_tenant()` is the worked example:
 
-- It reads the `lockstay.tenant_id` setting that `withTenant` sets for the current transaction.
+- It reads the `app.tenant_id` setting that the request's transaction sets.
 - Every row-level policy compares `tenant_id` against it.
 - The function page links the function, `packages/persistence/src/db.ts`, the migration that defines it, and `docs/guide/concepts/tenancy/data-isolation.md`.
 - A reader sees the mechanism, not just the name. A new developer can answer "why does every table compare against this function?" from one page.
@@ -690,7 +690,7 @@ The named alias wins: `ACCOUNT_OPENING` links to `AccountOpening`, and the alias
 
 **Grouping and the tree.** The schema surface is grouped by namespace: namespace → tables/views → columns, and namespace → functions. A schema has its own comment, owner, coverage and guide. The sidebar is a native `<details>` tree: schemas open by default, tables open on demand, columns are links. It is keyboard-operable without a custom tree widget, and it filters with the same search as the content.
 
-**The PMS migrations have zero `COMMENT ON` statements today.** That is not a failure of the parser; it is the first content task. The highest-value set is the five schemas (`payments`, `catalogue`, `finance`, `desk`, `public`), the twenty tables a new developer meets first, and the functions that look cryptic: `lockstay_tenant()`, the RLS helpers, and the pricing/availability helpers. The report shows the coverage (`0 of 206 tables, 0 of N columns`) so the gap is visible rather than implied.
+**A host project's migrations can have zero `COMMENT ON` statements today.** That is not a failure of the parser; it is the first content task. The highest-value set is the five schemas (`payments`, `catalogue`, `finance`, `desk`, `public`), the twenty tables a new developer meets first, and the functions that look cryptic: `current_tenant()`, the RLS helpers, and the pricing/availability helpers. The report shows the coverage (`0 of 206 tables, 0 of N columns`) so the gap is visible rather than implied.
 
 **QOL, not later polish:**
 
