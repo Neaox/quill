@@ -1,0 +1,24 @@
+{
+  "name": "@quill/code-index",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Quill's portable code index: the versioned artifact, the TypeScript extractor, the cache and the git file set behind the reference index (ADR-065).",
+  "license": "MIT",
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": "./src/index.ts",
+    "./artifact": "./src/artifact.ts",
+    "./typescript": "./src/typescript/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@quill/domain": "workspace:*",
+    "typescript": "^7.0.2"
+  },
+  "devDependencies": {
+    "@quill/config": "workspace:*"
+  }
+}

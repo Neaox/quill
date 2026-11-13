@@ -146,6 +146,53 @@ The first implementation does not start from a blank page:
 - host the artifact in the internal Quill instance behind the zero-trust proxy;
 - keep `pnpm code:index` as the inner loop.
 
+### Amendment (12 November 2026): schema annotations, namespaces and functions
+
+The schema source is the live catalog: migration text is a history, so a table renamed in a later file, a column added by `ALTER TABLE`, and a `COMMENT ON` in a file of its own are invisible to a reader that parses each migration alone. The reader takes a query port: `readPostgresSchema(client, { database, capturedAt, schemas })` runs six catalog queries and assembles the snapshot, so `@quill/code-index` depends on no database driver and the server passes its pool, client or transaction. The question the first pass exposed is where a table's or column's explanation lives. The answer keeps the database and the documentation each owning what they are good at.
+
+**The short annotation is in SQL, with `COMMENT ON`.**
+
+```sql
+COMMENT ON SCHEMA payments IS 'Money movement: intents, captures, refunds and folios.';
+COMMENT ON TABLE payments.intents IS 'One row per payment attempt.';
+COMMENT ON COLUMN payments.intents.status
+  IS 'Lifecycle: created, authorised, captured. A declined authorisation leaves it created.';
+COMMENT ON FUNCTION current_tenant()
+  IS 'The tenant id set by withTenant() for the current transaction. Every row-level policy reads it.';
+```
+
+This is the idiomatic source, not a Quill invention. It travels with a dump, is visible in `psql`, is reviewed in the same migration as the schema change, and works with every PostgreSQL tool. The index reads it and shows its provenance. A table or column with no comment says so; it never invents one.
+
+**The long explanation is a guide.** A normal Markdown document claims the entity in `covers:` and can carry purpose, invariants, examples, transitions, retention, owner and failure modes. The schema page shows "Read the guide" with the owner and revision, and the guide shows the entities it covers. This is the same claim/mention split as code.
+
+**An optional sidecar carries structured facts the database cannot express.** For a managed database where comments cannot be written, or for metadata such as owner, tags, enum values, sensitivity, examples and see-also, a reviewed `docs/quill.schema.yaml` (`schema/v1`) maps monikers to facts:
+
+```yaml
+version: 1
+entities:
+  payments.intents:
+    owner: payments
+    tags: [money]
+    guide: docs/design/bookings-list.md
+  payments.intents.status:
+    enum: [created, authorised, captured]
+```
+
+The sidecar is data, versioned with the repository and validated against a schema. It never duplicates the prose summary when a database comment exists: the DB comment is the summary, the sidecar supplies the structured facts, and the guide supplies the long form. Every page names which source each fact came from (`database comment`, `schema annotation`, `guide`), so a reader can tell a DBA's note from a writer's explanation. For a source with no comments at all, the sidecar may supply the summary and is labelled as such.
+
+**Functions are first-class schema entities.** `CREATE FUNCTION`/`CREATE OR REPLACE FUNCTION` and `COMMENT ON FUNCTION` are read into the same snapshot as tables and columns. A function page carries its signature, return type, language, volatility, `SECURITY DEFINER`, comment, source line and guide. `current_tenant()` is the worked example: it reads the `app.tenant_id` setting that the request's transaction sets, and every row-level policy compares against it. The page links the function, the `withTenant` code and the tenancy guide, so a reader can see the whole mechanism rather than a cryptic name.
+
+**Foreign keys are edges, in both directions.** A column's FK links to the target table's page; the target table lists what references it, with the source columns. A reference to a table outside the source is shown as unresolved with the schema-qualified name, never as a dead link. The schema tree groups by namespace and exposes tables, columns and functions, so the structure is navigable before the reader knows a name.
+
+**Schema builders have display transforms.** The compiler type of `z.object({...})` is a builder, not the data it describes. A display transform reads the declaration and offers two views:
+
+- **Inferred type** — the data as TypeScript: `type AccountOpening = { open: boolean; changedAt: string | null; ... }`.
+- **Source** — the declaration as written: `export type AccountOpening = z.output<typeof ACCOUNT_OPENING>;` or `const ACCOUNT_OPENING = z.object({...})`.
+
+The transform prefers a named output alias. `AccountOpening` and `ACCOUNT_OPENING` link to each other; the schema constant says "Named type: AccountOpening" and the alias says "Defined from: ACCOUNT_OPENING". If no alias exists, the inferred view names the type after the constant and says it is inferred from the schema. The shape is derived from the schema's own syntax, not from a compiler type, so it carries that provenance and may be less precise than a compiler-resolved type for exotic builders. Zod is the first adapter; Valibot, TypeBox and ArkType register through the same `SchemaDisplay` contract, so the renderer never checks a library name.
+
+**The schema surface is grouped by namespace.** A schema has its own commentary, owner, tables, views, functions and coverage. The tree is `namespace → table → column` and `namespace → function`; tables with many columns open on demand. Copy actions, anchors, a search that includes comments, and both-direction FK links are part of the page, not later polish.
+
 ## Alternatives considered
 
 - **A separate API-reference site.** It would be a second renderer, a second search, a second permission model and a second place to fix a link. Rejected: the guides and the reference belong in one place.
