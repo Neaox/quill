@@ -361,7 +361,7 @@ function extractSymbols(
       name: declared.name,
       kind: declared.kind,
       package: pkg.dir,
-      module: file.slice(pkg.dir.length + '/src/'.length).replace(/\.ts$/, ''),
+      module: file.slice(pkg.dir.length + '/src/'.length).replace(/\.(?:ts|tsx)$/, ''),
       file,
       visibility: visibilityOf(declared.exported, tags),
       entryFile: pkg.entryFiles.has(file),

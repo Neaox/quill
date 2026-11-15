@@ -123,10 +123,12 @@ export function discoverSourceFiles(root: string, scopes: readonly string[]): re
   return worktreeFiles(root).filter(
     (file) =>
       scopes.some((scope) => file.startsWith(`${scope}/src/`)) &&
-      file.endsWith('.ts') &&
+      (file.endsWith('.ts') || file.endsWith('.tsx')) &&
       !file.endsWith('.test.ts') &&
+      !file.endsWith('.test.tsx') &&
       !file.endsWith('.d.ts') &&
       !file.includes('/generated/') &&
-      !file.endsWith('.gen.ts'),
+      !file.endsWith('.gen.ts') &&
+      !file.endsWith('.gen.tsx'),
   )
 }

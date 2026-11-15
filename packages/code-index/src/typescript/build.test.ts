@@ -1,11 +1,34 @@
 import { describe, expect, it } from 'vitest'
 
 import { decodeCodeIndexArtifact, encodeCodeIndexArtifact } from '../artifact.ts'
-import { buildCodeIndex } from './build.ts'
+import { buildCodeIndex, discoverSourceFiles } from './build.ts'
 
 const root = process.cwd()
 
 describe('TypeScript extractor', () => {
+  it('reads a TSX component from an app', () => {
+    const artifact = buildCodeIndex({
+      root,
+      scopes: ['apps/web'],
+      files: ['apps/web/src/features/workspaces/route-notice.tsx'],
+      tool: 'test',
+      generatedAt: '2026-11-12T12:00:00.000Z',
+    })
+
+    const file = artifact.files['apps/web/src/features/workspaces/route-notice.tsx']
+    expect(file).toBeDefined()
+    expect(file?.symbols.map((symbol) => symbol.name)).toContain('RouteNotice')
+    expect(file?.symbols.find((symbol) => symbol.name === 'RouteNotice')?.module).toBe(
+      'features/workspaces/route-notice',
+    )
+  })
+
+  it('discovers TSX files and leaves its tests out', () => {
+    const files = discoverSourceFiles(root, ['apps/web'])
+    expect(files).toContain('apps/web/src/features/workspaces/route-notice.tsx')
+    expect(files.some((file) => file.endsWith('.test.tsx'))).toBe(false)
+  })
+
   it('reads a real Quill module into the artifact', () => {
     const artifact = buildCodeIndex({
       root,
