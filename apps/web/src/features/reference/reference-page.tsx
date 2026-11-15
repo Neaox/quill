@@ -450,7 +450,10 @@ function CodeContents({
               className="rounded-lg border border-border bg-surface px-4 py-3"
             >
               <div className="flex flex-wrap items-baseline gap-2">
-                <h3 className="text-sm font-semibold text-foreground">{symbol.name}</h3>
+                <h3 className="text-sm font-semibold text-foreground">
+                  {symbol.parent === undefined ? '' : `${symbol.parent.name}.`}
+                  {symbol.name}
+                </h3>
                 <span className="text-xs text-muted">{symbol.kind}</span>
                 <span className="text-xs text-muted">
                   {symbol.package}/{symbol.module}
@@ -500,6 +503,7 @@ interface SchemaFunction {
 
 interface CodeSymbol {
   readonly name: string
+  readonly parent?: { readonly name: string }
   readonly kind: string
   readonly package: string
   readonly module: string
@@ -579,6 +583,7 @@ function readCode(artifact: ReferenceArtifact): readonly CodeSymbol[] | null {
       const name = stringAt(value, 'name')
       const signature = stringAt(value, 'signature')
       if (name === undefined || signature === undefined) continue
+      const parent = isRecord(value['parent']) ? stringAt(value['parent'], 'name') : undefined
       symbols.push({
         name,
         signature,
@@ -586,6 +591,7 @@ function readCode(artifact: ReferenceArtifact): readonly CodeSymbol[] | null {
         package: stringAt(value, 'package') ?? '',
         module: stringAt(value, 'module') ?? '',
         description: stringAt(value, 'description') ?? '',
+        ...(parent === undefined ? {} : { parent: { name: parent } }),
       })
     }
   }
@@ -620,7 +626,8 @@ function matchesSymbol(symbol: CodeSymbol, needle: string): boolean {
     symbol.name.toLowerCase().includes(needle) ||
     symbol.signature.toLowerCase().includes(needle) ||
     symbol.description.toLowerCase().includes(needle) ||
-    `${symbol.package}/${symbol.module}`.toLowerCase().includes(needle)
+    `${symbol.package}/${symbol.module}`.toLowerCase().includes(needle) ||
+    (symbol.parent?.name.toLowerCase().includes(needle) ?? false)
   )
 }
 

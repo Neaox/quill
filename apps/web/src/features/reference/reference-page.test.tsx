@@ -105,6 +105,15 @@ const CODE = {
           signature: 'type AccountCreated = { id: string }',
           description: '',
         },
+        {
+          name: 'save',
+          kind: 'method',
+          parent: { name: 'Account' },
+          package: 'packages/accounts',
+          module: 'store',
+          signature: 'save(): void',
+          description: '',
+        },
       ],
     },
   },
@@ -163,7 +172,7 @@ describe('ReferencePage', () => {
 
   it('searches a code artifact only after a name is typed', async () => {
     const user = userEvent.setup()
-    const codeSnapshot = { ...SNAPSHOT, kind: 'code', symbolCount: 2, tableCount: 0 }
+    const codeSnapshot = { ...SNAPSHOT, kind: 'code', symbolCount: 3, tableCount: 0 }
     renderApp(
       '/w/acme/reference?kind=code',
       routes({
@@ -176,11 +185,12 @@ describe('ReferencePage', () => {
     expect(await screen.findByText('Code snapshot')).toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: 'Load snapshot' }))
 
-    expect(await screen.findByText('2 symbols')).toBeInTheDocument()
+    expect(await screen.findByText('3 symbols')).toBeInTheDocument()
     await user.type(screen.getByLabelText('Find a symbol'), 'account')
     await user.keyboard('{Enter}')
     expect(await screen.findByText('createAccount')).toBeInTheDocument()
     expect(screen.getByText('AccountCreated')).toBeInTheDocument()
+    expect(screen.getByText('Account.save')).toBeInTheDocument()
 
     const page = screen.getByRole('heading', { name: 'Reference' }).parentElement
     if (page === null) throw new Error('the reference page has no root')

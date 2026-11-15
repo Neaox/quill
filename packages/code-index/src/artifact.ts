@@ -69,6 +69,8 @@ export interface CodeSymbolV1 {
   readonly concepts: readonly string[]
   /** Named types mentioned by the declaration: parameters, return type, heritage or a type alias's right side. */
   readonly typeRefs?: readonly TypeReference[]
+  /** The class this symbol is a member of; absent for a top-level declaration. */
+  readonly parent?: TypeReference
   /** A readable data shape for a schema-builder value, such as `z.object({...})`. */
   readonly readableType?: string
   /** The named output alias for a schema value: `AccountOpening` for `ACCOUNT_OPENING`. */

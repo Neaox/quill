@@ -6,6 +6,29 @@ import { buildCodeIndex, discoverSourceFiles } from './build.ts'
 const root = process.cwd()
 
 describe('TypeScript extractor', () => {
+  it('reads a class as a type and its members as symbols under it', () => {
+    const artifact = buildCodeIndex({
+      root,
+      scopes: ['packages/content-store'],
+      files: ['packages/content-store/src/git-content-store.ts'],
+      tool: 'test',
+      generatedAt: '2026-11-12T12:00:00.000Z',
+    })
+
+    const file = artifact.files['packages/content-store/src/git-content-store.ts']
+    const members = file?.symbols.filter((symbol) => symbol.parent !== undefined) ?? []
+    const head = members.find((symbol) => symbol.name === 'head')
+    expect(file?.symbols.find((symbol) => symbol.name === 'GitContentStore')?.kind).toBe('class')
+    expect(head).toMatchObject({
+      kind: 'method',
+      parent: { name: 'GitContentStore' },
+    })
+    expect(head?.moniker).toBe(
+      'typescript:@quill/content-store:packages/content-store/src/git-content-store.ts#GitContentStore.head',
+    )
+    expect(members.some((symbol) => symbol.name === '#now')).toBe(false)
+  })
+
   it('reads a TSX component from an app', () => {
     const artifact = buildCodeIndex({
       root,
