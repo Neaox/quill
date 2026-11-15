@@ -465,6 +465,11 @@ function CodeContents({
               {symbol.description === '' ? null : (
                 <p className="mt-2 max-w-3xl text-sm text-muted">{symbol.description}</p>
               )}
+              {symbol.seeAlso === undefined ? null : (
+                <p className="mt-1 text-xs text-muted">
+                  See also: {symbol.seeAlso.map((reference) => reference.name).join(', ')}
+                </p>
+              )}
             </li>
           ))}
         </ol>
@@ -504,6 +509,7 @@ interface SchemaFunction {
 interface CodeSymbol {
   readonly name: string
   readonly parent?: { readonly name: string }
+  readonly seeAlso?: readonly { readonly name: string }[]
   readonly kind: string
   readonly package: string
   readonly module: string
@@ -584,6 +590,13 @@ function readCode(artifact: ReferenceArtifact): readonly CodeSymbol[] | null {
       const signature = stringAt(value, 'signature')
       if (name === undefined || signature === undefined) continue
       const parent = isRecord(value['parent']) ? stringAt(value['parent'], 'name') : undefined
+      const seeAlso = Array.isArray(value['seeAlso'])
+        ? value['seeAlso'].flatMap((reference) => {
+            if (!isRecord(reference)) return []
+            const referenceName = stringAt(reference, 'name')
+            return referenceName === undefined ? [] : [{ name: referenceName }]
+          })
+        : []
       symbols.push({
         name,
         signature,
@@ -592,6 +605,7 @@ function readCode(artifact: ReferenceArtifact): readonly CodeSymbol[] | null {
         module: stringAt(value, 'module') ?? '',
         description: stringAt(value, 'description') ?? '',
         ...(parent === undefined ? {} : { parent: { name: parent } }),
+        ...(seeAlso.length === 0 ? {} : { seeAlso }),
       })
     }
   }
@@ -627,7 +641,8 @@ function matchesSymbol(symbol: CodeSymbol, needle: string): boolean {
     symbol.signature.toLowerCase().includes(needle) ||
     symbol.description.toLowerCase().includes(needle) ||
     `${symbol.package}/${symbol.module}`.toLowerCase().includes(needle) ||
-    (symbol.parent?.name.toLowerCase().includes(needle) ?? false)
+    (symbol.parent?.name.toLowerCase().includes(needle) ?? false) ||
+    (symbol.seeAlso?.some((reference) => reference.name.toLowerCase().includes(needle)) ?? false)
   )
 }
 

@@ -474,6 +474,15 @@ function symbolCard(symbol) {
     });
     body.append(row);
   }
+  if (symbol.seeAlso && symbol.seeAlso.length) {
+    const row = el("p", { className: "meta-row" }); row.append("See also: ");
+    symbol.seeAlso.forEach((ref, index) => {
+      if (index) row.append(" · ");
+      if (ref.moniker) row.append(el("a", { className: "type-ref", href: "#symbol-" + idFor(ref.moniker), textContent: ref.name }));
+      else row.append(el("span", { textContent: ref.name }));
+    });
+    body.append(row);
+  }
   if ((symbol.kind === "type" || symbol.kind === "interface" || symbol.kind === "class" || symbol.kind === "enum") && typeUsage.has(symbol.moniker)) {
     const users = typeUsage.get(symbol.moniker);
     const row = el("p", { className: "meta-row" }); row.append("Used by " + users.length + " symbol" + (users.length === 1 ? "" : "s") + ": ");
@@ -543,7 +552,7 @@ function functionCard(fn) {
 function textOf(value) { return (value || "").toLowerCase(); }
 function symbolMatches(symbol, query) {
   if (!query) return true;
-  const text = textOf(symbol.name) + " " + textOf(symbol.parent?.name) + " " + textOf(symbol.package) + " " + textOf(symbol.module) + " " + textOf(symbol.signature) + " " + textOf(symbol.definition) + " " + textOf(symbol.readableType) + " " + textOf((symbol.typeRefs || []).map((ref) => ref.name).join(" ")) + " " + textOf(symbol.description) + " " + symbol.tags.map((t) => textOf(t.name) + " " + textOf(t.text)).join(" ") + " " + symbol.keywords.join(" ") + " " + symbol.concepts.join(" ");
+  const text = textOf(symbol.name) + " " + textOf(symbol.parent?.name) + " " + textOf(symbol.package) + " " + textOf(symbol.module) + " " + textOf(symbol.signature) + " " + textOf(symbol.definition) + " " + textOf(symbol.readableType) + " " + textOf((symbol.typeRefs || []).map((ref) => ref.name).join(" ")) + " " + textOf((symbol.seeAlso || []).map((ref) => ref.name).join(" ")) + " " + textOf(symbol.description) + " " + symbol.tags.map((t) => textOf(t.name) + " " + textOf(t.text)).join(" ") + " " + symbol.keywords.join(" ") + " " + symbol.concepts.join(" ");
   return text.includes(query);
 }
 function symbolScore(symbol, rawQuery, query) {

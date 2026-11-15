@@ -380,7 +380,7 @@ function collapseOverloads(declared: Declared[]): Declared[] {
       collapsed.push(entry)
       continue
     }
-    const key = `${entry.owner ?? ''} ${entry.name}`
+    const key = `${entry.owner ?? ''}\u0000${entry.name}`
     const existing = functions.get(key)
     if (!existing) {
       functions.set(key, entry)
@@ -391,6 +391,21 @@ function collapseOverloads(declared: Declared[]): Declared[] {
     if (entry.fn.body) existing.body = entry.fn.body
   }
   return collapsed
+}
+
+const DOC_LINK = /\{@link\s+([^}\s|]+)/g
+
+/** The `{@link Name}` targets in a declaration's leading comment, before the checker renders the text. */
+function docLinks(node: Node, source: SourceFile): readonly string[] {
+  const leading = node
+    .getFullText(source)
+    .slice(0, Math.max(0, node.getStart(source) - node.getFullStart()))
+  const names = new Set<string>()
+  for (const match of leading.matchAll(DOC_LINK)) {
+    const name = (match[1] ?? '').replace(/^#/, '').replace(/[.,;:)\]]+$/, '')
+    if (name !== '') names.add(name)
+  }
+  return [...names]
 }
 
 function extractSymbols(
@@ -464,6 +479,9 @@ function extractSymbols(
       ...(declared.owner === undefined
         ? {}
         : { parent: { name: declared.owner, moniker: monikerOf(pkg.name, file, declared.owner) } }),
+      ...(docLinks(declared.node, source).length === 0
+        ? {}
+        : { seeAlso: docLinks(declared.node, source).map((name) => ({ name })) }),
       ...(readableType === undefined ? {} : { readableType }),
       ...(inferredAlias === undefined
         ? {}

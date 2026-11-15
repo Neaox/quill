@@ -71,6 +71,8 @@ export interface CodeSymbolV1 {
   readonly typeRefs?: readonly TypeReference[]
   /** The class this symbol is a member of; absent for a top-level declaration. */
   readonly parent?: TypeReference
+  /** What the declaration's docs point at with `@see` or `{@link}`, resolved where one symbol has that name. */
+  readonly seeAlso?: readonly TypeReference[]
   /** A readable data shape for a schema-builder value, such as `z.object({...})`. */
   readonly readableType?: string
   /** The named output alias for a schema value: `AccountOpening` for `ACCOUNT_OPENING`. */

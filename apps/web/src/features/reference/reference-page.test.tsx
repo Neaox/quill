@@ -96,6 +96,7 @@ const CODE = {
           module: 'create',
           signature: 'createAccount(input: Input): Promise<Account>',
           description: 'Creates an account and its first owner.',
+          seeAlso: [{ name: 'Account' }],
         },
         {
           name: 'AccountCreated',
@@ -191,6 +192,7 @@ describe('ReferencePage', () => {
     expect(await screen.findByText('createAccount')).toBeInTheDocument()
     expect(screen.getByText('AccountCreated')).toBeInTheDocument()
     expect(screen.getByText('Account.save')).toBeInTheDocument()
+    expect(screen.getByText('See also: Account')).toBeInTheDocument()
 
     const page = screen.getByRole('heading', { name: 'Reference' }).parentElement
     if (page === null) throw new Error('the reference page has no root')

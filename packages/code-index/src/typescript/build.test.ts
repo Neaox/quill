@@ -29,6 +29,31 @@ describe('TypeScript extractor', () => {
     expect(members.some((symbol) => symbol.name === '#now')).toBe(false)
   })
 
+  it('resolves @see and {@link} names to the symbols they name', () => {
+    const artifact = buildCodeIndex({
+      root,
+      scopes: ['packages/search'],
+      files: ['packages/search/src/query/parse.ts', 'packages/search/src/query/query.ts'],
+      tool: 'test',
+      generatedAt: '2026-11-12T12:00:00.000Z',
+    })
+
+    const parseQuery = artifact.files['packages/search/src/query/parse.ts']?.symbols.find(
+      (symbol) => symbol.name === 'parseQuery',
+    )
+    expect(parseQuery?.seeAlso?.map((reference) => reference.name)).toEqual(
+      expect.arrayContaining(['SearchQuery', 'FIELD_FILTER_KEYS']),
+    )
+    expect(
+      parseQuery?.seeAlso?.find((reference) => reference.name === 'FIELD_FILTER_KEYS'),
+    ).toMatchObject({
+      moniker: 'typescript:@quill/search:packages/search/src/query/query.ts#FIELD_FILTER_KEYS',
+    })
+    expect(
+      parseQuery?.seeAlso?.find((reference) => reference.name === 'SearchQuery')?.moniker,
+    ).toBeUndefined()
+  })
+
   it('reads a TSX component from an app', () => {
     const artifact = buildCodeIndex({
       root,
