@@ -246,6 +246,13 @@
       "when": 1794296026164,
       "tag": "0034_source_manifest_path",
       "breakpoints": true
+    },
+    {
+      "idx": 35,
+      "version": "7",
+      "when": 1794633272251,
+      "tag": "0035_reference_snapshots",
+      "breakpoints": true
     }
   ]
 }

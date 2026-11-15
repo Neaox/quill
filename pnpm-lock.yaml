@@ -106,6 +106,9 @@ importers:
       '@quill/brand':
         specifier: workspace:*
         version: link:../../packages/brand
+      '@quill/code-index':
+        specifier: workspace:*
+        version: link:../../packages/code-index
       '@quill/content-store':
         specifier: workspace:*
         version: link:../../packages/content-store

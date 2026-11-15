@@ -117,6 +117,11 @@ export function workspaceLink(workspaceSlug: string): LinkTarget {
   return { to: '/w/$workspaceSlug', params: { workspaceSlug } }
 }
 
+/** The workspace's reference index, addressed by the same slug as the workspace. */
+export function referenceLink(workspaceSlug: string): LinkTarget {
+  return { to: '/w/$workspaceSlug/reference', params: { workspaceSlug } }
+}
+
 /**
  * The search results route, spelled the same way: a pattern, its one segment,
  * and the query as a search param rather than a string anybody assembled

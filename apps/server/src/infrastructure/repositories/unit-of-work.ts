@@ -28,6 +28,7 @@ import { createOutboxWriter } from './outbox-writer.ts'
 import { createLinkPreviewRepository } from './link-preview-repository.ts'
 import { createPersonPreferencesRepository } from './person-preferences-repository.ts'
 import { createPublicRedirectRepository } from './public-redirect-repository.ts'
+import { createReferenceSnapshotRepository } from './reference-snapshot-repository.ts'
 import { createRenderCacheRepository } from './render-cache-repository.ts'
 import { createReviewRepository } from './review-repository.ts'
 import { createRevisionsIndexRepository } from './revisions-index-repository.ts'
@@ -91,6 +92,7 @@ function buildBundle(
     reviews: createReviewRepository(db),
     documentViews: createDocumentViewRepository(db),
     notifications: createNotificationRepository(db),
+    referenceSnapshots: createReferenceSnapshotRepository(db),
     workspaceSources: createWorkspaceSourceRepository(db),
     sourcePaths: createSourcePathMapRepository(db),
     sourceAssets: createSourceAssetRepository(db),

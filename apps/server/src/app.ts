@@ -35,6 +35,7 @@ import { themeRoutes } from './routes/theme.ts'
 import { unitRoutes } from './routes/units.ts'
 import { workspaceRoutes } from './routes/workspaces.ts'
 import { workspaceSourceRoutes } from './routes/workspace-source.ts'
+import { referenceRoutes } from './routes/reference.ts'
 import { sourceWebhookRoutes } from './routes/source-webhook.ts'
 import { sourceFreshnessRoutes } from './routes/source-freshness.ts'
 import { workspaceLiveRoutes } from './routes/workspace-live.ts'
@@ -192,6 +193,7 @@ export function buildApp(options: AppOptions = {}): FastifyInstance {
     app.register(groupRoutes(deps))
     app.register(workspaceRoutes(deps))
     app.register(workspaceSourceRoutes(deps))
+    app.register(referenceRoutes(deps))
     app.register(sourceWebhookRoutes(deps))
     app.register(sourceFreshnessRoutes(deps))
     app.register(workspaceLiveRoutes(deps))

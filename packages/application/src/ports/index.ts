@@ -21,6 +21,12 @@ export {
   SOURCE_REVISION_MAX_LENGTH,
 } from './content-store.ts'
 export type { EventBus, EventRecorder, RecordedEvent } from './events.ts'
+export type {
+  ReferenceKind,
+  ReferenceSnapshotRepository,
+  ReferenceSnapshotRow,
+} from './reference.ts'
+export { REFERENCE_KINDS } from './reference.ts'
 export type { BlobRef, BlobStore } from './blob-store.ts'
 export { concatChunks, readBlob } from './blob-store.ts'
 export type {

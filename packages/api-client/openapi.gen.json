@@ -12218,6 +12218,237 @@
         }
       }
     },
+    "/api/workspaces/{id}/reference/{kind}": {
+      "get": {
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          },
+          {
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "enum": [
+                    "code"
+                  ]
+                },
+                {
+                  "type": "string",
+                  "enum": [
+                    "schema"
+                  ]
+                }
+              ]
+            },
+            "in": "path",
+            "name": "kind",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "latest",
+                    "history"
+                  ],
+                  "properties": {
+                    "latest": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "required": [
+                            "id",
+                            "kind",
+                            "sourceCommit",
+                            "capturedAt",
+                            "artifactVersion",
+                            "artifactSize",
+                            "symbolCount",
+                            "tableCount",
+                            "artifactUrl"
+                          ],
+                          "properties": {
+                            "id": {
+                              "type": "string"
+                            },
+                            "kind": {
+                              "anyOf": [
+                                {
+                                  "type": "string",
+                                  "enum": [
+                                    "code"
+                                  ]
+                                },
+                                {
+                                  "type": "string",
+                                  "enum": [
+                                    "schema"
+                                  ]
+                                }
+                              ]
+                            },
+                            "sourceCommit": {
+                              "type": "string"
+                            },
+                            "capturedAt": {
+                              "format": "date-time",
+                              "type": "string"
+                            },
+                            "artifactVersion": {
+                              "type": "integer"
+                            },
+                            "artifactSize": {
+                              "type": "integer"
+                            },
+                            "symbolCount": {
+                              "type": "integer"
+                            },
+                            "tableCount": {
+                              "type": "integer"
+                            },
+                            "artifactUrl": {
+                              "type": "string"
+                            }
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "history": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "id",
+                          "kind",
+                          "sourceCommit",
+                          "capturedAt",
+                          "artifactVersion",
+                          "artifactSize",
+                          "symbolCount",
+                          "tableCount",
+                          "artifactUrl"
+                        ],
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "kind": {
+                            "anyOf": [
+                              {
+                                "type": "string",
+                                "enum": [
+                                  "code"
+                                ]
+                              },
+                              {
+                                "type": "string",
+                                "enum": [
+                                  "schema"
+                                ]
+                              }
+                            ]
+                          },
+                          "sourceCommit": {
+                            "type": "string"
+                          },
+                          "capturedAt": {
+                            "format": "date-time",
+                            "type": "string"
+                          },
+                          "artifactVersion": {
+                            "type": "integer"
+                          },
+                          "artifactSize": {
+                            "type": "integer"
+                          },
+                          "symbolCount": {
+                            "type": "integer"
+                          },
+                          "tableCount": {
+                            "type": "integer"
+                          },
+                          "artifactUrl": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/workspaces/{id}/reference/{kind}/artifact": {
+      "get": {
+        "parameters": [
+          {
+            "schema": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "in": "query",
+            "name": "snapshot",
+            "required": true
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          },
+          {
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "enum": [
+                    "code"
+                  ]
+                },
+                {
+                  "type": "string",
+                  "enum": [
+                    "schema"
+                  ]
+                }
+              ]
+            },
+            "in": "path",
+            "name": "kind",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/workspaces/{id}/source/webhooks/{forge}": {
       "post": {
         "parameters": [

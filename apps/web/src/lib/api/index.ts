@@ -325,3 +325,13 @@ export {
   whileLive,
 } from './live.ts'
 export type { LiveState } from './live.ts'
+export {
+  referenceArtifactQueryOptions,
+  referenceQueryOptions,
+  useReference,
+  useReferenceArtifact,
+  type ReferenceArtifact,
+  type ReferenceDto,
+  type ReferenceKind,
+  type ReferenceSnapshotDto,
+} from './reference.ts'
