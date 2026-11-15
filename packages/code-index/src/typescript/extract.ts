@@ -17,10 +17,14 @@ import {
   isExportDeclaration,
   isFunctionDeclaration,
   isFunctionExpression,
+  isGetAccessorDeclaration,
   isIdentifier,
   isImportDeclaration,
   isInterfaceDeclaration,
+  isMethodDeclaration,
   isNamedExports,
+  isPropertyDeclaration,
+  isSetAccessorDeclaration,
   isStringLiteral,
   isTypeAliasDeclaration,
   isVariableStatement,
@@ -172,6 +176,8 @@ interface Declared {
   node: Node
   nameNode: Node
   exported: boolean
+  /** The class this member belongs to; absent for a top-level declaration. */
+  owner?: string
   /** The function the parameters and return type are read from, when there is one. */
   fn: FunctionLike | undefined
   /** The last declaration of an overloaded function, so the record's range covers every signature. */
@@ -266,6 +272,7 @@ function declarations(source: SourceFile): Declared[] {
         exported,
         fn: undefined,
       })
+      found.push(...classMembers(statement, statement.name.text, exported))
     } else if (isTypeAliasDeclaration(statement) || isInterfaceDeclaration(statement)) {
       const exported = hasExportModifier(statement) || later.has(statement.name.text)
       found.push({
@@ -297,6 +304,70 @@ function declarations(source: SourceFile): Declared[] {
 }
 
 /**
+ * A class's own members, as symbols under it. Public members of an exported
+ * class carry the class's exported visibility; private and protected members
+ * are internal to the file. A getter and a setter for one name are one
+ * property, so the second is not a second symbol.
+ */
+function classMembers(node: Node, owner: string, ownerExported: boolean): Declared[] {
+  const members: Declared[] = []
+  const accessors = new Set<string>()
+  const classNode = node as Node & { readonly members: readonly Node[] }
+  for (const member of classNode.members) {
+    const nameNode = (member as Node & { readonly name?: Node }).name
+    if (nameNode === undefined || !isIdentifier(nameNode)) continue
+    const name = nameNode.text
+    const exported = ownerExported && isPublicMember(member)
+    if (
+      isMethodDeclaration(member) ||
+      isGetAccessorDeclaration(member) ||
+      isSetAccessorDeclaration(member)
+    ) {
+      if (isGetAccessorDeclaration(member) || isSetAccessorDeclaration(member)) {
+        if (accessors.has(name)) continue
+        accessors.add(name)
+      }
+      members.push({
+        name,
+        kind: 'method',
+        node: member,
+        nameNode,
+        owner,
+        exported,
+        fn: member,
+      })
+    } else if (isPropertyDeclaration(member)) {
+      const init = member.initializer
+      const fn =
+        init !== undefined && (isArrowFunction(init) || isFunctionExpression(init))
+          ? init
+          : undefined
+      members.push({
+        name,
+        kind: 'property',
+        node: member,
+        nameNode,
+        owner,
+        exported,
+        fn,
+      })
+    }
+  }
+  return members
+}
+
+function isPublicMember(node: Node): boolean {
+  const modifiers = (node as Node & { readonly modifiers?: readonly Node[] }).modifiers
+  return (
+    modifiers?.some(
+      (modifier) =>
+        modifier.kind === SyntaxKind.PrivateKeyword ||
+        modifier.kind === SyntaxKind.ProtectedKeyword,
+    ) !== true
+  )
+}
+
+/**
  * A function's overload signatures are separate declarations of one symbol. Keep one record: the
  * first declaration supplies the description, parameters and return type; the implementation supplies
  * the body complexity is read from; the line range spans the whole set.
@@ -309,9 +380,10 @@ function collapseOverloads(declared: Declared[]): Declared[] {
       collapsed.push(entry)
       continue
     }
-    const existing = functions.get(entry.name)
+    const key = `${entry.owner ?? ''}\u0000${entry.name}`
+    const existing = functions.get(key)
     if (!existing) {
-      functions.set(entry.name, entry)
+      functions.set(key, entry)
       collapsed.push(entry)
       continue
     }
@@ -319,6 +391,21 @@ function collapseOverloads(declared: Declared[]): Declared[] {
     if (entry.fn.body) existing.body = entry.fn.body
   }
   return collapsed
+}
+
+const DOC_LINK = /\{@link\s+([^}\s|]+)/g
+
+/** The `{@link Name}` targets in a declaration's leading comment, before the checker renders the text. */
+function docLinks(node: Node, source: SourceFile): readonly string[] {
+  const leading = node
+    .getFullText(source)
+    .slice(0, Math.max(0, node.getStart(source) - node.getFullStart()))
+  const names = new Set<string>()
+  for (const match of leading.matchAll(DOC_LINK)) {
+    const name = (match[1] ?? '').replace(/^#/, '').replace(/[.,;:)\]]+$/, '')
+    if (name !== '') names.add(name)
+  }
+  return [...names]
 }
 
 function extractSymbols(
@@ -356,12 +443,14 @@ function extractSymbols(
     const start = declared.node.getStart(source)
     const end = declared.end ?? declared.node
     const body = declared.body ?? declared.fn?.body
+    const qualified =
+      declared.owner === undefined ? declared.name : `${declared.owner}.${declared.name}`
     return {
-      moniker: monikerOf(pkg.name, file, declared.name),
+      moniker: monikerOf(pkg.name, file, qualified),
       name: declared.name,
       kind: declared.kind,
       package: pkg.dir,
-      module: file.slice(pkg.dir.length + '/src/'.length).replace(/\.ts$/, ''),
+      module: file.slice(pkg.dir.length + '/src/'.length).replace(/\.(?:ts|tsx)$/, ''),
       file,
       visibility: visibilityOf(declared.exported, tags),
       entryFile: pkg.entryFiles.has(file),
@@ -387,6 +476,12 @@ function extractSymbols(
       startLine: source.getLineAndCharacterOfPosition(start).line + 1,
       endLine: source.getLineAndCharacterOfPosition(end.getEnd()).line + 1,
       complexity: body ? complexity(body) : null,
+      ...(declared.owner === undefined
+        ? {}
+        : { parent: { name: declared.owner, moniker: monikerOf(pkg.name, file, declared.owner) } }),
+      ...(docLinks(declared.node, source).length === 0
+        ? {}
+        : { seeAlso: docLinks(declared.node, source).map((name) => ({ name })) }),
       ...(readableType === undefined ? {} : { readableType }),
       ...(inferredAlias === undefined
         ? {}

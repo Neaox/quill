@@ -59,6 +59,8 @@ import type {
   PersonPreferencesRow,
   PublicRedirectRepository,
   PublicRedirectRow,
+  ReferenceSnapshotRepository,
+  ReferenceSnapshotRow,
   RenderCacheRepository,
   RenderCacheRow,
   RepositoryBundle,
@@ -125,6 +127,11 @@ export interface InMemoryUnitOfWork extends UnitOfWork {
 /** The `(created_at, name)` order the secrets rotation pages by. */
 const compareSecretCursors = (left: SecretCursor, right: SecretCursor): number =>
   left.createdAt.getTime() - right.createdAt.getTime() || left.name.localeCompare(right.name)
+
+/** Newest capture first, then newest write, for the reference snapshots a page lists. */
+const bySnapshotRecency = (left: ReferenceSnapshotRow, right: ReferenceSnapshotRow): number =>
+  right.capturedAt.getTime() - left.capturedAt.getTime() ||
+  right.createdAt.getTime() - left.createdAt.getTime()
 
 /** Collections in name order, compared by code point, for the listings the port says are by name. */
 const byName = (a: CollectionRow, b: CollectionRow): number =>
@@ -202,6 +209,7 @@ export function createInMemoryUnitOfWork(
   /** Keyed by `(userId, documentId)`, which is what the primary key makes unique. */
   const documentViews = new Map<string, DocumentViewRow>()
   const notifications: NotificationRow[] = []
+  const referenceSnapshots: ReferenceSnapshotRow[] = []
 
   const userRepository: UserRepository = {
     async create(input) {
@@ -522,6 +530,28 @@ export function createInMemoryUnitOfWork(
     },
     async delete(id) {
       workspaces.delete(id)
+    },
+  }
+
+  const referenceSnapshotRepository: ReferenceSnapshotRepository = {
+    async insert(row) {
+      referenceSnapshots.push(row)
+    },
+    async findById(id) {
+      return referenceSnapshots.find((row) => row.id === id) ?? null
+    },
+    async latest(workspaceId, kind) {
+      return (
+        referenceSnapshots
+          .filter((row) => row.workspaceId === workspaceId && row.kind === kind)
+          .toSorted(bySnapshotRecency)[0] ?? null
+      )
+    },
+    async list(workspaceId, kind, limit) {
+      return referenceSnapshots
+        .filter((row) => row.workspaceId === workspaceId && row.kind === kind)
+        .toSorted(bySnapshotRecency)
+        .slice(0, limit)
     },
   }
 
@@ -1845,6 +1875,7 @@ export function createInMemoryUnitOfWork(
     groups: groupRepository,
     workspaces: workspaceRepository,
     workspaceSlugHistory: workspaceSlugHistoryRepository,
+    referenceSnapshots: referenceSnapshotRepository,
     collections: collectionRepository,
     documents: documentRepository,
     documentSummaries: documentSummaryRepository,

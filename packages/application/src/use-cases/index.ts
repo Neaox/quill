@@ -810,3 +810,14 @@ export {
   refuseWritesToSourcedWorkspaces,
   WorkspaceReadOnlyError,
 } from './read-only-content-store.ts'
+export type {
+  IngestReferenceCommand,
+  IngestReferenceResult,
+  ReferenceDependencies,
+} from './reference.ts'
+export {
+  ingestReference,
+  latestReference,
+  listReferenceSnapshots,
+  openReferenceArtifact,
+} from './reference.ts'

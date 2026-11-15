@@ -51,6 +51,11 @@ export const queryKeys = {
   /** Every secret's name and key id. Never a value: none is ever sent. */
   secrets: () => ['secrets'] as const,
   workspaceList: () => ['workspace-list'] as const,
+  /** The latest reference snapshot and its history for one workspace and kind (ADR-065). */
+  reference: (workspaceId: string, kind: string) => ['reference', workspaceId, kind] as const,
+  /** One snapshot's artifact, immutable and fetched only when a reader asks for it. */
+  referenceArtifact: (workspaceId: string, kind: string, snapshotId: string) =>
+    ['reference-artifact', workspaceId, kind, snapshotId] as const,
   /** A sourced workspace's source and its sync state (ADR-061), by workspace id. */
   workspaceSource: (workspaceId: string) => ['workspace-source', workspaceId] as const,
   /** Whether an open sourced document has moved on (ADR-061), by document id. */

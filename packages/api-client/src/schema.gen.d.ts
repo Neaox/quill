@@ -4505,6 +4505,109 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/workspaces/{id}/reference/{kind}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                    kind: "code" | "schema";
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            history: {
+                                artifactSize: number;
+                                artifactUrl: string;
+                                artifactVersion: number;
+                                /** Format: date-time */
+                                capturedAt: string;
+                                id: string;
+                                kind: "code" | "schema";
+                                sourceCommit: string;
+                                symbolCount: number;
+                                tableCount: number;
+                            }[];
+                            latest: {
+                                artifactSize: number;
+                                artifactUrl: string;
+                                artifactVersion: number;
+                                /** Format: date-time */
+                                capturedAt: string;
+                                id: string;
+                                kind: "code" | "schema";
+                                sourceCommit: string;
+                                symbolCount: number;
+                                tableCount: number;
+                            } | null;
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/workspaces/{id}/reference/{kind}/artifact": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query: {
+                    snapshot: string;
+                };
+                header?: never;
+                path: {
+                    id: string;
+                    kind: "code" | "schema";
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": unknown;
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/workspaces/{id}/settings": {
         parameters: {
             query?: never;

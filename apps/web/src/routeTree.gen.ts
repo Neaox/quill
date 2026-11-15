@@ -34,6 +34,7 @@ import { Route as AuthenticatedAdminSettingsOrganisationRouteImport } from './ro
 import { Route as AuthenticatedAdminSettingsSecretsRouteImport } from './routes/_authenticated/admin/settings/secrets'
 import { Route as AuthenticatedAdminSettingsThemeRouteImport } from './routes/_authenticated/admin/settings/theme'
 import { Route as AuthenticatedWWorkspaceSlugIndexRouteImport } from './routes/_authenticated/w/$workspaceSlug/index'
+import { Route as AuthenticatedWWorkspaceSlugReferenceRouteImport } from './routes/_authenticated/w/$workspaceSlug/reference'
 import { Route as AuthenticatedWWorkspaceSlugSearchRouteImport } from './routes/_authenticated/w/$workspaceSlug/search'
 import { Route as AuthenticatedWWorkspaceSlugSettingsRouteImport } from './routes/_authenticated/w/$workspaceSlug/settings'
 import { Route as AuthenticatedWWorkspaceSlugSourceRouteImport } from './routes/_authenticated/w/$workspaceSlug/source'
@@ -182,6 +183,12 @@ const AuthenticatedWWorkspaceSlugIndexRoute =
     path: '/',
     getParentRoute: () => AuthenticatedWWorkspaceSlugRouteRoute,
   } as any)
+const AuthenticatedWWorkspaceSlugReferenceRoute =
+  AuthenticatedWWorkspaceSlugReferenceRouteImport.update({
+    id: '/reference',
+    path: '/reference',
+    getParentRoute: () => AuthenticatedWWorkspaceSlugRouteRoute,
+  } as any)
 const AuthenticatedWWorkspaceSlugSearchRoute =
   AuthenticatedWWorkspaceSlugSearchRouteImport.update({
     id: '/search',
@@ -260,6 +267,7 @@ export interface FileRoutesByFullPath {
   '/admin/settings/organisation': typeof AuthenticatedAdminSettingsOrganisationRoute
   '/admin/settings/secrets': typeof AuthenticatedAdminSettingsSecretsRoute
   '/admin/settings/theme': typeof AuthenticatedAdminSettingsThemeRoute
+  '/w/$workspaceSlug/reference': typeof AuthenticatedWWorkspaceSlugReferenceRoute
   '/w/$workspaceSlug/search': typeof AuthenticatedWWorkspaceSlugSearchRoute
   '/w/$workspaceSlug/settings': typeof AuthenticatedWWorkspaceSlugSettingsRoute
   '/w/$workspaceSlug/source': typeof AuthenticatedWWorkspaceSlugSourceRoute
@@ -292,6 +300,7 @@ export interface FileRoutesByTo {
   '/admin/settings/organisation': typeof AuthenticatedAdminSettingsOrganisationRoute
   '/admin/settings/secrets': typeof AuthenticatedAdminSettingsSecretsRoute
   '/admin/settings/theme': typeof AuthenticatedAdminSettingsThemeRoute
+  '/w/$workspaceSlug/reference': typeof AuthenticatedWWorkspaceSlugReferenceRoute
   '/w/$workspaceSlug/search': typeof AuthenticatedWWorkspaceSlugSearchRoute
   '/w/$workspaceSlug/settings': typeof AuthenticatedWWorkspaceSlugSettingsRoute
   '/w/$workspaceSlug/source': typeof AuthenticatedWWorkspaceSlugSourceRoute
@@ -329,6 +338,7 @@ export interface FileRoutesById {
   '/_authenticated/admin/settings/organisation': typeof AuthenticatedAdminSettingsOrganisationRoute
   '/_authenticated/admin/settings/secrets': typeof AuthenticatedAdminSettingsSecretsRoute
   '/_authenticated/admin/settings/theme': typeof AuthenticatedAdminSettingsThemeRoute
+  '/_authenticated/w/$workspaceSlug/reference': typeof AuthenticatedWWorkspaceSlugReferenceRoute
   '/_authenticated/w/$workspaceSlug/search': typeof AuthenticatedWWorkspaceSlugSearchRoute
   '/_authenticated/w/$workspaceSlug/settings': typeof AuthenticatedWWorkspaceSlugSettingsRoute
   '/_authenticated/w/$workspaceSlug/source': typeof AuthenticatedWWorkspaceSlugSourceRoute
@@ -366,6 +376,7 @@ export interface FileRouteTypes {
     | '/admin/settings/organisation'
     | '/admin/settings/secrets'
     | '/admin/settings/theme'
+    | '/w/$workspaceSlug/reference'
     | '/w/$workspaceSlug/search'
     | '/w/$workspaceSlug/settings'
     | '/w/$workspaceSlug/source'
@@ -398,6 +409,7 @@ export interface FileRouteTypes {
     | '/admin/settings/organisation'
     | '/admin/settings/secrets'
     | '/admin/settings/theme'
+    | '/w/$workspaceSlug/reference'
     | '/w/$workspaceSlug/search'
     | '/w/$workspaceSlug/settings'
     | '/w/$workspaceSlug/source'
@@ -434,6 +446,7 @@ export interface FileRouteTypes {
     | '/_authenticated/admin/settings/organisation'
     | '/_authenticated/admin/settings/secrets'
     | '/_authenticated/admin/settings/theme'
+    | '/_authenticated/w/$workspaceSlug/reference'
     | '/_authenticated/w/$workspaceSlug/search'
     | '/_authenticated/w/$workspaceSlug/settings'
     | '/_authenticated/w/$workspaceSlug/source'
@@ -636,6 +649,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedWWorkspaceSlugIndexRouteImport
       parentRoute: typeof AuthenticatedWWorkspaceSlugRouteRoute
     }
+    '/_authenticated/w/$workspaceSlug/reference': {
+      id: '/_authenticated/w/$workspaceSlug/reference'
+      path: '/reference'
+      fullPath: '/w/$workspaceSlug/reference'
+      preLoaderRoute: typeof AuthenticatedWWorkspaceSlugReferenceRouteImport
+      parentRoute: typeof AuthenticatedWWorkspaceSlugRouteRoute
+    }
     '/_authenticated/w/$workspaceSlug/search': {
       id: '/_authenticated/w/$workspaceSlug/search'
       path: '/search'
@@ -733,6 +753,7 @@ const AuthenticatedAdminSettingsRouteRouteWithChildren =
   )
 
 interface AuthenticatedWWorkspaceSlugRouteRouteChildren {
+  AuthenticatedWWorkspaceSlugReferenceRoute: typeof AuthenticatedWWorkspaceSlugReferenceRoute
   AuthenticatedWWorkspaceSlugSearchRoute: typeof AuthenticatedWWorkspaceSlugSearchRoute
   AuthenticatedWWorkspaceSlugSettingsRoute: typeof AuthenticatedWWorkspaceSlugSettingsRoute
   AuthenticatedWWorkspaceSlugSourceRoute: typeof AuthenticatedWWorkspaceSlugSourceRoute
@@ -745,6 +766,8 @@ interface AuthenticatedWWorkspaceSlugRouteRouteChildren {
 
 const AuthenticatedWWorkspaceSlugRouteRouteChildren: AuthenticatedWWorkspaceSlugRouteRouteChildren =
   {
+    AuthenticatedWWorkspaceSlugReferenceRoute:
+      AuthenticatedWWorkspaceSlugReferenceRoute,
     AuthenticatedWWorkspaceSlugSearchRoute:
       AuthenticatedWWorkspaceSlugSearchRoute,
     AuthenticatedWWorkspaceSlugSettingsRoute:

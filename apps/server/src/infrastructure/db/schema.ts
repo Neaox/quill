@@ -299,6 +299,57 @@ export const workspaceSlugHistory = pgTable(
   (table) => [index('workspace_slug_history_workspace_idx').on(table.workspaceId)],
 )
 
+/**
+ * One ingestion of a workspace's reference index (ADR-065): the commit and
+ * instant the artifact was produced, and where in the blob store its bytes
+ * are. The code and schema artifacts are separate snapshots of the same
+ * workspace, so each is kept and served on its own.
+ *
+ * Two snapshots of identical bytes share one blob object: the hash is the
+ * address. This row is what makes the artifact readable, and deleting the
+ * workspace takes its provenance with it; the object is swept separately
+ * when nothing names it.
+ */
+export const referenceSnapshots = pgTable(
+  'reference_snapshots',
+  {
+    id: text('id').primaryKey(),
+    workspaceId: text('workspace_id')
+      .notNull()
+      .references(() => workspaces.id, { onDelete: 'cascade' }),
+    /** `code` or `schema`; the artifact's own reader is chosen by it. */
+    kind: text('kind').notNull(),
+    /** The commit the producer read, which a page shows with the capture time. */
+    sourceCommit: text('source_commit').notNull(),
+    /** When the producer read the source, not when this row was written. */
+    capturedAt: timestamp('captured_at', { withTimezone: true }).notNull(),
+    /** Lower-case hex SHA-256 of the artifact's bytes. */
+    artifactHash: text('artifact_hash').notNull(),
+    artifactSize: integer('artifact_size').notNull(),
+    /** The artifact's own format version, so a reader dispatches before parsing. */
+    artifactVersion: integer('artifact_version').notNull(),
+    /** Symbols in a code artifact; 0 in a schema artifact. */
+    symbolCount: integer('symbol_count').notNull().default(0),
+    /** Tables in a schema artifact; 0 in a code artifact. */
+    tableCount: integer('table_count').notNull().default(0),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull(),
+  },
+  (table) => [
+    check('reference_snapshots_kind', sql`${table.kind} IN ('code', 'schema')`),
+    check(
+      'reference_snapshots_sizes',
+      sql`${table.artifactSize} >= 0 AND ${table.artifactVersion} >= 1 AND ${table.symbolCount} >= 0 AND ${table.tableCount} >= 0`,
+    ),
+    unique('reference_snapshots_source_key').on(
+      table.workspaceId,
+      table.kind,
+      table.sourceCommit,
+      table.capturedAt,
+    ),
+    index('reference_snapshots_latest_idx').on(table.workspaceId, table.kind, table.capturedAt),
+  ],
+)
+
 export const collections = pgTable(
   'collections',
   {

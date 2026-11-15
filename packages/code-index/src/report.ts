@@ -381,7 +381,8 @@ function idFor(...parts) { return parts.join("-").replace(/[^A-Za-z0-9_-]+/g, "-
 function icon(kind) { const span = el("span", { className: "kind " + kind }); span.innerHTML = ICONS[kind] || ICONS.package; return span; }
 function label(kind) { return kind === "function" ? "Function" : kind === "method" ? "Method" : kind === "class" ? "Class" : kind === "interface" ? "Interface" : kind === "type" ? "Type" : kind === "const" ? "Constant" : kind === "property" ? "Property" : kind === "table" ? "Table" : kind === "view" ? "View" : kind; }
 function copyButton(text) { const button = el("button", { className: "copy", type: "button", "aria-label": "Copy " + text, "data-copy": text }); button.innerHTML = ICONS.copy + "<span>Copy</span>"; return button; }
-function sourceLink(symbol) { if (!data.repo || !symbol.file) return el("span", { className: "name", textContent: symbol.name }); return el("a", { className: "name", href: "https://github.com/" + data.repo + "/blob/" + data.commit + "/" + symbol.file + "#L" + symbol.startLine + "-L" + symbol.endLine, target: "_blank", rel: "noreferrer", textContent: symbol.name }); }
+function displayName(symbol) { return symbol.parent ? symbol.parent.name + "." + symbol.name : symbol.name; }
+function sourceLink(symbol) { if (!data.repo || !symbol.file) return el("span", { className: "name", textContent: displayName(symbol) }); return el("a", { className: "name", href: "https://github.com/" + data.repo + "/blob/" + data.commit + "/" + symbol.file + "#L" + symbol.startLine + "-L" + symbol.endLine, target: "_blank", rel: "noreferrer", textContent: displayName(symbol) }); }
 function prettyType(value) {
   if (!value.startsWith("{") || !value.endsWith("}")) return value;
   let out = "", depth = 0, skipSpace = false;
@@ -439,7 +440,7 @@ function symbolCard(symbol) {
   const card = el("article", { className: "card", id: "symbol-" + idFor(symbol.moniker) });
   card.append(icon(symbol.kind));
   const body = el("div");
-  const head = el("div", { className: "card-head" }, sourceLink(symbol), el("span", { className: "kind-label", textContent: label(symbol.kind) }), el("span", { className: "path" }, el("code", { textContent: symbol.package + "/" + symbol.module })), copyButton(symbol.name));
+  const head = el("div", { className: "card-head" }, sourceLink(symbol), el("span", { className: "kind-label", textContent: label(symbol.kind) }), el("span", { className: "path" }, el("code", { textContent: symbol.package + "/" + symbol.module })), copyButton(displayName(symbol)));
   body.append(head);
   if (symbol.readableType) {
     body.append(schemaView(symbol));
@@ -467,6 +468,15 @@ function symbolCard(symbol) {
   if (symbol.typeRefs && symbol.typeRefs.length) {
     const row = el("p", { className: "meta-row" }); row.append("Types: ");
     symbol.typeRefs.forEach((ref, index) => {
+      if (index) row.append(" · ");
+      if (ref.moniker) row.append(el("a", { className: "type-ref", href: "#symbol-" + idFor(ref.moniker), textContent: ref.name }));
+      else row.append(el("span", { textContent: ref.name }));
+    });
+    body.append(row);
+  }
+  if (symbol.seeAlso && symbol.seeAlso.length) {
+    const row = el("p", { className: "meta-row" }); row.append("See also: ");
+    symbol.seeAlso.forEach((ref, index) => {
       if (index) row.append(" · ");
       if (ref.moniker) row.append(el("a", { className: "type-ref", href: "#symbol-" + idFor(ref.moniker), textContent: ref.name }));
       else row.append(el("span", { textContent: ref.name }));
@@ -542,7 +552,7 @@ function functionCard(fn) {
 function textOf(value) { return (value || "").toLowerCase(); }
 function symbolMatches(symbol, query) {
   if (!query) return true;
-  const text = textOf(symbol.name) + " " + textOf(symbol.package) + " " + textOf(symbol.module) + " " + textOf(symbol.signature) + " " + textOf(symbol.definition) + " " + textOf(symbol.readableType) + " " + textOf((symbol.typeRefs || []).map((ref) => ref.name).join(" ")) + " " + textOf(symbol.description) + " " + symbol.tags.map((t) => textOf(t.name) + " " + textOf(t.text)).join(" ") + " " + symbol.keywords.join(" ") + " " + symbol.concepts.join(" ");
+  const text = textOf(symbol.name) + " " + textOf(symbol.parent?.name) + " " + textOf(symbol.package) + " " + textOf(symbol.module) + " " + textOf(symbol.signature) + " " + textOf(symbol.definition) + " " + textOf(symbol.readableType) + " " + textOf((symbol.typeRefs || []).map((ref) => ref.name).join(" ")) + " " + textOf((symbol.seeAlso || []).map((ref) => ref.name).join(" ")) + " " + textOf(symbol.description) + " " + symbol.tags.map((t) => textOf(t.name) + " " + textOf(t.text)).join(" ") + " " + symbol.keywords.join(" ") + " " + symbol.concepts.join(" ");
   return text.includes(query);
 }
 function symbolScore(symbol, rawQuery, query) {

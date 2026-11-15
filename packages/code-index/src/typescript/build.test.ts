@@ -1,11 +1,82 @@
 import { describe, expect, it } from 'vitest'
 
 import { decodeCodeIndexArtifact, encodeCodeIndexArtifact } from '../artifact.ts'
-import { buildCodeIndex } from './build.ts'
+import { buildCodeIndex, discoverSourceFiles } from './build.ts'
 
 const root = process.cwd()
 
 describe('TypeScript extractor', () => {
+  it('reads a class as a type and its members as symbols under it', () => {
+    const artifact = buildCodeIndex({
+      root,
+      scopes: ['packages/content-store'],
+      files: ['packages/content-store/src/git-content-store.ts'],
+      tool: 'test',
+      generatedAt: '2026-11-12T12:00:00.000Z',
+    })
+
+    const file = artifact.files['packages/content-store/src/git-content-store.ts']
+    const members = file?.symbols.filter((symbol) => symbol.parent !== undefined) ?? []
+    const head = members.find((symbol) => symbol.name === 'head')
+    expect(file?.symbols.find((symbol) => symbol.name === 'GitContentStore')?.kind).toBe('class')
+    expect(head).toMatchObject({
+      kind: 'method',
+      parent: { name: 'GitContentStore' },
+    })
+    expect(head?.moniker).toBe(
+      'typescript:@quill/content-store:packages/content-store/src/git-content-store.ts#GitContentStore.head',
+    )
+    expect(members.some((symbol) => symbol.name === '#now')).toBe(false)
+  })
+
+  it('resolves @see and {@link} names to the symbols they name', () => {
+    const artifact = buildCodeIndex({
+      root,
+      scopes: ['packages/search'],
+      files: ['packages/search/src/query/parse.ts', 'packages/search/src/query/query.ts'],
+      tool: 'test',
+      generatedAt: '2026-11-12T12:00:00.000Z',
+    })
+
+    const parseQuery = artifact.files['packages/search/src/query/parse.ts']?.symbols.find(
+      (symbol) => symbol.name === 'parseQuery',
+    )
+    expect(parseQuery?.seeAlso?.map((reference) => reference.name)).toEqual(
+      expect.arrayContaining(['SearchQuery', 'FIELD_FILTER_KEYS']),
+    )
+    expect(
+      parseQuery?.seeAlso?.find((reference) => reference.name === 'FIELD_FILTER_KEYS'),
+    ).toMatchObject({
+      moniker: 'typescript:@quill/search:packages/search/src/query/query.ts#FIELD_FILTER_KEYS',
+    })
+    expect(
+      parseQuery?.seeAlso?.find((reference) => reference.name === 'SearchQuery')?.moniker,
+    ).toBeUndefined()
+  })
+
+  it('reads a TSX component from an app', () => {
+    const artifact = buildCodeIndex({
+      root,
+      scopes: ['apps/web'],
+      files: ['apps/web/src/features/workspaces/route-notice.tsx'],
+      tool: 'test',
+      generatedAt: '2026-11-12T12:00:00.000Z',
+    })
+
+    const file = artifact.files['apps/web/src/features/workspaces/route-notice.tsx']
+    expect(file).toBeDefined()
+    expect(file?.symbols.map((symbol) => symbol.name)).toContain('RouteNotice')
+    expect(file?.symbols.find((symbol) => symbol.name === 'RouteNotice')?.module).toBe(
+      'features/workspaces/route-notice',
+    )
+  })
+
+  it('discovers TSX files and leaves its tests out', () => {
+    const files = discoverSourceFiles(root, ['apps/web'])
+    expect(files).toContain('apps/web/src/features/workspaces/route-notice.tsx')
+    expect(files.some((file) => file.endsWith('.test.tsx'))).toBe(false)
+  })
+
   it('reads a real Quill module into the artifact', () => {
     const artifact = buildCodeIndex({
       root,

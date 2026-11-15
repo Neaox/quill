@@ -3,6 +3,7 @@ import { useCallback, useEffect, useId, useMemo, useState } from 'react'
 
 import {
   Callout,
+  DocumentIcon,
   Menu,
   onDemand,
   OutlineIcon,
@@ -31,6 +32,7 @@ import {
 import {
   documentLink,
   documentReference,
+  referenceLink,
   workspaceLink,
 } from '../../lib/routing/document-reference.ts'
 import { RouterLink } from '../../lib/routing/router-link.tsx'
@@ -82,6 +84,12 @@ export function buildRailItems(workspaceSlug: string): readonly IconRailItem[] {
       label: 'Documents',
       icon: <OutlineIcon />,
       link: workspaceLink(workspaceSlug),
+    },
+    {
+      id: 'reference',
+      label: 'Reference',
+      icon: <DocumentIcon />,
+      link: referenceLink(workspaceSlug),
     },
   ]
 }

@@ -12,6 +12,7 @@ import type {
 } from '@quill/domain'
 
 import type { EventRecorder } from './events.ts'
+import type { ReferenceSnapshotRepository } from './reference.ts'
 import type { Contributor } from './search-index.ts'
 import type { RenderedContent } from './document-format.ts'
 import type { DocumentViewRepository } from './document-views.ts'
@@ -1493,6 +1494,8 @@ export interface RepositoryBundle {
   readonly reviews: ReviewRepository
   readonly documentViews: DocumentViewRepository
   readonly notifications: NotificationRepository
+  /** The code and schema snapshots a workspace's reference index serves (ADR-065). */
+  readonly referenceSnapshots: ReferenceSnapshotRepository
   /** Where each sourced workspace reads from (ADR-061). */
   readonly workspaceSources: WorkspaceSourceRepository
   /** Where each file of a sourced workspace's source is, and the id minted for it (ADR-061). */

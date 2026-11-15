@@ -58,6 +58,7 @@ export function buildCodeIndex(options: BuildCodeIndexOptions): CodeIndexArtifac
   }
 
   linkTypeReferences(files)
+  linkSeeAlso(files)
 
   return {
     formatVersion: CODE_INDEX_ARTIFACT_VERSION,
@@ -67,6 +68,72 @@ export function buildCodeIndex(options: BuildCodeIndexOptions): CodeIndexArtifac
     generatedAt: options.generatedAt,
     files,
   }
+}
+
+/**
+ * `@see` and `{@link}` name a symbol in prose. Resolve the names the built
+ * set holds - a qualified `Class.member` first, then an unambiguous bare name
+ * - and leave a name unresolved rather than guessing between two.
+ */
+function linkSeeAlso(files: Record<string, CodeFileV1>): void {
+  const byName = new Map<string, string[]>()
+  const byQualified = new Map<string, string>()
+  for (const file of Object.values(files)) {
+    for (const symbol of file.symbols) {
+      const list = byName.get(symbol.name) ?? []
+      list.push(symbol.moniker)
+      byName.set(symbol.name, list)
+      const qualified =
+        symbol.parent === undefined ? symbol.name : `${symbol.parent.name}.${symbol.name}`
+      if (!byQualified.has(qualified)) byQualified.set(qualified, symbol.moniker)
+    }
+  }
+
+  for (const [path, file] of Object.entries(files)) {
+    files[path] = {
+      ...file,
+      symbols: file.symbols.map((symbol) => {
+        const references = seeAlsoOf(symbol, byName, byQualified)
+        return references.length === 0 ? symbol : { ...symbol, seeAlso: references }
+      }),
+    }
+  }
+}
+
+const LINK = /\{@link\s+([^}\s|]+)/g
+const REFERENCE_NAME = /[A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*/
+
+function seeAlsoOf(
+  symbol: CodeFileV1['symbols'][number],
+  byName: ReadonlyMap<string, readonly string[]>,
+  byQualified: ReadonlyMap<string, string>,
+): readonly { readonly name: string; readonly moniker?: string }[] {
+  const names = new Set<string>((symbol.seeAlso ?? []).map((reference) => reference.name))
+  for (const tag of symbol.tags) {
+    if (tag.name.toLowerCase() === 'see') addName(names, tag.text)
+  }
+  for (const match of symbol.description.matchAll(LINK)) addName(names, match[1] ?? '')
+
+  const references: { name: string; moniker?: string }[] = []
+  for (const name of names) {
+    if (name.startsWith('http')) continue
+    const last = name.split('.').pop() ?? name
+    const direct = byQualified.get(name)
+    const candidates = byName.get(last) ?? []
+    const moniker = direct ?? (candidates.length === 1 ? candidates[0] : undefined)
+    if (moniker === symbol.moniker) continue
+    references.push(moniker === undefined ? { name: last } : { name: last, moniker })
+  }
+  return references
+}
+
+function addName(names: Set<string>, text: string): void {
+  const cleaned = text
+    .replaceAll('`', '')
+    .replace(/^#/, '')
+    .replace(/[.,;:)\]]+$/, '')
+  const match = REFERENCE_NAME.exec(cleaned)
+  if (match !== null) names.add(match[0])
 }
 
 const TYPE_KINDS = new Set(['type', 'interface', 'class', 'enum'])
@@ -123,10 +190,12 @@ export function discoverSourceFiles(root: string, scopes: readonly string[]): re
   return worktreeFiles(root).filter(
     (file) =>
       scopes.some((scope) => file.startsWith(`${scope}/src/`)) &&
-      file.endsWith('.ts') &&
+      (file.endsWith('.ts') || file.endsWith('.tsx')) &&
       !file.endsWith('.test.ts') &&
+      !file.endsWith('.test.tsx') &&
       !file.endsWith('.d.ts') &&
       !file.includes('/generated/') &&
-      !file.endsWith('.gen.ts'),
+      !file.endsWith('.gen.ts') &&
+      !file.endsWith('.gen.tsx'),
   )
 }
