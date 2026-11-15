@@ -1,0 +1,2 @@
+Added: A workspace's reference index now stores the code and schema artifacts it ingests, with the source commit and capture time, and serves them on `/w/:workspaceSlug/reference` through a new API. The page browses namespaces and tables with their comments, or searches code symbols, and fetches the artifact only when asked.
+Added: The code index reads `.tsx` components, so the app's components appear in the reference alongside the packages.
